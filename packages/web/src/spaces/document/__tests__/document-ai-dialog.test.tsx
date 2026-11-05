@@ -192,6 +192,24 @@ describe('while the result streams in', () => {
     expect(dialog.querySelector('[data-testid="chat-waiting-dot"]')).toBeNull();
   });
 
+  it('keeps the waiting dot while only an opening tag has come, then shows the unit\'s words as they come', async () => {
+    const { call } = await polishing();
+    const dialog = screen.getByTestId('doc-ai-dialog');
+
+    await streams(call, ['<u id="1">']);
+    // Let the reveal and the preview's throttled parse settle on the tag.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+    expect(dialog.querySelectorAll('[data-testid="chat-waiting-dot"]')).toHaveLength(1);
+
+    await streams(call, ['Hi there']);
+    await waitFor(() => {
+      expect(previewText()).toContain('Hi there');
+    });
+    expect(dialog.querySelector('[data-testid="chat-waiting-dot"]')).toBeNull();
+  });
+
   it('shows no waiting dot once the run has ended without words', async () => {
     const { call } = await polishing();
 

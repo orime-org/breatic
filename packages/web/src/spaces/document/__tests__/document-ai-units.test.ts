@@ -15,6 +15,7 @@ import * as Y from 'yjs';
 import { aiRangeIn, DOCUMENT_AI_RANGE } from '@web/spaces/document/document-ai-range';
 import {
   aiAnswer,
+  aiAnswerEmpty,
   aiReplaceAvailable,
   aiTextUnits,
   aiUnitsRequest,
@@ -311,7 +312,7 @@ describe('the units of a range', () => {
     const h = await open('| a | b |\n| --- | --- |\n| c | d |');
     legacyTable(h, [['x', 'y']]);
     const legacy = opening(h, { from: rangeOf(h, 'x').from, to: rangeOf(h, 'y').to }, 'refine').units;
-    expect(legacy.map((u) => [u.kind, u.blockId, u.cell])).toEqual([['tableCell', 'legacy-table', { row: 0, col: 0 }], ['tableCell', 'legacy-table', { row: 0, col: 1 }]]);
+    expect(legacy.map((u) => [u.kind, u.blockId, u.cell])).toEqual([['tableCell', 'legacy-table', { row: 0, col: 0, line: 0 }], ['tableCell', 'legacy-table', { row: 0, col: 1, line: 0 }]]);
     const modern = opening(h, { from: rangeOf(h, 'c').from, to: rangeOf(h, 'd').to }, 'refine').units;
     expect(modern.map((u) => u.kind)).toEqual(['paragraph', 'paragraph']);
     expect(new Set(modern.map((u) => u.blockId)).size).toBe(2);
@@ -362,12 +363,12 @@ describe('the request', () => {
 });
 
 describe('reading an answer', () => {
-  it('shows only answered units, ignores ids never sent and a tag still being written', async () => {
+  it('shows only answered units, ignores ids never sent, and shows a unit still being written as far as it came', async () => {
     const h = await open('one\n\ntwo\n\nthree');
     const o = opening(h, { from: rangeOf(h, 'one').from, to: rangeOf(h, 'three').to }, 'refine');
     const answer = read(h, o, '<u id="1">ONE</u><u id="9">nine</u><u id="3">THR', 'refine');
-    expect(answer.results.map((r) => r.unit.id)).toEqual([1]);
-    expect(answer.preview.map((b) => textOf(b as Seen))).toEqual(['ONE']);
+    expect(answer.results.map((r) => r.unit.id)).toEqual([1, 3]);
+    expect(answer.preview.map((b) => textOf(b as Seen))).toEqual(['ONE', 'THR']);
     expect(answer.formatFailed).toBe(false);
   });
 
@@ -844,22 +845,195 @@ describe('writing as an ordinary edit', () => {
   });
 });
 
+/**
+ * Puts a legacy table with any cells, lines and spans at the top of the body.
+ * @param handle - The document.
+ * @param rows - Each row's cells: their lines, and their attributes.
+ */
+function legacyGrid(handle: DocumentEditorHandle, rows: Array<Array<{ lines: string[]; attrs?: Record<string, unknown>; header?: boolean }>>): void {
+  const view = handle.editor.prosemirrorView!;
+  const s = view.state.schema;
+  const line = (t: string): ReturnType<typeof s.node> => s.nodes['tableParagraph']!.create(null, t === '' ? [] : [s.text(t)]);
+  const table = s.nodes['table']!.create(null, rows.map((row) => s.nodes['tableRow']!.create(null, row.map((cell) => s.nodes[cell.header === true ? 'tableHeader' : 'tableCell']!.create(cell.attrs ?? null, cell.lines.map(line))))));
+  view.dispatch(view.state.tr.insert(1, s.nodes['blockContainer']!.create({ id: 'legacy-table' }, [table])));
+  handle.undoManager.clear();
+}
+
+describe('reading an answer as it streams (A1, A5)', () => {
+  it('shows the words of a unit whose tag is still open, without a half-written closing tag', async () => {
+    const h = await open('one\n\ntwo');
+    const o = opening(h, { from: rangeOf(h, 'one').from, to: rangeOf(h, 'two').to }, 'refine');
+    for (const [shown, words] of [
+      ['<u id="1">Hi there', ['Hi there']],
+      ['<u id="1">Hi there</', ['Hi there']],
+      ['<u id="1">Hi</u>\n<u id="2">Tw', ['Hi', 'Tw']],
+      ['<u id="1">Hi</u>\n<u id="2', ['Hi']],
+    ] as const) {
+      expect(read(h, o, shown, 'refine').preview.map((b) => textOf(b as Seen))).toEqual(words);
+    }
+  });
+
+  it('shows nothing yet while a single unit answer has only begun its tag', async () => {
+    const h = await open('Body');
+    const o = opening(h, rangeOf(h, 'Body'), 'refine');
+    for (const shown of ['<', '<u', '<u id="1"']) expect(read(h, o, shown, 'refine').preview).toEqual([]);
+  });
+
+  it('keeps what came of an open unit as a result to write', async () => {
+    const h = await open('Body words');
+    const o = opening(h, rangeOf(h, 'Body words'), 'refine');
+    expect(aiAnswerEmpty('<u id="1">Better', o.units)).toBe(false);
+    replaceAiAnswer(h, read(h, o, '<u id="1">Better', 'refine'), segments(h), WRITABLE);
+    expect(blocks(h).map(textOf)).toEqual(['Better']);
+  });
+});
+
+describe('code keeps its whitespace (A6)', () => {
+  it('writes the indentation of a code selection that starts on an indented line back as it came', async () => {
+    const h = await open('```python\ndef f():\n    a = 1\n    return a\n```');
+    const from = rangeOf(h, '    a = 1').from;
+    replaceWith(h, { from, to: from + '    a = 1\n    return a'.length }, 'refine', (o) => echo(o.request));
+    expect(textOf(blocks(h)[0]!)).toBe('def f():\n    a = 1\n    return a');
+  });
+
+  it('writes a whole code block echoed under custom back with every indentation space', async () => {
+    const h = await open('```python\ndef f():\n    return 1\n```');
+    const from = rangeOf(h, 'def f():').from;
+    replaceWith(h, { from, to: from + 'def f():\n    return 1'.length }, 'custom', (o) => echo(o.request));
+    expect(blocks(h).map((b) => [b.type, textOf(b)])).toEqual([['codeBlock', 'def f():\n    return 1']]);
+  });
+});
+
+describe('table copies (A6, §5.3 insert)', () => {
+  it('previews and inserts a copy of a docTable for a selection across its cells', async () => {
+    const h = await open('| a | b |\n| --- | --- |\n| cee | dee |');
+    const o = opening(h, { from: rangeOf(h, 'cee').from, to: rangeOf(h, 'dee').to }, 'translate');
+    const answer = read(h, o, tagged({ 1: 'C', 2: 'D' }), 'translate');
+    expect(answer.preview.map((b) => (b as Seen).type)).toEqual(['docTable']);
+    expect(insertAiAnswer(h, blocks(h)[0]!.id, answer, WRITABLE).outcome).toBe('written');
+    const copy = blocks(h)[1]!;
+    expect(copy.type).toBe('docTable');
+    expect(copy.children.map((row) => row.children.map((cell) => cell.children.map(textOf).join('')))).toEqual([['a', 'b'], ['C', 'D']]);
+  });
+
+  it('copies the table when the selection runs into one of its cells from outside', async () => {
+    const h = await open('above\n\n| first | b |\n| --- | --- |\n| cee | dee |');
+    const o = opening(h, { from: rangeOf(h, 'above').from, to: rangeOf(h, 'first').to }, 'refine');
+    const answer = read(h, o, tagged({ 1: 'ABOVE', 2: 'FIRST' }), 'refine');
+    expect(answer.preview.map((b) => (b as Seen).type)).toEqual(['paragraph', 'docTable']);
+  });
+
+  it('copies a legacy table when the selection runs out of one of its cells, and when only some cells are answered', async () => {
+    const h = await open('below');
+    legacyTable(h, [['x', 'y']]);
+    const out = opening(h, { from: rangeOf(h, 'y').from, to: rangeOf(h, 'below').to }, 'refine');
+    expect(read(h, out, tagged({ 1: 'Y', 2: 'BELOW' }), 'refine').preview.map((b) => (b as Seen).type)).toEqual(['docTable', 'paragraph']);
+    const both = opening(h, { from: rangeOf(h, 'x').from, to: rangeOf(h, 'y').to }, 'translate');
+    const answer = read(h, both, tagged({ 1: 'X', 2: '' }), 'translate');
+    expect(answer.preview.map((b) => (b as Seen).type)).toEqual(['docTable']);
+    const copy = answer.preview[0] as Seen;
+    expect(copy.children[0]!.children.map((cell) => cell.children.map(textOf).join(''))).toEqual(['X', 'y']);
+  });
+
+  it('copies a legacy cell spanning columns with its span', async () => {
+    const h = await open('');
+    legacyGrid(h, [[{ lines: ['head'], header: true, attrs: { colspan: 2 } }], [{ lines: ['x'] }, { lines: ['y'] }]]);
+    const o = opening(h, { from: rangeOf(h, 'x').from, to: rangeOf(h, 'y').to }, 'refine');
+    const copy = read(h, o, tagged({ 1: 'X', 2: 'Y' }), 'refine').preview[0] as Seen;
+    expect(copy.children[0]!.children[0]!.props['colspan']).toBe(2);
+  });
+});
+
+describe('a legacy cell holding several lines (A6)', () => {
+  it('makes each line its own unit and writes each answer into its own line', async () => {
+    const h = await open('');
+    legacyGrid(h, [[{ lines: ['alpha', 'beta'] }, { lines: ['gamma'] }]]);
+    const o = opening(h, { from: rangeOf(h, 'alpha').from, to: rangeOf(h, 'gamma').to }, 'refine');
+    expect([...sent(o.request).values()]).toEqual(['alpha', 'beta', 'gamma']);
+    replaceAiAnswer(h, read(h, o, tagged({ 1: 'ALPHA', 2: 'BETA', 3: 'GAMMA' }), 'refine'), segments(h), WRITABLE);
+    const lines: string[] = [];
+    h.editor.prosemirrorState.doc.descendants((node) => {
+      if (node.type.name === 'tableParagraph') lines.push(node.textContent);
+      return true;
+    });
+    expect(lines).toEqual(['ALPHA', 'BETA', 'GAMMA']);
+  });
+});
+
+describe('the escape pair, inline content (§5.1)', () => {
+  it('takes out a backslash the model put before punctuation the parser leaves alone', async () => {
+    const h = await open('Body');
+    const o = opening(h, rangeOf(h, 'Body'), 'shorten');
+    expect(read(h, o, tagged({ 1: 'Monday\\\'s plan: \\"go\\" \\= done' }), 'shorten').preview.map((b) => textOf(b as Seen))).toEqual(['Monday\'s plan: "go" = done']);
+  });
+
+  it('decodes every character reference a model writes', async () => {
+    const h = await open('Body');
+    const o = opening(h, rangeOf(h, 'Body'), 'refine');
+    expect(read(h, o, tagged({ 1: 'don&#39;t &quot;q&quot; a&nbsp;b &#x41;' }), 'refine').preview.map((b) => textOf(b as Seen))).toEqual(['don\'t "q" a b A']);
+  });
+
+  it.each([
+    ['a plain web address', [{ type: 'text', text: 'docs at https://docs.example.com/v1.2/start now', styles: {} }]],
+    ['bold that starts at a space', [{ type: 'text', text: 'see', styles: {} }, { type: 'text', text: ' this', styles: { bold: true } }, { type: 'text', text: ' now', styles: {} }]],
+    ['italic and strikethrough that start at a space', [{ type: 'text', text: 'x', styles: {} }, { type: 'text', text: ' a', styles: { italic: true } }, { type: 'text', text: ' b', styles: { strike: true } }]],
+    ['italic right before bold', [{ type: 'text', text: 'x', styles: {} }, { type: 'text', text: 'a', styles: { italic: true } }, { type: 'text', text: 'b', styles: { bold: true } }, { type: 'text', text: 'y', styles: {} }]],
+    ['inline code with a space at each end', [{ type: 'text', text: 'run', styles: {} }, { type: 'text', text: ' x ', styles: { code: true } }, { type: 'text', text: 'now', styles: {} }]],
+    ['a hard-broken line of equals signs', [{ type: 'text', text: 'title\n===', styles: {} }]],
+  ])('writes %s back unchanged when echoed, under a fixed command and under custom', async (_name, content) => {
+    for (const command of ['refine', 'custom'] as const) {
+      const h = await open('');
+      h.editor.replaceBlocks(h.editor.document, [{ type: 'paragraph', content }] as never);
+      const before = structuredClone(blocks(h));
+      const doc = h.editor.prosemirrorState.doc;
+      replaceWith(h, { from: 1, to: doc.content.size - 1 }, command, (o) => echo(o.request));
+      expect(blocks(h)).toEqual(before);
+    }
+  });
+});
+
+describe('selected words that moved out of every unit (A6, A7)', () => {
+  it('turns replace off when a unit block is split inside the selected words', async () => {
+    const h = await open('one two three');
+    const o = opening(h, rangeOf(h, 'one two three'), 'refine');
+    const view = h.editor.prosemirrorView!;
+    view.dispatch(view.state.tr.split(rangeOf(h, 'three').from, 2));
+    const answer = read(h, o, tagged({ 1: 'ONE TWO THREE' }), 'refine');
+    expect(aiReplaceAvailable(h.editor.prosemirrorState.doc, answer, segments(h))).toBe(false);
+  });
+});
+
 /** Words a model may send back, block syntax and escapes included. */
 const tricky = fc.stringMatching(/^[a-z *_`#>\-+.1)([\]\\&<|=~!]{1,24}$/);
 
-/** A block of a body: one with words, an image or an empty line. */
-type Seed = 'image' | 'empty' | { type: string; text: string; bold: boolean };
+/** Words of one inline run: punctuation the parser reads, spaces, hard breaks, addresses. */
+const runText = fc.oneof(
+  { weight: 6, arbitrary: fc.stringMatching(/^[a-z *_`#>\-+.1)([\]\\&<|=~!:/\n]{1,12}$/) },
+  { weight: 1, arbitrary: fc.constantFrom('https://docs.example.com/v1.2', ' see this ', '\n===', '&amp; &lt;b&gt;') },
+);
+
+/** One inline run: words with any mix of the styles Markdown writes, or a link. */
+const run = fc.oneof(
+  // Inline code takes no other mark in the body's schema.
+  { weight: 5, arbitrary: fc.record({ text: runText, styles: fc.oneof(fc.subarray(['bold', 'italic', 'strike'] as const), fc.constant(['code'] as const)) }) },
+  { weight: 1, arbitrary: fc.record({ text: fc.stringMatching(/^[a-z_.]{1,6}$/), href: fc.constantFrom('https://a.example/x_(y)?a=1&b=2', 'https://docs.example.com/v1.2') }) },
+);
+
+/** A block of a body: one with words, an indented code block, an image or an empty line. */
+type Seed = 'image' | 'empty' | { type: string; runs: Array<{ text: string; styles?: readonly string[]; href?: string }> } | { type: 'codeBlock'; code: string };
 
 /** A block with words, of a kind the body holds. */
 const wordy = fc.record({
   type: fc.constantFrom('paragraph', 'heading', 'bulletListItem', 'checkListItem', 'numberedListItem'),
-  text: tricky.filter((t) => t.trim() !== ''),
-  bold: fc.boolean(),
-});
+  runs: fc.array(run, { minLength: 1, maxLength: 4 }),
+}).filter((block) => block.runs.some((r) => r.text.trim() !== ''));
 
-/** A body: blocks with words, images and empty lines mixed. */
+/** A code block whose lines are indented. */
+const code = fc.array(fc.stringMatching(/^ {0,8}[a-z=(): *]{1,10}$/), { minLength: 1, maxLength: 3 }).map((lines) => ({ type: 'codeBlock' as const, code: lines.join('\n') }));
+
+/** A body: blocks with words, code, images and empty lines mixed. */
 const body: fc.Arbitrary<Seed[]> = fc.array(
-  fc.oneof({ weight: 4, arbitrary: wordy }, { weight: 1, arbitrary: fc.constantFrom<'image' | 'empty'>('image', 'empty') }),
+  fc.oneof({ weight: 4, arbitrary: wordy }, { weight: 1, arbitrary: code }, { weight: 1, arbitrary: fc.constantFrom<'image' | 'empty'>('image', 'empty') }),
   { minLength: 1, maxLength: 6 },
 );
 
@@ -872,7 +1046,13 @@ function build(handle: DocumentEditorHandle, seeds: readonly Seed[]): void {
   handle.editor.replaceBlocks(handle.editor.document, seeds.map((seed) => {
     if (seed === 'image') return { type: 'image', props: { url: `${OURS}x.png` } };
     if (seed === 'empty') return { type: 'paragraph' };
-    return { type: seed.type, content: [{ type: 'text', text: seed.text, styles: seed.bold ? { bold: true } : {} }] };
+    if ('code' in seed) return { type: 'codeBlock', props: { language: 'python' }, content: seed.code };
+    return {
+      type: seed.type,
+      content: seed.runs.map((r) => (r.href !== undefined
+        ? { type: 'link', href: r.href, content: [{ type: 'text', text: r.text, styles: {} }] }
+        : { type: 'text', text: r.text, styles: Object.fromEntries((r.styles ?? []).map((style) => [style, true])) })),
+    };
   }) as never);
   handle.undoManager.clear();
 }
@@ -904,7 +1084,7 @@ function around(handle: DocumentEditorHandle, unit: AiTextUnit): { before: strin
   const $span = doc.resolve(span.from);
   const start = $span.start();
   const end = $span.end();
-  return { before: doc.textBetween(start, span.from), after: doc.textBetween(span.to, end) };
+  return { before: doc.textBetween(start, span.from, undefined, '\n'), after: doc.textBetween(span.to, end, undefined, '\n') };
 }
 
 describe('properties', () => {

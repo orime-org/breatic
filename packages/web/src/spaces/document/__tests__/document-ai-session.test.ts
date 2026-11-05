@@ -391,7 +391,7 @@ describe('closed', () => {
 });
 
 describe('the buttons the dialog shows (§5.3, A5, A7)', () => {
-  const all = { resultEmpty: false, revealed: true, rangePresent: true, insertBlockPresent: true };
+  const all = { resultEmpty: false, revealed: true, replaceable: true, insertBlockPresent: true };
 
   it.each(['stopped', 'done'] as const)('%s, with the result still being written on screen: stop, no retry, insert or replace', (state) => {
     expect(aiDialogButtons({ state, ...all, revealed: false })).toEqual({ stop: true, retry: false, insert: null, replace: null });
@@ -427,14 +427,14 @@ describe('the buttons the dialog shows (§5.3, A5, A7)', () => {
   });
 
   it('A7: the selected words gone, their block still there: replace disabled, insert usable', () => {
-    const buttons = aiDialogButtons({ state: 'done', ...all, rangePresent: false });
+    const buttons = aiDialogButtons({ state: 'done', ...all, replaceable: false });
 
     expect(buttons.replace).toEqual({ disabled: true, reason: 'rangeGone' });
     expect(buttons.insert).toEqual({ disabled: false, reason: null });
   });
 
   it('A7: the block gone as well: neither replace nor insert', () => {
-    const buttons = aiDialogButtons({ state: 'done', ...all, rangePresent: false, insertBlockPresent: false });
+    const buttons = aiDialogButtons({ state: 'done', ...all, replaceable: false, insertBlockPresent: false });
 
     expect(buttons.insert).toEqual({ disabled: true, reason: 'insertBlockGone' });
     expect(buttons.replace?.disabled).toBe(true);
@@ -451,8 +451,8 @@ describe('the buttons the dialog shows (§5.3, A5, A7)', () => {
   it('is decided by its five inputs alone, for every combination', () => {
     const states: AiSessionState[] = ['composing', 'streaming', 'stopped', 'done', 'failed', 'closed'];
     fc.assert(
-      fc.property(fc.constantFrom(...states), fc.boolean(), fc.boolean(), fc.boolean(), fc.boolean(), (state, resultEmpty, revealed, rangePresent, insertBlockPresent) => {
-        const buttons = aiDialogButtons({ state, resultEmpty, revealed, rangePresent, insertBlockPresent });
+      fc.property(fc.constantFrom(...states), fc.boolean(), fc.boolean(), fc.boolean(), fc.boolean(), (state, resultEmpty, revealed, replaceable, insertBlockPresent) => {
+        const buttons = aiDialogButtons({ state, resultEmpty, revealed, replaceable, insertBlockPresent });
         const finished = state === 'stopped' || state === 'done';
         expect(buttons.stop).toBe(state === 'streaming' || (finished && !revealed));
         expect(buttons.retry).toBe((finished && revealed) || state === 'failed');
@@ -461,7 +461,7 @@ describe('the buttons the dialog shows (§5.3, A5, A7)', () => {
         expect(buttons.replace !== null).toBe(writable);
         if (writable) {
           expect(buttons.insert!.disabled).toBe(!insertBlockPresent);
-          expect(buttons.replace!.disabled).toBe(!rangePresent);
+          expect(buttons.replace!.disabled).toBe(!replaceable);
         }
       }),
     );

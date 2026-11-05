@@ -66,7 +66,7 @@ import { cn } from '@web/lib/utils';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentAiLaunchContext, TONE_LABEL_KEYS, type AiLaunch } from '@web/spaces/document/document-ai-context';
 import { aiContextOf, aiInsertBlockId } from '@web/spaces/document/document-ai-launch';
-import { aiRangeIn, DOCUMENT_AI_RANGE, onAiEscape, onAiRangeChange } from '@web/spaces/document/document-ai-range';
+import { aiRangeIn, DOCUMENT_AI_RANGE, onAiEscape } from '@web/spaces/document/document-ai-range';
 import {
   aiDialogButtons,
   reduceAiSession,
@@ -365,8 +365,6 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
     if (view !== null && aiRangeIn(view.state) !== null) view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, null));
   }, [state, editor]);
 
-  const range = React.useSyncExternalStore(onAiRangeChange, () => aiRangeIn(editor.prosemirrorState));
-
   const insertBlockId = opened?.insertBlockId ?? null;
   const readInsertBlock = React.useCallback(
     (current: ViewedEditor): boolean => insertBlockId !== null && blockById(current.prosemirrorState.doc, insertBlockId) !== null,
@@ -384,7 +382,6 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
           viewport={viewport}
           opened={opened}
           session={session}
-          rangePresent={range?.kind === 'present'}
           insertBlockPresent={insertBlockPresent}
           writable={writeAccess === 'granted'}
           dispatch={dispatch}
@@ -399,7 +396,6 @@ interface AiPanelProps {
   viewport: HTMLElement;
   opened: Opened;
   session: AiSession;
-  rangePresent: boolean;
   insertBlockPresent: boolean;
   /** Whether the connection may write; the editor's own editability is read at the press. */
   writable: boolean;
@@ -440,7 +436,6 @@ function anchorBox(editor: ViewedEditor, opened: Opened): DOMRect | null {
  * @param props.viewport - The body's scroller viewport.
  * @param props.opened - What the opening took from the body.
  * @param props.session - The session.
- * @param props.rangePresent - Whether the original range is on its words.
  * @param props.insertBlockPresent - Whether the insert block is in the body.
  * @param props.writable - Whether the connection may write.
  * @param props.dispatch - Sends the session an event.
@@ -451,7 +446,6 @@ function AiPanel({
   viewport,
   opened,
   session,
-  rangePresent,
   insertBlockPresent,
   writable,
   dispatch,
@@ -484,9 +478,9 @@ function AiPanel({
     [answer],
   );
   // Replace and its button decide by the same function (§5.3).
-  const replaceable = useEditorSnapshot(editor, readReplaceable) && rangePresent;
+  const replaceable = useEditorSnapshot(editor, readReplaceable);
   const buttons = React.useMemo(
-    () => aiDialogButtons({ state: session.state, resultEmpty, revealed: isComplete, rangePresent: replaceable, insertBlockPresent }),
+    () => aiDialogButtons({ state: session.state, resultEmpty, revealed: isComplete, replaceable, insertBlockPresent }),
     [session.state, resultEmpty, isComplete, replaceable, insertBlockPresent],
   );
 
@@ -641,7 +635,7 @@ function AiPanel({
               ourPrefix={ourPrefix}
               text={shown}
               streaming={session.state === 'streaming' || !isComplete}
-              waiting={session.state === 'streaming' && shown.trim() === ''}
+              running={session.state === 'streaming'}
             />
           </>
         )}
@@ -878,7 +872,7 @@ function useOurMediaPrefix(): string | null {
  * @param props.ourPrefix - Where our own media live.
  * @param props.text - The result as far as it is shown yet.
  * @param props.streaming - Whether the text is still growing.
- * @param props.waiting - Whether no words have come yet.
+ * @param props.running - Whether the request is still running; the Agent's dot shows until it has drawn words.
  * @returns The preview.
  */
 function Preview({
@@ -888,7 +882,7 @@ function Preview({
   ourPrefix,
   text,
   streaming,
-  waiting,
+  running,
 }: {
   editor: ViewedEditor;
   units: readonly AiTextUnit[];
@@ -896,7 +890,7 @@ function Preview({
   ourPrefix: string | null;
   text: string;
   streaming: boolean;
-  waiting: boolean;
+  running: boolean;
 }): React.JSX.Element {
   // One parser for the session, made and taken down with the panel.
   const [parser, setParser] = React.useState<ViewedEditor | null>(null);
@@ -959,7 +953,7 @@ function Preview({
 
   return (
     <ScrollArea viewportRef={scroller} className='min-h-16' viewportClassName='max-h-56 px-3 py-2.5'>
-      {waiting && <WaitingDot />}
+      {running && html === '' && <WaitingDot />}
       <div ref={host} data-testid='doc-ai-preview' />
     </ScrollArea>
   );

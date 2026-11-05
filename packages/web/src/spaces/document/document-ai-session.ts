@@ -193,7 +193,8 @@ export interface AiButtonInputs {
   readonly resultEmpty: boolean;
   /** Whether all of the result is on screen; it is revealed at a reading pace. */
   readonly revealed: boolean;
-  readonly rangePresent: boolean;
+  /** Whether replace can be written over the original words (`aiReplaceAvailable`). */
+  readonly replaceable: boolean;
   readonly insertBlockPresent: boolean;
 }
 
@@ -203,21 +204,21 @@ export interface AiButtonInputs {
  * @param inputs.state - The session's state.
  * @param inputs.resultEmpty - Whether its result holds only blanks.
  * @param inputs.revealed - Whether all of the result is on screen.
- * @param inputs.rangePresent - Whether the original range is on its words.
+ * @param inputs.replaceable - Whether replace can be written (`aiReplaceAvailable`).
  * @param inputs.insertBlockPresent - Whether the insert block is in the body.
  * @returns The buttons.
  */
-export function aiDialogButtons({ state, resultEmpty, revealed, rangePresent, insertBlockPresent }: AiButtonInputs): AiDialogButtons {
+export function aiDialogButtons({ state, resultEmpty, revealed, replaceable, insertBlockPresent }: AiButtonInputs): AiDialogButtons {
   const finished = state === 'stopped' || state === 'done';
   const writable = finished && !resultEmpty && revealed;
   // The block gone says more than the words gone: neither can be written.
-  const replaceReason: AiButtonReason | null = rangePresent ? null : insertBlockPresent ? 'rangeGone' : 'insertBlockGone';
+  const replaceReason: AiButtonReason | null = replaceable ? null : insertBlockPresent ? 'rangeGone' : 'insertBlockGone';
   return {
     // An answer the server has finished can still be being written on
     // screen; until it is all shown, that is still the output, and stop applies.
     stop: state === 'streaming' || (finished && !revealed),
     retry: (finished && revealed) || state === 'failed',
     insert: writable ? { disabled: !insertBlockPresent, reason: insertBlockPresent ? null : 'insertBlockGone' } : null,
-    replace: writable ? { disabled: !rangePresent, reason: replaceReason } : null,
+    replace: writable ? { disabled: !replaceable, reason: replaceReason } : null,
   };
 }
