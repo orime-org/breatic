@@ -255,8 +255,6 @@ const SAME_EFFECT: Readonly<Record<string, string>> = {
   "fal fal-ai/minimax/speech-2.8-hd voice_setting.voice_id": "WaveSpeed requires voice_id, so a run without a voice has no WaveSpeed result to match",
   "sandbase minimax/speech/2.8/hd voice_id": "WaveSpeed requires voice_id, so a run without a voice has no WaveSpeed result to match",
   "fal fal-ai/nano-banana-2/edit aspect_ratio": "fal's auto and WaveSpeed's none both take the input image's ratio (WaveSpeed: 'If not specified, it is determined automatically from the input image')",
-  "fal bytedance/seedance-2.5/us/reference-to-video aspect_ratio": "fal's auto and SandBase's none both let the model choose (SandBase: 'Omit to let the model choose from the prompt and reference inputs')",
-  "sandbase bytedance/seedance/2.5/reference-to-video aspect_ratio": "SandBase's none and fal's auto both let the model choose (SandBase: 'Omit to let the model choose from the prompt and reference inputs')",
 };
 
 const config = shipped();
