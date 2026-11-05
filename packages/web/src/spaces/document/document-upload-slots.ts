@@ -25,14 +25,16 @@
  * happen. Design 3.3 holds the transition table.
  */
 
-import { newId } from '@breatic/shared';
+import { formatBytes, newId } from '@breatic/shared';
 import { blockToNode, createExtension } from '@blocknote/core';
-import type { Node as PMNode } from '@tiptap/pm/model';
+import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import { absolutePositionToRelativePosition, relativePositionToAbsolutePosition } from 'y-prosemirror';
 import type * as Y from 'yjs';
 
+import { estimateSliceBytes, type SpaceRefusal, type SpaceReservation } from '@web/data/yjs/space-write';
+import { refusalOf, SPACE_WRITE_META, type SpaceWriteMeta } from '@web/features/collab-editor/space-size-gate';
 import { keyedStore } from '@web/lib/keyed-store';
 import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
 import { syncBindingOf, type SyncBound } from '@web/spaces/document/document-link-tracking';
@@ -53,6 +55,44 @@ export interface SlotFailure {
   readonly params: Readonly<Record<string, string>>;
   /** Whether sending the same file again can end differently. */
   readonly retryable: boolean;
+  /** Why, said after the message, when the message alone does not say it. */
+  readonly reason?: { readonly messageKey: string; readonly params: Readonly<Record<string, string>> };
+}
+
+/**
+ * The failure a placeholder shows when the Space's size refused its block
+ * (inner#1790): retryable, since deleting content makes room.
+ * @param refusal - The refusal.
+ * @returns The failure.
+ */
+export function sizeFailure(refusal: SpaceRefusal): SlotFailure {
+  return {
+    messageKey: 'spaces.size.uploadFailed',
+    params: {},
+    retryable: true,
+    reason: refusal.reason === 'no_room'
+      ? { messageKey: 'spaces.size.noRoom', params: { room: formatBytes(refusal.room) } }
+      : { messageKey: 'spaces.size.spaceFullReason', params: {} },
+  };
+}
+
+/** Address length a media block's estimate allows before its address is known. */
+const UNKNOWN_URL_BYTES = 1024;
+
+/**
+ * What a media block for a file can grow the document by, before the file
+ * is uploaded: the block as it is inserted, with a generous address.
+ * @param state - The body's state, for its schema.
+ * @param type - The block type the file becomes.
+ * @param name - The file's name, which the block keeps.
+ * @returns Bytes.
+ */
+export function mediaBlockBytes(state: EditorState, type: string, name: string): number {
+  const node = blockToNode(
+    { id: newId(), type, props: { url: 'x'.repeat(UNKNOWN_URL_BYTES), name, [QUOTED]: false } } as never,
+    state.schema,
+  );
+  return estimateSliceBytes(new Slice(Fragment.from(node), 0, 0));
 }
 
 /** One file of a batch. */
@@ -556,13 +596,18 @@ export function removeUploadSlot(view: EditorView, slotId: string): void {
  * @param slotId - Which slot.
  * @param block - The block, as BlockNote takes it.
  * @param undo - The undo manager whose capture is closed around the insert.
- * @returns The new block's id, or null when the slot is no longer waiting.
+ * @param reservation - Room reserved for the block before its upload; the
+ *   insert is judged against the Space's size with it, and a refused insert
+ *   fails the slot with the reason (inner#1790).
+ * @returns The new block's id, or null when the slot is no longer waiting
+ *   or the Space's size refused the block.
  */
 export function insertSlotBlock(
   view: EditorView,
   slotId: string,
   block: SlotBlock,
   undo?: UndoCapture,
+  reservation?: SpaceReservation,
 ): string | null {
   const batches = uploadBatchesIn(view.state);
   for (const batch of batches) {
@@ -573,12 +618,18 @@ export function insertSlotBlock(
     const props = { ...block.props, [QUOTED]: quoted };
     const node = blockToNode({ ...block, props, id: blockId } as never, view.state.schema);
     undo?.stopCapturing();
-    view.dispatch(
-      view.state.tr
-        .insert(at, node)
-        .setMeta(documentUploadsKey, { kind: 'inserted', slotId, blockId }),
-    );
+    const meta: SpaceWriteMeta = { notify: false, ...(reservation !== undefined && { reservation }) };
+    const tr = view.state.tr
+      .insert(at, node)
+      .setMeta(documentUploadsKey, { kind: 'inserted', slotId, blockId })
+      .setMeta(SPACE_WRITE_META, meta);
+    view.dispatch(tr);
     undo?.stopCapturing();
+    const refusal = refusalOf(tr);
+    if (refusal !== undefined) {
+      patchUploadSlot(view, slotId, { phase: 'failed', failure: sizeFailure(refusal) });
+      return null;
+    }
     return blockId;
   }
   return null;

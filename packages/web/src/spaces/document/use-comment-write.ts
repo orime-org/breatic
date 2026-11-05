@@ -22,6 +22,7 @@ import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
+import { SpaceFullError } from '@web/spaces/document/document-comment-thread-store';
 
 /** Sees a write through, saying so if it was refused. */
 export type CommentWrite = <T>(written: Promise<T>) => Promise<T | undefined>;
@@ -35,6 +36,8 @@ export function useCommentWrite(): CommentWrite {
   return React.useCallback(
     <T,>(written: Promise<T>): Promise<T | undefined> =>
       written.catch((reason: unknown) => {
+        // The Space's size refused it and already said so (inner#1790).
+        if (reason instanceof SpaceFullError) return undefined;
         toast.error(t('spaces.document.comment.writeFailed'));
         // The reader is told what happened; this is for whoever has to work
         // out why, and the reason is the store's own.

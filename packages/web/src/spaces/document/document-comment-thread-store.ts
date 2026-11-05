@@ -31,6 +31,8 @@ import { documentCommentThreads } from '@breatic/shared';
 
 import type { UserSummary } from '@web/data/api/users';
 import { usersApi } from '@web/data/api/users';
+import { docNameOf } from '@web/data/yjs/manager';
+import { writeSpaceDoc, type SpaceWriteKind } from '@web/data/yjs/space-write';
 import {
   documentCommentAuth,
   type DocumentCommentAuthInput,
@@ -44,6 +46,56 @@ interface CommentUser {
   readonly username: string;
   /** Their avatar, absent for an account that has none. */
   readonly avatarUrl: string | undefined;
+}
+
+/**
+ * A comment write the Space's size refused (inner#1790). The refusal toast
+ * has been shown; whoever awaited the write keeps what the reader wrote.
+ */
+export class SpaceFullError extends Error {
+  /** Names the error. */
+  constructor() {
+    super('the Space is full');
+    this.name = 'SpaceFullError';
+  }
+}
+
+/** What each thread store write does to the document's size (design 5.2). */
+const WRITE_KINDS: ReadonlyArray<readonly [keyof YjsThreadStore, SpaceWriteKind]> = [
+  ['createThread', 'add'],
+  ['addComment', 'add'],
+  ['updateComment', 'add'],
+  ['addReaction', 'add'],
+  ['resolveThread', 'overwrite'],
+  ['unresolveThread', 'overwrite'],
+  ['deleteComment', 'delete'],
+  ['deleteThread', 'delete'],
+  ['deleteReaction', 'delete'],
+];
+
+/**
+ * Puts every write of a thread store behind the Space's size. The store's
+ * writes run their Yjs transaction before their first await, so the write
+ * happens inside the gate's callback.
+ * @param store - The store; its methods are replaced in place.
+ * @param doc - The document the threads live in.
+ * @returns The same store.
+ */
+function sizeGated(store: YjsThreadStore, doc: Y.Doc): YjsThreadStore {
+  const methods = store as unknown as Record<string, (options: unknown) => Promise<unknown>>;
+  for (const [method, kind] of WRITE_KINDS) {
+    const write = methods[method]!;
+    methods[method] = (options: unknown): Promise<unknown> => {
+      const name = docNameOf(doc);
+      if (name === null) return write(options);
+      let written: Promise<unknown> = Promise.resolve(undefined);
+      const result = writeSpaceDoc(name, { kind }, () => {
+        written = write(options);
+      });
+      return result.ok ? written : Promise.reject(new SpaceFullError());
+    };
+  }
+  return store;
 }
 
 /** What a caller has to supply to wire comments to a document. */
@@ -118,11 +170,11 @@ export function documentCommentsExtension(
   // store keeps the one it was built with. That is the right reading anyway —
   // who is at the keyboard does not change while a Space is open, whereas
   // what they are allowed to do does.
-  const store = new YjsThreadStore(
+  const store = sizeGated(new YjsThreadStore(
     options.readWho().viewerId ?? '',
     documentCommentThreads(options.doc),
     documentCommentAuth(options.readWho),
-  );
+  ), options.doc);
 
   return CommentsExtension({
     threadStore: store,

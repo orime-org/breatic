@@ -32,10 +32,15 @@
 
 import {
   BlockNoteEditor,
+  createExtension,
   type ExtensionFactoryInstance,
 } from '@blocknote/core';
 import { withCollaboration } from '@blocknote/core/yjs';
+import { ySyncPluginKey } from 'y-prosemirror';
 import type * as Y from 'yjs';
+
+import { docNameOf } from '@web/data/yjs/manager';
+import { spaceSizeFilterPlugin } from '@web/features/collab-editor/space-size-gate';
 
 import { buildDocumentSchema } from '@web/spaces/document/document-schema-blocknote';
 import { documentNodeCompositionExtension } from '@web/spaces/document/document-node-composition';
@@ -163,6 +168,7 @@ export function buildDocumentEditor(
     // sit after it; the built-in list bindings it overrides are registered
     // with the blocks themselves.
     extensions: [
+      sizeFilterExtension(options.fragment),
       documentEnterExtension(),
       documentSafariImeExtension(),
       documentTabExtension(),
@@ -250,6 +256,19 @@ export function buildDocumentEditor(
         : filesPasteHandler(options.onFiles, documentPasteHandler),
     ...collaborative,
   } as never) as BlockNoteEditor<never, never, never>;
+}
+
+/**
+ * The size filter on the body (inner#1790): every local edit is judged
+ * against the Space's size before it reaches the state.
+ * @param fragment - The body's fragment, whose document names the Space.
+ * @returns The extension, for the assembly to register.
+ */
+function sizeFilterExtension(fragment: Y.XmlFragment): ExtensionFactoryInstance {
+  return createExtension(() => ({
+    key: 'space-size-filter',
+    prosemirrorPlugins: [spaceSizeFilterPlugin({ syncKey: ySyncPluginKey, docName: () => docNameOf(fragment.doc) })],
+  }) as never)();
 }
 
 /**

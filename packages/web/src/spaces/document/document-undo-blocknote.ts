@@ -36,7 +36,9 @@ import { defaultDeleteFilter, redoCommand, undoCommand, ySyncPluginKey, yUndoPlu
 import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
+import { docNameOf } from '@web/data/yjs/manager';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
+import { gatedHistoryCommand } from '@web/features/collab-editor/space-size-gate';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { isCommentMarkWrite } from '@web/spaces/document/document-comment-undo-filter';
 import { documentUndoSelectionPlugin } from '@web/spaces/document/document-undo-selection';
@@ -243,7 +245,10 @@ function undoExtension(
       userDrivenPlugin(marker),
     ],
     dependsOn: ['yCursor', 'ySync'],
-    undoCommand,
-    redoCommand,
+    // Judged against the Space's size before the manager runs (inner#1790):
+    // restoring deleted content is an add and stops at a full Space. The
+    // keymap and `editor.undo()` / `editor.redo()` both go through these.
+    undoCommand: gatedHistoryCommand(() => docNameOf(manager.doc), manager, 'undo', undoCommand),
+    redoCommand: gatedHistoryCommand(() => docNameOf(manager.doc), manager, 'redo', redoCommand),
   }) as never)();
 }

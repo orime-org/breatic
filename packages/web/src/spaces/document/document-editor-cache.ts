@@ -66,6 +66,7 @@ import { toast } from '@web/lib/toast';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
+import { docNameOf } from '@web/data/yjs/manager';
 import type { ResolveCollaboratorName } from '@web/features/collab-editor/caret-render';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import type { DocumentCommentAuthInput } from '@web/spaces/document/document-comment-auth';
@@ -177,9 +178,10 @@ export interface DocumentEditorInputs {
  * The uploader for a body whose uploads land in this project and Space.
  * @param target - Where they land.
  * @param undoManager - The body's undo manager.
+ * @param doc - The document Space's Y.Doc, whose size uploads reserve room in.
  * @returns The uploader.
  */
-function uploaderFor(target: DocumentUploadTarget, undoManager: Y.UndoManager): DocumentUploader {
+function uploaderFor(target: DocumentUploadTarget, undoManager: Y.UndoManager, doc: Y.Doc): DocumentUploader {
   const operations = useSpaceOperationsStore.getState();
   return createDocumentUploader({
     maxUploadBytes: () =>
@@ -201,6 +203,7 @@ function uploaderFor(target: DocumentUploadTarget, undoManager: Y.UndoManager): 
       toast.warning(t(key, params));
     },
     undo: undoManager,
+    spaceDocName: () => docNameOf(doc),
   });
 }
 
@@ -218,7 +221,7 @@ function createDocumentEditor(
     createDocumentUndo(doc);
   const clearListeners = new Set<() => void>();
   const target = inputs.uploadTarget;
-  const uploader = target === undefined ? null : uploaderFor(target, undoManager);
+  const uploader = target === undefined ? null : uploaderFor(target, undoManager, doc);
   if (uploader !== null) {
     // Fetched now so a paste can tell our media from outside links the moment
     // it lands (inner#1127 A18). A fetch that fails leaves every pasted

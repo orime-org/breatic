@@ -67,7 +67,9 @@ const Placeholder = React.memo(function Placeholder({
 }: PlaceholderProps): React.JSX.Element {
   const t = useTranslation();
   if (slot.phase === 'failed' && slot.failure !== null) {
-    const said = t(slot.failure.messageKey, slot.failure.params);
+    const { reason } = slot.failure;
+    const message = t(slot.failure.messageKey, slot.failure.params);
+    const said = reason === undefined ? message : `${message} · ${t(reason.messageKey, reason.params)}`;
     // A sentence that already names the file is not prefixed with it again.
     const line = said.includes(slot.name) ? said : `${slot.name} · ${said}`;
     return (

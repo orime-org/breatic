@@ -16,10 +16,21 @@
  * id derived from it. Both survive a reload, so a card drawn again knows.
  */
 
-import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { blockToNode } from '@blocknote/core';
+import { Fragment, Slice, type Node as ProseMirrorNode } from '@tiptap/pm/model';
+import type { Transaction } from '@tiptap/pm/state';
 import { occurrences, type DocumentProposal } from '@breatic/shared';
 
 import type { WriteAccess } from '@web/data/yjs/collab-socket';
+import { docNameOf } from '@web/data/yjs/manager';
+import {
+  estimateNodeBytes,
+  estimateSliceBytes,
+  reserveSpaceRoom,
+  type SpaceRefusal,
+  type SpaceReservation,
+} from '@web/data/yjs/space-write';
+import { refusalOf, SPACE_WRITE_META, type SpaceWriteMeta } from '@web/features/collab-editor/space-size-gate';
 import { BODY_HEADING_LEVELS } from '@web/spaces/document/document-block-type';
 import { blockPlainText } from '@web/spaces/document/document-blocks-read';
 import { commentOn, type CommentAim } from '@web/spaces/document/document-comment-post';
@@ -37,7 +48,32 @@ import type { LandingAction } from '@web/stores/document-proposals';
 type LandingResult =
   | ({ outcome: 'applied'; leftOut?: number } & Landed)
   | { outcome: 'mediaOnly'; leftOut: number }
-  | { outcome: 'readOnly' | 'changed' | 'blockGone' | 'failed' };
+  | { outcome: 'readOnly' | 'changed' | 'blockGone' | 'failed' | 'full' }
+  | { outcome: 'no_room'; room: number };
+
+/**
+ * The outcome a press the Space's size refused ends with (inner#1790).
+ * @param refusal - The refusal.
+ * @returns The outcome, with the room left when it is a lack of room.
+ */
+function sizeOutcome(refusal: SpaceRefusal): LandingResult {
+  return refusal.reason === 'no_room' ? { outcome: 'no_room', room: refusal.room } : { outcome: 'full' };
+}
+
+/**
+ * Reserves room for what a press writes, quietly: the press reports a
+ * refusal through its own outcome.
+ * @param handle - The document.
+ * @param estimate - Bytes the press can add.
+ * @returns The reservation, or the outcome to end with.
+ */
+function reserveFor(handle: Landable, estimate: number): { reservation?: SpaceReservation; refused?: LandingResult } {
+  const view = handle.editor.prosemirrorView;
+  const name = view === undefined || view === null ? null : docNameOf(handle.undoManager.doc);
+  if (name === null) return {};
+  const result = reserveSpaceRoom(name, estimate, { notify: false });
+  return result.ok ? { reservation: result.reservation } : { refused: sizeOutcome(result) };
+}
 
 /** Current lifecycle and connection permission, read synchronously at commit. */
 export type ProposalAdmission = Readonly<{
@@ -310,34 +346,49 @@ async function prepareBlocks(proposal: DocumentProposal): Promise<{ blocks: Writ
 }
 
 /**
- * Writes prepared output in the target's current context as one undo step.
+ * Writes prepared output in the target's current context as one undo step,
+ * on room reserved for it first.
  * @param handle - The document.
  * @param proposal - The proposal.
  * @param blocks - Its prepared new blocks.
+ * @returns Why the Space's size refused the write, or null when it was not refused.
  * @throws {Error} If schema conversion or the atomic block write fails.
  */
-function landBlocks(handle: Landable, proposal: DocumentProposal, blocks: readonly WrittenBlock[]): void {
+function landBlocks(handle: Landable, proposal: DocumentProposal, blocks: readonly WrittenBlock[]): LandingResult | null {
   const { editor, undoManager } = handle;
   const last = editor.document[editor.document.length - 1] as { id: string; type: string; content?: unknown; children?: unknown[] };
   const targetId = proposal.blockId ?? last.id;
   const doc = editor.prosemirrorState.doc;
   const written = proposalBlocks(blocks, doc, blockInTableCell(doc, targetId), proposal.proposalId);
-  if (written.length === 0) return;
+  if (written.length === 0) return null;
+  const nodes = Fragment.from(written.map((block) => blockToNode(block as never, doc.type.schema)));
+  const { reservation, refused } = reserveFor(handle, estimateSliceBytes(new Slice(nodes, 0, 0)));
+  if (refused !== undefined) return refused;
+  const meta: SpaceWriteMeta = { notify: false, ...(reservation !== undefined && { reservation }) };
+  let landing: Transaction | null = null;
   undoManager.stopCapturing();
   try {
-    if (proposal.kind === 'rewrite') {
-      editor.replaceBlocks([targetId], written as never);
-    } else if (proposal.blockId !== null) {
-      editor.insertBlocks(written as never, targetId, 'after');
-    } else {
-      // An empty final paragraph is the end gap, not content to retain above it.
-      const empty = last.type === 'paragraph' && Array.isArray(last.content) && last.content.length === 0 && (last.children ?? []).length === 0;
-      if (empty) editor.replaceBlocks([targetId], written as never);
-      else editor.insertBlocks(written as never, targetId, 'after');
-    }
+    editor.transact((tr) => {
+      landing = tr;
+      tr.setMeta(SPACE_WRITE_META, meta);
+      if (proposal.kind === 'rewrite') {
+        editor.replaceBlocks([targetId], written as never);
+      } else if (proposal.blockId !== null) {
+        editor.insertBlocks(written as never, targetId, 'after');
+      } else {
+        // An empty final paragraph is the end gap, not content to retain above it.
+        const empty = last.type === 'paragraph' && Array.isArray(last.content) && last.content.length === 0 && (last.children ?? []).length === 0;
+        if (empty) editor.replaceBlocks([targetId], written as never);
+        else editor.insertBlocks(written as never, targetId, 'after');
+      }
+    });
   } finally {
     undoManager.stopCapturing();
+    // A no-op once the write holds it.
+    reservation?.release();
   }
+  const refusal = landing === null ? undefined : refusalOf(landing);
+  return refusal === undefined ? null : sizeOutcome(refusal);
 }
 
 /**
@@ -386,11 +437,19 @@ export async function landProposal(
     if (ready !== null) return ready;
     const blockId = proposal.blockId!;
     const aim = proposal.quote === undefined ? wholeBlockAim(blockId) : quoteAim(blockId, proposal.quote);
-    await commentOn(handle.editor as never, body, (state) =>
-      currentResult(handle, proposal, readAdmission) === null ? aim(state) : null, {
-      thread: { proposalId: proposal.proposalId },
-      comment: { fromAgent: true },
-    });
+    // The thread is written by the comment store, which judges it again; the
+    // reservation only keeps the room until the comment has landed.
+    const { reservation, refused } = reserveFor(handle, estimateNodeBytes(body));
+    if (refused !== undefined) return refused;
+    try {
+      await commentOn(handle.editor as never, body, (state) =>
+        currentResult(handle, proposal, readAdmission) === null ? aim(state) : null, {
+        thread: { proposalId: proposal.proposalId },
+        comment: { fromAgent: true },
+      });
+    } finally {
+      reservation?.release();
+    }
     const result = currentResult(handle, proposal, readAdmission);
     return result ?? { outcome: 'changed' };
   }
@@ -398,7 +457,8 @@ export async function landProposal(
   const ready = currentResult(handle, proposal, readAdmission);
   if (ready !== null) return ready;
   const leftOut = prepared.leftOut;
-  landBlocks(handle, proposal, prepared.blocks);
+  const refused = landBlocks(handle, proposal, prepared.blocks);
+  if (refused !== null) return refused;
   const landed = landedAt(handle, proposal);
   if (landed !== null) return leftOut > 0 ? { outcome: 'applied', ...landed, leftOut } : { outcome: 'applied', ...landed };
   return leftOut > 0 ? { outcome: 'mediaOnly', leftOut } : { outcome: 'changed' };

@@ -14,6 +14,7 @@
 import type { EditorView } from '@tiptap/pm/view';
 
 import { UploadFailedError, type StoredUpload } from '@web/data/upload/media-upload';
+import { reserveSpaceRoom, type SpaceReservation } from '@web/data/yjs/space-write';
 import {
   checkFileAdmission,
   fileToNodeSpec,
@@ -28,8 +29,10 @@ import { isMediaBlockType } from '@web/spaces/document/document-media-types';
 import {
   addUploadBatch,
   insertSlotBlock,
+  mediaBlockBytes,
   patchUploadSlot,
   removeUploadSlot,
+  sizeFailure,
   uploadSlots,
   type SlotFailure,
   type UndoCapture,
@@ -50,6 +53,12 @@ export interface DocumentUploaderDeps {
   readonly refuse: (messageKey: string, params: Readonly<Record<string, string>>) => void;
   /** Closes the reader's undo step around a batch's start and each insert. */
   readonly undo: UndoCapture;
+  /**
+   * The Space document the blocks land in, whose size each upload reserves
+   * room in before it is sent (inner#1790). Left out, or null, nothing is
+   * reserved.
+   */
+  readonly spaceDocName?: () => string | null;
 }
 
 /** What the entries and the placeholders call. */
@@ -112,6 +121,38 @@ function failureOf(err: unknown, file: File): SlotFailure {
  */
 export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUploader {
   const held = new Map<string, File>();
+  /** Room each upload in flight holds for its block. */
+  const reserved = new Map<string, SpaceReservation>();
+
+  /**
+   * Gives back the room an upload held, when it ends without a block or its
+   * block has landed (then the write holds it until the server counts it).
+   * @param slotId - Which slot.
+   */
+  function release(slotId: string): void {
+    reserved.get(slotId)?.release();
+    reserved.delete(slotId);
+  }
+
+  /**
+   * Reserves room for a slot's block, failing the slot when there is none.
+   * @param view - The editor view.
+   * @param slotId - Which slot.
+   * @param file - Its file.
+   * @returns Whether the upload may be sent.
+   */
+  function reserve(view: EditorView, slotId: string, file: File): boolean {
+    const name = deps.spaceDocName?.() ?? null;
+    if (name === null) return true;
+    const { nodeType } = fileToNodeSpec(file);
+    const result = reserveSpaceRoom(name, mediaBlockBytes(view.state, isMediaBlockType(nodeType) ? nodeType : 'image', file.name), { notify: false });
+    if (!result.ok) {
+      patchUploadSlot(view, slotId, { phase: 'failed', failure: sizeFailure(result) });
+      return false;
+    }
+    reserved.set(slotId, result.reservation);
+    return true;
+  }
 
   /**
    * Runs one upload to its end.
@@ -120,7 +161,7 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
    */
   async function run(view: EditorView, slotId: string): Promise<void> {
     const file = held.get(slotId);
-    if (file === undefined) return;
+    if (file === undefined || !reserve(view, slotId, file)) return;
     deps.register(slotId);
     let stored: StoredUpload;
     try {
@@ -129,12 +170,17 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
       });
     } catch (err) {
       deps.unregister(slotId);
+      release(slotId);
       patchUploadSlot(view, slotId, { phase: 'failed', failure: failureOf(err, file) });
       return;
     }
     deps.unregister(slotId);
+    // Bound to the insert below if it lands; given back however this ends.
+    const reservation = reserved.get(slotId);
+    reserved.delete(slotId);
     // The kind the server read off the stored bytes, not the name's guess.
     if (!isMediaBlockType(stored.kind)) {
+      reservation?.release();
       patchUploadSlot(view, slotId, {
         phase: 'failed',
         failure: failureOf(new UploadFailedError('unsupportedType'), file),
@@ -142,10 +188,11 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
       return;
     }
     if (!view.editable) {
+      reservation?.release();
       patchUploadSlot(view, slotId, { phase: 'failed', failure: READ_ONLY });
       return;
     }
-    insertSlotBlock(
+    const landed = insertSlotBlock(
       view,
       slotId,
       {
@@ -160,8 +207,12 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
         },
       },
       deps.undo,
+      reservation,
     );
-    held.delete(slotId);
+    // A no-op once the insert holds it; gives it back after a refused insert.
+    reservation?.release();
+    // A slot the Space's size refused stays, to be sent again.
+    if (landed !== null || !uploadSlots(view.state).some((s) => s.id === slotId)) held.delete(slotId);
   }
 
   return {
@@ -198,6 +249,7 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
 
     remove(view, slotId) {
       held.delete(slotId);
+      release(slotId);
       removeUploadSlot(view, slotId);
     },
   };
