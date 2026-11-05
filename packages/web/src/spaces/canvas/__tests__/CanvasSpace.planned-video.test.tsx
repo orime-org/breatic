@@ -47,13 +47,18 @@ const DRAFT: VideoToolDraftById['video.remove-bg'] = { version: 1, draftId: '300
 const SOURCE_BINDING: VideoPresentationSourceBinding = { assetId: '30000000-0000-4000-8000-000000000007', contentHash: 'a'.repeat(64), canonicalURL: URL, kind: 'video', mediaInfo: DRAFT.source.mediaInfo };
 const clients: QueryClient[] = [];
 
+// §96 (design §10.8 请求行, §7.12): the panel facts carry the selected bundle's presentationRef, which the run request
+// sends as presentation_ref (fixture migrated, 4.4.5); without one the panel cannot run.
+const PRESENTATION_REF = { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } };
+
 /** Supplies explicit presentation facts without running a browser decoder. @throws {never} Never. */
-function presentation(table: VideoPresentationTable | null, sourceURL = URL, status: VideoToolPresentation['status'] = 'ready'): BindingModule.CanvasVideoBindings {
+function presentation(table: VideoPresentationTable | null, sourceURL = URL, status: VideoToolPresentation['status'] = 'ready',
+  presentationRef: VideoToolPresentation['presentationRef'] = PRESENTATION_REF): BindingModule.CanvasVideoBindings {
   const element = document.createElement('video');
   const binding = { sourceKey: 'registered-source', sourceEpoch: 1, element, surface: element, container: document.createElement('div'), original: DRAFT.source.mediaInfo, getSeekEpoch: () => 0, getPresentedFrame: () => null, seek: vi.fn(), play: vi.fn().mockResolvedValue(undefined), pause: vi.fn() };
   const facts: BindingModule.CanvasVideoBindings = {
     bindings: new Map([[SOURCE, { binding, status, error: null, overlayTarget: null, sourceBinding: SOURCE_BINDING }]]),
-    presentations: new Map([[SOURCE, { status, frameTable: table, presentedTime: null, sourceURL, sourceEpoch: 1, seekEpoch: 0 }]]),
+    presentations: new Map([[SOURCE, { status, frameTable: table, presentedTime: null, sourceURL, sourceEpoch: 1, seekEpoch: 0, ...(presentationRef === undefined ? {} : { presentationRef }) }]]),
     onVideoBinding: vi.fn(), onVideoFrame: vi.fn(),
   };
   vi.mocked(useCanvasVideoBindings).mockReturnValue(facts);
@@ -91,7 +96,7 @@ describe('actual Canvas planned remove-bg callback wire', () => {
     expect(button).not.toBeDisabled();
     fireEvent.click(button);
     expect(startPlannedVideoRun).toHaveBeenCalledOnce();
-    expect(startPlannedVideoRun).toHaveBeenCalledWith(expect.objectContaining({ projectId: PROJECT, spaceId: SPACE, userId: 'author', toolId: 'video.remove-bg', draft: DRAFT, analyses: [], source: expect.objectContaining({ id: SOURCE, name: 'ORIGINAL', position: { x: 30, y: 40 }, groupOrigin: null }), sourceExists: expect.any(Function), canWrite: expect.any(Function), stillOpen: expect.any(Function), onBuilt: expect.any(Function) }));
+    expect(startPlannedVideoRun).toHaveBeenCalledWith(expect.objectContaining({ projectId: PROJECT, spaceId: SPACE, userId: 'author', toolId: 'video.remove-bg', draft: DRAFT, analyses: [], presentationRef: PRESENTATION_REF, source: expect.objectContaining({ id: SOURCE, name: 'ORIGINAL', position: { x: 30, y: 40 }, groupOrigin: null }), sourceExists: expect.any(Function), canWrite: expect.any(Function), stillOpen: expect.any(Function), onBuilt: expect.any(Function) }));
     expect(nodeDataMap(getDoc(docName.canvasSpace(PROJECT, SPACE)), SOURCE)?.get('content')).toBe(URL);
     expect(miniToolAnalysesApi.start).not.toHaveBeenCalled();
   });
@@ -103,6 +108,13 @@ describe('actual Canvas planned remove-bg callback wire', () => {
     fireEvent.click(screen.getByTestId('mini-tool-run'));
     expect(startPlannedVideoRun).toHaveBeenCalledWith(expect.objectContaining({ toolId: 'video.remove-bg', draft: DRAFT, analyses: [] }));
     expect(miniToolAnalysesApi.start).not.toHaveBeenCalled();
+  });
+
+  it('F15 a source without a presentationRef cannot run: the press forwards nothing (§96; design §10.8, §7.12)', () => {
+    presentation(TABLE, URL, 'ready', undefined);
+    mount();
+    fireEvent.click(screen.getByTestId('mini-tool-run'));
+    expect(startPlannedVideoRun).not.toHaveBeenCalled();
   });
 
   it('F02 keeps a viewer unable to start the real planned callback', () => {
