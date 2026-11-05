@@ -8,11 +8,17 @@ import {
 import * as React from 'react';
 import type * as Y from 'yjs';
 
-import { COLLAB_REAUTH_REASONS, isReauthCloseReason, parseDocName } from '@breatic/shared';
+import {
+  COLLAB_DOCUMENT_TOO_LARGE_REASON, COLLAB_REAUTH_REASONS, isReauthCloseReason, parseDocName, t,
+} from '@breatic/shared';
 import { ChunkingWebSocket } from '@web/data/yjs/chunking-websocket';
 import { reportCollabFailure } from '@web/data/yjs/collab-failure-report';
 import { destroyDoc } from '@web/data/yjs/manager';
 import { bindDocSync, type DocSyncBinding } from '@web/data/yjs/doc-sync-binding';
+import {
+  clearAllDocSizes, clearDocSize, docSizeSynced, isSpaceContentDoc, receiveDocSizePayload, startDocResync,
+} from '@web/data/yjs/doc-size';
+import { toast } from '@web/lib/toast';
 
 /**
  * Placeholder token the Hocuspocus client must send purely to trip the
@@ -275,6 +281,7 @@ function destroyAccountTransport(): void {
   // Retired provider callbacks must not mutate the current registry or session facts.
   docEntries.clear();
   entries.forEach(([name, entry]) => destroyDocEntry(name, entry));
+  clearAllDocSizes();
   sessionEnded = false;
   if (sharedSocket) {
     sharedSocket.destroy();
@@ -444,8 +451,18 @@ export function acquireDocProvider(
     sync: null,
   };
   const parsed = parseDocName(name);
-  if (parsed?.kind === 'canvas' || parsed?.kind === 'document') {
-    entry.sync = bindDocSync(name, doc, provider, () => notifyProjectSync(parsed.projectId));
+  if (parsed?.kind === 'canvas' || parsed?.kind === 'document' || parsed?.kind === 'timeline') {
+    // Timeline takes receipts for its size reservations only; the
+    // leave-project prompt covers canvas and document (inner#1790).
+    entry.sync = bindDocSync(name, doc, provider, () => notifyProjectSync(parsed.projectId), {
+      reportsUnsynced: parsed.kind !== 'timeline',
+    });
+  }
+  if (isSpaceContentDoc(name)) {
+    provider.on('stateless', (data: { payload: string }) => {
+      if (docEntries.get(name) !== entry) return;
+      receiveDocSizePayload(name, data.payload, entry.sync?.versions().confirmedVersion ?? Number.POSITIVE_INFINITY);
+    });
   }
   docEntries.set(name, entry);
   // The registry watches for these itself rather than letting a consumer report
@@ -455,6 +472,7 @@ export function acquireDocProvider(
   provider.on('synced', () => {
     if (docEntries.get(name) !== entry) return;
     entry.facts.hasEverSynced = true;
+    docSizeSynced(name);
   });
   provider.on('authenticationFailed', (data: { reason?: string } | undefined) => {
     if (docEntries.get(name) !== entry) return;
@@ -478,6 +496,10 @@ export function acquireDocProvider(
   // reconnect re-opens every attached document anyway.
   provider.on('close', (data: { event?: { reason?: string } } | undefined) => {
     if (docEntries.get(name) !== entry) return;
+    if (data?.event?.reason === COLLAB_DOCUMENT_TOO_LARGE_REASON) {
+      resetDocument(name);
+      return;
+    }
     if (data?.event?.reason === COLLAB_REAUTH_REASONS.sessionEnded) sessionEnded = true;
     const opened = websocketProvider.receivedOnOpenPayload;
     if (!isReauthCloseReason(data?.event?.reason) || opened === undefined) return;
@@ -489,6 +511,32 @@ export function acquireDocProvider(
   provider.attach();
   notifyDocProvider(name);
   return provider;
+}
+
+/**
+ * Rebuild a document collab refused an update for (inner#1790). Its local
+ * content, with the refused change, is discarded; the Space remounts under a
+ * new generation and syncs a fresh document from the server.
+ * @param name - Canonical document name.
+ */
+export function resetDocument(name: string): void {
+  const entry = docEntries.get(name);
+  if (!entry) return;
+  // Out of the socket's map first, so destroying the provider sends no CLOSE:
+  // collab would queue it and apply it to the fresh connection.
+  entry.provider.configuration.websocketProvider.configuration.providerMap.delete(name);
+  destroyDocEntry(name, entry);
+  startDocResync(name);
+  toast.warning(t('spaces.size.resync'));
+}
+
+/**
+ * The local and confirmed versions of a document that takes receipts.
+ * @param name - Canonical document name.
+ * @returns The versions, or null when the document takes none.
+ */
+export function readDocVersions(name: string): { localVersion: number; confirmedVersion: number } | null {
+  return docEntries.get(name)?.sync?.versions() ?? null;
 }
 
 /**
@@ -549,6 +597,7 @@ export function releaseDocProvider(name: string, expectedDoc?: Y.Doc): void {
     // cancels this deferred callback before it fires, so the doc is never
     // evicted mid-oscillation.
     destroyDocEntry(name, entry);
+    clearDocSize(name);
     maybeDestroySharedSocket();
   }, 0);
 }
