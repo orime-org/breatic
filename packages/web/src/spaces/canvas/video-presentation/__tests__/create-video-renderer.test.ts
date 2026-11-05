@@ -4,15 +4,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createVideoRenderer } from '../create-video-renderer';
 import type { VideoPresentationSource, VideoRendererCallbacks } from '../types';
+import { PRESENTED, presentedBundle } from '@web/test-utils/video-presentation';
 
 const vap = vi.hoisted(() => vi.fn());
 vi.mock('video-animation-player', () => ({ default: vap }));
-const H = 'a'.repeat(64);
-const source: VideoPresentationSource = {
-  canonicalURL: 'https://assets.test.invalid/video/fixture/original.webm', sourceFingerprint: H,
-  presentation: { schemaVersion: 1, sourceFingerprint: H, original: { width: 96, height: 64, duration: 1 }, state: 'alpha_ready', alpha: { manifestURL: 'https://assets.test.invalid/video/fixture/original.webm.alpha.v1.json' } },
-  manifest: { schemaVersion: 1, sourceFingerprint: H, packedURL: 'https://assets.test.invalid/video/fixture/original.webm.alpha.v1.mp4', packedWidth: 192, packedHeight: 64, colorRect: { x: 0, y: 0, width: 96, height: 64 }, alphaRect: { x: 96, y: 0, width: 96, height: 64 } },
-};
+// §97 D10-2 (design §3.5 alpha manifest row 「VAP adapter只把自有字段映射为暂态配置」, §7.8): the source carries the selected
+// bundle and, for alpha-packed, its manifest; VAP plays `manifest.packed.url` with the manifest's two logical rectangles as
+// rgbFrame and aFrame. The earlier descriptor (`state`, `alpha.manifestURL`) and manifest (`packedURL`) are gone (4.4.5).
+const H = PRESENTED.fingerprint;
+const CANONICAL = 'https://assets.test.invalid/video/fixture/original.webm';
+const packed = { storageKey: 'video/fixture/original.webm.packed.mp4', url: 'https://assets.test.invalid/video/fixture/original.webm.packed.mp4', etag: '"packed"', size: 8192, sha256: '9'.repeat(64), contentType: 'video/mp4' };
+const display = { width: 96, height: 64, duration: { numerator: '1', denominator: '1' } };
+const alphaBundle = presentedBundle(CANONICAL, { display, playback: { kind: 'alpha-packed', carrier: packed,
+  manifest: { ...packed, storageKey: 'video/fixture/original.webm.manifest.json', url: 'https://assets.test.invalid/video/fixture/original.webm.manifest.json', contentType: 'application/json' } } });
+const manifest = { schemaVersion: 1 as const, versionId: PRESENTED.versionId, toolInputId: PRESENTED.toolInputId, planSha256: PRESENTED.planSha256, policyVersion: 1,
+  packed, packedWidth: 192, packedHeight: 64, colorRect: { x: 0, y: 0, width: 96, height: 64 }, alphaRect: { x: 96, y: 0, width: 96, height: 64 } };
+const source = { canonicalURL: CANONICAL, sourceFingerprint: H, presentation: alphaBundle, manifest } as unknown as VideoPresentationSource;
+const carrierURL = 'https://assets.test.invalid/video/fixture/original.webm.carrier.mp4';
+const nativeSource = { canonicalURL: CANONICAL, sourceFingerprint: H, manifest: null,
+  presentation: presentedBundle(CANONICAL, { display, playback: { kind: 'native', carrier: { ...packed, url: carrierURL }, displayRect: null } }) } as unknown as VideoPresentationSource;
 let host: HTMLDivElement;
 let callbacks: VideoRendererCallbacks;
 let player: FakeVap;
@@ -68,9 +78,9 @@ describe('approved native and VAP rendering boundary', () => {
     await settle();
     expect(vap).toHaveBeenCalledTimes(1);
     expect(nativePlay).toHaveBeenCalledTimes(0);
-    expect(player.options?.src).toBe(source.manifest!.packedURL);
+    expect(player.options?.src).toBe(manifest.packed.url);
     expect(player.options?.config).toMatchObject({ info: { w: 96, h: 64, videoW: 192, videoH: 64, rgbFrame: [0, 0, 96, 64], aFrame: [96, 0, 96, 64] } });
-    expect(source.canonicalURL).toBe('https://assets.test.invalid/video/fixture/original.webm');
+    expect(source.canonicalURL).toBe(CANONICAL);
     player.drawFrame(0, { mediaTime: 0.125 });
     expect(player.draws).toBe(1);
     expect(callbacks.ready).toHaveBeenCalledWith(player.video, player.canvas);
@@ -79,6 +89,15 @@ describe('approved native and VAP rendering boundary', () => {
     expect(player.destroyed).toBe(1);
     expect(host.querySelectorAll('canvas,video')).toHaveLength(0);
     expect(document.body.querySelectorAll('video')).toHaveLength(0);
+  });
+
+  it('maps exactly the manifest fields into the VAP config, from no other field', async () => {
+    const moved = { ...manifest, packed: { ...packed, url: 'https://assets.test.invalid/video/fixture/moved.packed.mp4' }, packedWidth: 192, colorRect: { x: 0, y: 0, width: 96, height: 64 }, alphaRect: { x: 96, y: 0, width: 96, height: 64 } };
+    const resource = createVideoRenderer(host, { ...source, presentation: { ...alphaBundle, playback: { ...alphaBundle.playback, carrier: moved.packed } }, manifest: moved } as unknown as VideoPresentationSource, callbacks);
+    await settle();
+    expect(player.options?.src).toBe(moved.packed.url);
+    expect(player.options?.config).toMatchObject({ info: { videoW: moved.packedWidth, videoH: moved.packedHeight, rgbFrame: [0, 0, 96, 64], aFrame: [96, 0, 96, 64] } });
+    resource.dispose();
   });
 
   it('releases initialization that finishes after disposal without publishing a binding', async () => {
@@ -90,9 +109,9 @@ describe('approved native and VAP rendering boundary', () => {
     expect(document.body.querySelectorAll('video')).toHaveLength(0);
   });
 
-  it('refuses a different-source or wrong-size manifest without mounting VAP', async () => {
-    for (const manifest of [{ ...source.manifest!, sourceFingerprint: 'b'.repeat(64) }, { ...source.manifest!, colorRect: { x: 0, y: 0, width: 48, height: 32 }, alphaRect: { x: 96, y: 0, width: 48, height: 32 } }]) {
-      const resource = createVideoRenderer(host, { ...source, manifest }, callbacks);
+  it('refuses a manifest of another version or of the wrong size without mounting VAP', async () => {
+    for (const other of [{ ...manifest, versionId: 'b'.repeat(64) }, { ...manifest, colorRect: { x: 0, y: 0, width: 48, height: 32 }, alphaRect: { x: 96, y: 0, width: 48, height: 32 } }]) {
+      const resource = createVideoRenderer(host, { ...source, manifest: other } as unknown as VideoPresentationSource, callbacks);
       await settle();
       resource.dispose();
     }
@@ -100,10 +119,10 @@ describe('approved native and VAP rendering boundary', () => {
     expect(callbacks.error).toHaveBeenCalledTimes(2);
   });
 
-  it('binds native only from the explicit trusted classification', () => {
-    const resource = createVideoRenderer(host, { ...source, presentation: { ...source.presentation, state: 'native', alpha: undefined }, manifest: undefined }, callbacks);
+  it('binds native from the selected native bundle and plays its carrier', () => {
+    const resource = createVideoRenderer(host, nativeSource, callbacks);
     const element = host.querySelector('video')!;
-    expect(element.src).toBe(source.canonicalURL);
+    expect(element.src).toBe(carrierURL);
     expect(element.controls).toBe(false);
     element.dispatchEvent(new Event('loadeddata'));
     expect(callbacks.ready).toHaveBeenCalledWith(element, element);
