@@ -11,12 +11,15 @@
  * writes the input schema snapshot to
  * `packages/provider/test/fixtures/upstream-schemas/<upstream>/<endpoint>.json`,
  * which `bindings-match-upstream-schema.test.ts` checks the bindings against.
+ * Each binding's formula is written by hand from a price fact its upstream
+ * states: fal's billing `unit` (the quantity `unit_price` is charged per) and
+ * SandBase's `price_formula`. The fact is stored under
+ * `packages/provider/test/fixtures/upstream-prices/<upstream>/<endpoint>.json`
+ * the first time it is seen; a fact that changed later is a problem and is not
+ * overwritten (`priceFactDrift`), so it is reported until the formula is
+ * rewritten by hand and the stored fact updated with it.
  * fal: writes each binding's and extra step's `base_price` from fal's
- * `unit_price`. SandBase: stores each endpoint's `price_formula` under
- * `packages/provider/test/fixtures/upstream-prices/sandbase/` and reports a
- * formula that changed as a problem without overwriting the stored one, so it
- * is reported until the binding is rewritten in JSONata by hand and the stored
- * formula updated with it.
+ * `unit_price`, except where the unit changed.
  * WaveSpeed: writes the 3D models' prices (`THREE_D` below) and checks them
  * against WaveSpeed's own price for sample params; for every other model it
  * lists where the live price differs from the binding's. Last it regenerates
@@ -34,6 +37,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { parse, parseDocument, type Document } from "yaml";
 import { snapshotOf, type SchemaSnapshot } from "../packages/provider/src/config/upstream-schema.js";
 import { priceUsd } from "../packages/provider/src/pricing/evaluate.js";
+import { priceFactDrift } from "./provider-price-drift.mjs";
 import { yamlText } from "./provider-yaml.mjs";
 
 interface Pricing { kind: "formula"; base_price: number; formula: string; discount_rate: number }
@@ -232,7 +236,27 @@ async function syncWaveSpeed(upstream: string, list: typeof bindings): Promise<v
 }
 
 /**
- * Sync the fal bindings: input and output snapshots, and each binding's base price from its unit price.
+ * Compare an endpoint's stored price fact with the one its upstream states now: store it the first
+ * time, record a problem when it changed.
+ * @param upstream - The upstream's name.
+ * @param endpoint - The model id or step endpoint.
+ * @param label - The model, endpoint, upstream and fact, for the problem.
+ * @param fact - The fact's key in the stored file.
+ * @param stored - The file's content when the fact is first stored: its source and the fact.
+ * @returns True when the fact is unchanged or new, false when it changed.
+ */
+function priceFactKept(upstream: string, endpoint: string, label: string, fact: string, stored: Record<string, unknown>): boolean {
+  const file = resolve(PRICES, upstream, `${endpoint}.json`);
+  const before = existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>)[fact] : undefined;
+  const drift = priceFactDrift(before, stored[fact], label);
+  if (drift.store) writeJson(file, stored);
+  if (drift.problem !== undefined) problems.push(drift.problem);
+  return drift.problem === undefined;
+}
+
+/**
+ * Sync the fal bindings: input and output snapshots, each priced endpoint's billing unit (stored, and a
+ * change reported), and each binding's and extra step's base price from its unit price where the unit is unchanged.
  * @param upstream - The upstream's name.
  * @param list - Its bindings.
  */
@@ -264,8 +288,11 @@ async function syncFal(upstream: string, list: typeof bindings): Promise<void> {
         problems.push(`${model}: fal has no price for ${endpoint}`);
         continue;
       }
-      docs.get(modality)!.setIn(["models", model, "upstreams", index, ...path, "base_price"], Math.round(price.unit_price * MICRO));
       process.stdout.write(`${model} ${endpoint} on ${upstream}: ${price.unit_price} USD per ${price.unit}\n`);
+      // A base price in a new unit would be multiplied by the quantity the formula counts in the old one.
+      const source = `${FAL_PRICING}?endpoint_id=${endpoint}`;
+      if (!priceFactKept(upstream, endpoint, `${model} ${endpoint} on ${upstream}: unit`, "unit", { source, unit: price.unit })) continue;
+      docs.get(modality)!.setIn(["models", model, "upstreams", index, ...path, "base_price"], Math.round(price.unit_price * MICRO));
     }
   }
   process.stdout.write(`${upstream}: ${written} schema snapshots written\n`);
@@ -294,12 +321,7 @@ async function syncSandBase(upstream: string, list: typeof bindings): Promise<vo
       writeSnapshot(upstream, endpoint, { ...snapshotOf(input, { root: doc, source }), modes: [...new Set(modes)] });
       written += 1;
       const formula = at(answer, "model_card", "price_formula") ?? null;
-      const file = resolve(PRICES, upstream, `${endpoint}.json`);
-      const before = existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as { price_formula: unknown }).price_formula : undefined;
-      if (before === undefined) writeJson(file, { source, price_formula: formula });
-      else if (JSON.stringify(before) !== JSON.stringify(formula)) {
-        problems.push(`${model} ${endpoint} on ${upstream}: price_formula changed, rewrite its pricing and the stored formula: ${JSON.stringify(before)} -> ${JSON.stringify(formula)}`);
-      }
+      priceFactKept(upstream, endpoint, `${model} ${endpoint} on ${upstream}: price_formula`, "price_formula", { source, price_formula: formula });
     }
   }
   process.stdout.write(`${upstream}: ${written} schema snapshots written\n`);
