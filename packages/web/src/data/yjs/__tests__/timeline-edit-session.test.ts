@@ -13,6 +13,7 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { TimelineVideoClipSchema, type TimelineVideoSource } from '@breatic/shared';
+import { resolveTimelineArrangement } from '@web/data/yjs/timeline-arrangement';
 import { applyTimelineEdit, readTimelineDocument } from '@web/data/yjs/timeline-document';
 import type { TimelineEditCommand } from '@web/data/yjs/timeline-edit';
 
@@ -1095,5 +1096,107 @@ describe('Timeline edit session with records naming Object.prototype keys (inner
     expect(mine.getMap('sources').get(SOURCE.id)).toEqual(SOURCE);
     expect(mine.getMap('sources').has('constructor')).toBe(false);
     expect(peer.getMap('sources').get(SOURCE.id)).toEqual(SOURCE);
+  });
+});
+
+describe('Timeline edit session with a source stored in an unexpected form (inner#1708 S1)', () => {
+  const C = cid(160);
+  const C2 = cid(161);
+  const C3 = cid(162);
+  const ODD_SOURCE = '10000000-0000-4000-8000-0000000000aa';
+
+  /**
+   * Wait for any write-back a session schedules after a transaction.
+   * @returns Once queued tasks ran.
+   * @throws {never} Never.
+   */
+  async function flush(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  /**
+   * Rewrite SOURCE as a Y.Map holding the same fields, as a peer could.
+   * @param doc - The writing replica.
+   * @throws {Error} When Yjs cannot attach the map.
+   */
+  function sourceAsMap(doc: Y.Doc): void {
+    doc.transact(() => {
+      const record = new Y.Map<unknown>();
+      doc.getMap('sources').set(SOURCE.id, record);
+      for (const [key, value] of Object.entries(SOURCE)) record.set(key, value);
+    }, 'peer');
+  }
+
+  /**
+   * Count the updates a replica emits from its own transactions.
+   * @param doc - The replica.
+   * @returns A reader of the live count.
+   * @throws {never} Never.
+   */
+  function ownUpdates(doc: Y.Doc): () => number {
+    let count = 0;
+    doc.on('update', (_update: Uint8Array, _origin: unknown, _doc: Y.Doc, transaction: Y.Transaction) => { if (transaction.local) count += 1; });
+    return () => count;
+  }
+
+  it('restores a Y.Map source a peer deletes as a plain value and keeps syncing (a)', async () => {
+    const { mine, peer, session } = pair([clip(C, MAIN, 0, 20)]);
+    session.setCanWrite(true);
+    expect(() => sourceAsMap(peer)).not.toThrow();
+    expect(() => peer.transact(() => peer.getMap('sources').delete(SOURCE.id), 'peer')).not.toThrow();
+    await flush();
+    const restored = mine.getMap('sources').get(SOURCE.id);
+    expect(restored).not.toBeInstanceOf(Y.Map);
+    expect(restored).toEqual(SOURCE);
+    expect(peer.getMap('sources').get(SOURCE.id)).toEqual(SOURCE);
+    const sent = ownUpdates(mine);
+    expect(() => session.edit(move(C, 30))).not.toThrow();
+    expect(sent()).toBeGreaterThan(0);
+    expect((peer.getMap('clips').get(C) as Y.Map<unknown> | undefined)?.get('startFrame')).toBe(30);
+  });
+
+  it('undoes deleting the last clip of a Y.Map source and keeps editing (b)', () => {
+    const doc = keep(seededDoc(timeline([clip(C, MAIN, 0, 20)])));
+    sourceAsMap(doc);
+    const session = sessionOf(doc);
+    session.setCanWrite(true);
+    expect(session.edit({ operation: 'delete', parameters: { clipId: C }, placement: OFF }).ok).toBe(true);
+    expect(() => session.undo()).not.toThrow();
+    expect(doc.getMap('clips').has(C)).toBe(true);
+    expect(readTimelineDocument(doc).sources[SOURCE.id]).toEqual(SOURCE);
+    const sent = ownUpdates(doc);
+    let plan: ReturnType<TimelineEditSession['edit']> | undefined;
+    expect(() => { plan = session.edit(move(C, 30)); }).not.toThrow();
+    expect(plan?.ok).toBe(true);
+    expect(sent()).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ['a record missing required fields', { id: ODD_SOURCE }],
+    ['a number', 42],
+  ] as const)('writes nothing back for a source stored as %s, and still restores a real one (c)', async (_name, odd) => {
+    const { mine, peer, session } = pair([clip(C2, 'v2', 0, 10, { sourceId: ODD_SOURCE }), clip(C3, 'v2', 50, 10, { sourceId: SHORT_SOURCE.id })]);
+    peer.transact(() => peer.getMap('sources').set(SHORT_SOURCE.id, SHORT_SOURCE), 'peer');
+    session.setCanWrite(true);
+    expect(() => peer.transact(() => peer.getMap('sources').set(ODD_SOURCE, odd), 'peer')).not.toThrow();
+    expect(() => peer.transact(() => {
+      peer.getMap('sources').delete(ODD_SOURCE);
+      peer.getMap('sources').delete(SHORT_SOURCE.id);
+    }, 'peer')).not.toThrow();
+    await flush();
+    expect(mine.getMap('sources').has(ODD_SOURCE)).toBe(false);
+    expect(mine.getMap('sources').get(SHORT_SOURCE.id)).toEqual(SHORT_SOURCE);
+    const reasons = resolveTimelineArrangement(readTimelineDocument(mine)).conflicts.find((item) => item.clipId === C2)?.reasons.map((reason) => reason.code);
+    expect(reasons).toContain('missing_source');
+  });
+
+  it('never writes or throws from a viewer session (d)', async () => {
+    const { mine, peer } = pair([clip(C, MAIN, 0, 20)]);
+    const sent = ownUpdates(mine);
+    expect(() => sourceAsMap(peer)).not.toThrow();
+    expect(() => peer.transact(() => peer.getMap('sources').delete(SOURCE.id), 'peer')).not.toThrow();
+    await flush();
+    expect(mine.getMap('sources').has(SOURCE.id)).toBe(false);
+    expect(sent()).toBe(0);
   });
 });
