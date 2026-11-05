@@ -36,7 +36,7 @@ import type { EditorView } from '@tiptap/pm/view';
 
 import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
 import { heldRange } from '@web/spaces/document/document-table-leave-selection';
-import { cellDepthOf, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { cellDepthOf, deleteSelectionKeepingCell, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /** The editor, as far as copying reads it. */
 type CopyEditor = BlockNoteEditor<never, never, never>;
@@ -226,7 +226,7 @@ export const documentTableCopyExtension = createExtension(({ editor }) => ({
             if (view.state.selection instanceof CellSelection) {
               deleteCellSelection(view.state, view.dispatch);
             } else {
-              view.dispatch(view.state.tr.deleteSelection());
+              view.dispatch(deleteSelectionKeepingCell(view.state.tr));
             }
             return true;
           },

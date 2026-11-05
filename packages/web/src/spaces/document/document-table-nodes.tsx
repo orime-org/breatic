@@ -23,7 +23,7 @@
 import { addNodeAndExtensionsToSpec, createBlockSpec, createExtension } from '@blocknote/core';
 import { Extension } from '@tiptap/core';
 import { Fragment, Slice, type Node as PMNode, type ResolvedPos } from '@tiptap/pm/model';
-import { EditorState, Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
+import { EditorState, Plugin, PluginKey, Selection, TextSelection, type Transaction } from '@tiptap/pm/state';
 import {
   __pastedCells as pastedCells,
   cellAround,
@@ -100,6 +100,39 @@ export function cellDepthOf($pos: ResolvedPos): number {
     if (isTableCell($pos.node(depth))) return depth;
   }
   return -1;
+}
+
+/**
+ * The content of the one cell a text selection covers every block of: what
+ * ProseMirror's own `deleteRange` would widen to the cell itself, taking it
+ * out of its row and shifting the cells after it.
+ * @param selection - The selection.
+ * @returns The cell's content range, or null for any other selection.
+ */
+export function wholeCellContent(selection: Selection): { start: number; end: number } | null {
+  const { $from, $to } = selection;
+  const depth = cellDepthOf($from);
+  if (!(selection instanceof TextSelection) || selection.empty || depth < 0 || $to.depth < depth || $to.node(depth) !== $from.node(depth)) return null;
+  const start = $from.start(depth);
+  const end = $from.end(depth);
+  const doc = $from.doc;
+  const covers = Selection.findFrom(doc.resolve(start), 1, true)?.from === selection.from && Selection.findFrom(doc.resolve(end), -1, true)?.to === selection.to;
+  return covers ? { start, end } : null;
+}
+
+/**
+ * Takes the transaction's selection away; one covering every block of a cell
+ * leaves the cell holding one empty paragraph, as a cell does when its only
+ * block leaves (inner#1619 T6).
+ * @param tr - The transaction.
+ * @returns The transaction.
+ */
+export function deleteSelectionKeepingCell(tr: Transaction): Transaction {
+  const cell = wholeCellContent(tr.selection);
+  if (cell === null) return tr.deleteSelection();
+  // The schema refills the emptied cell with an empty paragraph.
+  tr.delete(cell.start, cell.end);
+  return tr.setSelection(TextSelection.near(tr.doc.resolve(cell.start)));
 }
 
 /** A table and the position before it. */

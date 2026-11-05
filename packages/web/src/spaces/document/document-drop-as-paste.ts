@@ -31,6 +31,7 @@ import type { EditorView } from '@tiptap/pm/view';
 import { t } from '@breatic/shared';
 
 import { toast } from '@web/lib/toast';
+import { deleteSelectionKeepingCell } from '@web/spaces/document/document-table-nodes';
 import { readBodyContent, type BlockReader } from '@web/spaces/document/document-paste-read';
 import { landingAsDrop, landingSlice, withoutRowIdsIn } from '@web/spaces/document/document-comment-paste';
 import { holdsContent, putContent, refusedInCell, selectPlaced, type Placed } from '@web/spaces/document/document-put';
@@ -60,7 +61,7 @@ export function dropAsPaste(editor: Editor, view: EditorView, event: DragEvent, 
   const node = (view.dragging as { node?: { replace: (tr: Transaction) => void } } | null)?.node;
   const removes = moved && (node !== undefined || !selection.empty);
   const tr = view.state.tr;
-  if (removes && node === undefined) tr.deleteSelection();
+  if (removes && node === undefined) deleteSelectionKeepingCell(tr);
   else if (removes) node!.replace(tr);
   // The drag's own content as ProseMirror took it at dragstart, through the
   // copy transforms (`document-table-copy.ts`): the slice it hands over has
