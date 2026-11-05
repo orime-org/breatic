@@ -27,18 +27,32 @@
  * this module holds the shape and the registry they are collected into.
  */
 
+import { BEAT_SYNC_OUTFIT_CHANGE } from "@shared/canvas/templates/beat-sync-outfit-change.js";
+import { BULLET_TIME_MISHAP } from "@shared/canvas/templates/bullet-time-mishap.js";
+import { CARRIED_OBJECT_TRANSITION } from "@shared/canvas/templates/carried-object-transition.js";
 import { CHARACTER_BIBLE } from "@shared/canvas/templates/character-bible.js";
 import { CHARACTER_DESIGN_FROM_TEXT } from "@shared/canvas/templates/character-design-from-text.js";
 import { CHARACTER_SHOWCASE_ORBIT } from "@shared/canvas/templates/character-showcase-orbit.js";
 import { COSTUME_SHEET } from "@shared/canvas/templates/costume-sheet.js";
 import { EXPRESSION_SHEET } from "@shared/canvas/templates/expression-sheet.js";
+import { FISHEYE_CLONE_POV } from "@shared/canvas/templates/fisheye-clone-pov.js";
+import { FLASH_PHOTO_DUMP_GRID } from "@shared/canvas/templates/flash-photo-dump-grid.js";
+import { GAME_UI_LIVESTREAM } from "@shared/canvas/templates/game-ui-livestream.js";
 import { IDENTITY_LOCKED_SEQUENCE } from "@shared/canvas/templates/identity-locked-sequence.js";
+import { PET_SELFIE_VLOG } from "@shared/canvas/templates/pet-selfie-vlog.js";
+import { PHONE_VLOG_REALISM } from "@shared/canvas/templates/phone-vlog-realism.js";
+import { POV_CONTINUOUS_SHOT } from "@shared/canvas/templates/pov-continuous-shot.js";
+import { RETRO_FOUND_FOOTAGE } from "@shared/canvas/templates/retro-found-footage.js";
 import { SINGLE_VIEW_REFS_SCENE } from "@shared/canvas/templates/single-view-refs-scene.js";
 import { STORYBOARD_GRID_25 } from "@shared/canvas/templates/storyboard-grid-25.js";
+import { TIME_FREEZE_REWIND } from "@shared/canvas/templates/time-freeze-rewind.js";
+import { TRAVEL_CITY_WALK } from "@shared/canvas/templates/travel-city-walk.js";
+import { TWIST_COMEDY_SKIT } from "@shared/canvas/templates/twist-comedy-skit.js";
+import { VERTICAL_15S_QUICK_TIP } from "@shared/canvas/templates/vertical-15s-quick-tip.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /** Every creative goal, in the order the panels list them; its name is `canvas.template.goal.<goal>`. */
-export const TEMPLATE_GOALS = ["character", "comics-storyboards"] as const;
+export const TEMPLATE_GOALS = ["character", "comics-storyboards", "social-hooks"] as const;
 
 /** A creative goal a template serves; the panel groups templates under it. */
 export type TemplateGoal = (typeof TEMPLATE_GOALS)[number];
@@ -128,6 +142,20 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   IDENTITY_LOCKED_SEQUENCE,
   CHARACTER_SHOWCASE_ORBIT,
   STORYBOARD_GRID_25,
+  PET_SELFIE_VLOG,
+  PHONE_VLOG_REALISM,
+  RETRO_FOUND_FOOTAGE,
+  TIME_FREEZE_REWIND,
+  BULLET_TIME_MISHAP,
+  BEAT_SYNC_OUTFIT_CHANGE,
+  POV_CONTINUOUS_SHOT,
+  CARRIED_OBJECT_TRANSITION,
+  FISHEYE_CLONE_POV,
+  FLASH_PHOTO_DUMP_GRID,
+  GAME_UI_LIVESTREAM,
+  TRAVEL_CITY_WALK,
+  TWIST_COMEDY_SKIT,
+  VERTICAL_15S_QUICK_TIP,
 ];
 
 /**
