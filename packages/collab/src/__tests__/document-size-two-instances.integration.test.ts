@@ -178,6 +178,8 @@ describe("two instances on one Redis", () => {
     const counted = forwarded.reduce((sum, c) => sum + onChangeBound(c.update), 0);
     expect(sizeB.readDocSizeRecord(name)?.upper).toBe(loadedOnB!.exact + counted);
 
+    // B sends the phase push as it counts; wait for it to arrive.
+    await waitFor(() => onB.sizePushes().some((p) => p.phase === "full"), "B's full push arrived", 30_000);
     const phases = onB.sizePushes().map((p) => p.phase);
     const changes = phases.filter((p, i) => i > 0 && p !== phases[i - 1]);
     expect(phases[0]).toBe("normal");
