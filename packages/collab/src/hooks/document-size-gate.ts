@@ -21,7 +21,7 @@ import { getCollabConfig } from "@collab/config.js";
 import type { AuthContext } from "@collab/hooks/auth.js";
 import { userIdOf } from "@collab/hooks/presence-wiring.js";
 import { markRefused } from "@collab/infra/inbound-filter.js";
-import { addUpperBound, analyze, measure, readDocSizeRecord, recordExact } from "@collab/services/document-size.js";
+import { addUpperBound, analyze, holdUntilApplied, measure, readDocSizeRecord, recordExact } from "@collab/services/document-size.js";
 
 const logger = createLogger("document-size-gate");
 
@@ -79,9 +79,14 @@ export function createDocumentSizeGate(): (data: beforeSyncPayload<AuthContext>)
     if (a.wouldPend) refuse("pending");
     if (!a.integratesStored) {
       const g = a.growthBound;
-      if (g === 0) return;
+      if (g === 0) {
+        holdUntilApplied(documentName, connection, 0);
+        return;
+      }
       if (record.upper + g <= limit || (a.deletesLive && (record.upper + g <= ceiling || g <= a.freedBytes))) {
-        addUpperBound(documentName, Math.max(0, g - a.freedBytes));
+        const bound = Math.max(0, g - a.freedBytes);
+        addUpperBound(documentName, bound);
+        holdUntilApplied(documentName, connection, bound);
         return;
       }
     }
@@ -115,6 +120,7 @@ export function createDocumentSizeGate(): (data: beforeSyncPayload<AuthContext>)
     }
     if (after <= limit || after <= pre || (a.deletesLive && after <= ceiling)) {
       recordExact(documentName, after);
+      holdUntilApplied(documentName, connection, Math.max(0, after - pre));
       return;
     }
     refuse("trial", after);

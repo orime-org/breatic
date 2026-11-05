@@ -91,6 +91,7 @@ import { getCollabConfig, getConnectionTimings, getReassemblyLimits } from "@col
 import { convertStoredTablesOnLoad } from "@collab/services/legacy-table-conversion.js";
 import {
   addAppliedBound,
+  dropUnapplied,
   forget as forgetDocSize,
   openDocSizeRecord,
   pushDocSize,
@@ -380,7 +381,13 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // activity, as it is never applied.
     beforeSync: async (data) => {
       await documentSizeGate(data);
-      await recordContentActivity(data);
+      try {
+        await recordContentActivity(data);
+      } catch (err) {
+        // Refused here, the admitted update is never applied.
+        dropUnapplied(data.documentName, data.connection);
+        throw err;
+      }
     },
 
     extensions,

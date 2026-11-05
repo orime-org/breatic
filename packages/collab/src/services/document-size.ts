@@ -629,6 +629,12 @@ export function addAppliedBound(name: string, update: Uint8Array): void {
  */
 function afterTransaction(name: string, record: SizeRecord, origin: unknown): void {
   if (records.get(name) !== record) return;
+  const from = origin as { source?: unknown; connection?: unknown } | null;
+  // An admitted update has landed; a measure taken while it was on its way
+  // could not see it, so measure again now that it is in.
+  if (from?.source === "connection" && record.unapplied.delete(from.connection) && record.remeasure) {
+    scheduleRecompute(name, record);
+  }
   const key = pendingKey(record.document.store);
   if (key === record.pendingKey) return;
   if ((origin as { source?: unknown } | null)?.source === "connection") record.pendingKey = key;
@@ -650,6 +656,14 @@ interface SizeRecord {
   pendingKey: string;
   /** Its `afterTransaction` listener. */
   listener: (transaction: Y.Transaction) => void;
+  /**
+   * Admitted client updates not applied yet, by connection, with what each
+   * can still add: Hocuspocus applies an update only once every `beforeSync`
+   * step has finished, and a measure taken before then cannot see it.
+   */
+  unapplied: Map<unknown, number>;
+  /** The last exact measure ran while an admitted update was on its way. */
+  remeasure: boolean;
 }
 
 const records = new Map<string, SizeRecord>();
@@ -754,13 +768,15 @@ export function openDocSizeRecord(document: Document): void {
   const record: SizeRecord = {
     document, exact: bytes, upper: bytes, phase: phaseOf(bytes), measuredAt: Date.now(), timer: null, pendingKey: pendingKey(document.store),
     listener: (transaction) => afterTransaction(name, record, transaction.origin),
+    unapplied: new Map(), remeasure: false,
   };
   records.set(name, record);
   document.on("afterTransaction", record.listener);
 }
 
 /**
- * Set a document's exact size; the upper bound starts again from it.
+ * Set a document's exact size; the upper bound starts again from it, plus
+ * what the admitted updates not applied yet can add.
  * @param name - The document name.
  * @param bytes - The exact size.
  * @throws {Error} When the YAML is missing / unreadable or fails validation.
@@ -770,9 +786,12 @@ export function recordExact(name: string, bytes: number): void {
   if (!record) return;
   if (record.timer) clearTimeout(record.timer);
   record.timer = null;
+  let unapplied = 0;
+  for (const bound of record.unapplied.values()) unapplied += bound;
   record.exact = bytes;
-  record.upper = bytes;
-  record.phase = phaseOf(bytes);
+  record.upper = bytes + unapplied;
+  record.phase = phaseOf(record.upper);
+  record.remeasure = record.unapplied.size > 0;
   record.measuredAt = Date.now();
   record.pendingKey = pendingKey(record.document.store);
   pushAll(name, record);
@@ -794,6 +813,37 @@ export function addUpperBound(name: string, bound: number): void {
     record.phase = phase;
     pushAll(name, record);
   }
+  scheduleRecompute(name, record);
+}
+
+/**
+ * Note an update `beforeSync` admitted, which Hocuspocus applies once the
+ * remaining `beforeSync` steps have finished.
+ * @param name - The document name.
+ * @param connection - The connection it came on; Hocuspocus handles one message per connection at a time.
+ * @param bound - Most bytes it can add to the exact size measured before it lands.
+ */
+export function holdUntilApplied(name: string, connection: unknown, bound: number): void {
+  records.get(name)?.unapplied.set(connection, bound);
+}
+
+/**
+ * Forget an admitted update that a later `beforeSync` step refused, so it is
+ * never applied.
+ * @param name - The document name.
+ * @param connection - The connection it came on.
+ */
+export function dropUnapplied(name: string, connection: unknown): void {
+  records.get(name)?.unapplied.delete(connection);
+}
+
+/**
+ * Schedule an exact recompute at most once per measure interval.
+ * @param name - The document name.
+ * @param record - Its record.
+ * @throws {Error} When the YAML is missing / unreadable or fails validation.
+ */
+function scheduleRecompute(name: string, record: SizeRecord): void {
   if (record.timer) return;
   const delay = Math.max(0, record.measuredAt + limits().intervalMs - Date.now());
   record.timer = setTimeout(() => {

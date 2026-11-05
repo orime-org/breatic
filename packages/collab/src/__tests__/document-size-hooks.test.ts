@@ -59,7 +59,7 @@ import {
 } from "./helpers/document-size-fixtures.js";
 import { authFrame, SYNC, syncFrame, WIRE } from "./helpers/live-hocuspocus.js";
 
-const { serverSpy, logger, rateLimit, rateRedis, collabRedis, overrides, trial, S_CONFIG } = vi.hoisted(() => ({
+const { serverSpy, logger, rateLimit, rateRedis, collabRedis, overrides, trial, activity, S_CONFIG } = vi.hoisted(() => ({
   // Spec 0.2 S configuration.
   S_CONFIG: {
     max_document_bytes: 1_048_576,
@@ -80,6 +80,9 @@ const { serverSpy, logger, rateLimit, rateRedis, collabRedis, overrides, trial, 
   // A trial duration to inject: armed when step 5 calls `checkRateLimit`,
   // spent on the copy's transaction that brings it to the post-update state.
   trial: { armed: false, pending: undefined as undefined | { ms: number; sv: Uint8Array } },
+  // What the account activity half of `beforeSync` waits on, standing in for
+  // its Postgres write; undefined lets it finish at once.
+  activity: { hold: undefined as undefined | Promise<void> },
 }));
 
 vi.mock("@hocuspocus/server", async (importOriginal) => ({
@@ -139,7 +142,9 @@ vi.mock("@collab/services/connection-registry.js", () => ({
 // The account activity half of `beforeSync` writes to Postgres; it is not
 // what these cases measure.
 vi.mock("@collab/hooks/account-activity.js", () => ({
-  createActivityHook: () => vi.fn(async () => undefined),
+  createActivityHook: () => vi.fn(async () => {
+    await activity.hold;
+  }),
 }));
 
 const L = 1_048_576;
@@ -451,6 +456,7 @@ beforeEach(() => {
   peers.clear();
   trial.armed = false;
   trial.pending = undefined;
+  activity.hold = undefined;
   rateLimit.mockReset().mockImplementation(allowed);
   const proto = Y.Doc.prototype as unknown as { emit: (name: string, args: unknown[]) => void };
   const realEmit = proto.emit;
@@ -1045,6 +1051,70 @@ describe("beforeSync: phase changes push", () => {
     await admit(doc, a, SYNC.update, toFull);
     expect(pushes(a).map((p) => p.phase)).toEqual(["full"]);
     expect(pushes(b).map((p) => p.phase)).toEqual(["full"]);
+  });
+});
+
+describe("beforeSync: an admitted update still on its way when the size is measured", () => {
+  /**
+   * A document whose one node carries most of its size, loaded with its
+   * measure interval already over, so the next recompute is due at once.
+   * @returns The document, a client synced with it and a connection.
+   */
+  async function loadedNode(): Promise<{ doc: Document; client: Y.Doc; c: FakeConnection }> {
+    await boot();
+    const src = new Y.Doc();
+    const node = new Y.Map<unknown>();
+    src.getMap<Y.Map<unknown>>("nodes").set("f", node);
+    node.set("blob", "x".repeat(200_000));
+    const doc = await load(NAME, src);
+    vi.advanceTimersByTime(3000);
+    return { doc, client: syncedClient(doc), c: conn(doc) };
+  }
+
+  /**
+   * Let `beforeSync` admit an update, run the due recompute while the
+   * activity step still holds it back, then apply it as Hocuspocus does.
+   * @param doc - The document.
+   * @param c - The connection.
+   * @param update - The update.
+   * @returns The upper bound right after the update landed.
+   */
+  async function admitAcrossRecompute(doc: Document, c: FakeConnection, update: Uint8Array): Promise<number> {
+    let release = (): void => undefined;
+    activity.hold = new Promise<void>((resolve) => { release = resolve; });
+    const sync = beforeSync(doc, c, SYNC.update, update);
+    // The gate has returned and the activity write is in flight.
+    await vi.advanceTimersByTimeAsync(0);
+    release();
+    await expect(sync).resolves.toBeUndefined();
+    Y.applyUpdate(doc, update, { source: "connection", connection: c });
+    return upperOf(NAME);
+  }
+
+  it("keeps the bound of an addition measured before it landed", async () => {
+    const { doc, client, c } = await loadedNode();
+    const update = capture(client, (d) => d.getText("t").insert(0, "y".repeat(50_000)));
+    expect(await admitAcrossRecompute(doc, c, update)).toBeGreaterThanOrEqual(refMeasure(doc));
+  });
+
+  it("measures a delete again once it has landed, and pushes the smaller size", async () => {
+    const { doc, client, c } = await loadedNode();
+    const update = capture(client, (d) => d.getMap("nodes").delete("f"));
+    await admitAcrossRecompute(doc, c, update);
+    vi.advanceTimersByTime(2000);
+    const exact = refMeasure(doc);
+    expect(exact).toBeLessThan(1000);
+    expect(upperOf(NAME)).toBe(exact);
+    expect(pushes(c).at(-1)).toEqual(expectedPush(exact, "normal"));
+  });
+
+  it("forgets an admitted update that the activity step refused", async () => {
+    const { doc, client, c } = await loadedNode();
+    const update = capture(client, (d) => d.getText("t").insert(0, "y".repeat(50_000)));
+    activity.hold = Promise.reject(new Error("activity write failed"));
+    await expect(beforeSync(doc, c, SYNC.update, update)).rejects.toThrow("activity write failed");
+    w.size.recordExact(NAME, refMeasure(doc));
+    expect(upperOf(NAME)).toBe(refMeasure(doc));
   });
 });
 
