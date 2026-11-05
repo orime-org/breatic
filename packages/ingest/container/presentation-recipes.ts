@@ -359,7 +359,7 @@ async function windowGraph(entries: readonly MiniToolPlanEntry[], clock: bigint,
     const clipEnd = plus([clipNumerator, clipDenominator], times(minus(entry.displayEnd, entry.displayStart), [rateNumerator, rateDenominator]));
     // An edit can start inside a source frame (§7.17 timeline row): that frame is kept and shown from clipStart.
     const first = await frameStartAt(source, facts, entry, run);
-    args.push(...mediaTimeline(facts), "-noaccurate_seek", "-ss", seconds(rational(entry.decodeStart)), "-i", source);
+    args.push(...mediaTimeline(facts), "-seek_timestamp", "1", "-noaccurate_seek", "-ss", seconds(rational(entry.decodeStart)), "-i", source);
     graph.push(`[${inputs}:v:0]trim=start=${seconds(first)}:end=${seconds(clipEnd)},settb=1/${clock},` +
       `setpts=max(round((PTS-${roundTimes([clipNumerator, clipDenominator], clock)})*${rateDenominator}/${rateNumerator})\\,0)+${offset},${frame(`p${at}`)}[e${at}]`);
     inputs += 1;
@@ -494,7 +494,7 @@ async function renderFrame(recipe: FrameRecipe, source: string, output: string,
     if (matrix === undefined) throw new RangeError(`No decode matrix for ${target.colorMatrix}`);
     const facts = await sourceFacts(source, run);
     const first = await frameStartAt(source, facts, entry, run);
-    args.push(...mediaTimeline(facts), "-noaccurate_seek", "-ss", seconds(rational(entry.decodeStart)), "-i", source);
+    args.push(...mediaTimeline(facts), "-seek_timestamp", "1", "-noaccurate_seek", "-ss", seconds(rational(entry.decodeStart)), "-i", source);
     graph = `[0:v:0]trim=start=${seconds(first)},${target.toneMap === "sdr-bt709" ? `${TONE_MAP},` : ""}` +
       `scale=${target.width}:${target.height}:in_color_matrix=${matrix},format=${pixel}${cropped}[v]`;
   }
