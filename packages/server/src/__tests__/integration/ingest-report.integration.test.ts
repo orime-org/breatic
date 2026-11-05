@@ -1707,7 +1707,22 @@ describe("a video, whose cover comes back with the rest of the answer", () => {
       const key = await mintTicket(seed, { filename: "clip.mp4", content_type: "video/mp4", node_id: crypto.randomUUID() });
       await report(completed(key, { content_type: "video/mp4", size_bytes: 200_000, sha256: sharedHash, cover: coverAnswer() }));
     }
-    expect(presentationBodies.map((request) => request.action)).toEqual(["accept", "read"]);
+    // `report()` starts each upload's request list afresh: these are the second (dedup-hit) upload's requests only.
+    expect(presentationBodies.map((request) => request.action)).toEqual(["read"]);
+  });
+
+  // §93 D6-3 (design §3.5 web→server row 「只有新上传后的初始化…不带expect」): a replayed terminal of this upload's own report
+  // (`already_registered`, ownRow true) is not an initialization either, so it reads first and admits only under the first or
+  // readmit condition; admitting unconditionally would archive the job its first report started.
+  it("a replayed terminal of the same upload reads its presentation and admits nothing while it is prepared", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed, { filename: "clip.mp4", content_type: "video/mp4", node_id: crypto.randomUUID() });
+    const body = completed(key, { content_type: "video/mp4", size_bytes: 200_000, cover: coverAnswer() });
+    await report(body);
+    expect(presentationBodies.map((request) => request.action)).toEqual(["accept"]);
+    const replay = await report(body);
+    expect(replay.outcome.status).toBe("already_registered");
+    expect(presentationBodies.map((request) => request.action)).toEqual(["read"]);
   });
 
   // Within a studio the same bytes are one row. The second upload's node has
