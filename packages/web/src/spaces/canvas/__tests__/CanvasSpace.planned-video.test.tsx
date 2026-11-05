@@ -51,14 +51,14 @@ const clients: QueryClient[] = [];
 // sends as presentation_ref (fixture migrated, 4.4.5); without one the panel cannot run.
 const PRESENTATION_REF = { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } };
 
-/** Supplies explicit presentation facts without running a browser decoder. @throws {never} Never. */
+/** Supplies explicit presentation facts without running a browser decoder; a null presentationRef omits the field. @throws {never} Never. */
 function presentation(table: VideoPresentationTable | null, sourceURL = URL, status: VideoToolPresentation['status'] = 'ready',
-  presentationRef: VideoToolPresentation['presentationRef'] = PRESENTATION_REF): BindingModule.CanvasVideoBindings {
+  presentationRef: VideoToolPresentation['presentationRef'] | null = PRESENTATION_REF): BindingModule.CanvasVideoBindings {
   const element = document.createElement('video');
   const binding = { sourceKey: 'registered-source', sourceEpoch: 1, element, surface: element, container: document.createElement('div'), original: DRAFT.source.mediaInfo, getSeekEpoch: () => 0, getPresentedFrame: () => null, seek: vi.fn(), play: vi.fn().mockResolvedValue(undefined), pause: vi.fn() };
   const facts: BindingModule.CanvasVideoBindings = {
     bindings: new Map([[SOURCE, { binding, status, error: null, overlayTarget: null, sourceBinding: SOURCE_BINDING }]]),
-    presentations: new Map([[SOURCE, { status, frameTable: table, presentedTime: null, sourceURL, sourceEpoch: 1, seekEpoch: 0, ...(presentationRef === undefined ? {} : { presentationRef }) }]]),
+    presentations: new Map([[SOURCE, { status, frameTable: table, presentedTime: null, sourceURL, sourceEpoch: 1, seekEpoch: 0, ...(presentationRef === null || presentationRef === undefined ? {} : { presentationRef }) }]]),
     onVideoBinding: vi.fn(), onVideoFrame: vi.fn(),
   };
   vi.mocked(useCanvasVideoBindings).mockReturnValue(facts);
@@ -111,7 +111,8 @@ describe('actual Canvas planned remove-bg callback wire', () => {
   });
 
   it('F15 a source without a presentationRef cannot run: the press forwards nothing (§96; design §10.8, §7.12)', () => {
-    presentation(TABLE, URL, 'ready', undefined);
+    const facts = presentation(TABLE, URL, 'ready', null);
+    expect(facts.presentations.get(SOURCE)).not.toHaveProperty('presentationRef');
     mount();
     fireEvent.click(screen.getByTestId('mini-tool-run'));
     expect(startPlannedVideoRun).not.toHaveBeenCalled();
