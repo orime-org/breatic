@@ -4,7 +4,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { catalog, coveredValues, shipped } from "../../config/__tests__/shipped.js";
+import { catalog, coveredValues, shipped, yaml } from "../../config/__tests__/shipped.js";
 import { adapterOf } from "../adapters.js";
 import { missingRequired, type SchemaSnapshot } from "../../config/upstream-schema.js";
 import { firstBody, takes, type SampleRun } from "./reseller-bodies.js";
@@ -26,7 +26,7 @@ interface BodySample {
   model: string;
   upstream: string;
   model_id: string;
-  /** The first run is the one the application sends with every param at its default. */
+  /** The first run is the one the application sends: every param at its default, the sources the model needs at a sample url and a voice from the upstream's list. */
   runs: SampleRun[];
   /** Values of a param that the binding takes in no run, each refused on the default run. */
   untaken?: { param: string; value: unknown }[];
@@ -36,6 +36,9 @@ interface BodySample {
 const BODIES = resolve(__dirname, "../../../test/fixtures/bodies");
 const config = shipped();
 const offered = new Map(catalog().models.map((m) => [m.name, m.params as Record<string, { values?: unknown[]; min?: number; max?: number }>]));
+const MODEL_FILES = ["image/models.yaml", "video/models.yaml", "audio/models.yaml", "tts/models.yaml", "three_d/meshy.yaml", "three_d/hunyuan3d.yaml"];
+/** Per model, the params of which a run must carry at least one, per mode, as the catalog lists them. */
+const sourceGroups = new Map(MODEL_FILES.flatMap((f) => yaml<{ models: { name: string; source_groups?: { mode: string; any_of: string[] }[] }[] }>(`models/${f}`).models.map((m) => [m.name, m.source_groups ?? []] as const)));
 const cases = Object.entries(config.media.models).flatMap(([model, { upstreams }]) => upstreams.filter((b) => b.upstream !== "wavespeed").map((binding) => ({ model, binding })));
 /**
  * The committed sample of a binding.
@@ -76,6 +79,39 @@ describe.each(cases)("the request bodies of $model on $binding.upstream", ({ mod
     const snapshot = JSON.parse(readFileSync(path, "utf8")) as SchemaSnapshot;
     const missing = sample.runs.flatMap((run) => missingRequired(snapshot, run.body).map((field) => `${field} in ${JSON.stringify(run.params)}`));
     expect(missing).toEqual([]);
+  });
+
+  it("start from a run the application sends, carrying the material the model's first source group needs", () => {
+    const group = sourceGroups.get(model)?.[0];
+    if (group === undefined) return;
+    const first = sample.runs[0]!.params;
+    expect(group.any_of.filter((p) => first[p] !== undefined && first[p] !== null), JSON.stringify(group)).not.toEqual([]);
+  });
+
+  it("sample each source with a file of the kind its param accepts", () => {
+    const EXTENSIONS: Record<string, RegExp> = { image: /\.(png|jpe?g|webp)$/, video: /\.mp4$/, audio: /\.mp3$/ };
+    const wrong: string[] = [];
+    for (const [name, param] of Object.entries(offered.get(model) ?? {})) {
+      const kind = (param as { accepts?: string }).accepts;
+      const pattern = kind === undefined ? undefined : EXTENSIONS[kind];
+      if (pattern === undefined) continue;
+      for (const run of sample.runs) {
+        const value = run.params[name];
+        for (const url of (Array.isArray(value) ? value : [value]).filter((v): v is string => typeof v === "string")) {
+          if (!pattern.test(url)) wrong.push(`${name}=${url}`);
+        }
+      }
+    }
+    expect([...new Set(wrong)]).toEqual([]);
+  });
+
+  it("write each reference into the prompt the way the binding's mentions name it, in some run", () => {
+    const unshown = Object.keys(binding.mentions ?? {}).filter((param) => {
+      const drop = binding.drops?.[param];
+      if (Array.isArray(drop) && drop.length === 0) return false;
+      return !sample.runs.some((r) => r.prompt.includes(`<<ref:${param}:`) && r.params[param] !== undefined && r.params[param] !== null);
+    });
+    expect(unshown).toEqual([]);
   });
 
   it("cover every value of every param the binding sends, or show the binding refuses it", async () => {

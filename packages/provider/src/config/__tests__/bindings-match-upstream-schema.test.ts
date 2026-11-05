@@ -488,6 +488,104 @@ function needingReview(model: string, binding: MediaBinding): Unreviewed[] {
   return out;
 }
 
+/**
+ * The fields a reseller binding leaves out whose default differs from WaveSpeed's same field, or from another
+ * reseller's where WaveSpeed has none; the SAME_EFFECT rows the review reads are keyed by them.
+ * @param model - The model.
+ * @param binding - A reseller binding.
+ * @returns Each differing field, keyed `upstream endpoint field`.
+ */
+function leftOutDiffering(model: string, binding: MediaBinding): Unreviewed[] {
+  const others = (config.media.models[model]?.upstreams ?? []).filter((b) => b !== binding);
+  const wavespeed = others.find((b) => b.upstream === "wavespeed");
+  const out: Unreviewed[] = [];
+  for (const here of reachedBy(binding)) {
+    const official = wavespeed === undefined ? undefined : sameOn(here, wavespeed);
+    const resellers = others.filter((b) => b.upstream !== "wavespeed").map((b) => sameOn(here, b)).filter((r): r is Reached => r !== undefined);
+    for (const path of leftOut(here)) {
+      const mine = defaultIn(here.snapshot.fields[path]);
+      const atOfficial = official === undefined ? undefined : counterpart(path, official.snapshot);
+      const compared = atOfficial !== undefined && official !== undefined
+        ? [{ there: official, path: atOfficial }]
+        : resellers.flatMap((r) => {
+          const at = counterpart(path, r.snapshot);
+          return at === undefined ? [] : [{ there: r, path: at }];
+        });
+      for (const { there, path: theirs } of compared) {
+        // A field the other binding writes, or sits inside an object it writes whole, is not left to its default there.
+        if (there.written.has(theirs) || [...there.written].some((w) => theirs.startsWith(`${w}.`) && !there.built.has(w))) continue;
+        const other = defaultIn(there.snapshot.fields[theirs]);
+        if (JSON.stringify(mine) !== JSON.stringify(other)) {
+          out.push({ key: `${here.upstream} ${here.endpoint} ${path}`, shown: `${here.endpoint} ${path}=${JSON.stringify(mine)}, ${there.upstream} ${there.endpoint} ${theirs}=${JSON.stringify(other)}` });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The params a reseller binding sends nothing for when a run leaves them unset (null, cleared, or at the catalog
+ * default the binding treats as absent), where the reseller's default differs from WaveSpeed's; the SAME_EFFECT rows
+ * the review reads are keyed by them.
+ * @param model - The model.
+ * @param binding - A reseller binding.
+ * @returns Each differing field, keyed `upstream model_id field`.
+ */
+function unsetDiffering(model: string, binding: MediaBinding): Unreviewed[] {
+  const wavespeed = (config.media.models[model]?.upstreams ?? []).find((b) => b.upstream === "wavespeed");
+  const snapshot = snapshotFor(binding.upstream, binding.model_id);
+  if (wavespeed === undefined || snapshot === undefined) return [];
+  const officialSnapshot = snapshotFor("wavespeed", wavespeed.model_id);
+  const out: Unreviewed[] = [];
+  for (const [name, param] of Object.entries(models.get(model) ?? {})) {
+    const bound = binding.params?.[name];
+    if (bound === undefined || bound.unset !== undefined) continue;
+    // A run carries a param with offered values or a range at a value; one the reader can clear (text, a list) or
+    // one whose default is null can arrive empty, one whose default is its absent value sends nothing, and the field
+    // is then unsent unless the binding says what to send.
+    const clearable = param.remote_source === undefined && (param.type === "text" || param.type === "list" || param.type === "items" || param.accepts !== undefined);
+    const empties = [
+      ...(param.default === null || param.default === undefined ? [null] : []),
+      ...(param.default !== null && param.default !== undefined && param.default === bound.absent_value ? [param.default] : []),
+      ...(clearable ? ["", []] : []),
+    ];
+    if (!empties.some((v) => at(buildBody(binding, { prompt: "", params: { [name]: v } }), bound.field) === undefined)) continue;
+    const mine = defaultIn(snapshot.fields[bound.field]);
+    if (mine === undefined) continue;
+    const theirField = wavespeed.params?.[name]?.field;
+    const theirs = theirField === undefined || officialSnapshot === undefined ? undefined : defaultIn(officialSnapshot.fields[theirField]);
+    if (JSON.stringify(mine) !== JSON.stringify(theirs)) {
+      out.push({ key: `${binding.upstream} ${binding.model_id} ${bound.field}`, shown: `${name} -> ${bound.field}=${JSON.stringify(mine)}, WaveSpeed ${theirField ?? "(not sent)"}=${JSON.stringify(theirs)}` });
+    }
+  }
+  return out;
+}
+
+/**
+ * The fields WaveSpeed's endpoint leaves at a default that the reseller's same endpoint has no counterpart for;
+ * the RESELLER_LACKS rows the review reads are keyed by them.
+ * @param model - The model.
+ * @param binding - A reseller binding.
+ * @returns Each such field, keyed `endpoint field on upstream endpoint`.
+ */
+function resellerLacked(model: string, binding: MediaBinding): Unreviewed[] {
+  const wavespeed = (config.media.models[model]?.upstreams ?? []).find((b) => b.upstream === "wavespeed");
+  if (binding.upstream === "wavespeed" || wavespeed === undefined) return [];
+  const out: Unreviewed[] = [];
+  for (const official of reachedBy(wavespeed)) {
+    const here = sameOn(official, binding);
+    if (here === undefined) continue;
+    for (const path of leftOut(official)) {
+      if (defaultIn(official.snapshot.fields[path]) === undefined || counterpart(path, here.snapshot) !== undefined) continue;
+      if (SCREENING.has(path.slice(path.lastIndexOf(".") + 1))) continue;
+      const key = `${official.endpoint} ${path} on ${binding.upstream} ${here.endpoint}`;
+      out.push({ key, shown: `${key}=${JSON.stringify(defaultIn(official.snapshot.fields[path]))}` });
+    }
+  }
+  return out;
+}
+
 describe("the committed schema snapshots", () => {
   it("are only of endpoints some binding reaches, or the fal endpoint behind a bound SandBase model", () => {
     const reached = new Set(cases.flatMap(({ binding }) => [binding.model_id, ...(binding.extra_steps ?? []).map((s) => s.endpoint)].map((id) => `${binding.upstream}/${id}.json`)));
@@ -529,27 +627,15 @@ describe("the reviewed fields WaveSpeed does not have", () => {
     expect(Object.entries(SANDBASE_ON_FAL).filter(([id, falId]) => bound.has(id) && snapshotFor("fal", falId) === undefined).map(([id]) => id)).toEqual([]);
   });
 
-  it("keeps no RESELLER_LACKS row for a field no reseller lacks", () => {
-    const lacked = new Set<string>();
-    for (const { model, binding } of cases) {
-      const wavespeed = (config.media.models[model]?.upstreams ?? []).find((b) => b.upstream === "wavespeed");
-      if (binding.upstream === "wavespeed" || wavespeed === undefined) continue;
-      for (const official of reachedBy(wavespeed)) {
-        const here = sameOn(official, binding);
-        if (here === undefined) continue;
-        for (const path of leftOut(official)) lacked.add(`${official.endpoint} ${path} on ${binding.upstream} ${here.endpoint}`);
-      }
-    }
-    expect(Object.keys(RESELLER_LACKS).filter((key) => !lacked.has(key))).toEqual([]);
+  it("keeps no RESELLER_LACKS row the review does not read", () => {
+    const read = new Set(cases.flatMap(({ model, binding }) => resellerLacked(model, binding).map((u) => u.key)));
+    expect(Object.keys(RESELLER_LACKS).filter((key) => !read.has(key))).toEqual([]);
   });
 
-  it("keeps no SAME_EFFECT row for a field no binding leaves out", () => {
-    const left = new Set<string>();
-    for (const { binding } of cases) {
-      for (const here of reachedBy(binding)) for (const path of leftOut(here)) left.add(`${here.upstream} ${here.endpoint} ${path}`);
-      for (const bound of Object.values(binding.params ?? {})) left.add(`${binding.upstream} ${binding.model_id} ${bound.field}`);
-    }
-    expect(Object.keys(SAME_EFFECT).filter((key) => !left.has(key))).toEqual([]);
+  it("keeps no SAME_EFFECT row the reviews do not read", () => {
+    const resellers = cases.filter(({ binding }) => binding.upstream !== "wavespeed");
+    const read = new Set(resellers.flatMap(({ model, binding }) => [...leftOutDiffering(model, binding), ...unsetDiffering(model, binding)].map((u) => u.key)));
+    expect(Object.keys(SAME_EFFECT).filter((key) => !read.has(key))).toEqual([]);
   });
 });
 
@@ -673,32 +759,10 @@ describe.each(cases)("$model on $binding.upstream", ({ model, binding }) => {
 
   it("leaves no field it does not send at a default other than WaveSpeed's, or than another reseller's where WaveSpeed has none", () => {
     if (binding.upstream === "wavespeed") return;
-    const others = (config.media.models[model]?.upstreams ?? []).filter((b) => b !== binding);
-    const wavespeed = others.find((b) => b.upstream === "wavespeed");
-    const differ: string[] = [];
-    for (const here of reachedBy(binding)) {
-      const official = wavespeed === undefined ? undefined : sameOn(here, wavespeed);
-      const resellers = others.filter((b) => b.upstream !== "wavespeed").map((b) => sameOn(here, b)).filter((r): r is Reached => r !== undefined);
-      for (const path of leftOut(here)) {
-        if (SAME_EFFECT[`${here.upstream} ${here.endpoint} ${path}`] !== undefined) continue;
-        const mine = defaultIn(here.snapshot.fields[path]);
-        const atOfficial = official === undefined ? undefined : counterpart(path, official.snapshot);
-        const compared = atOfficial !== undefined && official !== undefined
-          ? [{ there: official, path: atOfficial }]
-          : resellers.flatMap((r) => {
-            const at = counterpart(path, r.snapshot);
-            return at === undefined ? [] : [{ there: r, path: at }];
-          });
-        for (const { there, path: theirs } of compared) {
-          // A field the other binding writes, or sits inside an object it writes whole, is not left to its default there.
-          if (there.written.has(theirs) || [...there.written].some((w) => theirs.startsWith(`${w}.`) && !there.built.has(w))) continue;
-          const other = defaultIn(there.snapshot.fields[theirs]);
-          if (JSON.stringify(mine) !== JSON.stringify(other)) differ.push(`${here.endpoint} ${path}=${JSON.stringify(mine)}, ${there.upstream} ${there.endpoint} ${theirs}=${JSON.stringify(other)}`);
-        }
-      }
-    }
+    const differ = leftOutDiffering(model, binding).filter((u) => SAME_EFFECT[u.key] === undefined).map((u) => u.shown);
     expect(differ, differ.join("\n")).toEqual([]);
   });
+
 
   it("leaves a field WaveSpeed does not have at its default only where that gives WaveSpeed's result", () => {
     if (binding.upstream === "wavespeed") return;
@@ -707,45 +771,17 @@ describe.each(cases)("$model on $binding.upstream", ({ model, binding }) => {
   });
 
   it("lacks a field WaveSpeed leaves at its default only where that changes nothing WaveSpeed gives", () => {
-    if (binding.upstream === "wavespeed") return;
-    const wavespeed = (config.media.models[model]?.upstreams ?? []).find((b) => b.upstream === "wavespeed");
-    if (wavespeed === undefined) return;
-    const unreviewed: string[] = [];
-    for (const official of reachedBy(wavespeed)) {
-      const here = sameOn(official, binding);
-      if (here === undefined) continue;
-      for (const path of leftOut(official)) {
-        if (defaultIn(official.snapshot.fields[path]) === undefined || counterpart(path, here.snapshot) !== undefined) continue;
-        if (SCREENING.has(path.slice(path.lastIndexOf(".") + 1))) continue;
-        const key = `${official.endpoint} ${path} on ${binding.upstream} ${here.endpoint}`;
-        if (RESELLER_LACKS[key] === undefined) unreviewed.push(`${key}=${JSON.stringify(defaultIn(official.snapshot.fields[path]))}`);
-      }
-    }
+    const unreviewed = resellerLacked(model, binding).filter((u) => RESELLER_LACKS[u.key] === undefined).map((u) => u.shown);
     expect(unreviewed, unreviewed.join("\n")).toEqual([]);
   });
 
+
   it("leaves a param the run does not set at a default that gives WaveSpeed's result", () => {
     if (binding.upstream === "wavespeed") return;
-    const wavespeed = (config.media.models[model]?.upstreams ?? []).find((b) => b.upstream === "wavespeed");
-    if (wavespeed === undefined) return;
-    const officialSnapshot = snapshotFor("wavespeed", wavespeed.model_id);
-    const differ: string[] = [];
-    for (const [name, param] of Object.entries(params)) {
-      const bound = binding.params?.[name];
-      if (bound === undefined || bound.unset !== undefined) continue;
-      // A run carries a param with offered values or a range at a value; one the reader can clear (text, a list) or
-      // one whose default is null can arrive empty, and the field is then unsent unless the binding says what to send.
-      const clearable = param.remote_source === undefined && (param.type === "text" || param.type === "list" || param.type === "items" || param.accepts !== undefined);
-      const empties = [...(param.default === null || param.default === undefined ? [null] : []), ...(clearable ? ["", []] : [])];
-      if (!empties.some((v) => at(buildBody(binding, { prompt: "", params: { [name]: v } }), bound.field) === undefined)) continue;
-      const mine = defaultIn(snapshot.fields[bound.field]);
-      if (mine === undefined || SAME_EFFECT[`${binding.upstream} ${binding.model_id} ${bound.field}`] !== undefined) continue;
-      const theirField = wavespeed?.params?.[name]?.field;
-      const theirs = theirField === undefined || officialSnapshot === undefined ? undefined : defaultIn(officialSnapshot.fields[theirField]);
-      if (JSON.stringify(mine) !== JSON.stringify(theirs)) differ.push(`${name} -> ${bound.field}=${JSON.stringify(mine)}, WaveSpeed ${theirField ?? "(not sent)"}=${JSON.stringify(theirs)}`);
-    }
+    const differ = unsetDiffering(model, binding).filter((u) => SAME_EFFECT[u.key] === undefined).map((u) => u.shown);
     expect(differ, differ.join("\n")).toEqual([]);
   });
+
 
   it("writes its extra steps into fields their endpoints take", () => {
     for (const step of binding.extra_steps ?? []) {

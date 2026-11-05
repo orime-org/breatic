@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { buildBody } from "../../media/body.js";
 import { estimateCost, rejectedInput, type EstimateInput } from "../../pricing/estimate.js";
 import { createProvider } from "../../provider.js";
-import type { MediaBinding } from "../schema.js";
+import { droppedValues, type MediaBinding } from "../schema.js";
 import type { SchemaSnapshot } from "../upstream-schema.js";
 import { ROOT, shipped, yaml } from "./shipped.js";
 
@@ -294,6 +294,36 @@ describe("the limits a reseller states beyond its schema", () => {
     const input = run({ prompt: "make it blue", params: { images: ["https://a/1.png", "https://a/2.png"], aspect_ratio: "1:1", quality: "high" } });
     const estimate = await estimateCost(provider.pricingRules("gpt-image-2.5-sunburst-edit"), provider.availability("gpt-image-2.5-sunburst-edit"), input, { mode: "upstream", upstream: "fal" });
     expect(estimate?.usd).toBeCloseTo(0.05268 + 2 * 0.012, 6);
+  });
+
+  it.each([[60, 10], [10, 60]])("prices SandBase Sync Lipsync 3 per output second, the shorter input (video %i s, audio %i s)", async (video, audio) => {
+    const input = run({ params: { video: "https://a/v.mp4", audio: "https://a/a.mp3" }, durations: { video: [video], audio: [audio] } });
+    const estimate = await estimateCost(provider.pricingRules("sync-lipsync-3"), provider.availability("sync-lipsync-3"), input, { mode: "upstream", upstream: "sandbase" });
+    expect(estimate?.usd).toBeCloseTo(10 * 0.135, 6);
+  });
+
+  it("keeps a GPT Image 2.5 run above 1k off fal, which renders 1024x1024 only", async () => {
+    for (const model of ["gpt-image-2.5-sunburst-text-to-image", "gpt-image-2.5-sunburst-edit"]) {
+      const params = { aspect_ratio: "1:1", quality: "medium", ...(model.endsWith("edit") ? { images: ["https://a/1.png"] } : {}) };
+      expect(await refused(model, "fal", { prompt: "a fox", params: { ...params, resolution: "1k" } })).toBeUndefined();
+      expect(await refused(model, "fal", { prompt: "a fox", params: { ...params, resolution: "4k" } })).toEqual({ param: "resolution", value: "4k" });
+    }
+  });
+
+  it("limits each param a binding drops at listed values to those values", () => {
+    const wrong: string[] = [];
+    for (const [model, { upstreams }] of Object.entries(models)) {
+      const rules = provider.pricingRules(model).upstreams as { upstream: string; limits?: Record<string, unknown[]> }[];
+      for (const binding of upstreams) {
+        for (const [param, drop] of Object.entries(binding.drops ?? {})) {
+          const values = droppedValues(drop);
+          if (values === undefined) continue;
+          const limit = rules.find((r) => r.upstream === binding.upstream)?.limits?.[param];
+          if (JSON.stringify(limit) !== JSON.stringify(values)) wrong.push(`${model} on ${binding.upstream}: ${param} limited to ${JSON.stringify(limit)}, drop lists ${JSON.stringify(values)}`);
+        }
+      }
+    }
+    expect(wrong).toEqual([]);
   });
 
   // Each row: model, upstream, a run the upstream's own words refuse, the nearest run it takes, and words of the reason.

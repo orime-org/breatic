@@ -143,7 +143,8 @@ describe("reseller bindings against the catalog", () => {
     const missing = catalogProblems([bind("fal", 2, { ...everything, drops: { web: [false] } })], params);
     expect(missing).toEqual([expect.stringMatching(/m.*fal.*seed/)]);
     const both = catalogProblems([bind("fal", 2, { ...everything, drops: { ...everything.drops, duration: [5] } })], params);
-    expect(both).toEqual([expect.stringMatching(/m.*fal.*duration/)]);
+    // Every problem of the drop is named in one load: both bound and dropped, and a bare list of a real value.
+    expect(both).toEqual([expect.stringMatching(/m.*fal.*both binds and drops.*duration/), expect.stringMatching(/m.*fal.*drops "duration".*equivalent/)]);
   });
 
   it("reports supported or drops values the param does not offer", () => {
@@ -152,9 +153,10 @@ describe("reseller bindings against the catalog", () => {
       params: { ...everything.params, duration: { field: "duration", supported: [5, 20] } },
       drops: { web: ["maybe"], seed: { all_values: "sampling only" } },
     })], params);
-    expect(found).toHaveLength(2);
+    expect(found).toHaveLength(3);
     expect(found.some((p) => p.includes("duration") && p.includes("20"))).toBe(true);
-    expect(found.some((p) => p.includes("web") && p.includes("maybe"))).toBe(true);
+    expect(found.some((p) => p.includes("web") && p.includes("maybe") && p.includes("does not offer"))).toBe(true);
+    expect(found.some((p) => p.includes("web") && p.includes("equivalent"))).toBe(true);
   });
 
   it("reports item_fields on a param that is not a list of items, and a sub-field the catalog item does not have", () => {

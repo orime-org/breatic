@@ -6,6 +6,7 @@ import fc from "fast-check";
 import type { MediaBinding, ProviderConfigInput } from "../../config/schema.js";
 import { DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed } from "../../errors.js";
 import { Aborted, NoAnswer } from "../../http/errors.js";
+import { estimateCost } from "../../pricing/estimate.js";
 import { createProvider } from "../../provider.js";
 import type { Route } from "../../routing/route.js";
 import { createMediaRunner, type MediaAnswer, type MediaClone, type MediaRunner, type MediaTicket, type PlanOptions } from "../runner.js";
@@ -102,6 +103,16 @@ function config(): ProviderConfigInput {
           })),
         },
         mureka: { upstreams: mureka },
+        // ws_a clones a vocal for $7.50 and sings for $0.225; ws_b for $5.00 and $0.15.
+        "mureka-priced": {
+          upstreams: (["ws_a", "ws_b"] as const).map((upstream, i): MediaBinding => ({
+            ...mureka[0]!,
+            upstream,
+            weight: i + 1,
+            extra_steps: [{ kind: "vocal", endpoint: "mureka-ai/vocal-clone", at: "before", for_param: "vocal", reused: true, pricing: { ...pricing, base_price: upstream === "ws_a" ? 7_500_000 : 5_000_000 } }],
+            pricing: { ...pricing, base_price: upstream === "ws_a" ? 225_000 : 150_000 },
+          })),
+        },
         // ws_a bills $0.10 per second of the source clip, ws_b $0.30 a call.
         lipsync: {
           upstreams: [
@@ -533,6 +544,54 @@ describe("cheapest mode with a live clone", () => {
       clones: [{ upstream: "ws_a", kind: "voice", sourceKey: "sha-a", upstreamId: "BreaticOld" }],
     }), "send");
     expect((held.ticket as unknown as { upstream: string }).upstream).toBe("ws_a");
+  });
+
+  const provider = (): ReturnType<typeof createProvider> => createProvider({ config: config(), keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
+  const estimated = async (model: string, input: { prompt: string; params: Record<string, unknown> }, planOptions: PlanOptions): Promise<unknown> => {
+    const p = provider();
+    const prepared = { ...input, durations: planOptions.durations, placeholders: [], durationsMissing: [], sourceKeys: planOptions.sourceKeys, clones: planOptions.clones };
+    return estimateCost(p.pricingRules(model), p.availability(model), prepared, { mode: "cheapest" });
+  };
+
+  it("estimates the upstream and price the plan sends to", async () => {
+    const speech = { prompt: "hello there", params: { audio: "https://cdn.example/a.mp3" } };
+    const held = options([{ upstream: "ws_a", kind: "voice", sourceKey: "sha-a", upstreamId: "BreaticOld" }]);
+    const planned = expectState(await runner().plan("voice-clone-priced", speech, { mode: "cheapest" }, held), "send");
+    expect((planned.ticket as unknown as { upstream: string }).upstream).toBe("ws_a");
+    expect(await estimated("voice-clone-priced", speech, held)).toEqual({ usd: 0.01, bound: "exact", upstream: "ws_a" });
+  });
+
+  it("plans a song on the upstream holding its vocal clone, and estimates it there", async () => {
+    const song = { prompt: "pop", params: { lyrics: "la la", vocal: "https://cdn.example/vocal.mp3" } };
+    const keys = { idempotencyKey: "task-1", sourceKeys: { "https://cdn.example/vocal.mp3": "sha-vocal" }, durations: {} };
+    const fresh = expectState(await runner().plan("mureka-priced", song, { mode: "cheapest" }, { ...keys, clones: [] }), "send");
+    expect((fresh.ticket as unknown as { upstream: string }).upstream).toBe("ws_b");
+    const held = { ...keys, clones: [{ upstream: "ws_a", kind: "vocal" as const, sourceKey: "sha-vocal", upstreamId: "163346152292353" }] };
+    const planned = expectState(await runner().plan("mureka-priced", song, { mode: "cheapest" }, held), "send");
+    expect((planned.ticket as unknown as { upstream: string }).upstream).toBe("ws_a");
+    expect(await estimated("mureka-priced", song, held)).toEqual({ usd: 0.225, bound: "exact", upstream: "ws_a" });
+  });
+
+  it("property: the estimate names the upstream the plan sends to, whichever upstream holds which clone", async () => {
+    const song = { prompt: "pop", params: { lyrics: "la la", vocal: "https://cdn.example/vocal.mp3" } };
+    const speech = { prompt: "hello there", params: { audio: "https://cdn.example/a.mp3" } };
+    await fc.assert(fc.asyncProperty(
+      fc.constantFrom("mureka-priced", "voice-clone-priced"),
+      fc.subarray(["ws_a", "ws_b"]),
+      async (model, holders) => {
+        const vocal = model === "mureka-priced";
+        const planOptions: PlanOptions = {
+          idempotencyKey: "task-1",
+          sourceKeys: { "https://cdn.example/vocal.mp3": "sha-vocal", "https://cdn.example/a.mp3": "sha-a" },
+          clones: holders.map((upstream) => ({ upstream, kind: vocal ? "vocal" : "voice", sourceKey: vocal ? "sha-vocal" : "sha-a", upstreamId: `id-${upstream}` })),
+          durations: {},
+        };
+        const input = vocal ? song : speech;
+        const planned = expectState(await runner().plan(model, input, { mode: "cheapest" }, planOptions), "send");
+        const estimate = (await estimated(model, input, planOptions)) as { upstream: string };
+        expect(estimate.upstream).toBe((planned.ticket as unknown as { upstream: string }).upstream);
+      },
+    ), { numRuns: 20 });
   });
 });
 

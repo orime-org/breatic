@@ -6,6 +6,7 @@ import fc from "fast-check";
 import {
   assertBindsCatalog,
   candidatesOf,
+  droppedValues,
   parseProviderConfig,
   ProviderConfigError,
   type CatalogShape,
@@ -248,6 +249,14 @@ describe("assertBindsCatalog", () => {
   it("passes a value-list drop that states why the upstream's default gives the value, and one of not-sent values", () => {
     expect(catalogProblems([bind("fal", 2, { params: { aspect_ratio: { field: "aspect_ratio" } }, drops: { duration: { values: [5], equivalent: "fal runs 5 s when duration is left out (its schema default)" } } })])).toEqual([]);
     expect(catalogProblems([bind("fal", 2, { params: { duration: { field: "duration" } }, drops: { aspect_ratio: [""] } })])).toEqual([]);
+  });
+
+  it("reads the values a drop serves a run at, and none for a drop of every value", () => {
+    expect(droppedValues("*")).toBeUndefined();
+    expect(droppedValues({ all_values: "sampling only" })).toBeUndefined();
+    expect(droppedValues(undefined)).toBeUndefined();
+    expect(droppedValues([false])).toEqual([false]);
+    expect(droppedValues({ values: ["1k"], equivalent: "measured" })).toEqual(["1k"]);
   });
 
   it("reports a catalog model that has no binding at all", () => {

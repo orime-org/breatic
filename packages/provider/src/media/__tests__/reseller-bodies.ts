@@ -42,13 +42,15 @@ export async function takes(model: string, binding: MediaBinding, params: Record
 /**
  * The body of a run's first call as the runner sends it: the voice step's when the call clones a source, else the binding's.
  * @param binding - The binding.
- * @param run - The sample run.
+ * @param run - The sample run, its body aside.
  * @returns The body.
+ * @throws {Error} When the binding clones a source on an upstream whose adapter has no voice step.
  */
-export function firstBody(binding: MediaBinding, run: SampleRun): Record<string, unknown> {
+export function firstBody(binding: MediaBinding, run: Omit<SampleRun, "body">): Record<string, unknown> {
   const params = { ...run.params, ...run.ids };
   if (binding.reused_by === undefined) return buildBody(binding, { params, prompt: run.prompt });
-  const voice = adapterOf(config.upstreams[binding.upstream]!.kind).steps.voice!;
+  const voice = adapterOf(config.upstreams[binding.upstream]!.kind).steps.voice;
+  if (voice === undefined) throw new Error(`${binding.upstream} clones ${binding.reused_by} but its adapter has no voice step`);
   return voice.body({ source: () => String(run.params[binding.reused_by!]), params, prompt: run.prompt, binding, customVoiceId: SAMPLE_VOICE_ID, voiceId: undefined, description: undefined, itemIndex: null, param: undefined });
 }
 
