@@ -539,6 +539,18 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         connection as unknown as HeldConnection,
       );
 
+      // Every Space connection learns the document's size as it arrives,
+      // read-only ones too, before the awaits below so it lands with the
+      // handshake; `limit` 0 when the deployment sets none (inner#1790).
+      const parsedName = parseDocName(documentName);
+      if (parsedName && parsedName.kind !== "meta") {
+        try {
+          pushDocSize(documentName, connection);
+        } catch (err) {
+          logger.error({ err, documentName, userId: auth.user.id }, "doc_size_push_failed");
+        }
+      }
+
 
       if (auth.seatCap !== null) {
         const seat = await connectionRegistry.takeSeat(
@@ -574,18 +586,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         now: Date.now,
         staleAfterMs: timings.presenceStaleAfterMs,
       });
-
-      // Every Space connection learns the document's size as it arrives,
-      // read-only ones too; `limit` 0 when the deployment sets none
-      // (inner#1790).
-      const parsedName = parseDocName(documentName);
-      if (parsedName && parsedName.kind !== "meta") {
-        try {
-          pushDocSize(documentName, connection);
-        } catch (err) {
-          logger.error({ err, documentName, userId: auth.user.id }, "doc_size_push_failed");
-        }
-      }
 
       // Last, once this connection can be found: an archive, restore or role
       // change that committed after the handshake read the role has already
