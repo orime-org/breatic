@@ -72,7 +72,9 @@ const PLAN_BODY = {
   videoSpans: null, audioSpans: null, segmentDuration: null,
 };
 // §3.2 item 7: the physical encode facts beside the plan; keyframes every 10 frames, coded at the display size.
-const ENCODE_FACTS = { keyframeOrdinals: [0, 10, 20, 30, 40], codedWidth: 960, codedHeight: 540 };
+// §93 D6-1: every source keyframe's pts and dts (frame k is at k/10 s; no B-frames, so dts equals pts) and the first packet dts.
+const ENCODE_FACTS = { keyframeOrdinals: [0, 10, 20, 30, 40], codedWidth: 960, codedHeight: 540,
+  sourceKeyframes: [0, 1, 2, 3, 4].map((second) => ({ pts: rational(second), dts: rational(second) })), firstPacketDts: rational(0) };
 let pg: ReturnType<typeof core.createPgClient>;
 let queue: Queue;
 let app: Hono;
@@ -160,7 +162,7 @@ async function present(f: Fixture, presented: { plan: typeof PLAN_BODY; encoding
   f.body.presentation_ref = { source: { toolInputId, planSha256 } };
   outside.bodies.set(receipt.url, fullJSON); outside.bodies.set(receipt.table.url, compactJSON);
   outside.snapshots.set(f.sourceKey, { sourceBinding: { storageKey: f.sourceKey, sourceFingerprint: f.hash }, presentation: bundle,
-    preparation: null, ledger: { state: "ready", receipt, failure: null } });
+    preparation: null, ledger: { state: "ready", receipt, failure: null }, readmit: false });
 }
 
 /** Register measured video facts and fund the real target Studio, not the source Studio. @throws {Error} On fixture SQL failure. */
