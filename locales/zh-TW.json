@@ -2013,6 +2013,23 @@
       "submit": "生成",
       "helpBody": "點擊物件以選取；拖曳空白處旋轉視角；滾輪縮放。選取物件後，使用浮動選單移動、旋轉與縮放。",
       "closePanel": "關閉"
+    },
+    "size": {
+      "warning": "這個 Space 已用 {used}，上限 {limit}。",
+      "fullNotice": "這個 Space 已滿（{used} / {limit}），刪除一些內容後才能繼續新增。",
+      "addBlocked": "這個 Space 已滿，刪除一些內容後才能繼續新增。",
+      "overwriteBlocked": "這個 Space 已滿，暫時不能再移動或修改，刪除一些內容後可繼續。",
+      "noRoom": "放不下：這個 Space 只剩 {room}。",
+      "overCeilingDelete": "這個 Space 已超出上限，請刪除整個節點或整段內容。",
+      "timelineFull": "這個 Space 已滿，無法繼續新增。",
+      "threeDFull": "這個 Space 已滿，無法繼續編輯。",
+      "resync": "你剛才的變更超出了這個 Space 的大小上限，沒有儲存。",
+      "proposalFull": "這個 Space 已滿，提案沒有放進去。",
+      "proposalNoRoom": "放不下：這個 Space 只剩 {room}，提案沒有放進去。",
+      "uploadFailed": "上傳失敗",
+      "spaceFullReason": "這個 Space 已滿。",
+      "textNoRoom": "文字沒有寫入：放不下，這個 Space 只剩 {room}。",
+      "textFull": "文字沒有寫入：這個 Space 已滿。"
     }
   },
   "menu": {
@@ -2935,7 +2952,9 @@
       "overlap": "此位置與其他片段重疊。請調整開始影格。",
       "target_missing": "目標已變更。請檢查位置後重試。",
       "upload": "上傳失敗。可使用已選檔案重試。",
-      "permission_changed": "編輯權限已變更。請再次確認新增此影片。"
+      "permission_changed": "編輯權限已變更。請再次確認新增此影片。",
+      "full": "這個 Space 已滿，無法繼續新增。",
+      "no_room": "放不下：這個 Space 只剩 {room}。"
     }
   }
 }

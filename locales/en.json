@@ -2013,6 +2013,23 @@
       "submit": "Generate",
       "helpBody": "Click an object to select it. Drag empty space to orbit; use the wheel to zoom. Use the floating selection menu to move, rotate or scale objects.",
       "closePanel": "Close"
+    },
+    "size": {
+      "warning": "This Space is using {used} of its {limit}.",
+      "fullNotice": "This Space is full ({used} of {limit}). Delete some content to add more.",
+      "addBlocked": "This Space is full. Delete some content to add more.",
+      "overwriteBlocked": "This Space is full. Moving or changing things is paused until you delete some content.",
+      "noRoom": "This doesn't fit — the Space has {room} left.",
+      "overCeilingDelete": "This Space is over its limit. Delete a whole node or a whole passage.",
+      "timelineFull": "This Space is full and cannot take more.",
+      "threeDFull": "This Space is full and can no longer be edited.",
+      "resync": "Your last change went over this Space's size limit and was not saved.",
+      "proposalFull": "This Space is full, so the proposal was not placed.",
+      "proposalNoRoom": "This doesn't fit — the Space has {room} left, so the proposal was not placed.",
+      "uploadFailed": "Upload failed",
+      "spaceFullReason": "This Space is full.",
+      "textNoRoom": "Text not added: this doesn't fit — the Space has {room} left.",
+      "textFull": "Text not added: this Space is full."
     }
   },
   "menu": {
@@ -2935,7 +2952,9 @@
       "overlap": "This position overlaps another clip. Change the start frame.",
       "target_missing": "The target has changed. Check the position and retry.",
       "upload": "Upload failed. Retry with the selected file.",
-      "permission_changed": "Editing permission changed. Confirm again to add this video."
+      "permission_changed": "Editing permission changed. Confirm again to add this video.",
+      "full": "This Space is full and cannot take more.",
+      "no_room": "This doesn't fit — the Space has {room} left."
     }
   }
 }

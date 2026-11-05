@@ -2013,6 +2013,23 @@
       "submit": "생성",
       "helpBody": "개체를 클릭하여 선택하세요. 빈 공간을 드래그하여 시점을 회전하고 휠로 확대하거나 축소하세요. 선택 후 플로팅 메뉴에서 개체를 이동, 회전하거나 크기를 조절할 수 있습니다.",
       "closePanel": "닫기"
+    },
+    "size": {
+      "warning": "이 Space는 {limit} 중 {used}를 사용하고 있습니다.",
+      "fullNotice": "이 Space가 가득 찼습니다({used} / {limit}). 더 추가하려면 일부 내용을 삭제하세요.",
+      "addBlocked": "이 Space가 가득 찼습니다. 더 추가하려면 일부 내용을 삭제하세요.",
+      "overwriteBlocked": "이 Space가 가득 찼습니다. 내용을 삭제할 때까지 이동하거나 변경할 수 없습니다.",
+      "noRoom": "들어가지 않습니다. 이 Space에 남은 공간은 {room}입니다.",
+      "overCeilingDelete": "이 Space가 한도를 초과했습니다. 노드 전체나 단락 전체를 삭제하세요.",
+      "timelineFull": "이 Space가 가득 차서 더 추가할 수 없습니다.",
+      "threeDFull": "이 Space가 가득 차서 더 이상 편집할 수 없습니다.",
+      "resync": "방금 변경한 내용이 이 Space의 크기 한도를 넘어 저장되지 않았습니다.",
+      "proposalFull": "이 Space가 가득 차서 제안을 배치하지 못했습니다.",
+      "proposalNoRoom": "들어가지 않습니다. 이 Space에 남은 공간이 {room}이라 제안을 배치하지 못했습니다.",
+      "uploadFailed": "업로드 실패",
+      "spaceFullReason": "이 Space가 가득 찼습니다.",
+      "textNoRoom": "텍스트가 추가되지 않았습니다. 들어가지 않습니다. 이 Space에 남은 공간은 {room}입니다.",
+      "textFull": "텍스트가 추가되지 않았습니다. 이 Space가 가득 찼습니다."
     }
   },
   "menu": {
@@ -2935,7 +2952,9 @@
       "overlap": "다른 클립과 겹치는 위치입니다. 시작 프레임을 변경하세요.",
       "target_missing": "대상이 변경되었습니다. 위치를 확인하고 다시 시도하세요.",
       "upload": "업로드에 실패했습니다. 선택한 파일로 다시 시도할 수 있습니다.",
-      "permission_changed": "편집 권한이 변경되었습니다. 동영상 추가를 다시 확인하세요."
+      "permission_changed": "편집 권한이 변경되었습니다. 동영상 추가를 다시 확인하세요.",
+      "full": "이 Space가 가득 차서 더 추가할 수 없습니다.",
+      "no_room": "들어가지 않습니다. 이 Space에 남은 공간은 {room}입니다."
     }
   }
 }
