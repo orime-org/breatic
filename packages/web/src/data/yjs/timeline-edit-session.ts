@@ -14,8 +14,8 @@ import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 /** What the Timeline toolbar and properties read from the personal session. */
 export interface TimelineEditSessionSnapshot { canUndo: boolean; canRedo: boolean; selectedClipId: string | null }
 
-/** How an edit relates to a held key: its first press, or a repeat that joins the step that press made. */
-export interface TimelineEditOptions { hold?: 'start' | 'continue' }
+/** Whether an edit comes from a held key; it joins the hold's step while that step is the undo top. */
+export interface TimelineEditOptions { hold?: boolean }
 
 /** One user's history and selection for one open Timeline document. */
 export interface TimelineEditSession {
@@ -138,7 +138,7 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
   // The clips just before the current pop, to tell the clips it revives.
   let clipsBeforePop = new Set<string>();
   // Every source value seen since the session opened; a source never changes once written, so any copy is current.
-  const known: Record<string, unknown> = {};
+  const known: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
   let canWrite = false;
   /**
    * Remember the current sources and, for a session that may write, write back any referenced source a merge
@@ -173,14 +173,14 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
     },
     edit(command, options = {}) {
       const top = history.undoStack.at(-1);
-      const join = options.hold === 'continue' && holdStep !== null && top === holdStep;
+      const join = options.hold === true && holdStep !== null && top === holdStep;
       const timeout = history.captureTimeout;
       if (join) history.captureTimeout = Number.POSITIVE_INFINITY;
       try {
         const before = snapshotRecords(doc);
         const plan = applyTimelineEdit(doc, command, origin);
         const item = history.undoStack.at(-1);
-        if (!join) holdStep = options.hold !== undefined && item !== top ? item : null;
+        if (!join) holdStep = options.hold === true && item !== top ? item : null;
         if (plan.ok && item !== undefined) {
           const after = snapshotRecords(doc);
           // The top item is this edit's own step, a step it joined, or, for an edit that changed nothing, the

@@ -37,6 +37,7 @@ interface TimelineTrackAreaProps {
   onSeek: (frame: number) => void;
   onCommit: (command: TimelineEditCommand) => void;
   onVanished: () => void;
+  onDraggingChange: (dragging: boolean) => void;
 }
 
 /** The active pointer gesture and its latest preview. */
@@ -161,7 +162,7 @@ function previewOf(view: DragView, data: { mode: TimelineGestureMode; clipId: st
  * @throws {never} Never.
  */
 export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Element {
-  const { projectId, document, labels, readyIds, selectedId, frame, extent, pixelsPerFrame, readOnly, snap, placement, onSelect, onSeek, onCommit, onVanished } = props;
+  const { projectId, document, labels, readyIds, selectedId, frame, extent, pixelsPerFrame, readOnly, snap, placement, onSelect, onSeek, onCommit, onVanished, onDraggingChange } = props;
   const t = useTranslation();
   const [gesture, setGesture] = React.useState<Gesture | null>(null);
   const cancelled = React.useRef(false);
@@ -198,6 +199,10 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
   React.useEffect(() => { if (readOnly) setGesture(null); }, [readOnly]);
   // Leaving the window ends a drag without writing (dnd-kit itself cancels only on Esc, resize and hidden pages).
   const dragging = gesture !== null;
+  React.useEffect(() => {
+    onDraggingChange(dragging);
+    return () => onDraggingChange(false);
+  }, [dragging, onDraggingChange]);
   React.useEffect(() => {
     if (!dragging) return;
     /**

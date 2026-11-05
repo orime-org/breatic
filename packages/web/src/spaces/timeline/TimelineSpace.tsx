@@ -208,30 +208,32 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const zoomValue = React.useMemo(() => [Math.log2(pixelsPerFrame)], [pixelsPerFrame]);
   const changeZoom = React.useCallback((value: number[]): void => setZoom(2 ** (value[0] ?? Math.log2(DEFAULT_PIXELS_PER_FRAME))), []);
 
-  const nudge = React.useCallback((frames: number, repeat: boolean): void => {
+  const nudge = React.useCallback((frames: number): void => {
     if (readOnly || selected === undefined) { seekTo(frame + frames); return; }
     if (selected.trackId === TIMELINE_MAIN_TRACK_ID && placement.magnet) {
       const sequence = clips.filter((clip) => clip.trackId === TIMELINE_MAIN_TRACK_ID);
       const index = sequence.findIndex((clip) => clip.id === selected.id);
       const neighbour = sequence[index + (frames > 0 ? 1 : -1)];
       if (neighbour === undefined) return;
-      commit({ operation: 'move', parameters: { clipId: selected.id, startFrame: frames > 0 ? neighbour.startFrame + neighbour.durationFrames : neighbour.startFrame }, placement }, { hold: repeat ? 'continue' : 'start' });
+      commit({ operation: 'move', parameters: { clipId: selected.id, startFrame: frames > 0 ? neighbour.startFrame + neighbour.durationFrames : neighbour.startFrame }, placement }, { hold: true });
       return;
     }
-    commit({ operation: 'move', parameters: { clipId: selected.id, startFrame: Math.max(0, selected.startFrame + frames) }, placement }, { hold: repeat ? 'continue' : 'start' });
+    commit({ operation: 'move', parameters: { clipId: selected.id, startFrame: Math.max(0, selected.startFrame + frames) }, placement }, { hold: true });
   }, [readOnly, selected, seekTo, frame, placement, clips, commit]);
   const changeTrack = React.useCallback((direction: 1 | -1, repeat: boolean): void => {
     if (readOnly || selected === undefined) return;
     const index = labels.visual.findIndex((track) => track.id === selected.trackId);
     if (index < 0) { toast.warning(t('timeline.errors.track_missing')); return; }
     const target = labels.visual[index + direction];
-    if (target !== undefined) { commit({ operation: 'move', parameters: { clipId: selected.id, startFrame: selected.startFrame, trackId: target.id }, placement }, { hold: repeat ? 'continue' : 'start' }); return; }
+    if (target !== undefined) { commit({ operation: 'move', parameters: { clipId: selected.id, startFrame: selected.startFrame, trackId: target.id }, placement }, { hold: true }); return; }
     // A held key stops at the top track; only a fresh press creates a track above it.
     if (repeat) return;
     if (direction === 1) commit({ operation: 'move', parameters: { clipId: selected.id, startFrame: selected.startFrame, newTrackId: newId() }, placement });
     else toast.warning(t('timeline.edit.lowestTrack'));
   }, [readOnly, selected, labels.visual, commit, placement, t]);
 
+  const trackDragging = React.useRef(false);
+  const draggingChange = React.useCallback((value: boolean): void => { trackDragging.current = value; }, []);
   const onKeyDown = React.useCallback((event: KeyboardEvent): void => {
     // A fresh press, whatever it does, ends the key hold so a later repeat cannot join the old step.
     if (!event.repeat) session.endHold();
@@ -242,6 +244,8 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     const editing = action.kind !== 'nudge' && action.kind !== 'toggle_snap';
     if (editing && readOnly) return;
     event.preventDefault();
+    // A drag writes once, on release; only the snap switch changes while it is held.
+    if (trackDragging.current && action.kind !== 'toggle_snap') return;
     switch (action.kind) {
       case 'undo': undo(); break;
       case 'redo': redo(); break;
@@ -249,7 +253,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       case 'split': split(); break;
       case 'delete': remove(); break;
       case 'toggle_snap': toggleSnap(); break;
-      case 'nudge': nudge(action.frames, action.repeat); break;
+      case 'nudge': nudge(action.frames); break;
       case 'change_track': changeTrack(action.direction, action.repeat); break;
     }
   }, [session, fps, readOnly, undo, redo, duplicate, split, remove, toggleSnap, nudge, changeTrack]);
@@ -323,7 +327,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       <Slider data-testid='timeline-zoom' aria-label={t('timeline.edit.zoom')} value={zoomValue} onValueChange={changeZoom} min={Math.log2(minZoom)} max={Math.log2(TIMELINE_MAX_PIXELS_PER_FRAME)} step={ZOOM_STEP} className='w-28' />
     </div>
     <TimelineTrackArea projectId={projectId} document={document} labels={labels} readyIds={readyIds} selectedId={selectedId} frame={frame} extent={extent}
-      pixelsPerFrame={pixelsPerFrame} readOnly={readOnly} snap={prefs.snap} placement={placement} onSelect={selectClip} onSeek={seekTo} onCommit={commitCommand} onVanished={vanished} />
+      pixelsPerFrame={pixelsPerFrame} readOnly={readOnly} snap={prefs.snap} placement={placement} onSelect={selectClip} onSeek={seekTo} onCommit={commitCommand} onVanished={vanished} onDraggingChange={draggingChange} />
     {(arrangement.hasConflicts || damagedClipIds.length > 0) && <ScrollArea className='h-28 shrink-0 border-t border-border' viewportClassName='flex flex-col gap-2 p-3'>
       <p className='text-xs text-status-error-foreground'>{t('timeline.conflictHelp')}</p>
       {clips.filter((clip) => !readyIds.has(clip.id)).map((clip) => <TimelineConflictRow key={clip.id} projectId={projectId} clip={clip} assetId={document.sources[clip.sourceId]?.assetId ?? ''} reason={reasons.get(clip.id) ?? null} selected={selectedId === clip.id} onSelect={selectClip} />)}

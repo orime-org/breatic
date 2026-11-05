@@ -62,7 +62,8 @@ export function timelineReferencedSourceIds(doc: Y.Doc): Set<string> {
  */
 export function missingTimelineSourceIds(doc: Y.Doc, values: Readonly<Record<string, unknown>>): string[] {
   const sources = doc.getMap<unknown>('sources');
-  return [...timelineReferencedSourceIds(doc)].filter((id) => !sources.has(id) && values[id] !== undefined);
+  // Own keys only: a damaged clip may name any string, including an Object.prototype property.
+  return [...timelineReferencedSourceIds(doc)].filter((id) => !sources.has(id) && Object.hasOwn(values, id));
 }
 
 /**
@@ -85,10 +86,10 @@ export function restoreTimelineSources(doc: Y.Doc, values: Readonly<Record<strin
    * @throws {never} Never.
    */
   const write = (id: string): void => {
-    if (values[id] !== undefined) sources.set(id, freezeRecord(structuredClone(values[id] as object)));
+    if (Object.hasOwn(values, id)) sources.set(id, freezeRecord(structuredClone(values[id] as object)));
   };
   for (const id of new Set(reset)) if (referenced.has(id)) write(id);
-  for (const id of referenced) if (!sources.has(id)) write(id);
+  for (const id of missingTimelineSourceIds(doc, values)) write(id);
   return referenced;
 }
 

@@ -163,17 +163,6 @@ function attachments(document: TimelineDocumentV1): Map<string, string> {
 }
 
 /**
- * Integer fields, a non-negative safe start and end, a positive duration and a present source.
- * @param clip - The clip.
- * @param sources - The document's sources.
- * @returns Whether every stored clip may hold these values.
- * @throws {never} Never.
- */
-function wellFormed(clip: TimelineVideoClip, sources: Record<string, TimelineVideoSource>): boolean {
-  return sources[clip.sourceId] !== undefined && timelineClipIntervalValid(clip);
-}
-
-/**
  * Plan one edit against the current document without changing it.
  * @param current - The complete current document.
  * @param command - The normalized edit, with the editing user's placement switches.
@@ -389,8 +378,8 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
       if (!timelineClipIntervalValid(clip)) throw new Refused('invalid_range');
       continue;
     }
-    if (!wellFormed(clip, sources)) throw new Refused('invalid_range');
-    const source = sources[clip.sourceId] as TimelineVideoSource;
+    const source = sources[clip.sourceId];
+    if (source === undefined || !timelineClipIntervalValid(clip)) throw new Refused('invalid_range');
     const from = was ?? current.clips[effects.origins.get(clip.id) ?? ''];
     const fromSource = from === undefined ? undefined : current.sources[from.sourceId];
     const allowed = clip.id === explicitId || from === undefined || fromSource === undefined ? 0 : timelineSourceOverflow(from, fromSource, fps);

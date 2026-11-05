@@ -9,7 +9,7 @@ import { matchHistoryShortcut } from '@web/spaces/canvas/canvas-history-shortcut
 export type TimelineKeyAction =
   | { kind: 'undo' } | { kind: 'redo' } | { kind: 'duplicate' } | { kind: 'split' } | { kind: 'delete' }
   | { kind: 'toggle_snap' }
-  | { kind: 'nudge'; frames: number; repeat: boolean }
+  | { kind: 'nudge'; frames: number }
   | { kind: 'change_track'; direction: 1 | -1; repeat: boolean };
 
 /** The key event facts the mapper reads, testable without a DOM event. */
@@ -45,7 +45,7 @@ export function timelineKeyAction(event: TimelineKeyEvent, fps: TimelineRate): T
   if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
     if (event.altKey) return null;
     const step = event.shiftKey ? Math.ceil(fps.num / fps.den) : 1;
-    return { kind: 'nudge', frames: event.key === 'ArrowRight' ? step : -step, repeat: event.repeat };
+    return { kind: 'nudge', frames: event.key === 'ArrowRight' ? step : -step };
   }
   if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
     return event.altKey && !event.shiftKey ? { kind: 'change_track', direction: event.key === 'ArrowUp' ? 1 : -1, repeat: event.repeat } : null;
