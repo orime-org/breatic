@@ -690,20 +690,26 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @param model - The model.
    * @param input - The run.
    * @param chosen - The caller's mode.
-   * @param durations - Known clip lengths, by our param name.
+   * @param planOptions - The task's source keys, live clones and known clip lengths (by our param name).
    * @returns The plan.
-   * @throws {NoUpstreamAvailable} When no upstream is configured.
+   * @throws {NoUpstreamAvailable} When no upstream of the route is configured and able to take the run.
    * @throws {UpstreamRequestRejected} When the route names an upstream the model is not bound to.
    */
-  const route = async (model: string, input: MediaInput, chosen: Route, durations: Record<string, number[]>): Promise<RoutePlan> => {
+  const route = async (model: string, input: MediaInput, chosen: Route, planOptions: PlanOptions): Promise<RoutePlan> => {
     const rules = provider.pricingRules(model);
+    const { durations } = planOptions;
     // A source sent without a known length is priced as a lower bound, and ranks after every known price.
     const durationsMissing = Object.keys(input.params).filter((p) => isPresent(input.params[p]) && durations[p] === undefined);
     const run = { params: input.params, prompt: input.prompt, durations, placeholders: [], durationsMissing };
     const candidates = await Promise.all(candidatesOf(config, model, keyOf).map(async (c): Promise<Candidate> => {
-      const read = await assess(rules, c.upstream, run);
+      // An upstream already holding the voice clone of the run's source skips the clone call, as planSteps does.
+      const reusedBy = bindingOf({ model, upstream: c.upstream }).reused_by;
+      const source = reusedBy === undefined ? undefined : input.params[reusedBy];
+      const sourceKey = typeof source === "string" ? planOptions.sourceKeys[source] : undefined;
+      const cloned = sourceKey !== undefined && planOptions.clones.some((k) => k.upstream === c.upstream && k.kind === "voice" && k.sourceKey === sourceKey);
+      const read = await assess(rules, c.upstream, run, cloned);
       if (read === undefined) return c;
-      return "rejected" in read ? { ...c, unsupported: read.rejected } : { ...c, estimateUsd: read.estimate.usd, estimateAtLeast: read.estimate.bound === "at_least" };
+      return "rejected" in read ? { ...c, unsupported: read.rejected } : { ...c, estimate: { usd: read.estimate.usd, atLeast: read.estimate.bound === "at_least" } };
     }));
     return planRoute(model, chosen, candidates);
   };
@@ -736,7 +742,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
   ): Promise<{ opened: Omit<Ticket, "steps">; warnings: MediaWarning[] } | MediaAnswer> => {
     let plan: RoutePlan;
     try {
-      plan = await route(model, input, chosen, planOptions.durations);
+      plan = await route(model, input, chosen, planOptions);
     } catch (error) {
       if (error instanceof NoUpstreamAvailable) return { state: "failed", reason: error, costs: [], ...common({ warnings: checkFailures(model, error.reasons) }) };
       throw error;
@@ -956,9 +962,8 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       // Runs before the provider layer all ran on WaveSpeed, which took them: the run stays on the model's WaveSpeed
       // binding of the lowest weight whatever routing or the input checks would choose now, and never moves on.
       const binding = (config.models[model] ?? []).filter((b) => config.upstreams[b.upstream]?.kind === "wavespeed").sort((x, y) => x.weight - y.weight)[0];
-      if (binding === undefined) {
-        return { state: "failed", reason: new Error(`${model} has no WaveSpeed binding to resume the run WaveSpeed took before the provider layer`), costs: [], ...common() };
-      }
+      // Without a WaveSpeed binding no upstream can resume the run WaveSpeed took, and none has a reason of its own to name.
+      if (binding === undefined) return { state: "failed", reason: new NoUpstreamAvailable(model, []), costs: [], ...common() };
       const candidate = candidateOf(config, binding.upstream, binding.weight, keyOf);
       if (!candidate.configured) {
         return { state: "failed", reason: new NoUpstreamAvailable(model, [{ upstream: candidate.upstream, kind: "missing_key", envVar: candidate.envVar }]), costs: [], ...common() };

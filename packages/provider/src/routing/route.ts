@@ -15,10 +15,11 @@ export interface Candidate {
   configured: boolean;
   /** The environment variable that holds the key. */
   envVar: string;
-  /** This call's estimate on this upstream, in USD; used by the cheapest mode. */
-  estimateUsd?: number;
-  /** Whether that estimate is only a lower bound (a source it bills by the length of has no known length); it then ranks after every known price. */
-  estimateAtLeast?: boolean;
+  /**
+   * This call's estimate on this upstream, used by the cheapest mode: `usd` in USD, and `atLeast` when it is only a
+   * lower bound (a source it bills by the length of has no known length), which ranks after every known price.
+   */
+  estimate?: { usd: number; atLeast: boolean };
   /** Why the upstream cannot take this run (a param and value, one of its own limits, or a check that failed to evaluate); it is then skipped. */
   unsupported?: RejectedInput;
 }
@@ -49,11 +50,13 @@ export function planRoute(model: string, route: Route, candidates: readonly Cand
     }
   }
   if (route.mode === "cheapest") {
-    pool.sort((a, b) => byPrice(
-      // No estimate at all is no more known than a lower bound.
-      { usd: a.estimateUsd ?? Infinity, atLeast: a.estimateAtLeast === true || a.estimateUsd === undefined, weight: a.weight },
-      { usd: b.estimateUsd ?? Infinity, atLeast: b.estimateAtLeast === true || b.estimateUsd === undefined, weight: b.weight },
-    ));
+    /**
+     * A candidate as `byPrice` orders it; no estimate at all is no more known than a lower bound.
+     * @param c - The candidate.
+     * @returns Its price, bound and weight.
+     */
+    const priced = (c: Candidate): { usd: number; atLeast: boolean; weight: number } => ({ usd: Infinity, atLeast: true, ...c.estimate, weight: c.weight });
+    pool.sort((a, b) => byPrice(priced(a), priced(b)));
   }
   const skipped: UnavailableReason[] = pool.flatMap((c): UnavailableReason[] => {
     if (!c.configured) return [{ upstream: c.upstream, kind: "missing_key", envVar: c.envVar }];

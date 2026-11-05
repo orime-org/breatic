@@ -155,11 +155,14 @@ describe("estimates skip an upstream that cannot take the run", () => {
       const rules = p.pricingRules("m");
       const estimate = await estimateCost(rules, p.availability("m"), run(params), { mode });
       const order = await orderByPrice(rules, p.availability("m"), run(params));
-      const candidates: Candidate[] = await Promise.all(p.availability("m").upstreams.map(async (u) => ({
-        ...u,
-        estimateUsd: order.find((e) => e.upstream === u.upstream)?.usd,
-        unsupported: await rejectedInput(rules, u.upstream, run(params)),
-      })));
+      const candidates: Candidate[] = await Promise.all(p.availability("m").upstreams.map(async (u) => {
+        const priced = order.find((e) => e.upstream === u.upstream);
+        return {
+          ...u,
+          estimate: priced === undefined ? undefined : { usd: priced.usd, atLeast: priced.bound === "at_least" },
+          unsupported: await rejectedInput(rules, u.upstream, run(params)),
+        };
+      }));
       let first: string | undefined;
       try {
         first = planRoute("m", { mode }, candidates).order[0]?.upstream;

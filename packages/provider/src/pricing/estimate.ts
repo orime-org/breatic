@@ -207,11 +207,12 @@ function upstreamRun(rule: UpstreamPricing, input: EstimateInput): { fields: Rec
  * @param run - The run in the upstream's field names (`upstreamRun`); its prompt field is set here.
  * @param run.fields - The fields.
  * @param run.durations - The clip lengths.
+ * @param cloned - Whether this upstream already holds a live clone of the source `reused_by` names, so the run skips the model's own call.
  * @returns The estimate.
  * @throws {jsonata.JsonataError} When a formula is not valid JSONata or fails to evaluate (a plain object, not an Error instance).
  * @throws {Error} When a formula gives no finite total_price for this run.
  */
-async function estimateOn(rule: UpstreamPricing, input: EstimateInput, { fields, durations }: ReturnType<typeof upstreamRun>): Promise<Estimate> {
+async function estimateOn(rule: UpstreamPricing, input: EstimateInput, { fields, durations }: ReturnType<typeof upstreamRun>, cloned: boolean): Promise<Estimate> {
   const fieldOf = fieldNamer(rule);
   const formulas = [rule.pricing.formula, ...rule.steps.map((s) => s.pricing?.formula ?? "")];
   let unknown = input.placeholders.some((p) => reads(formulas, fieldOf(p)))
@@ -219,6 +220,8 @@ async function estimateOn(rule: UpstreamPricing, input: EstimateInput, { fields,
   const promptField = rule.prompt_field;
   const textPriced = promptField !== undefined && input.prompt === "" && billsBy(formulas, "$length", promptField);
   const ownReused = rule.reused_by !== undefined && isPresent(input.params[rule.reused_by]);
+  // A clone this upstream already holds is skipped for sure, so it is neither priced nor a reason for `at_most`.
+  const ownSkipped = ownReused && cloned;
   const stepReused = rule.steps.some((s) => s.reused === true && (s.for_param === undefined || isPresent(input.params[s.for_param])));
 
   /**
@@ -229,7 +232,7 @@ async function estimateOn(rule: UpstreamPricing, input: EstimateInput, { fields,
    */
   const priceAt = async (prompt: string, skippable: boolean): Promise<number> => {
     if (promptField !== undefined) fields[promptField] = mentionsWritten(rule.mentions, prompt);
-    let usd = skippable || !ownReused ? await priceUsd(contractOf(rule.pricing), fields, durations) : 0;
+    let usd = (skippable && !ownSkipped) || !ownReused ? await priceUsd(contractOf(rule.pricing), fields, durations) : 0;
     for (const step of rule.steps) {
       if (!skippable && step.reused === true) continue;
       const source = step.for_param === undefined ? undefined : input.params[step.for_param];
@@ -248,7 +251,7 @@ async function estimateOn(rule: UpstreamPricing, input: EstimateInput, { fields,
     unknown = true;
   }
   if (unknown) return { usd: everyRun, bound: "at_least", upstream: rule.upstream };
-  return { usd, bound: ownReused || stepReused ? "at_most" : "exact", upstream: rule.upstream };
+  return { usd, bound: (ownReused && !ownSkipped) || stepReused ? "at_most" : "exact", upstream: rule.upstream };
 }
 
 /**
@@ -279,9 +282,10 @@ export function parsePricingRules(raw: unknown): PricingRules {
  * estimate leave it out alike.
  * @param rule - The upstream's pricing entry.
  * @param input - The prepared run.
+ * @param cloned - Whether the upstream already holds a live clone of the run's reused source.
  * @returns Why it cannot take the run, or what it would charge.
  */
-async function assessed(rule: UpstreamPricing, input: EstimateInput): Promise<{ rejected: RejectedInput } | { estimate: Estimate }> {
+async function assessed(rule: UpstreamPricing, input: EstimateInput, cloned: boolean): Promise<{ rejected: RejectedInput } | { estimate: Estimate }> {
   const allowed = [...Object.entries(rule.limits ?? {}), ...Object.entries(rule.voices ?? {})];
   for (const [param, values] of allowed) {
     const value = input.params[param];
@@ -299,22 +303,18 @@ async function assessed(rule: UpstreamPricing, input: EstimateInput): Promise<{ 
     }
   }
   try {
-    return { estimate: await estimateOn(rule, input, run) };
+    return { estimate: await estimateOn(rule, input, run, cloned) };
   } catch (error) {
     return { rejected: { reason: `${rule.upstream}'s price for this run could not be computed`, evaluationError: evaluationMessage(error) } };
   }
 }
 
 /**
- * Why an upstream cannot take a run: a value outside its limits, a voice it does not have, the first of its
- * own conditions (`rejects`) that holds, or a check that cannot be made on this run (one of those conditions fails to
- * evaluate, or its price cannot be computed), which keeps this upstream out with the evaluator's message and leaves every other upstream to
- * its own rules. A param the run leaves out or empty is always taken, and is not there for a condition to read;
- * neither is an empty prompt. The prompt is read as the upstream is sent it, each reference written its way.
- * @param rules - The model's pricing rules, whose entries carry each upstream's input limits.
+ * The rejection half of `assess`, for tests and the body script.
+ * @param rules - The model's pricing rules.
  * @param upstream - The upstream.
  * @param input - The prepared run.
- * @returns The param and value it cannot take, the reason of its condition, or the reason and the evaluation error; undefined when it takes the run or has no entry.
+ * @returns What `assess` rejects the run for; undefined when it takes the run or has no entry.
  */
 export async function rejectedInput(rules: PricingRules, upstream: string, input: EstimateInput): Promise<RejectedInput | undefined> {
   const read = await assess(rules, upstream, input);
@@ -322,16 +322,23 @@ export async function rejectedInput(rules: PricingRules, upstream: string, input
 }
 
 /**
- * One upstream's whole answer on a run, worked out once: why it cannot take the run (as `rejectedInput` answers), or
- * what it would charge (as each estimate reads it).
- * @param rules - The model's pricing rules.
+ * One upstream's whole answer on a run, worked out once: why it cannot take the run, or what it would charge (as each
+ * estimate reads it). It cannot take the run for a value outside its limits, a voice it does not have, the first of
+ * its own conditions (`rejects`) that holds, or a check that cannot be made on this run (one of those conditions fails
+ * to evaluate, or its price cannot be computed), which keeps this upstream out with the evaluator's message and leaves
+ * every other upstream to its own rules. A param the run leaves out or empty is always taken, and is not there for a
+ * condition to read; neither is an empty prompt. The prompt is read as the upstream is sent it, each reference written its way.
+ * @param rules - The model's pricing rules, whose entries carry each upstream's input limits.
  * @param upstream - The upstream.
  * @param input - The prepared run.
- * @returns The rejection or the estimate; undefined when the rules list no such upstream.
+ * @param cloned - Whether the upstream already holds a live clone of the source the binding's `reused_by` names; its
+ *   estimate then leaves out the clone call, which the run skips.
+ * @returns The param and value it cannot take, the reason of its condition, or the reason and the evaluation error; or
+ *   the estimate; undefined when the rules list no such upstream.
  */
-export async function assess(rules: PricingRules, upstream: string, input: EstimateInput): Promise<{ rejected: RejectedInput } | { estimate: Estimate } | undefined> {
+export async function assess(rules: PricingRules, upstream: string, input: EstimateInput, cloned = false): Promise<{ rejected: RejectedInput } | { estimate: Estimate } | undefined> {
   const rule = ruleOf(rules, upstream);
-  return rule === undefined ? undefined : assessed(rule, input);
+  return rule === undefined ? undefined : assessed(rule, input, cloned);
 }
 
 /**
