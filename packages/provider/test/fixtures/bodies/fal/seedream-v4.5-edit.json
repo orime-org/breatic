@@ -4,6 +4,14 @@
   "model_id": "fal-ai/bytedance/seedream/v4.5/edit",
   "runs": [
     {
+      "params": {},
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "prompt": "a red fox running through fresh snow at dawn",
+        "image_size": "auto_2K"
+      }
+    },
+    {
       "params": {
         "images": [
           "https://example.com/sample.png"

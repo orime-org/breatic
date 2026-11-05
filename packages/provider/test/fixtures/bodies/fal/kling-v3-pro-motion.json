@@ -5,16 +5,12 @@
   "runs": [
     {
       "params": {
-        "image": "https://example.com/sample.png",
-        "video": "https://example.com/sample.png",
         "character_orientation": "video",
         "keep_original_sound": true,
         "negative_prompt": ""
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
-        "image_url": "https://example.com/sample.png",
-        "video_url": "https://example.com/sample.png",
         "character_orientation": "video",
         "keep_original_sound": true,
         "prompt": "a red fox running through fresh snow at dawn"
@@ -22,16 +18,42 @@
     },
     {
       "params": {
-        "image": "https://example.com/sample.png",
-        "video": "https://example.com/sample.png",
+        "character_orientation": "video",
+        "keep_original_sound": true,
+        "negative_prompt": "",
+        "image": "https://example.com/sample.png"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "character_orientation": "video",
+        "keep_original_sound": true,
+        "image_url": "https://example.com/sample.png",
+        "prompt": "a red fox running through fresh snow at dawn"
+      }
+    },
+    {
+      "params": {
+        "character_orientation": "video",
+        "keep_original_sound": true,
+        "negative_prompt": "",
+        "video": "https://example.com/sample.png"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "character_orientation": "video",
+        "keep_original_sound": true,
+        "video_url": "https://example.com/sample.png",
+        "prompt": "a red fox running through fresh snow at dawn"
+      }
+    },
+    {
+      "params": {
         "character_orientation": "image",
         "keep_original_sound": true,
         "negative_prompt": ""
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
-        "image_url": "https://example.com/sample.png",
-        "video_url": "https://example.com/sample.png",
         "character_orientation": "image",
         "keep_original_sound": true,
         "prompt": "a red fox running through fresh snow at dawn"
@@ -39,16 +61,12 @@
     },
     {
       "params": {
-        "image": "https://example.com/sample.png",
-        "video": "https://example.com/sample.png",
         "character_orientation": "video",
         "keep_original_sound": false,
         "negative_prompt": ""
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
-        "image_url": "https://example.com/sample.png",
-        "video_url": "https://example.com/sample.png",
         "character_orientation": "video",
         "keep_original_sound": false,
         "prompt": "a red fox running through fresh snow at dawn"

@@ -4,13 +4,25 @@
   "model_id": "fal-ai/sync-lipsync/v3",
   "runs": [
     {
+      "params": {},
+      "prompt": "",
+      "body": {}
+    },
+    {
       "params": {
-        "audio": "https://example.com/sample.png",
+        "audio": "https://example.com/sample.png"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/sample.png"
+      }
+    },
+    {
+      "params": {
         "video": "https://example.com/sample.png"
       },
       "prompt": "",
       "body": {
-        "audio_url": "https://example.com/sample.png",
         "video_url": "https://example.com/sample.png"
       }
     }

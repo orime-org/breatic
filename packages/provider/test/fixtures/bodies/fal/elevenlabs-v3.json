@@ -7,45 +7,6 @@
       "params": {
         "similarity": 1,
         "stability": 0.5,
-        "voice_id": "Alicia"
-      },
-      "prompt": "a red fox running through fresh snow at dawn",
-      "body": {
-        "stability": 0.5,
-        "voice": "Alicia",
-        "text": "a red fox running through fresh snow at dawn"
-      }
-    },
-    {
-      "params": {
-        "similarity": 1,
-        "stability": 0,
-        "voice_id": "Alicia"
-      },
-      "prompt": "a red fox running through fresh snow at dawn",
-      "body": {
-        "stability": 0,
-        "voice": "Alicia",
-        "text": "a red fox running through fresh snow at dawn"
-      }
-    },
-    {
-      "params": {
-        "similarity": 1,
-        "stability": 1,
-        "voice_id": "Alicia"
-      },
-      "prompt": "a red fox running through fresh snow at dawn",
-      "body": {
-        "stability": 1,
-        "voice": "Alicia",
-        "text": "a red fox running through fresh snow at dawn"
-      }
-    },
-    {
-      "params": {
-        "similarity": 1,
-        "stability": 0.5,
         "voice_id": "Adam"
       },
       "prompt": "a red fox running through fresh snow at dawn",
@@ -338,6 +299,32 @@
       "body": {
         "stability": 0.5,
         "voice": "bIHbv24MWmeRgasZH58o",
+        "text": "a red fox running through fresh snow at dawn"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0,
+        "voice_id": "Adam"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0,
+        "voice": "pNInz6obpgDQGcFmaJgB",
+        "text": "a red fox running through fresh snow at dawn"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 1,
+        "voice_id": "Adam"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 1,
+        "voice": "pNInz6obpgDQGcFmaJgB",
         "text": "a red fox running through fresh snow at dawn"
       }
     }

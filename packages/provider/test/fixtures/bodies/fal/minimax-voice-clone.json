@@ -5,16 +5,25 @@
   "runs": [
     {
       "params": {
-        "audio": "https://example.com/sample.png",
-        "custom_voice_id": "sample text",
         "model": "speech-2.8-hd",
         "need_noise_reduction": true
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
-        "audio_url": "https://example.com/sample.png",
         "noise_reduction": true,
-        "text": "a red fox running through fresh snow at dawn",
+        "accuracy": 0.7
+      }
+    },
+    {
+      "params": {
+        "model": "speech-2.8-hd",
+        "need_noise_reduction": true,
+        "audio": "https://example.com/sample.png"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "noise_reduction": true,
+        "audio_url": "https://example.com/sample.png",
         "accuracy": 0.7
       }
     }
@@ -26,23 +35,22 @@
       "context": {
         "source": "https://example.com/sample.png",
         "params": {
-          "audio": "https://example.com/sample.png",
-          "custom_voice_id": "sample text",
           "model": "speech-2.8-hd",
           "need_noise_reduction": true
         },
         "prompt": "a red fox running through fresh snow at dawn",
         "customVoiceId": "BreaticSample",
         "voiceId": "voice-sample",
-        "description": null,
-        "itemIndex": null,
-        "param": null
+        "itemIndex": null
       },
       "body": {
         "prompt": "a red fox running through fresh snow at dawn",
         "voice_setting": {
           "voice_id": "voice-sample",
           "emotion": "happy"
+        },
+        "normalization_setting": {
+          "enabled": false
         }
       }
     }

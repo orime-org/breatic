@@ -4,13 +4,25 @@
   "model_id": "fal-ai/bytedance/dreamactor/v2",
   "runs": [
     {
+      "params": {},
+      "prompt": "",
+      "body": {}
+    },
+    {
       "params": {
-        "image": "https://example.com/sample.png",
+        "image": "https://example.com/sample.png"
+      },
+      "prompt": "",
+      "body": {
+        "image_url": "https://example.com/sample.png"
+      }
+    },
+    {
+      "params": {
         "video": "https://example.com/sample.png"
       },
       "prompt": "",
       "body": {
-        "image_url": "https://example.com/sample.png",
         "video_url": "https://example.com/sample.png"
       }
     }

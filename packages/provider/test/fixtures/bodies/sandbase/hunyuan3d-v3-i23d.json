@@ -5,20 +5,12 @@
   "runs": [
     {
       "params": {
-        "image": "https://example.com/sample.png",
-        "back_image": "sample text",
-        "left_image": "sample text",
-        "right_image": "sample text",
         "generate_type": "Normal",
         "enable_pbr": false,
         "face_count": 500000
       },
       "prompt": "",
       "body": {
-        "image": "https://example.com/sample.png",
-        "back_image": "sample text",
-        "left_image": "sample text",
-        "right_image": "sample text",
         "generate_type": "Normal",
         "enable_pbr": false,
         "mode": "async"
@@ -26,20 +18,72 @@
     },
     {
       "params": {
+        "generate_type": "Normal",
+        "enable_pbr": false,
+        "face_count": 500000,
+        "image": "https://example.com/sample.png"
+      },
+      "prompt": "",
+      "body": {
+        "generate_type": "Normal",
+        "enable_pbr": false,
         "image": "https://example.com/sample.png",
-        "back_image": "sample text",
-        "left_image": "sample text",
-        "right_image": "sample text",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "generate_type": "Normal",
+        "enable_pbr": false,
+        "face_count": 500000,
+        "back_image": "https://example.com/sample.png"
+      },
+      "prompt": "",
+      "body": {
+        "generate_type": "Normal",
+        "enable_pbr": false,
+        "back_image": "https://example.com/sample.png",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "generate_type": "Normal",
+        "enable_pbr": false,
+        "face_count": 500000,
+        "left_image": "https://example.com/sample.png"
+      },
+      "prompt": "",
+      "body": {
+        "generate_type": "Normal",
+        "enable_pbr": false,
+        "left_image": "https://example.com/sample.png",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "generate_type": "Normal",
+        "enable_pbr": false,
+        "face_count": 500000,
+        "right_image": "https://example.com/sample.png"
+      },
+      "prompt": "",
+      "body": {
+        "generate_type": "Normal",
+        "enable_pbr": false,
+        "right_image": "https://example.com/sample.png",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
         "generate_type": "LowPoly",
         "enable_pbr": false,
         "face_count": 500000
       },
       "prompt": "",
       "body": {
-        "image": "https://example.com/sample.png",
-        "back_image": "sample text",
-        "left_image": "sample text",
-        "right_image": "sample text",
         "generate_type": "LowPoly",
         "enable_pbr": false,
         "mode": "async"
@@ -47,20 +91,12 @@
     },
     {
       "params": {
-        "image": "https://example.com/sample.png",
-        "back_image": "sample text",
-        "left_image": "sample text",
-        "right_image": "sample text",
         "generate_type": "Geometry",
         "enable_pbr": false,
         "face_count": 500000
       },
       "prompt": "",
       "body": {
-        "image": "https://example.com/sample.png",
-        "back_image": "sample text",
-        "left_image": "sample text",
-        "right_image": "sample text",
         "generate_type": "Geometry",
         "enable_pbr": false,
         "mode": "async"

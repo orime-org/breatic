@@ -6,19 +6,29 @@
  * `packages/provider/src/media/__tests__/reseller-body-fixture.test.ts` compares the bindings
  * against. Run from the repository root with `pnpm provider:reseller-bodies`; it calls no upstream.
  *
- * One file per binding, `packages/provider/test/fixtures/bodies/<upstream>/<model>.json`: the
- * body of a run with every param at its catalog default (a param without one at a sample value),
- * one run per value a param's sample must cover (each supported offered value, a range's two ends,
- * each voice of a voice map), and the body of each extra step built by its codec with one fixed
- * context. A file whose binding is gone is removed. Review the diff before committing it.
+ * One file per binding, `packages/provider/test/fixtures/bodies/<upstream>/<model>.json`, holding
+ * only runs the binding takes (`rejectedInput`): first the run with every param at its catalog
+ * default (a null default left unset), then one run per value a param's sample covers
+ * (`coveredValues`) and one per bound param without a default at a sample value (a list one url,
+ * items two items, sent without a prompt when they carry the shots, a text "sample text"). A covered
+ * value the default run's variants miss is tried on each run taken, and listed in `untaken` when none takes it. A param an extra step serves carries the id that step
+ * answers in `ids`, as the runner writes it; a binding whose own call is a voice clone
+ * (`reused_by`) shows the body of that call as the voice step writes it. Each extra step's body is
+ * built by its codec with one fixed context. A file whose binding is gone is removed. Review the
+ * diff before committing it.
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
-import { parse } from "yaml";
-import type { MediaBinding, ProviderConfigInput } from "../packages/provider/src/config/schema.js";
+import type { MediaBinding } from "../packages/provider/src/config/schema.js";
 import { adapterOf } from "../packages/provider/src/media/adapters.js";
 import { buildBody } from "../packages/provider/src/media/body.js";
+import { rejectedInput } from "../packages/provider/src/pricing/estimate.js";
+import { createProvider } from "../packages/provider/src/provider.js";
+
+// The test helpers read `__dirname`, which only a CommonJS load of them has.
+const { catalog, coveredValues, shipped } = createRequire(import.meta.url)("../packages/provider/src/config/__tests__/shipped.ts") as typeof import("../packages/provider/src/config/__tests__/shipped.js");
 
 /** One param of our catalog, as far as samples read it. */
 interface CatalogParam {
@@ -29,26 +39,24 @@ interface CatalogParam {
   type?: string;
   fields?: Record<string, { values?: (string | number | boolean)[] }>;
   accepts?: string;
+  description?: string;
+}
+
+/** One sample run. */
+interface Run {
+  params: Record<string, unknown>;
+  prompt: string;
 }
 
 const ROOT = resolve(import.meta.dirname, "..");
 const BODIES = resolve(ROOT, "packages/provider/test/fixtures/bodies");
-const MODALITIES = ["image", "video", "audio", "tts", "three_d"] as const;
-const CATALOG = ["image/models.yaml", "video/models.yaml", "audio/models.yaml", "tts/models.yaml", "three_d/meshy.yaml", "three_d/hunyuan3d.yaml"];
 const RESELLERS = ["fal", "sandbase"] as const;
 const SAMPLE_URL = "https://example.com/sample.png";
 const SAMPLE_TEXT = "sample text";
 const SAMPLE_WORD = "sample";
 const SAMPLE_PROMPT = "a red fox running through fresh snow at dawn";
-
-/**
- * Read a yaml file under the repository's `config/`.
- * @param path - The path below `config/`.
- * @returns Its content.
- */
-function yaml<T>(path: string): T {
-  return parse(readFileSync(resolve(ROOT, "config", path), "utf8")) as T;
-}
+/** The clone id a voice step registers in the samples. */
+const SAMPLE_VOICE_ID = "BreaticSample";
 
 /**
  * One sample item of an `items` param from its fields.
@@ -60,33 +68,24 @@ function sampleItem(param: CatalogParam): Record<string, unknown> {
 }
 
 /**
- * The value a sample run gives a param: its catalog default, else a sample of its kind.
- * @param param - The catalog's param.
- * @returns The value.
+ * Whether an `items` param's items carry the shots, each with its own prompt; a run carrying them sends no prompt of its own.
+ * @param param - The param.
+ * @returns True for such a param.
  */
-function defaultOf(param: CatalogParam): unknown {
-  if (param.default !== undefined && param.default !== null) return param.default;
-  if (param.type === "items") return [sampleItem(param), sampleItem(param)];
-  if (param.type === "list") return [SAMPLE_URL];
-  if (param.accepts !== undefined) return SAMPLE_URL;
-  if (param.values !== undefined && param.values.length > 0) return param.values[0];
-  if (param.min !== undefined) return param.min;
-  return SAMPLE_TEXT;
+function carriesShots(param: CatalogParam | undefined): boolean {
+  return param?.type === "items" && param.fields?.prompt !== undefined;
 }
 
 /**
- * The values of a param a binding's sample covers: each offered value it supports, a range's ends, a voice map's voices.
- * @param name - The param.
+ * The value a param without a default is sampled at.
  * @param param - The catalog's param.
- * @param binding - The binding.
- * @returns The values.
+ * @returns The value.
  */
-function coveredValues(name: string, param: CatalogParam | undefined, binding: MediaBinding): unknown[] {
-  const voices = binding.voice_map?.[name];
-  let values: unknown[] = voices !== undefined ? Object.keys(voices) : param?.values ?? (param?.min !== undefined && param.max !== undefined ? [param.min, param.max] : []);
-  const supported = binding.params?.[name]?.supported;
-  if (supported !== undefined) values = values.filter((v) => supported.includes(v as string | number | boolean));
-  return values;
+function sampleOf(param: CatalogParam): unknown {
+  if (param.type === "items") return [sampleItem(param), sampleItem(param)];
+  if (param.type === "list") return [SAMPLE_URL];
+  if (param.accepts !== undefined || /\bURL\b/.test(param.description ?? "")) return SAMPLE_URL;
+  return SAMPLE_TEXT;
 }
 
 /**
@@ -109,39 +108,103 @@ function writeJson(path: string, content: unknown): void {
   writeFileSync(path, `${JSON.stringify(content, null, 2)}\n`);
 }
 
-const upstreams = yaml<{ upstreams: ProviderConfigInput["upstreams"] }>("provider/upstreams.yaml").upstreams;
-const models: Record<string, { upstreams: MediaBinding[] }> = {};
-for (const modality of MODALITIES) Object.assign(models, yaml<{ models: Record<string, { upstreams: MediaBinding[] }> }>(`provider/media/${modality}.yaml`).models);
-const catalog = new Map(CATALOG.flatMap((file) => yaml<{ models: { name: string; params?: Record<string, CatalogParam> }[] }>(`models/${file}`).models)
-  .map((m) => [m.name, m.params ?? {}]));
+const config = shipped();
+const provider = createProvider({ config, keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
+const offered = new Map(catalog().models.map((m) => [m.name, m.params as Record<string, CatalogParam>]));
+
+/**
+ * Whether the binding takes a run.
+ * @param model - Our model.
+ * @param binding - The binding.
+ * @param run - The run.
+ * @returns True when no limit, voice map or reject of the binding refuses it.
+ */
+async function takes(model: string, binding: MediaBinding, run: Run): Promise<boolean> {
+  return (await rejectedInput(provider.pricingRules(model), binding.upstream, { ...run, durations: {}, placeholders: [], durationsMissing: [] })) === undefined;
+}
+
+/**
+ * The run with one param set: without a prompt when the param's items carry the shots.
+ * @param base - The run it changes.
+ * @param name - The param.
+ * @param value - Its value.
+ * @param param - The catalog's param.
+ * @returns The run.
+ */
+function withParam(base: Run, name: string, value: unknown, param: CatalogParam | undefined): Run {
+  return { params: { ...base.params, [name]: value }, prompt: carriesShots(param) ? "" : base.prompt };
+}
+
+/**
+ * The body of a run's first call as the runner sends it: the voice step's when the call clones a source, else the binding's.
+ * @param binding - The binding.
+ * @param run - The run.
+ * @param ids - The ids its extra steps answered, by the param they serve.
+ * @param kind - The upstream's kind.
+ * @returns The body.
+ * @throws {Error} When the upstream has no voice step for a binding that clones.
+ */
+function firstBody(binding: MediaBinding, run: Run, ids: Record<string, string>, kind: string): Record<string, unknown> {
+  const params = { ...run.params, ...ids };
+  if (binding.reused_by === undefined) return buildBody(binding, { params, prompt: run.prompt });
+  const voice = adapterOf(kind).steps.voice;
+  if (voice === undefined) throw new Error(`${binding.upstream} has no voice step`);
+  return voice.body({ source: () => String(run.params[binding.reused_by!]), params, prompt: run.prompt, binding, customVoiceId: SAMPLE_VOICE_ID, voiceId: undefined, description: undefined, itemIndex: null, param: undefined });
+}
 
 const written = new Set<string>();
-for (const [model, { upstreams: bindings }] of Object.entries(models)) {
+for (const [model, { upstreams: bindings }] of Object.entries(config.media.models)) {
   for (const binding of bindings.filter((b) => (RESELLERS as readonly string[]).includes(b.upstream))) {
-    const params = catalog.get(model) ?? {};
+    const params = offered.get(model) ?? {};
     const prompt = promptOf(binding);
-    const defaults = Object.fromEntries(Object.entries(params).map(([name, param]) => [name, defaultOf(param)]));
-    const runs = [defaults];
-    for (const name of Object.keys(binding.params ?? {})) {
-      for (const value of coveredValues(name, params[name], binding)) {
-        if (String(value) !== String(defaults[name])) runs.push({ ...defaults, [name]: value });
+    const bound = Object.keys(binding.params ?? {});
+    const defaults = Object.fromEntries(Object.entries(params).map(([name, p]) => [name, p.default]).filter(([, v]) => v !== undefined && v !== null));
+    const first: Run = { params: defaults, prompt };
+    const candidates: Run[] = [first];
+    for (const name of bound) {
+      const values = coveredValues(name, params[name], binding);
+      for (const value of values) if (String(value) !== String(defaults[name])) candidates.push(withParam(first, name, value, params[name]));
+      if (values.length === 0 && defaults[name] === undefined && params[name] !== undefined) candidates.push(withParam(first, name, sampleOf(params[name]), params[name]));
+    }
+    const runs: Run[] = [];
+    for (const run of candidates) if (await takes(model, binding, run)) runs.push(run);
+    if (runs.length === 0) throw new Error(`${model} on ${binding.upstream}: the binding takes none of the sample runs`);
+    // A value no run above carries is tried on each run taken, and listed as untaken when every one refuses it.
+    const base = runs[0]!;
+    const untaken: { param: string; value: unknown }[] = [];
+    for (const name of bound) {
+      const values = coveredValues(name, params[name], binding);
+      const wanted = values.length === 0 && !runs.some((r) => r.params[name] !== undefined && r.params[name] !== null) && params[name] !== undefined ? [sampleOf(params[name])] : values;
+      for (const value of wanted) {
+        if (runs.some((r) => r.params[name] !== undefined && r.params[name] !== null && String(r.params[name]) === String(value))) continue;
+        let taken: Run | undefined;
+        for (const run of [...runs]) {
+          const trial = withParam(run, name, value, params[name]);
+          if (await takes(model, binding, trial)) {
+            taken = trial;
+            break;
+          }
+        }
+        if (taken !== undefined) runs.push(taken);
+        else untaken.push({ param: name, value });
       }
     }
-    const kind = upstreams[binding.upstream]!.kind;
+    const kind = config.upstreams[binding.upstream]!.kind;
+    const served = (binding.extra_steps ?? []).filter((s) => s.for_param !== undefined);
     const steps = (binding.extra_steps ?? []).map((step) => {
       const codec = adapterOf(kind).steps[step.kind as keyof ReturnType<typeof adapterOf>["steps"]];
       if (codec === undefined) throw new Error(`${model} on ${binding.upstream}: no ${step.kind} step codec`);
-      const context = {
+      const context: { source: string; params: Record<string, unknown>; prompt: string; customVoiceId: string; voiceId: string; itemIndex: number | null; description?: string; param?: string } = {
         source: SAMPLE_URL,
-        params: defaults,
-        prompt,
-        customVoiceId: "BreaticSample",
+        params: base.params,
+        prompt: base.prompt,
+        customVoiceId: SAMPLE_VOICE_ID,
         voiceId: "voice-sample",
-        description: step.kind === "element" ? SAMPLE_TEXT : null,
         itemIndex: step.per_item === true ? 0 : null,
-        param: step.for_param ?? null,
+        ...(step.kind === "element" ? { description: SAMPLE_TEXT } : {}),
+        ...(step.for_param === undefined ? {} : { param: step.for_param }),
       };
-      const body = codec.body({ ...context, source: () => SAMPLE_URL, binding, voiceId: context.voiceId, description: context.description ?? undefined, param: context.param ?? undefined });
+      const body = codec.body({ ...context, source: () => context.source, binding, description: context.description, param: context.param });
       return { kind: step.kind, endpoint: step.endpoint, context, body };
     });
     const path = resolve(BODIES, binding.upstream, `${model}.json`);
@@ -149,7 +212,11 @@ for (const [model, { upstreams: bindings }] of Object.entries(models)) {
       model,
       upstream: binding.upstream,
       model_id: binding.model_id,
-      runs: runs.map((run) => ({ params: run, prompt, body: buildBody(binding, { params: run, prompt }) })),
+      runs: runs.map((run) => {
+        const ids = Object.fromEntries(served.filter((s) => run.params[s.for_param!] !== undefined && run.params[s.for_param!] !== null).map((s) => [s.for_param!, `${s.kind}-id`]));
+        return { params: run.params, prompt: run.prompt, ...(Object.keys(ids).length === 0 ? {} : { ids }), body: firstBody(binding, run, ids, kind) };
+      }),
+      ...(untaken.length === 0 ? {} : { untaken }),
       steps,
     });
     written.add(path);

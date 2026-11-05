@@ -5,14 +5,12 @@
   "runs": [
     {
       "params": {
-        "audio": "https://example.com/sample.png",
         "strength": 0.85,
         "target_lufs": -16,
         "output_format": "wav"
       },
       "prompt": "",
       "body": {
-        "audio_url": "https://example.com/sample.png",
         "strength": 0.85,
         "target_lufs": -16,
         "output_format": "wav"
@@ -20,14 +18,27 @@
     },
     {
       "params": {
-        "audio": "https://example.com/sample.png",
+        "strength": 0.85,
+        "target_lufs": -16,
+        "output_format": "wav",
+        "audio": "https://example.com/sample.png"
+      },
+      "prompt": "",
+      "body": {
+        "strength": 0.85,
+        "target_lufs": -16,
+        "output_format": "wav",
+        "audio_url": "https://example.com/sample.png"
+      }
+    },
+    {
+      "params": {
         "strength": 0,
         "target_lufs": -16,
         "output_format": "wav"
       },
       "prompt": "",
       "body": {
-        "audio_url": "https://example.com/sample.png",
         "strength": 0,
         "target_lufs": -16,
         "output_format": "wav"
@@ -35,14 +46,12 @@
     },
     {
       "params": {
-        "audio": "https://example.com/sample.png",
         "strength": 1,
         "target_lufs": -16,
         "output_format": "wav"
       },
       "prompt": "",
       "body": {
-        "audio_url": "https://example.com/sample.png",
         "strength": 1,
         "target_lufs": -16,
         "output_format": "wav"

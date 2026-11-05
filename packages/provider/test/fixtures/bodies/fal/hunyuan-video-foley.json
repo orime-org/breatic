@@ -4,6 +4,13 @@
   "model_id": "fal-ai/hunyuan-video-foley",
   "runs": [
     {
+      "params": {},
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "text_prompt": "a red fox running through fresh snow at dawn"
+      }
+    },
+    {
       "params": {
         "video": "https://example.com/sample.png"
       },

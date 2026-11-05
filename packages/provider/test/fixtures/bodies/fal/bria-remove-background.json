@@ -4,6 +4,11 @@
   "model_id": "fal-ai/bria/background/remove",
   "runs": [
     {
+      "params": {},
+      "prompt": "",
+      "body": {}
+    },
+    {
       "params": {
         "image": "https://example.com/sample.png"
       },

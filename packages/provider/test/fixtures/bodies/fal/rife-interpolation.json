@@ -4,6 +4,11 @@
   "model_id": "fal-ai/rife/video",
   "runs": [
     {
+      "params": {},
+      "prompt": "",
+      "body": {}
+    },
+    {
       "params": {
         "video": "https://example.com/sample.png"
       },
