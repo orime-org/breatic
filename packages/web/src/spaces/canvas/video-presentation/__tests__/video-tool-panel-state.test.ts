@@ -127,3 +127,32 @@ describe('the single panel derivation (§95; design §7.12 steps 1–5, §10.4)'
       .toEqual(['usable', 'retryable', 'waiting-table', 'usable']);
   });
 });
+
+// §95 D9-2 (design §7.12 末段): a multi-input tool (transitions) derives each input on its own and shows the worst, in the
+// order unsupported, retryable, waiting-presentation, waiting-table, usable, with that input's reason code. The reason is
+// a code, never copy (D9-3: the copy waits for the demo).
+interface Ranked { state: State; reason: string | null }
+const worst = (owner as unknown as { worstVideoToolPanelState: (inputs: readonly Ranked[]) => Ranked }).worstVideoToolPanelState;
+const ORDER: readonly State[] = ['unsupported', 'retryable', 'waiting-presentation', 'waiting-table', 'usable'];
+
+describe('the worst input of a multi-input panel (§95 D9-2; design §7.12)', () => {
+  it('W01 takes the worst state and that input\'s reason code', () => {
+    expect(worst([{ state: 'usable', reason: null }, { state: 'retryable', reason: 'expired' }, { state: 'waiting-table', reason: null }])).toEqual({ state: 'retryable', reason: 'expired' });
+    expect(worst([{ state: 'waiting-table', reason: null }, { state: 'unsupported', reason: 'too_long' }, { state: 'retryable', reason: 'presentation_invalid' }])).toEqual({ state: 'unsupported', reason: 'too_long' });
+    expect(worst([{ state: 'waiting-table', reason: null }, { state: 'waiting-presentation', reason: null }])).toEqual({ state: 'waiting-presentation', reason: null });
+  });
+
+  it('W02 one input is its own panel state', () => {
+    for (const state of ORDER) expect(worst([{ state, reason: state === 'usable' ? null : 'code' }])).toEqual({ state, reason: state === 'usable' ? null : 'code' });
+  });
+
+  it('W03 the panel is usable only when every input is usable, and its state is always the worst by the order (property)', () => {
+    const ranked = fc.record({ state: fc.constantFrom(...ORDER), reason: fc.option(fc.constantFrom('expired', 'too_long', 'presentation_invalid', 'invalid_edit'), { nil: null }) });
+    fc.assert(fc.property(fc.array(ranked, { minLength: 1, maxLength: 6 }), (inputs) => {
+      const result = worst(inputs);
+      const rank = Math.min(...inputs.map((input) => ORDER.indexOf(input.state)));
+      expect(result.state).toBe(ORDER[rank]);
+      expect(inputs).toContainEqual(result);
+    }), { seed: 130695, numRuns: 100 });
+  });
+});
