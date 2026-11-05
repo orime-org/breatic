@@ -7,7 +7,10 @@ import { presentationFrameCount, presentationTableSchema, type VideoPresentation
 import { readMeasuredVideoJson, VideoSourceLedgerReadRefused } from '@shared/upload/read-video-source-ledger.js';
 import { videoPresentationTableReceiptSchema } from '@shared/upload/video-source-ledger.js';
 import type { VideoSourceLedgerReceiptV2 } from '@shared/upload/video-source-ledger-types.js';
-import { videoPresentationCompactSchema, videoPresentationLedgerReceiptSchema, videoPresentationLedgerSchema, type VideoPresentationLedger } from '@shared/upload/video-presentation-version.js';
+import {
+  alphaPackedManifestMatchesVersion, alphaPackedManifestSchema, videoPresentationCompactSchema, videoPresentationLedgerReceiptSchema, videoPresentationLedgerSchema,
+  type AlphaPackedManifest, type VideoPresentationLedger, type VideoPresentationVersion,
+} from '@shared/upload/video-presentation-version.js';
 
 /** The byte budget for a compact presentation table; frame counts are not capped. */
 export interface VideoPresentationTableReadLimits { maxBytes: number }
@@ -117,5 +120,29 @@ export async function readVideoPresentationLedger(
   assertBeforeDeadline(options.deadlineAt);
   if (!parsed.success || parsed.data.sourceFingerprint !== stored.data.sourceFingerprint || parsed.data.toolInputId !== stored.data.toolInputId ||
     parsed.data.planSha256 !== stored.data.planSha256) throw new VideoSourceLedgerReadRefused('content');
+  return parsed.data;
+}
+
+/**
+ * Read the manifest an alpha-packed version's receipt measures (design §3.5 alpha manifest row, §7.8): the bytes must
+ * match the receipt's size and SHA-256, parse as the strict manifest and belong to this version.
+ * @param version - The selected alpha-packed version.
+ * @param options - One absolute deadline and optional caller cancellation.
+ * @param options.deadlineAt - The absolute read deadline in epoch milliseconds.
+ * @param options.signal - The caller's cancellation lifetime.
+ * @returns The validated manifest.
+ * @throws {VideoSourceLedgerReadRefused} When the version is not alpha-packed or the manifest differs from it.
+ * @throws {DeadlinePassed} When the absolute deadline expires.
+ * @throws {BodyTooLarge} When more bytes arrive than the receipt measured.
+ * @throws {EmptyBody} When the response has no body.
+ * @throws {Error} When transport fails or the caller cancels.
+ */
+export async function readAlphaPackedManifest(version: VideoPresentationVersion, options: { deadlineAt: number; signal?: AbortSignal }): Promise<AlphaPackedManifest> {
+  if (version.playback.kind !== 'alpha-packed') throw new VideoSourceLedgerReadRefused('receipt');
+  const value = await readMeasuredVideoJson(version.playback.manifest, options);
+  const parsed = alphaPackedManifestSchema.safeParse(value);
+  options.signal?.throwIfAborted();
+  assertBeforeDeadline(options.deadlineAt);
+  if (!parsed.success || !alphaPackedManifestMatchesVersion(parsed.data, version)) throw new VideoSourceLedgerReadRefused('content');
   return parsed.data;
 }

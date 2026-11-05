@@ -1093,6 +1093,7 @@ export {
   readVideoPresentationTable,
   readVideoPresentationCompact,
   readVideoPresentationLedger,
+  readAlphaPackedManifest,
   videoPresentationTableReadLimitsSchema,
   type VideoPresentationTableReadLimits,
 } from "@shared/upload/read-video-presentation-table.js";
