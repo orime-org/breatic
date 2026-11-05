@@ -11,7 +11,7 @@
 
 import { act } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { TextSelection } from '@tiptap/pm/state';
+import { AllSelection, NodeSelection, TextSelection, type Selection } from '@tiptap/pm/state';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
 import { canvasClipboardOf } from './canvas-clipboard-fixture';
@@ -313,5 +313,124 @@ describe('a code block taking content line by line', () => {
     pasteFormats(editor, formats);
     await settled();
     expect(shape(editor)).toEqual(['codeBlock:xc1\tc2\nd1\td2y', 'paragraph:tail']);
+  });
+});
+
+describe('one line of words keeps the target line\'s quote and type (§5.4.3)', () => {
+  it.each([
+    ['an empty quoted line', [{ type: 'paragraph', content: 'lead' }, { type: 'paragraph', props: { quoted: true } }, { type: 'paragraph', content: 'tail' }], (e: Editor) => select(e, nodeAt(e, 'blockContainer', 1) + 2)],
+    ['a quoted line selected whole', [{ type: 'paragraph', content: 'lead' }, { type: 'paragraph', props: { quoted: true }, content: 'abcd' }, { type: 'paragraph', content: 'tail' }], (e: Editor) => select(e, positionOf(e, 'abcd', 0), positionOf(e, 'abcd', 4))],
+  ] as const)('pasted on %s, stays quoted', async (_name, blocks, aim) => {
+    const editor = await openReady([...blocks]);
+    aim(editor);
+    pasteFormats(editor, { 'text/html': '<p>w</p>', 'text/plain': 'w' });
+    await settled();
+    const line = editor.prosemirrorView.state.doc.firstChild!.child(1).firstChild!;
+    expect([line.textContent, line.attrs['quoted']]).toEqual(['w', true]);
+  });
+
+  it.each(['heading', 'bulletListItem', 'checkListItem'])('pasted over a %s whose words are selected whole, keeps that type', async (type) => {
+    const editor = await openReady([{ type: 'paragraph', content: 'lead' }, { type, content: 'abcd' }, { type: 'paragraph', content: 'tail' }]);
+    select(editor, positionOf(editor, 'abcd', 0), positionOf(editor, 'abcd', 4));
+    pasteFormats(editor, { 'text/html': '<p>w</p>', 'text/plain': 'w' });
+    await settled();
+    expect(shape(editor)).toEqual(['paragraph:lead', `${type}:w`, 'paragraph:tail']);
+  });
+
+  it('pasted between two quoted pictures, lands quoted', async () => {
+    const editor = await openReady([{ type: 'paragraph', content: 'lead' }, { type: 'image', props: { url: PIC, quoted: true } }, { type: 'image', props: { url: `${OURS}q.png`, quoted: true } }, { type: 'paragraph', content: 'tail' }]);
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, nodeAt(editor, 'image', 1))));
+    view.focus();
+    view.someProp('handleKeyDown', (handle) => handle(view, new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true })));
+    pasteFormats(editor, { 'text/html': '<p>w</p>', 'text/plain': 'w' });
+    await settled();
+    let found: PMNode | null = null;
+    view.state.doc.descendants((node) => {
+      if (found === null && node.isTextblock && node.textContent === 'w') found = node;
+      return found === null;
+    });
+    expect((found as PMNode | null)?.attrs['quoted']).toBe(true);
+  });
+});
+
+describe('copies of every shape the body makes paste in', () => {
+  /**
+   * A copy of the selection the body holds, as its copy writes it.
+   * @param editor - The body copied from.
+   * @param selection - The selection.
+   * @returns The clipboard's formats.
+   */
+  function copySelection(editor: Editor, selection: Selection): Record<string, string> {
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.setSelection(selection));
+    const { dom, text } = view.serializeForClipboard(view.state.selection.content());
+    return { 'blocknote/html': dom.innerHTML, 'text/html': dom.innerHTML, 'text/plain': text };
+  }
+
+  /**
+   * Pastes formats in the middle of `wxyz` in a new body.
+   * @param formats - The clipboard.
+   * @returns The new body.
+   */
+  async function pasteMid(formats: Record<string, string>): Promise<Editor> {
+    const editor = await openReady([{ type: 'paragraph', content: 'wxyz' }]);
+    select(editor, positionOf(editor, 'wxyz', 2));
+    pasteFormats(editor, formats);
+    await settled();
+    return editor;
+  }
+
+  it('a copy of the whole body', async () => {
+    const source = await openReady([{ type: 'heading', content: 'hhhh' }, { type: 'paragraph', content: 'pppp', children: [{ type: 'paragraph', content: 'kkkk' }] }]);
+    const editor = await pasteMid(copySelection(source, new AllSelection(source.prosemirrorView.state.doc)));
+    expect(editor.prosemirrorView.state.doc.textContent).toBe('wxhhhhppppkkkkyz');
+  });
+
+  it('a copy starting in a table nested under a line and leaving it', async () => {
+    const source = await openReady([{ type: 'paragraph', content: 'pppp', children: [tableBlock({ rows: [{ cells: ['c1', 'c2'] }] })] }, { type: 'paragraph', content: 'qqqq' }]);
+    const editor = await pasteMid(copySelection(source, TextSelection.create(source.prosemirrorView.state.doc, positionOf(source, 'c1', 1), positionOf(source, 'qqqq', 2))));
+    expect(shape(editor)).toContain('table');
+    expect(editor.prosemirrorView.state.doc.textContent).toContain('qq');
+  });
+
+  it.each([
+    ['from a stored cell out of the table', (s: Editor) => TextSelection.create(s.prosemirrorView.state.doc, positionOf(s, 'l2', 1), positionOf(s, 'twox', 3))],
+    ['from outside into a stored cell', (s: Editor) => TextSelection.create(s.prosemirrorView.state.doc, positionOf(s, 'xone', 1), positionOf(s, 'l1', 1))],
+  ] as const)('a copy %s carries the whole table', async (_name, pick) => {
+    const source = await openReady([{ type: 'paragraph', content: 'xone' }, STORED, { type: 'paragraph', content: 'twox' }]);
+    const editor = await pasteMid(copySelection(source, pick(source)));
+    expect(shape(editor)).toContain('table');
+    expect(editor.prosemirrorView.state.doc.textContent).toContain('l1l2');
+  });
+
+  it('a stored cell\'s words copied by BlockNote alone paste in as words, the body valid', async () => {
+    const source = await openReady([{ type: 'paragraph', content: 'lead' }, STORED]);
+    const view = source.prosemirrorView;
+    const slice = TextSelection.create(view.state.doc, positionOf(source, 'l1', 0), positionOf(source, 'l1', 2)).content();
+    const { dom, text } = view.serializeForClipboard(slice);
+    const editor = await pasteMid({ 'blocknote/html': dom.innerHTML, 'text/html': dom.innerHTML, 'text/plain': text });
+    expect(() => editor.prosemirrorView.state.doc.check()).not.toThrow();
+    expect(editor.prosemirrorView.state.doc.textContent).toContain('l1');
+  });
+});
+
+describe('a stored table dragged inside the body', () => {
+  it('copied twice leaves no row without an id of its own', async () => {
+    const editor = await openReady([{ type: 'paragraph', content: 'lead' }, STORED, { type: 'paragraph', content: 'tail' }, { type: 'paragraph', content: 'more' }]);
+    dragWithin(editor, positionOf(editor, 'lead', 1), positionOf(editor, 'l1', 1), positionOf(editor, 'tail', 4), true);
+    await settled();
+    dragWithin(editor, positionOf(editor, 'lead', 1), positionOf(editor, 'l1', 1), positionOf(editor, 'more', 4), true);
+    await settled();
+    expect(ids(editor)).not.toContain('null');
+    expectUniqueIds(editor);
+  });
+
+  it('moved from one cell into the next takes the whole table from where it was', async () => {
+    const editor = await openReady([{ type: 'paragraph', content: 'lead' }, STORED, { type: 'paragraph', content: 'tail' }]);
+    dragWithin(editor, positionOf(editor, 'l1', 1), positionOf(editor, 'l2', 1), positionOf(editor, 'tail', 4));
+    await settled();
+    expect(shape(editor).filter((line) => line === 'table')).toHaveLength(1);
+    expect(editor.prosemirrorView.state.doc.textContent.match(/l1l2/g)).toHaveLength(1);
   });
 });
