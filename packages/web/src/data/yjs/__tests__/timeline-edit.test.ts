@@ -6,7 +6,7 @@ import fc from 'fast-check';
 
 import { planTimelineEdit } from '@web/data/yjs/timeline-edit';
 import { timelineSourceOverflow, validateTimelineRange } from '@web/data/yjs/timeline-time';
-import type { TimelineEditPlan } from '@web/data/yjs/timeline-edit';
+import type { TimelineEditPlan, TimelineEditRefusal } from '@web/data/yjs/timeline-edit';
 import { TIMELINE_MAIN_TRACK_ID, TimelineDocumentV1Schema } from '@breatic/shared';
 import { TimelineEditCommandSchema } from '@web/data/yjs/timeline-edit';
 import type { TimelineDocumentV1, TimelineVideoClip } from '@breatic/shared';
@@ -18,8 +18,9 @@ import {
 
 type Accepted = Extract<TimelineEditPlan, { ok: true }>;
 
-const REASONS = [
-  'target_missing', 'track_missing', 'invalid_range', 'overlap', 'id_taken', 'main_track', 'track_not_empty', 'source_unavailable', 'missing_source', 'covers_missing_source',
+// Every refusal the planner may give (inner#1708 Q4: there is no overlap refusal).
+const REASONS: TimelineEditRefusal[] = [
+  'target_missing', 'track_missing', 'invalid_range', 'id_taken', 'main_track', 'track_not_empty', 'source_unavailable', 'missing_source', 'covers_missing_source',
 ];
 
 /**

@@ -9,7 +9,7 @@ import { resolveTimelineArrangement } from '@web/data/yjs/timeline-arrangement';
 import * as sharedIndex from '@breatic/shared';
 import * as spaceContent from '@breatic/shared/space-content';
 import { initializeTimelineDocument } from '@breatic/shared/space-content';
-import { applyTimelineEdit, readTimelineContent, readTimelineDocument, removeTimelineClip, timelineClipSourceId } from '@web/data/yjs/timeline-document';
+import { applyTimelineEdit, readTimelineContent, readTimelineDocument, missingTimelineSourceIds, removeTimelineClip, timelineClipSourceId } from '@web/data/yjs/timeline-document';
 import { planTimelineEdit } from '@web/data/yjs/timeline-edit';
 import type { TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 import { TimelineDocumentV1Schema } from '@breatic/shared';
@@ -731,7 +731,8 @@ describe('Removing damaged records and the read entry (inner#1708 F1b)', () => {
     expect(origins).toEqual([ORIGIN]);
     expect(doc.getMap('clips').has(BAD_CLIP)).toBe(false);
     expect(doc.getMap('clips').has(clip.id)).toBe(true);
-    expect(readTimelineContent(doc).damaged).toEqual({ clips: [], tracks: [BAD_TRACK] });
+    expect(readTimelineContent(doc).damaged).toEqual({ clips: [] });
+    expect(readTimelineContent(doc).document.tracks[BAD_TRACK]).toBe(undefined);
   });
 
   it('reads through the shared space-content entry that integration tests use, and edits only in web', () => {
@@ -1045,5 +1046,30 @@ describe('applyTimelineEdit refuses structurally invalid command values instead 
     expect(() => { result = applyTimelineEdit(doc, command, ORIGIN); }).not.toThrow();
     expect(result).toEqual({ ok: false, reason: 'invalid_range' });
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+  });
+});
+
+describe('missingTimelineSourceIds (inner#1708 Q2)', () => {
+  const X = cid(120);
+  const Y2 = cid(121);
+  const OTHER_SOURCE_ID = '10000000-0000-4000-8000-0000000000ee';
+  const UNKNOWN_SOURCE_ID = '10000000-0000-4000-8000-0000000000dd';
+
+  it('lists referenced sources, damaged records included, that are missing and have a known value', () => {
+    const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10), fixtureClip(Y2, V2, 100, 10, { sourceId: SHORT_SOURCE.id })], undefined, [SOURCE]));
+    damagedClip(doc, cid(122), OTHER_SOURCE_ID);
+    damagedClip(doc, cid(123), UNKNOWN_SOURCE_ID);
+    const values = { [SOURCE.id]: SOURCE, [SHORT_SOURCE.id]: SHORT_SOURCE, [OTHER_SOURCE_ID]: { ...SOURCE, id: OTHER_SOURCE_ID } };
+    expect([...missingTimelineSourceIds(doc, values)].sort()).toEqual([SHORT_SOURCE.id, OTHER_SOURCE_ID].sort());
+  });
+
+  it('is empty when every referenced source is stored', () => {
+    const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10)]));
+    expect(missingTimelineSourceIds(doc, { [SOURCE.id]: SOURCE, [SHORT_SOURCE.id]: SHORT_SOURCE })).toEqual([]);
+  });
+
+  it('is empty when no missing source has a known value', () => {
+    const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10, { sourceId: SHORT_SOURCE.id })], undefined, [SOURCE]));
+    expect(missingTimelineSourceIds(doc, { [SOURCE.id]: SOURCE })).toEqual([]);
   });
 });

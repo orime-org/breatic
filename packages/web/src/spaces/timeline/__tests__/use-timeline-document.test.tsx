@@ -30,7 +30,7 @@ const CLIP: TimelineVideoClip = {
   transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
 };
 /** No damaged records. */
-const NONE = { clips: [], tracks: [] };
+const NONE = { clips: [] };
 const EMPTY: TimelineDocumentV1 = {
   schemaVersion: 1,
   settings: SETTINGS,
@@ -194,9 +194,20 @@ describe('useTimelineDocument content ownership', () => {
     const { result } = renderHook(() => useTimelineDocument(doc, true));
     expect(result.current).toEqual({
       document: { ...EMPTY, sources: { [SOURCE.id]: SOURCE }, clips: { [CLIP.id]: CLIP } },
-      damaged: { clips: [damagedId], tracks: [] },
+      damaged: { clips: [damagedId] },
       error: null,
     });
+  });
+
+  it('leaves a damaged track record out of the projection without listing it (inner#1708 Q3)', () => {
+    const doc = seededDoc();
+    doc.transact(() => {
+      const record = new Y.Map<unknown>();
+      doc.getMap('tracks').set('track-damaged', record);
+      record.set('order', 3);
+    }, 'provider');
+    const { result } = renderHook(() => useTimelineDocument(doc, true));
+    expect(result.current).toEqual({ document: EMPTY, damaged: NONE, error: null });
   });
 
   it('projects a peer addition received through the existing Yjs update path', () => {

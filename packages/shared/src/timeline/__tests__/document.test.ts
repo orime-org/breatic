@@ -215,7 +215,8 @@ describe("Timeline content with damaged records (inner#1708 F1b)", () => {
     expect(content.document.clips).toEqual({ [clip.id]: clip });
     expect(content.document.tracks).toEqual({ "visual-1": { id: "visual-1", kind: "visual", order: 0 } });
     expect(content.document.sources).toEqual({ [source.id]: source });
-    expect(content.damaged).toEqual({ clips: [BAD_CLIP], tracks: [BAD_TRACK] });
+    // A damaged track record is left out of the document but not listed (inner#1708 Q3).
+    expect(content.damaged).toEqual({ clips: [BAD_CLIP] });
   });
 
   it("reads the same valid document through readTimelineDocument without throwing", () => {
@@ -227,7 +228,7 @@ describe("Timeline content with damaged records (inner#1708 F1b)", () => {
   it("reports nothing damaged for intact content", () => {
     const doc = seededDoc();
     attachClip(doc);
-    expect(readTimelineContent(doc)).toEqual({ document: readTimelineDocument(doc), damaged: { clips: [], tracks: [] } });
+    expect(readTimelineContent(doc)).toEqual({ document: readTimelineDocument(doc), damaged: { clips: [] } });
   });
 
   it("still refuses missing and unsupported Timeline roots", () => {
