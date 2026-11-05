@@ -45,7 +45,7 @@ export const presentationProbeAnswerSchema = z.discriminatedUnion('kind', [
     routeInput: z.strictObject({
       plan: z.strictObject({ planSha256: hash, producerVersion: count, profileVersion: count }),
       hdr: z.boolean(), alpha: z.enum(['confirmed_alpha', 'confirmed_opaque']), identityQualified: z.boolean(), colorMatrixTagged: z.boolean(),
-      codec: z.string().min(1), copyPreservesTimeline: z.boolean(), audioCopyable: z.boolean().optional(), sourceBytes: count,
+      codec: z.string().min(1), copyPreservesTimeline: z.boolean(), audioCopyable: z.boolean(), sourceBytes: count,
     }),
     work: z.strictObject({
       encodedFrames: count, prerollFrames: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),

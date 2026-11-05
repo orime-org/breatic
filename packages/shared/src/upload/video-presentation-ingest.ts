@@ -60,7 +60,7 @@ export interface VideoPresentationIngestSnapshot {
   preparation: VideoPresentationIngestPreparation | null;
   ledger: VideoPresentationIngestLedger | null;
   /** The DO's fact that a discovery read may readmit once: P is invalid(V) and V's publisher, admitted without readmitOf, is current. */
-  readmit?: boolean;
+  readmit: boolean;
   usageFact?: VideoPresentationUsageFact;
 }
 const usage = z.strictObject({ wallMs: z.number().finite().nonnegative(), cpuUsec: z.number().finite().nonnegative().nullable() });
@@ -113,7 +113,7 @@ export const videoPresentationIngestSnapshotSchema: z.ZodType<VideoPresentationI
   presentation: videoPresentationVersionSchema.nullable(),
   preparation: videoPresentationIngestPreparationSchema.nullable(),
   ledger: videoPresentationIngestLedgerSchema.nullable(),
-  readmit: z.boolean().optional(),
+  readmit: z.boolean(),
   usageFact: z.strictObject({ jobId: z.string().min(1), actorUserId: z.uuid(), projectId: z.uuid().nullable(), usage, pricing: videoPresentationPricingSchema }).optional(),
 }).superRefine((value, ctx) => checkSelectedVideoPresentation(value, value.sourceBinding.sourceFingerprint, ctx));
 

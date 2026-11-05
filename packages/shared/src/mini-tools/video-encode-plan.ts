@@ -31,8 +31,8 @@ export interface VideoCarrierRouteInput {
   codec: string;
   /** A stream copy keeps the plan's timeline. */
   copyPreservesTimeline: boolean;
-  /** The selected audio (or its absence) is in the MP4 audio codecs of the frozen identity table; absent means it is. */
-  audioCopyable?: boolean;
+  /** The selected audio (or its absence) is in the MP4 audio codecs of the frozen identity table. */
+  audioCopyable: boolean;
   sourceBytes: number;
   copyDiskMarginBytes: number;
   basicDiskBytes: number;
@@ -143,7 +143,7 @@ export function chooseVideoCarrierRoute(input: VideoCarrierRouteInput): VideoCar
   if (input.identityQualified && input.colorMatrixTagged) return "identity";
   if (input.copyPreservesTimeline && (input.colorMatrixTagged || videoCarrierTagFilter(input.codec) !== null)) {
     const fits = 2 * input.sourceBytes + input.copyDiskMarginBytes <= input.basicDiskBytes;
-    return fits && input.audioCopyable !== false ? "copy" : "dispatch_copy";
+    return fits && input.audioCopyable ? "copy" : "dispatch_copy";
   }
   return "encode";
 }
