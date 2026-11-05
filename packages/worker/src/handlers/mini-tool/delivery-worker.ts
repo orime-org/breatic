@@ -39,12 +39,12 @@ export async function enqueueMiniToolDelivery(wake: MiniToolDeliveryWake): Promi
  * Publish one canonical output and acknowledge its current SQL delivery version.
  * @param context - Original frozen inputs, public manifest and internal delivery state.
  * @param outputIndex - The original registered output slot.
- * @param streamRedis - The application's task-event stream connection.
+ * @param streamRedis - The application's task-event stream connection (this process's own by default).
  * @returns Current context after acknowledgement or a recorded recoverable failure.
  * @throws {Error} When an internal caller names a slot without a registered result.
  */
 export async function deliverMiniToolOutput(
-  context: MiniToolDeliveryContext, outputIndex: number, streamRedis: ReturnType<typeof getStreamRedis>,
+  context: MiniToolDeliveryContext, outputIndex: number, streamRedis: ReturnType<typeof getStreamRedis> = getStreamRedis(),
 ): Promise<MiniToolDeliveryContext> {
   const { task, execution, record, delivery } = context;
   const output = record.outputs.find((slot) => slot.outputIndex === outputIndex);

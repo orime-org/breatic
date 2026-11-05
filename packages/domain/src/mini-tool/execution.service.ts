@@ -119,8 +119,8 @@ export interface MiniToolExecutionProgress {
 /**
  * Commit newly registered outputs of a running execution without ending it (design §7.11, registered with a non-terminal commit): the
  * same resultVersion arbitration as the terminal commit, a committed result is never rewritten, a registration is checked
- * like the terminal one's and failures wait for the terminal commit. Delivery to canvas nodes stays with the terminal
- * commit; a per-poll delivery would call synchronizeMiniToolDelivery after the store below.
+ * like the terminal one's and failures wait for the terminal commit. Each newly registered output gets its pending
+ * delivery slot in the same transaction, so the worker can deliver it before the run ends (§10.8).
  * @param taskId - The original accepted SQL task.
  * @param progress - The complete indexed mapping and the version it was read at.
  * @returns The current state and original context, unchanged when nothing new is registered.
@@ -156,6 +156,7 @@ export async function commitMiniToolExecutionProgress(taskId: string, progress: 
     if (incoming.expectedVersion !== current.resultVersion) throw new ConflictError(t("server.idempotency.mismatch"));
     const record = miniToolExecutionRecordSchema.parse({ ...current, outputs, resultVersion: current.resultVersion + 1 });
     await taskRepo.storeMiniToolExecutionRecord(id, { ...record }, tx);
+    await synchronizeMiniToolDelivery(plan.task, record, tx);
     const task = await currentTask(id, tx);
     return { task, execution: plan.execution, record: recordFromPlan({ ...plan, task }) };
   });

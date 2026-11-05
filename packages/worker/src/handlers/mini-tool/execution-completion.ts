@@ -25,11 +25,7 @@ export async function finishMiniToolExecutionAndNotify(taskId: string, completio
   const { execution, record } = finished;
   const docName = canvasSpaceDocName(execution.projectId, execution.spaceId);
   try {
-    let context = await miniToolDeliveryService.readMiniToolDelivery(taskId);
-    for (const output of record.outputs) {
-      if (output.result?.status === "registered") context = await deliverMiniToolOutput(context, output.outputIndex, streamRedis);
-    }
-    await wakePendingMiniToolDelivery(context);
+    await deliverPending(taskId, streamRedis);
     for (const output of record.outputs) {
       if (output.result?.status !== "failed") continue;
       const error = output.result.error;
@@ -45,19 +41,41 @@ export async function finishMiniToolExecutionAndNotify(taskId: string, completio
 }
 
 /**
- * Commit a pickup's newly registered outputs non-terminally (design §7.11, §93 D5-11). Delivery to canvas nodes stays with
- * the terminal commit (`finishMiniToolExecutionAndNotify`); a per-poll delivery would call `deliverMiniToolOutput` here
- * for each newly registered output once that is decided.
+ * Deliver every registered output whose delivery slot is still pending, then wake pending delivery (design §7.11).
+ * @param taskId - The original accepted task.
+ * @param streamRedis - The application's task-event stream connection; the delivery worker's own when omitted.
+ * @returns Nothing once each pending position was tried.
+ * @throws {Error} When the delivery context cannot be read.
+ */
+async function deliverPending(taskId: string, streamRedis?: ReturnType<typeof getStreamRedis>): Promise<void> {
+  let context = await miniToolDeliveryService.readMiniToolDelivery(taskId);
+  const pending = (context.delivery?.outputs ?? []).filter((slot) => slot.state === "pending"
+    && context.record.outputs.some((output) => output.outputIndex === slot.outputIndex && output.result?.status === "registered"));
+  for (const slot of pending) context = await deliverMiniToolOutput(context, slot.outputIndex, streamRedis);
+  await wakePendingMiniToolDelivery(context);
+}
+
+/**
+ * Commit a pickup's newly registered outputs non-terminally (design §7.11, §10.8), then deliver the ones whose slot the
+ * commit opened before the pickup ends with StillRunning. A delivery failure is logged and left to the pending wake.
  * @param taskId - The original accepted task.
  * @param progress - The complete indexed mapping and the version it was read at.
  * @returns The committed execution.
  * @throws {Error} When the commit is refused or persistence fails.
  */
 export async function commitMiniToolExecutionProgress(taskId: string, progress: ExecutionService.MiniToolExecutionProgress): Promise<MiniToolExecution> {
+  let committed: MiniToolExecution;
   try {
-    return await miniToolExecutionService.commitMiniToolExecutionProgress(taskId, progress);
+    committed = await miniToolExecutionService.commitMiniToolExecutionProgress(taskId, progress);
   } catch (err) {
     logger.error({ err, ctx: { taskId, phase: "execution-progress" } }, "mini_tool_execution_progress_failed");
     throw err;
   }
+  try {
+    await deliverPending(taskId);
+  } catch (err) {
+    logger.error({ err, ctx: { taskId, projectId: committed.execution.projectId, spaceId: committed.execution.spaceId, phase: "progress-delivery" } },
+      "mini_tool_execution_delivery_failed");
+  }
+  return committed;
 }
