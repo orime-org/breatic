@@ -529,8 +529,10 @@ describe('recipes from the full ledger (inner#1306 §91 D3b; design §7.17, §5.
       ] as unknown as Record<string, unknown>;
     });
     await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    // §93 (design §7.17 时间线 row, rounds 3–5, user 2026-11-05): the first span decodes from the unpresented source keyframe
+    // at 0 (cut.mp4 has no B-frames and its first packet dts is 0), so its decodeStart is that keyframe's dts, 0.
     expect(entriesSubmitted()).toEqual([[
-      { kind: 'source', decodeStart: r(2, 25), clipStart: r(1, 10), displayStart: r(0), displayEnd: r(7, 10), rate: r(1) },
+      { kind: 'source', decodeStart: r(0), clipStart: r(1, 10), displayStart: r(0), displayEnd: r(7, 10), rate: r(1) },
       { kind: 'source', decodeStart: r(4, 5), clipStart: r(4, 5), displayStart: r(7, 10), displayEnd: r(3, 2), rate: r(1) },
     ]]);
   });
