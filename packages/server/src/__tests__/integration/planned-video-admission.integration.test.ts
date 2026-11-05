@@ -11,6 +11,7 @@
  * plan carries presentationRef, the ledger receipts, the selected versionIds and the layout.
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import type { Hono } from "hono";
 import type { Queue } from "bullmq";
 import fc from "fast-check";
@@ -57,6 +58,12 @@ vi.mock("@breatic/shared", async (original) => ({ ...await original<typeof share
 // 44 frames of 1/10 s over 4.4 s; the selected version's compact presentation and its full plan (S6a).
 const TABLE: VideoPresentationTable = { schemaVersion: 1, timescale: 10, runs: [{ start: 0, count: 44, step: 1, duration: 1 }] };
 const rational = (numerator: number, denominator = 1): { numerator: string; denominator: string } => ({ numerator: String(numerator), denominator: String(denominator) });
+/** A rational reduced, as exactTime requires. */
+const reduce = (value: { numerator: string; denominator: string }): { numerator: string; denominator: string } => {
+  let [a, b] = [Math.abs(Number(value.numerator)), Number(value.denominator)]; while (b !== 0) [a, b] = [b, a % b];
+  const g = a === 0 ? Number(value.denominator) : a;
+  return { numerator: String(Number(value.numerator) / g), denominator: String(Number(value.denominator) / g) };
+};
 const PLAN_BODY = {
   display: { width: 960, height: 540, duration: rational(22, 5) }, colorMatrix: "bt601", source: { transfer: null, bitDepth: 8 },
   output: { toneMap: "none", framePngBitDepth: 8 }, policy: { singleFrameDurationMs: 5000, emptyFill: "black" }, presentation: TABLE,
@@ -130,22 +137,25 @@ async function member(projectId: string, role: "viewer" | "editor"): Promise<str
  * Declare the source's selected version as the S6c snapshot answers it, with its full ledger and compact stored at the
  * receipt's URLs, and point the request at that tool input. @throws {Error} When the shared identity functions are missing.
  */
-async function present(f: Fixture): Promise<void> {
+async function present(f: Fixture, presented: { plan: typeof PLAN_BODY; encoding: Record<string, unknown> } = { plan: PLAN_BODY, encoding: ENCODE_FACTS }): Promise<void> {
+  const { plan: PLAN, encoding } = presented;
+  const table = PLAN.presentation;
+  const frameCount = table.runs.reduce((total, run) => total + run.count, 0);
   const api = shared as unknown as Record<string, (value: unknown) => unknown>;
-  const planSha256 = await api.videoPresentationPlanSha256!(PLAN_BODY) as string;
+  const planSha256 = await api.videoPresentationPlanSha256!(PLAN) as string;
   const toolInputId = await api.videoPresentationToolInputId!({ sourceFingerprint: f.hash, planSha256 }) as string;
   const attempt = { jobId: `video-presentation:${f.sourceId}`, deadlineAt: Date.now() + core.getNodeTaskConfig().default_budget_ms };
-  const full = { schemaVersion: 2, sourceFingerprint: f.hash, toolInputId, planSha256, attempt, plan: PLAN_BODY, encoding: ENCODE_FACTS };
-  const compact = { sourceFingerprint: f.hash, toolInputId, planSha256, presentation: TABLE };
+  const full = { schemaVersion: 2, sourceFingerprint: f.hash, toolInputId, planSha256, attempt, plan: PLAN, encoding };
+  const compact = { sourceFingerprint: f.hash, toolInputId, planSha256, presentation: table };
   const fullJSON = JSON.stringify(full); const compactJSON = JSON.stringify(compact);
   const receipt: Receipt = { schemaVersion: 2, sourceFingerprint: f.hash, toolInputId, planSha256, producerVersion: 2, attempt,
     url: publicUrl(ledgerKeys(f.sourceKey, toolInputId).full), etag: "full-etag", size: Buffer.byteLength(fullJSON), sha256: digest(fullJSON), contentType: "application/json",
-    table: { url: publicUrl(ledgerKeys(f.sourceKey, toolInputId).table), sha256: digest(compactJSON), size: Buffer.byteLength(compactJSON), contentType: "application/json", frameCount: 44 } };
+    table: { url: publicUrl(ledgerKeys(f.sourceKey, toolInputId).table), sha256: digest(compactJSON), size: Buffer.byteLength(compactJSON), contentType: "application/json", frameCount } };
   const versionId = "e".repeat(64);
   const bundle = { schemaVersion: 1, sourceFingerprint: f.hash, versionId, toolInputId, planSha256, policyVersion: 1, producerVersion: 2, profileVersion: 1,
-    original: { width: 960, height: 540, duration: 4.4 }, display: PLAN_BODY.display,
+    original: { width: 960, height: 540, duration: 4.4 }, display: PLAN.display,
     playback: { kind: "native", carrier: { storageKey: f.sourceKey, url: publicUrl(f.sourceKey), etag: "source-etag", size: 4096, sha256: f.hash, contentType: "video/mp4" }, displayRect: null },
-    playbackClock: TABLE };
+    playbackClock: table };
   Object.assign(f, { receipt, full, versionId });
   f.body.presentation_ref = { source: { toolInputId, planSha256 } };
   outside.bodies.set(receipt.url, fullJSON); outside.bodies.set(receipt.table.url, compactJSON);
@@ -747,6 +757,62 @@ describe("E3 job layout, parallel cap and quote at admission (inner#1306 §90 E3
     const snapshot = outside.snapshots.get(f.sourceKey) as { preparation: unknown };
     snapshot.preparation = { targetPolicyVersion: 2, jobId: "video-presentation:next", stage: "encode", failure: null };
     await accept(f);
+  });
+});
+
+// §93 D6-1 (frames-split design §5.4 估算行, §3.2 item 7, §7.17 时间线行): the decode pre-roll is counted from the same
+// keyframe decodeStart uses: the latest source keyframe (presented or not, from `encoding.sourceKeyframes`) whose pts is not
+// after the span's first frame's source time; pre-roll frames = ceil((first frame source time − keyframe pts) ÷ the first
+// frame's source frame duration), that duration being the next source frame's start minus its own in the origin mapping.
+// The quote's planned work per output (`outputSeconds`) carries it. The plans below are valid full ledgers; every span
+// starts on its source's first presented frame, so no case depends on anything but the pre-roll rule.
+describe("the pre-roll from the selected source keyframe (§93 D6-1; design §5.4 估算行)", () => {
+  const ledgerFixture = (name: string): { plan: typeof PLAN_BODY; encoding: Record<string, unknown> } =>
+    JSON.parse(readFileSync(new URL(`../../../../worker/src/handlers/__tests__/fixtures/presentation/${name}.ledger.json`, import.meta.url), "utf8")) as { plan: typeof PLAN_BODY; encoding: Record<string, unknown> };
+  /** The planned work of one span: the shared estimate minus the start seconds, as admission freezes it. */
+  const planned = (frames: number, preroll: number, side: { width: number; height: number }, coded: { width: number; height: number }): number => {
+    const encoder = settings.encoding.encoder;
+    const rates = { startSeconds: encoder.start_seconds, encodePixelsPerSecond: encoder.encode_pixels_per_second, decodeConvertPixelsPerSecond: encoder.decode_convert_pixels_per_second };
+    return miniTools.estimateVideoJobSeconds({ encodedFrames: frames, prerollFrames: preroll, sourceWidth: coded.width, sourceHeight: coded.height,
+      outputWidth: side.width, outputHeight: side.height, bitDepth: 8, hdr: false }, rates) - rates.startSeconds;
+  };
+
+  it("PR01 a first frame cut in the middle by the edit: its source keyframe is not presented, so the pre-roll counts back to it", async () => {
+    // cut.ledger.json: one edit presenting media [0.1, 1.6) s of a g=10, 25 fps, B-frame-free source; the first presented frame
+    // is source 0.08 s (partly cut), the keyframe before it is source 0 s and is not presented.
+    const cut = ledgerFixture("cut");
+    const f = await seed();
+    await present(f, { plan: cut.plan, encoding: { ...cut.encoding,
+      sourceKeyframes: [0, 10, 20, 30].map((n) => ({ pts: rational(n, 25), dts: rational(n, 25) })).map((k) => ({ pts: reduce(k.pts), dts: reduce(k.dts) })), firstPacketDts: rational(0) } });
+    f.body.draft.params = { cuts: [0.5] };
+    f.body.outputs = [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 0, end: 0.5 } } },
+      { outputIndex: 1, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 0.5, end: 1.5 } } }];
+    await accept(f);
+    const plan = (await parent(f.body.run_id)).params.miniToolExecution as Plan & { outputSeconds: number[] };
+    // Frames 0–12 cover [0, 0.5); (0.08 − 0) ÷ 0.04 = 2 frames of pre-roll (was 0: the presented ordinals hold no keyframe before it).
+    expect(plan.outputSeconds[0]).toBeCloseTo(planned(13, 2, { width: 160, height: 96 }, { width: 160, height: 96 }), 9);
+  });
+
+  it("PR02 a derived lead: the pre-roll counts from the first frame's source time, not its extended display start", async () => {
+    // Source frames every 0.1 s from 0.2 s; the first is shown from 0 (a derived lead to the presentation start), its
+    // support from 0.2. The keyframe before it is at source 0.1 s and is not presented.
+    const lead = { ...PLAN_BODY, display: { width: 960, height: 540, duration: rational(21, 5) },
+      presentation: { schemaVersion: 1 as const, timescale: 10, runs: [{ start: 0, count: 1, step: 3, duration: 3 }, { start: 3, count: 39, step: 1, duration: 1 }] },
+      originMapping: { timeBase: rational(1, 1000), origin: rational(0), entries: [{ kind: "source", start: 200, count: 40, step: 100 }],
+        firstSource: { supportStart: rational(1, 5), lead: { kind: "derived-lead", start: rational(0) } },
+        lastSource: { support: "declared", supportEnd: rational(21, 5), hold: null } } } as unknown as typeof PLAN_BODY;
+    const f = await seed();
+    await present(f, { plan: lead, encoding: { keyframeOrdinals: [10, 20, 30], codedWidth: 960, codedHeight: 540,
+      sourceKeyframes: [{ pts: rational(1, 10), dts: rational(1, 10) }, { pts: rational(6, 5), dts: rational(6, 5) }], firstPacketDts: rational(1, 10) } });
+    f.body.draft.params = { cuts: [2] };
+    f.body.outputs = [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 0, end: 2 } } },
+      { outputIndex: 1, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 2, end: 4.2 } } }];
+    await accept(f);
+    const plan = (await parent(f.body.run_id)).params.miniToolExecution as Plan & { outputSeconds: number[] };
+    // Frames 0–17 cover [0, 2); (0.2 − 0.1) ÷ 0.1 = 1 frame of pre-roll (was 0). Output 1 starts on frame 18 (source 2.0 s):
+    // its keyframe is 1.2 s, (2.0 − 1.2) ÷ 0.1 = 8 frames, as the presented keyframe ordinal 10 also gives.
+    expect(plan.outputSeconds[0]).toBeCloseTo(planned(18, 1, { width: 960, height: 540 }, { width: 960, height: 540 }), 9);
+    expect(plan.outputSeconds[1]).toBeCloseTo(planned(22, 8, { width: 960, height: 540 }, { width: 960, height: 540 }), 9);
   });
 });
 
