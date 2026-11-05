@@ -307,6 +307,11 @@
     }
   },
   "chat": {
+    "modelPicker": {
+      "label": "Model",
+      "listFailed": "Could not load the model list",
+      "saveFailed": "Could not save the model choice"
+    },
     "composer": {
       "chipsAria": "Selected chips",
       "placeholder": "Ask something, or hand me things from the canvas…",

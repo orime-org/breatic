@@ -307,6 +307,11 @@
     }
   },
   "chat": {
+    "modelPicker": {
+      "label": "モデル",
+      "listFailed": "モデル一覧を読み込めませんでした",
+      "saveFailed": "モデルの選択を保存できませんでした"
+    },
     "composer": {
       "chipsAria": "選択された chips",
       "placeholder": "質問するか、Canvas 上のものを渡してください…",

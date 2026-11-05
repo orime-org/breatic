@@ -307,6 +307,11 @@
     }
   },
   "chat": {
+    "modelPicker": {
+      "label": "模型",
+      "listFailed": "模型清單沒有載入",
+      "saveFailed": "選擇的模型沒有儲存，已恢復原來的選擇"
+    },
     "composer": {
       "chipsAria": "已選 chips",
       "placeholder": "問點什麼，或者把 Canvas 上的東西交給我…",

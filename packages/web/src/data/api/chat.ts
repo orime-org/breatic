@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import type { ConversationEntity, StoredMessageMetadata } from '@breatic/shared';
+import type { AgentModelChoice, ConversationEntity, StoredMessageMetadata } from '@breatic/shared';
 import type { UIMessage } from 'ai';
 
-import { apiDelete, apiGet, apiPatch, apiPost, runOnceRequest } from '@web/data/api/request';
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut, runOnceRequest } from '@web/data/api/request';
 
 /**
  * What a stored message carries besides its parts.
@@ -42,9 +42,24 @@ export type ConversationOnTheWire = Omit<
   deletedAt: string | null;
 };
 
+/**
+ * A conversation as the open, read and create calls hand it over: with the
+ * model it is answered by (#1363). The list's rows carry the stored pick only.
+ */
+export type ChatConversationOnTheWire = Omit<ConversationOnTheWire, 'agentModel'> & {
+  agentModel: AgentModelChoice;
+};
+
+/** The models the reader can pick, and the one a new conversation starts on (#1363). */
+export interface ChatModels {
+  models: AgentModelChoice[];
+  /** The id of the model a new conversation of the reader's starts on. */
+  lastUsed: string;
+}
+
 /** One conversation with the newest page of what was said in it. */
 export interface ConversationRead {
-  conversation: ConversationOnTheWire;
+  conversation: ChatConversationOnTheWire;
   messages: StoredUiMessage[];
   /** The conversation reaches back further than these messages do. */
   hasMore: boolean;
@@ -72,7 +87,7 @@ export interface OpenChatResult {
   hasMoreConversations: boolean;
   /** The one to show, and what has been said in it. */
   current: {
-    conversation: ConversationOnTheWire;
+    conversation: ChatConversationOnTheWire;
     messages: StoredUiMessage[];
     /** The conversation reaches back further than these messages do. */
     hasMore: boolean;
@@ -216,8 +231,8 @@ export const chatApi = {
    * @param key - The press's `Idempotency-Key`; a re-send with it makes nothing new
    * @returns The conversation that was just created
    */
-  createConversation(projectId: string, key: string): Promise<ConversationOnTheWire> {
-    return apiPost<ConversationOnTheWire, { project_id: string }>(
+  createConversation(projectId: string, key: string): Promise<ChatConversationOnTheWire> {
+    return apiPost<ChatConversationOnTheWire, { project_id: string }>(
       '/chat/conversations',
       { project_id: projectId },
       runOnceRequest(key),
@@ -240,6 +255,28 @@ export const chatApi = {
       `/chat/conversations/${id}`,
       { project_id: projectId, title },
     );
+  },
+  /**
+   * The models the reader can pick in the chat panel, in order, and the one a
+   * new conversation of theirs starts on (#1363).
+   * @returns The list and the starting model's id
+   */
+  models(): Promise<ChatModels> {
+    return apiGet<ChatModels>('/chat/models');
+  },
+  /**
+   * Pick the model a conversation is answered by; it becomes the reader's
+   * last pick too (#1363).
+   * @param id - The conversation
+   * @param projectId - Project it lives in; the server checks this before writing
+   * @param model - The model id
+   * @returns When the server has saved it
+   */
+  async setModel(id: string, projectId: string, model: string): Promise<void> {
+    await apiPut<unknown, { project_id: string; model: string }>(`/chat/conversations/${id}/model`, {
+      project_id: projectId,
+      model,
+    });
   },
   /**
    * Delete a conversation.

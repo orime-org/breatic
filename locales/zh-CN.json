@@ -307,6 +307,11 @@
     }
   },
   "chat": {
+    "modelPicker": {
+      "label": "模型",
+      "listFailed": "模型列表没加载出来",
+      "saveFailed": "选模型没保存上，已恢复原来的选择"
+    },
     "composer": {
       "chipsAria": "已选 chips",
       "placeholder": "问点什么，或者把 Canvas 上的东西交给我…",

@@ -157,6 +157,15 @@ const NO_MESSAGES: StoredUiMessage[] = [];
 const NO_CONVERSATIONS: ConversationOnTheWire[] = [];
 
 /**
+ * How a session reads its conversation's model at each send (#1363).
+ * @param conversationId - The conversation.
+ * @returns A reader of its model id, as the picker last set it.
+ */
+function modelOfConversation(conversationId: string): () => string | undefined {
+  return () => useConversationRuntime.getState().conversations[conversationId]?.agentModel.id;
+}
+
+/**
  * The chat panel's view of the conversation it is showing.
  *
  * Reading only. What is happening in the conversation — the messages, and the
@@ -221,6 +230,8 @@ export function useChatSession(
     history,
     onTitled: noteTitle(conversationId ?? ''),
     onFirstFrame: emptyTheBox(conversationId ?? ''),
+    modelOf: modelOfConversation(conversationId ?? ''),
+    onRefused: conversationRuntime.noteRefusedSend,
   });
   const { messages: onScreen, status, error } = useChat({
     chat,
@@ -285,6 +296,8 @@ export function useChatSession(
         history: NO_MESSAGES,
         onTitled: noteTitle(opened),
         onFirstFrame: emptyTheBox(opened),
+        modelOf: modelOfConversation(opened),
+        onRefused: conversationRuntime.noteRefusedSend,
       });
       // Through the session rather than straight at the `Chat`: what a running
       // turn needs looking after -- the wait for the next beat, and giving up

@@ -307,6 +307,11 @@
     }
   },
   "chat": {
+    "modelPicker": {
+      "label": "모델",
+      "listFailed": "모델 목록을 불러오지 못했습니다",
+      "saveFailed": "모델 선택을 저장하지 못했습니다"
+    },
     "composer": {
       "chipsAria": "선택된 칩",
       "placeholder": "질문하거나 Canvas의 항목을 넘겨주세요…",

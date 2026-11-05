@@ -22,6 +22,8 @@ vi.mock('@web/data/api/chat', async (importOriginal) => ({
     listConversations: vi.fn(),
     readConversation: vi.fn(),
     createConversation: vi.fn(),
+    models: vi.fn(async () => ({ models: [{ id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' }], lastUsed: 'deepseek/deepseek-v4.1-flash-1017' })),
+    setModel: vi.fn(),
   },
 }));
 
@@ -111,7 +113,7 @@ function chatOpensWith(texts: string[]): void {
   vi.mocked(chatApi.openChat).mockResolvedValue({
     conversations: [{ id: 'c1' }],
     current: {
-      conversation: { id: 'c1' },
+      conversation: { id: 'c1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       messages: texts.map((text, i) => ({
         id: `m${i}`,
         role: i % 2 === 0 ? 'user' : 'assistant',
@@ -374,7 +376,7 @@ describe('ChatPanel', () => {
             res({
               conversations: [{ id: CONV }],
               hasMoreConversations: false,
-              current: { conversation: { id: CONV }, messages: [], hasMore: false },
+              current: { conversation: { id: CONV, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
             } as never);
         }),
     );
@@ -407,7 +409,7 @@ describe('ChatPanel', () => {
             res({
               conversations: [{ id: CONV }],
               hasMoreConversations: false,
-              current: { conversation: { id: CONV }, messages: [], hasMore: false },
+              current: { conversation: { id: CONV, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
             } as never);
         }),
     );
@@ -486,7 +488,7 @@ describe('a conversation longer than one page', () => {
     vi.mocked(chatApi.openChat).mockResolvedValue({
       conversations: [{ id: 'c1' }],
       current: {
-        conversation: { id: 'c1' },
+        conversation: { id: 'c1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
         messages: [
           {
             id: 'm1',
@@ -587,7 +589,7 @@ describe('a failure about a row in the list', () => {
   function opens(): void {
     vi.mocked(chatApi.openChat).mockResolvedValue({
       conversations: [{ id: 'c-1', title: 'one' }],
-      current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+      current: { conversation: { id: 'c-1', title: 'one', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
       hasMoreConversations: false,
     } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
   }
@@ -632,7 +634,7 @@ describe('a failure about a row in the list', () => {
             res({
               conversations: [{ id: 'c-1', title: 'one' }],
               current: {
-                conversation: { id: 'c-1', title: 'one' },
+                conversation: { id: 'c-1', title: 'one', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
                 messages: [],
                 hasMore: false,
               },
@@ -698,7 +700,7 @@ describe('opening the list', () => {
     // 中间这根线断了不会有任何东西红 —— 抽屉照样画,只是画的是上次留下的。
     vi.mocked(chatApi.openChat).mockResolvedValue({
       conversations: [{ id: 'c-1', title: 'one' }],
-      current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+      current: { conversation: { id: 'c-1', title: 'one', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
       hasMoreConversations: false,
     } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
     vi.mocked(chatApi.listConversations).mockResolvedValue({
@@ -734,7 +736,7 @@ describe('deleting a conversation from the list', () => {
         { id: 'c-1', title: 'one' },
         { id: 'c-2', title: 'two' },
       ],
-      current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+      current: { conversation: { id: 'c-1', title: 'one', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
       hasMoreConversations: false,
     } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
     vi.mocked(chatApi.listConversations).mockResolvedValue({

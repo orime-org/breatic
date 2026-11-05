@@ -84,7 +84,7 @@ function openChatAnswers(
   vi.mocked(chatApi.openChat).mockResolvedValue({
     conversations: [{ id: conversationId }],
     current: {
-      conversation: { id: conversationId },
+      conversation: { id: conversationId, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       messages: messages.map((m) => ({
         id: m.id,
         role: m.role,
@@ -349,7 +349,7 @@ describe('a turn that failed', () => {
     vi.mocked(chatApi.openChat).mockResolvedValue({
       conversations: [{ id: 'c-1' }],
       current: {
-        conversation: { id: 'c-1' },
+        conversation: { id: 'c-1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
         messages: [
           {
             id: 'm1',
@@ -707,7 +707,7 @@ describe('the wait for the limits before a send (inner#1413)', () => {
 
   it('sends nothing into the conversation the reader switched to during the wait', async () => {
     vi.mocked(chatApi.readConversation).mockResolvedValue({
-      conversation: { id: 'c-2' },
+      conversation: { id: 'c-2', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       messages: [],
       hasMore: false,
     } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);

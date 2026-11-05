@@ -54,7 +54,7 @@ function said(id: string, turn: number): Record<string, unknown> {
 const NEWEST_PAGE = {
   conversations: [{ id: C }],
   current: {
-    conversation: { id: C, title: null },
+    conversation: { id: C, title: null, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
     messages: [said('m12', 12)],
     hasMore: true,
   },
@@ -81,7 +81,7 @@ beforeEach(() => {
   vi.mocked(chatApi.readConversation).mockImplementation(
     async (id: string) =>
       ({
-        conversation: { id, title: null },
+        conversation: { id, title: null, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
         messages: id === C ? [said('m12', 12)] : [],
         hasMore: id === C,
       }) as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>,
