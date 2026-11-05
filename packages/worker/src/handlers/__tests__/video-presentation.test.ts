@@ -302,8 +302,12 @@ describe('dispatch on the frozen standard-4 class with §5.4 identities (inner#1
     expect(job[0]).toMatchObject({ jobId: id, containerClass: PRICING.standard4.containerClass, deadlineAt: D });
     const inputs = job[0]!.inputs as { inputId: string; storageKey: string }[];
     expect(inputs).toEqual([{ inputId: expect.any(String), storageKey: KEY }]);
-    // §91 D3a: the copy tags the plan's matrix.
-    expect(job[0]!.outputs).toEqual([expect.objectContaining({ outputIndex: 0, storageKey: workKey(id), recipe: { kind: 'copy_carrier', inputId: inputs[0]!.inputId, colorMatrix: 'bt709' } })]);
+    // §91 D3a: the copy tags the plan's matrix. §94 D8 (design §7.17 copy_carrier row): it names its audio, copied or
+    // encoded over the stitch's audioOf entries; cfr96 has audio, so not null. How the worker learns `audioCopyable` is the
+    // implementer's, so either form is accepted here.
+    expect(job[0]!.outputs).toEqual([expect.objectContaining({ outputIndex: 0, storageKey: workKey(id), recipe: { kind: 'copy_carrier', inputId: inputs[0]!.inputId, colorMatrix: 'bt709', audio: expect.anything() } })]);
+    const { audio } = (job[0]!.outputs as { recipe: { audio: unknown } }[])[0]!.recipe;
+    expect([{ kind: 'copy' }, { kind: 'encode', start: r(0), end: r(96, 25), origin: r(0), spans: AUDIO_SPANS }]).toContainEqual(audio);
     expect(actions('report_chunk')).toEqual([expect.objectContaining({ token: 'token-a', unit: { kind: 'presentation-copy' }, report: { kind: 'Sub' } })]);
     expect(indexOf((call) => call.body?.action === 'report_chunk')).toBeLessThan(indexOf((call) => call.path === '/jobs' && call.method === 'POST'));
   });
