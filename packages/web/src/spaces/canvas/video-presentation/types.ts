@@ -40,6 +40,8 @@ export interface VideoPresentationSource {
   sourceFingerprint: string;
   presentation: VideoPresentation;
   manifest?: AlphaManifest;
+  /** The selected version's carrier a native renderer plays; the canonical source itself when absent. */
+  playbackURL?: string;
 }
 
 /** Notifications from a renderer instance; every callback belongs to one epoch. */

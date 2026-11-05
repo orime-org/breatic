@@ -128,7 +128,7 @@ function createNativeRenderer(host: HTMLElement, source: VideoPresentationSource
   video.addEventListener('error', error);
   host.append(video);
   if (typeof video.requestVideoFrameCallback === 'function') frameHandle = video.requestVideoFrameCallback(frame);
-  video.src = source.canonicalURL;
+  video.src = source.playbackURL ?? source.canonicalURL;
   video.pause();
   video.load();
   return { dispose: () => {

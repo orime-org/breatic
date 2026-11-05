@@ -26,9 +26,17 @@ export function useResolvedVideoPresentation(projectId: string, canonicalURL: st
   const query = useQuery(videoPresentationQuery({ projectId, canonicalURL, active }));
   const source = React.useMemo<VideoPresentationSource | null>(() => {
     const data = query.data;
-    if (!data?.presentation || (data.presentation.state !== 'native' && data.presentation.state !== 'alpha_ready')) return null;
-    return { canonicalURL: data.sourceBinding.canonicalURL, sourceFingerprint: data.sourceBinding.contentHash, presentation: data.presentation, ...(data.manifest === undefined ? {} : { manifest: data.manifest }) };
+    const selected = data?.presentation;
+    // ponytail: an alpha-packed version also needs its manifest object read; until that read exists only native versions play.
+    if (data === undefined || !selected || selected.playback.kind !== 'native') return null;
+    const { display, sourceFingerprint } = selected;
+    return {
+      canonicalURL: data.sourceBinding.canonicalURL, sourceFingerprint, playbackURL: selected.playback.carrier.url,
+      presentation: { schemaVersion: 1, sourceFingerprint, state: 'native',
+        original: { width: display.width, height: display.height, duration: Number(display.duration.numerator) / Number(display.duration.denominator) } },
+    };
   }, [query.data]);
-  const failure = query.isError ? 'presentation-query-failed' : query.data?.preparation?.status === 'failed' ? query.data.preparation.error ?? 'preparation-failed' : query.data?.presentation?.state === 'failed' ? query.data.presentation.error ?? 'presentation-failed' : null;
+  // Nothing selected and the target candidate failed (§7.12 step 2): its code is the failure.
+  const failure = query.isError ? 'presentation-query-failed' : query.data?.presentation === null ? query.data.preparation?.failure ?? null : null;
   return { query, source, failure };
 }
