@@ -16,7 +16,7 @@ export const GAME_UI_LIVESTREAM: GenerationTemplate = {
   ],
   steps: [],
   agentNote:
-    "a 12-second landscape clip that looks like a livestreamed video game with the reader's character as the player: the interface drawn as shapes and colours with no readable letters or numbers",
+    "a 12-second vertical clip that looks like a livestreamed video game with the reader's character as the player: the interface drawn as shapes and colours with no readable letters or numbers",
   goal: "social-hooks",
   triggers: {
     asks: ["a game livestream look", "make it look like a video game", "gameplay footage"],
