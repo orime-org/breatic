@@ -364,7 +364,7 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
     },
     work: { encodedFrames, prerollFrames: 0, sourceWidth: Number(video.width), sourceHeight: Number(video.height), outputWidth: output.width, outputHeight: output.height,
       bitDepth: workDepth(depth.bitDepth), hdr,
-      // The selected audio's seconds, which the dispatched copy encodes to AAC (§5.4 上限行); 0 without audio.
+      // The selected audio's seconds, which the dispatched copy encodes to AAC (§5.4); 0 without audio.
       audioSeconds: window === null ? 0 : Number(window.end.numerator) / Number(window.end.denominator) - Number(window.start.numerator) / Number(window.start.denominator) },
   };
 }

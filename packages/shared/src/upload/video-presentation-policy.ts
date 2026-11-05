@@ -33,7 +33,7 @@ export const videoPresentationEncodingSchema = z.strictObject({
   encoder: z.strictObject({
     startSeconds: z.number().nonnegative().finite(), encodePixelsPerSecond: rate,
     decodeConvertPixelsPerSecond: z.strictObject({ sdr_8bit: rate, sdr_10bit: rate, sdr_12bit: rate, hdr_8bit: rate, hdr_10bit: rate, hdr_12bit: rate }),
-    // Audio seconds encoded to AAC per second: the dispatched copy's estimate (§5.4 上限行).
+    // Audio seconds encoded to AAC per second: the dispatched copy's estimate (§5.4).
     aacEncodeSecondsPerSecond: rate,
   }),
   copyDiskMarginBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),

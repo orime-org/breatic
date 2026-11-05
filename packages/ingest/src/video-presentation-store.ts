@@ -142,7 +142,7 @@ interface JobRecord {
   receipts?: Record<string, VideoPresentationOutputReceipt[]>;
   /** The basic copy's carrier writes by key: claimed before any byte, then the Worker's measurement (§91 D2-2). */
   carrierWrites?: Record<string, CarrierWrite>;
-  /** The ready selected version at the grant that planned, which a reuse route copies (§7.1 路线表). */
+  /** The ready selected version at the grant that planned, which a reuse route copies (§7.1). */
   reuseFrom?: string;
 }
 /** One claimed carrier write; insert-only, so a key is written once. */
@@ -1204,7 +1204,7 @@ export class VideoPresentationStore {
 
   /**
    * Whether P is invalid(V) with the current candidate V's publisher or a reuse of V that failed reuse_source_invalid, and
-   * how that candidate was admitted (§3.5, §7.1 路线表).
+   * how that candidate was admitted (§3.5, §7.1).
    * @param state - The state.
    * @returns `readmit` without readmitOf, `presentation_invalid` with it, or null when P is not invalid or another candidate is current.
    * @throws {never} Never.
@@ -1372,7 +1372,7 @@ async function planAndProduce(store: VideoPresentationStore, capability: Present
     basicDiskBytes: pricing.basic.size.disk_gb * DISK_BYTES_PER_GB });
   const remainingSeconds = (capability.deadlineAt - now) / 1000;
   const chunks = route === 'encode' ? encodeChunks(probe, encoding, remainingSeconds) : [];
-  // A dispatched copy encodes no video: its estimate is the start plus the selected audio at the frozen AAC rate (§5.4 上限行).
+  // A dispatched copy encodes no video: its estimate is the start plus the selected audio at the frozen AAC rate (§5.4).
   const copySeconds = encoding.encoder.startSeconds + probe.work.audioSeconds / encoding.encoder.aacEncodeSecondsPerSecond;
   const tooLong = route === 'encode' ? presentationEncodeFailure(chunks.length, encoding.maxParallelChunks)
     : route === 'dispatch_copy' && copySeconds > encoding.chunkShare * remainingSeconds ? 'too_long' : null;
