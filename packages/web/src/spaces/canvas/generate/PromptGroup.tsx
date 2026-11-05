@@ -52,7 +52,11 @@ interface PromptGroupProps {
   className?: string;
   /** Classes for each prompt. */
   itemClassName?: string;
-  /** Classes for each name. */
+  /** Classes added to the open prompt. */
+  openItemClassName?: string;
+  /** Classes for each row's trigger. */
+  triggerClassName?: string;
+  /** Classes for each name; a closed row's name is drawn in the foreground. */
   nameClassName?: string;
 }
 
@@ -64,6 +68,8 @@ interface PromptGroupProps {
  * @param root0.onValueChange - Called with a prompt the reader opened.
  * @param root0.className - Classes for the list.
  * @param root0.itemClassName - Classes for each prompt.
+ * @param root0.openItemClassName - Classes added to the open prompt.
+ * @param root0.triggerClassName - Classes for each row's trigger.
  * @param root0.nameClassName - Classes for each name.
  * @returns The group.
  */
@@ -73,6 +79,8 @@ export function PromptGroup({
   onValueChange,
   className,
   itemClassName,
+  openItemClassName,
+  triggerClassName,
   nameClassName = 'text-xs font-medium text-foreground',
 }: PromptGroupProps): React.JSX.Element {
   const lone = items.length === 1;
@@ -80,20 +88,25 @@ export function PromptGroup({
     <Accordion type='single' value={value} onValueChange={onValueChange} className={cn('flex flex-col gap-2', className)}>
       {items.map((item) => {
         const open = item.id === value;
-        const name = <span className={cn('shrink-0', nameClassName)}>{item.name}</span>;
+        const name = (
+          <span className={cn('shrink-0', nameClassName, !lone && !open && 'text-foreground')}>{item.name}</span>
+        );
         return (
           <AccordionItem
             key={item.id}
             value={item.id}
             data-testid={item.testId}
-            className={cn('flex flex-col gap-1.5', itemClassName)}
+            className={cn('flex flex-col gap-1.5', itemClassName, open && openItemClassName)}
           >
             {(item.name !== undefined || item.controls !== undefined) && (
               <div className='flex min-w-0 items-center gap-2'>
                 {lone ? (
                   name
                 ) : (
-                  <AccordionTrigger data-testid={item.testId === undefined ? undefined : `${item.testId}-toggle`}>
+                  <AccordionTrigger
+                    className={triggerClassName}
+                    data-testid={item.testId === undefined ? undefined : `${item.testId}-toggle`}
+                  >
                     {name}
                     {!open && <PreviewLine fragment={item.fragment} placeholder={item.placeholder} />}
                   </AccordionTrigger>
@@ -129,7 +142,7 @@ function PreviewLine({
 }): React.JSX.Element {
   const line = usePromptPreviewLine(fragment);
   return (
-    <span className={cn('min-w-0 truncate text-xs', line === '' ? 'text-muted-foreground' : 'text-foreground')}>
+    <span className={cn('min-w-0 truncate text-xs', line === '' ? 'text-muted-foreground' : 'text-foreground/80')}>
       {line === '' ? placeholder : line}
     </span>
   );

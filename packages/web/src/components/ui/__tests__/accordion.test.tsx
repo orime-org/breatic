@@ -57,6 +57,14 @@ describe('Accordion', () => {
     expect(trigger.className).toContain('[&[data-state=open]>svg]:rotate-90');
   });
 
+  it('tints the trigger under the pointer without moving its words', () => {
+    render(<Two />);
+    const trigger = screen.getByRole('button', { name: 'First' });
+    expect(trigger.className).toContain('hover-enabled:bg-accent');
+    expect(trigger.className).toContain('px-1');
+    expect(trigger.className).toContain('-mx-1');
+  });
+
   it('shows a visible focus ring only on keyboard focus', () => {
     render(<Two />);
     expect(screen.getByRole('button', { name: 'First' }).className).toContain('focus-visible:ring-1');

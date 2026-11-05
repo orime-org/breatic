@@ -229,6 +229,9 @@ export function ShotList<Shot extends ShotRow>({
         value={expanded}
         onValueChange={onExpand}
         itemClassName='rounded-overlay border border-border p-2'
+        openItemClassName='border-active-border'
+        // As tall as the seconds buttons beside it, so its focus ring lines up with theirs.
+        triggerClassName='h-6'
         nameClassName='min-w-16 text-xs font-medium text-foreground'
       />
     </div>

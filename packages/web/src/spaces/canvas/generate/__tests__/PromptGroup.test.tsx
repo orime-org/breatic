@@ -138,6 +138,56 @@ describe('the prompt group', () => {
     expect(mounts).toHaveBeenCalledTimes(1);
   });
 
+  it('marks the open prompt with its own classes', () => {
+    render(
+      <PromptGroup
+        items={[item('a', { testId: 'p-a' }), item('b', { testId: 'p-b' })]}
+        value='a'
+        onValueChange={vi.fn()}
+        itemClassName='border-border'
+        openItemClassName='border-active-border'
+      />,
+    );
+
+    expect(screen.getByTestId('p-a').className).toContain('border-active-border');
+    expect(screen.getByTestId('p-b').className).toContain('border-border');
+    expect(screen.getByTestId('p-b').className).not.toContain('border-active-border');
+  });
+
+  it('gives each row the trigger classes it is handed', () => {
+    render(
+      <PromptGroup
+        items={[item('a', { testId: 'p-a' }), item('b', { testId: 'p-b' })]}
+        value='a'
+        onValueChange={vi.fn()}
+        triggerClassName='h-6'
+      />,
+    );
+
+    expect(screen.getByTestId('p-b-toggle').className).toContain('h-6');
+  });
+
+  it('names a closed row in the foreground, whatever the open name is drawn in', () => {
+    render(
+      <PromptGroup
+        items={[item('a', { testId: 'p-a' }), item('b', { testId: 'p-b' })]}
+        value='a'
+        onValueChange={vi.fn()}
+        nameClassName='text-xs text-muted-foreground'
+      />,
+    );
+
+    expect(screen.getByText('Name b').className).toContain('text-foreground');
+    expect(screen.getByText('Name b').className).not.toContain('text-muted-foreground');
+    expect(screen.getByText('Name a').className).toContain('text-muted-foreground');
+  });
+
+  it('draws a closed row\'s first line a step lighter than its name', () => {
+    render(<PromptGroup items={[item('a'), item('b')]} value='a' onValueChange={vi.fn()} />);
+
+    expect(screen.getByText('First line of b').className).toContain('text-foreground/80');
+  });
+
   it('leaves the controls beside a name to do their own work', () => {
     const onValueChange = vi.fn();
     const onControl = vi.fn();

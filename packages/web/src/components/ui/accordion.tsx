@@ -10,8 +10,9 @@ import { cn } from '@web/lib/utils';
  *
  * Changed from the shadcn original to match the approved design: the chevron
  * points right before the trigger's words and turns down while open, the
- * trigger draws no underline and no padding of its own, and content has no
- * open/close animation. `forceMount` on `AccordionContent` keeps a closed
+ * trigger draws no underline and takes the ghost button's tint under the
+ * pointer (its padding pulled back by a margin, so the words stay where they
+ * were), and content has no open/close animation. `forceMount` on `AccordionContent` keeps a closed
  * item's content mounted and visible: Radix leaves showing and hiding it to
  * the caller, who passes `hidden` while the item is closed.
  */
@@ -27,7 +28,7 @@ const AccordionTrigger = React.forwardRef<
     <AccordionPrimitive.Trigger
       ref={ref}
       className={cn(
-        'flex min-w-0 flex-1 items-center gap-1.5 rounded-chrome text-left outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed [&[data-state=open]>svg]:rotate-90',
+        '-mx-1 flex min-w-0 flex-1 items-center gap-1.5 rounded-chrome px-1 text-left outline-none hover-enabled:bg-accent focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed [&[data-state=open]>svg]:rotate-90',
         className,
       )}
       {...props}
