@@ -240,6 +240,10 @@ beforeAll(async () => {
   // Odd display size: H.264 High 4:4:4 holds 161x97 natively (§4.3 奇数宽高); the picture is white so the padding stands apart.
   await make('odd.mp4', ['-f', 'lavfi', '-i', 'color=c=white:s=161x97:r=25:d=0.4', '-c:v', 'libx264', '-pix_fmt', 'yuv444p', ...tagged]);
   await make('rot90.mp4', ['-display_rotation', '90', '-i', join(dir, 'cfr.mp4'), '-c', 'copy']);
+  // The dispatched copy's source (§93 D8): cfr.mp4's picture with ALAC audio, which the MP4 entry's audio_codecs does not
+  // list. 2 s of 44.1 kHz audio (88200 samples), one edit from media time 0 on both tracks.
+  await make('alac.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=2', '-f', 'lavfi', '-i', 'sine=f=1000:r=44100:d=2',
+    '-c:v', 'libx264', '-g', '10', '-bf', '0', '-pix_fmt', 'yuv420p', ...tagged, '-video_track_timescale', '25', '-c:a', 'alac', '-shortest']);
   // Straight alpha of 64 over the whole picture, lossless PNG in QuickTime.
   // Ten frames at 25 fps, each a different grey (limited-range luma 16 + 20n), keyframes at frames 0 and 5.
   await make('greys.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=0.4,format=yuv420p,geq=lum='16+20*N':cb=128:cr=128",
@@ -497,6 +501,47 @@ describe('copy_carrier and prepare_model_input', () => {
     const video = (await probe(file!)).streams[0]!;
     expect([video.codec_name, video.width, video.height, video.color_space]).toEqual(['h264', 320, 180, 'smpte170m']);
     expect((await packets(file!)).map(packet => packet.pts_time)).toEqual((await packets(join(dir, 'untagged.mp4'))).map(packet => packet.pts_time));
+  });
+
+  /**
+   * Every packet of one stream in stored order: its times, size, flags and payload MD5, as ffprobe reads them.
+   * @param path - The file.
+   * @param stream - The stream specifier.
+   * @returns One line per packet.
+   */
+  async function packetList(path: string, stream: string): Promise<string[]> {
+    const { stdout } = await run('ffprobe', ['-v', 'error', '-select_streams', stream, '-show_packets', '-show_data_hash', 'md5',
+      '-show_entries', 'packet=pts_time,dts_time,duration_time,size,flags,data_hash', '-of', 'csv=p=0', path]);
+    return stdout.trim().split('\n');
+  }
+
+  /**
+   * One stream's sample rate, start, duration in its own ticks and time base.
+   * @param path - The file.
+   * @param stream - The stream specifier.
+   * @returns Its fields as ffprobe prints them.
+   */
+  async function streamClock(path: string, stream: string): Promise<{ codec_name: string; sample_rate?: string; start_time: string; duration_ts: number; time_base: string }> {
+    const { stdout } = await run('ffprobe', ['-v', 'error', '-select_streams', stream, '-show_entries', 'stream=codec_name,sample_rate,start_time,duration_ts,time_base', '-of', 'json', path]);
+    return (JSON.parse(stdout) as { streams: { codec_name: string; sample_rate?: string; start_time: string; duration_ts: number; time_base: string }[] }).streams[0]!;
+  }
+
+  // §93 D8 (frames-split design §4.1 row 2, §4.2 sample grid, §4.3 audio row, §5.1 step 2; round 2, user 2026-11-04): the
+  // dispatched copy keeps every video packet as it is and encodes the selected audio, over the plan's audio window, to AAC
+  // at 48 kHz in the same MP4. The audio's declared support lies on the 48 kHz grid, at most half a sample from the
+  // source's exact end (§4.2: av_rescale rounding), and both streams keep the source's start. The recipe's `audio` is the
+  // stitch's (`audioOf(ledger)`: the display interval with the plan's origin and audio spans); its shape is question D8-1.
+  it('CC02 an ALAC source: every video packet kept byte for byte, the audio encoded to AAC 48 kHz over the same timeline', async () => {
+    const source = join(dir, 'alac.mp4');
+    const audio = { start: r(0), end: r(2), origin: r(0), spans: [{ sourceStart: r(0), sourceEnd: r(2), presentationStart: r(0), rate: r(1) }] };
+    const [file] = await produce({ [SOURCE]: source }, [{ kind: 'copy_carrier', inputId: SOURCE, colorMatrix: 'bt709', audio }]);
+    expect((await probe(file!)).streams.map(stream => stream.codec_type)).toEqual(['video', 'audio']);
+    expect(await packetList(file!, 'v:0')).toEqual(await packetList(source, 'v:0'));
+    const [sourceVideo, sourceAudio, video, carried] = await Promise.all([streamClock(source, 'v:0'), streamClock(source, 'a:0'), streamClock(file!, 'v:0'), streamClock(file!, 'a:0')]);
+    expect([carried.codec_name, carried.sample_rate, carried.time_base]).toEqual(['aac', '48000', '1/48000']);
+    expect([video.start_time, carried.start_time]).toEqual([sourceVideo.start_time, sourceAudio.start_time]);
+    const sourceSeconds = sourceAudio.duration_ts / Number(sourceAudio.sample_rate);
+    expect(Math.abs(carried.duration_ts / 48000 - sourceSeconds)).toBeLessThanOrEqual(1 / 96000);
   });
 
   /**
