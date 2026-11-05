@@ -4,7 +4,7 @@
 import * as Y from 'yjs';
 import { newId as createId } from '@breatic/shared';
 import {
-  attachTimelineRecord as attachRecord, freezeTimelineRecord as freezeRecord, readTimelineDocument,
+  attachTimelineRecord as attachRecord, freezeTimelineRecord as freezeRecord, readTimelineDocument, readTimelineSource,
 } from '@breatic/shared/space-content';
 
 import { TimelineEditCommandSchema, planTimelineEdit, type TimelineEditCommand, type TimelineEditPlan } from '@web/data/yjs/timeline-edit';
@@ -54,7 +54,7 @@ function timelineReferencedSourceIds(doc: Y.Doc): Set<string> {
 }
 
 /**
- * The referenced sources, damaged clip records included, that `sources` lacks and `values` holds.
+ * The referenced sources, damaged clip records included, that `sources` lacks or holds unreadable and `values` holds.
  * @param doc - The content document.
  * @param values - Source values by id that this writer may write.
  * @returns Their ids.
@@ -63,7 +63,7 @@ function timelineReferencedSourceIds(doc: Y.Doc): Set<string> {
 export function missingTimelineSourceIds(doc: Y.Doc, values: Readonly<Record<string, unknown>>): string[] {
   const sources = doc.getMap<unknown>('sources');
   // Own keys only: a damaged clip may name any string, including an Object.prototype property.
-  return [...timelineReferencedSourceIds(doc)].filter((id) => !sources.has(id) && Object.hasOwn(values, id));
+  return [...timelineReferencedSourceIds(doc)].filter((id) => readTimelineSource(sources.get(id), id) === undefined && Object.hasOwn(values, id));
 }
 
 /**

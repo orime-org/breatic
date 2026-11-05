@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as Y from "yjs";
+import type { z } from "zod";
 import {
   TimelineDocumentV1Schema, TimelineSettingsSchema, TimelineTrackSchema, TimelineVideoClipSchema, TimelineVideoSourceSchema,
   TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineSettings, type TimelineVideoSource,
@@ -60,48 +61,46 @@ export function initializeTimelineDocument(doc: Y.Doc, settings: TimelineSetting
 export interface TimelineDamagedRecords { clips: string[] }
 
 /**
- * Keep the records of one collection that pass their schema.
- * @param collection - The collection as JSON.
+ * Read one stored record: a Y type is read as JSON, and the record counts only when it passes its schema and is
+ * stored under its own id. A peer may store any Yjs content under any key.
  * @param schema - The record schema.
- * @param schema.safeParse - Validates one record.
- * @param damaged - Collects the ids of records that fail, when given.
- * @returns The valid records by id.
+ * @param value - The stored value.
+ * @param id - Its key.
+ * @returns The record, or undefined when it is not readable.
  * @throws {never} Never.
  */
-function validRecords(collection: Record<string, unknown>, schema: { safeParse: (value: unknown) => { success: boolean } }, damaged?: string[]): Record<string, unknown> {
-  const valid: Record<string, unknown> = {};
-  for (const [id, record] of Object.entries(collection)) {
-    if (schema.safeParse(record).success) valid[id] = record;
+function readRecord<T extends { id: string }>(schema: z.ZodType<T>, value: unknown, id: string): T | undefined {
+  const parsed = schema.safeParse(value instanceof Y.AbstractType ? value.toJSON() : value);
+  return parsed.success && parsed.data.id === id ? parsed.data : undefined;
+}
+
+/**
+ * Every readable record of one collection, by id.
+ * @param collection - The collection map.
+ * @param schema - The record schema.
+ * @param damaged - Collects the keys of unreadable records, when given.
+ * @returns The readable records.
+ * @throws {never} Never.
+ */
+function readRecords<T extends { id: string }>(collection: Y.Map<unknown>, schema: z.ZodType<T>, damaged?: string[]): Record<string, T> {
+  const valid: Record<string, T> = {};
+  collection.forEach((value, id) => {
+    const record = readRecord(schema, value, id);
+    if (record !== undefined) valid[id] = record;
     else damaged?.push(id);
-  }
+  });
   return valid;
 }
 
 /**
- * Read one stored source value; a peer may store any Yjs content under a source id.
+ * Read one stored source value, by the rule every Timeline record follows.
  * @param value - The value stored under `id` in the sources map.
  * @param id - Its key.
  * @returns The source, or undefined when the value is not a valid source stored under its own id.
  * @throws {never} Never.
  */
 export function readTimelineSource(value: unknown, id: string): TimelineVideoSource | undefined {
-  const parsed = TimelineVideoSourceSchema.safeParse(value instanceof Y.Map ? value.toJSON() : value);
-  return parsed.success && parsed.data.id === id ? parsed.data : undefined;
-}
-
-/**
- * Every readable source by id.
- * @param sources - The sources map.
- * @returns The readable sources.
- * @throws {never} Never.
- */
-function readSources(sources: Y.Map<unknown>): Record<string, TimelineVideoSource> {
-  const valid: Record<string, TimelineVideoSource> = {};
-  sources.forEach((value, id) => {
-    const source = readTimelineSource(value, id);
-    if (source !== undefined) valid[id] = source;
-  });
-  return valid;
+  return readRecord(TimelineVideoSourceSchema, value, id);
 }
 
 /**
@@ -118,9 +117,9 @@ export function readTimelineContent(doc: Y.Doc): { document: TimelineDocumentV1;
   const document = TimelineDocumentV1Schema.parse({
     schemaVersion: timeline.get("schemaVersion"),
     settings: timeline.get("settings"),
-    tracks: validRecords(doc.getMap("tracks").toJSON(), TimelineTrackSchema),
-    clips: validRecords(doc.getMap("clips").toJSON(), TimelineVideoClipSchema, damaged.clips),
-    sources: readSources(doc.getMap("sources")),
+    tracks: readRecords(doc.getMap("tracks"), TimelineTrackSchema),
+    clips: readRecords(doc.getMap("clips"), TimelineVideoClipSchema, damaged.clips),
+    sources: readRecords(doc.getMap("sources"), TimelineVideoSourceSchema),
   });
   return { document, damaged };
 }
