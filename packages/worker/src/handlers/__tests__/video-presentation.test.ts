@@ -226,7 +226,8 @@ beforeEach(() => {
     if (path === '/video-presentation') {
       if (body?.action === 'prepare') return Response.json(answer);
       if (body?.action === 'advance_stage' || body?.action === 'report_chunk') return Response.json({ accepted: true });
-      return Response.json({ sourceBinding: { storageKey: KEY, sourceFingerprint: H }, presentation: null, preparation: null, ledger: null });
+      // The snapshot carries the DO's readmit fact (required since §93 D6).
+      return Response.json({ sourceBinding: { storageKey: KEY, sourceFingerprint: H }, presentation: null, preparation: null, ledger: null, readmit: false });
     }
     if (path === '/jobs') return Response.json({ schemaVersion: 2, state: 'starting' });
     if (path === '/jobs/read') {
@@ -422,7 +423,8 @@ describe('recipes from the full ledger (inner#1306 §91 D3b; design §7.17, §5.
   // B-frames, first packet dts 0) has source keyframes at 0, 0.4, 0.8 and 1.2 s; the first presented frame is source 0.08 s,
   // so the first span decodes from the unpresented keyframe at 0 (was its own first frame time, 2/25).
   it('RB01 an edited source: the first span starts inside its first frame (clipStart at the edit), later chunks at their keyframe', async () => {
-    await serve(withKeyframes(LEDGERS.cut, [0, 10, 20, 30].map((n) => ({ pts: r(n, 25), dts: r(n, 25) })), r(0)),
+    // Reduced times, as the ledger schema requires: 0, 2/5, 4/5 and 6/5 s.
+    await serve(withKeyframes(LEDGERS.cut, [r(0), r(2, 5), r(4, 5), r(6, 5)].map((time) => ({ pts: time, dts: time })), r(0)),
       { work: { kind: 'encode', chunks: [{ start: 0, end: 18 }, { start: 18, end: 38 }] } });
     await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
     const jobs = submitted();

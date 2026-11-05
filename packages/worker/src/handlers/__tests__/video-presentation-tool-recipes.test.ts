@@ -193,7 +193,12 @@ describe('decodeStart from the selected source keyframe (§93 D6-1; design §7.1
     ledger.encoding = { keyframeOrdinals: ordinals, codedWidth: 320, codedHeight: 180, sourceKeyframes: keyframes, firstPacketDts };
     return ledger;
   }
-  const at = (n: number): Exact => r(n, 25);
+  // Times are reduced, as the recipe and the ledger schema write them (E07 refuses unreduced ones).
+  const at = (n: number): Exact => {
+    let [a, b] = [Math.abs(n), 25]; while (b !== 0) [a, b] = [b, a % b];
+    const g = a === 0 ? 25 : a;
+    return r(n / g, 25 / g);
+  };
   const windows = recipes as unknown as { windowEntries: (ledger: unknown, window: { start: number; end: number }) => Record<string, unknown>[] };
   // bf2.mp4: g=10, bf=2: keyframes at pts 2/25, 12/25, 22/25 with dts 0, 10/25, 20/25.
   const BF2 = sample(2, [0, 10, 20], [{ pts: at(2), dts: at(0) }, { pts: at(12), dts: at(10) }, { pts: at(22), dts: at(20) }], at(0));
