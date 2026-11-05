@@ -20,7 +20,7 @@ import {
   t,
   templateMarkTargets,
   templateNodeDefaults,
-  templateNodeShots,
+  templateNodeWords,
   type GenerationTemplate,
   type ProposalNode,
   type TemplateNodeKey,
@@ -78,11 +78,9 @@ export function templateSegmentsText(template: GenerationTemplate, key: Template
     });
     return `[${parts.join(", ")}]`;
   };
-  const own = key === template.anchor ? "" : `node.${key}.`;
-  const shots = templateNodeShots(template, key);
-  if (shots === undefined) return segments(`${own}prompt`);
-  const each = shots.map((shot, i) => `{"duration": ${String(shot.seconds)}, "prompt": ${segments(`${own}shot.${String(i + 1)}`)}}`);
-  return `shots: [${each.join(", ")}]`;
+  const words = templateNodeWords(template, key);
+  if ("prompt" in words) return segments(words.prompt);
+  return `shots: [${words.shots.map((shot) => `{"duration": ${String(shot.seconds)}, "prompt": ${segments(shot.key)}}`).join(", ")}]`;
 }
 
 /**
@@ -143,9 +141,10 @@ export function expandAt(place: TemplatePlace, rest: ProposalNode, at: NodeLabel
     // is told how its nodes go in once it has a prompt to check.
     const keeps = own?.role === "generate" && filled.mode === own.mode && filled.model === own.model;
     const pool = keeps ? ` Each node the prompt @s goes into the pool. ${poolSentence(rest.name)}` : "";
-    const shots = templateNodeShots(template, key) !== undefined;
-    const words = shots ? "shots" : "prompt";
-    return refuse("template-no-prompt", `"${rest.name}" names template "${template.id}" and sends no ${words}. The template's ${words}, to rewrite in the reader's language with their story or detail in it: ${templateSegmentsText(template, key)}.${pool}`, fixOn(at, shots ? "write the shots." : "write a prompt."));
+    // A node moved off the template's multi-shot mode takes a prompt, whatever form the template's words have.
+    const shotList = own?.role === "generate" && own.shots !== undefined;
+    const asks = shotList && filled.mode === own.mode ? "shots" : "prompt";
+    return refuse("template-no-prompt", `"${rest.name}" names template "${template.id}" and sends no ${asks}. The template's ${shotList ? "shots" : "prompt"}, to rewrite in the reader's language with their story or detail in it: ${templateSegmentsText(template, key)}.${pool}`, fixOn(at, asks === "shots" ? "write the shots." : "write a prompt."));
   }
   return { ok: true, node: filled };
 }

@@ -170,16 +170,23 @@ export function templateAnchor(template: GenerationTemplate): TemplateGenerateNo
   return anchor;
 }
 
+/** Where a template's generate node keeps its words: keys under the template's `canvas.template.<id>.` entry. */
+export type TemplateNodeWords = { prompt: string } | { shots: ReadonlyArray<{ seconds: number; key: string }> };
+
 /**
- * The shots one of a template's generate nodes writes in place of a prompt.
+ * Where one of a template's generate nodes keeps its words: its prompt, or,
+ * for a node with a shot list, one key per shot in place of a prompt.
  * @param template - The template.
  * @param key - The node's key.
- * @returns Its shots, or undefined for a node that writes a prompt.
+ * @returns The keys under the template's locale entry.
  * @throws {never} Never.
  */
-export function templateNodeShots(template: GenerationTemplate, key: TemplateNodeKey): readonly TemplateShot[] | undefined {
+export function templateNodeWords(template: GenerationTemplate, key: TemplateNodeKey): TemplateNodeWords {
   const node = template.nodes.find((one) => one.key === key);
-  return node?.role === "generate" ? node.shots : undefined;
+  const own = key === template.anchor ? "" : `node.${key}.`;
+  const shots = node?.role === "generate" ? node.shots : undefined;
+  if (shots === undefined) return { prompt: `${own}prompt` };
+  return { shots: shots.map((shot, i) => ({ seconds: shot.seconds, key: `${own}shot.${String(i + 1)}` })) };
 }
 
 /**

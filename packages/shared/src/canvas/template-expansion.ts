@@ -8,7 +8,7 @@
  * the panel's own expansion.
  */
 
-import { templateAnchor, templateNodeShots, type GenerationTemplate, type TemplateNodeKey } from "@shared/canvas/generation-templates.js";
+import { templateAnchor, templateNodeWords, type GenerationTemplate, type TemplateNodeKey } from "@shared/canvas/generation-templates.js";
 import { t } from "@shared/i18n/index.js";
 import {
   TEMPLATE_GUIDE_KEY,
@@ -329,7 +329,6 @@ export function matchTemplateInstance(skeleton: TemplateSkeleton, graph: Templat
   // An input fed only into nodes this apply places new has nowhere to be
   // wired yet but the anchor: it takes the first free node wired in there.
   for (const input of skeleton.inputs) {
-    if (inputs.has(input.key) || input.feeds.includes(skeleton.anchor)) continue;
     if (!input.feeds.every((fed) => keys.get(fed)?.kind === "missing")) continue;
     const chosen = incoming(anchor).map((wire) => wire.from).find((from) => free(from, input));
     if (chosen !== undefined) for (const fed of input.feeds) give(input.key, fed, chosen);
@@ -528,12 +527,9 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
         const index = target === undefined ? undefined : "input" in target ? inputAt.get(target.input)?.get(key) : indexOf.get(target.node);
         return index === undefined ? segment : { ref: index };
       });
-    const own = key === template.anchor ? "" : `node.${key}.`;
-    const shots = templateNodeShots(template, key);
-    if (shots === undefined) return { prompt: [...notes, ...bound(`${own}prompt`)] };
-    return {
-      shots: shots.map((shot, i) => ({ duration: shot.seconds, prompt: [...(i === 0 ? notes : []), ...bound(`${own}shot.${String(i + 1)}`)] })),
-    };
+    const words = templateNodeWords(template, key);
+    if ("prompt" in words) return { prompt: [...notes, ...bound(words.prompt)] };
+    return { shots: words.shots.map((shot, i) => ({ duration: shot.seconds, prompt: [...(i === 0 ? notes : []), ...bound(shot.key)] })) };
   };
 
   const anchorNode = templateAnchor(template);
