@@ -3,6 +3,8 @@
 
 export type ModelImportErrorCode = 'missing' | 'entry' | 'unsupported' | 'empty' | 'budget' | 'invalid' | 'duplicate';
 export interface ModelInspectionInfo {
+  /** The main file the failed check read, once the selection had one. */
+  entry?: string;
   entries: readonly string[];
   paths: readonly string[];
   missing: readonly string[];

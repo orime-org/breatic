@@ -25,7 +25,7 @@ import { disposeModelTemplate, parseSceneModel } from '@web/spaces/three-d/viewp
 export async function prepareSceneModel(files: readonly ModelSource[], entry: string | undefined, signal: AbortSignal, limits: SceneImportLimits): Promise<PreparedModel> {
   const selection = await inspectModelSelectionInWorker(files, entry, signal, limits);
   signal.throwIfAborted();
-  const info = { entries: selection.entries, paths: selection.paths, missing: [] };
+  const info = { entry: selection.model.entry, entries: selection.entries, paths: selection.paths, missing: [] };
   const extensions = getUnsupportedModelExtensions(selection.model.json, selection.model.support);
   let renderer: WebGLRenderer | undefined;
   let root: Group | undefined;

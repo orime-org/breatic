@@ -132,7 +132,7 @@ describe('model-selection supplements and archiver metadata (inner#1690)', () =>
     const entry = inputFile('hero.gltf', modelJson('body/color.png'));
     const sources = [...sourcesFromFiles([entry]), ...supplementSources([inputFile('color.png', GEOMETRY.slice())], ['body/color.png', 'head/color.png'])];
     await expectFailure(inspectModelSelection(sources, 'hero.gltf', IMPORT_LIMITS, TEXTURE_FORMATS), 'missing', {
-      entries: ['hero.gltf'], paths: ['hero.gltf'], missing: ['body/color.png'],
+      entry: 'hero.gltf', entries: ['hero.gltf'], paths: ['hero.gltf'], missing: ['body/color.png'],
     });
     const again = [...sources, ...supplementSources([inputFile('color.png', GEOMETRY.slice())], ['body/color.png'])];
     expect([...(await inspectModelSelection(again, 'hero.gltf', IMPORT_LIMITS, TEXTURE_FORMATS)).paths]).toEqual(['body/color.png', 'hero.gltf']);

@@ -128,7 +128,7 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
     const append = appendFiles.current;
     appendFiles.current = false;
     setDetails(false);
-    void controller.select(append ? [...current.files, ...supplementSources(files, current.missing)] : sourcesFromFiles(files), append ? current.entry : undefined);
+    void (append ? controller.supplement(supplementSources(files, current.missing)) : controller.select(sourcesFromFiles(files)));
     if (append) setStarted({ snapshot: controller.getSnapshot(), control: 'supplement' });
   }, [controller]);
   /**

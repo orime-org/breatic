@@ -70,6 +70,7 @@ export async function inspectModelSelection(sources: readonly ModelSource[], ent
       throw new ModelImportError('entry', 'Choose a model entry', { detail: '' });
     }
     const selected = entry ?? entries[0];
+    info = { ...info, entry: selected };
     const model = inspectModelFiles(collection, selected, limits, support);
     return { model, artifact: packModelFiles(model, limits), entries, paths };
   } catch (error) {

@@ -486,6 +486,42 @@ describe('document-owned model imports (inner#1690)', () => {
     expect(h.controller.getSnapshot()).toMatchObject({ phase: 'failed', error: { message: 'Upload interrupted' } });
   });
 
+  it('clears a previous name when another collection is selected', async () => {
+    const h = harness();
+    await h.controller.select(h.files);
+    h.controller.setName('Prepared character');
+    const info = { paths: ['one.glb', 'two.glb'], entries: ['one.glb', 'two.glb'], missing: [] };
+    h.prepare.mockRejectedValueOnce(new ModelImportError('entry', 'Choose an entry', { detail: '', info }));
+    await h.controller.select([...h.files]);
+    expect(h.controller.getSnapshot()).toMatchObject({ phase: 'failed', name: '', entry: undefined });
+  });
+
+  it('shows the main file and its default name while resources are missing, and keeps a typed name through the supplement', async () => {
+    const h = harness();
+    const info = { entry: 'files/scene.gltf', paths: ['files/scene.gltf'], entries: ['files/scene.gltf'], missing: ['files/mesh.bin'] };
+    h.prepare.mockRejectedValueOnce(new ModelImportError('missing', 'Missing model resources', { detail: '', info }))
+      .mockResolvedValueOnce(preparedModel('files/scene.gltf'));
+    await h.controller.select(h.files);
+    expect(h.controller.getSnapshot()).toMatchObject({ phase: 'failed', entry: 'files/scene.gltf', name: 'scene' });
+    h.controller.setName('Hero');
+    const added = [{ path: 'files/mesh.bin', file: new File([new Uint8Array([2])], 'mesh.bin') }];
+    await h.controller.supplement(added);
+    expect(h.prepare).toHaveBeenLastCalledWith([...h.files, ...added], 'files/scene.gltf', expect.any(AbortSignal));
+    expect(h.controller.getSnapshot()).toMatchObject({ phase: 'ready', name: 'Hero' });
+  });
+
+  it('follows the chosen main file with the default name until a name is typed', async () => {
+    const h = harness();
+    h.prepare.mockResolvedValueOnce(preparedModel('one.glb')).mockResolvedValueOnce(preparedModel('two.glb')).mockResolvedValueOnce(preparedModel('one.glb'));
+    await h.controller.select(h.files, 'one.glb');
+    expect(h.controller.getSnapshot().name).toBe('one');
+    await h.controller.select(h.controller.getSnapshot().files, 'two.glb');
+    expect(h.controller.getSnapshot().name).toBe('two');
+    h.controller.setName('Chosen');
+    await h.controller.select(h.controller.getSnapshot().files, 'one.glb');
+    expect(h.controller.getSnapshot().name).toBe('Chosen');
+  });
+
   it('records an inspection failure and accepts replacement input before upload', async () => {
     const h = harness();
     const error = new Error('Missing geometry.bin');

@@ -54,6 +54,8 @@ export class ModelImportController {
   private inFlight: Promise<void> | null = null;
   /** Counts selection requests so a slow read is dropped once a newer selection was made. */
   private requests = 0;
+  /** Whether the shown name was typed; otherwise it follows the main file. */
+  private named = false;
 
   /**
    * Bind import work to the existing scene command owner.
@@ -98,23 +100,47 @@ export class ModelImportController {
    * @throws {never} Inspection failures are retained in the snapshot.
    */
   async select(files: readonly ModelSource[], entry?: string): Promise<void> {
+    await this.inspect(files, entry, files === this.snapshot.files);
+  }
+
+  /**
+   * Add accompanying files to the current collection and check it again around the same main file.
+   * @param added - The added files at the missing paths they fill.
+   * @returns Completion of this inspection; obsolete completions are ignored.
+   * @throws {never} Inspection failures are retained in the snapshot.
+   */
+  async supplement(added: readonly ModelSource[]): Promise<void> {
+    await this.inspect([...this.snapshot.files, ...added], this.snapshot.entry, true);
+  }
+
+  /**
+   * Check a collection, keeping its entries and name when it is the current collection checked again.
+   * @param files - Original files under their paths in the user's collection.
+   * @param entry - Explicit entry when several models are present.
+   * @param same - Whether this is the current collection, re-checked or supplemented.
+   * @returns Completion of this inspection; obsolete completions are ignored.
+   * @throws {never} Inspection failures are retained in the snapshot.
+   */
+  private async inspect(files: readonly ModelSource[], entry: string | undefined, same: boolean): Promise<void> {
     this.requests += 1;
     if (['disposed', 'uploading', 'registering'].includes(this.snapshot.phase)) return;
     this.operation.abort();
     this.snapshot.prepared?.dispose();
     const operation = new AbortController();
     this.operation = operation;
-    // Choosing another main file re-checks the same collection, whose entries stay the same while it runs.
+    if (!same) this.named = false;
     this.publish({ phase: 'checking', prepared: null, assetId: null, objectId: null, error: null, progress: 0,
-      files, entry, entries: files === this.snapshot.files ? this.snapshot.entries : [], paths: [], missing: [] });
+      files, entry, entries: same ? this.snapshot.entries : [], paths: [], missing: [], name: same ? this.snapshot.name : '' });
     try {
       const prepared = await this.inputs.prepare(files, entry, operation.signal);
       if (operation.signal.aborted) { prepared.dispose(); return; }
       this.publish({ phase: 'ready', prepared, entry: prepared.entry, entries: prepared.entries, paths: prepared.paths ?? [],
-        name: prepared.entry.slice(prepared.entry.lastIndexOf('/') + 1).replace(/\.(glb|gltf)$/i, '') });
+        name: this.nameFor(prepared.entry) });
     } catch (error) {
-      if (!operation.signal.aborted) this.publish({ phase: 'failed', error: error instanceof Error ? error : new Error(String(error)),
-        ...(error instanceof ModelImportError && error.info ? error.info : {}) });
+      if (operation.signal.aborted) return;
+      const info = error instanceof ModelImportError ? error.info : undefined;
+      this.publish({ phase: 'failed', error: error instanceof Error ? error : new Error(String(error)),
+        ...info, name: this.nameFor(info?.entry) });
     }
   }
 
@@ -136,7 +162,20 @@ export class ModelImportController {
    * @throws {never} Never.
    */
   setName(name: string): void {
-    if (this.snapshot.phase !== 'disposed') this.publish({ name });
+    if (this.snapshot.phase === 'disposed') return;
+    this.named = name.trim() !== '';
+    this.publish({ name });
+  }
+
+  /**
+   * Name the model after its main file unless a name was typed.
+   * @param entry - The main file the check read, when it has one.
+   * @returns The name to show.
+   * @throws {never} Never.
+   */
+  private nameFor(entry: string | undefined): string {
+    if (this.named || entry === undefined) return this.snapshot.name;
+    return entry.slice(entry.lastIndexOf('/') + 1).replace(/\.(glb|gltf)$/i, '');
   }
 
   /**
@@ -148,6 +187,7 @@ export class ModelImportController {
     this.operation.abort();
     this.snapshot.prepared?.dispose();
     this.operation = new AbortController();
+    this.named = false;
     this.publish({ phase: 'idle', prepared: null, files: [], entry: undefined, entries: [], paths: [], missing: [],
       name: '', assetId: null, objectId: null, progress: 0, error: null });
   }
