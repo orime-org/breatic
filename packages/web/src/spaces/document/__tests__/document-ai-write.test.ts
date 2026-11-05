@@ -416,6 +416,41 @@ describe('replace over blocks without words that hold or gain some', () => {
     expect(everyBlock(handle)).toEqual(['Hi', 'Next']);
   });
 
+  it('takes away a selected empty line before an empty block whose child holds the words', async () => {
+    const handle = await openBlocks([
+      { type: 'paragraph', content: 'Before' },
+      { type: 'paragraph', content: '' },
+      { type: 'paragraph', content: '', children: [{ type: 'paragraph', content: 'Hello world' }] },
+      { type: 'paragraph', content: 'After' },
+    ]);
+    const { span } = openOn(handle, rangeOf(handle, 'Before').to, rangeOf(handle, 'world').to);
+    const { range, edges } = span();
+
+    await replaceAiResult(handle, range, 'Hi.', WRITABLE, edges);
+
+    expect(everyBlock(handle)).toEqual(['Before', '(empty)', 'Hi.', 'After']);
+  });
+
+  it('leaves one image when it stands before an empty block whose child holds the words', async () => {
+    const image = `![pic](${OURS}a.png)`;
+    const handle = await openBlocks([
+      { type: 'paragraph', content: 'Before' },
+      { type: 'image', props: { url: `${OURS}a.png` } },
+      { type: 'paragraph', content: '', children: [{ type: 'paragraph', content: 'Hello world' }] },
+    ]);
+    const { span } = openOn(handle, rangeOf(handle, 'Before').to, rangeOf(handle, 'world').to);
+    const { range, edges } = span();
+
+    await replaceAiResult(handle, range, `${image}\n\nHello, world.`, WRITABLE, edges);
+
+    let images = 0;
+    handle.editor.prosemirrorState.doc.descendants((node) => {
+      if (node.type.name === 'image') images += 1;
+      return true;
+    });
+    expect(images).toBe(1);
+  });
+
   it('keeps a selected empty line that was written in after the dialog opened', async () => {
     const handle = await openBlocks([
       { type: 'paragraph', content: 'Hello world' },
