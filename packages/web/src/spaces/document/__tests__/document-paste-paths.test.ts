@@ -141,6 +141,10 @@ const ONE_LINE_SOURCES: Record<string, () => Promise<Record<string, string>>> = 
     const source = await openReady([{ type: 'paragraph', content: 'pppp', children: [{ type: 'paragraph', content: 'xhellox' }] }]);
     return copyOf(source, positionOf(source, 'xhellox', 1), positionOf(source, 'xhellox', 6));
   },
+  ownListItem: async () => {
+    const source = await openReady([{ type: 'bulletListItem', content: 'pppp', children: [{ type: 'bulletListItem', content: 'xhellox' }] }]);
+    return copyOf(source, positionOf(source, 'xhellox', 1), positionOf(source, 'xhellox', 6));
+  },
   canvas: async () => ({ 'text/plain': canvasClipboardOf(['hello']) }),
 };
 
@@ -152,7 +156,9 @@ describe('one line of words', () => {
     select(editor, ONE_LINE_TARGETS[target]!.at(editor));
     pasteFormats(editor, formats);
     await settled();
-    expect(shape(editor)).toEqual(['paragraph:lead', ONE_LINE_TARGETS[target]!.line, 'paragraph:tail']);
+    // An empty plain line takes the type of the line it receives (§5.4.3).
+    const line = source === 'ownListItem' && target === 'emptyP' ? 'bulletListItem:hello' : ONE_LINE_TARGETS[target]!.line;
+    expect(shape(editor)).toEqual(['paragraph:lead', line, 'paragraph:tail']);
     expectUniqueIds(editor);
   });
 

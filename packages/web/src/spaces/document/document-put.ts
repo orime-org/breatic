@@ -303,8 +303,11 @@ function pasteSlice(view: EditorView, slice: Slice, handlers: boolean): void {
  * @returns Where the words landed.
  */
 function putWords(view: EditorView, line: PMNode, byPaste: boolean): Placed {
-  const from = view.state.selection.from;
-  pasteSlice(view, openLines(view.state.schema, [line]), byPaste);
+  const { from, empty, $from } = view.state.selection;
+  // An empty heading, list item or to-do keeps its type and gives it to the
+  // words (§5.4.3): ProseMirror would put the line's own type in its place.
+  const target = empty && $from.parent.isTextblock && $from.parent.content.size === 0 && $from.parent.type.name !== 'paragraph' ? lineAt($from) : null;
+  pasteSlice(view, openLines(view.state.schema, [target === null ? line : retyped(line, target.node)]), byPaste);
   return { kind: 'range', from, to: view.state.selection.head };
 }
 
