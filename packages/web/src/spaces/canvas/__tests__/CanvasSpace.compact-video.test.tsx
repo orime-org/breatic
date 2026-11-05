@@ -24,6 +24,7 @@ import { useCanvasStore } from '@web/stores/canvas';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { videoPresentationQuery } from '../video-presentation/video-presentation-query';
+import { PRESENTED, presentedBinding, presentedBundle, presentedResponse, readyLedger } from '@web/test-utils/video-presentation';
 
 vi.mock('@web/data/yjs/canvas-space', async (original) => ({ ...(await original<typeof CanvasModule>()), useCanvasSpace: vi.fn() }));
 vi.mock('@web/spaces/canvas/mini-tool/start-planned-video-run', async (original) => ({ ...(await original<typeof StartModule>()), startPlannedVideoRun: vi.fn() }));
@@ -50,7 +51,8 @@ const SOURCE = '30000000-0000-4000-8000-000000000003';
 const URL = 'https://assets.example.test/source.webm';
 const HASH = 'a'.repeat(64);
 const table = { schemaVersion: 1, timescale: 1000, runs: [{ start: 2000, count: 4, step: 250, duration: 250 }] };
-const tableBytes = new TextEncoder().encode(JSON.stringify(table));
+// §95: the compact object is the four fields around the S1 table, bound to the selected bundle's toolInputId (4.4.5).
+const tableBytes = new TextEncoder().encode(JSON.stringify({ sourceFingerprint: 'a'.repeat(64), toolInputId: PRESENTED.toolInputId, planSha256: PRESENTED.planSha256, presentation: table }));
 const tableURL = `${URL}.table.json`;
 const attempt = { jobId: 'ledger-job', deadlineAt: 1900000000000 };
 let sha256 = '';
@@ -59,8 +61,12 @@ const fetchMock = vi.fn<typeof fetch>();
 
 /** Supplies immutable, bound v2 source facts. @throws {never} Never. */
 function sourceResponse(ledger?: unknown): VideoPresentationResponse {
-  return { sourceBinding: { assetId: '30000000-0000-4000-8000-000000000007', contentHash: HASH, canonicalURL: URL, kind: 'video', mediaInfo: { width: 400, height: 200, duration: 4, mimeType: 'video/webm' } }, presentation: { schemaVersion: 1, sourceFingerprint: HASH, state: 'native', original: { width: 400, height: 200, duration: 4 } }, preparation: null, pollAfterMs: null,
-    sourceLedger: ledger ?? { state: 'ready', receipt: { schemaVersion: 2, producerVersion: 2, sourceFingerprint: HASH, attempt, url: `${URL}.full.json`, etag: 'opaque', size: 5000, sha256: 'b'.repeat(64), contentType: 'application/json', table: { url: tableURL, size: tableBytes.length, sha256, frameCount: 4 } } }, sourceLedgerReadLimits: { maxBytes: 16777216 } } as VideoPresentationResponse;
+  // §95: the read carries the selected bundle and its ledger (fixtures migrated from `state: 'native'` and `sourceLedger`, 4.4.5).
+  const bundle = presentedBundle(URL, { sourceFingerprint: HASH, display: { width: 400, height: 200, duration: { numerator: '4', denominator: '1' } } });
+  const ready = readyLedger(bundle, 4);
+  const receipt = ready.state === 'ready' ? { ...ready.receipt, attempt, table: { ...ready.receipt.table, url: tableURL, size: tableBytes.length, sha256 } } : null;
+  return presentedResponse(presentedBinding(URL, { width: 400, height: 200, duration: 4, mimeType: 'video/webm' }, HASH),
+    { presentation: bundle, ledger: (ledger ?? { state: 'ready', receipt, failure: null }) as VideoPresentationResponse['ledger'], sourceLedgerReadLimits: { maxBytes: 16777216 } });
 }
 /** Publishes a new authoritative response in the actual account query cache. @throws {never} Never. */
 function publish(response: VideoPresentationResponse): void {
@@ -73,7 +79,7 @@ function mount(toolId: VideoToolId = 'video.split'): void {
 }
 /** A transient or content failure of this exact source. @throws {never} Never. */
 function failure(errorCode: string): VideoPresentationResponse {
-  return sourceResponse({ state: 'failed', schemaVersion: 2, producerVersion: 2, sourceFingerprint: HASH, attempt, errorCode });
+  return sourceResponse({ state: 'failed', receipt: null, failure: errorCode });
 }
 
 beforeEach(async () => {
@@ -101,14 +107,14 @@ describe('S4 actual Canvas → bindings → tools compact table wire', () => {
   it.each(['video.extract-frames', 'video.split', 'video.expand', 'video.erase', 'video.lip-sync', 'video.transitions'] as const)('C02 %s waits for a pending table', async (tool) => {
     mount(); await waitFor(() => expect(screen.getByTestId('mini-tool-run')).not.toBeDisabled());
     act(() => {
-      publish(sourceResponse({ state: 'pending', schemaVersion: 2, producerVersion: 2, sourceFingerprint: HASH, attempt }));
+      publish(sourceResponse({ state: 'pending', receipt: null, failure: null }));
       canvasSessions.of(SPACE).getState().openMiniTool(SOURCE, tool, { sourceContent: URL, params: {} });
     });
     await waitFor(() => expect(screen.getByTestId('mini-tool-run')).toBeDisabled());
     expect(screen.getAllByText('Reading video frames…')[0]).toBeInTheDocument();
   });
   it('C03 remove-background does not wait for the table (guard)', async () => {
-    publish(sourceResponse({ state: 'pending', schemaVersion: 2, producerVersion: 2, sourceFingerprint: HASH, attempt })); mount('video.remove-bg');
+    publish(sourceResponse({ state: 'pending', receipt: null, failure: null })); mount('video.remove-bg');
     await waitFor(() => expect(screen.getByTestId('mini-tool-run')).not.toBeDisabled());
   });
   it.each(['expired', 'source_ledger_invalid'])('C04 %s shows real retry; Button remains loading through authoritative refresh', async (code) => {
@@ -125,7 +131,7 @@ describe('S4 actual Canvas → bindings → tools compact table wire', () => {
     expect(post).toHaveBeenCalledOnce();
     expect(retry).toHaveAttribute('aria-busy', 'true');
     expect(retry).toHaveAttribute('aria-disabled', 'true');
-    await act(async () => finish({ ...sourceResponse({ state: 'pending', schemaVersion: 2, producerVersion: 2, sourceFingerprint: HASH, attempt }), attempt }));
+    await act(async () => finish(sourceResponse({ state: 'pending', receipt: null, failure: null })));
     expect(screen.getByTestId('mini-tool-run')).toBeDisabled();
     expect(retry).toHaveAttribute('aria-busy', 'true');
     expect(retry).toHaveAttribute('aria-disabled', 'true');
@@ -161,8 +167,8 @@ describe('S4 actual Canvas → bindings → tools compact table wire', () => {
   it('C09 compact read validation errors offer retry without exposing the previous table', async () => {
     mount(); await waitFor(() => expect(screen.getByTestId('mini-tool-run')).not.toBeDisabled());
     const next = sourceResponse();
-    if (next.sourceLedger?.state !== 'ready' || next.sourceLedger.receipt.schemaVersion !== 2) throw new Error('Expected v2 ready fixture');
-    next.sourceLedger.receipt.table.sha256 = 'd'.repeat(64);
+    if (next.ledger?.state !== 'ready') throw new Error('Expected a ready fixture');
+    next.ledger.receipt.table.sha256 = 'd'.repeat(64);
     act(() => publish(next));
     await waitFor(() => expect(screen.getByTestId('mini-tool-run')).toBeDisabled());
     expect(await screen.findByRole('button', { name: /retry/i })).toBeInTheDocument();
@@ -175,8 +181,8 @@ describe('S4 actual Canvas → bindings → tools compact table wire', () => {
     await waitFor(() => expect(post).toHaveBeenCalledOnce());
     act(() => canvasSessions.of(SPACE).getState().closeActivePanel());
     expect(screen.queryByTestId('mini-tool-run')).not.toBeInTheDocument();
-    await act(async () => finish({ ...sourceResponse(), attempt }));
+    await act(async () => finish(sourceResponse()));
     expect(post.mock.calls[0]?.[2]).not.toMatchObject({ signal: expect.any(AbortSignal) });
-    await waitFor(() => expect(client.getQueryData(videoPresentationQuery({ projectId: PROJECT, canonicalURL: URL, active: true }).queryKey)).toMatchObject({ sourceLedger: { state: 'ready' } }));
+    await waitFor(() => expect(client.getQueryData(videoPresentationQuery({ projectId: PROJECT, canonicalURL: URL, active: true }).queryKey)).toMatchObject({ ledger: { state: 'ready' } }));
   });
 });
