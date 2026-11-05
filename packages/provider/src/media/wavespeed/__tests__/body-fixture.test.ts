@@ -52,7 +52,10 @@ function expectedBody(model: string, body: Record<string, unknown>): Record<stri
   const departure = DEPARTURES[model] ?? {};
   const omitted = new Set([...(departure.omit ?? []), ...(intoPrompt.get(model) ?? [])]);
   return Object.fromEntries(
-    Object.entries(body).filter(([field]) => !omitted.has(field)).map(([field, value]) => [departure.rename?.[field] ?? field, value]),
+    Object.entries(body).filter(([field]) => !omitted.has(field)).map(([field, value]) => [
+      departure.rename?.[field] ?? field,
+      field === "prompt" && typeof value === "string" && departure.prompt !== undefined ? departure.prompt(value) : value,
+    ]),
   );
 }
 

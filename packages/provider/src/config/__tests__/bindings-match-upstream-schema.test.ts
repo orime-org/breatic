@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { MediaBinding } from "@provider/config/schema.js";
@@ -208,8 +208,22 @@ function leftOut(reached: Reached): string[] {
   return Object.keys(reached.snapshot.fields).filter((path) => {
     if (reached.written.has(path)) return false;
     const parent = path.slice(0, Math.max(0, path.lastIndexOf(".")));
-    return parent === "" || reached.built.has(parent);
+    return parent === "" || reached.built.has(parent) || (!reached.written.has(parent) && implied(reached.snapshot, parent));
   });
+}
+
+/**
+ * Whether the upstream builds an object a request leaves out: one that is neither required nor nullable and
+ * states no default of its own, so its fields take their defaults.
+ * @param snapshot - The schema.
+ * @param path - The object's dotted path.
+ * @returns True for such an object.
+ */
+function implied(snapshot: SchemaSnapshot, path: string): boolean {
+  const leaves = snapshot.fields[path] ?? [];
+  const parent = path.slice(0, Math.max(0, path.lastIndexOf(".")));
+  return leaves.length > 0 && leaves.every((leaf) => leaf.type === "object" && leaf.default === undefined)
+    && !(snapshot.required ?? []).includes(path) && (parent === "" || implied(snapshot, parent));
 }
 
 /**
@@ -232,6 +246,14 @@ function counterpart(path: string, other: SchemaSnapshot): string | undefined {
  * Keyed `upstream endpoint field`; each says why the two defaults give the same result.
  */
 const SAME_EFFECT: Readonly<Record<string, string>> = {
+  ...Object.fromEntries(["fal-ai/minimax/speech-2.8-hd", "speak:fal-ai/minimax/speech-2.8-hd"].flatMap((endpoint) => ["bitrate", "channel", "format", "sample_rate"].map((field) => [
+    `fal ${endpoint} audio_setting.${field}`,
+    "fal's mp3, 32 kHz, mono, 128 kb/s is what WaveSpeed's MiniMax Speech 2.8 HD returns with none of these set (measured)",
+  ]))),
+  "fal krea/v2/large/text-to-image image_style_references": "an empty list of style references and none at all both apply no style reference",
+  "fal alibaba/wan-3.0/image-to-video aspect_ratio": "fal's adaptive and WaveSpeed's none both follow the input image (WaveSpeed: 'If not specified, it is adapted to the input image')",
+  "fal fal-ai/minimax/speech-2.8-hd voice_setting.voice_id": "WaveSpeed requires voice_id, so a run without a voice has no WaveSpeed result to match",
+  "sandbase minimax/speech/2.8/hd voice_id": "WaveSpeed requires voice_id, so a run without a voice has no WaveSpeed result to match",
   "fal fal-ai/nano-banana-2/edit aspect_ratio": "fal's auto and WaveSpeed's none both take the input image's ratio (WaveSpeed: 'If not specified, it is determined automatically from the input image')",
   "fal bytedance/seedance-2.5/us/reference-to-video aspect_ratio": "fal's auto and SandBase's none both let the model choose (SandBase: 'Omit to let the model choose from the prompt and reference inputs')",
   "sandbase bytedance/seedance/2.5/reference-to-video aspect_ratio": "SandBase's none and fal's auto both let the model choose (SandBase: 'Omit to let the model choose from the prompt and reference inputs')",
@@ -370,8 +392,8 @@ function sampleRun(params: Record<string, unknown>, prompt: string): EstimateInp
 }
 
 /**
- * A run this binding takes, as the application sends one: every param at its default, and a param whose
- * default the binding refuses at the first of its sample values the binding takes, else left out.
+ * A run this binding takes, as the application sends one: every param at its catalog default (null left unset),
+ * and a param whose default the binding refuses at the first of its sample values the binding takes.
  * @param model - The model.
  * @param binding - The binding.
  * @param snapshot - The upstream's schema.
@@ -380,14 +402,13 @@ function sampleRun(params: Record<string, unknown>, prompt: string): EstimateInp
 async function takenRun(model: string, binding: MediaBinding, snapshot: SchemaSnapshot): Promise<Record<string, unknown>> {
   const rules = provider.pricingRules(model);
   const params = Object.entries(models.get(model) ?? {});
-  const taken: Record<string, unknown> = Object.fromEntries(params.map(([name, param]) => [name, defaultOf(name, param, binding, snapshot)]).filter(([, v]) => v !== undefined));
+  // A param whose catalog default is null is sent unset, as the application sends it.
+  let taken: Record<string, unknown> = Object.fromEntries(params.map(([name, param]) => [name, param.default]).filter(([, v]) => v !== undefined));
   for (const [name, param] of params) {
-    for (const value of [taken[name], ...samplesOf(name, param, binding, snapshot), undefined]) {
-      const { [name]: _left, ...others } = taken;
-      const trial = value === undefined ? others : { ...others, [name]: value };
+    for (const value of [taken[name], ...samplesOf(name, param, binding, snapshot)]) {
+      const trial = { ...taken, [name]: value };
       if ((await rejectedInput(rules, binding.upstream, sampleRun(trial, SAMPLE_TEXT))) === undefined) {
-        Object.keys(taken).forEach((k) => delete taken[k]);
-        Object.assign(taken, trial);
+        taken = trial;
         break;
       }
     }
@@ -395,21 +416,118 @@ async function takenRun(model: string, binding: MediaBinding, snapshot: SchemaSn
   return taken;
 }
 
+/** Content-screening fields: they decide only whether an upstream refuses a run, and each upstream refuses by its own policy. */
+const SCREENING: ReadonlySet<string> = new Set(["enable_safety_checker", "safety_tolerance"]);
+
+/**
+ * The fal endpoint behind each SandBase model SandBase answers as `owned_by: fal.ai`: SandBase passes a run on to it,
+ * so every field of it SandBase does not take runs at fal's default.
+ */
+const SANDBASE_ON_FAL: Readonly<Record<string, string>> = {
+  "alibaba/qwen-image-edit/2511/multiple-angles": "fal-ai/qwen-image-edit-2511-multiple-angles",
+  "bytedance/dreamactor/2.0": "fal-ai/bytedance/dreamactor/v2",
+  "bytedance/omnihuman/1.5": "fal-ai/bytedance/omnihuman/v1.5",
+  "elevenlabs/v3": "fal-ai/elevenlabs/tts/eleven-v3",
+  "google/gemini-3.1-flash-tts": "fal-ai/gemini-3.1-flash-tts",
+  "ideogram-ai/ideogram-v3": "fal-ai/ideogram/v3",
+  "meigen/infinitetalk/video-to-video": "fal-ai/infinitalk/video-to-video",
+  "sync/lipsync/3.0/video-to-video": "fal-ai/sync-lipsync/v3",
+  "tencent/hunyuan-3d/3.0/image-to-3d": "fal-ai/hunyuan3d-v3/image-to-3d",
+};
+
+/** A field a binding leaves at its upstream's default that needs a reviewed entry, and why it was found. */
+interface Unreviewed {
+  key: string;
+  shown: string;
+}
+
+/**
+ * The fields a reseller binding leaves at a default whose result no counterpart decides: fields WaveSpeed's same
+ * endpoint does not have, every left-out field when the model has no WaveSpeed binding, and the fields of the fal
+ * endpoint behind a SandBase model that SandBase does not take. Screening fields are decided for every endpoint.
+ * @param model - The model.
+ * @param binding - A reseller binding.
+ * @returns Each such field, keyed `upstream endpoint field`.
+ */
+function needingReview(model: string, binding: MediaBinding): Unreviewed[] {
+  const wavespeed = (config.media.models[model]?.upstreams ?? []).find((b) => b.upstream === "wavespeed");
+  const out: Unreviewed[] = [];
+  /**
+   * Record a field left at its default unless it is a screening field.
+   * @param upstream - Whose endpoint.
+   * @param endpoint - The endpoint, `kind:` before a step's.
+   * @param path - The field.
+   * @param leaves - Its shapes.
+   */
+  const add = (upstream: string, endpoint: string, path: string, leaves: readonly Leaf[] | undefined): void => {
+    if (SCREENING.has(path.slice(path.lastIndexOf(".") + 1))) return;
+    out.push({ key: `${upstream} ${endpoint} ${path}`, shown: `${upstream} ${endpoint} ${path}=${JSON.stringify(defaultIn(leaves))}` });
+  };
+  for (const here of reachedBy(binding)) {
+    const official = wavespeed === undefined ? undefined : sameOn(here, wavespeed);
+    for (const path of leftOut(here)) {
+      if (defaultIn(here.snapshot.fields[path]) === undefined) continue;
+      if (official !== undefined && counterpart(path, official.snapshot) !== undefined) continue;
+      if (wavespeed !== undefined && official === undefined) continue;
+      add(here.upstream, here.endpoint, path, here.snapshot.fields[path]);
+    }
+  }
+  const behind = binding.upstream === "sandbase" ? SANDBASE_ON_FAL[binding.model_id] : undefined;
+  const own = snapshotFor(binding.upstream, binding.model_id);
+  const fal = behind === undefined ? undefined : snapshotFor("fal", behind);
+  if (fal !== undefined && own !== undefined) {
+    const officialSnapshot = wavespeed === undefined ? undefined : snapshotFor("wavespeed", wavespeed.model_id);
+    const sent = everWritten(binding).written;
+    for (const [path, leaves] of Object.entries(fal.fields)) {
+      if (path === "" || path.includes(".") || defaultIn(leaves) === undefined || sent.has(path)) continue;
+      // A field SandBase takes with a default of its own runs at that default; one it takes with none runs at fal's.
+      if (own.fields[path] !== undefined && defaultIn(own.fields[path]) !== undefined) continue;
+      const theirs = officialSnapshot === undefined ? undefined : counterpart(path, officialSnapshot);
+      if (theirs !== undefined && JSON.stringify(defaultIn(officialSnapshot!.fields[theirs])) === JSON.stringify(defaultIn(leaves))) continue;
+      add("fal", behind!, path, leaves);
+    }
+  }
+  return out;
+}
+
+describe("the committed schema snapshots", () => {
+  it("are only of endpoints some binding reaches, or the fal endpoint behind a bound SandBase model", () => {
+    const reached = new Set(cases.flatMap(({ binding }) => [binding.model_id, ...(binding.extra_steps ?? []).map((s) => s.endpoint)].map((id) => `${binding.upstream}/${id}.json`)));
+    for (const { binding } of cases) {
+      const behind = binding.upstream === "sandbase" ? SANDBASE_ON_FAL[binding.model_id] : undefined;
+      if (behind !== undefined) reached.add(`fal/${behind}.json`);
+    }
+    const files = (readdirSync(SNAPSHOTS, { recursive: true }) as string[]).filter((f) => f.endsWith(".json"));
+    expect(files.filter((f) => !reached.has(f))).toEqual([]);
+  });
+});
+
+describe("the stored price facts the formulas were written from", () => {
+  it("hold the billing unit of every fal endpoint a binding prices", () => {
+    const priced = cases.filter(({ binding }) => binding.upstream === "fal").flatMap(({ binding }) => [binding.model_id, ...(binding.extra_steps ?? []).filter((s) => s.pricing !== undefined).map((s) => s.endpoint)]);
+    const missing = priced.filter((endpoint) => {
+      const file = resolve(ROOT, "packages/provider/test/fixtures/upstream-prices/fal", `${endpoint}.json`);
+      return !existsSync(file) || typeof (JSON.parse(readFileSync(file, "utf8")) as { unit?: unknown }).unit !== "string";
+    });
+    expect(missing).toEqual([]);
+  });
+});
+
 describe("the reviewed fields WaveSpeed does not have", () => {
   it("names only fields some binding leaves at its default", () => {
-    const left = new Set<string>();
-    for (const { model, binding } of cases) {
-      const wavespeed = (config.media.models[model]?.upstreams ?? []).find((b) => b.upstream === "wavespeed");
-      if (binding.upstream === "wavespeed" || wavespeed === undefined) continue;
-      for (const here of reachedBy(binding)) {
-        const official = sameOn(here, wavespeed);
-        if (official === undefined) continue;
-        for (const path of leftOut(here)) {
-          if (defaultIn(here.snapshot.fields[path]) !== undefined && counterpart(path, official.snapshot) === undefined) left.add(`${here.upstream} ${here.endpoint} ${path}`);
-        }
-      }
-    }
+    const left = new Set(cases.filter(({ binding }) => binding.upstream !== "wavespeed").flatMap(({ model, binding }) => needingReview(model, binding).map((u) => u.key)));
     expect(Object.keys(WAVESPEED_LACKS).filter((key) => !left.has(key))).toEqual([]);
+  });
+
+  it("names no screening field, which every endpoint leaves alike", () => {
+    expect(Object.keys(WAVESPEED_LACKS).filter((key) => SCREENING.has(key.slice(key.lastIndexOf(" ") + 1).split(".").pop()!))).toEqual([]);
+  });
+
+  it("maps every bound SandBase model that SandBase serves through fal to that fal endpoint, with its schema committed", () => {
+    const bound = new Set(cases.filter(({ binding }) => binding.upstream === "sandbase").map(({ binding }) => binding.model_id));
+    const onFal = [...bound].filter((id) => snapshotFor("sandbase", id)?.owned_by === "fal.ai");
+    expect(onFal.filter((id) => SANDBASE_ON_FAL[id] === undefined)).toEqual([]);
+    expect(Object.entries(SANDBASE_ON_FAL).filter(([id, falId]) => bound.has(id) && snapshotFor("fal", falId) === undefined).map(([id]) => id)).toEqual([]);
   });
 });
 
@@ -434,6 +552,11 @@ describe.each(cases)("$model on $binding.upstream", ({ model, binding }) => {
   it("reads its outputs from a field the upstream answers", () => {
     if (binding.output_field === undefined) return;
     expect(Object.keys(snapshot.outputs ?? {}), binding.output_field).toContain(binding.output_field);
+  });
+
+  it("takes a run as the application sends one, so every class check below has a run to check", async () => {
+    const base = await takenRun(model, binding, snapshot);
+    expect(await rejectedInput(provider.pricingRules(model), binding.upstream, sampleRun(base, SAMPLE_TEXT)), JSON.stringify(base)).toBeUndefined();
   });
 
   it("writes every param, and every field of its list items, into a field the upstream has", () => {
@@ -545,7 +668,8 @@ describe.each(cases)("$model on $binding.upstream", ({ model, binding }) => {
             return at === undefined ? [] : [{ there: r, path: at }];
           });
         for (const { there, path: theirs } of compared) {
-          if (there.written.has(theirs)) continue;
+          // A field the other binding writes, or sits inside an object it writes whole, is not left to its default there.
+          if (there.written.has(theirs) || [...there.written].some((w) => theirs.startsWith(`${w}.`) && !there.built.has(w))) continue;
           const other = defaultIn(there.snapshot.fields[theirs]);
           if (JSON.stringify(mine) !== JSON.stringify(other)) differ.push(`${here.endpoint} ${path}=${JSON.stringify(mine)}, ${there.upstream} ${there.endpoint} ${theirs}=${JSON.stringify(other)}`);
         }
@@ -556,18 +680,26 @@ describe.each(cases)("$model on $binding.upstream", ({ model, binding }) => {
 
   it("leaves a field WaveSpeed does not have at its default only where that gives WaveSpeed's result", () => {
     if (binding.upstream === "wavespeed") return;
-    const wavespeed = (config.media.models[model]?.upstreams ?? []).find((b) => b.upstream === "wavespeed");
-    if (wavespeed === undefined) return;
-    const unreviewed: string[] = [];
-    for (const here of reachedBy(binding)) {
-      const official = sameOn(here, wavespeed);
-      if (official === undefined) continue;
-      for (const path of leftOut(here)) {
-        if (defaultIn(here.snapshot.fields[path]) === undefined || counterpart(path, official.snapshot) !== undefined) continue;
-        if (WAVESPEED_LACKS[`${here.upstream} ${here.endpoint} ${path}`] === undefined) unreviewed.push(`${here.upstream} ${here.endpoint} ${path}=${JSON.stringify(defaultIn(here.snapshot.fields[path]))}`);
-      }
-    }
+    const unreviewed = needingReview(model, binding).filter((u) => WAVESPEED_LACKS[u.key] === undefined).map((u) => u.shown);
     expect(unreviewed, unreviewed.join("\n")).toEqual([]);
+  });
+
+  it("leaves a param the run does not set at a default that gives WaveSpeed's result", () => {
+    if (binding.upstream === "wavespeed") return;
+    const wavespeed = (config.media.models[model]?.upstreams ?? []).find((b) => b.upstream === "wavespeed");
+    const officialSnapshot = wavespeed === undefined ? undefined : snapshotFor("wavespeed", wavespeed.model_id);
+    const differ: string[] = [];
+    for (const [name, param] of Object.entries(params)) {
+      const bound = binding.params?.[name];
+      if (bound === undefined || bound.unset !== undefined) continue;
+      if (param.default !== null && param.default !== undefined && param.default !== bound.absent_value) continue;
+      const mine = defaultIn(snapshot.fields[bound.field]);
+      if (mine === undefined || SAME_EFFECT[`${binding.upstream} ${binding.model_id} ${bound.field}`] !== undefined) continue;
+      const theirField = wavespeed?.params?.[name]?.field;
+      const theirs = theirField === undefined || officialSnapshot === undefined ? undefined : defaultIn(officialSnapshot.fields[theirField]);
+      if (JSON.stringify(mine) !== JSON.stringify(theirs)) differ.push(`${name} -> ${bound.field}=${JSON.stringify(mine)}, WaveSpeed ${theirField ?? "(not sent)"}=${JSON.stringify(theirs)}`);
+    }
+    expect(differ, differ.join("\n")).toEqual([]);
   });
 
   it("writes its extra steps into fields their endpoints take", () => {

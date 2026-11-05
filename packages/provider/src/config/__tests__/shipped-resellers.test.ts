@@ -36,13 +36,14 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
   "riverflow-2.0-pro-text-to-image": {},
   "krea-v2-large-text-to-image": { fal: "krea/v2/large/text-to-image" },
   // fal turns MagicPrompt on or off; WaveSpeed and SandBase leave it to Ideogram's AUTO (inner#1859).
-  "ideogram-v3-quality": { sandbase: "ideogram-ai/ideogram-v3" },
+  "ideogram-v3-quality": {},
   "recraft-v4-style-text-to-image": { fal: "recraft/v4/style/text-to-image" },
   "gpt-image-2.5-sunburst-edit": { fal: "openai/gpt-image-2.5/sunburst/edit", sandbase: "openai/gpt-image-2.5-sunburst/edit" },
   "muse-image-edit": { fal: "meta/muse-image/edit" },
   "nano-banana-pro-edit-ultra": {},
   // fal bills it per output megapixel at the source's size, which an estimate cannot know (inner#1859).
-  "qwen-image-edit-multiple-angles": { sandbase: "alibaba/qwen-image-edit/2511/multiple-angles" },
+  // SandBase runs it on fal's endpoint, whose steps, guidance and LoRA scale WaveSpeed states no counterpart of (inner#1859).
+  "qwen-image-edit-multiple-angles": {},
   "pro-upscaler": {},
   "bria-remove-background": { fal: "fal-ai/bria/background/remove" },
   "bria-genfill": {},
@@ -85,7 +86,7 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
   "seedance-2.5-talking-avatar": {},
   "sync-lipsync-3": { fal: "fal-ai/sync-lipsync/v3", sandbase: "sync/lipsync/3.0/video-to-video" },
   // fal draws its seed from a fixed 42, so the same inputs always give the same video, which WaveSpeed does not.
-  "infinitetalk-video-to-video": { sandbase: "meigen/infinitetalk/video-to-video" },
+  "infinitetalk-video-to-video": {},
   "infinitetalk-multi": {},
   "sync-react-1": { fal: "fal-ai/sync-lipsync/react-1" },
   "ltx-2.3-lipsync": {},
@@ -103,6 +104,9 @@ const models = config.media.models;
  * @param upstream - The upstream.
  * @returns The binding, if any.
  */
+/** A sample source url. */
+const URL_A = "https://a/x.mp4";
+
 const bindingOf = (model: string, upstream: string): MediaBinding | undefined =>
   models[model]?.upstreams.find((b) => b.upstream === upstream);
 
@@ -142,8 +146,24 @@ describe("the reseller upstreams", () => {
 });
 
 describe("the reseller bindings that serve only part of a model, or always send a field", () => {
-  it("sends ideogram-v3-quality at QUALITY on SandBase", () => {
-    expect(bindingOf("ideogram-v3-quality", "sandbase")?.fixed).toMatchObject({ rendering_speed: "QUALITY" });
+  it("names Gemini Omni reference videos on WaveSpeed the way its schema says, as on fal and SandBase", () => {
+    expect(bindingOf("gemini-omni-1.1-flash-reference-to-video", "wavespeed")?.mentions).toMatchObject({ images: "<IMAGE_REF_{i}>", videos: "<VIDEO_REF_{i}>" });
+  });
+
+  it("states the voice-clone preview model drop by what fal's field is", () => {
+    expect(String((bindingOf("minimax-voice-clone", "fal")?.drops?.model as { all_values?: string } | undefined)?.all_values)).not.toMatch(/no such field/);
+  });
+
+  it("returns sfx-1.6 extend-audio on fal as MP3, as WaveSpeed returned SFX 1.6", () => {
+    expect(bindingOf("sfx-1.6-extend-audio", "fal")?.fixed).toMatchObject({ upload_audio_format: "mp3" });
+  });
+
+  it("speaks MiniMax Speech 2.8 HD on fal without loudness normalization, as WaveSpeed does", () => {
+    expect(bindingOf("minimax-speech-2.8-hd", "fal")?.fixed).toMatchObject({ "normalization_setting.enabled": false });
+  });
+
+  it("sends fal Kling 3.0 4K an empty negative prompt when the run has none, as WaveSpeed applies none", () => {
+    expect(bindingOf("kling-v3.0-4k-text-to-video", "fal")?.params?.negative_prompt?.unset).toBe("");
   });
 
   it("returns a seedream-v4.5 edit on SandBase as JPEG, as WaveSpeed does", () => {
@@ -195,10 +215,6 @@ describe("the reseller bindings that serve only part of a model, or always send 
     const premade = premadeVoices("elevenlabs-voice-changer").map((v) => v.name);
     expect(premade).toEqual(expect.arrayContaining(presets));
     expect(bindingOf("elevenlabs-voice-changer", "fal")?.voice_map?.voice_id).toEqual(Object.fromEntries(presets.map((name) => [name, name])));
-  });
-
-  it("writes the multiple-angles distance as a zoom on SandBase, close-up the highest", () => {
-    expect(bindingOf("qwen-image-edit-multiple-angles", "sandbase")?.params?.distance).toMatchObject({ field: "zoom", values: { "0": 10, "1": 5, "2": 0 } });
   });
 
   it("clones a MiniMax voice and speaks it in a second step on both", () => {
@@ -275,6 +291,44 @@ describe("the limits a reseller states beyond its schema", () => {
     const input = run({ prompt: "make it blue", params: { images: ["https://a/1.png", "https://a/2.png"], aspect_ratio: "1:1", quality: "high" } });
     const estimate = await estimateCost(provider.pricingRules("gpt-image-2.5-sunburst-edit"), provider.availability("gpt-image-2.5-sunburst-edit"), input, { mode: "upstream", upstream: "fal" });
     expect(estimate?.usd).toBeCloseTo(0.05268 + 2 * 0.012, 6);
+  });
+
+  // Each row: model, upstream, a run the upstream's own words refuse, the nearest run it takes, and words of the reason.
+  const STATED: [string, string, Partial<EstimateInput>, Partial<EstimateInput>, string][] = [
+    ["mureka-v9.5-generate-song", "wavespeed", { prompt: "x".repeat(1025), params: { lyrics: "la" } }, { prompt: "x".repeat(1024), params: { lyrics: "la" } }, "1024"],
+    ["mureka-v9.5-generate-song", "wavespeed", { prompt: "a song", params: { lyrics: "x".repeat(5001) } }, { prompt: "a song", params: { lyrics: "x".repeat(5000) } }, "5000"],
+    ["mureka-v9.5-generate-song", "wavespeed", { prompt: "a song", params: { lyrics: "la", song: URL_A }, durations: { song: [20] } }, { prompt: "a song", params: { lyrics: "la", song: URL_A }, durations: { song: [30] } }, "30"],
+    ["mureka-v9.5-generate-song", "fal", { prompt: "a song", params: { lyrics: "la", song: URL_A }, durations: { song: [20] } }, { prompt: "a song", params: { lyrics: "la", song: URL_A }, durations: { song: [30] } }, "30"],
+    ["mureka-v9.5-generate-song", "wavespeed", { prompt: "a song", params: { lyrics: "la", melody: URL_A }, durations: { melody: [3] } }, { prompt: "a song", params: { lyrics: "la", melody: URL_A }, durations: { melody: [10] } }, "[5,60]"],
+    ["mureka-v9.5-generate-bgm", "wavespeed", { prompt: "x".repeat(1025) }, { prompt: "x".repeat(1024) }, "1024"],
+    ["hunyuan3d-v3", "wavespeed", { prompt: "x".repeat(1025) }, { prompt: "x".repeat(1024) }, "1024"],
+    ["krea-v2-large-text-to-image", "wavespeed", { prompt: "x".repeat(5001) }, { prompt: "x".repeat(5000) }, "5000"],
+    ["elevenlabs-voice-changer", "wavespeed", { params: { audio: URL_A }, durations: { audio: [301] } }, { params: { audio: URL_A }, durations: { audio: [300] } }, "5 minutes"],
+    ["minimax-voice-clone", "fal", { prompt: "hi", params: { audio: URL_A }, durations: { audio: [9] } }, { prompt: "hi", params: { audio: URL_A }, durations: { audio: [10] } }, "10 seconds"],
+    ["minimax-voice-clone", "sandbase", { prompt: "hi", params: { audio: URL_A }, durations: { audio: [9] } }, { prompt: "hi", params: { audio: URL_A }, durations: { audio: [10] } }, "10 seconds"],
+    ["seedance-2.5-text-to-video", "wavespeed", { prompt: "a fox", params: { duration: 5, audios: [URL_A] }, durations: { audios: [31] } }, { prompt: "a fox", params: { duration: 5, audios: [URL_A] }, durations: { audios: [30] } }, "30 seconds"],
+    ["seedance-2.5-text-to-video", "wavespeed", { prompt: "a fox", params: { duration: 5, videos: [URL_A] }, durations: { videos: [31] } }, { prompt: "a fox", params: { duration: 5, videos: [URL_A] }, durations: { videos: [30] } }, "30 seconds"],
+    ["minimax-h3-reference-to-video", "wavespeed", { prompt: "a fox", params: { audios: [URL_A] } }, { prompt: "a fox", params: { audios: [URL_A], images: [URL_A] } }, "alone"],
+    ["minimax-h3-reference-to-video", "wavespeed", { prompt: "a fox", params: { videos: [URL_A, URL_A] }, durations: { videos: [8, 8] } }, { prompt: "a fox", params: { videos: [URL_A, URL_A] }, durations: { videos: [8, 7] } }, "15 seconds"],
+    ["minimax-h3-reference-to-video", "wavespeed", { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [1.5] } }, { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [2] } }, "2-15 seconds"],
+    ["dreamactor-v2", "wavespeed", { params: { image: URL_A, video: URL_A }, durations: { video: [31] } }, { params: { image: URL_A, video: URL_A }, durations: { video: [30] } }, "30 seconds"],
+    ["gemini-omni-1.1-flash-reference-to-video", "wavespeed", { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [4] } }, { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [3] } }, "3 seconds"],
+    ["wan-3.0-reference-to-video", "wavespeed", { prompt: "a fox", params: { duration: 20, videos: [URL_A] }, durations: { videos: [12] } }, { prompt: "a fox", params: { duration: 15, videos: [URL_A] }, durations: { videos: [12] } }, "30 seconds"],
+    ["wan-3.0-reference-to-video", "sandbase", { prompt: "a fox", params: { duration: 20, videos: [URL_A] }, durations: { videos: [12] } }, { prompt: "a fox", params: { duration: 15, videos: [URL_A] }, durations: { videos: [12] } }, "30 seconds"],
+    ["wan-3.0-reference-to-video", "wavespeed", { prompt: "a fox", params: { duration: 5, videos: [URL_A, URL_A] }, durations: { videos: [8, 8] } }, { prompt: "a fox", params: { duration: 5, videos: [URL_A, URL_A] }, durations: { videos: [8, 7] } }, "15 seconds"],
+    ["wan-3.0-reference-to-video", "wavespeed", { prompt: "a fox", params: { duration: 5, videos: [URL_A] }, durations: { videos: [0.5] } }, { prompt: "a fox", params: { duration: 5, videos: [URL_A] }, durations: { videos: [1] } }, "1-15 seconds"],
+    ["wan-3.0-reference-to-video", "wavespeed", { prompt: "a fox", params: { duration: 5, images: [URL_A], audios: [URL_A] }, durations: { audios: [16] } }, { prompt: "a fox", params: { duration: 5, images: [URL_A], audios: [URL_A] }, durations: { audios: [15] } }, "15 seconds"],
+    ["kling-v3-pro-motion", "fal", { prompt: "dance", params: { image: URL_A, video: URL_A }, durations: { video: [2] } }, { prompt: "dance", params: { image: URL_A, video: URL_A }, durations: { video: [3] } }, "3"],
+    ["infinitetalk-video-to-video", "wavespeed", { prompt: "talk", params: { audio: URL_A, video: URL_A }, durations: { audio: [601] } }, { prompt: "talk", params: { audio: URL_A, video: URL_A }, durations: { audio: [600] } }, "10 minutes"],
+    ["sync-react-1", "wavespeed", { params: { audio: URL_A, video: URL_A }, durations: { audio: [16], video: [5] } }, { params: { audio: URL_A, video: URL_A }, durations: { audio: [15], video: [5] } }, "15"],
+    ["sync-react-1", "wavespeed", { params: { audio: URL_A, video: URL_A }, durations: { audio: [5], video: [16] } }, { params: { audio: URL_A, video: URL_A }, durations: { audio: [5], video: [15] } }, "15"],
+    ["seedvr2-video", "wavespeed", { params: { video: URL_A }, durations: { video: [601] } }, { params: { video: URL_A }, durations: { video: [600] } }, "10 minutes"],
+    ["rife-interpolation", "wavespeed", { params: { video: URL_A }, durations: { video: [601] } }, { params: { video: URL_A }, durations: { video: [600] } }, "10 minutes"],
+  ];
+
+  it.each(STATED)("keeps a %s run off %s where its own words refuse it, and takes the nearest run it allows", async (model, upstream, refusedRun, takenRun, words) => {
+    expect(await refused(model, upstream, refusedRun)).toEqual({ reason: expect.stringContaining(words) });
+    expect(await refused(model, upstream, takenRun)).toBeUndefined();
   });
 
   it("keeps a Mureka vocal sample outside 15 to 30 seconds off fal's voice clone", async () => {

@@ -375,10 +375,10 @@ describe("a run's billed answers on fal and SandBase reach the caller once, howe
   const FAL_SUBMITS = ["accept", "unreadable", "cut", "busy", "locked", "noModel"] as const;
   const FAL_STATUSES = ["inProgress", "completed", "completedWithError"] as const;
   const FAL_RESULTS = ["ok", "dataUri", "busyForAPoll", "refused"] as const;
-  const FAL_BILLINGS = ["events", "none", "forbidden", "busy"] as const;
-  const SB_SUBMITS = ["accept", "finishNow", "finishNowDataUri", "finishNowNoId", "overLimitNamed", "overLimitUnnamed", "unreadable", "cutNamed", "cutUnnamed", "busy", "balance", "noModel"] as const;
-  const SB_ASKS = ["running", "completed", "dataUri", "failed", "overLimit", "busy"] as const;
-  const SB_COSTS = ["settled", "unsettled", "unknown", "busy"] as const;
+  const FAL_BILLINGS = ["events", "none", "forbidden", "busy", "malformed"] as const;
+  const SB_SUBMITS = ["accept", "finishNow", "finishNowDataUri", "finishNowNoId", "failedNow", "overLimitNamed", "overLimitUnnamed", "unreadable", "cutNamed", "cutUnnamed", "busy", "balance", "noModel"] as const;
+  const SB_ASKS = ["running", "completed", "completedEmpty", "dataUri", "failed", "overLimit", "busy"] as const;
+  const SB_COSTS = ["settled", "unsettled", "unknown", "busy", "malformed", "noCost"] as const;
   /** The caller's media limit here: a SandBase answer carrying a bigger inline file is over the read limit. */
   const MAX_MEDIA_BYTES = 2_000;
   const smallDataUri = `data:audio/mpeg;base64,${Buffer.from("ID3 tiny").toString("base64")}`;
@@ -394,7 +394,8 @@ describe("a run's billed answers on fal and SandBase reach the caller once, howe
     return {
       upstreams: {
         fal: { kind: "fal", base_url: a.url, billing_url: `${a.url}/v1`, key_env: "FAL_KEY" },
-        sandbase: { kind: "sandbase", base_url: `${b.url}/v1`, key_env: "SANDBASE_API_KEY" },
+        // A completed run without outputs fails at the next poll, so the property reaches that ending too.
+        sandbase: { kind: "sandbase", base_url: `${b.url}/v1`, key_env: "SANDBASE_API_KEY", empty_output_wait_ms: 1 },
       },
       media: {
         models: {
@@ -474,6 +475,7 @@ describe("a run's billed answers on fal and SandBase reach the caller once, howe
             const id = new URLSearchParams(query).get("request_id") ?? "";
             const next = draw(falBilling, "events");
             if (next === "busy") return { status: 503, body: { detail: "busy" } };
+            if (next === "malformed") return { status: 200, body: { billing_events: [{ request_id: id, cost_total: "a lot", quantity: 1 }], has_more: false } };
             if (next === "forbidden") {
               refusedBilling.add(id);
               return { status: 403, body: { error: { type: "authorization_error", message: "forbidden" } } };
@@ -534,6 +536,7 @@ describe("a run's billed answers on fal and SandBase reach the caller once, howe
               const id = bill("s");
               return { status: 200, headers: { "x-task-id": id }, body: { ...done(bigDataUri), id } };
             }
+            if (next === "failedNow") return { status: 200, body: { id: bill("s"), status: "failed", error: "boom" } };
             if (next === "cutNamed") return { status: 202, raw: `{"id":"${bill("s")}","sta`, contentType: "application/json", headers: { "x-request-id": `s${n}` }, cut: true };
             if (next === "cutUnnamed") {
               anonymous++;
@@ -553,6 +556,7 @@ describe("a run's billed answers on fal and SandBase reach the caller once, howe
             const id = run[1]!;
             const next = draw(sbAsk, "completed");
             if (next === "busy") return { status: 503, body: { error: "busy" } };
+            if (next === "completedEmpty") return { status: 200, body: { id, status: "completed" } };
             if (next === "running") return { status: 200, body: { id, status: "running" } };
             if (next === "failed") return { status: 200, body: { id, status: "failed", error: "boom" } };
             const url = next === "completed" ? `https://out.example/${id}.mp3` : next === "dataUri" ? smallDataUri : bigDataUri;
@@ -562,6 +566,8 @@ describe("a run's billed answers on fal and SandBase reach the caller once, howe
           if (cost === null) return undefined;
           const next = draw(sbCost, "settled");
           if (next === "busy") return { status: 503, body: { error: "busy" } };
+          if (next === "malformed") return { status: 200, body: { id: cost[1], settled: true, currency: "USD", cost: "n/a" } };
+          if (next === "noCost") return { status: 200, body: { id: cost[1], settled: true, currency: "USD" } };
           if (next === "unknown") return { status: 404, body: { error: "task not found" } };
           return { status: 200, body: { id: cost[1], settled: next === "settled", currency: "USD", cost: String(usdOf(cost[1]!)) } };
         });

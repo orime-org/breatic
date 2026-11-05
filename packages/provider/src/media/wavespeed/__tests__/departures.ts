@@ -12,7 +12,9 @@ export const OFF_WAVESPEED: ReadonlySet<string> = new Set(["veed-clean-audio", "
  * probed 2026-11-01), or a field left out because WaveSpeed's schema has none and it
  * ignores the field (inner#1872, inner#1873).
  */
-export const DEPARTURES: Readonly<Record<string, { rename?: Record<string, string>; omit?: string[] }>> = {
+export const DEPARTURES: Readonly<Record<string, { rename?: Record<string, string>; omit?: string[]; prompt?: (prompt: string) => string }>> = {
+  // WaveSpeed's prompt description names reference videos <VIDEO_REF_0>, ... from 0; today's prompt writes "the reference video 1".
+  "gemini-omni-1.1-flash-reference-to-video": { prompt: (prompt) => prompt.replace(/the reference video (\d+)/g, (_m, n: string) => `<VIDEO_REF_${Number(n) - 1}>`) },
   "flux-3-start-end-to-video": { rename: { start_image: "image", end_image: "last_image" } },
   "muse-image-edit": { rename: { image_urls: "images" } },
   "wan-3.0-text-to-video": { rename: { enable_audio: "generate_audio" } },

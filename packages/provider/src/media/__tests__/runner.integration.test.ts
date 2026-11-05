@@ -85,6 +85,8 @@ function config(): ProviderConfigInput {
     media: {
       models: {
         seedance: { upstreams: seedance() },
+        // ws_a takes only 5 s runs now; a run it took before the provider layer may have been 10 s.
+        "seedance-limited": { upstreams: seedance().map((b) => (b.upstream === "ws_a" ? { ...b, params: { ...b.params, duration: { field: "duration", supported: [5] } } } : b)) },
         "voice-clone": { upstreams: voiceClone },
         "voice-clone-both": { upstreams: [voiceClone[0]!, { ...voiceClone[0]!, upstream: "ws_b", weight: 2 }] },
         mureka: { upstreams: mureka },
@@ -515,6 +517,26 @@ describe("ticketFromLegacy", () => {
       steps: [{ position: 0, kind: "generate" as const, endpoint: "bytedance/seedance", itemIndex: null, status: "submitted" as const, predictionId: "p-old", output: {}, inlineCostUsd: 0 }],
     };
     const answer = expectState(await r.ticketFromLegacy("seedance", video, DEFAULT, options(), legacy), "running");
+    await r.poll(stored(answer.ticket), live());
+    expect(a.seen.map((s) => `${s.method} ${s.path}`)).toEqual(["GET /predictions/p-old/result"]);
+  });
+
+  it("keeps a run WaveSpeed took on that WaveSpeed binding though its input checks would refuse the run now", async () => {
+    const r = runner();
+    a.answer(() => result("p-old", "processing"));
+    const legacy = {
+      steps: [{ position: 0, kind: "generate" as const, endpoint: "bytedance/seedance", itemIndex: null, status: "submitted" as const, predictionId: "p-old", output: {}, inlineCostUsd: 0 }],
+    };
+    const answer = expectState(await r.ticketFromLegacy("seedance-limited", { ...video, params: { ...video.params, duration: 10 } }, DEFAULT, options(), legacy), "running");
+    await r.poll(stored(answer.ticket), live());
+    expect(a.seen.map((s) => `${s.method} ${s.path}`)).toEqual(["GET /predictions/p-old/result"]);
+    expect(b.seen).toHaveLength(0);
+  });
+
+  it("keeps a stored prediction on WaveSpeed's binding, not the first upstream in the order", async () => {
+    const r = runner();
+    a.answer(() => result("p-old", "processing"));
+    const answer = expectState(await r.ticketFromLegacy("seedance-limited", { ...video, params: { ...video.params, duration: 10 } }, DEFAULT, options(), { providerTaskId: "p-old" }), "running");
     await r.poll(stored(answer.ticket), live());
     expect(a.seen.map((s) => `${s.method} ${s.path}`)).toEqual(["GET /predictions/p-old/result"]);
   });

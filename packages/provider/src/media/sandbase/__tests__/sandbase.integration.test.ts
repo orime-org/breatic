@@ -353,6 +353,26 @@ describe("SandBase costs", () => {
     expect((await provider.cost.lookup({ upstream: "sandbase", predictionId: "r9" }, { lastAttempt: true })).state).toBe("missing");
   });
 
+  it.each([["a cost that is not a number", { cost: "n/a" }], ["no cost", {}]])("leaves a cost pending, with a warning, when the cost answer has %s, and missing on the last lookup", async (_label, cost) => {
+    const { done, provider } = await finished({ status: 200, body: { id: "r9", status: "completed", settled: true, currency: "USD", ...cost } });
+    expect(done.costs).toEqual([{ state: "pending", lookup: { upstream: "sandbase", predictionId: "r9" } }]);
+    expect(done.warnings.map((w) => w.code)).toContain("billing_query_empty");
+    expect((await provider.cost.lookup({ upstream: "sandbase", predictionId: "r9" }, { lastAttempt: true })).state).toBe("missing");
+  });
+
+  it("fails a run SandBase answers failed at submit, with its words, and looks up its cost", async () => {
+    const { run } = runner();
+    sb.answer(({ method, path }) => {
+      if (method === "POST" && path === "/v1/run") return { status: 200, body: { id: "r10", status: "failed", error: "content rejected" } };
+      if (path === "/v1/tasks/r10/cost") return taskCost(true, "0.010000");
+      return undefined;
+    });
+    const failed = expectState(await sent(run), "failed");
+    expect(failed.reason).toBeInstanceOf(UpstreamTaskFailed);
+    expect((failed.reason as UpstreamTaskFailed).upstreamError).toContain("content rejected");
+    expect(failed.costs).toEqual([{ state: "pending", lookup: { upstream: "sandbase", predictionId: "r10" } }]);
+  });
+
   it("leaves a cost pending, with a warning, when the cost endpoint answers 503", async () => {
     const { done } = await finished({ status: 503, body: { error: "busy" } });
     expect(done.costs).toEqual([{ state: "pending", lookup: { upstream: "sandbase", predictionId: "r9" } }]);

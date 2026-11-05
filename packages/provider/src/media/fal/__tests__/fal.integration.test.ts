@@ -270,6 +270,13 @@ describe("fal costs", () => {
     expect((await provider.cost.lookup({ upstream: "fal", predictionId: "r7" }, { lastAttempt: true })).state).toBe("missing");
   });
 
+  it("leaves a cost pending, with a warning, when the billing events cannot be read, and missing on the last lookup", async () => {
+    const { done, provider } = await finished({ status: 200, body: { billing_events: [{ request_id: "r7", cost_total: "a lot", quantity: 1 }], has_more: false } });
+    expect(done.costs).toEqual([{ state: "pending", lookup: { upstream: "fal", predictionId: "r7" } }]);
+    expect(done.warnings.map((w) => w.code)).toContain("billing_query_empty");
+    expect((await provider.cost.lookup({ upstream: "fal", predictionId: "r7" }, { lastAttempt: true })).state).toBe("missing");
+  });
+
   it("leaves a cost pending, with a warning, when billing answers 503", async () => {
     const { done } = await finished({ status: 503, body: { detail: "busy" } });
     expect(done.costs).toEqual([{ state: "pending", lookup: { upstream: "fal", predictionId: "r7" } }]);
@@ -414,7 +421,7 @@ describe("a MiniMax voice clone on fal", () => {
     const done = expectState(last, "done");
     expect(submits(fal.seen).map((s) => [s.path, s.body])).toEqual([
       ["/fal-ai/minimax/voice-clone", { audio_url: "https://cdn.example/voice.mp3" }],
-      ["/fal-ai/minimax/speech-2.8-hd", { prompt: "hello there", voice_setting: { voice_id: "fal-voice-1", emotion: "happy" } }],
+      ["/fal-ai/minimax/speech-2.8-hd", { prompt: "hello there", voice_setting: { voice_id: "fal-voice-1", emotion: "happy" }, normalization_setting: { enabled: false } }],
     ]);
     expect(clones).toEqual([{ upstream: "fal", kind: "voice", sourceKey: "sha-a", upstreamId: "fal-voice-1" }]);
     expect(done.outputs).toEqual([{ kind: "url", url: "https://a/speech.mp3" }]);
@@ -427,7 +434,7 @@ describe("a MiniMax voice clone on fal", () => {
     const planned = expectState(await run.plan("voice-clone", speech, { mode: "default" }, { ...keyed, clones: cached, durations: {} }), "send");
     expect(planned.step.kind).toBe("speak");
     await run.send(stored(planned.ticket), live());
-    expect(submits(fal.seen).map((s) => s.body)).toEqual([{ prompt: "hello there", voice_setting: { voice_id: "fal-voice-9", emotion: "happy" } }]);
+    expect(submits(fal.seen).map((s) => s.body)).toEqual([{ prompt: "hello there", voice_setting: { voice_id: "fal-voice-9", emotion: "happy" }, normalization_setting: { enabled: false } }]);
   });
 
   it("answers the cached clone as retired when the speak step fails in MiniMax's words for a voice it no longer has", async () => {

@@ -311,6 +311,55 @@ describe("an upstream's own input limits (rejects)", () => {
     expect(planned.warnings).toEqual([{ code: "input_check_failed", detail: { model: "m", upstream: "fal", reason: "fal tag pattern", error: expect.any(String) } }]);
   });
 
+  describe("a source whose length the caller has not read", () => {
+    /**
+     * A provider where SandBase bills each second of the audio and WaveSpeed a flat price.
+     * @returns The provider.
+     */
+    const perSecond = (): ReturnType<typeof createProvider> => createProvider({
+      config: {
+        upstreams: {
+          wavespeed: { kind: "wavespeed", base_url: "https://w.example", key_env: "WAVESPEED_API_KEY" },
+          sandbase: { kind: "sandbase", base_url: "https://s.example", key_env: "SANDBASE_API_KEY" },
+        },
+        media: {
+          models: {
+            m: {
+              upstreams: [
+                { upstream: "wavespeed", weight: 1, model_id: "m", params: { audio: { field: "audio" } }, pricing: { kind: "formula", base_price: 150_000, formula: "", discount_rate: 100 } },
+                { upstream: "sandbase", weight: 2, model_id: "m", params: { audio: { field: "audio" } }, pricing: { kind: "formula", base_price: 300_000, formula: '{"total_price": base_price * get_duration(audio)}', discount_rate: 100 } },
+              ],
+            },
+          },
+        },
+      },
+      keyOf: () => "k",
+      llmMaxRetries: 0,
+      cleanText: (t) => t,
+    });
+
+    it("ranks an upstream that bills by its length after every upstream with a known price", async () => {
+      const p = perSecond();
+      const input = { ...run({ audio: "https://a/x.mp3" }), prompt: "", durationsMissing: ["audio"] };
+      expect((await orderByPrice(p.pricingRules("m"), p.availability("m"), input)).map((e) => [e.upstream, e.bound])).toEqual([["wavespeed", "exact"], ["sandbase", "at_least"]]);
+      expect((await estimateCost(p.pricingRules("m"), p.availability("m"), input, { mode: "cheapest" }))?.upstream).toBe("wavespeed");
+    });
+
+    it("plans cheapest mode on an upstream with a known price when the length is not passed", async () => {
+      const runner = createMediaRunner(perSecond(), { mediaLimits: { maxMediaBytes: 1_000 }, pollIntervalMs: 0 });
+      const planned = await runner.plan("m", { prompt: "", params: { audio: "https://a/x.mp3" } }, { mode: "cheapest" }, { idempotencyKey: "t1", sourceKeys: {}, clones: [], durations: {} });
+      expect(planned.state === "send" ? planned.ticket.upstream : planned.state).toBe("wavespeed");
+    });
+  });
+
+  it("takes no position on an upstream the rules do not list, and estimates on the next one", async () => {
+    const p = bound();
+    const input = run({});
+    expect(await rejectedInput(p.pricingRules("m"), "elsewhere", input)).toBeUndefined();
+    const availability = { ...p.availability("m"), upstreams: [{ upstream: "elsewhere", weight: 0, configured: true, envVar: "ELSEWHERE_KEY" }, ...p.availability("m").upstreams] };
+    expect((await estimateCost(p.pricingRules("m"), availability, input, { mode: "default" }))?.upstream).toBe("wavespeed");
+  });
+
   describe("an upstream whose price cannot be computed for the run", () => {
     /**
      * A provider where fal's formula multiplies by a param that may arrive as a string, and WaveSpeed's coerces it.
