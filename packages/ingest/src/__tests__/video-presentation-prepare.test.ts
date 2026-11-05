@@ -693,6 +693,21 @@ describe('the reuse route from the selected bundle\'s identity (inner 54ce9ea3 �
   });
 });
 
+// §93 D6 (design §7.1 路线表, §7.2): the reuse route starts only from a ready selected P; unknown and invalid count as none.
+describe('no reuse from an invalid selected version (§93 D6; design §7.1 路线表)', () => {
+  it('RU03 the selected version invalid(V): the same plan is not reused', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      await admitAndPrepare(store, key, 'job-a', fakePort(store, key, planned(IDENTITY_ROUTE)));
+      await env.BUCKET.delete(shared.videoPresentationKeyFor(key));
+      expect((await store.read(key, H)).selected.kind).toBe('invalid');
+      await store.accept({ ...admission(key, 'job-b'), targetPolicyVersion: 2 });
+      const answer = checked(await prepareFn()(store, { storageKey: key, sourceFingerprint: H, jobId: 'job-b' }, fakePort(store, key, planned(IDENTITY_ROUTE)), Date.now()));
+      expect(answer.plan?.route).not.toBe('reuse');
+    });
+  });
+});
+
 describe('the candidate writer\'s ordering and attempt rules (inner#1306 §7.1.1 「候选或产物按全部块推进」, §5.1 step 2a 「全部块记录后再派stitch」)', () => {
   // 960 frames of 4K 10-bit HDR against a minute of budget: more than one chunk, within the cap of 8.
   const heavy = { ...WORK, sourceWidth: 3840, sourceHeight: 2160, outputWidth: 1920, outputHeight: 1080, bitDepth: 10 as const, hdr: true };
