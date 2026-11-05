@@ -52,6 +52,12 @@ export type ViewportCommand =
 export type HistoryCommand = 'undo' | 'redo';
 
 /**
+ * What became of a posted proposal: placed, failed, or refused by the size
+ * cap because the Space is full or has only `room` bytes left (inner#1790).
+ */
+export type ProposalOutcome = 'placed' | 'failed' | 'full' | { reason: 'no_room'; room: number };
+
+/**
  * Canvas UI store — non-Yjs UI state for the canvas viewport.
  *
  * **Important**: real canvas data (nodes / edges / positions) lives in Yjs
@@ -100,7 +106,7 @@ interface CanvasState {
    * placing runs to completion inside one synchronous effect, so a second card
    * cannot have posted in between.
    */
-  proposalOutcome: 'placed' | 'failed' | null;
+  proposalOutcome: ProposalOutcome | null;
   /**
    * Chrome → canvas mailbox: files picked from the left "upload assets" button
    * for the canvas to turn into nodes at the viewport centre. The picker lives
@@ -139,7 +145,7 @@ interface CanvasState {
   /** Say whether a canvas is holding the mailbox (the canvas, on mount / unmount). */
   setCanvasListening: (listening: boolean) => void;
   /** Report what became of a placed proposal (the canvas). */
-  reportProposalOutcome: (outcome: 'placed' | 'failed') => void;
+  reportProposalOutcome: (outcome: ProposalOutcome) => void;
   /** Drop the outcome once the card that posted has read it. */
   clearProposalOutcome: () => void;
   /** Clear the mailbox once the canvas has fulfilled the intent. */

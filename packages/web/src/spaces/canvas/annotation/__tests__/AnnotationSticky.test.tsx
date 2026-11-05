@@ -33,6 +33,11 @@ vi.mock('@web/data/yjs/canvas-space', () => ({
   editAnnotationBody: (...a: unknown[]) => editAnnotationBody(...a),
   editReply: (...a: unknown[]) => editReply(...a),
   removeReply: (...a: unknown[]) => removeReply(...a),
+  // The sticky judges each write as one batch for the size cap (inner#1790).
+  runCanvasUndoBatch: (_p: string, _s: string, _o: unknown, write: () => void) => {
+    write();
+    return { ok: true };
+  },
 }));
 
 // What the board resolved for everybody its stickies name. The roster is

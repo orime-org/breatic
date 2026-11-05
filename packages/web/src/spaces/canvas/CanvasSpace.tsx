@@ -166,7 +166,9 @@ import {
   type UploadNodeSpec,
   assetUrlSurvives,
   isReportableAssetUrl,
+  textRefusalMark,
 } from '@web/spaces/canvas/canvas-upload';
+import { estimateNodeBytes, type SpaceRefusal } from '@web/data/yjs/space-write';
 import {
   runMediaUpload,
   type UploadFailure,
@@ -986,7 +988,9 @@ function CanvasSpaceInner({
                     cap: MAX_FOCUS_ENTRIES,
                   }),
                 );
-              } else {
+              } else if (outcome !== 'refused') {
+                // A size-cap refusal said so itself; its crop is still an
+                // orphan to report below.
                 toast.warning(t('canvas.generatePanel.focusCropDiscarded'));
               }
               if (
@@ -1402,9 +1406,11 @@ function CanvasSpaceInner({
   // in the places its earlier instance holds (inner#1345 6.5), where its flow
   // puts it, over whatever is there (inner#1846).
   const placeTemplate = React.useCallback(
-    (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>, order: readonly number[]): PlacedProposal => {
+    (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>, order: readonly number[]): PlacedProposal | SpaceRefusal => {
       const anchorId = existing.get(0)?.nodeId;
       const placed = placeProposalAt(proposal, TEMPLATE_AIM, [], existing, order);
+      // A template the Space has no room for was refused with its own toast.
+      if ('ok' in placed) return placed;
       showPlaced(placed, anchorId ?? '', FRAME_PAN_MS);
       return placed;
     },
@@ -1876,15 +1882,21 @@ function CanvasSpaceInner({
       }
       // Edge validity (self-loop + both endpoints must exist) is enforced at
       // the addEdge write boundary — the only race-free place under collab.
-      const added = addEdge(projectId, spaceId, {
+      const edge = {
         id: `${connection.source}->${connection.target}`,
         source: connection.source,
         target: connection.target,
+      };
+      // Judged here so a Space without room says so once, and is not also
+      // reported as a missing endpoint.
+      let added = false;
+      const written = runCanvasUndoBatch(projectId, spaceId, { kind: 'add', estimate: estimateNodeBytes(edge) }, () => {
+        added = addEdge(projectId, spaceId, edge);
       });
       // Surface a deleted-endpoint race like the reference-pick flow does, so a
       // drag that silently failed doesn't read as a made connection (a self-loop
       // stays silent — ReactFlow shouldn't offer one).
-      if (!added && connection.source !== connection.target) {
+      if (written.ok && !added && connection.source !== connection.target) {
         toast.error(t('canvas.generatePanel.referenceAddFailed'));
       }
     },
@@ -2045,14 +2057,15 @@ function CanvasSpaceInner({
       // Wire clicked-source → target as a reference. Self-loop + both-endpoints-
       // still-exist are enforced race-free at the addEdge write boundary (a
       // collaborator may have deleted either node between render and click).
-      const added = addEdge(projectId, spaceId, {
-        id: `${node.id}->${target}`,
-        source: node.id,
-        target,
+      const edge = { id: `${node.id}->${target}`, source: node.id, target };
+      let added = false;
+      const written = runCanvasUndoBatch(projectId, spaceId, { kind: 'add', estimate: estimateNodeBytes(edge) }, () => {
+        added = addEdge(projectId, spaceId, edge);
       });
-      // Couldn't wire = the node (or target) was deleted mid-pick — surface it.
-      // Stay in pick mode either way; Exit is the only way out (item 7).
-      if (!added) toast.error(t('canvas.generatePanel.referenceAddFailed'));
+      // Couldn't wire = the node (or target) was deleted mid-pick — surface it;
+      // a Space without room already said so. Stay in pick mode either way;
+      // Exit is the only way out (item 7).
+      if (written.ok && !added) toast.error(t('canvas.generatePanel.referenceAddFailed'));
     },
     [graphStore, sessionStore, projectId, spaceId, flowEdges, t, kindLabel, endPick, setFocusTarget],
   );
@@ -2414,7 +2427,9 @@ function CanvasSpaceInner({
         x: connectCreate.x,
         y: connectCreate.y,
       });
-      runCanvasUndoBatch(projectId, spaceId, () => {
+      // One add for the size cap: the empty node and its wire.
+      const estimate = estimateNodeBytes({ type, position: point }) + estimateNodeBytes({ source: connectCreate.sourceId });
+      runCanvasUndoBatch(projectId, spaceId, { kind: 'add', estimate }, () => {
         const id = createNodeAt(type, point);
         const added = addEdge(projectId, spaceId, {
           id: `${connectCreate.sourceId}->${id}`,
@@ -2569,7 +2584,13 @@ function CanvasSpaceInner({
         // One drop is one thing to take back, so every node it makes and the
         // Group around them go down as a single undo step.
         let selectAfter: string[] = [];
-        runCanvasUndoBatch(projectId, spaceId, () => {
+        // One add for the size cap: the empty nodes and their Group. A full
+        // Space refuses the whole drop, and nothing is uploaded or read.
+        const estimate = admitted.reduce(
+          (sum, { file, spec }) => sum + estimateNodeBytes({ type: spec.nodeType, name: file.name }),
+          admitted.length >= 2 ? estimateNodeBytes({ type: 'group' }) : 0,
+        );
+        const built = runCanvasUndoBatch(projectId, spaceId, { kind: 'add', estimate }, () => {
           const laid = batchCentresAt(origin, admitted.length);
           const tops = laid.map((centre) => centerToTopLeft(centre, EMPTY_NODE_SIZE));
           // Two or more files arrive inside a Group, framed the way
@@ -2631,6 +2652,7 @@ function CanvasSpaceInner({
           // deselects everything else when the Group mirrors back.
           selectAfter = [plan.groupId];
         });
+        if (!built.ok) return;
         if (selectAfter.length > 0) {
           if (pasted) selectPasted(selectAfter);
           else setSelectAfterCreate(selectAfter);
@@ -2672,8 +2694,10 @@ function CanvasSpaceInner({
               nodeId,
               extractText(file)
                 .then((text) => {
-                  setNodeExtractedText(projectId, spaceId, nodeId, text);
-                  useUploadMarksStore.getState().answer(spaceId, nodeId, op);
+                  // The node's own mark says it when the words do not fit.
+                  const written = setNodeExtractedText(projectId, spaceId, nodeId, text, false);
+                  if (written.ok) useUploadMarksStore.getState().answer(spaceId, nodeId, op);
+                  else useUploadMarksStore.getState().fail(spaceId, nodeId, op, textRefusalMark(written));
                 })
                 .catch(() =>
                   useUploadMarksStore.getState().fail(spaceId, nodeId, op, {
@@ -2793,7 +2817,13 @@ function CanvasSpaceInner({
             ? { width: measured.width, height: measured.height }
             : undefined;
         });
-        const placed = placeProposalAt(intent.proposal, center, occupied);
+        // The card reports a refusal by the size cap itself, so no toast here.
+        const placed = placeProposalAt(intent.proposal, center, occupied, undefined, undefined, false);
+        if ('ok' in placed) {
+          reportProposalOutcome(placed.reason === 'full' ? 'full' : { reason: 'no_room', room: placed.room });
+          consumePendingNodeCreate();
+          return;
+        }
         const focus = whatToFocus(intent.proposal, placed);
         // A Space opened empty and never framed still has its opening fit
         // queued for the first nodes to arrive; the framing below is that one.
@@ -3213,9 +3243,13 @@ function CanvasSpaceInner({
       // half-applied state. Every member position already reads against the
       // origin an expansion is moving its Group to, so each node takes one
       // write and the Group's own geometry is all the expansion writes.
-      return runCanvasUndoBatch(
+      let step: CanvasUndoStep | undefined;
+      // An overwrite for the size cap; a refused move leaves the document as
+      // it was, and the release puts the nodes back where it has them.
+      runCanvasUndoBatch(
         projectId,
         spaceId,
+        { kind: 'overwrite', joinStep, onStep: (landed) => { step = landed; } },
         () => {
           for (const r of ops.reparents) {
             setNodeParent(projectId, spaceId, r.id, r.parentId, r.position);
@@ -3227,8 +3261,8 @@ function CanvasSpaceInner({
             resizeGroup(projectId, spaceId, e.groupId, e.position, e.width, e.height);
           }
         },
-        joinStep,
       );
+      return step;
     },
     [projectId, spaceId, buffer, getInternalNode],
   );
@@ -3756,7 +3790,7 @@ function CanvasSpaceInner({
           // there is nobody else to write it. A media node's content arrives
           // from the server through Yjs.
           setContent: (id, content) =>
-            setNodeExtractedText(projectId, spaceId, id, content),
+            setNodeExtractedText(projectId, spaceId, id, content, false),
           // A failure after the server answered has a task row: the same
           // outcome as the drop path, reason for reason, where the Retry
           // stash is decided.
@@ -4332,7 +4366,7 @@ function CanvasSpaceInner({
         // size/position, its members, PLUS any newly absorbed loose nodes.
         /** Put this resize into the document as one undo entry. */
         const writeDocument = (): void => {
-          runCanvasUndoBatch(projectId, spaceId, () => {
+          runCanvasUndoBatch(projectId, spaceId, { kind: 'overwrite' }, () => {
             // Everything below is measured against the origin this call writes.
             // A collaborator can drop the Group between the frame this resize
             // was planned on and this transaction, and then there is no origin

@@ -940,7 +940,7 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       const depth = undo.undoStack.length;
       // onNodeDragStop dragging m2 out of the Group fires a position write AND a
       // setNodeParent(null) detach — batching makes the gesture ONE atomic undo step.
-      runCanvasUndoBatch(PID, SID, () => {
+      runCanvasUndoBatch(PID, SID, { kind: 'overwrite' }, () => {
         setNodeParent(PID, SID, 'm2', null, { x: 9999, y: 9999 });
       });
       const m2 = doc().getMap('nodesMap').get('m2') as Y.Map<unknown>;
@@ -957,7 +957,7 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       addNode(PID, SID, sampleFields('image', {}, { id: 'b', position: { x: 50, y: 50 } }));
       const undo = createCanvasUndoManager(doc());
       const depth = undo.undoStack.length;
-      runCanvasUndoBatch(PID, SID, () => {
+      runCanvasUndoBatch(PID, SID, { kind: 'overwrite' }, () => {
         setNodePosition(PID, SID, 'a', { x: 10, y: 10 }, null);
         setNodePosition(PID, SID, 'b', { x: 60, y: 60 }, null);
       });

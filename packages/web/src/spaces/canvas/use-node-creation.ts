@@ -22,6 +22,7 @@ import {
   getLyricsFragment,
   getPromptFragment,
   getTextBody,
+  historyStepKind,
   CANVAS_ROLLED_BACK,
   readCanvasGraph,
   readNodePlacements,
@@ -38,6 +39,12 @@ import {
   type SnapshotNode,
 } from '@web/data/yjs/canvas-space';
 import { docName, getDoc, hasDoc } from '@web/data/yjs/manager';
+import {
+  estimateNodeBytes,
+  reserveSpaceRoom,
+  writeSpaceDoc,
+  type SpaceRefusal,
+} from '@web/data/yjs/space-write';
 import { setStoryboardShots } from '@web/data/yjs/node-storyboard';
 import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import { writeProposalFills } from '@web/spaces/canvas/generate/proposal-fills';
@@ -132,8 +139,9 @@ export interface NodeCreation {
    * step, stepped past nodes already where they land — the step is read at
    * write time, so two pastes made before either answered do not stack.
    * Resolves to the new node ids, or null when the registration request fails
-   * (a toast says so, with the server's reason when it gave one) or the Space
-   * went away first.
+   * (a toast says so, with the server's reason when it gave one), the Space
+   * went away first, or the Space has no room for it (inner#1790: the room is
+   * reserved before the server is asked, and the size cap says why).
    */
   pastePayload: (
     payload: ClipboardPayload,
@@ -162,7 +170,10 @@ export interface NodeCreation {
    * `proposal.groupName`. `order` stacks each column in the template's own
    * order, so a node put back takes the cell its template gives it. If a
    * write fails part way, everything this press wrote is taken back, out of
-   * undo history, and the error is rethrown.
+   * undo history, and the error is rethrown. The whole flow is one `add` for
+   * the size cap (inner#1790): when it does not fit nothing is written and the
+   * refusal is returned, with its toast unless `notify` is false (an Agent
+   * proposal reports it through its card instead).
    * @throws {Error} When a write fails part way; nothing is left on the canvas
    *   or in undo history.
    */
@@ -172,7 +183,8 @@ export interface NodeCreation {
     occupied: readonly Rect[],
     existing?: ReadonlyMap<number, ExistingNode>,
     order?: readonly number[],
-  ) => PlacedProposal;
+    notify?: boolean,
+  ) => PlacedProposal | SpaceRefusal;
 }
 
 /** A proposal index that stands for a node already on the canvas. */
@@ -419,51 +431,66 @@ export function useNodeCreation(
       options: PastePayloadOptions = {},
     ): Promise<string[] | null> => {
       const cloned = cloneForPaste(payload, userId, offset, options);
-      // An external clone carries no address yet (cloneForPaste drops it), so
-      // it adds nothing here; its fetch into storage follows the write.
-      const addresses = collectAddresses(cloned.nodes);
-      const history = historyItems(cloned.nodes);
-      let nodes: SnapshotNode[] = cloned.nodes;
-      if (addresses.urls.length > 0 || addresses.pairs.length > 0 || history.length > 0) {
-        try {
-          const { map } = await canvasApi.paste({
-            project_id: projectId,
-            urls: addresses.urls,
-            pairs: addresses.pairs,
-            history,
-          });
-          nodes = replaceAddresses(nodes, new Map(Object.entries(map)));
-        } catch (err) {
-          toast.error(err instanceof ApiException && err.fromServer ? err.message : t('canvas.paste.failed'));
-          return null;
+      const name = docName.canvasSpace(projectId, spaceId);
+      // The room is held before the server is asked, so a paste that would not
+      // fit costs no request, and two pastes in flight do not both count on
+      // the same room (inner#1790).
+      const estimate = cloned.nodes.reduce((sum, node) => sum + estimateNodeBytes(node), 0)
+        + cloned.edges.reduce((sum, edge) => sum + estimateNodeBytes(edge), 0);
+      const reserved = reserveSpaceRoom(name, estimate);
+      if (!reserved.ok) return null;
+      const { reservation } = reserved;
+      try {
+        // An external clone carries no address yet (cloneForPaste drops it), so
+        // it adds nothing here; its fetch into storage follows the write.
+        const addresses = collectAddresses(cloned.nodes);
+        const history = historyItems(cloned.nodes);
+        let nodes: SnapshotNode[] = cloned.nodes;
+        if (addresses.urls.length > 0 || addresses.pairs.length > 0 || history.length > 0) {
+          try {
+            const { map } = await canvasApi.paste({
+              project_id: projectId,
+              urls: addresses.urls,
+              pairs: addresses.pairs,
+              history,
+            });
+            nodes = replaceAddresses(nodes, new Map(Object.entries(map)));
+          } catch (err) {
+            toast.error(err instanceof ApiException && err.fromServer ? err.message : t('canvas.paste.failed'));
+            return null;
+          }
         }
+        // A paste waits on the server; a Space closed meanwhile is not written.
+        if (!hasDoc(name)) return null;
+        const doc = getDoc(name);
+        const nodesMap = doc.getMap<Y.Map<unknown>>(CANVAS_NODES_KEY);
+        const placed = stepClones(
+          nodes,
+          cloned.idMap,
+          options.externalParentAbs ?? new Map(),
+          (id) => liveGroup(nodesMap, id),
+          stepPaste,
+        );
+        const written = runCanvasUndoBatch(projectId, spaceId, { kind: 'add', estimate, reservation }, () => {
+          writeSnapshotNodes(doc, placed, cloned.edges);
+          options.afterWrite?.(placed, cloned.idMap);
+        });
+        if (!written.ok) return null;
+        for (const source of payload.nodes) {
+          const target = cloned.idMap.get(source.id);
+          const url = source.data.content;
+          if (source.external !== true || typeof url !== 'string' || target === undefined) continue;
+          canvasApi
+            .ingestUrl({ url, project_id: projectId, space_id: spaceId, node_id: target })
+            .catch((err: unknown) => {
+              toast.error(t(ingestRefusalToastKey(err instanceof ApiException ? err.status : undefined)));
+            });
+        }
+        return placed.map((node) => node.id);
+      } finally {
+        // A write that carried it has taken it over; otherwise it is given back.
+        reservation.release();
       }
-      // A paste waits on the server; a Space closed meanwhile is not written.
-      if (!hasDoc(docName.canvasSpace(projectId, spaceId))) return null;
-      const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-      const nodesMap = doc.getMap<Y.Map<unknown>>(CANVAS_NODES_KEY);
-      const placed = stepClones(
-        nodes,
-        cloned.idMap,
-        options.externalParentAbs ?? new Map(),
-        (id) => liveGroup(nodesMap, id),
-        stepPaste,
-      );
-      runCanvasUndoBatch(projectId, spaceId, () => {
-        writeSnapshotNodes(doc, placed, cloned.edges);
-        options.afterWrite?.(placed, cloned.idMap);
-      });
-      for (const source of payload.nodes) {
-        const target = cloned.idMap.get(source.id);
-        const url = source.data.content;
-        if (source.external !== true || typeof url !== 'string' || target === undefined) continue;
-        canvasApi
-          .ingestUrl({ url, project_id: projectId, space_id: spaceId, node_id: target })
-          .catch((err: unknown) => {
-            toast.error(t(ingestRefusalToastKey(err instanceof ApiException ? err.status : undefined)));
-          });
-      }
-      return placed.map((node) => node.id);
     },
     [projectId, spaceId, userId, t, stepPaste],
   );
@@ -474,7 +501,8 @@ export function useNodeCreation(
       occupied: readonly Rect[],
       existing: ReadonlyMap<number, ExistingNode> = new Map(),
       order?: readonly number[],
-    ): PlacedProposal => {
+      notify = true,
+    ): PlacedProposal | SpaceRefusal => {
       const fresh = proposal.nodes.map((_, i) => !existing.has(i));
       const arrangement = arrangeProposal(projectId, spaceId, proposal, start, occupied, existing, order);
       const { spots, bounds, aimedGroup, joinGroup } = arrangement;
@@ -485,8 +513,13 @@ export function useNodeCreation(
       // and the rollback's own undo is an origin that manager does not track,
       // so the reader's undo history holds no trace of either.
       const rollback = createCanvasRollback(projectId, spaceId);
+      // The whole flow is one add, judged before anything is written; the
+      // prompts, lyrics and shots written inside it are counted here too.
+      const estimate = proposal.nodes.reduce((sum, node) => sum + estimateNodeBytes(node), 0)
+        + estimateNodeBytes(proposal.edges);
+      let written: ReturnType<typeof runCanvasUndoBatch>;
       try {
-        runCanvasUndoBatch(projectId, spaceId, (tr) => {
+        written = runCanvasUndoBatch(projectId, spaceId, { kind: 'add', estimate, notify }, (tr) => {
           try {
             proposal.nodes.forEach((node, i) => {
               const settled = existing.get(i);
@@ -634,11 +667,14 @@ export function useNodeCreation(
           }
         });
       } catch (error) {
-        rollback.undo();
+        writeSpaceDoc(docName.canvasSpace(projectId, spaceId), { kind: historyStepKind(rollback, 'undo') }, () => {
+          rollback.undo();
+        });
         throw error;
       } finally {
         rollback.destroy();
       }
+      if (!written.ok) return written;
       fetchTemplateResources(projectId, spaceId, proposal, nodeIds, fresh, (key) => toast.error(t(key)));
       // Words in braces are the reader's to write. Saying so is all: what
       // they leave as it is goes out as it is (inner#977). A proposal's

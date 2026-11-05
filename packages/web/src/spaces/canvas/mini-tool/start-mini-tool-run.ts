@@ -23,6 +23,8 @@ import { ApiException } from '@web/data/api/types';
 import type { MiniToolUploadTag } from '@web/data/upload/ingest-upload';
 import { UploadFailedError } from '@web/data/upload/media-upload';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
+import { docName } from '@web/data/yjs/manager';
+import { estimateNodeBytes, writeSpaceDoc } from '@web/data/yjs/space-write';
 import { toast } from '@web/lib/toast';
 import { runOnce, spaceTaskIntent, useRunning, type RunOnceOutcome } from '@web/stores/task-actions-in-flight';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
@@ -441,18 +443,25 @@ async function buildMiniToolRun(run: MiniToolRun, onSent: (settle: Settle) => vo
     return { ...built, data: { ...built.data, name: placed.name, ...size } };
   });
   let group: BuiltGroup | undefined;
-  runCanvasUndoBatch(projectId, spaceId, () => {
-    for (const node of nodes) {
-      addNode(projectId, spaceId, node);
-      addEdge(projectId, spaceId, {
-        id: `${source.id}->${node.id}`,
-        source: source.id,
-        target: node.id,
-        toolId: spec.id,
-      });
-    }
-    if (spec.groupOutputs === true) group = groupResults(run, nodes, placements);
+  // The results, their edges and their Group are one add for the size cap,
+  // judged before anything is sent: a Space without room runs nothing.
+  const estimate = nodes.reduce((sum, node) => sum + estimateNodeBytes(node) + estimateNodeBytes({ source: source.id, toolId: spec.id }), 0)
+    + (spec.groupOutputs === true ? estimateNodeBytes({ type: 'group', name: source.name }) : 0);
+  const built = writeSpaceDoc(docName.canvasSpace(projectId, spaceId), { kind: 'add', estimate }, () => {
+    runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => {
+      for (const node of nodes) {
+        addNode(projectId, spaceId, node);
+        addEdge(projectId, spaceId, {
+          id: `${source.id}->${node.id}`,
+          source: source.id,
+          target: node.id,
+          toolId: spec.id,
+        });
+      }
+      if (spec.groupOutputs === true) group = groupResults(run, nodes, placements);
+    });
   });
+  if (!built.ok) return null;
   // The press has its place on the canvas at once; the uploader sees each node
   // wait until the server answers (inner#1303 §6.7).
   const marks = useUploadMarksStore.getState();

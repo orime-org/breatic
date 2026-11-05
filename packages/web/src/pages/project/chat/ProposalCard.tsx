@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowRight } from 'lucide-react';
 import * as React from 'react';
 
-import { promptPlainText, type CanvasProposal, type ProposalNode } from '@breatic/shared';
+import { formatBytes, promptPlainText, type CanvasProposal, type ProposalNode } from '@breatic/shared';
 
 import { ProposalAction, ProposalActions } from '@web/pages/project/chat/ProposalActions';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -78,14 +78,18 @@ export const ProposalCard = React.memo(function ProposalCard({
   // the card that is waiting reads it: placing runs to completion inside one
   // synchronous effect, so no second card can have posted in between. A
   // failure is told in a toast as it is answered (inner#1530); the button is
-  // free to press again.
+  // free to press again. A Space without room for it is told the same way,
+  // as a warning (inner#1790).
   const failedLine = t('chat.proposal.failed');
+  const fullLine = t('spaces.size.proposalFull');
   React.useEffect(() => {
     if (!building || outcome === null) return;
     setBuilding(false);
     if (outcome === 'failed') toast.error(failedLine);
+    else if (outcome === 'full') toast.warning(fullLine);
+    else if (typeof outcome === 'object') toast.warning(t('spaces.size.proposalNoRoom', { room: formatBytes(outcome.room) }));
     clearOutcome();
-  }, [building, outcome, clearOutcome, failedLine]);
+  }, [building, outcome, clearOutcome, failedLine, fullLine, t]);
 
   const onUse = React.useCallback((): void => {
     // Nobody is holding the mailbox when no canvas is open. Said out loud

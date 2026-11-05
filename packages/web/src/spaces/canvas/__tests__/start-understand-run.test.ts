@@ -17,8 +17,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@web/data/yjs/canvas-space', () => ({
   addNode: vi.fn(() => true),
   addEdge: vi.fn(() => true),
-  runCanvasUndoBatch: vi.fn((_p: string, _s: string, run: () => void) => {
+  runCanvasUndoBatch: vi.fn((_p: string, _s: string, _o: unknown, run: () => void) => {
     run();
+    return { ok: true };
   }),
 }));
 vi.mock('@web/data/api/canvas', () => ({

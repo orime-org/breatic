@@ -29,6 +29,13 @@ import { bodyFromText, bodyToPlainText, writePlainTextIntoBody } from '@breatic/
 import type { TypedNodeView } from '@web/data/yjs/node-view';
 import { toNodeView } from '@web/data/yjs/node-view';
 import { fillNestedData, splitSnapshot } from '@web/data/yjs/node-data-snapshot';
+import {
+  estimateNodeBytes,
+  writeSpaceDoc,
+  type SpaceWriteKind,
+  type SpaceWriteOptions,
+  type SpaceWriteResult,
+} from '@web/data/yjs/space-write';
 
 /**
  * Canvas-space Yjs document — single source of truth for one canvas
@@ -247,6 +254,39 @@ export function createCanvasRollback(projectId: string, spaceId: string): Y.Undo
 }
 
 /**
+ * What running the next undo or redo step does to the document's size
+ * (inner#1790, design 5.2): a step that restores nothing only deletes; one
+ * that restores only the values of keys still present overwrites; anything
+ * else (a removed node, a removed key, sequence content) adds.
+ * @param manager - The undo manager about to run.
+ * @param direction - Which stack's top step runs.
+ * @returns The kind the step is judged as.
+ */
+export function historyStepKind(manager: Y.UndoManager, direction: 'undo' | 'redo'): SpaceWriteKind {
+  const step = (direction === 'undo' ? manager.undoStack : manager.redoStack).at(-1);
+  if (!step) return 'delete';
+  const store = manager.doc.store.clients;
+  let kind: SpaceWriteKind = 'delete';
+  for (const [client, ranges] of step.deletions.clients) {
+    const structs = store.get(client);
+    if (!structs) continue;
+    for (const { clock, len } of ranges) {
+      for (let i = Y.findIndexSS(structs, clock); i < structs.length && structs[i].id.clock < clock + len; i++) {
+        const item = structs[i];
+        if (!(item instanceof Y.Item) || Y.isDeleted(step.insertions, item.id)) continue;
+        if (!manager.scope.some((type) => type instanceof Y.AbstractType && Y.isParentOf(type, item))) continue;
+        const parent = item.parent;
+        if (item.parentSub === null || !(parent instanceof Y.AbstractType) || parent._item?.deleted === true) return 'add';
+        const current = parent._map.get(item.parentSub);
+        if (current === undefined || current.deleted) return 'add';
+        kind = 'overwrite';
+      }
+    }
+  }
+  return kind;
+}
+
+/**
  * Process-wide cache of canvas undo managers, keyed by canvas-space document
  * name — so a stack outlives any remount of `useCanvasSpace` while its tab is
  * open.
@@ -315,37 +355,75 @@ export function _resetCanvasUndoCacheForTests(): void {
  * `captureTimeout` of the last one into the step on top, so the timeout is
  * lifted for this one transaction, and only while the step on top is still
  * `joinStep` — any other write in between leaves a different step on top.
+ *
+ * The size cap judges the batch once, as a whole (inner#1790): the caller
+ * states the strongest kind among its writes and their summed estimate, and
+ * the writes inside run without being judged again.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space whose doc to mutate.
+ * @param options - How the size cap judges the whole batch, plus `joinStep`
+ *   (the undo step to merge into, when it is still on top) and `onStep`
+ *   (told the undo step the batch landed in: `joinStep` when it merged into
+ *   it, otherwise the new step on top, or undefined when it wrote nothing).
  * @param fn - Runs the individual mutations; their writes join this one
  *   transaction, which it is handed so it can mark a write it took back.
- * @param joinStep - The undo step to merge into, when it is still on top.
- * @returns The undo step this batch landed in: `joinStep` when it merged into
- *   it, otherwise the new step on top, or undefined when it wrote nothing.
+ * @returns Whether the batch ran, or why the size cap refused it.
+ * @throws {Error} Whatever `fn` throws.
  */
 export function runCanvasUndoBatch(
   projectId: string,
   spaceId: string,
+  options: CanvasBatchOptions,
   fn: (tr: Y.Transaction) => void,
-  joinStep?: CanvasUndoStep,
-): CanvasUndoStep | undefined {
+): SpaceWriteResult {
+  const { joinStep, onStep, ...judged } = options;
   const name = docName.canvasSpace(projectId, spaceId);
   const doc = getDoc(name);
   const undoManager = getCanvasUndoManager(doc, name);
-  const before = undoManager.undoStack.at(-1);
-  if (joinStep === undefined || before !== joinStep) {
-    doc.transact(fn, CANVAS_UNDO);
-    const after = undoManager.undoStack.at(-1);
-    return after === before ? undefined : after;
-  }
-  const timeout = undoManager.captureTimeout;
-  undoManager.captureTimeout = Number.POSITIVE_INFINITY;
-  try {
-    doc.transact(fn, CANVAS_UNDO);
-  } finally {
-    undoManager.captureTimeout = timeout;
-  }
-  return joinStep;
+  return writeSpaceDoc(name, judged, () => {
+    const before = undoManager.undoStack.at(-1);
+    if (joinStep === undefined || before !== joinStep) {
+      doc.transact(fn, CANVAS_UNDO);
+      const after = undoManager.undoStack.at(-1);
+      onStep?.(after === before ? undefined : after);
+      return;
+    }
+    const timeout = undoManager.captureTimeout;
+    undoManager.captureTimeout = Number.POSITIVE_INFINITY;
+    try {
+      doc.transact(fn, CANVAS_UNDO);
+    } finally {
+      undoManager.captureTimeout = timeout;
+    }
+    onStep?.(joinStep);
+  });
+}
+
+/** How `runCanvasUndoBatch` is judged and where its undo step goes. */
+export interface CanvasBatchOptions extends SpaceWriteOptions {
+  /** The undo step to merge into, when it is still on top. */
+  joinStep?: CanvasUndoStep;
+  /** Told the undo step the batch landed in, when it ran. */
+  onStep?: (step: CanvasUndoStep | undefined) => void;
+}
+
+/**
+ * The options one canvas write is judged with (inner#1790, design 5.2).
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space the write goes to.
+ * @param kind - What the write does to the document's size.
+ * @param added - For an add, what it writes, estimated with `estimateNodeBytes`.
+ * @returns The document name and the options for `writeSpaceDoc`.
+ */
+export function canvasWrite(
+  projectId: string,
+  spaceId: string,
+  kind: SpaceWriteKind,
+  added?: unknown,
+): { name: string; options: SpaceWriteOptions } {
+  const name = docName.canvasSpace(projectId, spaceId);
+  const estimate = kind === 'add' && added !== undefined ? estimateNodeBytes(added) : undefined;
+  return { name, options: estimate === undefined ? { kind } : { kind, estimate } };
 }
 
 /** Who made a canvas document's writes, as far as the canvas needs to know. */
@@ -496,13 +574,21 @@ export function useCanvasSpace(
   }, [doc, name, syncAvailability]);
 
   const undo = React.useCallback((): void => {
-    undoManagerRef.current?.undo();
+    const manager = undoManagerRef.current;
+    if (!manager) return;
+    writeSpaceDoc(name, { kind: historyStepKind(manager, 'undo') }, () => {
+      undoManagerRef.current?.undo();
+    });
     syncAvailability();
-  }, [syncAvailability]);
+  }, [name, syncAvailability]);
   const redo = React.useCallback((): void => {
-    undoManagerRef.current?.redo();
+    const manager = undoManagerRef.current;
+    if (!manager) return;
+    writeSpaceDoc(name, { kind: historyStepKind(manager, 'redo') }, () => {
+      undoManagerRef.current?.redo();
+    });
     syncAvailability();
-  }, [syncAvailability]);
+  }, [name, syncAvailability]);
 
   const getLastWriteWasLocal = React.useCallback(
     (): boolean => origins.lastWasLocal,
@@ -663,9 +749,12 @@ export function addNode(
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  doc.transact(() => {
-    nodesMap.set(node.id, nodeEntry(node, buildDataMap(node.data, node.type)));
-  }, CANVAS_UNDO);
+  const { name, options } = canvasWrite(projectId, spaceId, 'add', node);
+  writeSpaceDoc(name, options, () => {
+    doc.transact(() => {
+      nodesMap.set(node.id, nodeEntry(node, buildDataMap(node.data, node.type)));
+    }, CANVAS_UNDO);
+  });
 }
 
 /**
@@ -769,13 +858,16 @@ export function removeNode(
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  doc.transact(() => {
-    const node = nodesMap.get(nodeId);
-    if (node instanceof Y.Map && node.get('type') === 'group') {
-      releaseGroupMembers(nodesMap, nodeId);
-    }
-    nodesMap.delete(nodeId);
-  }, CANVAS_UNDO);
+  const { name, options } = canvasWrite(projectId, spaceId, 'delete');
+  writeSpaceDoc(name, options, () => {
+    doc.transact(() => {
+      const node = nodesMap.get(nodeId);
+      if (node instanceof Y.Map && node.get('type') === 'group') {
+        releaseGroupMembers(nodesMap, nodeId);
+      }
+      nodesMap.delete(nodeId);
+    }, CANVAS_UNDO);
+  });
 }
 
 /**
@@ -802,7 +894,10 @@ export function setNodePosition(
   const node = nodesMap.get(nodeId);
   if (!node) return;
   if ((node.get('parentId') ?? null) !== parentId) return;
-  doc.transact(() => node.set('position', position), CANVAS_UNDO);
+  const { name, options } = canvasWrite(projectId, spaceId, 'overwrite');
+  writeSpaceDoc(name, options, () => {
+    doc.transact(() => node.set('position', position), CANVAS_UNDO);
+  });
 }
 
 /**
@@ -826,7 +921,10 @@ export function setNodeName(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  doc.transact(() => data.set('name', name), CANVAS_UNDO);
+  const write = canvasWrite(projectId, spaceId, 'add', name);
+  writeSpaceDoc(write.name, write.options, () => {
+    doc.transact(() => data.set('name', name), CANVAS_UNDO);
+  });
 }
 
 /**
@@ -849,7 +947,10 @@ export function setNodeTemplateNode(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  doc.transact(() => data.set('templateNode', { ...templateNode }), CANVAS_UNDO);
+  const { name, options } = canvasWrite(projectId, spaceId, 'add', templateNode);
+  writeSpaceDoc(name, options, () => {
+    doc.transact(() => data.set('templateNode', { ...templateNode }), CANVAS_UNDO);
+  });
 }
 
 /**
@@ -873,7 +974,10 @@ export function setNodeLocked(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  doc.transact(() => data.set('locked', locked), CANVAS_UNDO);
+  const { name, options } = canvasWrite(projectId, spaceId, 'overwrite');
+  writeSpaceDoc(name, options, () => {
+    doc.transact(() => data.set('locked', locked), CANVAS_UNDO);
+  });
 }
 
 /**
@@ -917,7 +1021,8 @@ function replyIndex(replies: Y.Array<Y.Map<unknown>>, replyId: string): number {
  * @param spaceId - Canvas space holding the annotation.
  * @param nodeId - Id of the annotation being replied to.
  * @param reply - The reply to post.
- * @returns Whether it was appended; false when the annotation is already gone.
+ * @returns Whether it was appended; false when the annotation is already gone
+ *   or the size cap refused it (the refusal says so itself).
  */
 export function addReply(
   projectId: string,
@@ -928,15 +1033,17 @@ export function addReply(
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const replies = repliesArray(doc, nodeId);
   if (!replies) return false;
-  doc.transact(() => {
-    const map = new Y.Map<unknown>();
-    map.set('id', reply.id);
-    map.set('content', reply.content);
-    map.set('createdBy', reply.createdBy);
-    map.set('createdAt', reply.createdAt);
-    replies.push([map]);
-  }, CANVAS_UNDO);
-  return true;
+  const { name, options } = canvasWrite(projectId, spaceId, 'add', reply);
+  return writeSpaceDoc(name, options, () => {
+    doc.transact(() => {
+      const map = new Y.Map<unknown>();
+      map.set('id', reply.id);
+      map.set('content', reply.content);
+      map.set('createdBy', reply.createdBy);
+      map.set('createdAt', reply.createdAt);
+      replies.push([map]);
+    }, CANVAS_UNDO);
+  }).ok;
 }
 
 /**
@@ -952,7 +1059,8 @@ export function addReply(
  * @param nodeId - Id of the annotation to rewrite.
  * @param content - The new body, as markdown source.
  * @param editedAt - When this edit happened, epoch milliseconds.
- * @returns Whether it was rewritten; false when the annotation is already gone.
+ * @returns Whether it was rewritten; false when the annotation is already gone
+ *   or the size cap refused it.
  */
 export function editAnnotationBody(
   projectId: string,
@@ -964,11 +1072,13 @@ export function editAnnotationBody(
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const data = nodeDataMap(doc, nodeId);
   if (!data) return false;
-  doc.transact(() => {
-    data.set('content', content);
-    data.set('editedAt', editedAt);
-  }, CANVAS_UNDO);
-  return true;
+  const { name, options } = canvasWrite(projectId, spaceId, 'add', content);
+  return writeSpaceDoc(name, options, () => {
+    doc.transact(() => {
+      data.set('content', content);
+      data.set('editedAt', editedAt);
+    }, CANVAS_UNDO);
+  }).ok;
 }
 
 /**
@@ -979,7 +1089,8 @@ export function editAnnotationBody(
  * @param replyId - Id of the reply to rewrite.
  * @param content - The new body, as markdown source.
  * @param editedAt - When this edit happened, epoch milliseconds.
- * @returns Whether it was rewritten; false when the reply is already gone.
+ * @returns Whether it was rewritten; false when the reply is already gone or
+ *   the size cap refused it.
  */
 export function editReply(
   projectId: string,
@@ -995,11 +1106,13 @@ export function editReply(
   const index = replyIndex(replies, replyId);
   if (index === -1) return false;
   const reply = replies.get(index);
-  doc.transact(() => {
-    reply.set('content', content);
-    reply.set('editedAt', editedAt);
-  }, CANVAS_UNDO);
-  return true;
+  const { name, options } = canvasWrite(projectId, spaceId, 'add', content);
+  return writeSpaceDoc(name, options, () => {
+    doc.transact(() => {
+      reply.set('content', content);
+      reply.set('editedAt', editedAt);
+    }, CANVAS_UNDO);
+  }).ok;
 }
 
 /**
@@ -1026,7 +1139,10 @@ export function removeReply(
   if (!replies) return;
   const index = replyIndex(replies, replyId);
   if (index === -1) return;
-  doc.transact(() => replies.delete(index, 1), CANVAS_UNDO);
+  const { name, options } = canvasWrite(projectId, spaceId, 'delete');
+  writeSpaceDoc(name, options, () => {
+    doc.transact(() => replies.delete(index, 1), CANVAS_UNDO);
+  });
 }
 
 /**
@@ -1058,7 +1174,10 @@ export function setNodeParams(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  doc.transact(() => data.set('paramsByModel', paramsByModel), CANVAS_UNDO);
+  const { name, options } = canvasWrite(projectId, spaceId, 'add', paramsByModel);
+  writeSpaceDoc(name, options, () => {
+    doc.transact(() => data.set('paramsByModel', paramsByModel), CANVAS_UNDO);
+  });
 }
 
 /**
@@ -1099,13 +1218,18 @@ export function setNodeSlotValue(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  doc.transact(() => {
-    if (value === null) {
-      if (data.has(key)) data.delete(key);
-    } else {
-      data.set(key, value);
-    }
-  }, CANVAS_UNDO);
+  const { name, options } = value === null
+    ? canvasWrite(projectId, spaceId, 'delete')
+    : canvasWrite(projectId, spaceId, 'add', value);
+  writeSpaceDoc(name, options, () => {
+    doc.transact(() => {
+      if (value === null) {
+        if (data.has(key)) data.delete(key);
+      } else {
+        data.set(key, value);
+      }
+    }, CANVAS_UNDO);
+  });
 }
 
 /**
@@ -1120,8 +1244,8 @@ export function setNodeSlotValue(
  * @param key - The node data field the slot owns.
  * @param url - The picked file's URL.
  * @param capacity - The most files the slot holds.
- * @returns What happened: added, added and now full, already there, full, or
- *   no such node.
+ * @returns What happened: added, added and now full, already there, full,
+ *   no such node, or refused by the size cap (which says so itself).
  */
 export function appendNodeSlotItem(
   projectId: string,
@@ -1130,24 +1254,27 @@ export function appendNodeSlotItem(
   key: string,
   url: string,
   capacity: number,
-): 'added' | 'filled' | 'present' | 'full' | 'node-missing' {
+): 'added' | 'filled' | 'present' | 'full' | 'node-missing' | 'refused' {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const data = doc.getMap<Y.Map<unknown>>(NODES_KEY).get(nodeId)?.get('data');
   if (!(data instanceof Y.Map)) return 'node-missing';
-  let result: 'added' | 'filled' | 'present' | 'full' = 'added';
-  doc.transact(() => {
-    const list = usableUrls(data.get(key));
-    if (list.includes(url)) {
-      result = 'present';
-      return;
-    }
-    if (list.length >= capacity) {
-      result = 'full';
-      return;
-    }
-    data.set(key, [...list, url]);
-    if (list.length + 1 >= capacity) result = 'filled';
-  }, CANVAS_UNDO);
+  let result: 'added' | 'filled' | 'present' | 'full' | 'refused' = 'refused';
+  const { name, options } = canvasWrite(projectId, spaceId, 'add', url);
+  writeSpaceDoc(name, options, () => {
+    doc.transact(() => {
+      const list = usableUrls(data.get(key));
+      if (list.includes(url)) {
+        result = 'present';
+        return;
+      }
+      if (list.length >= capacity) {
+        result = 'full';
+        return;
+      }
+      data.set(key, [...list, url]);
+      result = list.length + 1 >= capacity ? 'filled' : 'added';
+    }, CANVAS_UNDO);
+  });
   return result;
 }
 
@@ -1170,11 +1297,14 @@ export function removeNodeSlotItem(
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const data = doc.getMap<Y.Map<unknown>>(NODES_KEY).get(nodeId)?.get('data');
   if (!(data instanceof Y.Map)) return;
-  doc.transact(() => {
-    const next = usableUrls(data.get(key)).filter((u) => u !== url);
-    if (next.length === 0) data.delete(key);
-    else data.set(key, next);
-  }, CANVAS_UNDO);
+  const { name, options } = canvasWrite(projectId, spaceId, 'delete');
+  writeSpaceDoc(name, options, () => {
+    doc.transact(() => {
+      const next = usableUrls(data.get(key)).filter((u) => u !== url);
+      if (next.length === 0) data.delete(key);
+      else data.set(key, next);
+    }, CANVAS_UNDO);
+  });
 }
 
 /**
@@ -1251,24 +1381,28 @@ function appendFocusImageCore(
  *   (round-8 — one boolean collapsed "node deleted mid-upload" into a
  *   misleading pool-full toast): 'node-missing' (deleted / data map gone),
  *   'invalid-entry' (fails the shared sanitizer), 'pool-full' (the
- *   MAX_FOCUS_ENTRIES ceiling). The caller surfaces each truthfully.
+ *   MAX_FOCUS_ENTRIES ceiling), 'refused' (the size cap, which already said
+ *   so). The caller surfaces each truthfully.
  */
 export function addNodeFocusImage(
   projectId: string,
   spaceId: string,
   nodeId: string,
   image: FocusImage,
-): 'added' | 'node-missing' | 'invalid-entry' | 'pool-full' {
+): 'added' | 'node-missing' | 'invalid-entry' | 'pool-full' | 'refused' {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const node = nodesMap.get(nodeId);
   if (!node) return 'node-missing';
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return 'node-missing';
-  let result: 'added' | 'invalid-entry' | 'pool-full' = 'invalid-entry';
-  doc.transact(() => {
-    result = appendFocusImageCore(data, image);
-  }, CONTENT_WRITE);
+  let result: 'added' | 'invalid-entry' | 'pool-full' | 'refused' = 'refused';
+  const { name, options } = canvasWrite(projectId, spaceId, 'add', image);
+  writeSpaceDoc(name, options, () => {
+    doc.transact(() => {
+      result = appendFocusImageCore(data, image);
+    }, CONTENT_WRITE);
+  });
   return result;
 }
 
@@ -1352,9 +1486,12 @@ export function removeNodeFocusImage(
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return false;
   let removed = false;
-  doc.transact(() => {
-    removed = removeFocusImageCore(data, focusId);
-  }, CONTENT_WRITE);
+  const { name, options } = canvasWrite(projectId, spaceId, 'delete');
+  writeSpaceDoc(name, options, () => {
+    doc.transact(() => {
+      removed = removeFocusImageCore(data, focusId);
+    }, CONTENT_WRITE);
+  });
   return removed;
 }
 
@@ -1387,17 +1524,20 @@ export function setNodeModel(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  doc.transact(() => {
-    data.set('model', model);
-    // Whole, not merged (see setNodeParams for why).
-    data.set('paramsByModel', paramsByModel);
-    const prev = data.get('modelByMode');
-    const base =
-      prev != null && typeof prev === 'object'
-        ? (prev as Record<string, string>)
-        : {};
-    data.set('modelByMode', { ...base, [mode]: model });
-  }, CANVAS_UNDO);
+  const { name, options } = canvasWrite(projectId, spaceId, 'add', { mode, model, paramsByModel });
+  writeSpaceDoc(name, options, () => {
+    doc.transact(() => {
+      data.set('model', model);
+      // Whole, not merged (see setNodeParams for why).
+      data.set('paramsByModel', paramsByModel);
+      const prev = data.get('modelByMode');
+      const base =
+        prev != null && typeof prev === 'object'
+          ? (prev as Record<string, string>)
+          : {};
+      data.set('modelByMode', { ...base, [mode]: model });
+    }, CANVAS_UNDO);
+  });
 }
 
 /**
@@ -1429,12 +1569,15 @@ export function setNodeMode(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  doc.transact(() => {
-    data.set('mode', mode);
-    data.set('model', model);
-    // Whole, not merged (see setNodeParams for why).
-    data.set('paramsByModel', paramsByModel);
-  }, CANVAS_UNDO);
+  const { name, options } = canvasWrite(projectId, spaceId, 'add', { mode, model, paramsByModel });
+  writeSpaceDoc(name, options, () => {
+    doc.transact(() => {
+      data.set('mode', mode);
+      data.set('model', model);
+      // Whole, not merged (see setNodeParams for why).
+      data.set('paramsByModel', paramsByModel);
+    }, CANVAS_UNDO);
+  });
 }
 
 /**
@@ -1539,7 +1682,8 @@ export function readTextBodies(
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space holding the node.
  * @param nodeId - Id of the text node to repair.
- * @returns The node's body, or `null` when the node itself is gone.
+ * @returns The node's body, or `null` when the node itself is gone or the size
+ *   cap refused the repair.
  */
 export function ensureTextBody(
   projectId: string,
@@ -1552,8 +1696,11 @@ export function ensureTextBody(
   const existing = data.get('body');
   if (existing instanceof Y.XmlFragment) return existing;
   const body = bodyFromText('');
-  doc.transact(() => data.set('body', body), CONTENT_WRITE);
-  return body;
+  const { name, options } = canvasWrite(projectId, spaceId, 'add', '');
+  const written = writeSpaceDoc(name, options, () => {
+    doc.transact(() => data.set('body', body), CONTENT_WRITE);
+  });
+  return written.ok ? body : null;
 }
 
 /**
@@ -1667,22 +1814,31 @@ export function isNodeLocked(
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - Id of the node to fill.
  * @param content - The extracted text.
+ * @param notify - Toast a refusal (default true); false where the node's own
+ *   upload mark says it.
+ * @returns Whether the size cap let it in (counted as its UTF-8 bytes); a node
+ *   already gone counts as written, there being nowhere left to put it.
  */
 export function setNodeExtractedText(
   projectId: string,
   spaceId: string,
   nodeId: string,
   content: string,
-): void {
+  notify = true,
+): SpaceWriteResult {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const node = nodesMap.get(nodeId);
-  if (!node) return;
+  if (!node) return { ok: true };
   const data = node.get('data');
-  if (!(data instanceof Y.Map)) return;
-  doc.transact(() => {
-    landHandlingContent(data, node.get('type'), content);
-  }, CONTENT_WRITE);
+  if (!(data instanceof Y.Map)) return { ok: true };
+  const name = docName.canvasSpace(projectId, spaceId);
+  const options = { kind: 'add' as const, estimate: new TextEncoder().encode(content).byteLength, notify };
+  return writeSpaceDoc(name, options, () => {
+    doc.transact(() => {
+      landHandlingContent(data, node.get('type'), content);
+    }, CONTENT_WRITE);
+  });
 }
 
 /**
@@ -1723,7 +1879,8 @@ export function restoreNodeMedia(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  doc.transact(() => {
+  const { name, options } = canvasWrite(projectId, spaceId, 'add', restored);
+  writeSpaceDoc(name, options, () => doc.transact(() => {
     // Which field holds a node's content is decided by its type, once, in
     // `landHandlingContent` — a text node's words live in the body the editor
     // binds to and would be invisible in the plain field (#1774).
@@ -1733,7 +1890,7 @@ export function restoreNodeMedia(
     // #2184 carries none, which removes the previous result's numbers rather
     // than leaving them to describe a medium the node no longer shows.
     writeNodeMedia(data, restored.media);
-  }, CONTENT_WRITE);
+  }, CONTENT_WRITE));
 }
 
 /**
@@ -1795,10 +1952,15 @@ export function setGroupBackground(
   if (!(group instanceof Y.Map) || group.get('type') !== 'group') return;
   const data = group.get('data');
   if (!(data instanceof Y.Map)) return;
-  doc.transact(() => {
-    if (color === undefined) data.delete('backgroundColor');
-    else data.set('backgroundColor', color);
-  }, CANVAS_UNDO);
+  const { name, options } = color === undefined
+    ? canvasWrite(projectId, spaceId, 'delete')
+    : canvasWrite(projectId, spaceId, 'add', color);
+  writeSpaceDoc(name, options, () => {
+    doc.transact(() => {
+      if (color === undefined) data.delete('backgroundColor');
+      else data.set('backgroundColor', color);
+    }, CANVAS_UNDO);
+  });
 }
 
 /**
@@ -1820,7 +1982,8 @@ export function createGroup(
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  doc.transact(() => {
+  const { name, options } = canvasWrite(projectId, spaceId, 'add', { group, members });
+  writeSpaceDoc(name, options, () => doc.transact(() => {
     const map = new Y.Map<unknown>();
     map.set('id', group.id);
     map.set('type', group.type);
@@ -1834,7 +1997,7 @@ export function createGroup(
       node.set('parentId', group.id);
       node.set('position', member.position);
     }
-  }, CANVAS_UNDO);
+  }, CANVAS_UNDO));
 }
 
 /**
@@ -1866,11 +2029,14 @@ export function setNodeParent(
   // Binding the node to it anyway leaves a parent nobody can see and a position
   // measured against an origin that is not there.
   if (parentId !== null && !(nodesMap.get(parentId) instanceof Y.Map)) return;
-  doc.transact(() => {
-    if (parentId === null) node.delete('parentId');
-    else node.set('parentId', parentId);
-    node.set('position', position);
-  }, CANVAS_UNDO);
+  const { name, options } = canvasWrite(projectId, spaceId, 'overwrite');
+  writeSpaceDoc(name, options, () => {
+    doc.transact(() => {
+      if (parentId === null) node.delete('parentId');
+      else node.set('parentId', parentId);
+      node.set('position', position);
+    }, CANVAS_UNDO);
+  });
 }
 
 /**
@@ -1887,7 +2053,8 @@ export function setNodeParent(
  * @param position.y - New y coordinate.
  * @param width - The Group's new width.
  * @param height - The Group's new height.
- * @returns Whether the Group was still there to write.
+ * @returns Whether the Group was still there to write and the size cap let
+ *   the write in.
  */
 export function resizeGroup(
   projectId: string,
@@ -1903,12 +2070,14 @@ export function resizeGroup(
   if (!(group instanceof Y.Map) || group.get('type') !== 'group') return false;
   const data = group.get('data');
   if (!(data instanceof Y.Map)) return false;
-  doc.transact(() => {
-    group.set('position', position);
-    data.set('width', width);
-    data.set('height', height);
-  }, CANVAS_UNDO);
-  return true;
+  const { name, options } = canvasWrite(projectId, spaceId, 'overwrite');
+  return writeSpaceDoc(name, options, () => {
+    doc.transact(() => {
+      group.set('position', position);
+      data.set('width', width);
+      data.set('height', height);
+    }, CANVAS_UNDO);
+  }).ok;
 }
 
 /**
@@ -1944,7 +2113,8 @@ export function expandGroup(
   const oldPos = group.get('position') as { x: number; y: number } | undefined;
   const dx = oldPos ? oldPos.x - position.x : 0;
   const dy = oldPos ? oldPos.y - position.y : 0;
-  doc.transact(() => {
+  const { name, options } = canvasWrite(projectId, spaceId, 'overwrite');
+  writeSpaceDoc(name, options, () => doc.transact(() => {
     group.set('position', position);
     data.set('width', width);
     data.set('height', height);
@@ -1955,7 +2125,7 @@ export function expandGroup(
         if (p) node.set('position', { x: p.x + dx, y: p.y + dy });
       });
     }
-  }, CANVAS_UNDO);
+  }, CANVAS_UNDO));
 }
 
 /**
@@ -1964,7 +2134,9 @@ export function expandGroup(
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space to add the edge to.
  * @param edge - The edge to insert (id, source, target, optional toolId).
- * @returns True when the edge landed; false when it was rejected.
+ * @returns True when the edge landed; false when it was rejected (or the size
+ *   cap refused it; a caller that has to tell the two apart judges the write
+ *   itself in a `runCanvasUndoBatch`).
  */
 export function addEdge(
   projectId: string,
@@ -1978,9 +2150,12 @@ export function addEdge(
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
   let added = false;
-  doc.transact(() => {
-    added = putEdge(nodesMap, edgesMap, edge);
-  }, CANVAS_UNDO);
+  const { name, options } = canvasWrite(projectId, spaceId, 'add', edge);
+  writeSpaceDoc(name, options, () => {
+    doc.transact(() => {
+      added = putEdge(nodesMap, edgesMap, edge);
+    }, CANVAS_UNDO);
+  });
   return added;
 }
 
@@ -2054,9 +2229,12 @@ export function removeEdge(
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
-  doc.transact(() => {
-    edgesMap.delete(edgeId);
-  }, CANVAS_UNDO);
+  const { name, options } = canvasWrite(projectId, spaceId, 'delete');
+  writeSpaceDoc(name, options, () => {
+    doc.transact(() => {
+      edgesMap.delete(edgeId);
+    }, CANVAS_UNDO);
+  });
 }
 
 /**
@@ -2079,7 +2257,8 @@ export function removeElements(
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
-  doc.transact(() => {
+  const { name, options } = canvasWrite(projectId, spaceId, 'delete');
+  writeSpaceDoc(name, options, () => doc.transact(() => {
     nodeIds.forEach((id) => {
       const node = nodesMap.get(id);
       if (node instanceof Y.Map && node.get('type') === 'group') {
@@ -2088,7 +2267,7 @@ export function removeElements(
       nodesMap.delete(id);
     });
     edgeIds.forEach((id) => edgesMap.delete(id));
-  }, CANVAS_UNDO);
+  }, CANVAS_UNDO));
 }
 
 /**

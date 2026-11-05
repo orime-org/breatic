@@ -14,6 +14,7 @@ import {
   setNodeParams,
   type CanvasEdge,
 } from '@web/data/yjs/canvas-space';
+import { estimateNodeBytes } from '@web/data/yjs/space-write';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
 import {
   addStoryboardShot,
@@ -432,7 +433,8 @@ function VideoGeneratePanelBody({
       // In the multi-shot mode the shots follow the new model's total, in the
       // same undo step as the switch.
       const pickedSpec = specOf(picked, liveMode);
-      runCanvasUndoBatch(projectId, spaceId, () => {
+      // One add for the size cap: the switch and the re-split shots.
+      runCanvasUndoBatch(projectId, spaceId, { kind: 'add', estimate: estimateNodeBytes({ liveMode, modelId, paramsByModel }) }, () => {
         setNodeModel(projectId, spaceId, nodeId, liveMode, modelId, paramsByModel);
         if (pickedSpec) retotalStoryboard(projectId, spaceId, nodeId, totalOf(pickedSpec, params));
       });
@@ -466,7 +468,7 @@ function VideoGeneratePanelBody({
       // Entering the multi-shot mode with no shots lays out two, splitting
       // the model's total, in the same step as the switch.
       const targetSpec = specOf(models.find((m) => m.name === model), target);
-      runCanvasUndoBatch(projectId, spaceId, () => {
+      runCanvasUndoBatch(projectId, spaceId, { kind: 'add', estimate: estimateNodeBytes({ target, model, paramsByModel }) }, () => {
         setNodeMode(projectId, spaceId, nodeId, target, model, paramsByModel);
         if (targetSpec) {
           enterStoryboardShots(projectId, spaceId, nodeId, totalOf(targetSpec, paramsByModel[model] ?? {}));
@@ -497,7 +499,7 @@ function VideoGeneratePanelBody({
       const next = liveSpec?.totalParam === undefined
         ? undefined
         : (partial as Record<string, unknown>)[liveSpec.totalParam];
-      runCanvasUndoBatch(projectId, spaceId, () => {
+      runCanvasUndoBatch(projectId, spaceId, { kind: 'add', estimate: estimateNodeBytes(paramsByModel) }, () => {
         setNodeParams(projectId, spaceId, nodeId, paramsByModel);
         if (typeof next === 'number') retotalStoryboard(projectId, spaceId, nodeId, next);
       });

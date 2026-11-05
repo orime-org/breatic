@@ -202,7 +202,7 @@ describe('text node bodies in the canvas document (#1774)', () => {
       writePlainTextIntoBody(getTextBody(PID, SID, 'n1') as Y.XmlFragment, 'important words');
       const undoManager = createCanvasUndoManager(doc());
 
-      runCanvasUndoBatch(PID, SID, () => {
+      runCanvasUndoBatch(PID, SID, { kind: 'delete' }, () => {
         removeElements(PID, SID, ['n1'], []);
       });
       expect(getTextBody(PID, SID, 'n1')).toBeNull();
@@ -214,7 +214,7 @@ describe('text node bodies in the canvas document (#1774)', () => {
 
     it('does not orphan a body when creating the node is undone', () => {
       const undoManager = createCanvasUndoManager(doc());
-      runCanvasUndoBatch(PID, SID, () => {
+      runCanvasUndoBatch(PID, SID, { kind: 'add' }, () => {
         addNode(PID, SID, sampleFields('text'));
       });
       expect(hasBody('n1')).toBe(true);
@@ -233,7 +233,7 @@ describe('text node bodies in the canvas document (#1774)', () => {
       // somebody added the editor's origin to `trackedOrigins`. One Cmd+Z on
       // the canvas would then delete a paragraph, possibly a collaborator's.
       const undoManager = createCanvasUndoManager(doc());
-      runCanvasUndoBatch(PID, SID, () => {
+      runCanvasUndoBatch(PID, SID, { kind: 'add' }, () => {
         addNode(PID, SID, sampleFields('text'));
       });
       const before = undoManager.undoStack.length;

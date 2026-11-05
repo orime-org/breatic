@@ -124,7 +124,7 @@ function showDocument(rerender: () => void): void {
  */
 function isSizeSentence(text: unknown): boolean {
   if (typeof text !== 'string') return false;
-  const fixed = Object.values(COPY_EN).filter((v): v is string => typeof v === 'string');
+  const fixed = Object.values(COPY_EN).flatMap((v): string[] => (typeof v === 'string' ? [v] : []));
   if (fixed.includes(text)) return true;
   // The sentences with figures in them, figures left open.
   return /^This Space is using .+ of its .+\.$|^This Space is full \(.+ of .+\)\.|the Space has .+ left/.test(text);

@@ -3,12 +3,14 @@
 
 import { validFocusImages } from '@web/data/focus-images';
 import {
+  formatBytes,
   isUploadableMediaType,
   uploadableSpellings,
   uploadableFormatList,
   reduceMediaType,
 } from '@breatic/shared';
 import type { MiniToolUploadTag } from '@web/data/upload/ingest-upload';
+import type { SpaceRefusal, SpaceWriteResult } from '@web/data/yjs/space-write';
 import {
   runMediaUpload,
   runMediaUploadBatch,
@@ -184,9 +186,10 @@ export interface FillNodeDeps {
   /**
    * Content write-back for the text path, which has no upload: the text is
    * read here and there is nobody else to write it. A media node's content
-   * is written by the server through Yjs (design §6.6).
+   * is written by the server through Yjs (design §6.6). Answers whether the
+   * Space had room for the text (inner#1790); no answer counts as written.
    */
-  setContent: (nodeId: string, content: string) => void;
+  setContent: (nodeId: string, content: string) => SpaceWriteResult | void;
   /** The space the node lives in, which rides the ticket and keys its mark. */
   spaceId: string;
   /**
@@ -253,11 +256,24 @@ export async function fillNodeFromFile(
     return;
   }
   try {
-    deps.setContent(nodeId, await deps.extractText(file));
-    marks.answer(deps.spaceId, nodeId, deps.markOp);
+    const written = deps.setContent(nodeId, await deps.extractText(file));
+    if (written && !written.ok) marks.fail(deps.spaceId, nodeId, deps.markOp, textRefusalMark(written));
+    else marks.answer(deps.spaceId, nodeId, deps.markOp);
   } catch {
     marks.fail(deps.spaceId, nodeId, deps.markOp, { key: 'canvas.upload.extractionFailed', params: { filename: file.name } });
   }
+}
+
+/**
+ * What a text node says when the words read from its file were not written
+ * because the Space had no room for them (inner#1790, design 5.4).
+ * @param refusal - Why the size cap refused the words.
+ * @returns The message for the node's upload mark.
+ */
+export function textRefusalMark(refusal: SpaceRefusal): UploadMarkMessage {
+  return refusal.reason === 'no_room'
+    ? { key: 'spaces.size.textNoRoom', params: { room: formatBytes(refusal.room) } }
+    : { key: 'spaces.size.textFull' };
 }
 
 /**
