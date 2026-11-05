@@ -81,10 +81,12 @@ function config(): ProviderConfigInput {
     upstreams: {
       ws_a: { kind: "wavespeed", base_url: a.url, key_env: "WS_A_KEY", concurrency: 1 },
       ws_b: { kind: "wavespeed", base_url: b.url, key_env: "WS_B_KEY" },
+      fal_c: { kind: "fal", base_url: b.url, billing_url: `${b.url}/v1`, key_env: "FAL_C_KEY" },
     },
     media: {
       models: {
         seedance: { upstreams: seedance() },
+        "fal-only": { upstreams: [{ upstream: "fal_c", weight: 1, model_id: "fal-ai/x", prompt_field: "prompt", params: { duration: { field: "duration" } }, output_field: "video", pricing }] },
         // ws_a takes only 5 s runs now; a run it took before the provider layer may have been 10 s.
         "seedance-limited": { upstreams: seedance().map((b) => (b.upstream === "ws_a" ? { ...b, params: { ...b.params, duration: { field: "duration", supported: [5] } } } : b)) },
         "voice-clone": { upstreams: voiceClone },
@@ -530,6 +532,21 @@ describe("ticketFromLegacy", () => {
     const answer = expectState(await r.ticketFromLegacy("seedance-limited", { ...video, params: { ...video.params, duration: 10 } }, DEFAULT, options(), legacy), "running");
     await r.poll(stored(answer.ticket), live());
     expect(a.seen.map((s) => `${s.method} ${s.path}`)).toEqual(["GET /predictions/p-old/result"]);
+    expect(b.seen).toHaveLength(0);
+  });
+
+  it("fails a legacy run whose WaveSpeed key is gone, naming the key, without asking anyone", async () => {
+    const r = runner({ WS_B_KEY: "key-b" });
+    const answer = expectState(await r.ticketFromLegacy("seedance", video, DEFAULT, options(), { providerTaskId: "p-old" }), "failed");
+    expect(answer.reason).toBeInstanceOf(NoUpstreamAvailable);
+    expect((answer.reason as NoUpstreamAvailable).reasons).toEqual([{ upstream: "ws_a", kind: "missing_key", envVar: "WS_A_KEY" }]);
+    expect([...a.seen, ...b.seen]).toHaveLength(0);
+  });
+
+  it("fails a legacy run of a model with no WaveSpeed binding with a typed reason", async () => {
+    const r = runner({ WS_A_KEY: "key-a", WS_B_KEY: "key-b", FAL_C_KEY: "key-c" });
+    const answer = expectState(await r.ticketFromLegacy("fal-only", video, DEFAULT, options(), { providerTaskId: "p-old" }), "failed");
+    expect(answer.reason).toBeInstanceOf(NoUpstreamAvailable);
     expect(b.seen).toHaveLength(0);
   });
 

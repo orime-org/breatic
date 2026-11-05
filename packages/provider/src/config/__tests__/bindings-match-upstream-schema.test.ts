@@ -12,7 +12,7 @@ import type { StepContext } from "@provider/media/adapter.js";
 import { rejectedInput, type EstimateInput } from "@provider/pricing/estimate.js";
 import { createProvider } from "@provider/provider.js";
 import { ROOT, catalog, shipped, yaml } from "./shipped.js";
-import { WAVESPEED_LACKS } from "./wavespeed-lacks.js";
+import { RESELLER_LACKS, WAVESPEED_LACKS } from "./wavespeed-lacks.js";
 
 /** One param of our catalog as its yaml writes it. */
 interface CatalogParam {
@@ -420,8 +420,8 @@ async function takenRun(model: string, binding: MediaBinding, snapshot: SchemaSn
 const SCREENING: ReadonlySet<string> = new Set(["enable_safety_checker", "safety_tolerance"]);
 
 /**
- * The fal endpoint behind each SandBase model SandBase answers as `owned_by: fal.ai`: SandBase passes a run on to it,
- * so every field of it SandBase does not take runs at fal's default.
+ * The fal endpoint behind each SandBase model SandBase's model list answered as `owned_by: fal.ai` on 2026-11-01 (the
+ * list now names the vendors): SandBase passes a run on to it, so every field of it SandBase does not take runs at fal's default.
  */
 const SANDBASE_ON_FAL: Readonly<Record<string, string>> = {
   "alibaba/qwen-image-edit/2511/multiple-angles": "fal-ai/qwen-image-edit-2511-multiple-angles",
@@ -499,6 +499,9 @@ describe("the committed schema snapshots", () => {
     }
     const files = (readdirSync(SNAPSHOTS, { recursive: true }) as string[]).filter((f) => f.endsWith(".json"));
     expect(files.filter((f) => !reached.has(f))).toEqual([]);
+    const prices = resolve(ROOT, "packages/provider/test/fixtures/upstream-prices");
+    const facts = (readdirSync(prices, { recursive: true }) as string[]).filter((f) => f.endsWith(".json"));
+    expect(facts.filter((f) => !reached.has(f))).toEqual([]);
   });
 });
 
@@ -523,11 +526,32 @@ describe("the reviewed fields WaveSpeed does not have", () => {
     expect(Object.keys(WAVESPEED_LACKS).filter((key) => SCREENING.has(key.slice(key.lastIndexOf(" ") + 1).split(".").pop()!))).toEqual([]);
   });
 
-  it("maps every bound SandBase model that SandBase serves through fal to that fal endpoint, with its schema committed", () => {
+  it("has the schema of the fal endpoint behind every bound SandBase model it maps", () => {
     const bound = new Set(cases.filter(({ binding }) => binding.upstream === "sandbase").map(({ binding }) => binding.model_id));
-    const onFal = [...bound].filter((id) => snapshotFor("sandbase", id)?.owned_by === "fal.ai");
-    expect(onFal.filter((id) => SANDBASE_ON_FAL[id] === undefined)).toEqual([]);
     expect(Object.entries(SANDBASE_ON_FAL).filter(([id, falId]) => bound.has(id) && snapshotFor("fal", falId) === undefined).map(([id]) => id)).toEqual([]);
+  });
+
+  it("keeps no RESELLER_LACKS row for a field no reseller lacks", () => {
+    const lacked = new Set<string>();
+    for (const { model, binding } of cases) {
+      const wavespeed = (config.media.models[model]?.upstreams ?? []).find((b) => b.upstream === "wavespeed");
+      if (binding.upstream === "wavespeed" || wavespeed === undefined) continue;
+      for (const official of reachedBy(wavespeed)) {
+        const here = sameOn(official, binding);
+        if (here === undefined) continue;
+        for (const path of leftOut(official)) lacked.add(`${official.endpoint} ${path} on ${binding.upstream} ${here.endpoint}`);
+      }
+    }
+    expect(Object.keys(RESELLER_LACKS).filter((key) => !lacked.has(key))).toEqual([]);
+  });
+
+  it("keeps no SAME_EFFECT row for a field no binding leaves out", () => {
+    const left = new Set<string>();
+    for (const { binding } of cases) {
+      for (const here of reachedBy(binding)) for (const path of leftOut(here)) left.add(`${here.upstream} ${here.endpoint} ${path}`);
+      for (const bound of Object.values(binding.params ?? {})) left.add(`${binding.upstream} ${binding.model_id} ${bound.field}`);
+    }
+    expect(Object.keys(SAME_EFFECT).filter((key) => !left.has(key))).toEqual([]);
   });
 });
 
@@ -684,15 +708,38 @@ describe.each(cases)("$model on $binding.upstream", ({ model, binding }) => {
     expect(unreviewed, unreviewed.join("\n")).toEqual([]);
   });
 
+  it("lacks a field WaveSpeed leaves at its default only where that changes nothing WaveSpeed gives", () => {
+    if (binding.upstream === "wavespeed") return;
+    const wavespeed = (config.media.models[model]?.upstreams ?? []).find((b) => b.upstream === "wavespeed");
+    if (wavespeed === undefined) return;
+    const unreviewed: string[] = [];
+    for (const official of reachedBy(wavespeed)) {
+      const here = sameOn(official, binding);
+      if (here === undefined) continue;
+      for (const path of leftOut(official)) {
+        if (defaultIn(official.snapshot.fields[path]) === undefined || counterpart(path, here.snapshot) !== undefined) continue;
+        if (SCREENING.has(path.slice(path.lastIndexOf(".") + 1))) continue;
+        const key = `${official.endpoint} ${path} on ${binding.upstream} ${here.endpoint}`;
+        if (RESELLER_LACKS[key] === undefined) unreviewed.push(`${key}=${JSON.stringify(defaultIn(official.snapshot.fields[path]))}`);
+      }
+    }
+    expect(unreviewed, unreviewed.join("\n")).toEqual([]);
+  });
+
   it("leaves a param the run does not set at a default that gives WaveSpeed's result", () => {
     if (binding.upstream === "wavespeed") return;
     const wavespeed = (config.media.models[model]?.upstreams ?? []).find((b) => b.upstream === "wavespeed");
-    const officialSnapshot = wavespeed === undefined ? undefined : snapshotFor("wavespeed", wavespeed.model_id);
+    if (wavespeed === undefined) return;
+    const officialSnapshot = snapshotFor("wavespeed", wavespeed.model_id);
     const differ: string[] = [];
     for (const [name, param] of Object.entries(params)) {
       const bound = binding.params?.[name];
       if (bound === undefined || bound.unset !== undefined) continue;
-      if (param.default !== null && param.default !== undefined && param.default !== bound.absent_value) continue;
+      // A run carries a param with offered values or a range at a value; one the reader can clear (text, a list) or
+      // one whose default is null can arrive empty, and the field is then unsent unless the binding says what to send.
+      const clearable = param.remote_source === undefined && (param.type === "text" || param.type === "list" || param.type === "items" || param.accepts !== undefined);
+      const empties = [...(param.default === null || param.default === undefined ? [null] : []), ...(clearable ? ["", []] : [])];
+      if (!empties.some((v) => at(buildBody(binding, { prompt: "", params: { [name]: v } }), bound.field) === undefined)) continue;
       const mine = defaultIn(snapshot.fields[bound.field]);
       if (mine === undefined || SAME_EFFECT[`${binding.upstream} ${binding.model_id} ${bound.field}`] !== undefined) continue;
       const theirField = wavespeed?.params?.[name]?.field;

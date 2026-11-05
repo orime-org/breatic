@@ -4,12 +4,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { MediaBinding } from "../../config/schema.js";
 import { catalog, coveredValues, shipped } from "../../config/__tests__/shipped.js";
-import { rejectedInput } from "../../pricing/estimate.js";
-import { createProvider } from "../../provider.js";
 import { adapterOf } from "../adapters.js";
-import { buildBody } from "../body.js";
+import { missingRequired, type SchemaSnapshot } from "../../config/upstream-schema.js";
+import { firstBody, takes, type SampleRun } from "./reseller-bodies.js";
 
 /** The step context a body sample was built with; `source` is the url the step reads, and absent fields are unset. */
 interface StepSampleContext {
@@ -21,14 +19,6 @@ interface StepSampleContext {
   description?: string;
   itemIndex: number | null;
   param?: string;
-}
-
-/** One sample run: our params and prompt, the ids its extra steps answered for the params they serve, and the body sent. */
-interface SampleRun {
-  params: Record<string, unknown>;
-  prompt: string;
-  ids?: Record<string, string>;
-  body: Record<string, unknown>;
 }
 
 /** The reviewed request bodies of one reseller binding (`scripts/provider-reseller-bodies.ts`). */
@@ -45,12 +35,8 @@ interface BodySample {
 
 const BODIES = resolve(__dirname, "../../../test/fixtures/bodies");
 const config = shipped();
-const provider = createProvider({ config, keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
 const offered = new Map(catalog().models.map((m) => [m.name, m.params as Record<string, { values?: unknown[]; min?: number; max?: number }>]));
 const cases = Object.entries(config.media.models).flatMap(([model, { upstreams }]) => upstreams.filter((b) => b.upstream !== "wavespeed").map((binding) => ({ model, binding })));
-/** The clone id a voice step registers in the samples. */
-const SAMPLE_VOICE_ID = "BreaticSample";
-
 /**
  * The committed sample of a binding.
  * @param upstream - The upstream.
@@ -60,31 +46,6 @@ const SAMPLE_VOICE_ID = "BreaticSample";
 function sampleOf(upstream: string, model: string): BodySample | undefined {
   const path = resolve(BODIES, upstream, `${model}.json`);
   return existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as BodySample) : undefined;
-}
-
-/**
- * Whether the binding takes these params with this prompt.
- * @param model - Our model.
- * @param binding - The binding.
- * @param params - Our params.
- * @param prompt - The prompt.
- * @returns True when no limit, voice map or reject of the binding refuses them.
- */
-async function takes(model: string, binding: MediaBinding, params: Record<string, unknown>, prompt: string): Promise<boolean> {
-  return (await rejectedInput(provider.pricingRules(model), binding.upstream, { params, prompt, durations: {}, placeholders: [], durationsMissing: [] })) === undefined;
-}
-
-/**
- * The body of a run's first call as the runner sends it: the voice step's when the call clones a source, else the binding's.
- * @param binding - The binding.
- * @param run - The sample run.
- * @returns The body.
- */
-function firstBody(binding: MediaBinding, run: SampleRun): Record<string, unknown> {
-  const params = { ...run.params, ...run.ids };
-  if (binding.reused_by === undefined) return buildBody(binding, { params, prompt: run.prompt });
-  const voice = adapterOf(config.upstreams[binding.upstream]!.kind).steps.voice!;
-  return voice.body({ source: () => String(run.params[binding.reused_by!]), params, prompt: run.prompt, binding, customVoiceId: SAMPLE_VOICE_ID, voiceId: undefined, description: undefined, itemIndex: null, param: undefined });
 }
 
 describe.each(cases)("the request bodies of $model on $binding.upstream", ({ model, binding }) => {
@@ -108,6 +69,13 @@ describe.each(cases)("the request bodies of $model on $binding.upstream", ({ mod
       for (const param of served) if (run.params[param] !== undefined && run.params[param] !== null) expect(run.ids?.[param], `${param} in ${JSON.stringify(run.params)}`).toBeDefined();
       expect(firstBody(binding, run), JSON.stringify(run.params)).toEqual(run.body);
     }
+  });
+
+  it("send every field the upstream requires, as a run the application sends does", () => {
+    const path = resolve(__dirname, "../../../test/fixtures/upstream-schemas", binding.upstream, `${binding.model_id}.json`);
+    const snapshot = JSON.parse(readFileSync(path, "utf8")) as SchemaSnapshot;
+    const missing = sample.runs.flatMap((run) => missingRequired(snapshot, run.body).map((field) => `${field} in ${JSON.stringify(run.params)}`));
+    expect(missing).toEqual([]);
   });
 
   it("cover every value of every param the binding sends, or show the binding refuses it", async () => {

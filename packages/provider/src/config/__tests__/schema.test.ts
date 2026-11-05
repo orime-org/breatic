@@ -239,6 +239,17 @@ describe("assertBindsCatalog", () => {
     expect(problems[0]).toContain("1:1");
   });
 
+  it("reports a value-list drop of a real value that states no reason the upstream's default gives it", () => {
+    const problems = catalogProblems([bind("fal", 2, { params: { aspect_ratio: { field: "aspect_ratio" } }, drops: { duration: [5] } })]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatch(/fal.*duration|duration.*fal/);
+  });
+
+  it("passes a value-list drop that states why the upstream's default gives the value, and one of not-sent values", () => {
+    expect(catalogProblems([bind("fal", 2, { params: { aspect_ratio: { field: "aspect_ratio" } }, drops: { duration: { values: [5], equivalent: "fal runs 5 s when duration is left out (its schema default)" } } })])).toEqual([]);
+    expect(catalogProblems([bind("fal", 2, { params: { duration: { field: "duration" } }, drops: { aspect_ratio: [""] } })])).toEqual([]);
+  });
+
   it("reports a catalog model that has no binding at all", () => {
     const problems = catalogProblems([bind("fal", 2, { drops: { duration: "*", aspect_ratio: "*" } })], { models: [...catalog.models, { name: "kling", params: {} }] });
     expect(problems).toHaveLength(1);

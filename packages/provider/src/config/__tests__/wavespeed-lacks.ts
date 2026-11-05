@@ -99,3 +99,17 @@ export const WAVESPEED_LACKS: Readonly<Record<string, string>> = {
   "sandbase tencent/hunyuan-3d/3.0/image-to-3d polygon_type": "Every run WaveSpeed can serve is Normal or Geometry, and SandBase ignores polygon_type in those modes. LowPoly runs have no WaveSpeed result to match.",
   "sandbase xai/grok-imagine-image/2.0/text-to-image output_format": "WaveSpeed returns this model's image as JPEG (measured), SandBase's default.",
 };
+
+/**
+ * Fields WaveSpeed leaves at its default that a reseller's same endpoint does not have, each with why the reseller's
+ * run gives the same result. Keyed `WaveSpeed endpoint field on upstream endpoint`.
+ */
+export const RESELLER_LACKS: Readonly<Record<string, string>> = {
+  "meshy/v6/text-to-3d auto_size on fal fal-ai/meshy/v6/text-to-3d": "Meshy's own default is false (docs.meshy.ai text-to-3d: 'auto_size ... default false'), which a fal run without the field gets.",
+  "meshy/v6/text-to-3d texture_resolution on fal fal-ai/meshy/v6/text-to-3d": "Meshy's own default is 2k (docs.meshy.ai text-to-3d: 'texture_resolution ... default 2k'), which a fal run without the field gets.",
+  "minimax/speech-2.8-hd pitch on fal fal-ai/minimax/speech-2.8-hd": "fal's voice_setting.pitch defaults to 0, as WaveSpeed's pitch does.",
+  "speak:minimax/speech-2.8-hd pitch on fal speak:fal-ai/minimax/speech-2.8-hd": "fal's voice_setting.pitch defaults to 0, as WaveSpeed's pitch does.",
+  "speak:minimax/speech-2.8-hd volume on fal speak:fal-ai/minimax/speech-2.8-hd": "fal's voice_setting.vol defaults to 1, as WaveSpeed's volume does.",
+  "mureka-ai/mureka-v9.5/generate-song output_format on fal mureka/v9.5/generate/song": "fal's example song outputs are .mp3 files, WaveSpeed's default mp3.",
+  "mureka-ai/mureka-v9.5/generate-bgm output_format on fal mureka/v9.5/generate/instrumental": "fal's example instrumental outputs are .mp3 files, WaveSpeed's default mp3.",
+};

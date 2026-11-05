@@ -4,6 +4,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { buildBody } from "../../media/body.js";
 import { estimateCost, rejectedInput, type EstimateInput } from "../../pricing/estimate.js";
 import { createProvider } from "../../provider.js";
 import type { MediaBinding } from "../schema.js";
@@ -62,20 +63,22 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
   "omnivoice-voice-clone": {},
   "elevenlabs-voice-changer": { fal: "fal-ai/elevenlabs/voice-changer" },
   "gemini-omni-1.1-flash-text-to-video": { fal: "google/gemini-omni-flash/v1.1/text-to-video", sandbase: "google/gemini-omni-flash/1.1/text-to-video" },
-  "wan-3.0-text-to-video": { fal: "alibaba/wan-3.0/text-to-video", sandbase: "alibaba/wan/3.0/text-to-video" },
+  // SandBase has no prompt-expansion field and Alibaba rewrites by default (prompt_extend true); WaveSpeed does not (inner#1859).
+  "wan-3.0-text-to-video": { fal: "alibaba/wan-3.0/text-to-video" },
   "seedance-2.5-text-to-video": { fal: "bytedance/seedance-2.5/us/text-to-video", sandbase: "bytedance/seedance/2.5/text-to-video" },
   "minimax-h3-text-to-video": { fal: "minimax/h3/text-to-video", sandbase: "minimax/h3/text-to-video" },
-  "kling-v3.0-4k-text-to-video": { fal: "fal-ai/kling-video/v3/4k/text-to-video", sandbase: "kwaivgi/kling-video/v3/4k/text-to-video" },
+  // WaveSpeed defaults cfg_scale to 0.5; SandBase has no such field and Kling's docs state none (inner#1859).
+  "kling-v3.0-4k-text-to-video": { fal: "fal-ai/kling-video/v3/4k/text-to-video" },
   "gemini-omni-1.1-flash-image-to-video": { fal: "google/gemini-omni-flash/v1.1/image-to-video", sandbase: "google/gemini-omni-flash/1.1/image-to-video" },
   "minimax-h3-image-to-video": { fal: "minimax/h3/image-to-video", sandbase: "minimax/h3/image-to-video" },
-  "wan-3.0-image-to-video": { fal: "alibaba/wan-3.0/image-to-video", sandbase: "alibaba/wan/3.0/image-to-video" },
+  "wan-3.0-image-to-video": { fal: "alibaba/wan-3.0/image-to-video" },
   "seedance-2.5-image-to-video": { fal: "bytedance/seedance-2.5/us/image-to-video", sandbase: "bytedance/seedance/2.5/image-to-video" },
   "kling-video-o3-4k-image-to-video": { fal: "fal-ai/kling-video/o3/4k/image-to-video", sandbase: "kwaivgi/kling-video/o3/4k/image-to-video" },
   "wan-2.2-animate-2": {},
   "dreamactor-v2": { fal: "fal-ai/bytedance/dreamactor/v2", sandbase: "bytedance/dreamactor/2.0" },
   "minimax-h3-reference-to-video": { fal: "minimax/h3/reference-to-video", sandbase: "minimax/h3/reference-to-video" },
   "gemini-omni-1.1-flash-reference-to-video": { fal: "google/gemini-omni-flash/v1.1/reference-to-video", sandbase: "google/gemini-omni-flash/1.1/reference-to-video" },
-  "wan-3.0-reference-to-video": { fal: "alibaba/wan-3.0/reference-to-video", sandbase: "alibaba/wan/3.0/reference-to-video" },
+  "wan-3.0-reference-to-video": { fal: "alibaba/wan-3.0/reference-to-video" },
   "happyhorse-1.1-reference-to-video": { fal: "alibaba/happy-horse/v1.1/reference-to-video", sandbase: "alibaba/happy-horse/1.1/reference-to-video" },
   "flux-3-start-end-to-video": { fal: "blackforestlabs/flux-3/first-last-frame-to-video" },
   // WaveSpeed returns the source joined to the new segment; fal and SandBase document only the new clip (inner#1859).
@@ -162,8 +165,9 @@ describe("the reseller bindings that serve only part of a model, or always send 
     expect(bindingOf("minimax-speech-2.8-hd", "fal")?.fixed).toMatchObject({ "normalization_setting.enabled": false });
   });
 
-  it("sends fal Kling 3.0 4K an empty negative prompt when the run has none, as WaveSpeed applies none", () => {
-    expect(bindingOf("kling-v3.0-4k-text-to-video", "fal")?.params?.negative_prompt?.unset).toBe("");
+  it.each([null, ""])("sends fal Kling 3.0 4K an empty negative prompt when the run's is %j, as WaveSpeed applies none", (value) => {
+    const fal = bindingOf("kling-v3.0-4k-text-to-video", "fal")!;
+    expect(buildBody(fal, { prompt: "a fox", params: { negative_prompt: value } }).negative_prompt).toBe("");
   });
 
   it("returns a seedream-v4.5 edit on SandBase as JPEG, as WaveSpeed does", () => {
@@ -182,20 +186,19 @@ describe("the reseller bindings that serve only part of a model, or always send 
     expect(bindingOf("sync-react-1", "fal")?.fixed).toMatchObject({ lipsync_mode: "loop" });
   });
 
-  it.each(["kling-v3.0-4k-text-to-video", "kling-video-o3-4k-image-to-video"])("serves %s on SandBase only as a single shot", (model) => {
+  it.each(["kling-video-o3-4k-image-to-video"])("serves %s on SandBase only as a single shot", (model) => {
     const sandbase = bindingOf(model, "sandbase");
     expect(sandbase?.drops?.multi_prompt).toEqual([]);
     expect(sandbase?.params?.multi_prompt).toBeUndefined();
     expect((sandbase?.rejects ?? []).filter((r) => r.when.includes("multi_prompt"))).toEqual([]);
   });
 
-  it.each(["gpt-image-2.5-sunburst-text-to-image", "gpt-image-2.5-sunburst-edit"])("serves %s on fal only at 1k and the preset ratios at or above the model's least pixel count", (model) => {
+  it.each(["gpt-image-2.5-sunburst-text-to-image", "gpt-image-2.5-sunburst-edit"])("serves %s on fal only at 1k 1:1, the one preset as large as WaveSpeed's 1k", (model) => {
     const fal = bindingOf(model, "fal");
-    // fal's 16:9 and 9:16 presets are 1024x576, under the model's minimum (inner#1859 probes whether fal takes them).
-    expect([...(fal?.params?.aspect_ratio?.supported ?? [])].sort()).toEqual(["1:1", "3:4", "4:3"]);
-    expect(Object.keys(fal?.params?.aspect_ratio?.values ?? {}).sort()).toEqual(["1:1", "3:4", "4:3"]);
+    // WaveSpeed's 1k is 1024x1024 at 1:1 and 1184x880 at 4:3 (measured); fal's presets are 1024x1024 and 1024x768.
+    expect(fal?.params?.aspect_ratio?.supported).toEqual(["1:1"]);
+    expect(fal?.drops?.resolution).toMatchObject({ values: ["1k"], equivalent: expect.stringContaining("1024x1024") });
     expect(JSON.stringify(fal?.pricing)).not.toMatch(/16:9|9:16/);
-    expect(fal?.drops?.resolution).toEqual(["1k"]);
   });
 
   it("speaks elevenlabs-v3 only in ElevenLabs' premade voices, by ElevenLabs' voice id, on both", () => {
@@ -303,18 +306,16 @@ describe("the limits a reseller states beyond its schema", () => {
     ["mureka-v9.5-generate-bgm", "wavespeed", { prompt: "x".repeat(1025) }, { prompt: "x".repeat(1024) }, "1024"],
     ["hunyuan3d-v3", "wavespeed", { prompt: "x".repeat(1025) }, { prompt: "x".repeat(1024) }, "1024"],
     ["krea-v2-large-text-to-image", "wavespeed", { prompt: "x".repeat(5001) }, { prompt: "x".repeat(5000) }, "5000"],
-    ["elevenlabs-voice-changer", "wavespeed", { params: { audio: URL_A }, durations: { audio: [301] } }, { params: { audio: URL_A }, durations: { audio: [300] } }, "5 minutes"],
+    ["elevenlabs-voice-changer", "fal", { params: { audio: URL_A, voice_id: "Aria" }, durations: { audio: [301] } }, { params: { audio: URL_A, voice_id: "Aria" }, durations: { audio: [300] } }, "5 minutes"],
+    ["dreamactor-v2", "sandbase", { params: { image: URL_A, video: URL_A }, durations: { video: [31] } }, { params: { image: URL_A, video: URL_A }, durations: { video: [30] } }, "30 seconds"],
     ["minimax-voice-clone", "fal", { prompt: "hi", params: { audio: URL_A }, durations: { audio: [9] } }, { prompt: "hi", params: { audio: URL_A }, durations: { audio: [10] } }, "10 seconds"],
     ["minimax-voice-clone", "sandbase", { prompt: "hi", params: { audio: URL_A }, durations: { audio: [9] } }, { prompt: "hi", params: { audio: URL_A }, durations: { audio: [10] } }, "10 seconds"],
     ["seedance-2.5-text-to-video", "wavespeed", { prompt: "a fox", params: { duration: 5, audios: [URL_A] }, durations: { audios: [31] } }, { prompt: "a fox", params: { duration: 5, audios: [URL_A] }, durations: { audios: [30] } }, "30 seconds"],
     ["seedance-2.5-text-to-video", "wavespeed", { prompt: "a fox", params: { duration: 5, videos: [URL_A] }, durations: { videos: [31] } }, { prompt: "a fox", params: { duration: 5, videos: [URL_A] }, durations: { videos: [30] } }, "30 seconds"],
     ["minimax-h3-reference-to-video", "wavespeed", { prompt: "a fox", params: { audios: [URL_A] } }, { prompt: "a fox", params: { audios: [URL_A], images: [URL_A] } }, "alone"],
-    ["minimax-h3-reference-to-video", "wavespeed", { prompt: "a fox", params: { videos: [URL_A, URL_A] }, durations: { videos: [8, 8] } }, { prompt: "a fox", params: { videos: [URL_A, URL_A] }, durations: { videos: [8, 7] } }, "15 seconds"],
-    ["minimax-h3-reference-to-video", "wavespeed", { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [1.5] } }, { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [2] } }, "2-15 seconds"],
     ["dreamactor-v2", "wavespeed", { params: { image: URL_A, video: URL_A }, durations: { video: [31] } }, { params: { image: URL_A, video: URL_A }, durations: { video: [30] } }, "30 seconds"],
     ["gemini-omni-1.1-flash-reference-to-video", "wavespeed", { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [4] } }, { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [3] } }, "3 seconds"],
     ["wan-3.0-reference-to-video", "wavespeed", { prompt: "a fox", params: { duration: 20, videos: [URL_A] }, durations: { videos: [12] } }, { prompt: "a fox", params: { duration: 15, videos: [URL_A] }, durations: { videos: [12] } }, "30 seconds"],
-    ["wan-3.0-reference-to-video", "sandbase", { prompt: "a fox", params: { duration: 20, videos: [URL_A] }, durations: { videos: [12] } }, { prompt: "a fox", params: { duration: 15, videos: [URL_A] }, durations: { videos: [12] } }, "30 seconds"],
     ["wan-3.0-reference-to-video", "wavespeed", { prompt: "a fox", params: { duration: 5, videos: [URL_A, URL_A] }, durations: { videos: [8, 8] } }, { prompt: "a fox", params: { duration: 5, videos: [URL_A, URL_A] }, durations: { videos: [8, 7] } }, "15 seconds"],
     ["wan-3.0-reference-to-video", "wavespeed", { prompt: "a fox", params: { duration: 5, videos: [URL_A] }, durations: { videos: [0.5] } }, { prompt: "a fox", params: { duration: 5, videos: [URL_A] }, durations: { videos: [1] } }, "1-15 seconds"],
     ["wan-3.0-reference-to-video", "wavespeed", { prompt: "a fox", params: { duration: 5, images: [URL_A], audios: [URL_A] }, durations: { audios: [16] } }, { prompt: "a fox", params: { duration: 5, images: [URL_A], audios: [URL_A] }, durations: { audios: [15] } }, "15 seconds"],
@@ -325,6 +326,15 @@ describe("the limits a reseller states beyond its schema", () => {
     ["seedvr2-video", "wavespeed", { params: { video: URL_A }, durations: { video: [601] } }, { params: { video: URL_A }, durations: { video: [600] } }, "10 minutes"],
     ["rife-interpolation", "wavespeed", { params: { video: URL_A }, durations: { video: [601] } }, { params: { video: URL_A }, durations: { video: [600] } }, "10 minutes"],
   ];
+
+  // WaveSpeed's own words say it normalizes or trims these, so it takes them.
+  it.each([
+    ["minimax-h3-reference-to-video", { prompt: "a fox", params: { videos: [URL_A, URL_A] }, durations: { videos: [8, 8] } }],
+    ["minimax-h3-reference-to-video", { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [1.5] } }],
+    ["elevenlabs-voice-changer", { params: { audio: URL_A }, durations: { audio: [400] } }],
+  ] as [string, Partial<EstimateInput>][])("takes a %s run on WaveSpeed that it normalizes or trims", async (model, input) => {
+    expect(await refused(model, "wavespeed", input)).toBeUndefined();
+  });
 
   it.each(STATED)("keeps a %s run off %s where its own words refuse it, and takes the nearest run it allows", async (model, upstream, refusedRun, takenRun, words) => {
     expect(await refused(model, upstream, refusedRun)).toEqual({ reason: expect.stringContaining(words) });
