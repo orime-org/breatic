@@ -6,8 +6,10 @@
  * inner#1807): the panel lists creative goals, each opening its templates;
  * picking one sets the panel up, @s the reference already wired in or places
  * an empty one beside the node, wired and @'d, places the generations a
- * template runs first, and picking it again reuses what it placed; a panel
- * with no templates says so.
+ * template runs first, and picking it again reuses what it placed; a template
+ * with a shot list writes its shots, and one whose pictures go into the first
+ * and end frame notes which frame each goes into (inner#1816); a panel with no
+ * templates says so.
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:
  *
@@ -309,6 +311,54 @@ test('picking the single-view scene feeds a photo already wired into the video n
   const prompt = page.getByTestId('generate-prompt-editor');
   await expect(prompt.locator('[data-reference-mention]')).toHaveCount(4);
   await expect(prompt.locator('[data-reference-mention]').filter({ hasText: 'Hero photo' })).toHaveCount(1);
+});
+
+test('picking the quick tip writes its five shots of three seconds, each @ing the subject it places', async () => {
+  await openPanelOnNewNode('video');
+  await openGoal('social-hooks');
+  await page.getByTestId('generate-template-vertical-15s-quick-tip').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Seedance 2.5', { timeout: 15_000 });
+  // The anchor and the empty subject; one new node forms no group.
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(2, { timeout: 15_000 });
+  expect(await graph()).toEqual({ names: ['Subject', 'video-template'], edges: ['Subject -> video-template'] });
+  await expect(page.getByTestId('generate-storyboard-shots')).toBeVisible();
+  for (const n of [1, 2, 3, 4, 5]) {
+    await expect(page.getByTestId(`generate-storyboard-shot-${String(n)}-seconds`)).toContainText('3');
+    const editor = page.getByTestId(`generate-storyboard-shot-${String(n)}-editor`);
+    await expect(editor.locator('[data-reference-mention]').filter({ hasText: 'Subject' })).toHaveCount(1);
+    // What to put in the subject sits on top of the first shot only.
+    await expect(editor.locator('[data-prompt-note]')).toHaveCount(n === 1 ? 1 : 0);
+  }
+  await expect(page.getByTestId('generate-storyboard-shot-6')).toHaveCount(0);
+  await page.screenshot({ path: test.info().outputPath('quick-tip-applied.png') });
+});
+
+test('picking the carried-object transition places two scene pictures for the first and end frame, noted and left to pick', async () => {
+  await openPanelOnNewNode('video');
+  await openGoal('social-hooks');
+  await page.getByTestId('generate-template-carried-object-transition').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Seedance 2.5', { timeout: 15_000 });
+  // The anchor, the empty object, the two scenes and the group the three new nodes form.
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(5, { timeout: 15_000 });
+  expect(await graph()).toEqual({
+    names: ['Object', 'Scene A', 'Scene B', 'video-template'],
+    edges: ['Object -> Scene A', 'Object -> Scene B', 'Scene A -> video-template', 'Scene B -> video-template'],
+  });
+  const prompt = page.getByTestId('generate-prompt-editor');
+  // The scenes go into frames, not the pool: nothing is @'d, and each note names its frame.
+  await expect(prompt.locator('[data-reference-mention]')).toHaveCount(0);
+  const notes = prompt.locator('[data-prompt-note]');
+  await expect(notes).toHaveCount(2);
+  await expect(notes.nth(0)).toContainText('first frame');
+  await expect(notes.nth(1)).toContainText('end frame');
+  // The frames stay empty until the reader picks the generated scenes in.
+  await expect(page.getByTestId('generate-video-tool-first-frame')).toBeVisible();
+  await expect(page.getByTestId('generate-video-tool-end-frame')).toBeVisible();
+  await expect(page.getByTestId('generate-video-first-frame-thumbnail')).toHaveCount(0);
+  await expect(page.getByTestId('generate-video-end-frame-thumbnail')).toHaveCount(0);
+  await page.screenshot({ path: test.info().outputPath('carried-object-applied.png') });
 });
 
 test('a panel with no templates says so', async () => {

@@ -7,7 +7,9 @@
  * character templates and the proposal built on it lands; when the reader
  * attaches a photo of a character and only asks for two videos of it, what
  * lands carries that character into both videos, whether through a template
- * or a setup of its own.
+ * or a setup of its own. The same for the pet selfie vlog (inner#1816): asked
+ * outright for a pet video it builds on that template; given only a pet photo
+ * and a request for a video, what lands carries the pet.
  *
  * Real model turns:
  *
@@ -162,6 +164,24 @@ test('asked outright for consistent shots of one character, it reads a character
   // The template it proposed is one it also read in full.
   expect(turn.read, `read: ${turn.read.join(', ')}`).toEqual(expect.arrayContaining(proposed));
   await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
+});
+
+test('asked outright for a pet video, it reads the pet selfie vlog and lands a proposal built on it @needs-model', async () => {
+  test.setTimeout(240_000);
+  await ask('Make a funny vertical pet video of my dog for TikTok. Do not ask me anything, just propose it.');
+  const turn = await settledTurn(page);
+  expect(turn.templates, `named: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}`).toContain('pet-selfie-vlog');
+  expect(turn.read, `read: ${turn.read.join(', ')}`).toContain('pet-selfie-vlog');
+  await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
+});
+
+test('given a pet photo and asked only for a video of it, it lands a video carrying that pet @needs-model', async () => {
+  test.setTimeout(240_000);
+  await ask('Make a video with this. Do not ask me anything, just propose it.', 'pet.jpg');
+  const turn = await settledTurn(page);
+  // Solved when a video draws on the photo, whether through the pet template or a setup of the agent's own.
+  const carrying = turn.landed.reduce((count, proposal) => count + videosCarryingMaterial(proposal), 0);
+  expect(carrying, `videos drawing on the photo. Templates: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
 });
 
 test('given a character photo and asked for two videos of her, it lands both videos carrying that character @needs-model', async () => {
