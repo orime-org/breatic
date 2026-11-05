@@ -3,24 +3,31 @@
 
 import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { VideoPresentationResponse, VideoSourceLedgerReceiptV2 } from '@breatic/shared';
+import type { VideoPresentationResponse } from '@breatic/shared';
 import { sourceLedgerQuery } from '../source-ledger-query';
+import { PRESENTED, presentedBinding, presentedBundle, readyLedger } from '@web/test-utils/video-presentation';
 
 // S4 replaces the temporary S3 v1-only reader contract: real query, reader,
 // parser, digest and QueryClient; only the network platform is controlled.
+// §95 (design §3.2, §7.4, §7.12 step 4): the selected bundle's ledger receipt names the compact object, the four fields
+// {sourceFingerprint, toolInputId, planSha256, presentation} around the S1 table (`videoPresentationCompactSchema`); the
+// bare table and the fingerprint-keyed `sourceLedger` are the earlier shapes (fixtures migrated, 4.4.5).
 const table = { schemaVersion: 1, timescale: 1000, runs: [{ start: 2000, count: 3, step: 40, duration: 30 }] };
-const bytes = new TextEncoder().encode(JSON.stringify(table));
-const tableURL = 'https://assets.example.test/source.presentation-table.json';
-const binding = { assetId: '21de0c40-eb00-4bc0-ab81-d32f709b3b14', contentHash: 'a'.repeat(64), canonicalURL: 'https://assets.example.test/source.webm', kind: 'video' as const, mediaInfo: { width: 96, height: 64, duration: 3, mimeType: 'video/webm' } };
+const compact = { sourceFingerprint: PRESENTED.fingerprint, toolInputId: PRESENTED.toolInputId, planSha256: PRESENTED.planSha256, presentation: table };
+const bytes = new TextEncoder().encode(JSON.stringify(compact));
+const sourceURL = 'https://assets.example.test/source.webm';
+const tableURL = `${sourceURL}.compact.json`;
+const binding = presentedBinding(sourceURL, { width: 96, height: 64, duration: 3, mimeType: 'video/webm' });
+const bundle = presentedBundle(sourceURL);
 const policy = { maxBytes: 16777216 };
-const attempt = { jobId: 'accepted-source-attempt', deadlineAt: 1 };
 const fetchMock = vi.fn<typeof fetch>();
 let client: QueryClient;
-let receipt: VideoSourceLedgerReceiptV2;
+let receipt: Extract<NonNullable<VideoPresentationResponse['ledger']>, { state: 'ready' }>['receipt'];
+const attempt = { jobId: PRESENTED.jobId, deadlineAt: PRESENTED.deadlineAt };
 
 /** Builds the authorized response, with the new byte-only compact policy. @throws {never} Never. */
 function response(extra: Record<string, unknown> = {}): VideoPresentationResponse {
-  return { sourceBinding: binding, presentation: { schemaVersion: 1, sourceFingerprint: binding.contentHash, state: 'native', original: { width: 96, height: 64, duration: 3 } }, preparation: null, pollAfterMs: null, sourceLedger: { state: 'ready', receipt }, sourceLedgerReadLimits: policy, ...extra } as VideoPresentationResponse;
+  return { sourceBinding: binding, presentation: bundle, preparation: null, pollAfterMs: null, ledger: { state: 'ready', receipt, failure: null }, sourceLedgerReadLimits: policy, ...extra } as VideoPresentationResponse;
 }
 /** Describes the actual consumer query. @throws {never} Never. */
 function options(value = response(), projectId = 'project-a', active = true): ReturnType<typeof sourceLedgerQuery> { return sourceLedgerQuery({ projectId, response: value, active }); }
@@ -32,8 +39,9 @@ async function accepts(): Promise<void> { serve(); expect(await client.fetchQuer
 beforeEach(async () => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const digest = await crypto.subtle.digest('SHA-256', bytes);
-  receipt = { schemaVersion: 2, sourceFingerprint: binding.contentHash, producerVersion: 2, attempt, url: 'https://assets.example.test/source.full-ledger.json', etag: 'opaque', size: 9000, sha256: 'b'.repeat(64), contentType: 'application/json',
-    table: { url: tableURL, size: bytes.length, frameCount: 3, sha256: Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('') } };
+  const ready = readyLedger(bundle, 3);
+  if (ready.state !== 'ready') throw new Error('Expected a ready ledger');
+  receipt = { ...ready.receipt, table: { ...ready.receipt.table, url: tableURL, size: bytes.length, frameCount: 3, sha256: Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('') } };
   fetchMock.mockReset(); vi.stubGlobal('fetch', fetchMock);
 });
 afterEach(() => { client.clear(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
@@ -52,22 +60,23 @@ describe('S4 authorized compact-table query', () => {
   it.each([
     ['project', () => options(response(), 'project-b')],
     ['source', () => options(response({ sourceBinding: { ...binding, canonicalURL: 'https://assets.example.test/other.webm' } }))],
-    ['fingerprint', () => options(response({ sourceBinding: { ...binding, contentHash: 'c'.repeat(64) }, sourceLedger: { state: 'ready', receipt: { ...receipt, sourceFingerprint: 'c'.repeat(64) } } }))],
-    ['table digest', () => options(response({ sourceLedger: { state: 'ready', receipt: { ...receipt, table: { ...receipt.table, sha256: 'd'.repeat(64) } } } }))],
-    ['table URL', () => options(response({ sourceLedger: { state: 'ready', receipt: { ...receipt, table: { ...receipt.table, url: 'https://assets.example.test/other.table' } } } }))],
-    ['attempt', () => options(response({ sourceLedger: { state: 'ready', receipt: { ...receipt, attempt: { ...attempt, jobId: 'new' } } } }))],
+    ['fingerprint', () => options(response({ sourceBinding: { ...binding, contentHash: 'c'.repeat(64) }, ledger: { state: 'ready', failure: null, receipt: { ...receipt, sourceFingerprint: 'c'.repeat(64) } } }))],
+    ['toolInputId', () => options(response({ ledger: { state: 'ready', failure: null, receipt: { ...receipt, toolInputId: 'b'.repeat(64) } } }))],
+    ['table digest', () => options(response({ ledger: { state: 'ready', failure: null, receipt: { ...receipt, table: { ...receipt.table, sha256: 'd'.repeat(64) } } } }))],
+    ['table URL', () => options(response({ ledger: { state: 'ready', failure: null, receipt: { ...receipt, table: { ...receipt.table, url: 'https://assets.example.test/other.table' } } } }))],
+    ['attempt', () => options(response({ ledger: { state: 'ready', failure: null, receipt: { ...receipt, attempt: { ...attempt, jobId: 'new' } } } }))],
     ['policy', () => options(response({ sourceLedgerReadLimits: { maxBytes: policy.maxBytes - 1 } }))],
   ])('W03 isolates %s with no previous table', async (_name, other) => {
     await accepts(); const changed = other(); expect(changed.queryKey).not.toEqual(options().queryKey);
     expect(client.getQueryData(changed.queryKey)).toBeUndefined();
   });
   it.each([
-    ['absent', () => response({ sourceLedger: undefined })], ['null', () => response({ sourceLedger: null })],
-    ['pending', () => response({ sourceLedger: { state: 'pending', schemaVersion: 2, producerVersion: 2, sourceFingerprint: binding.contentHash, attempt } })],
-    ['failed', () => response({ sourceLedger: { state: 'failed', schemaVersion: 2, producerVersion: 2, sourceFingerprint: binding.contentHash, attempt, errorCode: 'expired' } })],
-    ['wrong source', () => response({ sourceLedger: { state: 'ready', receipt: { ...receipt, sourceFingerprint: 'c'.repeat(64) } } })],
+    ['null', () => response({ ledger: null })], ['no selected bundle', () => response({ presentation: null, ledger: null })],
+    ['pending', () => response({ ledger: { state: 'pending', receipt: null, failure: null } })],
+    ['failed', () => response({ ledger: { state: 'failed', receipt: null, failure: 'expired' } })],
+    ['wrong source', () => response({ ledger: { state: 'ready', failure: null, receipt: { ...receipt, sourceFingerprint: 'c'.repeat(64) } } })],
+    ['another toolInputId than the selected bundle', () => response({ ledger: { state: 'ready', failure: null, receipt: { ...receipt, toolInputId: 'b'.repeat(64) } } })],
     ['missing policy', () => response({ sourceLedgerReadLimits: undefined })], ['inactive', () => response()],
-    ['v1 receipt', () => { const { table: _table, ...old } = receipt; return response({ sourceLedger: { state: 'ready', receipt: { ...old, schemaVersion: 1, producerVersion: 1, strategy: 'iso_unedited_rate_one' } } }); }],
   ])('W04 does not read %s', async (name, value) => {
     await accepts();
     const query = options(value(), 'project-a', name !== 'inactive'); expect(query.enabled).toBe(false);
@@ -93,7 +102,7 @@ describe('S4 authorized compact-table query', () => {
   });
   it('W07 source replacement cannot inherit a previously completed table', async () => {
     await accepts(); const observer = new QueryObserver(client, options()); const unsubscribe = observer.subscribe(() => undefined);
-    observer.setOptions(options(response({ sourceBinding: { ...binding, canonicalURL: 'https://assets.example.test/new.webm', contentHash: 'c'.repeat(64) }, sourceLedger: null })));
+    observer.setOptions(options(response({ sourceBinding: { ...binding, canonicalURL: 'https://assets.example.test/new.webm', contentHash: 'c'.repeat(64) }, presentation: null, ledger: null })));
     expect(observer.getCurrentResult().data).toBeUndefined(); expect(fetchMock).not.toHaveBeenCalled(); unsubscribe();
   });
 });
