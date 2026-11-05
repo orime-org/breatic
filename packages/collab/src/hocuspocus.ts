@@ -89,6 +89,14 @@ import {
 import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
 import { getCollabConfig, getConnectionTimings, getReassemblyLimits } from "@collab/config.js";
 import { convertStoredTablesOnLoad } from "@collab/services/legacy-table-conversion.js";
+import {
+  addAppliedBound,
+  forget as forgetDocSize,
+  openDocSizeRecord,
+  pushDocSize,
+  readDocSizeRecord,
+} from "@collab/services/document-size.js";
+import { createDocumentSizeGate } from "@collab/hooks/document-size-gate.js";
 import { fetchDocData } from "@collab/services/yjs-documents.repo.js";
 import {
   handleSpaceRpc,
@@ -295,6 +303,9 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   // so reading it late is safe.
   const storeGate: { current?: UnloadGate } = {};
 
+  const documentSizeGate = createDocumentSizeGate();
+  const recordContentActivity = createActivityHook();
+
   // A frame carries at most 128 KiB; larger messages arrive chunked and are
   // reassembled within the limits in config/collab.yaml (inner#1585).
   const limits = getReassemblyLimits();
@@ -365,7 +376,12 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       ? recordingFailedAuth(authenticate, connectionGate)
       : authenticate,
 
-    beforeSync: createActivityHook(),
+    // The size cap decides first (inner#1790); a refused message records no
+    // activity, as it is never applied.
+    beforeSync: async (data) => {
+      await documentSizeGate(data);
+      await recordContentActivity(data);
+    },
 
     extensions,
 
@@ -380,6 +396,10 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       document: Y.Doc;
     }): Promise<void> => {
       await storeGate.current?.beforeUnloadDocument({ documentName, document });
+    },
+
+    afterUnloadDocument: async ({ documentName }) => {
+      forgetDocSize(documentName);
     },
 
     onConnect: async ({ documentName, context, socketId }) => {
@@ -455,6 +475,16 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
           logger.error({ err, documentName, reason: "doc_table_migrate_failed" }, "doc_table_migrate_failed");
         }
       }
+
+      // The size record starts from the exact size, after the conversion
+      // above (a write of the load itself) and before any client syncs
+      // (inner#1790). A failure leaves the document unrecorded, which admits
+      // every update the way a deployment without a limit does.
+      try {
+        openDocSizeRecord(document);
+      } catch (err) {
+        logger.error({ err, documentName, reason: "doc_size_record_failed" }, "doc_size_record_failed");
+      }
     },
 
     // Take this connection's seat in the cross-instance registry for the
@@ -508,6 +538,11 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         documentName,
         connection as unknown as HeldConnection,
       );
+
+      // Every Space connection learns the document's size as it arrives,
+      // read-only ones too; `limit` 0 when the deployment sets none.
+      const parsedName = parseDocName(documentName);
+      if (parsedName && parsedName.kind !== "meta") pushDocSize(documentName, connection);
 
       if (auth.seatCap !== null) {
         const seat = await connectionRegistry.takeSeat(
@@ -663,11 +698,16 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         return;
       }
 
-      if (parsed.kind === "canvas" || parsed.kind === "document") {
+      if (parsed.kind === "canvas" || parsed.kind === "document" || parsed.kind === "timeline") {
         const request = SyncConfirmRequestSchema.safeParse(json);
         if (!request.success) return;
         try {
-          replySyncConfirmation(document, connection, request.data.id);
+          // The size follows the confirmation on the same connection, so the
+          // browser reads a size that covers every update it had sent
+          // (inner#1790).
+          if (replySyncConfirmation(document, connection, request.data.id) && readDocSizeRecord(documentName)) {
+            pushDocSize(documentName, connection);
+          }
         } catch (err) {
           logger.error({ err, ctx: { documentName, requestId: request.data.id } }, "Sync confirmation failed");
         }
@@ -707,19 +747,12 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       connection.sendStateless(JSON.stringify(response));
     },
 
-    // Document size limit: a document past it is only logged (warn).
-    onChange: async ({ documentName, document }) => {
-      if (cfg.max_document_bytes > 0) {
-        const size = Y.encodeStateAsUpdate(document).byteLength;
-        if (size > cfg.max_document_bytes) {
-          logger.warn(
-            { documentName, size, limit: cfg.max_document_bytes },
-            "Document exceeds max size limit",
-          );
-          // Note: Hocuspocus does not support rejecting individual updates.
-          // This log serves as an alert. To enforce hard limits, implement
-          // a custom extension that closes connections on oversized documents.
-        }
+    // Updates that did not pass `beforeSync` (another instance's, collab's
+    // own writes, yjs's formatting cleanup with a null origin) still raise
+    // the size bound (inner#1790).
+    onChange: async ({ documentName, update, transactionOrigin }) => {
+      if ((transactionOrigin as { source?: unknown } | null)?.source !== "connection") {
+        addAppliedBound(documentName, update);
       }
 
       // (Nothing enforces write boundaries here. The meta doc is
