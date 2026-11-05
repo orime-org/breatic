@@ -4193,34 +4193,6 @@ function CanvasSpaceInner({
       sessionStore,
     ],
   );
-  /**
-   * Execute the complete video draft from the current source and Canvas session.
-   * @param nodeId - The original video host.
-   * @param toolId - Its selected planned tool.
-   * @param draft - Complete press-frozen editable parameters and inputs.
-   * @param analyses - Matching accepted analysis facts.
-   * @returns The existing tracked press outcome.
-   * @throws {never} The press owns request errors and node marks.
-   */
-  const runVideoMiniTool = React.useCallback((nodeId: string, toolId: VideoToolId, draft: VideoToolDraft, analyses: readonly MiniToolAnalysisRecord[]): Promise<unknown> => {
-    if (readOnly) return Promise.resolve();
-    const host = nodes.find((node) => node.id === nodeId);
-    const view = asContentView(host?.data);
-    if (host === undefined || host.type !== 'video' || view === undefined) return Promise.resolve();
-    const gate = evaluateNodeGate({ locked: isNodeLocked(projectId, spaceId, nodeId) });
-    if (gate !== null) { warnNodeGate(t(gate.toastKey)); return Promise.resolve(); }
-    const group = host.parentId === undefined ? undefined : nodes.find((node) => node.id === host.parentId);
-    const session = sessionStore.getState().panelSession;
-    return startPlannedVideoRun({
-      projectId, spaceId, userId: viewerId ?? '', toolId, draft, analyses,
-      source: { id: host.id, name: view.name, position: host.position, groupOrigin: group?.position ?? null,
-        mimeType: view.mimeType, width: draft.source.mediaInfo.width, height: draft.source.mediaInfo.height },
-      sourceExists: () => buffer.settled().some((node) => node.id === nodeId),
-      canWrite: () => !readOnly && !isNodeLocked(projectId, spaceId, nodeId),
-      stillOpen: () => sessionStore.getState().panelSession === session,
-      onBuilt: (built, outputGroup) => showMiniToolResults(nodeId, built, outputGroup),
-    });
-  }, [readOnly, nodes, projectId, spaceId, viewerId, t, sessionStore, buffer, showMiniToolResults]);
 
   const onUploadInputChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {
@@ -4268,8 +4240,9 @@ function CanvasSpaceInner({
   const videoResolved = useResolvedVideoPresentation(projectId, videoURL, videoURL !== '');
   const tableOptions = sourceLedgerQuery({ projectId, response: videoResolved.query.data, active: videoURL !== '' });
   const videoTable = useQuery(tableOptions);
-  const frameTable = React.useMemo(() => videoTable.data === undefined || videoResolved.query.data === undefined ? null : {
-    sourceKey: JSON.stringify([videoResolved.query.data.sourceBinding.canonicalURL, videoResolved.query.data.sourceBinding.contentHash]), table: videoTable.data,
+  // The table is read for the selected version's toolInputId, so it is keyed by it (§7.12 step 5).
+  const frameTable = React.useMemo(() => videoTable.data === undefined || !videoResolved.query.data?.presentation ? null : {
+    sourceKey: JSON.stringify([videoResolved.query.data.sourceBinding.canonicalURL, videoResolved.query.data.presentation.toolInputId]), table: videoTable.data,
   }, [videoTable.data, videoResolved.query.data]);
   const videoRecovery = React.useMemo(() => createVideoPresentationRecovery(queryClient, { projectId, canonicalURL: videoURL, active: true }), [queryClient, projectId, videoURL]);
   const repairKey = React.useMemo(() => ['video-table-repair', projectId, videoURL], [projectId, videoURL]);
@@ -4289,6 +4262,37 @@ function CanvasSpaceInner({
     response: videoResolved.query.data, tableStatus: videoTable.status, retrying: pendingRepairs.length > 0, onRetry: retryVideoTable, previewSource: videoResolved.source,
   }), [videoResolved.query.data, videoResolved.source, videoTable.status, pendingRepairs.length, retryVideoTable]);
   const videoRuntime = useCanvasVideoBindings(videoHost, videoURL || null, frameTable, videoFacts);
+
+  /**
+   * Execute the complete video draft from the current source and Canvas session.
+   * @param nodeId - The original video host.
+   * @param toolId - Its selected planned tool.
+   * @param draft - Complete press-frozen editable parameters and inputs.
+   * @param analyses - Matching accepted analysis facts.
+   * @returns The existing tracked press outcome.
+   * @throws {never} The press owns request errors and node marks.
+   */
+  const runVideoMiniTool = React.useCallback((nodeId: string, toolId: VideoToolId, draft: VideoToolDraft, analyses: readonly MiniToolAnalysisRecord[]): Promise<unknown> => {
+    if (readOnly) return Promise.resolve();
+    const host = nodes.find((node) => node.id === nodeId);
+    const view = asContentView(host?.data);
+    if (host === undefined || host.type !== 'video' || view === undefined) return Promise.resolve();
+    const gate = evaluateNodeGate({ locked: isNodeLocked(projectId, spaceId, nodeId) });
+    if (gate !== null) { warnNodeGate(t(gate.toastKey)); return Promise.resolve(); }
+    const group = host.parentId === undefined ? undefined : nodes.find((node) => node.id === host.parentId);
+    const session = sessionStore.getState().panelSession;
+    return startPlannedVideoRun({
+      projectId, spaceId, userId: viewerId ?? '', toolId, draft, analyses,
+      // The run is bound to the selected version the panel shows for this host (§10.8 request row).
+      presentationRef: videoRuntime.presentations.get(nodeId)?.presentationRef,
+      source: { id: host.id, name: view.name, position: host.position, groupOrigin: group?.position ?? null,
+        mimeType: view.mimeType, width: draft.source.mediaInfo.width, height: draft.source.mediaInfo.height },
+      sourceExists: () => buffer.settled().some((node) => node.id === nodeId),
+      canWrite: () => !readOnly && !isNodeLocked(projectId, spaceId, nodeId),
+      stillOpen: () => sessionStore.getState().panelSession === session,
+      onBuilt: (built, outputGroup) => showMiniToolResults(nodeId, built, outputGroup),
+    });
+  }, [readOnly, nodes, projectId, spaceId, viewerId, t, sessionStore, buffer, showMiniToolResults, videoRuntime.presentations]);
 
   /**
    * Uses the same canonical presentation owner for both composition decode slots.

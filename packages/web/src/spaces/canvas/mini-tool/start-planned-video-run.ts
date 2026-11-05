@@ -20,6 +20,8 @@ export interface PlannedVideoRun extends Pick<MiniToolRun, 'projectId' | 'spaceI
   toolId: VideoToolId;
   draft: VideoToolDraft;
   analyses: readonly MiniToolAnalysisRecord[];
+  /** The selected version of each input, frozen at the press (§10.8 request row); without one the request is refused. */
+  presentationRef: MiniToolPlannedRequest['presentation_ref'] | undefined;
   canWrite: () => boolean;
 }
 
@@ -48,7 +50,7 @@ export async function preparePlannedVideoRun(run: PlannedVideoRun): Promise<Mini
       ...(placed.size === undefined ? {} : { mediaWidth: placed.size.width, mediaHeight: placed.size.height }) } };
   });
   const body = miniToolPlannedRequestSchema.parse({ tool: run.toolId, project_id: run.projectId, space_id: run.spaceId,
-    run_id: newId(), draft: held, analysis_refs: [],
+    run_id: newId(), draft: held, analysis_refs: [], presentation_ref: structuredClone(run.presentationRef),
     outputs: nodes.map((node, outputIndex) => ({ outputIndex, nodeId: node.id, recipe: { kind: 'remove-bg' } })),
   });
   runCanvasUndoBatch(run.projectId, run.spaceId, () => {
