@@ -11,6 +11,25 @@ const MICRO_USD_PER_USD = 1_000_000;
 const GET_DURATION = /get_duration\(\s*(\w+)\s*(?:,\s*min=([\d.]+)\s*,\s*max=([\d.]+)\s*,\s*total=([\d.]+)\s*)?\)/g;
 
 /**
+ * The characters `\w` stands for in the upstreams' validators (pydantic's Rust regex, where it is Unicode):
+ * letters and other alphabetic characters, combining marks, decimal digits, connector punctuation and the
+ * joiners. Written for a character class compiled with the `u` flag.
+ */
+export const WORD_CLASS = "\\p{Alphabetic}\\p{M}\\p{Nd}\\p{Pc}\\p{Join_Control}";
+
+/** A whole string of word characters. */
+const WORD = new RegExp(`^[${WORD_CLASS}]+$`, "u");
+
+/**
+ * Whether a value is a non-empty string of word characters, as the upstreams read `^\w+$`; any other value is not.
+ * @param value - The value; untrusted collaborative data.
+ * @returns True only for such a string.
+ */
+function isWord(value: unknown): boolean {
+  return typeof value === "string" && WORD.test(value);
+}
+
+/**
  * One upstream contract: `basePrice` in millionths of a USD, a JSONata `formula`
  * (empty means a flat `basePrice` per call), `discountRate` the percentage of the
  * price charged (100 is full price).
@@ -22,7 +41,23 @@ export interface PriceContract {
 }
 
 /**
- * Compile one expression in WaveSpeed's formula dialect, `get_duration` registered over the clip lengths.
+ * A formula that evaluated without a JSONata error and produced no finite `total_price` (a run that leaves out a
+ * field the formula multiplies by gets this); the price of the run cannot be computed.
+ */
+export class NoTotalPrice extends Error {
+  /**
+   * Record the formula.
+   * @param formula - The formula.
+   */
+  constructor(formula: string) {
+    super(`Pricing formula produced no finite total_price: ${formula}`);
+    this.name = "NoTotalPrice";
+  }
+}
+
+/**
+ * Compile one expression in WaveSpeed's formula dialect, `get_duration` registered over the clip lengths
+ * and `$word` (whether a value is a string of word characters) beside it.
  * @param formula - The expression.
  * @param durations - Clip lengths in seconds, keyed by upstream field.
  * @returns The compiled expression.
@@ -42,6 +77,7 @@ function compiled(formula: string, durations: Readonly<Record<string, readonly n
     },
     "<sn?n?n?:n>",
   );
+  expression.registerFunction("word", isWord, "<x?:b>");
   return expression;
 }
 
@@ -91,7 +127,8 @@ export async function holds(
  * @param fields - The request in the upstream's field names.
  * @param durations - Clip lengths in seconds, keyed by upstream field, for `get_duration`.
  * @returns USD after the discount.
- * @throws {Error} When the formula does not produce a finite `total_price`.
+ * @throws {Error} When the formula is not valid JSONata or fails to evaluate (JSONata's own error object).
+ * @throws {NoTotalPrice} When the formula evaluates without producing a finite `total_price`.
  */
 export async function priceUsd(
   contract: PriceContract,
@@ -103,7 +140,7 @@ export async function priceUsd(
   const result: unknown = await compiled(contract.formula, durations).evaluate({ ...fields, base_price: contract.basePrice });
   const total = (result as { total_price?: unknown } | undefined)?.total_price;
   if (typeof total !== "number" || !Number.isFinite(total)) {
-    throw new Error(`Pricing formula produced no finite total_price: ${contract.formula}`);
+    throw new NoTotalPrice(contract.formula);
   }
   return (total / MICRO_USD_PER_USD) * discount;
 }

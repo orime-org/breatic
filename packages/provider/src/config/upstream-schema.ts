@@ -8,6 +8,8 @@
  * the configuration tests read them. Runtime code never reads a snapshot.
  */
 
+import { WORD_CLASS } from "@provider/pricing/evaluate.js";
+
 /** One shape a field accepts. */
 export interface Leaf {
   /** A JSON schema type, or `any` when the schema names none. */
@@ -221,16 +223,48 @@ export function snapshotOf(schema: unknown, options: { root: unknown; source: st
 }
 
 /**
- * Whether a string matches a schema pattern. A pattern JavaScript cannot compile is taken as
- * not matched, so a binding is never passed on a check that could not be made.
+ * A schema pattern with `\w` and `\W` read as the upstreams' validators read them (Unicode word characters),
+ * for a `u` regular expression.
+ * @param pattern - The pattern as the schema writes it.
+ * @returns The pattern to compile, or undefined when it puts `\W` inside a character class, which a `u` class cannot negate.
+ */
+function unicodeWords(pattern: string): string | undefined {
+  let out = "";
+  let inClass = false;
+  for (let i = 0; i < pattern.length; i++) {
+    const char = pattern[i]!;
+    if (char === "\\" && i + 1 < pattern.length) {
+      const escaped = pattern[i + 1]!;
+      i++;
+      if (escaped === "w") out += inClass ? WORD_CLASS : `[${WORD_CLASS}]`;
+      else if (escaped === "W") {
+        if (inClass) return undefined;
+        out += `[^${WORD_CLASS}]`;
+      } else out += char + escaped;
+      continue;
+    }
+    if (char === "[" && !inClass) inClass = true;
+    else if (char === "]" && inClass) inClass = false;
+    out += char;
+  }
+  return out;
+}
+
+/**
+ * Whether a string matches a schema pattern, `\w` read as Unicode word characters. A pattern JavaScript
+ * cannot compile is taken as not matched, so a binding is never passed on a check that could not be made.
  * @param pattern - The pattern as the schema writes it.
  * @param value - The string.
  * @returns True when it matches.
  */
 function matches(pattern: string, value: string): boolean {
-  for (const flags of ["u", ""]) {
+  const unicode = unicodeWords(pattern);
+  if (unicode === undefined) return false;
+  // A pattern without \w or \W may also be one only a non-Unicode expression compiles.
+  const tries: readonly (readonly [string, string])[] = unicode === pattern ? [[pattern, "u"], [pattern, ""]] : [[unicode, "u"]];
+  for (const [source, flags] of tries) {
     try {
-      return new RegExp(pattern, flags).test(value);
+      return new RegExp(source, flags).test(value);
     } catch {
       // Not valid under these flags; try the next ones.
     }

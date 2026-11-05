@@ -3,10 +3,7 @@
 
 import type { MediaBinding, ParamBinding } from "@provider/config/schema.js";
 import type { MediaInput } from "@provider/media/runner.js";
-import { isPresent } from "@provider/pricing/estimate.js";
-
-/** A neutral reference the application writes into a prompt: `<<ref:{param}:{n}>>`. */
-const REFERENCE = /<<ref:([\w-]+):(\d+)>>/g;
+import { isPresent, mentionsWritten } from "@provider/pricing/estimate.js";
 
 /**
  * One pronunciation entry as `text/pronunciation`, or undefined when either half is missing.
@@ -89,19 +86,6 @@ function written(bound: ParamBinding, value: unknown, sendEmpty: boolean): unkno
 }
 
 /**
- * The prompt with each neutral reference written the way this upstream names it.
- * @param binding - The binding.
- * @param prompt - Our prompt.
- * @returns The prompt to send.
- */
-export function mentionsWritten(binding: MediaBinding, prompt: string): string {
-  return prompt.replace(REFERENCE, (token, param: string, n: string) => {
-    const template = binding.mentions?.[param];
-    return template === undefined ? token : template.replaceAll("{n}", n).replaceAll("{i}", String(Number(n) - 1));
-  });
-}
-
-/**
  * The body of a model's own call: each of our params under the binding's field
  * (dots writing nested objects), its value spelled and converted the upstream's
  * way, an absent value and an unbound param left out, the prompt under
@@ -121,7 +105,7 @@ export function buildBody(binding: MediaBinding, input: MediaInput): Record<stri
     const out = written(bound, voices !== undefined && typeof value === "string" ? (voices[value] ?? value) : value, binding.send_empty === true);
     if (out !== undefined) writeAt(body, bound.field, out);
   }
-  if (binding.prompt_field !== undefined && (input.prompt !== "" || binding.send_empty === true)) body[binding.prompt_field] = mentionsWritten(binding, input.prompt);
+  if (binding.prompt_field !== undefined && (input.prompt !== "" || binding.send_empty === true)) body[binding.prompt_field] = mentionsWritten(binding.mentions, input.prompt);
   for (const [path, value] of Object.entries(binding.fixed ?? {})) writeAt(body, path, value);
   return body;
 }

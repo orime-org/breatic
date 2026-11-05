@@ -116,6 +116,7 @@ function pricingOf(binding: MediaBinding): UpstreamPricing {
     ...(binding.reused_by === undefined ? {} : { reused_by: binding.reused_by }),
     ...limitsOf(binding),
     ...(binding.rejects === undefined ? {} : { rejects: binding.rejects }),
+    ...(binding.mentions === undefined ? {} : { mentions: binding.mentions }),
   };
 }
 

@@ -9,7 +9,9 @@
 
 import type { MediaBinding, UpstreamDecl } from "@provider/config/schema.js";
 import type { Cost } from "@provider/cost.js";
-import { HttpStatus } from "@provider/http/errors.js";
+import { BilledAnswerLost } from "@provider/errors.js";
+import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
+import { answerText, isSuccess, send } from "@provider/http/request.js";
 import { buildBody } from "@provider/media/body.js";
 import type { MediaWarning, StepKind } from "@provider/media/runner.js";
 
@@ -135,6 +137,32 @@ const FINAL_ASK_IDLE_MS = 60_000;
 export function limits(bounds: RequestBounds): { maxBodyBytes: number; idleMs: number } {
   const idleMs = bounds.deadlineAt === undefined ? FINAL_ASK_IDLE_MS : Math.max(1, bounds.deadlineAt - Date.now());
   return { maxBodyBytes: MAX_JSON_BYTES, idleMs };
+}
+
+/**
+ * Submit a JSON body once (`replaySafe: false`) and read the answer's text within the JSON read limits.
+ * @param reach - The upstream.
+ * @param url - The submit address.
+ * @param body - The request body.
+ * @param headers - The request headers.
+ * @param bounds - The deadline and signal.
+ * @returns The text of a 2xx answer.
+ * @throws {NotSent | NoAnswer | HttpStatus | Aborted} As the HTTP module classifies the failure.
+ * @throws {NoAnswer} With a BilledAnswerLost cause carrying one missing cost, when the answer cannot be read.
+ * @throws {HttpStatus} When the upstream answered a non-2xx status.
+ */
+export async function submitText(reach: Reach, url: string, body: Record<string, unknown>, headers: Record<string, string>, bounds: RequestBounds): Promise<string> {
+  const options = { replaySafe: false, ...bounds };
+  const response = await send({ url, method: "POST", headers, body: JSON.stringify(body) }, options);
+  const { maxBodyBytes, idleMs } = limits(bounds);
+  let text: string;
+  try {
+    text = await answerText(url, response, maxBodyBytes, idleMs, options);
+  } catch (error) {
+    throw new NoAnswer(url, new BilledAnswerLost(`${reach.name} accepted the submit and its answer could not be read`, error));
+  }
+  if (!isSuccess(response.status)) throw new HttpStatus(url, response.status, text);
+  return text;
 }
 
 /** Room for the JSON around an inline file in an answer. */

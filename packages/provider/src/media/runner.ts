@@ -197,9 +197,10 @@ function mediaOutputOf(url: string): MediaOutput {
   if (!url.startsWith("data:") || comma < 0) return { kind: "url", url };
   const [type = "", ...flags] = url.slice("data:".length, comma).split(";");
   const data = url.slice(comma + 1);
-  // Each %XX is one byte, read as Latin-1 so no byte is turned into UTF-8; a stray "%" stays as it is.
-  const plain = data.replace(/%([0-9a-fA-F]{2})/g, (_escape, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));
-  const bytes = new Uint8Array(flags.includes("base64") ? Buffer.from(data, "base64") : Buffer.from(plain, "latin1"));
+  const bytes = new Uint8Array(flags.includes("base64")
+    ? Buffer.from(data, "base64")
+    // Each %XX is one byte, read as Latin-1 so no byte is turned into UTF-8; a stray "%" stays as it is.
+    : Buffer.from(data.replace(/%([0-9a-fA-F]{2})/g, (_escape, hex: string) => String.fromCharCode(Number.parseInt(hex, 16))), "latin1"));
   return { kind: "bytes", bytes, contentType: type === "" ? "text/plain" : type };
 }
 
@@ -708,13 +709,24 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
   };
 
   /**
-   * The first ticket of a run, or the failed answer when no upstream can take it.
+   * A warning for each upstream skipped because a check of the run could not be made on it.
+   * @param model - The model.
+   * @param skipped - Why the upstreams were skipped.
+   * @returns The warnings.
+   */
+  const checkFailures = (model: string, skipped: readonly UnavailableReason[]): MediaWarning[] =>
+    skipped.flatMap((r) => (r.kind === "unsupported_input" && "evaluationError" in r
+      ? [{ code: "input_check_failed", detail: { model, upstream: r.upstream, reason: r.reason, error: r.evaluationError } }]
+      : []));
+
+  /**
+   * The first ticket of a run and what to log about its planning, or the failed answer when no upstream can take it.
    * @param model - The model.
    * @param input - The run.
    * @param chosen - The caller's mode.
    * @param planOptions - Keys and clones.
    * @param pick - Picks the upstream from the ordered candidates.
-   * @returns The ticket, or the answer.
+   * @returns The ticket and its warnings, or the answer.
    * @throws {UpstreamRequestRejected} When the route names an upstream the model is not bound to.
    */
   const open = async (
@@ -723,17 +735,17 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     chosen: Route,
     planOptions: PlanOptions,
     pick: (order: Candidate[]) => Candidate,
-  ): Promise<Omit<Ticket, "steps"> | MediaAnswer> => {
+  ): Promise<{ opened: Omit<Ticket, "steps">; warnings: MediaWarning[] } | MediaAnswer> => {
     let plan: RoutePlan;
     try {
       plan = await route(model, input, chosen, planOptions.durations);
     } catch (error) {
-      if (error instanceof NoUpstreamAvailable) return { state: "failed", reason: error, costs: [], ...common() };
+      if (error instanceof NoUpstreamAvailable) return { state: "failed", reason: error, costs: [], ...common({ warnings: checkFailures(model, error.reasons) }) };
       throw error;
     }
     const order = plan.order;
     const first = pick(order);
-    return {
+    const opened: Omit<Ticket, "steps"> = {
       version: 1,
       model,
       route: chosen,
@@ -748,6 +760,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       accepted: false,
       costs: [],
     };
+    return { opened, warnings: checkFailures(model, plan.skipped) };
   };
 
   /**
@@ -833,8 +846,8 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
 
   return {
     async plan(model, input, chosen, planOptions) {
-      const opened = await open(model, input, chosen, planOptions, (order) => order[0]!);
-      return "state" in opened ? opened : waiting(planned(opened));
+      const result = await open(model, input, chosen, planOptions, (order) => order[0]!);
+      return "state" in result ? result : waiting(planned(result.opened), { warnings: result.warnings });
     },
 
     async send(raw, bounds) {
@@ -936,13 +949,14 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     async ticketFromLegacy(model, input, chosen, planOptions, legacy) {
       if (!isPresent(legacy.providerTaskId) && (legacy.steps ?? []).length === 0) return this.plan(model, input, chosen, planOptions);
       // Runs before the provider layer all ran on WaveSpeed.
-      const opened = await open(model, input, chosen, planOptions, (order) => order.find((c) => config.upstreams[c.upstream]?.kind === "wavespeed") ?? order[0]!);
-      if ("state" in opened) return opened;
+      const result = await open(model, input, chosen, planOptions, (order) => order.find((c) => config.upstreams[c.upstream]?.kind === "wavespeed") ?? order[0]!);
+      if ("state" in result) return result;
+      const { opened, warnings: planning } = result;
       const base = { ...opened, next: [], accepted: true };
       const binding = bindingOf(base);
       if (isPresent(legacy.providerTaskId)) {
         const steps: Step[] = [{ kind: "generate", endpoint: binding.model_id, itemIndex: null, status: "submitted", predictionId: legacy.providerTaskId! }];
-        return waiting({ ...base, steps }, { warnings: [{ code: "async_resume_stored_provider_task", detail: { model, providerTaskId: legacy.providerTaskId } }] });
+        return waiting({ ...base, steps }, { warnings: [...planning, { code: "async_resume_stored_provider_task", detail: { model, providerTaskId: legacy.providerTaskId } }] });
       }
       const steps: Step[] = [];
       const costs: Cost[] = [];
@@ -950,7 +964,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         const param = binding.extra_steps?.find((s) => s.kind === row.kind && s.endpoint === row.endpoint)?.for_param;
         const output = row.output as StepOutput;
         if (row.status === "failed") {
-          return failed({ ...base, steps, costs }, new UpstreamTaskFailed(opened.upstream, typeof output.error === "string" ? output.error : `step ${row.kind} failed`));
+          return failed({ ...base, steps, costs }, new UpstreamTaskFailed(opened.upstream, typeof output.error === "string" ? output.error : `step ${row.kind} failed`), planning);
         }
         if (row.inlineCostUsd > 0) costs.push({ state: "known", usd: row.inlineCostUsd, source: "reported" });
         const step: Step = {
@@ -974,7 +988,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         if (describes) steps.push({ kind: "describe", endpoint: "", ...(param === undefined ? {} : { param }), itemIndex: row.itemIndex, status: "pending" });
         steps.push(step);
       }
-      return waiting({ ...base, steps, costs });
+      return waiting({ ...base, steps, costs }, { warnings: planning });
     },
   };
 }

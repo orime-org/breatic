@@ -15,13 +15,14 @@ import { z } from "zod";
 import type { Cost } from "@provider/cost.js";
 import { BilledAnswerLost } from "@provider/errors.js";
 import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
-import { answerText, fetchJson, isSuccess, parsed, send } from "@provider/http/request.js";
+import { fetchJson, parsed } from "@provider/http/request.js";
 import {
   billingFailure,
   limits,
   minimaxVoiceGone,
   outputField,
   resellerVoiceClone,
+  submitText,
   unbilled,
   type AskContext,
   type Asked,
@@ -84,16 +85,7 @@ function detailOf(body: string): unknown {
  */
 async function submit(reach: Reach, endpoint: string, body: Record<string, unknown>, bounds: RequestBounds): Promise<Submitted> {
   const url = `${reach.decl.base_url}/${endpoint}`;
-  const options = { replaySafe: false, ...bounds };
-  const response = await send({ url, method: "POST", headers: headers(reach), body: JSON.stringify(body) }, options);
-  const { maxBodyBytes, idleMs } = limits(bounds);
-  let text: string;
-  try {
-    text = await answerText(url, response, maxBodyBytes, idleMs, options);
-  } catch (error) {
-    throw new NoAnswer(url, new BilledAnswerLost(`${reach.name} accepted the submit and its answer could not be read`, error));
-  }
-  if (!isSuccess(response.status)) throw new HttpStatus(url, response.status, text);
+  const text = await submitText(reach, url, body, headers(reach), bounds);
   const read = queuedSchema.safeParse(parsed(text));
   if (!read.success) throw new NoAnswer(url, new BilledAnswerLost(`${reach.name} answered no request id and addresses it could read`));
   return { predictionId: read.data.request_id, outputs: undefined, handle: { status_url: read.data.status_url, response_url: read.data.response_url } };

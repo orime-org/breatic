@@ -12,8 +12,8 @@
 import { z } from "zod";
 import type { Cost } from "@provider/cost.js";
 import { BilledAnswerLost } from "@provider/errors.js";
-import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
-import { answerText, fetchJson, isSuccess, parsed, send } from "@provider/http/request.js";
+import { NoAnswer, type HttpStatus } from "@provider/http/errors.js";
+import { fetchJson, parsed } from "@provider/http/request.js";
 import {
   bearerHeaders as headers,
   billingFailure,
@@ -21,6 +21,7 @@ import {
   minimaxVoiceGone,
   outputField,
   outputUrls,
+  submitText,
   unbilled,
   type Asked,
   type MediaAdapter,
@@ -76,17 +77,7 @@ const resultSchema = z.looseObject({
  */
 async function submit(reach: Reach, endpoint: string, body: Record<string, unknown>, bounds: RequestBounds): Promise<Submitted> {
   const url = `${reach.decl.base_url}/${endpoint}`;
-  const options = { replaySafe: false, ...bounds };
-  const response = await send({ url, method: "POST", headers: headers(reach), body: JSON.stringify(body) }, options);
-  const ok = isSuccess(response.status);
-  const { maxBodyBytes, idleMs } = limits(bounds);
-  let text: string;
-  try {
-    text = await answerText(url, response, maxBodyBytes, idleMs, options);
-  } catch (error) {
-    throw new NoAnswer(url, new BilledAnswerLost(`${reach.name} accepted the submit and its answer could not be read`, error));
-  }
-  if (!ok) throw new HttpStatus(url, response.status, text);
+  const text = await submitText(reach, url, body, headers(reach), bounds);
   const read = submittedSchema.safeParse(parsed(text));
   const id = read.success && read.data.data.id !== "" ? read.data.data.id : undefined;
   const outputs = read.success && (read.data.data.outputs ?? []).length > 0 ? read.data.data.outputs! : undefined;
@@ -126,12 +117,6 @@ async function ask(reach: Reach, predictionId: string, bounds: RequestBounds): P
  * @returns The cost and anything to log.
  */
 async function billed(reach: Reach, predictionId: string, bounds: RequestBounds, lastAttempt: boolean): Promise<{ cost: Cost; warnings: MediaWarning[] }> {
-  /**
-   * The answer when billing did not say: pending, or missing on the last attempt.
-   * @param reason - Why.
-   * @returns The cost.
-   */
-  const unknown = (reason: string): Cost => unbilled(reach, predictionId, lastAttempt, reason);
   let body: unknown;
   try {
     body = await fetchJson(
@@ -140,11 +125,11 @@ async function billed(reach: Reach, predictionId: string, bounds: RequestBounds,
     );
   } catch (error) {
     const code = billingFailure(error);
-    return { cost: unknown(code), warnings: [{ code, detail: { upstream: reach.name, predictionId, error: String(error) } }] };
+    return { cost: unbilled(reach, predictionId, lastAttempt, code), warnings: [{ code, detail: { upstream: reach.name, predictionId, error: String(error) } }] };
   }
   const read = readBilling(body);
   if (read.kind === "none") {
-    return { cost: unknown("billing_query_empty"), warnings: [...read.warnings, { code: "billing_query_empty", detail: { upstream: reach.name, predictionId } }] };
+    return { cost: unbilled(reach, predictionId, lastAttempt, "billing_query_empty"), warnings: [...read.warnings, { code: "billing_query_empty", detail: { upstream: reach.name, predictionId } }] };
   }
   return { cost: { state: "known", usd: read.usd, source: "billing" }, warnings: read.warnings };
 }

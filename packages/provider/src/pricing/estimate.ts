@@ -66,8 +66,12 @@ export type PricingRule = z.infer<typeof pricingRuleSchema>;
  */
 export const rejectSchema = z.strictObject({ when: z.string().min(1), reason: z.string().min(1) });
 
-/** Why an upstream cannot take a run: one of our param values it does not take, or one of its own limits. */
-export type RejectedInput = { param: string; value: unknown } | { reason: string };
+/**
+ * Why an upstream cannot take a run: one of our param values it does not take, one of its own limits, or a
+ * check that could not be made on this run (one of its limits, or its price, failed to evaluate), with the
+ * evaluator's message.
+ */
+export type RejectedInput = { param: string; value: unknown } | { reason: string } | { reason: string; evaluationError: string };
 
 /**
  * What the browser needs to price a run on one upstream: the one description of the entry the
@@ -98,6 +102,8 @@ const upstreamPricingSchema = z.looseObject({
   voices: z.record(z.string(), z.array(z.string())).optional(),
   /** The upstream's own input limits, in order. */
   rejects: z.array(rejectSchema).optional(),
+  /** Per param, how the upstream names its references in the prompt (`{n}` from 1, `{i}` from 0). */
+  mentions: z.record(z.string(), z.string()).optional(),
 });
 
 /** What the browser needs to price a run on one upstream. */
@@ -107,6 +113,22 @@ export type UpstreamPricing = z.infer<typeof upstreamPricingSchema>;
 const pricingRulesSchema = z.looseObject({ model: z.string(), upstreams: z.array(upstreamPricingSchema) });
 
 const SAMPLE_TEXT = "x".repeat(1000);
+
+/** A neutral reference the application writes into a prompt: `<<ref:{param}:{n}>>`. */
+const REFERENCE = /<<ref:([\w-]+):(\d+)>>/g;
+
+/**
+ * The prompt with each neutral reference written the way an upstream names it; a reference to a param it has no template for stays as it is.
+ * @param mentions - The upstream's template per param.
+ * @param prompt - Our prompt.
+ * @returns The prompt the upstream is sent.
+ */
+export function mentionsWritten(mentions: Readonly<Record<string, string>> | undefined, prompt: string): string {
+  return prompt.replace(REFERENCE, (token, param: string, n: string) => {
+    const template = mentions?.[param];
+    return template === undefined ? token : template.replaceAll("{n}", n).replaceAll("{i}", String(Number(n) - 1));
+  });
+}
 
 /**
  * The evaluator's shape of a rule.
@@ -177,11 +199,12 @@ function upstreamRun(rule: UpstreamPricing, input: EstimateInput): { fields: Rec
 }
 
 /**
- * What one upstream would charge for a run, and how sure that is.
+ * What one upstream would charge for a run, and how sure that is; the prompt is priced as it is sent.
  * @param rule - The upstream's pricing.
  * @param input - The prepared run.
  * @returns The estimate.
- * @throws {Error} When a formula does not produce a finite price.
+ * @throws {Error} When a formula fails to evaluate (JSONata's own error object).
+ * @throws {NoTotalPrice} When a formula produces no finite price for this run.
  */
 async function estimateOn(rule: UpstreamPricing, input: EstimateInput): Promise<Estimate> {
   const fieldOf = fieldNamer(rule);
@@ -201,7 +224,7 @@ async function estimateOn(rule: UpstreamPricing, input: EstimateInput): Promise<
    * @returns USD.
    */
   const priceAt = async (prompt: string, skippable: boolean): Promise<number> => {
-    if (promptField !== undefined) fields[promptField] = prompt;
+    if (promptField !== undefined) fields[promptField] = mentionsWritten(rule.mentions, prompt);
     let usd = skippable || !ownReused ? await priceUsd(contractOf(rule.pricing), fields, durations) : 0;
     for (const step of rule.steps) {
       if (!skippable && step.reused === true) continue;
@@ -247,35 +270,52 @@ export function parsePricingRules(raw: unknown): PricingRules {
 }
 
 /**
- * Why an upstream cannot take a run: a value outside its limits, a voice it does not have, or the first of its
- * own conditions (`rejects`) that holds. A param the run leaves out or empty is always taken, and is not there
- * for a condition to read; neither is an empty prompt. A condition that fails to evaluate on this run keeps
- * this upstream out, its reason followed by the evaluation error, and leaves every other upstream to its own rules.
- * @param rules - The model's pricing rules, whose entries carry each upstream's input limits.
- * @param upstream - The upstream.
+ * Whether one upstream takes a run, and its estimate when it does. An upstream whose price for the run cannot be
+ * computed (a formula that fails to evaluate or gives no finite price) cannot take it, so routing and every
+ * estimate leave it out alike.
+ * @param rule - The upstream's pricing entry.
  * @param input - The prepared run.
- * @returns The param and value it cannot take, or the reason of its condition; undefined when it takes the run or has no entry.
+ * @returns Why it cannot take the run, or what it would charge.
  */
-export async function rejectedInput(rules: PricingRules, upstream: string, input: EstimateInput): Promise<RejectedInput | undefined> {
-  const rule = ruleOf(rules, upstream);
-  if (rule === undefined) return undefined;
+async function assessed(rule: UpstreamPricing, input: EstimateInput): Promise<{ rejected: RejectedInput } | { estimate: Estimate }> {
   const allowed = [...Object.entries(rule.limits ?? {}), ...Object.entries(rule.voices ?? {})];
   for (const [param, values] of allowed) {
     const value = input.params[param];
     if (!isPresent(value)) continue;
-    if (!values.some((v) => String(v) === String(value))) return { param, value };
+    if (!values.some((v) => String(v) === String(value))) return { rejected: { param, value } };
   }
-  if (rule.rejects === undefined) return undefined;
   const { fields, durations } = upstreamRun(rule, input);
-  if (rule.prompt_field !== undefined && input.prompt !== "") fields[rule.prompt_field] = input.prompt;
-  for (const { when, reason } of rule.rejects) {
+  if (rule.prompt_field !== undefined && input.prompt !== "") fields[rule.prompt_field] = mentionsWritten(rule.mentions, input.prompt);
+  for (const { when, reason } of rule.rejects ?? []) {
     try {
-      if (await holds(when, fields, durations)) return { reason };
+      if (await holds(when, fields, durations)) return { rejected: { reason } };
     } catch (error) {
-      return { reason: `${reason} (the condition could not be evaluated: ${evaluationMessage(error)})` };
+      return { rejected: { reason, evaluationError: evaluationMessage(error) } };
     }
   }
-  return undefined;
+  try {
+    return { estimate: await estimateOn(rule, input) };
+  } catch (error) {
+    return { rejected: { reason: `${rule.upstream}'s price for this run could not be computed`, evaluationError: evaluationMessage(error) } };
+  }
+}
+
+/**
+ * Why an upstream cannot take a run: a value outside its limits, a voice it does not have, the first of its
+ * own conditions (`rejects`) that holds, or a check that cannot be made on this run (one of those conditions fails to
+ * evaluate, or its price cannot be computed), which keeps this upstream out with the evaluator's message and leaves every other upstream to
+ * its own rules. A param the run leaves out or empty is always taken, and is not there for a condition to read;
+ * neither is an empty prompt. The prompt is read as the upstream is sent it, each reference written its way.
+ * @param rules - The model's pricing rules, whose entries carry each upstream's input limits.
+ * @param upstream - The upstream.
+ * @param input - The prepared run.
+ * @returns The param and value it cannot take, the reason of its condition, or the reason and the evaluation error; undefined when it takes the run or has no entry.
+ */
+export async function rejectedInput(rules: PricingRules, upstream: string, input: EstimateInput): Promise<RejectedInput | undefined> {
+  const rule = ruleOf(rules, upstream);
+  if (rule === undefined) return undefined;
+  const read = await assessed(rule, input);
+  return "rejected" in read ? read.rejected : undefined;
 }
 
 /**
@@ -283,15 +323,15 @@ export async function rejectedInput(rules: PricingRules, upstream: string, input
  * @param rules - The model's pricing rules.
  * @param availability - Which upstreams are configured.
  * @param input - The prepared run.
- * @returns One estimate per configured upstream that can take the run.
- * @throws {Error} When a formula does not produce a finite price.
+ * @returns One estimate per configured upstream that can take the run and price it.
  */
 export async function orderByPrice(rules: PricingRules, availability: Availability, input: EstimateInput): Promise<(Estimate & { weight: number })[]> {
   const out: (Estimate & { weight: number })[] = [];
   for (const { upstream, weight, configured } of availability.upstreams) {
     const rule = ruleOf(rules, upstream);
-    if (!configured || rule === undefined || (await rejectedInput(rules, upstream, input)) !== undefined) continue;
-    out.push({ ...(await estimateOn(rule, input)), weight });
+    if (!configured || rule === undefined) continue;
+    const read = await assessed(rule, input);
+    if ("estimate" in read) out.push({ ...read.estimate, weight });
   }
   return out.sort((a, b) => a.usd - b.usd || a.weight - b.weight);
 }
@@ -302,8 +342,7 @@ export async function orderByPrice(rules: PricingRules, availability: Availabili
  * @param availability - Which upstreams are configured.
  * @param input - The prepared run.
  * @param route - The caller's mode.
- * @returns The estimate, or null when the route reaches no configured upstream that can take the run.
- * @throws {Error} When a formula does not produce a finite price.
+ * @returns The estimate, or null when the route reaches no configured upstream that can take the run and price it.
  */
 export async function estimateCost(rules: PricingRules, availability: Availability, input: EstimateInput, route: Route): Promise<Estimate | null> {
   if (route.mode === "cheapest") {
@@ -314,7 +353,9 @@ export async function estimateCost(rules: PricingRules, availability: Availabili
   const pool = route.mode === "upstream" ? configured.filter((u) => u.upstream === route.upstream) : configured;
   for (const { upstream } of pool) {
     const rule = ruleOf(rules, upstream);
-    if (rule !== undefined && (await rejectedInput(rules, upstream, input)) === undefined) return estimateOn(rule, input);
+    if (rule === undefined) continue;
+    const read = await assessed(rule, input);
+    if ("estimate" in read) return read.estimate;
   }
   return null;
 }

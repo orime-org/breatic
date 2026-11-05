@@ -17,7 +17,7 @@ export interface Candidate {
   envVar: string;
   /** This call's estimate on this upstream, in USD; used by the cheapest mode. */
   estimateUsd?: number;
-  /** Why the upstream cannot take this run (a param and value, or one of its own limits); it is then skipped. */
+  /** Why the upstream cannot take this run (a param and value, one of its own limits, or a check that failed to evaluate); it is then skipped. */
   unsupported?: RejectedInput;
 }
 

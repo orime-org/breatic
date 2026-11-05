@@ -122,7 +122,7 @@ async function submit(reach: Reach, endpoint: string, body: Record<string, unkno
  * @param predictionId - The run id.
  * @param bounds - The deadline, signal and media limit.
  * @param context - The kind of step asked about and the handle of an earlier answer.
- * @returns Whether it is running (with the handle to keep), done with its outputs, or failed with SandBase's words.
+ * @returns Whether it is running (with the handle to keep the first time it answers completed without outputs), done with its outputs, or failed with SandBase's words.
  * @throws {NotSent | NoAnswer | HttpStatus | Aborted} As the HTTP module classifies the failure.
  * @throws {SyntaxError} When a 2xx answer is not JSON.
  */
@@ -141,10 +141,12 @@ async function ask(reach: Reach, predictionId: string, bounds: RequestBounds, co
   if (run.error !== undefined) return { state: "failed", error: run.error };
   if (run.outputs !== undefined) return { state: "done", outputs: run.outputs };
   if (run.empty !== true) return { state: "running" };
-  const since = Number(context.handle?.[EMPTY_SINCE] ?? Date.now());
+  const since = context.handle?.[EMPTY_SINCE];
+  // The handle changes only on the first such answer, so later polls hand back no new ticket.
+  if (since === undefined) return { state: "running", handle: { ...context.handle, [EMPTY_SINCE]: String(Date.now()) } };
   const wait = reach.decl.empty_output_wait_ms;
-  if (Date.now() - since >= wait) return { state: "failed", error: `SandBase completed the run with no output, still none after ${wait} ms` };
-  return { state: "running", handle: { ...context.handle, [EMPTY_SINCE]: String(since) } };
+  if (Date.now() - Number(since) >= wait) return { state: "failed", error: `SandBase completed the run with no output, still none after ${wait} ms` };
+  return { state: "running" };
 }
 
 /**
@@ -156,12 +158,6 @@ async function ask(reach: Reach, predictionId: string, bounds: RequestBounds, co
  * @returns The cost and anything to log.
  */
 async function billed(reach: Reach, predictionId: string, bounds: RequestBounds, lastAttempt: boolean): Promise<{ cost: Cost; warnings: MediaWarning[] }> {
-  /**
-   * The answer when SandBase did not say: pending, or missing on the last attempt.
-   * @param reason - Why.
-   * @returns The cost.
-   */
-  const unknown = (reason: string): Cost => unbilled(reach, predictionId, lastAttempt, reason);
   let body: unknown;
   try {
     body = await fetchJson(
@@ -171,13 +167,13 @@ async function billed(reach: Reach, predictionId: string, bounds: RequestBounds,
   } catch (error) {
     const detail = { upstream: reach.name, predictionId, error: String(error) };
     // The cost endpoint does not know a run until it is billed.
-    if (error instanceof HttpStatus && error.status === 404) return { cost: unknown("billing_query_empty"), warnings: [{ code: "billing_query_empty", detail }] };
+    if (error instanceof HttpStatus && error.status === 404) return { cost: unbilled(reach, predictionId, lastAttempt, "billing_query_empty"), warnings: [{ code: "billing_query_empty", detail }] };
     const code = billingFailure(error);
-    return { cost: unknown(code), warnings: [{ code, detail }] };
+    return { cost: unbilled(reach, predictionId, lastAttempt, code), warnings: [{ code, detail }] };
   }
   const read = costSchema.safeParse(body);
-  if (!read.success) return { cost: unknown("billing_query_empty"), warnings: [{ code: "billing_query_empty", detail: { upstream: reach.name, predictionId } }] };
-  if (!read.data.settled) return { cost: unknown("billing_unsettled"), warnings: [] };
+  if (!read.success) return { cost: unbilled(reach, predictionId, lastAttempt, "billing_query_empty"), warnings: [{ code: "billing_query_empty", detail: { upstream: reach.name, predictionId } }] };
+  if (!read.data.settled) return { cost: unbilled(reach, predictionId, lastAttempt, "billing_unsettled"), warnings: [] };
   return { cost: { state: "known", usd: read.data.cost, source: "billing" }, warnings: [] };
 }
 

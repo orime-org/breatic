@@ -7,7 +7,10 @@ import type { RejectedInput } from "@provider/pricing/estimate.js";
 /** Why one upstream could not serve a call. */
 export type UnavailableReason =
   | { upstream: string; kind: "missing_key"; envVar: string }
-  /** The run sets a param to a value this upstream cannot take, or is outside one of its own input limits, in its words. */
+  /**
+   * The run sets a param to a value this upstream cannot take, is outside one of its own input limits (in its words),
+   * or could not be checked or priced there (`evaluationError` then holds the evaluator's message).
+   */
   | ({ upstream: string; kind: "unsupported_input" } & RejectedInput)
   | { upstream: string; kind: "failed"; failure: string; /** The status, for an `http_status` failure. */ status?: number };
 
