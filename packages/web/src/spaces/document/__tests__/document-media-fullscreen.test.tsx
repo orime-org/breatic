@@ -123,6 +123,17 @@ describe('a read-only media toolbar', () => {
     expect(actions(within(panel).getByTestId('doc-media-toolbar'))).toEqual(['fullscreen']);
   });
 
+  // The read-only body hides every [data-media-chrome] but the viewer's own.
+  it.each([
+    ['image', true],
+    ['video', true],
+    ['audio', false],
+  ] as const)('marks the %s toolbar layer as a viewer\'s: %s', (type, kept) => {
+    open(type, 600, true);
+    const layer = screen.getByTestId('doc-media-toolbar').closest('[data-media-chrome]');
+    expect(layer?.hasAttribute('data-media-viewer')).toBe(kept);
+  });
+
   it('stays hidden on audio, which has nothing a viewer can do', () => {
     open('audio', 600, true);
     const toolbar = screen.getByTestId('doc-media-toolbar');

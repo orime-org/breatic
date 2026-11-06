@@ -748,6 +748,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         <div
           ref={holdLayer}
           data-media-chrome=''
+          data-media-viewer={type === 'audio' ? undefined : ''}
           onPointerEnter={pointerOn}
           onPointerLeave={pointerOff}
           style={inCell ? layerStyles : undefined}
