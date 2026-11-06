@@ -43,8 +43,9 @@ def validate_request(request: object) -> dict:
     params = profile["params"]
     if not isinstance(params, dict):
         raise ValueError("Expected frozen detector parameters")
-    if request["kind"] == "people":
-        if request["expectedFrameCount"] != 1:
+    if request["kind"] in ("people", "faces"):
+        # People reads one anchor frame; faces reads every prepared frame of a lip-sync person (frames-split §7.17 lipsync_faces).
+        if request["kind"] == "people" and request["expectedFrameCount"] != 1:
             raise ValueError("People analysis requires exactly one anchor frame")
         if (profile["id"], profile["version"], profile["weightsHash"]) != ("opencv-yunet-2023mar", "2023mar", WEIGHTS_SHA256):
             raise ValueError("Unsupported frozen YuNet profile or weights hash")
@@ -86,16 +87,17 @@ def analyze(request: dict, source: BinaryIO) -> dict:
     cv2.setNumThreads(1)
     frames = read_frames(source, request["width"], request["height"], request["expectedFrameCount"])
     params = request["profile"]["params"]
-    if request["kind"] == "people":
+    if request["kind"] in ("people", "faces"):
         if hashlib.sha256(WEIGHTS.read_bytes()).hexdigest() != WEIGHTS_SHA256:
             raise ValueError("Installed YuNet weights hash differs from the frozen profile")
         detector = cv2.FaceDetectorYN.create(str(WEIGHTS), "", (request["width"], request["height"]),
                                            float(params["scoreThreshold"]), float(params["nmsThreshold"]), params["topK"])
-        faces = None
+        rows = []
         for frame in frames:
             _, found = detector.detect(frame)
-            faces = None if found is None else found.tolist()
-        return {"faces": faces}
+            rows.append(None if found is None else found.tolist())
+        # One frame is answered as the people anchor is; more as one row list per frame, in order.
+        return {"faces": rows[0]} if len(rows) == 1 else {"frames": rows}
     # FrameTimecode carries only detector-local indices. Source PTS stay in Node's ledger.
     stats = StatsManager(FrameTimecode(0, fps=30.0))
     detector = ContentDetector(threshold=float(params["threshold"]), min_scene_len=params["minSceneLength"])

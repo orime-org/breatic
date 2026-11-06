@@ -111,6 +111,10 @@ COPY packages/shared/src/mini-tools/types.ts /shared/src/mini-tools/types.ts
 COPY packages/shared/src/mini-tools/video-encode-plan.ts /shared/src/mini-tools/video-encode-plan.ts
 COPY packages/shared/src/mini-tools/video-presentation-projection.ts /shared/src/mini-tools/video-presentation-projection.ts
 COPY packages/shared/src/mini-tools/video-presentation-timeline.ts /shared/src/mini-tools/video-presentation-timeline.ts
+# The planned job runner names each recipe's inputs and maps lip-sync result frames with these (container/plan-run.ts,
+# container/lipsync-recipes.ts).
+COPY packages/shared/src/upload/mini-tool-plan-types.ts /shared/src/upload/mini-tool-plan-types.ts
+COPY packages/shared/src/mini-tools/lipsync-timeline.ts /shared/src/mini-tools/lipsync-timeline.ts
 COPY scripts/release.mjs ./scripts/release.mjs
 ARG RELEASE_VERSION=0.0.0-dev
 ARG VCS_REF=unknown
