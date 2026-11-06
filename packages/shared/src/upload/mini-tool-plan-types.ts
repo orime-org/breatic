@@ -84,6 +84,45 @@ export type MiniToolPlanRecipe =
     entries: MiniToolPlanPlacedEntry[]; target: MiniToolPlanAnalysisTarget }
   /** The video is packet-copied; the audio is copied, encoded to AAC over the stitch's audio entries, or absent (§7.17). */
   | { kind: "copy_carrier"; inputId: string; colorMatrix: string; audio: { kind: "copy" } | ({ kind: "encode" } & MiniToolPlanAudio) | null }
-  | ({ kind: "chunk_encode" } & MiniToolPlanWindowRecipe)
-  | { kind: "stitch"; inputId: string; chunks: { inputId: string; duration: MiniToolPlanExact }[]; audio: MiniToolPlanAudio | null; target: MiniToolPlanTarget }
-  | ({ kind: "prepare_model_input"; audio: MiniToolPlanAudio | null } & MiniToolPlanWindowRecipe);
+  | ({ kind: "chunk_encode"; profile?: MiniToolPlanTransitionProfile } & MiniToolPlanWindowRecipe)
+  | MiniToolPlanStitch
+  | MiniToolPlanTransitionStitch
+  | ({ kind: "prepare_model_input"; audio: MiniToolPlanAudio | null } & MiniToolPlanWindowRecipe)
+  | MiniToolPlanTransitionWindow
+  | MiniToolPlanEraseComposite
+  | MiniToolPlanExpandComposite;
+
+/** Chunks joined by stream copy, the source's interval audio encoded once (§5.4). */
+export interface MiniToolPlanStitch { kind: "stitch"; inputId: string; chunks: { inputId: string; duration: MiniToolPlanExact }[]; audio: MiniToolPlanAudio | null; target: MiniToolPlanTarget }
+/** The one output profile both clips of a transition are encoded to (frames-split §7.17 转场输出档 row, §97 D15-5). */
+export interface MiniToolPlanTransitionProfile {
+  width: number; height: number; fps: MiniToolPlanExact; timeBase: MiniToolPlanExact; pixFmt: "yuv420p" | "yuva420p";
+  color: { matrix: "bt709"; range: "tv"; primaries: "bt709"; transfer: "bt709" }; codec: "h264" | "vp9";
+  encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; alpha: boolean;
+}
+/** A transition's chunks joined in timeline order, each clip's audio placed over its span and crossfaded over the window (§97 D15-7). */
+export interface MiniToolPlanTransitionStitch {
+  kind: "stitch"; chunks: { inputId: string; duration: MiniToolPlanExact }[];
+  /** Each clip's audio over its span, null for a clip without audio (silence over its span). */
+  clips: [{ inputId: string; audio: MiniToolPlanAudio | null }, { inputId: string; audio: MiniToolPlanAudio | null }];
+  /** The overlap window the two audio tracks cross over, null for a Cut. */
+  crossfade: { startFrame: number; frameCount: number } | null;
+  profile: MiniToolPlanTransitionProfile;
+}
+/** One chunk `frames` of a transition's overlap window, composed from both clips' entries (§97 D15-6). */
+export interface MiniToolPlanTransitionWindow {
+  kind: "transition_window";
+  clips: [{ inputId: string; entries: MiniToolPlanEntry[] }, { inputId: string; entries: MiniToolPlanEntry[] }];
+  frames: { start: number; end: number };
+  window: { startFrame: number; frameCount: number };
+  transition: "fade" | "wipeLeft" | "wipeRight";
+  profile: MiniToolPlanTransitionProfile;
+}
+/** An erase composite chunk: the model's result composited over the source within `range` (§97 D15-8). */
+export type MiniToolPlanEraseComposite = { kind: "model_composite"; mode: "erase"; result: string; range: MiniToolPlanInterval } & MiniToolPlanWindowRecipe;
+/** An expand composite chunk: the background windows and how much of each is overlap and consumed (§97 D15-8, execution design §8.1). */
+export type MiniToolPlanExpandComposite = {
+  kind: "model_composite"; mode: "expand";
+  backgrounds: { inputId: string; window: MiniToolPlanInterval }[];
+  ledger: { overlap: MiniToolPlanExact; consumed: MiniToolPlanInterval }[];
+} & MiniToolPlanWindowRecipe;

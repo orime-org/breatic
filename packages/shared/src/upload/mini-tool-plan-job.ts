@@ -90,6 +90,16 @@ const target = z.strictObject({
   .refine((value) => value.alpha !== "straight" || value.format === "webm-vp9", "Straight alpha is a VP9 output's")
   .refine((value) => value.alpha !== "packed" || value.format === undefined, "A packed carrier is no split output");
 const windowRecipe = { inputId, window: ordinals, timescale: z.number().int().positive(), entries, target };
+// The transition output profile (§97 D15-5): alpha with VP9 and yuva420p, none with H.264 and yuv420p, even H.264 sides, timeBase 1/fps.
+const transitionProfile = z.strictObject({
+  width: side, height: side, fps: positiveTime, timeBase: positiveTime, pixFmt: z.enum(["yuv420p", "yuva420p"]),
+  color: z.strictObject({ matrix: z.literal("bt709"), range: z.literal("tv"), primaries: z.literal("bt709"), transfer: z.literal("bt709") }),
+  codec: z.enum(["h264", "vp9"]), encode: z.strictObject({ crf: z.number().int().min(0).max(51), preset: x264PresetSchema }), alpha: z.boolean(),
+}).refine((value) => value.alpha === (value.codec === "vp9") && value.alpha === (value.pixFmt === "yuva420p"), "Alpha goes with VP9 and yuva420p")
+  .refine((value) => value.codec === "vp9" || (value.width % 2 === 0 && value.height % 2 === 0), "An H.264 output has even sides")
+  .refine((value) => BigInt(value.fps.numerator) * BigInt(value.timeBase.numerator) === BigInt(value.fps.denominator) * BigInt(value.timeBase.denominator), "The time base is 1/fps");
+const chunkRef = z.strictObject({ inputId, duration: positiveTime });
+const windowRef = z.strictObject({ startFrame: index, frameCount: z.number().int().positive() });
 
 /** Output and diagnostic byte ceilings frozen from the task's runtime configuration. */
 export const miniToolPlanLimitsSchema = z.strictObject({
@@ -106,11 +116,7 @@ const frameTarget = z.strictObject({
 const entryFrame = z.strictObject({ kind: z.literal("frame"), inputId, entry, target: frameTarget, crop: frameCrop.optional() })
   .refine((recipe) => recipe.crop === undefined || (recipe.crop.sourceWidth === recipe.target.width && recipe.crop.sourceHeight === recipe.target.height));
 const analysisTarget = z.strictObject({ width: side, height: side, colorMatrix: z.string().min(1), toneMap: z.enum(["none", "sdr-bt709"]) });
-/**
- * The versioned per-output media recipes admitted by the planned job lane, every one on full-ledger entries or a stored
- * carrier (§7.17: the worker's recipe construction is the one place that reads the ledger; the container reads no frame table).
- */
-export const miniToolPlanRecipeSchema = z.discriminatedUnion("kind", [
+const recipeUnion = z.discriminatedUnion("kind", [
   entryFrame,
   // §91 D4-4, D4-5: the split segment, the people anchor and the scanned scene window.
   z.strictObject({ kind: z.literal("segment"), ...windowRecipe, audio: audio.nullable() }),
@@ -121,13 +127,72 @@ export const miniToolPlanRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("copy_carrier"), inputId, colorMatrix: z.string().min(1),
     audio: z.union([z.strictObject({ kind: z.literal("copy") }), z.strictObject({ kind: z.literal("encode"), start: time, end: time, origin: time, spans: z.array(editSpan).min(1).nullable() })
       .refine((value) => compare(value.end, value.start) > 0n)]).nullable() }),
-  z.strictObject({ kind: z.literal("chunk_encode"), ...windowRecipe }),
-  // Each chunk is a bound job input carrying its plan duration; the recipe's own input is the source the audio comes from.
-  z.strictObject({ kind: z.literal("stitch"), inputId, chunks: z.array(z.strictObject({ inputId, duration: positiveTime })).min(1),
-    audio: audio.nullable(), target }).refine((recipe) => recipe.chunks.every((chunk) => chunk.inputId !== recipe.inputId)),
+  z.strictObject({ kind: z.literal("chunk_encode"), ...windowRecipe, profile: transitionProfile.optional() }),
+  // Each chunk is a bound job input carrying its plan duration. A single-source stitch names the source its audio comes from
+  // and the target; a transition stitch names both clips with their audio, the crossfade window and the profile (§97 D15-7).
+  // One object holds both forms so the union keeps one option per kind; the refinement admits exactly one of them.
+  z.strictObject({
+    kind: z.literal("stitch"), chunks: z.array(chunkRef).min(1),
+    inputId: inputId.optional(), audio: audio.nullable().optional(), target: target.optional(),
+    clips: z.tuple([z.strictObject({ inputId, audio: audio.nullable() }), z.strictObject({ inputId, audio: audio.nullable() })]).optional(),
+    crossfade: windowRef.nullable().optional(), profile: transitionProfile.optional(),
+  }).superRefine((recipe, ctx) => {
+    const single = recipe.inputId !== undefined && Object.hasOwn(recipe, "audio") && recipe.target !== undefined;
+    const transition = recipe.clips !== undefined && Object.hasOwn(recipe, "crossfade") && recipe.profile !== undefined;
+    const singleKeys = recipe.inputId !== undefined || Object.hasOwn(recipe, "audio") || recipe.target !== undefined;
+    const transitionKeys = recipe.clips !== undefined || Object.hasOwn(recipe, "crossfade") || recipe.profile !== undefined;
+    if (!((single && !transitionKeys) || (transition && !singleKeys))) ctx.addIssue({ code: "custom", message: "A stitch is single-source or a transition, completely" });
+    const sources = [recipe.inputId, ...(recipe.clips ?? []).map((clip) => clip.inputId)];
+    if (recipe.chunks.some((chunk) => sources.includes(chunk.inputId))) ctx.addIssue({ code: "custom", path: ["chunks"], message: "A chunk is never a source input" });
+  }),
   // A model's input over its presentation window (§5.3), written as an intermediate object.
   z.strictObject({ kind: z.literal("prepare_model_input"), ...windowRecipe, audio: audio.nullable() }),
-]) satisfies z.ZodType<MiniToolPlanRecipe>;
+  // One chunk of a transition's overlap window (§97 D15-6): both clips' entries, the chunk's frames inside the window.
+  z.strictObject({
+    kind: z.literal("transition_window"),
+    clips: z.tuple([z.strictObject({ inputId, entries }), z.strictObject({ inputId, entries })]),
+    frames: ordinals, window: windowRef, transition: z.enum(["fade", "wipeLeft", "wipeRight"]), profile: transitionProfile,
+  }).refine((recipe) => recipe.frames.start >= recipe.window.startFrame && recipe.frames.end <= recipe.window.startFrame + recipe.window.frameCount,
+    "The chunk's frames lie inside the window"),
+  // The erase or expand composite over a presentation window (§97 D15-8, execution design §8.1); one object holds both modes.
+  z.strictObject({
+    kind: z.literal("model_composite"), mode: z.enum(["erase", "expand"]), ...windowRecipe,
+    result: inputId.optional(), range: interval.optional(),
+    backgrounds: z.array(z.strictObject({ inputId, window: interval })).optional(),
+    ledger: z.array(z.strictObject({ overlap: time, consumed: interval })).optional(),
+  }).superRefine((recipe, ctx) => {
+    if (recipe.mode === "erase") {
+      if (recipe.result === undefined || recipe.range === undefined || recipe.backgrounds !== undefined || recipe.ledger !== undefined) {
+        ctx.addIssue({ code: "custom", message: "An erase composite names its result and range only" });
+      }
+      return;
+    }
+    const { backgrounds, ledger } = recipe;
+    if (backgrounds === undefined || ledger === undefined || recipe.result !== undefined || recipe.range !== undefined || backgrounds.length === 0 || ledger.length !== backgrounds.length) {
+      ctx.addIssue({ code: "custom", message: "An expand composite names one ledger row per background window" });
+      return;
+    }
+    backgrounds.forEach((background, at) => {
+      const row = ledger[at]!;
+      const previous = backgrounds[at - 1];
+      const overlap = previous === undefined ? ZERO : { numerator: String(BigInt(previous.window.end.numerator) * BigInt(background.window.start.denominator) - BigInt(background.window.start.numerator) * BigInt(previous.window.end.denominator)),
+        denominator: String(BigInt(previous.window.end.denominator) * BigInt(background.window.start.denominator)) };
+      if (previous !== undefined && compare(background.window.start, previous.window.start) <= 0n) ctx.addIssue({ code: "custom", path: ["backgrounds", at], message: "Windows run in order" });
+      if (compare(row.overlap, overlap) !== 0n) ctx.addIssue({ code: "custom", path: ["ledger", at, "overlap"], message: "The overlap is the previous window's tail" });
+      if (compare(row.consumed.start, background.window.start) < 0n || compare(row.consumed.end, background.window.end) > 0n) {
+        ctx.addIssue({ code: "custom", path: ["ledger", at, "consumed"], message: "The consumed interval lies in its window" });
+      }
+      if (at > 0 && compare(row.consumed.start, ledger[at - 1]!.consumed.end) !== 0n) ctx.addIssue({ code: "custom", path: ["ledger", at, "consumed"], message: "Consumed intervals run end to end" });
+    });
+  }),
+]);
+/**
+ * The versioned per-output media recipes admitted by the planned job lane, every one on full-ledger entries or a stored
+ * carrier (§7.17: the worker's recipe construction is the one place that reads the ledger; the container reads no frame table).
+ * Typed as the exact recipe union: the stitch and composite objects hold several forms, and their refinements admit only
+ * complete forms, so every parsed value is one member of it.
+ */
+export const miniToolPlanRecipeSchema = recipeUnion as unknown as z.ZodType<MiniToolPlanRecipe> & { options: typeof recipeUnion.options };
 
 /** The request holding a complete chunk's input and output identities. */
 export const miniToolPlanJobRequestSchema = z.strictObject({
@@ -153,8 +218,7 @@ export const miniToolPlanJobRequestSchema = z.strictObject({
   const keys = new Set(request.inputs.map((input) => input.storageKey));
   const indices = new Set<number>();
   for (const output of request.outputs) {
-    const named = output.recipe.kind === "stitch" ? [output.recipe.inputId, ...output.recipe.chunks.map((chunk) => chunk.inputId)] : [output.recipe.inputId];
-    if (named.some((id) => !ids.has(id))) ctx.addIssue({ code: "custom", message: "Recipe references an unbound input" });
+    if (miniToolPlanRecipeInputs(output.recipe).some((id) => !ids.has(id))) ctx.addIssue({ code: "custom", message: "Recipe references an unbound input" });
     if (indices.has(output.outputIndex)) ctx.addIssue({ code: "custom", message: "Duplicate output index" });
     indices.add(output.outputIndex);
     for (const key of [output.storageKey, ...(output.coverKey === undefined ? [] : [output.coverKey])]) {
@@ -165,6 +229,21 @@ export const miniToolPlanJobRequestSchema = z.strictObject({
 });
 
 export type MiniToolPlanJobRequest = z.infer<typeof miniToolPlanJobRequestSchema>;
+
+/**
+ * Every job input a recipe reads: its source, a stitch's chunks and clips, a window's clips, a composite's results.
+ * @param recipe - A validated recipe.
+ * @returns The input ids it names.
+ * @throws {never} Never.
+ */
+export function miniToolPlanRecipeInputs(recipe: MiniToolPlanRecipe): string[] {
+  switch (recipe.kind) {
+    case "stitch": return [...("clips" in recipe ? recipe.clips.map((clip) => clip.inputId) : [recipe.inputId]), ...recipe.chunks.map((chunk) => chunk.inputId)];
+    case "transition_window": return recipe.clips.map((clip) => clip.inputId);
+    case "model_composite": return [recipe.inputId, ...(recipe.mode === "erase" ? [recipe.result] : recipe.backgrounds.map((background) => background.inputId))];
+    default: return [recipe.inputId];
+  }
+}
 
 const usage = z.strictObject({ wallMs: z.number().nonnegative(), cpuUsec: z.number().nonnegative().nullable() });
 const measuredOutput = ingestMeasurements.extend({
