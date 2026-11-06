@@ -79,6 +79,10 @@ const encoderDefaults = {
   },
   // Audio seconds encoded to AAC per second for the dispatched copy (local Docker nproc 4 reading, to be replaced by standard-4).
   aac_encode_seconds_per_second: 100,
+  // Picture pixels per second YuNet 2023mar searches in the lip-sync faces step (frames-split §5.4 待实测 row), one detector
+  // thread as the analysis runtime runs it: 120 1080p frames in 17.4–22.8 s on a maintainer machine held to standard-4
+  // limits (arm64 Docker, --cpus=4), to be replaced by a Cloudflare standard-4 measurement.
+  face_detect_pixels_per_second: 13_000_000,
 };
 const pixelRate = z.number().positive().finite();
 const encodingDefaults = { chunk_share: 0.5, max_parallel_chunks: 8, chunk_retries: 3, encoder: encoderDefaults };
@@ -94,6 +98,7 @@ const encodingSchema = z.strictObject({
     decode_convert_pixels_per_second: z.strictObject({ sdr_8bit: pixelRate, sdr_10bit: pixelRate, sdr_12bit: pixelRate, hdr_8bit: pixelRate, hdr_10bit: pixelRate, hdr_12bit: pixelRate })
       .default(encoderDefaults.decode_convert_pixels_per_second),
     aac_encode_seconds_per_second: z.number().positive().finite().default(encoderDefaults.aac_encode_seconds_per_second),
+    face_detect_pixels_per_second: pixelRate.default(encoderDefaults.face_detect_pixels_per_second),
   }).default(encoderDefaults),
   // Derived from the ledger byte caps, never configured: a value carried by an already parsed configuration is replaced.
   copy_disk_margin_bytes: z.number().optional(),

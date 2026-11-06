@@ -61,6 +61,9 @@ encoding:
     # Audio seconds encoded to AAC 48 kHz per second, for the dispatched copy's estimate.
     # Local Docker reading at nproc 4 (aac-encode-rate run), to be replaced by a measurement on Cloudflare standard-4.
     aac_encode_seconds_per_second: 100
+    # Picture pixels per second YuNet searches in the lip-sync faces step, one detector thread: a maintainer-machine reading
+    # (arm64 Docker at standard-4 limits, 1080p frames), to be replaced by a Cloudflare standard-4 measurement.
+    face_detect_pixels_per_second: 13000000
 
 # Frozen into each planned job; oversized output fails without truncating its ledger.
 plan_limits:

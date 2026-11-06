@@ -24,6 +24,8 @@ const layout = z.strictObject({
   batches: z.array(z.array(index).min(1)),
   encodes: z.array(z.strictObject({ outputIndex: index, chunks: z.array(z.strictObject({ start: index, end: index })).min(1) })),
 });
+const frameWindows = z.array(z.strictObject({ start: index, end: index })).min(1);
+const stageJobs = z.array(z.strictObject({ stage: z.enum(["prepare", "prepare_stitch", "encode", "stitch", "faces", "clip_stem", "model_composite", "composite"]), jobs: z.number().int().positive() }));
 const container = {
   containerClass: z.literal("MiniToolContainerStd4"), precheckSeconds: z.number().positive(),
   size: z.strictObject({ instance_type: z.string().min(1), vcpu: z.number().positive(), memory_gib: z.number().positive(), disk_gb: z.number().positive() }),
@@ -46,7 +48,7 @@ const storedPlanSchema = z.union([
   }),
   z.strictObject({ ...common, ...frozenToolInput, tool: z.enum(["video.extract-frames", "video.split"]), layout,
     // The stage counts frozen beside the layout (§97 D12-1); plans admitted before them have none.
-    stageJobs: z.array(z.strictObject({ stage: z.enum(["prepare", "prepare_stitch", "encode", "stitch", "faces", "clip_stem", "model_composite", "composite"]), jobs: z.number().int().positive() })).optional(),
+    stageJobs: stageJobs.optional(),
     outputSeconds: z.array(z.number().nonnegative().finite()), container: z.strictObject({ ...container, startSeconds: z.number().nonnegative().finite(),
       encode: z.strictObject({ crf: z.number().int().min(0).max(51), preset: x264PresetSchema }), chunkRetries: index }),
   }),
@@ -59,7 +61,10 @@ const storedPlanSchema = z.union([
     persons: z.array(z.strictObject({ personId: z.string().min(1), detectionNumber: z.number().int().positive(),
       anchor: z.strictObject({ frameIndex: index, pts: z.number().nonnegative() }),
       anchorFaceBox: z.strictObject({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }) })).min(1),
-    tracking: z.strictObject({ model: z.string().min(1) }), cropSize: z.number().int().positive(), container: z.strictObject(container),
+    tracking: z.strictObject({ model: z.string().min(1) }), cropSize: z.number().int().positive(),
+    layout: z.strictObject({ preparation: frameWindows, persons: z.number().int().positive(), composite: frameWindows }), stageJobs,
+    container: z.strictObject({ ...container, startSeconds: z.number().nonnegative().finite(),
+      encode: z.strictObject({ crf: z.number().int().min(0).max(51), preset: x264PresetSchema }), chunkRetries: index }),
   }),
 ]);
 

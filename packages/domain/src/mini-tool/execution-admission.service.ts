@@ -10,7 +10,7 @@ import {
 import {
   batchVideoRunOutputs, canonicalMiniToolValue, estimateVideoJobSeconds, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
   plannedStageJobs, planVideoFrames, planVideoSplit, type FrameWindow, type FramesExecutionLayout, type MiniToolExecutionRequest, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type MiniToolPresentationRef, type MiniToolSourceBinding, type MiniToolStageJobs,
-  type LipsyncTimeline, type VideoEncodeChunk, type VideoEncoderRates, type VideoExecutionDialogue, type VideoJobWork, type VideoPresentationTable,
+  type LipsyncExecutionLayout, type LipsyncTimeline, type VideoEncodeChunk, type VideoEncoderRates, type VideoExecutionDialogue, type VideoJobWork, type VideoPresentationTable,
 } from "@breatic/shared/mini-tools";
 import { prepareVideoRemoveBackground, type PreparedVideoRemoveBackground } from "@domain/mini-tool/remove-background-preparation.service.js";
 import { resolveSource } from "@domain/mini-tool/analysis.service.js";
@@ -60,7 +60,9 @@ export type AcceptedMiniToolExecution = ExecutionPlan & FrozenToolInput & (
   | { tool: "video.lip-sync"; generator: LipSyncGenerator; timeline: LipsyncTimeline; usedRange: { start: 0; end: number };
     /** The rows with their registered audio durations, the people they name and the tracking model (DD §7.1). */
     dialogues: VideoExecutionDialogue[]; persons: LipSyncPerson[]; tracking: { model: string }; cropSize: number;
-    container: MiniToolContainerPolicy }
+    /** The container stages (frames-split §5.4) and their job counts, frozen beside each other as split freezes them (§97 D12-1). */
+    layout: LipsyncExecutionLayout; stageJobs: MiniToolStageJobs[];
+    container: MiniToolContainerPolicy & { startSeconds: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; chunkRetries: number } }
 );
 /** The plan facts every tool shares, before its tool-specific fields. */
 type ExecutionCommon = Omit<ExecutionPlan, "binding" | "sourceKey" | "model" | "credits" | "requestFingerprint" | "planFingerprint">;
@@ -295,6 +297,49 @@ function preparationLayout(ledger: VideoPresentationLedger, config: MiniToolsCon
 }
 
 /**
+ * The lip-sync container work and its stage layout (frames-split §5.4 派发, 预算 and 待实测 rows; execution design §9.3).
+ * The prepared video covers the used source range, chunked like a removal's preparation; each person runs one faces job
+ * (the used frames decoded and searched by YuNet), one clip job (decoded, cropped and encoded at the crop size over the
+ * result frames) and one stem job (the result length encoded to AAC); the composite decodes the source and every person's
+ * result per result frame and encodes the picture, chunked on the result timeline by the chunk share; the stitch encodes
+ * the result's audio once.
+ * @param ledger - The validated full ledger.
+ * @param table - The compact table.
+ * @param timing - The frozen timeline, the used range and the referenced people's count and crop size.
+ * @param timing.timeline - The timeline.
+ * @param timing.usedRange - The used source range.
+ * @param timing.persons - The referenced people.
+ * @param timing.cropSize - The model's crop side.
+ * @param config - The acceptance snapshot.
+ * @returns The layout and its planned seconds.
+ * @throws {RangeError} When the work or the configuration is out of range.
+ */
+function lipSyncLayout(ledger: VideoPresentationLedger, table: VideoPresentationTable,
+  timing: { timeline: LipsyncTimeline; usedRange: { start: 0; end: number }; persons: number; cropSize: number }, config: MiniToolsConfig): { layout: LipsyncExecutionLayout; seconds: number } {
+  const rates = encoderRates(config);
+  const share = shareSeconds(config);
+  const used = framesIn(table, timing.usedRange).count;
+  const flags = videoPresentationKeyframeFlags(ledger).slice(0, used);
+  const prepareWork = estimateVideoJobSeconds(spanWork(ledger, 0, used), rates) - rates.startSeconds;
+  const preparation = rates.startSeconds + prepareWork <= share ? [{ start: 0, end: used }]
+    : planVideoEncodeChunks({ keyframes: flags, frameSeconds: prepareWork / used, targetSeconds: share - rates.startSeconds });
+  const { width, height } = ledger.plan.display;
+  const decode = (pixels: number): number => pixels / rates.decodeConvertPixelsPerSecond[`${isHdrTransfer(ledger.plan.source.transfer) ? "hdr" : "sdr"}_${ledger.plan.source.bitDepth > 8 ? 10 : 8}bit`];
+  const crop = timing.cropSize * timing.cropSize;
+  const frameSeconds = table.runs[0]!.step / table.timescale;
+  const resultFrames = Math.max(1, Math.ceil(timing.timeline.duration / frameSeconds));
+  const audioSeconds = timing.timeline.duration / config.encoding.encoder.aac_encode_seconds_per_second;
+  const faces = rates.startSeconds + used * (decode(width * height) + (width * height) / config.encoding.encoder.face_detect_pixels_per_second);
+  const clip = rates.startSeconds + used * decode(width * height) + resultFrames * (crop / rates.encodePixelsPerSecond);
+  const stem = rates.startSeconds + audioSeconds;
+  const compositeFrame = decode(width * height + timing.persons * crop) + (width * height) / rates.encodePixelsPerSecond;
+  const composite = planVideoEncodeChunks({ keyframes: Array.from({ length: resultFrames }, () => true), frameSeconds: compositeFrame, targetSeconds: share - rates.startSeconds });
+  const seconds = prepareWork + rates.startSeconds * (preparation.length + (preparation.length > 1 ? 1 : 0)) + timing.persons * (faces + clip + stem)
+    + resultFrames * compositeFrame + rates.startSeconds * composite.length + rates.startSeconds + audioSeconds;
+  return { layout: { preparation, persons: timing.persons, composite }, seconds };
+}
+
+/**
  * Refuse a run whose largest stage sends more standard-4 jobs at once than the parallel cap, with its reason (§97 D12-1;
  * frames-split §5.4).
  * @param stages - The planned stages and their job counts.
@@ -362,15 +407,16 @@ async function prepareLipSync(request: Extract<MiniToolPlannedRequest, { tool: "
   const { timeline, usedRange } = lipSyncTimeline(request, table, dialogues, settings, model);
   const generation = await estimateTaskCredits(model.name, { params: {}, durations: { video: [timeline.duration], audio: [timeline.duration] }, sources: ["video", "audio"] });
   const tracking = await estimateTaskCredits(settings.tracking.model, { params: {}, durations: { video: [usedRange.end - usedRange.start] }, sources: ["video"] });
-  const container = containerPolicy(settings.container_class, settings.precheck_seconds, config);
-  // ponytail: the container work is quoted as one source preparation under the precheck floor; per-step lip-sync work
-  // estimates replace it when the lip-sync container steps land.
-  const containerSeconds = preparationLayout(ledger, config).seconds;
+  const { layout, seconds } = lipSyncLayout(ledger, table, { timeline, usedRange, persons: persons.length, cropSize: model.crop_size }, config);
+  const stageJobs = plannedStageJobs(layout);
+  assertWithinParallelCap(stageJobs, config);
+  const container = { ...containerPolicy(settings.container_class, settings.precheck_seconds, config), startSeconds: config.encoding.encoder.start_seconds,
+    encode: { crf: config.presentation.crf, preset: config.presentation.preset }, chunkRetries: config.encoding.chunk_retries };
   return { ...common, tool: request.tool, binding, sourceKey, presentationRef: request.presentation_ref, ledgerReceipts: { source: receipt },
-    versionIds: { source: versionId }, model: model.name, container, timeline, usedRange, dialogues, persons, cropSize: model.crop_size,
+    versionIds: { source: versionId }, model: model.name, container, layout, stageJobs, timeline, usedRange, dialogues, persons, cropSize: model.crop_size,
     tracking: { model: settings.tracking.model },
     generator: { backend: "wavespeed-crop", modelId: model.name, schemaFingerprint: model.schema_fingerprint, providerSyncMode: model.accepts_sync_mode ? "cut_off" : null },
-    credits: persons.length * (generation + tracking) + containerCredits(container, containerSeconds) };
+    credits: persons.length * (generation + tracking) + containerCredits(container, seconds) };
 }
 
 /**
