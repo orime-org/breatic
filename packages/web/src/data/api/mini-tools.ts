@@ -38,7 +38,7 @@ export const miniToolsApi = {
    * @returns The admitted task's state.
    * @throws {import('@web/data/api/types').ApiException} When admission is refused or unreachable.
    */
-  retry(body: MiniToolExecutionRetryRequest, key: string): Promise<MiniToolPlannedRunAnswer> {
+  retryPlannedVideoRun(body: MiniToolExecutionRetryRequest, key: string): Promise<MiniToolPlannedRunAnswer> {
     return apiPost<MiniToolPlannedRunAnswer>('/mini-tools', body, runOnceRequest(key)).finally(() =>
       noteCreditsChanged(body.project_id),
     );

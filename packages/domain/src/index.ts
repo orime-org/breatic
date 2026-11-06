@@ -60,6 +60,7 @@ export * as taskService from "@domain/task/task.service.js";
 export * as taskRepo from "@domain/task/task.repo.js";
 export * as miniToolAnalysisService from "@domain/mini-tool/analysis.service.js";
 export { readMiniToolExecutionPlan, resolveVideoToolInput, type MiniToolExecutionPlan, type ResolvedVideoToolInput } from "@domain/mini-tool/execution-plan.service.js";
+export { lipsyncPersonStepKeys, lipsyncStepKey } from "@domain/mini-tool/lipsync-admission.js";
 export {
   acceptMiniToolExecution,
   type AcceptedMiniToolExecution,

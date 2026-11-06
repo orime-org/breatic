@@ -60,7 +60,9 @@ const storedPlanSchema = z.union([
     dialogues: z.array(z.strictObject({ dialogueId: z.string().min(1), personId: z.string().min(1), audioInputId: z.uuid(), startTime: z.number().nonnegative(), duration: z.number().positive() })).min(1),
     persons: z.array(z.strictObject({ personId: z.string().min(1), detectionNumber: z.number().int().positive(),
       anchor: z.strictObject({ frameIndex: index, pts: z.number().nonnegative() }),
-      anchorFaceBox: z.strictObject({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }) })).min(1),
+      anchorFaceBox: z.strictObject({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }),
+      // A retry freezes its original run's step keys (§97 D21-6); a fresh run derives them from its own fingerprint.
+      stepKeys: z.strictObject({ track: fingerprint, faces: fingerprint, clip: fingerprint, stem: fingerprint, gen: fingerprint }).optional() })).min(1),
     tracking: z.strictObject({ model: z.string().min(1) }), cropSize: z.number().int().positive(),
     layout: z.strictObject({ preparation: frameWindows, persons: z.number().int().positive(), composite: frameWindows }), stageJobs,
     container: z.strictObject({ ...container, startSeconds: z.number().nonnegative().finite(),
@@ -99,7 +101,7 @@ export async function executionPlanFromTask(task: TaskEntity): Promise<MiniToolE
     if (stored.retry.runId === stored.taskId || canonicalMiniToolValue([...indexes].sort((a, b) => a - b)) !== canonicalMiniToolValue([...stored.retry.outputIndexes].sort((a, b) => a - b))
       || new Set(indexes).size !== indexes.length || new Set(stored.outputs.map((output) => output.nodeId)).size !== stored.outputs.length
       || stored.outputs.some((output, i) => output.nodeId === draft.source.nodeId || (i > 0 && output.outputIndex <= stored.outputs[i - 1]!.outputIndex)
-        || output.recipe.kind !== (stored.tool === "video.split" ? "segment" : stored.tool === "video.remove-bg" ? "remove-bg" : "frame"))) throw new Error("Retry differs from its frozen subset");
+        || output.recipe.kind !== (stored.tool === "video.split" ? "segment" : stored.tool === "video.remove-bg" ? "remove-bg" : stored.tool === "video.lip-sync" ? "lip-sync" : "frame"))) throw new Error("Retry differs from its frozen subset");
   } else {
     miniToolPlannedRequestSchema.parse({ tool: stored.tool, project_id: stored.projectId, space_id: stored.spaceId, run_id: stored.taskId,
       draft, analysis_refs: stored.analysisRefs, outputs: stored.outputs, presentation_ref: stored.presentationRef });

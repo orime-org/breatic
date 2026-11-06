@@ -14,7 +14,7 @@ import {
 } from "@breatic/shared/mini-tools";
 import { prepareVideoRemoveBackground, type PreparedVideoRemoveBackground } from "@domain/mini-tool/remove-background-preparation.service.js";
 import { resolveSource } from "@domain/mini-tool/analysis.service.js";
-import { lipSyncDialogues, lipSyncModel, lipSyncPeople, lipSyncTimeline, type LipSyncGenerator, type LipSyncPerson } from "@domain/mini-tool/lipsync-admission.js";
+import { lipSyncDialogues, lipSyncModel, lipSyncPeople, lipsyncPersonStepKeys, lipSyncTimeline, type LipSyncGenerator, type LipSyncPerson } from "@domain/mini-tool/lipsync-admission.js";
 import { selectedToolInput } from "@domain/mini-tool/selected-tool-input.js";
 import { executionPlanFromTask } from "@domain/mini-tool/execution-plan.service.js";
 import { recordFromPlan } from "@domain/mini-tool/execution.service.js";
@@ -23,6 +23,7 @@ import { creditsForUsd } from "@domain/credit/usage-cost.js";
 import { estimateModelCredits, estimateTaskCredits, MIN_TASK_CREDIT_COST } from "@domain/model-catalog/model-catalog.js";
 import * as taskRepo from "@domain/task/task.repo.js";
 import * as presentationPinService from "@domain/presentation/presentation-pin.service.js";
+import * as pinRepo from "@domain/presentation/presentation-pin.repo.js";
 
 /** Frozen common planning facts owned by the physical SQL task. */
 interface ExecutionPlan {
@@ -73,7 +74,7 @@ export interface MiniToolExecutionAdmission { taskId: string; status: TaskStatus
 /** The immutable task namespace, separate from analysis and worker-only steps. */
 export interface MiniToolExecutionTaskParams extends Record<string, unknown> { miniToolExecution: AcceptedMiniToolExecution }
 const replayIdentitySchema = z.object({
-  schemaVersion: z.literal(1), tool: z.enum(["video.remove-bg", "video.extract-frames", "video.split"]),
+  schemaVersion: z.literal(1), tool: z.enum(["video.remove-bg", "video.extract-frames", "video.split", "video.lip-sync"]),
   taskId: z.uuid(), projectId: z.uuid(), spaceId: z.uuid(), requestFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
 });
 const statusSchema = z.enum(TaskStatus);
@@ -586,6 +587,21 @@ async function claimRetry(request: MiniToolExecutionRetryRequest, userId: string
         for (const held of await presentationPinService.heldPrepared(original.id, tx)) {
           await presentationPinService.acquire({ holderKind: "prepared", holderId: request.run_id, toolInputId: held.toolInputId, preparedKey: held.preparedKey, objectKeys: [held.preparedKey] }, tx);
         }
+        await releaseTakenOver(original.id, record, tx);
+      }
+      return claim;
+    }
+    if (frozen.tool === "video.lip-sync") {
+      // The same frozen plan and quote; each person carries the original's step keys, so the retry reuses every done step
+      // and its object (§97 D21-6, frames-split §7.11 retry row).
+      const persons = frozen.persons.map((person) => ({ ...person, stepKeys: lipsyncPersonStepKeys(plan.execution.planFingerprint, person) }));
+      const claim = await claimPrepared({ ...frozen, ...retried, persons }, request, userId, fingerprint, tx);
+      if (claim.inserted) {
+        // The reused preparation and step objects stay pinned by the retry once the original stops being retryable (§7.15).
+        for (const held of await presentationPinService.heldPrepared(original.id, tx)) {
+          await presentationPinService.acquire({ holderKind: "prepared", holderId: request.run_id, toolInputId: held.toolInputId, preparedKey: held.preparedKey, objectKeys: [held.preparedKey] }, tx);
+        }
+        await pinRepo.appendExecutionPinObjects(request.run_id, await presentationPinService.heldExecutionObjects(original.id, tx), tx);
         await releaseTakenOver(original.id, record, tx);
       }
       return claim;

@@ -6,6 +6,7 @@
  * §7.1; frames-split §7.11 fresh row): the selected model, the run caps, the referenced people analysis, the registered
  * audio durations, the timeline and the used source range. Each refusal is a 400 whose message tells the user why.
  */
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { AppError, ValidationError, getStorageAdapter, type MiniToolsConfig } from "@breatic/core";
 import { t } from "@breatic/shared";
@@ -21,12 +22,40 @@ import * as taskRepo from "@domain/task/task.repo.js";
 export type LipSyncRequest = Extract<MiniToolPlannedRequest, { tool: "video.lip-sync" }>;
 /** The configured lip-sync execution. */
 export type LipSyncSettings = NonNullable<MiniToolsConfig["executions"]["video.lip-sync"]>;
+/** A per-person lip-sync step (DD §7.1 steps row). */
+export type LipSyncPersonStep = "track" | "faces" | "clip" | "stem" | "gen";
 /** A referenced person as the plan freezes it (DD §7.1 persons row). */
 export interface LipSyncPerson {
   personId: string;
   detectionNumber: number;
   anchor: { frameIndex: number; pts: number };
   anchorFaceBox: { x: number; y: number; width: number; height: number };
+  /** The step keys a retry carries from its original run, so the retry reuses the done steps (§97 D21-6). */
+  stepKeys?: Record<LipSyncPersonStep, string>;
+}
+
+/**
+ * The DD §7.1 step key: a digest of the plan, the person (none for the composite) and the step kind.
+ * @param planFingerprint - The frozen plan's fingerprint.
+ * @param personId - The person, or null for a shared step.
+ * @param kind - The step kind.
+ * @returns A 64-hex key.
+ * @throws {never} Never.
+ */
+export function lipsyncStepKey(planFingerprint: string, personId: string | null, kind: LipSyncPersonStep | "composite"): string {
+  return createHash("sha256").update(JSON.stringify({ planFingerprint, personId, kind })).digest("hex");
+}
+
+/**
+ * A person's step keys: those the plan froze, else the digests over the plan's fingerprint.
+ * @param planFingerprint - The run's plan fingerprint.
+ * @param person - The frozen person.
+ * @returns Every per-person step's key.
+ * @throws {never} Never.
+ */
+export function lipsyncPersonStepKeys(planFingerprint: string, person: LipSyncPerson): Record<LipSyncPersonStep, string> {
+  const kinds: LipSyncPersonStep[] = ["track", "faces", "clip", "stem", "gen"];
+  return person.stepKeys ?? Object.fromEntries(kinds.map((kind) => [kind, lipsyncStepKey(planFingerprint, person.personId, kind)])) as Record<LipSyncPersonStep, string>;
 }
 /** The selected model as the plan freezes it (§9.3). */
 export interface LipSyncGenerator { backend: "wavespeed-crop"; modelId: string; schemaFingerprint: string; providerSyncMode: "cut_off" | null }

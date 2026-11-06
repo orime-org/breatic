@@ -21,7 +21,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { getMiniToolsConfig, getRawEnvVar, getStorageAdapter, logger } from "@breatic/core";
 import {
-  backendUploadService, beginMiniToolStepAttempt, failMiniToolStep, getFullModelConfig, miniToolStepStateSchema, openContainerOutputs, openMiniToolPlanJob,
+  backendUploadService, beginMiniToolStepAttempt, lipsyncPersonStepKeys, lipsyncStepKey, failMiniToolStep, getFullModelConfig, miniToolStepStateSchema, openContainerOutputs, openMiniToolPlanJob,
   recordMiniToolStepIdentity, recordMiniToolStepResult, taskRepo, upstreamStepRepo, type AcceptedMiniToolExecution, type MiniToolStepJson,
 } from "@breatic/domain";
 import {
@@ -30,7 +30,7 @@ import {
 } from "@breatic/shared";
 import { presentationFrameCount, type MiniToolExecutionRegistered } from "@breatic/shared/mini-tools";
 import { advanceMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
-import { lipsyncFacesFailureLine, lipsyncObjectKey, lipsyncStepCategory, lipsyncStepKey, type LipsyncAsyncRejection } from "@worker/handlers/mini-tool/lipsync-steps.js";
+import { lipsyncFacesFailureLine, lipsyncObjectKey, lipsyncStepCategory, type LipsyncAsyncRejection } from "@worker/handlers/mini-tool/lipsync-steps.js";
 import { appendStep, prepareModelInput, preparedRequest, type PreparingRun } from "@worker/handlers/mini-tool/prepare-model-input.js";
 import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { registered } from "@worker/handlers/mini-tool/run-video-tool.js";
@@ -365,15 +365,7 @@ function personOf(execution: LipSync, personId: string | null): { index: number;
   const index = execution.persons.findIndex((person) => person.personId === personId);
   const person = execution.persons[index];
   if (person === undefined) throw new Error(`The lip-sync run has no person ${personId}`);
-  const frozen = (person as { stepKeys?: Record<string, string> }).stepKeys;
-  /**
-   * A step's frozen key, or the DD §7.1 digest over this plan when the plan froze none.
-   * @param kind - The step.
-   * @returns The key.
-   * @throws {never} Never.
-   */
-  const key = (kind: "track" | "faces" | "clip" | "stem" | "gen"): string => frozen?.[kind] ?? lipsyncStepKey(execution.planFingerprint, person.personId, kind);
-  return { index, keys: { track: key("track"), faces: key("faces"), clip: key("clip"), stem: key("stem"), gen: key("gen") } };
+  return { index, keys: lipsyncPersonStepKeys(execution.planFingerprint, person) };
 }
 
 /**

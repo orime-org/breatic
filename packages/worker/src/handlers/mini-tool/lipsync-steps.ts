@@ -5,8 +5,9 @@
  * The pure rules of the lip-sync steps (execution design §9.3, §9.4; multi-person lip-sync DD §7.1): failure categories,
  * step and intermediate object keys, stopping the other people after a blocking failure, and the one CommitFail reason.
  */
-import { createHash } from "node:crypto";
 import { DeadlinePassed, HttpRetryError } from "@breatic/shared";
+// The step key is the plan's (DD §7.1); admission freezes it on a retry, so it is computed in one place.
+export { lipsyncStepKey } from "@breatic/domain";
 import type { LipsyncFailureReason } from "@breatic/shared/mini-tools";
 import { HttpStatusError, UpstreamTaskFailed } from "@worker/providers/http.js";
 
@@ -64,18 +65,6 @@ export function lipsyncStepCategory(step: "track" | "gen", error: unknown, rejec
   if (error instanceof UpstreamTaskFailed && step === "gen" && rejection !== undefined
     && atPath(error.structuredError, rejection.path) === rejection.equals) return "model_rejected";
   return "failed";
-}
-
-/**
- * The DD §7.1 step key: a digest of the plan, the person (none for the composite) and the step kind.
- * @param planFingerprint - The frozen plan's fingerprint.
- * @param personId - The person, or null for a shared step.
- * @param kind - The step kind.
- * @returns A 64-hex key.
- * @throws {never} Never.
- */
-export function lipsyncStepKey(planFingerprint: string, personId: string | null, kind: LipsyncPersonStep | "composite"): string {
-  return createHash("sha256").update(JSON.stringify({ planFingerprint, personId, kind })).digest("hex");
 }
 
 /**

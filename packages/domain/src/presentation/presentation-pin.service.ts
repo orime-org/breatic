@@ -165,6 +165,17 @@ export async function heldPrepared(holderId: string, tx: DbTx): Promise<{ toolIn
 }
 
 /**
+ * Every object a run's live `execution` pins keep.
+ * @param holderId - The run.
+ * @param tx - The caller's transaction.
+ * @returns The keys.
+ * @throws {Error} When the read fails.
+ */
+export async function heldExecutionObjects(holderId: string, tx: DbTx): Promise<string[]> {
+  return (await pinRepo.findLive("execution", holderId, tx)).flatMap((row) => row.keys);
+}
+
+/**
  * Register outputs nothing will use (a failed attempt's, chunks after their stitch) unless a live pin references them.
  * @param keys - The keys.
  * @param tx - The caller's transaction, if any.

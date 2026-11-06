@@ -106,7 +106,7 @@ export function useVideoToolModels(args: { projectId: string; spaceId: string; n
     void runOnce(miniToolIntent(spaceId, nodeId, 'video.lip-sync'), {
       scope: 'mini-tool',
       prepare: () => ({ tool: 'video.lip-sync' as const, project_id: projectId, space_id: spaceId, run_id: newId(), retry: { runId: failure.runId, outputIndexes: [0] } }),
-      send: (key, body) => miniToolsApi.retry(body, key),
+      send: (key, body) => miniToolsApi.retryPlannedVideoRun(body, key),
       onDone: () => { void queryClient.invalidateQueries({ queryKey: failureKey }); return undefined; },
       onFailure: (error) => { toast.error(plannedRunRefusalText(error, t)); },
     });
