@@ -5,9 +5,10 @@ import type { MemoryContext } from "@breatic/shared";
 
 /**
  * The system prompt in the parts that end where another conversation stops
- * reading the same text: every conversation shares the base prompt, one
- * user's conversations in a project share that project's memory too, and the
- * conversation's own memory is its alone.
+ * reading the same text: every conversation shares the base prompt; the
+ * memory entries are shared by one user's conversations in a project while
+ * none of them has entries of its own, since the index lists this
+ * conversation's entries too; the progress note is this conversation's alone.
  */
 export interface Instructions {
   /** The base prompt. */

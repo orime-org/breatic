@@ -5,11 +5,11 @@
  * What a turn sends as its system prompt, for a model that caches only where
  * it is told to.
  *
- * The base prompt, which every conversation shares, and the project's memory,
- * which one user's conversations in the project share, each end in a cache mark of
- * their own, so a new conversation's first call reads what an earlier
- * conversation in the same request locale wrote; this conversation's memory
- * follows unmarked.
+ * The base prompt, which every conversation shares, and the memory entries,
+ * which one user's conversations in the project share while their entries
+ * read the same, each end in a cache mark of their own, so a new
+ * conversation's first call reads what an earlier conversation in the same
+ * request locale wrote; this conversation's progress note follows unmarked.
  */
 import { describe, expect, it, vi } from "vitest";
 import type * as CoreModule from "@breatic/core";

@@ -420,7 +420,7 @@ chat.get("/models", async (c) => {
  * @param c - Hono context with the conversation id in the path and a
  *   `project_id` + `model` body
  * @returns The conversation as it now stands
- * @throws {AppError} `400` for a model the deployment does not list; `404` if
+ * @throws {AppError} `422` for a model the deployment does not list; `404` if
  *   the conversation is missing, deleted, someone else's or in another Project
  */
 chat.put(

@@ -2081,12 +2081,10 @@ export const memoryHistoryEntries = pgTable(
 // ── 11. Project Memories ─────────────────────────────────────────────
 
 /**
- * What one member's agent has summarised about one project.
- *
- * Keyed by member as well as project: the content is written by reading that
- * member's own conversations, so a row shared across a project hands what one
- * person's agent learned to the next person's system prompt, and the next
- * consolidation overwrites it.
+ * The block of memory each member's agent kept about one project before
+ * memory entries (#1363). Migration 0114 copied every row into
+ * `agent_memories` word for word; nothing reads or writes this table now, and
+ * it stays as that migration's source.
  */
 export const projectMemories = pgTable(
   "project_memories",

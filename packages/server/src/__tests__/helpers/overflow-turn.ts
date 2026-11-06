@@ -11,8 +11,8 @@
  * parts or a rejection, which is how a provider turns a request away before a
  * stream exists (H1, H2 in the probe). The conversation is `world.history`,
  * read through a fake `buildTurnContext` that honours the watermark, and a
- * fold is a fake `consolidateWindow` that moves the watermark and rewrites
- * the conversation memory the way a written fold does.
+ * fold is a fake `consolidateWindow` that moves the watermark and replaces
+ * the progress note the way a written fold does.
  *
  * A test file mocks each module with the factories below and reads
  * everything that happened off `world`.
@@ -250,7 +250,7 @@ export interface World {
   history: Array<MessageData & { forModel: unknown }>;
   /** How far the conversation is folded. */
   watermark: number;
-  /** The conversation memory a fold wrote last. */
+  /** The progress note a fold wrote last. */
   memory: string;
   /** What the model does, call by call. */
   script: ScriptedCall[];
@@ -339,7 +339,6 @@ export const BASE_CONFIG: Record<string, unknown> = {
   max_tool_iterations: 8,
   llm_max_retries: 0,
   overflow_folds_per_turn: 2,
-  consolidation_shrink_attempts: 3,
   context_window_fallback_tokens: 1_000_000,
 };
 

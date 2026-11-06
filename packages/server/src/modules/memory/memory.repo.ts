@@ -7,9 +7,11 @@
  *
  * An entry is the member's own. One turn sees two sets of them: the
  * member's entries of the Project (no conversation) and the entries of the
- * conversation it runs in. Every read and write here is keyed by the member
- * as well as the Project or conversation; the compiler sees neither, so a
- * `where` one `eq` short reads a neighbour's memory without complaint.
+ * conversation it runs in. Every read of entries is keyed by the member as
+ * well as the Project or conversation; the compiler sees neither, so a
+ * `where` one `eq` short reads a neighbour's memory without complaint. Writes
+ * by id and the progress note are keyed by the entry or the conversation
+ * alone, and their callers check ownership first.
  */
 
 import { and, count, desc, eq, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";

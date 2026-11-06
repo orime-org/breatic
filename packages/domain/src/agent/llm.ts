@@ -367,12 +367,12 @@ export function callOptionsFor(modelString: string | undefined, wants: CallWants
  * does not write entries for any earlier position"). The entry a mark writes
  * covers the tools before the system prompt, so the mark after the base
  * prompt writes an entry every conversation in that locale reads, the one after the
- * project's memory an entry the same user's other conversations in that
- * project read. Where nothing is marked, the prompt goes whole, as one
- * message.
+ * memory entries an entry the same user's other conversations in that project
+ * read while their entries read the same. Where nothing is marked, the prompt
+ * goes whole, as one message.
  * @param modelString - Model identifier, or undefined for the fallback.
- * @param parts - The base prompt, the project's memory and this
- *   conversation's memory, the last two when there are any.
+ * @param parts - The base prompt, the memory entries (there whenever the
+ *   caller has memory) and this conversation's progress note, when it has one.
  * @param cache - How long to cache, or false when the call does not cache.
  * @returns The system messages, in order.
  * @throws {never} Never.

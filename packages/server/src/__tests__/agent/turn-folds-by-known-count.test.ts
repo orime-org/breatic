@@ -74,7 +74,7 @@ type Rows = Array<MessageData & { forModel: unknown }>;
  * @param first - What the model does in the first turn.
  * @param options - How the stored rows or the conversation change in between.
  * @param options.edit - Change the rows the first turn left.
- * @param options.memory - The conversation memory the second turn reads.
+ * @param options.memory - The progress note the second turn reads.
  * @param options.stopDuringTool - The reader stops the first turn while its tool runs.
  * @param options.window - The main model's window, when not {@link WINDOW}.
  * @returns How many folds the second turn ran, and what it sent first.

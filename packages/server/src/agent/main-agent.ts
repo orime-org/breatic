@@ -516,8 +516,8 @@ export class MainAgent {
      * Read everything the model is given, and lay it out as it will be sent.
      *
      * Repeatable on purpose: a consolidation changes both halves of what this
-     * reads — the watermark shortens the history, the summary lands in memory
-     * — so the turn runs it again afterwards rather than editing the first
+     * reads — the watermark shortens the history, and the folded turns land in
+     * the memory entries and the progress note — so the turn runs it again afterwards rather than editing the first
      * result, which would leave the folded turns missing from both places.
      * @returns The request, and what it was built from.
      */
