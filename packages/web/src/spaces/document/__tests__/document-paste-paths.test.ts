@@ -587,11 +587,12 @@ describe('a placement that fails part way', () => {
   it.each([
     ['a paste over selected words', false],
     ['a drop between two blocks', true],
-  ] as const)('%s leaves the body as it was and lets the selection go', async (_name, drop) => {
+  ] as const)('%s leaves the body and the selection as they were and lets the selection go', async (_name, drop) => {
     const editor = await openReady(LINE);
     const view = editor.prosemirrorView;
     select(editor, positionOf(editor, 'abcd', 1), positionOf(editor, 'abcd', 3));
     const before = view.state.doc;
+    const selected = [view.state.selection.from, view.state.selection.to];
     const formats = copyOf(await openReady([{ type: 'heading', content: 'hhhh' }, { type: 'paragraph', content: 'pppp' }]), 1, 12);
     const slice = readClipboardSlice(view.state.schema, formats['blocknote/html']!, formats['text/plain']!);
     const dispatch = view.dispatch.bind(view);
@@ -614,6 +615,7 @@ describe('a placement that fails part way', () => {
     expect(() => putContent(editor, { source: { kind: 'slice', slice, parsed: true }, lost: 0, plain: null }, options)).toThrow('placement failed');
     expect(failed).toBe(true);
     expect(view.state.doc.eq(before)).toBe(true);
+    expect([view.state.selection.from, view.state.selection.to]).toEqual(selected);
     if (drop) expect(sent.some((tr) => tr.getMeta(HOLD_PRE_EDIT_SELECTION) === false)).toBe(true);
   });
 

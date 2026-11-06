@@ -623,14 +623,14 @@ export function putContent(editor: Editor, content: Read, options: PutOptions): 
   const plain = content.plain ?? (startsInCode && !(inCell && holdsNode(source.content, DOC_TABLE)) ? content.codeText ?? null : null);
   /**
    * Places content at its target, all of it or none: a placement that fails
-   * part way leaves the body as it was. A drop's point is aimed first and its
+   * part way leaves the body and the selection as they were. A drop's point is aimed first and its
    * hold on the selection from before the drop let go once the placement
    * ends. A paste over a selection whose ends are both in code blocks goes to
    * BlockNote's plain text paste, an input the body handles as its own, so
    * the tables it takes whole are turned into empty lines first (inner#1619).
    * @param place - Puts the content at the selection.
    * @returns Where it landed.
-   * @throws {Error} What the placement threw, the body put back first.
+   * @throws {Error} What the placement threw, the body and the selection put back first.
    */
   const atTarget = (place: () => Placed | null): Placed | null => {
     const before = view.state.doc;
@@ -642,7 +642,9 @@ export function putContent(editor: Editor, content: Read, options: PutOptions): 
       }
       return place();
     } catch (error) {
-      if (!view.state.doc.eq(before)) view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, before.content));
+      const back = view.state.tr;
+      if (!view.state.doc.eq(before)) back.replaceWith(0, view.state.doc.content.size, before.content);
+      view.dispatch(back.setSelection(selection.getBookmark().resolve(back.doc)));
       throw error;
     } finally {
       if ($drop !== null) view.dispatch(view.state.tr.setMeta(HOLD_PRE_EDIT_SELECTION, false));
