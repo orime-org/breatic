@@ -7,8 +7,8 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import type { TimelineVideoClip } from '@breatic/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { TimelineEditCommand } from '@web/data/yjs/timeline-edit';
-import { OFF, V2, cid, clip, timeline } from '@web/data/yjs/__tests__/timeline-document-fixtures';
+import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
+import { MAIN, OFF, ON, V2, cid, clip, timeline } from '@web/data/yjs/__tests__/timeline-document-fixtures';
 import { TimelineClipProperties } from '@web/spaces/timeline/TimelineClipProperties';
 import type { TimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
 
@@ -104,24 +104,28 @@ describe('TimelineClipProperties for a clip whose source is missing (inner#1708 
   });
 });
 
+/** How the panel is shown besides its clip. */
+interface PanelOptions { readOnly?: boolean; placement?: TimelineEditPlacement }
+
 /**
  * Render the fields and keep a way to rerender them with another stored clip, as a store update does.
  * @param selected - The first clip.
  * @returns The commit callback and the rerender.
  * @throws {Error} When rendering fails.
  */
-function showLive(selected: TimelineVideoClip = SELECTED): { onCommit: ReturnType<typeof vi.fn<(command: TimelineEditCommand) => void>>; show: (next: TimelineVideoClip) => void } {
+function showLive(selected: TimelineVideoClip = SELECTED): { onCommit: ReturnType<typeof vi.fn<(command: TimelineEditCommand) => void>>; show: (next: TimelineVideoClip, options?: PanelOptions) => void } {
   const onCommit = vi.fn<(command: TimelineEditCommand) => void>();
   /**
    * The panel for one stored clip.
    * @param item - The clip.
-   * @returns The element.
+   * @param options - The role and switches, read-write with every switch off by default.
+   * @returns The element, keyed by the clip id as TimelineSpace renders it.
    * @throws {never} Never.
    */
-  const panel = (item: TimelineVideoClip): React.JSX.Element => <TimelineClipProperties spaceId='space' document={timeline([item])} clip={item} name='Clip' conflict={false}
-    labels={LABELS} readOnly={false} placement={OFF} onCommit={onCommit} />;
+  const panel = (item: TimelineVideoClip, options: PanelOptions = {}): React.JSX.Element => <TimelineClipProperties key={item.id} spaceId='space' document={timeline([item])} clip={item} name='Clip' conflict={false}
+    labels={LABELS} readOnly={options.readOnly ?? false} placement={options.placement ?? OFF} onCommit={onCommit} />;
   const view = render(panel(selected));
-  return { onCommit, show: (next) => view.rerender(panel(next)) };
+  return { onCommit, show: (next, options) => view.rerender(panel(next, options)) };
 }
 
 /**
@@ -238,5 +242,99 @@ describe('TimelineClipProperties resets a field only when its own stored value c
     expect(shown('timeline-clip-in')).toBe('6');
     expect(shown('timeline-clip-duration')).toBe('30');
     expect(screen.queryByTestId('timeline-clip-field-error')).toBe(null);
+  });
+});
+
+/**
+ * Type into a field and press Enter.
+ * @param testId - The field.
+ * @param value - The typed text.
+ * @throws {Error} When the field is absent.
+ */
+function typeAndEnter(testId: string, value: string): void {
+  const input = screen.getByTestId(testId);
+  fireEvent.change(input, { target: { value } });
+  fireEvent.keyDown(input, { key: 'Enter' });
+}
+
+/**
+ * The text a field shows, whether it is an input or plain text.
+ * @param testId - The field.
+ * @returns Its value or text.
+ * @throws {Error} When the field is absent.
+ */
+function fieldText(testId: string): string {
+  const element = screen.getByTestId(testId);
+  return element instanceof HTMLInputElement ? element.value : element.textContent ?? '';
+}
+
+describe('TimelineClipProperties shows the stored value of a field that cannot be edited (inner#1708 R1)', () => {
+  it('drops an out-of-range start draft while magnet locks the start, and starts again from the stored start (a)', () => {
+    const onMain = clip(cid(5), MAIN, 30, 14, { sourceInFrame: 4 });
+    const { show } = showLive(onMain);
+    typeAndBlur('timeline-clip-start', '99999999999999999999');
+    expect(noteBeside('timeline-clip-start')).toBe(true);
+    show(onMain, { placement: ON });
+    expect(screen.getByTestId('timeline-clip-start')).not.toBeInstanceOf(HTMLInputElement);
+    expect(fieldText('timeline-clip-start')).toBe('30');
+    expect(noteBeside('timeline-clip-start')).toBe(false);
+    show(onMain, { placement: OFF });
+    expect(screen.getByTestId('timeline-clip-start')).toBeInstanceOf(HTMLInputElement);
+    expect(fieldText('timeline-clip-start')).toBe('30');
+    expect(noteBeside('timeline-clip-start')).toBe(false);
+  });
+
+  it('drops an out-of-range duration draft while read-only, and starts again from the stored duration (b)', () => {
+    const { show } = showLive();
+    typeAndBlur('timeline-clip-duration', '0');
+    expect(noteBeside('timeline-clip-duration')).toBe(true);
+    show(SELECTED, { readOnly: true });
+    expect(fieldText('timeline-clip-duration')).toBe('14');
+    expect(noteBeside('timeline-clip-duration')).toBe(false);
+    show(SELECTED, { readOnly: false });
+    expect(screen.getByTestId('timeline-clip-duration')).toBeInstanceOf(HTMLInputElement);
+    expect(fieldText('timeline-clip-duration')).toBe('14');
+    expect(noteBeside('timeline-clip-duration')).toBe(false);
+  });
+});
+
+describe('TimelineClipProperties shows the stored value after a committed entry (inner#1708 Q1)', () => {
+  it.each([
+    ['timeline-clip-start', '30', { operation: 'move', parameters: { clipId: SELECTED.id, startFrame: 30 }, placement: OFF }, '10'],
+    ['timeline-clip-in', '2', { operation: 'set_range', parameters: { clipId: SELECTED.id, startFrame: 10, sourceInFrame: 2, durationFrames: 14 }, placement: OFF }, '4'],
+    ['timeline-clip-duration', '20', { operation: 'set_range', parameters: { clipId: SELECTED.id, startFrame: 10, sourceInFrame: 4, durationFrames: 20 }, placement: OFF }, '14'],
+  ] as const)('returns %s to its stored value when the planner refuses the commit (a)', (testId, typed, command, stored) => {
+    const { onCommit } = showLive();
+    typeAndEnter(testId, typed);
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onCommit).toHaveBeenCalledWith(command);
+    expect(fieldText(testId)).toBe(stored);
+    expect(noteBeside(testId)).toBe(false);
+  });
+
+  it('commits nothing for the stored in-point in another spelling and shows the stored value (b)', () => {
+    const { onCommit } = showLive();
+    typeAndEnter('timeline-clip-in', '04');
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(fieldText('timeline-clip-in')).toBe('4');
+  });
+
+  it('commits once for Enter followed by blur on the same entry (c)', () => {
+    const { onCommit } = showLive();
+    typeAndEnter('timeline-clip-start', '30');
+    fireEvent.blur(screen.getByTestId('timeline-clip-start'));
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a refused in-point to its stored value while the duration keeps its draft and note (d)', () => {
+    const { onCommit } = showLive();
+    typeAndBlur('timeline-clip-duration', '2000');
+    expect(noteBeside('timeline-clip-duration')).toBe(true);
+    typeAndEnter('timeline-clip-in', '2');
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(fieldText('timeline-clip-in')).toBe('4');
+    expect(noteBeside('timeline-clip-in')).toBe(false);
+    expect(fieldText('timeline-clip-duration')).toBe('2000');
+    expect(noteBeside('timeline-clip-duration')).toBe(true);
   });
 });
