@@ -492,6 +492,36 @@ describe('the document body size filter (y-prosemirror key)', () => {
       expectNoToast();
     });
 
+    it('unticks a check list item at full, which takes the same bytes as ticking it', () => {
+      const o = open([{ type: 'checkListItem', content: 'task', props: { checked: true } }] as BlockInput[]);
+      size(o, F_FULL);
+      const id = (o.editor.document[0] as { id: string }).id;
+      o.editor.updateBlock(id, { props: { checked: false } } as never);
+      expect((o.editor.document[0] as { props: { checked: boolean } }).props.checked).toBe(false);
+      expectNoToast();
+    });
+
+    it('refuses a same-type markup change whose attributes the room cannot take', () => {
+      const o = open();
+      size(o, { ...F_WARNING, room: 1000 });
+      const before = snapshot(o);
+      const at = paragraphAt(o);
+      const attrs = o.view.state.doc.nodeAt(at)!.attrs;
+      o.view.dispatch(o.view.state.tr.setNodeMarkup(at, undefined, { ...attrs, textAlignment: 'x'.repeat(5000) }));
+      expectUnchanged(o, before);
+      expectOneWarning(COPY_EN.T_NO_ROOM(formatBytes(1000)));
+    });
+
+    it('lets a same-type markup change that writes no more through at full', () => {
+      const o = open([{ type: 'paragraph', content: 'hello world', props: { textAlignment: 'center' } }] as BlockInput[]);
+      size(o, F_FULL);
+      const at = paragraphAt(o);
+      const attrs = o.view.state.doc.nodeAt(at)!.attrs;
+      o.view.dispatch(o.view.state.tr.setNodeMarkup(at, undefined, { ...attrs, textAlignment: 'left' }));
+      expect(o.view.state.doc.nodeAt(paragraphAt(o))!.attrs['textAlignment']).toBe('left');
+      expectNoToast();
+    });
+
     it('refuses a step of another type by what it carries', () => {
       const o = open();
       size(o, { ...F_WARNING, room: 1000 });

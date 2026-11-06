@@ -31,8 +31,10 @@ import type { TypedNodeView } from '@web/data/yjs/node-view';
 import { toNodeView } from '@web/data/yjs/node-view';
 import { fillNestedData, splitSnapshot } from '@web/data/yjs/node-data-snapshot';
 import {
+  encodedValueBytes,
   estimateNodeBytes,
   estimateTextBodyBytes,
+  replacementJudgement,
   writeSpaceDoc,
   type SpaceReservation,
   type SpaceWriteKind,
@@ -398,9 +400,7 @@ export function canvasWrite(
 
 /**
  * The options for a write that sets keys of one map, judged by what it adds
- * over the values it replaces (inner#1790): yjs deletes a key's old value as
- * it writes the new one, so values no larger than the ones they replace are
- * an overwrite, which collab admits up to the hard ceiling.
+ * over the values it replaces (`replacementJudgement`).
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space the write goes to.
  * @param map - The map whose keys are set.
@@ -413,10 +413,15 @@ function replacementWrite(
   map: Y.Map<unknown>,
   next: Readonly<Record<string, unknown>>,
 ): { name: string; options: SpaceWriteOptions } {
-  const current = Object.fromEntries(Object.keys(next).map((key) => [key, map.get(key)]));
-  const grows = estimateNodeBytes(next) - estimateNodeBytes(current);
-  const name = docName.canvasSpace(projectId, spaceId);
-  return { name, options: grows <= 0 ? { kind: 'overwrite' } : { kind: 'add', estimate: grows + 64 } };
+  let current = 0;
+  let written = 0;
+  for (const [key, value] of Object.entries(next)) {
+    const held = map.get(key);
+    current += encodedValueBytes(held);
+    // A key that holds nothing yet is written with its name.
+    written += encodedValueBytes(value) + (held === undefined && value !== undefined ? encodedValueBytes(key) : 0);
+  }
+  return { name: docName.canvasSpace(projectId, spaceId), options: replacementJudgement(current, written) };
 }
 
 /**
@@ -426,16 +431,16 @@ function replacementWrite(
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - The node.
  * @param next - The fields and the values they get.
- * @returns The document name and options, or null when the node is gone.
+ * @returns The options; a delete, which writes nothing, when the node is gone.
  */
 export function nodeFieldsWrite(
   projectId: string,
   spaceId: string,
   nodeId: string,
   next: Readonly<Record<string, unknown>>,
-): { name: string; options: SpaceWriteOptions } | null {
+): SpaceWriteOptions {
   const data = nodeDataMap(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId);
-  return data ? replacementWrite(projectId, spaceId, data, next) : null;
+  return data ? replacementWrite(projectId, spaceId, data, next).options : { kind: 'delete' };
 }
 
 /**
@@ -469,7 +474,7 @@ function modelPickFields(
  * @param mode - The active mode.
  * @param model - The picked model.
  * @param paramsByModel - Every per-model record.
- * @returns The document name and options, or null when the node is gone.
+ * @returns The options; a delete, which writes nothing, when the node is gone.
  */
 export function nodeModelWrite(
   projectId: string,
@@ -478,9 +483,9 @@ export function nodeModelWrite(
   mode: string,
   model: string,
   paramsByModel: Record<string, Record<string, unknown>>,
-): { name: string; options: SpaceWriteOptions } | null {
+): SpaceWriteOptions {
   const data = nodeDataMap(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId);
-  return data ? replacementWrite(projectId, spaceId, data, modelPickFields(data, mode, model, paramsByModel)) : null;
+  return data ? replacementWrite(projectId, spaceId, data, modelPickFields(data, mode, model, paramsByModel)).options : { kind: 'delete' };
 }
 
 /**
@@ -492,7 +497,7 @@ export function nodeModelWrite(
  * @param replyId - The reply to rewrite, or null for the body.
  * @param content - The new text.
  * @param editedAt - When this edit happened, epoch milliseconds.
- * @returns The document name and options, or null when the target is gone.
+ * @returns The options; a delete, which writes nothing, when the target is gone.
  */
 export function annotationEditWrite(
   projectId: string,
@@ -501,9 +506,9 @@ export function annotationEditWrite(
   replyId: string | null,
   content: string,
   editedAt: number,
-): { name: string; options: SpaceWriteOptions } | null {
+): SpaceWriteOptions {
   const target = annotationEditTarget(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId, replyId);
-  return target ? replacementWrite(projectId, spaceId, target, { content, editedAt }) : null;
+  return target ? replacementWrite(projectId, spaceId, target, { content, editedAt }).options : { kind: 'delete' };
 }
 
 /**
@@ -1971,7 +1976,20 @@ export function restoreNodeMedia(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  const { name, options } = canvasWrite(projectId, spaceId, 'add', restored);
+  // A media node's content and media fields replace what it showed; a text
+  // node's words go into its body, one block per line.
+  const { media } = restored;
+  const { name, options } = node.get('type') === 'text'
+    ? { name: docName.canvasSpace(projectId, spaceId), options: { kind: 'add' as const, estimate: estimateTextBodyBytes(restored.content) } }
+    : replacementWrite(projectId, spaceId, data, {
+      content: restored.content,
+      coverUrl: media.coverUrl ?? undefined,
+      mediaWidth: media.width ?? undefined,
+      mediaHeight: media.height ?? undefined,
+      duration: media.duration ?? undefined,
+      mimeType: media.mimeType ?? undefined,
+      size: media.size ?? undefined,
+    });
   writeSpaceDoc(name, options, () => doc.transact(() => {
     // Which field holds a node's content is decided by its type, once, in
     // `landHandlingContent` — a text node's words live in the body the editor

@@ -16,7 +16,7 @@ import {
   setNodeParams,
   type CanvasEdge,
 } from '@web/data/yjs/canvas-space';
-import { estimateNodeBytes, strongestWrite } from '@web/data/yjs/space-write';
+import { strongestWrite } from '@web/data/yjs/space-write';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
 import {
   addStoryboardShot,
@@ -438,9 +438,7 @@ function VideoGeneratePanelBody({
       const pickedSpec = specOf(picked, liveMode);
       // One write for the size cap: the switch, judged by what it adds over
       // the fields it replaces, and the re-split shots, which overwrite.
-      const switched = nodeModelWrite(projectId, spaceId, nodeId, liveMode, modelId, paramsByModel)?.options
-        ?? { kind: 'add', estimate: estimateNodeBytes({ liveMode, modelId, paramsByModel }) };
-      runCanvasUndoBatch(projectId, spaceId, switched, () => {
+      runCanvasUndoBatch(projectId, spaceId, nodeModelWrite(projectId, spaceId, nodeId, liveMode, modelId, paramsByModel), () => {
         setNodeModel(projectId, spaceId, nodeId, liveMode, modelId, paramsByModel);
         if (pickedSpec) retotalStoryboard(projectId, spaceId, nodeId, totalOf(pickedSpec, params));
       });
@@ -474,9 +472,8 @@ function VideoGeneratePanelBody({
       // Entering the multi-shot mode with no shots lays out two, splitting
       // the model's total, in the same step as the switch.
       const targetSpec = specOf(models.find((m) => m.name === model), target);
-      const fields = { mode: target, model, paramsByModel };
       const toggled = strongestWrite(
-        nodeFieldsWrite(projectId, spaceId, nodeId, fields)?.options ?? { kind: 'add', estimate: estimateNodeBytes(fields) },
+        nodeFieldsWrite(projectId, spaceId, nodeId, { mode: target, model, paramsByModel }),
         targetSpec ? storyboardEntryWrite(projectId, spaceId, nodeId) : null,
       );
       runCanvasUndoBatch(projectId, spaceId, toggled, () => {
@@ -511,9 +508,7 @@ function VideoGeneratePanelBody({
         ? undefined
         : (partial as Record<string, unknown>)[liveSpec.totalParam];
       // Re-splitting the shots only rewrites their seconds, an overwrite.
-      const edited = nodeFieldsWrite(projectId, spaceId, nodeId, { paramsByModel })?.options
-        ?? { kind: 'add', estimate: estimateNodeBytes(paramsByModel) };
-      runCanvasUndoBatch(projectId, spaceId, edited, () => {
+      runCanvasUndoBatch(projectId, spaceId, nodeFieldsWrite(projectId, spaceId, nodeId, { paramsByModel }), () => {
         setNodeParams(projectId, spaceId, nodeId, paramsByModel);
         if (typeof next === 'number') retotalStoryboard(projectId, spaceId, nodeId, next);
       });

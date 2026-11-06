@@ -30,7 +30,7 @@ const removeReply = vi.fn();
 const deleteNode = vi.fn();
 const batchOptions = vi.fn();
 const EDIT_JUDGED = { kind: 'overwrite' } as const;
-const annotationEditWrite = vi.fn(() => ({ name: 'canvas-space:p1:s1', options: EDIT_JUDGED }));
+const annotationEditWrite = vi.fn(() => EDIT_JUDGED);
 
 vi.mock('@web/data/yjs/canvas-space', () => ({
   addReply: (...a: unknown[]) => addReply(...a),

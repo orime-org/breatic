@@ -112,6 +112,24 @@ describe('nextHistoryStep', () => {
     expect(run(p, 'undo').wrote).toBe(true);
   });
 
+  it('judges undoing a shortening as an add when it brings back a larger value', () => {
+    const p = pair();
+    p.a.transact(() => p.nodes.set('n', node('a')), 'setup');
+    p.a.transact(() => p.nodes.get('n')!.set('name', 'x'.repeat(1200)), 'setup');
+    p.a.transact(() => p.nodes.get('n')!.set('name', 'y'), ORIGIN);
+    const step = nextHistoryStep(p.um, 'undo');
+    expect(step.kind).toBe('add');
+    expect(step.estimate).toBeGreaterThanOrEqual(1200);
+  });
+
+  it('judges undoing a lengthening as an overwrite', () => {
+    const p = pair();
+    p.a.transact(() => p.nodes.set('n', node('a')), 'setup');
+    p.a.transact(() => p.nodes.get('n')!.set('name', 'y'), 'setup');
+    p.a.transact(() => p.nodes.get('n')!.set('name', 'x'.repeat(1200)), ORIGIN);
+    expect(nextHistoryStep(p.um, 'undo').kind).toBe('overwrite');
+  });
+
   it('judges undoing the removal of a key as an add', () => {
     const p = pair();
     p.a.transact(() => p.nodes.set('n', node('a')), 'setup');

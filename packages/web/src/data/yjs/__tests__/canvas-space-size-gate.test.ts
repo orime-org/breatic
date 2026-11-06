@@ -266,6 +266,22 @@ describe('W-46b a write replacing a value is judged by what it adds over the val
     expect(toast.warning).not.toHaveBeenCalled();
   });
 
+  it('refuses a many-line note rewritten as one longer line at full', () => {
+    const doc = seededAt(() => editAnnotationBody(PID, SID, 'a1', 'a\n'.repeat(150), 3), F_FULL);
+    // Stored, the old note is 300 bytes (a newline is one byte), the rewrite 400.
+    editAnnotationBody(PID, SID, 'a1', 'x'.repeat(400), 4);
+    expect(data(doc, 'a1').get('content')).toBe('a\n'.repeat(150));
+    expect(vi.mocked(toast.warning).mock.calls[0]?.[0]).toBe(COPY_EN.T_ADD_BLOCKED);
+  });
+
+  it('restores an earlier result of the same size at full', () => {
+    const media = { coverUrl: null, width: 64, height: 64, duration: null, mimeType: 'image/png', size: 100 } satisfies NodeMediaFields;
+    const doc = seededAt(() => restoreNodeMedia(PID, SID, 'v1', { content: 'https://cdn.example.test/bbbbbbbb.png', media }), F_FULL);
+    restoreNodeMedia(PID, SID, 'v1', { content: 'https://cdn.example.test/aaaaaaaa.png', media });
+    expect(data(doc, 'v1').get('content')).toBe('https://cdn.example.test/aaaaaaaa.png');
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
   it('refuses a longer name when the room is short of the change', () => {
     const doc = seededAt(() => setNodeName(PID, SID, 't1', 'short'), { ...F_WARNING, room: 100 });
     setNodeName(PID, SID, 't1', LONG);

@@ -25,7 +25,7 @@
 import type { ExtensionFactoryInstance } from '@blocknote/core';
 import { CommentsExtension } from '@blocknote/core/comments';
 import { YjsThreadStore } from '@blocknote/core/yjs';
-import type * as Y from 'yjs';
+import * as Y from 'yjs';
 
 import { documentCommentThreads } from '@breatic/shared';
 
@@ -33,12 +33,15 @@ import type { UserSummary } from '@web/data/api/users';
 import { usersApi } from '@web/data/api/users';
 import { docNameOf } from '@web/data/yjs/manager';
 import {
+  encodedValueBytes,
   estimateNodeBytes,
+  replacementJudgement,
   reserveSpaceRoom,
   writeSpaceDoc,
   type SpaceReservation,
   type SpaceReserveResult,
   type SpaceWriteKind,
+  type SpaceWriteOptions,
 } from '@web/data/yjs/space-write';
 import {
   documentCommentAuth,
@@ -79,6 +82,32 @@ const WRITE_KINDS: ReadonlyArray<readonly [keyof YjsThreadStore, SpaceWriteKind]
   ['deleteThread', 'delete'],
   ['deleteReaction', 'delete'],
 ];
+
+/** What `updateComment` is called with. */
+interface CommentEdit {
+  readonly threadId: string;
+  readonly commentId: string;
+  readonly comment: { readonly body: unknown; readonly metadata?: unknown };
+}
+
+/**
+ * How editing a comment is judged: its body and metadata replace the ones
+ * stored, so the edit adds only what the new ones take over the old.
+ * @param doc - The document the threads live in.
+ * @param edit - The edit.
+ * @returns The options for `writeSpaceDoc`; an add of the whole new comment
+ *   when the stored one is not found.
+ */
+function commentEditJudgement(doc: Y.Doc, edit: CommentEdit): SpaceWriteOptions {
+  const next = encodedValueBytes(edit.comment.body) + encodedValueBytes(edit.comment.metadata);
+  const thread = documentCommentThreads(doc).get(edit.threadId);
+  const comments = thread instanceof Y.Map ? thread.get('comments') : undefined;
+  const stored = comments instanceof Y.Array
+    ? (comments.toArray() as unknown[]).find((c): c is Y.Map<unknown> => c instanceof Y.Map && c.get('id') === edit.commentId)
+    : undefined;
+  if (!stored) return { kind: 'add', estimate: estimateNodeBytes(edit.comment) };
+  return replacementJudgement(encodedValueBytes(stored.get('body')) + encodedValueBytes(stored.get('metadata')), next);
+}
 
 /** The document each size-gated store writes. */
 const storeDocs = new WeakMap<object, Y.Doc>();
@@ -121,9 +150,11 @@ function sizeGated(store: YjsThreadStore, doc: Y.Doc): YjsThreadStore {
       const name = docNameOf(doc);
       if (name === null) return write(rest);
       let written: Promise<unknown> = Promise.resolve(undefined);
+      const judged = method === 'updateComment'
+        ? commentEditJudgement(doc, rest as unknown as CommentEdit)
+        : { kind, ...(kind === 'add' && { estimate: estimateNodeBytes(rest) }) };
       const result = writeSpaceDoc(name, {
-        kind,
-        ...(kind === 'add' && { estimate: estimateNodeBytes(rest) }),
+        ...judged,
         ...(spaceReservation !== undefined && { reservation: spaceReservation }),
       }, () => {
         written = write(rest);

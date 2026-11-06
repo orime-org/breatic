@@ -26,10 +26,11 @@
  * | steps | kind and estimate |
  * |---|---|
  * | replaces that take out live content and put in no more text and no larger estimate | `overwrite` |
- * | a `ReplaceAroundStep` whose slice holds no text (the block around kept content changes) | `overwrite` |
+ * | a `ReplaceAroundStep` whose slice holds no text and changes the block's type around kept content | `overwrite` |
  * | any other replace that puts something in | `add`, the larger of the estimate and the text it adds net |
  * | `AddMarkStep` | `add`, per text node 32 bytes plus the mark's name and attributes |
- * | `AddNodeMarkStep`, `AttrStep`, any other step | `add`, 32 bytes |
+ * | `AttrStep`, `DocAttrStep`, a `setNodeMarkup` keeping the node's type | the changed attributes against the ones they replace, as stored: no larger is `overwrite`, otherwise `add` of the difference (`replacementJudgement`) |
+ * | `AddNodeMarkStep`, any other step | `add`, the UTF-8 bytes of its `toJSON()` |
  * | `ReplaceStep` or `ReplaceAroundStep` without a slice, `RemoveMarkStep`, `RemoveNodeMarkStep` | `delete` |
  *
  * Over the hard ceiling a delete must free something: it removes a whole
@@ -58,7 +59,9 @@ import { SPACE_DELETE_MIN_BYTES, t } from '@breatic/shared';
 import { readDocSize } from '@web/data/yjs/doc-size';
 import { nextHistoryStep } from '@web/data/yjs/history-step';
 import {
+  encodedValueBytes,
   estimateSliceBytes,
+  replacementJudgement,
   utf8Bytes,
   writeSpaceDoc,
   type SpaceRefusal,
@@ -213,6 +216,12 @@ function judgeStep(step: Step, doc: ProseMirrorNode, judged: Judged, totals: Rep
   if (step instanceof ReplaceStep || step instanceof ReplaceAroundStep) {
     const text = step.slice.content.textBetween(0, step.slice.content.size);
     if (step instanceof ReplaceAroundStep && step.slice.size > 0 && text === '') {
+      const markup = sameTypeMarkup(step, doc);
+      if (markup) {
+        // setNodeMarkup keeping the node: y-prosemirror sets the changed attributes.
+        judgeAttributes(markup.before, markup.after, judged);
+        return;
+      }
       // Only the block around kept content changes; y-prosemirror rewrites
       // the block, which collab admits like any write deleting live content.
       totals.wraps = true;
@@ -239,21 +248,54 @@ function judgeStep(step: Step, doc: ProseMirrorNode, judged: Judged, totals: Rep
   }
   if (step instanceof RemoveMarkStep || step instanceof RemoveNodeMarkStep) return;
   if (step instanceof AttrStep || step instanceof DocAttrStep) {
-    // y-prosemirror sets the attribute, deleting the value it replaces.
     const replaced: unknown = step instanceof AttrStep ? doc.nodeAt(step.pos)?.attrs[step.attr] : doc.attrs[step.attr];
-    const grows = jsonBytes(step.value) - jsonBytes(replaced);
-    if (grows <= 0) {
-      judged.overwrites = true;
-      return;
-    }
-    judged.adds = true;
-    judged.estimate += MARK_BYTES + utf8Bytes(step.attr) + grows;
+    judgeAttributes({ [step.attr]: replaced }, { [step.attr]: step.value }, judged);
     return;
   }
   judged.adds = true;
   judged.estimate += step instanceof AddMarkStep
     ? markCost(step.mark) * textNodesIn(doc, step.from, step.to)
     : jsonBytes(step.toJSON());
+}
+
+/**
+ * The node a `ReplaceAroundStep` rewrites in place keeping its type, as
+ * `setNodeMarkup` makes one: the slice holds one node of the same type that
+ * wraps the kept content exactly.
+ * @param step - The step.
+ * @param doc - The document before it.
+ * @returns The attributes before and after, or null for any other step.
+ */
+function sameTypeMarkup(step: ReplaceAroundStep, doc: ProseMirrorNode): { before: Record<string, unknown>; after: Record<string, unknown> } | null {
+  const node = doc.nodeAt(step.from);
+  const next = step.slice.content.firstChild;
+  const wrapsExactly = step.insert === 1 && step.gapFrom === step.from + 1 && step.gapTo === step.to - 1;
+  if (!node || !next || step.slice.content.childCount !== 1 || !wrapsExactly || next.type !== node.type) return null;
+  return { before: node.attrs, after: next.attrs };
+}
+
+/**
+ * Judge attributes written over the ones they replace: y-prosemirror sets
+ * each changed attribute, deleting the value it replaces (`replacementJudgement`).
+ * @param before - The attributes the node holds.
+ * @param after - The attributes written.
+ * @param judged - The running judgement, updated in place.
+ */
+function judgeAttributes(before: Readonly<Record<string, unknown>>, after: Readonly<Record<string, unknown>>, judged: Judged): void {
+  let held = 0;
+  let written = 0;
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    if (before[key] === after[key]) continue;
+    held += encodedValueBytes(before[key]);
+    written += encodedValueBytes(after[key]);
+  }
+  const verdict = replacementJudgement(held, written);
+  if (verdict.kind === 'add') {
+    judged.adds = true;
+    judged.estimate += verdict.estimate ?? 0;
+  } else {
+    judged.overwrites = true;
+  }
 }
 
 /**

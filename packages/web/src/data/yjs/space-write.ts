@@ -14,6 +14,8 @@
  */
 
 import type { Slice } from '@tiptap/pm/model';
+import * as encoding from 'lib0/encoding';
+import * as Y from 'yjs';
 
 import { formatBytes, parseDocName, t } from '@breatic/shared';
 import { readDocVersions } from '@web/data/yjs/collab-socket';
@@ -35,6 +37,33 @@ const NODE_BYTES = 64;
  */
 export function utf8Bytes(text: string): number {
   return new TextEncoder().encode(text).byteLength;
+}
+
+/**
+ * The bytes yjs stores a map value or a node attribute in: `ContentAny`,
+ * written with lib0's `writeAny`. No value counts 0, and so does a shared
+ * type, which is not stored that way.
+ * @param value - The value.
+ * @returns Bytes.
+ */
+export function encodedValueBytes(value: unknown): number {
+  if (value === undefined || value instanceof Y.AbstractType) return 0;
+  const encoder = encoding.createEncoder();
+  encoding.writeAny(encoder, value as Parameters<typeof encoding.writeAny>[1]);
+  return encoding.length(encoder);
+}
+
+/**
+ * How a write that replaces values is judged (inner#1790): yjs deletes a
+ * value as it writes the one replacing it, so values no larger than the ones
+ * they replace are an overwrite, which collab admits up to the hard ceiling;
+ * larger ones are an add of the difference and the new item.
+ * @param current - Bytes of the values replaced, by {@link encodedValueBytes}.
+ * @param next - Bytes of the values written.
+ * @returns The options for `writeSpaceDoc`.
+ */
+export function replacementJudgement(current: number, next: number): SpaceWriteOptions {
+  return next <= current ? { kind: 'overwrite' } : { kind: 'add', estimate: next - current + NODE_BYTES };
 }
 
 /**

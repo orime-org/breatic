@@ -19,7 +19,7 @@
 
 import * as Y from 'yjs';
 
-import { utf8Bytes, type SpaceWriteKind } from '@web/data/yjs/space-write';
+import { encodedValueBytes, replacementJudgement, utf8Bytes, type SpaceWriteKind } from '@web/data/yjs/space-write';
 
 /** Bytes counted for each struct an undo writes, over its own content. */
 const ITEM_BYTES = 64;
@@ -141,7 +141,8 @@ function itemBytes(item: Y.Item): number {
 }
 
 /**
- * Judge a restored item: a map value whose key still holds one is an overwrite.
+ * Judge a restored item: a map value no larger than the value its key still
+ * holds is an overwrite, as the same write forward would be judged.
  * @param item - The item brought back.
  * @returns Its kind.
  */
@@ -149,7 +150,17 @@ function restoredKind(item: Y.Item): SpaceWriteKind {
   const parent = item.parent as Y.AbstractType<unknown>;
   if (item.parentSub === null || parent._item?.deleted === true) return 'add';
   const current = parent._map.get(item.parentSub);
-  return current === undefined || current.deleted ? 'add' : 'overwrite';
+  if (current === undefined || current.deleted) return 'add';
+  return replacementJudgement(valueBytes(current), valueBytes(item)).kind;
+}
+
+/**
+ * A map item's value, measured as yjs stores it.
+ * @param item - The item.
+ * @returns Bytes.
+ */
+function valueBytes(item: Y.Item): number {
+  return item.content instanceof Y.ContentAny ? encodedValueBytes(item.content.getContent()[0]) : itemBytes(item);
 }
 
 /**

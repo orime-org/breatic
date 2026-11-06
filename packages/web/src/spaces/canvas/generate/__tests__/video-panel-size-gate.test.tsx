@@ -226,6 +226,16 @@ describe('W-59 switching into the shots is one add', () => {
     expect(readShots('p', 's', 'v1')).toHaveLength(0);
   });
 
+  it('counts the shots it lays out: room for the switch alone is not enough', async () => {
+    // The switch's fields fit in 150 bytes; the two new shots do not.
+    await openAt('t2v', { ...F_WARNING, room: 150 });
+    fireEvent.click(screen.getByTestId('generate-video-mode-trigger'));
+    await userEvent.click(await screen.findByTestId('generate-video-mode-multi-shot'));
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
+    expect(stored().mode).toBe('t2v');
+    expect(readShots('p', 's', 'v1')).toHaveLength(0);
+  });
+
   it('enters the mode with shots while the Space is only near full', async () => {
     await openAt('t2v', F_WARNING);
     fireEvent.click(screen.getByTestId('generate-video-mode-trigger'));

@@ -153,6 +153,17 @@ describe('W-91 add-kind comment writes are refused when the Space is full', () =
   });
 });
 
+describe('editing a comment is judged by what it adds over the comment it replaces', () => {
+  it('saves a shorter comment on a full Space', async () => {
+    const board = await open(F_FULL);
+    await board.store.updateComment({ threadId: board.th1, commentId: board.c1, comment: { body: body('f') as never } });
+    const thread = documentCommentThreads(board.doc).get(board.th1) as Y.Map<unknown>;
+    const comment = (thread.get('comments') as Y.Array<Y.Map<unknown>>).get(0);
+    expect(comment.get('body')).toEqual(body('f'));
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+});
+
 describe('W-91 delete-kind comment writes go through over the hard ceiling', () => {
   it('deletes the comment without a toast', async () => {
     const board = await open(F_OVER);

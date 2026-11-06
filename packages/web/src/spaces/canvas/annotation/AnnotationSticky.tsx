@@ -173,10 +173,9 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
     (at: DraftTarget, use: DraftState['use'], text: string): boolean | 'refused' => {
       const now = Date.now();
       let wrote = false;
-      const added = { kind: 'add', estimate: estimateNodeBytes(text) } as const;
       const options = use === 'reply'
-        ? added
-        : annotationEditWrite(projectId, spaceId, nodeId, at?.kind === 'reply' ? at.id : null, text, now)?.options ?? added;
+        ? { kind: 'add' as const, estimate: estimateNodeBytes(text) }
+        : annotationEditWrite(projectId, spaceId, nodeId, at?.kind === 'reply' ? at.id : null, text, now);
       const written = runCanvasUndoBatch(projectId, spaceId, options, () => {
         if (use === 'reply') {
           wrote = addReply(projectId, spaceId, nodeId, {
