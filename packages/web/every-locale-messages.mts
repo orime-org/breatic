@@ -10,8 +10,7 @@
  * been filled in by a collaborator in another one. Those keys of every locale
  * reach the page as the `__EVERY_LOCALE_MESSAGES__` define, set by both
  * `vite.config.mts` and `vitest.config.mts`. It is computed when the config
- * loads, so a dev server shows a locale edit after a restart, as every other
- * catalog does.
+ * loads, so a dev server shows an edit to these keys after a restart.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
