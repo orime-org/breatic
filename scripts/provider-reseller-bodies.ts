@@ -63,7 +63,6 @@ type Run = Pick<SampleRun, "params" | "prompt">;
 const ROOT = resolve(import.meta.dirname, "..");
 const BODIES = resolve(ROOT, "packages/provider/test/fixtures/bodies");
 const RESELLERS = ["fal", "sandbase"] as const;
-const SAMPLE_URL = "https://example.com/sample.png";
 /** The extension of a source's sample url, by the kind of file its param accepts. */
 const SAMPLE_EXTENSIONS: Readonly<Record<string, string>> = { image: "png", video: "mp4", audio: "mp3" };
 const SAMPLE_TEXT = "sample text";
@@ -206,10 +205,10 @@ for (const [model, { upstreams: bindings }] of Object.entries(config.media.model
       const codec = adapterOf(kind).steps[step.kind as keyof ReturnType<typeof adapterOf>["steps"]];
       if (codec === undefined) throw new Error(`${model} on ${binding.upstream}: no ${step.kind} step codec`);
       const itemIndex = stepCalls(step, run.params)[0]!;
-      const source = step.for_param === undefined ? SAMPLE_URL : stepSource(run.params, step.for_param, itemIndex);
-      if (source === undefined) throw new Error(`${model} on ${binding.upstream}: the ${step.kind} step needs a source in '${step.for_param}'`);
-      const context: { source: string; params: Record<string, unknown>; prompt: string; customVoiceId: string; voiceId: string; itemIndex: number | null; description?: string; param?: string } = {
-        source,
+      const source = stepSource(run.params, step.for_param, itemIndex);
+      if (step.for_param !== undefined && source === undefined) throw new Error(`${model} on ${binding.upstream}: the ${step.kind} step needs a source in '${step.for_param}'`);
+      const context: { source?: string; params: Record<string, unknown>; prompt: string; customVoiceId: string; voiceId: string; itemIndex: number | null; description?: string; param?: string } = {
+        ...(source === undefined ? {} : { source }),
         params: run.params,
         prompt: run.prompt,
         customVoiceId: SAMPLE_VOICE_ID,
@@ -218,7 +217,16 @@ for (const [model, { upstreams: bindings }] of Object.entries(config.media.model
         ...(step.kind === "element" ? { description: SAMPLE_TEXT } : {}),
         ...(step.for_param === undefined ? {} : { param: step.for_param }),
       };
-      const body = codec.body({ ...context, source: () => context.source, binding, description: context.description, param: context.param });
+      /**
+       * The url the step reads, as the runner's `sourceOf` gives it.
+       * @returns The url.
+       * @throws {Error} When the step reads none.
+       */
+      const sourceOf = (): string => {
+        if (source === undefined) throw new Error(`${model} on ${binding.upstream}: the ${step.kind} step reads no source`);
+        return source;
+      };
+      const body = codec.body({ ...context, source: sourceOf, binding, description: context.description, param: context.param });
       return [{ kind: step.kind, endpoint: step.endpoint, context, body }];
     });
     const path = resolve(BODIES, binding.upstream, `${model}.json`);

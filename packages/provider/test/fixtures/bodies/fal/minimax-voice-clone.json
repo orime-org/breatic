@@ -22,7 +22,6 @@
       "kind": "speak",
       "endpoint": "fal-ai/minimax/speech-2.8-hd",
       "context": {
-        "source": "https://example.com/sample.png",
         "params": {
           "model": "speech-2.8-hd",
           "need_noise_reduction": true,
