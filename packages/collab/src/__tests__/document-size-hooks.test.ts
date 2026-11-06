@@ -1150,6 +1150,19 @@ describe("beforeSync: an admitted update still on its way when the size is measu
     expect(upperOf(NAME)).toBe(refMeasure(doc));
   });
 
+  it("measures again when an update the trial admitted is never applied", async () => {
+    const { doc, client, c } = await loadedNode();
+    w.size.recordExact(NAME, L);
+    const update = capture(client, (d) => d.getText("t").insert(0, "y".repeat(50_000)));
+    await expect(beforeSync(doc, c, SYNC.update, update)).resolves.toBeUndefined();
+    expect(rateLimit).toHaveBeenCalledTimes(1);
+    expect(upperOf(NAME)).toBe(refMeasureAfter(doc, update));
+    c.readOnly = true;
+    await afterHandleMessage(doc, c);
+    vi.advanceTimersByTime(2000);
+    expect(upperOf(NAME)).toBe(refMeasure(doc));
+  });
+
   it("forgets an admitted update whose sync sub-type Hocuspocus does not know", async () => {
     const { doc, client, c } = await loadedNode();
     const update = capture(client, (d) => d.getText("t").insert(0, "y".repeat(50_000)));
@@ -1214,6 +1227,19 @@ describe("beforeSync: the token bucket under concurrent messages", () => {
     expect(results[1].status).toBe("rejected");
     expect(logger.warn).toHaveBeenCalledTimes(1);
     expect((logger.warn.mock.calls[0]?.[0] as { step?: unknown }).step).toBe("budget_process");
+  });
+
+  it("charges the skeleton built for an update reaching stored pending content", async () => {
+    await boot();
+    const { server, filler } = storedPendingIntegrateScenario(2000);
+    const doc = await load(NAME, server);
+    const a = w.size.analyze(filler, doc);
+    expect(a.skeletonBuilt).toBe(false);
+    expect(a.integratesStored).toBe(true);
+    analysis.ms = 1500;
+    // Balance min(200, 200) - 1500 = -1300 before the trial's own check.
+    await refuse(doc, conn(doc), SYNC.update, filler, { step: "budget_process" });
+    expect(rateLimit).not.toHaveBeenCalled();
   });
 
   it("charges the time a skeleton took to the token bucket", async () => {

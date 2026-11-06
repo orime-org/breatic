@@ -79,7 +79,7 @@ export function createDocumentSizeGate(): (data: beforeSyncPayload<AuthContext>)
 
     const analyzed = performance.now();
     const a = analyze(payload, document);
-    if (a.skeletonBuilt) {
+    if (a.skeletonRan) {
       const ended = performance.now();
       refill(ended);
       balance -= (ended - analyzed) * 1000;

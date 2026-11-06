@@ -61,6 +61,8 @@ export interface UpdateAnalysis {
   deletesLive: boolean;
   /** The pending check needed a skeleton document. */
   skeletonBuilt: boolean;
+  /** A skeleton was built, for the pending check or to see stored pending content integrate. */
+  skeletonRan: boolean;
 }
 
 /**
@@ -361,6 +363,25 @@ interface OwnPiece {
 }
 
 /**
+ * The first entry of a list in ascending, non-overlapping clock order whose
+ * end lies past a clock.
+ * @param list - The entries.
+ * @param clock - The clock.
+ * @param endOf - An entry's end (exclusive).
+ * @returns Its index, or the list's length when there is none.
+ */
+function firstEndingAfter<T>(list: readonly T[], clock: number, endOf: (entry: T) => number): number {
+  let lo = 0;
+  let hi = list.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (endOf(list[mid]!) <= clock) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/**
  * Content bytes deleting `[offset, offset + len)` of an item frees at least,
  * net of the length field the deleted run keeps; format items count nothing.
  * @param item - A live item.
@@ -429,13 +450,14 @@ export function analyze(update: Uint8Array, document: Y.Doc): UpdateAnalysis {
       const s = list[Y.findIndexSS(list, id.clock)];
       return s instanceof Y.Item ? s : null;
     }
-    for (const piece of own.get(id.client) ?? []) {
-      const s = piece.item;
-      if (id.clock >= s.id.clock && id.clock < s.id.clock + s.length) return s;
-    }
-    return null;
+    const pieces = own.get(id.client) ?? [];
+    const s = pieces[firstEndingAfter(pieces, id.clock, (p) => p.item.id.clock + p.item.length)]?.item;
+    return s && id.clock >= s.id.clock ? s : null;
   };
 
+  // An update's own items anchor on each other in long chains (a paste of many
+  // blocks), and the structs are visited in order, so each resolved place is kept.
+  const places = new Map<Y.Item, { parent: SharedType; key: string | null }>();
   /**
    * The type an update item goes into and the map key it writes, read the
    * way yjs reads it: from the origin, the right origin, or the item itself.
@@ -444,6 +466,19 @@ export function analyze(update: Uint8Array, document: Y.Doc): UpdateAnalysis {
    * @returns The parent and key, or null when they cannot be resolved here.
    */
   const placeOf = (s: Y.Item, depth = 0): { parent: SharedType; key: string | null } | null => {
+    const known = places.get(s);
+    if (known) return known;
+    const place = resolvePlace(s, depth);
+    if (place) places.set(s, place);
+    return place;
+  };
+  /**
+   * {@link placeOf} without the kept results.
+   * @param s - An update item.
+   * @param depth - Guard against reference loops.
+   * @returns The parent and key, or null.
+   */
+  const resolvePlace = (s: Y.Item, depth: number): { parent: SharedType; key: string | null } | null => {
     if (depth > 64) return null;
     const anchor = s.origin ?? s.rightOrigin;
     if (anchor) {
@@ -515,8 +550,9 @@ export function analyze(update: Uint8Array, document: Y.Doc): UpdateAnalysis {
           noteText(s.parent);
         }
       }
-      for (const piece of own.get(client) ?? []) {
-        if (piece.end <= clock || piece.start >= end) continue;
+      const pieces = own.get(client) ?? [];
+      for (let i = firstEndingAfter(pieces, clock, (p) => p.end); i < pieces.length && pieces[i]!.start < end; i++) {
+        const piece = pieces[i]!;
         live = true;
         if (piece.start < clock) liveEndpoints++;
         if (piece.end > end) liveEndpoints++;
@@ -531,8 +567,11 @@ export function analyze(update: Uint8Array, document: Y.Doc): UpdateAnalysis {
    * @param item - A document item.
    * @returns True when it is deleted by the update itself.
    */
-  const coveredByUpdate = (item: Y.Item): boolean =>
-    (ds.clients.get(item.id.client) ?? []).some((r) => r.clock <= item.id.clock && item.id.clock + item.length <= r.clock + r.len);
+  const coveredByUpdate = (item: Y.Item): boolean => {
+    const ranges = ds.clients.get(item.id.client) ?? [];
+    const r = ranges[firstEndingAfter(ranges, item.id.clock, (range) => range.clock + range.len)];
+    return r !== undefined && r.clock <= item.id.clock && item.id.clock + item.length <= r.clock + r.len;
+  };
 
   let cascadeItems = 0;
   const visited = new Set<Y.Item>();
@@ -559,12 +598,10 @@ export function analyze(update: Uint8Array, document: Y.Doc): UpdateAnalysis {
   // A reached missing clock makes yjs retry the stored pending content, which
   // may still need clocks past what the update brings; only the skeleton
   // tells whether any of it integrates.
-  const verdict = skeletonBuilt
+  const skeletonRan = skeletonBuilt || integratesWithoutSkeleton(store, reached.reached);
+  const verdict = skeletonRan
     ? skeletonVerdict(update, structs, ds, store)
-    : {
-      wouldPend: false,
-      integratesStored: integratesWithoutSkeleton(store, reached.reached) && skeletonVerdict(update, structs, ds, store).integratesStored,
-    };
+    : { wouldPend: false, integratesStored: false };
 
   const growthBound =
     (structCount > 0 ? structBytes + C * structCount : 0) + C * (liveEndpoints + liveRanges + cascadeItems + formatItems);
@@ -578,10 +615,11 @@ export function analyze(update: Uint8Array, document: Y.Doc): UpdateAnalysis {
     liveEndpoints,
     cascadeItems,
     formatItems,
-    wouldPend: verdict.wouldPend,
+    wouldPend: skeletonBuilt && verdict.wouldPend,
     integratesStored: verdict.integratesStored,
     deletesLive: liveRanges > 0,
     skeletonBuilt,
+    skeletonRan,
   };
 }
 
@@ -850,7 +888,10 @@ export function unappliedBesides(name: string, connection: unknown): number {
  * @param connection - The connection it came on.
  */
 export function dropUnapplied(name: string, connection: unknown): void {
-  records.get(name)?.unapplied.delete(connection);
+  const record = records.get(name);
+  // An applied update was dropped when it landed; one still here never will,
+  // and the size recorded with it in mind has to be measured again.
+  if (record?.unapplied.delete(connection)) scheduleRecompute(name, record);
 }
 
 /**

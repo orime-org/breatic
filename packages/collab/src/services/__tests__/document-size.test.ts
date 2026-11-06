@@ -488,3 +488,107 @@ describe("analyze: pending content (C-46 to C-50)", () => {
     expect(measure(d)).toBe(Y.encodeStateAsUpdate(d).byteLength + C * p);
   });
 });
+
+describe("analyze: skeleton reporting and cost", () => {
+  it("reports a skeleton built on the stored-pending path, which the C-48 flag leaves false", () => {
+    const writer = new Y.Doc();
+    writer.clientID = 5;
+    writer.getText("t").insert(0, "hello world");
+    const full = Y.encodeStateAsUpdate(writer);
+    const before = Y.encodeStateVector(writer);
+    writer.getText("t").delete(0, 5);
+    const server = new Y.Doc();
+    Y.applyUpdate(server, Y.encodeStateAsUpdate(writer, before));
+    expect(server.store.pendingDs).not.toBeNull();
+    const a = analyze(full, server);
+    expect(a.skeletonBuilt).toBe(false);
+    expect(a.integratesStored).toBe(true);
+    expect(a.skeletonRan).toBe(true);
+  });
+
+  it("reports no skeleton for an ordinary edit", () => {
+    const server = new Y.Doc();
+    server.getText("t").insert(0, "hello");
+    const client = new Y.Doc();
+    Y.applyUpdate(client, Y.encodeStateAsUpdate(server));
+    const sv = Y.encodeStateVector(client);
+    client.getText("t").insert(5, "!");
+    expect(analyze(Y.encodeStateAsUpdate(client, sv), server).skeletonRan).toBe(false);
+  });
+
+  /**
+   * Analyze time at size 4n over size n, each the best of three runs taken in
+   * turn: about 4 when it grows linearly, 16 or more when quadratically.
+   * @param build - Builds the server document and the update for a size.
+   * @param n - The smaller size.
+   * @returns The ratio.
+   */
+  function growth(build: (size: number) => { server: Y.Doc; update: Uint8Array }, n: number): number {
+    const small = build(n);
+    const large = build(4 * n);
+    let bestSmall = Number.POSITIVE_INFINITY;
+    let bestLarge = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < 3; i++) {
+      let started = performance.now();
+      analyze(small.update, small.server);
+      bestSmall = Math.min(bestSmall, performance.now() - started);
+      started = performance.now();
+      analyze(large.update, large.server);
+      bestLarge = Math.min(bestLarge, performance.now() - started);
+    }
+    return bestLarge / Math.max(0.5, bestSmall);
+  }
+
+  it("stays near linear on one update that inserts many blocks after each other", () => {
+    const blocks = (count: number): { server: Y.Doc; update: Uint8Array } => {
+      const server = new Y.Doc();
+      server.getXmlFragment("document-store").insert(0, [new Y.XmlElement("p")]);
+      const client = new Y.Doc();
+      Y.applyUpdate(client, Y.encodeStateAsUpdate(server));
+      const sv = Y.encodeStateVector(client);
+      const fragment = client.getXmlFragment("document-store");
+      client.transact(() => {
+        const elements = Array.from({ length: count }, () => new Y.XmlElement("paragraph"));
+        fragment.insert(1, elements);
+        for (const element of elements) element.insert(0, [new Y.XmlText("hello world")]);
+      });
+      return { server, update: Y.encodeStateAsUpdate(client, sv) };
+    };
+    expect(growth(blocks, 1000)).toBeLessThan(10);
+  });
+
+  it("stays near linear on one update that deletes many of its own insertions", () => {
+    const own = (count: number): { server: Y.Doc; update: Uint8Array } => {
+      const server = new Y.Doc();
+      const client = new Y.Doc();
+      const sv = Y.encodeStateVector(client);
+      const map = client.getMap("m");
+      client.transact(() => {
+        for (let i = 0; i < count; i++) map.set(`k${i}`, i);
+        for (let i = 0; i < count; i += 2) map.delete(`k${i}`);
+      });
+      return { server, update: Y.encodeStateAsUpdate(client, sv) };
+    };
+    expect(growth(own, 5000)).toBeLessThan(10);
+  });
+
+  it("stays near linear when deleting a type with many children alongside many ranges", () => {
+    const cascade = (count: number): { server: Y.Doc; update: Uint8Array } => {
+      const server = new Y.Doc();
+      server.clientID = 5;
+      const inner = new Y.Map<unknown>();
+      server.getMap("root").set("big", inner);
+      server.transact(() => {
+        for (let i = 0; i < count; i++) inner.set(`k${i}`, i);
+      });
+      server.transact(() => {
+        for (let i = 0; i < count; i++) inner.set(`k${i}`, -i);
+      });
+      // The type at clock 0, plus a one-clock range over every other overwritten child.
+      const ranges: Array<[number, number]> = [[0, 1]];
+      for (let clock = 2; clock < count; clock += 2) ranges.push([clock, 1]);
+      return { server, update: deleteOnly([[5, ranges]]) };
+    };
+    expect(growth(cascade, 2500)).toBeLessThan(10);
+  });
+});
