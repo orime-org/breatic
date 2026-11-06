@@ -78,19 +78,13 @@ function segments(node: TSESTree.Node): string[] {
 }
 
 /**
- * Answers whether a `.transact` receiver is a Space document.
+ * Answers whether a `.transact` receiver is a Space document: in web every
+ * `.transact` is a Yjs one except the BlockNote editor's.
  * @param node The receiver expression.
- * @returns Whether it is `doc`, `ydoc`, `<x>.doc` or `getDoc(…)`.
+ * @returns Whether its last named segment is anything but `editor`.
  */
 function isDocReceiver(node: TSESTree.Node): boolean {
-  const target = unwrap(node);
-  if (target.type === AST_NODE_TYPES.Identifier) return target.name === "doc" || target.name === "ydoc";
-  if (target.type === AST_NODE_TYPES.MemberExpression) return propertyName(target) === "doc";
-  return (
-    target.type === AST_NODE_TYPES.CallExpression &&
-    target.callee.type === AST_NODE_TYPES.Identifier &&
-    target.callee.name === "getDoc"
-  );
+  return lastSegment(node) !== "editor";
 }
 
 /**
@@ -164,10 +158,9 @@ const FUNCTIONS = new Set<string>([
  *
  * Those two calls are where the document size cap is checked, so a write
  * outside them can grow a Space past the cap. Web lints without type
- * information, so the write shapes are syntactic: `.transact` on `doc`,
- * `ydoc`, `<x>.doc` or `getDoc(…)`; `.undo()` / `.redo()` on anything whose
- * last segment is not `editor` (BlockNote's own commands are covered by its
- * ProseMirror plugin); computed calls keyed `'undo'`, `'redo'` or `direction`
+ * information, so the write shapes are syntactic: `.transact` and `.undo()` /
+ * `.redo()` on anything whose last segment is not `editor` (BlockNote's own
+ * commands are covered by its ProseMirror plugin); computed calls keyed `'undo'`, `'redo'` or `direction`
  * or on a `history` / `undoManager` chain; `writePlainTextIntoBody` and
  * `applyTimelineEdit`. A named function that checks the cap another way is
  * listed in the `exceptions` option with its reason. Aliased imports, member

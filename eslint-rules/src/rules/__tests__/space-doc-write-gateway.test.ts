@@ -259,15 +259,6 @@ const CASES = {
       ),
     },
     {
-      name: "L-39 receivers that merely contain doc",
-      code: source(
-        "declare const docs: { transact(fn: () => void): void };",
-        "declare const xdoc: { transact(fn: () => void): void };",
-        "docs.transact(() => {});",
-        "xdoc.transact(() => {});",
-      ),
-    },
-    {
       name: "L-40 type signature, comment and string are not calls",
       code: source(
         "export interface Editorish { transact: <T>(run: () => T) => T }",
@@ -338,6 +329,16 @@ const CASES = {
     },
   ].map((testCase) => ({ ...testCase, options: [OPTION_E] })),
   invalid: [
+    {
+      name: "L-39 a receiver under any other name",
+      code: source(
+        "declare const docs: { transact(fn: () => void): void };",
+        "declare const ctx: { space: { transact(fn: () => void): void } };",
+        "docs.transact(() => {});",
+        "ctx.space.transact(() => {});",
+      ),
+      errors: [at(9, 1), at(10, 1)],
+    },
     {
       name: "L-01 doc.transact",
       code: source("doc.transact(() => {});"),
