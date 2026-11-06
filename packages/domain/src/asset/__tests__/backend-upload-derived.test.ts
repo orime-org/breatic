@@ -7,7 +7,7 @@
  * A lip-sync step's provider result (SAM3's `rle_url`, the generation's video URL) is only a temporary link, so the
  * ingest Worker fetches it, as `transferUrlToStorage` does, but into the derived key the caller names
  * (`${stepKey}:${attemptId}`) and with no `studio_assets` row: `backendUploadService.transferUrlToDerived(sourceUrl,
- * { storageKey, contentType, projectId })` answers the Worker's report on the stored bytes as
+ * { storageKey, contentType, projectId, deadlineAt })` answers the Worker's report on the stored bytes as
  * `{ storageKey, sha256, size, contentType }`, and the caller records it with the step result and the execution pin.
  *
  * The grant, the ticket and the Worker fetch are mocked as in backend-upload.service.test.ts; the function is read by
@@ -34,7 +34,7 @@ vi.mock("@breatic/shared", async (importOriginal) => ({ ...(await importOriginal
 vi.mock("@domain/asset/upload-grant.service.js", () => ({ issueUploadGrant }));
 vi.mock("@domain/asset/ingest-report.service.js", async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()), applyIngestReport }));
 
-type Derived = (sourceUrl: string, target: { storageKey: string; contentType: string; projectId: string; deadlineAt?: number }) =>
+type Derived = (sourceUrl: string, target: { storageKey: string; contentType: string; projectId: string; deadlineAt: number }) =>
   Promise<{ storageKey: string; sha256: string; size: number; contentType: string }>;
 const service = await import("@domain/asset/backend-upload.service.js") as unknown as { transferUrlToDerived?: Derived };
 const { UploadHttpError } = await import("@breatic/shared");
@@ -71,6 +71,8 @@ describe("transferUrlToDerived: a provider link into a named derived key (§97 D
     expect(fetchUrlToIngest.mock.calls[0]?.[0]).toBe(RLE_URL);
     expect(fetchUrlToIngest.mock.calls[0]?.[1]).toMatchObject({ ticket: "signed-ticket" });
     expect(fetchUrlToIngest.mock.calls[0]?.[2]).toBe("secret");
+    // §97 D22-2: the fetch is bounded by the task's own deadline (root AGENTS.md, Task time limit).
+    expect(fetchUrlToIngest.mock.calls[0]?.[3]).toMatchObject({ deadlineAt: TARGET.deadlineAt });
     // Hash, size and type come from the Worker's report on the stored bytes, never from the caller.
     expect(answer).toEqual({ storageKey: KEY, sha256: MEASURED.sha256, size: MEASURED.sizeBytes, contentType: MEASURED.contentType });
   });
