@@ -4,7 +4,7 @@
 /** The selected clip's start, in-point and duration fields (inner#1708 P4). */
 
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import type { TimelineVideoClip } from '@breatic/shared';
+import { t, type TimelineDocumentV1, type TimelineVideoClip } from '@breatic/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
@@ -377,5 +377,42 @@ describe('TimelineClipProperties clears a field note once an in-range entry is c
     expect(onCommit).toHaveBeenCalledTimes(1);
     expect(fieldText('timeline-clip-duration')).toBe('20');
     expect(noteBeside('timeline-clip-duration')).toBe(false);
+  });
+});
+
+describe('TimelineClipProperties marks an out-of-range field invalid (inner#1708 visual V8)', () => {
+  it('sets aria-invalid with the note and clears it after an in-range commit', () => {
+    showLive();
+    typeAndBlur('timeline-clip-duration', '99999999');
+    expect(screen.getByTestId('timeline-clip-duration')).toHaveAttribute('aria-invalid', 'true');
+    expect(noteBeside('timeline-clip-duration')).toBe(true);
+    typeAndBlur('timeline-clip-duration', '20');
+    expect(screen.getByTestId('timeline-clip-duration')).not.toHaveAttribute('aria-invalid', 'true');
+    expect(noteBeside('timeline-clip-duration')).toBe(false);
+  });
+});
+
+describe('TimelineClipProperties names the source length and rate (inner#1708 visual V18)', () => {
+  it('shows the source frames at a whole frame rate', () => {
+    showLive();
+    expect(screen.getByTestId('timeline-clip-source')).toHaveTextContent(t('timeline.sourceExtent', { frames: SOURCE.extentFrames, fps: 24 }));
+  });
+
+  it('shows a fractional frame rate rounded to two decimals', () => {
+    const ntsc = { num: 30000, den: 1001 };
+    const base = timeline([SELECTED]);
+    const document: TimelineDocumentV1 = {
+      ...base, settings: { ...base.settings, fps: ntsc },
+      sources: { [SOURCE.id]: { ...SOURCE, timebase: ntsc } },
+    };
+    render(<TimelineClipProperties spaceId='space' document={document} clip={SELECTED} name='Clip' conflict={false}
+      labels={LABELS} readOnly={false} placement={OFF} onCommit={vi.fn()} />);
+    expect(screen.getByTestId('timeline-clip-source')).toHaveTextContent(t('timeline.sourceExtent', { frames: SOURCE.extentFrames, fps: 29.97 }));
+  });
+
+  it('shows no source line when the source is missing', () => {
+    showLive(clip(cid(8), V2, 10, 14, { sourceId: '10000000-0000-4000-8000-0000000000fe' }));
+    expect(screen.queryByTestId('timeline-clip-source')).toBe(null);
+    expect(screen.getByTestId('timeline-clip-duration')).toBeInTheDocument();
   });
 });
