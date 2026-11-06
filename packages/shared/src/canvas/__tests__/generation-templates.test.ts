@@ -427,6 +427,12 @@ describe('creative goals and triggers', () => {
     }
   });
 
+  it('names the social hooks goal without a medium, as it holds image templates as well as video ones', () => {
+    const NAMES: Record<string, string> = { en: 'Social hooks', 'zh-CN': '社媒钩子', 'zh-TW': '社群鉤子', ja: 'SNS フック', ko: 'SNS 후킹' };
+    expect(Object.keys(NAMES).sort()).toEqual([...LOCALES].sort());
+    for (const locale of LOCALES) expect(raw(locale, 'canvas.template.goal.social-hooks'), locale).toBe(NAMES[locale]);
+  });
+
   it('groups a node type\'s templates under their goals in goal order, leaving out goals with none', () => {
     expect(templateGoalsFor('image').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['character', ['costume-sheet', 'character-bible', 'expression-sheet', 'character-design-from-text']],
@@ -625,6 +631,52 @@ describe('social hook templates (inner#1816)', () => {
       const kinds = wordsOf(locale, template, anchor).flatMap((s) => (s.slot ? [s.slot.kind] : []));
       expect(kinds.filter((kind) => kind === 'note'), locale).toHaveLength(2);
       expect(kinds.filter((kind) => kind === 'asset'), locale).toEqual([]);
+    }
+  });
+
+  it('names the frame slot a note picks a node into the way the panel\'s button does, in every language', () => {
+    // The video panel's button label for each slot, by the `into` it fills
+    // (web `video-slots.ts`). `image` is the First frame button only in the
+    // modes that draw it (web `video-mode-options.ts`); image animation and
+    // talking head draw a character image slot there instead.
+    const FIRST_FRAME_MODES = ['i2v', 'first_last', 'multi_shot'];
+    const labelKeyOf = (node: TemplateGenerateNode, into: string | undefined): string | undefined => {
+      if (node.type !== 'video') return undefined;
+      if (into === 'end_image') return 'canvas.generatePanel.endFrame';
+      if (into === 'image' && FIRST_FRAME_MODES.includes(node.mode)) return 'canvas.generatePanel.firstFrame';
+      return undefined;
+    };
+    let checked = 0;
+    for (const template of GENERATION_TEMPLATES) {
+      for (const node of generateNodes(template)) {
+        for (const edge of template.edges.filter((one) => one.to === node.key)) {
+          const labelKey = labelKeyOf(node, edge.into);
+          if (labelKey === undefined) continue;
+          checked += 1;
+          for (const locale of LOCALES) {
+            const label = raw(locale, labelKey);
+            const notes = wordsOf(locale, template, node).flatMap((s) => (s.slot?.kind === 'note' ? [s.slot.label] : []));
+            const where = `${template.id} ${locale} ${node.key} <- ${edge.from} into ${String(edge.into)}`;
+            expect(label, `${where}: ${labelKey}`).toBeDefined();
+            expect(notes.some((note) => note.includes(label ?? '')), `${where}: a note says "${String(label)}" in ${JSON.stringify(notes)}`).toBe(true);
+          }
+        }
+      }
+    }
+    expect(checked, 'a template wires a node into a frame slot, so the check runs on something').toBeGreaterThan(0);
+  });
+
+  it('gives every ✏️ tweak in the quick tip\'s shots an example, as the first shot\'s has, in every language', () => {
+    const EXAMPLE: Record<string, string> = { en: 'e.g.', 'zh-CN': '例如', 'zh-TW': '例如', ja: '例：', ko: '예:' };
+    expect(Object.keys(EXAMPLE).sort()).toEqual([...LOCALES].sort());
+    const template = byId('vertical-15s-quick-tip');
+    const anchor = template && anchorOf(template);
+    if (!template || !anchor) throw new Error('vertical-15s-quick-tip missing');
+    for (const locale of LOCALES) {
+      for (const rest of wordKeysOf(template, anchor)) {
+        const tweaks = markedSegments(raw(locale, textKey(template, rest)) ?? '').flatMap((s) => (s.slot?.kind === 'tweak' ? [s.slot.label] : []));
+        for (const tweak of tweaks) expect.soft(tweak, `${locale} ${rest}`).toContain(EXAMPLE[locale]);
+      }
     }
   });
 
