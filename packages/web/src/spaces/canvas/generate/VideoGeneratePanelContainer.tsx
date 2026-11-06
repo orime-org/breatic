@@ -66,7 +66,7 @@ import {
   PromptEditor,
   type PromptEditorHandle,
 } from '@web/spaces/canvas/generate/PromptEditor';
-import { AddShotRow, ShotList, addBlockedKey } from '@web/spaces/canvas/generate/storyboard-controls';
+import { AddShotRow, ShotList, addBlockedKey, nextOpenShot } from '@web/spaces/canvas/generate/storyboard-controls';
 import { mentionedSourceIds } from '@web/spaces/canvas/generate/fragment-prompt';
 import { storyboardRun } from '@web/spaces/canvas/generate/storyboard-run';
 import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePanel';
@@ -294,20 +294,39 @@ function VideoGeneratePanelBody({
   // other seconds; words typed in a shot leave it as it is (`useShots`).
   const shots = useShots(projectId, spaceId, nodeId);
 
-  // The box the caret was last in, so the rail's insert button lands there:
-  // the main prompt, or one shot's box by its id. Same shape as the audio
-  // panel's `lastFocusedBox`.
-  const lastFocusedBox = React.useRef<string>('main');
+  // The shot whose box is open (#1201): the first when the mode opens, then
+  // the one the reader opens or adds, kept by `nextOpenShot` across every
+  // change to the list. Leaving the mode forgets it, so coming back opens the
+  // first shot again.
+  const [openedShot, setOpenedShot] = React.useState<string | null>(null);
+  const [seenShots, setSeenShots] = React.useState(shots);
+  if (shots !== seenShots) setSeenShots(shots);
+  const nextShot = spec && shots ? nextOpenShot(seenShots ?? [], shots, openedShot) : null;
+  if (nextShot !== openedShot) setOpenedShot(nextShot);
+  const expandedShot = nextShot ?? '';
+  const expandedShotRef = React.useRef(expandedShot);
+  expandedShotRef.current = expandedShot;
   const shotEditors = React.useRef(new Map<string, PromptEditorHandle>());
+  // Set by the reader's own open, add or remove, and spent once that shot's
+  // box is shown; a collaborator's change never moves the caret.
+  const focusOnOpen = React.useRef(false);
+  React.useEffect(() => {
+    if (!focusOnOpen.current) return;
+    focusOnOpen.current = false;
+    shotEditors.current.get(expandedShot)?.focus();
+  }, [expandedShot]);
+  const onExpandShot = React.useCallback((shotId: string) => {
+    focusOnOpen.current = true;
+    setOpenedShot(shotId);
+  }, []);
   // The rail refuses a row the prompt cannot take itself (#1966), so this
-  // only routes the insert: the shot box the caret was last in, else the
-  // first shot box, else the main prompt. Shot boxes are mounted only in the
-  // multi-shot mode and leave the map when they unmount.
+  // only routes the insert: the open shot's box, else the main prompt. A chip
+  // put into a closed shot would arrive where the reader cannot see it. Shot
+  // boxes are mounted only in the multi-shot mode and leave the map when
+  // they unmount.
   const insertTarget = React.useCallback(
     (): PromptEditorHandle | null =>
-      shotEditors.current.get(lastFocusedBox.current) ??
-      shotEditors.current.values().next().value ??
-      promptEditorRef.current,
+      shotEditors.current.get(expandedShotRef.current) ?? promptEditorRef.current,
     [promptEditorRef],
   );
   const handleInsertReference = React.useCallback(
@@ -515,14 +534,20 @@ function VideoGeneratePanelBody({
   }, [freshVm]);
   const onAddShot = React.useCallback(() => {
     const { spec: liveSpec, total: liveTotal } = liveShots();
-    if (liveSpec) addStoryboardShot(projectId, spaceId, nodeId, liveTotal, liveSpec.maxShots);
-  }, [projectId, spaceId, nodeId, liveShots]);
+    const added = liveSpec ? addStoryboardShot(projectId, spaceId, nodeId, liveTotal, liveSpec.maxShots) : null;
+    // A shot the reader adds is one they are about to write.
+    if (added !== null) onExpandShot(added);
+  }, [projectId, spaceId, nodeId, liveShots, onExpandShot]);
   const onStepShot = React.useCallback(
     (shotId: string, delta: 1 | -1) => stepStoryboardShot(projectId, spaceId, nodeId, shotId, delta),
     [projectId, spaceId, nodeId],
   );
   const onRemoveShot = React.useCallback(
-    (shotId: string) => removeStoryboardShot(projectId, spaceId, nodeId, shotId, liveShots().total),
+    (shotId: string) => {
+      // Removing the open shot opens its neighbour, where the caret follows.
+      if (shotId === expandedShotRef.current) focusOnOpen.current = true;
+      removeStoryboardShot(projectId, spaceId, nodeId, shotId, liveShots().total);
+    },
     [projectId, spaceId, nodeId, liveShots],
   );
 
@@ -854,9 +879,6 @@ function VideoGeneratePanelBody({
           placeholder={promptPlaceholder}
           onTextChange={onPromptChange}
           onAtMentionsChange={handleAtMentionsChange}
-          onFocus={() => {
-            lastFocusedBox.current = 'main';
-          }}
           references={stableReferences}
           // Same signal as the rail's: a media `@` chip is a model input only
           // where the model's pool takes its kind. Both outlets have to agree,
@@ -901,9 +923,6 @@ function VideoGeneratePanelBody({
         placeholder={shotPlaceholder}
         onTextChange={IGNORE}
         onAtMentionsChange={IGNORE}
-        onFocus={() => {
-          lastFocusedBox.current = shot.id;
-        }}
         references={stableReferences}
         referenceKinds={referenceKinds}
         mentionEmptyLabel={mentionEmptyLabel}
@@ -930,7 +949,15 @@ function VideoGeneratePanelBody({
     if (!spec || !shots) return mainEditor;
     return (
       <>
-        <ShotList shots={shots} onStep={onStepShot} onRemove={onRemoveShot} renderEditor={renderShotEditor} />
+        <ShotList
+          shots={shots}
+          expanded={expandedShot}
+          onExpand={onExpandShot}
+          placeholder={shotPlaceholder}
+          onStep={onStepShot}
+          onRemove={onRemoveShot}
+          renderEditor={renderShotEditor}
+        />
         <AddShotRow maxShots={spec.maxShots} addBlocked={addBlocked} onAdd={onAddShot} />
       </>
     );
@@ -940,6 +967,9 @@ function VideoGeneratePanelBody({
     spec,
     addBlocked,
     mainEditor,
+    expandedShot,
+    onExpandShot,
+    shotPlaceholder,
     renderShotEditor,
     onStepShot,
     onRemoveShot,

@@ -68,6 +68,13 @@ export interface PromptEditorHandle {
    * @param text - The text to insert.
    */
   insertText: (text: string) => void;
+  /**
+   * Puts the caret in this editor: back where the reader last left it, or at
+   * the end when they never put one here. Any focus counts as a placed caret
+   * from then on, so a caret dropped at the start would draw every later
+   * insert to the start.
+   */
+  focus: () => void;
 }
 
 /**
@@ -88,7 +95,6 @@ const DIM_CHIP: Readonly<Record<ReferenceKind, string>> = {
 interface PromptWiring {
   references: ReferenceRailItem[];
   referenceKinds: readonly ReferenceKind[];
-  onFocus?: () => void;
   blockSeparator?: string;
   mentionTokens: MentionTokens;
   placeholder: string;
@@ -134,14 +140,6 @@ interface PromptEditorProps {
    * ceiling; this is where each starts.
    */
   startingHeight?: 'full' | 'half';
-  /**
-   * Called when the caret enters this box (#1960).
-   *
-   * A panel with two of these has to know which one the writer was last in:
-   * the reference rail's insert button fires long after the caret left, and
-   * with no answer it can only ever aim at one of them.
-   */
-  onFocus?: () => void;
   /**
    * What joins two blocks in the string this box hands to the model (#1960).
    *
@@ -214,7 +212,6 @@ interface PromptEditorProps {
  * @param root0.caretProvider - Canvas-space doc provider whose awareness carries collaborator carets (null until connected).
  * @param root0.testId - What tests reach for this editor by.
  * @param root0.startingHeight - How tall the box opens before anything is typed.
- * @param root0.onFocus - Called when the caret enters this box.
  * @param root0.blockSeparator - What joins two blocks in the serialized string.
  * @param root0.mentionTokens - Each media chip's words in the serialized string, by pool id.
  * @param ref - Imperative handle exposing `insertReference` (click-to-insert).
@@ -235,7 +232,6 @@ export const PromptEditor = React.forwardRef<
     caretProvider = null,
     testId = 'generate-prompt-editor',
     startingHeight = 'full',
-    onFocus,
     blockSeparator,
     mentionTokens = NO_MENTION_TOKENS,
   }: PromptEditorProps,
@@ -259,7 +255,6 @@ export const PromptEditor = React.forwardRef<
       const wiring: PromptWiring = {
         references,
         referenceKinds,
-        onFocus,
         blockSeparator,
         mentionTokens,
         placeholder,
@@ -345,7 +340,6 @@ export const PromptEditor = React.forwardRef<
         onFocus: ({ editor: e }) => {
           const placed = keptOf.get(e);
           if (placed !== undefined) placed.caretPlaced = true;
-          wiring.onFocus?.();
         },
       });
       constructing = false;
@@ -388,7 +382,6 @@ export const PromptEditor = React.forwardRef<
     Object.assign(kept.wiring, {
       references,
       referenceKinds,
-      onFocus,
       blockSeparator,
       mentionTokens,
       placeholder,
@@ -455,6 +448,10 @@ export const PromptEditor = React.forwardRef<
           .focus()
           .insertContentAt({ from, to }, { type: 'text', text: `${before}${text}${after}` })
           .run();
+      },
+      focus: (): void => {
+        if (editor.isDestroyed) return;
+        editor.commands.focus(keptOf.get(editor)?.caretPlaced === true ? null : 'end');
       },
       serializePrompt: (tokens?: MentionTokens): string | null =>
         editor.isDestroyed
