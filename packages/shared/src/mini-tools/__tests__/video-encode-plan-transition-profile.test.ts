@@ -7,8 +7,9 @@
  * width and height from the first plan's display, odd sides of an opaque output taken down to even (1 up to 2, §4.3 and the
  * D05 row), a transparent output keeping them; fps from the first plan's presentation, timescale ÷ frame duration when CFR,
  * else frame count ÷ display duration, as an exact rational; alpha when either plan's `policy.emptyFill` is transparent;
- * codec vp9 with alpha, else h264; `encode` and `pixFmt` from the config. Colour constants and timeBase are not asserted
- * (their field names are not fixed). Read from the mini-tools entry by name so this compiles before the function exists.
+ * codec vp9 with alpha, else h264. §97 D15-5: `timeBase` is the inverse of `fps`; `pixFmt` is derived, `yuv420p` opaque and
+ * `yuva420p` with alpha; `color` is the SDR BT.709 constant; the config supplies only `encode: { crf, preset }` (the
+ * presentation crf and preset). Read from the mini-tools entry by name so this compiles before the function exists.
  */
 import { describe, expect, it } from "vitest";
 import * as miniTools from "@shared/mini-tools/index.js";
@@ -16,10 +17,11 @@ import { projectPresentationTable } from "@shared/mini-tools/video-presentation-
 
 type Rational = { numerator: string; denominator: string };
 type Plan = Record<string, unknown> & { display: { width: number; height: number; duration: Rational }; policy: { singleFrameDurationMs: number; emptyFill: "black" | "transparent" } };
-interface Profile { width: number; height: number; fps: Rational; alpha: boolean; codec: string; encode: unknown; pixFmt: string }
+interface Profile { width: number; height: number; fps: Rational; timeBase: Rational; alpha: boolean; codec: string; encode: unknown; pixFmt: string; color: unknown }
 const api = miniTools as unknown as { transitionOutputProfile: (first: Plan, second: Plan, config: unknown) => Profile };
 const r = (numerator: number, denominator = 1): Rational => ({ numerator: String(numerator), denominator: String(denominator) });
-const CONFIG = { encode: { crf: 18, preset: "medium" }, pixFmt: "yuv420p" };
+const CONFIG = { encode: { crf: 18, preset: "medium" } };
+const BT709 = { matrix: "bt709", range: "tv", primaries: "bt709", transfer: "bt709" };
 
 /**
  * Whether two rationals are the same number, without assuming either is reduced.
@@ -95,14 +97,16 @@ function transparentPlan(width = 96): Plan {
 describe("the transition output profile (§97 D13-1; frames-split §7.17)", () => {
   it("TP01 takes the first clip's display size and CFR frame rate, opaque H.264 with the configured encode and pixel format", () => {
     const profile = api.transitionOutputProfile(cfrPlan(), vfrPlan(), CONFIG);
-    expect(profile).toMatchObject({ width: 64, height: 48, alpha: false, codec: "h264", encode: CONFIG.encode, pixFmt: CONFIG.pixFmt });
+    expect(profile).toMatchObject({ width: 64, height: 48, alpha: false, codec: "h264", encode: CONFIG.encode, pixFmt: "yuv420p", color: BT709 });
     expect(same(profile.fps, r(8))).toBe(true);
+    expect(same(profile.timeBase, r(1, 8))).toBe(true);
   });
 
   it("TP02 a VFR first clip gives its average frame rate: frame count over display duration", () => {
     const profile = api.transitionOutputProfile(vfrPlan(), cfrPlan(), CONFIG);
-    expect(profile).toMatchObject({ width: 320, height: 240, alpha: false, codec: "h264" });
+    expect(profile).toMatchObject({ width: 320, height: 240, alpha: false, codec: "h264", pixFmt: "yuv420p" });
     expect(same(profile.fps, r(2000, 847))).toBe(true);
+    expect(same(profile.timeBase, r(847, 2000))).toBe(true);
   });
 
   it.each([
@@ -110,7 +114,7 @@ describe("the transition output profile (§97 D13-1; frames-split §7.17)", () =
     ["the second", (): [Plan, Plan] => [cfrPlan(), transparentPlan()], 64, 48],
   ] as const)("TP03 is transparent VP9 when %s clip is transparent", (_name, plans, width, height) => {
     const [first, second] = plans();
-    expect(api.transitionOutputProfile(first, second, CONFIG)).toMatchObject({ width, height, alpha: true, codec: "vp9" });
+    expect(api.transitionOutputProfile(first, second, CONFIG)).toMatchObject({ width, height, alpha: true, codec: "vp9", pixFmt: "yuva420p", color: BT709, encode: CONFIG.encode });
   });
 
   it.each([
