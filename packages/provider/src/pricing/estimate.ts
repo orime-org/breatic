@@ -62,23 +62,27 @@ export function cloneKeyOf(
   sourceKeys: Readonly<Record<string, string>>,
   itemIndex: number | null,
 ): { kind: CloneKind; sourceKey: string } | undefined {
-  if (param === undefined) return undefined;
+  if (param === undefined || !makesClone(kind)) return undefined;
   const value = params[param];
-  if (kind === "voice" || kind === "vocal") {
+  if (kind !== "element") {
     const sha = typeof value === "string" ? sourceKeys[value] : undefined;
     return sha === undefined ? undefined : { kind, sourceKey: sha };
   }
-  if (kind === "element") {
-    const index = itemIndex ?? 0;
-    const item: unknown = Array.isArray(value) ? value[index] : undefined;
-    const sha = typeof item === "string" ? sourceKeys[item] : undefined;
-    return sha === undefined ? undefined : { kind, sourceKey: `${sha}:Element ${index + 1}` };
-  }
-  return undefined;
+  const index = itemIndex ?? 0;
+  const item: unknown = Array.isArray(value) ? value[index] : undefined;
+  const sha = typeof item === "string" ? sourceKeys[item] : undefined;
+  return sha === undefined ? undefined : { kind, sourceKey: `${sha}:Element ${index + 1}` };
 }
 
-/** The kinds of extra step that make a clone, so a clone the upstream holds lets a run skip them; a binding's own call is one when it has `reused_by` (kind `voice`). */
-const CLONE_KINDS: ReadonlySet<string> = new Set(["vocal", "element"]);
+/**
+ * Whether a call of this kind makes a clone, so a clone the upstream holds lets a run skip it; a binding's own call
+ * is one when it has `reused_by` (kind `voice`).
+ * @param kind - The call's kind.
+ * @returns True for a voice, vocal or element clone.
+ */
+export function makesClone(kind: string): kind is CloneKind {
+  return kind === "voice" || kind === "vocal" || kind === "element";
+}
 
 /**
  * The clone an upstream holds for a key, among the caller's live clones.
@@ -301,8 +305,8 @@ async function estimateOn(rule: UpstreamPricing, input: EstimateInput, { fields,
     || input.durationsMissing.some((p) => billsBy(formulas, "get_duration", fieldOf(p)));
   const promptField = rule.prompt_field;
   const textPriced = promptField !== undefined && input.prompt === "" && billsBy(formulas, "$length", promptField);
-  const ownReused = rule.reused_by !== undefined && isPresent(input.params[rule.reused_by]);
-  const stepReused = rule.steps.some((s) => CLONE_KINDS.has(s.kind) && stepCalls(s, input.params).length > 0);
+  const ownClones = rule.reused_by !== undefined && isPresent(input.params[rule.reused_by]);
+  const stepClones = rule.steps.some((s) => makesClone(s.kind) && stepCalls(s, input.params).length > 0);
   const { known } = input;
 
   /**
@@ -326,10 +330,10 @@ async function estimateOn(rule: UpstreamPricing, input: EstimateInput, { fields,
       clone && (known === undefined
         ? everyRun
         : heldClone(known.clones, rule.upstream, cloneKeyOf(kind, param, input.params, known.sourceKeys, itemIndex)) !== undefined);
-    let usd = skipped(ownReused, "voice", rule.reused_by, null) ? 0 : await priceUsd(contractOf(rule.pricing), fields, durations);
+    let usd = skipped(ownClones, "voice", rule.reused_by, null) ? 0 : await priceUsd(contractOf(rule.pricing), fields, durations);
     for (const step of rule.steps) {
       if (step.pricing === undefined) continue;
-      const calls = stepCalls(step, input.params).filter((i) => !skipped(CLONE_KINDS.has(step.kind), step.kind, step.for_param, i)).length;
+      const calls = stepCalls(step, input.params).filter((i) => !skipped(makesClone(step.kind), step.kind, step.for_param, i)).length;
       if (calls > 0) usd += calls * (await priceUsd(contractOf(step.pricing), fields, durations));
     }
     return usd;
@@ -343,7 +347,7 @@ async function estimateOn(rule: UpstreamPricing, input: EstimateInput, { fields,
   }
   if (unknown) return { usd: everyRun, bound: "at_least", upstream: rule.upstream };
   // Only a caller that does not know its clones leaves a clone call in doubt.
-  return { usd, bound: known === undefined && (ownReused || stepReused) ? "at_most" : "exact", upstream: rule.upstream };
+  return { usd, bound: known === undefined && (ownClones || stepClones) ? "at_most" : "exact", upstream: rule.upstream };
 }
 
 /**
