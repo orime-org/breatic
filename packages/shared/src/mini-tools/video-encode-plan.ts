@@ -485,7 +485,7 @@ export function planTransitionChunks(timeline: TransitionChunkTimeline, budget: 
     const before = [0];
     for (const cost of costs) before.push(before.at(-1)! + cost);
     const total = before.at(-1)!;
-    // A frame over the whole share still makes a chunk of one; admission refuses a job over its share elsewhere.
+    // A single frame costing more than the whole share still makes a chunk of one.
     for (let count = Math.max(1, Math.ceil(total / budget.targetSeconds - 1e-9)); ; count += 1) {
       const ends = Array.from({ length: count }, (_, at) => {
         if (at === count - 1) return costs.length;
