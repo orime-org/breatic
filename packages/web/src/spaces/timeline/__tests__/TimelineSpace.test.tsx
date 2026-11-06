@@ -2380,3 +2380,85 @@ describe('TimelineSpace lists a clip record stored under another key as damaged 
     expect(layout().clips[X]).toMatchObject({ startFrame: 10 });
   });
 });
+
+describe('TimelineSpace hands focus to its root when a focused control leaves the page (inner#1708 F1)', () => {
+  const MISFILED = '30000000-0000-4000-8000-0000000000f1';
+
+  /**
+   * Store a damaged clip record a peer wrote.
+   * @param doc - The content document.
+   * @throws {Error} When Yjs cannot attach the map.
+   */
+  function damaged(doc: Y.Doc): void {
+    doc.transact(() => {
+      const record = new Y.Map<unknown>();
+      doc.getMap('clips').set(MISFILED, record);
+      record.set('startFrame', 5);
+    }, 'provider');
+  }
+
+  /**
+   * The Timeline root.
+   * @returns Its element.
+   * @throws {Error} When it is absent.
+   */
+  function root(): HTMLElement {
+    return screen.getByTestId('timeline-space');
+  }
+
+  it('moves focus to the root when a track delete button activated by keyboard removes its track (a)', async () => {
+    const user = userEvent.setup();
+    seedLayout([clipAt(X, MAIN, 0, 24)]);
+    showTimeline();
+    const remove = await screen.findByTestId('timeline-delete-track-v2');
+    act(() => remove.focus());
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(layout().tracks.v2).toBe(undefined));
+    await waitFor(() => expect(document.activeElement).toBe(root()));
+  });
+
+  it('moves focus to the root when Delete on a focused conflict row removes its clip (b)', async () => {
+    const user = userEvent.setup();
+    const doc = seedLayout([clipAt(X, 'v2', 0, 14)]);
+    showTimeline();
+    await screen.findByTestId('timeline-clip-' + X);
+    act(() => { doc.transact(() => doc.getMap('tracks').delete('v2'), 'provider'); });
+    const row = await screen.findByTestId('timeline-conflict-' + X);
+    await user.click(row);
+    expect(document.activeElement).toBe(row);
+    await user.keyboard('{Delete}');
+    await waitFor(() => expect(layout().clips[X]).toBe(undefined));
+    expect(screen.queryByTestId('timeline-conflict-' + X)).toBe(null);
+    await waitFor(() => expect(document.activeElement).toBe(root()));
+  });
+
+  it('moves focus to the root when the delete control of a damaged row activated by keyboard removes the row (c)', async () => {
+    const user = userEvent.setup();
+    const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
+    damaged(doc);
+    showTimeline();
+    const remove = await screen.findByTestId('timeline-damaged-delete-' + MISFILED);
+    act(() => remove.focus());
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(currentDoc().getMap('clips').has(MISFILED)).toBe(false));
+    expect(screen.queryByTestId('timeline-conflict-' + MISFILED)).toBe(null);
+    await waitFor(() => expect(document.activeElement).toBe(root()));
+  });
+
+  it('leaves focus on a control outside the Timeline when the Timeline control focused before is removed', async () => {
+    const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
+    damaged(doc);
+    showTimeline();
+    const remove = await screen.findByTestId('timeline-damaged-delete-' + MISFILED);
+    act(() => remove.focus());
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    try {
+      act(() => outside.focus());
+      act(() => { doc.transact(() => doc.getMap('clips').delete(MISFILED), 'provider'); });
+      await waitFor(() => expect(screen.queryByTestId('timeline-conflict-' + MISFILED)).toBe(null));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(document.activeElement).toBe(outside);
+    } finally { outside.remove(); }
+  });
+});
