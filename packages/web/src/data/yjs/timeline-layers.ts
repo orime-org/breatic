@@ -6,6 +6,19 @@ import type { TimelineDocumentV1, TimelineVideoClip } from '@breatic/shared';
 import { timelineTrackRank } from '@web/data/yjs/timeline-order';
 
 /**
+ * Whether a clip shows over the clip shown so far: a higher-ranked track, or the same track and a smaller id.
+ * @param clip - The candidate clip.
+ * @param at - Its track rank.
+ * @param shown - The clip shown so far, if any.
+ * @param shownRank - Its track rank.
+ * @returns Whether the candidate shows instead.
+ * @throws {never} Never.
+ */
+function outranks(clip: TimelineVideoClip, at: number, shown: TimelineVideoClip | null, shownRank: number): boolean {
+  return shown === null || at > shownRank || (at === shownRank && clip.id < shown.id);
+}
+
+/**
  * The clip the preview shows at a frame: the ready clip on the highest-ranked track covering it, ties by id.
  * @param document - The current document.
  * @param readyClipIds - Clips the arrangement resolved as ready.
@@ -20,7 +33,7 @@ export function activeTimelineClipAt(document: TimelineDocumentV1, readyClipIds:
   for (const clip of Object.values(document.clips)) {
     const at = rank.get(clip.trackId);
     if (at === undefined || !readyClipIds.has(clip.id) || frame < clip.startFrame || frame >= clip.startFrame + clip.durationFrames) continue;
-    if (shown === null || at > shownRank || (at === shownRank && clip.id < shown.id)) {
+    if (outranks(clip, at, shown, shownRank)) {
       shown = clip;
       shownRank = at;
     }
@@ -47,7 +60,7 @@ export function nextTimelinePlaybackBoundary(document: TimelineDocumentV1, ready
   for (const clip of Object.values(document.clips)) {
     const at = rank.get(clip.trackId);
     if (at === undefined || !readyClipIds.has(clip.id) || clip.startFrame <= frame || clip.startFrame >= next) continue;
-    if (shown === null || at > shownRank || (at === shownRank && clip.id < shown.id)) next = clip.startFrame;
+    if (outranks(clip, at, shown, shownRank)) next = clip.startFrame;
   }
   return next;
 }
