@@ -15,13 +15,14 @@ beside the bundle at `/third-party-licences.txt`.
 
 ## Programs in our container images
 
-We publish three images. One of them, the media container, carries FFmpeg and
-vips:
+We publish four images. Two of them, the media container and the transition
+renderer's image built on it, carry FFmpeg and vips:
 
 | Image | Built from | Base | Carries FFmpeg |
 |---|---|---|---|
 | `ghcr.io/<owner>/breatic` | [Dockerfile](./Dockerfile) | `node:24-bookworm-slim` | no |
 | the media container | [packages/ingest/Dockerfile](./packages/ingest/Dockerfile) | `alpine:3.23` | yes |
+| the MiniToolContainerGl image | [packages/ingest/Dockerfile.gl](./packages/ingest/Dockerfile.gl) | the media container | yes |
 | `ghcr.io/<owner>/breatic-web` | [Dockerfile.web](./Dockerfile.web) | `nginx:1.27-alpine` | no — it serves the built front-end and nothing else |
 
 Breatic invokes the `ffmpeg` executable as a separate process and does not link
@@ -132,6 +133,31 @@ OpenCV's generated CMake cache, install manifest and build/runtime package
 lists are retained under `/opt/opencv/build-record/`. Python package notices
 also remain in their installed `dist-info` directories. This separate
 analysis runtime leaves the existing media programs' notices in place.
+
+### The transition renderer in the MiniToolContainerGl image
+
+The transitions export renders each overlap window with the same `gl-transitions`
+shaders the browser preview draws. It runs in its own image,
+[packages/ingest/Dockerfile.gl](./packages/ingest/Dockerfile.gl), built on the
+media container above, so FFmpeg, x264 and libvpx are the same. That image adds
+one separate program, `container/gl-renderer/render.mjs`, which the container's
+service starts as a process and hands raw frames through files; the service
+loads none of these modules into its own process.
+
+| Component | Licence | Source |
+|---|---|---|
+| headless-gl (`gl`) 8.1.6, with its bundled ANGLE | BSD-2-Clause; ANGLE BSD-3-Clause | https://github.com/stackgl/headless-gl/tree/v8.1.6 |
+| `gl-transition` 2.1.0 | MIT | https://github.com/gl-transitions/gl-transition |
+| `gl-transitions` 1.76.1 (the shaders; the same versions `packages/web/package.json` pins) | MIT | https://github.com/gl-transitions/gl-transitions |
+| Mesa 25.2 (`mesa-gl`, `mesa-dri-gallium`, the llvmpipe software renderer) | MIT AND SGI-B-2.0 AND BSL-1.0 | Alpine 3.23 `main/mesa` |
+| LLVM 21 libraries, pulled in by llvmpipe | Apache-2.0 (Alpine's package metadata) | Alpine 3.23 `main/llvm21` |
+| Xvfb 21.1 (the X display headless-gl draws through) and its X libraries | MIT, X11 | Alpine 3.23 `community/xorg-server`, `main/libx11` and siblings |
+
+None of them is GPL or AGPL. The image carries each module's licence files and a
+`SOURCE` file at `/usr/share/gl-renderer-source/`, written while the image is
+built: every module's version and declared licence, and every Alpine package the
+image adds to its base with its version, licence and the aports commit it was
+built from.
 
 ## Packages in our container images
 
