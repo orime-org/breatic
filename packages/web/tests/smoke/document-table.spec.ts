@@ -1415,7 +1415,7 @@ for (const theme of ['light', 'dark']) {
         expect(sizes.cell).toBeLessThanOrEqual(desired + 1);
         expect(sizes.media).toBeGreaterThan(0);
         expect(sizes.media).toBeLessThanOrEqual(sizes.content + 1);
-        const floating = sizes.media < 128;
+        const floating = sizes.media < 92;
         await expect(media).toHaveAttribute('data-controls-mode', floating ? 'floating' : 'inline');
         const bodyHeight = await page.locator(EDITOR).evaluate((element) => element.getBoundingClientRect().height);
         if (floating) {
@@ -1447,8 +1447,8 @@ for (const theme of ['light', 'dark']) {
           const panel = (await page.getByTestId('doc-media-video-panel').boundingBox())!;
           expect(transport.x).toBeGreaterThanOrEqual(panel.x + 1);
           expect(transport.x + transport.width).toBeLessThanOrEqual(panel.x + panel.width - 1);
-          const fullscreen = (await controls.getByTestId('fullscreen').boundingBox())!;
-          expect(fullscreen.x + fullscreen.width).toBeLessThanOrEqual(panel.x + panel.width - 1);
+          const seek = (await controls.getByTestId('seek').boundingBox())!;
+          expect(seek.x + seek.width).toBeLessThanOrEqual(panel.x + panel.width - 1);
           expect(actions.y + actions.height).toBeLessThanOrEqual(transport.y);
           expect(await page.locator(EDITOR).evaluate((element) => element.getBoundingClientRect().height)).toBeCloseTo(bodyHeight, 1);
           await expect(page.getByRole('tooltip')).toHaveCount(0);
@@ -1473,7 +1473,7 @@ for (const theme of ['light', 'dark']) {
         for (const [fromWidth, toWidth] of [[240, 80], [80, 240], [240, 180]] as const) {
           await resizeDocumentColumn(peer, peerCell, fromWidth);
           await expect.poll(async () => Math.abs((await target.boundingBox())!.width - fromWidth)).toBeLessThanOrEqual(1);
-          const floating = (await media.boundingBox())!.width < 128;
+          const floating = (await media.boundingBox())!.width < 92;
           await expect(media).toHaveAttribute('data-controls-mode', floating ? 'floating' : 'inline');
           if (floating) {
             await media.getByTestId('doc-media-video-trigger').focus();
@@ -1555,13 +1555,12 @@ for (const theme of ['light', 'dark']) {
       expect(readFileSync(await download.path()).equals(readFileSync(resolve(__dirname, '../fixtures/media-history.mp4')))).toBe(true);
       expect(await video.evaluate((element: HTMLVideoElement) => ({ time: element.currentTime, paused: element.paused, volume: element.volume, muted: element.muted }))).toEqual(beforeDownload);
       await expect(page.getByTestId('doc-media-video-panel')).toBeVisible();
-      try {
-        await page.getByTestId('doc-media-video-panel').getByTestId('fullscreen').click();
-        await expect.poll(() => page.evaluate(() => document.fullscreenElement?.tagName)).toBe('VIDEO');
-      } finally {
-        await page.evaluate(async () => { if (document.fullscreenElement !== null) await document.exitFullscreen(); });
-      }
-      await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
+      // inner#1844: full screen is on the panel's row of icons and opens our own layer.
+      await page.getByTestId('doc-media-video-panel').getByTestId('doc-media-fullscreen').click();
+      await expect(page.getByTestId('media-fullscreen').locator('video')).toBeVisible();
+      await expect(page.getByTestId('doc-media-video-panel')).toHaveCount(0);
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('media-fullscreen')).toHaveCount(0);
       await media.getByTestId('doc-media-video-trigger').focus();
       await page.keyboard.press('Enter');
       await expect(page.getByTestId('doc-media-video-panel')).toBeVisible();

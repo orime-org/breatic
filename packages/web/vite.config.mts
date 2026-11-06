@@ -206,6 +206,15 @@ export default defineConfig(({ command, mode }) => {
             if (/[\\/]src[\\/]app[\\/]route-imports\./.test(id)) {
               return 'route-imports';
             }
+            // The eager scene owner and lazy model readers share this error contract and its wording; neither module imports anything at runtime.
+            if (/[\\/]src[\\/]spaces[\\/]three-d[\\/]model-import-(errors|error-text)\.ts$/.test(id)) {
+              return 'model-import-errors';
+            }
+            // Shared overlay code and icons stay independent of the route that opens them.
+            if (/[\\/]src[\\/]lib[\\/]overlay-focus\.ts$/.test(id)
+              || /[\\/]node_modules[\\/]lucide-react[\\/]dist[\\/]esm[\\/]icons[\\/](upload|triangle-alert)\.m?js$/.test(id)) {
+              return 'overlay-shared';
+            }
             // Each non-English catalog is its own `import()` chunk under a
             // fixed name, which `verify-chunks.mjs` reads: Vite's JSON modules
             // leave no `sources` in the sourcemap to recognise them by.

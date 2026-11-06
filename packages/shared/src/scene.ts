@@ -46,3 +46,33 @@ export type SceneObject = z.infer<typeof SceneObjectSchema>;
 
 /** Record keys that commands overwrite after creation; `model` is fixed at creation. */
 export type SceneEditableField = Exclude<keyof SceneObjectValues, 'model'>;
+
+/** Configured import budgets carried by the readable Project API. */
+export interface SceneImportLimits {
+  maxInputBytes: number;
+  maxExpandedBytes: number;
+  maxArtifactBytes: number;
+  maxFiles: number;
+  maxEntryJsonBytes: number;
+  decoderWorkerLimit: number;
+  maxTextureEdge: number;
+  maxTextureBytes: number;
+}
+
+/** Configured scene controls and import budgets, served through the readable Project API. */
+export interface SceneControlsConfig {
+  scaleSensitivity: number;
+  import: SceneImportLimits;
+  /** Shortest gap between two upload-progress updates shared with the Space's members. */
+  progressPublishMs: number;
+}
+
+/**
+ * Identify the registered containers that carry a complete scene model.
+ * @param value - A reduced MIME essence from an upload or the asset ledger.
+ * @returns Whether the container is a GLB or a versioned model ZIP.
+ * @throws {never} Never.
+ */
+export function isSceneModelMediaType(value: string): boolean {
+  return value === 'model/gltf-binary' || value === 'application/zip';
+}

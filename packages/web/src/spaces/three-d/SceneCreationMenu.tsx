@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
-import { Accessibility, Box, Keyboard, MessageCircle, Plus, Sparkles } from 'lucide-react';
+import { Accessibility, Box, Keyboard, MessageCircle, Plus, Sparkles, Upload } from 'lucide-react';
 import { Button } from '@web/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@web/components/ui/dropdown-menu';
@@ -14,17 +14,18 @@ import { useReturnFocus } from '@web/lib/overlay-focus';
 import { useTranslation } from '@web/i18n/use-translation';
 import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
 
-const icons = { add: <Plus className='size-5' />, generate: <Sparkles className='size-5' />, controls: <Keyboard className='size-5' /> };
+const icons = { add: <Plus className='size-5' />, import: <Upload className='size-5' />, generate: <Sparkles className='size-5' />, controls: <Keyboard className='size-5' /> };
 
 /**
  * Open scene creation, capability information and the controls description from the floating left rail.
  * @param root0 - Scene controls and their current owner bindings.
  * @param root0.canEdit - Whether this document currently permits shared edits.
  * @param root0.onAdd - Places the requested built-in source.
+ * @param root0.onImport - Opens the document's model import.
  * @returns The left rail and its controlled dialogs.
  * @throws {never} Commands use the existing session feedback path.
  */
-export const SceneCreationMenu = React.memo(function SceneCreationMenu({ canEdit, onAdd }: { canEdit: boolean; onAdd: (kind: 'box' | 'figure') => void }): React.JSX.Element {
+export const SceneCreationMenu = React.memo(function SceneCreationMenu({ canEdit, onAdd, onImport }: { canEdit: boolean; onAdd: (kind: 'box' | 'figure') => void; onImport: () => void }): React.JSX.Element {
   const t = useTranslation();
   const id = React.useId();
   const [addOpen, setAddOpen] = useExclusiveOverlay(`${id}:add`);
@@ -46,6 +47,7 @@ export const SceneCreationMenu = React.memo(function SceneCreationMenu({ canEdit
     <nav className='absolute left-[var(--space-5)] top-1/2 z-10 flex w-[52px] -translate-y-1/2 flex-col items-center gap-1 rounded-lg border border-border bg-popover py-1.5 shadow-sm' data-testid='scene-left-menu'>
       <DropdownMenu modal={false} open={addOpen} onOpenChange={setAddOpen}><DropdownMenuTrigger asChild><SceneIconButton label={t('spaces.threeD.add')} rail active disabled={!canEdit}>{icons.add}</SceneIconButton></DropdownMenuTrigger>
         <DropdownMenuContent side='right' align='start'><DropdownMenuItem onSelect={() => onAdd('box')}><Box />{t('spaces.threeD.addBox')}</DropdownMenuItem><DropdownMenuItem onSelect={() => onAdd('figure')}><Accessibility />{t('spaces.threeD.addFigure')}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
+      <SceneIconButton rail label={t('spaces.threeD.importModel.title')} disabled={!canEdit} onClick={onImport} data-testid='scene-import-button'>{icons.import}</SceneIconButton>
       <SceneIconButton rail label={t('spaces.threeD.generate')} onClick={showAi}>{icons.generate}</SceneIconButton>
       <Tooltip><TooltipTrigger asChild><span className='inline-flex'><Button variant={null} size={null} disabled className='inline-flex h-10 w-10 items-center justify-center rounded-lg text-foreground-disabled'><MessageCircle className='size-5' /></Button></span></TooltipTrigger><TooltipContent side='right'>{t('spaces.threeD.annotationsLater')}</TooltipContent></Tooltip>
       <div className='my-1 h-px w-7 bg-border' /><SceneIconButton rail label={t('spaces.threeD.controls')} onClick={showControls}>{icons.controls}</SceneIconButton>

@@ -1862,6 +1862,11 @@
     },
     "runOnce": {
       "unknownResult": "방금 작업이 완료되었는지 확인하지 못했습니다. 결과를 확인하세요."
+    },
+    "mediaViewer": {
+      "fullscreen": "전체 화면으로 보기",
+      "close": "닫기",
+      "loadFailed": "이 파일을 불러올 수 없습니다"
     }
   },
   "members": {
@@ -2108,8 +2113,6 @@
         "remove": "제거",
         "caption": "캡션",
         "captionPlaceholder": "캡션 추가",
-        "fullscreen": "전체 화면으로 보기",
-        "close": "닫기",
         "download": "다운로드",
         "delete": "삭제",
         "leftOut": "이미지, 동영상, 오디오 {count}개는 붙여넣지 않았습니다. 파일을 직접 끌어다 놓거나 붙여넣으세요.",
@@ -2160,7 +2163,7 @@
       "generate": "AI 생성",
       "annotationsLater": "주석 (추후 제공)",
       "controls": "조작 안내",
-      "tasks": "생성 작업",
+      "tasks": "작업",
       "minimap": "장면 미니맵",
       "generationDev": "3D 모델 생성 기능은 개발 중입니다",
       "prompt": "생성할 3D 모델을 설명하세요",
@@ -2168,7 +2171,74 @@
       "chooseReference": "참조 이미지 선택",
       "submit": "생성",
       "helpBody": "개체를 클릭하여 선택하세요. 빈 공간을 드래그하여 시점을 회전하고 휠로 확대하거나 축소하세요. 선택 후 플로팅 메뉴에서 개체를 이동, 회전하거나 크기를 조절할 수 있습니다.",
-      "closePanel": "닫기"
+      "closePanel": "닫기",
+      "importModel": {
+        "title": "모델 가져오기",
+        "description": "GLB, glTF 또는 ZIP을 선택하고 모델의 관련 파일도 포함하세요.",
+        "chooseFiles": "파일 선택",
+        "chooseFolder": "폴더 선택",
+        "inputLimit": "최대 {size} MiB",
+        "dropFiles": "모델과 관련 파일을 여기에 놓으세요",
+        "resourceHint": "GLB는 바로 선택할 수 있습니다. glTF는 텍스처와 bin 파일을 함께 제공하거나 전체 ZIP을 선택하세요.",
+        "readOnly": "현재 읽기 전용입니다",
+        "readOnlyHint": "편집 권한을 얻으면 모델을 가져올 수 있습니다.",
+        "checking": "모델 확인 중…",
+        "preview": "모델 미리보기",
+        "previewFailed": "모델 미리보기를 표시할 수 없습니다.",
+        "entry": "주 파일",
+        "chooseEntry": "주 파일 선택",
+        "name": "모델 이름",
+        "fileCount": "파일 {count}개",
+        "meshCount": "메시 {count}개",
+        "skinned": "골격 포함",
+        "checkingResources": "형식과 관련 파일 확인 중",
+        "ready": "모델과 관련 파일이 준비되었습니다",
+        "addResources": "관련 파일 추가",
+        "optionalExtensions": "다음 선택 확장은 표시가 다를 수 있습니다:",
+        "showFiles": "파일 목록 보기",
+        "hideFiles": "파일 목록 접기",
+        "hide": "접기",
+        "retry": "다시 시도",
+        "confirm": "가져오기",
+        "errorMissing": "누락된 관련 파일을 추가하세요.",
+        "errorEntry": "미리 볼 주 파일을 선택하세요.",
+        "errorUnsupported": "지원하지 않는 모델 형식 또는 필수 확장입니다.",
+        "errorEmpty": "모델에 표시할 수 있는 메시가 없습니다.",
+        "errorBudget": "모델이 가져오기 제한을 초과했습니다.",
+        "errorInvalid": "모델 또는 관련 파일을 읽을 수 없습니다.",
+        "errorDuplicate": "경로가 같은 파일이 있습니다. 충돌하지 않는 파일 모음을 선택하세요.",
+        "errorUpload": "모델을 업로드할 수 없습니다. 다시 시도하세요.",
+        "errorLoad": "모델을 불러올 수 없습니다. 다시 시도하세요.",
+        "limit": {
+          "input": "선택한 파일이 총 {actual} MiB입니다(상한 {allowed} MiB).",
+          "files": "파일이 {actual}개입니다(상한 {allowed}개).",
+          "expanded": "압축 해제 크기가 {actual} MiB입니다(상한 {allowed} MiB).",
+          "entryJson": "모델 설명 파일이 {actual} MiB입니다(상한 {allowed} MiB).",
+          "artifact": "패키지 크기가 {actual} MiB입니다(상한 {allowed} MiB).",
+          "textureEdge": "텍스처 변 길이가 {actual} px입니다(상한 {allowed} px).",
+          "textureBytes": "텍스처 메모리가 {actual} MiB입니다(상한 {allowed} MiB)."
+        }
+      },
+      "taskList": {
+        "kind": "가져오기",
+        "you": "나",
+        "member": "멤버",
+        "uploading": "업로드 중 {percent}%",
+        "running": "업로드 중",
+        "runningFor": "업로드 중 · {minutes}분 경과",
+        "registering": "등록 중",
+        "done": "완료",
+        "failed": "실패",
+        "expired": "시간 초과",
+        "failedReason": "모델을 업로드하지 못했습니다.",
+        "place": "장면에 배치",
+        "retry": "다시 시도",
+        "remove": "제거",
+        "empty": "가져온 모델이 여기에 표시됩니다.",
+        "loadFailed": "작업을 불러오지 못했습니다.",
+        "removeFailed": "작업을 제거하지 못했습니다. 다시 시도하세요.",
+        "placeFailed": "모델을 장면에 배치하지 못했습니다."
+      }
     }
   },
   "menu": {
@@ -2702,7 +2772,8 @@
       "spaceLocked": "{actor}님이 Space {spaceName}을(를) 잠갔습니다",
       "spaceUnlocked": "{actor}님이 Space {spaceName}의 잠금을 해제했습니다",
       "spaceRestored": "{actor}님이 Space {spaceName}을(를) 복원했습니다",
-      "spaceRenamed": "{actor}님이 Space {oldSpaceName}의 이름을 {spaceName}(으)로 변경했습니다"
+      "spaceRenamed": "{actor}님이 Space {oldSpaceName}의 이름을 {spaceName}(으)로 변경했습니다",
+      "assetUploadedModel": "{actor} 님이 모델 {name}을(를) 업로드했습니다"
     },
     "header": "Project 활동",
     "label": "Project 활동",

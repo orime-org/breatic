@@ -7,7 +7,8 @@ import { TransformControlsGizmo } from 'three/addons/controls/TransformControls.
 import type { Object3D } from 'three';
 import type { SceneObject } from '@breatic/shared';
 import { SceneMiniMapRuntime } from '@web/spaces/three-d/viewport/scene-mini-map';
-import { ModelResourceCache, loadSceneModel } from '@web/spaces/three-d/viewport/model-resources';
+import { applySceneGridTheme } from '@web/spaces/three-d/viewport/scene-grid-theme';
+import { ModelResourceCache, acquireMeasured, loadSceneModel, type MeasuredSceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
 import type { SceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
 import { createTransformGesture, transformPatches } from '@web/spaces/three-d/viewport/scene-transform';
 import type { SceneTransformGesture } from '@web/spaces/three-d/viewport/scene-transform';
@@ -85,6 +86,14 @@ export class SceneViewportRuntime {
   private readonly pivot = new Group();
   private readonly grid = new GridHelper(200, 200);
   private readonly resources: ModelResourceCache;
+  /**
+   * Hold one model through this view's cache, measured for placing it; the
+   * view's own hold on the placed object then reuses the same template.
+   * @param source - The model to place.
+   * @returns The bounds and this holder's release.
+   * @throws {Error} The bounds reject when the model cannot load.
+   */
+  readonly acquireModel = (source: SceneObject['model']): MeasuredSceneModelLease => acquireMeasured(this.resources, source);
   private readonly items = new Map<string, RenderedObject>();
   private overview: SceneMiniMapRuntime | null = null;
   private overviewHost: HTMLDivElement | null = null;
@@ -127,7 +136,7 @@ export class SceneViewportRuntime {
     const light = new DirectionalLight(0xffffff, 3);
     light.position.set(5, 10, 4);
     this.scene.add(light);
-    this.resources = new ModelResourceCache((source, signal) => loadSceneModel(source, signal, this.props.resolveAsset, this.token('--color-muted-foreground')));
+    this.resources = new ModelResourceCache((source, signal) => loadSceneModel(source, signal, this.props.resolveAsset, this.token('--color-muted-foreground'), this.props.importLimits, this.renderer));
     this.controls.addEventListener('mouseDown', this.onGestureStart);
     this.controls.addEventListener('objectChange', this.onGestureChange);
     this.controls.addEventListener('mouseUp', this.onGestureCommit);
@@ -602,10 +611,7 @@ export class SceneViewportRuntime {
    */
   private onThemeChange = (): void => {
     this.scene.background = new Color(this.token('--color-background'));
-    this.grid.material.vertexColors = false;
-    this.grid.material.color.setStyle(this.token('--color-muted-foreground'));
-    this.grid.material.opacity = 0.2;
-    this.grid.material.transparent = true;
+    applySceneGridTheme(this.grid, this.token('--color-muted-foreground'));
     const color = this.token('--color-muted-foreground');
     for (const object of this.props.objects) {
       if (object.model.kind !== 'builtin') continue;

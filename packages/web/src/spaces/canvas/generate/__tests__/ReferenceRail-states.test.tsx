@@ -16,7 +16,9 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { ReferenceKind } from '@breatic/shared';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { screen, fireEvent, act } from '@testing-library/react';
+
+import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
 
 import { HOVER_OPEN_DELAY_MS } from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
 
@@ -92,7 +94,7 @@ function renderRail(referenceKinds: readonly ReferenceKind[]): {
 } {
   const onInsert = vi.fn();
   const onRemove = vi.fn();
-  render(
+  renderWithTooltips(
     <ReferenceRail
       references={ROWS}
       onInsert={onInsert}
@@ -280,7 +282,7 @@ describe('ReferenceRail — the dim does not reach the hover preview', () => {
     // must be dim (otherwise this test proves nothing) and the card must still
     // carry none of that opacity.
     vi.useFakeTimers();
-    render(
+    renderWithTooltips(
       <ReferenceRail
         references={[
           {
@@ -323,7 +325,7 @@ describe('ReferenceRail — a model that sends no prompt (#1966)', () => {
    * @returns Nothing; assertions read the rendered rail.
    */
   function renderNoPrompt(): void {
-    render(
+    renderWithTooltips(
       <ReferenceRail
         references={ROWS}
         onInsert={vi.fn()}

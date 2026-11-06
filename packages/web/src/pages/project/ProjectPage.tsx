@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { fetchProjectCredits } from '@web/data/api/credits';
 import { useProjectCreditsRefresh } from '@web/pages/project/use-project-credits-refresh';
+import { useSpaceTasksRefresh } from '@web/pages/project/use-space-tasks-refresh';
 import * as React from 'react';
 import { useStore } from 'zustand';
 import { useLocation, useParams } from 'react-router-dom';
@@ -29,6 +30,7 @@ import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
 import { spaceRpcFailureNotice } from '@web/pages/project/space-rpc-failure';
 import { CollabSocketProvider } from '@web/data/yjs/collab-socket';
 import { evictSceneSession } from '@web/data/yjs/scene-session';
+import { evictModelImportController } from '@web/spaces/three-d/model-import-controller';
 import { docName } from '@web/data/yjs/manager';
 import { evictCanvasUndoManager } from '@web/data/yjs/canvas-space';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -346,6 +348,7 @@ function ProjectWorkspace({
   // The top bar's credits are read again whenever they may have moved: this
   // reader's own spend returning, or anyone's generation here ending.
   useProjectCreditsRefresh(projectId, provider);
+  useSpaceTasksRefresh(projectId, provider);
   // The whole tab bar, held here and nowhere else. Every cell of the
   // transition table is one action on this reducer, so the strip and the
   // active tab have a single writer.
@@ -519,6 +522,7 @@ function ProjectWorkspace({
     );
     previousOpenTabIdsRef.current = openTabIds;
     for (const id of departed) {
+      evictModelImportController(docName.threeDSpace(projectId, id));
       evictSceneSession(docName.threeDSpace(projectId, id));
       evictCanvasUndoManager(docName.canvasSpace(projectId, id));
       evictDocumentEditor(docName.documentSpace(projectId, id));

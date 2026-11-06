@@ -1,0 +1,19 @@
+3D MODEL IMPORT TEST FIXTURES
+
+The triangle geometry and glTF wrappers in draco.gltf, meshopt.gltf and
+ktx2.gltf were created for these tests. Embedded PNG bytes come from the
+existing tests/fixtures/portrait.png fixture.
+
+normal.ktx2 is an unmodified copy of the normal/bump texture from
+Anisotropy Barn Lamp.
+
+Copyright 2023 Wayfair, LLC.
+Creator: Eric Chadwick.
+License: Creative Commons Attribution 4.0 International (CC-BY-4.0).
+https://creativecommons.org/licenses/by/4.0/legalcode
+
+Source:
+https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/AnisotropyBarnLamp/glTF-KTX-BasisU
+
+The texture is referenced by an original test triangle. No endorsement by
+Wayfair or the creator is implied.

@@ -19,7 +19,7 @@ import { useStaleRelease } from '@web/data/deployment/stale-release';
 import { useAppUpdate } from '@web/data/deployment/use-app-update';
 import type { ConnectionStatus } from '@web/data/yjs/use-socket';
 import { useTranslation } from '@web/i18n/use-translation';
-import { reloadForUpdate } from '@web/stores/reload-for-update';
+import { reloadForUpdate, useUpdatePending } from '@web/stores/reload-for-update';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 
 /**
@@ -53,6 +53,7 @@ function UpdateNotice({
 }: { autoOpen: boolean; onPostpone: () => void }): React.JSX.Element {
   const t = useTranslation();
   const busy = useSpaceOperationsStore((state) => state.hasAnyOperations());
+  const updating = useUpdatePending();
   const [open, setOpen] = React.useState(autoOpen);
   /**
    * Hold focus on the dialog itself: it opens without being asked, and Radix
@@ -92,6 +93,7 @@ function UpdateNotice({
           </AlertDialogCancel>
           <AlertDialogAction
             variant={busy ? 'outline' : undefined}
+            loading={updating}
             data-testid='project-update-refresh'
             onClick={(event) => {
               // Held open: the leave prompt may be cancelled, and the choice

@@ -34,26 +34,80 @@ import { mocks } from "@server/__tests__/helpers/mock-core.js";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const ASSET = "22222222-2222-4222-8222-222222222222";
 const AUTH = { Cookie: "breatic_session=valid-token" };
+const IMPORT_CONFIG = {
+  max_input_bytes: 67108864,
+  max_expanded_bytes: 268435456,
+  max_artifact_bytes: 268435456,
+  max_files: 4096,
+  max_entry_json_bytes: 4194304,
+  decoder_worker_limit: 1,
+  max_texture_edge: 8192,
+  max_texture_bytes: 268435456,
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.projectAuthService.loadProjectRole.mockResolvedValue("viewer");
-  getSceneConfig.mockReturnValue({ scale_sensitivity: 0.025 });
+  getSceneConfig.mockReturnValue({ scale_sensitivity: 0.025, import: IMPORT_CONFIG });
   resolveSceneAsset.mockResolvedValue({
     url: "https://assets.example.test/registered-model.glb",
     mimeType: "model/gltf-binary",
+    sizeBytes: 5956,
   });
 });
 
 describe("3D Space project read routes", () => {
-  it("allows a Viewer to read the configured scale sensitivity", async () => {
+  it("allows a Viewer to read the configured scale sensitivity and import budgets", async () => {
     const response = await createApp().request(`/api/v1/projects/${PROJECT}/three-d/config`, { headers: AUTH });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ data: { scaleSensitivity: 0.025 } });
+    expect(await response.json()).toEqual({ data: {
+      scaleSensitivity: 0.025,
+      import: {
+        maxInputBytes: 67108864,
+        maxExpandedBytes: 268435456,
+        maxArtifactBytes: 268435456,
+        maxFiles: 4096,
+        maxEntryJsonBytes: 4194304,
+        decoderWorkerLimit: 1,
+        maxTextureEdge: 8192,
+        maxTextureBytes: 268435456,
+      },
+    } });
     expect(mocks.projectAuthService.loadProjectRole).toHaveBeenCalledWith("user-1", PROJECT);
     expect(getSceneConfig).toHaveBeenCalledTimes(1);
     expect(resolveSceneAsset).not.toHaveBeenCalled();
+  });
+
+  it("maps all configured import budgets to their camelCase wire fields", async () => {
+    getSceneConfig.mockReturnValue({ scale_sensitivity: 0.04, import: {
+      max_input_bytes: 33554432,
+      max_expanded_bytes: 134217728,
+      max_artifact_bytes: 150994944,
+      max_files: 2048,
+      max_entry_json_bytes: 2097152,
+      decoder_worker_limit: 2,
+      max_texture_edge: 4096,
+      max_texture_bytes: 100663296,
+    } });
+
+    const response = await createApp().request(`/api/v1/projects/${PROJECT}/three-d/config`, { headers: AUTH });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ data: {
+      scaleSensitivity: 0.04,
+      import: {
+        maxInputBytes: 33554432,
+        maxExpandedBytes: 134217728,
+        maxArtifactBytes: 150994944,
+        maxFiles: 2048,
+        maxEntryJsonBytes: 2097152,
+        decoderWorkerLimit: 2,
+        maxTextureEdge: 4096,
+        maxTextureBytes: 100663296,
+      },
+    } });
+    expect(getSceneConfig).toHaveBeenCalledTimes(1);
   });
 
   it("allows a Viewer to resolve an asset through the scene service", async () => {
@@ -61,7 +115,7 @@ describe("3D Space project read routes", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ data: {
-      url: "https://assets.example.test/registered-model.glb", mimeType: "model/gltf-binary",
+      url: "https://assets.example.test/registered-model.glb", mimeType: "model/gltf-binary", sizeBytes: 5956,
     } });
     expect(resolveSceneAsset).toHaveBeenCalledWith(PROJECT, "user-1", ASSET);
   });

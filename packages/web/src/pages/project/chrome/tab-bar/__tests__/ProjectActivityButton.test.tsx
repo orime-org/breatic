@@ -471,6 +471,13 @@ describe('entryMessage specificity (#1622)', () => {
     expect(key('file')).toBe('activity.type.assetUploaded');
   });
 
+  it('asset:uploaded of a 3D model → names the model as the user called it (inner#1690)', () => {
+    const message = entryMessage(entry({ type: 'asset:uploaded', payload: { fileUrl: 'x', kind: 'file', model: { name: 'Barn lamp' } } }));
+    expect(message.key).toBe('activity.type.assetUploadedModel');
+    expect(message.params).toMatchObject({ name: 'Barn lamp' });
+    expect(message.params).toHaveProperty('actor');
+  });
+
   it('generation:succeeded → kind-specific key; toolName still wins; generic fallback', () => {
     expect(
       entryMessage(entry({ type: 'generation:succeeded', payload: { source: 'task', kind: 'image' } })).key,
