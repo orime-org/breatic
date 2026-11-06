@@ -167,11 +167,11 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
   const changeName = React.useCallback((event: React.ChangeEvent<HTMLInputElement>): void => {
     controller.setName(event.currentTarget.value);
   }, [controller]);
+  const handedOff = React.useRef(false);
   /**
    * Start the upload; once it has a task row the dialog closes and the row is handed up.
    * @throws {never} Controller state retains any refusal.
    */
-  const handedOff = React.useRef(false);
   const confirm = React.useCallback((): void => {
     void controller.confirm().then((taskId) => {
       if (taskId === null) return;
@@ -194,11 +194,6 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
    */
   const hide = React.useCallback((): void => onOpenChange(false), [onOpenChange]);
   /**
-   * Close on every request except while the upload is starting, so its answer has a dialog to show in.
-   * @param next - The requested open state.
-   * @throws {never} Never directly.
-   */
-  /**
    * Return focus to the opener, except when the dialog closed because an upload started: the new row has it then.
    * @param event - Radix's close auto-focus event.
    * @throws {never} Never directly.
@@ -208,6 +203,11 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
     handedOff.current = false;
     event.preventDefault();
   }, [returnFocus]);
+  /**
+   * Close on every request except while the upload is starting, so its answer has a dialog to show in.
+   * @param next - The requested open state.
+   * @throws {never} Never directly.
+   */
   const changeOpen = React.useCallback((next: boolean): void => {
     if (!next && controller.getSnapshot().phase === 'starting') return;
     onOpenChange(next);

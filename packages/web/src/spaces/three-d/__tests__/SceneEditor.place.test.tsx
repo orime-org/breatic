@@ -19,6 +19,7 @@ import type * as ToastModule from '@web/lib/toast';
 import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { importErrorKey } from '@web/spaces/three-d/model-import-error-text';
+import { ApiException } from '@web/data/api/types';
 
 const h = vi.hoisted(() => ({
   reportError: vi.fn(),
@@ -154,13 +155,39 @@ describe('placing a finished model from the task list (inner#1690)', () => {
   });
 
   it('ends quietly when the viewport lets the model go before it loads', async () => {
-    h.bounds = Promise.reject(new DOMException('Scene model holder released', 'AbortError'));
+    const pending = Promise.withResolvers<{ center: [number, number, number]; min: [number, number, number] }>();
+    h.bounds = pending.promise;
+    pending.promise.catch(() => undefined);
+    const session = await placeable();
+    await pressPlace();
+    act(() => h.latest.props?.onResources?.(null));
+    await act(async () => { pending.reject(new DOMException('Scene model holder released', 'AbortError')); await pending.promise.catch(() => undefined); });
+    expect(readSceneDocument(session.doc).objects).toEqual([]);
+    expect(h.release).toHaveBeenCalledTimes(1);
+    expect(h.reportError).not.toHaveBeenCalled();
+  });
+
+  it('ends quietly when the viewport goes while the model\'s address is being read', async () => {
+    const pending = Promise.withResolvers<{ center: [number, number, number]; min: [number, number, number] }>();
+    h.bounds = pending.promise;
+    pending.promise.catch(() => undefined);
+    const session = await placeable();
+    await pressPlace();
+    act(() => h.latest.props?.onResources?.(null));
+    await act(async () => { pending.reject(new ApiException({ status: 0, message: 'canceled' })); await pending.promise.catch(() => undefined); });
+    expect(readSceneDocument(session.doc).objects).toEqual([]);
+    expect(h.release).toHaveBeenCalledTimes(1);
+    expect(h.reportError).not.toHaveBeenCalled();
+  });
+
+  it('says it could not place the model when the address cannot be read while the viewport stays', async () => {
+    h.bounds = Promise.reject(new ApiException({ status: 503, message: 'unavailable' }));
     h.bounds.catch(() => undefined);
     const session = await placeable();
     await pressPlace();
     expect(readSceneDocument(session.doc).objects).toEqual([]);
     expect(h.release).toHaveBeenCalledTimes(1);
-    expect(h.reportError).not.toHaveBeenCalled();
+    expect(h.reportError).toHaveBeenCalledWith(t('spaces.threeD.taskList.placeFailed'));
   });
 
   it('says why the model could not be placed when its content is refused, and writes nothing', async () => {

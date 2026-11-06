@@ -78,14 +78,16 @@ const names: CollaboratorNames = { resolve: (id: string) => ({ [ME]: 'Me', 'user
  * @param props.canEdit - Whether the reader may edit.
  * @param props.remoteUploads - Peers' progress.
  * @param props.onPlace - Place handler.
+ * @param props.focusTaskId - The row handed over by a started upload.
+ * @param props.onFocused - Told once the handed row has focus.
  * @returns The query client.
  */
-function renderList({ uploads = store(), canEdit = true, remoteUploads = {}, onPlace = vi.fn(async () => undefined), focusTaskId = null }: {
-  uploads?: SceneUploads; canEdit?: boolean; remoteUploads?: Record<string, number>; onPlace?: (task: SpaceTask) => Promise<void>; focusTaskId?: string | null;
+function renderList({ uploads = store(), canEdit = true, remoteUploads = {}, onPlace = vi.fn(async () => undefined), focusTaskId = null, onFocused }: {
+  uploads?: SceneUploads; canEdit?: boolean; remoteUploads?: Record<string, number>; onPlace?: (task: SpaceTask) => Promise<void>; focusTaskId?: string | null; onFocused?: () => void;
 } = {}): QueryClient {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<QueryClientProvider client={client}><CollaboratorNamesProvider value={names}>
-    <SceneTaskList projectId={P} spaceId={S} userId={ME} canEdit={canEdit} uploads={uploads} remoteUploads={remoteUploads} onPlace={onPlace} focusTaskId={focusTaskId} />
+    <SceneTaskList projectId={P} spaceId={S} userId={ME} canEdit={canEdit} uploads={uploads} remoteUploads={remoteUploads} onPlace={onPlace} focusTaskId={focusTaskId} onFocused={onFocused} />
   </CollaboratorNamesProvider></QueryClientProvider>);
   return client;
 }
@@ -170,11 +172,13 @@ describe('the 3D Space task list (inner#1690)', () => {
     expect(await screen.findByText('No tasks')).toBeInTheDocument();
   });
 
-  it('reads the list again for a row this page just opened, then gives that row keyboard focus', async () => {
+  it('reads the list again for a row this page just opened, then gives that row focus and says so once', async () => {
     api.listSpaceTasks.mockResolvedValueOnce(listed()).mockResolvedValue(listed(row({ id: 'new' })));
-    renderList({ focusTaskId: 'new' });
+    const onFocused = vi.fn();
+    renderList({ focusTaskId: 'new', onFocused });
     await waitFor(() => expect(api.listSpaceTasks).toHaveBeenCalledTimes(2));
     await waitFor(async () => expect(await rowOf('new')).toHaveFocus());
+    expect(onFocused).toHaveBeenCalledTimes(1);
   });
 
   it('names each failure by its stored reason', async () => {

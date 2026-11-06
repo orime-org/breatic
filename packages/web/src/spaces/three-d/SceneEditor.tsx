@@ -249,15 +249,22 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
   }, [session, projectId, spaceId, importLimits, prepareImport, startImport, setImportOpen]);
   /** Open the import dialog. */
   const showImport = React.useCallback((): void => setImportOpen(true), [setImportOpen]);
+  const [handedOff, setHandedOff] = React.useState<string | null>(null);
   const [focusTaskId, setFocusTaskId] = React.useState<string | null>(null);
-  /** Show the new upload's row on the task list. */
-  const importStarted = React.useCallback((taskId: string): void => {
+  /** Take the new upload's row from the import dialog; it is shown once this Space is on screen. */
+  const importStarted = React.useCallback((taskId: string): void => setHandedOff(taskId), []);
+  React.useEffect(() => {
+    // Effects stay down while the tab's Activity is hidden, so a hand-off answered then claims the shared overlay slot on return.
+    if (handedOff === null) return;
     returnTarget.current = null;
     automaticPanel.current = false;
     setPanel('tasks');
     setRightOpen(true);
-    setFocusTaskId(taskId);
-  }, [setRightOpen]);
+    setFocusTaskId(handedOff);
+    setHandedOff(null);
+  }, [handedOff, setRightOpen]);
+  /** The handed row has been shown; a later reopening of the task list starts where the user left it. */
+  const taskFocused = React.useCallback((): void => setFocusTaskId(null), []);
 
   // A placement holds its model through the viewport's own cache until the
   // viewport holds the placed object too, so the model is loaded once.
@@ -292,8 +299,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
       bounds = await lease.bounds;
     } catch (error) {
       lease.release();
-      // The viewport let the model go (its Space closed or was hidden): the press is cancelled, not failed.
-      if (error instanceof DOMException && error.name === 'AbortError') return;
+      // The viewport went (its Space closed or was hidden) and took the load with it: the press is cancelled, whatever shape the abort took.
+      if (acquireModel.current !== acquire) return;
       // A refused model says why, as the viewport's failure notice does; a transport failure has nothing to add.
       toast.error(error instanceof ModelImportError ? `${placeFailedText} ${t(importErrorKey(error.code))}` : placeFailedText);
       return;
@@ -448,9 +455,9 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
     </React.Suspense>
     : panel === 'objects' ? <SceneObjectList session={session} snapshot={snapshot} modelStates={modelStates} onSelect={showSelectedProperties} />
       : <SceneTaskList projectId={projectId} spaceId={spaceId} userId={userId} canEdit={snapshot.canEdit} uploads={uploads}
-        remoteUploads={snapshot.remoteUploads} onPlace={placeTask} focusTaskId={focusTaskId} />,
+        remoteUploads={snapshot.remoteUploads} onPlace={placeTask} focusTaskId={focusTaskId} onFocused={taskFocused} />,
   [panel, inspectorFallback, session, snapshot, readObjects, namedPeers, spaceId, fieldDrafts, onFieldDraftChange, modelStates, showSelectedProperties,
-    projectId, userId, uploads, placeTask, focusTaskId]);
+    projectId, userId, uploads, placeTask, focusTaskId, taskFocused]);
   // An older-format scene is never opened, so no editing chrome is shown around its message.
   if (snapshot.status === 'unsupported' && isOlderSceneFormat(snapshot.version)) {
     return <div ref={stage} className='relative isolate h-full min-h-0 min-w-0 bg-canvas' data-testid='three-d-space'>

@@ -23,8 +23,10 @@ interface SceneTaskListProps {
   remoteUploads: Readonly<Record<string, number>>;
   /** Place a finished model into the scene; resolves once placed or refused. */
   onPlace: (task: SpaceTask) => Promise<void>;
-  /** The row a just-started upload opened, which takes keyboard focus once listed. */
+  /** The row a just-started upload opened, which takes focus once listed. */
   focusTaskId?: string | null;
+  /** Called once the handed row has taken focus. */
+  onFocused?: () => void;
 }
 
 const MINUTE_MS = 60_000;
@@ -47,7 +49,7 @@ const DOT_CLASS: Record<SpaceTask['status'], string> = {
  * @param props - Space identity, edit right, the page's uploads and the place handler.
  * @returns The list.
  */
-export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spaceId, userId, canEdit, uploads, remoteUploads, onPlace, focusTaskId }: SceneTaskListProps): React.JSX.Element {
+export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spaceId, userId, canEdit, uploads, remoteUploads, onPlace, focusTaskId, onFocused }: SceneTaskListProps): React.JSX.Element {
   const t = useTranslation();
   const queryClient = useQueryClient();
   const queryKey = React.useMemo(() => spaceTasksQueryKey(projectId, spaceId), [projectId, spaceId]);
@@ -64,7 +66,6 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
   }, [data, uploads, spaceId]);
 
   const list = React.useRef<HTMLDivElement>(null);
-  const focused = React.useRef<string | null>(null);
   const reread = React.useRef<string | null>(null);
   React.useEffect(() => {
     // A row this page just opened and the list does not hold yet: read it again, whether or not the change signal arrives.
@@ -73,12 +74,12 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
     void queryClient.invalidateQueries({ queryKey });
   }, [focusTaskId, data, queryClient, queryKey]);
   React.useEffect(() => {
-    if (!focusTaskId || focused.current === focusTaskId) return;
+    if (!focusTaskId) return;
     const target = list.current?.querySelector<HTMLElement>(`[data-testid="scene-task-${focusTaskId}"]`);
     if (!target) return;
-    focused.current = focusTaskId;
     target.focus();
-  }, [focusTaskId, data]);
+    onFocused?.();
+  }, [focusTaskId, data, onFocused]);
 
   React.useEffect(() => {
     if (!data) return;
