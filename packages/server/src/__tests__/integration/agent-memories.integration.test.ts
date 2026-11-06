@@ -533,6 +533,15 @@ describe("what a consolidation writes", () => {
     expect(input.titlesOnly).toEqual([{ id: oldest, title: "Oldest", scope: "project" }]);
   });
 
+  it("counts the bound on what it is shown in full by character, an emoji as one", async () => {
+    const owner = await seed();
+    const emoji = await seedEntry(owner, { title: "Mood", content: "😀😀😀😀" });
+
+    const input = await memoryService.consolidationInput(owner, 4);
+
+    expect(input.full.map((e) => e.id)).toEqual([emoji]);
+  });
+
   it("moves the watermark only forward and only with the entries and progress it covers, over any run of commit endings", async () => {
     /**
      * What a conversation's memory holds now.

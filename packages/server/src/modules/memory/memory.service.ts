@@ -14,7 +14,7 @@ import * as memoryRepo from "@server/modules/memory/memory.repo.js";
 import * as conversationRepo from "@server/modules/conversation/conversation.repo.js";
 import type { MemoryScopeKey } from "@server/modules/memory/memory.repo.js";
 import { db, getAgentConfig } from "@breatic/core";
-import type { MemoryEntry, MemoryScope } from "@breatic/domain";
+import { countCharacters, type MemoryEntry, type MemoryScope } from "@breatic/domain";
 import type { AgentMemoryEntity, MemoryContext } from "@breatic/shared";
 
 /**
@@ -91,7 +91,7 @@ export async function consolidationInput(scope: MemoryScopeKey, maxChars: number
   let used = 0;
   for (const entity of entries) {
     const entry = toMemoryEntry(entity);
-    used += entry.content.length;
+    used += countCharacters(entry.content);
     // A migrated block is always shown whole: it is there to be split, and a
     // consolidation that sees only its title cannot.
     if (entity.origin === "migration" || (titlesOnly.length === 0 && used <= maxChars)) full.push(entry);
