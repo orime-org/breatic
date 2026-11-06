@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
-import { Maximize } from 'lucide-react';
+import { Maximize2 } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
@@ -48,7 +48,7 @@ export function MediaFullscreenButton({ onOpen, className }: MediaFullscreenButt
             className,
           )}
         >
-          <Maximize className='h-4 w-4' />
+          <Maximize2 className='h-4 w-4' />
         </Button>
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>

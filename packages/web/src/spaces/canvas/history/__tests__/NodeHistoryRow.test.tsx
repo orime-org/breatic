@@ -2,14 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import {
-  render,
-  screen,
-  act,
-  cleanup,
-  fireEvent,
-  within,
-} from '@testing-library/react';
+import { screen, act, cleanup, fireEvent, within } from '@testing-library/react';
+
+import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
 
 import type { NodeHistoryEntry } from '@web/data/api/canvas';
 import { resetPreviewRecords } from '@web/lib/preview-src';
@@ -91,7 +86,7 @@ function renderRow(
   e: NodeHistoryEntry,
   modality: HistoryModality = 'image',
 ): void {
-  render(
+  renderWithTooltips(
     <NodeHistoryRow
       entry={e}
       modality={modality}
@@ -151,7 +146,7 @@ describe('NodeHistoryRow (#1619)', () => {
   });
 
   it('fills the row the node is on past the fill the others take under the pointer', () => {
-    render(
+    renderWithTooltips(
       <>
         <NodeHistoryRow
           entry={entry()}
@@ -349,7 +344,7 @@ describe('reading a row against its fill (#2186)', () => {
   const MUTED = /(^|\s)text-muted-foreground(\s|$)/;
 
   it('sets the chip, time, operator and Current tag in foreground-secondary on the current row', () => {
-    render(
+    renderWithTooltips(
       <NodeHistoryRow
         entry={entry({ entryType: 'snapshot', status: 'success', content: 'kept', operatorName: 'Lin' })}
         modality='text'
@@ -368,7 +363,7 @@ describe('reading a row against its fill (#2186)', () => {
   });
 
   it('turns the same text foreground-secondary while the pointer is on another row', () => {
-    render(
+    renderWithTooltips(
       <NodeHistoryRow
         entry={entry({ entryType: 'snapshot', status: 'success', content: 'kept', operatorName: 'Lin' })}
         modality='text'

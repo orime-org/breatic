@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen } from '@testing-library/react';
+
+import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
 
 import { HoverPreview, type HoverPreviewProps } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import { HOVER_OPEN_DELAY_MS } from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
@@ -34,7 +36,7 @@ function openCard(trigger: HTMLElement): void {
  */
 function hover(props: Omit<HoverPreviewProps, 'children'>): void {
   vi.useFakeTimers();
-  render(
+  renderWithTooltips(
     <HoverPreview {...props}>
       <span data-testid='trigger'>chip</span>
     </HoverPreview>,

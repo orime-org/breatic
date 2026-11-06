@@ -103,9 +103,10 @@ export function MediaFullscreen({
   const videoWidth = size ? `min(96vw, 1600px, calc(90vh * ${size.width} / ${size.height}))` : 'min(96vw, 1600px)';
 
   return (
-    // Not a control: it only keeps the layer's events from its host.
+    // Not a control: it only keeps the layer's events from its host. A span,
+    // because a hover preview hosts it inside a line of text.
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
-    <div
+    <span
       className='contents'
       onClick={stop}
       onDoubleClick={stop}
@@ -163,6 +164,6 @@ export function MediaFullscreen({
           </DialogClose>
         </DialogContent>
       </Dialog>
-    </div>
+    </span>
   );
 }
