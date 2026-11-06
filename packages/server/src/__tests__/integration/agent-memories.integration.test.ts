@@ -443,18 +443,23 @@ describe("what a consolidation writes", () => {
   const update = (id: string) => ({ op: "update" as const, id, title: "Palette", content: "Teal and orange." });
   const remove = (id: string) => ({ op: "delete" as const, id });
   it.each([
-    ["update", "its content", update, "project", "Palette", "Blue."],
-    ["delete", "its content", remove, "project", "Palette", "Blue."],
-    ["update", "its title", update, "project", "Colours", "Teal."],
-    ["delete", "its title", remove, "project", "Colours", "Teal."],
-    ["update", "its scope", update, "conversation", "Palette", "Teal."],
-    ["delete", "its scope", remove, "conversation", "Palette", "Teal."],
-  ] as const)("writes nothing when an entry it would %s had %s changed in another conversation since it read it", async (_op, _what, operation, scope, title, content) => {
+    ["update", "its content", "project", "project", update, "Palette", "Blue."],
+    ["delete", "its content", "project", "project", remove, "Palette", "Blue."],
+    ["update", "its title", "project", "project", update, "Colours", "Teal."],
+    ["delete", "its title", "project", "project", remove, "Colours", "Teal."],
+    ["update", "its scope", "project", "conversation", update, "Palette", "Teal."],
+    ["delete", "its scope", "project", "conversation", remove, "Palette", "Teal."],
+    ["update", "its scope", "conversation", "project", update, "Palette", "Teal."],
+    ["delete", "its scope", "conversation", "project", remove, "Palette", "Teal."],
+  ] as const)("writes nothing when an entry it would %s had %s changed since it read it (scope %s, then %s)", async (_op, _what, seededScope, scope, operation, title, content) => {
     const owner = await seed();
     const other = await newConversation(owner.userId, owner.projectId);
-    const keep = await seedEntry(owner, { title: "Palette", content: "Teal." });
+    // A Project entry is changed from another conversation; one kept to this
+    // conversation, from another tab on it.
+    const keep = await seedEntry(owner, { title: "Palette", content: "Teal.", ...(seededScope === "conversation" ? { conversationId: owner.conversationId } : {}) });
     const shown = await shownOf(keep);
-    await agentMemoryFor({ ...owner, conversationId: other }).save({ id: keep, scope, title, content });
+    const changer = seededScope === "conversation" ? owner : { ...owner, conversationId: other };
+    await agentMemoryFor(changer).save({ id: keep, scope, title, content });
 
     const failed = await rejectionOf(
       memoryService.commitConsolidation({
