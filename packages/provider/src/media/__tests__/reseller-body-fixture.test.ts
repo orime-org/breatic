@@ -5,22 +5,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { catalog, coveredValues, shipped } from "../../config/__tests__/shipped.js";
-import { adapterOf } from "../adapters.js";
 import { missingRequired, type SchemaSnapshot } from "../../config/upstream-schema.js";
-import { stepCalls, stepSource } from "../../pricing/estimate.js";
-import { firstBody, takes, type SampleRun } from "./reseller-bodies.js";
-
-/** The step context a body sample was built with; `source` is the url the step reads, absent for a step that reads none, and absent fields are unset. */
-interface StepSampleContext {
-  source?: string;
-  params: Record<string, unknown>;
-  prompt: string;
-  customVoiceId: string;
-  voiceId?: string;
-  description?: string;
-  itemIndex: number | null;
-  param?: string;
-}
+import { takes, type SampleRun } from "./reseller-bodies.js";
 
 /** The reviewed request bodies of one reseller binding (`scripts/provider-reseller-bodies.ts`). */
 interface BodySample {
@@ -31,7 +17,8 @@ interface BodySample {
   runs: SampleRun[];
   /** Values of a param that the binding takes in no run, each refused on the default run. */
   untaken?: { param: string; value: unknown }[];
-  steps: { kind: string; endpoint: string; context: StepSampleContext; body: Record<string, unknown> }[];
+  /** Each extra step on the first run that makes it (`run`, an index into `runs`), as the runner sent it (reseller-body-runner.integration.test.ts). */
+  steps: { kind: string; endpoint: string; run: number; body: Record<string, unknown> }[];
 }
 
 const BODIES = resolve(__dirname, "../../../test/fixtures/bodies");
@@ -66,15 +53,6 @@ describe.each(cases)("the request bodies of $model on $binding.upstream", ({ mod
     expect(refused).toEqual([]);
   });
 
-  it("are what the runner sends for each sample run, a param an extra step serves written as the id it answered", () => {
-    for (const run of sample.runs) {
-      for (const step of binding.extra_steps ?? []) {
-        if (step.for_param !== undefined && stepCalls(step, run.params).length > 0) expect(run.ids?.[step.for_param], `${step.for_param} in ${JSON.stringify(run.params)}`).toBeDefined();
-      }
-      expect(firstBody(binding, run), JSON.stringify(run.params)).toEqual(run.body);
-    }
-  });
-
   it("send every field the upstream requires, as a run the application sends does", () => {
     const path = resolve(__dirname, "../../../test/fixtures/upstream-schemas", binding.upstream, `${binding.model_id}.json`);
     const snapshot = JSON.parse(readFileSync(path, "utf8")) as SchemaSnapshot;
@@ -95,15 +73,14 @@ describe.each(cases)("the request bodies of $model on $binding.upstream", ({ mod
     expect(editor.filter((name) => typeof first[name] !== "string" || first[name] === "")).toEqual([]);
   });
 
-  it("sample each source at a url named by its param, of the kind it accepts, in the runs and in each step's context", () => {
+  it("sample each source at a url named by its param, of the kind it accepts", () => {
     const EXTENSIONS: Record<string, string> = { image: "(png|jpe?g|webp)", video: "mp4", audio: "mp3" };
     const wrong: string[] = [];
     for (const [name, param] of Object.entries(offered.get(model) ?? {})) {
       const ext = param.accepts === undefined ? undefined : EXTENSIONS[param.accepts];
       if (ext === undefined) continue;
       const pattern = new RegExp(`/${name}\\.${ext}$`);
-      const values = [...sample.runs.map((r) => r.params[name]), ...sample.steps.map((s) => s.context.params[name])];
-      for (const step of sample.steps.filter((s) => s.context.param === name)) values.push(step.context.source);
+      const values = sample.runs.map((r) => r.params[name]);
       for (const value of values) {
         for (const url of (Array.isArray(value) ? value : [value]).filter((v): v is string => typeof v === "string")) {
           if (!pattern.test(url)) wrong.push(`${name}=${url}`);
@@ -137,25 +114,5 @@ describe.each(cases)("the request bodies of $model on $binding.upstream", ({ mod
       }
     }
     expect(uncovered).toEqual([]);
-  });
-
-  it("show each extra step on a run that makes it, reading its source as the runner does", () => {
-    const wrong = sample.steps.filter((s) => s.context.source !== stepSource(s.context.params, s.context.param, s.context.itemIndex)).map((s) => `${s.kind} ${s.context.param ?? "(no param)"}=${JSON.stringify(s.context.params[s.context.param ?? ""])} source=${s.context.source}`);
-    expect(wrong).toEqual([]);
-  });
-
-  it("are what each extra step's codec builds, for each step a sample run makes", () => {
-    const kind = config.upstreams[binding.upstream]!.kind;
-    const made = (binding.extra_steps ?? []).filter((s) => sample.runs.some((r) => stepCalls(s, r.params).length > 0));
-    expect(sample.steps.map((s) => `${s.kind} ${s.endpoint}`).sort()).toEqual(made.map((s) => `${s.kind} ${s.endpoint}`).sort());
-    for (const step of sample.steps) {
-      const codec = adapterOf(kind).steps[step.kind as keyof ReturnType<typeof adapterOf>["steps"]]!;
-      const source = (): string => {
-        if (step.context.source === undefined) throw new Error(`The ${step.kind} step reads no source`);
-        return step.context.source;
-      };
-      expect((JSON.stringify(step.body).match(/https:\/\/example\.com\/[^"]+/g) ?? []).filter((u) => u !== step.context.source), `${step.kind} reads another source`).toEqual([]);
-      expect(codec.body({ ...step.context, source, binding, voiceId: step.context.voiceId, description: step.context.description, param: step.context.param }), `${step.kind} ${step.endpoint}`).toEqual(step.body);
-    }
   });
 });
