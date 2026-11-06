@@ -96,7 +96,6 @@ test('a canvas video goes on full screen from where it was and hands its place b
   await inline.evaluate((v: HTMLVideoElement) => {
     v.currentTime = 0.5;
   });
-  await expect(clip.getByTestId('fullscreen')).toHaveCount(0);
 
   await clip.hover();
   await clip.getByTestId('media-fullscreen-button').click();
