@@ -261,7 +261,14 @@
       "foreignSource": "このファイルは処理できません。",
       "sourceTooLong": "このツールは {minutes} 分以内の音声のみ処理できます。",
       "sourceTooLarge": "このツールは {size} 以内のファイルのみ処理できます。",
-      "runTooLong": "この動画は1回の実行で処理するには長すぎます（エンコードジョブが {max} 個を超えます）。出力を減らすか短くしてください。"
+      "runTooLong": "この動画は1回の実行で処理するには長すぎます（エンコードジョブが {max} 個を超えます）。出力を減らすか短くしてください。",
+      "lipSyncModelUnavailable": "このリップシンクモデルは利用できません。別のモデルを選んでください。",
+      "lipSyncDurationOutOfRange": "このモデルの結果は {min}–{max} 秒である必要があります。",
+      "lipSyncTrackingOutOfRange": "人物トラッキングで処理できる動画は {min}–{max} 秒です。",
+      "lipSyncTooManyPeople": "リップシンクは一度に最大 {max} 人まで対応します。",
+      "lipSyncTooManyDialogues": "リップシンクのセリフは最大 {max} 行です。",
+      "lipSyncPeopleRunning": "人物の検出がまだ実行中です。完了してからもう一度お試しください。",
+      "lipSyncPeopleStale": "検出した人物がこの動画と一致しなくなりました。人物をもう一度検出してください。"
     },
     "idempotency": {
       "missing": "ページが更新されました。再読み込みしてからもう一度お試しください。",

@@ -261,7 +261,14 @@
       "foreignSource": "This file cannot be processed.",
       "sourceTooLong": "This tool takes audio up to {minutes} minutes long.",
       "sourceTooLarge": "This tool takes files up to {size}.",
-      "runTooLong": "This video is too long to process in one run: it would need more than {max, plural, one {# encoding job} other {# encoding jobs}}. Choose fewer or shorter outputs."
+      "runTooLong": "This video is too long to process in one run: it would need more than {max, plural, one {# encoding job} other {# encoding jobs}}. Choose fewer or shorter outputs.",
+      "lipSyncModelUnavailable": "This lip-sync model isn't available. Choose another model.",
+      "lipSyncDurationOutOfRange": "This model takes a result of {min}–{max} s.",
+      "lipSyncTrackingOutOfRange": "Person tracking takes {min}–{max} s of video.",
+      "lipSyncTooManyPeople": "Lip sync works with up to {max} people at a time.",
+      "lipSyncTooManyDialogues": "Lip sync takes up to {max} dialogue lines.",
+      "lipSyncPeopleRunning": "Person detection is still running. Try again when it finishes.",
+      "lipSyncPeopleStale": "The detected people no longer match this video. Detect people again."
     },
     "idempotency": {
       "missing": "This page was updated. Refresh it and try again.",

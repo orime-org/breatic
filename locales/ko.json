@@ -261,7 +261,14 @@
       "foreignSource": "이 파일은 처리할 수 없습니다.",
       "sourceTooLong": "이 도구는 {minutes}분 이내의 오디오만 처리합니다.",
       "sourceTooLarge": "이 도구는 {size} 이내의 파일만 처리합니다.",
-      "runTooLong": "이 동영상은 한 번에 처리하기에 너무 깁니다(인코딩 작업이 {max}개를 넘습니다). 출력 수를 줄이거나 더 짧게 해 주세요."
+      "runTooLong": "이 동영상은 한 번에 처리하기에 너무 깁니다(인코딩 작업이 {max}개를 넘습니다). 출력 수를 줄이거나 더 짧게 해 주세요.",
+      "lipSyncModelUnavailable": "이 립싱크 모델은 사용할 수 없습니다. 다른 모델을 선택하세요.",
+      "lipSyncDurationOutOfRange": "이 모델의 결과 길이는 {min}–{max}초여야 합니다.",
+      "lipSyncTrackingOutOfRange": "인물 추적은 {min}–{max}초 분량의 동영상만 처리합니다.",
+      "lipSyncTooManyPeople": "립싱크는 한 번에 최대 {max}명까지 지원합니다.",
+      "lipSyncTooManyDialogues": "립싱크 대사는 최대 {max}줄입니다.",
+      "lipSyncPeopleRunning": "인물 감지가 아직 진행 중입니다. 완료되면 다시 시도하세요.",
+      "lipSyncPeopleStale": "감지된 인물이 더 이상 이 동영상과 맞지 않습니다. 인물을 다시 감지하세요."
     },
     "idempotency": {
       "missing": "페이지가 업데이트되었습니다. 새로고침한 후 다시 시도하세요.",

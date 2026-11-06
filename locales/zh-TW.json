@@ -261,7 +261,14 @@
       "foreignSource": "這個檔案無法處理。",
       "sourceTooLong": "這個工具只處理 {minutes} 分鐘以內的音訊。",
       "sourceTooLarge": "這個工具只處理 {size} 以內的檔案。",
-      "runTooLong": "這個影片太長，一次執行處理不了（需要超過 {max} 個編碼作業）。請減少或縮短輸出。"
+      "runTooLong": "這個影片太長，一次執行處理不了（需要超過 {max} 個編碼作業）。請減少或縮短輸出。",
+      "lipSyncModelUnavailable": "這個對口型模型無法使用，請換一個模型。",
+      "lipSyncDurationOutOfRange": "這個模型的結果時長需在 {min}–{max} 秒之間。",
+      "lipSyncTrackingOutOfRange": "人物追蹤只能處理 {min}–{max} 秒的影片。",
+      "lipSyncTooManyPeople": "對口型一次最多支援 {max} 個人物。",
+      "lipSyncTooManyDialogues": "對口型最多支援 {max} 行對白。",
+      "lipSyncPeopleRunning": "人物辨識仍在進行，完成後再試。",
+      "lipSyncPeopleStale": "辨識出的人物已和這個影片對不上，請重新辨識人物。"
     },
     "idempotency": {
       "missing": "頁面已更新，請重新整理後再試。",
