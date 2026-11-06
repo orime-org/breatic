@@ -456,8 +456,8 @@ function templateIndex(templates: readonly GenerationTemplate[]): string {
   const lines = templates.map(
     (template) =>
       `${template.id} (${template.goal}, makes ${templateAnchor(template).type}): ${template.agentNote}. ` +
-      `The reader asks for it with words like: ${template.triggers.asks.join("; ")}. ` +
-      `Offer it unasked when: ${template.triggers.offerWhen.join("; ")}.`,
+      `The reader asks for it with words like: ${template.triggers.asks.join("; ")}.` +
+      (template.triggers.offerWhen.length === 0 ? "" : ` Offer it unasked when: ${template.triggers.offerWhen.join("; ")}.`),
   );
   return (
     `Templates: ${lines.join(" | ")} ` +
