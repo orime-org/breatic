@@ -729,6 +729,10 @@ canvas.delete(
     const { project_id, space_id, node_id } = c.req.valid("query");
 
     const row = await nodeTaskService.findById(taskId);
+    // A 3D Space's own row is cleared through that Space's list.
+    if (row !== null && row.nodeId === null) {
+      throw new NotFoundError(t("server.error.not_found"));
+    }
 
     // Cross-tenant guard. The path holds a task id and nothing else, so the
     // project to check against is read from the row — never from the query,
@@ -790,7 +794,7 @@ canvas.post(
 
     const row = await nodeTaskService.findById(taskId);
     // One answer for both, so the id says nothing back about what it named.
-    if (row === null || row.kind !== "upload") {
+    if (row === null || row.kind !== "upload" || row.nodeId === null) {
       throw new NotFoundError(t("server.error.not_found"));
     }
     await projectService.assertAccess(row.projectId, user.id, "editor");

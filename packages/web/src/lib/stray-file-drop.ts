@@ -24,10 +24,11 @@ export function carriesFiles(event: Event): boolean {
 }
 
 /**
- * Takes a file drag nothing else took.
+ * Takes a file drag nothing else took. A layer that stops a drag before it
+ * reaches the window calls this itself.
  * @param event - A `dragover` or a `drop`.
  */
-function takeStray(event: Event): void {
+export function takeStray(event: Event): void {
   if (!carriesFiles(event)) return;
   const { dataTransfer } = event as DragEvent;
   if (!event.defaultPrevented && dataTransfer !== null) dataTransfer.dropEffect = 'none';

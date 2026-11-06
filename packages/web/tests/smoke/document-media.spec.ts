@@ -18,12 +18,13 @@ import { resolve } from 'node:path';
 import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 
-import { openSmokeProject } from '../helpers/project';
+import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { blankPoint, bodySelection } from '../helpers/document-body';
 import { pressAndSettle } from '../helpers/editor-keys';
 import { wavBytes } from '../helpers/media-bytes';
 import { storedPicture, uniquePicture, watchQueuedFinish } from '../helpers/upload';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR, visibleSpace } from '../helpers/space';
+import { withTimelinePeer } from '../helpers/timeline-media';
 
 let page: Page;
 
@@ -388,6 +389,9 @@ test('the toolbar of a first block sits on the picture, never under it, centred,
   });
   const img = page.locator(`${IMAGE} img`);
   await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  // Hovered once the picture has its own size: until it loads it holds a 3:2
+  // box across the row (A23), and shrinking leaves the pointer beside it.
+  await expect.poll(async () => (await img.boundingBox())?.width).toBe(400);
 
   await img.hover();
   const toolbar = page.locator(`${IMAGE} [data-testid="doc-media-toolbar"]`);
@@ -430,9 +434,12 @@ test('the toolbar of a first block sits on the picture, never under it, centred,
   await expect(page.locator(`${IMAGE} [data-testid="doc-media-caption"]`)).toHaveText('Dusk');
 
   await img.dblclick();
-  await expect(page.getByTestId('doc-media-fullscreen-image')).toBeVisible();
+  await expect(page.getByTestId('media-fullscreen-image')).toBeVisible();
+  // The stored 400x240 reserves the box: never wider than the picture itself.
+  const full = (await page.getByTestId('media-fullscreen-image').boundingBox())!;
+  expect([Math.round(full.width), Math.round(full.height)]).toEqual([400, 240]);
   await page.keyboard.press('Escape');
-  await expect(page.getByTestId('doc-media-fullscreen-image')).toHaveCount(0);
+  await expect(page.getByTestId('media-fullscreen-image')).toHaveCount(0);
 });
 
 /** What each download smoke uploads. */
@@ -696,7 +703,7 @@ test('the keys on a player button are the button\'s: Space and Enter play and pa
   await expect(page.locator(`${VIDEO} [data-testid="doc-media-box"]`)).toHaveAttribute('data-selected', 'true');
 });
 
-test('a narrow video keeps play, seek and full screen inside it, and shows its times once it is wide (A7)', async () => {
+test('a narrow video keeps play and seek inside it, and shows its times once it is wide (A7)', async () => {
   await openFreshDocument(page);
   await pickFromPlus(page, 'video', {
     name: 'clip.mp4',
@@ -709,7 +716,7 @@ test('a narrow video keeps play, seek and full screen inside it, and shows its t
     video.evaluate((block) => {
       const controls = block.querySelector('[data-testid="controls"]') as HTMLElement;
       const frame = block.querySelector('[data-media-frame]')!.getBoundingClientRect();
-      const inside = ['play-toggle', 'seek', 'fullscreen'].every((id) => {
+      const inside = ['play-toggle', 'seek'].every((id) => {
         const box = block.querySelector(`[data-testid="${id}"]`)!.getBoundingClientRect();
         return box.width > 0 && box.left >= frame.left - 0.5 && box.right <= frame.right + 0.5;
       });
@@ -718,7 +725,7 @@ test('a narrow video keeps play, seek and full screen inside it, and shows its t
     });
 
   // The source is 64px wide; the block holds the player's narrowest.
-  expect(await fits()).toEqual({ inside: true, times: false, width: 128 });
+  expect(await fits()).toEqual({ inside: true, times: false, width: 92 });
 
   await selectFromBelow(page, VIDEO);
   const handle = page.locator(`${VIDEO} [data-testid="doc-media-resize-se"]`);
@@ -1527,9 +1534,9 @@ test('a picture shown full screen from its hover toolbar is selected, and stays 
 
   await img.hover();
   await picture.getByTestId('doc-media-fullscreen').click();
-  await expect(page.getByTestId('doc-media-fullscreen-image')).toBeVisible();
+  await expect(page.getByTestId('media-fullscreen-image')).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.getByTestId('doc-media-fullscreen-image')).toHaveCount(0);
+  await expect(page.getByTestId('media-fullscreen-image')).toHaveCount(0);
   await page.mouse.move(5, 5);
 
   await expect(knob).toBeVisible();
@@ -1562,10 +1569,10 @@ for (const [opening, closing] of [
 
     if (opening === 'toolbar') await picture.getByTestId('doc-media-fullscreen').click();
     else await img.dblclick();
-    await expect(page.getByTestId('doc-media-fullscreen-image')).toBeVisible();
+    await expect(page.getByTestId('media-fullscreen-image')).toBeVisible();
     if (closing === 'Escape') await page.keyboard.press('Escape');
     else await page.mouse.click(10, 10);
-    await expect(page.getByTestId('doc-media-fullscreen-image')).toHaveCount(0);
+    await expect(page.getByTestId('media-fullscreen-image')).toHaveCount(0);
     await page.mouse.move(5, 5);
 
     await expect(knob).toBeVisible();
@@ -1936,4 +1943,44 @@ test('a picture and its caption show in a second client opening the document (A1
   } finally {
     await second.close();
   }
+});
+
+// inner#1844: a viewer has no editing icons over a video, but can open it full screen.
+test('a viewer opens a video full screen from its row of icons, which offers nothing else', async ({ browser }) => {
+  await openFreshDocument(page);
+  const spaceId = createdSpaceIds[createdSpaceIds.length - 1]!;
+  await pickFromPlus(page, 'video', {
+    name: 'clip.mp4',
+    mimeType: 'video/mp4',
+    buffer: readFileSync(resolve(__dirname, '../fixtures/media-history.mp4')),
+  });
+  await expect(page.locator(`${VIDEO} video`)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  const projectUrl = page.url();
+
+  await withTimelinePeer(page, browser, smokeProjectId(), 'viewer', async (peer) => {
+    await peer.goto(projectUrl);
+    const tab = peer.getByTestId(`space-tab-name-${spaceId}`);
+    if (await tab.count() === 0) {
+      await peer.getByTestId('space-drawer-trigger').click();
+      await peer.getByTestId('space-drawer').getByTestId(`space-drawer-row-${spaceId}`).getByRole('button', { name: /Open/ }).click();
+    } else {
+      await tab.click();
+    }
+    await expect(peer.locator(EDITOR)).toBeVisible({ timeout: 20_000 });
+    const video = peer.locator(VIDEO);
+    await expect(video.locator('video')).toBeVisible({ timeout: 20_000 });
+    // The bar sits on a first block's media and covers this small video's middle once shown.
+    await video.getByTestId('doc-media-frame').hover({ force: true });
+    const toolbar = video.getByTestId('doc-media-toolbar');
+    await expect(toolbar).toBeVisible();
+    const actions = await toolbar.getByRole('button').evaluateAll(
+      (buttons) => buttons.map((b) => b.getAttribute('data-action')),
+    );
+    expect(actions).toEqual(['fullscreen']);
+
+    await toolbar.getByTestId('doc-media-fullscreen').click();
+    await expect(peer.getByTestId('media-fullscreen').locator('video')).toBeVisible();
+    await peer.keyboard.press('Escape');
+    await expect(peer.getByTestId('media-fullscreen')).toHaveCount(0);
+  });
 });

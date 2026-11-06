@@ -1862,6 +1862,11 @@
     },
     "runOnce": {
       "unknownResult": "Couldn't confirm whether that went through. Check the result."
+    },
+    "mediaViewer": {
+      "fullscreen": "View full screen",
+      "close": "Close",
+      "loadFailed": "Can't load this file"
     }
   },
   "members": {
@@ -2110,8 +2115,6 @@
         "remove": "Remove",
         "caption": "Caption",
         "captionPlaceholder": "Add a caption",
-        "fullscreen": "View full screen",
-        "close": "Close",
         "download": "Download",
         "delete": "Delete",
         "leftOut": "{count, plural, one {# image, video or audio was not pasted.} other {# images, videos or audio were not pasted.}} Drop or paste the files instead.",
@@ -2177,7 +2180,7 @@
       "generate": "AI generation",
       "annotationsLater": "Annotations (coming later)",
       "controls": "Controls",
-      "tasks": "Generation tasks",
+      "tasks": "Tasks",
       "minimap": "Scene minimap",
       "generationDev": "3D model generation is in development",
       "prompt": "Describe the 3D model you want to generate",
@@ -2185,7 +2188,74 @@
       "chooseReference": "Choose reference image",
       "submit": "Generate",
       "helpBody": "Click an object to select it. Drag empty space to orbit; use the wheel to zoom. Use the floating selection menu to move, rotate or scale objects.",
-      "closePanel": "Close"
+      "closePanel": "Close",
+      "importModel": {
+        "title": "Import model",
+        "description": "Choose GLB, glTF or ZIP; include the model’s accompanying files.",
+        "chooseFiles": "Choose files",
+        "chooseFolder": "Choose folder",
+        "inputLimit": "Up to {size} MiB",
+        "dropFiles": "Drop the model and its accompanying files here",
+        "resourceHint": "Choose a GLB directly. For glTF, include its textures and bin files, or choose a complete ZIP.",
+        "readOnly": "Currently read-only",
+        "readOnlyHint": "You can import a model once you have editing access.",
+        "checking": "Checking model…",
+        "preview": "Model preview",
+        "previewFailed": "The model preview could not be displayed.",
+        "entry": "Main file",
+        "chooseEntry": "Choose main file",
+        "name": "Model name",
+        "fileCount": "{count, plural, one {# file} other {# files}}",
+        "meshCount": "{count, plural, one {# mesh} other {# meshes}}",
+        "skinned": "Includes skeletons",
+        "checkingResources": "Checking format and accompanying files",
+        "ready": "Model and accompanying files are ready",
+        "addResources": "Add accompanying files",
+        "optionalExtensions": "Optional extensions may display differently:",
+        "showFiles": "View file list",
+        "hideFiles": "Hide file list",
+        "hide": "Hide",
+        "retry": "Retry",
+        "confirm": "Import",
+        "errorMissing": "Add the missing accompanying files.",
+        "errorEntry": "Choose a main file to preview.",
+        "errorUnsupported": "Unsupported model format or required extension.",
+        "errorEmpty": "The model has no displayable meshes.",
+        "errorBudget": "The model exceeds an import limit.",
+        "errorInvalid": "The model or an accompanying file could not be read.",
+        "errorDuplicate": "Some files have the same path. Choose a collection without conflicts.",
+        "errorUpload": "The model could not be uploaded. Try again.",
+        "errorLoad": "The model could not be loaded. Try again.",
+        "limit": {
+          "input": "Selected files total {actual} MiB; the limit is {allowed} MiB.",
+          "files": "{actual} files; the limit is {allowed}.",
+          "expanded": "Unpacked size {actual} MiB; the limit is {allowed} MiB.",
+          "entryJson": "Model description {actual} MiB; the limit is {allowed} MiB.",
+          "artifact": "Packaged model {actual} MiB; the limit is {allowed} MiB.",
+          "textureEdge": "Texture edge {actual} px; the limit is {allowed} px.",
+          "textureBytes": "Texture memory {actual} MiB; the limit is {allowed} MiB."
+        }
+      },
+      "taskList": {
+        "kind": "Import",
+        "you": "You",
+        "member": "A member",
+        "uploading": "Uploading {percent}%",
+        "running": "Uploading",
+        "runningFor": "Uploading · {minutes} min",
+        "registering": "Registering",
+        "done": "Done",
+        "failed": "Failed",
+        "expired": "Timed out",
+        "failedReason": "The model failed to upload.",
+        "place": "Place in scene",
+        "retry": "Retry",
+        "remove": "Remove",
+        "empty": "Models you import appear here.",
+        "loadFailed": "Couldn’t load tasks.",
+        "removeFailed": "Couldn’t remove the task. Try again.",
+        "placeFailed": "The model couldn’t be placed in the scene."
+      }
     }
   },
   "menu": {
@@ -2718,7 +2788,8 @@
       "spaceLocked": "{actor} locked space {spaceName}",
       "spaceUnlocked": "{actor} unlocked space {spaceName}",
       "spaceRestored": "{actor} restored space {spaceName}",
-      "spaceRenamed": "{actor} renamed space {oldSpaceName} to {spaceName}"
+      "spaceRenamed": "{actor} renamed space {oldSpaceName} to {spaceName}",
+      "assetUploadedModel": "{actor} uploaded the model {name}"
     },
     "header": "Project activity",
     "label": "Project activity",

@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { screen, fireEvent, act } from '@testing-library/react';
+
+import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
 
 import { VideoNode } from '@web/spaces/canvas/nodes/VideoNode';
 import { resetPreviewRecords } from '@web/lib/preview-src';
@@ -23,12 +25,12 @@ afterEach(() => {
 describe('VideoNode', () => {
   // A node that holds nothing shows no pixel size, whatever its data carries.
   it('shows no pixel size while it holds nothing', () => {
-    render(<VideoNode data={{ handling: false, width: 1280, height: 720 }} />);
+    renderWithTooltips(<VideoNode data={{ handling: false, width: 1280, height: 720 }} />);
     expect(screen.queryByTestId('node-resolution-badge')).toBeNull();
   });
 
   it('renders placeholder when no url', () => {
-    render(<VideoNode data={{ handling: false }} />);
+    renderWithTooltips(<VideoNode data={{ handling: false }} />);
     expect(screen.getByTestId('node-placeholder')).toBeInTheDocument();
   });
 
@@ -36,7 +38,7 @@ describe('VideoNode', () => {
   // shell's 1px border merges with it, so the node boundary stops reading as a
   // boundary. Matches the 4px the hover preview card already applies.
   it('insets the player from the shell border', () => {
-    render(
+    renderWithTooltips(
       <VideoNode
         data={{
           content: 'https://e.com/v.mp4',
@@ -50,7 +52,7 @@ describe('VideoNode', () => {
   });
 
   it('renders video element with src + poster', () => {
-    render(
+    renderWithTooltips(
       <VideoNode
         data={{
           content: 'https://e.com/v.mp4',
@@ -63,14 +65,12 @@ describe('VideoNode', () => {
     expect(v.tagName).toBe('VIDEO');
     expect(v.getAttribute('src')).toBe('https://e.com/v.mp4');
     expect(v.getAttribute('poster')).toBe('https://e.com/c.jpg');
-    // the unified player adds a fullscreen control
-    expect(screen.getByTestId('fullscreen')).toBeInTheDocument();
   });
 
   // #1616: non-empty video nodes show their pixel resolution top-right once the
   // metadata loads; read from the DOM (videoWidth/Height), no data-model field.
   it('shows the resolution badge after video metadata loads (#1616)', () => {
-    render(
+    renderWithTooltips(
       <VideoNode
         data={{ handling: false, content: 'https://e.com/v.mp4' }}
       />,
@@ -85,7 +85,7 @@ describe('VideoNode', () => {
   });
 
   it('empty video node shows no resolution badge (#1616)', () => {
-    render(<VideoNode data={{ handling: false }} />);
+    renderWithTooltips(<VideoNode data={{ handling: false }} />);
     expect(screen.queryByTestId('node-resolution-badge')).toBeNull();
   });
 
@@ -97,7 +97,7 @@ describe('VideoNode', () => {
       handling: false as const,
       content: 'https://e.com/v.mp4',
     };
-    render(<VideoNode data={data} />);
+    renderWithTooltips(<VideoNode data={data} />);
     expect(screen.getByTestId('controls').hasAttribute('inert')).toBe(false);
     // A focus session opens on SOME node — every video hides its bar, not just
     // the one being picked for.
@@ -143,14 +143,14 @@ describe('VideoNode zoomed past its cover preview (inner#1320)', () => {
 
   it('shows the cover preview while the canvas is not zoomed past it', () => {
     resetPreviewRecords();
-    render(zoomed(false));
+    renderWithTooltips(zoomed(false));
 
     expect(screen.getByTestId('media-element').getAttribute('poster')).toBe(`${COVER}.preview.webp`);
   });
 
   it('shows the full cover once zoomed past it, and keeps it after zooming out', () => {
     resetPreviewRecords();
-    const { rerender } = render(zoomed(true));
+    const { rerender } = renderWithTooltips(zoomed(true));
     expect(screen.getByTestId('media-element').getAttribute('poster')).toBe(COVER);
 
     rerender(zoomed(false));
@@ -162,7 +162,7 @@ describe('VideoNode zoomed past its cover preview (inner#1320)', () => {
 // before the poster arrives, as an image node's is.
 describe('VideoNode while its poster loads', () => {
   it('reserves the box from the size it carries and shows the skeleton', () => {
-    render(
+    renderWithTooltips(
       <VideoNode
         data={{ handling: false, content: '/v.mp4', coverUrl: '/v_cover.png', width: 1080, height: 3840 }}
       />,
@@ -174,7 +174,7 @@ describe('VideoNode while its poster loads', () => {
   });
 
   it('reserves nothing for a node of unknown size', () => {
-    render(<VideoNode data={{ handling: false, content: '/v.mp4', coverUrl: '/v_cover.png' }} />);
+    renderWithTooltips(<VideoNode data={{ handling: false, content: '/v.mp4', coverUrl: '/v_cover.png' }} />);
 
     expect(screen.getByTestId('media-element').getAttribute('width')).toBeNull();
     expect(screen.queryByTestId('media-skeleton')).toBeNull();

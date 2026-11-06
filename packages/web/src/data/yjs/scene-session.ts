@@ -37,6 +37,8 @@ export interface SceneSessionSnapshot extends SceneDocumentSnapshot {
   canUndo: boolean;
   canRedo: boolean;
   remotePeers: readonly ScenePeer[];
+  /** Other pages' whole-percent upload progress, by task row (inner#1690). */
+  remoteUploads: Readonly<Record<string, number>>;
   commandError: Extract<SceneCommandResult, { ok: false }> | null;
 }
 
@@ -110,7 +112,7 @@ export class SceneSession {
     this.snapshot = { ...scene, objects, selectedIds: this.selectedIds,
       gestureActive: this.gesture !== null, cancelRevision: this.cancelRevision, canEdit,
       canUndo: this.history.undoStack.length > 0, canRedo: this.history.redoStack.length > 0,
-      remotePeers: this.readPeers(byId), commandError: this.commandError };
+      remotePeers: this.readPeers(byId), remoteUploads: this.stableUploads(), commandError: this.commandError };
     this.publishPresence();
     this.listeners.forEach((listener) => listener());
   };
@@ -134,6 +136,63 @@ export class SceneSession {
         gesture: scenePresence.gesture?.filter((object) => byId.has(object.id) && !byId.get(object.id)?.locked) ?? null });
     });
     return peers.sort((a, b) => a.userId.localeCompare(b.userId) || a.clientId - b.clientId);
+  }
+
+  /**
+   * Read other pages' upload progress; an entry that is not a whole percent is ignored.
+   * @returns Whole percent by task row.
+   */
+  private readUploads(): Record<string, number> {
+    const awareness = this.environment.awareness;
+    const uploads: Record<string, number> = {};
+    if (!awareness) return uploads;
+    awareness.getStates().forEach((state: Record<string, unknown>, clientId: number) => {
+      if (clientId === awareness.clientID) return;
+      const published = state.sceneUploads;
+      if (typeof published !== 'object' || published === null) return;
+      for (const [taskId, percent] of Object.entries(published)) {
+        if (Number.isInteger(percent) && (percent as number) >= 0 && (percent as number) <= 100) uploads[taskId] = percent as number;
+      }
+    });
+    return uploads;
+  }
+
+  /**
+   * Read other pages' upload progress, keeping the previous object while nothing changed so memoized readers stay still.
+   * @returns Whole percent by task row.
+   */
+  private stableUploads(): Readonly<Record<string, number>> {
+    const next = this.readUploads();
+    const previous = this.snapshot?.remoteUploads;
+    return previous !== undefined && JSON.stringify(previous) === JSON.stringify(next) ? previous : next;
+  }
+
+  /**
+   * Follow a presence or progress change without reading the scene again: an
+   * upload's progress ticks for as long as it sends, and no object changed.
+   */
+  private onAwareness = (): void => {
+    if (this.destroyed) return;
+    const byId = new Map(this.snapshot.objects.map((object) => [object.id, object]));
+    const remotePeers = this.readPeers(byId);
+    const remoteUploads = this.stableUploads();
+    if (JSON.stringify(remotePeers) === JSON.stringify(this.snapshot.remotePeers)
+      && remoteUploads === this.snapshot.remoteUploads) return;
+    this.snapshot = { ...this.snapshot, remotePeers, remoteUploads };
+    this.listeners.forEach((listener) => listener());
+  };
+
+  /**
+   * Publish this page's progress for the uploads it is sending into this Space.
+   * @param uploads - Whole percent by task row; an empty map withdraws the field.
+   */
+  setUploadProgress(uploads: Readonly<Record<string, number>>): void {
+    const awareness = this.environment.awareness;
+    const state = awareness?.getLocalState();
+    if (!awareness || state === null || state === undefined) return;
+    const { sceneUploads: previous, ...rest } = state;
+    if (JSON.stringify(previous ?? {}) === JSON.stringify(uploads)) return;
+    awareness.setLocalState(Object.keys(uploads).length === 0 ? rest : { ...rest, sceneUploads: uploads });
   }
 
   /** Publish one complete presence snapshot; ineligible views withdraw synchronously. */
@@ -162,8 +221,8 @@ export class SceneSession {
       this.visible = false;
       this.publishPresence();
       this.visible = wasVisible;
-      previous.awareness?.off('change', this.refresh);
-      environment.awareness?.on('change', this.refresh);
+      previous.awareness?.off('change', this.onAwareness);
+      environment.awareness?.on('change', this.onAwareness);
     }
     if (previous.connected && !environment.connected) this.clearGesture();
     this.environment = environment;
@@ -291,7 +350,7 @@ export class SceneSession {
     this.publishPresence();
     this.destroyed = true;
     this.doc.off('update', this.refresh);
-    this.environment.awareness?.off('change', this.refresh);
+    this.environment.awareness?.off('change', this.onAwareness);
     this.history.destroy();
     this.listeners.clear();
   }

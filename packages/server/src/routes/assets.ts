@@ -24,6 +24,9 @@ import {
   verifySessionToken,
   reduceMediaType,
   isUploadableMediaType,
+  isSceneModelMediaType,
+  SceneObjectValuesSchema,
+  REQUEST_SHAPE_PARAMS,
   INGEST_NOT_STARTED,
   UPLOAD_STATUS_MAX_KEYS,
   t,
@@ -149,6 +152,9 @@ assets.get(
 /** sha256 hex — the only hash shape the dedup ledger stores. */
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 
+/** Normalize the declaration before its upload context selects a media gate. */
+const declaredContentTypeSchema = z.string().min(1).max(100).transform(reduceMediaType);
+
 const uploadTicketFields = z.object({
   filename: z
     .string()
@@ -174,11 +180,7 @@ const uploadTicketFields = z.object({
   // outside type arrives on reads. A rule about what a browser does with a
   // comma-carrying header holds wherever such a header can arrive, and two
   // hand-written copies of it hold only where somebody remembered.
-  content_type: z
-    .string()
-    .min(1)
-    .max(100)
-    .transform(reduceMediaType)
+  content_type: declaredContentTypeSchema
     .refine(isUploadableMediaType, "content_type is not an uploadable kind"),
   /** Declared byte size — the authoritative upload-cap gate input. */
   size: z.coerce.number().int().positive(),
@@ -192,6 +194,8 @@ const uploadTicketFields = z.object({
   /** Where the bytes land. Absent for a focus crop, which has no node. */
   node_id: z.string().uuid().optional(),
   space_id: z.string().uuid().optional(),
+  /** The name a 3D model is imported under, shown on its task row (inner#1690). */
+  label: SceneObjectValuesSchema.shape.name.optional(),
   /**
    * What started this upload. Only the mini-tool value is ever sent, and it
    * decides how the ledger files what is stored — a column the offline reclaim
@@ -208,17 +212,18 @@ const uploadTicketFields = z.object({
 
 /**
  * Where the bytes land: a project, or — for its avatar — a studio, which is
- * the only thing a studio uploads on its own account. `purpose` is what the
- * picture is being uploaded to become; it is filed as the asset's source and
- * grants nothing, since what makes a picture a cover or an avatar is the call
- * that points at it afterwards.
+ * the only thing a studio uploads on its own account. A model purpose selects
+ * complete model containers. Picture purposes retain their ledger provenance;
+ * the subsequent assignment determines which picture is a cover or avatar.
  */
 const uploadTicketSchema = z
   .union([
     uploadTicketFields.extend({
       project_id: z.string().uuid(),
       studio_id: z.never().optional(),
-      purpose: z.literal("project_cover").optional(),
+      purpose: z.enum(["project_cover", "scene_model"]).optional(),
+      // The purpose decides which kinds a project upload takes; superRefine below is that gate.
+      content_type: declaredContentTypeSchema,
     }),
     uploadTicketFields.extend({
       studio_id: z.string().uuid(),
@@ -226,11 +231,10 @@ const uploadTicketSchema = z
       purpose: z.literal("studio_avatar"),
       node_id: z.never().optional(),
       space_id: z.never().optional(),
+      label: z.never().optional(),
     }),
   ])
-  // A cover or an avatar can only ever be pointed at a picture, and its media
-  // read is deferred on the strength of that (#299). So a purpose is taken for
-  // a picture alone, and a cover lands on no node.
+  // The purpose selects the format gate and whether node metadata is meaningful.
   .superRefine((body, ctx) => {
     // A browser tool's export names the tool its row is shown under.
     if ((body.source === undefined) !== (body.tool_name === undefined)) {
@@ -239,6 +243,26 @@ const uploadTicketSchema = z
         path: ["tool_name"],
         message: "a mini-tool upload names its tool, and only a mini-tool upload does",
       });
+    }
+    if (body.purpose === "scene_model") {
+      if (!isSceneModelMediaType(body.content_type)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["content_type"], message: "a scene model requires a complete model container" });
+      }
+      // A model lands on its 3D Space's task list under the name the user
+      // gave it, never on a node (inner#1690).
+      if (body.space_id === undefined || body.label === undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["purpose"], message: "a scene model upload names its Space and the model", params: REQUEST_SHAPE_PARAMS });
+      }
+      if (body.node_id !== undefined || body.source !== undefined || body.tool_name !== undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["purpose"], message: "a scene model upload carries no node or mini-tool context", params: REQUEST_SHAPE_PARAMS });
+      }
+      return;
+    }
+    if (body.label !== undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["label"], message: "only a scene model upload carries a label", params: REQUEST_SHAPE_PARAMS });
+    }
+    if (!isUploadableMediaType(body.content_type)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["content_type"], message: "content_type is not an uploadable kind" });
     }
     if (body.purpose === undefined) return;
     if (!mediaReadService.purposeAccepts(body.content_type)) {
@@ -307,6 +331,8 @@ function ticketBody(outcome: Exclude<TicketOutcome, { kind: "refused" }>): Recor
         alreadyExists: true,
         // The row a cover or an avatar is then pointed at.
         assetId: outcome.assetId,
+        // A 3D model's task row, opened already done (inner#1690).
+        ...(outcome.taskId !== undefined && { taskId: outcome.taskId }),
         fileUrl: outcome.fileUrl,
         kind: outcome.assetKind,
         // The picture's size, read off it when it was stored (inner#1367).

@@ -18,15 +18,15 @@
 ## Production standards
 **Scene object commands use `planSceneCommand` and `applySceneCommand` in `data/yjs/scene-document.ts`; each object record stores plain current values, edits overwrite fields and deletes remove the record.** Writing anywhere else bypasses the format version, lock and permission checks. The record format and personal-history origin are described in [docs/ARCHITECTURE.md#scene-document-format-and-commands](../../docs/ARCHITECTURE.md#scene-document-format-and-commands).
 
-**Critical paths and invariants (StrictMode-safe resource hooks, Yjs collaboration, optimistic-update races) have 100% tests; markup is semantic, focus is visible and every action is keyboard-reachable; all copy is ICU in the five locales, never hard-coded; colours come from semantic tokens.** Raw brand colours are for the logo only; repo-lint `no-brand-usage` scans `src` `.ts/.tsx/.css` with comments stripped.
+**Critical paths and invariants (StrictMode-safe resource hooks, Yjs collaboration, optimistic-update races) have 100% tests; markup is semantic, every action works with the mouse and focus is visible wherever the keyboard reaches; all copy is ICU in the five locales, never hard-coded; colours come from semantic tokens.** Raw brand colours are for the logo only; repo-lint `no-brand-usage` scans `src` `.ts/.tsx/.css` with comments stripped.
 
-**A web change is done only after a real-browser pass in light and dark themes (plus collaboration and the auth flow when touched), the main flow walked by keyboard, and no bundle regression (`pnpm build && pnpm --filter @breatic/web verify:chunks`).** Unit tests do not see themes, focus order or chunk splits.
+**A web change is done only after a real-browser pass in light and dark themes (plus collaboration and the auth flow when touched), the main flow walked with the mouse, and no bundle regression (`pnpm build && pnpm --filter @breatic/web verify:chunks`).** Unit tests do not see themes, focus order or chunk splits.
 
 ## Memoize what children receive
 **`React.memo`, `useMemo` and `useCallback` are applied wherever a value or callback built during render reaches a child prop or a dependency array, even where no speed-up is measurable.** Every prop of a memoized component must be stable or the memo never bails, which is a defect; in high-frequency lists (canvas nodes) reuse the previous object for unchanged items. Check: is it rebuilt every render and passed down or into deps?
 
 ## Accessibility scope
-**Screen-reader support is out of scope and keyboard, focus, contrast, errors and semantic HTML are in scope, as [the root rules](../../AGENTS.md#product-scope) define.** Answer screen-reader findings with that policy.
+**Screen-reader support and keyboard routes that do not make creating faster are out of scope; mouse operation, contrast, errors, semantic HTML and visible focus on what the keyboard reaches are in scope, as [the root rules](../../AGENTS.md#product-scope) define.** Answer screen-reader and keyboard-reach findings with that policy.
 
 ## Never render user HTML
 **No user-controlled content reaches the DOM as markup; rendering user HTML needs an agreed protection design first.** Nothing on the chat path sanitizes, so markup would be live XSS. Check, both questions: am I putting user content in via `dangerouslySetInnerHTML`/`innerHTML`/`insertAdjacentHTML`/`document.write`? Am I handing it to a renderer that renders embedded HTML (e.g. `react-markdown` with `rehype-raw`)? `MarkdownMessage.tsx` is safe only while `rehype-raw` is in no `package.json`.
@@ -98,7 +98,7 @@ ESLint `breatic/no-raw-button` scans `src/**/*.{ts,tsx}` and exempts only `compo
 ## Locked colours and motion
 **`--color-palette-red` and every `--color-status-error*` token are locked.** Only this red is locked; every other colour may be tuned. It measures 4.00:1 (light) and 3.87:1 (dark) on menu surfaces, below AA, because raising it to 4.5:1 turns the dark-theme red pink. Its contrast is not a defect: a review that measures it judges the finding not a problem, citing this rule, and proposes nothing.
 
-**No component adds a `prefers-reduced-motion` fallback.** Motion is part of the product; keyboard, semantics and contrast still apply.
+**No component adds a `prefers-reduced-motion` fallback.** Motion is part of the product; semantics and contrast still apply.
 
 ## Scope rules sit in a layer
 **Every scope rule in `index.css` (`.scope el { … }`) is inside an `@layer`.** Unlayered rules beat every layered rule, including all Tailwind utilities, so utilities on elements inside the scope silently stop working. A property both the scope and its elements' utilities set belongs on the element. `chat-markdown-css.test.ts` guards only `.chat-markdown` and `document-body-layer-css.test.ts` only `.doc-body`'s layering; any other scope is unguarded. Check: is it in `@layer`? Does any property overlap with element utilities?

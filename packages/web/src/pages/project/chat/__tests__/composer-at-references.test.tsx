@@ -12,7 +12,9 @@ vi.mock('@web/lib/toast', () => ({ toast: { warning: toastSpy.warning, error: vi
 beforeEach(() => {
   toastSpy.warning.mockClear();
 });
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+
+import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
 import type { Editor } from '@tiptap/core';
 import { undo } from '@tiptap/pm/history';
 import { TextSelection, type Transaction } from '@tiptap/pm/state';
@@ -62,7 +64,7 @@ function setup(props: Partial<Props> = {}): {
   const onChange = vi.fn();
   const onSubmit = vi.fn();
   const base: Props = { draft: '', onChange, onSubmit, onAbort: vi.fn(), ...props };
-  const view = render(<ChatComposer {...base} />);
+  const view = renderWithTooltips(<ChatComposer {...base} />);
   return {
     onChange,
     onSubmit,
@@ -560,7 +562,7 @@ describe('@ in the chat box', () => {
 
   it('names the blocks a draft starts with, once, under StrictMode', async () => {
     const onChange = vi.fn();
-    render(
+    renderWithTooltips(
       <React.StrictMode>
         {/* A draft as the box writes it: a block keeps a space on either side. */}
         <ChatComposer draft={`see ${attachmentMarker('a1')} `} attachments={[cover]} onChange={onChange} onSubmit={vi.fn()} />

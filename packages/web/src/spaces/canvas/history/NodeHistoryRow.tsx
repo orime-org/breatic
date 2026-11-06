@@ -21,6 +21,7 @@ import {
   HoverPreview,
   type HoverPreviewKind,
 } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
+import type { MediaFullscreenSource } from '@web/spaces/canvas/nodes/_shared/MediaFullscreen';
 import { failureSentence } from '@web/spaces/canvas/failure-sentence';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import {
@@ -121,6 +122,8 @@ interface RowPreview {
   text?: string;
   /** Video cover (video only); ignored for image / audio / text. */
   poster?: string;
+  /** What full screen shows, when not the preview itself. */
+  fullscreen?: MediaFullscreenSource;
 }
 
 /**
@@ -141,7 +144,12 @@ function previewFor(
   if (modality === 'image') {
     // The big image reuses the thumbnail treatment (thumbnailUrl ?? content),
     // unchanged from the pre-migration static preview.
-    return { kind: 'image', src: entry.thumbnailUrl ?? entry.content };
+    // Full screen shows the original (inner#1844).
+    return {
+      kind: 'image',
+      src: entry.thumbnailUrl ?? entry.content,
+      fullscreen: { kind: 'image', src: entry.content },
+    };
   }
   if (modality === 'video') {
     // The playable element takes the video URL (`content`), not the cover — the
@@ -252,6 +260,7 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
           src={preview.src}
           text={preview.text}
           poster={preview.poster}
+          fullscreen={preview.fullscreen}
           alt=''
           followCanvas
         >

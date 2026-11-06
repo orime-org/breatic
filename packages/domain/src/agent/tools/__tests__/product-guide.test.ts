@@ -986,3 +986,18 @@ describe("where pasted content lands in the document", () => {
     for (const { sentence } of runWithLocale("en", () => documentPasteRules())) expect(document).toContain(sentence);
   });
 });
+
+// inner#1844: one full-screen view, opened from the top-right corner of a
+// node, of a hover preview and from a document's row of icons.
+describe("product guide: full screen", () => {
+  it("says where full screen opens and how it closes", () => {
+    const text = renderProductGuide();
+    expect(text).toMatch(/Hovering a picture or video node shows a full-screen button/);
+    expect(text).toMatch(/large preview that pops up on hovering a small picture or video[^.]*same button at its top-right corner/);
+    expect(text).toContain(`"${t("common.mediaViewer.fullscreen")}" (two arrows pointing out to opposite corners, pictures and videos`);
+    expect(text).toMatch(/an X at the top right of the screen closes it/);
+    expect(text).toMatch(/row of icons over a picture or video holds only full screen/);
+    expect(text).not.toMatch(/full-screen controls/);
+    expect(text).not.toMatch(/play, seek and fullscreen/);
+  });
+});

@@ -494,6 +494,7 @@ function task(over: Partial<NodeTaskRecord>): NodeTaskRecord {
     label: "Flux Pro",
     errorMessage: null,
     nodeHistoryId: null,
+    assetId: null,
     content: null,
     coverUrl: null,
     mediaWidth: null,
