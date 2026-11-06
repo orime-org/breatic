@@ -334,7 +334,10 @@ export const ReferenceRail = React.memo(function ReferenceRail({
               // accident" worry was withdrawn — the door swings both ways, a
               // deleted reference can be added back.
               onClick={() => onRemove(ref)}
-              className='flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+              // The `::after` square takes a press 4px past each side, so
+              // 16 + 2 * 4 = 24 (WCAG 2.2 SC 2.5.8); the chip's 6px gap and
+              // right padding keep it off the insert button beside it.
+              className='relative flex h-4 w-4 shrink-0 after:absolute after:-inset-1 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
             >
               <X className='h-3 w-3' aria-hidden='true' />
             </Button>
