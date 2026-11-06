@@ -35,7 +35,7 @@ import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import { createPgClient, getStorageAdapter, initCore, loadLocales } from "@breatic/core";
 import type * as coreModule from "@breatic/core";
-import { miniToolStepStateSchema, presentationPinService, taskRepo, upstreamStepRepo } from "@breatic/domain";
+import { lipsyncSharedStepKeys, miniToolStepStateSchema, presentationPinService, taskRepo, upstreamStepRepo } from "@breatic/domain";
 import type * as sharedModule from "@breatic/shared";
 import { videoPresentationWorkKeyFor } from "@breatic/shared";
 import { lipsyncFailureReasonSchema, plannedStageJobs } from "@breatic/shared/mini-tools";
@@ -231,6 +231,8 @@ async function seed(overrides: Record<string, unknown> = {}): Promise<Fixture> {
       prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
       limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, startSeconds: 3, encode: { crf: 18, preset: "medium" }, chunkRetries: 2 },
     layout: LAYOUT, stageJobs: plannedStageJobs(LAYOUT),
+    // Frozen like admission freezes them (DD §7.1 steps row; §97 D25-5).
+    sharedStepKeys: lipsyncSharedStepKeys(PLAN, LAYOUT.composite.length),
     ...overrides,
   } as Fixture["execution"];
   await pg`INSERT INTO tasks (id,user_id,project_id,space_id,task_type,mode,source,status,model,params,result)
@@ -489,6 +491,7 @@ describe("a lip-sync retry reuses the done steps by their frozen keys (§97 D21-
     const retry = await seed({ retry: { runId: original.execution.taskId, outputIndexes: [0] }, planFingerprint: "f".repeat(64) });
     // Same frozen plan: the step keys stay those of the original plan.
     retry.execution.persons = structuredClone(original.execution.persons);
+      retry.execution.sharedStepKeys = structuredClone(original.execution.sharedStepKeys);
     retry.execution.dialogues = structuredClone(original.execution.dialogues);
     retry.execution.draft = structuredClone(original.execution.draft);
     expect(await drive(retry)).toMatchObject({ status: "registered" });
@@ -521,6 +524,7 @@ describe("a lip-sync retry reuses the done steps by their frozen keys (§97 D21-
     const retryOf = async (runId: string, fingerprint: string): Promise<Fixture> => {
       const retry = await seed({ retry: { runId, outputIndexes: [0] }, planFingerprint: fingerprint });
       retry.execution.persons = structuredClone(original.execution.persons);
+      retry.execution.sharedStepKeys = structuredClone(original.execution.sharedStepKeys);
       retry.execution.dialogues = structuredClone(original.execution.dialogues);
       retry.execution.draft = structuredClone(original.execution.draft);
       return retry;

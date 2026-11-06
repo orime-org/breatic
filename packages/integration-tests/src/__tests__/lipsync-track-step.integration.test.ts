@@ -25,7 +25,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import { createPgClient, getStorageAdapter, initCore, loadLocales } from "@breatic/core";
-import { miniToolStepStateSchema, taskRepo, upstreamStepRepo } from "@breatic/domain";
+import { lipsyncSharedStepKeys, miniToolStepStateSchema, taskRepo, upstreamStepRepo } from "@breatic/domain";
 import { plannedStageJobs } from "@breatic/shared/mini-tools";
 import type * as wavespeedModule from "@worker/providers/wavespeed.js";
 import { HttpStatusError } from "@worker/providers/http.js";
@@ -104,6 +104,8 @@ async function seed(): Promise<Fixture> {
       prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
       limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, startSeconds: 3, encode: { crf: 18, preset: "medium" }, chunkRetries: 2 },
     layout: LAYOUT, stageJobs: plannedStageJobs(LAYOUT),
+    // Frozen like admission freezes them (DD §7.1 steps row; §97 D25-5).
+    sharedStepKeys: lipsyncSharedStepKeys("d".repeat(64), LAYOUT.composite.length),
   };
   await pg`INSERT INTO tasks (id,user_id,project_id,space_id,task_type,mode,source,status,model,params,result)
     VALUES (${taskId},${target.userId},${target.projectId},${spaceId},'video','append','mini_tool','running',${execution.model},${pg.json({ miniToolExecution: execution })},${pg.json({})})`;
