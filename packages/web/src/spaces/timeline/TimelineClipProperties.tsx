@@ -33,30 +33,31 @@ const FRAME_OF = { start: 'startFrame', in: 'sourceInFrame', duration: 'duration
 /** One field's text, the stored value it was started from, and whether it was judged out of range. */
 interface FieldDraft { stored: string; value: string; error: boolean }
 
-/** The drafts of one clip's fields. */
-interface Drafts { clipId: string; fields: Record<Field, FieldDraft> }
+/** The drafts of the shown clip's fields; the panel is keyed by clip, so another clip starts with new drafts. */
+type Drafts = Record<Field, FieldDraft>;
 
 /**
- * The drafts for the stored clip: a field restarts from its stored value when that value changed or another clip
- * is shown, and keeps the user's text and note otherwise.
+ * The drafts for the stored clip: a field keeps the user's text and note while it can be edited and its stored value
+ * is unchanged, and shows its stored value otherwise.
  * @param drafts - The current drafts, if any.
  * @param clip - The stored clip.
+ * @param editable - Which fields can be edited now.
  * @returns The same drafts when nothing restarts, else new ones.
  * @throws {never} Never.
  */
-function syncDrafts(drafts: Drafts | null, clip: TimelineVideoClip): Drafts {
-  let changed = drafts?.clipId !== clip.id;
-  const fields = {} as Record<Field, FieldDraft>;
+function syncDrafts(drafts: Drafts | null, clip: TimelineVideoClip, editable: Readonly<Record<Field, boolean>>): Drafts {
+  let changed = false;
+  const next = {} as Drafts;
   for (const field of Object.keys(FRAME_OF) as Field[]) {
     const stored = String(clip[FRAME_OF[field]]);
-    const kept = drafts?.clipId === clip.id ? drafts.fields[field] : undefined;
-    if (kept?.stored === stored) fields[field] = kept;
+    const kept = drafts?.[field];
+    if (kept?.stored === stored && (editable[field] || (kept.value === stored && !kept.error))) next[field] = kept;
     else {
-      fields[field] = { stored, value: stored, error: false };
+      next[field] = { stored, value: stored, error: false };
       changed = true;
     }
   }
-  return changed || drafts === null ? { clipId: clip.id, fields } : drafts;
+  return changed || drafts === null ? next : drafts;
 }
 
 /**
@@ -76,31 +77,34 @@ function syncDrafts(drafts: Drafts | null, clip: TimelineVideoClip): Drafts {
  */
 export function TimelineClipProperties({ spaceId, document, clip, name, conflict, labels, readOnly, placement, onCommit }: TimelineClipPropertiesProps): React.JSX.Element {
   const t = useTranslation();
-  const [drafts, setDrafts] = React.useState(() => syncDrafts(null, clip));
-  const current = syncDrafts(drafts, clip);
+  const startLocked = placement.magnet && clip.trackId === TIMELINE_MAIN_TRACK_ID;
+  const editable = React.useMemo(() => ({ start: !readOnly && !startLocked, in: !readOnly, duration: !readOnly }), [readOnly, startLocked]);
+  const [drafts, setDrafts] = React.useState(() => syncDrafts(null, clip, editable));
+  const current = syncDrafts(drafts, clip, editable);
   if (current !== drafts) setDrafts(current);
   const source = document.sources[clip.sourceId];
   const fps = document.settings.fps;
-  const startLocked = placement.magnet && clip.trackId === TIMELINE_MAIN_TRACK_ID;
   const trackName = labels.nameOf(clip.trackId);
 
   const update = React.useCallback((field: Field, patch: Partial<FieldDraft>): void => {
-    setDrafts((previous) => ({ ...previous, fields: { ...previous.fields, [field]: { ...previous.fields[field], ...patch } } }));
+    setDrafts((previous) => ({ ...previous, [field]: { ...previous[field], ...patch } }));
   }, []);
   const change = React.useCallback((field: Field, value: string): void => update(field, { value, error: false }), [update]);
-  // Each field is judged with the other fields' stored values: a valid entry commits on blur, so a draft left in
-  // another field is one already judged out of range.
+  // Each field is judged with the other fields' stored values: an entry in range is committed and its field shows the
+  // stored value again (the new one, or the old one with a toast when refused), so a draft left in another field is
+  // one judged out of range.
   const commit = React.useCallback((field: Field): void => {
-    const frame = parseTimelineFrame(current.fields[field].value);
+    const frame = parseTimelineFrame(current[field].value);
     const range = { ...clip, [FRAME_OF[field]]: frame };
     const valid = timelineClipIntervalValid(range)
       && (field === 'start' || source === undefined || timelineSourceOverflow(range, source, fps) === 0);
     if (!valid) { update(field, { error: true }); return; }
+    update(field, { value: current[field].stored });
     if (frame === clip[FRAME_OF[field]]) return;
     onCommit(field === 'start'
       ? { operation: 'move', parameters: { clipId: clip.id, startFrame: frame }, placement }
       : { operation: 'set_range', parameters: { clipId: clip.id, startFrame: clip.startFrame, sourceInFrame: range.sourceInFrame, durationFrames: range.durationFrames }, placement });
-  }, [current.fields, source, fps, clip, onCommit, placement, update]);
+  }, [current, source, fps, clip, onCommit, placement, update]);
   const changeTrack = React.useCallback((value: string): void => {
     if (value === clip.trackId) return;
     onCommit(value === 'new'
@@ -122,12 +126,12 @@ export function TimelineClipProperties({ spaceId, document, clip, name, conflict
     return <div className='flex flex-col gap-1'>
       <Label htmlFor={editable ? id : undefined}>{t(label)}</Label>
       {editable
-        ? <Input id={id} data-testid={testId} type='number' inputMode='numeric' autoComplete='off' step={1} value={current.fields[which].value} className='h-8 w-28'
+        ? <Input id={id} data-testid={testId} type='number' inputMode='numeric' autoComplete='off' step={1} value={current[which].value} className='h-8 w-28'
           onChange={(event) => change(which, event.target.value)} onBlur={() => commit(which)}
           onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); commit(which); } }} />
-        : <span data-testid={testId} className='text-sm tabular-nums'>{current.fields[which].value}</span>}
+        : <span data-testid={testId} className='text-sm tabular-nums'>{current[which].value}</span>}
       {which === 'start' && startLocked && !readOnly && <span className='text-2xs text-muted-foreground'>{t('timeline.edit.magnetStartHint')}</span>}
-      {current.fields[which].error && <span data-testid='timeline-clip-field-error' className='text-2xs text-status-error-foreground'>{t('timeline.errors.invalid_range')}</span>}
+      {current[which].error && <span data-testid='timeline-clip-field-error' className='text-2xs text-status-error-foreground'>{t('timeline.errors.invalid_range')}</span>}
     </div>;
   }
 
