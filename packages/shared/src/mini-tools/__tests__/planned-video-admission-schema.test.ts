@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
-import { miniToolPlannedRequestSchema, miniToolSubmissionSchema } from "../planned-request-schema.js";
+import { miniToolExecutionRetryRequestSchema, miniToolPlannedRequestSchema, miniToolSubmissionSchema } from "../planned-request-schema.js";
 
 const RUN = "50000000-0000-4000-8000-000000000001";
 const SOURCE = "30000000-0000-4000-8000-000000000001";
@@ -114,6 +114,13 @@ describe("S5 planned frame and segment request contracts", () => {
   it("S6e-Q05 accepts a remove-bg failed-output retry: it reuses the frozen prepared input (inner#1306 §90 E3b; design §5.3, §7.11)", () => {
     const body = changed(changed(retry(), "tool", "video.remove-bg"), "retry.outputIndexes", [0]);
     expect(miniToolSubmissionSchema.parse(body)).toEqual(body);
+  });
+  it("D24-1 accepts a lip-sync failed-output retry and still refuses a tool outside the planned set (execution design §9.4)", () => {
+    const body = changed(changed(retry(), "tool", "video.lip-sync"), "retry.outputIndexes", [0]);
+    expect(miniToolExecutionRetryRequestSchema.parse(body)).toEqual(body);
+    expect(miniToolSubmissionSchema.parse(body)).toEqual(body);
+    expect(miniToolExecutionRetryRequestSchema.safeParse(changed(body, "tool", "video.unknown")).success).toBe(false);
+    expect(miniToolSubmissionSchema.safeParse(changed(body, "tool", "video.unknown")).success).toBe(false);
   });
   it.each([
     ["retry.outputIndexes", []], ["retry.outputIndexes", [1, 1]], ["retry.outputIndexes", [-1]], ["retry.outputIndexes", [0.5]],

@@ -4,7 +4,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as RequestModule from '../request';
 import type * as CreditsModule from '../credits';
-import type { MiniToolExecutionRecord, MiniToolPlannedRequest } from '@breatic/shared/mini-tools';
+import type { MiniToolExecutionRecord, MiniToolExecutionRetryRequest, MiniToolPlannedRequest } from '@breatic/shared/mini-tools';
 import { miniToolsApi } from '../mini-tools';
 import { apiGet, apiPost, runOnceRequest } from '../request';
 import { noteCreditsChanged } from '../credits';
@@ -66,5 +66,14 @@ describe('planned mini-tool API public wire, independent of HTTP envelope transp
     vi.mocked(apiGet).mockResolvedValueOnce({ ...RECORD, outputs: [{ ...RECORD.outputs[0], result: null }] });
     await expect(miniToolsApi.getRun(PROJECT, RUN)).rejects.toThrow();
     expect(apiGet).toHaveBeenCalledExactlyOnceWith(`/projects/${PROJECT}/mini-tool-runs/${RUN}`);
+  });
+
+  it('D24-1 retries a lip-sync run through retryPlannedVideoRun: the retry form, its press key and a credit refresh', async () => {
+    const retry: MiniToolExecutionRetryRequest = { tool: 'video.lip-sync', project_id: PROJECT, space_id: BODY.space_id, run_id: '20000000-0000-4000-8000-000000000009', retry: { runId: RUN, outputIndexes: [0] } };
+    const answer = { task_id: retry.run_id, status: 'pending' };
+    vi.mocked(apiPost).mockResolvedValueOnce(answer);
+    expect(await miniToolsApi.retryPlannedVideoRun(structuredClone(retry), 'retry-press-key')).toEqual(answer);
+    expect(apiPost).toHaveBeenCalledExactlyOnceWith('/mini-tools', retry, runOnceRequest('retry-press-key'));
+    expect(noteCreditsChanged).toHaveBeenCalledExactlyOnceWith(PROJECT);
   });
 });
