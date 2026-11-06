@@ -46,13 +46,13 @@ export interface HeldClone {
 }
 
 /**
- * The cache key of the clone one call makes: a voice or vocal clone is keyed by the sha256 of the source its param
- * carries, an element by the sha256 of its item and its place in the list (`{sha}:Element {n}`, `n` from 1).
+ * The cache key of the clone one call makes, from the url that call reads (`stepSource`): a voice or vocal clone is
+ * keyed by that url's sha256, an element by its sha256 and its place in the list (`{sha}:Element {n}`, `n` from 1).
  * @param kind - The call's kind (`voice` for a binding's own call when it has `reused_by`).
  * @param param - The param the call reads its source from (`reused_by` for a voice, the step's `for_param` otherwise).
  * @param params - Our params.
  * @param sourceKeys - Source url to the sha256 key of the asset behind it.
- * @param itemIndex - For an element, its place in the list.
+ * @param itemIndex - The call's item index (stepCalls); null for a call that runs once.
  * @returns The kind and key, or undefined for a call that makes no clone or a source without a key.
  */
 export function cloneKeyOf(
@@ -63,15 +63,10 @@ export function cloneKeyOf(
   itemIndex: number | null,
 ): { kind: CloneKind; sourceKey: string } | undefined {
   if (param === undefined || !makesClone(kind)) return undefined;
-  const value = params[param];
-  if (kind !== "element") {
-    const sha = typeof value === "string" ? sourceKeys[value] : undefined;
-    return sha === undefined ? undefined : { kind, sourceKey: sha };
-  }
-  const index = itemIndex ?? 0;
-  const item: unknown = Array.isArray(value) ? value[index] : undefined;
-  const sha = typeof item === "string" ? sourceKeys[item] : undefined;
-  return sha === undefined ? undefined : { kind, sourceKey: `${sha}:Element ${index + 1}` };
+  const url = stepSource(params, param, itemIndex);
+  const sha = url === undefined ? undefined : sourceKeys[url];
+  if (sha === undefined) return undefined;
+  return { kind, sourceKey: kind === "element" ? `${sha}:Element ${(itemIndex ?? 0) + 1}` : sha };
 }
 
 /**
