@@ -21,7 +21,7 @@
 import { randomUUID } from "node:crypto";
 import fc from "fast-check";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
-import { createPgClient, initCore, loadLocales } from "@breatic/core";
+import { createPgClient, db, initCore, loadLocales, type DbTx } from "@breatic/core";
 import * as domain from "@domain/index.js";
 
 type HolderKind = "execution" | "analysis" | "prepared" | "candidate";
@@ -226,5 +226,51 @@ describe("pin and registration invariants over any event sequence (critical path
       }
       expect(new Set(await queued(s.key))).toEqual(expectedQueued);
     }), { seed: 1306, numRuns: 25 });
+  });
+});
+
+// inner#1306 test plan §97 D17-7 (b) (frames-split §7.15 唯一写点 and the execution holder row; §7.17 lip-sync note): the
+// worker registers each lip-sync intermediate object (RLE, transform table, person video, stem, generation result) by
+// appending its key to the run's `execution` pin child rows inside the registration transaction, through the repository's
+// one writer `appendExecutionPinObjects(taskId, keys, tx)`; a later `Chk` keeps those keys, and releasing the execution pin
+// registers them for reclaim with the ledgers.
+describe("appending lip-sync intermediates to the execution pin (§97 D17-7)", () => {
+  type Append = (taskId: string, keys: readonly string[], tx: DbTx) => Promise<void>;
+  /**
+   * The repository writer, read by name so this file compiles before it exists.
+   * @returns It.
+   */
+  const append = async (): Promise<Append> => {
+    const repo = await import("@domain/presentation/presentation-pin.repo.js") as Record<string, unknown>;
+    expect(repo.appendExecutionPinObjects, "appendExecutionPinObjects is exported by the pin repository").toBeTypeOf("function");
+    return repo.appendExecutionPinObjects as Append;
+  };
+
+  it("PA01 keys appended in the registration transaction are on the execution pin when it commits, and Chk keeps them", async () => {
+    const s = source(); const task = randomUUID();
+    const intermediates = [s.work(`${"a".repeat(64)}:70000000-0000-4000-8000-000000000001`), s.work(`${"b".repeat(64)}:70000000-0000-4000-8000-000000000002`)];
+    await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T, objectKeys: [s.full(T), s.table(T)] });
+    const write = await append();
+    await db.transaction(async (tx) => { await write(task, intermediates, tx); });
+    expect(await live(task)).toEqual([{ holder_kind: "execution", tool_input_id: T, prepared_key: null, version_id: null, keys: [s.full(T), s.table(T), ...intermediates].sort() }]);
+    for (const key of intermediates) expect(await pins().isKeyPinned(key)).toBe(true);
+    expect(await queued(s.key)).toEqual([]);
+  });
+
+  it("PA02 keys appended in a registration transaction that rolls back are not pinned", async () => {
+    const s = source(); const task = randomUUID(); const key = s.work(`${"c".repeat(64)}:70000000-0000-4000-8000-000000000003`);
+    await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T, objectKeys: [s.full(T), s.table(T)] });
+    const write = await append();
+    await expect(db.transaction(async (tx) => { await write(task, [key], tx); throw new Error("registration failed"); })).rejects.toThrow("registration failed");
+    expect(await pins().isKeyPinned(key)).toBe(false);
+  });
+
+  it("PA03 releasing the execution pin registers the appended keys with the ledgers", async () => {
+    const s = source(); const task = randomUUID(); const key = s.work(`${"d".repeat(64)}:70000000-0000-4000-8000-000000000004`);
+    await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T, objectKeys: [s.full(T), s.table(T)] });
+    const write = await append();
+    await db.transaction(async (tx) => { await write(task, [key], tx); });
+    await pins().release({ holderKind: "execution", holderId: task });
+    expect(await queued(s.key)).toEqual([s.full(T), s.table(T), key].sort());
   });
 });
