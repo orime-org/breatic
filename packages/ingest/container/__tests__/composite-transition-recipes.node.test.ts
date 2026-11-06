@@ -18,6 +18,9 @@
  * - expand: each background object is already in the target geometry, on its own clock from 0 at its window's start
  *   (§8.1 "按其实际PTS映射回本窗"); the frozen source position is `target.displayRect`, as a chunk places the picture there
  *   (§3.5); inside an overlap the two backgrounds are blended by presentation time (§8.1 "重叠区域按presentation时间混合").
+ *   A background with `crop` (inner#1306 D20-2) is a whole model frame: the container crops it to that rectangle, in the
+ *   model output's own pixels, and scales the crop to the target geometry before mapping it by PTS (execution §8: the
+ *   worker never decodes pixels). `crop` is not yet in the shared schema, whose strict background object refuses it.
  * - transition_window: each clip's entries cover the chunk's own frames [k0, k1) in that clip's presentation time.
  *
  * The `transition_window` cases need the headless-gl renderer process, which exists only in the `MiniToolContainerGl` image
@@ -320,6 +323,10 @@ beforeAll(async () => {
   // window 0 is 16 frames of luma 40 + 8n, window 1 is 12 frames of luma 150 + 6n.
   await make('bg0.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=128x72:r=50:d=0.32,format=yuv420p,geq=lum='40+8*N':cb=128:cr=128", ...h264, '-g', '16', '-video_track_timescale', '50']);
   await make('bg1.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=128x72:r=50:d=0.24,format=yuv420p,geq=lum='150+6*N':cb=128:cr=128", ...h264, '-g', '12', '-video_track_timescale', '50']);
+  // A whole model frame for expand (832x480 scaled down to 416x240) at 50 fps: inside the product ROI x 96-351, y 40-183
+  // (256x144, twice the 128x72 target) luma 60 + 6n, outside it white (luma 235), so any pixel from outside the crop shows.
+  await make('bg-frame.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=416x240:r=50:d=0.4,format=yuv420p,geq=lum='if(between(X,96,351)*between(Y,40,183),60+6*N,235)':cb=128:cr=128",
+    ...h264, '-g', '20', '-video_track_timescale', '50']);
   // The two transition clips: 1.6 s at 25 fps, flat greys 0x404040 and 0xC0C0C0, with 500 Hz and 1500 Hz ALAC tones at 48 kHz.
   for (const [name, grey, tone] of [['clip-a.mp4', '0x404040', 500], ['clip-b.mp4', '0xC0C0C0', 1500]] as const) {
     await make(name, ['-f', 'lavfi', '-i', `color=c=${grey}:s=64x36:r=25:d=1.6`, '-f', 'lavfi', '-i', `sine=f=${tone}:r=48000:d=1.6`,
@@ -419,6 +426,35 @@ describe('model_composite (§7.17 model_composite and segment rows; execution de
     }
     weights.slice(1).forEach((weight, at) => expect(weight).toBeGreaterThanOrEqual(weights[at]! - 0.03));
     expect(weights.some(weight => weight > 0.1 && weight < 0.9)).toBe(true);
+  });
+
+  // inner#1306 D20-2 (execution §8 "模型整框输出经已核坐标映射裁出产品ROI，缩回目标尺寸，最后在冻结源位置叠回原片"): the
+  // background is the model's whole frame and `crop` names the product ROI in its pixels.
+  it('MC05 expand from a whole model frame: the surround is the cropped ROI scaled to the target, by PTS, with nothing from outside the crop', async () => {
+    const displayRect = { x: 16, y: 20, width: 64, height: 36 };
+    const roi = { x: 96, y: 40, width: 256, height: 144 };
+    const recipe = {
+      kind: 'model_composite', mode: 'expand', inputId: SOURCE, window: { start: 0, end: 10 }, timescale: 25, entries: [span(r(0), r(0), r(0), r(2, 5))],
+      target: { ...TARGET, width: 128, height: 72, displayRect },
+      backgrounds: [{ inputId: BACKGROUNDS[0], window: { start: r(0), end: r(2, 5) }, crop: roi }],
+      ledger: [{ overlap: r(0), consumed: { start: r(0), end: r(2, 5) } }],
+    };
+    const [file] = await produce({ [SOURCE]: join(dir, 'greys.mp4'), [BACKGROUNDS[0]!]: join(dir, 'bg-frame.mp4') }, [recipe]);
+    const video = (await probe(file!)).streams.find(stream => stream.codec_type === 'video')!;
+    expect([video.codec_name, video.width, video.height]).toEqual(['h264', 128, 72]);
+    const list = await packets(file!);
+    expect(list).toHaveLength(10);
+    expect(list[0]!.flags).toContain('K');
+    const source = await lumaMeans(join(dir, 'greys.mp4'));
+    const inside = await lumaMeans(file!, { x: displayRect.x + 2, y: displayRect.y + 2, width: displayRect.width - 4, height: displayRect.height - 4 });
+    inside.forEach((mean, n) => expect(Math.abs(mean - source[n]!), `source rect, frame ${n}`).toBeLessThan(4));
+    // The ROI's own grey per background frame (read inside it, clear of its edge); output frame n is background frame 2n.
+    const roiLuma = await lumaMeans(join(dir, 'bg-frame.mp4'), { x: roi.x + 8, y: roi.y + 8, width: roi.width - 16, height: roi.height - 16 });
+    // The four 4-pixel borders of the output are the crop's edges: a crop off by 2 model pixels brings white into them.
+    const borders = { top: { x: 0, y: 0, width: 128, height: 4 }, bottom: { x: 0, y: 68, width: 128, height: 4 }, left: { x: 0, y: 0, width: 4, height: 72 }, right: { x: 124, y: 0, width: 4, height: 72 } };
+    for (const [side, rect] of Object.entries(borders)) {
+      (await lumaMeans(file!, rect)).forEach((mean, n) => expect(Math.abs(mean - roiLuma[2 * n]!), `${side} border, frame ${n}`).toBeLessThan(4));
+    }
   });
 
   it('MC04 a stitch over a model_composite chunk re-attaches the source audio over the interval (§7.17 model_composite row: stitch 合入原片音轨)', async () => {
