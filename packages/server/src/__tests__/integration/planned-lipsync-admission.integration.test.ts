@@ -844,3 +844,61 @@ describe("lip-sync retry admission (frames-split §7.11 retry row, §7.15; execu
     expect(await livePins(body.run_id)).toEqual([]);
   });
 });
+
+// §97 D26-1: the panel's quote is the server's own admission computation with no side effect. `POST /api/v1/mini-tools/quote`
+// takes the same JSON body as `POST /api/v1/mini-tools` (no Idempotency-Key), checks auth and project access as admission
+// does, and answers 200 `{ data: { credits } }` with the credits admission would freeze (task minimum floor included); a
+// body admission refuses is refused with the same status and message.
+describe("lip-sync quote (§97 D26-1)", () => {
+  /** Ask for the quote of a planned body through real HTTP auth. @throws {Error} On session storage or client failure. */
+  async function quote(f: Fixture, body: unknown = f.body): Promise<Response> {
+    const token = randomBytes(24).toString("hex"); tokens.push(token); await core.setSession(core.getRedis(), token, f.userId);
+    return app.request("/api/v1/mini-tools/quote", { method: "POST", headers: { "Content-Type": "application/json", Cookie: `${core.sessionCookieName()}=${token}` }, body: JSON.stringify(body) });
+  }
+  /** Every pin row (live or released) a run holds. @throws {Error} On SQL failure. */
+  async function pinRows(id: string): Promise<number> {
+    const [row] = await pg<{ n: number }[]>`SELECT count(*)::int AS n FROM presentation_pins WHERE holder_id=${id}`;
+    return row!.n;
+  }
+
+  it.each([
+    ["one person", [[0, 0, 0], [0, 1, 1.5]]],
+    ["two people", [[0, 0, 0], [1, 1, 1.5]]],
+  ] as [string, [number, number, number][]][])("LQ10 quotes %s with exactly the credits admission then freezes for the same body", async (_name, rows) => {
+    const f = await seed([{ registered: 3, claimed: 3 }, { registered: 2.5, claimed: 2.5 }]);
+    speak(f, rows);
+    const response = await quote(f);
+    expect(response.status).toBe(200);
+    const json = await response.json() as { data?: { credits?: unknown } };
+    expect(typeof json.data?.credits).toBe("number");
+    await accept(f);
+    expect((await plan(f.body.run_id)).credits).toBe(json.data?.credits);
+  });
+
+  it("LQ11 a quote writes no task, node task, hold, job or pin for the run", async () => {
+    const f = await seed([{ registered: 3, claimed: 3 }, { registered: 2.5, claimed: 2.5 }]);
+    speak(f, [[0, 0, 0], [1, 1, 1.5]]);
+    expect((await quote(f)).status).toBe(200);
+    expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
+    expect(await pinRows(f.body.run_id)).toBe(0);
+  });
+
+  it.each([
+    ["a third referenced person", "server.mini_tool.lipSyncTooManyPeople", { max: 2 }],
+    ["a used range over the tracking maximum", "server.mini_tool.lipSyncTrackingOutOfRange", { min: 1, max: 3.99 }],
+  ] as const)("LQ12 refuses %s exactly as admission does, writing nothing", async (bad, key, params) => {
+    const f = await seed([{ registered: 3, claimed: 3 }, { registered: 2.5, claimed: 2.5 }, { registered: 1, claimed: 1 }]);
+    speak(f, [[0, 0, 0], [1, 1, 1.5]]);
+    // A valid quote of the same fixture first, so the refusal below is the changed fact and not the fixture or a missing route.
+    expect((await quote(f)).status).toBe(200);
+    if (bad === "a third referenced person") speak(f, [[0, 0, 0], [1, 1, 1.5], [2, 2, 2]]);
+    else lipSync.tracking.max_duration_seconds = 3.99;
+    const quoted = await quote(f);
+    const answer = { status: quoted.status, message: (await quoted.json() as { error?: { message?: string } }).error?.message };
+    expect(answer).toEqual({ status: 400, message: shared.t(key, params) });
+    const admitted = await post(f);
+    expect({ status: admitted.status, message: (await admitted.json() as { error?: { message?: string } }).error?.message }).toEqual(answer);
+    expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
+    expect(await pinRows(f.body.run_id)).toBe(0);
+  });
+});
