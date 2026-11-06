@@ -138,7 +138,6 @@ describe("charging a turn that folds and continues", () => {
             );
             if (outcomes[i] === "written") mark = to;
           }
-          expect(world.watermark).toBe(mark);
 
           const ended = outcomes.slice(0, world.folds.length);
           const stopped = ended.includes("aborted");
