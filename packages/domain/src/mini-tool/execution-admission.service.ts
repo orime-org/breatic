@@ -50,8 +50,8 @@ export type AcceptedMiniToolExecution = ExecutionPlan & FrozenToolInput & (
     /** The standard-4 model-input preparation (§5.3): its policy, presentation-frame chunk windows and encode parameters (§91 D3b-5). */
     preparation: MiniToolContainerPolicy & { chunks: FrameWindow[]; chunkRetries: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] } } }
   | { tool: "video.extract-frames" | "video.split"; layout: FramesExecutionLayout;
-    /** The container jobs each stage sends, counted from `layout` at admission (§97 D12-1). */
-    stageJobs: MiniToolStageJobs[];
+    /** The container jobs each stage sends, counted from `layout` at admission (§97 D12-1); absent on plans admitted before. */
+    stageJobs?: MiniToolStageJobs[];
     /** The standard-4 policy and the encoder start seconds every job of the layout pays, frozen so a retry re-quotes from them. */
     container: MiniToolContainerPolicy & { startSeconds: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; chunkRetries: number };
     /** Each output's planned work in seconds without job start, frozen so a retry re-quotes its subset. */

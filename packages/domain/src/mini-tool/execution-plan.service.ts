@@ -45,6 +45,8 @@ const storedPlanSchema = z.union([
     modelCredits: z.number().nonnegative(),
   }),
   z.strictObject({ ...common, ...frozenToolInput, tool: z.enum(["video.extract-frames", "video.split"]), layout,
+    // The stage counts frozen beside the layout (§97 D12-1); plans admitted before them have none.
+    stageJobs: z.array(z.strictObject({ stage: z.enum(["prepare", "prepare_stitch", "encode", "stitch", "faces", "clip_stem", "model_composite", "composite"]), jobs: z.number().int().positive() })).optional(),
     outputSeconds: z.array(z.number().nonnegative().finite()), container: z.strictObject({ ...container, startSeconds: z.number().nonnegative().finite(),
       encode: z.strictObject({ crf: z.number().int().min(0).max(51), preset: x264PresetSchema }), chunkRetries: index }),
   }),
