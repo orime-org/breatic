@@ -57,6 +57,15 @@ export interface CanvasLimits {
   lipSync?: CanvasLipSyncLimits | null;
 }
 
+/**
+ * Query options for the canvas limits, read once per page through the same cache as {@link canvasApi.fetchLimits}.
+ * @returns The key and fetcher.
+ * @throws {never} Never.
+ */
+export function canvasLimitsQuery(): { queryKey: readonly ['canvas', 'limits']; queryFn: () => Promise<CanvasLimits>; staleTime: number } {
+  return { queryKey: ['canvas', 'limits'] as const, queryFn: () => canvasApi.fetchLimits(), staleTime: Infinity };
+}
+
 /** A duration range in seconds, both ends included. */
 export interface CanvasDurationRange { minDurationSeconds: number; maxDurationSeconds: number }
 /** The lip-sync models with their result ranges, the tracking range and the run caps. */

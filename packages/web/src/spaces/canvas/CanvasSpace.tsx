@@ -64,6 +64,7 @@ import {
   validFocusImages,
 } from '@web/data/focus-images';
 import {
+  canvasLimitsQuery,
   getCachedReferencePoolCap,
   type NodeHistoryEntry,
 } from '@web/data/api/canvas';
@@ -3949,17 +3950,19 @@ function CanvasSpaceInner({
   // A model tool whose pinned model the catalog does not serve is left off,
   // as the generation panel leaves such models off its list.
   const menuCatalog = useQuery(modelCatalogQuery()).data;
+  // A deployment that configures no lip-sync leaves it off the list too (canvas design §4 lip-sync row).
+  const menuLipSync = useQuery(canvasLimitsQuery()).data?.lipSync;
   const menuTools = React.useMemo(
     () =>
       menuDownloadUrl === null
         ? undefined
-        : servedMiniToolsFor(nodeMenu.type, menuCatalog).map((tool) => ({
+        : servedMiniToolsFor(nodeMenu.type, menuCatalog).filter((tool) => tool.id !== 'video.lip-sync' || menuLipSync !== null).map((tool) => ({
           id: tool.id,
           labelKey: tool.labelKey,
           icon: tool.icon,
           model: tool.run.kind === 'model',
         })),
-    [menuDownloadUrl, nodeMenu.type, menuCatalog],
+    [menuDownloadUrl, nodeMenu.type, menuCatalog, menuLipSync],
   );
   const openMiniTool = useCanvasSession((s) => s.openMiniTool);
   // The picture adjust is judged in fine detail (inner#1303 §6.1): on opening

@@ -10,7 +10,7 @@ import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { newId } from '@breatic/shared';
 import { lipsyncFailureReasonSchema, type LipsyncFailureReason, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
-import { canvasApi } from '@web/data/api/canvas';
+import { canvasApi, canvasLimitsQuery } from '@web/data/api/canvas';
 import { miniToolsApi } from '@web/data/api/mini-tools';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { readEdges, type CanvasNodeView } from '@web/data/yjs/canvas-space';
@@ -31,8 +31,6 @@ export interface VideoToolModels {
   lipSyncFailure: LipsyncFailureReason | null;
   onRetryFailed?: () => void;
 }
-
-const LIMITS_KEY = ['canvas', 'limits'] as const;
 
 /**
  * The host's last failed lip-sync run: the newest lip-sync task of the output nodes its lip-sync edges lead to, and that
@@ -72,7 +70,7 @@ export function useVideoToolModels(args: { projectId: string; spaceId: string; n
   const t = useTranslation();
   const queryClient = useQueryClient();
   const modelTool = toolId === 'video.remove-bg' || toolId === 'video.lip-sync';
-  const limits = useQuery({ queryKey: LIMITS_KEY, queryFn: () => canvasApi.fetchLimits(), staleTime: Infinity, enabled: modelTool }).data;
+  const limits = useQuery({ ...canvasLimitsQuery(), enabled: modelTool }).data;
   const catalog = useQuery({ ...modelCatalogQuery(), enabled: modelTool }).data;
   const lipSync = React.useMemo((): LipSyncChoices | undefined => {
     const config = limits?.lipSync;

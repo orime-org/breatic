@@ -14,8 +14,8 @@ import { NodeToolbar, Position, useStore } from '@xyflow/react';
 import * as React from 'react';
 
 import type { NodeRef } from '@web/data/yjs/node-view';
-import type { NodeTaskEntry } from '@breatic/shared';
-import { miniToolById } from '@breatic/shared/mini-tools';
+import { newId, type NodeTaskEntry } from '@breatic/shared';
+import { lipsyncFailureReasonSchema, lipsyncFailureRetryable, miniToolById } from '@breatic/shared/mini-tools';
 
 import { canvasApi } from '@web/data/api/canvas';
 import { miniToolsApi } from '@web/data/api/mini-tools';
@@ -23,6 +23,8 @@ import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-que
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { NodeTaskPanel } from '@web/spaces/canvas/tasks/NodeTaskPanel';
+import { plannedRunRefusalText } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
+import { LipSyncFailure } from '@web/spaces/canvas/mini-tool/video/VideoToolControls';
 import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import { useTickingClock } from '@web/spaces/canvas/tasks/use-ticking-clock';
 import {
@@ -32,6 +34,7 @@ import {
 import { countsColumnOffset } from '@web/spaces/canvas/overlay-scale';
 import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 import {
+  runOnce,
   taskActionKey,
   trackTaskAction,
   useTaskActionsInFlight,
@@ -160,7 +163,7 @@ function OpenNodeTaskPanel({
     ))],
     [entries],
   );
-  useQueries({
+  const runs = useQueries({
     queries: parentRunIds.map((runId) => ({
       queryKey: ['mini-tool-run', projectId, runId],
       queryFn: () => miniToolsApi.getRun(projectId, runId),
@@ -172,6 +175,28 @@ function OpenNodeTaskPanel({
       refetchOnMount: 'always' as const,
     })),
   });
+  // A lip-sync run's output node is where its failure is shown: one line per person and, when every failure can clear on a
+  // retry, the retry of the failed output on the run's frozen plan (§97 D24-1; execution design §9.4).
+  const lipSyncFailures = React.useMemo(() => new Map(parentRunIds.flatMap((runId, at) => {
+    const result = runs[at]?.data?.outputs[0]?.result;
+    const reason = result?.status === 'failed' ? lipsyncFailureReasonSchema.safeParse(result.error) : null;
+    return reason?.success === true ? [[runId, reason.data] as const] : [];
+  })), [parentRunIds, runs]);
+  const retryLipSync = React.useCallback((runId: string): void => {
+    void runOnce(`lip-sync-retry:${runId}`, {
+      scope: 'mini-tool',
+      prepare: () => ({ tool: 'video.lip-sync' as const, project_id: projectId, space_id: spaceId, run_id: newId(), retry: { runId, outputIndexes: [0] } }),
+      send: (key, body) => miniToolsApi.retryPlannedVideoRun(body, key),
+      onDone: () => { void query.refetch(); return undefined; },
+      onFailure: (error) => { toast.error(plannedRunRefusalText(error, t)); },
+    });
+  }, [projectId, spaceId, query, t]);
+  const detailOf = React.useCallback((taskId: string): React.ReactNode => {
+    const runId = entries.find((entry) => entry.id === taskId && entry.label === 'video.lip-sync')?.taskId;
+    const reason = runId == null ? undefined : lipSyncFailures.get(runId);
+    return reason === undefined || runId == null ? null
+      : <LipSyncFailure reason={reason} disabled={readOnly} {...(lipsyncFailureRetryable(reason) ? { onRetry: () => retryLipSync(runId) } : {})} />;
+  }, [entries, lipSyncFailures, readOnly, retryLipSync]);
   // Only the running list reads the clock, and only while it has a row: the
   // three settled states show fixed instants.
   const counting = React.useMemo(
@@ -279,6 +304,7 @@ function OpenNodeTaskPanel({
         displayNameOf={displayNameOf}
         onRetry={retry}
         onDismiss={dismiss}
+        detailOf={detailOf}
       />
     </NodeToolbar>
   );

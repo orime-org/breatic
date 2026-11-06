@@ -200,11 +200,11 @@ const SHARED_STEP_KEYS = { prepare: 'sharedFailPreparation', composite: 'sharedF
  * @param props.reason - The failure reason.
  * @param props.disabled - Whether the panel takes edits.
  * @param props.onRetry - Retries the failed items.
- * @param props.onRedetect - Identifies the people again.
+ * @param props.onRedetect - Identifies the people again, where the people are identified (the host's panel).
  * @returns The failure block.
  * @throws {z.ZodError} When the reason is malformed.
  */
-function LipSyncFailure(props: { reason: LipsyncFailureReason; disabled: boolean; onRetry?: () => void; onRedetect: () => void }): React.JSX.Element {
+export function LipSyncFailure(props: { reason: LipsyncFailureReason; disabled: boolean; onRetry?: () => void; onRedetect?: () => void }): React.JSX.Element {
   const t = useTranslation();
   const { persons, shared } = props.reason;
   const blocker = persons.find((person) => person.category === 'no_face' || person.category === 'model_rejected')?.detectionNumber;
@@ -219,7 +219,7 @@ function LipSyncFailure(props: { reason: LipsyncFailureReason; disabled: boolean
       })}
       {shared === null ? null : <li className='grid gap-0.5'><span className='font-medium'>{t(`canvas.miniTool.videoUI.${SHARED_STEP_KEYS[shared.step]}`)}</span><span>{t(`canvas.miniTool.videoUI.${PERSON_NEXT_KEYS[shared.category]}`)}</span></li>}
     </ul>
-    {retryable || noFace ? <div className='flex justify-end'>{retryable
+    {retryable || (noFace && props.onRedetect !== undefined) ? <div className='flex justify-end'>{retryable
       ? <Button variant='outline' size='compact' disabled={props.disabled || props.onRetry === undefined} onClick={props.onRetry}>{t('canvas.miniTool.videoUI.retryFailedPeople')}</Button>
       : <Button variant='outline' size='compact' disabled={props.disabled} onClick={props.onRedetect}>{t('canvas.miniTool.videoUI.redetectPeople')}</Button>}</div> : null}
   </div>;
