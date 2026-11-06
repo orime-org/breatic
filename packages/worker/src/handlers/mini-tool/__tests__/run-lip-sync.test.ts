@@ -19,7 +19,8 @@ import * as miniTools from "@breatic/shared/mini-tools";
 
 type StepKind = "prepare" | "track" | "faces" | "clip" | "stem" | "gen" | "composite" | "stitch";
 interface Step { kind: StepKind; personId: string | null }
-type Outcome = { state: "done" } | { state: "running" } | { state: "failed"; category: "no_face" | "model_rejected" | "timeout" | "failed" };
+// §97 D21-5: a failed step names the step its line is written under, which the runner writes as given.
+type Outcome = { state: "done" } | { state: "running" } | { state: "failed"; step: StepKind; category: "no_face" | "model_rejected" | "timeout" | "failed" };
 interface Pickup { results: Map<number, unknown>; waiting: boolean }
 
 const h = vi.hoisted(() => ({ step: vi.fn() }));
@@ -77,7 +78,7 @@ beforeEach(() => { h.step.mockReset(); });
 
 describe("the lip-sync runner's one failure reason (§97 D17-7; execution design §9.4)", () => {
   it("LR01 a person with no face fails the output with that person's line and stops the other's unsubmitted gen", async () => {
-    const result = await run((step) => (step.kind === "faces" && step.personId === "person-a" ? { state: "failed", category: "no_face" } : { state: "done" }));
+    const result = await run((step) => (step.kind === "faces" && step.personId === "person-a" ? { state: "failed", step: "faces", category: "no_face" } : { state: "done" }));
     const error = { kind: "lipsync", shared: null, persons: [
       { personId: "person-a", detectionNumber: 1, step: "faces", category: "no_face" },
       { personId: "person-b", detectionNumber: 3, step: "gen", category: "stopped" },
@@ -88,13 +89,21 @@ describe("the lip-sync runner's one failure reason (§97 D17-7; execution design
   });
 
   it("LR02 a failed shared step with every person done gives one shared line and no person lines", async () => {
-    const result = await run((step) => (step.kind === "stitch" ? { state: "failed", category: "failed" } : { state: "done" }));
+    const result = await run((step) => (step.kind === "stitch" ? { state: "failed", step: "stitch", category: "failed" } : { state: "done" }));
     expect(result).toEqual({ status: "failed", error: { kind: "lipsync", persons: [], shared: { step: "stitch", category: "failed" } } });
   });
 
   it("LR03 a timed-out generation fails only that person's line; the other person's steps all ran", async () => {
-    const result = await run((step) => (step.kind === "gen" && step.personId === "person-b" ? { state: "failed", category: "timeout" } : { state: "done" }));
+    const result = await run((step) => (step.kind === "gen" && step.personId === "person-b" ? { state: "failed", step: "gen", category: "timeout" } : { state: "done" }));
     expect(result).toEqual({ status: "failed", error: { kind: "lipsync", shared: null, persons: [{ personId: "person-b", detectionNumber: 3, step: "gen", category: "timeout" }] } });
     expect(asked()).toEqual(expect.arrayContaining([{ kind: "gen", personId: "person-a" }, { kind: "gen", personId: "person-b" }]));
+  });
+
+  it("LR04 a faces job that found no tracked foreground writes the person's line under track, as the step says (§97 D18-3, D21-5)", async () => {
+    const result = await run((step) => (step.kind === "faces" && step.personId === "person-a" ? { state: "failed", step: "track", category: "no_face" } : { state: "done" }));
+    expect(result).toEqual({ status: "failed", error: { kind: "lipsync", shared: null, persons: [
+      { personId: "person-a", detectionNumber: 1, step: "track", category: "no_face" },
+      { personId: "person-b", detectionNumber: 3, step: "gen", category: "stopped" },
+    ] } });
   });
 });
