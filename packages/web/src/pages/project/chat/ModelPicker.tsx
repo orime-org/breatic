@@ -118,10 +118,12 @@ function ModelPickerInner({ conversationId, projectId }: ModelPickerProps): Reac
           size={null}
           data-testid='chat-model-picker'
           loading={saving.isPending(conversationId)}
+          // Button draws its spinner with the icon's classes, so a save shows
+          // it in the chevron's place and the button keeps its width.
+          icon={<ChevronDown className='order-last h-3 w-3 shrink-0' />}
           className='h-[var(--btn-inline)] min-w-0 max-w-[11rem] shrink gap-1 bg-transparent px-1.5 text-xs'
         >
           <span className='truncate'>{shown.name}</span>
-          <ChevronDown className='h-3 w-3 shrink-0' />
         </Button>
       </PopoverTrigger>
       <PopoverContent side='top' align='end' className='w-auto min-w-48 p-1'

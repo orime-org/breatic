@@ -150,6 +150,26 @@ describe('the model picker', () => {
     expect(useConversationRuntime.getState().conversations['c-1']?.agentModel).toEqual(saved);
   });
 
+  it('draws the saving spinner in the chevron\'s place, at the chevron\'s size', async () => {
+    conversations({ 'c-1': DEEPSEEK });
+    vi.mocked(chatApi.setModel).mockReturnValue(new Promise(() => undefined));
+    const user = userEvent.setup();
+    renderPicker('c-1');
+    await waitFor(() => expect(trigger()).toBeEnabled());
+    const chevron = trigger().querySelector('.lucide-chevron-down');
+    const slot = ['order-last', 'h-3', 'w-3', 'shrink-0'];
+    expect(chevron).not.toBeNull();
+    expect(Array.from(chevron!.classList)).toEqual(expect.arrayContaining(slot));
+
+    await user.click(trigger());
+    await user.click(await screen.findByRole('button', { name: 'Claude Opus 5.5' }));
+    await waitFor(() => expect(trigger()).toHaveAttribute('aria-busy', 'true'));
+
+    const icons = trigger().querySelectorAll('svg');
+    expect(icons).toHaveLength(1);
+    expect(Array.from(icons[0]!.classList)).toEqual(expect.arrayContaining(['animate-spin', ...slot]));
+  });
+
   it('cannot be opened for another pick while a save is out', async () => {
     conversations({ 'c-1': DEEPSEEK });
     vi.mocked(chatApi.setModel).mockReturnValue(new Promise(() => undefined));
