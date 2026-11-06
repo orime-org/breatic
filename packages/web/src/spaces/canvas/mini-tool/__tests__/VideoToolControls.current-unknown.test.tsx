@@ -13,7 +13,7 @@ vi.mock('@web/spaces/canvas/mini-tool/video/use-video-frame-thumbnails', async (
   useVideoFrameThumbnails: () => ({ status: 'loading', frames: [] }),
 }));
 const source = { nodeId: '10000000-0000-4000-8000-000000000001', canonicalURL: 'https://media.example.test/source.webm', mediaInfo: { width: 160, height: 240, duration: 0.28, mimeType: 'video/webm' } };
-const draft: VideoToolDraftById['video.extract-frames'] = { version: 1, draftId: '20000000-0000-4000-8000-000000000001', revision: '30000000-0000-4000-8000-000000000001', source, inputs: [], params: { mode: 'first', currentTime: 0.13 } } as VideoToolDraftById['video.extract-frames'];
+const draft = { version: 1, draftId: '20000000-0000-4000-8000-000000000001', revision: '30000000-0000-4000-8000-000000000001', source, inputs: [], params: { mode: 'first', currentTime: 0.13 } } as unknown as VideoToolDraftById['video.extract-frames'];
 const table = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 1, step: 4, duration: 4 }, { start: 4, count: 3, step: 8, duration: 8 }] };
 const common = { toolId: 'video.extract-frames' as const, draft, analyses: [], frameTable: table, disabled: false, pickingSlot: null, inputNames: new Map(), onPick: vi.fn(), onAnalyse: vi.fn(), analysing: false, onEditTimeline: vi.fn() };
 
