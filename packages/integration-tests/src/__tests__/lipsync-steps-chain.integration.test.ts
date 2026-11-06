@@ -101,6 +101,8 @@ let submitted: Job[];
 let scripted: Map<string, Record<string, unknown>>;
 // Per-person provider behaviour of the generation submit.
 let genFault: Partial<Record<Person, unknown>>;
+// Container jobs a case makes fail on every attempt.
+let failJob: (request: Job) => boolean;
 
 /** Inject dummy external credentials only. @throws {Error} On invalid fixture configuration. */
 function configure(): void {
@@ -118,24 +120,32 @@ function done(request: Job): Record<string, unknown> {
     ...(output.contentType.startsWith("video/") ? { width: 320, height: 180, durationSeconds: 2, cover: null, upright: null } : {}) })) };
 }
 
+/**
+ * A failed report with no output.
+ * @returns The report.
+ */
+function failedReport(): Record<string, unknown> {
+  return { schemaVersion: 2, state: "failed", reason: "tool_failed", outputs: [], usage: { wallMs: 1000, cpuUsec: 2000000 } };
+}
+
 beforeAll(async () => {
   configure(); loadLocales(); pg = createPgClient(inject("DATABASE_URL"), { name: "lipsync-chain", max: 6 });
   const storage = await getStorageAdapter(); publicUrl = storage.publicUrl.bind(storage);
 });
 beforeEach(() => {
   vi.clearAllMocks(); configure();
-  submitted = []; scripted = new Map(); genFault = {};
+  submitted = []; scripted = new Map(); genFault = {}; failJob = () => false;
   outside.config.rejection = { path: "error.code", equals: "lipsync_input_rejected" };
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     if (url.pathname === "/jobs" && init?.method === "POST") {
       const request = JSON.parse(String(init.body)) as Job; submitted.push(request);
-      return Response.json(scripted.get(request.jobId) ?? done(request));
+      return Response.json(scripted.get(request.jobId) ?? (failJob(request) ? failedReport() : done(request)));
     }
     if (url.pathname.startsWith("/jobs/")) {
       const id = decodeURIComponent(url.pathname.split("/").at(-1)!);
       const request = submitted.find((candidate) => candidate.jobId === id);
-      return request === undefined ? new Response("missing", { status: 404 }) : Response.json(scripted.get(id) ?? done(request));
+      return request === undefined ? new Response("missing", { status: 404 }) : Response.json(scripted.get(id) ?? (failJob(request) ? failedReport() : done(request)));
     }
     if (url.pathname.includes(".video-source-ledger.")) return new Response(LEDGER, { headers: { "content-type": "application/json" } });
     return new Response("unexpected", { status: 500 });
@@ -495,5 +505,44 @@ describe("a lip-sync retry reuses the done steps by their frozen keys (§97 D21-
       return body?.video === person1Video || body?.box_prompts?.[0]?.x_min === 80 || person1Keys.some((key) => jobId.includes(key));
     });
     expect(person1Steps.filter((step) => step.output.miniToolConsumption !== undefined)).toEqual([]);
+  });
+
+  it("LR11 a retry of a retry reuses every step done anywhere along the chain: the original's and the first retry's", async () => {
+    // The original: person 3's generation times out.
+    const original = await seed();
+    genFault["person-3"] = new HttpStatusError("wavespeed", 503, "busy");
+    expect(await drive(original)).toMatchObject({ status: "failed" });
+    /**
+     * A retry of a run on the same frozen plan (its own task id and fingerprint, the original's persons and rows).
+     * @param runId - The run it retries.
+     * @param fingerprint - Its own plan fingerprint.
+     * @returns The retry.
+     */
+    const retryOf = async (runId: string, fingerprint: string): Promise<Fixture> => {
+      const retry = await seed({ retry: { runId, outputIndexes: [0] }, planFingerprint: fingerprint });
+      retry.execution.persons = structuredClone(original.execution.persons);
+      retry.execution.dialogues = structuredClone(original.execution.dialogues);
+      retry.execution.draft = structuredClone(original.execution.draft);
+      return retry;
+    };
+    // The first retry: person 3's generation now succeeds, but the second composite chunk fails on every attempt.
+    genFault = {}; outside.runPrediction.mockClear();
+    const first = await retryOf(original.execution.taskId, "e".repeat(64));
+    failJob = (job) => job.jobId.startsWith(first.execution.taskId) && job.outputs[0]?.recipe.kind === "lipsync_composite"
+      && (job.outputs[0].recipe.window as { start: number }).start === LAYOUT.composite[1]!.start;
+    expect(await drive(first)).toMatchObject({ status: "failed", error: { persons: [], shared: { step: "composite" } } });
+    expect(outside.runPrediction.mock.calls.filter((call) => call[1] === GENERATOR)).toHaveLength(1);
+    // The second retry, of the first: everything but the failed chunk and the stitch is done somewhere along the chain.
+    failJob = () => false;
+    outside.runPrediction.mockClear(); submitted = [];
+    const second = await retryOf(first.execution.taskId, "c".repeat(64));
+    expect(await drive(second)).toMatchObject({ status: "registered" });
+    expect(outside.runPrediction).not.toHaveBeenCalled();
+    expect(submitted.filter((job) => ["prepare_model_input", "lipsync_faces", "lipsync_clip", "lipsync_stem"].includes(String(job.outputs[0]?.recipe.kind)))).toEqual([]);
+    // The first composite chunk was done in the first retry: only the second is run again.
+    expect(jobsOf("lipsync_composite").map((job) => job.outputs[0]!.recipe.window)).toEqual([LAYOUT.composite[1]]);
+    expect(jobsOf("stitch")).toHaveLength(1);
+    const steps = await upstreamStepRepo.listSteps(second.execution.taskId);
+    expect(steps.filter((step) => step.kind === "generate")).toEqual([]);
   });
 });
