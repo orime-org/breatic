@@ -26,10 +26,10 @@ Download: https://media.githubusercontent.com/media/opencv/opencv_zoo/main/model
 SHA256: 8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4
 YuNet-LICENSE.txt is the original model licence.
 
-Python 3.12.15, Python-2.0; NumPy 2.3.5, BSD-3-Clause and the original
+Python 3.12.16, Python-2.0; NumPy 2.3.5, BSD-3-Clause and the original
 third-party notices in its installed LICENSE.txt. Installed Python package
 licences remain in each distribution's dist-info/licenses or LICENSE files.
-Python: https://www.python.org/ftp/python/3.12.15/Python-3.12.15.tar.xz
+Python: https://www.python.org/ftp/python/3.12.16/Python-3.12.16.tar.xz
 NumPy: https://github.com/numpy/numpy/tree/v2.3.5
 The GCC runtime libraries (libgcc, libstdc++, libgfortran) carry
 GPL-3.0-or-later WITH GCC-exception-3.1; GCC-COPYING3 and

@@ -21,7 +21,7 @@ FROM ${ALPINE_IMAGE} AS opencv-builder
 ARG BUILD_JOBS=2
 RUN apk add --no-cache \
     build-base cmake ninja pkgconf linux-headers curl ca-certificates \
-    python3=3.12.15-r0 python3-dev=3.12.15-r0 \
+    python3=3.12.16-r0 python3-dev=3.12.16-r0 \
     py3-numpy=2.3.5-r0 py3-numpy-dev=2.3.5-r0 \
     zlib-dev libjpeg-turbo-dev libpng-dev
 WORKDIR /build
@@ -145,7 +145,7 @@ RUN apk add --no-cache nodejs=~24 ffmpeg=~8.0 vips-tools=~8.17 sox=~14.4
 # Only the separate Python process loads these libraries. No pip resolver or
 # prebuilt OpenCV wheel can bring FFmpeg libraries back into that process.
 RUN apk add --no-cache \
-    python3=3.12.15-r0 py3-numpy=2.3.5-r0 \
+    python3=3.12.16-r0 py3-numpy=2.3.5-r0 \
     py3-click=8.1.8-r1 py3-platformdirs=4.5.0-r0 py3-tqdm=4.67.1-r0 \
     libstdc++ libgcc zlib libjpeg-turbo libpng
 COPY --from=opencv-builder /opt/opencv /opt/opencv

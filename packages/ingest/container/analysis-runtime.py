@@ -82,7 +82,7 @@ def read_frames(source: BinaryIO, width: int, height: int, count: int) -> Iterat
 
 def analyze(request: dict, source: BinaryIO) -> dict:
     """Run the frozen detector against full input; never emit intermediate results."""
-    if (platform.python_version(), np.__version__, cv2.__version__, scenedetect.__version__) != ("3.12.15", "2.3.5", "4.12.0", "0.7.2"):
+    if (platform.python_version(), np.__version__, cv2.__version__, scenedetect.__version__) != ("3.12.16", "2.3.5", "4.12.0", "0.7.2"):
         raise ValueError("Installed analysis runtime versions differ from the built profile")
     cv2.setNumThreads(1)
     frames = read_frames(source, request["width"], request["height"], request["expectedFrameCount"])

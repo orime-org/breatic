@@ -109,7 +109,7 @@ while the image is built, as the FFmpeg one above is.
 
 ### Isolated analysis in the media container
 
-The media container also carries Python 3.12.15, NumPy 2.3.5, OpenCV
+The media container also carries Python 3.12.16, NumPy 2.3.5, OpenCV
 4.12.0, PySceneDetect 0.7.2 and the YuNet 2023mar face detector. The Node
 service invokes our Python analysis program as a separate process and hands
 it raw BGR frames. Python does not decode media: OpenCV is built from source
@@ -118,7 +118,7 @@ existing FFmpeg program supplies decoded frames through a separate process.
 
 | Component | Licence | Source |
 |---|---|---|
-| Python 3.12.15 | Python-2.0 | https://www.python.org/ftp/python/3.12.15/Python-3.12.15.tar.xz |
+| Python 3.12.16 | Python-2.0 | https://www.python.org/ftp/python/3.12.16/Python-3.12.16.tar.xz |
 | NumPy 2.3.5 | BSD-3-Clause and its bundled notices | https://github.com/numpy/numpy/tree/v2.3.5 |
 | OpenBLAS 0.3.30 | BSD-3-Clause | https://github.com/OpenMathLib/OpenBLAS/tree/v0.3.30 |
 | GCC runtime libraries | GPL-3.0-or-later WITH GCC-exception-3.1 | https://gcc.gnu.org/pub/gcc/releases/gcc-15.2.0/gcc-15.2.0.tar.xz |
