@@ -483,6 +483,20 @@ async function seedCanvas(p: Page, s: SpaceRef): Promise<CanvasNodes> {
   return ids;
 }
 
+/**
+ * Renames a node through its header.
+ * @param p - The page.
+ * @param id - The node id.
+ * @param name - The new name.
+ */
+async function renameNode(p: Page, id: string, name: string): Promise<void> {
+  await nodeOf(p, id).getByTestId('node-header-name').dblclick();
+  await expect(nodeOf(p, id).getByTestId('node-header-input')).toBeFocused();
+  await p.keyboard.press('ControlOrMeta+A');
+  await p.keyboard.type(name);
+  await p.keyboard.press('Enter');
+}
+
 test('S-01 near the limit, the notice stays up and editing goes on as before', async ({ page, browser, baseURL }) => {
   const s = await openCanvasSpace(page, 'size-warning');
   let peer: Peer | undefined;
@@ -514,11 +528,13 @@ test('S-01 near the limit, the notice stays up and editing goes on as before', a
   }
 });
 
-test('S-02 at the limit, growth is refused with a toast and nothing forks, while a move still lands', async ({ page, browser, baseURL }) => {
+test('S-02 at the limit, growth is refused with a toast and nothing forks, while a move and a shorter name still land', async ({ page, browser, baseURL }) => {
   const s = await openCanvasSpace(page, 'size-full');
   let peer: Peer | undefined;
   try {
     const { t, f } = await seedCanvas(page, s);
+    await renameNode(page, t, 'a long name for this node');
+    await expect(nodeOf(page, t).getByTestId('node-header-name')).toHaveText('a long name for this node');
     peer = await openPeer(browser, baseURL, s.spaceId);
     await expect(nodeOf(peer.page, t)).toBeVisible({ timeout: 20_000 });
     const lines = await readLines(page, s.name);
@@ -558,6 +574,13 @@ test('S-02 at the limit, growth is refused with a toast and nothing forks, while
     await dragBy(page, t, 120);
     await expect.poll(async () => (await docPosition(page, s, t))?.x).not.toBe(before?.x);
 
+    // A shorter name replaces the old one without growing the Space.
+    shown = await toastsCleared(page);
+    await renameNode(page, t, 'short');
+    await expect(nodeOf(page, t).getByTestId('node-header-name')).toHaveText('short');
+    await expect(nodeOf(peer.page, t).getByTestId('node-header-name')).toHaveText('short', { timeout: 15_000 });
+    expect((await toastLog(page)).slice(shown)).toEqual([]);
+
     await expect.poll(() => nodeIds(peer!.page, s)).toEqual(ids);
     expect(await words(peer.page, s, t)).toBe('hello');
     expect((await toastLog(page)).filter((text) => text.includes(SIZE.resync))).toEqual([]);
@@ -566,6 +589,7 @@ test('S-02 at the limit, growth is refused with a toast and nothing forks, while
     await expect(nodeOf(page, t)).toBeVisible({ timeout: 30_000 });
     await expect.poll(() => nodeIds(page, s), { timeout: 15_000 }).toEqual(ids);
     expect(await words(page, s, t)).toBe('hello');
+    await expect(nodeOf(page, t).getByTestId('node-header-name')).toHaveText('short');
     expect((await toastLog(page)).filter((text) => text.includes(SIZE.resync))).toEqual([]);
   } finally {
     await peer?.context.close();
