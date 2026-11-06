@@ -55,6 +55,8 @@ describe('HoverPreview full-screen button', () => {
     const button = screen.getByTestId('media-fullscreen-button');
     expect(screen.getByTestId('hover-preview-content')).toContainElement(button);
     expect(button.className).toContain('group-hover/media:opacity-100');
+    expect(button.className).toContain('right-1.5');
+    expect(button.className).toContain('top-1.5');
   });
 
   it.each([
@@ -99,12 +101,18 @@ describe('HoverPreview full-screen button', () => {
     expect(video?.getAttribute('src')).toBe('/full.mp4');
   });
 
-  it('reads a `fullscreen` function when the card opens', () => {
-    let source = '/first.png';
-    hover({ kind: 'image', src: '/thumb.png', fullscreen: () => ({ kind: 'image', src: source }) });
-    source = '/second.png';
+  it('reads a `fullscreen` function when the card opens, not when it mounts', () => {
+    vi.useFakeTimers();
+    let source = '/at-mount.png';
+    renderWithTooltips(
+      <HoverPreview kind='image' src='/thumb.png' fullscreen={() => ({ kind: 'image', src: source })}>
+        <span data-testid='trigger'>chip</span>
+      </HoverPreview>,
+    );
+    source = '/at-open.png';
+    openCard(screen.getByTestId('trigger'));
     fireEvent.click(screen.getByTestId('media-fullscreen-button'));
-    expect(screen.getByTestId('media-fullscreen-image').getAttribute('src')).toBe('/first.png');
+    expect(screen.getByTestId('media-fullscreen-image').getAttribute('src')).toBe('/at-open.png');
   });
 
   it('has no button when `fullscreen` resolves to nothing', () => {

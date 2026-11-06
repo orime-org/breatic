@@ -145,10 +145,9 @@ export function HoverPreview({
   // live-at-open resolvers fire at the right moment.
   const [open, setOpen] = React.useState(false);
   useFollowCanvasViewport(followCanvas ? open : false);
-  // Read at open like `resolveOnOpen`, and kept through the close animation.
-  const [resolvedFullscreen, setResolvedFullscreen] = React.useState(() =>
-    typeof fullscreen === 'function' ? fullscreen() : fullscreen,
-  );
+  // A `fullscreen` function is read when the card opens, and kept through
+  // the close animation; the button only exists in the open card.
+  const [resolvedFullscreen, setResolvedFullscreen] = React.useState<MediaFullscreenSource | null>(null);
   const player = React.useRef<MediaPlayerHandle>(null);
   const [viewer, setViewer] = React.useState<Viewer | null>(null);
 
@@ -241,7 +240,7 @@ export function HoverPreview({
             <div className='group/media relative w-[220px]'>
               {content}
               {fullscreenSource ? (
-                <MediaFullscreenButton onOpen={openFullscreen} className='absolute right-1 top-1' />
+                <MediaFullscreenButton onOpen={openFullscreen} className='absolute right-1.5 top-1.5' />
               ) : null}
             </div>
           </HoverCardContent>

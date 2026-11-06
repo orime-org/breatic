@@ -93,6 +93,26 @@ describe.each(NODES)('$name node full-screen button', ({ Node, content }) => {
     expect(screen.getByTestId('media-fullscreen-button')).toBeInTheDocument();
   });
 
+  // inner#1844 round 1: what opened stays on screen while the node changes.
+  it('keeps showing what it opened on when the node gets new content', async () => {
+    const user = userEvent.setup();
+    const { rerender } = renderWithTooltips(node({ content }));
+    await user.click(screen.getByTestId('media-fullscreen-button'));
+    rerender(node({ content: `${content}?next` }));
+    const media = screen.getByTestId('media-fullscreen').querySelector('img, video');
+    expect(media?.getAttribute('src')).toBe(content);
+  });
+
+  it('places the button 6px from the picture, at a size and gap the zoom does not change', () => {
+    renderWithTooltips(node({ content }));
+    const button = screen.getByTestId('media-fullscreen-button');
+    const scaled = button.parentElement?.parentElement;
+    expect(scaled?.className).toContain('right-1');
+    expect(scaled?.className).toContain('top-1');
+    expect(button.parentElement?.className).toContain('pr-1.5');
+    expect(button.parentElement?.className).toContain('pt-1.5');
+  });
+
   it('opens the full-screen layer on the original file', async () => {
     const user = userEvent.setup();
     renderWithTooltips(node({ content }));

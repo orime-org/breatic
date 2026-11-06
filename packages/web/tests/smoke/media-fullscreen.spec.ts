@@ -16,6 +16,8 @@ import { test } from '../helpers/slot';
 
 import { openGenerate, registerCanvasStage, seedNode } from '../helpers/audio-panel';
 import { visibleSpace } from '../helpers/space';
+import { smokeProjectId } from '../helpers/project';
+import { withTimelinePeer } from '../helpers/timeline-media';
 
 registerCanvasStage();
 
@@ -64,14 +66,15 @@ test('a canvas picture opens full screen from its top-right corner and keeps dro
 
   // A file dropped on the layer does not reach the canvas behind it.
   const before = await visibleSpace(page).locator('.react-flow__node').count();
-  await layer.getByTestId('media-fullscreen-image').evaluate((img) => {
+  // ...and the browser does not open the file in the tab either.
+  const taken = await layer.getByTestId('media-fullscreen-image').evaluate((img) => {
     const transfer = new DataTransfer();
     transfer.items.add(new File([new Uint8Array([1, 2, 3])], 'dropped.png', { type: 'image/png' }));
     const box = img.getBoundingClientRect();
     const where = { clientX: box.left + 10, clientY: box.top + 10, bubbles: true, cancelable: true, dataTransfer: transfer };
-    img.dispatchEvent(new DragEvent('dragover', where));
-    img.dispatchEvent(new DragEvent('drop', where));
+    return [img.dispatchEvent(new DragEvent('dragover', where)), img.dispatchEvent(new DragEvent('drop', where))];
   });
+  expect(taken).toEqual([false, false]);
   await page.waitForTimeout(500);
   expect(await visibleSpace(page).locator('.react-flow__node').count()).toBe(before);
 
@@ -137,4 +140,52 @@ test('a hover preview opens full screen and stays open when the pointer leaves',
   await page.getByTestId('media-fullscreen-close').click();
   await expect(page.getByTestId('media-fullscreen')).toHaveCount(0);
   await expect(card).toHaveCount(0);
+});
+
+// inner#1844 round 1: a viewer's canvas neither drags nor selects nodes; the
+// button over the picture still answers the pointer.
+test('a viewer opens a canvas picture full screen', async ({ page, browser }) => {
+  const id = crypto.randomUUID();
+  await seedNode(id, 'image', PICTURE, 0, 0);
+  await expect(node(page, id).getByTestId('image-node-img')).toBeVisible({ timeout: 15_000 });
+  const spaceId = (await visibleSpace(page).getAttribute('data-space-outlet'))!;
+  const projectUrl = page.url();
+
+  await withTimelinePeer(page, browser, smokeProjectId(), 'viewer', async (peer) => {
+    await peer.goto(projectUrl);
+    const tab = peer.getByTestId(`space-tab-name-${spaceId}`);
+    if (await tab.count() === 0) {
+      await peer.getByTestId('space-drawer-trigger').click();
+      await peer.getByTestId('space-drawer').getByTestId(`space-drawer-row-${spaceId}`).getByRole('button', { name: /Open/ }).click();
+    } else {
+      await tab.click();
+    }
+    const picture = node(peer, id);
+    await expect(picture.getByTestId('image-node-img')).toBeVisible({ timeout: 20_000 });
+    await picture.hover();
+    const button = picture.getByTestId('media-fullscreen-button');
+    await expect(button).toHaveCSS('opacity', '1');
+    await button.click();
+    await expect(peer.getByTestId('media-fullscreen-image')).toHaveAttribute('src', PICTURE);
+    await peer.keyboard.press('Escape');
+    await expect(peer.getByTestId('media-fullscreen')).toHaveCount(0);
+  });
+});
+
+// inner#1844 round 1: beside a narrow picture is backdrop, and a press there closes.
+test('a press beside a tall picture closes full screen', async ({ page }) => {
+  const tall = `data:image/svg+xml,${encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="900"><rect width="300" height="900" fill="#27ae60"/></svg>',
+  )}`;
+  const id = crypto.randomUUID();
+  await seedNode(id, 'image', tall, 0, 0);
+  const picture = node(page, id);
+  await expect(picture.getByTestId('image-node-img')).toBeVisible({ timeout: 15_000 });
+  await picture.hover();
+  await picture.getByTestId('media-fullscreen-button').click();
+  const img = page.getByTestId('media-fullscreen-image');
+  await expect(img).toBeVisible();
+  const box = (await img.boundingBox())!;
+  await page.mouse.click(box.x - 100, box.y + box.height / 2);
+  await expect(page.getByTestId('media-fullscreen')).toHaveCount(0);
 });

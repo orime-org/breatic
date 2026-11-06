@@ -59,8 +59,12 @@ export function NodeMediaInset({
     <div data-testid='node-media-inset' className='relative p-1'>
       {children}
       {onFullscreen && mediaFree ? (
-        <ZoomCounterScaled className='absolute right-2 top-2 origin-top-right'>
-          <MediaFullscreenButton onOpen={onFullscreen} />
+        // Pinned to the picture's corner; the 6px gap scales with the button,
+        // so neither changes on screen with the zoom.
+        <ZoomCounterScaled className='absolute right-1 top-1 origin-top-right'>
+          <div className='pr-1.5 pt-1.5'>
+            <MediaFullscreenButton onOpen={onFullscreen} />
+          </div>
         </ZoomCounterScaled>
       ) : null}
     </div>

@@ -39,18 +39,17 @@ describe('MediaPlayer', () => {
     expect(screen.queryByTestId('waveform')).not.toBeInTheDocument();
   });
 
-  // #1622: the preview variant (hover preview) drops volume + fullscreen so
-  // it can live inside an auto-close HoverCard. INV-7.
-  it('audio variant="preview": waveform + play + seek, NO volume, NO fullscreen', () => {
+  // #1622: the preview variant (hover preview) drops volume so it can live
+  // inside an auto-close HoverCard. INV-7.
+  it('audio variant="preview": waveform + play + seek, NO volume', () => {
     render(<MediaPlayer modality='audio' src='/a.mp3' variant='preview' />);
     expect(screen.getByTestId('waveform')).toBeInTheDocument();
     expect(screen.getByTestId('play-toggle')).toBeInTheDocument();
     expect(screen.getByTestId('seek')).toBeInTheDocument();
     expect(screen.queryByTestId('volume-button')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('fullscreen')).not.toBeInTheDocument();
   });
 
-  it('video variant="preview": play + seek, NO volume, NO fullscreen', () => {
+  it('video variant="preview": play + seek, NO volume', () => {
     render(
       <MediaPlayer modality='video' src='/v.mp4' poster='/p.jpg' variant='preview' />,
     );
@@ -58,7 +57,6 @@ describe('MediaPlayer', () => {
     expect(screen.getByTestId('play-toggle')).toBeInTheDocument();
     expect(screen.getByTestId('seek')).toBeInTheDocument();
     expect(screen.queryByTestId('volume-button')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('fullscreen')).not.toBeInTheDocument();
     expect(screen.getByTestId('time-current').className).not.toContain('hidden');
     expect(screen.getByTestId('time-total').className).not.toContain('hidden');
   });

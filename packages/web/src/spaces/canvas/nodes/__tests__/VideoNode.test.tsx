@@ -65,8 +65,6 @@ describe('VideoNode', () => {
     expect(v.tagName).toBe('VIDEO');
     expect(v.getAttribute('src')).toBe('https://e.com/v.mp4');
     expect(v.getAttribute('poster')).toBe('https://e.com/c.jpg');
-    // inner#1844: full screen opens from the top-right corner, not the bar.
-    expect(screen.queryByTestId('fullscreen')).toBeNull();
   });
 
   // #1616: non-empty video nodes show their pixel resolution top-right once the

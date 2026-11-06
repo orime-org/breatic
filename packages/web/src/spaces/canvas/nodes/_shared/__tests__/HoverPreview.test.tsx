@@ -116,7 +116,7 @@ describe('HoverPreview', () => {
     expect(screen.getByTestId('media-element').tagName).toBe('VIDEO');
   });
 
-  it('INV-7 via preview variant: audio/video card drops volume + fullscreen', () => {
+  it('INV-7 via preview variant: audio/video card drops volume', () => {
     vi.useFakeTimers();
     renderWithTooltips(
       <HoverPreview kind='video' src='/v.mp4' poster='/p.jpg'>
@@ -127,7 +127,6 @@ describe('HoverPreview', () => {
     expect(screen.getByTestId('play-toggle')).toBeInTheDocument();
     expect(screen.getByTestId('seek')).toBeInTheDocument();
     expect(screen.queryByTestId('volume-button')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('fullscreen')).not.toBeInTheDocument();
   });
 
   it('INV-12: opening an audio card does NOT autoplay (click-to-play)', () => {
