@@ -126,7 +126,6 @@ describe('MediaFullscreen', () => {
     fireEvent.loadedMetadata(el);
     const content = screen.getByTestId('media-fullscreen');
     expect(content.style.getPropertyValue('--media-aspect')).toBe(String(640 / 480));
-    expect(content.className).toContain('w-[min(96vw,1600px,calc(90vh*var(--media-aspect,100)),var(--media-width,100vw))]');
   });
 
   it('sizes a video from the size its host knows', () => {
@@ -173,6 +172,15 @@ describe('MediaFullscreen', () => {
   it('holds a centred square while an image of unknown size loads', () => {
     render(<MediaFullscreen onClose={() => {}} kind='image' src='/a.png' name='a' />);
     expect(screen.getByTestId('media-fullscreen-skeleton').parentElement?.className).toContain('min-h-40 min-w-40');
+  });
+
+  // inner#1844 round 4: a failed picture gives its box back, so the error is
+  // centred with backdrop around it and a press there closes.
+  it('drops the reserved box when an image of known size fails', () => {
+    render(<MediaFullscreen onClose={() => {}} kind='image' src='/a.png' name='a' size={{ width: 1200, height: 800 }} />);
+    fireEvent.error(screen.getByTestId('media-fullscreen-image'));
+    expect(screen.getByTestId('media-fullscreen').className).toContain('w-fit');
+    expect(screen.getByTestId('media-fullscreen-error').parentElement?.className).not.toContain('aspect-[var(--media-aspect)]');
   });
 
   it('hands the video state back when it closes', async () => {

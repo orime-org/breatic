@@ -100,9 +100,10 @@ export function MediaFullscreen({
   // the media's own shape, so a tall one is held to the viewport's height and
   // a video's bar is as wide as its picture. With the shape known the box is
   // there before the file arrives; a video of unknown size has it from its
-  // own metadata. A picture is never shown wider than it is.
+  // own metadata. A picture is never shown wider than it is. A picture that
+  // failed gives the box back: the error sits centred on the backdrop.
   const [measured, setMeasured] = React.useState<{ width: number; height: number } | undefined>(undefined);
-  const box = size ?? measured;
+  const box = image === 'failed' ? undefined : (size ?? measured);
   const boxStyle = box
     ? ({
       '--media-aspect': box.width / box.height,
