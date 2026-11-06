@@ -41,6 +41,22 @@ export type TemplatePlace =
 /** The node with its template filled in, or why the template does not apply. */
 export type TemplateExpansion = { ok: true; node: ProposalNode } | Refusal;
 
+/** The words a generate node takes in the mode it is sent in, as refusals and fixes name them. */
+export type SentWords = { name: "shots" | "prompt"; mentions: string; write: string; placed: string };
+
+/**
+ * The words a generate node takes in a mode: shots in multi_shot, a prompt in
+ * any other, whatever form the template's own words have.
+ * @param mode - The mode the node is sent in.
+ * @returns How refusals and fixes name those words.
+ * @throws {never} Never.
+ */
+export function sentWords(mode: string | undefined): SentWords {
+  return mode === MULTI_SHOT_MODE
+    ? { name: "shots", mentions: "the shots @", write: "write the shots.", placed: " in a shot" }
+    : { name: "prompt", mentions: "the prompt @s", write: "write a prompt.", placed: "" };
+}
+
 /**
  * Template keys and inputs, quoted, for a sentence.
  * @param names - The names.
@@ -141,11 +157,10 @@ export function expandAt(place: TemplatePlace, rest: ProposalNode, at: NodeLabel
     // The pool is the template's own model's; a node settling another model
     // is told how its nodes go in once it has a prompt to check.
     const keeps = own?.role === "generate" && filled.mode === own.mode && filled.model === own.model;
-    const pool = keeps ? ` Each node the prompt @s goes into the pool. ${poolSentence(rest.name)}` : "";
-    // The words a node takes follow the mode it is sent in, whatever form the template's words have.
+    const words = sentWords(filled.mode);
+    const pool = keeps ? ` Each node ${words.mentions} goes into the pool. ${poolSentence(rest.name)}` : "";
     const shotList = own?.role === "generate" && own.shots !== undefined;
-    const asks = filled.mode === MULTI_SHOT_MODE ? "shots" : "prompt";
-    return refuse("template-no-prompt", `"${rest.name}" names template "${template.id}" and sends no ${asks}. The template's ${shotList ? "shots" : "prompt"}, to rewrite in the reader's language with their story or detail in it: ${templateSegmentsText(template, key)}.${pool}`, fixOn(at, asks === "shots" ? "write the shots." : "write a prompt."));
+    return refuse("template-no-prompt", `"${rest.name}" names template "${template.id}" and sends no ${words.name}. The template's ${shotList ? "shots" : "prompt"}, to rewrite in the reader's language with their story or detail in it: ${templateSegmentsText(template, key)}.${pool}`, fixOn(at, words.write));
   }
   return { ok: true, node: filled };
 }
