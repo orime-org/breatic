@@ -114,6 +114,17 @@ beforeAll(() => {
   loadLocales();
 });
 
+
+// §97 (frames-split design §10.6 删除行; tools design acceptance item 5): the guide describes frame extraction with its three
+// kept modes and no longer quotes the removed interval mode or explains it.
+describe("frame extraction in the guide after the interval mode is removed", () => {
+  it("quotes First, Last and Current and says nothing about intervals", () => {
+    const guide = renderProductGuide();
+    for (const mode of ["first", "last", "current"]) expect(guide).toContain(`"${t(`canvas.miniTool.videoUI.${mode}`)}"`);
+    expect(guide).not.toMatch(/interval/i);
+  });
+});
+
 describe("the guide as a tool", () => {
   it("is registered, and reaches a chat turn", () => {
     expect(Object.keys(TOOL_MAP)).toContain(GET_PRODUCT_GUIDE);
