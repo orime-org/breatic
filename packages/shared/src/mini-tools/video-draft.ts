@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { z } from "zod";
+import { VIDEO_TOOL_SYNC_MODES } from "@shared/mini-tools/lipsync-timeline.js";
 import { miniToolAnalysisInputSchema, miniToolAnchorSchema } from "@shared/mini-tools/analysis-input.js";
 
 export const VIDEO_TOOL_IDS = ["video.expand", "video.erase", "video.lip-sync", "video.remove-bg", "video.extract-frames", "video.transitions", "video.split"] as const;
@@ -35,7 +36,7 @@ export const videoToolExpansionFrameSchema = z.strictObject({
   height: z.number().min(1),
 }).refine((frame) => frame.x + frame.width >= 1 && frame.y + frame.height >= 1);
 
-export const videoToolSyncModeSchema = z.enum(["cut_off", "silence", "loop", "bounce", "remap"]);
+export const videoToolSyncModeSchema = z.enum(VIDEO_TOOL_SYNC_MODES);
 
 export const videoToolDialogueRowSchema = z.strictObject({
   dialogueId: z.string().uuid(),

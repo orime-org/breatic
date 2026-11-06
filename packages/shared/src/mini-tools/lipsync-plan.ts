@@ -8,12 +8,9 @@
  */
 
 import { z } from "zod";
-import { presentationCoveringFrame, type VideoPresentationTable } from "@shared/mini-tools/video-presentation-table.js";
 import { planVideoDialogues, type VideoDialoguePlanInput } from "@shared/mini-tools/video-plan.js";
-import type { VideoToolSyncMode } from "@shared/mini-tools/video-draft.js";
-
-/** The frozen lip-sync timeline: the result duration, the video's presentation duration V and the duration mode. */
-export interface LipsyncTimeline { duration: number; videoDuration: number; syncMode: VideoToolSyncMode }
+import type { LipsyncTimeline } from "@shared/mini-tools/lipsync-timeline.js";
+export { lipsyncSourceTimeAt, lipsyncSourceFrameAt, type LipsyncTimeline } from "@shared/mini-tools/lipsync-timeline.js";
 
 /**
  * The frozen timeline of a lip-sync plan: the dialogue planner's result duration with the video duration and mode (§9.2).
@@ -24,41 +21,6 @@ export interface LipsyncTimeline { duration: number; videoDuration: number; sync
 export function lipsyncTimeline(input: VideoDialoguePlanInput): LipsyncTimeline {
   const { duration } = planVideoDialogues(input);
   return { duration, videoDuration: input.videoDuration, syncMode: input.syncMode };
-}
-
-/**
- * The source presentation time s in [0, V] a result time shows (§9.2, §97 D14-1), s = V being the last presentation frame:
- * cut_off s = t; silence s = min(t, V); loop s = t mod V; bounce u = t mod 2V, s = u when u <= V else 2V - u; remap
- * s = t · V / duration.
- * @param timeline - The frozen timeline.
- * @param t - The result time in seconds.
- * @returns The source presentation time.
- * @throws {never} Never.
- */
-export function lipsyncSourceTimeAt(timeline: LipsyncTimeline, t: number): number {
-  const v = timeline.videoDuration;
-  switch (timeline.syncMode) {
-    case "cut_off": return t;
-    case "silence": return Math.min(t, v);
-    case "loop": return t % v;
-    case "bounce": {
-      const u = t % (2 * v);
-      return u <= v ? u : 2 * v - u;
-    }
-    case "remap": return (t * v) / timeline.duration;
-  }
-}
-
-/**
- * The presentation frame a result time shows: the frame covering its source time, s = V giving the last frame.
- * @param timeline - The frozen timeline.
- * @param table - The source's compact presentation table.
- * @param t - The result time in seconds.
- * @returns The presentation frame index.
- * @throws {never} Never.
- */
-export function lipsyncSourceFrameAt(timeline: LipsyncTimeline, table: VideoPresentationTable, t: number): number {
-  return presentationCoveringFrame(table, lipsyncSourceTimeAt(timeline, t));
 }
 
 /**
