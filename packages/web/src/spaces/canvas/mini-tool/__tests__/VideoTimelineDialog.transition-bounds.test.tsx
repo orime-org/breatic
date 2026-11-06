@@ -5,15 +5,18 @@
  * inner#1306 test plan §97 (canvas design §4 转场行; §10 editor row; demo 2026-10-23-1306-video-tools `timeline-editor.tsx`):
  * a non-Cut transition lasts between the bounds shared `transitionDurationBounds(clips, fps)` answers. When it answers null
  * only Cut is usable: Crossfade, Wipe left and Wipe right stay listed with `aria-disabled` and a click explains with a toast
- * (demo copy `transitionTooShort`). The duration input clamps what is typed into `[min, max]`. The shared function is mocked
- * so the bounds, not the fps source, decide each case.
+ * (`canvas.miniTool.videoUI.transitionTooShort`). The four types read their locale names (`transitionCut`, `transitionFade`,
+ * `transitionWipeLeft`, `transitionWipeRight`). The duration input clamps what is typed into `[min, max]`. The shared function
+ * is mocked so the bounds decide each case; the fps it is asked with is the first clip's rate, read off that clip's selected
+ * compact presentation table (D13-1). `inputTables` (input id to compact table) is a Dialog prop this test chose.
  */
 
 import * as React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { VideoToolDraftById, VideoToolTimelineClip } from '@breatic/shared/mini-tools';
+import { t } from '@breatic/shared';
+import type { VideoPresentationTable, VideoToolDraftById, VideoToolTimelineClip } from '@breatic/shared/mini-tools';
 
 vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() },
@@ -36,6 +39,21 @@ const bounds = vi.mocked((miniTools as unknown as { transitionDurationBounds: (c
 const source = { nodeId: '10000000-0000-4000-8000-000000000001', canonicalURL: 'https://media.example.test/a.mp4', mediaInfo: { width: 960, height: 540, duration: 6, mimeType: 'video/mp4' } };
 const inputA = { inputId: '60000000-0000-4000-8000-000000000001', url: source.canonicalURL, mediaInfo: source.mediaInfo, sourceNodeId: source.nodeId };
 const inputB = { inputId: '60000000-0000-4000-8000-000000000002', url: 'https://media.example.test/b.mp4', mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' } };
+// Each input's selected compact table: A runs at 30000/1001 fps, B at 25 fps, so neither a default rate nor the other clip's passes.
+const TABLE_NTSC: VideoPresentationTable = { schemaVersion: 1, timescale: 30000, runs: [{ start: 0, count: 180, step: 1001, duration: 1001 }] };
+const TABLE_PAL: VideoPresentationTable = { schemaVersion: 1, timescale: 100, runs: [{ start: 0, count: 125, step: 4, duration: 4 }] };
+const inputTables = new Map([[inputA.inputId, TABLE_NTSC], [inputB.inputId, TABLE_PAL]]);
+const TYPE_KEYS = ['transitionCut', 'transitionFade', 'transitionWipeLeft', 'transitionWipeRight'] as const;
+
+/**
+ * Whether two rationals are the same number, without assuming either is reduced.
+ * @param a - One rational.
+ * @param b - The other.
+ * @returns Whether they are equal.
+ */
+function sameRate(a: { numerator: string; denominator: string }, b: { numerator: string; denominator: string }): boolean {
+  return BigInt(a.numerator) * BigInt(b.denominator) === BigInt(b.numerator) * BigInt(a.denominator);
+}
 
 /**
  * A two-clip draft of 4 s then 3 s, long enough that only the mocked bounds can refuse a transition.
@@ -60,7 +78,8 @@ function draftWith(kind: VideoToolTimelineClip['transition']['kind'], duration: 
  * @returns Nothing.
  */
 function open(draft: VideoToolDraftById['video.transitions'], onChange: (next: VideoToolDraftById['video.transitions']) => void): void {
-  render(<VideoTimelineDialog open onOpenChange={vi.fn()} draft={draft} onChange={onChange} inputNames={new Map([[inputA.inputId, 'A'], [inputB.inputId, 'B']])} disabled={false} onRun={vi.fn()} />);
+  const proposed: object = { inputTables };
+  render(<VideoTimelineDialog open onOpenChange={vi.fn()} draft={draft} onChange={onChange} inputNames={new Map([[inputA.inputId, 'A'], [inputB.inputId, 'B']])} disabled={false} onRun={vi.fn()} {...proposed} />);
 }
 
 /**
@@ -102,7 +121,7 @@ describe('transition types follow the shared duration bounds (§97; canvas desig
     open(draftWith('cut', 0), onChange);
     const options = await transitionOptions(user);
     await user.click(options[2]);
-    expect(toast.warning).toHaveBeenCalledWith('Clips too short for a transition');
+    expect(toast.warning).toHaveBeenCalledWith(t('canvas.miniTool.videoUI.transitionTooShort'));
     expect(onChange).not.toHaveBeenCalled();
   });
 
@@ -111,6 +130,27 @@ describe('transition types follow the shared duration bounds (§97; canvas desig
     const user = userEvent.setup();
     open(draftWith('cut', 0), vi.fn());
     for (const option of await transitionOptions(user)) expect(option).not.toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('names the four types through their locale keys', async () => {
+    bounds.mockReturnValue({ min: 0.2, max: 1.2 });
+    const user = userEvent.setup();
+    open(draftWith('cut', 0), vi.fn());
+    expect((await transitionOptions(user)).map((option) => option.textContent)).toEqual(TYPE_KEYS.map((key) => t(`canvas.miniTool.videoUI.${key}`)));
+  });
+
+  it.each([
+    ['A (30000/1001 fps) first', false, { numerator: '30000', denominator: '1001' }],
+    ['B (25 fps) first', true, { numerator: '25', denominator: '1' }],
+  ])('asks for the bounds at the first clip rate read off its compact table: %s', (_name, swapped, rate) => {
+    bounds.mockReturnValue({ min: 0.2, max: 1.2 });
+    const draft = draftWith('fade', 0.5);
+    open(swapped ? { ...draft, params: { clips: [{ ...draft.params.clips[1], transition: draft.params.clips[0].transition }, { ...draft.params.clips[0], transition: { kind: 'cut', duration: 0 } }] } } : draft, vi.fn());
+    expect(bounds).toHaveBeenCalled();
+    for (const [, fps] of bounds.mock.calls) {
+      expect(fps).toEqual({ numerator: expect.any(String), denominator: expect.any(String) });
+      expect(sameRate(fps, rate), `${fps.numerator}/${fps.denominator}`).toBe(true);
+    }
   });
 });
 
