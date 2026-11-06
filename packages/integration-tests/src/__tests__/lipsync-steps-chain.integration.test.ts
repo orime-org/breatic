@@ -20,7 +20,8 @@
  *   stem URLs, `sync_mode: "cut_off"` only for `providerSyncMode: "cut_off"`; its result URL fetched into
  *   `${stepKeys.gen}:${attemptId}` and pinned; a 400 or 422 on submit, or the model's configured `async_rejection`, is
  *   `model_rejected` in the one §9.4 reason.
- * - stitch: one job over the composite chunks and every stem; the run's one output is registered.
+ * - stitch: one job over the composite chunks whose audio is `{ kind: "mix", inputs: [each stem] }` (§97 D22-3); the
+ *   run's one output is registered.
  * - retry (D21-6): a retry of a run whose person 1 succeeded and person 3's gen timed out reuses every done step by its
  *   frozen step key: only person 3's gen is submitted, person 1 adds no consumption, no preparation or per-person
  *   container job runs again.
@@ -430,6 +431,11 @@ describe("lip-sync step bodies after track submits (§97 D21; execution design �
     expect(stitches).toHaveLength(1);
     const keys = stitches[0]!.inputs.map((input) => input.storageKey);
     expect(keys).toEqual(expect.arrayContaining([...jobsOf("lipsync_composite").map((job) => job.outputs[0]!.storageKey), ...PEOPLE.map((person) => personJob("lipsync_stem", person).outputs[0]!.storageKey)]));
+    // §97 D22-3: the final audio is every person's stem summed (execution §9.2 last paragraph).
+    const audio = stitches[0]!.outputs[0]!.recipe.audio as { kind: string; inputs: string[] };
+    expect(audio.kind).toBe("mix");
+    expect(audio.inputs.map((inputId) => bound(stitches[0]!, inputId)).sort())
+      .toEqual(PEOPLE.map((person) => personJob("lipsync_stem", person).outputs[0]!.storageKey).sort());
     expect(result).toMatchObject({ status: "registered", kind: "video" });
   });
 
