@@ -865,21 +865,6 @@ models:
           base_price: 40000
           formula: ""
           discount_rate: 100
-      - upstream: fal
-        weight: 2
-        model_id: fal-ai/bytedance/seedream/v4.5/edit
-        prompt_field: prompt
-        output_field: images
-        params:
-          images:
-            field: image_urls
-        fixed:
-          image_size: auto_2K
-        pricing:
-          kind: formula
-          base_price: 40000
-          formula: ""
-          discount_rate: 100
       - upstream: sandbase
         weight: 3
         model_id: bytedance/seedream/4.5/edit
