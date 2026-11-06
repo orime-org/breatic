@@ -639,7 +639,7 @@ dialog closes onto the Tasks panel with that row focused. A dedup hit opens the
 row already done. The upload belongs to the page (`scene-uploads.ts`), not the
 dialog: it continues while the Space is hidden, holds back closing the Space tab
 and asks before leaving the page while its bytes are being sent, and keeps the
-File so the uploader can retry a failed row until the page reloads.
+File so the uploader can retry a failed row until the page reloads, when re-sending could end differently (a refusal of the file itself, such as full storage, lets the File go).
 `SceneUploadProgressPublisher`, mounted by `OpenSpace` outside the hidden body,
 shares its whole percent with the Space's other members through the scene
 document's awareness (`sceneUploads`), at most once per `progress_publish_ms`.

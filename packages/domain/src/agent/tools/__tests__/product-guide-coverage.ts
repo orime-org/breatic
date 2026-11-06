@@ -1065,7 +1065,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.threeD.taskList.placeFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.threeD.taskList.loadFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.threeD.taskList.removeFailed": { excluded: REASONS.SAYS_TRY_AGAIN },
-  "activity.type.assetUploadedModel": { described: /The project activity records each successful import under the model's name/ },
+  "activity.type.assetUploadedModel": { described: /The project activity records each import whose file was uploaded, under the model's name/ },
   "spaces.threeD.invalidObject": { described: /Unreadable objects appear as rows naming their object id/ },
   "spaces.threeD.peerSelection": { described: /each reader's name and selected-object count/ },
   "spaces.threeD.selectedCount": { described: /For several objects the panel shows a selection count/ },

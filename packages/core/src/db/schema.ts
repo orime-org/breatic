@@ -1038,7 +1038,8 @@ export const nodeTasks = pgTable(
     // The upload grant this task was opened for; null on generations.
     storageKey: text("storage_key"),
     // The registered model a Space-level row holds (inner#1690): written once,
-    // by the settle into `done` or onto an expired row its result outlived.
+    // when a dedup hit opens the row already done, by the settle into `done`,
+    // or onto an expired row its result outlived.
     assetId: uuid("asset_id").references(() => studioAssets.id, { onDelete: "restrict" }),
 
     ...timestamps,

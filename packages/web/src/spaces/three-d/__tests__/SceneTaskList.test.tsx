@@ -224,7 +224,7 @@ describe('the 3D Space task list (inner#1690)', () => {
     expect(uploads.retry).toHaveBeenCalledWith('failed');
   });
 
-  it('removes a row through the server and says why when it cannot', async () => {
+  it('removes a row through the server and says so when it cannot', async () => {
     api.listSpaceTasks.mockResolvedValue(listed(row({ id: 'failed', status: 'failed', errorMessage: 'aborted' })));
     api.removeSpaceTask.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('409'));
     renderList();

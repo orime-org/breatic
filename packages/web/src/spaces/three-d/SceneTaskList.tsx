@@ -120,7 +120,7 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
   }, []);
 
   /**
-   * Remove one row, saying why when the server refuses.
+   * Remove one row, saying so when the removal fails.
    * @param task - The row.
    */
   const remove = React.useCallback((task: SpaceTask): void => {

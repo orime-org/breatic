@@ -6,8 +6,9 @@
  * `node_tasks` row with no node, every member reads the same list, and the
  * row moves only through the same conditional writes the Canvas rows use.
  *
- * Driven through the real app and database; only the ingest Worker's open
- * and finish calls are doubles.
+ * Driven through the real app and database; the ingest Worker's open and
+ * finish calls are doubles, and the `ai` module is stubbed as in the other
+ * server integration suites.
  */
 
 import { describe, it, expect, beforeAll, beforeEach, afterAll, inject, vi } from "vitest";

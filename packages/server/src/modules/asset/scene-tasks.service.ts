@@ -35,7 +35,7 @@ export interface SpaceTaskWire {
  * @param projectId - The project.
  * @param spaceId - The 3D Space.
  * @returns The rows newest first, and the server's clock the deadlines are read against.
- * @throws {ForbiddenError} When the reader is not a member of the project.
+ * @throws {NotFoundError} When the reader is not a member of the project.
  */
 export async function listSpaceTasks(
   userId: string,
@@ -92,8 +92,8 @@ async function spaceRow(
  * @param projectId - The project.
  * @param spaceId - The 3D Space.
  * @param taskId - The row.
- * @throws {NotFoundError} When the row is not that Space's own live row.
- * @throws {ForbiddenError} When the caller may not edit the project.
+ * @throws {NotFoundError} When the row is not that Space's own live row, or the caller is not a member of the project.
+ * @throws {ForbiddenError} When the caller is a member below Editor.
  * @throws {ConflictError} When the row is running or holds a model.
  */
 export async function removeSpaceTask(
@@ -118,8 +118,8 @@ export async function removeSpaceTask(
  * @param taskId - The row.
  * @param reason - The one reason a browser can witness.
  * @returns Whether this report moved the row.
- * @throws {NotFoundError} When the row is not that Space's own live row.
- * @throws {ForbiddenError} When the caller may not edit the project or did not start this upload.
+ * @throws {NotFoundError} When the row is not that Space's own live row, or the caller is not a member of the project.
+ * @throws {ForbiddenError} When the caller is a member below Editor or did not start this upload.
  */
 export async function reportSpaceTaskFailure(
   userId: string,
