@@ -71,21 +71,26 @@ function sha256(text: string): string {
  * @param hash - The registered content hash.
  * @param sourceKey - The registered storage key.
  * @param publicUrl - The storage's public URL function.
+ * @param presented - The selected plan and its encode facts; the removal source's by default.
+ * @param presented.plan - The plan.
+ * @param presented.encoding - Its encode facts.
  * @returns Its stored objects and snapshot.
  * @throws {Error} When the shared identity functions are missing.
  */
-export async function presentedSource(hash: string, sourceKey: string, publicUrl: (key: string) => string): Promise<PresentedSource> {
+export async function presentedSource(hash: string, sourceKey: string, publicUrl: (key: string) => string,
+  presented: { plan: typeof REMOVAL_PLAN; encoding: typeof REMOVAL_ENCODING } = { plan: REMOVAL_PLAN, encoding: REMOVAL_ENCODING }): Promise<PresentedSource> {
+  const { plan, encoding } = presented;
   const api = shared as unknown as Record<string, (value: unknown) => Promise<string>>;
-  const planSha256 = await api.videoPresentationPlanSha256!(REMOVAL_PLAN);
+  const planSha256 = await api.videoPresentationPlanSha256!(plan);
   const toolInputId = await api.videoPresentationToolInputId!({ sourceFingerprint: hash, planSha256 });
-  const full = { schemaVersion: 2, sourceFingerprint: hash, toolInputId, planSha256, attempt: REMOVAL_ATTEMPT, plan: REMOVAL_PLAN, encoding: REMOVAL_ENCODING };
+  const full = { schemaVersion: 2, sourceFingerprint: hash, toolInputId, planSha256, attempt: REMOVAL_ATTEMPT, plan, encoding };
   const compact = { sourceFingerprint: hash, toolInputId, planSha256, presentation: REMOVAL_TABLE };
   const fullJSON = JSON.stringify(full); const compactJSON = JSON.stringify(compact);
   const receipt: PresentedSource["receipt"] = { schemaVersion: 2, sourceFingerprint: hash, toolInputId, planSha256, producerVersion: 2, attempt: REMOVAL_ATTEMPT,
     url: publicUrl(ledgerKeys(sourceKey, toolInputId).full), etag: "full-etag", size: Buffer.byteLength(fullJSON), sha256: sha256(fullJSON), contentType: "application/json",
     table: { url: publicUrl(ledgerKeys(sourceKey, toolInputId).table), sha256: sha256(compactJSON), size: Buffer.byteLength(compactJSON), contentType: "application/json", frameCount: 1011 } };
   const bundle = { schemaVersion: 1, sourceFingerprint: hash, versionId: REMOVAL_VERSION_ID, toolInputId, planSha256, policyVersion: 1, producerVersion: 2, profileVersion: 1,
-    original: { width: 960, height: 540, duration: 5.055 }, display: REMOVAL_PLAN.display,
+    original: { width: plan.display.width, height: plan.display.height, duration: 5.055 }, display: plan.display,
     playback: { kind: "native", carrier: { storageKey: sourceKey, url: publicUrl(sourceKey), etag: "source-etag", size: 4096, sha256: hash, contentType: "video/mp4" }, displayRect: null },
     playbackClock: REMOVAL_TABLE };
   const snapshot = { sourceBinding: { storageKey: sourceKey, sourceFingerprint: hash }, presentation: bundle, preparation: null, ledger: { state: "ready", receipt, failure: null }, readmit: false };

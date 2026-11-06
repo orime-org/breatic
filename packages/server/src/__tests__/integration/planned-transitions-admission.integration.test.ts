@@ -24,9 +24,10 @@ import type { Queue } from "bullmq";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import * as core from "@breatic/core";
 import * as shared from "@breatic/shared";
-import { planTransitionChunks, plannedStageJobs, planVideoTimeline, transitionOutputProfile } from "@breatic/shared/mini-tools";
+import { containerCostUsd, creditsForUsd, MIN_TASK_CREDIT_COST } from "@breatic/domain";
+import { estimateAudioEncodeSeconds, planTransitionChunks, plannedStageJobs, planVideoTimeline, transitionOutputProfile } from "@breatic/shared/mini-tools";
 import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "./studio-credit-fixtures.js";
-import { presentedSource, REMOVAL_PLAN, type ToolInputRef } from "./presentation-fixtures.js";
+import { presentedSource, REMOVAL_ENCODING, REMOVAL_PLAN, type ToolInputRef } from "./presentation-fixtures.js";
 
 type Transition = { kind: "cut" | "fade" | "wipeLeft" | "wipeRight"; duration: number };
 interface Clip { clipId: string; inputId: string; in: number; out: number; transition: Transition }
@@ -41,7 +42,7 @@ interface Body {
 interface Fixture extends StudioFixture { body: Body; current: string; picked: string }
 type Window = { start: number; end: number };
 interface Plan extends Record<string, unknown> {
-  tool: string; presentationRef: Record<string, ToolInputRef>; layout: { encode: Window[]; window: Window[] }; stageJobs: { stage: string; jobs: number }[];
+  tool: string; credits: number; presentationRef: Record<string, ToolInputRef>; layout: { encode: Window[]; window: Window[] }; stageJobs: { stage: string; jobs: number }[];
   profile: Record<string, unknown>; container: { containerClass: string }; windowContainer: { containerClass: string };
 }
 
@@ -53,6 +54,11 @@ vi.mock("@breatic/shared", async (original) => ({ ...await original<typeof share
 const MEDIA: Media = { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" };
 const FADE: Transition = { kind: "fade", duration: 0.5 };
 const CUT: Transition = { kind: "cut", duration: 0 };
+/** A selected plan and its encode facts. */
+type Presented = { plan: typeof REMOVAL_PLAN; encoding: typeof REMOVAL_ENCODING };
+const LARGE: Presented = { plan: REMOVAL_PLAN, encoding: REMOVAL_ENCODING };
+// The same 1011 frames of 1/200 s and keyframes, displayed and coded at 160×90.
+const SMALL: Presented = { plan: { ...REMOVAL_PLAN, display: { ...REMOVAL_PLAN.display, width: 160, height: 90 } }, encoding: { ...REMOVAL_ENCODING, codedWidth: 160, codedHeight: 90 } };
 
 let pg: ReturnType<typeof core.createPgClient>;
 let queue: Queue;
@@ -104,36 +110,41 @@ afterAll(async () => {
 /**
  * Register one video in the Studio and declare its selected, ready tool input.
  * @param target - The Studio.
+ * @param presented - Its selected plan and encode facts.
  * @returns Its public URL and tool-input ref.
  * @throws {Error} On fixture SQL failure.
  */
-async function registered(target: StudioFixture): Promise<{ url: string; ref: ToolInputRef }> {
+async function registered(target: StudioFixture, presented: Presented = LARGE): Promise<{ url: string; ref: ToolInputRef }> {
   const id = randomUUID(); const key = `video/transitions/${id}.mp4`; const hash = randomBytes(32).toString("hex");
   await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,width,height,duration_seconds)
-    VALUES (${id},${target.studioId},${hash},${key},${publicUrl(key)},4096,'video/mp4','video','upload',${target.userId},960,540,${MEDIA.duration})`;
-  const presented = await presentedSource(hash, key, publicUrl);
-  outside.snapshots.set(key, presented.snapshot);
-  for (const [url, body] of presented.bodies) outside.bodies.set(url, body);
-  return { url: publicUrl(key), ref: presented.presentationRef.source };
+    VALUES (${id},${target.studioId},${hash},${key},${publicUrl(key)},4096,'video/mp4','video','upload',${target.userId},${presented.plan.display.width},${presented.plan.display.height},${MEDIA.duration})`;
+  const source = await presentedSource(hash, key, publicUrl, presented);
+  outside.snapshots.set(key, source.snapshot);
+  for (const [url, body] of source.bodies) outside.bodies.set(url, body);
+  return { url: publicUrl(key), ref: source.presentationRef.source };
 }
 
 /**
  * A funded Studio, the host node's current video and one picked video, and a request playing the current video for
  * 4 s, then the transition, then the picked video for 4 s.
  * @param transition - The transition between the clips.
+ * @param timing - Each clip's out point and the picked video's plan.
+ * @param timing.currentOut - The current video's out point.
+ * @param timing.pickedOut - The picked video's out point.
+ * @param timing.picked - The picked video's plan.
  * @returns The fixture.
  * @throws {Error} On fixture SQL failure.
  */
-async function seed(transition: Transition = FADE): Promise<Fixture> {
+async function seed(transition: Transition = FADE, timing: { currentOut: number; pickedOut: number; picked: Presented } = { currentOut: 4, pickedOut: 4, picked: LARGE }): Promise<Fixture> {
   const target = await seedStudioFixture(pg, "transitions");
   await pg`INSERT INTO project_members (project_id,user_id,role) VALUES (${target.projectId},${target.userId},'editor')`;
   await seedDesignatedLot(pg, target, 1000);
   const host = randomUUID(); const current = randomUUID(); const picked = randomUUID();
-  const a = await registered(target); const b = await registered(target);
+  const a = await registered(target); const b = await registered(target, timing.picked);
   const body: Body = { tool: "video.transitions", project_id: target.projectId, space_id: randomUUID(), run_id: randomUUID(),
     draft: { version: 1, draftId: randomUUID(), revision: randomUUID(), source: { nodeId: host, canonicalURL: a.url, mediaInfo: MEDIA },
       inputs: [{ inputId: current, url: a.url, mediaInfo: MEDIA, sourceNodeId: host }, { inputId: picked, url: b.url, mediaInfo: MEDIA, sourceNodeId: randomUUID() }],
-      params: { clips: [{ clipId: randomUUID(), inputId: current, in: 0, out: 4, transition }, { clipId: randomUUID(), inputId: picked, in: 0, out: 4, transition: CUT }] } },
+      params: { clips: [{ clipId: randomUUID(), inputId: current, in: 0, out: timing.currentOut, transition }, { clipId: randomUUID(), inputId: picked, in: 0, out: timing.pickedOut, transition: CUT }] } },
     analysis_refs: [], presentation_ref: { [current]: a.ref, [picked]: b.ref },
     outputs: [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "transitions" } }] };
   return { ...target, body, current, picked };
@@ -225,5 +236,55 @@ describe("transitions admission freezes its layout, stage counts and output prof
     expect(response.status).toBe(400);
     expect(((await response.json()) as { error: { message: string } }).error.message).toBe(shared.t("server.mini_tool.runTooLong", { max: 2 }));
     expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
+  });
+});
+
+// frames-split §5.4 待实测 row (转场导出的块): each chunk's decode is summed per clip, that clip's decoded source frames in the
+// chunk (from the full ledger, pre-roll included) × its coded source pixels ÷ its bit-depth and range tier's decode rate;
+// encode is the chunk's output frames × output pixels ÷ the encode rate; a window chunk adds its output frames × output
+// pixels ÷ the GL render rate, configured under the MiniToolContainerGl class (chosen here:
+// `classes.MiniToolContainerGl.render_pixels_per_second`). Every job adds its start; the stitch's term is the one AAC track
+// as admission prices it today. The quote is that work at the standard-4 price, never under the precheck floor.
+describe("the transitions quote decodes each clip at its own size (§97; frames-split §5.4 待实测 row)", () => {
+  it("TE01 a large current video then a long small one: the frozen credits are the per-clip sum, not every frame at the larger size", async () => {
+    const encoder = settings.encoding.encoder;
+    for (const tier of Object.keys(encoder.decode_convert_pixels_per_second) as (keyof typeof encoder.decode_convert_pixels_per_second)[]) {
+      encoder.decode_convert_pixels_per_second[tier] = 500_000;
+    }
+    encoder.encode_pixels_per_second = 1e12;
+    const GL_RATE = 1e9;
+    Reflect.set(settings.classes.MiniToolContainerGl!, "render_pixels_per_second", GL_RATE);
+    // 2 s of the 960×540 current video, a 0.5 s fade, then 5 s of the 160×90 picked video: 1000 of 1300 output frames are small.
+    const f = await seed(FADE, { currentOut: 2, pickedOut: 5, picked: SMALL });
+    await accept(f);
+    const plan = await frozen(f.body.run_id);
+    const profile = expectedProfile();
+    const timeline = planVideoTimeline(f.body.draft.params.clips, profile.fps);
+    expect(timeline.frameCount).toBe(1300);
+    const decodeRate = 500_000;
+    const sources = [LARGE, SMALL].map((presented) => presented.encoding.codedWidth * presented.encoding.codedHeight);
+    const outputPixels = profile.width * profile.height;
+    // Both clips present at the output's 200 fps from in point 0, so output frame k of clip c is its presentation frame
+    // k − startFrame; a span's pre-roll counts back to the latest keyframe ordinal not after its first frame.
+    const preroll = (first: number): number => first - Math.max(...REMOVAL_ENCODING.keyframeOrdinals.filter((ordinal) => ordinal <= first));
+    const decode = (chunk: { start: number; end: number }): number => timeline.clips.reduce((total, clip, c) => {
+      const low = Math.max(chunk.start, clip.startFrame); const high = Math.min(chunk.end, clip.startFrame + clip.frameCount);
+      if (high <= low) return total;
+      const first = clip.inFrame + (low - clip.startFrame);
+      return total + (high - low + preroll(first)) * sources[c]! / decodeRate;
+    }, 0);
+    const chunks = [...plan.layout.encode, ...plan.layout.window];
+    const windowFrames = plan.layout.window.reduce((total, chunk) => total + chunk.end - chunk.start, 0);
+    const audio = estimateAudioEncodeSeconds(timeline.frameCount / 200, { startSeconds: encoder.start_seconds, aacEncodeSecondsPerSecond: encoder.aac_encode_seconds_per_second });
+    const fixed = timeline.frameCount * outputPixels / encoder.encode_pixels_per_second + windowFrames * outputPixels / GL_RATE + encoder.start_seconds * chunks.length + audio;
+    const perClip = chunks.reduce((total, chunk) => total + decode(chunk), 0) + fixed;
+    const largest = timeline.frameCount * Math.max(...sources) / decodeRate + fixed;
+    const precheck = settings.executions["video.transitions"]!.precheck_seconds;
+    /** The standard-4 quote of planned seconds, never under the precheck floor. @throws {never} Never. */
+    const credits = (seconds: number): number => Math.max(shared.ceilToCreditCent(creditsForUsd(containerCostUsd({ wallMs: Math.max(precheck, seconds) * 1000, cpuUsec: null },
+      settings.classes.MiniToolContainerStd4!, settings.prices), 1)), MIN_TASK_CREDIT_COST);
+    expect(perClip).toBeGreaterThan(precheck);
+    expect(credits(largest)).not.toBe(credits(perClip));
+    expect(plan.credits).toBe(credits(perClip));
   });
 });
