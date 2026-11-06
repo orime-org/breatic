@@ -270,13 +270,14 @@ export const chatApi = {
    * @param id - The conversation
    * @param projectId - Project it lives in; the server checks this before writing
    * @param model - The model id
-   * @returns When the server has saved it
+   * @returns The model the server saved for the conversation
    */
-  async setModel(id: string, projectId: string, model: string): Promise<void> {
-    await apiPut<unknown, { project_id: string; model: string }>(`/chat/conversations/${id}/model`, {
-      project_id: projectId,
-      model,
-    });
+  async setModel(id: string, projectId: string, model: string): Promise<AgentModelChoice> {
+    const saved = await apiPut<ChatConversationOnTheWire, { project_id: string; model: string }>(
+      `/chat/conversations/${id}/model`,
+      { project_id: projectId, model },
+    );
+    return saved.agentModel;
   },
   /**
    * Delete a conversation.

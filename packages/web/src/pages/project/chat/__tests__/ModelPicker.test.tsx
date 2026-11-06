@@ -5,9 +5,10 @@
  * The model picker in the composer (#1363).
  *
  * It shows the model of the conversation on screen and lists the models the
- * reader can pick, the current one checked. A pick is shown at once and
- * saved; a save that fails puts the old pick back, unless a later pick has
- * replaced it, says so and asks for the list again. While the list is loading,
+ * reader can pick, the current one checked. A pick is saved first: the button
+ * waits, still showing the saved model, and then shows the model the server
+ * saved; a save that fails leaves the saved model, says so and asks for the
+ * list again. While the list is loading,
  * or failed to load, the picker shows the conversation's model and cannot be
  * opened; asked for again, it keeps the list it has. A conversation whose model the deployment no longer lists
  * shows the model a new conversation would start on, which is what the next
@@ -77,7 +78,7 @@ function trigger(): HTMLElement {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(chatApi.models).mockResolvedValue({ models: [DEEPSEEK, SONNET, OPUS], lastUsed: DEEPSEEK.id });
-  vi.mocked(chatApi.setModel).mockResolvedValue(undefined);
+  vi.mocked(chatApi.setModel).mockImplementation(async (_id, _project, model) => [DEEPSEEK, SONNET, OPUS].find((m) => m.id === model)!);
 });
 
 afterEach(() => {
@@ -123,8 +124,10 @@ describe('the model picker', () => {
     await waitFor(() => expect(document.activeElement).toBe(menu));
   });
 
-  it('shows a pick at once and saves it for the conversation', async () => {
+  it('waits on the button with the saved model until the server saves a pick, then shows what it saved', async () => {
     conversations({ 'c-1': DEEPSEEK });
+    let save: (saved: { id: string; name: string }) => void = () => undefined;
+    vi.mocked(chatApi.setModel).mockReturnValue(new Promise((resolve) => { save = resolve; }));
     const user = userEvent.setup();
     renderPicker('c-1');
     await waitFor(() => expect(trigger()).toBeEnabled());
@@ -132,12 +135,35 @@ describe('the model picker', () => {
     await user.click(trigger());
     await user.click(await screen.findByRole('button', { name: 'Claude Opus 5.5' }));
 
-    expect(trigger()).toHaveTextContent('Claude Opus 5.5');
     expect(chatApi.setModel).toHaveBeenCalledWith('c-1', 'p-1', OPUS.id);
+    expect(trigger()).toHaveAttribute('aria-busy', 'true');
+    expect(trigger()).toHaveTextContent('DeepSeek V4.1 Flash');
+    expect(useConversationRuntime.getState().conversations['c-1']?.agentModel).toEqual(DEEPSEEK);
+
+    save(OPUS);
+
+    await waitFor(() => expect(trigger()).toHaveTextContent('Claude Opus 5.5'));
+    expect(trigger()).not.toHaveAttribute('aria-busy');
     expect(useConversationRuntime.getState().conversations['c-1']?.agentModel).toEqual(OPUS);
   });
 
-  it('puts the old pick back and says so when the save fails', async () => {
+  it('cannot be opened for another pick while a save is out', async () => {
+    conversations({ 'c-1': DEEPSEEK });
+    vi.mocked(chatApi.setModel).mockReturnValue(new Promise(() => undefined));
+    const user = userEvent.setup();
+    renderPicker('c-1');
+    await waitFor(() => expect(trigger()).toBeEnabled());
+
+    await user.click(trigger());
+    await user.click(await screen.findByRole('button', { name: 'Claude Opus 5.5' }));
+    await waitFor(() => expect(screen.queryByTestId('chat-model-menu')).toBeNull());
+    await user.click(trigger());
+
+    expect(screen.queryByTestId('chat-model-menu')).toBeNull();
+    expect(chatApi.setModel).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the saved model and says so when the save fails', async () => {
     conversations({ 'c-1': DEEPSEEK });
     vi.mocked(chatApi.setModel).mockRejectedValue(new Error('network'));
     const user = userEvent.setup();
@@ -147,30 +173,27 @@ describe('the model picker', () => {
     await user.click(trigger());
     await user.click(await screen.findByRole('button', { name: 'Claude Opus 5.5' }));
 
-    await waitFor(() => expect(trigger()).toHaveTextContent('DeepSeek V4.1 Flash'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Could not save the model choice'));
+    expect(trigger()).toHaveTextContent('DeepSeek V4.1 Flash');
+    expect(trigger()).not.toHaveAttribute('aria-busy');
     expect(useConversationRuntime.getState().conversations['c-1']?.agentModel).toEqual(DEEPSEEK);
-    expect(toast.error).toHaveBeenCalledWith('Could not save the model choice');
   });
 
-  it('keeps a later pick when an earlier save fails after it', async () => {
-    conversations({ 'c-1': DEEPSEEK });
-    let failFirst: (why: Error) => void = () => undefined;
-    vi.mocked(chatApi.setModel)
-      .mockReturnValueOnce(new Promise((_resolve, reject) => { failFirst = reject; }))
-      .mockResolvedValueOnce(undefined);
+  it('waits only on the conversation whose pick is being saved', async () => {
+    conversations({ 'c-1': DEEPSEEK, 'c-2': SONNET });
+    vi.mocked(chatApi.setModel).mockReturnValue(new Promise(() => undefined));
     const user = userEvent.setup();
-    renderPicker('c-1');
+    const { rerenderFor } = renderPicker('c-1');
     await waitFor(() => expect(trigger()).toBeEnabled());
-
     await user.click(trigger());
     await user.click(await screen.findByRole('button', { name: 'Claude Opus 5.5' }));
-    await user.click(trigger());
-    await user.click(await screen.findByRole('button', { name: 'Claude Sonnet 5.5' }));
-    failFirst(new Error('network'));
 
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Could not save the model choice'));
+    rerenderFor('c-2');
+    expect(trigger()).not.toHaveAttribute('aria-busy');
     expect(trigger()).toHaveTextContent('Claude Sonnet 5.5');
-    expect(useConversationRuntime.getState().conversations['c-1']?.agentModel).toEqual(SONNET);
+
+    rerenderFor('c-1');
+    expect(trigger()).toHaveAttribute('aria-busy', 'true');
   });
 
   it('asks for the list again when a save fails', async () => {
