@@ -10,16 +10,17 @@ import {
 import {
   batchVideoRunOutputs, canonicalMiniToolValue, estimateVideoJobSeconds, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
   plannedStageJobs, planVideoFrames, planVideoSplit, type FrameWindow, type FramesExecutionLayout, type MiniToolExecutionRequest, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type MiniToolPresentationRef, type MiniToolSourceBinding, type MiniToolStageJobs,
-  type VideoEncodeChunk, type VideoEncoderRates, type VideoJobWork, type VideoPresentationTable,
+  type LipsyncTimeline, type VideoEncodeChunk, type VideoEncoderRates, type VideoExecutionDialogue, type VideoJobWork, type VideoPresentationTable,
 } from "@breatic/shared/mini-tools";
 import { prepareVideoRemoveBackground, type PreparedVideoRemoveBackground } from "@domain/mini-tool/remove-background-preparation.service.js";
 import { resolveSource } from "@domain/mini-tool/analysis.service.js";
+import { lipSyncDialogues, lipSyncModel, lipSyncPeople, lipSyncTimeline, type LipSyncGenerator, type LipSyncPerson } from "@domain/mini-tool/lipsync-admission.js";
 import { selectedToolInput } from "@domain/mini-tool/selected-tool-input.js";
 import { executionPlanFromTask } from "@domain/mini-tool/execution-plan.service.js";
 import { recordFromPlan } from "@domain/mini-tool/execution.service.js";
 import { containerCostUsd } from "@domain/credit/container-cost.js";
 import { creditsForUsd } from "@domain/credit/usage-cost.js";
-import { estimateModelCredits, MIN_TASK_CREDIT_COST } from "@domain/model-catalog/model-catalog.js";
+import { estimateModelCredits, estimateTaskCredits, MIN_TASK_CREDIT_COST } from "@domain/model-catalog/model-catalog.js";
 import * as taskRepo from "@domain/task/task.repo.js";
 import * as presentationPinService from "@domain/presentation/presentation-pin.service.js";
 
@@ -56,12 +57,15 @@ export type AcceptedMiniToolExecution = ExecutionPlan & FrozenToolInput & (
     container: MiniToolContainerPolicy & { startSeconds: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; chunkRetries: number };
     /** Each output's planned work in seconds without job start, frozen so a retry re-quotes its subset. */
     outputSeconds: number[] }
+  | { tool: "video.lip-sync"; generator: LipSyncGenerator; timeline: LipsyncTimeline; usedRange: { start: 0; end: number };
+    /** The rows with their registered audio durations, the people they name and the tracking model (DD §7.1). */
+    dialogues: VideoExecutionDialogue[]; persons: LipSyncPerson[]; tracking: { model: string }; cropSize: number;
+    container: MiniToolContainerPolicy }
 );
 /** The plan facts every tool shares, before its tool-specific fields. */
 type ExecutionCommon = Omit<ExecutionPlan, "binding" | "sourceKey" | "model" | "credits" | "requestFingerprint" | "planFingerprint">;
 /** The complete executable projection hashed before its two identity fields are attached. */
-type ExecutionProjection = Omit<Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>, "requestFingerprint" | "planFingerprint">
-  | Omit<Exclude<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>, "requestFingerprint" | "planFingerprint">;
+type ExecutionProjection = AcceptedMiniToolExecution extends infer T ? T extends unknown ? Omit<T, "requestFingerprint" | "planFingerprint"> : never : never;
 /** The narrow admission response, without prescribing terminal public result projection. */
 export interface MiniToolExecutionAdmission { taskId: string; status: TaskStatusType }
 /** The immutable task namespace, separate from analysis and worker-only steps. */
@@ -333,6 +337,43 @@ async function prepareRemoval(request: Extract<MiniToolPlannedRequest, { tool: "
 }
 
 /**
+ * Admit a lip-sync run (execution design §9.2, §9.3; DD §7.1): the selected model, the caps, the referenced people, the
+ * registered audio durations, the timeline and the used source range are checked and frozen; the quote is each referenced
+ * person's generation over the timeline and tracking over the used range, plus the standard-4 container work.
+ * @param request - The fresh lip-sync request.
+ * @param common - The plan facts every tool shares.
+ * @returns The plan projection.
+ * @throws {AppError} When a check refuses the run with its reason, or a model is not priced.
+ * @throws {ValidationError} When the source, an audio or the tool input is not the registered, selected one.
+ * @throws {Error} When ingest, the table or ledger read, or pricing fails.
+ */
+async function prepareLipSync(request: Extract<MiniToolPlannedRequest, { tool: "video.lip-sync" }>, common: ExecutionCommon): Promise<ExecutionProjection> {
+  const deadlineAt = budgetDeadlineFrom(Date.now());
+  const config = structuredClone(getMiniToolsConfig());
+  const { settings, model } = lipSyncModel(request, config.executions["video.lip-sync"]);
+  if (request.outputs.length > settings.max_outputs) throw new ValidationError(t("server.mini_tool.foreignSource"));
+  const { binding, sourceKey } = await resolveSource(request.draft.source);
+  const { versionId, receipt } = await selectedToolInput(request.presentation_ref.source, binding, sourceKey, config);
+  const limits = { maxBytes: config.presentation.source_ledger.max_bytes };
+  const table = await readVideoPresentationCompact(receipt, limits, { deadlineAt });
+  const ledger = await readVideoPresentationLedger(receipt, limits, { deadlineAt });
+  const persons = await lipSyncPeople(request, request.project_id);
+  const dialogues = await lipSyncDialogues(request);
+  const { timeline, usedRange } = lipSyncTimeline(request, table, dialogues, settings, model);
+  const generation = await estimateTaskCredits(model.name, { params: {}, durations: { video: [timeline.duration], audio: [timeline.duration] }, sources: ["video", "audio"] });
+  const tracking = await estimateTaskCredits(settings.tracking.model, { params: {}, durations: { video: [usedRange.end - usedRange.start] }, sources: ["video"] });
+  const container = containerPolicy(settings.container_class, settings.precheck_seconds, config);
+  // ponytail: the container work is quoted as one source preparation under the precheck floor; per-step lip-sync work
+  // estimates replace it when the lip-sync container steps land.
+  const containerSeconds = preparationLayout(ledger, config).seconds;
+  return { ...common, tool: request.tool, binding, sourceKey, presentationRef: request.presentation_ref, ledgerReceipts: { source: receipt },
+    versionIds: { source: versionId }, model: model.name, container, timeline, usedRange, dialogues, persons, cropSize: model.crop_size,
+    tracking: { model: settings.tracking.model },
+    generator: { backend: "wavespeed-crop", modelId: model.name, schemaFingerprint: model.schema_fingerprint, providerSyncMode: model.accepts_sync_mode ? "cut_off" : null },
+    credits: persons.length * (generation + tracking) + containerCredits(container, containerSeconds) };
+}
+
+/**
  * Verify current registered bytes and receipt, then rederive every exact recipe using shared planners.
  * @param request - A fresh complete press snapshot.
  * @returns The immutable server plan before its independent fingerprints.
@@ -343,6 +384,7 @@ async function prepare(request: MiniToolPlannedRequest): Promise<ExecutionProjec
   const common: ExecutionCommon = { schemaVersion: 1, taskId: request.run_id, projectId: request.project_id, spaceId: request.space_id,
     targetNodeIds: request.outputs.map((output) => output.nodeId), draft: request.draft, analysisRefs: request.analysis_refs, outputs: request.outputs };
   if (request.tool === "video.remove-bg") return prepareRemoval(request, common);
+  if (request.tool === "video.lip-sync") return prepareLipSync(request, common);
   // ponytail: the transitions request is admitted by the shared contract, but its execution has no worker yet; until it does, refuse it here.
   if (request.tool === "video.transitions") throw new AppError(400, t("server.mini_tool.unavailable"));
   const deadlineAt = budgetDeadlineFrom(Date.now());

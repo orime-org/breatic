@@ -50,6 +50,17 @@ const storedPlanSchema = z.union([
     outputSeconds: z.array(z.number().nonnegative().finite()), container: z.strictObject({ ...container, startSeconds: z.number().nonnegative().finite(),
       encode: z.strictObject({ crf: z.number().int().min(0).max(51), preset: x264PresetSchema }), chunkRetries: index }),
   }),
+  // A lip-sync run (execution design §9.3; DD §7.1).
+  z.strictObject({ ...common, ...frozenToolInput, tool: z.literal("video.lip-sync"),
+    generator: z.strictObject({ backend: z.literal("wavespeed-crop"), modelId: z.string().min(1), schemaFingerprint: z.string().regex(/^[a-f0-9]{64}$/), providerSyncMode: z.literal("cut_off").nullable() }),
+    timeline: z.strictObject({ duration: z.number().positive(), videoDuration: z.number().positive(), syncMode: z.enum(["cut_off", "silence", "loop", "bounce", "remap"]) }),
+    usedRange: z.strictObject({ start: z.literal(0), end: z.number().positive() }),
+    dialogues: z.array(z.strictObject({ dialogueId: z.string().min(1), personId: z.string().min(1), audioInputId: z.uuid(), startTime: z.number().nonnegative(), duration: z.number().positive() })).min(1),
+    persons: z.array(z.strictObject({ personId: z.string().min(1), detectionNumber: z.number().int().positive(),
+      anchor: z.strictObject({ frameIndex: index, pts: z.number().nonnegative() }),
+      anchorFaceBox: z.strictObject({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }) })).min(1),
+    tracking: z.strictObject({ model: z.string().min(1) }), cropSize: z.number().int().positive(), container: z.strictObject(container),
+  }),
 ]);
 
 /** The original SQL parent and its verified immutable execution plan. */
@@ -94,7 +105,8 @@ export async function executionPlanFromTask(task: TaskEntity): Promise<MiniToolE
     || execution.taskId !== task.id || execution.projectId !== task.projectId || execution.spaceId !== task.spaceId || execution.model !== task.model
     || execution.ledgerReceipts.source.sourceFingerprint !== execution.binding.contentHash
     || execution.ledgerReceipts.source.toolInputId !== execution.presentationRef.source.toolInputId
-    || (execution.tool !== "video.remove-bg" && (execution.model !== execution.tool || execution.outputSeconds.length !== execution.outputs.length))
+    || ((execution.tool === "video.extract-frames" || execution.tool === "video.split") && (execution.model !== execution.tool || execution.outputSeconds.length !== execution.outputs.length))
+    || (execution.tool === "video.lip-sync" && execution.model !== execution.generator.modelId)
     || canonicalMiniToolValue(execution.targetNodeIds) !== canonicalMiniToolValue(execution.outputs.map((output) => output.nodeId))
     || await hashMiniToolValue(projection) !== planFingerprint) throw new Error("Planned execution differs from its original parent or complete plan");
   return { task, execution };
