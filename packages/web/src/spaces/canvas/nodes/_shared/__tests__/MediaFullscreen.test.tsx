@@ -169,6 +169,16 @@ describe('MediaFullscreen', () => {
     expect(screen.getByTestId('media-fullscreen-skeleton').parentElement?.className).toContain('aspect-[var(--media-aspect)]');
   });
 
+  // inner#1844 visual review: the backdrop is dark in both themes, so the
+  // placeholder is a white tint there, square like the picture it stands for.
+  it('shows the same white, square placeholder in either theme', () => {
+    render(<MediaFullscreen onClose={() => {}} kind='image' src='/a.png' name='a' size={{ width: 1200, height: 800 }} />);
+    const skeleton = screen.getByTestId('media-fullscreen-skeleton');
+    expect(skeleton.className).toContain('[--color-foreground:white]');
+    expect(skeleton.className).toContain('rounded-none');
+    expect(skeleton.className).not.toContain('rounded-md');
+  });
+
   it('holds a centred square while an image of unknown size loads', () => {
     render(<MediaFullscreen onClose={() => {}} kind='image' src='/a.png' name='a' />);
     expect(screen.getByTestId('media-fullscreen-skeleton').parentElement?.className).toContain('min-h-40 min-w-40');

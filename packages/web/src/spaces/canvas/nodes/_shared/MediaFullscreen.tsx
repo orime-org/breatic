@@ -163,7 +163,9 @@ export function MediaFullscreen({
                 className={image === 'failed' ? 'hidden' : box ? 'h-full w-full object-contain' : 'h-auto max-h-[90vh] w-auto max-w-full object-contain'}
               />
               {image === 'loading' ? (
-                <Skeleton data-testid='media-fullscreen-skeleton' className='absolute inset-0' />
+                // The backdrop is dark in both themes, so the shimmer is a white
+                // tint here, square like the picture it stands for.
+                <Skeleton data-testid='media-fullscreen-skeleton' className='absolute inset-0 rounded-none [--color-foreground:white]' />
               ) : null}
             </div>
           ) : (
