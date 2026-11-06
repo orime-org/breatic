@@ -51,7 +51,6 @@ models:
             endpoint: mureka-ai/vocal-clone
             at: before
             for_param: vocal
-            reused: true
             pricing:
               kind: formula
               base_price: 7500000
@@ -108,7 +107,6 @@ models:
             endpoint: mureka/api/voice/clone
             at: before
             for_param: vocal
-            reused: true
             pricing:
               kind: formula
               base_price: 5000000

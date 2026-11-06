@@ -3,7 +3,6 @@
 
 export { priceUsd, type PriceContract } from "@provider/pricing/evaluate.js";
 export {
-  cloneKeyOf,
   estimateCost,
   orderByPrice,
   parsePricingRules,

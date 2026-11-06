@@ -39,7 +39,7 @@ interface RawParam {
   mention?: string;
   joins?: string;
 }
-interface RawStep { endpoint: string; at: "before" | "after"; for_param?: string; per_item?: boolean; reused?: boolean; pricing: RawPricing }
+interface RawStep { endpoint: string; at: "before" | "after"; for_param?: string; per_item?: boolean; pricing: RawPricing }
 interface RawModel {
   name: string;
   takes_prompt?: boolean;
@@ -311,7 +311,6 @@ function bindingOf(model: RawModel, threeD: boolean): Record<string, unknown> {
       at: step.at,
       ...(step.for_param === undefined ? {} : { for_param: step.for_param }),
       ...(step.per_item === undefined ? {} : { per_item: step.per_item }),
-      ...(step.reused === undefined ? {} : { reused: step.reused }),
       ...(kind === "element" ? { describe } : {}),
       pricing: pricingOf(step.pricing),
     };

@@ -735,7 +735,6 @@ models:
             at: before
             for_param: elements
             per_item: true
-            reused: true
             describe:
               model: google/gemini-3.8-flash
               question: Describe the main subject of this image in one plain sentence of at most 100 characters.

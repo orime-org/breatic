@@ -83,8 +83,6 @@ const extraStepSchema = z.strictObject({
   describe: describeSchema.optional(),
   /** What one call of this step costs. */
   pricing: pricingRule.optional(),
-  /** The step is skipped on a later run whose source it already made a clone of. */
-  reused: z.boolean().optional(),
 });
 
 // Every binding carries its price: the cheapest mode and the

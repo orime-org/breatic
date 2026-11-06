@@ -10,7 +10,7 @@ import { boundSignal } from "@provider/http/request.js";
 import { outputUrls, type MediaAdapter, type Reach, type RequestBounds, type StepCodec, type StepContext, type StepOutput } from "@provider/media/adapter.js";
 import { adapterOf } from "@provider/media/adapters.js";
 import { buildBody } from "@provider/media/body.js";
-import { assess, cloneKeyOf, isPresent, type CloneKind } from "@provider/pricing/estimate.js";
+import { assess, cloneKeyOf, heldClone, isPresent, stepCalls, type CloneKind, type HeldClone } from "@provider/pricing/estimate.js";
 import type { Provider } from "@provider/provider.js";
 import { decide, passingStatus, type Failure } from "@provider/routing/decide.js";
 import { planRoute, type Candidate, type Route, type RoutePlan } from "@provider/routing/route.js";
@@ -35,11 +35,7 @@ export type MediaOutput =
   | { kind: "bytes"; bytes: Uint8Array; contentType: string };
 
 /** One cached clone, as the caller stores it. */
-export interface MediaClone {
-  upstream: string;
-  kind: "voice" | "vocal" | "element";
-  /** The source asset's sha256, with a suffix for an element. */
-  sourceKey: string;
+export interface MediaClone extends HeldClone {
   upstreamId: string;
 }
 
@@ -385,10 +381,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @returns The cached output, or undefined.
    */
   const cachedOutput = (ticket: Ticket, step: Step): StepOutput | undefined => {
-    const key = stepCloneKey(ticket, step);
-    const hit = key === undefined
-      ? undefined
-      : ticket.clones.find((c) => c.upstream === ticket.upstream && c.kind === key.kind && c.sourceKey === key.sourceKey);
+    const hit = heldClone(ticket.clones, ticket.upstream, stepCloneKey(ticket, step));
     if (hit === undefined) return undefined;
     if (step.kind === "voice") return { voiceId: hit.upstreamId, cached: true };
     if (step.kind === "element") return { index: step.itemIndex ?? 0, elementId: hit.upstreamId, cached: true };
@@ -424,10 +417,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       }
       for (const extra of (binding.extra_steps ?? []).filter((s) => s.at === at)) {
         const base = { kind: extra.kind, endpoint: extra.endpoint, ...(extra.for_param === undefined ? {} : { param: extra.for_param }), status: "pending" as const };
-        const value = extra.for_param === undefined ? undefined : ticket.input.params[extra.for_param];
-        if (extra.for_param !== undefined && !isPresent(value)) continue;
-        const items = extra.per_item === true && Array.isArray(value) ? value.map((_, i) => i) : [null];
-        for (const itemIndex of items) add({ ...base, itemIndex }, extra.kind === "element" && extra.describe !== undefined);
+        for (const itemIndex of stepCalls(extra, ticket.input.params)) add({ ...base, itemIndex }, extra.kind === "element" && extra.describe !== undefined);
       }
     }
     return steps;
@@ -678,7 +668,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     // A source sent without a known length is priced as a lower bound, and ranks after every known price.
     const durationsMissing = Object.keys(input.params).filter((p) => isPresent(input.params[p]) && durations[p] === undefined);
     // The live clones leave out each call an upstream holds, as planSteps does.
-    const run = { params: input.params, prompt: input.prompt, durations, placeholders: [], durationsMissing, sourceKeys: planOptions.sourceKeys, clones: planOptions.clones };
+    const run = { params: input.params, prompt: input.prompt, durations, placeholders: [], durationsMissing, known: { sourceKeys: planOptions.sourceKeys, clones: planOptions.clones } };
     const candidates = await Promise.all(candidatesOf(config, model, keyOf).map(async (c): Promise<Candidate> => {
       const read = await assess(rules, c.upstream, run);
       if (read === undefined) return c;
