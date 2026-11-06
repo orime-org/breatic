@@ -1049,7 +1049,7 @@ function previewOf(
     const written = r.write.kind === 'inline' ? [r.write.block] : r.write.kind === 'blocks' ? r.write.blocks : [];
     const pieces = (written as Read[]).map((b) => ({ ...b, children: [...(b.children ?? [])] }));
     if (pieces.length === 0) continue;
-    const list = answeredAncestor(doc, r.unit.blockId, under) ?? out;
+    const list = answeredAncestor(shown, r.unit.blockId, under) ?? out;
     list.push(...pieces);
     const last = pieces[pieces.length - 1]!;
     under.set(r.unit.blockId, last.type === DOC_TABLE ? list : (last.children ??= []));
@@ -1153,11 +1153,16 @@ function takeOutMoved(tr: Transform, at: LocalRange, inCell: boolean): void {
   const before = index > 0 ? $line.parent.child(index - 1) : null;
   const children = left.childCount > 1 ? left.lastChild : null;
   if (before === null || (children !== null && before.type.name !== 'blockContainer')) return;
-  tr.delete(line.containerPos, line.containerPos + left.nodeSize);
-  if (children === null) return;
-  // The block before ends where the line began; its children go at its end.
-  if (before.childCount > 1) tr.insert(line.containerPos - 2, children.content);
-  else tr.insert(line.containerPos - 1, children);
+  if (children === null) {
+    tr.delete(line.containerPos, line.containerPos + left.nodeSize);
+    return;
+  }
+  // One deletion across the boundary joins the children to the block before
+  // (to its own children, when it has some), so positions in them still map
+  // for the writes after it.
+  const childrenStart = line.containerPos + 1 + left.firstChild.nodeSize;
+  if (before.childCount > 1) tr.delete(line.containerPos - 2, childrenStart + 1);
+  else tr.delete(line.containerPos - 1, childrenStart);
 }
 
 /**
@@ -1244,17 +1249,23 @@ function writeUnit(editor: ViewedEditor, tr: Transaction, result: AiUnitResult, 
     takeOut(editor, tr, span, unit.cell !== null);
     return;
   }
-  const line = lineAt(tr.doc, span);
-  // The block is swapped for its words before the span, the answer and its
-  // words after, as nodes: the words left out keep every mark, comments
-  // included, and the children go under the last piece as they are.
-  const { node, start, container, containerPos } = line;
-  const schema = tr.doc.type.schema;
-  const pieces: ProseMirrorNode[] = [];
-  if (span.from > start) pieces.push(container.type.create(container.attrs, [node.copy(node.content.cut(0, span.from - start))]));
-  pieces.push(...(write.blocks as Read[]).map((b) => blockToNode(b as never, schema)));
+  // The words before the span stay where they are, in the block with its id:
+  // the units written after this one may hold some of them. The block is
+  // split there as Enter splits it, and the rest is swapped for the answer
+  // and the words after, as nodes: the words left out keep every mark,
+  // comments included, and the children go under the last piece as they are.
   // A null id is filled in by BlockNote's id plugin in the same dispatch.
-  if (span.to < start + node.content.size) pieces.push(container.type.create({ ...container.attrs, id: null }, [node.copy(node.content.cut(span.to - start))]));
+  let at = span;
+  const first = lineAt(tr.doc, span);
+  if (span.from > first.start) {
+    tr.split(span.from, 2, [{ type: first.container.type, attrs: { ...first.container.attrs, id: null } }, { type: first.node.type, attrs: first.node.attrs }]);
+    const map = tr.steps[tr.steps.length - 1]!.getMap();
+    at = { from: map.map(span.from, 1), to: map.map(span.to, 1) };
+  }
+  const { node, start, container, containerPos } = lineAt(tr.doc, at);
+  const schema = tr.doc.type.schema;
+  const pieces: ProseMirrorNode[] = (write.blocks as Read[]).map((b) => blockToNode(b as never, schema));
+  if (at.to < start + node.content.size) pieces.push(container.type.create({ ...container.attrs, id: null }, [node.copy(node.content.cut(at.to - start))]));
   const children = container.childCount > 1 ? container.lastChild : null;
   if (children !== null) {
     const last = pieces.pop()!;

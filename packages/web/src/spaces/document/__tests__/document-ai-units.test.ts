@@ -1548,6 +1548,132 @@ describe('round 15: copies and writes agree after the body moved', () => {
   });
 });
 
+describe('round 16: every unit written after the body moved', () => {
+  it('writes and previews a child unit whose line Enter carried away from its selected parent', async () => {
+    const h = await open('- one two\n  - kid');
+    const o = opening(h, { from: rangeOf(h, 'one two').from, to: rangeOf(h, 'kid').to }, 'refine');
+    pressKey(h, rangeOf(h, 'two').from, 'Enter');
+    const answer = read(h, o, tagged({ 1: 'ONE TWO', 2: 'KID' }), 'refine');
+    expect(shape(answer.preview as Seen[])).toEqual([['ONE TWO', 0], ['KID', 1]]);
+    replaceAiAnswer(h, answer, segments(h), WRITABLE);
+    expect(shape(blocks(h))).toEqual([['ONE TWO', 0], ['KID', 1]]);
+  });
+
+  it('writes and previews a unit nested with Tab under words Enter moved out of another unit', async () => {
+    const h = await open('aa bb\n\ncc');
+    const o = opening(h, { from: rangeOf(h, 'aa bb').from, to: rangeOf(h, 'cc').to }, 'refine');
+    pressKey(h, rangeOf(h, 'bb').from, 'Enter');
+    pressKey(h, rangeOf(h, 'cc').from, 'Tab');
+    expect(shape(blocks(h))).toEqual([['aa ', 0], ['bb', 0], ['cc', 1]]);
+    const answer = read(h, o, tagged({ 1: 'AA BB', 2: 'CC' }), 'refine');
+    expect(shape(answer.preview as Seen[])).toEqual([['AA BB', 0], ['CC', 1]]);
+    replaceAiAnswer(h, answer, segments(h), WRITABLE);
+    expect(shape(blocks(h))).toEqual([['AA BB', 0], ['CC', 1]]);
+  });
+
+  it('puts the children of a line emptied of moved words after the children of the line before', async () => {
+    const h = await open('aa bb\n\ntail');
+    const o = opening(h, rangeOf(h, 'aa bb'), 'refine');
+    const view = h.editor.prosemirrorView!;
+    /**
+     * Writes a new child line after a line, as the reader would: Enter at its end, Tab, then the words.
+     * @param words - The line's words.
+     * @param after - The line's words before, to find its end.
+     */
+    const child = (words: string, after: string): void => {
+      pressKey(h, rangeOf(h, after).to, 'Enter');
+      pressKey(h, view.state.selection.from, 'Tab');
+      view.dispatch(view.state.tr.insertText(words));
+    };
+    pressKey(h, rangeOf(h, 'bb').from, 'Enter');
+    child('new', 'aa ');
+    child('kid', 'bb');
+    expect(shape(blocks(h))).toEqual([['aa ', 0], ['new', 1], ['bb', 0], ['kid', 1], ['tail', 0]]);
+    const answer = read(h, o, tagged({ 1: 'AA BB' }), 'refine');
+    expect(shape(answer.preview as Seen[])).toEqual([['AA BB', 0]]);
+    replaceAiAnswer(h, answer, segments(h), WRITABLE);
+    expect(shape(blocks(h))).toEqual([['AA BB', 0], ['new', 1], ['kid', 1], ['tail', 0]]);
+  });
+
+  it('writes the earlier unit too when units Backspace joined get answers of several blocks', async () => {
+    const h = await open('alpha one\n\nbeta two\n\ntail');
+    const o = opening(h, { from: rangeOf(h, 'alpha one').from, to: rangeOf(h, 'beta two').to }, 'expand');
+    pressKey(h, rangeOf(h, 'beta two').from, 'Backspace');
+    const answer = read(h, o, tagged({ 1: 'A1.\n\nA2.', 2: 'B1.\n\nB2.' }), 'expand');
+    expect(shape(answer.preview as Seen[])).toEqual([['A1.', 0], ['A2.', 0], ['B1.', 0], ['B2.', 0]]);
+    replaceAiAnswer(h, answer, segments(h), WRITABLE);
+    expect(shape(blocks(h))).toEqual([['A1.', 0], ['A2.', 0], ['B1.', 0], ['B2.', 0], ['tail', 0]]);
+  });
+
+  it('copies and writes both joined units of a table cell when the later answer is several blocks', async () => {
+    const h = await open('| aaa | zzz |\n| --- | --- |\n| c | d |');
+    const cell = flat(h).find((b) => textOf(b) === 'aaa')!;
+    h.editor.replaceBlocks([cell.id], [{ type: 'paragraph', content: 'aaa' }, { type: 'paragraph', content: 'bbb' }] as never);
+    h.undoManager.clear();
+    const o = opening(h, { from: rangeOf(h, 'aaa').from, to: rangeOf(h, 'zzz').to }, 'expand');
+    pressKey(h, rangeOf(h, 'bbb').from, 'Backspace');
+    const answer = read(h, o, tagged({ 1: 'A1.\n\nA2.', 2: 'B1.\n\nB2.', 3: 'ZZZ' }), 'expand');
+    expect(cellWords(answer.preview[0] as Seen)).toEqual([['A1.|A2.|B1.|B2.', 'ZZZ'], ['c', 'd']]);
+    replaceAiAnswer(h, answer, segments(h), WRITABLE);
+    expect(cellWords(blocks(h).find((b) => b.type === 'docTable')!)).toEqual([['A1.|A2.|B1.|B2.', 'ZZZ'], ['c', 'd']]);
+  });
+});
+
+/** A line of the moving body: its words and kind, with lines nested under it. */
+interface MovingLine {
+  words: string;
+  type: 'paragraph' | 'bulletListItem';
+  kids: string[];
+}
+
+/** A body of lines, some with children, for the reader to move around. */
+const moving: fc.Arbitrary<MovingLine[]> = fc.array(
+  fc.record({
+    words: fc.stringMatching(/^[a-z]{1,4}( [a-z]{1,4}){0,2}$/),
+    type: fc.constantFrom<'paragraph' | 'bulletListItem'>('paragraph', 'bulletListItem'),
+    kids: fc.array(fc.stringMatching(/^[a-z]{1,4}( [a-z]{1,4}){0,1}$/), { maxLength: 2 }),
+  }),
+  { minLength: 1, maxLength: 4 },
+);
+
+/** What the reader does while the dialog is open: a key at a position picked from a number. */
+const moves = fc.array(fc.tuple(fc.constantFrom('Enter', 'Backspace', 'Tab'), fc.nat()), { maxLength: 4 });
+
+describe('properties: the reader moves the body while the dialog is open', () => {
+  it('writes every answered unit once, whatever Enter, Backspace and Tab did to the selected lines', async () => {
+    const h = await open('');
+    await fc.assert(fc.asyncProperty(moving, moves, fc.array(fc.boolean(), { minLength: 12, maxLength: 12 }), async (lines, keys, several) => {
+      h.editor.replaceBlocks(h.editor.document, lines.map((l) => ({
+        type: l.type,
+        content: l.words,
+        children: l.kids.map((k) => ({ type: l.type, content: k })),
+      })) as never);
+      h.undoManager.clear();
+      const o = opening(h, { from: 1, to: h.editor.prosemirrorState.doc.content.size - 1 }, 'expand');
+      for (const [key, n] of keys) {
+        const doc = h.editor.prosemirrorState.doc;
+        const at: number[] = [];
+        doc.descendants((node, pos) => {
+          if (!node.isTextblock) return true;
+          if (key === 'Enter') for (let i = 1; i < node.content.size; i += 1) at.push(pos + 1 + i);
+          else at.push(pos + 1);
+          return false;
+        });
+        if (at.length > 0) pressKey(h, at[n % at.length]!, key);
+      }
+      const marks = (id: number): string[] => (several[id - 1] ? [`U${String(id)}A.`, `U${String(id)}B.`] : [`U${String(id)}A.`]);
+      const parts = Object.fromEntries(o.units.map((u) => [u.id, marks(u.id).join('\n\n')]));
+      const answer = read(h, o, tagged(parts), 'expand');
+      if (!aiReplaceAvailable(h.editor.prosemirrorState.doc, answer, segments(h))) return;
+      replaceAiAnswer(h, answer, segments(h), WRITABLE);
+      const now = flat(h).map(textOf);
+      for (const r of answer.results) {
+        for (const mark of marks(r.unit.id)) expect(now.filter((t) => t.includes(mark))).toHaveLength(1);
+      }
+    }), { numRuns: 60 });
+  });
+});
+
 describe('round 11: replace with only outside media', () => {
   it('can be pressed, writes nothing and says how many were left out, as insert does', async () => {
     const h = await open('One.');
