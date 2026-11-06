@@ -335,7 +335,7 @@ describe("a turn resumed by an answer to its card", () => {
     const toolCallId = await pausedAt(first.id, OPUS.id);
     await pick(reader, first.id, SONNET.id);
 
-    expect(await conversationService.modelForResume(first.id, reader.userId, toolCallId)).toBe(OPUS.id);
+    expect(await conversationService.modelForResume(await conversationService.assertWritable(first.id, reader.userId, reader.projectId), reader.userId, toolCallId)).toBe(OPUS.id);
   });
 
   it("runs on the conversation's model when the one it started on is no longer listed, and does not refuse", async () => {
@@ -345,6 +345,6 @@ describe("a turn resumed by an answer to its card", () => {
     const toolCallId = await pausedAt(first.id, "retired/model");
     await pick(reader, first.id, SONNET.id);
 
-    expect(await conversationService.modelForResume(first.id, reader.userId, toolCallId)).toBe(SONNET.id);
+    expect(await conversationService.modelForResume(await conversationService.assertWritable(first.id, reader.userId, reader.projectId), reader.userId, toolCallId)).toBe(SONNET.id);
   });
 });

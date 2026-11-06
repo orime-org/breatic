@@ -294,7 +294,7 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
   const modelId =
     resumed === undefined
       ? await conversationService.modelForMessage(conversation, user.id, body.model)
-      : await conversationService.modelForResume(conversation.id, user.id, resumed);
+      : await conversationService.modelForResume(conversation, user.id, resumed);
   const card =
     answer !== undefined
       ? { toolCallId: answer.toolCallId, take: () => conversationService.answerAsk(conversation.id, answer, { userId: user.id, projectId: body.project_id }) }

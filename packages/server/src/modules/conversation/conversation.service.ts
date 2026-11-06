@@ -631,16 +631,12 @@ export async function modelForMessage(
  * started on, while the deployment still lists it, else the conversation's
  * own by the usual order, written into the conversation. Never a refusal: the
  * answer must be able to resume the turn.
- * @param conversationId - The conversation, already checked writable.
+ * @param conversation - The conversation, already checked writable.
  * @param userId - The reader.
  * @param toolCallId - The call being answered.
  * @returns The model id.
  */
-export async function modelForResume(conversationId: string, userId: string, toolCallId: string): Promise<string> {
-  const started = listedModel((await messageRepo.getReplyModelId(conversationId, toolCallId)) ?? null);
-  if (started !== undefined) return started.id;
-  const conversation = await conversationRepo.getConversation(conversationId);
-  const model = resolveAgentModel(conversation?.agentModel ?? null, await userRepo.getAgentModel(userId));
-  if (conversation !== null && conversation.agentModel !== model.id) await conversationRepo.setAgentModel(conversationId, model.id);
-  return model.id;
+export async function modelForResume(conversation: ConversationEntity, userId: string, toolCallId: string): Promise<string> {
+  const started = listedModel((await messageRepo.getReplyModelId(conversation.id, toolCallId)) ?? null);
+  return started?.id ?? modelForMessage(conversation, userId, undefined);
 }
