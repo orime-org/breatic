@@ -140,11 +140,14 @@ describe('the model picker', () => {
     expect(trigger()).toHaveTextContent('DeepSeek V4.1 Flash');
     expect(useConversationRuntime.getState().conversations['c-1']?.agentModel).toEqual(DEEPSEEK);
 
-    save(OPUS);
+    // Named apart from the list's entry, so the store can only hold it by taking
+    // the server's answer; the button names it as the list does.
+    const saved = { id: OPUS.id, name: 'Claude Opus 5.5 (saved)' };
+    save(saved);
 
     await waitFor(() => expect(trigger()).toHaveTextContent('Claude Opus 5.5'));
     expect(trigger()).not.toHaveAttribute('aria-busy');
-    expect(useConversationRuntime.getState().conversations['c-1']?.agentModel).toEqual(OPUS);
+    expect(useConversationRuntime.getState().conversations['c-1']?.agentModel).toEqual(saved);
   });
 
   it('cannot be opened for another pick while a save is out', async () => {
