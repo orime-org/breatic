@@ -1613,6 +1613,19 @@ export function renderProductGuide(): string {
       "is full, counted across every studio they administer. What is already there keeps working, but nothing " +
       "new can be uploaded or generated until they upgrade. The bell's " +
       `${quoted(t("notifications.headline.storageQuotaExceeded"))} is the same thing.`,
+    "- Each space has a size limit. As a space nears it, a notice at the top of the space says how much of its " +
+      "limit it is using; once it is full the notice says so and that deleting some content makes room. While a " +
+      `space is full, anything that adds to it is refused with ${quoted(t("spaces.size.addBlocked"))} Deleting, ` +
+      "and changes that make nothing larger, such as shortening text or a name, still work. Close to the very end, " +
+      `moving and changing things stop too, with ${quoted(t("spaces.size.overwriteBlocked"))} Past the limit, ` +
+      `only deleting a whole node or a whole passage works: ${quoted(t("spaces.size.overCeilingDelete"))} ` +
+      "When something does not fit the room that is left, the message says how much room is left; an Agent " +
+      `proposal that does not fit says it was not placed (${quoted(t("spaces.size.proposalFull"))} on a full space), ` +
+      `text read from a dropped file is not added (${quoted(t("spaces.size.textFull"))} on a full space), and a ` +
+      `file uploaded into a full document shows ${quoted(t("spaces.size.uploadFailed"))} with ` +
+      `${quoted(t("spaces.size.spaceFullReason"))} A full 3D space shows ${quoted(t("spaces.size.threeDFull"))} ` +
+      `and a full timeline ${quoted(t("spaces.size.timelineFull"))} If a change still goes over the limit, the ` +
+      `space reloads from the server and ${quoted(t("spaces.size.resync"))} shows: that last change is lost.`,
     `- When the project page itself cannot load, it shows ${quoted(t("pageLoadError.message"))} with ` +
       `${quoted(t("pageLoadError.retry"))}.`,
   ].join("\n");

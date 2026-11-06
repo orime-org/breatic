@@ -9,7 +9,7 @@
  * pending content yjs keeps outside it. `analyze` reads an update against the
  * document before it is applied and bounds how much it can grow the
  * encoding, one count per yjs path that changes the encoded size (the table
- * in docs/ARCHITECTURE.md "Canvas collaboration"); whether it would leave new
+ * in docs/ARCHITECTURE.md#space-document-size-cap); whether it would leave new
  * pending content is decided by yjs itself, on a skeleton of the document.
  *
  * The record of a document keeps the last exact size and an upper bound that

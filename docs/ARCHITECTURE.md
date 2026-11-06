@@ -125,7 +125,7 @@ A transaction locks the `bo-<UUID>` operation key, replays an existing matching 
 
 ### Canvas collaboration
 
-Canvas and Document providers track local edits awaiting confirmation in `web/src/data/yjs/doc-sync.ts` and `doc-sync-binding.ts`. Each content provider entry owns a local version, a confirmed version, a connection epoch, handshake readiness and at most one pending receipt. A local Yjs update whose origin is not that provider advances the local version; remote and provider-origin updates leave it unchanged. The version difference is the unsynced fact. Closing or reauthenticating the connection invalidates its pending receipt while retaining that difference. Open background Space tabs continue contributing to their Project's aggregate.
+Canvas, Document and Timeline providers track local edits awaiting confirmation in `web/src/data/yjs/doc-sync.ts` and `doc-sync-binding.ts`; Timeline's receipts only release size reservations and do not count toward the leave-project prompt. Each content provider entry owns a local version, a confirmed version, a connection epoch, handshake readiness and at most one pending receipt. A local Yjs update whose origin is not that provider advances the local version; remote and provider-origin updates leave it unchanged. The version difference is the unsynced fact. Closing or reauthenticating the connection invalidates its pending receipt while retaining that difference. Open background Space tabs continue contributing to their Project's aggregate.
 
 The shared `SyncConfirmRequestSchema` and `SyncConfirmedResponseSchema` define the strict `{ type: 'sync:confirm', id }` and `{ type: 'sync:confirmed', id, ok }` messages with UUID identifiers. Requests travel on the content document's own provider after its earlier updates. Collab replies through that same live Connection; `ok: true` confirms application of preceding messages to the server document in memory. PostgreSQL persistence follows its own lifecycle. A successful response advances only the version captured by its matching request in the current connection epoch.
 
@@ -160,6 +160,28 @@ The shared `SyncConfirmRequestSchema` and `SyncConfirmedResponseSchema` define t
 - **协作升级前的会话准入**：`upgrade-session-gate` 在原生 HTTP upgrade 阶段调用 core `getSession(authRedis, token)`，从 DB0 读取部署 Cookie 指向的当前会话，成功后才移交 WebSocket transport。缺少、畸形或无效会话在连接可写时返回 401，读取故障或超时在连接可写时返回 503；会话准入始终启用，`throttle_enabled` 控制来源与计数扩展。拒绝时销毁 raw socket，Node `stream.finished` 确认流终止，失败记账独立结算；FIN、socket 错误和同步 `stop()` 共同进入单一终态，迟到查询保持已定结果。服务入口在关闭监听和等待消费者前同步停止待准入请求。每个文档的 `onAuthenticate` 继续复查当前会话、Project 角色和只读权限。`getSession` 把读取错误转换为独立的安全 Error，保留脱敏后的诊断白名单及 cause；准入日志用 attemptId、阶段、原因和终态关联事件，解析到非空 token 时附会话摘要。
 - **Hocuspocus 钩子顺序**(`@hocuspocus/server` 的 `ClientConnection.ts`,接线在 `packages/collab/src/hocuspocus.ts`):`onUpgrade`(可选的 `infra/connection-gate.ts` 先判来源与连接计数，必经的 `infra/upgrade-session-gate.ts` 再查当前会话；两者处理原始 socket)→ `onConnect`(先于文档鉴权，`context.user` 仍为 `undefined`，可执行不依赖用户身份的检查)→ `onAuthenticate`(从凭证解出用户;只读要改入参 `connectionConfig.readOnly`,返回值里的 `readOnly` 不生效)→ 文档首次载入时 `onLoadDocument` → `afterLoadDocument`(在建 `Connection` 对象**之前**;同一文档按文档串行,在这里 await 同文档的 `openDirectConnection` 会死锁;库不替它 catch,抛出去客户端收到 permission-denied 而服务端无日志)→ 建 `Connection` 对象 → `connected` → … → `onDisconnect`。**`onDisconnect` 只对建好了 `Connection` 对象的连接触发**:鉴权被拒或载入失败的连接到不了那一步,所以每连接的外部资源(席位、计数、映射)在 `connected` 登记、在 `onDisconnect` 注销,不在 `onConnect` / `onAuthenticate` 登记
 - 节点结构 + 字段归属 + 状态机详细规范跟 `@breatic/shared/types/canvas-node.ts` 类型定义保持一致
+
+#### Space document size cap
+
+Every loaded Space content document (canvas, document, timeline, 3d) has a size record in `packages/collab/src/services/document-size.ts`; a meta document has none, and `max_document_bytes` 0 creates none. The record holds the exact size, `measure`: the encoded state plus `C` for each stored pending struct and `2C` for each stored pending delete range (`C` is `DOC_SIZE_EVENT_BYTES` in `@breatic/shared`). It also holds an upper bound that every admitted update raises; an exact re-measure, at most once per `document_size_measure_interval_ms` per document, brings the bound back to the exact size. The phase follows the size: warning from `document_size_warn_ratio` of the limit, full from `document_size_full_margin_bytes` below it; the hard ceiling is the limit plus `document_size_delete_headroom_bytes`. Each change of phase and each exact re-measure is pushed to this instance's connections of the document as the stateless `doc:size` message (`DocSizeEventSchema`).
+
+`analyze(update, document)` reads an update against the document before it is applied and bounds how much it can grow `measure`. Each row is one yjs path that changes the encoded size; when a later yjs release adds or changes one, the row's count changes or a row and its property-test generator are added (`yjs-version.test.ts` pins the version):
+
+| yjs path | Count | Bound |
+|---|---|---|
+| Inserting structs (`Item.integrate`, splits by origin and right origin included) | `structs`, and `structBytes`: the update's length without its delete set | `structBytes + C × structs` when there are structs |
+| A delete range endpoint splitting a live item | `liveEndpoints` | `C` each |
+| A new delete set entry | `liveRanges`: ranges covering live content; a map value the update's own struct replaces counts as already deleted | `C` each |
+| Cascade: a deleted or replaced live type deletes its children (`ContentType.delete`) | `cascadeItems`: live children the update does not delete itself | `C` each |
+| Formatting cleanup after deletes or inserted formats (`YText` cleanup) | `formatItems`: live format items in the affected texts | `C` each |
+| Garbage collection of deleted content | `freedBytes`: content the deletes free, a lower bound | subtracted when the update deletes live content |
+| Stored pending content integrating (`pendingStructs` retried, `pendingDs` replayed) | `integratesStored` | no bound: the exact trial decides |
+
+Whether an update would leave new pending content (`wouldPend`) is decided by yjs on a skeleton document holding the store's clocks and its stored pending content; a precheck skips the skeleton when no struct starts past a gap, no reference points past the store's clock and no delete range runs past it. An update that lists one client in more than one struct group is malformed: yjs integrates only the last group of a client while `Y.decodeUpdate` returns every group.
+
+The gate is the first step of the `beforeSync` hook (`hooks/document-size-gate.ts`), for writable connections and sub-types other than SyncStep1. It refuses a malformed update and one that would pend. It admits an update when the upper bound plus its bound stays within the limit, or, for an update deleting live content, within the hard ceiling or within what it frees. Otherwise it runs an exact trial on a copy of the document, within two budgets: `document_size_trials_per_user_per_minute` per user and document (core `checkRateLimit`), and a process token bucket refilled `document_size_trial_budget_ms_per_second` that every trial and skeleton is charged against. The trial admits when the size after the update plus what other connections have admitted but not yet applied stays within the limit, when the update does not grow the document, or when it deletes live content and stays within the hard ceiling. A refusal throws an error carrying `COLLAB_DOCUMENT_TOO_LARGE_REASON`; Hocuspocus applies nothing and closes that document's connection, and the refusal is logged as `document_size_limit_refused` with the step that decided it.
+
+The inbound filter (`infra/inbound-filter.ts`) runs on every reassembled message before Hocuspocus: per socket and document it drops Updates that arrive before the client's SyncStep2 handshake for that document, and, once `beforeSync` refused one, every frame queued after it until the client authenticates the document again.
 
 ### Two-layer memory + history replayed as sent
 
@@ -716,6 +738,24 @@ Timeline 在现有 Project 标签中创建、打开和关闭,使用 `SpaceConnec
 
 预览通过原生视频元素播放已授权的素材,界面控件采用项目的 Button 和 Slider。全局整数帧经统一源时间换算,源切换及 seek 等待当前世代真实就绪;媒体缓冲冻结播放头,恢复后重建时钟锚点,等待中暂停保留用户的暂停意图。隐藏或卸载内容区暂停播放。协作连接、定时持久化、关闭和重开沿用其他 Space 的共用链路,连接提示使用 Project 现有界面。
 
+### Space document writes and the size cap
+
+The web half of the [Space document size cap](#space-document-size-cap). `data/yjs/doc-size.ts` keeps each document's last `doc:size` push (phase, room, overwrite room) and shows it through `SpaceSizeNotice`; until a push arrives the phase is `unknown` and nothing is refused.
+
+Every local write to a Space document goes through `writeSpaceDoc(name, { kind, estimate?, reservation?, notify? }, write)` in `data/yjs/space-write.ts`, or `runCanvasUndoBatch`, which judges a whole canvas batch once; ESLint `breatic/space-doc-write-gateway` reports a write outside them. The kind says what the write does to the size:
+
+| Kind | Refused when |
+|---|---|
+| `add` | the Space is full, or the estimate is more than the room left after held reservations |
+| `overwrite` | the overwrite room is gone (the document is near the hard ceiling) |
+| `delete` | only while the document is being rebuilt |
+
+A write that replaces a value (renaming a node, rewriting a note, changing a node's params, model or mode) is judged by what it adds over the value it replaces: no larger is an `overwrite`. Estimates come from `estimateNodeBytes`, `estimateTextBodyBytes` (plain text becomes one block per line) and `estimateSliceBytes`. A write that lands later (a paste, an upload, an Agent proposal, a comment, a Timeline clip) first takes `reserveSpaceRoom`; the reservation is held until the document's confirmed version, from the sync receipts above, passes the write.
+
+The ProseMirror editors (the Document body, the canvas text node, prompts and lyrics) judge local transactions in one shared `filterTransaction` plugin, `features/collab-editor/space-size-gate.ts`. Undo and redo on the canvas and in the editors are judged by the first stack item yjs would pop, predicted by `nextHistoryStep` in `data/yjs/history-step.ts`. A 3D Space refuses every edit while full.
+
+When collab refuses an update it closes that document's connection with `COLLAB_DOCUMENT_TOO_LARGE_REASON`. `collab-socket.tsx` then discards the local document with the refused change, the Space remounts under a new generation and syncs a fresh copy from the server, and the reader is told the last change was not saved.
+
 ### Key conventions
 
 - **shadcn 100%** — `components/ui/` 里每个原语都是 shadcn/ui(底层 Radix)。不用 Headless UI,不用 MUI。
@@ -857,7 +897,7 @@ A Project page entry sends a stable UUID as `visit_id` to `POST /api/v1/projects
 
 The current client owns a visit for each account, Project and router activation. Effect replay and temporary loading reuse that identity; navigation and bfcache restoration allocate a new one. For pending or unconfirmed visits, successful Project refetches and completed reauthentication query the original receipt through the mounted visit handle. Account logout or switching retires that account's handle and stops its later requests; in-flight results stay attached to their original identity. The opened request schema also accepts an omitted `visit_id` for legacy clients, for which the server creates a new visit identity.
 
-The collab native `beforeSync` hook records authenticated writable content `SyncUpdate` frames containing structs or a delete set, before apply. It excludes meta documents, handshake frames, empty updates and presence. Persistence failures retain their original error in application logs and throw into Hocuspocus's existing document-close path; this closes the document connection, not the entire multiplexed WebSocket.
+The collab native `beforeSync` hook first runs the Space document size gate ([Space document size cap](#space-document-size-cap)); a refused message records nothing. It then records authenticated writable content `SyncUpdate` frames containing structs or a delete set, before apply. It excludes meta documents, handshake frames, empty updates and presence. Persistence failures retain their original error in application logs and throw into Hocuspocus's existing document-close path; this closes the document connection, not the entire multiplexed WebSocket.
 
 `account_activity_coverage` starts empty. After all required server and collab collectors are deployed and checked, an operator explicitly opens contract version 1 with `pnpm db:activity-coverage open --version 1 --operator <operator-id>`. Suspend it with the corresponding `close` command. Both operations use the server clock and log the operator and persisted result. A per-version transaction lock and unique open index prevent concurrent opens; intervals cannot overlap history or end before their start. A later reopening preserves any closed gap. Never open coverage merely because the migration or one service has deployed.
 

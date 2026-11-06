@@ -55,6 +55,11 @@ interface Excluded {
 /** Every message the guide does not quote, and what the guide does with it. */
 export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.create.notAvailable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "spaces.size.warning": { described: /a notice at the top of the space says how much of its limit it is using/ },
+  "spaces.size.fullNotice": { described: /once it is full the notice says so and that deleting some content makes room/ },
+  "spaces.size.noRoom": { described: /When something does not fit the room that is left, the message says how much room is left/ },
+  "spaces.size.proposalNoRoom": { described: /an Agent proposal that does not fit says it was not placed/ },
+  "spaces.size.textNoRoom": { described: /text read from a dropped file is not added/ },
   "timeline.loading": { excluded: REASONS.PASSING },
   "timeline.unavailable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "timeline.incompatible": { excluded: REASONS.SAYS_WHAT_HAPPENED },

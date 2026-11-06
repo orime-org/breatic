@@ -36,7 +36,7 @@ describe("yjs version", () => {
   it("C-135 is the version the document size bound was reviewed against", () => {
     expect(
       resolvedYjsVersion(),
-      "review the yjs size-changing path table in docs/ARCHITECTURE.md before changing this version",
+      "review the yjs size-changing path table in docs/ARCHITECTURE.md#space-document-size-cap before changing this version",
     ).toBe("13.6.33");
   });
 });
