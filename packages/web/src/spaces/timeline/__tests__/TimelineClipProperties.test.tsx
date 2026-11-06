@@ -8,7 +8,7 @@ import type { TimelineVideoClip } from '@breatic/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
-import { MAIN, OFF, ON, V2, cid, clip, timeline } from '@web/data/yjs/__tests__/timeline-document-fixtures';
+import { MAIN, OFF, ON, SHORT_SOURCE, SOURCE, V2, cid, clip, timeline } from '@web/data/yjs/__tests__/timeline-document-fixtures';
 import { TimelineClipProperties } from '@web/spaces/timeline/TimelineClipProperties';
 import type { TimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
 
@@ -122,7 +122,7 @@ function showLive(selected: TimelineVideoClip = SELECTED): { onCommit: ReturnTyp
    * @returns The element, keyed by the clip id as TimelineSpace renders it.
    * @throws {never} Never.
    */
-  const panel = (item: TimelineVideoClip, options: PanelOptions = {}): React.JSX.Element => <TimelineClipProperties key={item.id} spaceId='space' document={timeline([item])} clip={item} name='Clip' conflict={false}
+  const panel = (item: TimelineVideoClip, options: PanelOptions = {}): React.JSX.Element => <TimelineClipProperties key={item.id} spaceId='space' document={timeline([item], undefined, [SOURCE, SHORT_SOURCE])} clip={item} name='Clip' conflict={false}
     labels={LABELS} readOnly={options.readOnly ?? false} placement={options.placement ?? OFF} onCommit={onCommit} />;
   const view = render(panel(selected));
   return { onCommit, show: (next, options) => view.rerender(panel(next, options)) };
@@ -336,5 +336,46 @@ describe('TimelineClipProperties shows the stored value after a committed entry 
     expect(noteBeside('timeline-clip-in')).toBe(false);
     expect(fieldText('timeline-clip-duration')).toBe('2000');
     expect(noteBeside('timeline-clip-duration')).toBe(true);
+  });
+});
+
+describe('TimelineClipProperties clears a field note once an in-range entry is committed (inner#1708 E1)', () => {
+  const A = clip(cid(7), V2, 10, 20, { sourceInFrame: 20, sourceId: SHORT_SOURCE.id });
+
+  /**
+   * Leave duration 40 out of range beside in 20, then commit in 0 and store it, so 40 now fits.
+   * @returns The commit callback and the rerender.
+   * @throws {Error} When a step does not behave as set up.
+   */
+  function durationFitsAfterInPoint(): ReturnType<typeof showLive> {
+    const live = showLive(A);
+    typeAndBlur('timeline-clip-duration', '40');
+    expect(noteBeside('timeline-clip-duration')).toBe(true);
+    typeAndBlur('timeline-clip-in', '0');
+    expect(live.onCommit).toHaveBeenLastCalledWith({
+      operation: 'set_range', parameters: { clipId: A.id, startFrame: 10, sourceInFrame: 0, durationFrames: 20 }, placement: OFF,
+    });
+    live.show({ ...A, sourceInFrame: 0 });
+    expect(noteBeside('timeline-clip-duration')).toBe(true);
+    return live;
+  }
+
+  it('shows the stored duration without a note after the planner refuses the now-fitting entry', () => {
+    const { onCommit } = durationFitsAfterInPoint();
+    fireEvent.keyDown(screen.getByTestId('timeline-clip-duration'), { key: 'Enter' });
+    expect(onCommit).toHaveBeenCalledTimes(2);
+    expect(onCommit).toHaveBeenLastCalledWith({
+      operation: 'set_range', parameters: { clipId: A.id, startFrame: 10, sourceInFrame: 0, durationFrames: 40 }, placement: OFF,
+    });
+    expect(fieldText('timeline-clip-duration')).toBe('20');
+    expect(noteBeside('timeline-clip-duration')).toBe(false);
+  });
+
+  it('shows the stored duration without a note when the entry equals it', () => {
+    const { onCommit } = durationFitsAfterInPoint();
+    typeAndEnter('timeline-clip-duration', '20');
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(fieldText('timeline-clip-duration')).toBe('20');
+    expect(noteBeside('timeline-clip-duration')).toBe(false);
   });
 });

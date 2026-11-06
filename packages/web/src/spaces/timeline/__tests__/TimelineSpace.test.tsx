@@ -1559,6 +1559,40 @@ describe('TimelineSpace drags (inner#1708 G8, G5, C4)', () => {
     pointer(document, 'pointerUp', 40);
   });
 
+  it.each([
+    ['move', (): HTMLElement => screen.getByTestId('timeline-clip-' + X)],
+    ['trim', (): HTMLElement => screen.getByTestId('timeline-trim-end-' + X)],
+  ] as const)('keeps a %s drag cancelled when write access returns before release (inner#1708 G1)', async (kind, grip) => {
+    writeUserPreference(ME, { timelineSnap: false });
+    const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
+    const { view, client } = showTimeline();
+    fireEvent.click(await screen.findByTestId('timeline-clip-' + X));
+    const before = Y.encodeStateAsUpdate(doc);
+    pointer(grip(), 'pointerDown', 0);
+    pointer(document, 'pointerMove', 10);
+    pointer(document, 'pointerMove', 20);
+    expect(dragGhost('v2')).not.toBe(null);
+    view.rerender(surface(client, { ...CONNECTED, writeAccess: 'denied' }, true));
+    expect(dragGhost('v2')).toBe(null);
+    view.rerender(surface(client, CONNECTED, false));
+    pointer(document, 'pointerMove', 30);
+    pointer(document, 'pointerMove', 40);
+    expect(dragGhost('v2')).toBe(null);
+    pointer(document, 'pointerUp', 40);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 60)); });
+    expect(layout().clips[X]).toMatchObject({ startFrame: 10, durationFrames: 14 });
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    // A new drag after the cancelled one works: 20 px at 2 px per frame is 10 frames.
+    fireEvent.click(screen.getByTestId('timeline-clip-' + X));
+    pointer(grip(), 'pointerDown', 0);
+    pointer(document, 'pointerMove', 10);
+    pointer(document, 'pointerMove', 20);
+    expect(dragGhost('v2')).not.toBe(null);
+    pointer(document, 'pointerUp', 20);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 60)); });
+    await waitFor(() => expect(layout().clips[X]).toMatchObject(kind === 'move' ? { startFrame: 20, durationFrames: 14 } : { startFrame: 10, durationFrames: 24 }));
+  });
+
   it('names a peer removal when the dragged clip vanished before release', async () => {
     const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
     showTimeline();
