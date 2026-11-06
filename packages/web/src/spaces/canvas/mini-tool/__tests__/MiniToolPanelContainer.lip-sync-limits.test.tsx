@@ -16,7 +16,9 @@
  *   use 1 and 3, so the design's initial 2 and 8 written into code fail. The toasts reuse the server's refusal copy
  *   `server.mini_tool.lipSyncTooManyPeople` / `lipSyncTooManyDialogues` `{max}`, which web's catalog already resolves (D24-2);
  * - `onRetryFailed` sends the existing planned retry form (`POST /mini-tools` with `retry: { runId, outputIndexes }`, shared
- *   `miniToolExecutionRequestSchema`) for that run's failed output through `miniToolsApi.retryPlannedVideoRun` (D24-1). The request layer
+ *   `miniToolExecutionRequestSchema`) for that run's failed output through `miniToolsApi.retryPlannedVideoRun` (D24-1);
+ * - the footer shows the server's quote (D26-1): `POST /mini-tools/quote` with the planned request body of the current draft
+ *   answers `{ credits }`, computed as admission would freeze it, so the panel prices nothing itself. The request layer
  * (`apiGet`, `apiPost`) is mocked and answers only the reads named here; the limits cache starts empty.
  *
  * Fixture: a 5 s video and one dialogue of 3 s audio starting at 0 s in cut_off mode, so the result lasts 3 s and the run uses
@@ -45,14 +47,13 @@ vi.mock('@web/spaces/canvas/_shared/NodePanelMount', async (importOriginal) => (
 }));
 
 import { t, type ModelCatalog, type ModelEntry, type NodeTaskEntry } from '@breatic/shared';
-import { estimateCredits } from '@breatic/shared/pricing';
-import { fingerprintMiniToolAnalysisInput, lipsyncTimeline, lipsyncUsedSourceRange, miniToolExecutionRequestSchema, presentationFrameAt, presentationVideoEnd, projectMiniToolAnalysisInput, type LipsyncFailureReason, type MiniToolAnalysisRecord, type MiniToolExecutionRecord, type VideoToolDraftById } from '@breatic/shared/mini-tools';
+import { fingerprintMiniToolAnalysisInput, miniToolExecutionRequestSchema, miniToolPlannedRequestSchema, projectMiniToolAnalysisInput, type LipsyncFailureReason, type MiniToolAnalysisRecord, type MiniToolExecutionRecord, type VideoToolDraftById } from '@breatic/shared/mini-tools';
 import { MiniToolPanelContainer } from '../MiniToolPanelContainer';
 import type { VideoToolPresentation } from '../video/VideoToolPanelContainer';
 import { createVideoToolDraft } from '../video/video-tool-edit';
 import { CanvasContext } from '../../canvas-context';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
-import { addEdge, addNode, removeNode, type CanvasNodeView } from '@web/data/yjs/canvas-space';
+import { addEdge, addNode, readNodes, removeNode, type CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { commitVideoToolAnalysisRef, commitVideoToolDraft, readVideoToolDraft } from '@web/data/yjs/video-tool-drafts';
 import { docName, getDoc, destroyDoc } from '@web/data/yjs/manager';
 import { canvasApi } from '@web/data/api/canvas';
@@ -72,7 +73,12 @@ const analysisRunId = '80000000-0000-4000-8000-000000000001';
 const failedRunId = '90000000-0000-4000-8000-000000000001';
 const audioId = '40000000-0000-4000-8000-000000000009';
 const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 125, step: 4, duration: 4 }] };
+// The selected tool input the run is planned against (frames-split §7.13); the quote request names it as the run would.
+const PRESENTATION_REF = { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } };
 const presentation: VideoToolPresentation = { frameTable, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0 };
+// The same presentation once its selected tool input is known, as a ready node publishes it; analysis and quote requests need it.
+const planned: VideoToolPresentation = { ...presentation, presentationRef: PRESENTATION_REF };
+let mounted: VideoToolPresentation;
 const profile = { id: 'people', version: '1', weightsHash: null, params: {} };
 
 /**
@@ -100,7 +106,7 @@ function limits(first: Range, tracking: Range, caps: { maxPeople: number; maxDia
     referencePoolCap: 10, nodeHistoryPageSize: 20, understandMaxBytes: 20_971_520, understandLongMediaMaxBytes: 2_147_483_648,
     waveformMaxSeconds: 600, waveformMaxBytes: 200_000_000, waveformPeaksRetryMs: 5000, waveformPeaksRetryMaxMs: 600_000,
     removeBackgroundModel: 'remove-bg-configured',
-    lipSync: { models: [{ name: 'lipsync-configured-a', ...first }, { name: 'lipsync-configured-b', minDurationSeconds: 1, maxDurationSeconds: 15 }], tracking: { model: 'tracker-configured', ...tracking }, ...caps },
+    lipSync: { models: [{ name: 'lipsync-configured-a', ...first }, { name: 'lipsync-configured-b', minDurationSeconds: 1, maxDurationSeconds: 15 }], tracking, ...caps },
   };
 }
 
@@ -243,7 +249,7 @@ async function mount(withOutput = false, rows?: Dialogue[], people?: readonly st
   const nodes = [host, ...(withOutput ? [addFailedOutput()] : []), ...(outputs?.() ?? [])];
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(modelCatalogQuery().queryKey, catalog);
-  render(<QueryClientProvider client={client}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><MiniToolPanelContainer nodes={nodes} getLastWriteWasLocal={() => false} onRun={vi.fn()} onRunVideo={vi.fn().mockResolvedValue({ kind: 'done', result: {} })} videoPresentation={new Map([[nodeId, presentation]])} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
+  render(<QueryClientProvider client={client}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><MiniToolPanelContainer nodes={nodes} getLastWriteWasLocal={() => false} onRun={vi.fn()} onRunVideo={vi.fn().mockResolvedValue({ kind: 'done', result: {} })} videoPresentation={new Map([[nodeId, mounted]])} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
   await screen.findAllByText('Person 1');
 }
 
@@ -257,7 +263,7 @@ function ui(key: string, params?: Record<string, string | number>): string {
   return t(`canvas.miniTool.videoUI.${key}`, params);
 }
 
-beforeEach(() => { vi.clearAllMocks(); canvasApi.resetLimitsCache(); catalog = CATALOG; });
+beforeEach(() => { vi.clearAllMocks(); canvasApi.resetLimitsCache(); catalog = CATALOG; mounted = presentation; });
 afterEach(() => { destroyDoc(docName.canvasSpace(projectId, spaceId)); canvasSessions.of(spaceId).getState().closeActivePanel(); canvasApi.resetLimitsCache(); vi.restoreAllMocks(); });
 
 describe('the lip-sync panel reads its models and ranges from the canvas limits (§97; canvas design §4 对口型)', () => {
@@ -415,60 +421,109 @@ describe('the lip-sync panel takes its people and dialogue caps from the canvas 
   });
 });
 
-describe('the lip-sync footer prices the run as admission quotes it (§97 ruling 6; execution design §9.3 pricing)', () => {
+describe('the lip-sync footer shows the server quote for the current draft (§97 D26-1; execution design §9.3 pricing)', () => {
   const ranges = [{ minDurationSeconds: 1, maxDurationSeconds: 300 }, { minDurationSeconds: 0.5, maxDurationSeconds: 600 }] as const;
-  // Priced by the length of what each model is sent, so a price over the 5 s source differs from one over the 3 s result.
-  const pricing = (basePrice: number): ModelEntry['pricing'] => ({ base_price: basePrice, formula: '{"total_price": get_duration(video) * base_price}', discount_rate: 100 });
-  const priced = (name: string, basePrice: number, audio: boolean): ModelEntry => ({ ...model(name, name), pricing: pricing(basePrice),
-    params: { video: { fill: 'tool', default: null }, ...(audio ? { audio: { fill: 'tool', default: null } } : {}) } } as unknown as ModelEntry);
-  const PRICED = { image: [], video: [priced('lipsync-configured-a', 400_000, true), priced('lipsync-configured-b', 900_000, true), priced('tracker-configured', 300_000, false)], audio: [], tts: [], three_d: [], total: 3, credit_multiplier: 1 } as unknown as ModelCatalog;
+  // The catalog prices the models, so any number the panel computed itself would show; only the quote may reach the footer.
+  const pricing = { base_price: 400_000, formula: '{"total_price": get_duration(video) * base_price}', discount_rate: 100 };
+  const priced = (name: string): ModelEntry => ({ ...model(name, name), pricing, params: { video: { fill: 'tool', default: null }, audio: { fill: 'tool', default: null } } } as unknown as ModelEntry);
+  const PRICED = { image: [], video: [priced('lipsync-configured-a'), priced('lipsync-configured-b')], audio: [], tts: [], three_d: [], total: 2, credit_multiplier: 1 } as unknown as ModelCatalog;
+  const QUOTES: Readonly<Record<string, number>> = { 'lipsync-configured-a': 137.5, 'lipsync-configured-b': 260.25 };
 
   /**
-   * The model and tracking part of the admission quote (domain `prepareLipSync`): per referenced person, the selected model
-   * priced over `timeline.duration` for its video and audio, plus the tracking model priced over the used source range, each
-   * through shared `estimateCredits` with the inputs admission passes, the timeline and range from shared `lipsyncTimeline`
-   * and `lipsyncUsedSourceRange` over the panel's frame table.
-   * @param rows - The dialogue rows (each over the 3 s audio).
-   * @returns The credits.
+   * The quote requests posted so far, in order.
+   * @returns Their bodies.
    */
-  async function quoted(rows: readonly Dialogue[]): Promise<number> {
-    const timeline = lipsyncTimeline({ videoDuration: presentationVideoEnd(frameTable), dialogues: rows.map((row) => ({ dialogueId: row.dialogueId, personId: row.personId!, audioInputId: audioId, startTime: row.startTime, duration: 3 })), syncMode: 'cut_off' });
-    const used = lipsyncUsedSourceRange(timeline, [{ time: 0, windowEnd: presentationFrameAt(frameTable, 0).displayEnd }]);
-    const entry = (name: string): ModelEntry & { pricing: NonNullable<ModelEntry['pricing']> } => PRICED.video.find((candidate) => candidate.name === name) as ModelEntry & { pricing: NonNullable<ModelEntry['pricing']> };
-    const generation = await estimateCredits(entry('lipsync-configured-a'), { params: {}, durations: { video: [timeline.duration], audio: [timeline.duration] }, sources: ['video', 'audio'] }, 1);
-    const tracking = await estimateCredits(entry('tracker-configured'), { params: {}, durations: { video: [used.end - used.start] }, sources: ['video'] }, 1);
-    // Admission floors each model at MIN_TASK_CREDIT_COST (5); the fixture stays above it, so the floor is not in play.
-    expect(generation.credits).toBeGreaterThan(5);
-    expect(tracking.credits).toBeGreaterThan(5);
-    expect(timeline.duration).toBe(3);
-    return new Set(rows.map((row) => row.personId)).size * (generation.credits + tracking.credits);
+  function quoteBodies(): Record<string, unknown>[] {
+    return http.post.mock.calls.filter(([path]) => path === '/mini-tools/quote').map(([, body]) => body as Record<string, unknown>);
   }
 
   /**
-   * Waits for the footer to show this amount as its number (a bound mark may precede it).
-   * @param credits - The expected credits.
+   * The footer's text.
+   * @returns The text.
+   */
+  function footer(): string {
+    return screen.getByTestId('mini-tool-credit').textContent ?? '';
+  }
+
+  /**
+   * The host's committed lip-sync draft.
+   * @returns The draft.
+   */
+  function draftNow(): VideoToolDraftById['video.lip-sync'] {
+    const reading = readVideoToolDraft(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId, 'video.lip-sync');
+    if (reading.state !== 'supported') throw new Error('Expected the committed lip-sync draft');
+    return reading.draft as VideoToolDraftById['video.lip-sync'];
+  }
+
+  /**
+   * Answers each quote request with the credits of the model its draft selects (the first configured one by default).
    * @returns Nothing.
    */
-  async function footerShows(credits: number): Promise<void> {
-    const amount = formatCreditAmount(credits).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    await waitFor(() => expect(screen.getByTestId('mini-tool-credit').textContent ?? '').toMatch(new RegExp(`(^|\\s)${amount}$`)));
+  function answerQuotes(): void {
+    http.post.mockImplementation(async (path: string, body: { draft: VideoToolDraftById['video.lip-sync'] }): Promise<unknown> => {
+      if (path !== '/mini-tools/quote') throw new Error(`Unexpected POST ${path}`);
+      return { credits: QUOTES[body.draft.params.modelId ?? 'lipsync-configured-a'] };
+    });
   }
 
-  it('prices one person at the model over the 3 s result plus tracking over the [0, 3] range', async () => {
-    catalog = PRICED;
-    const rows = [dialogue(ROW_A, 'person-a')];
+  beforeEach(() => { catalog = PRICED; mounted = planned; });
+
+  it('shows the quoted credits and posts the planned request of the current draft, creating no node', async () => {
+    answerQuotes();
     serve(limits(...ranges));
-    await mount(false, rows, ['person-a']);
-    await footerShows(await quoted(rows));
+    await mount(false, [dialogue(ROW_A, 'person-a')], ['person-a']);
+    await waitFor(() => expect(footer()).toBe(formatCreditAmount(137.5)));
+    const [body] = quoteBodies();
+    expect(miniToolPlannedRequestSchema.safeParse(body).success).toBe(true);
+    expect(body).toMatchObject({ tool: 'video.lip-sync', project_id: projectId, space_id: spaceId, presentation_ref: PRESENTATION_REF });
+    expect(body!.draft).toEqual(draftNow());
+    expect(body!.analysis_refs).toEqual([expect.objectContaining({ toolId: 'video.lip-sync', kind: 'people', analysisRunId })]);
+    const outputs = body!.outputs as { outputIndex: number; nodeId: string; recipe: unknown }[];
+    expect(outputs).toHaveLength(1);
+    expect(outputs[0]).toMatchObject({ outputIndex: 0, recipe: { kind: 'lip-sync' } });
+    expect(outputs[0]!.nodeId).not.toBe(nodeId);
+    // A quote is not a run: the output it names is not put on the canvas.
+    expect(readNodes(getDoc(docName.canvasSpace(projectId, spaceId))).map((node) => node.id)).toEqual([nodeId]);
   });
 
-  it('prices two people at twice the per-person model and tracking price', async () => {
-    catalog = PRICED;
-    const rows = [dialogue(ROW_A, 'person-a'), dialogue(ROW_B, 'person-b')];
+  it('quotes the changed draft again and shows the new answer', async () => {
+    answerQuotes();
     serve(limits(...ranges));
-    await mount(false, rows, ['person-a', 'person-b']);
-    const two = await quoted(rows);
-    expect(two).toBe(2 * await quoted([dialogue(ROW_A, 'person-a')]));
-    await footerShows(two);
+    await mount(false, [dialogue(ROW_A, 'person-a')], ['person-a']);
+    await waitFor(() => expect(footer()).toBe(formatCreditAmount(137.5)));
+    fireEvent.click(screen.getByTestId('generate-model-trigger'));
+    fireEvent.click(screen.getByTestId('generate-model-option-lipsync-configured-b'));
+    await waitFor(() => expect(footer()).toBe(formatCreditAmount(260.25)));
+    const latest = quoteBodies().at(-1)!;
+    expect(miniToolPlannedRequestSchema.safeParse(latest).success).toBe(true);
+    expect((latest.draft as VideoToolDraftById['video.lip-sync']).params.modelId).toBe('lipsync-configured-b');
+    expect(latest.draft).toEqual(draftNow());
+  });
+
+  it('shows no number while the quote has not answered', async () => {
+    http.post.mockImplementation(() => new Promise<never>(() => undefined));
+    serve(limits(...ranges));
+    await mount(false, [dialogue(ROW_A, 'person-a')], ['person-a']);
+    await waitFor(() => expect(quoteBodies()).toHaveLength(1));
+    // Give any number the panel could compute on its own (the catalog prices both models) the time to appear.
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(footer()).not.toMatch(/\d/);
+  });
+});
+
+describe('reopening the lip-sync panel keeps its identified people (§97; canvas design §4 对口型)', () => {
+  it('starts no people analysis and keeps the bound person when the draft already has an accepted one', async () => {
+    mounted = planned;
+    const started = vi.spyOn(miniToolAnalysesApi, 'start').mockImplementation(() => new Promise(() => undefined));
+    serve(limits({ minDurationSeconds: 1, maxDurationSeconds: 300 }, { minDurationSeconds: 0.5, maxDurationSeconds: 600 }));
+    await seed([dialogue(ROW_A, 'person-a')], ['person-a']);
+    const host: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(modelCatalogQuery().queryKey, catalog);
+    render(<QueryClientProvider client={client}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><MiniToolPanelContainer nodes={[host]} getLastWriteWasLocal={() => false} onRun={vi.fn()} videoPresentation={new Map([[nodeId, mounted]])} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 100)); });
+    expect(started).not.toHaveBeenCalled();
+    const reading = readVideoToolDraft(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId, 'video.lip-sync');
+    expect(reading.state === 'supported' ? (reading.draft as VideoToolDraftById['video.lip-sync']).params.dialogues.map((row) => row.personId) : null).toEqual(['person-a']);
   });
 });
