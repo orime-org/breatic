@@ -8,15 +8,15 @@
  * - `lipSync` comes from `GET /canvas/limits` `lipSync` (config `executions.video.lip-sync`), read through `canvasApi.fetchLimits`
  *   with the models joined to their catalog entries: the model picker lists exactly the configured models and Run's range
  *   toast names their minimum and maximum, and the tracking range;
- * - `lipSyncFailure` is the failed output's `error` of this host's last lip-sync run: the run is the `mini_tool` task of the
- *   output node the host's `video.lip-sync` edge leads to, read with `miniToolsApi.getRun`;
+ * - `lipSyncFailure` is the failed output's `error` of the most recently started lip-sync run of this host (D24-1): among the
+ *   output nodes the host's `video.lip-sync` edges lead to that are still on the canvas, the `mini_tool` task row started
+ *   last, read with `miniToolsApi.getRun`; when that run did not fail the panel shows no failure, even if an older one did;
  * - the people and dialogue caps come from the same answer's `lipSync.maxPeople` / `lipSync.maxDialogues` (canvas design §4:
  *   at the cap, "Add dialogue" and the people beyond it are `aria-disabled` and a click says why with a toast); the fixtures
- *   use 1 and 3, so the design's initial 2 and 8 written into code fail. No web copy for these two toasts exists yet, so only
- *   that one warning toast is shown is asserted, not its text;
- * - `onRetryFailed` posts the existing planned retry form (`POST /mini-tools` with `retry: { runId, outputIndexes }`, shared
- *   `miniToolExecutionRequestSchema`) for that run's failed output.
- * How the panel finds the run and that the retry form carries `video.lip-sync` are shapes this test chose. The request layer
+ *   use 1 and 3, so the design's initial 2 and 8 written into code fail. The toasts reuse the server's refusal copy
+ *   `server.mini_tool.lipSyncTooManyPeople` / `lipSyncTooManyDialogues` `{max}`, which web's catalog already resolves (D24-2);
+ * - `onRetryFailed` sends the existing planned retry form (`POST /mini-tools` with `retry: { runId, outputIndexes }`, shared
+ *   `miniToolExecutionRequestSchema`) for that run's failed output through `miniToolsApi.retryPlannedVideoRun` (D24-1). The request layer
  * (`apiGet`, `apiPost`) is mocked and answers only the reads named here; the limits cache starts empty.
  *
  * Fixture: a 5 s video and one dialogue of 3 s audio starting at 0 s in cut_off mode, so the result lasts 3 s and the run uses
@@ -51,11 +51,12 @@ import type { VideoToolPresentation } from '../video/VideoToolPanelContainer';
 import { createVideoToolDraft } from '../video/video-tool-edit';
 import { CanvasContext } from '../../canvas-context';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
-import { addEdge, addNode, type CanvasNodeView } from '@web/data/yjs/canvas-space';
+import { addEdge, addNode, removeNode, type CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { commitVideoToolAnalysisRef, commitVideoToolDraft, readVideoToolDraft } from '@web/data/yjs/video-tool-drafts';
 import { docName, getDoc, destroyDoc } from '@web/data/yjs/manager';
 import { canvasApi } from '@web/data/api/canvas';
 import { miniToolAnalysesApi } from '@web/data/api/mini-tool-analyses';
+import { miniToolsApi } from '@web/data/api/mini-tools';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { toast } from '@web/lib/toast';
@@ -100,6 +101,9 @@ function limits(first: Range, tracking: Range, caps: { maxPeople: number; maxDia
   };
 }
 
+/** One lip-sync output of the host: its node, its run, when the run started and why it failed (null when it succeeded). */
+interface OutputRun { nodeId: string; runId: string; startedAt: string; failure: LipsyncFailureReason | null }
+
 /**
  * Answers the request layer's reads: the limits, and when given, the output node's task list and its failed run.
  * @param answer - The limits answer.
@@ -107,37 +111,59 @@ function limits(first: Range, tracking: Range, caps: { maxPeople: number; maxDia
  * @returns Nothing.
  */
 function serve(answer: Record<string, unknown>, failure?: LipsyncFailureReason): void {
+  serveRuns(answer, failure === undefined ? [] : [{ nodeId: outputId, runId: failedRunId, startedAt: '2026-11-06T00:00:00.000001Z', failure }]);
+}
+
+/**
+ * Answers the request layer's reads: the limits, each output node's task list and each run.
+ * @param answer - The limits answer.
+ * @param runs - The host's lip-sync outputs.
+ * @returns Nothing.
+ */
+function serveRuns(answer: Record<string, unknown>, runs: readonly OutputRun[]): void {
   http.get.mockImplementation(async (path: string): Promise<unknown> => {
     if (path === '/canvas/limits') return structuredClone(answer);
-    if (failure !== undefined && path === `/canvas/nodes/${outputId}/tasks`) return { tasks: [task()] };
-    if (failure !== undefined && path === `/projects/${projectId}/mini-tool-runs/${failedRunId}`) return run(failure);
+    for (const output of runs) {
+      if (path === `/canvas/nodes/${output.nodeId}/tasks`) return { tasks: [task(output)] };
+      if (path === `/projects/${projectId}/mini-tool-runs/${output.runId}`) return run(output.failure, output);
+    }
     throw new Error(`Unexpected GET ${path}`);
   });
 }
 
 /**
- * The output node's settled lip-sync task row, pointing at its parent run.
+ * An output node's settled lip-sync task row, pointing at its parent run.
+ * @param output - The output; by default the single failed output.
  * @returns The row.
  */
-function task(): NodeTaskEntry {
+function task(output: OutputRun = { nodeId: outputId, runId: failedRunId, startedAt: '2026-11-06T00:00:00.000001Z', failure: null }): NodeTaskEntry {
   return {
-    id: 'a0000000-0000-4000-8000-000000000001', taskId: failedRunId, projectId, spaceId, nodeId: outputId, kind: 'generation', action: 'mini_tool',
-    status: 'failed', startedByUserId: 'user-1', startedAt: '2026-11-06T00:00:00.000001Z', settledAt: '2026-11-06T00:01:00.000001Z', budgetMs: 7_200_000,
-    label: 'video.lip-sync', errorMessage: 'Lip sync failed', nodeHistoryId: null, content: null, coverUrl: null,
+    id: `a${output.runId.slice(1)}`, taskId: output.runId, projectId, spaceId, nodeId: output.nodeId, kind: 'generation', action: 'mini_tool',
+    status: output.failure === null ? 'done' : 'failed', startedByUserId: 'user-1', startedAt: output.startedAt, settledAt: output.startedAt, budgetMs: 7_200_000,
+    label: 'video.lip-sync', errorMessage: output.failure === null ? null : 'Lip sync failed', nodeHistoryId: null, content: null, coverUrl: null,
     mediaWidth: null, mediaHeight: null, duration: null, mimeType: null, size: null,
   };
 }
 
 /**
- * The failed lip-sync run as `GET /projects/:projectId/mini-tool-runs/:runId` answers it; the reason is the failed output's error.
- * @param failure - The reason.
+ * A lip-sync run as `GET /projects/:projectId/mini-tool-runs/:runId` answers it: failed with the reason as the failed output's
+ * error, or completed with a registered video.
+ * @param failure - The reason, or null for a run that succeeded.
+ * @param output - Its output node and run; by default the single failed output.
  * @returns The record.
  */
-function run(failure: LipsyncFailureReason): MiniToolExecutionRecord {
+function run(failure: LipsyncFailureReason | null, output: Pick<OutputRun, 'nodeId' | 'runId'> = { nodeId: outputId, runId: failedRunId }): MiniToolExecutionRecord {
+  const sourceBindings: MiniToolExecutionRecord['sourceBindings'] = [{ assetId: '70000000-0000-4000-8000-000000000001', contentHash: 'a'.repeat(64), canonicalURL: sourceURL, kind: 'video', mediaInfo }];
+  if (failure === null) {
+    return {
+      schemaVersion: 1, runId: output.runId, status: 'completed', planFingerprint: 'c'.repeat(64), resultVersion: 1, sourceBindings,
+      outputs: [{ outputIndex: 0, nodeId: output.nodeId, recipe: { kind: 'lip-sync' }, late: false, result: { status: 'registered', assetId: '71000000-0000-4000-8000-000000000001', canonicalURL: 'https://assets.example.test/lip-synced.mp4', kind: 'video', mimeType: 'video/mp4', size: 1024, contentHash: 'e'.repeat(64), width: 960, height: 540, duration: 3, cover: null } }],
+      usage: [], billingState: 'settled', error: null,
+    };
+  }
   return {
-    schemaVersion: 1, runId: failedRunId, status: 'failed', planFingerprint: 'c'.repeat(64), resultVersion: 1,
-    sourceBindings: [{ assetId: '70000000-0000-4000-8000-000000000001', contentHash: 'a'.repeat(64), canonicalURL: sourceURL, kind: 'video', mediaInfo }],
-    outputs: [{ outputIndex: 0, nodeId: outputId, recipe: { kind: 'lip-sync' }, late: false, result: { status: 'failed', error: structuredClone(failure) } }],
+    schemaVersion: 1, runId: output.runId, status: 'failed', planFingerprint: 'c'.repeat(64), resultVersion: 1, sourceBindings,
+    outputs: [{ outputIndex: 0, nodeId: output.nodeId, recipe: { kind: 'lip-sync' }, late: false, result: { status: 'failed', error: structuredClone(failure) } }],
     usage: [], billingState: 'settled', error: { message: 'output failed' },
   };
 }
@@ -188,14 +214,16 @@ async function seed(rows?: Dialogue[], people: readonly string[] = ['person-a'])
 }
 
 /**
- * Adds the host's earlier lip-sync output: an empty video node behind a `video.lip-sync` edge, its one task failed.
+ * Adds a lip-sync output of the host: a video node behind a `video.lip-sync` edge, with its one task settled.
+ * @param id - The output node id; by default the single failed output.
+ * @param failed - Whether its task failed.
  * @returns The output node's view.
  */
-function addFailedOutput(): CanvasNodeView {
-  const taskCounts = { running: 0, done: 0, failed: 1, expired: 0 };
-  addNode(projectId, spaceId, { id: outputId, type: 'video', position: { x: 600, y: 0 }, data: { content: '', name: 'Source lip-sync', locked: false, createdAt: 0, createdBy: 'test', attachments: [], taskCounts } });
-  addEdge(projectId, spaceId, { id: `${nodeId}->${outputId}`, source: nodeId, target: outputId, toolId: 'video.lip-sync' });
-  return { id: outputId, type: 'video', position: { x: 600, y: 0 }, data: { handling: false, content: '', taskCounts } };
+function addFailedOutput(id = outputId, failed = true): CanvasNodeView {
+  const taskCounts = { running: 0, done: failed ? 0 : 1, failed: failed ? 1 : 0, expired: 0 };
+  addNode(projectId, spaceId, { id, type: 'video', position: { x: 600, y: 0 }, data: { content: '', name: 'Source lip-sync', locked: false, createdAt: 0, createdBy: 'test', attachments: [], taskCounts } });
+  addEdge(projectId, spaceId, { id: `${nodeId}->${id}`, source: nodeId, target: id, toolId: 'video.lip-sync' });
+  return { id, type: 'video', position: { x: 600, y: 0 }, data: { handling: false, content: '', taskCounts } };
 }
 
 /**
@@ -203,12 +231,13 @@ function addFailedOutput(): CanvasNodeView {
  * @param withOutput - Whether the host has a failed lip-sync output.
  * @param rows - The draft's dialogue rows (see {@link seed}).
  * @param people - The people the analysis found (see {@link seed}).
+ * @param outputs - Adds the host's lip-sync outputs after the draft is seeded and returns the views still on the canvas.
  * @returns Nothing.
  */
-async function mount(withOutput = false, rows?: Dialogue[], people?: readonly string[]): Promise<void> {
+async function mount(withOutput = false, rows?: Dialogue[], people?: readonly string[], outputs?: () => CanvasNodeView[]): Promise<void> {
   await seed(rows, people);
   const host: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
-  const nodes = withOutput ? [host, addFailedOutput()] : [host];
+  const nodes = [host, ...(withOutput ? [addFailedOutput()] : []), ...(outputs?.() ?? [])];
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(modelCatalogQuery().queryKey, CATALOG);
   render(<QueryClientProvider client={client}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><MiniToolPanelContainer nodes={nodes} getLastWriteWasLocal={() => false} onRun={vi.fn()} onRunVideo={vi.fn().mockResolvedValue({ kind: 'done', result: {} })} videoPresentation={new Map([[nodeId, presentation]])} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
@@ -275,6 +304,7 @@ describe('the lip-sync panel shows the last run failure and retries it (§97; ex
   it('retries that run failed output through the planned retry form', async () => {
     serve(limits({ minDurationSeconds: 1, maxDurationSeconds: 300 }, { minDurationSeconds: 0.5, maxDurationSeconds: 600 }), reason);
     http.post.mockResolvedValue({ task_id: 'b0000000-0000-4000-8000-000000000001', status: 'pending' });
+    const sent = vi.spyOn(miniToolsApi, 'retryPlannedVideoRun');
     await mount(true);
     const retry = await screen.findByRole('button', { name: ui('retryFailedPeople') });
     await waitFor(() => expect(retry).toBeEnabled());
@@ -285,6 +315,62 @@ describe('the lip-sync panel shows the last run failure and retries it (§97; ex
     expect(body).toMatchObject({ tool: 'video.lip-sync', project_id: projectId, space_id: spaceId, retry: { runId: failedRunId, outputIndexes: [0] } });
     expect(body.run_id).not.toBe(failedRunId);
     expect(miniToolExecutionRequestSchema.safeParse(body).success).toBe(true);
+    expect(sent).toHaveBeenCalledExactlyOnceWith(body, expect.any(String));
+  });
+
+  it('offers no retry when the reason is not retryable (a person with no face)', async () => {
+    serve(limits({ minDurationSeconds: 1, maxDurationSeconds: 300 }, { minDurationSeconds: 0.5, maxDurationSeconds: 600 }), { kind: 'lipsync', persons: [{ personId: 'person-a', detectionNumber: 1, step: 'faces', category: 'no_face' }], shared: null });
+    await mount(true);
+    const failure = await screen.findByTestId('video-lip-sync-failure');
+    expect(failure).toHaveTextContent(ui('personFailNoFace'));
+    expect(screen.queryByRole('button', { name: ui('retryFailedPeople') })).toBeNull();
+  });
+});
+
+describe('the host panel shows the failure of its most recently started lip-sync run only (§97 D24-1; canvas design §4 对口型)', () => {
+  const ranges = [{ minDurationSeconds: 1, maxDurationSeconds: 300 }, { minDurationSeconds: 0.5, maxDurationSeconds: 600 }] as const;
+  const OLDER = '10000000-0000-4000-8000-000000000011'; const NEWER = '10000000-0000-4000-8000-000000000012';
+  const OLDER_RUN = '91000000-0000-4000-8000-000000000001'; const NEWER_RUN = '91000000-0000-4000-8000-000000000002';
+  const olderReason: LipsyncFailureReason = { kind: 'lipsync', persons: [{ personId: 'person-a', detectionNumber: 4, step: 'gen', category: 'timeout' }], shared: null };
+  const newerReason: LipsyncFailureReason = { kind: 'lipsync', persons: [{ personId: 'person-a', detectionNumber: 5, step: 'gen', category: 'model_rejected' }], shared: null };
+  // The older output is added after the newer one, so neither insertion nor id order picks the newer run.
+  const older = (failure: LipsyncFailureReason | null): OutputRun => ({ nodeId: OLDER, runId: OLDER_RUN, startedAt: '2026-11-06T01:00:00.000001Z', failure });
+  const newer = (failure: LipsyncFailureReason | null): OutputRun => ({ nodeId: NEWER, runId: NEWER_RUN, startedAt: '2026-11-06T02:00:00.000001Z', failure });
+
+  /**
+   * Waits until the panel has read the run of the newer output, so a missing failure is the panel's answer, not a pending read.
+   * @returns Nothing.
+   */
+  async function newerRunRead(): Promise<void> {
+    await waitFor(() => expect(http.get.mock.calls.map(([path]) => path)).toContain(`/projects/${projectId}/mini-tool-runs/${NEWER_RUN}`));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  }
+
+  it('shows the newer failed run when both outputs failed with different reasons', async () => {
+    serveRuns(limits(...ranges), [newer(newerReason), older(olderReason)]);
+    await mount(false, undefined, undefined, () => [addFailedOutput(NEWER), addFailedOutput(OLDER)]);
+    const failure = await screen.findByTestId('video-lip-sync-failure');
+    expect(failure).toHaveTextContent(`${ui('personNumber', { number: 5 })} · ${ui('personFailRejected')}`);
+    expect(failure).not.toHaveTextContent(ui('personNumber', { number: 4 }));
+  });
+
+  it('shows no failure when the newer run succeeded and only the older failed', async () => {
+    serveRuns(limits(...ranges), [newer(null), older(olderReason)]);
+    await mount(false, undefined, undefined, () => [addFailedOutput(NEWER, false), addFailedOutput(OLDER)]);
+    await newerRunRead();
+    expect(screen.queryByTestId('video-lip-sync-failure')).toBeNull();
+  });
+
+  it('ignores a newer output that is no longer on the canvas', async () => {
+    serveRuns(limits(...ranges), [newer(newerReason), older(olderReason)]);
+    await mount(false, undefined, undefined, () => {
+      addFailedOutput(NEWER);
+      removeNode(projectId, spaceId, NEWER);
+      return [addFailedOutput(OLDER)];
+    });
+    const failure = await screen.findByTestId('video-lip-sync-failure');
+    expect(failure).toHaveTextContent(`${ui('personNumber', { number: 4 })} · ${ui('personFailTimeout')}`);
+    expect(failure).not.toHaveTextContent(ui('personNumber', { number: 5 }));
   });
 });
 
@@ -310,7 +396,7 @@ describe('the lip-sync panel takes its people and dialogue caps from the canvas 
     await waitFor(() => expect(second).toHaveAttribute('aria-disabled', 'true'));
     expect(screen.getByRole('option', { name: 'Person 1' })).not.toHaveAttribute('aria-disabled', 'true');
     await user.click(second);
-    expect(toast.warning).toHaveBeenCalledOnce();
+    expect(toast.warning).toHaveBeenCalledExactlyOnceWith(t('server.mini_tool.lipSyncTooManyPeople', { max: 1 }));
     expect(rowsNow().find((row) => row.dialogueId === ROW_B)?.personId).toBeNull();
   });
 
@@ -321,7 +407,7 @@ describe('the lip-sync panel takes its people and dialogue caps from the canvas 
     await waitFor(() => expect(add).toHaveAttribute('aria-disabled', 'true'));
     expect(add).not.toBeDisabled();
     fireEvent.click(add);
-    expect(toast.warning).toHaveBeenCalledOnce();
+    expect(toast.warning).toHaveBeenCalledExactlyOnceWith(t('server.mini_tool.lipSyncTooManyDialogues', { max: 3 }));
     expect(rowsNow()).toHaveLength(3);
   });
 });
