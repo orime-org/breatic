@@ -443,16 +443,18 @@ describe("what a consolidation writes", () => {
   const update = (id: string) => ({ op: "update" as const, id, title: "Palette", content: "Teal and orange." });
   const remove = (id: string) => ({ op: "delete" as const, id });
   it.each([
-    ["update", "its content", update, "project", "Blue."],
-    ["delete", "its content", remove, "project", "Blue."],
-    ["update", "its scope", update, "conversation", "Teal."],
-    ["delete", "its scope", remove, "conversation", "Teal."],
-  ] as const)("writes nothing when an entry it would %s had %s changed in another conversation since it read it", async (_op, _what, operation, scope, content) => {
+    ["update", "its content", update, "project", "Palette", "Blue."],
+    ["delete", "its content", remove, "project", "Palette", "Blue."],
+    ["update", "its title", update, "project", "Colours", "Teal."],
+    ["delete", "its title", remove, "project", "Colours", "Teal."],
+    ["update", "its scope", update, "conversation", "Palette", "Teal."],
+    ["delete", "its scope", remove, "conversation", "Palette", "Teal."],
+  ] as const)("writes nothing when an entry it would %s had %s changed in another conversation since it read it", async (_op, _what, operation, scope, title, content) => {
     const owner = await seed();
     const other = await newConversation(owner.userId, owner.projectId);
     const keep = await seedEntry(owner, { title: "Palette", content: "Teal." });
     const shown = await shownOf(keep);
-    await agentMemoryFor({ ...owner, conversationId: other }).save({ id: keep, scope, title: "Palette", content });
+    await agentMemoryFor({ ...owner, conversationId: other }).save({ id: keep, scope, title, content });
 
     const failed = await rejectionOf(
       memoryService.commitConsolidation({
@@ -464,14 +466,37 @@ describe("what a consolidation writes", () => {
         operations: [{ op: "add", scope: "project", title: "New", content: "n" }, operation(keep)],
       }),
     );
-    const rows = await sql<{ id: string; content: string; conversation_id: string | null; deleted_at: Date | null }[]>`
-      SELECT id, content, conversation_id, deleted_at FROM agent_memories WHERE user_id = ${owner.userId}
+    const rows = await sql<{ id: string; title: string; content: string; conversation_id: string | null; deleted_at: Date | null }[]>`
+      SELECT id, title, content, conversation_id, deleted_at FROM agent_memories WHERE user_id = ${owner.userId}
     `;
 
     expect(failed).toBeInstanceOf(Error);
     expect(await watermarkOf(owner.conversationId)).toBe(0);
-    expect(rows).toEqual([{ id: keep, content, conversation_id: scope === "conversation" ? other : null, deleted_at: null }]);
+    expect(rows).toEqual([{ id: keep, title, content, conversation_id: scope === "conversation" ? other : null, deleted_at: null }]);
     expect((await memoryService.buildContext(owner.userId, owner.conversationId, owner.projectId)).progress).toBe("");
+  });
+
+  it("changes and deletes entries kept to this conversation alone", async () => {
+    const owner = await seed();
+    const changed = await seedEntry(owner, { conversationId: owner.conversationId, title: "Draft", content: "Use draft 2." });
+    const dropped = await seedEntry(owner, { conversationId: owner.conversationId, title: "Old draft", content: "Use draft 1." });
+
+    const ended = await memoryService.commitConsolidation({
+      ...owner,
+      shown: await shownOf(changed, dropped),
+      watermarkBefore: 0,
+      newWatermark: 4,
+      progress: "p",
+      operations: [
+        { op: "update", id: changed, title: "Draft", content: "Use draft 3." },
+        { op: "delete", id: dropped },
+      ],
+    });
+
+    expect(ended).toBe("written");
+    expect(await watermarkOf(owner.conversationId)).toBe(4);
+    expect((await agentMemoryFor(owner).read([changed]))[0]?.content).toBe("Use draft 3.");
+    expect(await agentMemoryFor(owner).read([dropped])).toEqual([]);
   });
 
   it("writes nothing when an entry it would change was deleted in another conversation since it read it", async () => {
@@ -508,7 +533,7 @@ describe("what a consolidation writes", () => {
     expect(input.titlesOnly).toEqual([{ id: oldest, title: "Oldest", scope: "project" }]);
   });
 
-  it("moves the watermark only forward and only with the entries and progress it covers, over any run of fold endings", async () => {
+  it("moves the watermark only forward and only with the entries and progress it covers, over any run of commit endings", async () => {
     /**
      * What a conversation's memory holds now.
      * @param owner - Whose.
@@ -525,13 +550,12 @@ describe("what a consolidation writes", () => {
 
     await fc.assert(
       fc.asyncProperty(
-        fc.array(fc.constantFrom("written" as const, "superseded" as const, "changed" as const, "aborted" as const), { minLength: 1, maxLength: 8 }),
+        fc.array(fc.constantFrom("written" as const, "superseded" as const, "changed" as const), { minLength: 1, maxLength: 8 }),
         fc.array(fc.integer({ min: 1, max: 3 }), { minLength: 8, maxLength: 8 }),
         async (endings, widths) => {
           const owner = await seed();
           const other = await newConversation(owner.userId, owner.projectId);
           await seedEntry(owner, { title: "Palette", content: "Teal." });
-          const covered = new Set<number>();
 
           for (const [i, ending] of endings.entries()) {
             const { full } = await memoryService.consolidationInput(owner, 100_000);
@@ -540,10 +564,6 @@ describe("what a consolidation writes", () => {
               await agentMemoryFor({ ...owner, conversationId: other }).save({ id: target.id, scope: "project", title: target.title, content: `${target.content} Changed ${String(i)}.` });
             }
             const before = await stateOf(owner);
-            if (ending === "aborted") {
-              expect(await stateOf(owner)).toEqual(before);
-              continue;
-            }
             const watermarkBefore = ending === "superseded" ? before.watermark + 1 : before.watermark;
             const newWatermark = watermarkBefore + widths[i]!;
             const progress = `through ${String(newWatermark)}`;
@@ -568,15 +588,11 @@ describe("what a consolidation writes", () => {
               expect(after.watermark).toBeGreaterThan(before.watermark);
               expect(after.progress).toBe(progress);
               expect(after.rows).toHaveLength(before.rows.length + 1);
-              for (let turn = watermarkBefore + 1; turn <= newWatermark; turn++) covered.add(turn);
             } else {
               expect(ended).toBe(ending === "superseded" ? "superseded" : "failed");
               expect(after).toEqual(before);
             }
           }
-
-          const final = await watermarkOf(owner.conversationId);
-          expect([...covered].sort((a, b) => a - b)).toEqual(Array.from({ length: final }, (_, k) => k + 1));
         },
       ),
       { numRuns: 20 },

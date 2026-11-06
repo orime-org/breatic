@@ -126,6 +126,20 @@ describe("charging a turn that folds and continues", () => {
           const starts = world.folds.map((fold) => fold.watermarkBefore);
           expect(new Set(starts).size).toBe(starts.length);
 
+          // Each fold takes every turn after the watermark up to where it
+          // ends, so the written windows cover every turn under the watermark.
+          let mark = 0;
+          for (const [i, fold] of world.folds.entries()) {
+            const from = fold.watermarkBefore as number;
+            const to = fold.newWatermark as number;
+            expect(from).toBe(mark);
+            expect((fold.turns as Array<{ turnIndex: number }>).map((turn) => turn.turnIndex)).toEqual(
+              Array.from({ length: to - from }, (_, k) => from + k + 1),
+            );
+            if (outcomes[i] === "written") mark = to;
+          }
+          expect(world.watermark).toBe(mark);
+
           const ended = outcomes.slice(0, world.folds.length);
           const stopped = ended.includes("aborted");
           const overflows = steps.filter((step) => step.kind === "overflow").length;
