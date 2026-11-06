@@ -605,8 +605,11 @@ export async function setConversationModel(
 }
 
 /**
- * The model a new message is answered by, written into the conversation
- * before the turn runs.
+ * The model a new message is answered by. The conversation's model is the
+ * reader's pick, written by the pick alone; a message writes it only where
+ * the conversation has none the deployment lists. A message from a page whose
+ * pick is still being saved carries the model it showed, and must not undo
+ * that pick.
  * @param conversation - The conversation, already checked writable.
  * @param userId - The reader.
  * @param requested - The model the page sent; absent from a page that predates the picker.
@@ -622,7 +625,7 @@ export async function modelForMessage(
     requested === undefined
       ? resolveAgentModel(conversation.agentModel, await userRepo.getAgentModel(userId))
       : assertListed(requested);
-  if (conversation.agentModel !== model.id) await conversationRepo.setAgentModel(conversation.id, model.id);
+  if (listedModel(conversation.agentModel) === undefined) await conversationRepo.setAgentModel(conversation.id, model.id);
   return model.id;
 }
 

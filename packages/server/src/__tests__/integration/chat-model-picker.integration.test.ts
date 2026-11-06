@@ -304,6 +304,36 @@ describe("POST /chat/message with a model", () => {
 
     expect((await stored(reader, first.id)).conversation).toBe(SONNET.id);
   });
+
+  it("runs on the model the message carries and leaves a listed pick of the conversation as it is", async () => {
+    const { conversationService } = await import("@server/modules");
+    const reader = await seedReader();
+    const first = await open(reader);
+    // A page whose pick is still being saved sends with the model it showed.
+    const read = await conversationService.assertWritable(first.id, reader.userId, reader.projectId);
+    await pick(reader, first.id, OPUS.id);
+
+    const answeredBy = await conversationService.modelForMessage(read, reader.userId, SONNET.id);
+
+    expect(answeredBy).toBe(SONNET.id);
+    expect(await stored(reader, first.id)).toEqual({ conversation: OPUS.id, user: OPUS.id });
+  });
+
+  it("writes the model it is answered by over a stored one the deployment no longer lists", async () => {
+    const { conversationService } = await import("@server/modules");
+    const reader = await seedReader();
+    const first = await open(reader);
+    await sql`UPDATE conversations SET agent_model = 'retired/model' WHERE id = ${first.id}`;
+
+    const answeredBy = await conversationService.modelForMessage(
+      await conversationService.assertWritable(first.id, reader.userId, reader.projectId),
+      reader.userId,
+      SONNET.id,
+    );
+
+    expect(answeredBy).toBe(SONNET.id);
+    expect((await stored(reader, first.id)).conversation).toBe(SONNET.id);
+  });
 });
 
 describe("a turn resumed by an answer to its card", () => {
