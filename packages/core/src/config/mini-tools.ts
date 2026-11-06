@@ -79,7 +79,7 @@ const encoderDefaults = {
   },
   // Audio seconds encoded to AAC per second for the dispatched copy (local Docker nproc 4 reading, to be replaced by standard-4).
   aac_encode_seconds_per_second: 100,
-  // Picture pixels per second YuNet 2023mar searches in the lip-sync faces step (frames-split §5.4 待实测 row), one detector
+  // Picture pixels per second YuNet 2023mar searches in the lip-sync faces step (frames-split §5.4 to-be-measured row), one detector
   // thread as the analysis runtime runs it: 120 1080p frames in 17.4–22.8 s on a maintainer machine held to standard-4
   // limits (arm64 Docker, --cpus=4), to be replaced by a Cloudflare standard-4 measurement.
   face_detect_pixels_per_second: 13_000_000,

@@ -416,7 +416,7 @@ function audioOutput(target: MiniToolPlanTarget): string[] {
 }
 
 /**
- * A transition output profile as the target its chunks are encoded to (§7.17 转场输出档 row): H.264 MP4 without alpha, VP9
+ * A transition output profile as the target its chunks are encoded to (§7.17 transition output profile row): H.264 MP4 without alpha, VP9
  * WebM with straight alpha, the profile's quality and BT.709.
  * @param profile - The profile.
  * @param target - The chunk's own target, whose picture placement is kept; a whole-frame picture when absent.
@@ -429,7 +429,7 @@ function profileTarget(profile: MiniToolPlanTransitionProfile, target?: MiniTool
 }
 
 /**
- * The frames of a window on a transition profile's constant-rate grid (§7.17 转场输出档 row: output frame k shows the source
+ * The frames of a window on a transition profile's constant-rate grid (§7.17 transition output profile row: output frame k shows the source
  * frame covering k / fps): `fps` with upward rounding assigns each frame the first output slot at or after its start, and
  * the last frame is held until exactly `count` frames are out.
  * @param profile - The profile.
@@ -625,7 +625,7 @@ async function compositeWindow(recipe: MiniToolPlanEraseComposite | MiniToolPlan
 }
 
 /**
- * Join a transition's chunks by stream copy and lay both clips' audio under them (§7.17 stitch and 转场输出档 rows; §97
+ * Join a transition's chunks by stream copy and lay both clips' audio under them (§7.17 stitch and transition output profile rows; §97
  * D15-7, D16-1): each clip's audio over its own span, a clip without audio as silence; a Cut joins the two directly and
  * a transition crosses them over the window with linear gains (`acrossfade c1=tri:c2=tri`), as the preview's two gains do.
  * A clip's length is its audio interval; a silent clip's is what the chunks leave of the timeline.

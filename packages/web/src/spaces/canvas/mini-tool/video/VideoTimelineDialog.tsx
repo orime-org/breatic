@@ -37,7 +37,7 @@ export interface VideoTimelineDialogProps {
 const TRANSITION_KEYS = { cut: 'transitionCut', fade: 'transitionFade', wipeLeft: 'transitionWipeLeft', wipeRight: 'transitionWipeRight' } as const;
 
 /**
- * A compact table's frame rate (frames-split §7.17 转场输出档 row): a constant-rate table's timescale over its frame step,
+ * A compact table's frame rate (frames-split §7.17 transition output profile row): a constant-rate table's timescale over its frame step,
  * otherwise its frame count over its presented duration.
  * @param table - The table.
  * @returns The rate, exact.

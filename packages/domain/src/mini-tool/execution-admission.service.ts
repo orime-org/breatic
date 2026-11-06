@@ -297,7 +297,7 @@ function preparationLayout(ledger: VideoPresentationLedger, config: MiniToolsCon
 }
 
 /**
- * The lip-sync container work and its stage layout (frames-split §5.4 派发, 预算 and 待实测 rows; execution design §9.3).
+ * The lip-sync container work and its stage layout (frames-split §5.4 dispatch, budget and to-be-measured rows; execution design §9.3).
  * The prepared video covers the used source range, chunked like a removal's preparation; each person runs one faces job
  * (the used frames decoded and searched by YuNet), one clip job (decoded, cropped and encoded at the crop size over the
  * result frames) and one stem job (the result length encoded to AAC); the composite decodes the source and every person's
