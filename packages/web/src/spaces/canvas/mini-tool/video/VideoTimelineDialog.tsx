@@ -5,7 +5,7 @@ import * as React from 'react';
 import { Timeline, type TimelineState } from '@xzdarcy/react-timeline-editor';
 import { ArrowLeft, ArrowRight, Copy, Film, Pause, Play, Plus, Trash2 } from 'lucide-react';
 import { newId } from '@breatic/shared';
-import { planVideoTimeline, type VideoToolDraftById, type VideoToolTimelineClip, type VideoToolInput } from '@breatic/shared/mini-tools';
+import { planVideoTimelineSeconds, type VideoToolDraftById, type VideoToolTimelineClip, type VideoToolInput } from '@breatic/shared/mini-tools';
 import { Button } from '@web/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
 import { ScrollArea } from '@web/components/ui/scroll-area';
@@ -63,7 +63,7 @@ function TimelineWorkspace(props: VideoTimelineDialogProps): React.JSX.Element {
   const [cancelledGesture, setCancelledGesture] = React.useState(0);
   const timeline = React.useRef<TimelineState>(null);
   const gesture = React.useRef<string | null>(null);
-  const plan = planVideoTimeline(draft.params.clips);
+  const plan = planVideoTimelineSeconds(draft.params.clips);
   const clips = draft.params.clips;
   const clip = clips.find((item) => item.clipId === selected) ?? clips[0];
   const selectedIndex = clips.findIndex((item) => item.clipId === clip?.clipId);

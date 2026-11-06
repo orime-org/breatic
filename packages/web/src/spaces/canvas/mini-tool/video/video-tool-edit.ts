@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { newId } from '@breatic/shared';
-import { planVideoTimeline, type VideoToolDraftById, type VideoToolId, type VideoToolSourceRef, type VideoToolDialogueRow, type VideoToolTimelineClip } from '@breatic/shared/mini-tools';
+import { planVideoTimelineSeconds, type VideoToolDraftById, type VideoToolId, type VideoToolSourceRef, type VideoToolDialogueRow, type VideoToolTimelineClip } from '@breatic/shared/mini-tools';
 
 /**
  * Creates a complete tool draft bound to the current registered source.
@@ -58,7 +58,7 @@ export function editDialogue(rows: readonly VideoToolDialogueRow[], id: string, 
  * @returns The current value derived from these inputs.
  */
 export function trimTimelineClip(clips: readonly VideoToolTimelineClip[], id: string, start: number, end: number): VideoToolTimelineClip[] {
-  return planVideoTimeline(clips).clips.map((clip) => {
+  return planVideoTimelineSeconds(clips).clips.map((clip) => {
     const { start: at, end: until, overlap: _overlap, ...source } = clip;
     return clip.clipId === id ? { ...source, in: source.in + start - at, out: source.out + end - until } : source;
   });
@@ -74,7 +74,7 @@ export function trimTimelineClip(clips: readonly VideoToolTimelineClip[], id: st
  * @returns The current value derived from these inputs.
  */
 export function moveTimelineClip(clips: readonly VideoToolTimelineClip[], id: string, start: number, end: number): VideoToolTimelineClip[] {
-  const plan = planVideoTimeline(clips);
+  const plan = planVideoTimelineSeconds(clips);
   return plan.clips.map((clip, index) => ({ clip: clips[index], position: clip.clipId === id ? (start + end) / 2 : (clip.start + clip.end) / 2, index }))
     .sort((left, right) => left.position - right.position || left.index - right.index).map((entry) => entry.clip);
 }
