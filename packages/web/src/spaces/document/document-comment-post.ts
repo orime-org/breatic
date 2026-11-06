@@ -114,7 +114,9 @@ export async function commentOn(
   };
   const threadRoom = reserveCommentRoom(comments.threadStore, estimateNodeBytes(options), notify);
   if (!threadRoom.ok) return threadRoom;
-  const markRoom = reserveCommentRoom(comments.threadStore, markBytes(view.state.doc, aimed), notify);
+  // The thread's id is not known yet; one of the same length stands in for it.
+  const sized = view.state.schema.marks[COMMENT_MARK]!.create({ threadId: '00000000-0000-0000-0000-000000000000', orphan: false });
+  const markRoom = reserveCommentRoom(comments.threadStore, markBytes(view.state.doc, aimed, sized), notify);
   if (!markRoom.ok) {
     threadRoom.reservation.release();
     return markRoom;

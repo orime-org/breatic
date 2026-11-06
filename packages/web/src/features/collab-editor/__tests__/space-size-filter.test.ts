@@ -427,8 +427,8 @@ describe('size filter on the canvas text node editor', () => {
     const o = open(build);
     size(o, F_FULL);
     const before = snapshot(o);
-    // Delete `world` (empty slice), then insert X at the start.
-    const tr = o.editor.state.tr.delete(7, 12).insertText('X', 1);
+    // Delete `world` (empty slice), then insert more text than it held at the start.
+    const tr = o.editor.state.tr.delete(7, 12).insertText('X'.repeat(20), 1);
     o.editor.view.dispatch(tr);
     expectUnchanged(o, before);
     expectOneWarning(COPY_EN.T_ADD_BLOCKED);

@@ -72,6 +72,7 @@ import { documentTrailingPressExtension } from '@web/spaces/document/document-tr
 import { documentLinkEditMarkExtension } from '@web/spaces/document/document-link-edit-mark';
 import { documentDragDropExtension } from '@web/spaces/document/document-drag-drop';
 import { documentCommentMarkExtension } from '@web/spaces/document/document-comment-mark';
+import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';
 import {
   documentCommentsExtension,
   type DocumentCommentsOptions,
@@ -267,7 +268,7 @@ export function buildDocumentEditor(
 function sizeFilterExtension(fragment: Y.XmlFragment): ExtensionFactoryInstance {
   return createExtension(() => ({
     key: 'space-size-filter',
-    prosemirrorPlugins: [spaceSizeFilterPlugin({ syncKey: ySyncPluginKey, docName: () => docNameOf(fragment.doc) })],
+    prosemirrorPlugins: [spaceSizeFilterPlugin({ syncKey: ySyncPluginKey, docName: () => docNameOf(fragment.doc), derivedMarks: [COMMENT_MARK] })],
   }) as never)();
 }
 

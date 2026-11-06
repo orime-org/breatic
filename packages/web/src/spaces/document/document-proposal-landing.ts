@@ -352,7 +352,12 @@ function landBlocks(handle: Landable, proposal: DocumentProposal, blocks: readon
   const written = proposalBlocks(blocks, doc, blockInTableCell(doc, targetId), proposal.proposalId);
   if (written.length === 0) return null;
   const nodes = Fragment.from(written.map((block) => blockToNode(block as never, doc.type.schema)));
-  const { reservation, refused } = reserveFor(handle, estimateSliceBytes(new Slice(nodes, 0, 0)));
+  // A rewrite takes its block out as it puts the new ones in: only the
+  // difference needs room, and none when it shrinks (the filter then judges
+  // the write an overwrite).
+  const replaced = proposal.kind === 'rewrite' ? blockById(doc, targetId)?.node : undefined;
+  const needed = estimateSliceBytes(new Slice(nodes, 0, 0)) - (replaced === undefined ? 0 : estimateSliceBytes(new Slice(Fragment.from(replaced), 0, 0)));
+  const { reservation, refused } = needed > 0 ? reserveFor(handle, needed) : {};
   if (refused !== undefined) return refused;
   const meta: SpaceWriteMeta = { notify: false, ...(reservation !== undefined && { reservation }) };
   let landing: Transaction | null = null;

@@ -186,6 +186,20 @@ describe('W-82 a document proposal in a full Space', () => {
   });
 });
 
+describe('a rewrite that shortens its block while the Space is full', () => {
+  it('lands, as it takes out more than it puts in', async () => {
+    const { handle } = await open(F_FULL);
+    const id = (handle.editor.document[0] as { id: string }).id;
+    const rewrite: DocumentProposal = { ...insertProposal(), kind: 'rewrite', blockId: id, body: 'Fi', original: 'First', blockType: 'paragraph' };
+
+    const result = await landProposal(handle, rewrite, 'write', ADMITTED);
+
+    expect(result).toMatchObject({ outcome: 'applied' });
+    expect(texts(handle)).toEqual(['Fi']);
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+});
+
 describe('W-82 a document proposal larger than the room left', () => {
   it('lands as no_room carrying the room', async () => {
     const { handle } = await open(F_WARNING_TIGHT);

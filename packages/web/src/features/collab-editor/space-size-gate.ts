@@ -20,12 +20,15 @@
  * y-prosemirror, the canvas editors on y-tiptap, and the two keys are
  * different objects.
  *
- * | step | kind and estimate |
+ * The replace steps of a transaction are weighed together, so a move or a
+ * rewrite counts what it puts in against what it takes out:
+ *
+ * | steps | kind and estimate |
  * |---|---|
- * | `ReplaceStep` whose slice holds no more than the range it replaces | `overwrite` |
- * | `ReplaceAroundStep` whose slice holds no text (the block around kept content changes) | `overwrite` |
- * | any other `ReplaceStep` or `ReplaceAroundStep` with a slice | `add`, `estimateSliceBytes` of the slice |
- * | `AddMarkStep` | `add`, 32 bytes per text node it touches |
+ * | replaces that take out live content and put in no more text and no larger estimate | `overwrite` |
+ * | a `ReplaceAroundStep` whose slice holds no text (the block around kept content changes) | `overwrite` |
+ * | any other replace that puts something in | `add`, the larger of the estimate and the text it adds net |
+ * | `AddMarkStep` | `add`, per text node 32 bytes plus the mark's name and attributes |
  * | `AddNodeMarkStep`, `AttrStep`, any other step | `add`, 32 bytes |
  * | `ReplaceStep` or `ReplaceAroundStep` without a slice, `RemoveMarkStep`, `RemoveNodeMarkStep` | `delete` |
  *
@@ -36,7 +39,7 @@
  */
 
 import type { Command } from '@tiptap/pm/state';
-import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import type { Mark, Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import {
   AddMarkStep,
@@ -94,18 +97,36 @@ export function refusalOf(tr: Transaction): SpaceRefusal | undefined {
 
 /** What a transaction does to its document's size. */
 interface Judged {
-  /** Some step adds. */
+  /** A step adds, or the replaces put in more than they take out. */
   adds: boolean;
-  /** Some step rewrites existing content. */
+  /** The replaces take out live content and put in no more. */
   overwrites: boolean;
   /** Bytes the adds in it can grow the document by. */
   estimate: number;
-  /** UTF-8 bytes of the text its deletes remove. */
+  /** UTF-8 bytes of the text its empty-slice deletes remove. */
   deletedBytes: number;
   /** A delete removes a whole block. */
   removesBlock: boolean;
-  /** A delete joins two blocks, or rewrites what it keeps. */
-  rewrites: boolean;
+  /** A delete joins two blocks, or unwraps what it keeps. */
+  joins: boolean;
+}
+
+/** What the replace steps of one transaction put in and take out, summed. */
+interface ReplaceTotals {
+  /** Estimate of the slices put in. */
+  added: number;
+  /** UTF-8 bytes of the text put in. */
+  addedText: number;
+  /** Estimate of the ranges taken out. */
+  removed: number;
+  /** UTF-8 bytes of the text taken out. */
+  removedText: number;
+  /** Some step takes out live content or changes the block around kept content. */
+  removesLive: boolean;
+  /** Some step puts something in. */
+  puts: boolean;
+  /** Some step changes only the block around kept content. */
+  wraps: boolean;
 }
 
 /**
@@ -145,13 +166,38 @@ function textNodesIn(doc: ProseMirrorNode, from: number, to: number): number {
 }
 
 /**
+ * What one mark costs on each text node it lands on: y-prosemirror writes
+ * its attributes as the format value.
+ * @param mark - The mark.
+ * @returns Bytes.
+ */
+function markCost(mark: Mark): number {
+  return MARK_BYTES + utf8Bytes(mark.type.name) + utf8Bytes(JSON.stringify(mark.attrs));
+}
+
+/**
  * What marking ranges adds, as the filter judges the marks.
  * @param doc - The document.
  * @param ranges - The ranges.
+ * @param mark - The mark.
  * @returns Bytes.
  */
-export function markBytes(doc: ProseMirrorNode, ranges: ReadonlyArray<{ from: number; to: number }>): number {
-  return ranges.reduce((sum, { from, to }) => sum + MARK_BYTES * textNodesIn(doc, from, to), 0);
+export function markBytes(doc: ProseMirrorNode, ranges: ReadonlyArray<{ from: number; to: number }>, mark: Mark): number {
+  return ranges.reduce((sum, { from, to }) => sum + markCost(mark) * textNodesIn(doc, from, to), 0);
+}
+
+/**
+ * Add a range a replace takes out to the totals.
+ * @param doc - The document before the step.
+ * @param from - Start.
+ * @param to - End.
+ * @param totals - The running totals, updated in place.
+ */
+function takeOut(doc: ProseMirrorNode, from: number, to: number, totals: ReplaceTotals): void {
+  if (to <= from) return;
+  totals.removed += estimateSliceBytes(doc.slice(from, to));
+  totals.removedText += utf8Bytes(doc.textBetween(from, to));
+  totals.removesLive = true;
 }
 
 /**
@@ -159,44 +205,77 @@ export function markBytes(doc: ProseMirrorNode, ranges: ReadonlyArray<{ from: nu
  * @param step - The step.
  * @param doc - The document before it.
  * @param judged - The running judgement, updated in place.
+ * @param totals - The running replace totals, updated in place.
  */
-function judgeStep(step: Step, doc: ProseMirrorNode, judged: Judged): void {
+function judgeStep(step: Step, doc: ProseMirrorNode, judged: Judged, totals: ReplaceTotals): void {
   if (step instanceof ReplaceStep || step instanceof ReplaceAroundStep) {
-    if (step.slice.size > 0) {
-      const added = estimateSliceBytes(step.slice);
-      const rewrites = step instanceof ReplaceAroundStep
-        ? step.slice.content.textBetween(0, step.slice.content.size) === ''
-        : step.from < step.to && added <= estimateSliceBytes(doc.slice(step.from, step.to));
-      if (rewrites) {
-        judged.overwrites = true;
-        return;
-      }
-      judged.adds = true;
-      judged.estimate += added;
+    const text = step.slice.content.textBetween(0, step.slice.content.size);
+    if (step instanceof ReplaceAroundStep && step.slice.size > 0 && text === '') {
+      // Only the block around kept content changes; y-prosemirror rewrites
+      // the block, which collab admits like any write deleting live content.
+      totals.removesLive = true;
+      totals.wraps = true;
       return;
     }
+    if (step.slice.size > 0) {
+      totals.added += estimateSliceBytes(step.slice);
+      totals.addedText += utf8Bytes(text);
+      totals.puts = true;
+      if (step instanceof ReplaceAroundStep) {
+        takeOut(doc, step.from, step.gapFrom, totals);
+        takeOut(doc, step.gapTo, step.to, totals);
+      } else {
+        takeOut(doc, step.from, step.to, totals);
+      }
+      return;
+    }
+    takeOut(doc, step.from, step.to, totals);
     const removed = removal(doc, step.from, step.to);
     judged.deletedBytes += removed.bytes;
     judged.removesBlock ||= removed.block;
-    judged.rewrites ||= removed.join || step instanceof ReplaceAroundStep;
+    judged.joins ||= removed.join || step instanceof ReplaceAroundStep;
     return;
   }
   if (step instanceof RemoveMarkStep || step instanceof RemoveNodeMarkStep) return;
   judged.adds = true;
-  judged.estimate += step instanceof AddMarkStep ? MARK_BYTES * textNodesIn(doc, step.from, step.to) : MARK_BYTES;
+  judged.estimate += step instanceof AddMarkStep ? markCost(step.mark) * textNodesIn(doc, step.from, step.to) : MARK_BYTES;
 }
 
 /**
- * Judge a transaction's steps.
+ * Judge a transaction: its marks and attributes step by step, its replaces
+ * together, so a move or a rewrite is weighed by what it puts in against
+ * what it takes out.
  * @param tr - The transaction.
  * @returns What it does to the size.
  */
 function judge(tr: Transaction): Judged & { kind: SpaceWriteKind } {
-  const judged: Judged = { adds: false, overwrites: false, estimate: 0, deletedBytes: 0, removesBlock: false, rewrites: false };
+  const judged: Judged = { adds: false, overwrites: false, estimate: 0, deletedBytes: 0, removesBlock: false, joins: false };
+  const totals: ReplaceTotals = { added: 0, addedText: 0, removed: 0, removedText: 0, removesLive: false, puts: false, wraps: false };
   tr.steps.forEach((step, k) => {
-    judgeStep(step, tr.docs[k]!, judged);
+    judgeStep(step, tr.docs[k]!, judged, totals);
   });
+  if (totals.puts) {
+    if (totals.removesLive && totals.addedText <= totals.removedText && totals.added <= totals.removed) {
+      judged.overwrites = true;
+    } else {
+      judged.adds = true;
+      judged.estimate += Math.max(totals.added - totals.removed, totals.addedText - totals.removedText, 0);
+    }
+  } else if (totals.wraps) {
+    judged.overwrites = true;
+  }
   return { ...judged, kind: judged.adds ? 'add' : judged.overwrites ? 'overwrite' : 'delete' };
+}
+
+/**
+ * Whether a transaction only adds and removes marks of the given types.
+ * @param tr - The transaction.
+ * @param marks - Mark type names.
+ * @returns True when every step is such a mark step.
+ */
+function onlyMarks(tr: Transaction, marks: readonly string[]): boolean {
+  return marks.length > 0 && tr.steps.every((step) =>
+    (step instanceof AddMarkStep || step instanceof RemoveMarkStep) && marks.includes(step.mark.type.name));
 }
 
 /**
@@ -220,6 +299,13 @@ export interface SpaceSizeFilterOptions {
   readonly syncKey: PluginKey;
   /** The Space document's canonical name, or null when it is not a registered document. */
   readonly docName: () => string | null;
+  /**
+   * Marks the editor's own extensions keep in step with other Yjs data (the
+   * comment mark, which BlockNote rewrites from the thread map): a
+   * transaction made only of them, with no {@link SPACE_WRITE_META}, rewrites
+   * existing marks and is judged an overwrite without a toast.
+   */
+  readonly derivedMarks?: readonly string[];
 }
 
 /**
@@ -242,12 +328,13 @@ export function spaceSizeFilterPlugin(options: SpaceSizeFilterOptions): Plugin {
       if (name === null) return true;
       const meta = tr.getMeta(SPACE_WRITE_META) as SpaceWriteMeta | undefined;
       const composing = view?.composing === true || tr.getMeta('composition') !== undefined;
+      const derived = meta === undefined && onlyMarks(tr, options.derivedMarks ?? []);
       // A machine edit (`addToHistory: false`) is not something the reader did.
-      const notify = (meta?.notify ?? true) && !(composing && refusedComposition) && tr.getMeta('addToHistory') !== false;
-      const judged = judge(tr);
+      const notify = (meta?.notify ?? true) && !derived && !(composing && refusedComposition) && tr.getMeta('addToHistory') !== false;
+      const judged = derived ? { ...judge(tr), kind: 'overwrite' as const } : judge(tr);
       let refusal: SpaceRefusal | null = null;
       if (judged.kind === 'delete' && readDocSize(name).overCeiling && !judged.removesBlock
-        && (judged.rewrites || judged.deletedBytes < SPACE_DELETE_MIN_BYTES)) {
+        && (judged.joins || judged.deletedBytes < SPACE_DELETE_MIN_BYTES)) {
         refusal = { ok: false, reason: 'full' };
         if (notify && readDocSize(name).phase !== 'resyncing') toast.warning(t('spaces.size.overCeilingDelete'));
       } else {

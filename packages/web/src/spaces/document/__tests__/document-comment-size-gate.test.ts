@@ -18,6 +18,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import * as Y from 'yjs';
+import type { EditorView } from '@tiptap/pm/view';
+import { documentCommentThreads } from '@breatic/shared';
 import { Awareness } from 'y-protocols/awareness';
 import type * as ProviderModule from '@hocuspocus/provider';
 import type { YjsThreadStore } from '@blocknote/core/yjs';
@@ -240,5 +242,33 @@ describe('posting a comment holds room for the thread and its mark together', ()
     expect(Y.encodeStateAsUpdate(board.doc)).toEqual(before);
     expect(toast.warning).toHaveBeenCalledTimes(1);
     expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(COPY_EN.T_NO_ROOM('1 B'));
+  });
+});
+
+describe('a peer changing a thread while the Space is full', () => {
+  it('syncs the comment mark here without telling this reader the Space is full', async () => {
+    const board = await open(F_WARNING);
+    const view = (board.editor as unknown as { prosemirrorView: EditorView }).prosemirrorView;
+    let at = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (at < 0 && node.isText) at = pos;
+      return at < 0;
+    });
+    const thread = await commentOn(board.editor, body('note'), () => [{ from: at, to: at + 5 }]);
+    const id = (thread as { id: string }).id;
+    pushSize(sizeGateProviders.at(-1)!, F_FULL);
+    vi.mocked(toast.warning).mockClear();
+
+    const peer = new Y.Doc();
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(board.doc));
+    const entry = documentCommentThreads(peer).get(id) as Y.Map<unknown>;
+    peer.transact(() => {
+      entry.set('resolved', true);
+      entry.set('resolvedUpdatedAt', Date.now());
+    });
+    Y.applyUpdate(board.doc, Y.encodeStateAsUpdate(peer, Y.encodeStateVector(board.doc)), 'remote');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(toast.warning).not.toHaveBeenCalled();
   });
 });

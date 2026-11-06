@@ -569,8 +569,8 @@ describe('the document body size filter (y-prosemirror key)', () => {
     const before = snapshot(o);
     const world = posOf(o.view.state.doc, 'world');
     const start = posOf(o.view.state.doc, 'hello');
-    // Delete `world` (empty slice), then insert X at the start of the paragraph.
-    o.view.dispatch(o.view.state.tr.delete(world, world + 5).insertText('X', start));
+    // Delete `world` (empty slice), then insert more text than it held at the start.
+    o.view.dispatch(o.view.state.tr.delete(world, world + 5).insertText('X'.repeat(20), start));
     expectUnchanged(o, before);
     expectOneWarning(COPY_EN.T_ADD_BLOCKED);
   });
@@ -701,6 +701,60 @@ describe('the document body size filter (y-prosemirror key)', () => {
         f(o.view, new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true })));
       expectUnchanged(o, before);
       expectOneWarning(COPY_EN.T_OVERWRITE_BLOCKED);
+    });
+
+    it('(f) moving a paragraph down while full goes through', () => {
+      const o = open([
+        { type: 'paragraph', content: 'one' },
+        { type: 'paragraph', content: 'two' },
+        { type: 'paragraph', content: 'three' },
+      ]);
+      size(o, F_FULL);
+      select(o, posOf(o.view.state.doc, 'one'));
+      o.view.someProp('handleKeyDown', (f) =>
+        f(o.view, new KeyboardEvent('keydown', { key: 'ArrowDown', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true })));
+      expect(o.view.state.doc.textContent).toBe('twoonethree');
+      expectNoToast();
+    });
+
+    it('(g) replacing a block with a shorter one while full goes through', () => {
+      const o = open([{ type: 'paragraph', content: 'a long paragraph that gets shorter' }]);
+      size(o, F_FULL);
+      const id = (o.editor.document[0] as { id: string }).id;
+      o.editor.replaceBlocks([id], [{ type: 'paragraph', content: 'short' }] as never);
+      expect(o.view.state.doc.textContent).toBe('short');
+      expectNoToast();
+    });
+
+    it('(h) while full, pasting text over a paragraph break is blocked as an add', () => {
+      const o = open([{ type: 'paragraph', content: 'ab' }, { type: 'paragraph', content: 'cd' }]);
+      size(o, F_FULL);
+      select(o, posOf(o.view.state.doc, 'ab', 2), posOf(o.view.state.doc, 'cd'));
+      const before = snapshot(o);
+      pastePlain(o, 'x'.repeat(400));
+      expectUnchanged(o, before);
+      expectOneWarning(COPY_EN.T_ADD_BLOCKED);
+    });
+
+    it('(i) in warning, text pasted over a paragraph break counts against the room', () => {
+      const o = open([{ type: 'paragraph', content: 'ab' }, { type: 'paragraph', content: 'cd' }]);
+      size(o, { ...F_WARNING, room: 100 });
+      select(o, posOf(o.view.state.doc, 'ab', 2), posOf(o.view.state.doc, 'cd'));
+      const before = snapshot(o);
+      pastePlain(o, 'x'.repeat(400));
+      expectUnchanged(o, before);
+      expectOneWarning(COPY_EN.T_NO_ROOM(formatBytes(100)));
+    });
+
+    it('(j) a link with a long address costs its attributes against the room', () => {
+      const o = open();
+      size(o, { ...F_WARNING, room: 200 });
+      const from = posOf(o.view.state.doc, 'hello');
+      const before = snapshot(o);
+      const link = o.view.state.schema.marks['link']!.create({ href: `https://example.com/${'p'.repeat(400)}` });
+      o.view.dispatch(o.view.state.tr.addMark(from, from + 5, link));
+      expectUnchanged(o, before);
+      expectOneWarning(COPY_EN.T_NO_ROOM(formatBytes(200)));
     });
 
     it('(e) while full, replacing a selection with more than it holds is blocked as an add', () => {
