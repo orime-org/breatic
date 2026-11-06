@@ -666,8 +666,10 @@ export function useNodeCreation(
           }
         });
       } catch (error) {
-        // The rollback takes back this client's own writes of this tick, so
-        // the document ends no larger than before them: it is never refused.
+        // The rollback takes back this client's own writes of this tick: it
+        // removes live content and brings back no more than the batch
+        // replaced, so it runs as a delete, which collab admits up to the
+        // hard ceiling.
         writeSpaceDoc(docName.canvasSpace(projectId, spaceId), { kind: 'delete' }, () => {
           rollback.undo();
         });

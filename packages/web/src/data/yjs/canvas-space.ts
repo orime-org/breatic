@@ -1907,8 +1907,9 @@ export function isNodeLocked(
  * @param content - The extracted text.
  * @param notify - Toast a refusal (default true); false where the node's own
  *   upload mark says it.
- * @returns Whether the size cap let it in (counted as its UTF-8 bytes); a node
- *   already gone counts as written, there being nowhere left to put it.
+ * @returns Whether the size cap let it in (estimated a block per line, see
+ *   `estimateTextBodyBytes`); a node already gone counts as written, there
+ *   being nowhere left to put it.
  */
 export function setNodeExtractedText(
   projectId: string,
