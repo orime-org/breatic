@@ -99,8 +99,12 @@ export type MiniToolPlanRecipe =
   | MiniToolPlanLipsyncStem
   | MiniToolPlanLipsyncComposite;
 
-/** Chunks joined by stream copy, the source's interval audio encoded once (§5.4). */
-export interface MiniToolPlanStitch { kind: "stitch"; inputId: string; chunks: { inputId: string; duration: MiniToolPlanExact }[]; audio: MiniToolPlanAudio | null; target: MiniToolPlanTarget }
+/** Every person's stem summed sample by sample over the result, from its start (§7.17 stitch row for lip-sync, §97 D22-3). */
+export interface MiniToolPlanStemMix { kind: "mix"; inputs: string[] }
+/** Chunks joined by stream copy, the source's interval audio or the lip-sync stems' sum encoded once (§5.4). */
+export interface MiniToolPlanStitch {
+  kind: "stitch"; inputId: string; chunks: { inputId: string; duration: MiniToolPlanExact }[]; audio: MiniToolPlanAudio | MiniToolPlanStemMix | null; target: MiniToolPlanTarget;
+}
 /** The one output profile both clips of a transition are encoded to (frames-split §7.17, §97 D15-5). */
 export interface MiniToolPlanTransitionProfile {
   width: number; height: number; fps: MiniToolPlanExact; timeBase: MiniToolPlanExact; pixFmt: "yuv420p" | "yuva420p";
@@ -158,7 +162,8 @@ export type MiniToolPlanLipsyncComposite = {
  */
 export function miniToolPlanRecipeInputs(recipe: MiniToolPlanRecipe): string[] {
   switch (recipe.kind) {
-    case "stitch": return [...("clips" in recipe ? recipe.clips.map((clip) => clip.inputId) : [recipe.inputId]), ...recipe.chunks.map((chunk) => chunk.inputId)];
+    case "stitch": return [...("clips" in recipe ? recipe.clips.map((clip) => clip.inputId) : [recipe.inputId, ...(recipe.audio !== null && "kind" in recipe.audio ? recipe.audio.inputs : [])]),
+      ...recipe.chunks.map((chunk) => chunk.inputId)];
     case "transition_window": return recipe.clips.map((clip) => clip.inputId);
     case "model_composite": return [recipe.inputId, ...(recipe.mode === "erase" ? [recipe.result] : recipe.backgrounds.map((background) => background.inputId))];
     case "lipsync_faces": return [recipe.inputId, recipe.track];

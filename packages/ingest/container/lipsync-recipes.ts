@@ -406,7 +406,7 @@ async function writeStem(recipe: MiniToolPlanLipsyncStem, request: LipsyncRecipe
   });
   const rows = recipe.rows.map((_row, at) => `[r${at}]`).join("");
   graph.push(`${rows}${recipe.rows.length === 1 ? "anull" : `amix=inputs=${recipe.rows.length}:normalize=0:duration=longest`},apad=whole_len=${samples},atrim=end_sample=${samples}[a]`);
-  await runPlanCommand("ffmpeg", [...args, "-filter_complex", graph.join(";"), "-map", "[a]", "-vn", "-c:a", "aac", "-ar", "48000", "-movflags", "+faststart", "-f", "mp4", request.output], run);
+  await runPlanCommand("ffmpeg", [...args, "-filter_complex", graph.join(";"), "-map", "[a]", "-vn", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart", "-f", "mp4", request.output], run);
 }
 
 /** One person of a composite chunk, read. */

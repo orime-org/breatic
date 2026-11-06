@@ -102,6 +102,8 @@ const transitionProfile = z.strictObject({
   .refine((value) => value.codec === "vp9" || (value.width % 2 === 0 && value.height % 2 === 0), "An H.264 output has even sides")
   .refine((value) => BigInt(value.fps.numerator) * BigInt(value.timeBase.numerator) === BigInt(value.fps.denominator) * BigInt(value.timeBase.denominator), "The time base is 1/fps");
 const chunkRef = z.strictObject({ inputId, duration: positiveTime });
+// The lip-sync stitch's audio: every person's stem summed (§97 D22-3).
+const stemMix = z.strictObject({ kind: z.literal("mix"), inputs: z.array(inputId).min(1) });
 // The frozen lip-sync timeline (§97 D12-4) and the prepared video's presentation table every lip-sync step maps through.
 const positiveSeconds = z.number().finite().positive();
 const lipsyncTimeline = z.strictObject({ duration: positiveSeconds, videoDuration: positiveSeconds, syncMode: z.enum(VIDEO_TOOL_SYNC_MODES) });
@@ -140,7 +142,7 @@ const recipeUnion = z.discriminatedUnion("kind", [
   // One object holds both forms so the union keeps one option per kind; the refinement admits exactly one of them.
   z.strictObject({
     kind: z.literal("stitch"), chunks: z.array(chunkRef).min(1),
-    inputId: inputId.optional(), audio: audio.nullable().optional(), target: target.optional(),
+    inputId: inputId.optional(), audio: z.union([audio, stemMix]).nullable().optional(), target: target.optional(),
     clips: z.tuple([z.strictObject({ inputId, audio: audio.nullable() }), z.strictObject({ inputId, audio: audio.nullable() })]).optional(),
     crossfade: windowRef.nullable().optional(), profile: transitionProfile.optional(),
   }).superRefine((recipe, ctx) => {
@@ -149,7 +151,7 @@ const recipeUnion = z.discriminatedUnion("kind", [
     const singleKeys = recipe.inputId !== undefined || Object.hasOwn(recipe, "audio") || recipe.target !== undefined;
     const transitionKeys = recipe.clips !== undefined || Object.hasOwn(recipe, "crossfade") || recipe.profile !== undefined;
     if (!((single && !transitionKeys) || (transition && !singleKeys))) ctx.addIssue({ code: "custom", message: "A stitch is single-source or a transition, completely" });
-    const sources = [recipe.inputId, ...(recipe.clips ?? []).map((clip) => clip.inputId)];
+    const sources = [recipe.inputId, ...(recipe.clips ?? []).map((clip) => clip.inputId), ...(recipe.audio != null && "kind" in recipe.audio ? recipe.audio.inputs : [])];
     if (recipe.chunks.some((chunk) => sources.includes(chunk.inputId))) ctx.addIssue({ code: "custom", path: ["chunks"], message: "A chunk is never a source input" });
   }),
   // A model's input over its presentation window (§5.3), written as an intermediate object.

@@ -276,7 +276,8 @@ function earlier(left: [bigint, bigint], right: [bigint, bigint]): [bigint, bigi
   return before(left, right) ? left : right;
 }
 
-const AAC = ["-map", "[a]", "-c:a", "aac", "-ar", "48000"];
+// The audio of every user-facing video output, at the bitrate the audio mini-tools write (src/jobs/op-args.ts AUDIO_OUT).
+const AAC = ["-map", "[a]", "-c:a", "aac", "-b:a", "192k", "-ar", "48000"];
 
 /** What the recipes need to know of a source before reading it. */
 interface SourceFacts { iso: boolean; audio: boolean }
@@ -501,6 +502,22 @@ async function sameCodecHeaders(chunks: readonly string[], run: Run): Promise<vo
 }
 
 /**
+ * The lip-sync result's audio (§7.17 stitch row, §97 D22-3): every person's stem from 0, summed sample by sample without
+ * normalising, padded or cut to the chunks' length.
+ * @param stems - The downloaded stems.
+ * @param chunks - The stitch's chunks, whose durations add up to the result.
+ * @returns The input arguments (each stem opened after the concat input) and the chain ending at `[a]`.
+ * @throws {RangeError} When a duration is malformed.
+ */
+function stemMix(stems: readonly string[], chunks: readonly { duration: MiniToolPlanExact }[]): { args: string[]; graph: string } {
+  const samples = roundTimes(chunks.reduce<[bigint, bigint]>((sum, chunk) => plus(sum, rational(chunk.duration)), [0n, 1n]), 48000n);
+  const labels = stems.map((_stem, at) => `[s${at}]`);
+  const heads = stems.map((_stem, at) => `[${at + 1}:a:0]aresample=48000,asetpts=PTS-STARTPTS${labels[at]}`);
+  const mix = stems.length === 1 ? "anull" : `amix=inputs=${stems.length}:normalize=0:duration=longest`;
+  return { args: stems.flatMap((stem) => ["-i", stem]), graph: [...heads, `${labels.join("")}${mix},apad=whole_len=${samples},atrim=end_sample=${samples}[a]`].join(";") };
+}
+
+/**
  * Join the chunks by stream copy (§5.4 stitching): each chunk is placed for its plan duration, and the source's interval audio,
  * when the recipe names one, is encoded once as AAC at 48 kHz.
  * @param recipe - The stitch recipe.
@@ -518,8 +535,13 @@ async function stitch(recipe: MiniToolPlanStitch, files: ReadonlyMap<string, str
   await writeFile(list, recipe.chunks.map((chunk) => `file '${local(files, chunk.inputId)}'\nduration ${seconds(rational(chunk.duration))}\n`).join(""));
   const args = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file", "-copyts", "-f", "concat", "-safe", "0", "-i", list];
   const source = local(files, recipe.inputId);
-  const audio = recipe.audio !== null && (await sourceFacts(source, run)).audio ? audioOf(1, recipe.audio) : null;
-  if (audio !== null) args.push(...audio.args, source, "-filter_complex", audio.graph);
+  let audio: { args: string[]; graph: string } | null = null;
+  if (recipe.audio !== null && "kind" in recipe.audio) audio = stemMix(recipe.audio.inputs.map((id) => local(files, id)), recipe.chunks);
+  else if (recipe.audio !== null && (await sourceFacts(source, run)).audio) {
+    const interval = audioOf(1, recipe.audio);
+    audio = interval === null ? null : { args: [...interval.args, source], graph: interval.graph };
+  }
+  if (audio !== null) args.push(...audio.args, "-filter_complex", audio.graph);
   const webm = recipe.target.format === "webm-vp9";
   args.push("-map", "0:v:0", "-c:v", "copy", ...(audio === null ? ["-an"] : audioOutput(recipe.target)), ...(webm ? ["-f", "webm"] : ["-movflags", "+faststart", "-f", "mp4"]), output);
   await runPlanCommand("ffmpeg", args, run);
