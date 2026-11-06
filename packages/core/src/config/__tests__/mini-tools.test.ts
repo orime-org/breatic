@@ -106,3 +106,28 @@ describe("getMiniToolsConfig", () => {
     expect(miniToolsConfigSchema.safeParse(config).success).toBe(false);
   });
 });
+
+// inner#1306 §97 D26-2 (frames-split §5.4 待实测 row): the GL render pixel rate of a transition window chunk is configured
+// under the MiniToolContainerGl class as `render_pixels_per_second`; the class schema keeps it and refuses a non-positive one.
+describe("the GL class's render rate (§97 D26-2)", () => {
+  /**
+   * The configured snapshot with the GL class carrying a render rate.
+   * @param rate - The rate.
+   * @returns The config.
+   */
+  const withRate = (rate: number): Record<string, unknown> & { classes: Record<string, Record<string, unknown>> } => {
+    const config = structuredClone(getMiniToolsConfig()) as unknown as Record<string, unknown> & { classes: Record<string, Record<string, unknown>> };
+    config.classes.MiniToolContainerGl = { instance_type: "standard-4", vcpu: 4, memory_gib: 12, disk_gb: 20, render_pixels_per_second: rate };
+    return config;
+  };
+
+  it("GR01 keeps a configured render_pixels_per_second on MiniToolContainerGl", () => {
+    const parsed = miniToolsConfigSchema.parse(withRate(123456)) as unknown as { classes: Record<string, Record<string, unknown>> };
+    expect(parsed.classes.MiniToolContainerGl).toMatchObject({ instance_type: "standard-4", render_pixels_per_second: 123456 });
+  });
+
+  it.each([0, -1])("GR02 refuses a render_pixels_per_second of %s after a valid control", (rate) => {
+    expect(miniToolsConfigSchema.safeParse(withRate(123456)).success).toBe(true);
+    expect(miniToolsConfigSchema.safeParse(withRate(rate)).success).toBe(false);
+  });
+});
