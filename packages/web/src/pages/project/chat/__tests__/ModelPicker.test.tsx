@@ -145,7 +145,7 @@ describe('the model picker', () => {
     const saved = { id: OPUS.id, name: 'Claude Opus 5.5 (saved)' };
     save(saved);
 
-    await waitFor(() => expect(trigger()).toHaveTextContent('Claude Opus 5.5'));
+    await waitFor(() => expect(trigger()).toHaveTextContent(/^Claude Opus 5\.5$/));
     expect(trigger()).not.toHaveAttribute('aria-busy');
     expect(useConversationRuntime.getState().conversations['c-1']?.agentModel).toEqual(saved);
   });
