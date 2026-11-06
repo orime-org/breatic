@@ -156,6 +156,18 @@ async function post(f: Fixture, body: Body = f.body): Promise<Response> {
   return app.request("/api/v1/mini-tools", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": randomUUID(), Cookie: `${core.sessionCookieName()}=${token}` }, body: JSON.stringify(body) });
 }
 
+/**
+ * Ask the server for the quote of a body (§97 D26-1): the same JSON as an admission, no side effect.
+ * @param f - The fixture whose user asks.
+ * @param body - The body.
+ * @returns The response.
+ * @throws {Error} On session storage or client failure.
+ */
+async function quote(f: Fixture, body: Body = f.body): Promise<Response> {
+  const token = randomBytes(24).toString("hex"); tokens.push(token); await core.setSession(core.getRedis(), token, f.userId);
+  return app.request("/api/v1/mini-tools/quote", { method: "POST", headers: { "Content-Type": "application/json", Cookie: `${core.sessionCookieName()}=${token}` }, body: JSON.stringify(body) });
+}
+
 /** Require a real admission. @throws {Error} On assertion failure. */
 async function accept(f: Fixture, body: Body = f.body): Promise<void> {
   const response = await post(f, body);
@@ -286,5 +298,24 @@ describe("the transitions quote decodes each clip at its own size (§97; frames-
     expect(perClip).toBeGreaterThan(precheck);
     expect(credits(largest)).not.toBe(credits(perClip));
     expect(plan.credits).toBe(credits(perClip));
+  });
+});
+
+// inner#1306 §97 D26-1: the panel's quote is the server's own admission computation, run without side effects, at
+// `POST /api/v1/mini-tools/quote` with the admission's JSON body, answering 200 `{ data: { credits } }`.
+describe("the transitions quote is the admission's own computation (§97 D26-1)", () => {
+  it("TQ10 quotes the fade draft without writing anything, and admitting the same body freezes exactly the quoted credits", async () => {
+    const f = await seed();
+    const response = await quote(f);
+    const text = await response.text();
+    expect({ status: response.status, text }).toEqual({ status: 200, text: expect.any(String) });
+    const answer = JSON.parse(text) as { data: { credits: number } };
+    expect(answer).toEqual({ data: { credits: expect.any(Number) } });
+    expect(answer.data.credits).toBeGreaterThan(0);
+    expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
+    const [pins] = await pg<{ count: number }[]>`SELECT count(*)::int AS count FROM presentation_pins WHERE holder_id=${f.body.run_id}`;
+    expect(pins!.count).toBe(0);
+    await accept(f);
+    expect((await frozen(f.body.run_id)).credits).toBe(answer.data.credits);
   });
 });
