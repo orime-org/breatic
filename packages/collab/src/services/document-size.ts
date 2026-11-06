@@ -363,7 +363,10 @@ function skeletonVerdict(update: Uint8Array, structs: Struct[], ds: DeleteSet, s
     if (store.pendingStructs) Y.applyUpdateV2(skeleton, store.pendingStructs.update);
     if (store.pendingDs) Y.applyUpdateV2(skeleton, store.pendingDs);
     const before = pendingUnits(skeleton.store);
-    Y.applyUpdate(skeleton, update);
+    // What the skeleton's clocks already cover is known content, which can
+    // neither pend nor fill a gap; one GC stands for it, which yjs cannot
+    // integrate an overlapping struct against, so it is cut first.
+    Y.applyUpdate(skeleton, Y.diffUpdate(update, Y.encodeStateVector(skeleton)));
     const after = pendingUnits(skeleton.store);
     return {
       wouldPend: holdsMore(after.structs, before.structs) || holdsMore(after.deletes, before.deletes),
@@ -560,9 +563,13 @@ export function analyze(update: Uint8Array, document: Y.Doc): UpdateAnalysis {
   // finds it deleted already (its event is the struct's `C`).
   const replaced = new Set<Y.Item>();
   const deletedTypes = new Set<SharedType>();
+  // yjs cleans a whole text's formatting when a format item is inserted or
+  // deleted, and otherwise only the gap of formats around each deleted item
+  // (`cleanupYTextAfterTransaction`).
   const formatTexts = new Set<Y.Text>();
+  const gapItems: Y.Item[] = [];
   /**
-   * Note a text whose formatting yjs may clean up after the update.
+   * Note a text whose whole formatting yjs may clean up after the update.
    * @param parent - The type an affected item sits in.
    */
   const noteText = (parent: unknown): void => {
@@ -602,7 +609,8 @@ export function analyze(update: Uint8Array, document: Y.Doc): UpdateAnalysis {
           if (s.id.clock + s.length > end) liveEndpoints++;
           freedBytes += freedBy(s, from - s.id.clock, to - from);
           if (s.content instanceof Y.ContentType) deletedTypes.add(s.content.type);
-          noteText(s.parent);
+          if (s.content instanceof Y.ContentFormat) noteText(s.parent);
+          else if (s.parent instanceof Y.Text && s.parent._hasFormatting) gapItems.push(s);
         }
       }
       const pieces = own.get(client) ?? [];
@@ -647,6 +655,25 @@ export function analyze(update: Uint8Array, document: Y.Doc): UpdateAnalysis {
   let formatItems = 0;
   for (const text of formatTexts) {
     for (let it = text._start; it; it = it.right) if (!it.deleted && it.content instanceof Y.ContentFormat) formatItems++;
+  }
+  /**
+   * Whether an item is deleted once the update is applied.
+   * @param item - A document item.
+   * @returns True when it is.
+   */
+  const goneAfter = (item: Y.Item): boolean => item.deleted || coveredByUpdate(item);
+  // Walked as `cleanupContextlessFormattingGap` walks: right past deleted and
+  // uncounted items, then left back to live content. Each gap is walked once.
+  const gapWalked = new Set<Y.Item>();
+  for (const deleted of gapItems) {
+    if (gapWalked.has(deleted) || formatTexts.has(deleted.parent as Y.Text)) continue;
+    let it: Y.Item | null = deleted;
+    while (it.right && (goneAfter(it.right) || !it.right.countable)) it = it.right;
+    while (it && !gapWalked.has(it) && (goneAfter(it) || !it.countable)) {
+      gapWalked.add(it);
+      if (!goneAfter(it) && it.content instanceof Y.ContentFormat) formatItems++;
+      it = it.left;
+    }
   }
 
   const skeletonBuilt = mayPend(structs, ds, store, reached);

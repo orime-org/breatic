@@ -57,7 +57,12 @@ export function createDocumentSizeGate(): (data: beforeSyncPayload<AuthContext>)
     at = now;
   };
 
-  return async (data): Promise<void> => {
+  /**
+   * Admit or refuse one message.
+   * @param data - The `beforeSync` payload.
+   * @throws {Error} A refusal, carrying the size-limit close reason.
+   */
+  const decide = async (data: beforeSyncPayload<AuthContext>): Promise<void> => {
     const { documentName, document, connection, type, payload } = data;
     if (type === messageYjsSyncStep1 || connection.readOnly) return;
     const record = readDocSizeRecord(documentName);
@@ -140,5 +145,16 @@ export function createDocumentSizeGate(): (data: beforeSyncPayload<AuthContext>)
       return;
     }
     refuse("trial", after);
+  };
+
+  return async (data): Promise<void> => {
+    try {
+      await decide(data);
+    } catch (err) {
+      if ((err as { reason?: unknown }).reason !== COLLAB_DOCUMENT_TOO_LARGE_REASON) {
+        logger.error({ err, ctx: { documentName: data.documentName, userId: userIdOf(data) } }, "document_size_gate_failed");
+      }
+      throw err;
+    }
   };
 }

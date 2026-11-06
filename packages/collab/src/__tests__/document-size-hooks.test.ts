@@ -60,7 +60,7 @@ import {
 import { authFrame, SYNC, syncFrame, WIRE } from "./helpers/live-hocuspocus.js";
 import { craft } from "../services/__tests__/helpers/doc-size-ref.js";
 
-const { serverSpy, logger, rateLimit, rateRedis, collabRedis, overrides, trial, activity, analysis, S_CONFIG } = vi.hoisted(() => ({
+const { serverSpy, logger, rateLimit, rateRedis, collabRedis, overrides, trial, activity, analysis, failure, S_CONFIG } = vi.hoisted(() => ({
   // Spec 0.2 S configuration.
   S_CONFIG: {
     max_document_bytes: 1_048_576,
@@ -87,6 +87,8 @@ const { serverSpy, logger, rateLimit, rateRedis, collabRedis, overrides, trial, 
   // How long the next skeleton built inside `analyze` takes on the faked
   // clock: spent on the first transaction of a plain Y.Doc while armed.
   analysis: { ms: 0 },
+  // Throw from the next transaction of a plain Y.Doc (a skeleton or a trial copy).
+  failure: { armed: false },
 }));
 
 vi.mock("@hocuspocus/server", async (importOriginal) => ({
@@ -463,10 +465,15 @@ beforeEach(() => {
   trial.pending = undefined;
   activity.hold = undefined;
   analysis.ms = 0;
+  failure.armed = false;
   rateLimit.mockReset().mockImplementation(allowed);
   const proto = Y.Doc.prototype as unknown as { emit: (name: string, args: unknown[]) => void };
   const realEmit = proto.emit;
   emitSpy = vi.spyOn(proto, "emit").mockImplementation(function (this: Y.Doc, name: string, args: unknown[]): void {
+    if (failure.armed && name === "afterTransaction" && !(this instanceof Document)) {
+      failure.armed = false;
+      throw new Error("injected gate failure");
+    }
     if (analysis.ms > 0 && name === "afterTransaction" && !(this instanceof Document)) {
       const ms = analysis.ms;
       analysis.ms = 0;
@@ -1262,6 +1269,23 @@ describe("beforeSync: the token bucket under concurrent messages", () => {
     // Balance min(200, 200) - 1500 = -1300.
     needTrial();
     await refuse(doc, c, SYNC.update, appendUpdate(doc, 100), { step: "budget_process" });
+  });
+
+  it("logs an unexpected failure with its context and lets it close the connection", async () => {
+    await boot();
+    const doc = await load(NAME, helloDoc());
+    const c = conn(doc);
+    needTrial();
+    handshake(c.socketId, doc.name);
+    const update = appendUpdate(doc, 100);
+    failure.armed = true;
+    const err = await beforeSync(doc, c, SYNC.update, update).then(() => undefined, (e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as { reason?: unknown }).reason).toBeUndefined();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ err, ctx: { documentName: doc.name, userId: c.context.user.id } }),
+      "document_size_gate_failed",
+    );
   });
 
   it("refuses an update listing one client in two groups before any bound or trial", async () => {

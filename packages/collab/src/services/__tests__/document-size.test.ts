@@ -490,6 +490,44 @@ describe("analyze: pending content (C-46 to C-50)", () => {
   });
 });
 
+describe("analyze: what yjs really does", () => {
+  it("decides an update overlapping the document's clock while stored pending content waits", () => {
+    const alice = new Y.Doc();
+    alice.clientID = 1;
+    const bob = new Y.Doc();
+    bob.clientID = 2;
+    const first = capture(alice, () => alice.getText("t").insert(0, "abc"));
+    const second = capture(alice, () => alice.getText("t").insert(3, "de"));
+    Y.applyUpdate(bob, first);
+    Y.applyUpdate(bob, second);
+    const pends = capture(bob, () => bob.getText("t").insert(5, "!"));
+    const server = new Y.Doc();
+    Y.applyUpdate(server, first);
+    Y.applyUpdate(server, pends);
+    expect(server.store.pendingStructs).not.toBeNull();
+    // Alice answers a state vector older than what the server holds.
+    const stale = Y.encodeStateAsUpdate(alice, Y.encodeStateVector(new Y.Doc()));
+    const a = analyze(stale, server);
+    expect(a.wouldPend).toBe(refTruth(server, stale));
+    expect(a.integratesStored).toBe(refStoredReduced(server, stale) > 0);
+  });
+
+  it("counts the format items beside a deleted character, not every one in the text", () => {
+    const server = new Y.Doc();
+    const text = server.getText("t");
+    server.transact(() => {
+      for (let i = 0; i < 2000; i++) text.insert(text.length, "ab", i % 2 ? { bold: true } : { italic: true });
+    });
+    const client = syncedClient(server, 9);
+    const sv = Y.encodeStateVector(client);
+    client.getText("t").delete(10, 1);
+    const update = Y.encodeStateAsUpdate(client, sv);
+    const a = analyze(update, server);
+    expect(a.formatItems).toBeLessThan(10);
+    expect(refDelta(server, update)).toBeLessThanOrEqual(a.growthBound);
+  });
+});
+
 describe("analyze: update shape", () => {
   /**
    * A server text "hello" and a 20-char insertion written by client 50, as
