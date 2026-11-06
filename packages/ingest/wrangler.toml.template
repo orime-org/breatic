@@ -113,6 +113,16 @@ instance_type = "standard-4"
 max_instances = <how many standard-4 tool runs may run at once; start at 2>
 image_vars = { DEV_COPY = "<the same name as in the MediaContainer block>" }
 
+# A transition's overlap windows render in their own image, built on the
+# standard-4 image (`BASE_IMAGE` names it as built from ./Dockerfile).
+[[containers]]
+class_name = "MiniToolContainerGl"
+image = "./Dockerfile.gl"
+image_build_context = "../.."
+instance_type = "standard-4"
+max_instances = <how many transition window runs may run at once; start at 2>
+image_vars = { DEV_COPY = "<the same name as in the MediaContainer block>", BASE_IMAGE = "<the standard-4 image's tag>" }
+
 [[durable_objects.bindings]]
 name = "MINI_TOOL_STD1"
 class_name = "MiniToolContainerStd1"
@@ -121,11 +131,19 @@ class_name = "MiniToolContainerStd1"
 name = "MINI_TOOL_STD4"
 class_name = "MiniToolContainerStd4"
 
+[[durable_objects.bindings]]
+name = "MINI_TOOL_GL"
+class_name = "MiniToolContainerGl"
+
 [exports.MiniToolContainerStd1]
 type = "durable-object"
 storage = "sqlite"
 
 [exports.MiniToolContainerStd4]
+type = "durable-object"
+storage = "sqlite"
+
+[exports.MiniToolContainerGl]
 type = "durable-object"
 storage = "sqlite"
 
@@ -264,6 +282,14 @@ image_build_context = "../.."
 instance_type = "standard-4"
 max_instances = <how many standard-4 tool runs may run at once>
 
+[[env.production.containers]]
+class_name = "MiniToolContainerGl"
+image = "./Dockerfile.gl"
+image_build_context = "../.."
+instance_type = "standard-4"
+max_instances = <how many transition window runs may run at once>
+image_vars = { BASE_IMAGE = "<the standard-4 image's tag>" }
+
 [[env.production.durable_objects.bindings]]
 name = "MINI_TOOL_STD1"
 class_name = "MiniToolContainerStd1"
@@ -272,11 +298,19 @@ class_name = "MiniToolContainerStd1"
 name = "MINI_TOOL_STD4"
 class_name = "MiniToolContainerStd4"
 
+[[env.production.durable_objects.bindings]]
+name = "MINI_TOOL_GL"
+class_name = "MiniToolContainerGl"
+
 [env.production.exports.MiniToolContainerStd1]
 type = "durable-object"
 storage = "sqlite"
 
 [env.production.exports.MiniToolContainerStd4]
+type = "durable-object"
+storage = "sqlite"
+
+[env.production.exports.MiniToolContainerGl]
 type = "durable-object"
 storage = "sqlite"
 
