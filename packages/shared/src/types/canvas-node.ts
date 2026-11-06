@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Canvas node types shared between frontend, Collab, and server.
@@ -309,10 +309,11 @@ export interface CanvasNodeFields {
     /**
      * The generation template node this node was placed as (inner#1345):
      * the template, its key, and on the guide text node the id of the anchor
-     * it explains. Content: a copy carries it, with the anchor id rewritten
+     * it explains. An input node the template placed carries its input's key
+     * with `input`, and the id of the anchor of the instance it was placed for. Content: a copy carries it, with the anchor id rewritten
      * when the anchor is copied along.
      */
-    templateNode?: { template: string; key: string; anchor?: string };
+    templateNode?: { template: string; key: string; anchor?: string; input?: true };
 
     // ─── Data node fields ───────────────────────────────────
     /**

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { GenerationTemplate } from "@shared/canvas/generation-templates.js";
 
@@ -21,7 +21,7 @@ export const CHARACTER_SHOWCASE_ORBIT: GenerationTemplate = {
   inputs: [{ key: "reference", type: "image" }],
   steps: [],
   agentNote:
-    "a 6-second video in which the camera circles the reference character from the front round to the back while they stand still, at one height and distance, to show the whole look",
+    "a 6-second video in which the camera circles the reference character from the front round to the back while they stand still, at one height and distance, to show the whole look; when the reader comes back with the result, check that it shows different sides of the character, not the character turning round",
   goal: "character",
   triggers: {
     asks: ["show off my character's look", "spin around the character", "a turnaround video"],

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Text inserted from a popover lands where the reader left the
@@ -24,6 +24,7 @@ interface DrivenEditor {
     setTextSelection: (at: number) => void;
   };
   isFocused: boolean;
+  state: { selection: { from: number } };
 }
 
 /**
@@ -140,5 +141,32 @@ describe('PromptEditorHandle.insertText', () => {
     const { handle, reported } = await mount('');
     act(() => handle.current?.insertText('[Static shot]'));
     await waitFor(() => expect(reported()).toBe('[Static shot]'));
+  });
+});
+
+describe('PromptEditorHandle.focus', () => {
+  it('puts the caret at the end of a prompt the reader never put a caret in', async () => {
+    const { handle, editor } = await mount('a red car');
+    act(() => editor.commands.setTextSelection(1));
+    act(() => handle.current?.focus());
+    // "a red car" is 9 characters after the paragraph opens at 1.
+    await waitFor(() => expect(editor.state.selection.from).toBe(10));
+  });
+
+  it('keeps the end as where a later insert lands, once focused from code', async () => {
+    const { handle, editor, reported } = await mount('a red car');
+    act(() => editor.commands.setTextSelection(1));
+    act(() => handle.current?.focus());
+    await waitFor(() => expect(editor.state.selection.from).toBe(10));
+    act(() => handle.current?.insertText('[Pan left]'));
+    await waitFor(() => expect(reported()).toBe('a red car [Pan left]'));
+  });
+
+  it('goes back to the caret the reader left', async () => {
+    const { handle, editor } = await mount('a red car');
+    placeCaret(editor, 6);
+    fireEvent.blur(document.querySelector('.ProseMirror') as HTMLElement);
+    act(() => handle.current?.focus());
+    await waitFor(() => expect(editor.state.selection.from).toBe(6));
   });
 });

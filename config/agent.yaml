@@ -118,13 +118,19 @@ space_request_max_node_ids: 100
 space_read_timeout_ms: 20000
 
 # What one consolidation leaves behind, in tokens. A fold runs only when the
-# provider's last reported count (input + output) leaves no room under the main
-# model's window less max_output_tokens, or when the provider turns a request
-# away as over its context window. It takes whole turns from the oldest end,
-# at least one, until what remains is under the lower of this line and the
-# window less max_output_tokens, less the room the fold may add to memory --
-# the two memory ceilings, doubled, counted as tokens at a character each.
-memory_keep_tokens: 500000
+# provider's last reported count (input + output) reaches the lower of
+# fold_trigger_tokens and the main model's window less max_output_tokens, or
+# when the provider turns a request away as over its context window. It takes
+# whole turns from the oldest end, at least one, until what remains is under
+# the lower of this line and the window less max_output_tokens, less the room
+# the fold may add to memory -- the two memory ceilings, doubled, counted as
+# tokens at a character each. Must be below fold_trigger_tokens.
+memory_keep_tokens: 300000
+
+# The provider's last reported count (input + output), in tokens, at which the
+# next call folds first. The window less max_output_tokens still applies when
+# it is lower.
+fold_trigger_tokens: 750000
 
 # The main model's context window when the model directory cannot say: the
 # smallest window among the providers that serve the default model.

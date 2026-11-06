@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { QueryClient } from '@tanstack/react-query';
-import type { ProjectRole, SpaceType, StudioProjectSort } from '@breatic/shared';
+import type { ProjectRole, ProjectVisitOpened, ProjectVisitLookup, SpaceType, StudioProjectSort } from '@breatic/shared';
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut, runOnceRequest } from '@web/data/api/request';
 
 /**
@@ -205,16 +205,26 @@ export const projectsApi = {
     return apiPut<ProjectDetail>(`/projects/${id}/cover`, { asset_id: assetId });
   },
   /**
-   * `POST /api/v1/projects/:id/opened` — record that the caller just opened
-   * this project, floating it to the top of their cross-studio "Recent" feed.
-   * Access-gated server-side (404 when the caller cannot view it) and
-   * idempotent (re-opening just bumps the timestamp). Fire-and-forget from the
-   * project page on mount.
-   * @param id the bare project uuid.
-   * @returns once the open has been recorded.
+   * Confirm this page entry using its stable client identity.
+   * @param id - Bare project UUID.
+   * @param visitId - Identity of the original page entry.
+   * @param signal - Cancellation when its account changes.
+   * @returns The original server receipt and established success flag.
+   * @throws {ApiException} If the server rejects or the transport fails.
    */
-  recordOpen(id: string) {
-    return apiPost<{ ok: boolean }>(`/projects/${id}/opened`, {});
+  recordOpen(id: string, visitId: string, signal?: AbortSignal): Promise<ProjectVisitOpened> {
+    return apiPost<ProjectVisitOpened>(`/projects/${id}/opened`, { visit_id: visitId }, { signal });
+  },
+  /**
+   * Read the original result without creating a new page entry.
+   * @param id - Bare project UUID.
+   * @param visitId - Identity of the original page entry.
+   * @param signal - Cancellation when its account changes.
+   * @returns A recorded receipt or an unconfirmed original identity.
+   * @throws {ApiException} If the server rejects or the transport fails.
+   */
+  getOpenReceipt(id: string, visitId: string, signal?: AbortSignal): Promise<ProjectVisitLookup> {
+    return apiGet<ProjectVisitLookup>(`/projects/${id}/opened/${visitId}`, { signal });
   },
   /**
    * `POST /api/v1/projects/:id/transfer-owner` — the current owner asks a

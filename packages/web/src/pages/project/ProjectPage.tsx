@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { useQuery } from '@tanstack/react-query';
 
@@ -7,7 +7,7 @@ import { fetchProjectCredits } from '@web/data/api/credits';
 import { useProjectCreditsRefresh } from '@web/pages/project/use-project-credits-refresh';
 import * as React from 'react';
 import { useStore } from 'zustand';
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import { toast } from '@web/lib/toast';
 
 import { MAX_SPACES_PER_PROJECT, newId, type SpaceRpcResponse } from '@breatic/shared';
@@ -70,6 +70,7 @@ import {
   writeOpenTabs,
 } from '@web/lib/project-tabs-storage';
 import { useRecordProjectOpen } from '@web/pages/project/use-record-project-open';
+import { PROJECT_VISIT_ACCOUNT_SOURCE } from '@web/pages/project/project-visit-account';
 import { SpaceTabBar } from '@web/pages/project/chrome/tab-bar/SpaceTabBar';
 import { ViewportToolbar } from '@web/pages/project/chrome/viewport-toolbar/ViewportToolbar';
 import { canvasGraphs } from '@web/stores/canvas-graph';
@@ -150,6 +151,7 @@ export default function ProjectPage(): React.JSX.Element {
   // decorative and the backend keys on the bare uuid, so resolve it once here
   // and use it for every API call + the Yjs document name downstream.
   const projectId = projectUuidFromRouteParam(routeParam);
+  const location = useLocation();
   // Gate the shared collab socket on userId — the #1381 boot-race fix: don't
   // dial until AuthBootstrap has resolved a session, or the first connect
   // races the cookie and sticks on authFailed forever (regressed in v14 reset).
@@ -168,6 +170,16 @@ export default function ProjectPage(): React.JSX.Element {
       return failureCount < 2;
     },
   });
+
+  // Page-entry identity outlives query loading, permission rechecks and providers.
+  const visit = useRecordProjectOpen(projectId, !!projectQuery.data && !projectQuery.error, {
+    accountId: userId ?? null,
+    navigationKey: location.key,
+    accountSource: PROJECT_VISIT_ACCOUNT_SOURCE,
+  });
+  const recheckVisit = React.useCallback(() => {
+    if (visit.status === 'pending' || visit.status === 'unconfirmed') void visit.refresh();
+  }, [visit]);
 
   const { refetch } = projectQuery;
   const retry = React.useCallback(() => { void refetch(); }, [refetch]);
@@ -188,7 +200,7 @@ export default function ProjectPage(): React.JSX.Element {
         the key the workspace would carry one project's state into another's
         address. The socket is shared while the authorized workspace is mounted.
       */}
-      <ProjectWorkspace key={projectId} projectId={projectId} project={projectQuery.data} />
+      <ProjectWorkspace key={projectId} projectId={projectId} project={projectQuery.data} onAuthenticated={recheckVisit} />
     </CollabSocketProvider>
   );
 }
@@ -225,20 +237,19 @@ function useRestoredPreferences(userId: string | undefined, projectId: string): 
  * @param root0 - Workspace props.
  * @param root0.projectId - Resolved project uuid (slug already stripped).
  * @param root0.project - The resource already authorized by the backend.
+ * @param root0.onAuthenticated - Recheck the current visit after connection authentication.
  * @returns The project workspace, or a loading screen while the socket connects.
  */
 function ProjectWorkspace({
   projectId,
   project,
+  onAuthenticated,
 }: {
   projectId: string;
   project: ProjectDetail;
+  onAuthenticated: () => void;
 }): React.JSX.Element {
   const t = useTranslation();
-
-  // Record the open once the project has loaded — floats it to the top of the
-  // cross-studio Recent landing. StrictMode-safe + best-effort (see the hook).
-  useRecordProjectOpen(projectId, true);
 
   // Follow the user between the two regions, so the canvas keyboard and
   // clipboard gates and the active-state colours read the same value.
@@ -332,7 +343,7 @@ function ProjectWorkspace({
   // Archived, restored, a role changed: collab closes the documents and the
   // connection re-authenticates by itself, but the banner and the role gates
   // read the project query, so that is refetched too.
-  useRefreshOnReauth(provider, projectId);
+  useRefreshOnReauth(provider, projectId, onAuthenticated);
   // The top bar's credits are read again whenever they may have moved: this
   // reader's own spend returning, or anyone's generation here ending.
   useProjectCreditsRefresh(projectId, provider);

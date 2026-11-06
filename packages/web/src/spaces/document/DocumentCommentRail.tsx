@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The panel down the right-hand side of a document (#18, A4 · A9 · A18).
@@ -968,7 +968,7 @@ function PlacedCard({
     // A card is what the reader acts on, and it cannot be a button: an open
     // one carries its own buttons and its reply box. What this rule asks for
     // beyond focus and a press key is a role, which is screen reader
-    // semantics — not supported by this product (docs/ACCESSIBILITY.md), and
+    // semantics — not supported by this product (docs/ACCESSIBILITY-BOUNDARY.md), and
     // the only part here no other reader gains from.
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div

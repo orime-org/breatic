@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Chat routes — conversational AI with SSE streaming.
@@ -8,6 +8,7 @@
  * Streaming responses use Server-Sent Events via Hono's streaming helper.
  */
 
+import { accountActivityRepo } from "@breatic/core";
 import { reportCollaboratorFirstAction } from "@breatic/core";
 import { Hono } from "hono";
 import type { Context } from "hono";
@@ -287,11 +288,11 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
   const { answer, shared_spaces: sharedSpaces } = body;
   const card =
     answer !== undefined
-      ? { toolCallId: answer.toolCallId, take: () => conversationService.answerAsk(conversation.id, answer) }
+      ? { toolCallId: answer.toolCallId, take: () => conversationService.answerAsk(conversation.id, answer, { userId: user.id, projectId: body.project_id }) }
       : sharedSpaces !== undefined
         ? {
           toolCallId: sharedSpaces.toolCallId,
-          take: () => conversationService.answerSpaceRequest(conversation.id, sharedSpaces),
+          take: () => conversationService.answerSpaceRequest(conversation.id, sharedSpaces, { userId: user.id, projectId: body.project_id }),
         }
         : undefined;
   if (card !== undefined) {
@@ -320,6 +321,7 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
     );
   }
 
+  await accountActivityRepo.recordActivity({ userId: user.id, projectId: body.project_id, kind: "agent_started" });
   return streamTurn(
     c,
     { userId: user.id, conversationId: conversation.id, projectId: body.project_id },

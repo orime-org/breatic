@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The owner's side of a project invitation — create one, list what is pending,
@@ -93,7 +93,7 @@ projectInvites.delete(
   async (c) => {
     const projectId = getProjectId(c);
     const invitationId = c.req.param("invitationId");
-    await projectInviteService.revokeInvite(projectId, invitationId);
+    await projectInviteService.revokeInvite(projectId, invitationId, c.get("user").id);
     return c.json({ data: { ok: true } });
   },
 );

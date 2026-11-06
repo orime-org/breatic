@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import {
   Background,
@@ -1398,23 +1398,17 @@ function CanvasSpaceInner({
     [getInternalNode, rfStoreApi, setViewport],
   );
 
-  // A template picked in a generate panel lands around that panel's node
-  // (inner#1345 6.5): every other node is in the way, and so is every group
-  // but the one the node sits in, which grows around what joins it.
+  // A template picked in a generate panel lands beside that panel's node, or
+  // in the places its earlier instance holds (inner#1345 6.5), where its flow
+  // puts it, over whatever is there (inner#1846).
   const placeTemplate = React.useCallback(
-    (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>): PlacedProposal => {
+    (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>, order: readonly number[]): PlacedProposal => {
       const anchorId = existing.get(0)?.nodeId;
-      const parentId = readCanvasGraph(projectId, spaceId).nodes.find((n) => n.id === anchorId)?.parentId;
-      const around = readNodePlacements(projectId, spaceId).filter((p) => p.id !== anchorId && p.id !== parentId);
-      const occupied = occupiedRects(around, (id) => {
-        const measured = getInternalNode(id)?.measured;
-        return measured?.width && measured.height ? { width: measured.width, height: measured.height } : undefined;
-      });
-      const placed = placeProposalAt(proposal, TEMPLATE_AIM, occupied, existing);
+      const placed = placeProposalAt(proposal, TEMPLATE_AIM, [], existing, order);
       showPlaced(placed, anchorId ?? '', FRAME_PAN_MS);
       return placed;
     },
-    [projectId, spaceId, getInternalNode, placeProposalAt, showPlaced],
+    [placeProposalAt, showPlaced],
   );
 
   // Mirror the Yjs-observed nodes into ReactFlow's render buffer. ReactFlow
@@ -5197,7 +5191,7 @@ function pendingFocusCount(session: CanvasSessionStore, nodeId: string): number 
 
 /**
  * Where a template picked in a panel is aimed. Unused while the panel's node
- * is on the canvas: the template lines up on that node.
+ * is on the canvas: the template lines up on the nodes already there.
  */
 const TEMPLATE_AIM = { x: 0, y: 0 };
 

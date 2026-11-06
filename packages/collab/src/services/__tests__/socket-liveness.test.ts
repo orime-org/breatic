@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * One sign of life, two facts — and what the seat half answers.
@@ -19,11 +19,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as Y from "yjs";
 import { OutgoingMessage } from "@hocuspocus/server";
 
-const { logWarn } = vi.hoisted(() => ({ logWarn: vi.fn() }));
+const { logWarn, logError } = vi.hoisted(() => ({ logWarn: vi.fn(), logError: vi.fn() }));
 
 vi.mock("@breatic/core", () => ({
   env: { ENV: "test" },
-  createLogger: () => ({ warn: logWarn, error: vi.fn(), info: vi.fn(), debug: vi.fn() }),
+  createLogger: () => ({ warn: logWarn, error: logError, info: vi.fn(), debug: vi.fn() }),
 }));
 
 import { readPresence } from "@collab/hooks/presence.js";
@@ -179,8 +179,7 @@ async function aliveWith(
     requestDemote,
     presencePolicy: { now: () => 31_000, staleAfterMs: 60_000 },
   });
-  expect(() => handler("sock-1", connections as Connections, 31_000)).not.toThrow();
-  for (let i = 0; i < 5; i++) await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  await handler("sock-1", connections as Connections, 31_000);
   return { requestDemote };
 }
 
@@ -276,5 +275,55 @@ describe("a sign of life acts on what the seat renewal answers (inner#1034)", ()
     await aliveWith([{ documentName: D1, outcome: "full", liveCount: 2, cap: 2 }], new Map([[D2, c2]]));
     expect(c2.readOnly).toBe(false);
     expect(c2.webSocket.send).not.toHaveBeenCalled();
+  });
+});
+
+describe("the handler's promise settles once the seat work is done (#1326)", () => {
+  it("resolves only after a renewal that answers late has demoted the connection", async () => {
+    const c1 = contentConn();
+    const handler = createLivenessHandler({
+      refreshSeats: () =>
+        new Promise((resolve) => {
+          setTimeout(() => resolve([{ documentName: D1, outcome: "full", liveCount: 2, cap: 2 }]), 20);
+        }),
+      requestDemote: vi.fn(async () => undefined),
+      presencePolicy: { now: () => 31_000, staleAfterMs: 60_000 },
+    });
+
+    await handler("sock-1", new Map([[D1, c1]]), 31_000);
+
+    expect(c1.readOnly).toBe(true);
+  });
+
+  it("resolves only after a demote request it made has finished", async () => {
+    let finished = false;
+    const handler = createLivenessHandler({
+      refreshSeats: async () => [{ documentName: D1, outcome: "replaced", replaced: X }],
+      requestDemote: () =>
+        new Promise<void>((resolve) => {
+          setTimeout(() => {
+            finished = true;
+            resolve();
+          }, 20);
+        }),
+      presencePolicy: { now: () => 31_000, staleAfterMs: 60_000 },
+    });
+
+    await handler("sock-1", new Map() as Connections, 31_000);
+
+    expect(finished).toBe(true);
+  });
+
+  it("resolves rather than rejects when the renewal fails, and logs the failure", async () => {
+    logError.mockClear();
+    const failure = new Error("redis down");
+    const handler = createLivenessHandler({
+      refreshSeats: () => Promise.reject(failure),
+      requestDemote: vi.fn(async () => undefined),
+      presencePolicy: { now: () => 31_000, staleAfterMs: 60_000 },
+    });
+
+    await expect(handler("sock-1", new Map() as Connections, 31_000)).resolves.toBeUndefined();
+    expect(logError).toHaveBeenCalledWith({ err: failure, socketId: "sock-1" }, "seat_refresh_failed");
   });
 });

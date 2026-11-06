@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * `@breatic/core` — shared backend runtime.
@@ -338,3 +338,6 @@ export { createR2MaintenanceStorage, MaintenanceDeleteError, type MaintenanceSto
 export type { S3CompatibleConfig } from "@core/infra/storage/s3.js";
 
 export * from "@core/credit/credit-grant-contract.js";
+
+export * as accountActivityRepo from "@core/activity/account-activity.repo.js";
+export * as accountActivityCoverageRepo from "@core/activity/account-activity-coverage.repo.js";

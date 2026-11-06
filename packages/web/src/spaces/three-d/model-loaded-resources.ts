@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { GltfDocument } from '@web/spaces/three-d/model-package';
 import type { TextureFormatSupport } from '@web/spaces/three-d/model-texture-format';

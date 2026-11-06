@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * One prompt per mode, and the multi-shot mode: shots typed into real
@@ -112,7 +112,9 @@ async function writeTwoShots(p: Page, model: string): Promise<void> {
   await p.getByTestId(`generate-model-option-${model}`).click();
   await p.getByTestId('generate-storyboard-shot-1-editor').click();
   await p.keyboard.type('a red paper boat floats on a still pond, close-up');
-  await p.getByTestId('generate-storyboard-shot-2-editor').click();
+  // One shot is open at a time (#1201): opening the second puts the caret in it.
+  await p.getByTestId('generate-storyboard-shot-2-toggle').click();
+  await expect(p.getByTestId('generate-storyboard-shot-2-editor').locator('.ProseMirror')).toBeFocused();
   await p.keyboard.type('the camera pulls back to show the whole pond at dusk');
 }
 

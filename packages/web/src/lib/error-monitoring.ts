@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { getClient, type Breadcrumb, type BrowserOptions, type ErrorEvent } from '@sentry/react';
 import {

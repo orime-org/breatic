@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The product guide answers how the reader operates our product.
@@ -130,6 +130,9 @@ describe("the guide as a tool", () => {
     const said = typeof description === "string" ? description.replace(/\s+/g, " ") : "";
     expect(said).toMatch(/canvas/i);
     expect(said).toMatch(/document/i);
+    // The guide has a Mini-tools section; a description that leaves them out
+    // let "scale this picture up" go unlooked-up (#1366).
+    expect(said).toMatch(/mini-tools/i);
     expect(said).toMatch(/cannot see/i);
     expect(said).toMatch(/icon/i);
   });
@@ -331,8 +334,16 @@ describe("what the guide says", () => {
 
   it("says when each storyboard control is greyed and what happens when the shots stop fitting", () => {
     const panel = section("Inside the generation panel");
-    // VideoGeneratePanelContainer.tsx: one lastFocusedBox, written by the shots and by the main prompt.
-    expect(panel).toMatch(/puts it in the shot box clicked into last, or in the first shot/);
+    // VideoGeneratePanelContainer.tsx: one shot open at a time, and every insert goes into it (#1201).
+    expect(panel).toMatch(/Only one shot is open at a time/);
+    expect(panel).toMatch(/one row showing its number, its seconds and the first line of its words/);
+    expect(panel).toMatch(/clicking a chip in the strip puts it in the open shot's box/);
+    expect(panel).toMatch(/in Multi-Shot it goes into the open shot/);
+    // VideoGeneratePanelContainer.tsx: `shots[at] ?? shots[at - 1]`.
+    expect(panel).toMatch(/removing the open shot opens the one after it, or the one before it when it was the last/);
+    expect(panel).not.toMatch(/clicked into last/);
+    // AudioGeneratePanel.tsx: the style and lyrics boxes, one open at a time.
+    expect(panel).toMatch(/Only one of the two is open at a time/);
     expect(panel).toMatch(/minus is greyed at one second or when there is only one shot/);
     expect(panel).toMatch(/plus is greyed when no other shot has a second to spare/);
     expect(panel).toMatch(/"Remove" is greyed while only one shot is left/);
@@ -925,6 +936,13 @@ describe("mini-tools and the task rows", () => {
       const line = `"${t(tool.labelKey)}": ${tool.guide} (billed by how long it runs).`;
       expect(tools.includes(line), tool.id).toBe(tool.run.kind === "container");
     }
+  });
+
+  // The crop box is clamped to the picture (NodeCropLayer). Read as "a size in
+  // pixels" alone, the Agent told a reader to crop a 500-wide picture to 2100
+  // wide (#1366).
+  it("says a crop's size is the box inside the picture and never makes it larger", () => {
+    expect(section("Mini-tools")).toMatch(/the size is the box's, inside the picture, so a crop never makes the picture larger/i);
   });
 
   // The canvas moves by itself on these two presses; the reader may ask why.

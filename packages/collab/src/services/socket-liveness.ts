@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a socket's sign of life (a pong, a ping or any message, the events
@@ -62,7 +62,9 @@ type LiveSocketConnection = SocketConnection & DemotableConnection;
  * handles.
  * @param deps - See {@link SocketLivenessDeps}.
  * @returns The callback, taking the socket, what it carries and the
- * wall-clock time it was last heard, which both refreshes record.
+ * wall-clock time it was last heard, which both refreshes record. Its promise
+ * settles once the seat answers have been acted on and never rejects: a
+ * failure is logged here, so the per-socket table may leave it unawaited.
  */
 export function createLivenessHandler(
   deps: SocketLivenessDeps,
@@ -70,7 +72,7 @@ export function createLivenessHandler(
   socketId: string,
   connections: ReadonlyMap<string, LiveSocketConnection>,
   heardAt: number,
-) => void {
+) => Promise<void> {
   const { refreshSeats, requestDemote, presencePolicy } = deps;
 
   /**
@@ -106,10 +108,11 @@ export function createLivenessHandler(
     }
   }
 
-  return (socketId, connections, heardAt): void => {
-    settleSeats(socketId, connections, heardAt).catch((err: unknown) => {
+  return (socketId, connections, heardAt): Promise<void> => {
+    const seats = settleSeats(socketId, connections, heardAt).catch((err: unknown) => {
       logger.error({ err, socketId }, "seat_refresh_failed");
     });
     refreshPresenceForSocket(connections, presencePolicy, heardAt);
+    return seats;
   };
 }

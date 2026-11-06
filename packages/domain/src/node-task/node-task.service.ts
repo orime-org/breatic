@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The lifecycle of one task on a canvas node (#186).
@@ -24,7 +24,7 @@
  * always has what the next event needs.
  */
 
-import { ConflictError } from "@breatic/core";
+import { ConflictError, type DbTx } from "@breatic/core";
 import { t, type NodeTaskAction } from "@breatic/shared";
 import * as repo from "@domain/node-task/node-task.repo.js";
 import { failureOutcome } from "@domain/node-task/failure-outcome.js";
@@ -80,6 +80,7 @@ export interface DismissResult {
  * @param opts.label - Filename or model name, what the user reads.
  * @param opts.taskId - The AIGC job; absent on uploads.
  * @param opts.storageKey - The upload grant; absent on generations.
+ * @param tx - Optional transaction shared with upload admission.
  * @returns The new task's id and the node's counts after it.
  */
 export async function open(opts: {
@@ -93,9 +94,9 @@ export async function open(opts: {
   label: string;
   taskId?: string;
   storageKey?: string;
-}): Promise<{ id: string; counts: NodeTaskCounts }> {
-  const id = await repo.insertRunning(opts);
-  const counts = await repo.countsFor(opts.projectId, opts.nodeId);
+}, tx?: DbTx): Promise<{ id: string; counts: NodeTaskCounts }> {
+  const id = await repo.insertRunning(opts, tx);
+  const counts = await repo.countsFor(opts.projectId, opts.nodeId, tx);
   return { id, counts };
 }
 
@@ -171,8 +172,11 @@ export async function settle(opts: {
     await repo.attachResult(opts.taskId, opts.nodeHistoryId);
   }
 
+  // The status read above predates the update: a concurrent report may have
+  // moved the row between the two, so only a fresh read says where it ended.
+  const landed = applied || (await repo.findById(opts.taskId))?.status === outcome;
   const counts = await repo.countsFor(row.projectId, row.nodeId);
-  return { applied, landed: applied || row.status === outcome, counts };
+  return { applied, landed, counts };
 }
 
 /**

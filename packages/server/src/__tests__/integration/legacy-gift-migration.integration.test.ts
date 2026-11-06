@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /** Historical manual gifts migrate only with explicit immutable provenance (inner#1871). */
 import { spawn } from "node:child_process";
@@ -134,9 +134,9 @@ describe("confirmed historical manual gift migration", () => {
 
 
 const migrationDir = fileURLToPath(new URL("../../../../core/src/db/migrations/", import.meta.url));
-let nativeFolders: { root: string; before: string; old: string } | undefined;
+let nativeFolders: { root: string; before: string; old: string; expectedMigrationCount: number } | undefined;
 /** Native migration fixtures contain the exact original journal entries, without invented watermarks. */
-async function folders(): Promise<{ root: string; before: string; old: string }> {
+async function folders(): Promise<{ root: string; before: string; old: string; expectedMigrationCount: number }> {
   if (nativeFolders) return nativeFolders;
   const cache = resolve(migrationDir,"../../../../../node_modules/.cache");
   await mkdir(cache,{recursive:true});
@@ -148,7 +148,7 @@ async function folders(): Promise<{ root: string; before: string; old: string }>
   await writeFile(resolve(before,"meta/_journal.json"),JSON.stringify({...journal,entries:journal.entries.filter(e=>e.idx<=107)}));
   await writeFile(resolve(old,"meta/_journal.json"),JSON.stringify({...journal,entries:journal.entries.filter(e=>e.idx<=110)}));
   await cp(new URL("./fixtures/0110-credit-grants-original.sql",import.meta.url),resolve(old,"0110_credit_grants.sql"));
-  nativeFolders={root,before,old};return nativeFolders;
+  nativeFolders={root,before,old,expectedMigrationCount:journal.entries.length};return nativeFolders;
 }
 afterAll(async()=>{if(nativeFolders)await rm(nativeFolders.root,{recursive:true,force:true});});
 /** A private synthetic database per native-migrator case. */
@@ -174,7 +174,7 @@ describe("native historical gift migrator",()=>{
       await db`SELECT set_config('breatic.legacy_gift_confirmation','application-pool-sentinel',false)`;
       await migrateDatabase(url,{legacyGiftConfirmation:c});
       const [w]=await db`SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations`;
-      expect(w!.n).toBe(112);
+      expect(w!.n).toBe((await folders()).expectedMigrationCount);
       expect(await funding(db)).toEqual(before);
       expect(await db`SELECT origin,legacy_confirmation FROM credit_gifts WHERE id=${c.sourceId}`).toEqual([{origin:"operator",legacy_confirmation:c}]);
       expect(await db`SELECT current_setting('breatic.legacy_gift_confirmation') AS value`).toEqual([{value:"application-pool-sentinel"}]);
@@ -212,7 +212,7 @@ describe("native historical gift migrator",()=>{
       const [gift]=await db`SELECT * FROM credit_gifts WHERE id=${c.targetUserId}`;
       await migrateDatabase(url);
       expect(await db`SELECT hash,created_at FROM drizzle.__drizzle_migrations ORDER BY id LIMIT 111`).toEqual(history);
-      expect(await db`SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations`).toEqual([{n:112}]);
+      expect(await db`SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations`).toEqual([{n:(await folders()).expectedMigrationCount}]);
       expect(await db`SELECT * FROM credit_gifts WHERE id=${c.targetUserId}`).toEqual([{...gift,legacy_confirmation:null}]);
       expect(await funding(db)).toEqual(before);
     });

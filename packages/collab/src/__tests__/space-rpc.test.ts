@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * space-rpc handler tests (ADR 2026-07-04 project-activity-feed).
@@ -83,6 +83,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
   const orig = await importOriginal<Record<string, unknown>>();
   return {
     ...orig,
+    accountActivityRepo: { recordActivity: vi.fn(async () => undefined) },
     createLogger: () => ({
       info: vi.fn(),
       warn: vi.fn(),

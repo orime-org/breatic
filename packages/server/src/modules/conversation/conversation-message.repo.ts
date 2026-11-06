@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Conversation message repository — one row per message.
@@ -21,6 +21,7 @@
 
 import { and, asc, desc, eq, inArray, isNull, lt, lte, gt, gte, max, sql, type SQL } from "drizzle-orm";
 import {
+  accountActivityRepo,
   db,
   conversations,
   conversationMessages,
@@ -32,6 +33,12 @@ import type { DbTx } from "@breatic/core";
 import { ASK_USER, RECORD_TOOL_NAMES } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import type { MessageData, MessageInput, MessagePart } from "@breatic/shared";
+
+/** Trusted HTTP identity accompanying a first accepted card answer. */
+export interface AnswerActor {
+  userId: string;
+  projectId: string;
+}
 
 /** A stored row, as far as the mapping functions care. */
 type StoredRow = {
@@ -296,6 +303,7 @@ export type AnswerOutcome =
  * @param toolCallId - The call the answer is for.
  * @param check - Holds the answer to the call's stored input; a reason when
  *   it does not fit, otherwise the settlement.
+ * @param actor - Trusted authenticated admission context for a user answer.
  * @returns How it went.
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
  */
@@ -303,6 +311,7 @@ export async function answerWaitingAsk(
   id: string,
   toolCallId: string,
   check: (input: unknown) => { reason: string } | AskSettlement,
+  actor?: AnswerActor,
 ): Promise<AnswerOutcome> {
   return db.transaction(async (tx) => {
     const owner = await tx
@@ -335,6 +344,7 @@ export async function answerWaitingAsk(
     const checked = check(part.input);
     if ("reason" in checked) return { kind: "mismatch", reason: checked.reason };
     await settleInRow(tx, row, toolCallId, checked);
+    if (actor) await accountActivityRepo.recordActivity({ ...actor, kind: "agent_started" }, tx);
     return { kind: "answered", turnIndex: row.turnIndex, output: checked.output };
   });
 }

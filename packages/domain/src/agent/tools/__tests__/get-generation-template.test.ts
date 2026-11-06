@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The agent reads a template in full before proposing it (inner#1807): the
@@ -112,6 +112,10 @@ describe("get_generation_template", () => {
     const bible = await read("character-bible");
     expect(bible).toContain(TEMPLATE_CRAFT.character);
     expect(bible).not.toContain(TEMPLATE_CRAFT.video);
+  });
+
+  it("lets a template that asks for labels put them in the picture, and keeps out any other text", () => {
+    expect(TEMPLATE_CRAFT.all).toContain("put no text in the picture unless the template asks for labels");
   });
 
   it("has words in every craft section", () => {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { expect, type Page, type WebSocketRoute } from 'playwright/test';
 import { createDecoder, readVarString } from 'lib0/decoding';

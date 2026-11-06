@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Canvas clipboard pure functions (slice 2b).
@@ -431,8 +431,8 @@ function cloneEdges(
 }
 
 /**
- * A guide text node's anchor, pointed at the anchor's copy when the anchor is
- * copied along (inner#1345); copied without it, the guide keeps the original.
+ * A guide or input node's anchor, pointed at the anchor's copy when the anchor
+ * is copied along (inner#1345); copied without it, the node keeps the original.
  * @param data - The copied node data.
  * @param idMap - Original node id to its copy's id.
  * @returns The data, its template tag's anchor rewritten where it was copied.

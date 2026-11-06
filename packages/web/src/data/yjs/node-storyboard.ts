@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A video node's shots, which only the multi-shot mode uses.
@@ -141,6 +141,7 @@ export function enterStoryboardShots(projectId: string, spaceId: string, nodeId:
  * @param nodeId - The video node.
  * @param total - The model's total seconds.
  * @param maxShots - The shot cap.
+ * @returns The new shot's id, or null when no shot could be added.
  */
 export function addStoryboardShot(
   projectId: string,
@@ -148,13 +149,17 @@ export function addStoryboardShot(
   nodeId: string,
   total: number,
   maxShots: number,
-): void {
+): string | null {
+  let added: string | null = null;
   editShots(projectId, spaceId, nodeId, (shots, durations) => {
     const next = addShot(durations, total, maxShots);
     if (!next) return;
     writeDurations(shots, next);
-    shots.push([newShot(next[next.length - 1] ?? 1)]);
+    const shot = newShot(next[next.length - 1] ?? 1);
+    shots.push([shot]);
+    added = shot.get('id') as string;
   });
+  return added;
 }
 
 /**

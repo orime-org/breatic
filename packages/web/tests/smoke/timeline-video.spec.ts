@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /** Real registered video, permissions and concurrent Timeline arrangement (inner#1707). */
 import { expect, type Page } from 'playwright/test';

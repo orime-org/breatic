@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Shared entity interfaces for cross-layer data transfer.
@@ -857,3 +857,24 @@ export interface MemoryContext {
   conversationMemory: string;
 }
 
+
+/** Durable user interaction admitted by an authenticated application entry. */
+export interface AccountActivityEntity {
+  id: string;
+  userId: string;
+  projectId: string | null;
+  kind: AccountActivityKind;
+  /** Original UTC SQL timestamp, without JavaScript Date truncation. */
+  occurredAt: string;
+  visitId: string | null;
+}
+/** Collection categories used by channel retention, never task outcomes. */
+export type AccountActivityKind = "project_access" | "generation_started" | "project_action" | "agent_started" | "project_edit";
+/** A versioned interval in which all promised collectors are enabled. */
+export interface AccountActivityCoverageEntity {
+  id: string;
+  version: number;
+  startedAt: Date;
+  endedAt: Date | null;
+  createdAt: Date;
+}

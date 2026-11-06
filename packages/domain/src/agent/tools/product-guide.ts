@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Product guide tool — how the reader operates our product (#260).
@@ -694,7 +694,12 @@ export function renderProductGuide(): string {
       "after it generates also places a text node listing them. Picking it " +
       "again on the same node reuses what it placed before. When the nodes or the panel, grown around the prompt, " +
       "reach under the left menu, the toolbar at the bottom right or the minimap, the view moves them into " +
-      "sight, zooming out only as far as that takes. Inside a group, the new nodes join the group. On a " +
+      "sight, zooming out only as far as that takes. The new nodes go beside the node even where other nodes " +
+      "already are, so they may cover them. Inside a group, the new nodes join the group; outside one, they join " +
+      "the unlocked group the template's nodes from an earlier pick are in, or else two or more " +
+      "new nodes are put in a new group named after the template, so they can be dragged aside together. When the " +
+      "group they join holds nodes from an earlier pick, they line up on those nodes, so a node put back returns to " +
+      "its place. On a " +
       `locked node nothing changes and it shows ${quoted(t("canvas.gate.locked"))} Inside a locked group that ` +
       `would need a new node, nothing changes either and it shows ${quoted(t("canvas.template.groupLocked"))} ` +
       `If placing fails, it shows ${quoted(t("canvas.template.applyFailed"))} When the prompt has places left to fill, the message ` +
@@ -754,7 +759,9 @@ export function renderProductGuide(): string {
       `prompt, the line ${quoted(t("canvas.generatePanel.promptNotUsed"))} stands in its place; on the sound ` +
       "panel the box stays, but nothing typed in it is sent. On the music modes the box is " +
       `labelled ${quoted(t("canvas.generatePanel.musicStyleLabel"))}, and some music models add a second box ` +
-      `labelled ${quoted(t("canvas.generatePanel.musicLyricsLabel"))} under it.`,
+      `labelled ${quoted(t("canvas.generatePanel.musicLyricsLabel"))} under it. Only one of the two is open at a ` +
+      "time: the other is a row with its name and the first line of its words, and clicking that row opens it " +
+      "and folds the open one. The style box is the open one when the panel opens.",
     "The bottom row, left to right: the mode, named in English on every screen (for example Text to Image); the " +
       "model's maker icon and name; a pill showing the current settings (for example 1k · 1:1 · Medium, or " +
       `${quoted(t("canvas.generatePanel.videoParams"))} or ${quoted(t("canvas.generatePanel.audioSettings"))} ` +
@@ -827,15 +834,20 @@ export function renderProductGuide(): string {
       "The picks show as their bracket beside the count at the bottom. " +
       `${quoted(t("canvas.generatePanel.cameraCommandsInsert"))} writes the picks into the prompt as one bracket, ` +
       "such as [Push in,Zoom out], at the caret last left in the prompt box, or at its end if none was; in " +
-      "Multi-Shot it goes into the shot box clicked into last, or the first shot. The bracket is ordinary text " +
+      "Multi-Shot it goes into the open shot. The bracket is ordinary text " +
       "that can be edited or deleted. Inserting again adds another bracket, and separate brackets run in the order " +
       "they appear in the prompt.",
     `- Multi-Shot, a mode in the video panel's mode picker: the prompt box gives way to one card per shot, and ` +
       "switching into it with no shots lays out two, splitting the video's length. A card, such as " +
       `${quoted(t("canvas.generatePanel.storyboard.shot", { n: 1 }))}, has a minus and a plus around its ` +
       `seconds, ${quoted(t("canvas.generatePanel.storyboard.removeShot"))}, and a box, ` +
-      `${quoted(t("canvas.generatePanel.storyboard.shotPlaceholder"))}, that takes @ mentions like the prompt; ` +
-      "clicking a chip in the strip puts it in the shot box clicked into last, or in the first shot. Under the " +
+      `${quoted(t("canvas.generatePanel.storyboard.shotPlaceholder"))}, that takes @ mentions like the prompt. ` +
+      "Only one shot is open at a time, the first when the panel opens: each other shot is one row showing its " +
+      "number, its seconds and the first line of its words, and its minus, plus and " +
+      `${quoted(t("canvas.generatePanel.storyboard.removeShot"))} still work there. Clicking a row opens that ` +
+      "shot and folds the open one; an added shot opens; removing the open shot opens the one after it, or the " +
+      "one before it when it was the last; and " +
+      "clicking a chip in the strip puts it in the open shot's box. Under the " +
       `cards, in the middle, is ${quoted(t("canvas.generatePanel.storyboard.addShot"))}. The shots' seconds keep ` +
       "adding up to the video's length: the plus takes a second from another shot and the minus gives one to " +
       "the shot after it, or to the one before it on the last shot, so the minus is greyed at one second or " +
@@ -935,8 +947,8 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.reference"))} again stops. To remove a connection, select it and press the ` +
       `scissors at its middle, right-click it and choose ${quoted(t("canvas.edge.delete"))}, or press the X on ` +
       "its chip in the panel. Removing a connection also removes every mention of that node from the prompt: " +
-      "at once from the box on screen, and from another mode's prompt or a shot not on screen the next time " +
-      "that box is shown.",
+      "at once from every box of the mode on screen, folded ones included, and from another mode's prompt, or " +
+      "from the shots while another mode is showing, the next time that box is shown.",
     "",
     "## Mini-tools",
     `Right-click a picture, video or sound node and point at ${quoted(t("canvas.nodeMenu.tools"))}: a list opens to ` +
@@ -948,7 +960,8 @@ export function renderProductGuide(): string {
       "piece of media from the canvas when the tool needs one (picking works as in the generation panel, and a " +
       "required one must be filled before the arrow works; a small X on a filled box empties it), and for some " +
       "tools a text box. A crop shows a box with " +
-      "eight handles on the node and takes a ratio and a size in pixels in the panel; rotating turns and flips the " +
+      "eight handles on the node and takes a ratio and a size in pixels in the panel; the size is the box's, " +
+      "inside the picture, so a crop never makes the picture larger. Rotating turns and flips the " +
       "picture on the node as you press. Adjusting gives a slider for each setting, starting at zero, in four " +
       `groups headed ${quoted(t("canvas.miniTool.adjustGroup.light"))}, ${quoted(t("canvas.miniTool.adjustGroup.color"))}, ` +
       `${quoted(t("canvas.miniTool.adjustGroup.detail"))} and ${quoted(t("canvas.miniTool.adjustGroup.effects"))}, and ` +
@@ -1616,7 +1629,8 @@ export const productGuide: Tool<z.infer<typeof inputSchema>, string> = tool({
   description:
     "How the reader operates our product: the top bar, the space tabs and the spaces list, this chat panel, and " +
     "on a canvas making, filling and connecting nodes, node menus, tasks, notes, moving around, the generation " +
-    "panel and what is in it, source slots, focus crops, mentions, groups, placing a proposal card; 3D Space " +
+    "panel and what is in it, the mini-tools on a picture, video or sound node, source slots, focus crops, " +
+    "mentions, groups, placing a proposal card; 3D Space " +
     "objects, transforms, locks, personal view and collaboration; writing in a " +
     "document; and what the screen shows when something goes wrong. Read it before telling the reader how to do something here: you cannot see " +
     "their screen. Describe only what it says. Name a control with words on it by the quoted name it gives, " +

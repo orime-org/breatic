@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * How a generation template becomes nodes (inner#1345): the skeleton, one
@@ -770,7 +770,7 @@ describe('expandTemplate', () => {
     ]);
   });
 
-  it('writes templateNode on non-anchor template nodes only, never on the anchor or a new input node', () => {
+  it('writes templateNode on non-anchor template nodes and on new input nodes, never on the anchor', () => {
     const result = expandTemplate(FIXTURE, FRESH);
     expect(result.rewritten.get(0)?.templateNode).toBe(undefined);
     expect(appendedAs(result, 1, 'sheet')?.templateNode).toEqual({ template: ID, key: 'sheet' });
@@ -781,8 +781,9 @@ describe('expandTemplate', () => {
       resource: `templates/${ID}/style.png`,
       templateNode: { template: ID, key: 'style' },
     });
+    // A fresh input node carries its input's tag, so a later apply knows it as this instance's own.
     for (const input of ['pose', 'hero', 'place', 'palette']) {
-      expect(appendedAs(result, 1, input)).toEqual({ role: 'source', type: 'image', name: input });
+      expect(appendedAs(result, 1, input)).toEqual({ role: 'source', type: 'image', name: input, templateNode: { template: ID, key: input, input: true, anchor: 0 } });
     }
   });
 

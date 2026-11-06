@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Applying a picked template from a generate panel (inner#977, inner#1345).
@@ -31,21 +31,15 @@ vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), info: vi.fn(), warning: vi.fn(), success: vi.fn() },
 }));
 
-import { addEdge, addNode, createGroup, readCanvasGraph, setNodeLocked } from '@web/data/yjs/canvas-space';
+import { addEdge, addNode, createGroup, readCanvasGraph, removeNode, setNodeLocked, setNodeTemplateNode } from '@web/data/yjs/canvas-space';
 import { _resetForTests } from '@web/data/yjs/manager';
 import { toast } from '@web/lib/toast';
 import { createGroupNode } from '@web/spaces/canvas/node-factory';
 import { useApplyTemplate } from '@web/spaces/canvas/generate/use-apply-template';
-
-/** What the panel hands `placeTemplate` for one canvas node it reuses. */
-interface Existing {
-  nodeId: string;
-  mention?: unknown;
-  paramsByModel?: Record<string, Record<string, unknown>>;
-}
+import type { ExistingNode } from '@web/spaces/canvas/use-node-creation';
 
 /** The callback `CanvasSpace` passes the panels (6.5). */
-type PlaceTemplate = (proposal: CanvasProposal, existing: ReadonlyMap<number, Existing>) => unknown;
+type PlaceTemplate = (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>) => unknown;
 
 const ULTRA = {
   name: 'nano-banana-pro-edit-ultra',
@@ -229,9 +223,9 @@ function apply(
  * @param place - The spy.
  * @returns Its proposal and existing map.
  */
-function placed(place: ReturnType<typeof vi.fn>): { proposal: CanvasProposal; existing: ReadonlyMap<number, Existing> } {
+function placed(place: ReturnType<typeof vi.fn>): { proposal: CanvasProposal; existing: ReadonlyMap<number, ExistingNode> } {
   expect(place).toHaveBeenCalledTimes(1);
-  const [proposal, existing] = place.mock.calls[0] as [CanvasProposal, ReadonlyMap<number, Existing>];
+  const [proposal, existing] = place.mock.calls[0] as [CanvasProposal, ReadonlyMap<number, ExistingNode>];
   return { proposal, existing };
 }
 
@@ -242,7 +236,7 @@ function placed(place: ReturnType<typeof vi.fn>): { proposal: CanvasProposal; ex
  * @param index - The index.
  * @returns The identity.
  */
-function who(proposal: CanvasProposal, existing: ReadonlyMap<number, Existing>, index: number): string {
+function who(proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>, index: number): string {
   const at = existing.get(index);
   if (at) return at.nodeId;
   return `new:${proposal.nodes[index]?.name ?? '?'}`;
@@ -254,7 +248,7 @@ function who(proposal: CanvasProposal, existing: ReadonlyMap<number, Existing>, 
  * @param existing - The reused nodes.
  * @returns `from->to` per edge, sorted.
  */
-function edgesOf(proposal: CanvasProposal, existing: ReadonlyMap<number, Existing>): string[] {
+function edgesOf(proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>): string[] {
   return proposal.edges
     .map((e) => `${who(proposal, existing, e.fromIndex)}->${who(proposal, existing, e.toIndex)}`)
     .sort();
@@ -267,7 +261,7 @@ function edgesOf(proposal: CanvasProposal, existing: ReadonlyMap<number, Existin
  * @param index - The node's index.
  * @returns The identities.
  */
-function refsOf(proposal: CanvasProposal, existing: ReadonlyMap<number, Existing>, index: number): string[] {
+function refsOf(proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>, index: number): string[] {
   return (proposal.nodes[index]?.prompt ?? []).flatMap((s) => (s.ref === undefined ? [] : [who(proposal, existing, s.ref)]));
 }
 
@@ -277,7 +271,7 @@ function refsOf(proposal: CanvasProposal, existing: ReadonlyMap<number, Existing
  * @param nodeId - The canvas node.
  * @returns Its index, or -1.
  */
-function indexOf(existing: ReadonlyMap<number, Existing>, nodeId: string): number {
+function indexOf(existing: ReadonlyMap<number, ExistingNode>, nodeId: string): number {
   for (const [index, entry] of existing) if (entry.nodeId === nodeId) return index;
   return -1;
 }
@@ -288,15 +282,9 @@ function indexOf(existing: ReadonlyMap<number, Existing>, nodeId: string): numbe
  * @param existing - The reused nodes.
  * @returns Those nodes.
  */
-function appendedOf(proposal: CanvasProposal, existing: ReadonlyMap<number, Existing>): ProposalNode[] {
+function appendedOf(proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>): ProposalNode[] {
   return proposal.nodes.filter((_, i) => !existing.has(i));
 }
-
-/** A proposal node with the two fields 6.3 adds. */
-type TemplateProposalNode = ProposalNode & {
-  resource?: string;
-  templateNode?: { template: string; key: string; anchor?: number };
-};
 
 describe('useApplyTemplate', () => {
   beforeEach(() => {
@@ -393,7 +381,7 @@ describe('useApplyTemplate', () => {
       const added = appendedOf(proposal, existing);
       expect(added).toHaveLength(1);
       expect(added[0]).toMatchObject({ role: 'source', type: 'image', name });
-      expect((added[0] as TemplateProposalNode).templateNode).toBeUndefined();
+      expect(added[0]?.templateNode).toEqual({ template: 'storyboard-grid-25', key: 'reference', input: true, anchor: 0 });
       expect(edgesOf(proposal, existing)).toEqual([`new:${name}->target`]);
       expect(refsOf(proposal, existing, 0)).toEqual([`new:${name}`]);
       expect(proposal.nodes[0]?.prompt).toContainEqual({
@@ -413,6 +401,14 @@ describe('useApplyTemplate', () => {
       const { proposal } = placed(place);
       const words = (proposal.nodes[0]?.prompt ?? []).map((s) => s.text ?? '').join('');
       expect(words).toContain('5 行 5 列');
+    });
+
+    it('names the group its new nodes may form after the template, in the reader’s language', () => {
+      seed('target', 'image');
+      setLocale('zh-CN');
+      const place = vi.fn();
+      apply(grid(), 'target', [ULTRA], place);
+      expect(placed(place).proposal.groupName).toBe(t('canvas.template.storyboard-grid-25.name'));
     });
 
     it('leaves a second wired reference alone', () => {
@@ -456,7 +452,7 @@ describe('useApplyTemplate', () => {
 
       const { proposal, existing } = placed(place);
       expect([...existing.keys()]).toEqual([0]);
-      const added = appendedOf(proposal, existing) as TemplateProposalNode[];
+      const added = appendedOf(proposal, existing);
       expect(added.map((n) => n.name).sort()).toEqual(
         ['Back view', 'Character', 'Fixture flow', 'Front view', 'Pose', 'Sheet', 'Style'].sort(),
       );
@@ -466,7 +462,7 @@ describe('useApplyTemplate', () => {
         resource: 'templates/fixture-flow/style.png',
         templateNode: { template: 'fixture-flow', key: 'style' },
       });
-      expect(added.find((n) => n.name === 'Pose')?.templateNode).toBeUndefined();
+      expect(added.find((n) => n.name === 'Pose')?.templateNode).toEqual({ template: 'fixture-flow', key: 'pose', input: true, anchor: 0 });
       expect(added.find((n) => n.name === 'Fixture flow')).toEqual(templateGuideNode(FLOW, 0));
       expect(edgesOf(proposal, existing)).toEqual(
         [
@@ -495,6 +491,8 @@ describe('useApplyTemplate', () => {
       );
       // The guide already there is neither duplicated nor rewritten.
       expect(indexOf(existing, 'target-guide')).toBe(-1);
+      // The template's own nodes are marked as this instance; the reader's inputs and the anchor are not.
+      expect([...existing.values()].filter((e) => e.instance).map((e) => e.nodeId).sort()).toEqual(['target-sheet', 'target-style']);
       expect(proposal.nodes.filter((n) => n.role === 'written')).toEqual([]);
       // Two same-type inputs each @ the node first given them.
       expect(refsOf(proposal, existing, 0)).toEqual(['target-front', 'target-back', 'target-character']);
@@ -552,6 +550,46 @@ describe('useApplyTemplate', () => {
       expect(appendedOf(proposal, existing)).toEqual([]);
       expect(proposal.nodes[0]).toMatchObject({ mode: 'i2i', model: 'model-final' });
       expect(proposal.nodes[indexOf(existing, 'target-sheet')]).toMatchObject({ mode: 'i2i', model: 'model-sheet' });
+    });
+
+    it('marks an input node this template placed as part of the instance, and a reader\'s own input not', () => {
+      seedFlowInstance('target');
+      setNodeTemplateNode('p', 's', 'target-pose', { template: 'fixture-flow', key: 'pose', input: true, anchor: 'target' });
+      const place = vi.fn();
+      apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
+
+      const { existing } = placed(place);
+      expect([...existing.values()].filter((e) => e.instance).map((e) => e.nodeId).sort()).toEqual(['target-pose', 'target-sheet', 'target-style']);
+    });
+
+    for (const [what, tag] of [
+      ['another instance of this template', { template: 'fixture-flow', key: 'pose', input: true, anchor: 'elsewhere' }],
+      ['another template', { template: 'other', key: 'pose', input: true, anchor: 'target' }],
+    ] as const) {
+      it(`leaves an input node placed by ${what} out of the instance`, () => {
+        seedFlowInstance('target');
+        setNodeTemplateNode('p', 's', 'target-pose', tag);
+        const place = vi.fn();
+        apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
+
+        const { existing } = placed(place);
+        expect([...existing.values()].filter((e) => e.instance).map((e) => e.nodeId).sort()).toEqual(['target-sheet', 'target-style']);
+      });
+    }
+
+    it('hands the placing the template\'s own node order, so a node put back stacks where the template puts it', () => {
+      seedFlowInstance('target');
+      removeNode('p', 's', 'target-style');
+      const place = vi.fn();
+      apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
+
+      const { proposal, existing } = placed(place);
+      const order = place.mock.calls[0]?.[2] as readonly number[] | undefined;
+      const style = proposal.nodes.findIndex((n) => n.name === 'Style');
+      // The template lists its own nodes before its inputs: the anchor, then sheet, then style, then pose.
+      expect(order?.[0]).toBeLessThan(order?.[indexOf(existing, 'target-sheet')] ?? -1);
+      expect(order?.[indexOf(existing, 'target-sheet')]).toBeLessThan(order?.[style] ?? -1);
+      expect(order?.[style]).toBeLessThan(order?.[indexOf(existing, 'target-pose')] ?? -1);
     });
 
     it('leaves the earlier of two chained instances alone when applied on the later one', () => {
@@ -612,7 +650,7 @@ describe('useApplyTemplate', () => {
       const place = vi.fn();
       apply(grid(), 'target', [ULTRA], place);
       const { proposal } = placed(place);
-      expect(proposal.nodes.some((n) => (n as TemplateProposalNode).templateNode?.key === 'guide')).toBe(false);
+      expect(proposal.nodes.some((n) => n.templateNode?.key === 'guide')).toBe(false);
     });
   });
 
@@ -687,7 +725,7 @@ describe('useApplyTemplate', () => {
       const place = vi.fn();
       apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
       const { proposal, existing } = placed(place);
-      expect((proposal.nodes[indexOf(existing, 'target-style')] as TemplateProposalNode).resource).toBe('templates/fixture-flow/style.png');
+      expect(proposal.nodes[indexOf(existing, 'target-style')]?.resource).toBe('templates/fixture-flow/style.png');
     });
   });
 
@@ -709,7 +747,7 @@ describe('the view the panel matches on', () => {
     _resetForTests();
   });
 
-  it('carries data.templateNode from the document; the anchor and inputs carry none', () => {
+  it('carries data.templateNode from the document; the anchor and a reader\'s own inputs carry none', () => {
     seedFlowInstance('target');
     const views = readCanvasGraph('p', 's').nodes;
     const tagOf = (id: string): unknown =>

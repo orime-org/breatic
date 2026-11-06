@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /** The canvas hands the panels a getter; these trees answer 'this client'. */
 const LAST_WRITE_LOCAL = (): boolean => true;
@@ -67,7 +67,13 @@ import {
 } from '@web/data/yjs/canvas-space';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
 import type { VideoNodeView } from '@web/data/yjs/node-view';
-import { enterStoryboardShots, readShots, shotListOf } from '@web/data/yjs/node-storyboard';
+import {
+  addStoryboardShot,
+  enterStoryboardShots,
+  readShots,
+  removeStoryboardShot,
+  shotListOf,
+} from '@web/data/yjs/node-storyboard';
 import { canvasApi } from '@web/data/api/canvas';
 
 import {
@@ -2406,6 +2412,159 @@ describe('the multi-shot mode', () => {
     expect(screen.getByTestId('generate-storyboard-add')).toBeEnabled();
   });
 
+  /**
+   * Whether the caret is inside one shot's box.
+   * @param n - The shot, counted from 1.
+   * @returns True when the focused element is in that box.
+   */
+  const caretIn = (n: number): boolean =>
+    screen.getByTestId(`generate-storyboard-shot-${n}-editor`).contains(document.activeElement);
+
+  /** Three shots on a five-second total. */
+  const threeShots = (): void => {
+    enterStoryboardShots('p', 's', 'target', 5);
+    addStoryboardShot('p', 's', 'target', 5, 6);
+  };
+
+  it('opens on the first shot, the others as one row each (#1201)', async () => {
+    await openOn('multi_shot', threeShots);
+    expect(await screen.findByTestId('generate-storyboard-shot-1-editor')).toBeVisible();
+    expect(screen.getByTestId('generate-storyboard-shot-2-editor')).not.toBeVisible();
+    expect(screen.getByTestId('generate-storyboard-shot-3-editor')).not.toBeVisible();
+  });
+
+  it('opens a shot whose row is clicked and puts the caret in it (#1201)', async () => {
+    await openOn('multi_shot', threeShots);
+    fireEvent.click(await screen.findByTestId('generate-storyboard-shot-2-toggle'));
+    expect(screen.getByTestId('generate-storyboard-shot-2-editor')).toBeVisible();
+    expect(screen.getByTestId('generate-storyboard-shot-1-editor')).not.toBeVisible();
+    await waitFor(() => expect(caretIn(2)).toBe(true));
+  });
+
+  it('opens the shot the reader adds and puts the caret in it (#1201)', async () => {
+    await openOn('multi_shot', () => enterStoryboardShots('p', 's', 'target', 5));
+    fireEvent.click(await screen.findByTestId('generate-storyboard-add'));
+    await waitFor(() => expect(screen.getByTestId('generate-storyboard-shot-3-editor')).toBeVisible());
+    expect(screen.getByTestId('generate-storyboard-shot-1-editor')).not.toBeVisible();
+    await waitFor(() => expect(caretIn(3)).toBe(true));
+  });
+
+  it('keeps the open shot and the caret where they are when a collaborator adds a shot (#1201)', async () => {
+    await openOn('multi_shot', () => enterStoryboardShots('p', 's', 'target', 5));
+    fireEvent.click(await screen.findByTestId('generate-storyboard-shot-2-toggle'));
+    await waitFor(() => expect(caretIn(2)).toBe(true));
+    act(() => {
+      addStoryboardShot('p', 's', 'target', 5, 6);
+    });
+    await screen.findByTestId('generate-storyboard-shot-3-editor');
+    expect(screen.getByTestId('generate-storyboard-shot-2-editor')).toBeVisible();
+    expect(screen.getByTestId('generate-storyboard-shot-3-editor')).not.toBeVisible();
+    expect(caretIn(2)).toBe(true);
+  });
+
+  it('opens the shot after the open one the reader removes, or the one before when it was the last (#1201)', async () => {
+    await openOn('multi_shot', threeShots);
+    fireEvent.click(await screen.findByTestId('generate-storyboard-shot-2-toggle'));
+    const third = readShots('p', 's', 'target')?.[2]?.id;
+    fireEvent.click(screen.getByTestId('generate-storyboard-shot-2-remove'));
+    await waitFor(() => expect(readShots('p', 's', 'target')).toHaveLength(2));
+    expect(readShots('p', 's', 'target')?.[1]?.id).toBe(third);
+    expect(screen.getByTestId('generate-storyboard-shot-2-editor')).toBeVisible();
+    await waitFor(() => expect(caretIn(2)).toBe(true));
+
+    fireEvent.click(screen.getByTestId('generate-storyboard-shot-2-remove'));
+    await waitFor(() => expect(readShots('p', 's', 'target')).toHaveLength(1));
+    expect(screen.getByTestId('generate-storyboard-shot-1-editor')).toBeVisible();
+  });
+
+  it('keeps the open shot when the reader removes a collapsed one (#1201)', async () => {
+    await openOn('multi_shot', threeShots);
+    const first = readShots('p', 's', 'target')?.[0]?.id;
+    fireEvent.click(await screen.findByTestId('generate-storyboard-shot-3-remove'));
+    await waitFor(() => expect(readShots('p', 's', 'target')).toHaveLength(2));
+    expect(readShots('p', 's', 'target')?.[0]?.id).toBe(first);
+    expect(screen.getByTestId('generate-storyboard-shot-1-editor')).toBeVisible();
+  });
+
+  it('opens the next shot without moving the caret when a collaborator removes the open one (#1201)', async () => {
+    await openOn('multi_shot', threeShots);
+    fireEvent.click(await screen.findByTestId('generate-storyboard-shot-2-toggle'));
+    const second = readShots('p', 's', 'target')?.[1]?.id ?? '';
+    act(() => {
+      removeStoryboardShot('p', 's', 'target', second, 5);
+    });
+    await waitFor(() => expect(readShots('p', 's', 'target')).toHaveLength(2));
+    expect(screen.getByTestId('generate-storyboard-shot-2-editor')).toBeVisible();
+    expect(caretIn(2)).toBe(false);
+  });
+
+  it('keeps the shot that opened in place of a removed one open when a collaborator brings that one back before it (#1201)', async () => {
+    await openOn('multi_shot', threeShots);
+    const shots = shotListOf('p', 's', 'target');
+    if (!shots) throw new Error('no shots');
+    const second = readShots('p', 's', 'target')?.[1]?.id;
+    // A collaborator removes the first shot, so the second opens in its place,
+    // then brings the first back in front of it.
+    const removed = new Y.Map<unknown>();
+    act(() => {
+      getDoc(docName.canvasSpace('p', 's')).transact(() => {
+        const old = shots.get(0);
+        removed.set('id', old.get('id'));
+        removed.set('duration', old.get('duration'));
+        removed.set('prompt', new Y.XmlFragment());
+        shots.delete(0, 1);
+      });
+    });
+    await waitFor(() => expect(readShots('p', 's', 'target')).toHaveLength(2));
+    expect(readShots('p', 's', 'target')?.[0]?.id).toBe(second);
+    expect(screen.getByTestId('generate-storyboard-shot-1-editor')).toBeVisible();
+    act(() => {
+      shots.insert(0, [removed]);
+    });
+    await waitFor(() => expect(readShots('p', 's', 'target')).toHaveLength(3));
+    expect(screen.getByTestId('generate-storyboard-shot-2-editor')).toBeVisible();
+    expect(screen.getByTestId('generate-storyboard-shot-1-editor')).not.toBeVisible();
+  });
+
+  it('opens the shot after the open one when one change removes it and adds a shot before it (#1201)', async () => {
+    await openOn('multi_shot', threeShots);
+    fireEvent.click(await screen.findByTestId('generate-storyboard-shot-2-toggle'));
+    const shots = shotListOf('p', 's', 'target');
+    if (!shots) throw new Error('no shots');
+    const third = readShots('p', 's', 'target')?.[2]?.id;
+    act(() => {
+      getDoc(docName.canvasSpace('p', 's')).transact(() => {
+        const added = new Y.Map<unknown>();
+        added.set('id', 'added-by-a-collaborator');
+        added.set('duration', shots.get(1).get('duration'));
+        added.set('prompt', new Y.XmlFragment());
+        shots.insert(0, [added]);
+        shots.delete(2, 1);
+      });
+    });
+    await waitFor(() => expect(readShots('p', 's', 'target')?.[0]?.id).toBe('added-by-a-collaborator'));
+    expect(readShots('p', 's', 'target')?.[2]?.id).toBe(third);
+    expect(screen.getByTestId('generate-storyboard-shot-3-editor')).toBeVisible();
+    expect(screen.getByTestId('generate-storyboard-shot-2-editor')).not.toBeVisible();
+  });
+
+  it('shows a collapsed shot its first line, a chip by its name (#1201)', async () => {
+    await openOn('multi_shot', () => enterStoryboardShots('p', 's', 'target', 5));
+    act(() => {
+      const shot = readShots('p', 's', 'target')?.[1];
+      const paragraph = new Y.XmlElement('paragraph');
+      const chip = new Y.XmlElement('referenceMention');
+      chip.setAttribute('sourceNodeId', 'src');
+      chip.setAttribute('kind', 'image');
+      chip.setAttribute('label', 'Hero');
+      paragraph.insert(0, [chip, new Y.XmlText(' walks in')]);
+      shot?.prompt.insert(0, [paragraph]);
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('generate-storyboard-shot-2-toggle')).toHaveTextContent('@Hero walks in'),
+    );
+  });
+
   it('draws no shots outside the multi-shot mode, even when the node holds some', async () => {
     await openOn('t2v', () => enterStoryboardShots('p', 's', 'target', 5));
     expect(screen.queryByTestId('generate-storyboard-shots')).toBeNull();
@@ -2481,7 +2640,9 @@ describe('the multi-shot mode', () => {
       enterStoryboardShots('p', 's', 'target', 5);
       typeShot(1, 'the words before');
     });
-    await screen.findByText('the words before');
+    await waitFor(() =>
+      expect(screen.getByTestId('generate-storyboard-shot-2-editor').textContent).toContain('the words before'),
+    );
     // A collaborator's remove and undo, arriving as one update: the shot
     // comes back as a new map with the same id and seconds and a new prompt.
     const shots = shotListOf('p', 's', 'target');
@@ -2539,6 +2700,18 @@ describe('the multi-shot mode', () => {
     fireEvent.click(screen.getByTestId('generate-video-mode-trigger'));
     await userEvent.click(await screen.findByTestId('generate-video-mode-multi-shot'));
     await waitFor(() => expect(readShots('p', 's', 'target')?.map((s) => s.duration)).toEqual([4, 6]));
+  });
+
+  it('keeps the open shot open across a model switch in the multi-shot mode (#1201)', async () => {
+    await openOn('multi_shot', () => enterStoryboardShots('p', 's', 'target', 5));
+    fireEvent.click(await screen.findByTestId('generate-storyboard-shot-2-toggle'));
+    // The caret lands in the box a frame later, and would close a menu opened before it.
+    await waitFor(() => expect(caretIn(2)).toBe(true));
+    fireEvent.click(screen.getByTestId('generate-model-trigger'));
+    await userEvent.click(await screen.findByTestId('generate-model-option-wan-3'));
+    await waitFor(() => expect(readShots('p', 's', 'target')?.map((s) => s.duration)).toEqual([4, 6]));
+    expect(screen.getByTestId('generate-storyboard-shot-2-editor')).toBeVisible();
+    expect(screen.getByTestId('generate-storyboard-shot-1-editor')).not.toBeVisible();
   });
 
   it('re-splits the shots to the new model\'s total on a model switch in the multi-shot mode', async () => {
@@ -2605,17 +2778,23 @@ describe('camera commands', () => {
    * @param mode - The node's mode.
    * @param model - The node's model.
    * @param before - Writes to make before the panel opens.
+   * @returns The render result, for a case that switches mode by rerendering.
    */
-  async function openOn(mode: string, model: string, before: () => void = () => undefined): Promise<void> {
+  async function openOn(
+    mode: string,
+    model: string,
+    before: () => void = () => undefined,
+  ): Promise<ReturnType<typeof render>> {
     vi.spyOn(modelsApi, 'list').mockResolvedValue({ ...catalog(), video: [H3, ...catalog().video] });
     const stored = { mode, model, modelByMode: { [mode]: model }, paramsByModel: { [model]: { duration: 5 } } };
     seedVideoNode(stored);
     before();
-    mountContainer('video', stored);
+    const view = mountContainer('video', stored);
     act(() => {
       canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
     });
     await screen.findByTestId('generate-video-execute');
+    return view;
   }
 
   /**
@@ -2671,23 +2850,50 @@ describe('camera commands', () => {
     expect(createTask.mock.calls[0]?.[0]?.params.prompt).toBe('a red car [Push in,Zoom out,Truck right]');
   });
 
-  it('in the multi-shot mode writes into the first shot, or the shot last focused, and sends it on that line', async () => {
+  it('in the multi-shot mode writes into the open shot, the first one until another is opened, and sends it on that line', async () => {
     const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({ id: 't1' } as never);
     await openOn('multi_shot', 'minimax-h3-text-to-video', () => enterStoryboardShots('p', 's', 'target', 5));
     await screen.findByTestId('generate-storyboard-shot-2-editor');
     await insert('Pan left');
     await waitFor(() => expect(readShots('p', 's', 'target')?.[0]?.prompt.toString()).toContain('[Pan left]'));
-    // The insert hands focus back to the first shot on the next frame; the reader clicks the second one after that.
-    await act(async () => {
-      await new Promise<void>((done) => requestAnimationFrame(() => done()));
-    });
-    const second = screen.getByTestId('generate-storyboard-shot-2-editor').querySelector('.ProseMirror') as HTMLElement;
-    fireEvent.focus(second);
+    // Focus lands in a box a frame after the insert or the click that sends it
+    // there, and focus landing outside the open camera picker closes it; the
+    // reader moves on once the caret is in the box, and so does this test.
+    const focusIn = (n: number): Promise<void> => waitFor(() => expect(
+      screen.getByTestId(`generate-storyboard-shot-${String(n)}-editor`).contains(document.activeElement),
+    ).toBe(true));
+    await focusIn(1);
+    fireEvent.click(screen.getByTestId('generate-storyboard-shot-2-toggle'));
+    await focusIn(2);
     await insert('Tilt up');
     await waitFor(() => expect(readShots('p', 's', 'target')?.[1]?.prompt.toString()).toContain('[Tilt up]'));
     fireEvent.click(screen.getByTestId('generate-video-execute'));
     await waitFor(() => expect(createTask).toHaveBeenCalledTimes(1));
     expect(createTask.mock.calls[0]?.[0]?.params.prompt).toBe('Shot 1 [0-2s]: [Pan left]\nShot 2 [2-5s]: [Tilt up]');
+  });
+
+  it('writes into the open first shot after a mode round trip, though the caret was last in shot 3 (#1201)', async () => {
+    const view = await openOn('multi_shot', 'minimax-h3-text-to-video', () => {
+      enterStoryboardShots('p', 's', 'target', 5);
+      addStoryboardShot('p', 's', 'target', 5, 6);
+    });
+    fireEvent.click(await screen.findByTestId('generate-storyboard-shot-3-toggle'));
+    const third = screen.getByTestId('generate-storyboard-shot-3-editor').querySelector('.ProseMirror') as HTMLElement;
+    fireEvent.focus(third);
+    const stored = (mode: string): Record<string, unknown> => ({
+      mode,
+      model: 'minimax-h3-text-to-video',
+      modelByMode: { [mode]: 'minimax-h3-text-to-video' },
+      paramsByModel: { 'minimax-h3-text-to-video': { duration: 5 } },
+    });
+    view.rerender(panelTree('video', stored('t2v')));
+    await waitFor(() => expect(screen.queryByTestId('generate-storyboard-shots')).toBeNull());
+    view.rerender(panelTree('video', stored('multi_shot')));
+    await waitFor(() => expect(screen.getByTestId('generate-storyboard-shot-1-editor')).toBeVisible());
+    expect(screen.getByTestId('generate-storyboard-shot-3-editor')).not.toBeVisible();
+    await insert('Pan left');
+    await waitFor(() => expect(readShots('p', 's', 'target')?.[0]?.prompt.toString()).toContain('[Pan left]'));
+    expect(readShots('p', 's', 'target')?.[2]?.prompt.toString()).not.toContain('[Pan left]');
   });
 
   it('previews the hovered command, a disabled one included, in the pane at the top, and keeps the last one', async () => {
