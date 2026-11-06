@@ -185,21 +185,30 @@ function dataOf<T>(results: readonly { data: T | undefined }[]): (T | undefined)
  */
 function useAnalysisRefs(projectId: string, spaceId: string, nodeId: string): ReturnType<typeof videoToolAnalysisRefs> {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const [refs, setRefs] = React.useState<ReturnType<typeof videoToolAnalysisRefs>>([]);
+  /**
+   * The node's accepted analysis refs as the document holds them now.
+   * @returns The refs.
+   * @throws {never} Never.
+   */
+  const current = React.useCallback((): ReturnType<typeof videoToolAnalysisRefs> => {
+    const data = nodeDataMap(doc, nodeId);
+    return videoToolAnalysisRefs(data === null ? {} : Object.fromEntries(data.entries()));
+  }, [doc, nodeId]);
+  // Read at the first render: an effect that starts paid work in the same commit must see the refs already accepted.
+  const [refs, setRefs] = React.useState(current);
   React.useEffect(() => {
     /**
      * Publishes accepted metadata independently of draft revisions.
      * @throws {never} Never.
      */
     function read(): void {
-      const data = nodeDataMap(doc, nodeId);
-      const found = videoToolAnalysisRefs(data === null ? {} : Object.fromEntries(data.entries()));
+      const found = current();
       setRefs((before) => canonicalMiniToolValue(before) === canonicalMiniToolValue(found) ? before : found);
     }
     read();
     doc.getMap(CANVAS_NODES_KEY).observeDeep(read);
     return () => doc.getMap(CANVAS_NODES_KEY).unobserveDeep(read);
-  }, [doc, nodeId]);
+  }, [doc, current]);
   return refs;
 }
 
