@@ -10,6 +10,8 @@ import { MINI_TOOL_JOB_MAX_OUTPUTS } from "@shared/upload/mini-tool-job.js";
 import { x264PresetSchema } from "@shared/upload/video-presentation-policy.js";
 import { packedGeometrySchema } from "@shared/upload/video-presentation.js";
 import { compare, exactTime } from "@shared/upload/video-source-ledger.js";
+import { VIDEO_TOOL_SYNC_MODES } from "@shared/mini-tools/lipsync-timeline.js";
+import { presentationTableSchema } from "@shared/mini-tools/video-presentation-table.js";
 import { miniToolPlanRecipeInputs, type MiniToolPlanEntry, type MiniToolPlanExact, type MiniToolPlanRecipe } from "@shared/upload/mini-tool-plan-types.js";
 export { miniToolPlanRecipeInputs } from "@shared/upload/mini-tool-plan-types.js";
 
@@ -100,6 +102,10 @@ const transitionProfile = z.strictObject({
   .refine((value) => value.codec === "vp9" || (value.width % 2 === 0 && value.height % 2 === 0), "An H.264 output has even sides")
   .refine((value) => BigInt(value.fps.numerator) * BigInt(value.timeBase.numerator) === BigInt(value.fps.denominator) * BigInt(value.timeBase.denominator), "The time base is 1/fps");
 const chunkRef = z.strictObject({ inputId, duration: positiveTime });
+// The frozen lip-sync timeline (§97 D12-4) and the prepared video's presentation table every lip-sync step maps through.
+const positiveSeconds = z.number().finite().positive();
+const lipsyncTimeline = z.strictObject({ duration: positiveSeconds, videoDuration: positiveSeconds, syncMode: z.enum(VIDEO_TOOL_SYNC_MODES) });
+const cropSize = z.number().int().positive();
 const windowRef = z.strictObject({ startFrame: index, frameCount: z.number().int().positive() });
 
 /** Output and diagnostic byte ceilings frozen from the task's runtime configuration. */
@@ -159,7 +165,7 @@ const recipeUnion = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("model_composite"), mode: z.enum(["erase", "expand"]), ...windowRecipe,
     result: inputId.optional(), range: interval.optional(),
-    backgrounds: z.array(z.strictObject({ inputId, window: interval })).optional(),
+    backgrounds: z.array(z.strictObject({ inputId, window: interval, crop: pixelRect.optional() })).optional(),
     ledger: z.array(z.strictObject({ overlap: time, consumed: interval })).optional(),
   }).superRefine((recipe, ctx) => {
     if (recipe.mode === "erase") {
@@ -185,6 +191,14 @@ const recipeUnion = z.discriminatedUnion("kind", [
       }
       if (at > 0 && compare(row.consumed.start, ledger[at - 1]!.consumed.end) !== 0n) ctx.addIssue({ code: "custom", path: ["ledger", at, "consumed"], message: "Consumed intervals run end to end" });
     });
+  }),
+  // The lip-sync steps (§7.17 lipsync rows, §97 D20-1): every object is a bound input named by its inputId.
+  z.strictObject({ kind: z.literal("lipsync_faces"), inputId, track: inputId, profile }),
+  z.strictObject({ kind: z.literal("lipsync_clip"), inputId, faces: inputId, track: inputId, cropSize, timeline: lipsyncTimeline, table: presentationTableSchema }),
+  z.strictObject({ kind: z.literal("lipsync_stem"), rows: z.array(z.strictObject({ inputId, startTime: time })).min(1), duration: positiveTime }),
+  z.strictObject({
+    kind: z.literal("lipsync_composite"), ...windowRecipe, timeline: lipsyncTimeline, table: presentationTableSchema,
+    persons: z.array(z.strictObject({ result: inputId, faces: inputId, track: inputId, cropSize })).min(1),
   }),
 ]);
 /**

@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
+import type { LipsyncTimeline } from "@shared/mini-tools/lipsync-timeline.js";
+import type { VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
+
 /** Finite JSON is validated at admission; the container consumes only owned data types. */
 type PlanJsonValue = string | number | boolean | null | PlanJsonValue[] | { [key: string]: PlanJsonValue };
 
@@ -90,7 +93,11 @@ export type MiniToolPlanRecipe =
   | ({ kind: "prepare_model_input"; audio: MiniToolPlanAudio | null } & MiniToolPlanWindowRecipe)
   | MiniToolPlanTransitionWindow
   | MiniToolPlanEraseComposite
-  | MiniToolPlanExpandComposite;
+  | MiniToolPlanExpandComposite
+  | MiniToolPlanLipsyncFaces
+  | MiniToolPlanLipsyncClip
+  | MiniToolPlanLipsyncStem
+  | MiniToolPlanLipsyncComposite;
 
 /** Chunks joined by stream copy, the source's interval audio encoded once (§5.4). */
 export interface MiniToolPlanStitch { kind: "stitch"; inputId: string; chunks: { inputId: string; duration: MiniToolPlanExact }[]; audio: MiniToolPlanAudio | null; target: MiniToolPlanTarget }
@@ -123,12 +130,28 @@ export type MiniToolPlanEraseComposite = { kind: "model_composite"; mode: "erase
 /** An expand composite chunk: the background windows and how much of each is overlap and consumed (§97 D15-8, execution design §8.1). */
 export type MiniToolPlanExpandComposite = {
   kind: "model_composite"; mode: "expand";
-  backgrounds: { inputId: string; window: MiniToolPlanInterval }[];
+  /** Each window's model output; `crop` names the product ROI in the output's own pixels when it is a whole model frame (§97 D20-2). */
+  backgrounds: { inputId: string; window: MiniToolPlanInterval; crop?: MiniToolPlanPixelRect }[];
   ledger: { overlap: MiniToolPlanExact; consumed: MiniToolPlanInterval }[];
 } & MiniToolPlanWindowRecipe;
 
+/** One person's face per prepared frame (§7.17 lipsync_faces row): detected on the whole frame, kept inside the person's track. */
+export interface MiniToolPlanLipsyncFaces { kind: "lipsync_faces"; inputId: string; track: string; profile: MiniToolPlanDetectorProfile }
+/** One person's face clip on the result timeline (§7.17 lipsync_clip row): each result frame's source face, cropped and fitted. */
+export interface MiniToolPlanLipsyncClip {
+  kind: "lipsync_clip"; inputId: string; faces: string; track: string; cropSize: number; timeline: LipsyncTimeline; table: VideoPresentationTable;
+}
+/** One person's dialogue stem (§7.17 lipsync_stem row): each row placed at its start and summed, `duration` long. */
+export interface MiniToolPlanLipsyncStem { kind: "lipsync_stem"; rows: { inputId: string; startTime: MiniToolPlanExact }[]; duration: MiniToolPlanExact }
+/** One chunk of the lip-sync composite on the result clock (§7.17 lipsync_composite row); `window` holds result-frame ordinals. */
+export type MiniToolPlanLipsyncComposite = {
+  kind: "lipsync_composite"; timeline: LipsyncTimeline; table: VideoPresentationTable;
+  persons: { result: string; faces: string; track: string; cropSize: number }[];
+} & MiniToolPlanWindowRecipe;
+
 /**
- * Every job input a recipe reads: its source, a stitch's chunks and clips, a window's clips, a composite's results.
+ * Every job input a recipe reads: its source, a stitch's chunks and clips, a window's clips, a composite's results, a lip-sync
+ * step's faces, track, results and dialogue audio.
  * @param recipe - A validated recipe.
  * @returns The input ids it names.
  * @throws {never} Never.
@@ -138,6 +161,10 @@ export function miniToolPlanRecipeInputs(recipe: MiniToolPlanRecipe): string[] {
     case "stitch": return [...("clips" in recipe ? recipe.clips.map((clip) => clip.inputId) : [recipe.inputId]), ...recipe.chunks.map((chunk) => chunk.inputId)];
     case "transition_window": return recipe.clips.map((clip) => clip.inputId);
     case "model_composite": return [recipe.inputId, ...(recipe.mode === "erase" ? [recipe.result] : recipe.backgrounds.map((background) => background.inputId))];
+    case "lipsync_faces": return [recipe.inputId, recipe.track];
+    case "lipsync_clip": return [recipe.inputId, recipe.faces, recipe.track];
+    case "lipsync_stem": return recipe.rows.map((row) => row.inputId);
+    case "lipsync_composite": return [recipe.inputId, ...recipe.persons.flatMap((person) => [person.result, person.faces, person.track])];
     default: return [recipe.inputId];
   }
 }
