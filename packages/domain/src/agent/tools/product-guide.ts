@@ -977,7 +977,11 @@ export function renderProductGuide(): string {
       "A filled slot shows its truncated filename; hover it to listen in the preview. " +
       `${quoted(t("canvas.miniTool.videoUI.addDialogue"))} adds a row, including another dialogue for the same person. ` +
       "The bin at the end of a dialogue row removes it. Times use the source video's clock and retain silence " +
-      `inside each audio. ${quoted(t("canvas.miniTool.videoUI.syncMode"))} offers Cut off, Silence, Loop, Bounce and Remap.`,
+      `inside each audio. ${quoted(t("canvas.miniTool.videoUI.syncMode"))} offers Cut off, Silence, Loop, Bounce and Remap. ` +
+      "Choose the lip-sync model in the panel; Run stays unavailable, with a toast giving the range, while the result is " +
+      "outside the model's duration range or the used part of the video is outside what person tracking takes. A run " +
+      "takes up to two people and eight dialogue rows. A failed run lists one line per person with the step that failed " +
+      "and what to do next; retry is offered only when every failure can clear on a retry, and it reruns only the failed people.",
     `In ${quoted(t("canvas.miniTool.video.extract-frames.label"))}, ${quoted(t("canvas.miniTool.videoUI.frameMode"))} ` +
       `offers ${quoted(t("canvas.miniTool.videoUI.first"))}, ${quoted(t("canvas.miniTool.videoUI.last"))} and ` +
       `${quoted(t("canvas.miniTool.videoUI.current"))} in one row. ` +
@@ -990,19 +994,16 @@ export function renderProductGuide(): string {
       "finds candidate cut points within this same tool. Drag a cut handle on its filmstrip or edit its seconds " +
       `below; ${quoted(t("canvas.miniTool.videoUI.atCursor"))} adds one at the player cursor, and the bin beside ` +
       "a cut removes it. The segment count reflects the complete split plan.",
-    `In ${quoted(t("canvas.miniTool.video.transitions.label"))}, fill ${quoted(t("canvas.miniTool.videoUI.videoInputs"))} ` +
-      `with ${quoted(t("canvas.miniTool.videoUI.addVideoSlot"))}, then open ${quoted(t("canvas.miniTool.videoUI.editTimeline"))}. ` +
-      `The dialog has ${quoted(t("canvas.miniTool.videoUI.timelineAssets"))} on the left, ` +
-      `${quoted(t("canvas.miniTool.videoUI.timelineComposition"))} in the middle and ` +
-      `${quoted(t("canvas.miniTool.videoUI.timelineProperties"))} on the right. ` +
-      `${quoted(t("canvas.miniTool.videoUI.addToTimeline"))} adds footage to the composition. Select a clip and edit ` +
-      `${quoted(t("canvas.miniTool.videoUI.inPoint"))} and ${quoted(t("canvas.miniTool.videoUI.outPoint"))}; ` +
-      `${quoted(t("canvas.miniTool.videoUI.earlier"))} and ${quoted(t("canvas.miniTool.videoUI.later"))} change its order, ` +
-      `${quoted(t("canvas.miniTool.videoUI.duplicateClip"))} repeats it and ${quoted(t("canvas.miniTool.videoUI.removeClip"))} ` +
-      `removes it. Set ${quoted(t("canvas.miniTool.videoUI.transition"))} and ` +
-      `${quoted(t("canvas.miniTool.videoUI.transitionDuration"))} between adjacent clips. ` +
-      `${quoted(t("canvas.miniTool.videoUI.preview"))} plays the composition and ${quoted(t("canvas.miniTool.videoUI.pause"))} ` +
-      `pauses it; ${quoted(t("canvas.miniTool.videoUI.export"))} runs the complete composition.`,
+    `In ${quoted(t("canvas.miniTool.video.transitions.label"))}, the timeline holds two clips: the current video and one ` +
+      `video picked under ${quoted(t("canvas.miniTool.videoUI.videoInputs"))}. Open ` +
+      `${quoted(t("canvas.miniTool.videoUI.editTimeline"))} to swap their order and trim each clip with ` +
+      `${quoted(t("canvas.miniTool.videoUI.inPoint"))} and ${quoted(t("canvas.miniTool.videoUI.outPoint"))}. ` +
+      `${quoted(t("canvas.miniTool.videoUI.transition"))} offers ${quoted(t("canvas.miniTool.videoUI.transitionCut"))}, ` +
+      `${quoted(t("canvas.miniTool.videoUI.transitionFade"))}, ${quoted(t("canvas.miniTool.videoUI.transitionWipeLeft"))} and ` +
+      `${quoted(t("canvas.miniTool.videoUI.transitionWipeRight"))}; any type but Cut lasts at most half the shorter clip, ` +
+      `set with ${quoted(t("canvas.miniTool.videoUI.transitionDuration"))}, and clips too short for one leave only Cut. ` +
+      `${quoted(t("canvas.miniTool.videoUI.preview"))} plays the result and ${quoted(t("canvas.miniTool.videoUI.pause"))} ` +
+      `pauses it; ${quoted(t("canvas.miniTool.videoUI.export"))} runs it. To join more clips, run the tool again on the exported result.`,
     `A failed preview offers ${quoted(t("canvas.miniTool.videoUI.retryPreview"))}. ` +
       "Removing a video's background keeps the transparent source available for download and downstream tools.",
     "Choosing a tool opens its panel under the node, in the place the generation panel opens; the two never show " +
