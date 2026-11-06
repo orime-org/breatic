@@ -8,13 +8,10 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from '@web/components/ui/hover-card';
-import {
-  MediaFullscreen,
-  type MediaFullscreenSource,
-} from '@web/spaces/canvas/nodes/_shared/MediaFullscreen';
+import type { MediaFullscreenSource } from '@web/spaces/canvas/nodes/_shared/MediaFullscreen';
 import { MediaFullscreenButton } from '@web/spaces/canvas/nodes/_shared/MediaFullscreenButton';
 import { MediaPlayer, type MediaPlayerHandle } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
-import type { MediaPlayerState } from '@web/spaces/canvas/nodes/_shared/use-media-player';
+import { useMediaFullscreen } from '@web/spaces/canvas/nodes/_shared/use-media-fullscreen';
 import {
   HOVER_OPEN_DELAY_MS,
   HOVER_CLOSE_DELAY_MS,
@@ -83,12 +80,6 @@ export interface HoverPreviewProps {
   children: React.ReactNode;
 }
 
-/** What the full-screen layer opened on. */
-interface Viewer {
-  source: MediaFullscreenSource;
-  start?: MediaPlayerState;
-}
-
 /**
  * Unified hover preview (#1622): hovering a small thumbnail / chip pops a large
  * preview whose form depends on `kind` — a static `<img>` for image, the static
@@ -149,7 +140,14 @@ export function HoverPreview({
   // the close animation; the button only exists in the open card.
   const [resolvedFullscreen, setResolvedFullscreen] = React.useState<MediaFullscreenSource | null>(null);
   const player = React.useRef<MediaPlayerHandle>(null);
-  const [viewer, setViewer] = React.useState<Viewer | null>(null);
+  const fullscreenLayer = useMediaFullscreen({
+    name: alt,
+    currentSrc: src,
+    player,
+    // The trigger opens the card when it takes the focus, and most triggers
+    // cannot hold it anyway.
+    onCloseAutoFocus: (event) => event.preventDefault(),
+  });
 
   const previewText = resolveOnOpen ? resolved?.text : text;
   const previewHint = resolveOnOpen ? resolved?.emptyHint : emptyHint;
@@ -174,11 +172,8 @@ export function HoverPreview({
   /** Closes the card and opens full screen where the preview player is. */
   const openFullscreen = (): void => {
     if (!fullscreenSource) return;
-    const handle = player.current;
-    const start = fullscreenSource.kind === 'video' && kind === 'video' ? handle?.read() : undefined;
-    handle?.pause();
     setOpen(false);
-    setViewer({ source: fullscreenSource, start });
+    fullscreenLayer.open(fullscreenSource);
   };
 
   let content: React.ReactNode = null;
@@ -246,22 +241,7 @@ export function HoverPreview({
           </HoverCardContent>
         ) : null}
       </HoverCard>
-      {viewer ? (
-        <MediaFullscreen
-          open
-          onOpenChange={(next) => {
-            if (!next) setViewer(null);
-          }}
-          kind={viewer.source.kind}
-          src={viewer.source.src}
-          poster={viewer.source.poster}
-          name={alt}
-          start={viewer.start}
-          // The trigger opens the card when it takes the focus, and most
-          // triggers cannot hold it anyway.
-          onCloseAutoFocus={(event) => event.preventDefault()}
-        />
-      ) : null}
+      {fullscreenLayer.layer}
     </>
   );
 }

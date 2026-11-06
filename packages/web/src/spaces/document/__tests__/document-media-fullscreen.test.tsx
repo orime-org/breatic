@@ -99,6 +99,18 @@ describe('a document video full screen', () => {
     expect(fullVideo().getAttribute('src')).toBe('/clip.mp4');
   });
 
+  // inner#1844 round 2: the new file is not handed the old one's place.
+  it('hands nothing back to a block whose file was replaced while open', async () => {
+    const editor = open('video', 600);
+    fireEvent.click(screen.getAllByTestId('doc-media-fullscreen')[0]!);
+    const id = (editor.document[0] as { id: string }).id;
+    act(() => editor.updateBlock(id, { props: { url: '/other.mp4' } } as never));
+    fullVideo().currentTime = 30;
+    fireEvent.keyDown(fullVideo(), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByTestId('media-fullscreen')).toBeNull());
+    expect(inlineVideo().currentTime).toBe(0);
+  });
+
   it('opens from the narrow video panel, closes the panel and returns the focus to the body', async () => {
     const editor = open('video', 80);
     fireEvent.pointerEnter(screen.getByTestId('doc-media-frame'));

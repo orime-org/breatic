@@ -9,7 +9,7 @@ import { cn } from '@web/lib/utils';
 import { usePreviewSrc } from '@web/lib/preview-src';
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
-import { MediaFullscreen } from '@web/spaces/canvas/nodes/_shared/MediaFullscreen';
+import { useMediaFullscreen } from '@web/spaces/canvas/nodes/_shared/use-media-fullscreen';
 import { NodeMediaInset } from '@web/spaces/canvas/nodes/_shared/NodeMediaInset';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
 import { useZoomedPastPreview } from '@web/spaces/canvas/nodes/_shared/preview-zoom';
@@ -45,8 +45,7 @@ export const ImageNode = React.memo(function ImageNode({
   onRename,
 }: ImageNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.content);
-  // What full screen opened on, kept while it is open; null while closed.
-  const [fullscreen, setFullscreen] = React.useState<{ src: string; size?: { width: number; height: number } } | null>(null);
+  const fullscreen = useMediaFullscreen({ name: data.name ?? '', currentSrc: data.content });
   const { resolution, setResolution } = useNodeResolution(data.content, data.width, data.height);
   // A rotate & flip panel open on this node previews its result on the
   // picture itself (inner#888 §7.4); nothing is written until Run.
@@ -101,7 +100,11 @@ export const ImageNode = React.memo(function ImageNode({
         content={
           <NodeMediaInset
             onFullscreen={() =>
-              setFullscreen({ src: data.content ?? '', size: knowsSize ? { width: data.width!, height: data.height! } : undefined })
+              fullscreen.open({
+                kind: 'image',
+                src: data.content ?? '',
+                size: knowsSize ? { width: data.width!, height: data.height! } : undefined,
+              })
             }
           >
             <div
@@ -171,16 +174,7 @@ export const ImageNode = React.memo(function ImageNode({
                 />
               ) : null}
             </div>
-            <MediaFullscreen
-              open={fullscreen !== null}
-              onOpenChange={(open) => {
-                if (!open) setFullscreen(null);
-              }}
-              kind='image'
-              src={fullscreen?.src ?? ''}
-              name={data.name ?? ''}
-              size={fullscreen?.size}
-            />
+            {fullscreen.layer}
           </NodeMediaInset>
         }
       />

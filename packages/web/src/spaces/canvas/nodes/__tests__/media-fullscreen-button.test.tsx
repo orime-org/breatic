@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { act, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 
 import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
 import userEvent from '@testing-library/user-event';
@@ -145,5 +145,49 @@ describe('video node full screen', () => {
     await user.keyboard('{Escape}');
     expect(screen.queryByTestId('media-fullscreen')).toBeNull();
     expect(inline.currentTime).toBe(11);
+  });
+
+  // inner#1844 round 2: a result landing on the node while full screen is open
+  // is a different clip; the old clip's place and sound are not handed to it.
+  it('hands nothing back to a node whose clip was replaced while open', async () => {
+    const user = userEvent.setup();
+    const view = (content: string): React.JSX.Element => (
+      <NodeIdContext.Provider value='n1'>
+        <VideoNode data={{ handling: false, content }} />
+      </NodeIdContext.Provider>
+    );
+    const { rerender } = renderWithTooltips(view('https://e.com/old.mp4'));
+    const inline = screen.getByTestId('media-element') as HTMLVideoElement;
+    await user.click(screen.getByTestId('media-fullscreen-button'));
+    rerender(view('https://e.com/new.mp4'));
+    const full = screen.getAllByTestId('media-element').find((el) => el !== inline) as HTMLVideoElement;
+    full.currentTime = 45;
+    full.muted = true;
+    await user.keyboard('{Escape}');
+    expect(inline.currentTime).toBe(0);
+    expect(inline.muted).toBe(false);
+  });
+
+  // Full screen exists only while open, so nothing from one opening reaches the next.
+  it('measures a video of unknown size afresh each time it opens', async () => {
+    const user = userEvent.setup();
+    const view = (content: string): React.JSX.Element => (
+      <NodeIdContext.Provider value='n1'>
+        <VideoNode data={{ handling: false, content }} />
+      </NodeIdContext.Provider>
+    );
+    const { rerender } = renderWithTooltips(view('https://e.com/wide.mp4'));
+    const inline = screen.getByTestId('media-element');
+    await user.click(screen.getByTestId('media-fullscreen-button'));
+    const full = screen.getAllByTestId('media-element').find((el) => el !== inline)!;
+    Object.defineProperty(full, 'videoWidth', { value: 640, configurable: true });
+    Object.defineProperty(full, 'videoHeight', { value: 480, configurable: true });
+    fireEvent.loadedMetadata(full);
+    expect(screen.getByTestId('media-fullscreen').style.getPropertyValue('--media-aspect')).not.toBe('');
+    await user.keyboard('{Escape}');
+
+    rerender(view('https://e.com/tall.mp4'));
+    await user.click(screen.getByTestId('media-fullscreen-button'));
+    expect(screen.getByTestId('media-fullscreen').style.getPropertyValue('--media-aspect')).toBe('');
   });
 });

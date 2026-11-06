@@ -30,9 +30,8 @@ import { compositionEnd, keyBelongsToInputMethod } from '@web/lib/composition-en
 import { usePressKeepsFocus } from '@web/lib/use-press-keeps-focus';
 import { cn } from '@web/lib/utils';
 import { BUBBLE_BAR_CLASS, BUBBLE_ICON_BUTTON_SIZE, PRESSED_CLASS } from '@web/spaces/document/document-tool-button';
-import { MediaFullscreen } from '@web/spaces/canvas/nodes/_shared/MediaFullscreen';
+import { useMediaFullscreen } from '@web/spaces/canvas/nodes/_shared/use-media-fullscreen';
 import { MediaPlayer, type MediaPlayerHandle } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
-import type { MediaPlayerState } from '@web/spaces/canvas/nodes/_shared/use-media-player';
 import { DocumentMediaImage } from '@web/spaces/document/DocumentMediaImage';
 import { Popover, PopoverTrigger, PopoverContent } from '@web/components/ui/popover';
 import { MediaControlsPortal, type VideoControlsTarget } from '@web/spaces/canvas/nodes/_shared/media-video-controls';
@@ -280,15 +279,6 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         : undefined,
     [type, mediaWidth, mediaHeight],
   );
-  // What full screen opened on (inner#1844): the file, its size and where the
-  // inline video stood. Kept while it is open, so a new file landing on the
-  // block does not swap what is being watched.
-  const [opened, setOpened] = React.useState<{
-    src: string;
-    size?: { width: number; height: number };
-    start?: MediaPlayerState;
-  } | null>(null);
-  const fullscreen = opened !== null;
   const [narrower, setNarrower] = React.useState(false);
   // The width the media is laid out at, which the preview is judged against.
   const [shownWidth, setShownWidth] = React.useState<number | null>(null);
@@ -317,7 +307,25 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   // Opened from the narrow video's panel, it goes back to the body: the panel
   // closes, and its button moves back inline where it is not shown.
   const fullscreenOpener = React.useRef<'body' | HTMLElement | null>(null);
+  const fullscreen = useMediaFullscreen({
+    name: props.name,
+    currentSrc: props.url,
+    player,
+    id: fullscreenId,
+    // The keyboard goes back where it was when the media opened. Back in the
+    // body it goes through the editor, which writes the kept selection to the
+    // page as the body takes the focus.
+    onCloseAutoFocus: (event) => {
+      event.preventDefault();
+      const opener = fullscreenOpener.current;
+      fullscreenOpener.current = null;
+      if (opener === 'body') actions.focusBody();
+      else if (opener?.isConnected === true) opener.focus();
+    },
+  });
+  const openFullscreenOn = fullscreen.open;
   const openFullscreen = React.useCallback((): void => {
+    if (type === 'audio') return;
     const held = document.activeElement;
     fullscreenOpener.current =
       panelShown
@@ -329,11 +337,8 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
             : held instanceof HTMLElement
               ? held
               : null;
-    // One player sounds at a time: the inline one pauses and takes back the
-    // full screen's position and sound when it closes.
-    setOpened({ src: props.url, size: mediaSize, start: player.current?.read() });
-    player.current?.pause();
-  }, [actions, panelShown, props.url, mediaSize]);
+    openFullscreenOn({ kind: type, src: props.url, size: mediaSize });
+  }, [actions, panelShown, props.url, mediaSize, type, openFullscreenOn]);
   // Above the media, unless the scroller has no room there — then on the
   // media itself, along its top. Never under it: below the media sit its
   // caption and the next block, and a bar there reads as theirs.
@@ -727,7 +732,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
       data-testid='doc-media-row'
       // The full-screen picture is a layer this block opened: the body keeps
       // its selection while the focus is in it.
-      aria-controls={fullscreen ? fullscreenId : undefined}
+      aria-controls={fullscreen.isOpen ? fullscreenId : undefined}
       className={`flex w-full ${sized ? (JUSTIFY[alignment] ?? 'justify-center') : ''}`}
     >
       <div
@@ -869,31 +874,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         ) : null}
         {editingCaption && readOnly && <p className='text-xs text-muted-foreground'>{t('spaces.document.media.captionReadOnly')}</p>}
       </div>
-      {type !== 'audio' && (
-        <MediaFullscreen
-          open={fullscreen}
-          onOpenChange={(next) => {
-            if (!next) setOpened(null);
-          }}
-          id={fullscreenId}
-          kind={type}
-          src={opened?.src ?? ''}
-          name={props.name}
-          size={opened?.size}
-          start={opened?.start}
-          onClosed={(state) => player.current?.apply(state)}
-          // The keyboard goes back where it was when the media opened. Back in
-          // the body it goes through the editor, which writes the kept
-          // selection to the page as the body takes the focus.
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            const opener = fullscreenOpener.current;
-            fullscreenOpener.current = null;
-            if (opener === 'body') actions.focusBody();
-            else if (opener?.isConnected === true) opener.focus();
-          }}
-        />
-      )}
+      {fullscreen.layer}
     </div>
   );
 });

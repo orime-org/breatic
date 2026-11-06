@@ -20,6 +20,8 @@ export interface MediaFullscreenSource {
   src: string;
   /** A video's cover. */
   poster?: string;
+  /** The media's own size when known; the box is reserved from it before it loads. */
+  size?: { width: number; height: number };
 }
 
 /** Props for {@link MediaFullscreen}. */
@@ -30,8 +32,6 @@ interface MediaFullscreenProps extends MediaFullscreenSource {
   onOpenChange: (open: boolean) => void;
   /** The file's name, for the dialog's title. */
   name: string;
-  /** The media's own size when known; the box is reserved from it before it loads. */
-  size?: { width: number; height: number };
   /** The content's id, for a host that points at it. */
   id?: string;
   /** Where a video starts. */
@@ -67,6 +67,9 @@ function stopDrop(event: React.DragEvent): void {
  * centred on a dark backdrop, a close button at the viewport's top-right, Esc
  * and a press on the backdrop closing it.
  *
+ * Hosts mount it only while open (`useMediaFullscreen`), so each opening
+ * starts fresh.
+ *
  * Press events are left to bubble: Radix tells a press outside a layer from a
  * document listener in the bubble phase, which the backdrop close and the
  * volume popover rely on, and no host answers presses.
@@ -99,8 +102,7 @@ export function MediaFullscreen({
 }: MediaFullscreenProps): React.JSX.Element {
   const t = useTranslation();
   const player = React.useRef<MediaPlayerHandle>(null);
-  const [settled, setSettled] = React.useState<{ src: string; loaded: boolean } | null>(null);
-  const image = settled?.src !== src ? 'loading' : settled.loaded ? 'loaded' : 'failed';
+  const [image, setImage] = React.useState<'loading' | 'loaded' | 'failed'>('loading');
 
   /**
    * Hands the video's state back before the layer closes.
@@ -162,8 +164,8 @@ export function MediaFullscreen({
                 width={size?.width}
                 height={size?.height}
                 data-testid='media-fullscreen-image'
-                onLoad={() => setSettled({ src, loaded: true })}
-                onError={() => setSettled({ src, loaded: false })}
+                onLoad={() => setImage('loaded')}
+                onError={() => setImage('failed')}
                 className={image === 'failed' ? 'hidden' : 'h-auto max-h-[90vh] w-auto max-w-full object-contain'}
               />
               {image === 'loading' ? (
