@@ -126,3 +126,18 @@ export type MiniToolPlanExpandComposite = {
   backgrounds: { inputId: string; window: MiniToolPlanInterval }[];
   ledger: { overlap: MiniToolPlanExact; consumed: MiniToolPlanInterval }[];
 } & MiniToolPlanWindowRecipe;
+
+/**
+ * Every job input a recipe reads: its source, a stitch's chunks and clips, a window's clips, a composite's results.
+ * @param recipe - A validated recipe.
+ * @returns The input ids it names.
+ * @throws {never} Never.
+ */
+export function miniToolPlanRecipeInputs(recipe: MiniToolPlanRecipe): string[] {
+  switch (recipe.kind) {
+    case "stitch": return [...("clips" in recipe ? recipe.clips.map((clip) => clip.inputId) : [recipe.inputId]), ...recipe.chunks.map((chunk) => chunk.inputId)];
+    case "transition_window": return recipe.clips.map((clip) => clip.inputId);
+    case "model_composite": return [recipe.inputId, ...(recipe.mode === "erase" ? [recipe.result] : recipe.backgrounds.map((background) => background.inputId))];
+    default: return [recipe.inputId];
+  }
+}

@@ -10,7 +10,8 @@ import { MINI_TOOL_JOB_MAX_OUTPUTS } from "@shared/upload/mini-tool-job.js";
 import { x264PresetSchema } from "@shared/upload/video-presentation-policy.js";
 import { packedGeometrySchema } from "@shared/upload/video-presentation.js";
 import { compare, exactTime } from "@shared/upload/video-source-ledger.js";
-import type { MiniToolPlanEntry, MiniToolPlanExact, MiniToolPlanRecipe } from "@shared/upload/mini-tool-plan-types.js";
+import { miniToolPlanRecipeInputs, type MiniToolPlanEntry, type MiniToolPlanExact, type MiniToolPlanRecipe } from "@shared/upload/mini-tool-plan-types.js";
+export { miniToolPlanRecipeInputs } from "@shared/upload/mini-tool-plan-types.js";
 
 export type {
   MiniToolPlanRecipe, MiniToolPlanPixelRect, MiniToolPlanFrameCrop, MiniToolPlanFrameTarget, MiniToolPlanEntry, MiniToolPlanExact, MiniToolPlanInterval, MiniToolPlanTarget, MiniToolPlanAudio, MiniToolPlanEditSpan, MiniToolPlanPlacedEntry, MiniToolPlanAnalysisTarget, MiniToolPlanDetectorProfile,
@@ -230,20 +231,6 @@ export const miniToolPlanJobRequestSchema = z.strictObject({
 
 export type MiniToolPlanJobRequest = z.infer<typeof miniToolPlanJobRequestSchema>;
 
-/**
- * Every job input a recipe reads: its source, a stitch's chunks and clips, a window's clips, a composite's results.
- * @param recipe - A validated recipe.
- * @returns The input ids it names.
- * @throws {never} Never.
- */
-export function miniToolPlanRecipeInputs(recipe: MiniToolPlanRecipe): string[] {
-  switch (recipe.kind) {
-    case "stitch": return [...("clips" in recipe ? recipe.clips.map((clip) => clip.inputId) : [recipe.inputId]), ...recipe.chunks.map((chunk) => chunk.inputId)];
-    case "transition_window": return recipe.clips.map((clip) => clip.inputId);
-    case "model_composite": return [recipe.inputId, ...(recipe.mode === "erase" ? [recipe.result] : recipe.backgrounds.map((background) => background.inputId))];
-    default: return [recipe.inputId];
-  }
-}
 
 const usage = z.strictObject({ wallMs: z.number().nonnegative(), cpuUsec: z.number().nonnegative().nullable() });
 const measuredOutput = ingestMeasurements.extend({
