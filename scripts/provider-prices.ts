@@ -36,6 +36,7 @@
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { parse, parseDocument, type Document } from "yaml";
@@ -47,6 +48,9 @@ import { priceUsd } from "../packages/provider/src/pricing/evaluate.js";
 import { createProvider } from "../packages/provider/src/provider.js";
 import { priceFactDrift, statedPrice } from "./provider-price-drift.mjs";
 import { yamlText } from "./provider-yaml.mjs";
+
+// The test helpers read `__dirname`, which only a CommonJS load of them has.
+const { catalog } = createRequire(import.meta.url)("../packages/provider/src/config/__tests__/shipped.ts") as typeof import("../packages/provider/src/config/__tests__/shipped.js");
 
 interface Pricing { kind: "formula"; base_price: number; formula: string; discount_rate: number }
 interface Binding {
@@ -62,7 +66,6 @@ const ROOT = resolve(import.meta.dirname, "..");
 const SNAPSHOTS = resolve(ROOT, "packages/provider/test/fixtures/upstream-schemas");
 const PRICES = resolve(ROOT, "packages/provider/test/fixtures/upstream-prices");
 const MODALITIES = ["image", "video", "audio", "tts", "three_d"] as const;
-const CATALOG = ["image/models.yaml", "video/models.yaml", "audio/models.yaml", "tts/models.yaml", "three_d/meshy.yaml", "three_d/hunyuan3d.yaml"];
 const MICRO = 1_000_000;
 
 const WAVESPEED = "https://api.wavespeed.ai/api/v3";
@@ -247,8 +250,7 @@ async function syncWaveSpeed(upstream: string, list: typeof bindings): Promise<v
   // The binding's price for the catalog's default run against what WaveSpeed charges for it; listed, never rewritten.
   const media = Object.assign({}, ...[...docs.values()].map((doc) => (doc.toJS() as { models: Record<string, unknown> }).models)) as ProviderConfigInput["media"]["models"];
   const provider = createProvider({ config: { upstreams: upstreams as ProviderConfigInput["upstreams"], media: { models: media } }, keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
-  const defaults = new Map(CATALOG.flatMap((file) => yaml<{ models: { name: string; params?: Record<string, { default?: unknown }> }[] }>(`config/models/${file}`).models)
-    .map((m) => [m.name, m.params ?? {}]));
+  const defaults = new Map(catalog().models.map((m) => [m.name, m.params as Record<string, { default?: unknown }>]));
   const charged: string[] = [];
   for (const { modality, model } of list) {
     if (modality === "three_d") continue;
@@ -387,8 +389,8 @@ for (const [modality, doc] of docs) {
   if (text !== readFileSync(path, "utf8")) writeFileSync(path, text);
 }
 
-const ours = new Set(CATALOG.flatMap((file) => yaml<{ models: { params?: Record<string, { fields?: Record<string, unknown> }> }[] }>(`config/models/${file}`).models)
-  .flatMap((m) => Object.entries(m.params ?? {}).flatMap(([name, p]) => [name, ...Object.keys(p.fields ?? {})])));
+const ours = new Set(catalog().models
+  .flatMap((m) => Object.entries(m.params).flatMap(([name, p]) => [name, ...Object.keys(p.fields ?? {})])));
 const fieldNames = new Set(bindings.flatMap(({ binding }) => Object.values(binding.params ?? {})
   .flatMap((p) => [p.field, ...Object.values(p.item_fields ?? {}).map((f) => f.field)])
   .flatMap((field) => field.split("."))));

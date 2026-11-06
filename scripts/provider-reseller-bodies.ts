@@ -9,16 +9,19 @@
  * One file per binding, `packages/provider/test/fixtures/bodies/<upstream>/<model>.json`, holding
  * only runs the binding takes (`rejectedInput`): first the run with every param at its catalog
  * default (a null default left unset), every source the catalog requires (an `accepts` param not
- * marked optional) at a sample url of the kind it accepts, a sample of the first param of the model's first source
- * group when the run carries none of that group, and a voice the panel fills from the upstream's list at its first
- * voice; every run's prompt mentions only the references that run carries. Then one run per value a param's sample covers
- * (`coveredValues`) and one per bound param without a default at a sample value (a list one url,
- * items two items, sent without a prompt when they carry the shots, a text "sample text"). A covered
- * value the default run's variants miss is tried on each run taken, and listed in `untaken` when none takes it. A param an extra step serves carries the id that step
- * answers in `ids`, as the runner writes it; a binding whose own call is a voice clone
- * (`reused_by`) shows the body of that call as the voice step writes it. Each extra step's body is
- * built by its codec with one fixed context. A file whose binding is gone is removed. Review the
- * diff before committing it.
+ * marked optional) at a sample url of the kind it accepts, a sample of the first param of the
+ * model's first source group when the run carries none of that group, a voice the panel fills from
+ * the upstream's list at its first voice, and "sample text" in each param the panel fills from its
+ * editor (`fill: editor`) without a default; every run's prompt mentions only the references that
+ * run carries. Then one run per value a param's sample covers (`coveredValues`) and one per bound
+ * param without a default at a sample value (a list one url, items two items, sent without a prompt
+ * when they carry the shots, a text "sample text"). A covered value the default run's variants miss
+ * is tried on each run taken, and listed in `untaken` when none takes it. A param an extra step
+ * serves carries the id that step answers in `ids`, as the runner writes it; a binding whose own
+ * call is a voice clone (`reused_by`) shows the body of that call as the voice step writes it. Each
+ * extra step's body is built by its codec with the first run's params and prompt, its source a
+ * sample url of the kind the param it serves accepts. A file whose binding is gone is removed.
+ * Review the diff before committing it.
  */
 
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -31,7 +34,7 @@ import { isPresent } from "../packages/provider/src/pricing/estimate.js";
 
 // The test helpers read `__dirname`, which only a CommonJS load of them has.
 const load = createRequire(import.meta.url);
-const { catalog, coveredValues, shipped, yaml } = load("../packages/provider/src/config/__tests__/shipped.ts") as typeof import("../packages/provider/src/config/__tests__/shipped.js");
+const { catalog, coveredValues, shipped } = load("../packages/provider/src/config/__tests__/shipped.ts") as typeof import("../packages/provider/src/config/__tests__/shipped.js");
 const { SAMPLE_VOICE_ID, firstBody, takes } = load("../packages/provider/src/media/__tests__/reseller-bodies.ts") as typeof import("../packages/provider/src/media/__tests__/reseller-bodies.js");
 
 /** One param of our catalog, as far as samples read it. */
@@ -46,16 +49,12 @@ interface CatalogParam {
   optional?: boolean;
   remote_source?: string;
   description?: string;
+  /** `editor` for a param the panel always sends from its text editor. */
+  fill?: string;
 }
 
 /** One sample run, before its body is built. */
 type Run = Pick<SampleRun, "params" | "prompt">;
-
-/** Per mode, the params of which a run must carry at least one, as the catalog lists them. */
-interface SourceGroup {
-  mode: string;
-  any_of: string[];
-}
 
 const ROOT = resolve(import.meta.dirname, "..");
 const BODIES = resolve(ROOT, "packages/provider/test/fixtures/bodies");
@@ -99,6 +98,17 @@ function sampleOf(param: CatalogParam): unknown {
 }
 
 /**
+ * The sample url an extra step reads its source from: one the param it serves accepts.
+ * @param param - The catalog's param the step serves; undefined for a step that serves none.
+ * @returns The url.
+ */
+function sourceOf(param: CatalogParam | undefined): string {
+  const value = param === undefined ? SAMPLE_URL : sampleOf(param);
+  const url = Array.isArray(value) ? value[0] : value;
+  return typeof url === "string" ? url : SAMPLE_URL;
+}
+
+/**
  * The prompt the samples send: a sentence, and one reference to each param the binding has a mention template for
  * that the run carries.
  * @param binding - The binding.
@@ -123,8 +133,7 @@ function writeJson(path: string, content: unknown): void {
 
 const config = shipped();
 const offered = new Map(catalog().models.map((m) => [m.name, m.params as Record<string, CatalogParam>]));
-const MODEL_FILES = ["image/models.yaml", "video/models.yaml", "audio/models.yaml", "tts/models.yaml", "three_d/meshy.yaml", "three_d/hunyuan3d.yaml"];
-const sourceGroups = new Map(MODEL_FILES.flatMap((f) => yaml<{ models: { name: string; source_groups?: SourceGroup[] }[] }>(`models/${f}`).models.map((m) => [m.name, m.source_groups ?? []] as const)));
+const sourceGroups = new Map(catalog().models.map((m) => [m.name, m.source_groups ?? []] as const));
 
 /**
  * The run with one param set, its prompt built from its own params: without a prompt when the param's items carry the shots.
@@ -146,10 +155,13 @@ for (const [model, { upstreams: bindings }] of Object.entries(config.media.model
     const params = offered.get(model) ?? {};
     const bound = Object.keys(binding.params ?? {});
     const defaults = Object.fromEntries(Object.entries(params).map(([name, p]) => [name, p.default]).filter(([, v]) => v !== undefined && v !== null));
-    // A source the catalog requires, and a voice the panel fills from the upstream's list, are in every run the application sends.
+    // A source the catalog requires, a voice the panel fills from the upstream's list, and the text of a param the panel
+    // always sends from its editor are in every run the application sends.
     const required: Record<string, unknown> = {};
     for (const [name, p] of Object.entries(params)) {
-      if (defaults[name] !== undefined || p.optional === true) continue;
+      if (defaults[name] !== undefined) continue;
+      if (p.fill === "editor") required[name] = SAMPLE_TEXT;
+      if (p.optional === true) continue;
       if (p.accepts !== undefined) required[name] = sampleOf(p);
       else if (p.remote_source !== undefined) {
         const voice = coveredValues(name, p, binding)[0];
@@ -199,7 +211,7 @@ for (const [model, { upstreams: bindings }] of Object.entries(config.media.model
       const codec = adapterOf(kind).steps[step.kind as keyof ReturnType<typeof adapterOf>["steps"]];
       if (codec === undefined) throw new Error(`${model} on ${binding.upstream}: no ${step.kind} step codec`);
       const context: { source: string; params: Record<string, unknown>; prompt: string; customVoiceId: string; voiceId: string; itemIndex: number | null; description?: string; param?: string } = {
-        source: SAMPLE_URL,
+        source: sourceOf(step.for_param === undefined ? undefined : params[step.for_param]),
         params: base.params,
         prompt: base.prompt,
         customVoiceId: SAMPLE_VOICE_ID,
