@@ -195,28 +195,21 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
     const command = timelineGestureCommand(view.document, preview, data.mode, view.placement, newId);
     if (command !== null) onCommit(command);
   }, [onCommit, onVanished, readOnly]);
-  const cancelDrag = React.useCallback((): void => setGesture(null), []);
-  React.useEffect(() => {
-    if (!readOnly) return;
-    cancelled.current = true;
-    setGesture(null);
-  }, [readOnly]);
-  // Leaving the window ends a drag without writing (dnd-kit itself cancels only on Esc, resize and hidden pages).
+  // dnd-kit keeps the drag going after a lost write access or a window blur, so the flag makes its later moves and
+  // release ignored; Esc goes through the same path.
+  const cancelDrag = React.useCallback((): void => { cancelled.current = true; setGesture(null); }, []);
+  React.useEffect(() => { if (readOnly) cancelDrag(); }, [readOnly, cancelDrag]);
   const dragging = gesture !== null;
   React.useEffect(() => {
     onDraggingChange(dragging);
     return () => onDraggingChange(false);
   }, [dragging, onDraggingChange]);
+  // Leaving the window ends a drag without writing (dnd-kit itself cancels only on Esc, resize and hidden pages).
   React.useEffect(() => {
     if (!dragging) return;
-    /**
-     * Cancel the drag in progress.
-     * @throws {never} Never.
-     */
-    const cancel = (): void => { cancelled.current = true; setGesture(null); };
-    window.addEventListener('blur', cancel);
-    return () => window.removeEventListener('blur', cancel);
-  }, [dragging]);
+    window.addEventListener('blur', cancelDrag);
+    return () => window.removeEventListener('blur', cancelDrag);
+  }, [dragging, cancelDrag]);
 
   const clearOnBlank = React.useCallback((event: React.PointerEvent<HTMLDivElement>): void => {
     if (event.target !== event.currentTarget) return;
