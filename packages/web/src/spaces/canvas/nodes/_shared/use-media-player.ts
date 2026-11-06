@@ -15,6 +15,18 @@ export interface MediaPlayerState {
   volume: number;
 }
 
+/**
+ * Writes where a player stands into an element: what one player hands
+ * another, at a start and at a hand-back.
+ * @param el - The media element.
+ * @param state - Where it is to stand.
+ */
+export function writePlayerState(el: HTMLMediaElement, state: MediaPlayerState): void {
+  el.currentTime = state.time;
+  el.muted = state.muted;
+  el.volume = state.volume;
+}
+
 /** Reactive transport state + imperative actions for a native media element. */
 export interface MediaPlayerApi {
   /** Whether the element is currently playing. */
@@ -84,9 +96,7 @@ export function useMediaPlayer(
   React.useLayoutEffect(() => {
     const el = ref.current;
     if (!el || !start) return;
-    el.currentTime = start.time;
-    el.muted = start.muted;
-    el.volume = start.volume;
+    writePlayerState(el, start);
     if (start.playing) void el.play().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

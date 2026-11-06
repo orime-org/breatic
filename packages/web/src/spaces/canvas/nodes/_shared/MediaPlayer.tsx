@@ -16,7 +16,7 @@ import { usePreviewSrc, usePreviewWidth } from '@web/lib/preview-src';
 import { cn } from '@web/lib/utils';
 import { formatSeconds } from '@web/spaces/canvas/lib/duration';
 import type { NodeResolution } from '@web/spaces/canvas/nodes/_shared/NodeResolutionBadge';
-import { useMediaPlayer, type MediaPlayerState } from '@web/spaces/canvas/nodes/_shared/use-media-player';
+import { useMediaPlayer, writePlayerState, type MediaPlayerState } from '@web/spaces/canvas/nodes/_shared/use-media-player';
 import { Waveform } from '@web/spaces/canvas/nodes/_shared/Waveform';
 import { MediaControlsPortal, useSeekPointer, type VideoControlsTarget } from '@web/spaces/canvas/nodes/_shared/media-video-controls';
 
@@ -171,10 +171,7 @@ export function MediaPlayer({
     pause: () => ref.current?.pause(),
     apply: (state) => {
       const el = ref.current;
-      if (!el) return;
-      el.currentTime = state.time;
-      el.muted = state.muted;
-      el.volume = state.volume;
+      if (el) writePlayerState(el, state);
     },
   }), []);
   const isVideo = modality === 'video';
