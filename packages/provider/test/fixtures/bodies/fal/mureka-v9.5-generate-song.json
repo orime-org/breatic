@@ -65,33 +65,14 @@
       }
     },
     {
-      "kind": "upload_melody",
-      "endpoint": "mureka/api/files/upload",
-      "context": {
-        "source": "https://example.com/sample.mp3",
-        "params": {
-          "lyrics": "sample text",
-          "song": "https://example.com/sample.mp3"
-        },
-        "prompt": "a red fox running through fresh snow at dawn",
-        "customVoiceId": "BreaticSample",
-        "voiceId": "voice-sample",
-        "itemIndex": null,
-        "param": "melody"
-      },
-      "body": {
-        "file_url": "https://example.com/sample.mp3",
-        "purpose": "melody"
-      }
-    },
-    {
       "kind": "vocal",
       "endpoint": "mureka/api/voice/clone",
       "context": {
         "source": "https://example.com/sample.mp3",
         "params": {
           "lyrics": "sample text",
-          "song": "https://example.com/sample.mp3"
+          "song": "https://example.com/sample.mp3",
+          "vocal": "https://example.com/sample.mp3"
         },
         "prompt": "a red fox running through fresh snow at dawn",
         "customVoiceId": "BreaticSample",

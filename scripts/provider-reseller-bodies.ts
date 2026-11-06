@@ -19,8 +19,11 @@
  * is tried on each run taken, and listed in `untaken` when none takes it. A param an extra step
  * serves carries the id that step answers in `ids`, as the runner writes it; a binding whose own
  * call is a voice clone (`reused_by`) shows the body of that call as the voice step writes it. Each
- * extra step's body is built by its codec with the first run's params and prompt, its source a
- * sample url of the kind the param it serves accepts. A file whose binding is gone is removed.
+ * extra step's body is built by its codec on the first taken run that makes it (`stepCalls`), with
+ * that run's params and prompt, the first item index `stepCalls` gives, and its source read as the
+ * runner reads it: the run's value of the param it serves, or that value's item at the index;
+ * a step that serves no param reads a sample url. A step no taken run makes is left out. A file
+ * whose binding is gone is removed.
  * Review the diff before committing it.
  */
 
@@ -30,7 +33,7 @@ import { dirname, resolve } from "node:path";
 import type { MediaBinding } from "../packages/provider/src/config/schema.js";
 import { adapterOf } from "../packages/provider/src/media/adapters.js";
 import type { SampleRun } from "../packages/provider/src/media/__tests__/reseller-bodies.js";
-import { isPresent } from "../packages/provider/src/pricing/estimate.js";
+import { isPresent, stepCalls } from "../packages/provider/src/pricing/estimate.js";
 
 // The test helpers read `__dirname`, which only a CommonJS load of them has.
 const load = createRequire(import.meta.url);
@@ -95,17 +98,6 @@ function sampleOf(param: CatalogParam): unknown {
   if (param.type === "list") return [url];
   if (param.accepts !== undefined || /\bURL\b/.test(param.description ?? "")) return url;
   return SAMPLE_TEXT;
-}
-
-/**
- * The sample url an extra step reads its source from: one the param it serves accepts.
- * @param param - The catalog's param the step serves; undefined for a step that serves none.
- * @returns The url.
- */
-function sourceOf(param: CatalogParam | undefined): string {
-  const value = param === undefined ? SAMPLE_URL : sampleOf(param);
-  const url = Array.isArray(value) ? value[0] : value;
-  return typeof url === "string" ? url : SAMPLE_URL;
 }
 
 /**
@@ -186,7 +178,6 @@ for (const [model, { upstreams: bindings }] of Object.entries(config.media.model
     for (const run of candidates) if (await takes(model, binding, run.params, run.prompt)) runs.push(run);
     if (runs.length === 0) throw new Error(`${model} on ${binding.upstream}: the binding takes none of the sample runs`);
     // A value no run above carries is tried on each run taken, and listed as untaken when every one refuses it.
-    const base = runs[0]!;
     const untaken: { param: string; value: unknown }[] = [];
     for (const name of bound) {
       const values = coveredValues(name, params[name], binding);
@@ -207,21 +198,31 @@ for (const [model, { upstreams: bindings }] of Object.entries(config.media.model
     }
     const kind = config.upstreams[binding.upstream]!.kind;
     const served = (binding.extra_steps ?? []).filter((s) => s.for_param !== undefined);
-    const steps = (binding.extra_steps ?? []).map((step) => {
+    const steps = (binding.extra_steps ?? []).flatMap((step) => {
+      const run = runs.find((r) => stepCalls(step, r.params).length > 0);
+      if (run === undefined) return [];
       const codec = adapterOf(kind).steps[step.kind as keyof ReturnType<typeof adapterOf>["steps"]];
       if (codec === undefined) throw new Error(`${model} on ${binding.upstream}: no ${step.kind} step codec`);
+      const itemIndex = stepCalls(step, run.params)[0]!;
+      let source = SAMPLE_URL;
+      if (step.for_param !== undefined) {
+        const value = run.params[step.for_param];
+        const url: unknown = itemIndex === null ? value : Array.isArray(value) ? value[itemIndex] : undefined;
+        if (typeof url !== "string" || url === "") throw new Error(`${model} on ${binding.upstream}: the ${step.kind} step needs a source in '${step.for_param}'`);
+        source = url;
+      }
       const context: { source: string; params: Record<string, unknown>; prompt: string; customVoiceId: string; voiceId: string; itemIndex: number | null; description?: string; param?: string } = {
-        source: sourceOf(step.for_param === undefined ? undefined : params[step.for_param]),
-        params: base.params,
-        prompt: base.prompt,
+        source,
+        params: run.params,
+        prompt: run.prompt,
         customVoiceId: SAMPLE_VOICE_ID,
         voiceId: "voice-sample",
-        itemIndex: step.per_item === true ? 0 : null,
+        itemIndex,
         ...(step.kind === "element" ? { description: SAMPLE_TEXT } : {}),
         ...(step.for_param === undefined ? {} : { param: step.for_param }),
       };
       const body = codec.body({ ...context, source: () => context.source, binding, description: context.description, param: context.param });
-      return { kind: step.kind, endpoint: step.endpoint, context, body };
+      return [{ kind: step.kind, endpoint: step.endpoint, context, body }];
     });
     const path = resolve(BODIES, binding.upstream, `${model}.json`);
     writeJson(path, {
