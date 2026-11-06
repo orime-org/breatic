@@ -79,7 +79,7 @@ async function stepOf(execution: VideoTool, jobId: string): Promise<{ step: Step
  * @returns The result.
  * @throws {Error} When the cover read fails.
  */
-async function registered(asset: StudioAssetEntity): Promise<NonNullable<VideoToolResult>> {
+export async function registered(asset: StudioAssetEntity): Promise<NonNullable<VideoToolResult>> {
   const cover = await assetRepo.findCoverOf(asset.id);
   return miniToolExecutionResultSchema.parse({ status: "registered", assetId: asset.id, canonicalURL: asset.fileUrl, kind: asset.kind, contentHash: asset.contentHash,
     mimeType: asset.mimeType, size: asset.sizeBytes, width: asset.width, height: asset.height, duration: asset.durationSeconds,

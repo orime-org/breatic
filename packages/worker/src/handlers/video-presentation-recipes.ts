@@ -452,7 +452,7 @@ export function rangeWindow(ledger: VideoPresentationLedger, range: { start: num
  * @returns The target.
  * @throws {never} Never.
  */
-function segmentTarget(ledger: VideoPresentationLedger, carrier: { crf: number; preset: MiniToolPlanTarget['preset'] }): SegmentTarget {
+export function segmentTarget(ledger: VideoPresentationLedger, carrier: { crf: number; preset: MiniToolPlanTarget['preset'] }): SegmentTarget {
   const { plan } = ledger;
   const transparent = plan.policy.emptyFill === 'transparent';
   /**

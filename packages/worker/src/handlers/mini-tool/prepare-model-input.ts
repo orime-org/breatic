@@ -22,6 +22,8 @@ import { StillRunning } from "@worker/providers/still-running.js";
 import { audioOf, chunkInputId, FullLedgerInvalid, modelInputTarget, readJobLedger, windowDuration, windowEntries, windowInterval } from "@worker/handlers/video-presentation-recipes.js";
 
 type Removal = Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>;
+/** What a model-input preparation reads of its run: a removal's, or a lip-sync run's used source range (§97 D21). */
+export type PreparingRun = Pick<Removal, "taskId" | "sourceKey" | "ledgerReceipts" | "presentationRef" | "preparation">;
 type UpstreamStep = upstreamStepRepo.UpstreamStep;
 /**
  * One preparation unit: its §5.4 id per attempt, its recipe, its consumption chunk index, and whether its output is the
@@ -69,22 +71,6 @@ function storedRequest(step: UpstreamStep): MiniToolPlanJobRequest | null {
 }
 
 /**
- * The output key of a done preparation step whose job id matches.
- * @param steps - The task's steps.
- * @param matches - Which job ids count.
- * @returns The key, or null.
- * @throws {never} Never.
- */
-function doneOutput(steps: readonly UpstreamStep[], matches: (jobId: string) => boolean): string | null {
-  for (const step of steps) {
-    const request = storedRequest(step);
-    if (request === null || !matches(request.jobId) || step.output.miniToolStep === undefined) continue;
-    if (miniToolStepStateSchema.parse(step.output.miniToolStep).result?.outcome === "done") return request.outputs[0]!.storageKey;
-  }
-  return null;
-}
-
-/**
  * Advance one unit: the latest attempt's job, or the next attempt after a failure.
  * @param execution - The frozen removal.
  * @param unit - The unit.
@@ -94,7 +80,7 @@ function doneOutput(steps: readonly UpstreamStep[], matches: (jobId: string) => 
  * @throws {UpstreamTaskFailed} When the last allowed attempt failed.
  * @throws {Error} When persistence or the job boundary fails.
  */
-async function advanceUnit(execution: Removal, unit: Unit, deadlineAt: number): Promise<string> {
+async function advanceUnit(execution: PreparingRun, unit: Unit, deadlineAt: number): Promise<string> {
   // The retry cap frozen at admission (§3.2 item 1), never today's configuration.
   const retries = execution.preparation.chunkRetries;
   for (let attempt = 1; attempt <= retries + 1; attempt += 1) {
@@ -129,25 +115,38 @@ async function advanceUnit(execution: Removal, unit: Unit, deadlineAt: number): 
 }
 
 /**
- * Prepare a removal's model input, or find the original run's prepared object for a failed-output retry.
- * @param execution - The frozen removal.
+ * The stored request of a run's done prepared model input: the single job's, or the stitch's over chunks.
+ * @param owner - The run that prepared it.
+ * @param single - Whether the preparation is one job.
+ * @returns The request, or null when none is done.
+ * @throws {Error} When the step read fails.
+ */
+export async function preparedRequest(owner: string, single: boolean): Promise<MiniToolPlanJobRequest | null> {
+  const final = new RegExp(`^${owner}:prep:0:${single ? "" : "stitch:"}a\\d+$`);
+  for (const step of await upstreamStepRepo.listSteps(owner)) {
+    const request = storedRequest(step);
+    if (request === null || !final.test(request.jobId) || step.output.miniToolStep === undefined) continue;
+    if (miniToolStepStateSchema.parse(step.output.miniToolStep).result?.outcome === "done") return request;
+  }
+  return null;
+}
+
+/**
+ * Prepare a run's model input, or find the original run's prepared object for a failed-output retry.
+ * @param execution - The frozen run.
  * @param deadlineAt - The task deadline.
+ * @param owner - The run whose preparation is used: this run, or the original run of a retry.
  * @returns The prepared object's storage key.
  * @throws {StillRunning} While a preparation job runs.
  * @throws {UpstreamTaskFailed} When the preparation failed for good.
  * @throws {Error} When the original preparation is missing, or persistence or the job boundary fails.
  */
-export async function prepareModelInput(execution: Removal, deadlineAt: number): Promise<string> {
-  const reference = execution.body.video.job;
-  const owner = reference.slice(0, -":prep:0".length);
+export async function prepareModelInput(execution: PreparingRun, deadlineAt: number, owner: string = execution.taskId): Promise<string> {
   const chunks = execution.preparation.chunks;
   const single = chunks.length === 1;
-  if (owner !== execution.taskId) {
-    const final = new RegExp(`^${owner}:prep:0:${single ? "" : "stitch:"}a\\d+$`);
-    const key = doneOutput(await upstreamStepRepo.listSteps(owner), (jobId) => final.test(jobId));
-    if (key === null) throw new Error("The original run has no prepared model input");
-    return key;
-  }
+  const done = await preparedRequest(owner, single);
+  if (done !== null) return done.outputs[0]!.storageKey;
+  if (owner !== execution.taskId) throw new Error("The original run has no prepared model input");
   const taskId = execution.taskId;
   // The recipes come from the full ledger the run froze (§91 D3b-5), checked against its presentation plan.
   // The receipt is frozen for the run, so a ledger that fails it never recovers here: the run fails at once (§91 D3b-9; a
