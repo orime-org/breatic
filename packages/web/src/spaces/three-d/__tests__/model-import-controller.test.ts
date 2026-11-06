@@ -227,9 +227,11 @@ describe('document-owned model imports (inner#1690)', () => {
     await expect(h.controller.confirm()).resolves.toBeNull();
 
     expect(h.controller.getSnapshot()).toMatchObject({ phase: 'failed', prepared: h.prepared, name: 'Retry character',
-      error: { name: 'UploadFailedError', reason: 'storage' } });
+      error: { name: 'UploadFailedError', reason: 'storage' },
+      uploadFailure: { key: 'canvas.upload.storageFull', params: { filename: h.prepared.file.name, kind: 'other' }, retryable: false } });
     expect(h.prepared.dispose).not.toHaveBeenCalled();
     await expect(h.controller.confirm()).resolves.toBe(TASK_ID);
+    expect(h.controller.getSnapshot().uploadFailure).toBeNull();
     expect(h.start.mock.calls.map(([file]) => file)).toEqual([h.prepared.file, h.prepared.file]);
   });
 
@@ -257,7 +259,7 @@ describe('document-owned model imports (inner#1690)', () => {
     await h.controller.select(h.files);
     h.controller.reset();
 
-    expect(h.controller.getSnapshot()).toEqual({ phase: 'idle', name: '', error: null, prepared: null,
+    expect(h.controller.getSnapshot()).toEqual({ phase: 'idle', name: '', error: null, uploadFailure: null, prepared: null,
       files: [], entry: undefined, entries: [], paths: [], missing: [] });
     expect(h.prepared.dispose).toHaveBeenCalledTimes(phase === 'ready' ? 1 : 0);
     await expect(h.controller.confirm()).resolves.toBeNull();

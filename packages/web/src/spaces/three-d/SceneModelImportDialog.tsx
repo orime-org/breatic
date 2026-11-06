@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
-import { SceneObjectValuesSchema } from '@breatic/shared';
+import { getLocale, SceneObjectValuesSchema } from '@breatic/shared';
 import { Box, Check, ChevronRight, FolderOpen, Loader2, Lock, TriangleAlert, Upload } from 'lucide-react';
 import { Button } from '@web/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
@@ -18,7 +18,6 @@ import type { ModelImportController } from '@web/spaces/three-d/model-import-con
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { budgetText, importErrorKey } from '@web/spaces/three-d/model-import-error-text';
 import { sourcesFromDrop, sourcesFromFiles, supplementSources } from '@web/spaces/three-d/model-source';
-import { modelUploadFailure } from '@web/spaces/three-d/model-upload-failure';
 
 interface SceneModelImportDialogProps {
   open: boolean;
@@ -71,7 +70,7 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
   const failedUpload = snapshot.phase === 'failed' && prepared !== null;
   const hasInput = snapshot.phase !== 'idle';
   const error = snapshot.error;
-  const uploadFailure = failedUpload && !(error instanceof ModelImportError) ? modelUploadFailure(error, prepared.file.name) : null;
+  const uploadFailure = failedUpload ? snapshot.uploadFailure : null;
   const errorText = error instanceof ModelImportError ? t(importErrorKey(error.code))
     : uploadFailure ? t(uploadFailure.key, uploadFailure.params) : t('spaces.threeD.importModel.errorLoad');
   const retryable = failedUpload && (uploadFailure?.retryable ?? true);
@@ -253,7 +252,7 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
               </div>
               {checking ? <p className='flex items-center gap-2 text-sm text-muted-foreground'><Loader2 className='size-4 shrink-0 animate-spin' />{t('spaces.threeD.importModel.checkingResources')}</p>
                 : error instanceof ModelImportError && error.code === 'entry' ? <p className='text-sm text-muted-foreground'>{errorText}</p>
-                  : error ? <div className='space-y-2'><p className='flex items-start gap-2 text-sm text-status-error'><TriangleAlert className='mt-0.5 size-4 shrink-0' /><span>{errorText}</span></p>{error instanceof ModelImportError && error.budget && <p className='pl-6 text-xs text-muted-foreground'>{budgetText(t, error.budget)}</p>}{error instanceof ModelImportError && error.detail && <p className='break-all pl-6 text-xs text-muted-foreground'>{error.detail}</p>}{snapshot.missing.length > 0 && <ScrollArea viewportClassName='max-h-24'><div className='space-y-1 pl-6 text-xs text-muted-foreground'>{snapshot.missing.map((path) => <p className='break-all' key={path}>{path}</p>)}</div></ScrollArea>}</div>
+                  : error ? <div className='space-y-2'><p className='flex items-start gap-2 text-sm text-status-error'><TriangleAlert className='mt-0.5 size-4 shrink-0' /><span>{errorText}</span></p>{error instanceof ModelImportError && error.budget && <p className='pl-6 text-xs text-muted-foreground'>{budgetText(t, error.budget, getLocale())}</p>}{error instanceof ModelImportError && error.detail && <p className='break-all pl-6 text-xs text-muted-foreground'>{error.detail}</p>}{snapshot.missing.length > 0 && <ScrollArea viewportClassName='max-h-24'><div className='space-y-1 pl-6 text-xs text-muted-foreground'>{snapshot.missing.map((path) => <p className='break-all' key={path}>{path}</p>)}</div></ScrollArea>}</div>
                     : <p className='flex items-center gap-2 text-sm'><Check className='size-4 shrink-0 text-status-success' />{t('spaces.threeD.importModel.ready')}</p>}
               {!canEdit && <p className='text-sm text-muted-foreground'>{t('spaces.threeD.importModel.readOnlyHint')}</p>}
               {(snapshot.missing.length > 0 || supplementing) && <Button ref={addResourcesButton} variant='outline' className='w-fit' loading={supplementing} onClick={supplement} disabled={busy || !canEdit}>{t('spaces.threeD.importModel.addResources')}</Button>}

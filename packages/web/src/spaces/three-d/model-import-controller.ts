@@ -6,6 +6,7 @@ import type { Group } from 'three';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import { UploadFailedError } from '@web/data/upload/media-upload';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
+import { modelUploadFailure, type ModelUploadFailure } from '@web/spaces/three-d/model-upload-failure';
 import type { ModelSource } from '@web/spaces/three-d/model-source';
 import type { SceneUploadStart } from '@web/spaces/three-d/scene-uploads';
 
@@ -34,6 +35,8 @@ export interface ModelImportSnapshot {
   phase: 'idle' | 'checking' | 'ready' | 'starting' | 'failed' | 'disposed';
   name: string;
   error: Error | null;
+  /** Why the upload of the checked model did not start, and whether starting it again can succeed. */
+  uploadFailure: ModelUploadFailure | null;
   prepared: PreparedModel | null;
   files: readonly ModelSource[];
   entry: string | undefined;
@@ -42,7 +45,7 @@ export interface ModelImportSnapshot {
   missing: readonly string[];
 }
 
-const IDLE: ModelImportSnapshot = { phase: 'idle', name: '', error: null, prepared: null,
+const IDLE: ModelImportSnapshot = { phase: 'idle', name: '', error: null, uploadFailure: null, prepared: null,
   files: [], entry: undefined, entries: [], paths: [], missing: [] };
 
 /**
@@ -134,7 +137,7 @@ export class ModelImportController {
     const operation = new AbortController();
     this.operation = operation;
     if (!same) this.named = false;
-    this.publish({ phase: 'checking', prepared: null, error: null,
+    this.publish({ phase: 'checking', prepared: null, error: null, uploadFailure: null,
       files, entry, entries: same ? this.snapshot.entries : [], paths: [], missing: [], name: same ? this.snapshot.name : '' });
     try {
       const prepared = await this.inputs.prepare(files, entry, operation.signal);
@@ -227,14 +230,15 @@ export class ModelImportController {
    * @throws {never} A refusal is retained in the snapshot.
    */
   private async begin(prepared: PreparedModel, name: string, signal: AbortSignal): Promise<string | null> {
-    this.publish({ phase: 'starting', error: null });
+    this.publish({ phase: 'starting', error: null, uploadFailure: null });
     const answer = await this.inputs.start(prepared.file, name.trim());
     if (signal.aborted) return answer.kind === 'opened' ? answer.taskId : null;
     if (answer.kind === 'opened') {
       this.clear();
       return answer.taskId;
     }
-    this.publish({ phase: 'failed', error: answer.kind === 'refused' ? new UploadFailedError(answer.reason) : new Error('Upload did not start') });
+    const error = answer.kind === 'refused' ? new UploadFailedError(answer.reason) : new Error('Upload did not start');
+    this.publish({ phase: 'failed', error, uploadFailure: modelUploadFailure(error, prepared.file.name) });
     return null;
   }
 

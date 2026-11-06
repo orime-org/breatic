@@ -198,8 +198,8 @@ export default defineConfig(({ command, mode }) => {
             if (/[\\/]src[\\/]app[\\/]route-imports\./.test(id)) {
               return 'route-imports';
             }
-            // The eager scene owner and lazy model readers share this error contract.
-            if (/[\\/]src[\\/]spaces[\\/]three-d[\\/]model-import-errors\.ts$/.test(id)) {
+            // The eager scene owner and lazy model readers share this error contract and its wording; neither module imports anything at runtime.
+            if (/[\\/]src[\\/]spaces[\\/]three-d[\\/]model-import-(errors|error-text)\.ts$/.test(id)) {
               return 'model-import-errors';
             }
             // Shared overlay code and icons stay independent of the route that opens them.

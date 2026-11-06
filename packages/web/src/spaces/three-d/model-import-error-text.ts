@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { getLocale } from '@breatic/shared';
 import type { useTranslation } from '@web/i18n/use-translation';
 import type { ModelImportBudget, ModelImportErrorCode, ModelImportLimit } from '@web/spaces/three-d/model-import-errors';
 
@@ -11,11 +10,12 @@ const BYTE_LIMITS: ReadonlySet<ModelImportLimit> = new Set(['input', 'expanded',
  * State an exceeded import limit with the measured value, sizes in megabytes to one decimal: the measured size rounded up and the allowed size rounded down.
  * @param t - The current translator.
  * @param budget - The exceeded limit and both values.
+ * @param locale - The reader's locale, which formats the numbers.
  * @returns The localized sentence.
  * @throws {never} Never.
  */
-export function budgetText(t: ReturnType<typeof useTranslation>, budget: ModelImportBudget): string {
-  const format = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 1 });
+export function budgetText(t: ReturnType<typeof useTranslation>, budget: ModelImportBudget, locale: string): string {
+  const format = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 });
   /**
    * Show a measured value in the unit its limit uses.
    * @param value - Bytes, a count or pixels.

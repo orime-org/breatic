@@ -4,6 +4,13 @@
 import { UploadFailedError } from '@web/data/upload/media-upload';
 import { uploadFailureMessageKey, uploadRetryCanChange } from '@web/spaces/canvas/upload-failure';
 
+/** Why a model upload did not start, and whether sending the same model again can succeed. */
+export interface ModelUploadFailure {
+  key: string;
+  params: Record<string, string>;
+  retryable: boolean;
+}
+
 /**
  * Say why a model upload ended and whether sending the same model again can succeed.
  * @param error - What the model upload rejected with.
@@ -11,7 +18,7 @@ import { uploadFailureMessageKey, uploadRetryCanChange } from '@web/spaces/canva
  * @returns The message key, its parameters and whether Retry is offered.
  * @throws {never} Never.
  */
-export function modelUploadFailure(error: unknown, filename: string): { key: string; params: Record<string, string>; retryable: boolean } {
+export function modelUploadFailure(error: unknown, filename: string): ModelUploadFailure {
   const reason = error instanceof UploadFailedError ? error.reason : 'upload';
   const generic = reason === 'upload' || reason === 'transfer';
   return {
