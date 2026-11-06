@@ -129,7 +129,7 @@ export interface BlockSpec {
 
 /**
  * Blocks quoted as the line they go beside: the schema's default is
- * `quoted: false` (`document-schema-blocknote.ts:53`), and a block made
+ * `quoted: false` (`QUOTED_PROP`, `document-schema-blocknote.ts`), and a block made
  * inside a quote stays in it, the way Enter's does. Nested blocks go with them.
  * @param blocks - The blocks.
  * @param quoted - Whether that line is quoted.

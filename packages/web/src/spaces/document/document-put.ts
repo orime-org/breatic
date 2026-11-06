@@ -10,7 +10,8 @@
  * goes in by ProseMirror's own paste steps, which run its transforms there,
  * and everything else is transformed once on its target (`onTarget`) and
  * placed here. In a table cell (§5.4.7) one table fills the cells from the target
- * cell and any other content goes into the cell.
+ * cell, content holding a table and anything else is refused, and any other
+ * content goes into the cell.
  */
 
 import { blockToNode, type BlockNoteEditor } from '@blocknote/core';
@@ -268,7 +269,8 @@ function openLines(schema: Schema, rows: readonly PMNode[]): Slice {
  * @param view - The view.
  * @param slice - The slice.
  * @param handlers - Whether the paste handlers and paste rules see it: a paste
- *   or a drop. Content built here (canvas, files) is put as it is.
+ *   or a drop. Content built here (canvas, files) still runs the paste
+ *   transforms, and no handler sees it.
  */
 function pasteSlice(view: EditorView, slice: Slice, handlers: boolean): void {
   let pasted = slice;
@@ -597,7 +599,8 @@ function putBlocksInCells(view: EditorView, rows: readonly PMNode[]): Placed {
  * and the content read as lines, and content that puts nothing in changes
  * nothing. Then the selection settles the target: in a
  * table cell or over selected cells, one table fills the cells from the
- * target cell and any other content goes into the cell (§5.4.7); one line of
+ * target cell, content holding a table and anything else is refused, and any
+ * other content goes into the cell (§5.4.7); one line of
  * words goes in as words at a selection in a line (at a gap cursor it is a
  * block of its own, as any content there); a selected block is replaced in
  * place; any other content is put after a text selection is deleted and the
@@ -627,8 +630,8 @@ export function putContent(editor: Editor, content: Read, options: PutOptions): 
    * Places content at its target, all of it or none: a placement that fails
    * part way leaves the body and the selection as they were. A drop's point is aimed first and its
    * hold on the selection from before the drop let go once the placement
-   * ends. A paste over a selection whose ends are both in code blocks goes to
-   * BlockNote's plain text paste, an input the body handles as its own, so
+   * ends. A paste over a selection whose ends are both in code blocks can go
+   * to BlockNote's plain text paste, an input the body handles as its own, so
    * the tables it takes whole are turned into empty lines first (inner#1619).
    * @param place - Puts the content at the selection.
    * @returns Where it landed.

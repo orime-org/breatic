@@ -117,8 +117,8 @@ export interface PastedMediaOptions {
   readonly onLeftOut: (count: number) => void;
   /**
    * Starts the upload behind a pending block a paste brought in. Left out —
-   * a body with nowhere to upload to — a medium that would have to be
-   * fetched is left out instead.
+   * a body with nowhere to upload to — every medium whose address is not
+   * known as ours is left out instead.
    */
   readonly start?: (uploadId: string, source: UploadSource) => void;
 }
