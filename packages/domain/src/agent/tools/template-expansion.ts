@@ -17,9 +17,11 @@
 import {
   GENERATION_TEMPLATES,
   markedSegments,
+  MULTI_SHOT_MODE,
   t,
   templateMarkTargets,
   templateNodeDefaults,
+  templateNodeWords,
   type GenerationTemplate,
   type ProposalNode,
   type TemplateNodeKey,
@@ -39,6 +41,22 @@ export type TemplatePlace =
 /** The node with its template filled in, or why the template does not apply. */
 export type TemplateExpansion = { ok: true; node: ProposalNode } | Refusal;
 
+/** The words a generate node takes in the mode it is sent in, as refusals and fixes name them. */
+export type SentWords = { name: "shots" | "prompt"; mentions: string; write: string; placed: string };
+
+/**
+ * The words a generate node takes in a mode: shots in multi_shot, a prompt in
+ * any other, whatever form the template's own words have.
+ * @param mode - The mode the node is sent in.
+ * @returns How refusals and fixes name those words.
+ * @throws {never} Never.
+ */
+export function sentWords(mode: string | undefined): SentWords {
+  return mode === MULTI_SHOT_MODE
+    ? { name: "shots", mentions: "the shots @", write: "write the shots.", placed: " in a shot" }
+    : { name: "prompt", mentions: "the prompt @s", write: "write a prompt.", placed: "" };
+}
+
 /**
  * Template keys and inputs, quoted, for a sentence.
  * @param names - The names.
@@ -50,27 +68,36 @@ function quoted(names: readonly string[]): string {
 }
 
 /**
- * A template generate node's prompt as the segments a proposal sends: words as
- * they are, each reference mark as a ref naming what is wired in there by its
- * key, the number left for the agent to fill since it knows which node it
- * wired in for each.
+ * A template generate node's prompt, or its shots when it has them, as the
+ * segments a proposal sends: words as they are, each reference mark as a ref
+ * naming what is wired in there by its key, the number left for the agent to
+ * fill since it knows which node it wired in for each.
  * @param template - The template.
  * @param key - The generate node's key; the anchor when left out.
  * @returns The segments, written out as the agent would send them.
  * @throws {never} Never.
  */
 export function templateSegmentsText(template: GenerationTemplate, key: TemplateNodeKey = template.anchor): string {
-  const text = t(`canvas.template.${template.id}.${key === template.anchor ? "prompt" : `node.${key}.prompt`}`);
   const targets = templateMarkTargets(template, key);
-  const parts = markedSegments(text).map((segment) => {
-    if (segment.slot?.kind === "asset") {
-      const target = targets.get(segment.slot.label);
-      const named = target === undefined ? `"${segment.slot.label}"` : "input" in target ? `input "${target.input}"` : `node "${target.node}"`;
-      return `{"ref": <index of the node wired in for ${named}>}`;
-    }
-    return JSON.stringify(segment.slot === undefined ? { text: segment.text } : { slot: segment.slot });
-  });
-  return `[${parts.join(", ")}]`;
+  /**
+   * One locale string written out as segments.
+   * @param rest - The key under the template's locale entry.
+   * @returns The segments as JSON-like text.
+   */
+  const segments = (rest: string): string => {
+    const parts = markedSegments(t(`canvas.template.${template.id}.${rest}`)).map((segment) => {
+      if (segment.slot?.kind === "asset") {
+        const target = targets.get(segment.slot.label);
+        const named = target === undefined ? `"${segment.slot.label}"` : "input" in target ? `input "${target.input}"` : `node "${target.node}"`;
+        return `{"ref": <index of the node wired in for ${named}>}`;
+      }
+      return JSON.stringify(segment.slot === undefined ? { text: segment.text } : { slot: segment.slot });
+    });
+    return `[${parts.join(", ")}]`;
+  };
+  const words = templateNodeWords(template, key);
+  if ("prompt" in words) return segments(words.prompt);
+  return `shots: [${words.shots.map((shot) => `{"duration": ${String(shot.seconds)}, "prompt": ${segments(shot.key)}}`).join(", ")}]`;
 }
 
 /**
@@ -130,8 +157,10 @@ export function expandAt(place: TemplatePlace, rest: ProposalNode, at: NodeLabel
     // The pool is the template's own model's; a node settling another model
     // is told how its nodes go in once it has a prompt to check.
     const keeps = own?.role === "generate" && filled.mode === own.mode && filled.model === own.model;
-    const pool = keeps ? ` Each node the prompt @s goes into the pool. ${poolSentence(rest.name)}` : "";
-    return refuse("template-no-prompt", `"${rest.name}" names template "${template.id}" and sends no prompt. The template's prompt, to rewrite in the reader's language with their story or detail in it: ${templateSegmentsText(template, key)}.${pool}`, fixOn(at, "write a prompt."));
+    const words = sentWords(filled.mode);
+    const pool = keeps ? ` Each node ${words.mentions} goes into the pool. ${poolSentence(rest.name)}` : "";
+    const shotList = own?.role === "generate" && own.shots !== undefined;
+    return refuse("template-no-prompt", `"${rest.name}" names template "${template.id}" and sends no ${words.name}. The template's ${shotList ? "shots" : "prompt"}, to rewrite in the reader's language with their story or detail in it: ${templateSegmentsText(template, key)}.${pool}`, fixOn(at, words.write));
   }
   return { ok: true, node: filled };
 }

@@ -147,6 +147,20 @@ describe('one list of shots per video node', () => {
     expect(durations()).toEqual([3, 7]);
   });
 
+  it('names the shot it added, so the caller can open that one', () => {
+    addNode(PID, SID, nodeOf('video'));
+    enterStoryboardShots(PID, SID, 'gen', 5);
+    const added = addStoryboardShot(PID, SID, 'gen', 5, 6);
+    expect(added).toBe(readShots(PID, SID, 'gen')?.[2]?.id);
+  });
+
+  it('names no shot when none could be added', () => {
+    addNode(PID, SID, nodeOf('video'));
+    enterStoryboardShots(PID, SID, 'gen', 2);
+    expect(addStoryboardShot(PID, SID, 'gen', 2, 6)).toBeNull();
+    expect(readShots(PID, SID, 'gen')).toHaveLength(2);
+  });
+
   it('lands proposed shots in place of the old ones', () => {
     addNode(PID, SID, nodeOf('video'));
     enterStoryboardShots(PID, SID, 'gen', 5);

@@ -25,6 +25,7 @@ import type * as React from 'react';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import * as Y from 'yjs';
+import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 
 import { AudioGeneratePanel } from '@web/spaces/canvas/generate/AudioGeneratePanel';
 import { PromptEditor } from '@web/spaces/canvas/generate/PromptEditor';
@@ -76,6 +77,17 @@ function renderPanel(ui: React.ReactElement): ReturnType<typeof render> {
   return render(<TooltipProvider>{ui}</TooltipProvider>);
 }
 
+/**
+ * A box's words, in a document so they can be read.
+ * @param text - The words.
+ * @returns The fragment.
+ */
+function words(text: string): Y.XmlFragment {
+  const fragment = new Y.Doc().getXmlFragment('prompt');
+  writePlainTextIntoBody(fragment, text);
+  return fragment;
+}
+
 /** The props every case supplies, so a case names only what it exercises. */
 const BASE = {
   models: [ELEVEN, FISH],
@@ -98,6 +110,11 @@ const BASE = {
   // Null on every mode but the two music ones, which is what BASE stands for.
   lyricsSlot: null,
   promptLabel: undefined,
+  promptPlaceholder: 'Describe the style',
+  expanded: 'prompt' as const,
+  onExpand: (): void => {},
+  promptFragment: null,
+  lyricsFragment: null,
   references: [],
   params: {},
   referencePicking: false,
@@ -406,6 +423,52 @@ describe('AudioGeneratePanel — the box labels', () => {
     );
     expect(screen.getByText(STYLE_LABEL)).toBeInTheDocument();
     expect(screen.getByText(LYRICS_LABEL)).toBeInTheDocument();
+  });
+
+  it('shows only the open box while both are there, the other as one line (#1201)', () => {
+    renderPanel(
+      <AudioGeneratePanel
+        {...BASE}
+        promptLabel={STYLE_LABEL}
+        promptSlot={<div data-testid='prompt-editor' />}
+        lyricsSlot={<div data-testid='lyrics-editor' />}
+        lyricsFragment={words('Walking down the empty street')}
+      />,
+    );
+    expect(screen.getByTestId('prompt-editor')).toBeVisible();
+    expect(screen.getByTestId('lyrics-editor')).not.toBeVisible();
+    expect(screen.getByRole('button', { name: new RegExp(LYRICS_LABEL) })).toHaveTextContent('Walking down the empty street');
+  });
+
+  it('opens the lyrics when their row is clicked (#1201)', () => {
+    const onExpand = vi.fn();
+    renderPanel(
+      <AudioGeneratePanel
+        {...BASE}
+        promptLabel={STYLE_LABEL}
+        promptSlot={<div data-testid='prompt-editor' />}
+        lyricsSlot={<div data-testid='lyrics-editor' />}
+        onExpand={onExpand}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(LYRICS_LABEL) }));
+    expect(onExpand).toHaveBeenCalledWith('lyrics');
+  });
+
+  it('shows the style row its first line while the lyrics are open (#1201)', () => {
+    renderPanel(
+      <AudioGeneratePanel
+        {...BASE}
+        promptLabel={STYLE_LABEL}
+        promptSlot={<div data-testid='prompt-editor' />}
+        lyricsSlot={<div data-testid='lyrics-editor' />}
+        expanded='lyrics'
+        promptFragment={words('Lo-fi hip hop, mellow piano')}
+      />,
+    );
+    expect(screen.getByTestId('lyrics-editor')).toBeVisible();
+    expect(screen.getByTestId('prompt-editor')).not.toBeVisible();
+    expect(screen.getByRole('button', { name: new RegExp(STYLE_LABEL) })).toHaveTextContent('Lo-fi hip hop, mellow piano');
   });
 
   it('goes on naming the style box after the lyrics box leaves', () => {

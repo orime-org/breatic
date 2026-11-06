@@ -93,7 +93,7 @@ interface VideoGeneratePanelProps {
   onRemoveReference: (item: ReferenceRailItem) => void;
   /** Insert one reference as an `@` chip in the prompt. */
   onInsertReference: (item: ReferenceRailItem) => void;
-  /** Writes bracketed camera commands into the prompt box the caret was last in (Multi-Shot: the shot last focused, else the first). */
+  /** Writes bracketed camera commands into the prompt box (Multi-Shot: the open shot). */
   onInsertCameraCommands: (text: string) => void;
   /** The source slots the active mode collects, in display order. */
   slots: readonly VideoSlot[];

@@ -11,9 +11,10 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
-import { GENERATION_TEMPLATES, setLocale, type GenerationTemplate } from "@breatic/shared";
+import { GENERATION_TEMPLATES, formatCredits, setLocale, type GenerationTemplate } from "@breatic/shared";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
+import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
 
 import { templateSegmentsText as shown } from "@domain/agent/tools/template-expansion.js";
 
@@ -142,4 +143,60 @@ describe("a multi-node template's full text", () => {
     expect(said).toContain('"kind":"note"');
     expect(said).toContain('"design": generate image, t2i, gpt-image-2.5-sunburst-text-to-image');
   });
+});
+
+describe("a template with a shot list (inner#1816)", () => {
+  it("shows the quick tip as five shots in multi_shot, each with its seconds and segments, and says to send the shots", async () => {
+    const said = await read("vertical-15s-quick-tip");
+    expect(said).toContain('"result" (anchor): generate video, multi_shot, seedance-2.5-text-to-video, 5 shots');
+    expect(said).toContain("shots: [");
+    expect(said.match(/"duration": 3\b/g)).toHaveLength(5);
+    expect(said).toContain('{"ref": <index of the node wired in for input "subject">}');
+    expect(said).toContain("sends shots and no prompt");
+    expect(said).toContain(describeTemplate(byId("vertical-15s-quick-tip")));
+  });
+
+  it("says a multi_shot node sends shots adding up to the duration written in its params, else the template's while it keeps the template's mode and model, and any other mode sends one prompt", async () => {
+    const said = await read("vertical-15s-quick-tip");
+    expect(said).toContain(
+      "A node sent in multi_shot sends shots and no prompt, their durations adding up to the node's duration: " +
+        "the one you write in its params, else the template's while the node keeps the template's mode and model; " +
+        "on another mode or model, write one. " +
+        "A node sent in any other mode sends a prompt, a template's shots written as one.",
+    );
+    expect(said).not.toContain("the template's while the node keeps the template's mode and model, otherwise one you set in its params");
+    expect(said).not.toContain("For a node with shots");
+    expect(said).not.toContain("each with the duration the template gives it");
+  });
+
+  it("writes no shot list for a template without shots", () => {
+    for (const id of ["storyboard-grid-25", "single-view-refs-scene"]) {
+      const said = describeTemplate(byId(id));
+      expect(said, id).not.toContain("shots: [");
+    }
+  });
+});
+
+describe("what one apply of a template costs (inner#1816)", () => {
+  /**
+   * Each generate node's estimate at the template's own settings, priced
+   * the way the tool prices it.
+   * @param id - The template id.
+   * @returns One estimate per generate node, or undefined where it has no price.
+   */
+  async function estimates(id: string): Promise<Awaited<ReturnType<typeof estimateModelCredits>>[]> {
+    const generates = byId(id).nodes.flatMap((node) => (node.role === "generate" ? [node] : []));
+    return Promise.all(generates.map((node) => estimateModelCredits(node.model, { params: node.params })));
+  }
+
+  for (const [id, count] of [["carried-object-transition", 3], ["vertical-15s-quick-tip", 1]] as const) {
+    it(`gives the sum of every generate node's estimate as the exact cost of ${id}`, async () => {
+      const each = await estimates(id);
+      expect(each).toHaveLength(count);
+      for (const one of each) expect(one?.bound, id).toBe("exact");
+      const sum = each.reduce((total, one) => total + (one?.credits ?? 0), 0);
+      expect(sum).toBeGreaterThan(0);
+      expect(await read(id)).toContain(`One apply of this template costs ${formatCredits(sum, "en-US")} credits at its settings.`);
+    });
+  }
 });
