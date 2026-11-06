@@ -40,6 +40,11 @@ describe("stage job counts of a frozen layout (§97 D12-1)", () => {
     expect(api.plannedStageJobs({ encode: [w(0, 48), w(60, 120)], window: [w(48, 60)] })).toEqual([{ stage: "encode", jobs: 3 }, { stage: "stitch", jobs: 1 }]);
   });
 
+  // §97 D13 (frames-split §5.4 派发 row): a Cut has no overlap window, so no transition_window job is sent.
+  it("SJ08 transitions with a Cut: no window chunks, so encode counts only the encode chunks", () => {
+    expect(api.plannedStageJobs({ encode: [w(0, 48), w(48, 120)], window: [] })).toEqual([{ stage: "encode", jobs: 2 }, { stage: "stitch", jobs: 1 }]);
+  });
+
   it("SJ06 lip-sync: two people, one unchunked preparation and one composite chunk need at most four jobs at once", () => {
     const stages = api.plannedStageJobs({ preparation: [w(0, 90)], persons: 2, composite: [w(0, 90)] });
     expect(stages).toEqual([{ stage: "prepare", jobs: 1 }, { stage: "faces", jobs: 2 }, { stage: "clip_stem", jobs: 4 }, { stage: "composite", jobs: 1 }, { stage: "stitch", jobs: 1 }]);
