@@ -51,6 +51,20 @@ export interface CanvasLimits {
   waveformPeaksRetryMs: number;
   /** How long an open cut band keeps reading peaks not yet written, in ms. */
   waveformPeaksRetryMaxMs: number;
+  /** The model the video remove-background tool runs (config `executions.video.remove-bg`), or null where none is configured. */
+  removeBackgroundModel?: string | null;
+  /** The lip-sync choices (config `executions.video.lip-sync`), or null where the deployment offers no lip-sync. */
+  lipSync?: CanvasLipSyncLimits | null;
+}
+
+/** A duration range in seconds, both ends included. */
+export interface CanvasDurationRange { minDurationSeconds: number; maxDurationSeconds: number }
+/** The lip-sync models with their result ranges, the tracking range and the run caps. */
+export interface CanvasLipSyncLimits {
+  models: (CanvasDurationRange & { name: string })[];
+  tracking: CanvasDurationRange;
+  maxPeople: number;
+  maxDialogues: number;
 }
 
 /**

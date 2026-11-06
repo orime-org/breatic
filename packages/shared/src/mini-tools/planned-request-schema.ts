@@ -77,7 +77,7 @@ export type MiniToolPlannedRequest = z.infer<typeof miniToolPlannedRequestSchema
 
 /** A new execution reuses only original failed output identities, not current draft inputs. */
 export const miniToolExecutionRetryRequestSchema = z.strictObject({
-  tool: z.enum(["video.remove-bg", "video.extract-frames", "video.split"]), project_id: z.uuid(), space_id: z.uuid(), run_id: z.uuid(),
+  tool: z.enum(["video.remove-bg", "video.extract-frames", "video.split", "video.lip-sync"]), project_id: z.uuid(), space_id: z.uuid(), run_id: z.uuid(),
   retry: z.strictObject({ runId: z.uuid(), outputIndexes: z.array(index).min(1).refine((ids) => new Set(ids).size === ids.length) }),
 }).refine((request) => request.run_id !== request.retry.runId, { message: "A retry requires a new execution identity" });
 export type MiniToolExecutionRetryRequest = z.infer<typeof miniToolExecutionRetryRequestSchema>;

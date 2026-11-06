@@ -17,6 +17,7 @@ import { Textarea } from '@web/components/ui/textarea';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { latestMiniToolAnalysis } from '@web/data/api/mini-tool-analyses';
 import { useTranslation } from '@web/i18n/use-translation';
+import { toast } from '@web/lib/toast';
 import { SlotTool } from '@web/spaces/canvas/generate/generate-tools';
 import { PARAM_OPTION_CLASS, ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { EXPAND_RATIOS, frameForRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
@@ -27,7 +28,7 @@ import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 /** A duration range a lip-sync model accepts, both ends included (config `executions.video.lip-sync`). */
 export interface LipSyncDurationRange { min_duration_seconds: number; max_duration_seconds: number }
 /** The configured lip-sync models in order, the first the default, and the tracking model's range. */
-export interface LipSyncChoices { models: (ModelEntry & LipSyncDurationRange)[]; tracking: LipSyncDurationRange }
+export interface LipSyncChoices { models: (ModelEntry & LipSyncDurationRange)[]; tracking: LipSyncDurationRange; maxPeople?: number; maxDialogues?: number }
 
 export interface VideoToolControlsProps<K extends VideoToolId = VideoToolId> {
   toolId: K;
@@ -126,6 +127,18 @@ function PeopleDialogues(props: VideoToolControlsProps): React.JSX.Element {
   const people = result?.people ?? [];
   const ready = successful !== null;
   const rows = draft.params.dialogues;
+  const maxPeople = props.lipSync?.maxPeople;
+  const maxDialogues = props.lipSync?.maxDialogues;
+  const rowsFull = maxDialogues !== undefined && rows.length >= maxDialogues;
+  /**
+   * Whether binding a person to a row would take the run past its people cap (canvas design §4 lip-sync row).
+   * @param dialogueId - The row.
+   * @param personId - The person.
+   * @returns True when it would.
+   * @throws {never} Never.
+   */
+  const overPeople = (dialogueId: string, personId: string): boolean => maxPeople !== undefined
+    && new Set([...rows.filter((row) => row.dialogueId !== dialogueId && row.personId !== null).map((row) => row.personId), personId]).size > maxPeople;
   /**
    * Commits all rows atomically without collapsing repeated people.
    * @throws {never} Never.
@@ -149,9 +162,12 @@ function PeopleDialogues(props: VideoToolControlsProps): React.JSX.Element {
         const thumbnail = selected?.artifactRefs.find((artifact) => artifact.role === 'thumbnail')?.canonicalURL;
         const slotKey = `dialogue:${row.dialogueId}`;
         return <div key={row.dialogueId} className='col-span-4 grid grid-cols-subgrid items-center gap-x-2 gap-y-1.5' data-testid={`video-dialogue-${row.dialogueId}`} onFocusCapture={() => props.onActiveDialogue?.(row.dialogueId)}>
-          <Select onOpenChange={setOpen} value={selected?.personId ?? ''} disabled={props.disabled || props.analysing || !ready || people.length === 0} onValueChange={(personId) => changeRows(editDialogue(rows, row.dialogueId, { personId, analysisRunId: result?.analysisRunId ?? null }))}>
+          <Select onOpenChange={setOpen} value={selected?.personId ?? ''} disabled={props.disabled || props.analysing || !ready || people.length === 0} onValueChange={(personId) => {
+            if (overPeople(row.dialogueId, personId)) { toast.warning(t('server.mini_tool.lipSyncTooManyPeople', { max: maxPeople ?? 0 })); return; }
+            changeRows(editDialogue(rows, row.dialogueId, { personId, analysisRunId: result?.analysisRunId ?? null }));
+          }}>
             <SelectTrigger data-testid={`video-person-${row.dialogueId}`} className='w-auto gap-1.5 px-2 text-xs'><span className='relative size-5 shrink-0 overflow-hidden rounded-content-xs bg-muted'>{thumbnail === undefined ? <Users className='size-5 text-muted-foreground' /> : <img src={thumbnail} alt='' className='size-full object-cover' />}</span><span className='min-w-0 truncate'><SelectValue placeholder={t('canvas.miniTool.videoUI.choosePerson')} /></span></SelectTrigger>
-            <SelectContent avoidCollisions={false}>{people.map((person, personIndex) => <SelectItem key={person.personId} value={person.personId}>{t('canvas.miniTool.videoUI.personNumber', { number: personIndex + 1 })}</SelectItem>)}</SelectContent>
+            <SelectContent avoidCollisions={false}>{people.map((person, personIndex) => <SelectItem key={person.personId} value={person.personId} aria-disabled={overPeople(row.dialogueId, person.personId) ? true : undefined} className='aria-disabled:opacity-50'>{t('canvas.miniTool.videoUI.personNumber', { number: personIndex + 1 })}</SelectItem>)}</SelectContent>
           </Select>
           <div className={'min-w-0 [&>div]:min-w-0 [&>div>button:first-child]:h-[var(--control-height)] [&>div>button:first-child]:w-full [&>div>button:first-child]:min-w-0 [&>div>button:first-child]:flex-row [&>div>button:first-child]:justify-start [&>div>button:first-child]:gap-1.5 [&>div>button:first-child]:pr-6 [&>div>button:first-child>span]:truncate [&>div>button[aria-pressed=false]]:border-border [&>div>button[aria-pressed=true]]:border-active-border [&>div>button[aria-pressed=true]]:bg-accent [&>div>button[aria-pressed=true]]:text-foreground' + (input === undefined ? '' : ' [&>div>button:first-child>svg]:hidden [&>div>button:first-child]:pl-2')}>
             <SlotTool testId={`video-audio-${row.dialogueId}`} thumbnailTestId={`video-audio-thumbnail-${row.dialogueId}`} clearTestId={`video-audio-clear-${row.dialogueId}`} Icon={AudioLines} onPick={() => props.onPick(slotKey)} active={props.pickingSlot === slotKey} pick={input === undefined ? undefined : { kind: 'audio', url: input.url }} disabled={props.disabled} onClear={() => { if (props.pickingSlot === slotKey) props.onEndPick?.(); changeRows(editDialogue(rows, row.dialogueId, { audioInputId: null })); }} clearLabel={t('canvas.miniTool.panel.clearSlot')} label={input === undefined ? t('canvas.miniTool.videoUI.chooseDialogueAudio') : props.inputNames.get(input.inputId) ?? input.url.split('/').at(-1) ?? ''} tip={t('canvas.miniTool.videoUI.pickAudio')} />
@@ -161,8 +177,11 @@ function PeopleDialogues(props: VideoToolControlsProps): React.JSX.Element {
         </div>;
       })}
     </div>
-    <Button variant='outline' size='compact' className='w-fit' disabled={props.disabled || props.analysing || !ready || people.length === 0} onClick={() => changeRows([...rows, { dialogueId: newId(), personId: null, analysisRunId: null, audioInputId: null, startTime: 0 }])} icon={<Plus className='size-3.5' />}>{t('canvas.miniTool.videoUI.addDialogue')}</Button>
-    {props.lipSync === undefined || props.lipSync.models.length === 0 ? null : <div className='flex items-center gap-1.5'><ModelPicker models={props.lipSync.models} value={draft.params.modelId ?? props.lipSync.models[0]!.name} onChange={(modelId) => props.onChange({ ...draft, params: { ...draft.params, modelId } })} /></div>}
+    <Button variant='outline' size='compact' className='w-fit aria-disabled:opacity-50' disabled={props.disabled || props.analysing || !ready || people.length === 0} aria-disabled={rowsFull ? true : undefined} onClick={() => {
+      if (rowsFull) { toast.warning(t('server.mini_tool.lipSyncTooManyDialogues', { max: maxDialogues })); return; }
+      changeRows([...rows, { dialogueId: newId(), personId: null, analysisRunId: null, audioInputId: null, startTime: 0 }]);
+    }} icon={<Plus className='size-3.5' />}>{t('canvas.miniTool.videoUI.addDialogue')}</Button>
+    {props.lipSync === undefined || props.lipSync.models.length === 0 ? null : <div className='flex items-center gap-1.5'><ModelPicker models={props.lipSync.models} value={draft.params.modelId ?? props.lipSync.models[0].name} onChange={(modelId) => props.onChange({ ...draft, params: { ...draft.params, modelId } })} /></div>}
     <ParamOptionGroup label={t('canvas.miniTool.videoUI.syncMode')} options={[{ value: 'cut_off', label: 'Cut off' }, { value: 'silence', label: 'Silence' }, { value: 'loop', label: 'Loop' }, { value: 'bounce', label: 'Bounce' }, { value: 'remap', label: 'Remap' }].map((option) => ({ ...option, disabled: props.disabled }))} value={draft.params.syncMode} testIdPrefix='video-sync' onSelect={(syncMode) => props.onChange({ ...draft, params: { ...draft.params, syncMode: syncMode as typeof draft.params.syncMode } })} />
     {props.lipSyncFailure ? <LipSyncFailure reason={props.lipSyncFailure} disabled={props.disabled} onRetry={props.onRetryFailed} onRedetect={() => props.onAnalyse('people')} /> : null}
   </section>;
@@ -279,7 +298,7 @@ function VideoCutStrip(props: VideoToolControlsProps): React.JSX.Element {
       if (at === undefined) return;
       event.preventDefault(); event.stopPropagation();
       const backwards = event.key === 'ArrowLeft' || event.key === 'ArrowDown';
-      const covering = planVideoFrames(props.frameTable, { mode: 'current', currentTime: at })[0]!;
+      const covering = planVideoFrames(props.frameTable, { mode: 'current', currentTime: at })[0];
       const neighbour = backwards ? (covering.pts < at ? covering.frameIndex : covering.frameIndex - 1) : (covering.pts > at ? covering.frameIndex : covering.frameIndex + 1);
       const pts = neighbour >= 0 && neighbour < presentationFrameCount(props.frameTable) ? presentationFrameAt(props.frameTable, neighbour).pts : undefined;
       const next = pts !== undefined && pts > 0 && pts < duration ? pts : undefined;

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { miniToolExecutionRecordSchema, type MiniToolExecutionRecord, type MiniToolPlannedRequest, type MiniToolRequest } from '@breatic/shared/mini-tools';
+import { miniToolExecutionRecordSchema, type MiniToolExecutionRecord, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type MiniToolRequest } from '@breatic/shared/mini-tools';
 
 import { apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
 import { noteCreditsChanged } from '@web/data/api/credits';
@@ -27,6 +27,18 @@ export const miniToolsApi = {
    * @throws {import('@web/data/api/types').ApiException} When admission is refused or unreachable.
    */
   runPlanned(body: MiniToolPlannedRequest, key: string): Promise<MiniToolPlannedRunAnswer> {
+    return apiPost<MiniToolPlannedRunAnswer>('/mini-tools', body, runOnceRequest(key)).finally(() =>
+      noteCreditsChanged(body.project_id),
+    );
+  },
+  /**
+   * Retries a run's failed outputs on its frozen plan (frames-split §7.11 retry row), with its stable press key.
+   * @param body - The retry.
+   * @param key - The original press identity.
+   * @returns The admitted task's state.
+   * @throws {import('@web/data/api/types').ApiException} When admission is refused or unreachable.
+   */
+  retry(body: MiniToolExecutionRetryRequest, key: string): Promise<MiniToolPlannedRunAnswer> {
     return apiPost<MiniToolPlannedRunAnswer>('/mini-tools', body, runOnceRequest(key)).finally(() =>
       noteCreditsChanged(body.project_id),
     );
