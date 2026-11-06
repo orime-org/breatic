@@ -47,3 +47,23 @@ describe("lip-sync failure reason (§97 D11-5; execution design §9.4)", () => {
     expect(api.lipsyncFailureRetryable(value)).toBe(retryable);
   });
 });
+
+// §97 D12-4 (execution design §9.3; DD 2026-11-05 multi-person lip-sync): the source range a run uses starts at 0 and ends at
+// the timeline duration for cut_off (min(V, A)) or at the video duration for the other modes, then reaches the window end of
+// any referenced person's anchor frame at or after that end, so tracking covers the anchor.
+type Timeline = { duration: number; videoDuration: number; syncMode: "cut_off" | "silence" | "loop" | "bounce" | "remap" };
+const range = (miniTools as unknown as { lipsyncUsedSourceRange: (timeline: Timeline, anchors: readonly { time: number; windowEnd: number }[]) => { start: 0; end: number } }).lipsyncUsedSourceRange;
+
+describe("the used source range (§97 D12-4)", () => {
+  it.each([
+    ["cut_off ends at the timeline duration", { duration: 3, videoDuration: 5, syncMode: "cut_off" }, [], 3],
+    ["silence ends at the video duration", { duration: 7, videoDuration: 5, syncMode: "silence" }, [], 5],
+    ["loop ends at the video duration", { duration: 7, videoDuration: 5, syncMode: "loop" }, [], 5],
+    ["an anchor before the end leaves it", { duration: 3, videoDuration: 5, syncMode: "cut_off" }, [{ time: 1, windowEnd: 1.04 }], 3],
+    ["an anchor after the end extends it to the anchor's window end", { duration: 3, videoDuration: 5, syncMode: "cut_off" }, [{ time: 4, windowEnd: 4.04 }], 4.04],
+    ["the latest anchor window wins", { duration: 3, videoDuration: 5, syncMode: "cut_off" }, [{ time: 3.5, windowEnd: 3.54 }, { time: 4.2, windowEnd: 4.24 }], 4.24],
+    ["an anchor exactly at the end extends to its window end", { duration: 3, videoDuration: 5, syncMode: "cut_off" }, [{ time: 3, windowEnd: 3.04 }], 3.04],
+  ] as const)("UR01 %s", (_name, timeline, anchors, end) => {
+    expect(range(timeline, anchors)).toEqual({ start: 0, end });
+  });
+});
