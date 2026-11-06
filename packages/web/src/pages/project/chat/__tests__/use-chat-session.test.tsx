@@ -63,7 +63,7 @@ vi.mock('@web/data/api/assets', async (importOriginal) => {
 
 import { chatApi } from '@web/data/api/chat';
 import { useChatSession } from '@web/pages/project/chat/use-chat-session';
-import { _resetForTests, conversationRuntime } from '@web/stores/conversation-runtime';
+import { _resetForTests, conversationRuntime, useConversationRuntime } from '@web/stores/conversation-runtime';
 import { tell } from '@web/stores/chat-mishaps';
 import { evictAllChatSessions } from '@web/stores/chat-sessions';
 import { stubChatWire, turnOpens } from '@web/test-utils/chat-wire';
@@ -518,6 +518,41 @@ describe('when the chat never opened', () => {
       expect(wire.sent()).toHaveLength(1);
     });
     expect(wire.sent()[0]).toMatchObject({ conversation_id: 'c-1', message: '还是想问' });
+  });
+});
+
+describe('a send the server refused (#1363)', () => {
+  it('is counted, so the model picker asks for the list again', async () => {
+    const panel = await anOpenPanel();
+    const before = useConversationRuntime.getState().refusals;
+    wire.refuseNext(422, 'The selected model is no longer available.');
+
+    act(() => {
+      void panel.result.current.send('hello');
+    });
+
+    await waitFor(() => {
+      expect(useConversationRuntime.getState().refusals).toBe(before + 1);
+    });
+  });
+
+  it('is counted in a conversation the send itself opened', async () => {
+    vi.mocked(chatApi.openChat).mockRejectedValueOnce(new Error('offline'));
+    const panel = render();
+    await waitFor(() => {
+      expect(panel.result.current.status).toBe('failed');
+    });
+    openChatAnswers([]);
+    const before = useConversationRuntime.getState().refusals;
+    wire.refuseNext(422, 'The selected model is no longer available.');
+
+    act(() => {
+      void panel.result.current.send('hello');
+    });
+
+    await waitFor(() => {
+      expect(useConversationRuntime.getState().refusals).toBe(before + 1);
+    });
   });
 });
 

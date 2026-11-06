@@ -24,9 +24,10 @@ export interface ModelPickerProps {
  * The model picker in the composer (#1363): the model the conversation on
  * screen is answered by, and a menu of the models the reader can pick.
  *
- * A pick is shown at once and saved; a save that fails puts the old pick back.
- * While the list is loading or failed to load, it shows the conversation's
- * model and cannot be opened. A conversation whose model the deployment no
+ * A pick is shown at once and saved. A save that fails puts the old pick back,
+ * unless a later pick has replaced it, and asks for the list again: the
+ * model may have been taken off. While the list is loading or failed to load,
+ * it shows the conversation's model and cannot be opened. A conversation whose model the deployment no
  * longer lists shows the model a new conversation would start on, and the
  * next message goes with that one; the server writes it then.
  * @param props - Which conversation.
@@ -37,7 +38,7 @@ export interface ModelPickerProps {
 function ModelPickerInner({ conversationId, projectId }: ModelPickerProps): React.JSX.Element | null {
   const t = useTranslation();
   const stored = useConversationRuntime((s) => s.conversations[conversationId]?.agentModel);
-  const refused = useConversationRuntime((s) => s.refusedSends);
+  const refused = useConversationRuntime((s) => s.refusals);
   const list = useChatModels(refused);
   const models = list.data?.models;
   const lastUsed = list.data?.lastUsed;
@@ -61,27 +62,22 @@ function ModelPickerInner({ conversationId, projectId }: ModelPickerProps): Reac
   }, [list.isError, listFailed]);
 
   const saveFailed = t('chat.modelPicker.saveFailed');
-  const pick = React.useCallback(
+  const [open, setOpen] = React.useState(false);
+  const choose = React.useCallback(
     (id: string): void => {
+      setOpen(false);
       const next = models?.find((m) => m.id === id);
       if (next === undefined || stored === undefined || next.id === stored.id) return;
       const before = stored;
       conversationRuntime.setAgentModel(conversationId, next);
       chatApi.setModel(conversationId, projectId, next.id).catch(() => {
-        conversationRuntime.setAgentModel(conversationId, before);
+        const now = useConversationRuntime.getState().conversations[conversationId]?.agentModel;
+        if (now?.id === next.id) conversationRuntime.setAgentModel(conversationId, before);
+        conversationRuntime.noteRefused();
         toast.error(saveFailed);
       });
     },
     [models, stored, conversationId, projectId, saveFailed],
-  );
-
-  const [open, setOpen] = React.useState(false);
-  const choose = React.useCallback(
-    (id: string): void => {
-      setOpen(false);
-      pick(id);
-    },
-    [pick],
   );
   // Focus goes to the menu itself, so a row shows a focus ring only once the
   // reader moved there by keyboard; Radix would focus the first row on open.
@@ -101,7 +97,7 @@ function ModelPickerInner({ conversationId, projectId }: ModelPickerProps): Reac
           variant='chrome-ghost'
           size={null}
           data-testid='chat-model-picker'
-          className='inline-flex h-[var(--btn-inline)] min-w-0 max-w-[11rem] shrink items-center gap-1 bg-transparent px-1.5 text-xs disabled:cursor-not-allowed'
+          className='h-[var(--btn-inline)] min-w-0 max-w-[11rem] shrink gap-1 bg-transparent px-1.5 text-xs'
         >
           <span className='truncate'>{shown.name}</span>
           <ChevronDown className='h-3 w-3 shrink-0' />
@@ -121,7 +117,7 @@ function ModelPickerInner({ conversationId, projectId }: ModelPickerProps): Reac
               size='menu-item'
               aria-pressed={m.id === shown.id}
               className={cn(
-                'justify-start whitespace-nowrap',
+                'justify-start',
                 m.id === shown.id && 'bg-accent-strong hover-enabled:bg-accent-strong',
               )}
               onClick={() => choose(m.id)}

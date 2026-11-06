@@ -71,7 +71,7 @@ function openSession(): void {
     onTitled: () => undefined,
     onFirstFrame: () => undefined,
     modelOf: () => useConversationRuntime.getState().conversations['c-1']?.agentModel.id,
-    onRefused: conversationRuntime.noteRefusedSend,
+    onRefused: conversationRuntime.noteRefused,
   });
 }
 
@@ -97,10 +97,10 @@ describe('the model on a message', () => {
         headers: { 'Content-Type': 'application/json' },
       });
     openSession();
-    const before = useConversationRuntime.getState().refusedSends;
+    const before = useConversationRuntime.getState().refusals;
 
     await sendInSession('c-1', 'hello').catch(() => undefined);
 
-    expect(useConversationRuntime.getState().refusedSends).toBe(before + 1);
+    expect(useConversationRuntime.getState().refusals).toBe(before + 1);
   });
 });

@@ -231,7 +231,7 @@ export function useChatSession(
     onTitled: noteTitle(conversationId ?? ''),
     onFirstFrame: emptyTheBox(conversationId ?? ''),
     modelOf: modelOfConversation(conversationId ?? ''),
-    onRefused: conversationRuntime.noteRefusedSend,
+    onRefused: conversationRuntime.noteRefused,
   });
   const { messages: onScreen, status, error } = useChat({
     chat,
@@ -297,7 +297,7 @@ export function useChatSession(
         onTitled: noteTitle(opened),
         onFirstFrame: emptyTheBox(opened),
         modelOf: modelOfConversation(opened),
-        onRefused: conversationRuntime.noteRefusedSend,
+        onRefused: conversationRuntime.noteRefused,
       });
       // Through the session rather than straight at the `Chat`: what a running
       // turn needs looking after -- the wait for the next beat, and giving up

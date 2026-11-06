@@ -177,11 +177,11 @@ interface ConversationRuntimeState {
    */
   sendingByProject: Record<string, true>;
   /**
-   * How many sends the server has refused (#1363). The model picker asks for
-   * the list of models again when it rises: a page that predates a model
-   * being taken off is told so by its refusal.
+   * How many sends and model saves the server has refused (#1363). The model
+   * picker asks for the list of models again when it rises: a page that
+   * predates a model being taken off is told so by a refusal.
    */
-  refusedSends: number;
+  refusals: number;
 }
 
 /**
@@ -376,7 +376,7 @@ const useStore = create<ConversationRuntimeState>()(() => ({
   openStatus: {},
   navigatingByProject: {},
   sendingByProject: {},
-  refusedSends: 0,
+  refusals: 0,
 }));
 
 /**
@@ -1770,7 +1770,7 @@ export function _resetForTests(): void {
     openStatus: {},
     navigatingByProject: {},
     sendingByProject: {},
-    refusedSends: 0,
+    refusals: 0,
   });
 }
 
@@ -1786,11 +1786,11 @@ function setAgentModel(conversationId: string, agentModel: AgentModelChoice): vo
 }
 
 /**
- * Count a send the server refused (#1363), so the picker asks for the list of
- * models again.
+ * Count a send or a model save the server refused (#1363), so the picker asks
+ * for the list of models again.
  */
-function noteRefusedSend(): void {
-  useStore.setState((s) => ({ refusedSends: s.refusedSends + 1 }));
+function noteRefused(): void {
+  useStore.setState((s) => ({ refusals: s.refusals + 1 }));
 }
 
 export const useConversationRuntime = useStore;
@@ -1812,5 +1812,5 @@ export const conversationRuntime = {
   setDraft,
   draftOf,
   setAgentModel,
-  noteRefusedSend,
+  noteRefused,
 };

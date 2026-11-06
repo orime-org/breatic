@@ -6,9 +6,10 @@
  *
  * It shows the model of the conversation on screen and lists the models the
  * reader can pick, the current one checked. A pick is shown at once and
- * saved; a save that fails puts the old pick back and says so. While the list
- * is loading, or failed to load, the picker shows the conversation's model and
- * cannot be opened. A conversation whose model the deployment no longer lists
+ * saved; a save that fails puts the old pick back, unless a later pick has
+ * replaced it, says so and asks for the list again. While the list is loading,
+ * or failed to load, the picker shows the conversation's model and cannot be
+ * opened; asked for again, it keeps the list it has. A conversation whose model the deployment no longer lists
  * shows the model a new conversation would start on, which is what the next
  * message is sent with.
  */
@@ -45,7 +46,7 @@ function conversations(models: Record<string, { id: string; name: string }>): vo
         { projectId: 'p-1', messages: [], hasMore: false, oldestLoadedTurn: null, title: null, agentModel },
       ]),
     ),
-    refusedSends: s.refusedSends,
+    refusals: s.refusals,
   }));
 }
 
@@ -151,6 +152,41 @@ describe('the model picker', () => {
     expect(toast.error).toHaveBeenCalledWith('Could not save the model choice');
   });
 
+  it('keeps a later pick when an earlier save fails after it', async () => {
+    conversations({ 'c-1': DEEPSEEK });
+    let failFirst: (why: Error) => void = () => undefined;
+    vi.mocked(chatApi.setModel)
+      .mockReturnValueOnce(new Promise((_resolve, reject) => { failFirst = reject; }))
+      .mockResolvedValueOnce(undefined);
+    const user = userEvent.setup();
+    renderPicker('c-1');
+    await waitFor(() => expect(trigger()).toBeEnabled());
+
+    await user.click(trigger());
+    await user.click(await screen.findByRole('button', { name: 'Claude Opus 5.5' }));
+    await user.click(trigger());
+    await user.click(await screen.findByRole('button', { name: 'Claude Sonnet 5.5' }));
+    failFirst(new Error('network'));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Could not save the model choice'));
+    expect(trigger()).toHaveTextContent('Claude Sonnet 5.5');
+    expect(useConversationRuntime.getState().conversations['c-1']?.agentModel).toEqual(SONNET);
+  });
+
+  it('asks for the list again when a save fails', async () => {
+    conversations({ 'c-1': DEEPSEEK });
+    vi.mocked(chatApi.setModel).mockRejectedValue(new Error('gone'));
+    const user = userEvent.setup();
+    renderPicker('c-1');
+    await waitFor(() => expect(trigger()).toBeEnabled());
+    expect(chatApi.models).toHaveBeenCalledTimes(1);
+
+    await user.click(trigger());
+    await user.click(await screen.findByRole('button', { name: 'Claude Opus 5.5' }));
+
+    await waitFor(() => expect(chatApi.models).toHaveBeenCalledTimes(2));
+  });
+
   it('shows the conversation model and cannot be opened while the list is loading', () => {
     conversations({ 'c-1': SONNET });
     vi.mocked(chatApi.models).mockReturnValue(new Promise(() => undefined));
@@ -189,8 +225,21 @@ describe('the model picker', () => {
     renderPicker('c-1');
     await waitFor(() => expect(chatApi.models).toHaveBeenCalledTimes(1));
 
-    useConversationRuntime.setState((s) => ({ refusedSends: s.refusedSends + 1 }));
+    useConversationRuntime.setState((s) => ({ refusals: s.refusals + 1 }));
 
     await waitFor(() => expect(chatApi.models).toHaveBeenCalledTimes(2));
+  });
+
+  it('can still be opened, with the list it has, while the list is asked for again', async () => {
+    conversations({ 'c-1': SONNET });
+    renderPicker('c-1');
+    await waitFor(() => expect(trigger()).toBeEnabled());
+    vi.mocked(chatApi.models).mockReturnValue(new Promise(() => undefined));
+
+    useConversationRuntime.setState((s) => ({ refusals: s.refusals + 1 }));
+    await waitFor(() => expect(chatApi.models).toHaveBeenCalledTimes(2));
+
+    expect(trigger()).toBeEnabled();
+    expect(trigger()).toHaveTextContent('Claude Sonnet 5.5');
   });
 });
