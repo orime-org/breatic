@@ -1862,6 +1862,11 @@
     },
     "runOnce": {
       "unknownResult": "無法確認剛才的操作是否完成，請查看結果。"
+    },
+    "mediaViewer": {
+      "fullscreen": "全螢幕檢視",
+      "close": "關閉",
+      "loadFailed": "無法載入這個檔案"
     }
   },
   "members": {
@@ -2108,8 +2113,6 @@
         "remove": "移除",
         "caption": "說明",
         "captionPlaceholder": "新增說明",
-        "fullscreen": "全螢幕檢視",
-        "close": "關閉",
         "download": "下載",
         "delete": "刪除",
         "leftOut": "{count} 個圖片、影片或音訊沒有貼上，可以直接拖入或貼上檔案。",

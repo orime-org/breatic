@@ -1862,6 +1862,11 @@
     },
     "runOnce": {
       "unknownResult": "先ほどの操作が完了したか確認できませんでした。結果を確認してください。"
+    },
+    "mediaViewer": {
+      "fullscreen": "全画面で表示",
+      "close": "閉じる",
+      "loadFailed": "このファイルを読み込めません"
     }
   },
   "members": {
@@ -2108,8 +2113,6 @@
         "remove": "削除",
         "caption": "キャプション",
         "captionPlaceholder": "キャプションを追加",
-        "fullscreen": "全画面で表示",
-        "close": "閉じる",
         "download": "ダウンロード",
         "delete": "削除",
         "leftOut": "{count} 件の画像・動画・音声は貼り付けられませんでした。ファイルを直接ドロップまたは貼り付けてください。",

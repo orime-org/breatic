@@ -18,6 +18,7 @@ import {
   MENTION_KIND_ATTR,
   MENTION_THUMBNAIL_ATTR,
   ReferenceMention,
+  referenceFullscreen,
   referenceMentionContent,
   serializePromptText,
   stripForeignReferenceChips,
@@ -1267,5 +1268,39 @@ describe('ReferenceMention chip — the thumbnail shows the stored preview (inne
       return found!;
     });
     expect(img.getAttribute('src')).toBe(`${stored}.preview.webp`);
+  });
+});
+
+// inner#1844: a chip's preview shows a thumbnail, but full screen shows the
+// source itself, read from the live pool when the card opens.
+describe('referenceFullscreen — what a chip opens full screen', () => {
+  const base = { refId: 'e', sourceNodeId: 's', sourceNodeName: 'S' } as const;
+
+  it('plays a video reference as a video with its cover as poster', () => {
+    expect(
+      referenceFullscreen({
+        ...base,
+        sourceNodeType: 'video',
+        thumbnail: '/cover.png',
+        mediaUrl: '/clip.mp4',
+      }),
+    ).toEqual({ kind: 'video', src: '/clip.mp4', poster: '/cover.png' });
+  });
+
+  it('shows an image reference at its original address', () => {
+    expect(
+      referenceFullscreen({
+        ...base,
+        sourceNodeType: 'image',
+        thumbnail: '/thumb.png',
+        mediaUrl: '/pic.png',
+      }),
+    ).toEqual({ kind: 'image', src: '/pic.png' });
+  });
+
+  it('offers nothing when the source is not in the pool, has no media, or is not visual', () => {
+    expect(referenceFullscreen(undefined)).toBeNull();
+    expect(referenceFullscreen({ ...base, sourceNodeType: 'image' })).toBeNull();
+    expect(referenceFullscreen({ ...base, sourceNodeType: 'audio', mediaUrl: '/a.mp3' })).toBeNull();
   });
 });

@@ -39,4 +39,12 @@ describe('the media controls in a body that is not editable (A11)', () => {
 
     expect(hiding).toHaveLength(1);
   });
+
+  // inner#1844: a viewer keeps the full-screen button over a picture or a video.
+  it('leave the row of icons a viewer may use', () => {
+    const hiding = chromeRules().filter((rule) => /\.doc-body\[contenteditable=['"]false['"]\]/.test(rule.selector));
+    expect(hiding.map((rule) => rule.selector)).toEqual([
+      '.doc-body[contenteditable=\'false\'] [data-media-chrome]:not([data-media-viewer])',
+    ]);
+  });
 });
