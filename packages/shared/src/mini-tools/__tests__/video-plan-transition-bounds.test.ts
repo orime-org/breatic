@@ -10,7 +10,10 @@ import { describe, expect, it } from "vitest";
 import * as miniTools from "@shared/mini-tools/index.js";
 
 interface Clip { clipId: string; inputId: string; in: number; out: number; transition: { kind: "cut" | "fade" | "wipeLeft" | "wipeRight"; duration: number } }
-type Bounds = (clips: readonly Clip[], fps: number) => { min: number; max: number } | null;
+type Rational = { numerator: string; denominator: string };
+const fps = (numerator: number, denominator = 1): Rational => ({ numerator: String(numerator), denominator: String(denominator) });
+// D13-2: fps is the plan's exact rational; the bounds are plain seconds, as the draft's transition duration is.
+type Bounds = (clips: readonly Clip[], fps: Rational) => { min: number; max: number } | null;
 const api = miniTools as unknown as { transitionDurationBounds: Bounds };
 /**
  * A two-clip timeline with the given trimmed lengths.
@@ -27,16 +30,16 @@ function clips(first: number, second: number): Clip[] {
 
 describe("transition duration bounds (§97 D11-3; canvas design §4, frames-split §7.17)", () => {
   it("TR01 spans one output frame to half the shorter trimmed clip", () => {
-    expect(api.transitionDurationBounds(clips(4, 3), 25)).toEqual({ min: 1 / 25, max: 1.5 });
-    expect(api.transitionDurationBounds(clips(2, 6), 30)).toEqual({ min: 1 / 30, max: 1 });
+    expect(api.transitionDurationBounds(clips(4, 3), fps(25))).toEqual({ min: 1 / 25, max: 1.5 });
+    expect(api.transitionDurationBounds(clips(2, 6), fps(30))).toEqual({ min: 1 / 30, max: 1 });
   });
 
   it("TR02 is null when half the shorter clip is under one output frame", () => {
-    expect(api.transitionDurationBounds(clips(4, 3), 25)).not.toBeNull();
-    expect(api.transitionDurationBounds(clips(4, 0.06), 25)).toBeNull();
+    expect(api.transitionDurationBounds(clips(4, 3), fps(25))).not.toBeNull();
+    expect(api.transitionDurationBounds(clips(4, 0.06), fps(25))).toBeNull();
   });
 
   it("TR03 at exactly two output frames the window is one frame wide", () => {
-    expect(api.transitionDurationBounds(clips(0.08, 4), 25)).toEqual({ min: 0.04, max: 0.04 });
+    expect(api.transitionDurationBounds(clips(0.08, 4), fps(25))).toEqual({ min: 0.04, max: 0.04 });
   });
 });
