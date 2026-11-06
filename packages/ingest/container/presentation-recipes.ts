@@ -10,7 +10,11 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { rational } from "@shared/mini-tools/video-presentation-projection.js";
-import type { MiniToolPlanAudio, MiniToolPlanEntry, MiniToolPlanExact, MiniToolPlanPixelRect, MiniToolPlanRecipe, MiniToolPlanStitch, MiniToolPlanTarget } from "@shared/upload/mini-tool-plan-types.js";
+import type {
+  MiniToolPlanAudio, MiniToolPlanEntry, MiniToolPlanEraseComposite, MiniToolPlanExact, MiniToolPlanExpandComposite, MiniToolPlanPixelRect, MiniToolPlanRecipe, MiniToolPlanStitch,
+  MiniToolPlanTarget, MiniToolPlanTransitionProfile, MiniToolPlanTransitionStitch, MiniToolPlanTransitionWindow,
+} from "@shared/upload/mini-tool-plan-types.js";
+import type { ContainerFailure } from "@shared/mini-tools/types.js";
 import type { MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
 import { copyWithMatrixTag } from "@ingest/container/presentation-run.js";
@@ -20,11 +24,20 @@ import { pngSize } from "@ingest/png-size.js";
 import { runAnalysisPipeline } from "@ingest/container/analysis-pipeline.js";
 import { readSceneCutObservations, readYuNetFaces } from "@ingest/container/analysis-detection.js";
 
+/** A recipe that ends on a property of its input, reported as the job's reason (§97 D18-3, D20-5) rather than `tool_failed`. */
+export class RecipeFailure extends Error {
+  /**
+   * Name the reason.
+   * @param reason - The report's reason.
+   */
+  constructor(readonly reason: ContainerFailure) { super(reason); this.name = "RecipeFailure"; }
+}
+
 /** Caller-frozen process IO bounds, with no local operational fallback. */
 export interface PlanLimits { probeStdoutBytes: number; analysisStdoutBytes: number; stderrTailBytes: number }
 /** The recipes this module runs. */
 export type PresentationRecipe = Extract<MiniToolPlanRecipe, { kind: "copy_carrier" | "chunk_encode" | "prepare_model_input" }> | MiniToolPlanStitch
-  | FrameRecipe | PeopleRecipe | SceneRecipe | SegmentRecipe;
+  | FrameRecipe | PeopleRecipe | SceneRecipe | SegmentRecipe | MiniToolPlanTransitionStitch | MiniToolPlanTransitionWindow | MiniToolPlanEraseComposite | MiniToolPlanExpandComposite;
 /** A still frame on a full-ledger entry (§91 D4-3). */
 type FrameRecipe = Extract<MiniToolPlanRecipe, { kind: "frame"; entry: MiniToolPlanEntry }>;
 /** People detection on the anchor's entry (§91 D4-5). */
@@ -37,8 +50,8 @@ type SegmentRecipe = Extract<MiniToolPlanRecipe, { kind: "segment"; entries: unk
 type Run = { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: number };
 /** One recipe's local files and lifetime. */
 export interface PresentationRecipeRequest {
-  /** Any admitted recipe; the transition and composite recipes are refused until this module runs them. */
-  recipe: MiniToolPlanRecipe;
+  /** Any admitted recipe but the lip-sync steps, which `lipsync-recipes.ts` runs. */
+  recipe: PresentationRecipe;
   /** Downloaded files by bound input id: the recipe's input and, for a stitch, every chunk. */
   inputs: ReadonlyMap<string, string>;
   output: string;
@@ -49,7 +62,7 @@ export interface PresentationRecipeRequest {
 
 // §4.3 colour/HDR/bit-depth row: the D05 tone-map chain, then the BT.709 tags written on the frames.
 const TONE_MAP = "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv";
-const BT709_TAGS = "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv";
+export const BT709_TAGS = "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv";
 // The plan's matrix names (physical-video-probe.ts) as the scale filter spells them.
 const SCALE_MATRICES: Readonly<Record<string, string>> = { bt709: "bt709", bt601: "bt601", bt2020nc: "bt2020" };
 
@@ -60,7 +73,7 @@ const SCALE_MATRICES: Readonly<Record<string, string>> = { bt709: "bt709", bt601
  * @returns The exact difference.
  * @throws {RangeError} When a time is malformed.
  */
-function minus(left: MiniToolPlanExact, right: MiniToolPlanExact): [bigint, bigint] {
+export function minus(left: MiniToolPlanExact, right: MiniToolPlanExact): [bigint, bigint] {
   const [a, b] = rational(left);
   const [c, d] = rational(right);
   return [a * d - c * b, b * d];
@@ -73,7 +86,7 @@ function minus(left: MiniToolPlanExact, right: MiniToolPlanExact): [bigint, bigi
  * @returns The rounded product.
  * @throws {RangeError} When the value is negative.
  */
-function roundTimes([numerator, denominator]: [bigint, bigint], scale: bigint): bigint {
+export function roundTimes([numerator, denominator]: [bigint, bigint], scale: bigint): bigint {
   if (numerator < 0n) throw new RangeError("Presentation entries run forward from the window start");
   return (2n * numerator * scale + denominator) / (2n * denominator);
 }
@@ -84,7 +97,7 @@ function roundTimes([numerator, denominator]: [bigint, bigint], scale: bigint): 
  * @returns The decimal text.
  * @throws {RangeError} When the value is negative.
  */
-function seconds(value: [bigint, bigint]): string {
+export function seconds(value: [bigint, bigint]): string {
   const nanos = roundTimes(value, 1_000_000_000n);
   return `${nanos / 1_000_000_000n}.${String(nanos % 1_000_000_000n).padStart(9, "0")}`;
 }
@@ -95,7 +108,7 @@ function seconds(value: [bigint, bigint]): string {
  * @returns Its start and end.
  * @throws {never} Never.
  */
-function span(entry: MiniToolPlanEntry): { start: MiniToolPlanExact; end: MiniToolPlanExact } {
+export function span(entry: MiniToolPlanEntry): { start: MiniToolPlanExact; end: MiniToolPlanExact } {
   return entry.kind === "source" ? { start: entry.displayStart, end: entry.displayEnd } : entry.window;
 }
 
@@ -105,7 +118,7 @@ function span(entry: MiniToolPlanEntry): { start: MiniToolPlanExact; end: MiniTo
  * @returns The picture rectangle and the plane width.
  * @throws {never} Never.
  */
-function placement(target: MiniToolPlanTarget): { rect: MiniToolPlanPixelRect; planeWidth: number } {
+export function placement(target: MiniToolPlanTarget): { rect: MiniToolPlanPixelRect; planeWidth: number } {
   const planeWidth = target.alpha === "packed" ? target.width / 2 : target.width;
   return { rect: target.displayRect ?? { x: 0, y: 0, width: planeWidth, height: target.height }, planeWidth };
 }
@@ -119,7 +132,7 @@ function placement(target: MiniToolPlanTarget): { rect: MiniToolPlanPixelRect; p
  * @returns The filter chain text, ending on 8-bit BT.709 4:2:0 frames.
  * @throws {RangeError} When the plan matrix has no decode value.
  */
-function picture(target: MiniToolPlanTarget, label: string): string {
+export function picture(target: MiniToolPlanTarget, label: string): string {
   const matrix = SCALE_MATRICES[target.colorMatrix];
   if (matrix === undefined) throw new RangeError(`No decode matrix for ${target.colorMatrix}`);
   const { rect, planeWidth } = placement(target);
@@ -162,17 +175,18 @@ function relabel([numerator, denominator]: [bigint, bigint]): string {
  * Silence before the first sample is kept.
  * @param input - The FFmpeg input index the source's audio is opened at.
  * @param audio - The recipe's audio.
- * @returns The input arguments and the filter chain ending at `[a]`, or null when no span meets the interval.
+ * @param label - The graph label the chain ends at, unique within the graph.
+ * @returns The input arguments and the filter chain ending at `[label]`, or null when no span meets the interval.
  * @throws {RangeError} When a time is malformed.
  */
-function audioOf(input: number, audio: MiniToolPlanAudio): { args: string[]; graph: string } | null {
+function audioOf(input: number, audio: MiniToolPlanAudio, label = "a"): { args: string[]; graph: string } | null {
   const start = rational(audio.start);
   const end = rational(audio.end);
   const pad = "aresample=48000:async=1:first_pts=0";
   if (audio.spans === null) {
     const movieStart = plus(start, rational(audio.origin));
     const movieEnd = plus(end, rational(audio.origin));
-    return { args: ["-i"], graph: `[${input}:a:0]atrim=start=${seconds(movieStart)}:end=${seconds(movieEnd)},asetpts=PTS-(${seconds(movieStart)})/TB,${pad}[a]` };
+    return { args: ["-i"], graph: `[${input}:a:0]atrim=start=${seconds(movieStart)}:end=${seconds(movieEnd)},asetpts=PTS-(${seconds(movieStart)})/TB,${pad}[${label}]` };
   }
   const branches: string[] = [];
   for (const edit of audio.spans) {
@@ -189,10 +203,10 @@ function audioOf(input: number, audio: MiniToolPlanAudio): { args: string[]; gra
       `asetpts=PTS+${roundTimes(minusQ(from, start), 48000n)},${pad}`);
   }
   if (branches.length === 0) return null;
-  const labels = branches.map((_branch, at) => `[s${at}]`);
-  const split = branches.length === 1 ? `[${input}:a:0]${branches[0]}[a]`
-    : `[${input}:a:0]asplit=${branches.length}${labels.join("")};${branches.map((branch, at) => `${labels[at]}${branch}[m${at}]`).join(";")};` +
-      `${branches.map((_branch, at) => `[m${at}]`).join("")}amix=inputs=${branches.length}:normalize=0:duration=longest[a]`;
+  const labels = branches.map((_branch, at) => `[${label}s${at}]`);
+  const split = branches.length === 1 ? `[${input}:a:0]${branches[0]}[${label}]`
+    : `[${input}:a:0]asplit=${branches.length}${labels.join("")};${branches.map((branch, at) => `${labels[at]}${branch}[${label}m${at}]`).join(";")};` +
+      `${branches.map((_branch, at) => `[${label}m${at}]`).join("")}amix=inputs=${branches.length}:normalize=0:duration=longest[${label}]`;
   return { args: ["-ignore_editlist", "1", "-i"], graph: split };
 }
 
@@ -341,7 +355,7 @@ interface WindowGraph { args: string[]; graph: string[]; inputs: number; facts: 
  * @throws {RangeError} When a time is malformed.
  * @throws {Error} When ffprobe fails.
  */
-async function windowGraph(entries: readonly MiniToolPlanEntry[], clock: bigint, source: string, run: Run,
+export async function windowGraph(entries: readonly MiniToolPlanEntry[], clock: bigint, source: string, run: Run,
   frame: (label: string) => string, empty: (entry: Extract<MiniToolPlanEntry, { kind: "empty" }>) => string): Promise<WindowGraph> {
   const origin = span(entries[0]!).start;
   const args = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file", "-copyts"];
@@ -374,12 +388,13 @@ async function windowGraph(entries: readonly MiniToolPlanEntry[], clock: bigint,
  * output with its alpha (§91 D4-4); the next frame's start ends each frame and the window end ends the last.
  * @param target - The target.
  * @param clock - The timescale.
- * @param end - The window end in ticks.
+ * @param end - The window end in ticks of the encoder time base.
+ * @param tick - The encoder time base's numerator over `clock`, 1 unless a frame rate such as 1001/30000 is the time base.
  * @returns The encoder and timing arguments, and the muxer arguments.
  * @throws {never} Never.
  */
-function videoOutput(target: MiniToolPlanTarget, clock: bigint, end: bigint): { video: string[]; muxer: string[] } {
-  const timing = ["-fps_mode", "passthrough", "-enc_time_base:v", `1/${clock}`, "-bsf:v", `setts=duration=if(eq(NEXT_PTS\\,NOPTS)\\,${end}-PTS\\,NEXT_PTS-PTS)`];
+export function videoOutput(target: MiniToolPlanTarget, clock: bigint, end: bigint, tick = 1n): { video: string[]; muxer: string[] } {
+  const timing = ["-fps_mode", "passthrough", "-enc_time_base:v", `${tick}/${clock}`, "-bsf:v", `setts=duration=if(eq(NEXT_PTS\\,NOPTS)\\,${end}-PTS\\,NEXT_PTS-PTS)`];
   if (target.format === "webm-vp9") {
     const alpha = target.alpha === "straight";
     return { video: ["-c:v", "libvpx-vp9", "-pix_fmt", alpha ? "yuva420p" : "yuv420p", "-crf", String(target.crf), "-b:v", "0", "-deadline", "good", "-row-mt", "1",
@@ -400,8 +415,36 @@ function audioOutput(target: MiniToolPlanTarget): string[] {
 }
 
 /**
+ * A transition output profile as the target its chunks are encoded to (§7.17 转场输出档 row): H.264 MP4 without alpha, VP9
+ * WebM with straight alpha, the profile's quality and BT.709.
+ * @param profile - The profile.
+ * @param target - The chunk's own target, whose picture placement is kept; a whole-frame picture when absent.
+ * @returns The encode target.
+ * @throws {never} Never.
+ */
+function profileTarget(profile: MiniToolPlanTransitionProfile, target?: MiniToolPlanTarget): MiniToolPlanTarget {
+  return { width: profile.width, height: profile.height, displayRect: target?.displayRect ?? null, colorMatrix: target?.colorMatrix ?? "bt709", toneMap: target?.toneMap ?? "none",
+    alpha: profile.alpha ? "straight" : "none", crf: profile.encode.crf, preset: profile.encode.preset, format: profile.codec === "vp9" ? "webm-vp9" : "mp4-h264" };
+}
+
+/**
+ * The frames of a window on a transition profile's constant-rate grid (§7.17 转场输出档 row: output frame k shows the source
+ * frame covering k / fps): `fps` with upward rounding assigns each frame the first output slot at or after its start, and
+ * the last frame is held until exactly `count` frames are out.
+ * @param profile - The profile.
+ * @param count - The chunk's output frame count.
+ * @returns The filter chain text, on the time base 1/fps.
+ * @throws {RangeError} When the frame rate is malformed.
+ */
+function profileGrid(profile: MiniToolPlanTransitionProfile, count: number): string {
+  const [numerator, denominator] = rational(profile.fps);
+  return `fps=fps=${numerator}/${denominator}:round=up,tpad=stop_mode=clone:stop=${count},trim=end_frame=${count}`;
+}
+
+/**
  * Render a window into its target (§5.4; §7.17 segment row): the window's frames with the target picture, opening with a
- * keyframe; a model input or a segment adds its interval's audio (§5.3, §91 D3-4, D4-4), a chunk has none.
+ * keyframe; a model input or a segment adds its interval's audio (§5.3, §91 D3-4, D4-4), a chunk has none. A transition
+ * chunk is resampled to its profile's frame grid and encoded with the profile, so its codec headers equal the window chunks'.
  * @param recipe - The chunk, model-input or segment recipe.
  * @param source - The downloaded source.
  * @param output - The file to write.
@@ -411,7 +454,9 @@ function audioOutput(target: MiniToolPlanTarget): string[] {
  * @throws {Error} When FFmpeg fails.
  */
 async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_encode" | "prepare_model_input" }> | SegmentRecipe, source: string, output: string, run: Run): Promise<void> {
-  const { entries, target } = recipe;
+  const { entries } = recipe;
+  const profile = recipe.kind === "chunk_encode" ? recipe.profile : undefined;
+  const target = profile === undefined ? recipe.target : profileTarget(profile, recipe.target);
   const clock = BigInt(recipe.timescale);
   const transparent = target.format === "webm-vp9" && target.alpha === "straight";
   // Black: a transparent fill packs to black colour and black alpha; a VP9 output with alpha keeps it transparent.
@@ -424,9 +469,16 @@ async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_e
     args.push(...audio.args, source);
     graph.push(audio.graph);
   }
-  const end = roundTimes(minus(span(entries[entries.length - 1]!).end, span(entries[0]!).start), clock);
-  const { video, muxer } = videoOutput(target, clock, end);
-  args.push("-filter_complex", graph.join(";"), "-map", "[v]", ...video, ...(audio === null ? ["-an"] : audioOutput(target)), ...muxer, output);
+  let encode: { video: string[]; muxer: string[] };
+  if (profile === undefined) encode = videoOutput(target, clock, roundTimes(minus(span(entries[entries.length - 1]!).end, span(entries[0]!).start), clock));
+  else {
+    const count = recipe.window.end - recipe.window.start;
+    const [tick, base] = rational(profile.timeBase);
+    // The window's graph ends at [v]; the grid takes it from there (the audio chain, absent for a chunk, never follows it).
+    graph.push(`${graph.pop()!.replace(/\[v\]$/u, "[w]")};[w]${profileGrid(profile, count)}[v]`);
+    encode = videoOutput(target, base, BigInt(count), tick);
+  }
+  args.push("-filter_complex", graph.join(";"), "-map", "[v]", ...encode.video, ...(audio === null ? ["-an"] : audioOutput(target)), ...encode.muxer, output);
   await runPlanCommand("ffmpeg", args, run);
 }
 
@@ -459,7 +511,7 @@ async function sameCodecHeaders(chunks: readonly string[], run: Run): Promise<vo
  * @returns Nothing once written.
  * @throws {Error} When an input is missing or FFmpeg fails.
  */
-async function stitch(recipe: Extract<PresentationRecipe, { kind: "stitch" }>, files: ReadonlyMap<string, string>, directory: string, output: string,
+async function stitch(recipe: MiniToolPlanStitch, files: ReadonlyMap<string, string>, directory: string, output: string,
   run: { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: number }): Promise<void> {
   await sameCodecHeaders(recipe.chunks.map((chunk) => local(files, chunk.inputId)), run);
   const list = join(directory, "stitch.txt");
@@ -471,6 +523,177 @@ async function stitch(recipe: Extract<PresentationRecipe, { kind: "stitch" }>, f
   const webm = recipe.target.format === "webm-vp9";
   args.push("-map", "0:v:0", "-c:v", "copy", ...(audio === null ? ["-an"] : audioOutput(recipe.target)), ...(webm ? ["-f", "webm"] : ["-movflags", "+faststart", "-f", "mp4"]), output);
   await runPlanCommand("ffmpeg", args, run);
+}
+
+/**
+ * An exact time as signed ticks of a window's clock from the window's start, rounded to the nearest tick.
+ * @param time - The presentation time.
+ * @param origin - The window's start.
+ * @param clock - The timescale.
+ * @returns The ticks.
+ * @throws {RangeError} When a time is malformed.
+ */
+function ticksFrom(time: MiniToolPlanExact, origin: MiniToolPlanExact, clock: bigint): bigint {
+  const [numerator, denominator] = minus(time, origin);
+  return numerator < 0n ? -roundTimes([-numerator, denominator], clock) : roundTimes([numerator, denominator], clock);
+}
+
+/**
+ * Composite a model's result over a window (§7.17 model_composite row; execution design §8, §8.1; §97 D20-2, D20-3), on the
+ * window's own clock from 0 and opening with a keyframe as a segment does. Erase shows the result inside its range, placed by
+ * presentation time from the range start, and the source elsewhere. Expand lays each background over the target from its
+ * window's start by its own PTS (cropped to the product ROI and scaled to the target first when it is a whole model frame),
+ * fades each later background in across its overlap with the one before by presentation time, and places the source at its
+ * frozen rectangle on top. Model outputs are SDR BT.709 (§5.3). The audio is the stitch's.
+ * @param recipe - The composite recipe.
+ * @param files - The downloaded inputs by id.
+ * @param output - The file to write.
+ * @param run - The lifetime and IO bounds.
+ * @returns Nothing once written.
+ * @throws {RangeError} When a time is malformed or the plan matrix has no decode value.
+ * @throws {Error} When an input is missing or FFmpeg fails.
+ */
+async function compositeWindow(recipe: MiniToolPlanEraseComposite | MiniToolPlanExpandComposite, files: ReadonlyMap<string, string>, output: string, run: Run): Promise<void> {
+  const { entries, target } = recipe;
+  const clock = BigInt(recipe.timescale);
+  const origin = span(entries[0]!).start;
+  const { rect } = placement(target);
+  const sourceTarget = recipe.mode === "expand" ? { ...target, width: rect.width, height: rect.height, displayRect: null } : target;
+  const window = await windowGraph(entries, clock, local(files, recipe.inputId), run, (label) => picture(sourceTarget, label),
+    () => `color=c=black:s=${sourceTarget.width}x${sourceTarget.height}:r=1:d=1,format=yuv420p,setsar=1,${BT709_TAGS}`);
+  const { args, graph } = window;
+  let inputs = window.inputs;
+  /**
+   * Open a bound model output as the next input and place its frames on the window's clock from a presentation time.
+   * @param inputId - The output.
+   * @param from - The presentation time its first frame shows at.
+   * @param chain - The filters before its timing.
+   * @returns The chain from the input to its timing.
+   * @throws {Error} When the input was not downloaded.
+   */
+  const placed = (inputId: string, from: MiniToolPlanExact, chain: string): string => {
+    args.push("-i", local(files, inputId));
+    // On the output's own time base: a model output at a higher rate than the window's clock keeps every frame's PTS.
+    return `[${inputs++}:v:0]${chain},setpts=PTS-STARTPTS+(${ticksFrom(from, origin, clock)}/${clock})/TB`;
+  };
+  if (recipe.mode === "erase") {
+    // Half a tick below each bound, so a frame on the range start is inside it and one on its end outside.
+    const bound = (time: MiniToolPlanExact): number => (Number(ticksFrom(time, origin, clock)) - 0.5) / Number(clock);
+    graph.push(`${placed(recipe.result, recipe.range.start, picture({ ...target, colorMatrix: "bt709", toneMap: "none" }, "r"))}[r]`,
+      `[v][r]overlay=eof_action=pass:enable='gte(t\\,${bound(recipe.range.start)})*lt(t\\,${bound(recipe.range.end)})'[o]`);
+  } else {
+    graph.push("[v]split[sv][sc]", `[sc]pad=${target.width}:${target.height}:${rect.x}:${rect.y}:color=black[b0]`);
+    recipe.backgrounds.forEach((background, at) => {
+      const crop = background.crop === undefined ? "" : `crop=${background.crop.width}:${background.crop.height}:${background.crop.x}:${background.crop.y}:exact=1,`;
+      const previous = recipe.backgrounds[at - 1];
+      const overlap = previous === undefined ? null : minus(previous.window.end, background.window.start);
+      const fade = overlap === null || overlap[0] <= 0n ? ""
+        : `,format=yuva420p,fade=t=in:st=${Number(ticksFrom(background.window.start, origin, clock)) / Number(clock)}:d=${seconds(overlap)}:alpha=1`;
+      graph.push(`${placed(background.inputId, background.window.start,
+        `${crop}scale=${target.width}:${target.height}:in_color_matrix=bt709:out_color_matrix=bt709:out_range=tv,format=yuv420p,setsar=1,${BT709_TAGS}`)}${fade}[g${at}]`,
+      `[b${at}][g${at}]overlay[b${at + 1}]`);
+    });
+    graph.push(`[b${recipe.backgrounds.length}][sv]overlay=${rect.x}:${rect.y}[o]`);
+  }
+  // An overlay goes on after its main input ends while a model output still has frames; the chunk is the window's frames.
+  graph.push(`[o]trim=end_frame=${recipe.window.end - recipe.window.start}[c]`);
+  const { video, muxer } = videoOutput(target, clock, roundTimes(minus(span(entries[entries.length - 1]!).end, origin), clock));
+  args.push("-filter_complex", graph.join(";"), "-map", "[c]", ...video, "-an", ...muxer, output);
+  await runPlanCommand("ffmpeg", args, run);
+}
+
+/**
+ * Join a transition's chunks by stream copy and lay both clips' audio under them (§7.17 stitch and 转场输出档 rows; §97
+ * D15-7, D16-1): each clip's audio over its own span, a clip without audio as silence; a Cut joins the two directly and
+ * a transition crosses them over the window with linear gains (`acrossfade c1=tri:c2=tri`), as the preview's two gains do.
+ * A clip's length is its audio interval; a silent clip's is what the chunks leave of the timeline.
+ * @param recipe - The transition stitch.
+ * @param files - The downloaded inputs by id.
+ * @param directory - The run's directory.
+ * @param output - The file to write.
+ * @param run - The lifetime and IO bounds.
+ * @returns Nothing once written.
+ * @throws {Error} When the chunks' codec headers differ, an input is missing or FFmpeg fails.
+ */
+async function transitionStitch(recipe: MiniToolPlanTransitionStitch, files: ReadonlyMap<string, string>, directory: string, output: string, run: Run): Promise<void> {
+  const chunks = recipe.chunks.map((chunk) => local(files, chunk.inputId));
+  await sameCodecHeaders(chunks, run);
+  const list = join(directory, "stitch.txt");
+  await writeFile(list, recipe.chunks.map((chunk, at) => `file '${chunks[at]}'\nduration ${seconds(rational(chunk.duration))}\n`).join(""));
+  const args = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file", "-copyts", "-f", "concat", "-safe", "0", "-i", list];
+  const total = recipe.chunks.reduce<[bigint, bigint]>((sum, chunk) => plus(sum, rational(chunk.duration)), [0n, 1n]);
+  const [fpsNumerator, fpsDenominator] = rational(recipe.profile.fps);
+  const overlap: [bigint, bigint] = recipe.crossfade === null ? [0n, 1n] : [BigInt(recipe.crossfade.frameCount) * fpsDenominator, fpsNumerator];
+  const heard = await Promise.all(recipe.clips.map(async (clip) => (clip.audio !== null && (await sourceFacts(local(files, clip.inputId), run)).audio ? clip.audio : null)));
+  const lengths = heard.map((audio) => (audio === null ? null : minusQ(rational(audio.end), rational(audio.start))));
+  const graph: string[] = [];
+  let inputs = 1;
+  if (lengths.some((length) => length !== null)) {
+    recipe.clips.forEach((clip, at) => {
+      const other = lengths[1 - at];
+      const length = lengths[at] ?? minusQ(plus(total, overlap), other!);
+      const samples = roundTimes(length, 48000n);
+      const audio = heard[at] === null ? null : audioOf(inputs, heard[at]!, `c${at}`);
+      if (audio === null) graph.push(`anullsrc=r=48000:cl=mono,atrim=end_sample=${samples}[d${at}]`);
+      else {
+        args.push(...audio.args, local(files, clip.inputId));
+        inputs += 1;
+        graph.push(audio.graph, `[c${at}]apad=whole_len=${samples},atrim=end_sample=${samples}[d${at}]`);
+      }
+    });
+    graph.push(recipe.crossfade === null ? "[d0][d1]concat=n=2:v=0:a=1[a]" : `[d0][d1]acrossfade=ns=${roundTimes(overlap, 48000n)}:c1=tri:c2=tri[a]`);
+  }
+  const target = profileTarget(recipe.profile);
+  args.push(...(graph.length === 0 ? [] : ["-filter_complex", graph.join(";")]), "-map", "0:v:0", "-c:v", "copy",
+    ...(graph.length === 0 ? ["-an"] : audioOutput(target)), ...(target.format === "webm-vp9" ? ["-f", "webm"] : ["-movflags", "+faststart", "-f", "mp4"]), output);
+  await runPlanCommand("ffmpeg", args, run);
+}
+
+/** The headless-gl renderer of the MiniToolContainerGl image (packages/ingest/Dockerfile.gl), a separate program. */
+const GL_RENDERER = "/app/gl-renderer/render.mjs";
+
+/**
+ * Render one chunk of a transition's overlap window (§7.17 transition_window row; §5.4; transitions render DD): each clip's
+ * frames are presented on the profile's frame grid as RGBA at the output size, fitted inside it (the preview's `contain`);
+ * the separate headless-gl renderer draws output frame k at progress (k − startFrame) / frameCount with the same
+ * `gl-transition` call and pinned `gl-transitions` shader as the preview; FFmpeg encodes the frames with the profile,
+ * opening with an IDR, so the chunk's codec headers equal the profile's `chunk_encode` chunks'.
+ * @param recipe - The window chunk.
+ * @param files - The downloaded inputs by id.
+ * @param directory - The run's directory.
+ * @param output - The file to write.
+ * @param run - The lifetime and IO bounds.
+ * @returns Nothing once written.
+ * @throws {RangeError} When a time is malformed.
+ * @throws {Error} When an input is missing, the renderer or FFmpeg fails.
+ */
+async function renderTransitionWindow(recipe: MiniToolPlanTransitionWindow, files: ReadonlyMap<string, string>, directory: string, output: string, run: Run): Promise<void> {
+  const { profile, frames, window } = recipe;
+  const { width, height } = profile;
+  const count = frames.end - frames.start;
+  const [tick, base] = rational(profile.timeBase);
+  // A fine decode clock keeps distinct source frames apart before the grid takes one per output frame.
+  const clock = base * 1000n;
+  const fill = `black@${profile.alpha ? 0 : 1}`;
+  const decoded = await Promise.all(recipe.clips.map(async (clip, at) => {
+    const window = await windowGraph(clip.entries, clock, local(files, clip.inputId), run,
+      () => `scale=${width}:${height}:force_original_aspect_ratio=decrease:out_range=pc,format=rgba,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${fill},setsar=1`,
+      (entry) => `color=c=black${entry.fill === "transparent" ? "@0" : ""}:s=${width}x${height}:r=1:d=1,format=rgba`);
+    const file = join(directory, `transition-${at}.rgba`);
+    await runPlanCommand("ffmpeg", [...window.args, "-filter_complex", `${window.graph.join(";").replace(/\[v\]$/u, "[w]")};[w]${profileGrid(profile, count)},format=rgba[v]`,
+      "-map", "[v]", "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "rgba", file], run);
+    return file;
+  }));
+  const rendered = join(directory, "transition-out.rgba");
+  const request = join(directory, "transition-request.json");
+  await writeJson(request, { width, height, frameCount: count, transition: recipe.transition, from: decoded[0], to: decoded[1], output: rendered,
+    progress: Array.from({ length: count }, (_unused, at) => (frames.start + at - window.startFrame) / window.frameCount) });
+  await runPlanCommand("node", [GL_RENDERER, request], run);
+  const target = profileTarget(profile);
+  const { video, muxer } = videoOutput(target, base, BigInt(count), tick);
+  await runPlanCommand("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${width}x${height}`,
+    "-framerate", `${base}/${tick}`, "-i", rendered, "-vf", `scale=in_range=pc:out_color_matrix=bt709:out_range=tv,format=${profile.alpha ? "yuva420p" : "yuv420p"},setsar=1,${BT709_TAGS}`,
+    ...video, "-an", ...muxer, output], run);
 }
 
 /**
@@ -495,26 +718,13 @@ async function copyCarrier(recipe: Extract<PresentationRecipe, { kind: "copy_car
 }
 
 /**
- * The recipe as one this module runs.
- * @param recipe - An admitted recipe.
- * @returns It, when this module runs it.
- * @throws {Error} For a transition window, a transition stitch or a model composite, which no container step runs yet.
- */
-function presentationRecipe(recipe: MiniToolPlanRecipe): PresentationRecipe {
-  if (recipe.kind === "transition_window" || recipe.kind === "model_composite" || (recipe.kind === "stitch" && "clips" in recipe)) {
-    throw new Error(`The ${recipe.kind} recipe has no container step yet`);
-  }
-  return recipe;
-}
-
-/**
  * A bound input's downloaded file.
  * @param files - The downloaded inputs by id.
  * @param inputId - The input.
  * @returns Its path.
  * @throws {Error} When it was not downloaded.
  */
-function local(files: ReadonlyMap<string, string>, inputId: string): string {
+export function local(files: ReadonlyMap<string, string>, inputId: string): string {
   const file = files.get(inputId);
   if (file === undefined) throw new Error("Presentation recipe names an input that was not downloaded");
   return file;
@@ -573,7 +783,7 @@ async function renderFrame(recipe: FrameRecipe, source: string, output: string,
  * @returns The detector's JSON object.
  * @throws {Error} When the detector, its input or its JSON fails.
  */
-async function detect(kind: "people" | "scene_cuts", profile: unknown, frames: { width: number; height: number; count: number; args: string[] }, directory: string,
+export async function detect(kind: "people" | "scene_cuts" | "faces", profile: unknown, frames: { width: number; height: number; count: number; args: string[] }, directory: string,
   signal: AbortSignal, limits: PlanLimits): Promise<Record<string, unknown>> {
   const path = join(directory, "analysis-request.json");
   await writeJson(path, { kind, width: frames.width, height: frames.height, expectedFrameCount: frames.count, profile });
@@ -593,7 +803,7 @@ async function detect(kind: "people" | "scene_cuts", profile: unknown, frames: {
  * @returns Nothing once written.
  * @throws {Error} When writing fails.
  */
-async function writeJson(output: string, value: unknown): Promise<void> {
+export async function writeJson(output: string, value: unknown): Promise<void> {
   await writeFile(output, JSON.stringify(value).replace(/</g, "\\u003c"));
 }
 
@@ -646,6 +856,35 @@ async function detectScenes(recipe: SceneRecipe, source: string, output: string,
     cuts: readSceneCutObservations(result.cuts, ordinals).map((cut) => ({ ordinal: cut.frameIndex, detectionScore: cut.detectionScore })) });
 }
 
+/** The bounds and lifetime an output is read back with. */
+type ReadBack = Pick<PresentationRecipeRequest, "signal" | "limits">;
+
+/**
+ * Read back the media numbers of a written video output.
+ * @param output - The written file.
+ * @param request - The lifetime and IO bounds.
+ * @param kind - The recipe kind, for the failure message.
+ * @returns Its width, height and duration.
+ * @throws {Error} When ffprobe fails or the output has no complete video metadata.
+ */
+export async function readVideoMetadata(output: string, request: ReadBack, kind: string): Promise<{ width: number; height: number; durationSeconds: number }> {
+  const metadata = await readMediaMetadata(output, request);
+  if (metadata.width === null || metadata.height === null || metadata.durationSeconds === null) throw new Error(`The ${kind} recipe produced no complete video metadata`);
+  return { width: metadata.width, height: metadata.height, durationSeconds: metadata.durationSeconds };
+}
+
+/**
+ * Read back the media numbers of a written output.
+ * @param output - The written file.
+ * @param request - The lifetime and IO bounds.
+ * @returns What ffprobe reads of it.
+ * @throws {Error} When ffprobe fails.
+ */
+export async function readMediaMetadata(output: string, request: ReadBack): Promise<{ width: number | null; height: number | null; durationSeconds: number | null }> {
+  return pickMediaMetadata(readProbeOutput((await runPlanCommand("ffprobe", probeArgs(output, "own-file"),
+    { signal: request.signal, stdoutBytes: request.limits.probeStdoutBytes, stderrTailBytes: request.limits.stderrTailBytes })).toString("utf8")));
+}
+
 /**
  * Run one presentation recipe and read back what it wrote.
  * @param request - The recipe, its files and lifetime.
@@ -655,7 +894,7 @@ async function detectScenes(recipe: SceneRecipe, source: string, output: string,
 export async function executePresentationRecipe(request: PresentationRecipeRequest): Promise<MediaOfOutput> {
   request.signal.throwIfAborted();
   const { inputs, output, directory, signal, limits } = request;
-  const recipe = presentationRecipe(request.recipe);
+  const { recipe } = request;
   const run = { signal, stdoutBytes: limits.analysisStdoutBytes, stderrTailBytes: limits.stderrTailBytes };
   if (recipe.kind === "frame") return { ...await renderFrame(recipe, local(inputs, recipe.inputId), output, run), durationSeconds: null, cover: null };
   if (recipe.kind === "people" || recipe.kind === "scene_cuts") {
@@ -664,12 +903,12 @@ export async function executePresentationRecipe(request: PresentationRecipeReque
     return { width: null, height: null, durationSeconds: null, cover: null };
   }
   if (recipe.kind === "copy_carrier") await copyCarrier(recipe, local(inputs, recipe.inputId), output, { signal, limits }, run);
-  else if (recipe.kind === "stitch") await stitch(recipe, inputs, directory, output, run);
+  else if (recipe.kind === "stitch") await ("clips" in recipe ? transitionStitch(recipe, inputs, directory, output, run) : stitch(recipe, inputs, directory, output, run));
+  else if (recipe.kind === "model_composite") await compositeWindow(recipe, inputs, output, run);
+  else if (recipe.kind === "transition_window") await renderTransitionWindow(recipe, inputs, directory, output, run);
   else await renderWindow(recipe, local(inputs, recipe.inputId), output, run);
-  const metadata = pickMediaMetadata(readProbeOutput((await runPlanCommand("ffprobe", probeArgs(output, "own-file"),
-    { signal, stdoutBytes: limits.probeStdoutBytes, stderrTailBytes: limits.stderrTailBytes })).toString("utf8")));
-  if (metadata.width === null || metadata.height === null || metadata.durationSeconds === null) throw new Error(`The ${recipe.kind} recipe produced no complete video metadata`);
-  if (recipe.kind !== "stitch" || recipe.target.alpha !== "packed") return { ...metadata, cover: null };
+  const metadata = await readVideoMetadata(output, request, recipe.kind);
+  if (recipe.kind !== "stitch" || "clips" in recipe || recipe.target.alpha !== "packed") return { ...metadata, cover: null };
   const { rect, planeWidth } = placement(recipe.target);
   return { ...metadata, cover: null, packing: { packedWidth: recipe.target.width, packedHeight: recipe.target.height, colorRect: rect, alphaRect: { ...rect, x: rect.x + planeWidth } } };
 }
