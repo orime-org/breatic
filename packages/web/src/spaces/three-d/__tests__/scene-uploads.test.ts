@@ -239,4 +239,38 @@ describe('reconciling against the Space list', () => {
     h.store.reconcile('space-2', [{ id: 't1', status: 'done' }]);
     expect(h.store.get('t1')).toMatchObject({ phase: 'registering' });
   });
+
+  describe('a retry that cannot start for a row removed meanwhile (inner#1690)', () => {
+    it('lets the file go once the original row is no longer listed', async () => {
+      const h = harness();
+      const run = await opened(h, 't1');
+      run.sinks.onFailure({ reason: 'transfer', taskId: 't1' });
+      h.store.reconcile(S, [{ id: 't1', status: 'failed' }]);
+      const retried = h.store.retry('t1');
+      h.store.reconcile(S, []);
+    h.runs.at(-1)!.sinks.onFailure({ reason: 'rateLimited' });
+    await retried;
+    expect(h.store.get('t1')).toBeUndefined();
+    expect(h.deps.notify).toHaveBeenCalled();
+    });
+
+    it('lets the file go when an expired row is removed while its bytes are sent and the bytes then fail', async () => {
+      const h = harness();
+      const run = await opened(h, 't1');
+      h.store.reconcile(S, [{ id: 't1', status: 'expired' }]);
+      h.store.reconcile(S, []);
+      run.sinks.onFailure({ reason: 'upload', taskId: 't1' });
+      expect(h.store.get('t1')).toBeUndefined();
+    });
+
+    it('lets the file go when a removed row\'s bytes never reach the edge', async () => {
+      const h = harness();
+      const run = await opened(h, 't1');
+      h.store.reconcile(S, [{ id: 't1', status: 'expired' }]);
+      h.store.reconcile(S, []);
+      run.sinks.onFailure({ reason: 'transfer', taskId: 't1' });
+      expect(h.store.get('t1')).toBeUndefined();
+    });
+  });
+
 });

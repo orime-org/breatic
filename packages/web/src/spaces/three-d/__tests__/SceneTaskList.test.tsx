@@ -80,12 +80,12 @@ const names: CollaboratorNames = { resolve: (id: string) => ({ [ME]: 'Me', 'user
  * @param props.onPlace - Place handler.
  * @returns The query client.
  */
-function renderList({ uploads = store(), canEdit = true, remoteUploads = {}, onPlace = vi.fn(async () => undefined) }: {
-  uploads?: SceneUploads; canEdit?: boolean; remoteUploads?: Record<string, number>; onPlace?: (task: SpaceTask) => Promise<void>;
+function renderList({ uploads = store(), canEdit = true, remoteUploads = {}, onPlace = vi.fn(async () => undefined), focusTaskId = null }: {
+  uploads?: SceneUploads; canEdit?: boolean; remoteUploads?: Record<string, number>; onPlace?: (task: SpaceTask) => Promise<void>; focusTaskId?: string | null;
 } = {}): QueryClient {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<QueryClientProvider client={client}><CollaboratorNamesProvider value={names}>
-    <SceneTaskList projectId={P} spaceId={S} userId={ME} canEdit={canEdit} uploads={uploads} remoteUploads={remoteUploads} onPlace={onPlace} />
+    <SceneTaskList projectId={P} spaceId={S} userId={ME} canEdit={canEdit} uploads={uploads} remoteUploads={remoteUploads} onPlace={onPlace} focusTaskId={focusTaskId} />
   </CollaboratorNamesProvider></QueryClientProvider>);
   return client;
 }
@@ -154,7 +154,7 @@ describe('the 3D Space task list (inner#1690)', () => {
     expect(await actions('expired')).toEqual(['Remove']);
     expect(await actions('late')).toEqual(['Place in scene']);
     expect(await rowOf('expired')).toHaveTextContent('Timed out');
-    expect(await rowOf('their-failed')).toHaveTextContent('The model failed to upload.');
+    expect(await rowOf('their-failed')).toHaveTextContent('The upload stopped before it finished.');
   });
 
   it('shows a read-only member every row and no action', async () => {
@@ -168,6 +168,32 @@ describe('the 3D Space task list (inner#1690)', () => {
     api.listSpaceTasks.mockResolvedValue(listed());
     renderList();
     expect(await screen.findByText('No tasks')).toBeInTheDocument();
+  });
+
+  it('reads the list again for a row this page just opened, then gives that row keyboard focus', async () => {
+    api.listSpaceTasks.mockResolvedValueOnce(listed()).mockResolvedValue(listed(row({ id: 'new' })));
+    renderList({ focusTaskId: 'new' });
+    await waitFor(() => expect(api.listSpaceTasks).toHaveBeenCalledTimes(2));
+    await waitFor(async () => expect(await rowOf('new')).toHaveFocus());
+  });
+
+  it('names each failure by its stored reason', async () => {
+    api.listSpaceTasks.mockResolvedValue(listed(
+      row({ id: 'big', status: 'failed', errorMessage: 'over_cap' }),
+      row({ id: 'odd', status: 'failed', errorMessage: null }),
+    ));
+    renderList();
+    expect(await rowOf('big')).toHaveTextContent('This file is larger than uploads are allowed to be.');
+    expect(await rowOf('odd')).toHaveTextContent('The model failed to upload.');
+  });
+
+  it('reads the list again after its own retry, whatever the answer', async () => {
+    api.listSpaceTasks.mockResolvedValue(listed(row({ id: 'failed', status: 'failed', errorMessage: 'aborted' })));
+    const uploads = store([{ taskId: 'failed', phase: 'retained' }]);
+    uploads.retry.mockResolvedValueOnce({ kind: 'refused', reason: 'rateLimited' });
+    renderList({ uploads });
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(within(await rowOf('failed')).getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(api.listSpaceTasks).toHaveBeenCalledTimes(2));
   });
 
   it('retries through the page store, waiting on the row while it starts', async () => {

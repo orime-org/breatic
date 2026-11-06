@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
+import * as React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -132,6 +133,22 @@ describe('model import dialog controls', () => {
     expect(toast.success).not.toHaveBeenCalled();
     expect(prepared.dispose).toHaveBeenCalledTimes(1);
     expect(controller.getSnapshot()).toMatchObject({ phase: 'idle', prepared: null, files: [] });
+  });
+
+  it('leaves focus where the new row took it when the dialog closes for a started upload', async () => {
+    const { controller } = await readyImport();
+    render(<><button type='button'>Opener</button><button type='button'>New row</button></>);
+    screen.getByRole('button', { name: 'Opener' }).focus();
+    const row = screen.getByRole('button', { name: 'New row' });
+    function Harness(): React.JSX.Element {
+      const [open, setOpen] = React.useState(true);
+      return <SceneModelImportDialog open={open} onOpenChange={setOpen} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes}
+        onStarted={() => { setTimeout(() => row.focus(), 0); }} />;
+    }
+    render(<Harness />);
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Import' }));
+    await waitFor(() => expect(screen.queryByTestId('model-import-dialog')).toBeNull());
+    expect(row).toHaveFocus();
   });
 
   it('holds every way of closing while the upload is starting, and locks the input', async () => {

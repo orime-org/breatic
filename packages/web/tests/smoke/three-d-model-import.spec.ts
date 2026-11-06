@@ -590,7 +590,7 @@ test('closing the Space tab is held back while a model\'s bytes are being sent @
   } finally {
     parts.resolve();
     // The held part is still on its way through the handler; let it finish before the route goes.
-    await page.unroute(partsPattern, undefined, { behavior: 'wait' });
+    await page.unrouteAll({ behavior: 'wait' });
     await deleteSpace(page, id);
   }
 });

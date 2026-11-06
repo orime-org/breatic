@@ -239,4 +239,20 @@ describe('scene session invariants (inner#1685 acceptance 5/6/8/9/10/11/14)', ()
     });
   });
 
+
+  describe('stable upload progress (inner#1690)', () => {
+    it('hands out the same progress object while no upload changed', () => {
+      const { session, doc } = fixture();
+      const local = presence(doc, 'alice'); session.setEnvironment({ ...EDITOR, awareness: local });
+      const bob = publishPeer(local, 'bob', { selectedIds: [], gesture: null });
+      bob.setLocalState({ user: { id: 'bob' }, scenePresence: { selectedIds: [], gesture: null }, sceneUploads: { 'task-1': 10 } });
+      applyAwarenessUpdate(local, encodeAwarenessUpdate(bob, [bob.clientID]), 'remote');
+      const first = session.getSnapshot().remoteUploads;
+      applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, position: [3, 0, 0] }] }, Symbol(), true);
+      bob.setLocalState({ user: { id: 'bob' }, scenePresence: { selectedIds: [ID], gesture: null }, sceneUploads: { 'task-1': 10 } });
+      applyAwarenessUpdate(local, encodeAwarenessUpdate(bob, [bob.clientID]), 'remote');
+      expect(session.getSnapshot().remoteUploads).toBe(first);
+    });
+  });
+
 });

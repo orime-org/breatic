@@ -7,7 +7,7 @@ import { Lock } from 'lucide-react';
 
 import { type SceneObject } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
-import { getSceneControls, reportSpaceTaskFailure, resolveSceneAsset, type SpaceTask } from '@web/data/api/scene';
+import { getSceneControls, resolveSceneAsset, type SpaceTask } from '@web/data/api/scene';
 import { docName } from '@web/data/yjs/manager';
 import { isOlderSceneFormat } from '@web/data/yjs/scene-document';
 import type { ScenePeer, SceneSession, SceneSessionSnapshot } from '@web/data/yjs/scene-session';
@@ -17,7 +17,6 @@ import { readSceneView, writeSceneView } from '@web/lib/scene-view-storage';
 import { toast } from '@web/lib/toast';
 import type { SpaceBodyProps } from '@web/spaces';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
-import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { SceneCreationMenu } from '@web/spaces/three-d/SceneCreationMenu';
 import { SceneField, type SceneFieldDraft } from '@web/spaces/three-d/SceneField';
 import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
@@ -30,7 +29,7 @@ import { getModelImportController } from '@web/spaces/three-d/model-import-contr
 import type { ModelImportController, PreparedModel } from '@web/spaces/three-d/model-import-controller';
 import type { ModelSource } from '@web/spaces/three-d/model-source';
 import { budgetText, importErrorKey } from '@web/spaces/three-d/model-import-error-text';
-import { getSceneUploads, type SceneUploads } from '@web/spaces/three-d/scene-uploads';
+import { pageSceneUploads } from '@web/spaces/three-d/scene-uploads';
 import { SceneTaskList } from '@web/spaces/three-d/SceneTaskList';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 
@@ -39,18 +38,6 @@ const SceneInspector = React.lazy(() => import('@web/spaces/three-d/SceneInspect
 const SceneModelImportHost = React.lazy(() => import('@web/spaces/three-d/SceneModelImportHost'));
 
 
-/**
- * The page's scene uploads, holding each Space busy through the shared operations store.
- * @returns The page-wide store.
- * @throws {never} Never.
- */
-function pageUploads(): SceneUploads {
-  return getSceneUploads({
-    reportFailure: reportSpaceTaskFailure,
-    register: (spaceId, operationId) => useSpaceOperationsStore.getState().register(spaceId, operationId),
-    unregister: (spaceId, operationId) => useSpaceOperationsStore.getState().unregister(spaceId, operationId),
-  });
-}
 const lockIcon = <Lock className='size-4' />;
 const stageStyle = { '--color-background': 'var(--color-canvas)' } as React.CSSProperties;
 
@@ -252,7 +239,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
     signal.throwIfAborted();
     return prepareSceneModel(files, entry, signal, importLimits);
   }, [importLimits]);
-  const uploads = React.useMemo(pageUploads, []);
+  const uploads = React.useMemo(pageSceneUploads, []);
   /** Start the page-held upload of a checked model under its name. */
   const startImport = React.useCallback((file: File, name: string) => uploads.start({ projectId, spaceId, file, label: name }), [uploads, projectId, spaceId]);
   React.useEffect(() => {
@@ -305,6 +292,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
       bounds = await lease.bounds;
     } catch (error) {
       lease.release();
+      // The viewport let the model go (its Space closed or was hidden): the press is cancelled, not failed.
+      if (error instanceof DOMException && error.name === 'AbortError') return;
       // A refused model says why, as the viewport's failure notice does; a transport failure has nothing to add.
       toast.error(error instanceof ModelImportError ? `${placeFailedText} ${t(importErrorKey(error.code))}` : placeFailedText);
       return;
@@ -313,9 +302,9 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
     const result = session.execute({ type: 'create', objects: [{ id, name: task.label, model: { kind: 'asset', assetId: task.assetId },
       position: [view.current.target[0] - bounds.center[0], -bounds.min[1], view.current.target[2] - bounds.center[2]],
       rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false }] });
+    // A refused command is reported by the session's own command feedback.
     if (!result.ok) {
       lease.release();
-      toast.error(placeFailedText);
       return;
     }
     placements.current.set(id, lease.release);
@@ -324,30 +313,6 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
     session.select(id, false);
   }, [session, placeFailedText, t]);
 
-  React.useEffect(() => {
-    /** Share this page's progress for the uploads it is sending into this Space. */
-    const publish = (): void => {
-      const progress: Record<string, number> = {};
-      for (const entry of uploads.list(spaceId)) if (entry.phase === 'uploading') progress[entry.taskId] = entry.percent;
-      session.setUploadProgress(progress);
-    };
-    const gap = controls.data?.progressPublishMs ?? 0;
-    let last = 0;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    /** Share progress no more often than the configured gap, ending on the latest value. */
-    const schedule = (): void => {
-      if (timer) return;
-      const wait = Math.max(0, last + gap - Date.now());
-      timer = setTimeout(() => { timer = null; last = Date.now(); publish(); }, wait);
-    };
-    schedule();
-    const unsubscribe = uploads.subscribe(schedule);
-    return (): void => {
-      unsubscribe();
-      if (timer) clearTimeout(timer);
-      session.setUploadProgress({});
-    };
-  }, [uploads, session, spaceId, controls.data?.progressPublishMs]);
   const wasRightOpen = React.useRef(false);
   React.useEffect(() => {
     if (wasRightOpen.current && !rightOpen) setFieldDrafts(new Map());
@@ -364,12 +329,13 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
     if (keepTasksPanel.current) {
       // A model placed from the task list is selected there; the list stays open for the next one.
       keepTasksPanel.current = false;
-    } else if (snapshot.selectedIds.length > 0) {
+    } else if (snapshot.selectedIds.length > 0 && !importOpen) {
+      // An open import dialog keeps the overlay slot; a collaborator's change to the selection must not close it.
       automaticPanel.current = true;
       returnTarget.current = stage.current?.querySelector('canvas') ?? null;
       setPanel('properties'); setRightOpen(true);
     } else if (panel === 'properties') setRightOpen(false);
-  }, [selection, snapshot.selectedIds.length, panel, setRightOpen]);
+  }, [selection, snapshot.selectedIds.length, panel, setRightOpen, importOpen]);
   React.useEffect(() => (): void => {
     // Activity hiding releases the overlay while the editor retains unfinished input.
     wasRightOpen.current = false;

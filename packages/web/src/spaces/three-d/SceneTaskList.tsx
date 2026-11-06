@@ -9,6 +9,7 @@ import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-n
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
+import { failureSentence } from '@web/spaces/canvas/failure-sentence';
 import type { SceneUploads } from '@web/spaces/three-d/scene-uploads';
 
 interface SceneTaskListProps {
@@ -64,6 +65,13 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
 
   const list = React.useRef<HTMLDivElement>(null);
   const focused = React.useRef<string | null>(null);
+  const reread = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    // A row this page just opened and the list does not hold yet: read it again, whether or not the change signal arrives.
+    if (!focusTaskId || !data || reread.current === focusTaskId || data.tasks.some((task) => task.id === focusTaskId)) return;
+    reread.current = focusTaskId;
+    void queryClient.invalidateQueries({ queryKey });
+  }, [focusTaskId, data, queryClient, queryKey]);
   React.useEffect(() => {
     if (!focusTaskId || focused.current === focusTaskId) return;
     const target = list.current?.querySelector<HTMLElement>(`[data-testid="scene-task-${focusTaskId}"]`);
@@ -135,9 +143,7 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
    * @param task - The row.
    */
   const retry = React.useCallback((task: SpaceTask): void => {
-    void uploads.retry(task.id).then((answer) => {
-      if (answer.kind === 'opened') void queryClient.invalidateQueries({ queryKey });
-    });
+    void uploads.retry(task.id).then(() => queryClient.invalidateQueries({ queryKey }));
   }, [uploads, queryClient, queryKey]);
 
   if (query.isPending) return <p className='p-4 text-sm text-muted-foreground' data-testid='scene-tasks-panel'>{t('spaces.threeD.loading')}</p>;
@@ -174,7 +180,7 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
         <p className='mt-1 text-xs text-muted-foreground'>{starter === null ? state : `${starter} · ${state}`}</p>
         {task.status === 'running' && percent !== undefined && own?.phase !== 'registering'
           ? <div className='mt-1.5 h-1 overflow-hidden rounded-full bg-muted'><div className='h-full rounded-full bg-foreground' style={{ width: `${percent}%` }} /></div> : null}
-        {task.status === 'failed' ? <p className='mt-1 text-xs text-status-error'>{t('spaces.threeD.taskList.failedReason')}</p> : null}
+        {task.status === 'failed' ? <p className='mt-1 text-xs text-status-error'>{task.errorMessage ? failureSentence(task.errorMessage, t) : t('spaces.threeD.taskList.failedReason')}</p> : null}
         {placeable || removable || retryable ? <div className='mt-2 flex gap-1.5'>
           {placeable ? <Button size='sm' loading={placing.has(task.id)} onClick={() => place(task)}>{t('spaces.threeD.taskList.place')}</Button> : null}
           {retryable ? <Button size='sm' variant='outline' loading={own?.phase === 'retrying'} onClick={() => retry(task)}>{t('spaces.threeD.taskList.retry')}</Button> : null}

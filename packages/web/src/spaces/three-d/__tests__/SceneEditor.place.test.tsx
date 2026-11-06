@@ -149,11 +149,22 @@ describe('placing a finished model from the task list (inner#1690)', () => {
     await pressPlace();
     expect(readSceneDocument(session.doc).objects).toEqual([]);
     expect(h.release).toHaveBeenCalledTimes(1);
-    expect(h.reportError).toHaveBeenCalledWith(t('spaces.threeD.taskList.placeFailed'));
+    expect(h.reportError).toHaveBeenCalledTimes(1);
+    expect(h.reportError).toHaveBeenCalledWith(t('spaces.threeD.commandFailed'));
+  });
+
+  it('ends quietly when the viewport lets the model go before it loads', async () => {
+    h.bounds = Promise.reject(new DOMException('Scene model holder released', 'AbortError'));
+    h.bounds.catch(() => undefined);
+    const session = await placeable();
+    await pressPlace();
+    expect(readSceneDocument(session.doc).objects).toEqual([]);
+    expect(h.release).toHaveBeenCalledTimes(1);
+    expect(h.reportError).not.toHaveBeenCalled();
   });
 
   it('says why the model could not be placed when its content is refused, and writes nothing', async () => {
-    h.bounds = Promise.reject(new ModelImportError('budget', 'too large', { detail: '' }));
+    h.bounds = Promise.reject(new ModelImportError('budget', 'too large', { detail: '', budget: { limit: 'files', allowed: 1, actual: 2 } }));
     h.bounds.catch(() => undefined);
     const session = await placeable();
     await pressPlace();

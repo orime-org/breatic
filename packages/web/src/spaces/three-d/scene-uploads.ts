@@ -22,7 +22,9 @@ import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 import { hashFile } from '@web/data/upload/hash';
 import { runMediaUpload, type MediaUploadDeps, type UploadFailure } from '@web/data/upload/media-upload';
 import type { UploadContext } from '@web/data/upload/ingest-upload';
+import { reportSpaceTaskFailure } from '@web/data/api/scene';
 import { toast } from '@web/lib/toast';
+import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
 
 /** Where one page-held upload stands. */
@@ -193,6 +195,7 @@ export function createSceneUploads(deps: SceneUploadDeps): SceneUploads {
         if (!answered || outcome.taskId === undefined) {
           if (replaces !== undefined) {
             patch(replaces, { phase: 'retained' });
+            settleFromList(replaces);
             const plan = resolveUploadFailure(outcome);
             if (plan.kind === 'toastOnly') deps.notify({ toastKey: plan.toastKey, severity: plan.severity, filename: file.name });
           }
@@ -206,11 +209,13 @@ export function createSceneUploads(deps: SceneUploadDeps): SceneUploads {
             console.warn('scene task failure report rejected', plan.taskId, err);
           });
           patch(plan.taskId, { phase: 'retained' });
+          settleFromList(plan.taskId);
           return;
         }
         deps.notify({ toastKey: plan.toastKey, severity: plan.severity, filename: file.name });
         if (plan.keepFileFor !== undefined) {
           patch(plan.keepFileFor, { phase: 'retained' });
+          settleFromList(plan.keepFileFor);
         } else if (entries.delete(outcome.taskId)) {
           changed();
         }
@@ -266,4 +271,16 @@ export function getSceneUploads(deps: Omit<SceneUploadDeps, 'run' | 'notify'>): 
     notify: ({ toastKey, severity, filename }) => { toast[severity](t(toastKey, { filename })); },
   });
   return pageUploads;
+}
+
+/**
+ * The page's scene uploads, holding each Space busy through the shared operations store.
+ * @returns The page-wide store.
+ */
+export function pageSceneUploads(): SceneUploads {
+  return getSceneUploads({
+    reportFailure: reportSpaceTaskFailure,
+    register: (spaceId, operationId) => useSpaceOperationsStore.getState().register(spaceId, operationId),
+    unregister: (spaceId, operationId) => useSpaceOperationsStore.getState().unregister(spaceId, operationId),
+  });
 }

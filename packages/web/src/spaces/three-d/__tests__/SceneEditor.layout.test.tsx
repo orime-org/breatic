@@ -359,4 +359,15 @@ describe('approved scene layout (inner#1724)', () => {
     expect(session.getSnapshot().objects.find((object) => object.id === ID)?.position).toEqual([0, 0, 0]);
   });
 
+
+  it('keeps the import dialog open when a collaborator changes the selection under it (inner#1690)', async () => {
+    const { session } = setup(); await screen.findByTestId('scene-native-boundary');
+    act(() => session.select(ID, false));
+    await screen.findByLabelText(t('spaces.threeD.name'));
+    fireEvent.click(screen.getByRole('button', { name: t('spaces.threeD.importModel.title') }));
+    expect(await screen.findByTestId('model-import-dialog')).toBeVisible();
+    act(() => session.select(SECOND, true));
+    expect(screen.getByTestId('model-import-dialog')).toBeVisible();
+  });
+
 });

@@ -112,7 +112,7 @@ export class SceneSession {
     this.snapshot = { ...scene, objects, selectedIds: this.selectedIds,
       gestureActive: this.gesture !== null, cancelRevision: this.cancelRevision, canEdit,
       canUndo: this.history.undoStack.length > 0, canRedo: this.history.redoStack.length > 0,
-      remotePeers: this.readPeers(byId), remoteUploads: this.readUploads(), commandError: this.commandError };
+      remotePeers: this.readPeers(byId), remoteUploads: this.stableUploads(), commandError: this.commandError };
     this.publishPresence();
     this.listeners.forEach((listener) => listener());
   };
@@ -158,6 +158,16 @@ export class SceneSession {
   }
 
   /**
+   * Read other pages' upload progress, keeping the previous object while nothing changed so memoized readers stay still.
+   * @returns Whole percent by task row.
+   */
+  private stableUploads(): Readonly<Record<string, number>> {
+    const next = this.readUploads();
+    const previous = this.snapshot?.remoteUploads;
+    return previous !== undefined && JSON.stringify(previous) === JSON.stringify(next) ? previous : next;
+  }
+
+  /**
    * Follow a presence or progress change without reading the scene again: an
    * upload's progress ticks for as long as it sends, and no object changed.
    */
@@ -165,9 +175,9 @@ export class SceneSession {
     if (this.destroyed) return;
     const byId = new Map(this.snapshot.objects.map((object) => [object.id, object]));
     const remotePeers = this.readPeers(byId);
-    const remoteUploads = this.readUploads();
+    const remoteUploads = this.stableUploads();
     if (JSON.stringify(remotePeers) === JSON.stringify(this.snapshot.remotePeers)
-      && JSON.stringify(remoteUploads) === JSON.stringify(this.snapshot.remoteUploads)) return;
+      && remoteUploads === this.snapshot.remoteUploads) return;
     this.snapshot = { ...this.snapshot, remotePeers, remoteUploads };
     this.listeners.forEach((listener) => listener());
   };

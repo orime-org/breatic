@@ -171,9 +171,11 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
    * Start the upload; once it has a task row the dialog closes and the row is handed up.
    * @throws {never} Controller state retains any refusal.
    */
+  const handedOff = React.useRef(false);
   const confirm = React.useCallback((): void => {
     void controller.confirm().then((taskId) => {
       if (taskId === null) return;
+      handedOff.current = true;
       onOpenChange(false);
       onStarted?.(taskId);
     });
@@ -196,6 +198,16 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
    * @param next - The requested open state.
    * @throws {never} Never directly.
    */
+  /**
+   * Return focus to the opener, except when the dialog closed because an upload started: the new row has it then.
+   * @param event - Radix's close auto-focus event.
+   * @throws {never} Never directly.
+   */
+  const closeFocus = React.useCallback((event: Event): void => {
+    if (!handedOff.current) { returnFocus(event); return; }
+    handedOff.current = false;
+    event.preventDefault();
+  }, [returnFocus]);
   const changeOpen = React.useCallback((next: boolean): void => {
     if (!next && controller.getSnapshot().phase === 'starting') return;
     onOpenChange(next);
@@ -208,7 +220,7 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
   const detailsIcon = React.useMemo(() => <ChevronRight className={details ? 'mr-1 size-3 rotate-90' : 'mr-1 size-3'} />, [details]);
 
   return <Dialog open={open} onOpenChange={changeOpen}>
-    <DialogContent ref={content} className='max-w-[760px]' onCloseAutoFocus={returnFocus} data-testid='model-import-dialog'>
+    <DialogContent ref={content} className='max-w-[760px]' onCloseAutoFocus={closeFocus} data-testid='model-import-dialog'>
       <DialogHeader><DialogTitle>{t('spaces.threeD.importModel.title')}</DialogTitle><DialogDescription>{t('spaces.threeD.importModel.description')}</DialogDescription></DialogHeader>
       <ScrollArea viewportClassName='max-h-[calc(100dvh-200px)] p-4'>
         <div className='space-y-4'>
