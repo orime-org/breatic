@@ -21,8 +21,8 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { getMiniToolsConfig, getRawEnvVar, getStorageAdapter, logger } from "@breatic/core";
 import {
-  backendUploadService, beginMiniToolStepAttempt, lipsyncPersonStepKeys, lipsyncStepKey, failMiniToolStep, getFullModelConfig, miniToolStepStateSchema, openContainerOutputs, openMiniToolPlanJob,
-  recordMiniToolStepIdentity, recordMiniToolStepResult, taskRepo, upstreamStepRepo, type AcceptedMiniToolExecution, type MiniToolStepJson,
+  backendUploadService, beginMiniToolStepAttempt, lipsyncPersonStepKeys, failMiniToolStep, getFullModelConfig, miniToolStepStateSchema, openContainerOutputs, openMiniToolPlanJob,
+  recordMiniToolStepIdentity, recordMiniToolStepResult, taskRepo, upstreamStepRepo, type AcceptedMiniToolExecution, type FullModelEntry, type MiniToolStepJson,
 } from "@breatic/domain";
 import {
   miniToolPlanJobRequestSchema, readMiniToolPlanJobReport, videoPresentationWorkKeyFor, type MiniToolPlanExact, type MiniToolPlanJobRequest,
@@ -38,6 +38,7 @@ import { chunkInputId, FullLedgerInvalid, readJobLedger, segmentTarget, windowEn
 import { HttpStatusError, UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 import { runPrediction } from "@worker/providers/wavespeed.js";
+import { upstreamBody } from "@worker/providers/upstream-body.js";
 
 /** A lip-sync step kind in stage order. */
 export type LipSyncStepKind = "prepare" | "track" | "faces" | "clip" | "stem" | "gen" | "composite" | "stitch";
@@ -101,18 +102,12 @@ async function runsOf(execution: LipSync): Promise<string[]> {
  * @param execution - The frozen run.
  * @param step - The shared step.
  * @returns The key.
- * @throws {Error} When a run of the chain cannot be read.
+ * @throws {Error} When the plan froze no key for the step.
  */
-async function sharedKeyOf(execution: LipSync, step: `composite:${number}` | "stitch"): Promise<string> {
-  const frozen = (execution as { sharedStepKeys?: Record<string, string> }).sharedStepKeys?.[step];
-  if (frozen !== undefined) return frozen;
-  // ponytail: a plan without frozen shared keys (only test fixtures written before DD §7.1 froze them) keys the step on
-  // its chain's original plan; delete once every fixture freezes `sharedStepKeys`.
-  const root = (await runsOf(execution)).at(-1)!;
-  const task = root === execution.taskId ? null : await taskRepo.getMiniToolExecutionTask(root);
-  const fingerprint = task === null ? execution.planFingerprint
-    : z.object({ miniToolExecution: z.object({ planFingerprint: z.string().min(1) }) }).parse(task.params).miniToolExecution.planFingerprint;
-  return lipsyncStepKey(fingerprint, null, step);
+function sharedKeyOf(execution: LipSync, step: `composite:${number}` | "stitch"): string {
+  const frozen = execution.sharedStepKeys[step];
+  if (frozen === undefined) throw new Error(`The lip-sync plan froze no key for ${step}`);
+  return frozen;
 }
 
 /**
@@ -225,10 +220,21 @@ function exact(numerator: bigint, denominator: bigint): MiniToolPlanExact {
  * @throws {Error} When the catalog offers it through no WaveSpeed upstream.
  */
 function providerModel(name: string): string {
-  const model = getFullModelConfig("video").models.find((candidate) => candidate.name === name);
-  const id = model?.providers?.find((provider) => provider.name === "wavespeed")?.model_id;
+  const id = catalogEntry(name).providers?.find((provider) => provider.name === "wavespeed")?.model_id;
   if (typeof id !== "string") throw new Error(`The model ${name} has no WaveSpeed upstream`);
   return id;
+}
+
+/**
+ * A catalog model's full entry.
+ * @param name - The catalog model.
+ * @returns The entry.
+ * @throws {Error} When the catalog has no such model.
+ */
+function catalogEntry(name: string): FullModelEntry {
+  const model = getFullModelConfig("video").models.find((candidate) => candidate.name === name);
+  if (model === undefined) throw new Error(`The catalog has no model ${name}`);
+  return model;
 }
 
 /** One generate step's identity and request. */
@@ -444,10 +450,11 @@ async function personStep(execution: LipSync, kind: "track" | "faces" | "clip" |
           const { target } = request.outputs[0]!.recipe as { target: MiniToolPlanTarget };
           const rect = target.displayRect ?? { x: 0, y: 0, width: target.width, height: target.height };
           const box = person.anchorFaceBox;
-          return { video: storage.publicUrl(request.outputs[0]!.storageKey), apply_mask: false, box_prompts: [{
+          // Our param names become the endpoint's in one place (providers/upstream-body.ts), from the model yaml.
+          return upstreamBody(catalogEntry(execution.tracking.model), { video: storage.publicUrl(request.outputs[0]!.storageKey), apply_mask: false, box_prompts: [{
             frame_index: person.anchor.frameIndex, object_id: 1,
             x_min: Math.round(rect.x + box.x * rect.width), y_min: Math.round(rect.y + box.y * rect.height),
-            x_max: Math.round(rect.x + (box.x + box.width) * rect.width), y_max: Math.round(rect.y + (box.y + box.height) * rect.height) }] };
+            x_max: Math.round(rect.x + (box.x + box.width) * rect.width), y_max: Math.round(rect.y + (box.y + box.height) * rect.height) }] }, "") as Record<string, MiniToolStepJson>;
         } }, userId, deadlineAt);
     case "faces":
       return personContainer(execution, keys.faces, "application/json", async () => {
@@ -480,12 +487,12 @@ async function personStep(execution: LipSync, kind: "track" | "faces" | "clip" |
       const model = getMiniToolsConfig().executions["video.lip-sync"]?.models.find((candidate) => candidate.name === execution.generator.modelId);
       return advanceGenerate(execution, { kind, endpoint: providerModel(execution.generator.modelId), itemIndex: index, stepKey: keys.gen, contentType: "video/mp4",
         rejection: model?.async_rejection, link: (outputs) => { const parsed = genOutputs.safeParse(outputs); return parsed.success ? parsed.data[0] : null; },
-        body: async () => ({
+        body: async () => upstreamBody(catalogEntry(execution.generator.modelId), {
           video: storage.publicUrl(await objectOf(execution, personId, "clip", userId, deadlineAt)),
           audio: storage.publicUrl(await objectOf(execution, personId, "stem", userId, deadlineAt)),
           // §9.3: only a model that accepts it is told to cut the result off at the audio's end.
           ...(execution.generator.providerSyncMode === "cut_off" ? { sync_mode: "cut_off" } : {}),
-        }) }, userId, deadlineAt);
+        }, "") as Record<string, MiniToolStepJson> }, userId, deadlineAt);
     }
   }
 }
@@ -504,7 +511,7 @@ async function composite(execution: LipSync, userId: string, deadlineAt: number)
   let running = false;
   for (const [chunk, window] of execution.layout.composite.entries()) {
     let ended: Ended;
-    const stepKey = await sharedKeyOf(execution, `composite:${chunk}`);
+    const stepKey = sharedKeyOf(execution, `composite:${chunk}`);
     try {
       ended = await advanceContainer(execution, { stepKey, jobId: (attempt) => `${execution.taskId}:${stepKey}:a${attempt}`, contentType: "video/mp4",
         failed: () => ({ failed: "failed" }), build: async () => {
@@ -544,7 +551,7 @@ async function composite(execution: LipSync, userId: string, deadlineAt: number)
 async function stitch(execution: LipSync, userId: string, deadlineAt: number): Promise<LipSyncStepOutcome> {
   const chunks = await composite(execution, userId, deadlineAt);
   if (!("keys" in chunks)) return { state: "failed", step: "stitch", category: chunks.failed };
-  const stepKey = await sharedKeyOf(execution, "stitch");
+  const stepKey = sharedKeyOf(execution, "stitch");
   for (let attempt = 1; attempt <= execution.container.chunkRetries + 1; attempt += 1) {
     const jobId = `${execution.taskId}:${stepKey}:a${attempt}`;
     const steps = await upstreamStepRepo.listSteps(execution.taskId);

@@ -602,6 +602,8 @@ models:
             field: audio
           video:
             field: video
+          sync_mode:
+            field: sync_mode
         pricing:
           kind: formula
           base_price: 135000

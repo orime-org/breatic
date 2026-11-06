@@ -1524,6 +1524,12 @@ models:
         default: null
         accepts: "video"
         fill: "canvas"
+      sync_mode:
+        description: "How the result ends when the audio and video lengths differ"
+        default: null
+        values: ["cut_off"]
+        fill: "none"
+        note: "The lip-sync step sends cut_off when the selected model accepts it; the result then ends with the audio."
     providers:
       - name: "wavespeed"
         model_id: "sync/lipsync-3"
