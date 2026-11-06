@@ -8,8 +8,8 @@ import {
   type MiniToolPlanTarget, type TaskEntity, type TaskStatusType, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from "@breatic/shared";
 import {
-  batchVideoRunOutputs, canonicalMiniToolValue, estimateVideoJobSeconds, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
-  planVideoFrames, planVideoSplit, type MiniToolExecutionRequest, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type MiniToolSourceBinding,
+  batchVideoRunOutputs, canonicalMiniToolValue, estimateVideoJobSeconds, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, miniToolPresentationRefSchema, planVideoEncodeChunks,
+  plannedStageJobs, planVideoFrames, planVideoSplit, type FrameWindow, type FramesExecutionLayout, type MiniToolExecutionRequest, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type MiniToolSourceBinding, type MiniToolStageJobs,
   type VideoEncodeChunk, type VideoEncoderRates, type VideoJobWork, type VideoPresentationTable,
 } from "@breatic/shared/mini-tools";
 import { prepareVideoRemoveBackground, type PreparedVideoRemoveBackground } from "@domain/mini-tool/remove-background-preparation.service.js";
@@ -30,17 +30,13 @@ interface ExecutionPlan {
   analysisRefs: MiniToolPlannedRequest["analysis_refs"]; outputs: MiniToolPlannedRequest["outputs"][number][];
   model: string; credits: number; requestFingerprint: string; planFingerprint: string;
 }
-/** A presentation-frame window; a JSON type alias so frozen plans stay assignable to stored JSON. */
-type FrameWindow = { start: number; end: number };
-/** The §5.4 job layout frozen at admission: batches of output indices, and the outputs encoded in chunks. */
-export type MiniToolExecutionLayout = { batches: number[][]; encodes: { outputIndex: number; chunks: FrameWindow[] }[] };
 /** A frozen standard-4 container policy: class, precheck floor, size, prices and output limits. */
 export type MiniToolContainerPolicy = { containerClass: "MiniToolContainerStd4"; precheckSeconds: number; size: MiniToolsConfig["classes"][string]; prices: MiniToolsConfig["prices"]; limits: MiniToolsConfig["plan_limits"] };
 /** The model input a removal sends: prepared from the source by this run's (or the original run's) preparation `<taskId>:prep:0`. */
 export type PreparedModelInputRef = { kind: "prepared"; inputId: "source"; job: string };
 /** What every planned video execution freezes about its tool input (§7.11): the ref, both receipts and the selected version. */
 type FrozenToolInput = {
-  presentationRef: MiniToolPlannedRequest["presentation_ref"];
+  presentationRef: z.infer<typeof miniToolPresentationRefSchema>;
   ledgerReceipts: Record<"source", VideoPresentationLedgerReceipt>;
   versionIds: Record<"source", string>;
   retry?: MiniToolExecutionRetryRequest["retry"];
@@ -53,7 +49,9 @@ export type AcceptedMiniToolExecution = ExecutionPlan & FrozenToolInput & (
     modelCredits: number;
     /** The standard-4 model-input preparation (§5.3): its policy, presentation-frame chunk windows and encode parameters (§91 D3b-5). */
     preparation: MiniToolContainerPolicy & { chunks: FrameWindow[]; chunkRetries: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] } } }
-  | { tool: "video.extract-frames" | "video.split"; layout: MiniToolExecutionLayout;
+  | { tool: "video.extract-frames" | "video.split"; layout: FramesExecutionLayout;
+    /** The container jobs each stage sends, counted from `layout` at admission (§97 D12-1). */
+    stageJobs: MiniToolStageJobs[];
     /** The standard-4 policy and the encoder start seconds every job of the layout pays, frozen so a retry re-quotes from them. */
     container: MiniToolContainerPolicy & { startSeconds: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; chunkRetries: number };
     /** Each output's planned work in seconds without job start, frozen so a retry re-quotes its subset. */
@@ -130,7 +128,7 @@ function containerCredits(policy: MiniToolContainerPolicy, plannedSeconds: numbe
  * @returns The seconds.
  * @throws {never} Never.
  */
-function layoutSeconds(layout: MiniToolExecutionLayout, seconds: ReadonlyMap<number, number>, startSeconds: number): number {
+function layoutSeconds(layout: FramesExecutionLayout, seconds: ReadonlyMap<number, number>, startSeconds: number): number {
   /**
    * One output's frozen work.
    * @param index - The output index.
@@ -254,11 +252,11 @@ function framesIn(table: VideoPresentationTable, range: { start: number; end: nu
  * @param ledger - The validated full ledger.
  * @param config - The acceptance snapshot.
  * @param tool - The tool.
- * @returns The layout, its job count and each output's work seconds.
+ * @returns The layout and each output's work seconds.
  * @throws {RangeError} When the work or the configuration is out of range.
  */
 function runLayout(outputs: MiniToolPlannedRequest["outputs"][number][], table: VideoPresentationTable, ledger: VideoPresentationLedger,
-  config: MiniToolsConfig, tool: "video.extract-frames" | "video.split"): { layout: MiniToolExecutionLayout; jobs: number; works: number[] } {
+  config: MiniToolsConfig, tool: "video.extract-frames" | "video.split"): { layout: FramesExecutionLayout; works: number[] } {
   const rates = encoderRates(config);
   const flags = videoPresentationKeyframeFlags(ledger);
   const spans = outputs.map(({ recipe }) => ("frameIndex" in recipe ? { first: recipe.frameIndex, count: 1 } : "range" in recipe ? framesIn(table, recipe.range) : { first: 0, count: 1 }));
@@ -271,8 +269,7 @@ function runLayout(outputs: MiniToolPlannedRequest["outputs"][number][], table: 
       .map((chunk) => ({ start: chunk.start + first, end: chunk.end + first }));
     return { outputIndex: outputs[index]!.outputIndex, chunks };
   });
-  return { layout: { batches: batches.map((batch) => batch.map((index) => outputs[index]!.outputIndex)), encodes },
-    jobs: batches.length + encodes.reduce((total, encode) => total + encode.chunks.length + 1, 0), works };
+  return { layout: { batches: batches.map((batch) => batch.map((index) => outputs[index]!.outputIndex)), encodes }, works };
 }
 
 /**
@@ -280,28 +277,29 @@ function runLayout(outputs: MiniToolPlannedRequest["outputs"][number][], table: 
  * plus a stitch when it exceeds the chunk share.
  * @param ledger - The validated full ledger.
  * @param config - The acceptance snapshot.
- * @returns The chunk windows, the job count and the planned seconds.
+ * @returns The chunk windows and the planned seconds.
  * @throws {RangeError} When the work is out of range.
  */
-function preparationLayout(ledger: VideoPresentationLedger, config: MiniToolsConfig): { chunks: VideoEncodeChunk[]; jobs: number; seconds: number } {
+function preparationLayout(ledger: VideoPresentationLedger, config: MiniToolsConfig): { chunks: VideoEncodeChunk[]; seconds: number } {
   const rates = encoderRates(config);
   const flags = videoPresentationKeyframeFlags(ledger);
   const work = estimateVideoJobSeconds(spanWork(ledger, 0, flags.length), rates) - rates.startSeconds;
   const share = shareSeconds(config);
-  if (rates.startSeconds + work <= share) return { chunks: [{ start: 0, end: flags.length }], jobs: 1, seconds: rates.startSeconds + work };
+  if (rates.startSeconds + work <= share) return { chunks: [{ start: 0, end: flags.length }], seconds: rates.startSeconds + work };
   const chunks = planVideoEncodeChunks({ keyframes: flags, frameSeconds: work / flags.length, targetSeconds: share - rates.startSeconds });
-  return { chunks, jobs: chunks.length + 1, seconds: work + rates.startSeconds * (chunks.length + 1) };
+  return { chunks, seconds: work + rates.startSeconds * (chunks.length + 1) };
 }
 
 /**
- * Refuse a run whose standard-4 job count exceeds the parallel cap, with its reason.
- * @param jobs - The planned job count.
+ * Refuse a run whose largest stage sends more standard-4 jobs at once than the parallel cap, with its reason (§97 D12-1;
+ * frames-split §5.4 上限 row).
+ * @param stages - The planned stages and their job counts.
  * @param config - The acceptance snapshot.
- * @throws {AppError} When the count exceeds the cap.
+ * @throws {AppError} When a stage exceeds the cap.
  */
-function assertWithinParallelCap(jobs: number, config: MiniToolsConfig): void {
+function assertWithinParallelCap(stages: readonly MiniToolStageJobs[], config: MiniToolsConfig): void {
   const max = config.encoding.max_parallel_chunks;
-  if (jobs > max) throw new AppError(400, t("server.mini_tool.runTooLong", { max }));
+  if (stages.some((stage) => stage.jobs > max)) throw new AppError(400, t("server.mini_tool.runTooLong", { max }));
 }
 
 /**
@@ -325,7 +323,7 @@ async function prepareRemoval(request: Extract<MiniToolPlannedRequest, { tool: "
   const model = await estimateModelCredits(prepared.model, { params: prepared.params, durations: { video: [Number(duration.numerator) / Number(duration.denominator)] }, sources: ["video"] });
   if (model === undefined) throw new AppError(503, t("server.mini_tool.unavailable"));
   const layout = preparationLayout(ledger, config);
-  assertWithinParallelCap(layout.jobs, config);
+  assertWithinParallelCap(plannedStageJobs({ preparation: layout.chunks }), config);
   const preparation = { ...containerPolicy(settings.preparation.container_class, settings.preparation.precheck_seconds, config), chunks: layout.chunks,
     chunkRetries: config.encoding.chunk_retries, encode: { crf: config.presentation.crf, preset: config.presentation.preset } };
   return { ...common, tool: request.tool, binding: prepared.binding, sourceKey: prepared.sourceKey, model: prepared.model, provider: prepared.provider,
@@ -345,6 +343,8 @@ async function prepare(request: MiniToolPlannedRequest): Promise<ExecutionProjec
   const common: ExecutionCommon = { schemaVersion: 1, taskId: request.run_id, projectId: request.project_id, spaceId: request.space_id,
     targetNodeIds: request.outputs.map((output) => output.nodeId), draft: request.draft, analysisRefs: request.analysis_refs, outputs: request.outputs };
   if (request.tool === "video.remove-bg") return prepareRemoval(request, common);
+  // ponytail: the transitions request is admitted by the shared contract, but its execution has no worker yet; until it does, refuse it here.
+  if (request.tool === "video.transitions") throw new AppError(400, t("server.mini_tool.unavailable"));
   const deadlineAt = budgetDeadlineFrom(Date.now());
   const config = structuredClone(getMiniToolsConfig());
   const maxOutputs = config.executions[request.tool].max_outputs;
@@ -364,15 +364,16 @@ async function prepare(request: MiniToolPlannedRequest): Promise<ExecutionProjec
     throw new ValidationError(t("server.mini_tool.foreignSource"));
   }
   if (outputs.length > maxOutputs || canonicalMiniToolValue(outputs) !== canonicalMiniToolValue(request.outputs)) throw new ValidationError(t("server.mini_tool.foreignSource"));
-  const { layout, jobs, works } = runLayout(outputs, table, ledger, config, request.tool);
-  assertWithinParallelCap(jobs, config);
+  const { layout, works } = runLayout(outputs, table, ledger, config, request.tool);
+  const stageJobs = plannedStageJobs(layout);
+  assertWithinParallelCap(stageJobs, config);
   const container = { ...containerPolicy(config.executions[request.tool].container_class, config.executions[request.tool].precheck_seconds, config),
     startSeconds: config.encoding.encoder.start_seconds,
     // §93 D5-2: the run's encode parameters and retry cap, frozen like the removal preparation's (§5.4).
     encode: { crf: config.presentation.crf, preset: config.presentation.preset }, chunkRetries: config.encoding.chunk_retries };
   const seconds = layoutSeconds(layout, new Map(outputs.map((output, index) => [output.outputIndex, works[index]!])), container.startSeconds);
   return { ...common, tool: request.tool, binding, sourceKey, presentationRef: request.presentation_ref, ledgerReceipts: { source: receipt },
-    versionIds: { source: versionId }, layout, outputSeconds: works, model: request.tool, container, credits: containerCredits(container, seconds) };
+    versionIds: { source: versionId }, layout, stageJobs, outputSeconds: works, model: request.tool, container, credits: containerCredits(container, seconds) };
 }
 
 /**
@@ -501,7 +502,7 @@ async function claimRetry(request: MiniToolExecutionRetryRequest, userId: string
     // The same quote rule as a fresh run, over the retried outputs' frozen jobs, start seconds and standard-4 price (§5.4);
     // the subset is drawn from the frozen plan, so nothing here reads today's configuration.
     const seconds = layoutSeconds(layout, works, frozen.container.startSeconds);
-    const claim = await claimPrepared({ ...frozen, ...retried, layout, outputSeconds, credits: containerCredits(frozen.container, seconds) }, request, userId, fingerprint, tx);
+    const claim = await claimPrepared({ ...frozen, ...retried, layout, stageJobs: plannedStageJobs(layout), outputSeconds, credits: containerCredits(frozen.container, seconds) }, request, userId, fingerprint, tx);
     if (claim.inserted) await releaseTakenOver(original.id, record, tx);
     return claim;
   });

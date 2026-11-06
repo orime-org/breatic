@@ -374,21 +374,21 @@ export function batchVideoRunOutputs(
 }
 
 /** A presentation-frame window `[start, end)`. */
-export interface FrameWindow { start: number; end: number }
+export type FrameWindow = { start: number; end: number };
 /** The §5.4 job layout of frames and split, frozen at admission: batches of output indices, and the outputs encoded in chunks. */
-export interface FramesExecutionLayout { batches: number[][]; encodes: { outputIndex: number; chunks: FrameWindow[] }[] }
+export type FramesExecutionLayout = { batches: number[][]; encodes: { outputIndex: number; chunks: FrameWindow[] }[] };
 /** Remove-background: the model input's preparation chunks. */
-export interface RemovalExecutionLayout { preparation: FrameWindow[] }
+export type RemovalExecutionLayout = { preparation: FrameWindow[] };
 /** Erase and expand: the preparation chunks and the model composite chunks. */
-export interface CompositeExecutionLayout { preparation: FrameWindow[]; composite: FrameWindow[] }
+export type CompositeExecutionLayout = { preparation: FrameWindow[]; composite: FrameWindow[] };
 /** Lip-sync: the preparation chunks, the people it generates for and the composite chunks. */
-export interface LipsyncExecutionLayout { preparation: FrameWindow[]; persons: number; composite: FrameWindow[] }
+export type LipsyncExecutionLayout = { preparation: FrameWindow[]; persons: number; composite: FrameWindow[] };
 /** Transitions: the encode chunks and the overlap window chunks on the output grid. */
-export interface TransitionExecutionLayout { encode: FrameWindow[]; window: FrameWindow[] }
+export type TransitionExecutionLayout = { encode: FrameWindow[]; window: FrameWindow[] };
 /** The job layout an execution freezes at admission, by tool (§97 D12-1). */
 export type MiniToolExecutionLayout = FramesExecutionLayout | RemovalExecutionLayout | CompositeExecutionLayout | LipsyncExecutionLayout | TransitionExecutionLayout;
 /** A stage of a planned execution and the container jobs it sends at once. */
-export interface MiniToolStageJobs { stage: "prepare" | "prepare_stitch" | "encode" | "stitch" | "faces" | "clip_stem" | "model_composite" | "composite"; jobs: number }
+export type MiniToolStageJobs = { stage: "prepare" | "prepare_stitch" | "encode" | "stitch" | "faces" | "clip_stem" | "model_composite" | "composite"; jobs: number };
 
 /**
  * The container jobs each stage of a frozen layout sends, in execution order, stages with no job left out (§97 D12-1;
