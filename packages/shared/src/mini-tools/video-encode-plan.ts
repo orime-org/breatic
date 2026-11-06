@@ -447,21 +447,6 @@ export function plannedStageJobs(layout: MiniToolExecutionLayout): MiniToolStage
   return stages;
 }
 
-/**
- * Split `[from, to)` into consecutive chunks of at most `target` frames, as even as whole frames allow.
- * @param from - The first frame.
- * @param to - The end frame.
- * @param target - The largest chunk.
- * @returns The chunks; none for an empty range.
- * @throws {never} Never.
- */
-function evenChunks(from: number, to: number, target: number): FrameWindow[] {
-  const length = to - from;
-  if (length <= 0) return [];
-  const count = Math.ceil(length / target);
-  return Array.from({ length: count }, (_, at) => ({ start: from + Math.floor((length * at) / count), end: from + Math.floor((length * (at + 1)) / count) }));
-}
-
 /** A cost budget for transition chunks: the seconds one chunk's frames may take, and what each output frame costs. */
 export interface TransitionChunkBudget {
   targetSeconds: number;
@@ -475,38 +460,44 @@ export interface TransitionChunkTimeline { frameCount: number; clips: readonly {
 /**
  * The transition chunks on the output grid (§97 D15-4; frames-split §5.4): the window chunks partition the
  * overlap window, the encode chunks partition each clip's frames outside it, and no chunk exceeds the target; a Cut has
- * no window chunks. The target is a frame count, or a share in seconds with each output frame's own cost, so a chunk holds
- * as many frames as its own clips' work allows (§97, the per-clip cost the quote sums).
+ * no window chunks. Chunks are sized by each output frame's own cost against the share, so a chunk holds as many frames as
+ * its own clips' work allows (§97, the per-clip cost the quote sums).
  * @param timeline - The frame-grid timeline.
- * @param target - The largest chunk in frames, or the cost budget.
+ * @param budget - The share in seconds and each output frame's cost.
  * @returns The encode and window chunks.
- * @throws {RangeError} When the target is not a positive integer.
+ * @throws {RangeError} When the share is not a positive finite number.
  */
-export function planTransitionChunks(timeline: TransitionChunkTimeline, target: number | TransitionChunkBudget): { encode: FrameWindow[]; window: FrameWindow[] } {
+export function planTransitionChunks(timeline: TransitionChunkTimeline, budget: TransitionChunkBudget): { encode: FrameWindow[]; window: FrameWindow[] } {
+  if (!(Number.isFinite(budget.targetSeconds) && budget.targetSeconds > 0)) throw new RangeError("targetSeconds must be a positive finite number");
   /**
-   * Split one region into chunks: as even as whole frames allow under a frame count, or filled greedily up to the share under
-   * a per-frame cost, so no two neighbouring chunks of the region would fit together.
+   * Split one region into the fewest chunks that fit the share, as even in cost as whole frames allow: a chunk ends at the
+   * last frame whose running cost stays within its even part; a split whose chunk would pass the share takes one chunk more.
+   * Under a uniform cost this is an even split by frames.
    * @param from - The region's first frame.
    * @param to - Its end.
    * @param window - Whether it is the overlap window.
-   * @returns The chunks.
+   * @returns The chunks; none for an empty region.
    * @throws {never} Never.
    */
   const chunk = (from: number, to: number, window: boolean): FrameWindow[] => {
-    if (typeof target === "number") return evenChunks(from, to, target);
-    const chunks: FrameWindow[] = [];
-    let start = from;
-    let spent = 0;
-    for (let frame = from; frame < to; frame += 1) {
-      const cost = target.frameSeconds(frame, window);
-      // A frame over the whole share still makes a chunk of one; admission refuses a job over its share elsewhere.
-      if (frame > start && spent + cost > target.targetSeconds) { chunks.push({ start, end: frame }); start = frame; spent = 0; }
-      spent += cost;
+    if (to <= from) return [];
+    const costs = Array.from({ length: to - from }, (_, at) => budget.frameSeconds(from + at, window));
+    const before = [0];
+    for (const cost of costs) before.push(before.at(-1)! + cost);
+    const total = before.at(-1)!;
+    // A frame over the whole share still makes a chunk of one; admission refuses a job over its share elsewhere.
+    for (let count = Math.max(1, Math.ceil(total / budget.targetSeconds - 1e-9)); ; count += 1) {
+      const ends = Array.from({ length: count }, (_, at) => {
+        if (at === count - 1) return costs.length;
+        const part = (total * (at + 1)) / count;
+        let end = 0;
+        while (end < costs.length && before[end + 1]! <= part + 1e-9) end += 1;
+        return end;
+      });
+      const chunks = ends.map((end, at) => ({ start: from + (at === 0 ? 0 : ends[at - 1]!), end: from + end })).filter((part) => part.end > part.start);
+      if (count >= costs.length || chunks.every((part) => before[part.end - from]! - before[part.start - from]! <= budget.targetSeconds + 1e-9 || part.end - part.start === 1)) return chunks;
     }
-    if (to > start) chunks.push({ start, end: to });
-    return chunks;
   };
-  if (typeof target === "number") positiveInteger(target, "targetFrames");
   const window = timeline.window;
   if (window === null) {
     const boundary = timeline.clips[1]?.startFrame ?? timeline.frameCount;

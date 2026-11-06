@@ -568,7 +568,8 @@ async function prepareTransitions(request: Extract<MiniToolPlannedRequest, { too
   const frameSeconds = (frame: number, window: boolean): number => timeline.clips.reduce((total, clip, at) =>
     frame >= clip.startFrame && frame < clip.startFrame + clip.frameCount ? total + decodeFrame(inputs[at]!.ledger) : total, 0)
     + outputPixels / rates.encodePixelsPerSecond + (window ? outputPixels / renderRate : 0);
-  // ponytail: a chunk's decode pre-roll is not in its size; with sparse keyframes a chunk can pass its share by that pre-roll.
+  // ponytail: a chunk's decode pre-roll is not in its size, so a chunk can pass its share by at most one GOP's decode (the
+  // quote counts it). If a chunk is ever measured past its share, size each chunk with its first frame's pre-roll.
   const layout = planTransitionChunks(timeline, { targetSeconds: shareSeconds(config) - rates.startSeconds, frameSeconds });
   const stageJobs = plannedStageJobs(layout);
   assertWithinParallelCap(stageJobs, config);
