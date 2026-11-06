@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1306 test plan §97 (canvas design §4 对口型行; Disabled controls rule in packages/web/AGENTS.md): Run is
+ * inner#1306 test plan §97 (canvas design §4 对口型行; packages/web/AGENTS.md#disabled-controls): Run is
  * `aria-disabled` and a click explains the allowed range with a toast when the result duration (shared `lipsyncTimeline`)
  * lies outside the selected model's `min_duration_seconds`/`max_duration_seconds`, or the source range the run uses
  * (shared `lipsyncUsedSourceRange`) lies outside the tracking model's range; the toast is `canvas.miniTool.videoUI.
