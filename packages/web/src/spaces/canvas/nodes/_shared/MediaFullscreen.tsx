@@ -7,6 +7,7 @@ import { X } from 'lucide-react';
 import { Dialog, DialogClose, DialogContent, DialogTitle } from '@web/components/ui/dialog';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { useTranslation } from '@web/i18n/use-translation';
+import { cn } from '@web/lib/utils';
 import { MediaPlayer, type MediaPlayerHandle } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 import type { MediaPlayerState } from '@web/spaces/canvas/nodes/_shared/use-media-player';
 
@@ -99,8 +100,12 @@ export function MediaFullscreen({
     onOpenChange(next);
   };
 
-  // A tall video is held to the viewport's height by its width.
-  const videoWidth = size ? `min(96vw, 1600px, calc(90vh * ${size.width} / ${size.height}))` : 'min(96vw, 1600px)';
+  // A tall video is held to the viewport's height by its width, so its bar
+  // is as wide as its picture. A host that does not know the size has it
+  // from the video's own metadata.
+  const [measured, setMeasured] = React.useState<{ width: number; height: number } | undefined>(undefined);
+  const box = size ?? measured;
+  const aspect = box ? ({ '--media-aspect': box.width / box.height } as React.CSSProperties) : undefined;
 
   return (
     // Not a control: it only keeps the layer's events from its host. A span,
@@ -124,8 +129,11 @@ export function MediaFullscreen({
           onCloseAutoFocus={onCloseAutoFocus}
           // No entry zoom: a transform on the content would hold the fixed
           // close button to the content's box until the animation ends.
-          className='max-w-[min(96vw,1600px)] items-center border-0 bg-transparent shadow-none data-[state=closed]:animate-none data-[state=open]:animate-none'
-          style={kind === 'video' ? { width: videoWidth } : undefined}
+          className={cn(
+            'max-w-[min(96vw,1600px)] items-center border-0 bg-transparent shadow-none data-[state=closed]:animate-none data-[state=open]:animate-none',
+            kind === 'video' && 'w-[min(96vw,1600px,calc(90vh*var(--media-aspect,100)))]',
+          )}
+          style={kind === 'video' ? aspect : undefined}
         >
           <DialogTitle className='sr-only'>{name}</DialogTitle>
           {kind === 'image' ? (
@@ -152,7 +160,7 @@ export function MediaFullscreen({
             </div>
           ) : (
             <div className='w-full [&_video]:max-h-[90vh]'>
-              <MediaPlayer ref={player} modality='video' src={src} poster={poster} size={size} start={start} />
+              <MediaPlayer ref={player} modality='video' src={src} poster={poster} size={size} start={start} onDimensions={setMeasured} />
             </div>
           )}
           <DialogClose

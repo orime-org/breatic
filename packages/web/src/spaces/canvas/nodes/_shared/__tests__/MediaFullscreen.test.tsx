@@ -118,6 +118,24 @@ describe('MediaFullscreen', () => {
     expect(screen.queryByTestId('fullscreen')).toBeNull();
   });
 
+  // A video of unknown size is held to the viewport's height by its width
+  // once its own size is read, so the bar is as wide as the picture.
+  it('sizes a video of unknown size from its metadata', () => {
+    render(<MediaFullscreen open onOpenChange={() => {}} kind='video' src='/v.mp4' name='v' />);
+    const el = screen.getByTestId('media-element');
+    Object.defineProperty(el, 'videoWidth', { value: 640, configurable: true });
+    Object.defineProperty(el, 'videoHeight', { value: 480, configurable: true });
+    fireEvent.loadedMetadata(el);
+    const content = screen.getByTestId('media-fullscreen');
+    expect(content.style.getPropertyValue('--media-aspect')).toBe(String(640 / 480));
+    expect(content.className).toContain('w-[min(96vw,1600px,calc(90vh*var(--media-aspect,100)))]');
+  });
+
+  it('sizes a video from the size its host knows', () => {
+    render(<MediaFullscreen open onOpenChange={() => {}} kind='video' src='/v.mp4' name='v' size={{ width: 1080, height: 1920 }} />);
+    expect(screen.getByTestId('media-fullscreen').style.getPropertyValue('--media-aspect')).toBe(String(1080 / 1920));
+  });
+
   it('hands the video state back when it closes', async () => {
     const user = userEvent.setup();
     const onClosed = vi.fn();
