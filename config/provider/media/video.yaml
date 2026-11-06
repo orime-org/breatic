@@ -256,43 +256,6 @@ models:
           base_price: 700000
           formula: '{"total_price": $min([duration, 15]) / 5 * base_price * (resolution = "768p" ? 5 / 7 : 1)}'
           discount_rate: 100
-      - upstream: fal
-        weight: 2
-        model_id: minimax/h3/text-to-video
-        prompt_field: prompt
-        output_field: video
-        params:
-          aspect_ratio:
-            field: aspect_ratio
-          duration:
-            field: duration
-            supported:
-              - 5
-              - 6
-              - 7
-              - 8
-              - 9
-              - 10
-              - 11
-              - 12
-              - 13
-              - 14
-              - 15
-          resolution:
-            field: resolution
-            values:
-              768p: 768P
-              2k: 2K
-        drops:
-          shots: "*"
-        rejects:
-          - when: $length(prompt) > 50000
-            reason: fal prompt maxLength 50000
-        pricing:
-          kind: formula
-          base_price: 50000
-          formula: '{"total_price": base_price * duration * (resolution = "2k" ? 2.6 : 1.2)}'
-          discount_rate: 100
       - upstream: sandbase
         weight: 3
         model_id: minimax/h3/text-to-video
@@ -494,45 +457,6 @@ models:
           kind: formula
           base_price: 700000
           formula: '{"total_price": $min([duration, 15]) / 5 * base_price * (resolution = "768p" ? 5 / 7 : 1)}'
-          discount_rate: 100
-      - upstream: fal
-        weight: 2
-        model_id: minimax/h3/image-to-video
-        prompt_field: prompt
-        output_field: video
-        params:
-          duration:
-            field: duration
-            supported:
-              - 5
-              - 6
-              - 7
-              - 8
-              - 9
-              - 10
-              - 11
-              - 12
-              - 13
-              - 14
-              - 15
-          image:
-            field: image_url
-          end_image:
-            field: end_image_url
-          resolution:
-            field: resolution
-            values:
-              768p: 768P
-              2k: 2K
-        drops:
-          shots: "*"
-        rejects:
-          - when: $length(prompt) > 50000
-            reason: fal prompt maxLength 50000
-        pricing:
-          kind: formula
-          base_price: 50000
-          formula: '{"total_price": base_price * duration * (resolution = "2k" ? 2.6 : 1.2)}'
           discount_rate: 100
       - upstream: sandbase
         weight: 3
@@ -934,64 +858,6 @@ models:
           kind: formula
           base_price: 700000
           formula: '{"total_price": base_price * (($min([duration, 15]) + $ceil($min([get_duration(reference_videos, min=2, max=15, total=15), 15]))) / 5 * (resolution = "768p" ? 5 / 7 : 1)) + ($count(reference_images) > 5 ? 50000 * ($count(reference_images) - 5) : 0)}'
-          discount_rate: 100
-      - upstream: fal
-        weight: 2
-        model_id: minimax/h3/reference-to-video
-        prompt_field: prompt
-        output_field: video
-        params:
-          aspect_ratio:
-            field: aspect_ratio
-          duration:
-            field: duration
-            supported:
-              - 5
-              - 6
-              - 7
-              - 8
-              - 9
-              - 10
-              - 11
-              - 12
-              - 13
-              - 14
-              - 15
-          audios:
-            field: reference_audio_urls
-          images:
-            field: reference_image_urls
-          videos:
-            field: reference_video_urls
-          resolution:
-            field: resolution
-            values:
-              768p: 768P
-              2k: 2K
-        drops:
-          style_images: "*"
-          shots: "*"
-        mentions:
-          audios: Audio {n}
-          images: Image {n}
-          videos: Video {n}
-        rejects:
-          - when: $length(prompt) > 50000
-            reason: fal prompt maxLength 50000
-          - when: $count(reference_image_urls) + $count(reference_video_urls) + $count(reference_audio_urls) > 12
-            reason: "fal: Reference images, videos, and audio clips must add up to at most 12 files"
-          - when: get_duration(reference_audio_urls) > 15
-            reason: "fal reference_audio_urls: combined duration at most 15 seconds"
-          - when: get_duration(reference_audio_urls, min=2, max=1000000, total=1000000) > get_duration(reference_audio_urls)
-            reason: "fal reference_audio_urls: 2-15 seconds each"
-          - when: get_duration(reference_video_urls) > 15
-            reason: "fal reference_video_urls: combined duration at most 15 seconds"
-          - when: get_duration(reference_video_urls, min=2, max=1000000, total=1000000) > get_duration(reference_video_urls)
-            reason: "fal reference_video_urls: 2-15 seconds each"
-        pricing:
-          kind: formula
-          base_price: 50000
-          formula: '{"total_price": base_price * duration * (resolution = "2k" ? 2.6 : 1.2) + ($count(reference_image_urls) > 5 ? 80000 * ($count(reference_image_urls) - 5) : 0)}'
           discount_rate: 100
       - upstream: sandbase
         weight: 3
