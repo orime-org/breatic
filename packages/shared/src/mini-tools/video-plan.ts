@@ -134,13 +134,14 @@ export interface VideoPlannedClip extends VideoToolTimelineClip { start: number;
 export interface VideoTimelinePlan { duration: number; clips: VideoPlannedClip[] }
 
 /**
- * Derives one composition clock from trimmed clips and outgoing transitions.
+ * Derives a seconds composition clock from trimmed clips and outgoing transitions, for the editor's preview of any number of
+ * clips; the execution plans on the output frame grid with {@link planVideoTimeline}.
  * @param clips - The complete ordered clip sequence.
  * @returns The source mappings and composition duration.
  * @throws {z.ZodError} When clip data is invalid.
  * @throws {RangeError} When overlaps exceed the available adjacent source ranges.
  */
-export function planVideoTimeline(clips: readonly VideoToolTimelineClip[]): VideoTimelinePlan {
+export function planVideoTimelineSeconds(clips: readonly VideoToolTimelineClip[]): VideoTimelinePlan {
   const sequence = z.array(videoToolTimelineClipSchema).refine((items) => new Set(items.map((clip) => clip.clipId)).size === items.length).parse(clips);
   let cursor = 0;
   let incoming = 0;
@@ -156,4 +157,92 @@ export function planVideoTimeline(clips: readonly VideoToolTimelineClip[]): Vide
     return { ...clip, start, end, overlap };
   });
   return { duration: planned.at(-1)?.end ?? 0, clips: planned };
+}
+
+/** An exact rational frame rate, as the presentation plan writes it. */
+export interface VideoFrameRate { numerator: string; denominator: string }
+/** One clip of the frame-grid timeline: where it starts and how many output frames it lasts, and its trimmed source frames. */
+export interface VideoFramePlannedClip { clipId: string; inputId: string; startFrame: number; frameCount: number; inFrame: number; outFrame: number }
+/** The overlap window of a non-Cut transition, in output frames. */
+export interface VideoFrameTransitionWindow { startFrame: number; frameCount: number; kind: "fade" | "wipeLeft" | "wipeRight" }
+/** The two-clip transition timeline on the output frame grid (§97 D15-3): every number a whole count of output frames. */
+export interface VideoFrameTimeline { fps: VideoFrameRate; frameCount: number; clips: VideoFramePlannedClip[]; window: VideoFrameTransitionWindow | null }
+
+/**
+ * The frame rate as frames per second.
+ * @param fps - The exact rate.
+ * @returns Its value.
+ * @throws {RangeError} When it is not a positive rational.
+ */
+function framesPerSecond(fps: VideoFrameRate): number {
+  const value = Number(fps.numerator) / Number(fps.denominator);
+  if (!Number.isFinite(value) || value <= 0) throw new RangeError("A frame rate is a positive rational");
+  return value;
+}
+
+/**
+ * The nearest whole output frame of a time, a tie going down (§97 D15-3).
+ * @param seconds - The time.
+ * @param perSecond - The frame rate.
+ * @returns The frame.
+ * @throws {RangeError} When the frame is not a safe integer.
+ */
+function nearestFrame(seconds: number, perSecond: number): number {
+  // `+ 0` turns the -0 that ceil gives for (-0.5, 0] into 0.
+  const frame = Math.ceil(seconds * perSecond - 0.5) + 0;
+  if (!Number.isSafeInteger(frame) || frame < 0) throw new RangeError("A timeline time lies beyond whole output frames");
+  return frame;
+}
+
+/**
+ * Plans the two-clip transition timeline on the output frame grid (§97 D15-3; frames-split §7.17): each clip's in and
+ * out and the transition duration snap to the nearest output frame (a tie going down), a transition lasts at least one
+ * frame, its window starts where the first clip ends less the window, and the second clip starts with the window; a Cut
+ * has no window and the second clip starts where the first ends.
+ * @param clips - The two ordered clips; the first one's transition joins them.
+ * @param fps - The output frame rate.
+ * @returns The frame-grid timeline.
+ * @throws {z.ZodError} When clip data is invalid.
+ * @throws {RangeError} When there are not two clips, a clip has no frame, or the window exceeds a clip.
+ */
+export function planVideoTimeline(clips: readonly VideoToolTimelineClip[], fps: VideoFrameRate): VideoFrameTimeline {
+  const sequence = z.array(videoToolTimelineClipSchema).refine((items) => new Set(items.map((clip) => clip.clipId)).size === items.length).parse(clips);
+  if (sequence.length !== 2) throw new RangeError("A transition timeline has two clips");
+  const perSecond = framesPerSecond(fps);
+  const [first, second] = sequence.map((clip) => {
+    const inFrame = nearestFrame(clip.in, perSecond);
+    const outFrame = nearestFrame(clip.out, perSecond);
+    if (outFrame <= inFrame) throw new RangeError("A timeline clip lasts at least one output frame");
+    return { clipId: clip.clipId, inputId: clip.inputId, startFrame: 0, frameCount: outFrame - inFrame, inFrame, outFrame };
+  }) as [VideoFramePlannedClip, VideoFramePlannedClip];
+  const transition = sequence[0]!.transition;
+  const window = transition.kind === "cut" ? null : {
+    startFrame: 0, frameCount: Math.max(1, nearestFrame(transition.duration, perSecond)), kind: transition.kind,
+  };
+  if (window !== null && (window.frameCount > first.frameCount || window.frameCount > second.frameCount)) throw new RangeError("Timeline overlaps exceed the adjacent clip ranges");
+  const secondStart = first.frameCount - (window?.frameCount ?? 0);
+  const placed = { ...second, startFrame: secondStart };
+  return {
+    fps, frameCount: secondStart + placed.frameCount, clips: [first, placed],
+    window: window === null ? null : { ...window, startFrame: secondStart },
+  };
+}
+
+/**
+ * The duration range of a non-Cut transition (canvas design §4 transitions row, frames-split §7.17): from one output frame
+ * to half the shorter trimmed clip on the output frame grid, in seconds.
+ * @param clips - The two ordered clips.
+ * @param fps - The output frame rate.
+ * @returns The smallest and largest duration, or null when half the shorter clip is under one frame.
+ * @throws {z.ZodError} When clip data is invalid.
+ * @throws {RangeError} When the frame rate is not positive.
+ */
+export function transitionDurationBounds(clips: readonly VideoToolTimelineClip[], fps: VideoFrameRate): { min: number; max: number } | null {
+  const sequence = z.array(videoToolTimelineClipSchema).min(1).parse(clips);
+  const perSecond = framesPerSecond(fps);
+  // Half the shorter clip, counted on the output grid the timeline snaps to.
+  const frames = Math.min(...sequence.map((clip) => nearestFrame(clip.out, perSecond) - nearestFrame(clip.in, perSecond)));
+  const min = Number(fps.denominator) / Number(fps.numerator);
+  const max = (frames / 2) * Number(fps.denominator) / Number(fps.numerator);
+  return max < min ? null : { min, max };
 }
