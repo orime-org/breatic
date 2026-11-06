@@ -21,7 +21,9 @@ import { getCollabConfig } from "@collab/config.js";
 import type { AuthContext } from "@collab/hooks/auth.js";
 import { userIdOf } from "@collab/hooks/presence-wiring.js";
 import { markRefused } from "@collab/infra/inbound-filter.js";
-import { addUpperBound, analyze, holdUntilApplied, measure, readDocSizeRecord, recordExact } from "@collab/services/document-size.js";
+import {
+  addUpperBound, analyze, holdUntilApplied, measure, readDocSizeRecord, recordExact, unappliedBesides,
+} from "@collab/services/document-size.js";
 
 const logger = createLogger("document-size-gate");
 
@@ -75,7 +77,13 @@ export function createDocumentSizeGate(): (data: beforeSyncPayload<AuthContext>)
       throw Object.assign(new Error("document size limit reached"), { reason: COLLAB_DOCUMENT_TOO_LARGE_REASON });
     };
 
+    const analyzed = performance.now();
     const a = analyze(payload, document);
+    if (a.skeletonBuilt) {
+      const ended = performance.now();
+      refill(ended);
+      balance -= (ended - analyzed) * 1000;
+    }
     if (a.wouldPend) refuse("pending");
     if (!a.integratesStored) {
       const g = a.growthBound;
@@ -103,8 +111,12 @@ export function createDocumentSizeGate(): (data: beforeSyncPayload<AuthContext>)
       logger.error({ err, ctx: { documentName, userId } }, "doc_size_trial_budget_unavailable");
     }
     if (!allowed) refuse("budget_user");
-
+    // Trials that passed the first check together resume one by one; each
+    // sees what the ones before it spent.
     const started = performance.now();
+    refill(started);
+    if (balance < 0) refuse("budget_process");
+
     const pre = measure(document);
     const copy = new Y.Doc({ gc: document.gc });
     let after: number;
@@ -118,7 +130,9 @@ export function createDocumentSizeGate(): (data: beforeSyncPayload<AuthContext>)
       refill(ended);
       balance -= (ended - started) * 1000;
     }
-    if (after <= limit || after <= pre || (a.deletesLive && after <= ceiling)) {
+    // Updates admitted on other connections land after this one is decided.
+    const others = unappliedBesides(documentName, connection);
+    if (after + others <= limit || after <= pre || (a.deletesLive && after + others <= ceiling)) {
       recordExact(documentName, after);
       holdUntilApplied(documentName, connection, Math.max(0, after - pre));
       return;

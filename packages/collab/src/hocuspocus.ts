@@ -381,13 +381,13 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // activity, as it is never applied.
     beforeSync: async (data) => {
       await documentSizeGate(data);
-      try {
-        await recordContentActivity(data);
-      } catch (err) {
-        // Refused here, the admitted update is never applied.
-        dropUnapplied(data.documentName, data.connection);
-        throw err;
-      }
+      await recordContentActivity(data);
+    },
+
+    // Runs after every message, applied or not (a refused, read-only or
+    // unknown sync message is not), so an admitted update stops counting.
+    afterHandleMessage: async ({ documentName, connection }) => {
+      dropUnapplied(documentName, connection);
     },
 
     extensions,

@@ -59,7 +59,7 @@ import {
 } from "./helpers/document-size-fixtures.js";
 import { authFrame, SYNC, syncFrame, WIRE } from "./helpers/live-hocuspocus.js";
 
-const { serverSpy, logger, rateLimit, rateRedis, collabRedis, overrides, trial, activity, S_CONFIG } = vi.hoisted(() => ({
+const { serverSpy, logger, rateLimit, rateRedis, collabRedis, overrides, trial, activity, analysis, S_CONFIG } = vi.hoisted(() => ({
   // Spec 0.2 S configuration.
   S_CONFIG: {
     max_document_bytes: 1_048_576,
@@ -83,6 +83,9 @@ const { serverSpy, logger, rateLimit, rateRedis, collabRedis, overrides, trial, 
   // What the account activity half of `beforeSync` waits on, standing in for
   // its Postgres write; undefined lets it finish at once.
   activity: { hold: undefined as undefined | Promise<void> },
+  // How long the next skeleton built inside `analyze` takes on the faked
+  // clock: spent on the first transaction of a plain Y.Doc while armed.
+  analysis: { ms: 0 },
 }));
 
 vi.mock("@hocuspocus/server", async (importOriginal) => ({
@@ -158,6 +161,7 @@ type SizeModule = typeof SizeModuleShape;
 /** The production hooks a case drives. */
 interface Hooks {
   beforeSync: (payload: unknown) => Promise<void>;
+  afterHandleMessage: (payload: unknown) => Promise<void>;
   afterLoadDocument: (payload: unknown) => Promise<void>;
   connected: (payload: unknown) => Promise<void>;
   onChange: (payload: unknown) => Promise<void>;
@@ -457,10 +461,16 @@ beforeEach(() => {
   trial.armed = false;
   trial.pending = undefined;
   activity.hold = undefined;
+  analysis.ms = 0;
   rateLimit.mockReset().mockImplementation(allowed);
   const proto = Y.Doc.prototype as unknown as { emit: (name: string, args: unknown[]) => void };
   const realEmit = proto.emit;
   emitSpy = vi.spyOn(proto, "emit").mockImplementation(function (this: Y.Doc, name: string, args: unknown[]): void {
+    if (analysis.ms > 0 && name === "afterTransaction" && !(this instanceof Document)) {
+      const ms = analysis.ms;
+      analysis.ms = 0;
+      vi.advanceTimersByTime(ms);
+    }
     const pending = trial.pending;
     if (
       trial.armed &&
@@ -1108,13 +1118,123 @@ describe("beforeSync: an admitted update still on its way when the size is measu
     expect(pushes(c).at(-1)).toEqual(expectedPush(exact, "normal"));
   });
 
+  /**
+   * Call the production `afterHandleMessage`, which Hocuspocus runs after
+   * every message whether or not it was applied.
+   * @param doc - The document.
+   * @param c - The connection the message came on.
+   * @returns The hook's promise.
+   */
+  function afterHandleMessage(doc: Document, c: FakeConnection): Promise<void> {
+    return w.hooks.afterHandleMessage({ documentName: doc.name, document: doc, connection: c, context: c.context, socketId: c.socketId });
+  }
+
   it("forgets an admitted update that the activity step refused", async () => {
     const { doc, client, c } = await loadedNode();
     const update = capture(client, (d) => d.getText("t").insert(0, "y".repeat(50_000)));
     activity.hold = Promise.reject(new Error("activity write failed"));
     await expect(beforeSync(doc, c, SYNC.update, update)).rejects.toThrow("activity write failed");
+    await afterHandleMessage(doc, c);
     w.size.recordExact(NAME, refMeasure(doc));
     expect(upperOf(NAME)).toBe(refMeasure(doc));
+  });
+
+  it("forgets an admitted update Hocuspocus skipped because the connection turned read-only", async () => {
+    const { doc, client, c } = await loadedNode();
+    const update = capture(client, (d) => d.getText("t").insert(0, "y".repeat(50_000)));
+    await expect(beforeSync(doc, c, SYNC.update, update)).resolves.toBeUndefined();
+    // Demoted while the activity step awaited: Hocuspocus does not apply it.
+    c.readOnly = true;
+    await afterHandleMessage(doc, c);
+    w.size.recordExact(NAME, refMeasure(doc));
+    expect(upperOf(NAME)).toBe(refMeasure(doc));
+  });
+
+  it("forgets an admitted update whose sync sub-type Hocuspocus does not know", async () => {
+    const { doc, client, c } = await loadedNode();
+    const update = capture(client, (d) => d.getText("t").insert(0, "y".repeat(50_000)));
+    await expect(beforeSync(doc, c, 3, update)).resolves.toBeUndefined();
+    await afterHandleMessage(doc, c);
+    w.size.recordExact(NAME, refMeasure(doc));
+    expect(upperOf(NAME)).toBe(refMeasure(doc));
+  });
+});
+
+describe("beforeSync: admitted updates of other connections still on their way", () => {
+  /**
+   * A document just under the limit, two writers synced with it.
+   * @returns The document, its measure and two connections.
+   */
+  async function nearLimit(): Promise<{ doc: Document; a: FakeConnection; b: FakeConnection }> {
+    await boot();
+    const src = new Y.Doc();
+    fill(src, L - 30_000);
+    const doc = await load(NAME, src);
+    return { doc, a: conn(doc, { socketId: "sa", userId: "ua" }), b: conn(doc, { socketId: "sb", userId: "ub" }) };
+  }
+
+  it("refuses a trial whose copy fits only because another admitted update has not landed", async () => {
+    const { doc, a, b } = await nearLimit();
+    const first = appendUpdate(doc, 20_000);
+    const second = appendUpdate(doc, 20_000, "z");
+    // The first one fits under the upper bound and waits for its activity write.
+    await expect(beforeSync(doc, a, SYNC.update, first)).resolves.toBeUndefined();
+    expect(rateLimit).not.toHaveBeenCalled();
+    expect(refMeasureAfter(doc, second)).toBeLessThanOrEqual(L);
+    await refuse(doc, b, SYNC.update, second, { step: "trial", after: refMeasureAfter(doc, second) });
+  });
+
+  it("refuses the second of two concurrent trials that fit the limit only one at a time", async () => {
+    const { doc, a, b } = await nearLimit();
+    w.size.recordExact(NAME, L);
+    const first = appendUpdate(doc, 20_000);
+    const second = appendUpdate(doc, 20_000, "z");
+    handshake(b.socketId, doc.name);
+    const results = await Promise.allSettled([beforeSync(doc, a, SYNC.update, first), beforeSync(doc, b, SYNC.update, second)]);
+    expect(results[0].status).toBe("fulfilled");
+    expect(results[1].status).toBe("rejected");
+    expect(((results[1] as PromiseRejectedResult).reason as { reason?: unknown }).reason).toBe(COLLAB_DOCUMENT_TOO_LARGE_REASON);
+  });
+});
+
+describe("beforeSync: the token bucket under concurrent messages", () => {
+  it("refuses a trial whose bucket check ran before another trial spent the balance", async () => {
+    await boot();
+    const doc = await load(NAME, helloDoc());
+    const a = conn(doc, { socketId: "sa", userId: "ua" });
+    const b = conn(doc, { socketId: "sb", userId: "ub" });
+    needTrial();
+    const first = appendUpdate(doc, 100);
+    const second = appendUpdate(doc, 100, "z");
+    injectTrialDuration(1500, doc, first);
+    handshake(b.socketId, doc.name);
+    logger.warn.mockClear();
+    const results = await Promise.allSettled([beforeSync(doc, a, SYNC.update, first), beforeSync(doc, b, SYNC.update, second)]);
+    expect(results[0].status).toBe("fulfilled");
+    expect(results[1].status).toBe("rejected");
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect((logger.warn.mock.calls[0]?.[0] as { step?: unknown }).step).toBe("budget_process");
+  });
+
+  it("charges the time a skeleton took to the token bucket", async () => {
+    await boot();
+    const doc = await load(NAME, helloDoc());
+    const c = conn(doc);
+    // Two offline writers: the second one's origin is the first one's new text.
+    const one = syncedClient(doc, 101);
+    const typed = capture(one, (d) => d.getText("t").insert(0, "ab"));
+    const two = syncedClient(doc, 102);
+    Y.applyUpdate(two, typed);
+    const update = Y.mergeUpdates([typed, capture(two, (d) => d.getText("t").insert(2, "c"))]);
+    const a = w.size.analyze(update, doc);
+    expect(a.skeletonBuilt).toBe(true);
+    expect(a.wouldPend).toBe(false);
+    analysis.ms = 1500;
+    await admit(doc, c, SYNC.update, update);
+    expect(rateLimit).not.toHaveBeenCalled();
+    // Balance min(200, 200) - 1500 = -1300.
+    needTrial();
+    await refuse(doc, c, SYNC.update, appendUpdate(doc, 100), { step: "budget_process" });
   });
 });
 

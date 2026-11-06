@@ -253,18 +253,21 @@ function mergeRanges(ranges: Ranges): Ranges {
 }
 
 /**
- * Whether `a` holds clocks `b` does not, per client.
- * @param a - Intervals.
- * @param b - Intervals.
+ * Whether `a` holds clocks `b` does not, per client. Both come from
+ * `mergeRanges`, so an interval of `a` is held by `b` only inside one
+ * interval of `b`, and one pass over each list decides it.
+ * @param a - Disjoint ascending intervals.
+ * @param b - Disjoint ascending intervals, touching ones merged.
  * @returns True when some unit of `a` is missing from `b`.
  */
 function holdsMore(a: Map<number, Ranges>, b: Map<number, Ranges>): boolean {
   for (const [client, ranges] of a) {
     const other = b.get(client) ?? [];
+    let j = 0;
     for (const [x, y] of ranges) {
-      let covered = 0;
-      for (const [p, q] of other) covered += Math.max(0, Math.min(y, q) - Math.max(x, p));
-      if (covered < y - x) return true;
+      while (j < other.length && other[j]![1] <= x) j++;
+      const held = other[j];
+      if (!held || held[0] > x || held[1] < y) return true;
     }
   }
   return false;
@@ -828,8 +831,21 @@ export function holdUntilApplied(name: string, connection: unknown, bound: numbe
 }
 
 /**
- * Forget an admitted update that a later `beforeSync` step refused, so it is
- * never applied.
+ * What the admitted updates of every other connection, not applied yet, can
+ * still add.
+ * @param name - The document name.
+ * @param connection - The connection left out.
+ * @returns Bytes.
+ */
+export function unappliedBesides(name: string, connection: unknown): number {
+  let bytes = 0;
+  for (const [held, bound] of records.get(name)?.unapplied ?? []) if (held !== connection) bytes += bound;
+  return bytes;
+}
+
+/**
+ * Forget a connection's admitted update once Hocuspocus has handled its
+ * message; one it applied is gone already, one it did not apply never lands.
  * @param name - The document name.
  * @param connection - The connection it came on.
  */
