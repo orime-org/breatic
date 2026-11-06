@@ -20,7 +20,7 @@ import {
 import type { VideoPresentation, VideoPresentationRegisteredMetadata } from '@shared/upload/video-presentation-types.js';
 import { videoDurationsMatch } from '@shared/upload/video-duration.js';
 import {
-  chooseVideoCarrierRoute, estimateVideoJobSeconds, planVideoEncodeChunks, presentationEncodeFailure, videoCarrierRouteStages, videoContainerJobId,
+  chooseVideoCarrierRoute, estimateAudioEncodeSeconds, estimateVideoJobSeconds, planVideoEncodeChunks, presentationEncodeFailure, videoCarrierRouteStages, videoContainerJobId,
   type VideoCarrierIdentity, type VideoCarrierRoute, type VideoCarrierStage, type VideoCarrierRouteInput, type VideoEncodeChunk, type VideoJobWork,
 } from '@shared/mini-tools/video-encode-plan.js';
 import {
@@ -1375,7 +1375,7 @@ async function planAndProduce(store: VideoPresentationStore, capability: Present
   const remainingSeconds = (capability.deadlineAt - now) / 1000;
   const chunks = route === 'encode' ? encodeChunks(probe, encoding, remainingSeconds) : [];
   // A dispatched copy encodes no video: its estimate is the start plus the selected audio at the frozen AAC rate (§5.4).
-  const copySeconds = encoding.encoder.startSeconds + probe.work.audioSeconds / encoding.encoder.aacEncodeSecondsPerSecond;
+  const copySeconds = estimateAudioEncodeSeconds(probe.work.audioSeconds, encoding.encoder);
   const tooLong = route === 'encode' ? presentationEncodeFailure(chunks.length, encoding.maxParallelChunks)
     : route === 'dispatch_copy' && copySeconds > encoding.chunkShare * remainingSeconds ? 'too_long' : null;
   const work: PresentationPlanFacts['work'] = route === 'dispatch_copy' && tooLong === null ? { kind: 'dispatch_copy' }

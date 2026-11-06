@@ -8,7 +8,7 @@ import {
   type MiniToolPlanTarget, type TaskEntity, type TaskStatusType, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from "@breatic/shared";
 import {
-  batchVideoRunOutputs, canonicalMiniToolValue, estimateVideoJobSeconds, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
+  batchVideoRunOutputs, canonicalMiniToolValue, estimateAudioEncodeSeconds, estimateVideoJobSeconds, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
   plannedStageJobs, planVideoFrames, planVideoSplit, type FrameWindow, type FramesExecutionLayout, type MiniToolExecutionRequest, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type MiniToolPresentationRef, type MiniToolSourceBinding, type MiniToolStageJobs,
   type LipsyncExecutionLayout, type LipsyncTimeline, type VideoEncodeChunk, type VideoEncoderRates, type VideoExecutionDialogue, type VideoJobWork, type VideoPresentationTable,
 } from "@breatic/shared/mini-tools";
@@ -337,14 +337,14 @@ function lipSyncLayout(ledger: VideoPresentationLedger, table: VideoPresentation
   const crop = timing.cropSize * timing.cropSize;
   const frameSeconds = table.runs[0]!.step / table.timescale;
   const resultFrames = Math.max(1, Math.ceil(timing.timeline.duration / frameSeconds));
-  const audioSeconds = timing.timeline.duration / config.encoding.encoder.aac_encode_seconds_per_second;
+  // A stem and the stitch each encode one AAC track over the result; the stitch copies the composite chunks' packets (§97 D24-3).
+  const audio = estimateAudioEncodeSeconds(timing.timeline.duration, { startSeconds: rates.startSeconds, aacEncodeSecondsPerSecond: config.encoding.encoder.aac_encode_seconds_per_second });
   const faces = rates.startSeconds + used * (decode(width * height) + (width * height) / config.encoding.encoder.face_detect_pixels_per_second);
   const clip = rates.startSeconds + used * decode(width * height) + resultFrames * (crop / rates.encodePixelsPerSecond);
-  const stem = rates.startSeconds + audioSeconds;
   const compositeFrame = decode(width * height + timing.persons * crop) + (width * height) / rates.encodePixelsPerSecond;
   const composite = planVideoEncodeChunks({ keyframes: Array.from({ length: resultFrames }, () => true), frameSeconds: compositeFrame, targetSeconds: share - rates.startSeconds });
-  const seconds = prepareWork + rates.startSeconds * (preparation.length + (preparation.length > 1 ? 1 : 0)) + timing.persons * (faces + clip + stem)
-    + resultFrames * compositeFrame + rates.startSeconds * composite.length + rates.startSeconds + audioSeconds;
+  const seconds = prepareWork + rates.startSeconds * (preparation.length + (preparation.length > 1 ? 1 : 0)) + timing.persons * (faces + clip + audio)
+    + resultFrames * compositeFrame + rates.startSeconds * composite.length + audio;
   return { layout: { preparation, persons: timing.persons, composite }, seconds };
 }
 

@@ -238,6 +238,20 @@ export function videoPlanIsUnaltered(plan: VideoPlanAlterations): boolean {
 }
 
 /**
+ * Estimate a job whose only encoding is one AAC track (§5.4; §97 D7-1, D24-3): its start plus the audio seconds over the
+ * AAC rate. The dispatched copy, a lip-sync stem and the lip-sync stitch (its video chunks joined by packet copy) are such jobs.
+ * @param audioSeconds - The audio seconds encoded.
+ * @param rates - The encoder's start seconds and AAC rate.
+ * @param rates.startSeconds - A job's start seconds.
+ * @param rates.aacEncodeSecondsPerSecond - Audio seconds encoded per second.
+ * @returns The estimated seconds.
+ * @throws {never} Never.
+ */
+export function estimateAudioEncodeSeconds(audioSeconds: number, rates: { startSeconds: number; aacEncodeSecondsPerSecond: number }): number {
+  return rates.startSeconds + audioSeconds / rates.aacEncodeSecondsPerSecond;
+}
+
+/**
  * Estimate a job's seconds (§5.4): start seconds + (encoded + pre-roll frames) × (source pixels ÷ the decode-convert rate
  * for the source's bit depth and range + output pixels ÷ the encode rate); downloads are not estimated.
  * @param work - The job's frames and geometry.
