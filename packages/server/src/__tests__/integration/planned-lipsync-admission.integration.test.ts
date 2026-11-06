@@ -547,3 +547,74 @@ describe("lip-sync quote container work (§97; execution design §9.3; frames-sp
     expect(terms[1]! - terms[0]!).toBeGreaterThanOrEqual(0.01);
   });
 });
+
+// frames-split §5.4 派发 row: `lipsync_faces`, `lipsync_clip` and `lipsync_stem` run as one unchunked job per person, and
+// any of them estimated over one chunk share (remaining budget × `encoding.chunk_share`, 3600 s of the 2 h budget) is
+// refused at admission with its reason. §5.4 待实测 row: faces = used source frames × (source pixels ÷ decode rate + 1 ÷
+// YuNet detection fps), the fps configured under the lip-sync tool (chosen key `face_detect_fps` of
+// `executions["video.lip-sync"]`); stem = audio duration ÷ `encoding.encoder.aac_encode_seconds_per_second`. The design
+// names no separate message for one long job; the refusal is `server.mini_tool.runTooLong` with the parallel cap, the
+// message every other too-long run gets. Each case admits the run with the job about 0.9 share, then refuses it at about
+// 1.1 share, so only that one rate decides; decode is made negligible so the formula's other terms cannot cross either way.
+describe("lip-sync single job over one chunk share (frames-split §5.4 派发 and 待实测 rows)", () => {
+  /**
+   * One person speaking 4 s in cut_off: timeline 4 s, used source range [0, 4) = 800 frames of 1/200 s.
+   * @returns The fixture.
+   * @throws {Error} On fixture failure.
+   */
+  async function onePerson(): Promise<Fixture> {
+    const encoder = settings.encoding.encoder;
+    for (const key of Object.keys(encoder.decode_convert_pixels_per_second) as (keyof typeof encoder.decode_convert_pixels_per_second)[]) {
+      encoder.decode_convert_pixels_per_second[key] = 1e15;
+    }
+    const f = await seed([{ registered: 3, claimed: 3 }, { registered: 2.5, claimed: 2.5 }]);
+    speak(f, [[0, 0, 0], [0, 1, 1.5]]);
+    return f;
+  }
+
+  it("LJ01 refuses a run whose lipsync_faces alone exceeds one chunk share, after the same run is admitted just within it", async () => {
+    const f = await onePerson();
+    // 800 frames ÷ 0.25 fps = 3200 s of detection, within the 3600 s share.
+    Reflect.set(lipSync, "face_detect_fps", 800 / 3200);
+    const admitted = await plan(await control(f));
+    expect(admitted.usedRange).toEqual({ start: 0, end: 4 });
+    // 800 frames ÷ 0.2 fps = 4000 s: the one faces job is over the share; nothing else changed.
+    Reflect.set(lipSync, "face_detect_fps", 800 / 4000);
+    await refused(f, { key: "server.mini_tool.runTooLong", params: { max: settings.encoding.max_parallel_chunks } });
+  });
+
+  it("LJ02 refuses a run whose lipsync_stem alone exceeds one chunk share, after the same run is admitted just within it", async () => {
+    const f = await onePerson();
+    // The 4 s stem at 4/3200 audio seconds per second takes 3200 s.
+    settings.encoding.encoder.aac_encode_seconds_per_second = 4 / 3200;
+    expect((await plan(await control(f))).timeline.duration).toBe(4);
+    settings.encoding.encoder.aac_encode_seconds_per_second = 4 / 4000;
+    await refused(f, { key: "server.mini_tool.runTooLong", params: { max: settings.encoding.max_parallel_chunks } });
+  });
+});
+
+// frames-split §5.4 待实测 row: composite chunks are cut on the result axis by monotonic segment and chunk share, so a
+// bounce result's frozen composite windows never hold both a frame going forward and one coming back, however small the
+// work. Checked through the shared `lipsyncSourceFrameAt` on the source's own table (presentation-fixtures REMOVAL_TABLE).
+describe("lip-sync composite chunks follow monotonic segments (frames-split §5.4 待实测 row)", () => {
+  it("LJ03 freezes a bounce run's composite windows so none spans the reversal", async () => {
+    // A = max(0 + 3, 3 + 5) = 8 > V: bounce plays [0, V] forward and comes back from V; 1600 result frames of 1/200 s.
+    const f = await seed([{ registered: 3, claimed: 3 }, { registered: 5, claimed: 5 }]);
+    speak(f, [[0, 0, 0], [1, 1, 3]]); f.body.draft.params.syncMode = "bounce";
+    await accept(f);
+    const frozen = await plan(f.body.run_id);
+    expect(frozen.timeline).toEqual({ duration: 8, videoDuration: V, syncMode: "bounce" });
+    const windows = frozen.layout?.composite ?? [];
+    expect(windows[0]?.start).toBe(0);
+    expect(windows.at(-1)?.end).toBe(1600);
+    const table = { schemaVersion: 1 as const, timescale: 200, runs: [{ start: 0, count: 1011, step: 1, duration: 1 }] };
+    for (const [index, window] of windows.entries()) {
+      if (index > 0) expect(window.start).toBe(windows[index - 1]!.end);
+      const shown = Array.from({ length: window.end - window.start }, (_, at) => miniTools.lipsyncSourceFrameAt(frozen.timeline, table, (window.start + at) / 200));
+      const rises = shown.some((frame, at) => at > 0 && frame > shown[at - 1]!);
+      const falls = shown.some((frame, at) => at > 0 && frame < shown[at - 1]!);
+      expect(rises && falls, `composite window [${window.start}, ${window.end}) both rises and falls through the source`).toBe(false);
+    }
+    expect(frozen.stageJobs).toEqual(miniTools.plannedStageJobs(frozen.layout!));
+  });
+});
