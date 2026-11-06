@@ -9,7 +9,7 @@ import { applyTimelineEdit } from '@breatic/shared/space-content';
 import { timelineApi } from '@web/data/api/timeline';
 import { uploadMedia } from '@web/data/upload/media-upload';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
-import { estimateNodeBytes, reserveSpaceRoom, writeSpaceDoc } from '@web/data/yjs/space-write';
+import { estimateNodeBytes, reserveSpaceRoom, writeSpaceDoc, type SpaceRefusal } from '@web/data/yjs/space-write';
 import { prepareTimelineMediaPlacement } from '@web/spaces/timeline/prepare-media-placement';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 
@@ -24,8 +24,8 @@ export interface TimelineMediaDraftSnapshot {
   busy: boolean;
   progress: number | null;
   errorKey: string | null;
-  /** The room left, for the `no_room` error. */
-  errorRoom: number | null;
+  /** Why the Space's size refused the placement; shown when there is no `errorKey`. */
+  refusal: SpaceRefusal | null;
 }
 
 /** The Project resource context fixed for this document's material workflow. */
@@ -52,7 +52,7 @@ export interface TimelineMediaDraft {
  * @throws {never} Never.
  */
 function initialSnapshot(): TimelineMediaDraftSnapshot {
-  return { open: false, mode: 'project', selected: null, file: null, registeredAssetId: null, startFrame: '0', busy: false, progress: null, errorKey: null, errorRoom: null };
+  return { open: false, mode: 'project', selected: null, file: null, registeredAssetId: null, startFrame: '0', busy: false, progress: null, errorKey: null, refusal: null };
 }
 
 /**
@@ -156,7 +156,8 @@ function createTimelineMediaDraft(doc: Y.Doc, name: string, inputs: TimelineMedi
    * @throws {never} Never.
    */
   const publish = (patch: Partial<TimelineMediaDraftSnapshot>): void => {
-    snapshot = { ...snapshot, ...patch };
+    // A new error replaces a size refusal unless it is one.
+    snapshot = { ...snapshot, ...('errorKey' in patch && !('refusal' in patch) && { refusal: null }), ...patch };
     listeners.forEach((notify) => notify());
   };
   /** Cancel this document's current automatic placement and release its operation. */
@@ -241,7 +242,7 @@ function createTimelineMediaDraft(doc: Y.Doc, name: string, inputs: TimelineMedi
       const sourceId = newId();
       // Room is held before the upload or the asset lookup, and released on every way out but a write.
       const reserved = reserveSpaceRoom(name, reservedPlacementBytes(clipId, sourceId), { notify: false });
-      if (!reserved.ok) { publish({ errorKey: reserved.reason, errorRoom: reserved.reason === 'no_room' ? reserved.room : null }); return; }
+      if (!reserved.ok) { publish({ errorKey: null, refusal: reserved }); return; }
       const operationId = newId();
       const operations = useSpaceOperationsStore.getState();
       let released = false;
@@ -251,7 +252,7 @@ function createTimelineMediaDraft(doc: Y.Doc, name: string, inputs: TimelineMedi
       const attempt = { controller, release, canApply: true };
       active = attempt;
       operations.register(inputs.spaceId, operationId);
-      publish({ busy: true, errorKey: null, errorRoom: null });
+      publish({ busy: true, errorKey: null, refusal: null });
       let failure = 'source_unavailable';
       try {
         let assetId = captured.mode === 'project' ? captured.selected?.assetId : captured.registeredAssetId;
@@ -283,7 +284,7 @@ function createTimelineMediaDraft(doc: Y.Doc, name: string, inputs: TimelineMedi
         const written = writeSpaceDoc(name, { kind: 'add', estimate: commandBytes(prepared.command), reservation: reserved.reservation, notify: false }, () => {
           applied = applyTimelineEdit(doc, prepared.command);
         });
-        if (!written.ok) { publish({ errorKey: written.reason, errorRoom: written.reason === 'no_room' ? written.room : null }); return; }
+        if (!written.ok) { publish({ errorKey: null, refusal: written }); return; }
         if (!applied) { publish({ errorKey: 'target_missing' }); return; }
         close();
       } catch {

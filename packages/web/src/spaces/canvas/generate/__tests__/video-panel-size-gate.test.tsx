@@ -156,7 +156,7 @@ async function openAt(mode: 't2v' | 'multi_shot', push: DocSizePush): Promise<vo
             edges={[]}
             nodes={[{ id: 'v1', type: 'video', data: { handling: false, ...data } as VideoNodeView }]}
             getLastWriteWasLocal={() => true}
-            placeTemplate={() => undefined}
+            placeTemplate={() => ({ nodeIds: [], rects: [] })}
           />
         </CanvasContext.Provider>
       </ReactFlow>

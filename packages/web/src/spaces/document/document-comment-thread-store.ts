@@ -32,7 +32,14 @@ import { documentCommentThreads } from '@breatic/shared';
 import type { UserSummary } from '@web/data/api/users';
 import { usersApi } from '@web/data/api/users';
 import { docNameOf } from '@web/data/yjs/manager';
-import { writeSpaceDoc, type SpaceWriteKind } from '@web/data/yjs/space-write';
+import {
+  estimateNodeBytes,
+  reserveSpaceRoom,
+  writeSpaceDoc,
+  type SpaceReservation,
+  type SpaceReserveResult,
+  type SpaceWriteKind,
+} from '@web/data/yjs/space-write';
 import {
   documentCommentAuth,
   type DocumentCommentAuthInput,
@@ -60,7 +67,7 @@ export class SpaceFullError extends Error {
   }
 }
 
-/** What each thread store write does to the document's size (design 5.2). */
+/** What each thread store write does to the document's size (inner#1790). */
 const WRITE_KINDS: ReadonlyArray<readonly [keyof YjsThreadStore, SpaceWriteKind]> = [
   ['createThread', 'add'],
   ['addComment', 'add'],
@@ -73,24 +80,53 @@ const WRITE_KINDS: ReadonlyArray<readonly [keyof YjsThreadStore, SpaceWriteKind]
   ['deleteReaction', 'delete'],
 ];
 
+/** The document each size-gated store writes. */
+const storeDocs = new WeakMap<object, Y.Doc>();
+
+/** Room reserved for a store write, carried beside the library's own options. */
+interface ReservedOptions {
+  readonly spaceReservation?: SpaceReservation;
+}
+
+/**
+ * Reserve room for a write of a size-gated store before it is made.
+ * @param store - The store.
+ * @param bytes - Bytes the write can add.
+ * @param notify - Show the refusal toast.
+ * @returns The reservation, or why there is no room.
+ */
+export function reserveCommentRoom(store: object, bytes: number, notify: boolean): SpaceReserveResult {
+  const doc = storeDocs.get(store);
+  const name = doc === undefined ? null : docNameOf(doc);
+  if (name === null) return { ok: true, reservation: { release: (): void => undefined } };
+  return reserveSpaceRoom(name, bytes, { notify });
+}
+
 /**
  * Puts every write of a thread store behind the Space's size. The store's
  * writes run their Yjs transaction before their first await, so the write
- * happens inside the gate's callback.
+ * happens inside the gate's callback. An add is estimated from its options;
+ * a write may carry `spaceReservation`, room held for it beforehand.
  * @param store - The store; its methods are replaced in place.
  * @param doc - The document the threads live in.
  * @returns The same store.
  */
 function sizeGated(store: YjsThreadStore, doc: Y.Doc): YjsThreadStore {
+  storeDocs.set(store, doc);
   const methods = store as unknown as Record<string, (options: unknown) => Promise<unknown>>;
   for (const [method, kind] of WRITE_KINDS) {
     const write = methods[method]!;
     methods[method] = (options: unknown): Promise<unknown> => {
+      const { spaceReservation, ...rest } = (options ?? {}) as ReservedOptions & Record<string, unknown>;
       const name = docNameOf(doc);
-      if (name === null) return write(options);
+      if (name === null) return write(rest);
       let written: Promise<unknown> = Promise.resolve(undefined);
-      const result = writeSpaceDoc(name, { kind }, () => {
-        written = write(options);
+      const result = writeSpaceDoc(name, {
+        kind,
+        ...(kind === 'add' && { estimate: estimateNodeBytes(rest) }),
+        ...(spaceReservation !== undefined && { reservation: spaceReservation }),
+      }, () => {
+        written = write(rest);
       });
       return result.ok ? written : Promise.reject(new SpaceFullError());
     };

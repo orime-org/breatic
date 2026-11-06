@@ -73,7 +73,7 @@ describe('useNodeCreation', () => {
   it('createNodeAt writes an empty node of the type/position via addNode and returns its id', () => {
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')
-      .mockImplementation(() => undefined);
+      .mockImplementation(() => ({ ok: true }));
     const { result } = renderHook(() => useNodeCreation('p1', 's1'));
 
     const id = result.current.createNodeAt('image', { x: 100, y: 200 });
@@ -120,7 +120,7 @@ describe('useNodeCreation', () => {
   it('createUploadNodeAt writes a media node and reports where it put it', () => {
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')
-      .mockImplementation(() => undefined);
+      .mockImplementation(() => ({ ok: true }));
     const { result } = renderHook(() => useNodeCreation('p1', 's1'));
 
     const created = result.current.createUploadNodeAt('image', { x: 7, y: 8 });

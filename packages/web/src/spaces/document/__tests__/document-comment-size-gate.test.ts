@@ -36,7 +36,8 @@ vi.mock('@web/lib/toast', () => ({
 import { toast } from '@web/lib/toast';
 import { _resetCollabSocketForTests } from '@web/data/yjs/collab-socket';
 import { docName, _resetForTests } from '@web/data/yjs/manager';
-import { commentsOn } from '@web/spaces/document/document-comment-extension';
+import { commentsOn, threadIsPaintedIn } from '@web/spaces/document/document-comment-extension';
+import { commentOn } from '@web/spaces/document/document-comment-post';
 import {
   _resetDocumentEditorCacheForTests,
   adoptDocumentEditor,
@@ -49,6 +50,8 @@ import {
   F_FULL,
   F_FULL_NEAR,
   F_OVER,
+  F_WARNING,
+  F_WARNING_TIGHT,
   type DocSizePush,
 } from '@web/data/yjs/__tests__/helpers/doc-size-fixtures';
 
@@ -61,6 +64,7 @@ type Store = YjsThreadStore;
 interface Board {
   doc: Y.Doc;
   store: Store;
+  editor: Parameters<typeof commentOn>[0];
   th1: string;
   c1: string;
   th2: string;
@@ -93,13 +97,14 @@ async function open(push: DocSizePush): Promise<Board> {
   document.body.appendChild(root);
   adoptDocumentEditor(handle, root);
   const store = commentsOn(handle.editor)!.threadStore as unknown as Store;
+  handle.editor.replaceBlocks(handle.editor.document, [{ type: 'paragraph', content: 'hello world' }] as never);
   const first = await store.createThread({ initialComment: { body: body('first') as never } });
   const c1 = first.comments[0]!.id;
   const second = await store.createThread({ initialComment: { body: body('second') as never } });
   await store.resolveThread({ threadId: second.id });
   pushSize(provider, push);
   vi.mocked(toast.warning).mockClear();
-  return { doc, store, th1: first.id, c1, th2: second.id };
+  return { doc, store, editor: handle.editor as never, th1: first.id, c1, th2: second.id };
 }
 
 /**
@@ -184,5 +189,56 @@ describe('W-91 resolving is overwrite-kind', () => {
     expect(board.store.getThread(board.th2).resolved).toBe(true);
     expect(toast.warning).toHaveBeenCalledTimes(1);
     expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(COPY_EN.T_OVERWRITE_BLOCKED);
+  });
+});
+
+describe('posting a comment holds room for the thread and its mark together', () => {
+  /**
+   * Aims at all of `hello world`.
+   * @param state - The body.
+   * @returns The one range.
+   */
+  const aim: Parameters<typeof commentOn>[2] = (state) => {
+    let at = -1;
+    state.doc.descendants((node, pos) => {
+      if (at < 0 && node.isText) at = pos;
+      return at < 0;
+    });
+    return at < 0 ? null : [{ from: at, to: at + 'hello world'.length }];
+  };
+
+  it('writes neither when the room left holds less than both', async () => {
+    const board = await open(F_WARNING_TIGHT);
+    const before = Y.encodeStateAsUpdate(board.doc);
+
+    const result = await commentOn(board.editor, body('new'), aim);
+
+    expect(result).toEqual({ ok: false, reason: 'no_room', room: 1 });
+    expect(Y.encodeStateAsUpdate(board.doc)).toEqual(before);
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(COPY_EN.T_NO_ROOM('1 B'));
+  });
+
+  it('writes the thread and marks its words when both fit', async () => {
+    const board = await open(F_WARNING);
+
+    const thread = await commentOn(board.editor, body('new'), aim);
+
+    expect(thread).not.toBeNull();
+    const id = (thread as { id: string }).id;
+    expect(board.store.getThread(id)).toBeDefined();
+    expect(threadIsPaintedIn((board.editor as unknown as { prosemirrorView: { state: { doc: never } } }).prosemirrorView.state.doc, id)).toBe(true);
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it('refuses a reply that does not fit the room left', async () => {
+    const board = await open(F_WARNING_TIGHT);
+    const before = Y.encodeStateAsUpdate(board.doc);
+
+    await attempt(() => board.store.addComment({ threadId: board.th1, comment: { body: body('a reply') as never } }));
+
+    expect(Y.encodeStateAsUpdate(board.doc)).toEqual(before);
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(COPY_EN.T_NO_ROOM('1 B'));
   });
 });

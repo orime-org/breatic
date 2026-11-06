@@ -2952,9 +2952,7 @@
       "overlap": "此位置与其他片段重叠。请调整开始帧。",
       "target_missing": "目标已变化。请检查位置后重试。",
       "upload": "上传失败。可以使用已选文件重试。",
-      "permission_changed": "编辑权限已变化。请再次确认添加此视频。",
-      "full": "这个 Space 已满，无法继续添加。",
-      "no_room": "放不下：这个 Space 只剩 {room}。"
+      "permission_changed": "编辑权限已变化。请再次确认添加此视频。"
     }
   }
 }

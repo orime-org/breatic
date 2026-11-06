@@ -5,6 +5,7 @@ import type { CanvasNodeFields, CanvasProposal } from '@breatic/shared';
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
+import type { SpaceRefusal } from '@web/data/yjs/space-write';
 import { readUserPreferences, writeUserPreference } from '@web/lib/user-preferences-storage';
 
 /**
@@ -55,7 +56,7 @@ export type HistoryCommand = 'undo' | 'redo';
  * What became of a posted proposal: placed, failed, or refused by the size
  * cap because the Space is full or has only `room` bytes left (inner#1790).
  */
-export type ProposalOutcome = 'placed' | 'failed' | 'full' | { reason: 'no_room'; room: number };
+export type ProposalOutcome = 'placed' | 'failed' | SpaceRefusal;
 
 /**
  * Canvas UI store — non-Yjs UI state for the canvas viewport.

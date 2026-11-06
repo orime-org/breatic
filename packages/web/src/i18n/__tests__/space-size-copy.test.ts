@@ -154,25 +154,4 @@ describe('W-133 the other catalogs carry every size-cap key', () => {
       }
     }
   });
-
-  it.each(['timeline.errors.full', 'timeline.errors.no_room'])('%s exists in all five catalogs', (key) => {
-    for (const [tag, catalog] of LOCALE_CATALOGS) {
-      const message = readPath(catalog, key);
-      expect(typeof message, `${tag} ${key}`).toBe('string');
-      expect((message as string).trim(), `${tag} ${key}`).not.toBe('');
-    }
-  });
-
-  it('timeline.errors.full and timeline.errors.no_room say the timeline sentences in en and zh-CN', () => {
-    const [, en] = LOCALE_CATALOGS[0];
-    const [, zhCN] = LOCALE_CATALOGS[1];
-    expect(readPath(en, 'timeline.errors.full')).toBe(COPY_EN.T_TIMELINE_FULL);
-    expect(readPath(zhCN, 'timeline.errors.full')).toBe(COPY_ZH_CN.T_TIMELINE_FULL);
-    const noRoom = readPath(en, 'timeline.errors.no_room') as string;
-    const [name] = placeholders(noRoom);
-    changeLocale('en');
-    expect(t('timeline.errors.no_room', { [name]: VALUES.r })).toBe(COPY_EN.T_NO_ROOM(VALUES.r));
-    changeLocale('zh-CN');
-    expect(t('timeline.errors.no_room', { [name]: VALUES.r })).toBe(COPY_ZH_CN.T_NO_ROOM(VALUES.r));
-  });
 });

@@ -33,7 +33,7 @@ const NODE_BYTES = 64;
  * @param text - The string.
  * @returns Its encoded length.
  */
-function utf8Bytes(text: string): number {
+export function utf8Bytes(text: string): number {
   return new TextEncoder().encode(text).byteLength;
 }
 
@@ -108,6 +108,17 @@ export function spaceRefusalMessage(name: string, kind: Exclude<SpaceWriteKind, 
 }
 
 /**
+ * The sentence for an Agent proposal the Space had no room for.
+ * @param refusal - The refusal.
+ * @returns The sentence.
+ */
+export function proposalRefusalMessage(refusal: SpaceRefusal): string {
+  return refusal.reason === 'no_room'
+    ? t('spaces.size.proposalNoRoom', { room: formatBytes(refusal.room) })
+    : t('spaces.size.proposalFull');
+}
+
+/**
  * Refuse, with the toast unless the caller reports it or the document is
  * being rebuilt (its own toast was shown once).
  * @param name - Canonical document name.
@@ -168,7 +179,7 @@ function run(name: string, write: () => void): void {
  */
 export function writeSpaceDoc(name: string, options: SpaceWriteOptions, write: () => void): SpaceWriteResult {
   // A write inside an allowed one is part of it: the outer write stated the
-  // strongest kind and the whole estimate (design 5.2).
+  // strongest kind and the whole estimate.
   if ((openWrites.get(name) ?? 0) > 0) {
     write();
     return { ok: true };

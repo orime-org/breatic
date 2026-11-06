@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { formatBytes, type ProjectRegisteredAsset } from '@breatic/shared';
+import type { ProjectRegisteredAsset } from '@breatic/shared';
 import { Film, Upload } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
@@ -12,6 +12,8 @@ import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { timelineApi } from '@web/data/api/timeline';
+import { docName } from '@web/data/yjs/manager';
+import { spaceRefusalMessage } from '@web/data/yjs/space-write';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useReturnFocus } from '@web/lib/overlay-focus';
 import { cn } from '@web/lib/utils';
@@ -103,7 +105,7 @@ export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, on
         </ScrollArea>
         <div className='flex shrink-0 flex-col gap-3 border-t border-border p-4'>
           <div className='flex items-center gap-3'><Label htmlFor={`timeline-start-${spaceId}`} className='shrink-0'>{t('timeline.startFrame')}</Label><Input id={`timeline-start-${spaceId}`} data-testid='timeline-start-frame' type='number' autoComplete='off' min={0} step={1} value={state.startFrame} onChange={changeFrame} disabled={state.busy} /></div>
-          {state.errorKey !== null && <p data-testid='timeline-material-error' className='text-sm text-status-error-foreground'>{t(`timeline.errors.${state.errorKey}`, state.errorRoom === null ? undefined : { room: formatBytes(state.errorRoom) })}</p>}
+          {(state.errorKey !== null || state.refusal !== null) && <p data-testid='timeline-material-error' className='text-sm text-status-error-foreground'>{state.refusal !== null ? spaceRefusalMessage(docName.timelineSpace(projectId, spaceId), 'add', state.refusal) : t(`timeline.errors.${state.errorKey}`)}</p>}
           {!canWrite && <p className='text-sm text-muted-foreground'>{t('timeline.errors.readonly')}</p>}
         </div>
         <DialogFooter className='shrink-0 border-t border-border p-4'><Button type='button' variant='outline' onClick={onClose}>{t('timeline.cancel')}</Button><Button type='submit' data-testid='timeline-confirm-material' loading={state.busy} disabled={!canWrite}>{t('timeline.material.confirm')}</Button></DialogFooter>

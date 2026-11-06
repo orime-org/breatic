@@ -168,7 +168,7 @@ import {
   isReportableAssetUrl,
   textRefusalMark,
 } from '@web/spaces/canvas/canvas-upload';
-import { estimateNodeBytes, type SpaceRefusal } from '@web/data/yjs/space-write';
+import { estimateNodeBytes, reserveSpaceRoom, type SpaceRefusal } from '@web/data/yjs/space-write';
 import {
   runMediaUpload,
   type UploadFailure,
@@ -948,6 +948,13 @@ function CanvasSpaceInner({
         return false;
       }
       const pendingId = newId();
+      // The crop's URL is not known before its upload; the source's, an
+      // asset URL of the same form, stands in for it.
+      const room = reserveSpaceRoom(
+        docName.canvasSpace(projectId, spaceId),
+        estimateNodeBytes({ id: pendingId, url: sourceUrl, name: sourceName, width: 0, height: 0 }),
+      );
+      if (!room.ok) return false;
       store.addPendingFocusUpload({
         id: pendingId,
         nodeId: panelNodeId,
@@ -980,7 +987,9 @@ function CanvasSpaceInner({
                 spaceId,
                 panelNodeId,
                 image,
+                room.reservation,
               );
+              room.reservation.release();
               if (outcome === 'added') return;
               if (outcome === 'pool-full') {
                 toast.warning(
@@ -1019,6 +1028,7 @@ function CanvasSpaceInner({
               }
             },
             onFailure: (stage) => {
+              room.reservation.release();
               sessionStore.getState().removePendingFocusUpload(pendingId);
               toast.error(t(focusFailureMessageKey(stage)));
             },
@@ -2081,13 +2091,12 @@ function CanvasSpaceInner({
   // Enter on the new-note box: this is the moment the node exists. Everything
   // before it lived in one browser.
   const createAnnotationAt = React.useCallback(
-    (at: { x: number; y: number }, content: string): void => {
+    (at: { x: number; y: number }, content: string): boolean =>
       addNode(
         projectId,
         spaceId,
         createAnnotationNode(at, viewerId ?? '', content),
-      );
-    },
+      ).ok,
     [projectId, spaceId, viewerId],
   );
 
@@ -2820,7 +2829,7 @@ function CanvasSpaceInner({
         // The card reports a refusal by the size cap itself, so no toast here.
         const placed = placeProposalAt(intent.proposal, center, occupied, undefined, undefined, false);
         if ('ok' in placed) {
-          reportProposalOutcome(placed.reason === 'full' ? 'full' : { reason: 'no_room', room: placed.room });
+          reportProposalOutcome(placed);
           consumePendingNodeCreate();
           return;
         }
@@ -4860,9 +4869,7 @@ function CanvasSpaceInner({
                   }}
                 >
                   <AnnotationComposer
-                    onCommit={(content) => {
-                      createAnnotationAt(composerAt, content);
-                    }}
+                    onCommit={(content) => createAnnotationAt(composerAt, content)}
                     onClose={() => setComposerAt(null)}
                   />
                 </div>

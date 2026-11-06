@@ -18,7 +18,7 @@ const CANVAS: CanvasContextValue = {
   caretProvider: null,
 };
 
-const onCommit = vi.fn();
+const onCommit = vi.fn((_content: string): boolean => true);
 const onClose = vi.fn();
 
 /**
@@ -41,6 +41,16 @@ describe('the box that opens at the drop point', () => {
     fireEvent.keyDown(box, { key: 'Enter' });
     expect(onCommit).toHaveBeenCalledWith('a cooler shot here');
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('keeps the box and its words when the Space has no room for the note', () => {
+    onCommit.mockReturnValueOnce(false);
+    const box = open();
+    fireEvent.change(box, { target: { value: 'a cooler shot here' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(onCommit).toHaveBeenCalledWith('a cooler shot here');
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByTestId('annotation-composer-input')).toHaveValue('a cooler shot here');
   });
 
   it('keeps the Enter that confirms an IME candidate to itself', () => {

@@ -648,6 +648,72 @@ describe('the document body size filter (y-prosemirror key)', () => {
     });
   });
 
+  describe('an edit that rewrites existing content is an overwrite', () => {
+    /**
+     * Selects `count` characters from the start of the first text.
+     * @param o - The open body.
+     * @param count - How many.
+     * @returns The selection's start.
+     */
+    function selectStart(o: Open, count: number): number {
+      const from = posOf(o.view.state.doc, 'hello');
+      select(o, from, from + count);
+      return from;
+    }
+
+    it('(a) typing over a selected passage while full replaces it', () => {
+      const o = open([{ type: 'paragraph', content: 'hello world, a long passage' }]);
+      size(o, F_FULL);
+      selectStart(o, 20);
+      o.view.dispatch(o.view.state.tr.insertText('a'));
+      expect(o.view.state.doc.textContent).toBe('apassage');
+      expect(o.fragment.toString()).not.toContain('hello');
+      expectNoToast();
+    });
+
+    it('(b) Backspace at the start of a heading turns it into a paragraph while full', () => {
+      const o = open([{ type: 'heading', props: { level: 1 }, content: 'hello title' }]);
+      size(o, F_FULL);
+      select(o, posOf(o.view.state.doc, 'hello'));
+      o.view.someProp('handleKeyDown', (f) =>
+        f(o.view, new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true })));
+      expect((o.editor.document[0] as { type: string }).type).toBe('paragraph');
+      expect(o.view.state.doc.textContent).toBe('hello title');
+      expectNoToast();
+    });
+
+    it('(c) with no overwrite room left, typing over a selection is blocked as an overwrite', () => {
+      const o = open([{ type: 'paragraph', content: 'hello world, a long passage' }]);
+      size(o, F_FULL_NEAR);
+      selectStart(o, 20);
+      const before = snapshot(o);
+      o.view.dispatch(o.view.state.tr.insertText('a'));
+      expectUnchanged(o, before);
+      expectOneWarning(COPY_EN.T_OVERWRITE_BLOCKED);
+    });
+
+    it('(d) over the ceiling, a heading turned into a paragraph is blocked as an overwrite', () => {
+      const o = open([{ type: 'heading', props: { level: 1 }, content: 'hello title' }]);
+      size(o, F_OVER);
+      select(o, posOf(o.view.state.doc, 'hello'));
+      const before = snapshot(o);
+      o.view.someProp('handleKeyDown', (f) =>
+        f(o.view, new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true })));
+      expectUnchanged(o, before);
+      expectOneWarning(COPY_EN.T_OVERWRITE_BLOCKED);
+    });
+
+    it('(e) while full, replacing a selection with more than it holds is blocked as an add', () => {
+      const o = open();
+      size(o, F_FULL);
+      selectStart(o, 2);
+      const before = snapshot(o);
+      pastePlain(o, 'a much longer replacement');
+      expectUnchanged(o, before);
+      expectOneWarning(COPY_EN.T_ADD_BLOCKED);
+    });
+  });
+
   describe('W-147: its own sync key admits a transaction, isChangeOrigin or not', () => {
     it('a local insert carrying the y-prosemirror key meta without isChangeOrigin goes through', () => {
       const o = open();

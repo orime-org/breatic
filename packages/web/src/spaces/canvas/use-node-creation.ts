@@ -22,7 +22,6 @@ import {
   getLyricsFragment,
   getPromptFragment,
   getTextBody,
-  historyStepKind,
   CANVAS_ROLLED_BACK,
   readCanvasGraph,
   readNodePlacements,
@@ -38,6 +37,7 @@ import {
   type CanvasNodeView,
   type SnapshotNode,
 } from '@web/data/yjs/canvas-space';
+import { nextHistoryStep } from '@web/data/yjs/history-step';
 import { docName, getDoc, hasDoc } from '@web/data/yjs/manager';
 import {
   estimateNodeBytes,
@@ -667,7 +667,7 @@ export function useNodeCreation(
           }
         });
       } catch (error) {
-        writeSpaceDoc(docName.canvasSpace(projectId, spaceId), { kind: historyStepKind(rollback, 'undo') }, () => {
+        writeSpaceDoc(docName.canvasSpace(projectId, spaceId), nextHistoryStep(rollback, 'undo'), () => {
           rollback.undo();
         });
         throw error;

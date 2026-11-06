@@ -154,7 +154,7 @@ describe('W-83 a local video is refused before the upload when the Space is full
     const { doc, draft, client } = await draftAt(F_FULL, 'local');
     await draft.confirm();
     expect(uploadMedia).not.toHaveBeenCalled();
-    expect(draft.getSnapshot().errorKey).toBe('full');
+    expect(draft.getSnapshot().refusal).toEqual({ ok: false, reason: 'full' });
     expect(draft.getSnapshot().busy).toBe(false);
     expect(clipIds(doc)).toEqual([]);
     showDialog(draft, client);
@@ -168,7 +168,7 @@ describe('W-84 a local video whose estimate exceeds the room is refused as no_ro
     const { doc, draft, client } = await draftAt(F_WARNING_TIGHT, 'local');
     await draft.confirm();
     expect(uploadMedia).not.toHaveBeenCalled();
-    expect(draft.getSnapshot().errorKey).toBe('no_room');
+    expect(draft.getSnapshot().refusal).toEqual({ ok: false, reason: 'no_room', room: 1 });
     expect(clipIds(doc)).toEqual([]);
     showDialog(draft, client);
     expect(screen.getByTestId('timeline-material-error')).toHaveTextContent(COPY_EN.T_NO_ROOM('1 B'));
@@ -225,7 +225,7 @@ describe('W-144 a Project video reserves room the same way', () => {
     const { doc, draft, client } = await draftAt(F_FULL, 'project');
     const before = Y.encodeStateAsUpdate(doc);
     await draft.confirm();
-    expect(draft.getSnapshot().errorKey).toBe('full');
+    expect(draft.getSnapshot().refusal).toEqual({ ok: false, reason: 'full' });
     expect(timelineApi.resolveAsset).not.toHaveBeenCalled();
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
     showDialog(draft, client);
@@ -236,7 +236,7 @@ describe('W-144 a Project video reserves room the same way', () => {
   it('(b) is refused as no_room with the room left', async () => {
     const { doc, draft, client } = await draftAt(F_WARNING_TIGHT, 'project');
     await draft.confirm();
-    expect(draft.getSnapshot().errorKey).toBe('no_room');
+    expect(draft.getSnapshot().refusal).toEqual({ ok: false, reason: 'no_room', room: 1 });
     expect(clipIds(doc)).toEqual([]);
     showDialog(draft, client);
     await screen.findByTestId('timeline-project-video-' + ASSET.assetId);

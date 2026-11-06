@@ -169,7 +169,7 @@ describe('W-82 a document proposal in a full Space', () => {
 
     const result = await landProposal(handle, insertProposal(), 'write', ADMITTED);
 
-    expect(result).toEqual({ outcome: 'full' });
+    expect(result).toEqual({ outcome: 'refused', refusal: { ok: false, reason: 'full' } });
     expect(texts(handle)).toEqual(['First']);
     expect(toast.warning).not.toHaveBeenCalled();
   });
@@ -192,7 +192,7 @@ describe('W-82 a document proposal larger than the room left', () => {
 
     const result = await landProposal(handle, insertProposal(), 'write', ADMITTED);
 
-    expect(result).toMatchObject({ outcome: 'no_room', room: 1 });
+    expect(result).toEqual({ outcome: 'refused', refusal: { ok: false, reason: 'no_room', room: 1 } });
     expect(texts(handle)).toEqual(['First']);
   });
 

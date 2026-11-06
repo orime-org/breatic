@@ -24,7 +24,6 @@ import { occurrences, type DocumentProposal } from '@breatic/shared';
 import type { WriteAccess } from '@web/data/yjs/collab-socket';
 import { docNameOf } from '@web/data/yjs/manager';
 import {
-  estimateNodeBytes,
   estimateSliceBytes,
   reserveSpaceRoom,
   type SpaceRefusal,
@@ -48,17 +47,8 @@ import type { LandingAction } from '@web/stores/document-proposals';
 type LandingResult =
   | ({ outcome: 'applied'; leftOut?: number } & Landed)
   | { outcome: 'mediaOnly'; leftOut: number }
-  | { outcome: 'readOnly' | 'changed' | 'blockGone' | 'failed' | 'full' }
-  | { outcome: 'no_room'; room: number };
-
-/**
- * The outcome a press the Space's size refused ends with (inner#1790).
- * @param refusal - The refusal.
- * @returns The outcome, with the room left when it is a lack of room.
- */
-function sizeOutcome(refusal: SpaceRefusal): LandingResult {
-  return refusal.reason === 'no_room' ? { outcome: 'no_room', room: refusal.room } : { outcome: 'full' };
-}
+  | { outcome: 'readOnly' | 'changed' | 'blockGone' | 'failed' }
+  | { outcome: 'refused'; refusal: SpaceRefusal };
 
 /**
  * Reserves room for what a press writes, quietly: the press reports a
@@ -72,7 +62,7 @@ function reserveFor(handle: Landable, estimate: number): { reservation?: SpaceRe
   const name = view === undefined || view === null ? null : docNameOf(handle.undoManager.doc);
   if (name === null) return {};
   const result = reserveSpaceRoom(name, estimate, { notify: false });
-  return result.ok ? { reservation: result.reservation } : { refused: sizeOutcome(result) };
+  return result.ok ? { reservation: result.reservation } : { refused: { outcome: 'refused', refusal: result } };
 }
 
 /** Current lifecycle and connection permission, read synchronously at commit. */
@@ -388,7 +378,7 @@ function landBlocks(handle: Landable, proposal: DocumentProposal, blocks: readon
     reservation?.release();
   }
   const refusal = landing === null ? undefined : refusalOf(landing);
-  return refusal === undefined ? null : sizeOutcome(refusal);
+  return refusal === undefined ? null : { outcome: 'refused', refusal };
 }
 
 /**
@@ -437,19 +427,12 @@ export async function landProposal(
     if (ready !== null) return ready;
     const blockId = proposal.blockId!;
     const aim = proposal.quote === undefined ? wholeBlockAim(blockId) : quoteAim(blockId, proposal.quote);
-    // The thread is written by the comment store, which judges it again; the
-    // reservation only keeps the room until the comment has landed.
-    const { reservation, refused } = reserveFor(handle, estimateNodeBytes(body));
-    if (refused !== undefined) return refused;
-    try {
-      await commentOn(handle.editor as never, body, (state) =>
-        currentResult(handle, proposal, readAdmission) === null ? aim(state) : null, {
-        thread: { proposalId: proposal.proposalId },
-        comment: { fromAgent: true },
-      });
-    } finally {
-      reservation?.release();
-    }
+    const posted = await commentOn(handle.editor as never, body, (state) =>
+      currentResult(handle, proposal, readAdmission) === null ? aim(state) : null, {
+      thread: { proposalId: proposal.proposalId },
+      comment: { fromAgent: true },
+    }, { notify: false });
+    if (posted !== null && 'ok' in posted) return { outcome: 'refused', refusal: posted };
     const result = currentResult(handle, proposal, readAdmission);
     return result ?? { outcome: 'changed' };
   }

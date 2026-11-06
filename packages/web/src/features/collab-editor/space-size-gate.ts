@@ -3,8 +3,13 @@
 
 /**
  * The size cap at the ProseMirror editors bound to a Space document
- * (inner#1790, design 5.2): the transaction filter every editor carries, and
+ * (inner#1790): the transaction filter every editor carries, and
  * the gate their undo and redo commands go through.
+ *
+ * A transaction is as strong as its strongest step: `add`, then `overwrite`,
+ * then `delete`. y-prosemirror writes a replaced range or a changed block
+ * type as a delete of the old content plus the new content, which collab
+ * admits up to the hard ceiling like any write that deletes live content.
  *
  * The editors write Yjs from their sync plugin, after a transaction has been
  * applied, so the judgement is made on the transaction itself: a local
@@ -17,7 +22,9 @@
  *
  * | step | kind and estimate |
  * |---|---|
- * | `ReplaceStep`, `ReplaceAroundStep` with a slice | `add`, `estimateSliceBytes` of the slice |
+ * | `ReplaceStep` whose slice holds no more than the range it replaces | `overwrite` |
+ * | `ReplaceAroundStep` whose slice holds no text (the block around kept content changes) | `overwrite` |
+ * | any other `ReplaceStep` or `ReplaceAroundStep` with a slice | `add`, `estimateSliceBytes` of the slice |
  * | `AddMarkStep` | `add`, 32 bytes per text node it touches |
  * | `AddNodeMarkStep`, `AttrStep`, any other step | `add`, 32 bytes |
  * | `ReplaceStep` or `ReplaceAroundStep` without a slice, `RemoveMarkStep`, `RemoveNodeMarkStep` | `delete` |
@@ -44,8 +51,10 @@ import * as Y from 'yjs';
 
 import { SPACE_DELETE_MIN_BYTES, t } from '@breatic/shared';
 import { readDocSize } from '@web/data/yjs/doc-size';
+import { nextHistoryStep } from '@web/data/yjs/history-step';
 import {
   estimateSliceBytes,
+  utf8Bytes,
   writeSpaceDoc,
   type SpaceRefusal,
   type SpaceReservation,
@@ -85,7 +94,10 @@ export function refusalOf(tr: Transaction): SpaceRefusal | undefined {
 
 /** What a transaction does to its document's size. */
 interface Judged {
-  kind: SpaceWriteKind;
+  /** Some step adds. */
+  adds: boolean;
+  /** Some step rewrites existing content. */
+  overwrites: boolean;
   /** Bytes the adds in it can grow the document by. */
   estimate: number;
   /** UTF-8 bytes of the text its deletes remove. */
@@ -94,15 +106,6 @@ interface Judged {
   removesBlock: boolean;
   /** A delete joins two blocks, or rewrites what it keeps. */
   rewrites: boolean;
-}
-
-/**
- * UTF-8 bytes of a string.
- * @param text - The string.
- * @returns Its encoded length.
- */
-function utf8Bytes(text: string): number {
-  return new TextEncoder().encode(text).byteLength;
 }
 
 /**
@@ -142,6 +145,16 @@ function textNodesIn(doc: ProseMirrorNode, from: number, to: number): number {
 }
 
 /**
+ * What marking ranges adds, as the filter judges the marks.
+ * @param doc - The document.
+ * @param ranges - The ranges.
+ * @returns Bytes.
+ */
+export function markBytes(doc: ProseMirrorNode, ranges: ReadonlyArray<{ from: number; to: number }>): number {
+  return ranges.reduce((sum, { from, to }) => sum + MARK_BYTES * textNodesIn(doc, from, to), 0);
+}
+
+/**
  * Judge one step against the document it applies to.
  * @param step - The step.
  * @param doc - The document before it.
@@ -150,8 +163,16 @@ function textNodesIn(doc: ProseMirrorNode, from: number, to: number): number {
 function judgeStep(step: Step, doc: ProseMirrorNode, judged: Judged): void {
   if (step instanceof ReplaceStep || step instanceof ReplaceAroundStep) {
     if (step.slice.size > 0) {
-      judged.kind = 'add';
-      judged.estimate += estimateSliceBytes(step.slice);
+      const added = estimateSliceBytes(step.slice);
+      const rewrites = step instanceof ReplaceAroundStep
+        ? step.slice.content.textBetween(0, step.slice.content.size) === ''
+        : step.from < step.to && added <= estimateSliceBytes(doc.slice(step.from, step.to));
+      if (rewrites) {
+        judged.overwrites = true;
+        return;
+      }
+      judged.adds = true;
+      judged.estimate += added;
       return;
     }
     const removed = removal(doc, step.from, step.to);
@@ -161,7 +182,7 @@ function judgeStep(step: Step, doc: ProseMirrorNode, judged: Judged): void {
     return;
   }
   if (step instanceof RemoveMarkStep || step instanceof RemoveNodeMarkStep) return;
-  judged.kind = 'add';
+  judged.adds = true;
   judged.estimate += step instanceof AddMarkStep ? MARK_BYTES * textNodesIn(doc, step.from, step.to) : MARK_BYTES;
 }
 
@@ -170,12 +191,12 @@ function judgeStep(step: Step, doc: ProseMirrorNode, judged: Judged): void {
  * @param tr - The transaction.
  * @returns What it does to the size.
  */
-function judge(tr: Transaction): Judged {
-  const judged: Judged = { kind: 'delete', estimate: 0, deletedBytes: 0, removesBlock: false, rewrites: false };
+function judge(tr: Transaction): Judged & { kind: SpaceWriteKind } {
+  const judged: Judged = { adds: false, overwrites: false, estimate: 0, deletedBytes: 0, removesBlock: false, rewrites: false };
   tr.steps.forEach((step, k) => {
     judgeStep(step, tr.docs[k]!, judged);
   });
-  return judged;
+  return { ...judged, kind: judged.adds ? 'add' : judged.overwrites ? 'overwrite' : 'delete' };
 }
 
 /**
@@ -187,7 +208,7 @@ function judge(tr: Transaction): Judged {
  * composed characters on screen.
  * @param view - The editor view.
  */
-export function redrawFromState(view: EditorView): void {
+function redrawFromState(view: EditorView): void {
   const { docView } = view as unknown as { docView: { markDirty: (from: number, to: number) => void } };
   docView.markDirty(0, view.state.doc.content.size);
   view.updateState(view.state);
@@ -267,46 +288,6 @@ export function spaceSizeFilterPlugin(options: SpaceSizeFilterOptions): Plugin {
 }
 
 /**
- * Whether every struct a delete set covers is the value of a map key that
- * still has a value, so restoring them only replaces values.
- * @param doc - The document.
- * @param deletions - The delete set.
- * @returns True when all of them are such values.
- */
-function onlyKeyValues(doc: Y.Doc, deletions: ReturnType<typeof Y.createDeleteSet>): boolean {
-  for (const [client, ranges] of deletions.clients) {
-    const structs = doc.store.clients.get(client);
-    if (structs === undefined) continue;
-    for (const { clock, len } of ranges) {
-      for (let k = Y.findIndexSS(structs, clock); k < structs.length && structs[k]!.id.clock < clock + len; k += 1) {
-        const struct = structs[k];
-        if (!(struct instanceof Y.Item)) continue;
-        const key = struct.parentSub;
-        const parent = struct.parent as Y.AbstractType<unknown> | null;
-        const current = key === null || parent === null ? undefined : parent._map.get(key);
-        if (current === undefined || current.deleted) return false;
-      }
-    }
-  }
-  return true;
-}
-
-/**
- * What undoing or redoing the next stack item does to the size: an item
- * that restores nothing only deletes, one that restores only values of keys
- * that still have one overwrites, anything else adds.
- * @param manager - The undo manager.
- * @param direction - Which stack.
- * @returns The kind, or null when the stack is empty.
- */
-export function historyStepKind(manager: Y.UndoManager, direction: 'undo' | 'redo'): SpaceWriteKind | null {
-  const item = (direction === 'undo' ? manager.undoStack : manager.redoStack).at(-1);
-  if (item === undefined) return null;
-  if ([...item.deletions.clients.values()].every((ranges) => ranges.length === 0)) return 'delete';
-  return onlyKeyValues(manager.doc, item.deletions) ? 'overwrite' : 'add';
-}
-
-/**
  * Runs an undo or redo if the Space's size allows what it restores.
  * @param name - The Space document's name, or null for an unregistered one.
  * @param manager - The undo manager the step comes from.
@@ -321,10 +302,10 @@ export function gatedHistoryStep(
   direction: 'undo' | 'redo',
   run: () => boolean,
 ): boolean {
-  const kind = name === null ? null : historyStepKind(manager, direction);
-  if (name === null || kind === null) return run();
+  const stack = direction === 'undo' ? manager.undoStack : manager.redoStack;
+  if (name === null || stack.length === 0) return run();
   let ran = false;
-  const result = writeSpaceDoc(name, { kind }, () => {
+  const result = writeSpaceDoc(name, nextHistoryStep(manager, direction), () => {
     ran = run();
   });
   return result.ok ? ran : true;

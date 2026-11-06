@@ -197,7 +197,7 @@ describe('W-46 add-kind canvas writes are refused once the Space is full', () =>
     expect(toast.warning).toHaveBeenCalledTimes(1);
     expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(COPY_EN.T_ADD_BLOCKED);
     expect(toast.error).not.toHaveBeenCalled();
-    if (name === 'setNodeExtractedText') expect(result).toEqual({ ok: false, reason: 'full' });
+    if (name === 'setNodeExtractedText' || name === 'addNode') expect(result).toEqual({ ok: false, reason: 'full' });
   });
 });
 

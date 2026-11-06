@@ -113,6 +113,7 @@ import { bodyToPlainText, writePlainTextIntoBody } from '@breatic/shared/canvas/
 import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
 import type { TypedNodeView } from '@web/data/yjs/node-view';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
+import { clearDocSize, readDocSize, receiveDocSizePayload } from '@web/data/yjs/doc-size';
 import * as downloadLib from '@web/lib/download';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { installLayout, relayout } from '@web/spaces/canvas/crop/__tests__/crop-harness';
@@ -2107,7 +2108,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [target] }));
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')
-      .mockImplementation(() => undefined);
+      .mockImplementation(() => ({ ok: true }));
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -2470,7 +2471,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')
-      .mockImplementation(() => undefined);
+      .mockImplementation(() => ({ ok: true }));
     useCanvasStore.getState().requestNodeCreate('image');
 
     renderSpace(true);
@@ -2517,7 +2518,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')
-      .mockImplementation(() => undefined);
+      .mockImplementation(() => ({ ok: true }));
     useCanvasStore.getState().requestNodeCreate('image');
 
     renderSpace();
@@ -2531,7 +2532,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')
-      .mockImplementation(() => undefined);
+      .mockImplementation(() => ({ ok: true }));
     renderSpace();
 
     dispatchPaste('hello from clipboard');
@@ -2575,7 +2576,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       corners: (taken: ReadonlyArray<{ x: number; y: number }>) => void;
     } => {
       mockUseCanvasSpace.mockReturnValue(mockSpace());
-      const addNode = vi.spyOn(canvasSpace, 'addNode').mockImplementation(() => undefined);
+      const addNode = vi.spyOn(canvasSpace, 'addNode').mockImplementation(() => ({ ok: true }));
       const placements = vi.spyOn(canvasSpace, 'readNodePlacements').mockReturnValue([]);
       const corners = (taken: ReadonlyArray<{ x: number; y: number }>): void => {
         placements.mockReturnValue(taken.map((at, i) => ({ id: `taken-${String(i)}`, type: 'image', ...at })));
@@ -2646,7 +2647,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')
-      .mockImplementation(() => undefined);
+      .mockImplementation(() => ({ ok: true }));
     renderSpace(true);
 
     dispatchPaste('text while read-only');
@@ -2659,7 +2660,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')
-      .mockImplementation(() => undefined);
+      .mockImplementation(() => ({ ok: true }));
     renderSpace();
     const input = document.createElement('input');
     spaceRegion().appendChild(input);
@@ -3853,6 +3854,24 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     }
   });
 
+  // The crop's upload is a request to the server before the Yjs write, so its
+  // room is held first: a full Space uploads nothing (inner#1790).
+  it('uploads no crop while the Space is full', async () => {
+    const name = docName.canvasSpace('p', 's');
+    receiveDocSizePayload(name, JSON.stringify({
+      type: 'doc:size', bytes: 10223616, limit: 10485760, ceiling: 10747904, room: 0, overwriteRoom: 458752, phase: 'full',
+    }), 0);
+    const restore = await confirmVideoCrop();
+    try {
+      expect(readDocSize(name).phase).toBe('full');
+      expect(mockRunFocusCrop).not.toHaveBeenCalled();
+      expect(screen.getByTestId('focus-crop-layer')).toBeInTheDocument();
+    } finally {
+      clearDocSize(name);
+      restore();
+    }
+  });
+
   // A crop's upload is front-end work like any other upload on the canvas:
   // while it is out, closing this Space's tab is held back, so the image it
   // brings back has the document to land in (inner#1235 A17).
@@ -3913,7 +3932,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
      */
     const spyWrites = (): {
       removeElements: ReturnType<typeof vi.spyOn>;
-      addNode: ReturnType<typeof vi.spyOn>;
+      addNode: MockInstance<typeof canvasSpace.addNode>;
       createGroup: ReturnType<typeof vi.spyOn>;
     } => ({
       removeElements: vi.spyOn(canvasSpace, 'removeElements'),
@@ -5229,7 +5248,7 @@ describe('placing a note (#1881)', () => {
     // 137 cases passing.
     const written = vi
       .spyOn(canvasSpace, 'addNode')
-      .mockImplementation(() => undefined);
+      .mockImplementation(() => ({ ok: true }));
     armAndClickTheBoard({ x: 137, y: 241 });
     const box = screen.getByTestId('annotation-composer-input');
     fireEvent.change(box, { target: { value: 'a cooler shot here' } });
@@ -5249,6 +5268,19 @@ describe('placing a note (#1881)', () => {
     // and the viewport starts untransformed, so the flow point is the client
     // point.
     expect(node.position).toEqual({ x: 137, y: 241 });
+    written.mockRestore();
+  });
+
+  it('keeps the note box open with its words when the Space refuses the note', async () => {
+    const written = vi
+      .spyOn(canvasSpace, 'addNode')
+      .mockImplementation(() => ({ ok: false, reason: 'full' }));
+    armAndClickTheBoard({ x: 137, y: 241 });
+    const box = screen.getByTestId('annotation-composer-input');
+    fireEvent.change(box, { target: { value: 'a cooler shot here' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(written).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('annotation-composer-input')).toHaveValue('a cooler shot here');
     written.mockRestore();
   });
 

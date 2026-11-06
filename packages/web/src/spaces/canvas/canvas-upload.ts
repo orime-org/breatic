@@ -266,7 +266,7 @@ export async function fillNodeFromFile(
 
 /**
  * What a text node says when the words read from its file were not written
- * because the Space had no room for them (inner#1790, design 5.4).
+ * because the Space had no room for them (inner#1790).
  * @param refusal - Why the size cap refused the words.
  * @returns The message for the node's upload mark.
  */

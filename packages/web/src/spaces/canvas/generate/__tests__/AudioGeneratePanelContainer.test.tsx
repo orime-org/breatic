@@ -387,7 +387,7 @@ function panelTree(
             projectId='p'
             spaceId='s'
             getLastWriteWasLocal={lastWriteWasLocal}
-            placeTemplate={() => undefined}
+            placeTemplate={() => ({ nodeIds: [], rects: [] })}
             edges={board.edges ?? []}
             nodes={[
               {

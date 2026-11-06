@@ -5,10 +5,11 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowRight } from 'lucide-react';
 import * as React from 'react';
 
-import { formatBytes, promptPlainText, type CanvasProposal, type ProposalNode } from '@breatic/shared';
+import { promptPlainText, type CanvasProposal, type ProposalNode } from '@breatic/shared';
 
 import { ProposalAction, ProposalActions } from '@web/pages/project/chat/ProposalActions';
 import { useTranslation } from '@web/i18n/use-translation';
+import { proposalRefusalMessage } from '@web/data/yjs/space-write';
 import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
 import {
@@ -81,15 +82,13 @@ export const ProposalCard = React.memo(function ProposalCard({
   // free to press again. A Space without room for it is told the same way,
   // as a warning (inner#1790).
   const failedLine = t('chat.proposal.failed');
-  const fullLine = t('spaces.size.proposalFull');
   React.useEffect(() => {
     if (!building || outcome === null) return;
     setBuilding(false);
     if (outcome === 'failed') toast.error(failedLine);
-    else if (outcome === 'full') toast.warning(fullLine);
-    else if (typeof outcome === 'object') toast.warning(t('spaces.size.proposalNoRoom', { room: formatBytes(outcome.room) }));
+    else if (typeof outcome === 'object') toast.warning(proposalRefusalMessage(outcome));
     clearOutcome();
-  }, [building, outcome, clearOutcome, failedLine, fullLine, t]);
+  }, [building, outcome, clearOutcome, failedLine]);
 
   const onUse = React.useCallback((): void => {
     // Nobody is holding the mailbox when no canvas is open. Said out loud

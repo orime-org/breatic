@@ -2952,9 +2952,7 @@
       "overlap": "This position overlaps another clip. Change the start frame.",
       "target_missing": "The target has changed. Check the position and retry.",
       "upload": "Upload failed. Retry with the selected file.",
-      "permission_changed": "Editing permission changed. Confirm again to add this video.",
-      "full": "This Space is full and cannot take more.",
-      "no_room": "This doesn't fit — the Space has {room} left."
+      "permission_changed": "Editing permission changed. Confirm again to add this video."
     }
   }
 }

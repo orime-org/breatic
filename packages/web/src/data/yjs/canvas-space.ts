@@ -20,6 +20,7 @@ import {
 import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
+import { nextHistoryStep } from '@web/data/yjs/history-step';
 import {
   usableUrls,
   writeNodeMedia,
@@ -31,7 +32,9 @@ import { toNodeView } from '@web/data/yjs/node-view';
 import { fillNestedData, splitSnapshot } from '@web/data/yjs/node-data-snapshot';
 import {
   estimateNodeBytes,
+  utf8Bytes,
   writeSpaceDoc,
+  type SpaceReservation,
   type SpaceWriteKind,
   type SpaceWriteOptions,
   type SpaceWriteResult,
@@ -254,39 +257,6 @@ export function createCanvasRollback(projectId: string, spaceId: string): Y.Undo
 }
 
 /**
- * What running the next undo or redo step does to the document's size
- * (inner#1790, design 5.2): a step that restores nothing only deletes; one
- * that restores only the values of keys still present overwrites; anything
- * else (a removed node, a removed key, sequence content) adds.
- * @param manager - The undo manager about to run.
- * @param direction - Which stack's top step runs.
- * @returns The kind the step is judged as.
- */
-export function historyStepKind(manager: Y.UndoManager, direction: 'undo' | 'redo'): SpaceWriteKind {
-  const step = (direction === 'undo' ? manager.undoStack : manager.redoStack).at(-1);
-  if (!step) return 'delete';
-  const store = manager.doc.store.clients;
-  let kind: SpaceWriteKind = 'delete';
-  for (const [client, ranges] of step.deletions.clients) {
-    const structs = store.get(client);
-    if (!structs) continue;
-    for (const { clock, len } of ranges) {
-      for (let i = Y.findIndexSS(structs, clock); i < structs.length && structs[i].id.clock < clock + len; i++) {
-        const item = structs[i];
-        if (!(item instanceof Y.Item) || Y.isDeleted(step.insertions, item.id)) continue;
-        if (!manager.scope.some((type) => type instanceof Y.AbstractType && Y.isParentOf(type, item))) continue;
-        const parent = item.parent;
-        if (item.parentSub === null || !(parent instanceof Y.AbstractType) || parent._item?.deleted === true) return 'add';
-        const current = parent._map.get(item.parentSub);
-        if (current === undefined || current.deleted) return 'add';
-        kind = 'overwrite';
-      }
-    }
-  }
-  return kind;
-}
-
-/**
  * Process-wide cache of canvas undo managers, keyed by canvas-space document
  * name — so a stack outlives any remount of `useCanvasSpace` while its tab is
  * open.
@@ -408,7 +378,7 @@ export interface CanvasBatchOptions extends SpaceWriteOptions {
 }
 
 /**
- * The options one canvas write is judged with (inner#1790, design 5.2).
+ * The options one canvas write is judged with (inner#1790).
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space the write goes to.
  * @param kind - What the write does to the document's size.
@@ -576,7 +546,7 @@ export function useCanvasSpace(
   const undo = React.useCallback((): void => {
     const manager = undoManagerRef.current;
     if (!manager) return;
-    writeSpaceDoc(name, { kind: historyStepKind(manager, 'undo') }, () => {
+    writeSpaceDoc(name, nextHistoryStep(manager, 'undo'), () => {
       undoManagerRef.current?.undo();
     });
     syncAvailability();
@@ -584,7 +554,7 @@ export function useCanvasSpace(
   const redo = React.useCallback((): void => {
     const manager = undoManagerRef.current;
     if (!manager) return;
-    writeSpaceDoc(name, { kind: historyStepKind(manager, 'redo') }, () => {
+    writeSpaceDoc(name, nextHistoryStep(manager, 'redo'), () => {
       undoManagerRef.current?.redo();
     });
     syncAvailability();
@@ -741,16 +711,17 @@ function fragmentsFor(modes: readonly string[]): Y.Map<Y.XmlFragment> {
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space to add the node to.
  * @param node - The wire node fields (id, type, position, data) to insert.
+ * @returns Whether the Space's size let it in.
  */
 export function addNode(
   projectId: string,
   spaceId: string,
   node: CanvasNodeFields,
-): void {
+): SpaceWriteResult {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const { name, options } = canvasWrite(projectId, spaceId, 'add', node);
-  writeSpaceDoc(name, options, () => {
+  return writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       nodesMap.set(node.id, nodeEntry(node, buildDataMap(node.data, node.type)));
     }, CANVAS_UNDO);
@@ -1377,6 +1348,7 @@ function appendFocusImageCore(
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - Id of the generative node the crop belongs to.
  * @param image - The focus crop to append (see FocusImage copy semantics).
+ * @param reservation - Room held for it before its upload started.
  * @returns 'added' on success; a discriminated refusal otherwise
  *   (round-8 — one boolean collapsed "node deleted mid-upload" into a
  *   misleading pool-full toast): 'node-missing' (deleted / data map gone),
@@ -1389,6 +1361,7 @@ export function addNodeFocusImage(
   spaceId: string,
   nodeId: string,
   image: FocusImage,
+  reservation?: SpaceReservation,
 ): 'added' | 'node-missing' | 'invalid-entry' | 'pool-full' | 'refused' {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
@@ -1398,7 +1371,7 @@ export function addNodeFocusImage(
   if (!(data instanceof Y.Map)) return 'node-missing';
   let result: 'added' | 'invalid-entry' | 'pool-full' | 'refused' = 'refused';
   const { name, options } = canvasWrite(projectId, spaceId, 'add', image);
-  writeSpaceDoc(name, options, () => {
+  writeSpaceDoc(name, reservation === undefined ? options : { ...options, reservation }, () => {
     doc.transact(() => {
       result = appendFocusImageCore(data, image);
     }, CONTENT_WRITE);
@@ -1833,7 +1806,7 @@ export function setNodeExtractedText(
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return { ok: true };
   const name = docName.canvasSpace(projectId, spaceId);
-  const options = { kind: 'add' as const, estimate: new TextEncoder().encode(content).byteLength, notify };
+  const options = { kind: 'add' as const, estimate: utf8Bytes(content), notify };
   return writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       landHandlingContent(data, node.get('type'), content);

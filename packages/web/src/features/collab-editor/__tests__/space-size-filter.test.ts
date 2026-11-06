@@ -404,6 +404,25 @@ describe('size filter on the canvas text node editor', () => {
     });
   });
 
+  it('typing over a selected word while full replaces it, as an overwrite', () => {
+    const o = open(build);
+    size(o, F_FULL);
+    select(o.editor, 7, 12);
+    o.editor.view.dispatch(o.editor.state.tr.insertText('a'));
+    expect(o.editor.state.doc.textContent).toBe('hello a');
+    expectNoToast();
+  });
+
+  it('typing over a selected word over the ceiling is blocked as an overwrite', () => {
+    const o = open(build);
+    size(o, F_OVER);
+    select(o.editor, 7, 12);
+    const before = snapshot(o);
+    o.editor.view.dispatch(o.editor.state.tr.insertText('a'));
+    expectUnchanged(o, before);
+    expectOneWarning(COPY_EN.T_OVERWRITE_BLOCKED);
+  });
+
   it('W-110: one blocked step blocks the whole transaction', () => {
     const o = open(build);
     size(o, F_FULL);
