@@ -33,11 +33,14 @@ function referenceOf(messages: Record<string, unknown>): string {
   return ((messages.canvas as Record<string, unknown>).promptMark as Record<string, string>).reference ?? "";
 }
 
+/** The every-locale key under test, held in a const so the dotted key can be a computed property. */
+const REFERENCE_KEY = "canvas.promptMark.reference";
+
 beforeEach(() => {
   resetLocales();
   setLocaleMessages("en", catalog("en"));
   for (const locale of ["zh-CN", "zh-TW", "ja", "ko"]) {
-    setEveryLocaleMessages(locale, { "canvas.promptMark.reference": referenceOf(catalog(locale)) });
+    setEveryLocaleMessages(locale, { [REFERENCE_KEY]: referenceOf(catalog(locale)) });
   }
   setLocale("en");
 });
