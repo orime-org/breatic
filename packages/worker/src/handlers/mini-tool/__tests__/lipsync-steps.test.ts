@@ -12,7 +12,9 @@
  *   failure `failed`; a passed deadline, exhausted network retries, 408, 429 and 5xx are `timeout`; anything else is
  *   `failed` (never guessed from error text). Only `gen` can be `model_rejected`.
  * - `lipsyncStepKey(planFingerprint, personId, kind)`: the DD §7.1 step key, a 64-hex digest of the three; the composite
- *   step has no person. `lipsyncObjectKey(stepKey, attempt)`: the intermediate object key, the step key plus `:a<attempt>`.
+ *   step has no person. `lipsyncObjectKey(stepKey, attemptId)`: the intermediate object key, the step key, a colon and the
+ *   attempt's existing `attemptId` (§97 D17-6: `MiniToolStepAttempt.attemptId` for track and gen, the container attempt's
+ *   `attemptId` for container steps).
  * - `lipsyncStoppedLines(people)`: once a person has `no_face` or `model_rejected`, every other person whose paid step
  *   (`track`, `gen`) is not yet submitted gets a `stopped` line on that step and is not submitted; submitted steps settle.
  * - `lipsyncFailureReason(people, shared)`: the one CommitFail reason of §9.4, a line per person who did not succeed with
@@ -32,7 +34,7 @@ interface Line { personId: string; detectionNumber: number; step: PersonStep; ca
 interface StepsApi {
   lipsyncStepCategory: (step: "track" | "gen", error: unknown, rejection: Rejection) => "model_rejected" | "timeout" | "failed";
   lipsyncStepKey: (planFingerprint: string, personId: string | null, kind: PersonStep | "composite") => string;
-  lipsyncObjectKey: (stepKey: string, attempt: number) => string;
+  lipsyncObjectKey: (stepKey: string, attemptId: string) => string;
   lipsyncStoppedLines: (people: readonly PersonState[]) => Line[];
   lipsyncFailureReason: (people: readonly (PersonState & { succeeded: boolean })[], shared: { step: "prepare" | "composite" | "stitch" | "expired"; category: "timeout" | "failed" } | null) => unknown;
 }
@@ -85,10 +87,12 @@ describe("step keys and intermediate object keys (§97; DD §7.1, frames-split �
       lipsyncStepKey("d".repeat(64), "person-1", "track"), lipsyncStepKey("d".repeat(64), null, "composite")]).size).toBe(5);
   });
 
-  it("SK02 an intermediate object key is the step key plus the attempt", async () => {
+  it("SK02 an intermediate object key is the step key, a colon and the attempt's id", async () => {
     const { lipsyncObjectKey } = await steps();
-    expect(lipsyncObjectKey("a".repeat(64), 1)).toBe(`${"a".repeat(64)}:a1`);
-    expect(lipsyncObjectKey("a".repeat(64), 3)).toBe(`${"a".repeat(64)}:a3`);
+    const first = "70000000-0000-4000-8000-000000000001";
+    const second = "70000000-0000-4000-8000-000000000002";
+    expect(lipsyncObjectKey("a".repeat(64), first)).toBe(`${"a".repeat(64)}:${first}`);
+    expect(lipsyncObjectKey("a".repeat(64), second)).not.toBe(lipsyncObjectKey("a".repeat(64), first));
   });
 });
 
