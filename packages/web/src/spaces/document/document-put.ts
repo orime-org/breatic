@@ -5,10 +5,11 @@
  * Where pasted or dropped content goes (inner#1351 + inner#1390 design
  * §5.4.3): the target settled from the selection first, then one set of
  * placement rules for web content, the body's own content, canvas nodes and
- * files alike, and the caret after what was put. Content arrives as a slice,
- * is transformed once on its target and read as lines (`rowsOf`); one line of
- * words goes in by ProseMirror's own paste, everything else by the placement
- * here. In a table cell (§5.4.7) one table fills the cells from the target
+ * files alike, and the caret after what was put. Content arrives as a slice
+ * and is read as lines (`rowsOf`) before any transform; one line of words
+ * goes in by ProseMirror's own paste steps, which run its transforms there,
+ * and everything else is transformed once on its target (`onTarget`) and
+ * placed here. In a table cell (§5.4.7) one table fills the cells from the target
  * cell and any other content goes into the cell.
  */
 
@@ -592,12 +593,13 @@ function putBlocksInCells(view: EditorView, rows: readonly PMNode[]): Placed {
 
 /**
  * Puts content at the selection, or at a drop's point (§5.4.3). In a code
- * block plain text goes in as it is; otherwise the content is transformed on
- * its target, read as lines, every medium judged once, and content that puts
- * nothing in changes nothing. Then the selection settles the target: in a
+ * block plain text goes in as it is; otherwise every medium is judged once
+ * and the content read as lines, and content that puts nothing in changes
+ * nothing. Then the selection settles the target: in a
  * table cell or over selected cells, one table fills the cells from the
  * target cell and any other content goes into the cell (§5.4.7); one line of
- * words goes in as words at the selection; a selected block is replaced in
+ * words goes in as words at a selection in a line (at a gap cursor it is a
+ * block of its own, as any content there); a selected block is replaced in
  * place; any other content is put after a text selection is deleted and the
  * caret's line judged.
  * @param editor - The editor.
@@ -675,8 +677,8 @@ export function putContent(editor: Editor, content: Read, options: PutOptions): 
 /**
  * Puts judged content at the selection, by what the selection is (§5.4.3).
  * What goes in by ProseMirror's own paste (one line of words, the lines a
- * stored cell takes) has its transforms run there and only arrives without
- * row ids unless it moved; what the placement lays out is transformed on the
+ * stored cell takes) has its transforms run there and arrives without row
+ * ids unless it moved; what the placement lays out is transformed on the
  * target first (`onTarget`).
  * @param editor - The editor.
  * @param kept - The content, its media judged.
@@ -694,10 +696,10 @@ function putAtSelection(editor: Editor, kept: Slice, lines: Rows, options: PutOp
    * The content as our placement lays it out, transformed on the target.
    * @returns Its lines.
    */
-  const placed = (): Rows => rowsOf(onTarget(view, kept, landed));
+  const transformedRows = (): Rows => rowsOf(onTarget(view, kept, landed));
   const $cell = selection instanceof CellSelection ? selection.$anchorCell : cellAround(selection.$from);
   if ($cell !== null && heldTables(selection) === null && (selection instanceof CellSelection || onlyTable(lines.rows) !== null)) {
-    const content = placed();
+    const content = transformedRows();
     const table = onlyTable(content.rows);
     if (table !== null) return putTableInCells(view, table);
     if (selection instanceof CellSelection) return putBlocksInCells(view, content.rows);
@@ -706,7 +708,7 @@ function putAtSelection(editor: Editor, kept: Slice, lines: Rows, options: PutOp
   // the reader made it; more lines go by the placement, which keeps the
   // reader's line its own type (§5.4.3).
   const words = isOneLine(lines);
-  if (selection instanceof NodeSelection && !selection.node.isInline) return words ? putWords(view, pasted[0]!, options.byPaste) : replaceBlock(view, placed().rows, selection);
+  if (selection instanceof NodeSelection && !selection.node.isInline) return words ? putWords(view, pasted[0]!, options.byPaste) : replaceBlock(view, transformedRows().rows, selection);
   // A gap cursor stands between blocks: its words are a block of their own,
   // placed by the gap like any other content.
   if (words && selection.$from.parent.isTextblock && textOnlyAt(selection.$from) === null) return putWords(view, pasted[0]!, options.byPaste);
@@ -714,7 +716,7 @@ function putAtSelection(editor: Editor, kept: Slice, lines: Rows, options: PutOp
   if (!selection.empty) view.dispatch(view.state.tr.deleteSelection());
   const $caret = view.state.selection.$from;
   const target = textOnlyAt($caret);
-  const content = placed();
+  const content = transformedRows();
   if (target !== null) return putInTextOnly(editor, content.rows, pasted, target, options);
   if (!$caret.parent.isTextblock) return putInGap(view, content.rows, $caret.parent.type.name === 'blockContainer' ? $caret.before() : $caret.pos);
   return putInLine(view, content, $caret, replaced);
