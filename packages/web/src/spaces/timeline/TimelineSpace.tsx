@@ -265,29 +265,30 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  // The clip button holding keyboard focus. A clip moved to another track row remounts there, and a deleted one is
-  // gone; either way the browser drops focus to <body>, so it is handed back to the clip, or to the Timeline.
-  const focusedClip = React.useRef<HTMLElement | null>(null);
+  // The element of this Timeline holding keyboard focus. A clip moved to another track row remounts there, and a
+  // deleted clip, track or list row is gone; either way the browser drops focus to <body>, so it is handed back to
+  // the clip, or to the Timeline.
+  const focused = React.useRef<HTMLElement | null>(null);
   React.useEffect(() => {
     const element = root.current;
     if (element === null) return;
     /**
-     * Remember a focused clip button, or forget it when focus moves to anything else in the Timeline.
+     * Remember the focused element.
      * @param event - The focus event.
      * @throws {never} Never.
      */
     const focusIn = (event: FocusEvent): void => {
-      focusedClip.current = event.target instanceof HTMLElement && event.target.dataset.clipId !== undefined ? event.target : null;
+      focused.current = event.target instanceof HTMLElement ? event.target : null;
     };
     /**
-     * Forget the clip when focus leaves it while it is still on the page: the user moved focus away.
+     * Forget the element when focus leaves it while it is still on the page: the user moved focus away.
      * @param event - The focus event.
      * @throws {never} Never.
      */
     const focusOut = (event: FocusEvent): void => {
       const target = event.target;
-      if (target !== focusedClip.current) return;
-      queueMicrotask(() => { if (target instanceof HTMLElement && target.isConnected && focusedClip.current === target) focusedClip.current = null; });
+      if (target !== focused.current) return;
+      queueMicrotask(() => { if (target instanceof HTMLElement && target.isConnected && focused.current === target) focused.current = null; });
     };
     element.addEventListener('focusin', focusIn);
     element.addEventListener('focusout', focusOut);
@@ -297,16 +298,17 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     };
   }, []);
   React.useLayoutEffect(() => {
-    const clip = focusedClip.current;
-    if (clip === null) return;
-    if (clip.isConnected) {
-      if (window.document.activeElement !== clip) focusedClip.current = null;
+    const element = focused.current;
+    if (element === null) return;
+    if (element.isConnected) {
+      if (window.document.activeElement !== element) focused.current = null;
       return;
     }
-    focusedClip.current = null;
+    focused.current = null;
     if (window.document.activeElement !== window.document.body) return;
-    const id = clip.dataset.clipId ?? '';
-    (root.current?.querySelector<HTMLElement>(`[data-clip-id="${CSS.escape(id)}"]`) ?? root.current)?.focus();
+    const clipId = element.dataset.clipId;
+    const clip = clipId === undefined ? null : root.current?.querySelector<HTMLElement>(`[data-clip-id="${CSS.escape(clipId)}"]`);
+    (clip ?? root.current)?.focus();
   });
   const keyHandler = React.useRef(onKeyDown);
   keyHandler.current = onKeyDown;
