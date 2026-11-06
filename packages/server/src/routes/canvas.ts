@@ -122,6 +122,9 @@ const urlIngestQueue = createQueue("url-ingest");
  * the band stays plain. `waveformPeaksRetryMs` / `waveformPeaksRetryMaxMs`: how
  * often, and for how long, an open band re-reads a missing peaks file
  * (inner#1305).
+ *
+ * `removeBackgroundModel` and `lipSync`: the models the video panel quotes and
+ * offers, from the same executions admission reads (inner#1306).
  * @param c - Hono context (auth required, no params)
  * @returns `200` with the canvas knobs the frontend reads.
  */
@@ -136,9 +139,28 @@ canvas.get("/limits", (c) => {
       waveformMaxBytes: getMiniToolsConfig().waveform_max_bytes,
       waveformPeaksRetryMs: getMiniToolsConfig().waveform_peaks_retry_ms,
       waveformPeaksRetryMaxMs: getMiniToolsConfig().waveform_peaks_retry_max_ms,
+      removeBackgroundModel: getMiniToolsConfig().executions["video.remove-bg"]?.model ?? null,
+      lipSync: lipSyncChoices(),
     },
   });
 });
+
+/**
+ * The lip-sync choices the video panel offers, or null where the deployment configures none: each selectable model's
+ * duration range, the tracking range and the caps; nothing else of the execution reaches the browser.
+ * @returns The choices.
+ * @throws {never} Never.
+ */
+function lipSyncChoices(): { models: { name: string; minDurationSeconds: number; maxDurationSeconds: number }[];
+  tracking: { minDurationSeconds: number; maxDurationSeconds: number }; maxPeople: number; maxDialogues: number } | null {
+  const lipSync = getMiniToolsConfig().executions["video.lip-sync"];
+  if (lipSync === undefined) return null;
+  return {
+    models: lipSync.models.map((model) => ({ name: model.name, minDurationSeconds: model.min_duration_seconds, maxDurationSeconds: model.max_duration_seconds })),
+    tracking: { minDurationSeconds: lipSync.tracking.min_duration_seconds, maxDurationSeconds: lipSync.tracking.max_duration_seconds },
+    maxPeople: lipSync.max_people, maxDialogues: lipSync.max_dialogues,
+  };
+}
 
 /**
  * `POST /canvas/tasks` — create a task and enqueue it for execution.
