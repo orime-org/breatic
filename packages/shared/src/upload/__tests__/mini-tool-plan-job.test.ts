@@ -213,3 +213,12 @@ describe("planned media job output reports", () => {
     expect(() => readMiniToolPlanJobReport(request, invalid)).toThrow();
   });
 });
+
+// inner#1306 test plan §97 items 2 and 3 (frames-split §7.17 recipe table; D11-3, D11-4): the planned job lane names the
+// transition window and the erase/expand model composite as recipe kinds of its own union. Their fields beyond the kind
+// are not asserted here (§97 需要确认: field names not fixed by the design).
+describe("the recipe kinds of the batch-six container jobs (§97 D11-3, D11-4)", () => {
+  it.each(["transition_window", "model_composite"])("RK01 the recipe union has the %s kind", (kind) => {
+    expect(miniToolPlanRecipeSchema.options.map((option) => option.shape.kind.value)).toContain(kind);
+  });
+});
