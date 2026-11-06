@@ -232,15 +232,31 @@ describe('the model picker', () => {
     expect(trigger()).toBeDisabled();
   });
 
-  it('shows the model a new conversation starts on when the stored one is no longer listed, and sends with it', async () => {
+  it('shows the model a new conversation starts on when a list asked for again still lacks the stored one, and sends with it', async () => {
     conversations({ 'c-1': { id: 'retired/model', name: 'Retired' } });
     vi.mocked(chatApi.models).mockResolvedValue({ models: [DEEPSEEK, SONNET], lastUsed: SONNET.id });
 
     renderPicker('c-1');
 
     await waitFor(() => expect(trigger()).toHaveTextContent('Claude Sonnet 5.5'));
+    expect(chatApi.models).toHaveBeenCalledTimes(2);
     expect(useConversationRuntime.getState().conversations['c-1']?.agentModel).toEqual(SONNET);
     expect(chatApi.setModel).not.toHaveBeenCalled();
+  });
+
+  it('keeps the stored model when the list it has is older than the model, and asks for the list again', async () => {
+    const HAIKU = { id: 'anthropic/claude-haiku-5.5', name: 'Claude Haiku 5.5' };
+    conversations({ 'c-1': HAIKU });
+    vi.mocked(chatApi.models)
+      .mockResolvedValueOnce({ models: [DEEPSEEK, SONNET], lastUsed: DEEPSEEK.id })
+      .mockResolvedValue({ models: [DEEPSEEK, SONNET, HAIKU], lastUsed: DEEPSEEK.id });
+
+    renderPicker('c-1');
+
+    await waitFor(() => expect(chatApi.models).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(trigger()).toBeEnabled());
+    expect(trigger()).toHaveTextContent('Claude Haiku 5.5');
+    expect(useConversationRuntime.getState().conversations['c-1']?.agentModel).toEqual(HAIKU);
   });
 
   it('asks for the list again after the server refused a send', async () => {

@@ -45,10 +45,25 @@ function ModelPickerInner({ conversationId, projectId }: ModelPickerProps): Reac
   const models = list.data?.models;
   const lastUsed = list.data?.lastUsed;
 
+  // The server hands over only listed models, so one missing from the list
+  // here may be newer than the list: the list is asked for again first.
+  const [askedFor, setAskedFor] = React.useState<string | null>(null);
+  const missing = stored !== undefined && models !== undefined && !models.some((m) => m.id === stored.id);
+  const settled = askedFor === stored?.id && !list.isPlaceholderData && !list.isFetching;
+  React.useEffect(() => {
+    if (missing && askedFor !== stored.id) {
+      setAskedFor(stored.id);
+      conversationRuntime.noteRefused();
+    }
+  }, [missing, askedFor, stored]);
+
   const shown = React.useMemo((): AgentModelChoice | undefined => {
     if (stored === undefined || models === undefined) return stored;
-    return models.find((m) => m.id === stored.id) ?? models.find((m) => m.id === lastUsed) ?? models[0] ?? stored;
-  }, [stored, models, lastUsed]);
+    const listed = models.find((m) => m.id === stored.id);
+    if (listed !== undefined) return listed;
+    if (!settled) return stored;
+    return models.find((m) => m.id === lastUsed) ?? models[0] ?? stored;
+  }, [stored, models, lastUsed, settled]);
 
   // The message goes with what the picker shows.
   React.useEffect(() => {
