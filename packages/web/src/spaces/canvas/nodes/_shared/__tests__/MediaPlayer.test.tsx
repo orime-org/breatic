@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, render, screen, fireEvent } from '@testing-library/react';
+import { act, render, screen, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import * as React from 'react';
@@ -26,7 +26,6 @@ describe('MediaPlayer', () => {
     // seek now lives in the control row (the waveform is decorative, drag = move node)
     expect(screen.getByTestId('seek')).toBeInTheDocument();
     expect(screen.getByTestId('volume-button')).toBeInTheDocument();
-    expect(screen.queryByTestId('fullscreen')).not.toBeInTheDocument();
   });
 
   // inner#1844: full screen opens from the media's top-right corner, never from the bar.
@@ -34,8 +33,8 @@ describe('MediaPlayer', () => {
     render(<MediaPlayer modality='video' src='/v.mp4' poster='/p.jpg' />);
     expect(screen.getByTestId('media-element').tagName).toBe('VIDEO');
     expect(screen.getByTestId('seek')).toBeInTheDocument();
-    expect(screen.queryByTestId('fullscreen')).not.toBeInTheDocument();
-    expect(screen.getByTestId('volume-button')).toBeInTheDocument();
+    const buttons = within(screen.getByTestId('controls')).getAllByRole('button');
+    expect(buttons.map((b) => b.getAttribute('data-testid'))).toEqual(['play-toggle', 'volume-button']);
     expect(screen.queryByTestId('waveform')).not.toBeInTheDocument();
   });
 
