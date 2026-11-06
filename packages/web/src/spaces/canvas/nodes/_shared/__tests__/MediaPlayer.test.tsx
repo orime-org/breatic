@@ -5,7 +5,12 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { act, render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { MediaPlayer } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
+import * as React from 'react';
+
+import {
+  MediaPlayer,
+  type MediaPlayerHandle,
+} from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 
 beforeAll(() => {
   HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
@@ -24,11 +29,12 @@ describe('MediaPlayer', () => {
     expect(screen.queryByTestId('fullscreen')).not.toBeInTheDocument();
   });
 
-  it('video: seek slider + fullscreen + volume button, NO waveform', () => {
+  // inner#1844: full screen opens from the media's top-right corner, never from the bar.
+  it('video: seek slider + volume button, NO fullscreen, NO waveform', () => {
     render(<MediaPlayer modality='video' src='/v.mp4' poster='/p.jpg' />);
     expect(screen.getByTestId('media-element').tagName).toBe('VIDEO');
     expect(screen.getByTestId('seek')).toBeInTheDocument();
-    expect(screen.getByTestId('fullscreen')).toBeInTheDocument();
+    expect(screen.queryByTestId('fullscreen')).not.toBeInTheDocument();
     expect(screen.getByTestId('volume-button')).toBeInTheDocument();
     expect(screen.queryByTestId('waveform')).not.toBeInTheDocument();
   });
@@ -87,15 +93,6 @@ describe('MediaPlayer', () => {
     const el = screen.getByTestId('media-element') as HTMLAudioElement;
     await user.click(screen.getByTestId('play-toggle'));
     expect(el.play).toHaveBeenCalledTimes(1);
-  });
-
-  it('clicking fullscreen requests fullscreen (standard API) on the video', async () => {
-    const user = userEvent.setup();
-    const fs = vi.fn().mockResolvedValue(undefined);
-    HTMLMediaElement.prototype.requestFullscreen = fs;
-    render(<MediaPlayer modality='video' src='/v.mp4' />);
-    await user.click(screen.getByTestId('fullscreen'));
-    expect(fs).toHaveBeenCalledTimes(1);
   });
 
   // --- final layout (acceptance items 12-17) ---
@@ -317,5 +314,71 @@ describe('MediaPlayer video with a known size', () => {
 
     expect(screen.getByTestId('media-element').getAttribute('width')).toBeNull();
     expect(screen.queryByTestId('media-skeleton')).toBeNull();
+  });
+});
+
+// inner#1844: the full-screen player takes over where the source player was,
+// and hands its state back when it closes.
+describe('MediaPlayer start and handle', () => {
+  beforeEach(() => {
+    vi.mocked(HTMLMediaElement.prototype.play).mockClear();
+  });
+
+  it('writes the start time, mute and volume at mount, before any metadata', () => {
+    render(
+      <MediaPlayer
+        modality='video'
+        src='/v.mp4'
+        start={{ time: 12, playing: false, muted: true, volume: 0.4 }}
+      />,
+    );
+    const el = screen.getByTestId('media-element') as HTMLVideoElement;
+    expect(el.currentTime).toBe(12);
+    expect(el.muted).toBe(true);
+    expect(el.volume).toBe(0.4);
+    expect(el.play).not.toHaveBeenCalled();
+  });
+
+  it('starts playing during mount when the source was playing', () => {
+    render(
+      <MediaPlayer
+        modality='video'
+        src='/v.mp4'
+        start={{ time: 3, playing: true, muted: false, volume: 1 }}
+      />,
+    );
+    // No loadedmetadata fired: play() rides on the commit of the click.
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('read() reports time, playing, mute and volume', () => {
+    const handle = React.createRef<MediaPlayerHandle>();
+    render(<MediaPlayer ref={handle} modality='video' src='/v.mp4' />);
+    const el = screen.getByTestId('media-element') as HTMLVideoElement;
+    el.currentTime = 7;
+    el.muted = true;
+    el.volume = 0.5;
+    Object.defineProperty(el, 'paused', { value: false, configurable: true });
+    expect(handle.current?.read()).toEqual({ time: 7, playing: true, muted: true, volume: 0.5 });
+  });
+
+  it('pause() pauses the element', () => {
+    const handle = React.createRef<MediaPlayerHandle>();
+    render(<MediaPlayer ref={handle} modality='video' src='/v.mp4' />);
+    const el = screen.getByTestId('media-element') as HTMLVideoElement;
+    vi.mocked(el.pause).mockClear();
+    handle.current?.pause();
+    expect(el.pause).toHaveBeenCalledTimes(1);
+  });
+
+  it('apply() seeks and sets mute and volume without playing', () => {
+    const handle = React.createRef<MediaPlayerHandle>();
+    render(<MediaPlayer ref={handle} modality='video' src='/v.mp4' />);
+    const el = screen.getByTestId('media-element') as HTMLVideoElement;
+    act(() => handle.current?.apply({ time: 9, playing: true, muted: true, volume: 0.2 }));
+    expect(el.currentTime).toBe(9);
+    expect(el.muted).toBe(true);
+    expect(el.volume).toBe(0.2);
+    expect(el.play).not.toHaveBeenCalled();
   });
 });

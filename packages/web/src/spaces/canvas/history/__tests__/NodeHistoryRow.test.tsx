@@ -231,6 +231,22 @@ describe('NodeHistoryRow — unified hover preview (#1814)', () => {
     expect(within(card).queryByTestId('media-element')).not.toBeInTheDocument();
   });
 
+  // inner#1844: full screen shows the original, not the thumbnail.
+  it('image row → full screen shows the original from content', () => {
+    vi.useFakeTimers();
+    renderRow(
+      entry({
+        status: 'success',
+        content: '/pic.png',
+        thumbnailUrl: '/thumb.png',
+      }),
+      'image',
+    );
+    openPreview(thumbTrigger());
+    fireEvent.click(screen.getByTestId('media-fullscreen-button'));
+    expect(screen.getByTestId('media-fullscreen-image').getAttribute('src')).toBe('/pic.png');
+  });
+
   it('video row → PLAYABLE MediaPlayer <video> from content, poster = thumbnailUrl', () => {
     vi.useFakeTimers();
     renderRow(
