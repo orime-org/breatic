@@ -44,7 +44,7 @@ beforeEach(() => {
   resetLocales();
   setLocaleMessages("en", catalog("en"));
   for (const locale of OTHERS) {
-    setEveryLocaleMessages(locale, { canvas: { promptMark: { reference: referenceOf(catalog(locale)) } } });
+    setEveryLocaleMessages(locale, { "canvas.promptMark.reference": referenceOf(catalog(locale)) });
   }
 });
 

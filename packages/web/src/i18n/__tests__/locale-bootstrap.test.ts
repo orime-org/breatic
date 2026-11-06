@@ -206,7 +206,7 @@ describe('__EVERY_LOCALE_MESSAGES__', () => {
     const expected = Object.fromEntries(
       LOCALE_CATALOGS.map(([tag, catalog]) => [
         tag,
-        { canvas: { promptMark: { reference: readPath(catalog, 'canvas.promptMark.reference') } } },
+        { 'canvas.promptMark.reference': readPath(catalog, 'canvas.promptMark.reference') },
       ]),
     );
     expect(__EVERY_LOCALE_MESSAGES__).toEqual(expected);

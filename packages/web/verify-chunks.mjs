@@ -118,19 +118,6 @@ const problems = [];
  * same source answers differently from one build to the next; naming the
  * ambiguity is what turns that into something readable.
  */
-/**
- * A nested catalog flattened to its leaves.
- * @param obj - A parsed catalog or one of its namespaces.
- * @param prefix - The dotted path of `obj`.
- * @returns {Record<string, unknown>} Every leaf by its dotted key.
- */
-function flatten(obj, prefix = '') {
-  return Object.entries(obj).reduce((out, [k, v]) => {
-    const key = prefix ? `${prefix}.${k}` : k;
-    return v !== null && typeof v === 'object' ? { ...out, ...flatten(v, key) } : { ...out, [key]: v };
-  }, {});
-}
-
 const chunkByPage = new Map(
   PAGES.map((page) => {
     const hits = files.filter((f) => f.startsWith(`${page}-`) && f.endsWith('.js'));
@@ -338,7 +325,18 @@ if (inEntry.length > 0) {
 // English is the fallback every `t()` reaches for, so it has to be in what the
 // entry imports statically; following no dynamic edge is what tells an English
 // catalog moved behind `import()` apart from one still in the entry.
-const englishWord = Object.values(flatten(JSON.parse(readFileSync(path.join(LOCALES, 'en.json'), 'utf8'))))
+/**
+ * Every message in a catalog.
+ * @param node - A parsed catalog or one of its namespaces.
+ * @returns {Generator<unknown>} Its leaves, in file order.
+ */
+function* leaves(node) {
+  for (const v of Object.values(node)) {
+    if (v !== null && typeof v === 'object') yield* leaves(v);
+    else yield v;
+  }
+}
+const englishWord = [...leaves(JSON.parse(readFileSync(path.join(LOCALES, 'en.json'), 'utf8')))]
   .filter((v) => typeof v === 'string' && /^[A-Za-z ]+$/.test(v))
   .sort((a, b) => b.length - a.length)[0];
 const staticEntry = closure(entryRoots, () => false);

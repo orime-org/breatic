@@ -237,25 +237,25 @@ function resolveKey(obj: Record<string, unknown>, key: string): string | undefin
 /**
  * The keys {@link tInEveryLocale} reads back in every language. The web app
  * downloads only English and the reader's own catalog, so its build carries
- * these keys of every locale separately (`packages/web/every-locale-messages.mjs`).
+ * these keys of every locale separately (`packages/web/every-locale-messages.mts`).
  */
 export const EVERY_LOCALE_KEYS = ["canvas.promptMark.reference"] as const;
 
 /** A key {@link tInEveryLocale} can read back in every language. */
 export type EveryLocaleKey = (typeof EVERY_LOCALE_KEYS)[number];
 
-const _everyLocale = new Map<string, Record<string, unknown>>();
+const _everyLocale = new Map<string, Partial<Record<EveryLocaleKey, string>>>();
 
 /**
  * Register a locale's wording of {@link EVERY_LOCALE_KEYS} without registering
  * its catalog: only {@link tInEveryLocale} reads it, so `t()` and
  * {@link getAvailableLocales} still see only the catalogs set in full.
  * @param locale - the locale code these messages belong to
- * @param messages - the nested key → ICU-string map holding those keys
+ * @param messages - the ICU string of each of those keys, by its dotted name
  */
 export function setEveryLocaleMessages(
   locale: Locale,
-  messages: Record<string, unknown>,
+  messages: Partial<Record<EveryLocaleKey, string>>,
 ): void {
   _everyLocale.set(locale, messages);
   for (const key of _formatterCache.keys()) {
@@ -281,9 +281,8 @@ export function tInEveryLocale(
   const known = new Set([active, ..._locales.keys(), ..._everyLocale.keys()]);
   const found = [...known].flatMap((locale) => {
     const full = _locales.get(locale);
-    const every = _everyLocale.get(locale);
     const message = (full ? resolveKey(full, key) : undefined)
-      ?? (every ? resolveKey(every, key) : undefined);
+      ?? _everyLocale.get(locale)?.[key];
     return message === undefined ? [] : [formatIn(locale, key, message, params)];
   });
   return [...new Set(found)];

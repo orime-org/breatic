@@ -379,7 +379,7 @@ export {
   onLocaleChange,
   resetLocales,
 } from "@shared/i18n/index.js";
-export type { EveryLocaleKey, Locale } from "@shared/i18n/index.js";
+export type { Locale } from "@shared/i18n/index.js";
 
 export {
   projectMetaDocName,

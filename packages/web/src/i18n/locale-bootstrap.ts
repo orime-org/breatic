@@ -38,7 +38,7 @@ import en from '@locales/en.json';
 import { STORAGE_KEYS } from '@web/lib/storage-keys';
 
 /** Every locale's wording of `EVERY_LOCALE_KEYS`, set by the Vite and vitest configs. */
-declare const __EVERY_LOCALE_MESSAGES__: Record<string, Record<string, unknown>> | undefined;
+declare const __EVERY_LOCALE_MESSAGES__: Record<string, Record<string, string>>;
 
 const SUPPORTED_LOCALES: Locale[] = ['en', 'zh-CN', 'zh-TW', 'ja', 'ko'];
 const FALLBACK_LOCALE: Locale = 'en';
@@ -66,10 +66,8 @@ let latestRequest: Locale | undefined;
  */
 export async function bootstrapLocale(): Promise<void> {
   setLocaleMessages('en', en as Record<string, unknown>);
-  if (typeof __EVERY_LOCALE_MESSAGES__ === 'object') {
-    for (const [locale, messages] of Object.entries(__EVERY_LOCALE_MESSAGES__)) {
-      setEveryLocaleMessages(locale, messages);
-    }
+  for (const [locale, messages] of Object.entries(__EVERY_LOCALE_MESSAGES__)) {
+    setEveryLocaleMessages(locale, messages);
   }
   const initial = resolveInitialLocale();
   if (await ensureCatalog(initial)) {
