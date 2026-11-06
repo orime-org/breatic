@@ -104,7 +104,7 @@ async function submit(reach: Reach, endpoint: string, body: Record<string, unkno
   const options = { replaySafe: false, ...bounds };
   const response = await send({ url, method: "POST", headers: headers(reach), body: JSON.stringify({ ...body, model: endpoint }) }, options);
   const { maxBodyBytes, idleMs } = inlineLimits(bounds);
-  const named = response.headers.get("x-task-id") ?? response.headers.get("x-request-id") ?? undefined;
+  const named = response.headers.get("x-task-id") || response.headers.get("x-request-id") || undefined;
   let text: string;
   try {
     text = await answerText(url, response, maxBodyBytes, idleMs, options);
