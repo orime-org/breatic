@@ -2852,6 +2852,7 @@
     "addMedia": "素材を追加",
     "selectClip": "クリップを選択してプロパティを表示します。",
     "clipFrames": "開始 {start} · 長さ {duration} フレーム",
+    "frameCount": "{count} フレーム",
     "sourceExtent": "動画 {frames} フレーム · {fps, number} fps",
     "startFrame": "開始フレーム",
     "cancel": "キャンセル",

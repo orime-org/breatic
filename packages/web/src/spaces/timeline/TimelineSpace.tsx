@@ -49,7 +49,7 @@ interface TimelineConflictRowProps {
   assetId: string;
   reason: TimelineArrangementReason['code'] | null;
   selected: boolean;
-  onSelect: (clipId: string) => void;
+  onLocate: (clipId: string) => void;
 }
 
 /** A clip record that can no longer be read, listed so an Editor can delete it. */
@@ -79,22 +79,22 @@ const DEFAULT_PIXELS_PER_FRAME = 2;
 const ZOOM_STEP = 0.1;
 
 /**
- * List one conflicting placement; selecting it shows its properties.
+ * List one conflicting placement; pressing it selects it and brings it into view.
  * @param props - The placement and its selection.
  * @param props.projectId - The Project authorizing its source.
  * @param props.clip - The placement.
  * @param props.assetId - Its registered asset.
  * @param props.reason - The first reason it conflicts.
  * @param props.selected - Whether it is selected.
- * @param props.onSelect - Selects it.
+ * @param props.onLocate - Selects it, seeks to it and scrolls the tracks to it.
  * @returns The conflict row.
  * @throws {never} Never.
  */
-function TimelineConflictRow({ projectId, clip, assetId, reason, selected, onSelect }: TimelineConflictRowProps): React.JSX.Element {
+function TimelineConflictRow({ projectId, clip, assetId, reason, selected, onLocate }: TimelineConflictRowProps): React.JSX.Element {
   const t = useTranslation();
   const asset = useTimelineAsset(projectId, assetId);
-  const select = React.useCallback((): void => onSelect(clip.id), [onSelect, clip.id]);
-  return <Button data-testid={`timeline-conflict-${clip.id}`} type='button' variant={null} size={null} aria-pressed={selected} onClick={select}
+  const locate = React.useCallback((): void => onLocate(clip.id), [onLocate, clip.id]);
+  return <Button data-testid={`timeline-conflict-${clip.id}`} type='button' variant={null} size={null} aria-pressed={selected} onClick={locate}
     className={cn('flex w-full min-w-0 flex-col items-start gap-0.5 overflow-hidden rounded-chrome border border-status-error-border bg-status-error-bg px-2 py-1.5 text-left text-xs hover-enabled:bg-accent', selected && 'border-active-border')}>
     <span className='flex w-full min-w-0 items-center gap-2'>
       <Film className='size-4 shrink-0' />
@@ -184,6 +184,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const onSeek = React.useCallback((value: number[]): void => seek(value[0] ?? 0), [seek]);
   const seekTo = React.useCallback((target: number): void => seek(Math.max(0, Math.min(target, Math.max(0, duration - 1)))), [seek, duration]);
   const selectClip = React.useCallback((clipId: string | null): void => session.select(clipId), [session]);
+  const trackViewport = React.useRef<HTMLDivElement>(null);
 
   const commit = React.useCallback((command: TimelineEditCommand, options?: TimelineEditOptions): TimelineEditPlan | null => {
     if (readOnly) return null;
@@ -224,6 +225,16 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const pixelsPerFrame = Math.min(TIMELINE_MAX_PIXELS_PER_FRAME, Math.max(minZoom, zoom));
   const zoomValue = React.useMemo(() => [Math.log2(pixelsPerFrame)], [pixelsPerFrame]);
   const changeZoom = React.useCallback((value: number[]): void => setZoom(2 ** (value[0] ?? Math.log2(DEFAULT_PIXELS_PER_FRAME))), []);
+  const locateClip = React.useCallback((clipId: string): void => {
+    session.select(clipId);
+    const clip = document.clips[clipId];
+    if (clip === undefined) return;
+    seekTo(clip.startFrame);
+    const viewport = trackViewport.current;
+    const left = clip.startFrame * pixelsPerFrame;
+    // The lanes visible right of the sticky track headers.
+    if (viewport !== null && (left < viewport.scrollLeft || left >= viewport.scrollLeft + viewport.clientWidth - TIMELINE_TRACK_HEADER_PX)) viewport.scrollTo({ left });
+  }, [session, document.clips, seekTo, pixelsPerFrame]);
 
   const nudge = React.useCallback((frames: number): void => {
     if (readOnly || selected === undefined) { seekTo(frame + frames); return; }
@@ -398,7 +409,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
           </span>
         </div>
       </div>
-      <TimelineTrackArea projectId={projectId} document={document} labels={labels} readyIds={readyIds} selectedId={selectedId} frame={frame} extent={extent}
+      <TimelineTrackArea projectId={projectId} document={document} labels={labels} readyIds={readyIds} selectedId={selectedId} frame={frame} extent={extent} viewportRef={trackViewport}
         pixelsPerFrame={pixelsPerFrame} readOnly={readOnly} snap={prefs.snap} placement={placement} onSelect={selectClip} onSeek={seekTo} onCommit={commitCommand} onVanished={vanished} onDraggingChange={draggingChange} />
     </div>
     <aside data-testid='timeline-side-panel' className='flex w-72 shrink-0 flex-col border-l border-border'>
@@ -413,7 +424,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
             <h3 className='text-sm font-semibold'>{t('timeline.conflictList')}</h3>
             {hasConflicts ? <>
               <p className='text-status-error-foreground'>{t('timeline.conflictHelp')}</p>
-              {clips.filter((clip) => !readyIds.has(clip.id)).map((clip) => <TimelineConflictRow key={clip.id} projectId={projectId} clip={clip} assetId={document.sources[clip.sourceId]?.assetId ?? ''} reason={reasons.get(clip.id) ?? null} selected={selectedId === clip.id} onSelect={selectClip} />)}
+              {clips.filter((clip) => !readyIds.has(clip.id)).map((clip) => <TimelineConflictRow key={clip.id} projectId={projectId} clip={clip} assetId={document.sources[clip.sourceId]?.assetId ?? ''} reason={reasons.get(clip.id) ?? null} selected={selectedId === clip.id} onLocate={locateClip} />)}
               {damagedClipIds.map((clipId) => <TimelineDamagedRow key={clipId} clipId={clipId} readOnly={readOnly} onDelete={removeDamaged} />)}
             </> : <p className='text-muted-foreground'>{t('timeline.noConflicts')}</p>}
           </section>

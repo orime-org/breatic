@@ -40,6 +40,7 @@ interface TimelineTrackAreaProps {
   onCommit: (command: TimelineEditCommand) => void;
   onVanished: () => void;
   onDraggingChange: (dragging: boolean) => void;
+  viewportRef: React.Ref<HTMLDivElement>;
 }
 
 /** The active pointer gesture and its latest preview. */
@@ -98,11 +99,14 @@ const TimelineClip = React.memo(function TimelineClip({ projectId, clip, assetId
   return <div className={cn('absolute inset-y-1', dragging && 'opacity-40')} style={style}>
     <Button ref={setNodeRef} {...(readOnly ? {} : listeners)} data-testid={`timeline-clip-${clip.id}`} data-clip-id={clip.id} data-track-id={clip.trackId} type='button' variant={null} size={null}
       aria-pressed={selected} onClick={select} onFocus={select}
-      className={cn('flex size-full min-w-0 justify-start gap-2 overflow-hidden rounded-chrome border border-border bg-muted px-2 text-xs hover-enabled:bg-accent',
+      className={cn('flex size-full min-w-0 flex-col items-start justify-center overflow-hidden rounded-chrome border border-border bg-secondary px-2 text-left text-xs hover-enabled:bg-accent',
         !readOnly && 'cursor-grab', conflict && 'border-status-error-border bg-status-error-bg', selected && 'border-active-border')}>
-      <Film className='size-4 shrink-0' />
-      <span className='min-w-0 truncate leading-normal'>{name ?? t('timeline.video')}</span>
-      {conflict && <span className='shrink-0 text-status-error-foreground'>{t('timeline.conflict')}</span>}
+      <span className='flex w-full min-w-0 items-center gap-2'>
+        <Film className='size-4 shrink-0' />
+        <span className='min-w-0 truncate leading-normal'>{name ?? t('timeline.video')}</span>
+        {conflict && <span className='shrink-0 text-status-error-foreground'>{t('timeline.conflict')}</span>}
+      </span>
+      <span className='w-full truncate text-2xs tabular-nums text-muted-foreground'>{t('timeline.frameCount', { count: clip.durationFrames })}</span>
     </Button>
     {selected && !readOnly && <><TrimHandle clipId={clip.id} mode='trim-start' /><TrimHandle clipId={clip.id} mode='trim-end' /></>}
   </div>;
@@ -164,7 +168,7 @@ function previewOf(view: DragView, data: { mode: TimelineGestureMode; clipId: st
  * @throws {never} Never.
  */
 export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Element {
-  const { projectId, document, labels, readyIds, selectedId, frame, extent, pixelsPerFrame, readOnly, snap, placement, onSelect, onSeek, onCommit, onVanished, onDraggingChange } = props;
+  const { projectId, document, labels, readyIds, selectedId, frame, extent, pixelsPerFrame, readOnly, snap, placement, onSelect, onSeek, onCommit, onVanished, onDraggingChange, viewportRef } = props;
   const t = useTranslation();
   const [gesture, setGesture] = React.useState<Gesture | null>(null);
   const cancelled = React.useRef(false);
@@ -237,7 +241,7 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
   const header = 'sticky left-0 z-20 flex shrink-0 items-center gap-1 border-r border-border bg-background px-2 text-xs';
 
   return <DndContext sensors={sensors} onDragStart={startDrag} onDragMove={moveDrag} onDragEnd={endDrag} onDragCancel={cancelDrag} autoScroll={false}>
-    <ScrollArea scrollbars='both' className='h-48 shrink-0 border-t border-border'>
+    <ScrollArea scrollbars='both' viewportRef={viewportRef} className='h-48 shrink-0 border-t border-border'>
       <div style={{ width: width + TIMELINE_TRACK_HEADER_PX }} className='relative min-w-full'>
         <div className='sticky top-0 z-30 flex h-6 border-b border-border bg-background'>
           <div className={header} style={HEADER_STYLE} />

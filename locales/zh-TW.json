@@ -2852,6 +2852,7 @@
     "addMedia": "新增素材",
     "selectClip": "選擇片段以查看屬性。",
     "clipFrames": "開始 {start} · 長度 {duration} 影格",
+    "frameCount": "{count} 影格",
     "sourceExtent": "影片共 {frames} 影格 · {fps, number} fps",
     "startFrame": "開始影格",
     "cancel": "取消",

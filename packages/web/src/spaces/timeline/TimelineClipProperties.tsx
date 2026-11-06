@@ -9,6 +9,7 @@ import { parseTimelineFrame, timelineClipIntervalValid, timelineSourceOverflow }
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { TimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
 
@@ -138,7 +139,10 @@ export function TimelineClipProperties({ spaceId, document, clip, name, conflict
 
   return <div className='flex flex-col gap-3'>
     <div className='flex min-w-0 flex-col gap-1'>
-      <span className='truncate text-sm font-semibold leading-normal'>{name}</span>
+      <Tooltip>
+        <TooltipTrigger asChild><span className='truncate text-sm font-semibold leading-normal'>{name}</span></TooltipTrigger>
+        <TooltipContent portal className='max-w-sm break-all'>{name}</TooltipContent>
+      </Tooltip>
       {conflict && <span className='text-status-error-foreground'>{t('timeline.conflict')}</span>}
     </div>
     <div className='flex flex-col gap-1'>

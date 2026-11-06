@@ -2852,6 +2852,7 @@
     "addMedia": "미디어 추가",
     "selectClip": "클립을 선택하여 속성을 확인하세요.",
     "clipFrames": "시작 {start} · 길이 {duration} 프레임",
+    "frameCount": "{count}프레임",
     "sourceExtent": "동영상 {frames}프레임 · {fps, number} fps",
     "startFrame": "시작 프레임",
     "cancel": "취소",
