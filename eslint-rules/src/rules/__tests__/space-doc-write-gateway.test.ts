@@ -259,6 +259,14 @@ const CASES = {
       ),
     },
     {
+      name: "L-40b the BlockNote editor behind a type assertion",
+      code: source(
+        "type Editorish = { transact<T>(run: () => T): T };",
+        "declare const editor: unknown;",
+        "(editor as Editorish).transact(() => 1);",
+      ),
+    },
+    {
       name: "L-40 type signature, comment and string are not calls",
       code: source(
         "export interface Editorish { transact: <T>(run: () => T) => T }",
@@ -329,6 +337,16 @@ const CASES = {
     },
   ].map((testCase) => ({ ...testCase, options: [OPTION_E] })),
   invalid: [
+    {
+      name: "L-39b a history chain behind a type assertion",
+      code: source(
+        "declare const undoManagerRef: { current: unknown };",
+        "declare const k: 'undo' | 'redo';",
+        "type UM = { undo(): void; redo(): void };",
+        "(undoManagerRef.current as UM)[k]();",
+      ),
+      errors: [at(10, 1)],
+    },
     {
       name: "L-39 a receiver under any other name",
       code: source(

@@ -30,10 +30,16 @@ const HISTORY_SEGMENT = /history|undomanager/i;
 /**
  * Looks through the wrappers that do not change what an expression refers to.
  * @param node An expression.
- * @returns The expression under any `!` or optional chain.
+ * @returns The expression under any `!`, optional chain or type assertion.
  */
 function unwrap(node: TSESTree.Node): TSESTree.Node {
-  if (node.type === AST_NODE_TYPES.TSNonNullExpression || node.type === AST_NODE_TYPES.ChainExpression) {
+  if (
+    node.type === AST_NODE_TYPES.TSNonNullExpression ||
+    node.type === AST_NODE_TYPES.ChainExpression ||
+    node.type === AST_NODE_TYPES.TSAsExpression ||
+    node.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+    node.type === AST_NODE_TYPES.TSTypeAssertion
+  ) {
     return unwrap(node.expression);
   }
   return node;
