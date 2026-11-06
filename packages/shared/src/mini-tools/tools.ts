@@ -483,7 +483,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     source: "video",
     run: { kind: "planned" },
     labelKey: key("video.extract-frames", "label"),
-    guide: "extracts first, last, current or every selected interval frame",
+    guide: "extracts the first, last or current frame",
     icon: "GalleryVerticalEnd",
     params: [],
     slots: [],

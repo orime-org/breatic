@@ -95,9 +95,8 @@ const draftSchemas = {
   "video.extract-frames": z.strictObject({
     ...commonDraftShape,
     params: z.strictObject({
-      mode: z.enum(["first", "last", "current", "interval"]),
+      mode: z.enum(["first", "last", "current"]),
       currentTime: z.number().nonnegative(),
-      interval: z.number().positive(),
     }),
   }),
   "video.transitions": z.strictObject({

@@ -20,72 +20,26 @@ import {
   type VideoToolTimelineClip,
 } from "@shared/mini-tools/video-draft.js";
 
-export interface VideoFrameRequest { mode: "first" | "last" | "current" | "interval"; currentTime?: number; interval?: number }
+export interface VideoFrameRequest { mode: "first" | "last" | "current"; currentTime?: number }
 export interface VideoFrameOutput { outputIndex: number; frameIndex: number; pts: number }
 export interface VideoSplitOutput { outputIndex: number; start: number; end: number }
 export interface VideoExpandPlan { width: number; height: number; sourceX: number; sourceY: number; sourceWidth: number; sourceHeight: number }
 
+// The first, last or current frame (frames-split §10.6: the interval mode is removed).
 const frameRequestSchema = z.strictObject({
-  mode: z.enum(["first", "last", "current", "interval"]),
+  mode: z.enum(["first", "last", "current"]),
   currentTime: z.number().nonnegative().optional(),
-  interval: z.number().positive().optional(),
 }).superRefine((request, ctx) => {
   if (request.mode === "current" && request.currentTime === undefined) ctx.addIssue({ code: "custom", path: ["currentTime"], message: "Current frame selection requires its displayed time" });
-  if (request.mode === "interval" && request.interval === undefined) ctx.addIssue({ code: "custom", path: ["interval"], message: "Interval frame selection requires a positive period" });
 });
 
 /**
- * The smallest sample index whose time reaches a frame start.
- * @param start - The frame start in seconds.
- * @param interval - The sampling period in seconds.
- * @returns The sample index, or null when it lies beyond exact float counting.
- * @throws {never} Never.
- */
-function firstSampleFrom(start: number, interval: number): number | null {
-  let k = Math.ceil(start / interval);
-  if (!Number.isSafeInteger(k)) return null;
-  while (k > 0 && (k - 1) * interval >= start) k -= 1;
-  while (k * interval < start) k += 1;
-  return k;
-}
-
-/**
- * Every frame covering a sample k·interval inside the video, jumping from frame to frame instead of sample to sample.
- * @param table - A validated presentation table.
- * @param interval - The sampling period in seconds.
- * @param maxOutputs - Optional caller-configured output ceiling, checked before allocating oversized plans.
- * @returns Ascending distinct covering frame indices.
- * @throws {RangeError} When the complete output count exceeds the caller's ceiling.
- */
-function intervalFrames(table: VideoPresentationTable, interval: number, maxOutputs?: number): number[] {
-  const count = presentationFrameCount(table);
-  const videoEnd = presentationVideoEnd(table);
-  const picked: number[] = [];
-  for (let from = 0; from < count;) {
-    const k = firstSampleFrom(presentationFrameAt(table, from).pts, interval);
-    if (k === null) {
-      // The period is shorter than one tick here, so every remaining frame holds a sample.
-      if (maxOutputs !== undefined && count - from > maxOutputs - picked.length) throw new RangeError("Frame outputs exceed configured capacity");
-      for (let frame = from; frame < count; frame += 1) picked.push(frame);
-      break;
-    }
-    if (k * interval >= videoEnd) break;
-    const frame = presentationCoveringFrame(table, k * interval);
-    if (maxOutputs !== undefined && picked.length >= maxOutputs) throw new RangeError("Frame outputs exceed configured capacity");
-    picked.push(frame);
-    from = frame + 1;
-  }
-  return picked;
-}
-
-/**
- * Builds every selected displayed-frame output, in source order, without expanding frames.
+ * Builds the selected displayed-frame output: the first, last or current frame, one output.
  * @param source - The compact presentation table.
  * @param request - The selected frame mode and source-clock parameters.
- * @param maxOutputs - Optional caller-configured admission ceiling; no implicit frame limit.
- * @returns Complete deduplicated frame outputs with stable indices.
- * @throws {RangeError} When the complete output count exceeds the caller's ceiling.
- * @throws {z.ZodError} When the table or selection parameters are invalid.
+ * @param maxOutputs - Optional caller-configured admission ceiling, validated; one output always fits it.
+ * @returns The frame output with its stable index.
+ * @throws {z.ZodError} When the table, selection parameters or ceiling are invalid.
  */
 export function planVideoFrames(source: VideoPresentationTable, request: VideoFrameRequest, maxOutputs?: number): VideoFrameOutput[] {
   if (maxOutputs !== undefined) z.number().int().positive().max(Number.MAX_SAFE_INTEGER).parse(maxOutputs);
@@ -96,7 +50,6 @@ export function planVideoFrames(source: VideoPresentationTable, request: VideoFr
     case "first": picked = [0]; break;
     case "last": picked = [presentationFrameCount(table) - 1]; break;
     case "current": picked = [presentationCoveringFrame(table, selection.currentTime!)]; break;
-    case "interval": picked = intervalFrames(table, selection.interval!, maxOutputs); break;
   }
   return picked.map((frameIndex, outputIndex) => ({ outputIndex, frameIndex, pts: presentationFrameAt(table, frameIndex).pts }));
 }
