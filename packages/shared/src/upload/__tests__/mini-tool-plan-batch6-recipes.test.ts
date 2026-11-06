@@ -20,7 +20,7 @@
  *   window's presentation interval (§8.1: per-window interval, overlap, consumed interval inside the window).
  */
 import { describe, expect, it } from "vitest";
-import { miniToolPlanJobRequestSchema, miniToolPlanRecipeSchema } from "@shared/upload/mini-tool-plan-job.js";
+import { miniToolPlanJobReportSchema, miniToolPlanJobRequestSchema, miniToolPlanRecipeSchema } from "@shared/upload/mini-tool-plan-job.js";
 
 type Recipe = Record<string, unknown>;
 const r = (numerator: number, denominator = 1): { numerator: string; denominator: string } => {
@@ -219,5 +219,15 @@ describe("model_composite (§97 D15-8; frames-split §7.17, execution design §8
     expect(miniToolPlanJobRequestSchema.safeParse(job(erase(), [SOURCE_A])).success).toBe(false);
     expect(miniToolPlanJobRequestSchema.safeParse(job(expand(), [SOURCE_A, ...BACKGROUNDS])).success).toBe(true);
     expect(miniToolPlanJobRequestSchema.safeParse(job(expand(), [SOURCE_A, BACKGROUNDS[0]!, UNBOUND])).success).toBe(false);
+  });
+});
+
+// inner#1306 test plan §97 D17-7 (a) (execution design §9.4 no_face row; frames-split §7.17 lipsync_faces row): a container
+// step that finds no face (or an empty tracked foreground) over the used range ends its job as failed with `no_face`.
+describe("the no_face container failure (§97 D17-7)", () => {
+  it("NF01 a failed job report may give no_face as its reason", () => {
+    const report = { schemaVersion: 2, state: "failed", outputs: [], reason: "no_face", usage: { wallMs: 1000, cpuUsec: null } };
+    expect(miniToolPlanJobReportSchema.safeParse({ ...report, reason: "tool_failed" }).success).toBe(true);
+    expect(miniToolPlanJobReportSchema.safeParse(report).success).toBe(true);
   });
 });
