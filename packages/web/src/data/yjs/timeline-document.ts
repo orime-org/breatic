@@ -55,6 +55,19 @@ function timelineReferencedSourceIds(doc: Y.Doc): Set<string> {
 }
 
 /**
+ * The referenced sources that `sources` lacks or holds unreadable and `values` holds.
+ * @param sources - The sources map.
+ * @param referenced - The referenced source ids.
+ * @param values - Source values by id that this writer may write.
+ * @returns Their ids.
+ * @throws {never} Never.
+ */
+function missingSourceIds(sources: Y.Map<unknown>, referenced: Iterable<string>, values: Readonly<Record<string, unknown>>): string[] {
+  // Own keys only: a damaged clip may name any string, including an Object.prototype property.
+  return [...referenced].filter((id) => readTimelineSource(sources.get(id), id) === undefined && Object.hasOwn(values, id));
+}
+
+/**
  * The referenced sources, damaged clip records included, that `sources` lacks or holds unreadable and `values` holds.
  * @param doc - The content document.
  * @param values - Source values by id that this writer may write.
@@ -62,9 +75,7 @@ function timelineReferencedSourceIds(doc: Y.Doc): Set<string> {
  * @throws {never} Never.
  */
 export function missingTimelineSourceIds(doc: Y.Doc, values: Readonly<Record<string, unknown>>): string[] {
-  const sources = doc.getMap<unknown>('sources');
-  // Own keys only: a damaged clip may name any string, including an Object.prototype property.
-  return [...timelineReferencedSourceIds(doc)].filter((id) => readTimelineSource(sources.get(id), id) === undefined && Object.hasOwn(values, id));
+  return missingSourceIds(doc.getMap<unknown>('sources'), timelineReferencedSourceIds(doc), values);
 }
 
 /**
@@ -90,7 +101,7 @@ export function restoreTimelineSources(doc: Y.Doc, values: Readonly<Record<strin
     if (Object.hasOwn(values, id)) sources.set(id, freezeRecord(structuredClone(values[id] as object)));
   };
   for (const id of new Set(reset)) if (referenced.has(id)) write(id);
-  for (const id of referenced) if (readTimelineSource(sources.get(id), id) === undefined) write(id);
+  for (const id of missingSourceIds(sources, referenced, values)) write(id);
   return referenced;
 }
 
@@ -106,6 +117,9 @@ export function reconcileTimelineSources(doc: Y.Doc, values: Readonly<Record<str
   const sources = doc.getMap<unknown>('sources');
   for (const id of [...sources.keys()]) if (!referenced.has(id)) sources.delete(id);
 }
+
+/** Origin of the record format conversion; no undo manager tracks it. */
+const FORMAT_ORIGIN = Symbol('timeline-record-format');
 
 /**
  * Apply a user-confirmed layout edit to the shared Y.Doc in one transaction, writing only what changed.
@@ -125,12 +139,35 @@ export function applyTimelineEdit(doc: Y.Doc, command: TimelineEditCommand, orig
   const { next } = plan;
   // An edit that changes no record writes nothing, so it neither sweeps a peer's orphan nor becomes an undo step.
   if (sameRecords(current.tracks, next.tracks) && sameRecords(current.clips, next.clips)) return plan;
+  // A peer may have stored a record as a plain value. The ones this edit changes become maps outside the edit's own
+  // origin, so undoing the edit reverts only the fields it set.
+  const plain = [
+    ...plainChangedRecords(doc.getMap<unknown>('tracks'), current.tracks, next.tracks),
+    ...plainChangedRecords(doc.getMap<unknown>('clips'), current.clips, next.clips),
+  ];
+  if (plain.length > 0) doc.transact(() => { for (const [parent, id, value] of plain) attachRecord(parent, id, value); }, FORMAT_ORIGIN);
   doc.transact(() => {
     writeRecords(doc.getMap<unknown>('tracks'), current.tracks, next.tracks);
     writeRecords(doc.getMap<unknown>('clips'), current.clips, next.clips);
     reconcileTimelineSources(doc, next.sources, plan.created.flatMap((id) => next.clips[id]?.sourceId ?? []));
   }, origin);
   return plan;
+}
+
+/**
+ * The records of one collection that the plan changes and that are stored as something other than a map.
+ * @param parent - The attached collection map.
+ * @param before - The records the plan started from.
+ * @param after - The planned records.
+ * @returns The collection, id and current value of each.
+ * @throws {never} Never.
+ */
+function plainChangedRecords(
+  parent: Y.Map<unknown>, before: Readonly<Record<string, object>>, after: Readonly<Record<string, object>>,
+): Array<[Y.Map<unknown>, string, object]> {
+  return Object.entries(before)
+    .filter(([id, was]) => after[id] !== undefined && !(parent.get(id) instanceof Y.Map) && JSON.stringify(was) !== JSON.stringify(after[id]))
+    .map(([id, was]) => [parent, id, was]);
 }
 
 /**
@@ -161,11 +198,7 @@ function writeRecords(parent: Y.Map<unknown>, before: Readonly<Record<string, ob
       continue;
     }
     const target = parent.get(id);
-    // A peer may have stored the record as a plain value; the planned value is the whole record, so attach it.
-    if (!(target instanceof Y.Map)) {
-      attachRecord(parent, id, value);
-      continue;
-    }
+    if (!(target instanceof Y.Map)) continue;
     for (const [key, item] of Object.entries(value)) {
       if (JSON.stringify((was as Record<string, unknown>)[key]) !== JSON.stringify(item)) target.set(key, item);
     }
