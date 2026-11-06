@@ -442,9 +442,9 @@ describe('copies of every shape the body makes paste in', () => {
   });
 
   it.each([
-    ['into a cell', (s: Editor) => positionOf(s, 'l1', 1), ['paragraph:wxone', 'table', 'paragraph:kidyz']],
-    ['into a line nested under the table', (s: Editor) => positionOf(s, 'kid', 2), ['paragraph:wxone', 'table', 'paragraph:kiyz']],
-  ] as const)('a copy from outside %s of a stored table with a line nested under it puts the line after the table', async (_name, end, expected) => {
+    ['into a cell carries the table alone', (s: Editor) => positionOf(s, 'l1', 1), ['paragraph:wxone', 'table', 'paragraph:yz']],
+    ['into the line nested under it puts that line after the table', (s: Editor) => positionOf(s, 'kid', 2), ['paragraph:wxone', 'table', 'paragraph:kiyz']],
+  ] as const)('a copy from outside a stored table with a line nested under it %s', async (_name, end, expected) => {
     const source = await openReady([{ type: 'paragraph', content: 'xone' }, { ...STORED, children: [{ type: 'paragraph', content: 'kid' }] }, { type: 'paragraph', content: 'twox' }]);
     const editor = await pasteMid(copySelection(source, TextSelection.create(source.prosemirrorView.state.doc, positionOf(source, 'xone', 1), end(source))));
     expect(shape(editor)).toEqual(expected);
@@ -486,6 +486,100 @@ describe('a stored table dragged inside the body', () => {
     await settled();
     expect(shape(editor).filter((line) => line === 'table')).toHaveLength(1);
     expect(editor.prosemirrorView.state.doc.textContent.match(/l1l2/g)).toHaveLength(1);
+  });
+});
+
+/**
+ * Fires a cut, its clipboard thrown away.
+ * @param editor - The editor.
+ */
+function cut(editor: Editor): void {
+  const event = new Event('cut', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'clipboardData', { value: { setData: vi.fn(), clearData: vi.fn(), getData: () => '' } });
+  editor.prosemirrorView.dom.dispatchEvent(event);
+}
+
+/**
+ * The body's lines, each with the lines nested under it.
+ * @param editor - The editor.
+ * @returns They, as `type:words` with nested ones in brackets.
+ */
+function outline(editor: Editor): string[] {
+  type Block = { type: string; content?: unknown; children?: Block[] };
+  const walk = (blocks: Block[]): string[] => blocks.map((block) => {
+    const words = Array.isArray(block.content) ? (block.content as { text?: string }[]).map((c) => c.text ?? '').join('') : '';
+    if (block.type === 'docTable' || block.type === 'table') return 'table';
+    return (block.children ?? []).length > 0 ? `${block.type}:${words}[${walk(block.children!).join(',')}]` : `${block.type}:${words}`;
+  });
+  return walk(editor.document as Block[]);
+}
+
+describe('a table at an end of a cut or a move takes it whole, stored or not', () => {
+  const NEW = tableBlock({ rows: [{ cells: ['n1', 'n2'] }] });
+  const HOW = [
+    ['a cut', (editor: Editor) => cut(editor)],
+    ['a move', (editor: Editor) => {
+      const { from, to } = editor.prosemirrorView.state.selection;
+      dragWithin(editor, from, to, positionOf(editor, 'more', 4));
+    }],
+  ] as const;
+
+  it.each(HOW.map(([how, act], moved) => [how, act, moved] as const))('%s from a new table\'s cell into a stored one leaves one empty line for both tables', async (_how, act, moved) => {
+    const editor = await openReady([{ type: 'paragraph', content: 'lead' }, NEW, { type: 'paragraph', content: 'mid' }, STORED, { type: 'paragraph', content: 'more' }]);
+    select(editor, positionOf(editor, 'n1', 1), positionOf(editor, 'l1', 1));
+    act(editor);
+    await settled();
+    expect(outline(editor).slice(0, 2)).toEqual(['paragraph:lead', 'paragraph:']);
+    expect(outline(editor)[2]).toMatch(/^paragraph:more/);
+    // A move puts both tables whole where it drops them.
+    expect(outline(editor).filter((line) => line === 'table')).toHaveLength(moved === 1 ? 2 : 0);
+  });
+
+  it.each(HOW.flatMap(([how, act]) => [['stored', STORED], ['new', NEW]].map(([kind, table]) => [how, kind, table, act] as const)))(
+    '%s from a %s table nested under a line into the next line joins the rest of that line to the line the table was',
+    async (_how, _kind, table, act) => {
+      const editor = await openReady([{ type: 'paragraph', content: 'parent', children: [table] }, { type: 'paragraph', content: 'tail' }, { type: 'paragraph', content: 'more' }]);
+      const inside = (table as { type: string }).type === 'table' ? 'l2' : 'n2';
+      select(editor, positionOf(editor, inside, 1), positionOf(editor, 'tail', 2));
+      act(editor);
+      await settled();
+      expect(outline(editor)[0]).toBe('paragraph:parent[paragraph:il]');
+    },
+  );
+
+  // Two tables taken away leave one line, as two lines joined do: the later one's.
+  it.each(HOW)('%s from a stored table into a quoted new one leaves the new table\'s line, quoted, with the caret on it', async (_how, act) => {
+    const editor = await openReady([{ type: 'paragraph', content: 'lead' }, STORED, { type: 'paragraph', content: 'mid' }, tableBlock({ rows: [{ cells: ['n1', 'n2'] }] }, { quoted: true }), { type: 'paragraph', content: 'more' }]);
+    select(editor, positionOf(editor, 'l1', 1), positionOf(editor, 'n1', 1));
+    act(editor);
+    await settled();
+    const line = editor.prosemirrorView.state.doc.firstChild!.child(1).firstChild!;
+    expect([line.textContent, line.attrs['quoted']]).toEqual(['', true]);
+    if (_how === 'a cut') expect(editor.prosemirrorView.state.selection.$from.parent).toBe(line);
+  });
+
+  it.each(HOW)('%s from outside into a stored table keeps the lines nested under the table, under the line it joins', async (_how, act) => {
+    const editor = await openReady([{ type: 'paragraph', content: 'xone' }, { ...STORED, children: [{ type: 'paragraph', content: 'kid' }] }, { type: 'paragraph', content: 'more' }]);
+    select(editor, positionOf(editor, 'xone', 1), positionOf(editor, 'l1', 1));
+    act(editor);
+    await settled();
+    expect(outline(editor)[0]).toBe('paragraph:x[paragraph:kid]');
+  });
+
+  it('a cut across two cells of a stored table leaves one empty line in its place', async () => {
+    const editor = await openReady([{ type: 'paragraph', content: 'lead' }, STORED, { type: 'paragraph', content: 'tail' }]);
+    select(editor, positionOf(editor, 'l1', 1), positionOf(editor, 'l2', 1));
+    cut(editor);
+    await settled();
+    expect(outline(editor)).toEqual(['paragraph:lead', 'paragraph:', 'paragraph:tail']);
+  });
+
+  it('a drop onto the stored table the dragged selection takes whole changes nothing', async () => {
+    const editor = await openReady([{ type: 'paragraph', content: 'xone' }, STORED, { type: 'paragraph', content: 'twox' }]);
+    const before = editor.prosemirrorView.state.doc;
+    dragWithin(editor, positionOf(editor, 'xone', 1), positionOf(editor, 'l1', 1), positionOf(editor, 'l2', 1));
+    await settled();
+    expect(editor.prosemirrorView.state.doc.eq(before)).toBe(true);
   });
 });
 

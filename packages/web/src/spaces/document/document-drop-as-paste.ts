@@ -32,7 +32,7 @@ import { t } from '@breatic/shared';
 import { toast } from '@web/lib/toast';
 import { landingAsDrop, landingSlice, withoutRowIdsIn } from '@web/spaces/document/document-comment-paste';
 import { readClipboardSlice, rowsOf } from '@web/spaces/document/document-paste-slice';
-import { storedTableRange } from '@web/spaces/document/document-table-copy';
+import { deleteStoredTableRange, storedTableRange } from '@web/spaces/document/document-table-copy';
 import { holdsContent, holdsNode, putContent, refusedInCell, selectPlaced, type Placed } from '@web/spaces/document/document-put';
 
 /** The editor a drop is put by. */
@@ -52,7 +52,11 @@ export function dropAsPaste(editor: Editor, view: EditorView, event: DragEvent, 
   const at = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos;
   if (at === undefined) return false;
   const { selection } = view.state;
-  if (!selection.empty && selection.ranges.some(({ $from, $to }) => at >= $from.pos && at <= $to.pos)) return true;
+  // What a move takes away is the dragged content: the selection, widened
+  // over the tables at its ends when it reaches into a stored table.
+  const stored = storedTableRange(selection);
+  const ranges = stored === null ? selection.ranges.map(({ $from, $to }) => ({ from: $from.pos, to: $to.pos })) : [stored];
+  if (!selection.empty && ranges.some(({ from, to }) => at >= from && at <= to)) return true;
   // A node drag carries the node selection it picked up (prosemirror-view
   // `Dragging.node`), which its public type leaves out; ProseMirror's own drop
   // deletes that, else the selection. With neither (the selection already
@@ -61,10 +65,8 @@ export function dropAsPaste(editor: Editor, view: EditorView, event: DragEvent, 
   const node = (view.dragging as { node?: { replace: (tr: Transaction) => void } } | null)?.node;
   const removes = moved && (node !== undefined || !selection.empty);
   const tr = view.state.tr;
-  const stored = storedTableRange(selection);
-  if (removes && stored !== null) tr.delete(stored.from, stored.to);
-  else if (removes && node === undefined) tr.deleteSelection();
-  else if (removes) node!.replace(tr);
+  if (removes && node !== undefined) node.replace(tr);
+  else if (removes && !deleteStoredTableRange(selection, tr)) tr.deleteSelection();
   // The drag's own content as ProseMirror took it at dragstart, through the
   // copy transforms (`document-table-copy.ts`); the slice it hands over has
   // also been through the paste transforms against the selection the drag

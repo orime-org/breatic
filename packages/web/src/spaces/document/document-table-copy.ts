@@ -35,13 +35,13 @@ import {
   selectedFragmentToHTML,
   type BlockNoteEditor,
 } from '@blocknote/core';
-import { Fragment, Slice, type ResolvedPos } from '@tiptap/pm/model';
-import { NodeSelection, Plugin, PluginKey, TextSelection, type Selection } from '@tiptap/pm/state';
+import { Fragment, Slice, type Node as PMNode, type ResolvedPos } from '@tiptap/pm/model';
+import { NodeSelection, Plugin, PluginKey, Selection, TextSelection, type Transaction } from '@tiptap/pm/state';
 import { CellSelection, deleteCellSelection } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
-import { heldRange } from '@web/spaces/document/document-table-leave-selection';
+import { emptyLineFor, heldRange } from '@web/spaces/document/document-table-leave-selection';
 import { cellDepthOf, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /** The editor, as far as copying reads it. */
@@ -139,33 +139,93 @@ function inCellBlocks(view: EditorView, depth: number): ClippedBlocks {
   return { blocks: fragmentToBlocks(content as never) as never[], slice };
 }
 
+/** A table at an end of a selection reaching into a stored table: where it starts and ends, and the line it turns into. */
+interface EndTable {
+  readonly from: number;
+  readonly to: number;
+  /** Where the line it turns into starts, and the line. */
+  readonly line: { readonly pos: number; readonly node: PMNode };
+}
+
 /**
- * The stored (legacy) table a position is in, as the block container holding it.
+ * The table a position is in, stored (legacy) or a table of blocks.
  * @param $at - The position.
- * @returns Where that container starts and ends, or null outside any stored table.
+ * @returns It, or null outside any table.
  */
-function storedTableAt($at: ResolvedPos): { from: number; to: number } | null {
+function endTableAt($at: ResolvedPos): EndTable | null {
   for (let d = 1; d <= $at.depth; d += 1) {
-    if ($at.node(d).type.name === 'table') return { from: $at.before(d - 1), to: $at.after(d - 1) };
+    const node = $at.node(d);
+    // A stored table stands in a block, the lines nested under it after it
+    // there; it turns into that block's line, which keeps them.
+    if (node.type.name === 'table') return { from: $at.before(d - 1), to: $at.after(d), line: { pos: $at.before(d), node: emptyLineFor(node).firstChild! } };
+    if (node.type.name === DOC_TABLE) return { from: $at.before(d), to: $at.after(d), line: { pos: $at.before(d), node: emptyLineFor(node) } };
   }
   return null;
 }
 
 /**
- * What a text selection reaching into a stored (legacy) table acts on, as a
- * selection leaving a table of blocks takes it whole (`heldRange`): an end in
- * a stored table widened over that table; a selection across its cells takes
- * it whole. Words in one cell are the selection's own.
+ * The tables at the ends of a text selection reaching into a stored (legacy)
+ * table, as a selection leaving a table of blocks takes it whole
+ * (`heldTables`): a selection across a stored table's cells takes it whole.
+ * Words in one cell are the selection's own.
+ * @param selection - The selection.
+ * @returns The table at each end, or null when the selection reaches no stored table or stays in one of its cells.
+ */
+function storedEnds(selection: Selection): { from: EndTable | null; to: EndTable | null } | null {
+  if (selection.empty || !(selection instanceof TextSelection)) return null;
+  const { $from, $to } = selection;
+  if ($from.sameParent($to) || !(inStored($from) || inStored($to))) return null;
+  return { from: endTableAt($from), to: endTableAt($to) };
+}
+
+/**
+ * Whether a position is in a stored (legacy) table.
+ * @param $at - The position.
+ * @returns True there.
+ */
+function inStored($at: ResolvedPos): boolean {
+  for (let d = 1; d <= $at.depth; d += 1) if ($at.node(d).type.name === 'table') return true;
+  return false;
+}
+
+/**
+ * What a text selection reaching into a stored (legacy) table acts on: its
+ * range widened over the table at each end, stored or not.
  * @param selection - The selection.
  * @returns The range, or null when the selection reaches no stored table or stays in one of its cells.
  */
 export function storedTableRange(selection: Selection): { from: number; to: number } | null {
-  if (selection.empty || !(selection instanceof TextSelection)) return null;
-  const { $from, $to } = selection;
-  const start = storedTableAt($from);
-  const end = storedTableAt($to);
-  if ((start === null && end === null) || $from.sameParent($to)) return null;
-  return { from: start?.from ?? $from.pos, to: end?.to ?? $to.pos };
+  const ends = storedEnds(selection);
+  if (ends === null) return null;
+  return { from: ends.from?.from ?? selection.from, to: ends.to?.to ?? selection.to };
+}
+
+/**
+ * Takes away what a text selection reaching into a stored (legacy) table acts
+ * on, as a selection leaving a table of blocks is taken away (`swapHeld`):
+ * the table at each end turns into an empty line, the later one first, and
+ * the selection between those lines then goes as the body's own does.
+ * @param selection - The selection, on the transaction's document.
+ * @param tr - The transaction.
+ * @returns Whether the selection reached a stored table; false leaves it to the caller.
+ */
+export function deleteStoredTableRange(selection: Selection, tr: Transaction): boolean {
+  const ends = storedEnds(selection);
+  if (ends === null) return false;
+  const tables = [ends.to, ends.from?.from === ends.to?.from ? null : ends.from].filter((table): table is EndTable => table !== null);
+  const steps = tr.steps.length;
+  for (const table of tables) tr.replaceWith(table.line.pos, table.to, table.line.node);
+  const mapping = tr.mapping.slice(steps);
+  /**
+   * Where an end lands: in the words of the line its table turned into, or where it was.
+   * @param pos - The end.
+   * @param table - The table at that end.
+   * @returns The position.
+   */
+  const place = (pos: number, table: EndTable | null): number =>
+    table === null ? mapping.map(pos) : Selection.findFrom(tr.doc.resolve(mapping.map(table.line.pos, -1)), 1, true)!.from;
+  TextSelection.create(tr.doc, place(selection.from, ends.from), place(selection.to, ends.to)).replace(tr);
+  return true;
 }
 
 /**
@@ -178,7 +238,7 @@ export function storedTableRange(selection: Selection): { from: number; to: numb
 function inStoredTable(view: EditorView): ClippedBlocks | null {
   const { selection, schema, doc } = view.state;
   const { $from, $to } = selection;
-  if ($from.sameParent($to) && storedTableAt($from) !== null) {
+  if ($from.sameParent($to) && inStored($from)) {
     const words = $from.parent.content.cut($from.parentOffset, $to.parentOffset);
     const line = schema.nodes['blockContainer']!.create(null, schema.nodes['paragraph']!.create(null, words));
     const group = schema.nodes['blockGroup']!.create(null, line);
@@ -281,13 +341,12 @@ export const documentTableCopyExtension = createExtension(({ editor }) => ({
             if (clipped === null) return false;
             write(event, clipped);
             if (!view.editable) return true;
-            const stored = storedTableRange(view.state.selection);
+            const tr = view.state.tr;
             if (view.state.selection instanceof CellSelection) {
               deleteCellSelection(view.state, view.dispatch);
-            } else if (stored !== null) {
-              view.dispatch(view.state.tr.delete(stored.from, stored.to));
             } else {
-              view.dispatch(view.state.tr.deleteSelection());
+              if (!deleteStoredTableRange(view.state.selection, tr)) tr.deleteSelection();
+              view.dispatch(tr);
             }
             return true;
           },

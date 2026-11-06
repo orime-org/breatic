@@ -119,7 +119,7 @@ type Rebuild = (doc: PMNode, anchor: number, head: number) => Selection;
  * @param table - The table.
  * @returns The line's block.
  */
-function emptyLineFor(table: PMNode): PMNode {
+export function emptyLineFor(table: PMNode): PMNode {
   const { schema } = table.type;
   const paragraph = schema.nodes['paragraph']!;
   const attrs = Object.fromEntries(Object.keys(paragraph.spec.attrs ?? {}).filter((name) => name in table.attrs).map((name) => [name, table.attrs[name]]));
