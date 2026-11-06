@@ -36,10 +36,12 @@
  * both pass. One detector call over N > 1 frames is answered `{ frames: [rows | null per frame] }`, a one-frame call
  * `{ faces: rows | null }` (the `people` answer).
  */
-import { execFile } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runAnalysisPipeline, type AnalysisPipelineRequest } from '@ingest/container/analysis-pipeline.js';
@@ -77,6 +79,12 @@ const ID = {
 };
 const OPAQUE = { width: W, height: H, displayRect: null, colorMatrix: 'bt709', toneMap: 'none', alpha: 'none', crf: 18, preset: 'medium', format: 'mp4-h264' };
 const STRAIGHT = { ...OPAQUE, alpha: 'straight', format: 'webm-vp9' };
+// The real YuNet path exists only in the media container image (packages/ingest/Dockerfile: /app/analysis-runtime.py, the
+// weights under /app/models, OpenCV on PYTHONPATH); packages/ingest/scripts/test-container-in-image.sh runs this file there.
+const REAL_YUNET = existsSync('/app/analysis-runtime.py') && spawnSync('python3', ['-c', 'import cv2'], { stdio: 'ignore' }).status === 0;
+// A real frontal portrait the repository already ships (web's mini-tool real-run media), 1024x1024; the image test script
+// copies every tracked file into its workspace, so the same relative path holds there.
+const PORTRAIT = fileURLToPath(new URL('../../../web/tests/fixtures/mini-tools/portrait.jpg', import.meta.url));
 
 let dir: string;
 let served = new Map<string, string>();
@@ -145,11 +153,12 @@ function cocoCounts(width: number, height: number, foreground: (x: number, y: nu
  * @param name - Its file name.
  * @param foreground - Whether a pixel of a frame is the person's foreground.
  * @param frames - The frame count.
+ * @param size - The prepared video's size, 160x96 when absent.
  * @returns Its path.
  */
-async function track(name: string, foreground: (frame: number, x: number, y: number) => boolean, frames = 10): Promise<string> {
+async function track(name: string, foreground: (frame: number, x: number, y: number) => boolean, frames = 10, size = { width: W, height: H }): Promise<string> {
   const path = join(dir, name);
-  await writeFile(path, JSON.stringify(Array.from({ length: frames }, (_unused, frame) => cocoCounts(W, H, (x, y) => foreground(frame, x, y)))));
+  await writeFile(path, JSON.stringify(Array.from({ length: frames }, (_unused, frame) => cocoCounts(size.width, size.height, (x, y) => foreground(frame, x, y)))));
   return path;
 }
 
@@ -157,11 +166,12 @@ async function track(name: string, foreground: (frame: number, x: number, y: num
  * Write a transform table (the `lipsync_faces` output shape).
  * @param name - Its file name.
  * @param faceRect - Each frame's face rectangle or null.
+ * @param frames - The frame count.
  * @returns Its path.
  */
-async function facesTable(name: string, faceRect: (frame: number) => Rect | null): Promise<string> {
+async function facesTable(name: string, faceRect: (frame: number) => Rect | null, frames = 10): Promise<string> {
   const path = join(dir, name);
-  await writeFile(path, JSON.stringify({ frames: Array.from({ length: 10 }, (_unused, frameIndex) => ({ frameIndex, faceRect: faceRect(frameIndex) })) }));
+  await writeFile(path, JSON.stringify({ frames: Array.from({ length: frames }, (_unused, frameIndex) => ({ frameIndex, faceRect: faceRect(frameIndex) })) }));
   return path;
 }
 
@@ -382,6 +392,13 @@ beforeAll(async () => {
   // lipsync_stem: row A, 0.3 s of 440 Hz at amplitude 0.5 in 48 kHz PCM; row B, 0.3 s of 660 Hz at amplitude 0.5 in 44.1 kHz AAC.
   await make('row-a.wav', ['-f', 'lavfi', '-i', 'sine=f=440:r=48000:d=0.3,volume=4', '-c:a', 'pcm_s16le']);
   await make('row-b.m4a', ['-f', 'lavfi', '-i', 'sine=f=660:r=44100:d=0.3,volume=4', '-c:a', 'aac', '-b:a', '192k']);
+  // D20-4 clip padding: a uniformly white picture, so the crop is white and the padding is black.
+  await lossless('white.mp4', '235', { width: W, height: H, frames: 2 });
+  // D20-4 face choice, foreground x < 80 on both. winner.mp4: S, 20x20 at (16, 16), wholly inside (400 px); L, 40x40 at
+  // (72, 16), 8 columns inside (320 px). tie.mp4: A, 16x16 at (16, 16), wholly inside (256 px); B, 32x32 at (72, 40),
+  // 8 columns inside (256 px).
+  await lossless('winner.mp4', 'if(between(X,16,35)*between(Y,16,35)+between(X,72,111)*between(Y,16,55),235,40)', { width: W, height: H, frames: 2 });
+  await lossless('tie.mp4', 'if(between(X,16,31)*between(Y,16,31)+between(X,72,103)*between(Y,40,71),235,40)', { width: W, height: H, frames: 2 });
 });
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 
@@ -463,6 +480,55 @@ describe('lipsync_faces (§7.17 lipsync_faces row; execution design §9.4 no_fac
     const { report } = await runJob({ [ID.video]: join(dir, 'faces.mp4'), [ID.track]: path }, [recipe()], 'application/json');
     expect([report.ok, report.reason, report.outputs]).toEqual([false, 'empty_foreground', []]);
   });
+
+  it.each([
+    ['winner.mp4', [[16, 16, 20, 20], [72, 16, 40, 40]]],
+    ['tie.mp4', [[16, 16, 16, 16], [72, 40, 32, 32]]],
+  ] as const)('LF00 (guard) the detector stand-in sees the whole faces of %s', async (video, boxes) => {
+    const answer = JSON.parse(await fakeYuNet({
+      decoder: { program: 'ffmpeg', args: ['-hide_banner', '-loglevel', 'error', '-nostdin', '-i', join(dir, video), '-pix_fmt', 'bgr24', '-f', 'rawvideo', 'pipe:1'] },
+      processor: { program: 'python3', args: [] }, width: W, height: H, expectedFrameCount: 2, signal: new AbortController().signal,
+      limits: { stdoutBytes: LIMITS.analysisStdoutBytes, stderrTailBytes: LIMITS.stderrTailBytes },
+    })) as { frames: number[][][] };
+    expect(answer.frames.map(rows => rows.map(row => row.slice(0, 4)))).toEqual([boxes, boxes]);
+  });
+
+  // §97 D20-4: of several faces, the one with the largest intersection with the person's foreground mask is chosen; on a tie
+  // the larger face wins. Faces are measured as detected on the frame (the detector sees whole faces), then intersected.
+  it.each([
+    ['the largest intersection wins over a larger face that intersects less', 'winner.mp4', { x: 16, y: 16, width: 20, height: 20 }],
+    ['on equal intersections the larger face wins', 'tie.mp4', { x: 72, y: 40, width: 32, height: 32 }],
+  ] as const)('LF04 several faces inside the foreground: %s', async (_name, video, expected) => {
+    const path = await track(`track-${video}.json`, (_frame, x) => x < 80, 2);
+    const file = await produce({ [ID.video]: join(dir, video), [ID.track]: path }, recipe(), 'application/json');
+    const json = JSON.parse(await readFile(file, 'utf8')) as { frames: { frameIndex: number; faceRect: Rect | null }[] };
+    expect(json.frames.map(frame => frame.frameIndex)).toEqual([0, 1]);
+    for (const { frameIndex, faceRect } of json.frames) {
+      expect(faceRect, `frame ${frameIndex}`).not.toBeNull();
+      for (const side of ['x', 'y', 'width', 'height'] as const) expect(Math.abs(faceRect![side] - expected[side]), `frame ${frameIndex} ${side}`).toBeLessThanOrEqual(1);
+    }
+  });
+
+  // §97 D20-4, real faces: the detector is the image's own YuNet (`runAnalysisPipeline` unmocked). The prepared video is the
+  // shipped portrait scaled to 256x256 beside its mirror (512x256, ten frames); the person's foreground is the right half,
+  // so the face found on every frame is the mirrored one. Bounds are loose: YuNet's box covers the face without the hair,
+  // roughly x 300..730 and y 250..800 of the 1024 original.
+  it.skipIf(!REAL_YUNET)('LF05 a real face is found on every frame inside the tracked foreground (skipped outside the media image: needs /app/analysis-runtime.py and OpenCV)', async () => {
+    const actual = await vi.importActual<{ runAnalysisPipeline: typeof runAnalysisPipeline }>('@ingest/container/analysis-pipeline.js');
+    vi.mocked(runAnalysisPipeline).mockImplementation(actual.runAnalysisPipeline);
+    await make('portraits.mp4', ['-loop', '1', '-framerate', String(FPS), '-i', PORTRAIT, '-filter_complex', '[0:v]scale=256:256,split[a][b];[b]hflip[m];[a][m]hstack,format=yuv420p[v]',
+      '-map', '[v]', '-frames:v', '10', '-c:v', 'libx264', '-crf', '12', '-pix_fmt', 'yuv420p', '-video_track_timescale', String(FPS)]);
+    const path = await track('track-portrait.json', (_frame, x) => x >= 256, 10, { width: 512, height: 256 });
+    const file = await produce({ [ID.video]: join(dir, 'portraits.mp4'), [ID.track]: path }, recipe(), 'application/json');
+    const json = JSON.parse(await readFile(file, 'utf8')) as { frames: { frameIndex: number; faceRect: Rect | null }[] };
+    expect(json.frames.map(frame => frame.frameIndex)).toEqual(Array.from({ length: 10 }, (_unused, n) => n));
+    for (const { frameIndex, faceRect } of json.frames) {
+      expect(faceRect, `frame ${frameIndex}`).not.toBeNull();
+      const [cx, cy] = [faceRect!.x + faceRect!.width / 2, faceRect!.y + faceRect!.height / 2];
+      expect(faceRect!.x, `frame ${frameIndex} lies in the right half`).toBeGreaterThanOrEqual(256);
+      expect([cx > 256 + 64 && cx < 256 + 192, cy > 48 && cy < 208, faceRect!.width > 48 && faceRect!.width < 160], `frame ${frameIndex} ${JSON.stringify(faceRect)}`).toEqual([true, true, true]);
+    }
+  });
 });
 
 describe('lipsync_clip (§7.17 lipsync_clip row; execution design §9.2 timing table; DD §7.2 step 4)', () => {
@@ -491,6 +557,29 @@ describe('lipsync_clip (§7.17 lipsync_clip row; execution design §9.2 timing t
       expect(Math.abs(mean(frame, width, { x: 20, y: 20, width: 20, height: 36 }) - (40 + 18 * s)), `frame ${k} shows source ${s}`).toBeLessThan(4);
       expect(mean(frame, width, { x: 2, y: 2, width: 10, height: 10 }), `frame ${k} marker at the crop's corner`).toBeGreaterThan(200);
       expect(mean(frame, width, { x: 52, y: 4, width: 10, height: 56 }), `frame ${k} masked out`).toBeLessThan(24);
+    });
+  });
+
+  // §97 D20-4: a non-square faceRect is scaled to fit the crop, centred, and the padding is split equally, the odd pixel
+  // going to the bottom (wide) or the right (tall). The picture is white and wholly foreground, so the crop is white and the
+  // padding black; every row (wide) or column (tall) is classified by its mean against the midpoint 125.
+  it.each([
+    ['wide, odd split: 64x33 at scale 1 pads 15 rows above, 16 below', { x: 8, y: 8, width: 64, height: 33 }, 'rows', 15, 16],
+    ['tall, odd split: 31x64 at scale 1 pads 16 columns left, 17 right', { x: 8, y: 8, width: 31, height: 64 }, 'columns', 16, 17],
+    ['wide, even split: 32x16 at scale 2 pads 16 rows above and below', { x: 8, y: 8, width: 32, height: 16 }, 'rows', 16, 16],
+  ] as const)('LC02 %s', async (_name, rect, axis, before, after) => {
+    const timeline: LipsyncTimeline = { duration: 0.08, videoDuration: 0.08, syncMode: 'cut_off' };
+    const faces = await facesTable(`pad-faces-${axis}-${before}-${after}.json`, () => rect, 2);
+    const mask = await track(`pad-track-${axis}-${before}-${after}.json`, () => true, 2);
+    const table: VideoPresentationTable = { schemaVersion: 1, timescale: FPS, runs: [{ start: 0, count: 2, step: 1, duration: 1 }] };
+    const file = await produce({ [ID.video]: join(dir, 'white.mp4'), [ID.faces]: faces, [ID.track]: mask },
+      { kind: 'lipsync_clip', inputId: ID.video, faces: ID.faces, track: ID.track, cropSize: CROP, timeline, table });
+    const { width, frames } = await planeFrames(file, 'y');
+    expect(frames).toHaveLength(2);
+    const expected = Array.from({ length: CROP }, (_unused, at) => (at < before || at >= CROP - after ? 'pad' : 'crop'));
+    frames.forEach((frame, k) => {
+      const lines = Array.from({ length: CROP }, (_unused, at) => mean(frame, width, axis === 'rows' ? { x: 0, y: at, width: CROP, height: 1 } : { x: at, y: 0, width: 1, height: CROP }));
+      expect(lines.map(value => (value > 125 ? 'crop' : 'pad')), `frame ${k} ${axis}`).toEqual(expected);
     });
   });
 });
@@ -607,6 +696,28 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
       const centre2 = { x: 120, y: 56, width: 16, height: 16 };
       expect(Math.abs(mean(frame, W, centre2) - (160 - 5 * k)), `frame ${j} person 2 shows its result frame ${k}`).toBeLessThan(3.5);
       expect(Math.abs(mean(v.frames[j]!, v.width, half(centre2)) - 150)).toBeLessThan(4);
+    });
+  });
+
+  // §97 D20-4: a chunk crossing the bounce reversal has no rule of its own; each result frame maps through lipsyncSourceFrameAt.
+  // Result frames [6, 14) of the 0.72 s bounce timeline show source frames 6, 7, 8, 9, 9, 9, 8, 7 (t = 0.4 is s = V, the last
+  // frame) and person-result frames 6..13.
+  it('LM03 a chunk across the bounce reversal shows each result frame\'s mapped source frame and person frame', async () => {
+    const bounce: LipsyncTimeline = { duration: 0.72, videoDuration: V, syncMode: 'bounce' };
+    const window = { start: 6, end: 14 };
+    const sources = Array.from({ length: 8 }, (_unused, j) => lipsyncSourceFrameAt(bounce, TABLE, (window.start + j) / FPS));
+    expect(sources).toEqual([6, 7, 8, 9, 9, 9, 8, 7]);
+    const file = await produce(await inputs('comp-source.mp4'), { ...recipe(OPAQUE), timeline: bounce, window });
+    const list = await packets(file);
+    expect(list.map(packet => Number(packet.pts_time))).toEqual(Array.from({ length: 8 }, (_unused, j) => j / FPS));
+    expect(list[0]!.flags).toContain('K');
+    const [y, source] = await Promise.all([planeFrames(file, 'y'), planeFrames(join(dir, 'comp-source.mp4'), 'y')]);
+    expect(y.frames).toHaveLength(8);
+    y.frames.forEach((frame, j) => {
+      const [k, s] = [window.start + j, sources[j]!];
+      expect(mad(frame, source.frames[s]!, W, OUTSIDE), `frame ${j} outside every mask is source ${s}`).toBeLessThan(2.5);
+      const rect = face1(s)!;
+      expect(Math.abs(mean(frame, W, { x: rect.x + 12, y: rect.y + 16, width: 16, height: 16 }) - (50 + 7 * k)), `frame ${j} person 1 at source ${s}'s face shows result frame ${k}`).toBeLessThan(3.5);
     });
   });
 
