@@ -49,6 +49,8 @@ const STORED_STYLED = {
     }],
   },
 };
+/** A table of blocks whose first cell starts with a block that holds no words. */
+const DIVIDED = tableBlock({ rows: [{ cells: [{ blocks: [{ type: 'divider' }, { type: 'paragraph', content: 'n1' }] }, 'n2'] }] });
 /** What `styleOf` reads from a body holding `STORED_STYLED` as a table of blocks. */
 const STYLE = {
   table: { quoted: true, textColor: 'red' },
@@ -519,6 +521,14 @@ describe('copies of every shape the body makes paste in', () => {
     expect(styleOf(editor)).toEqual(STYLE);
   });
 
+  it('a copy from a new table whose first cell starts with a divider into a stored one carries the new table whole', async () => {
+    const source = await openReady([{ type: 'paragraph', content: 'lead' }, DIVIDED, { type: 'paragraph', content: 'mid' }, STORED, { type: 'paragraph', content: 'more' }]);
+    const editor = await pasteMid(copySelection(source, TextSelection.create(source.prosemirrorView.state.doc, positionOf(source, 'n1', 1), positionOf(source, 'l1', 1))));
+    let dividers = 0;
+    editor.prosemirrorView.state.doc.descendants((node: PMNode) => { if (node.type.name === 'divider') dividers += 1; return true; });
+    expect(dividers).toBe(1);
+  });
+
   it('a copy from a stored cell into the line nested under the table puts that line after the table', async () => {
     const source = await openReady([{ type: 'paragraph', content: 'lead' }, { ...STORED, children: [{ type: 'paragraph', content: 'kid' }] }, { type: 'paragraph', content: 'more' }]);
     const editor = await pasteMid(copySelection(source, TextSelection.create(source.prosemirrorView.state.doc, positionOf(source, 'l1', 1), positionOf(source, 'kid', 1))));
@@ -597,6 +607,15 @@ describe('a table at an end of a cut or a move takes it whole, stored or not', (
     expect(outline(editor).slice(0, 2)).toEqual(['paragraph:lead', 'paragraph:']);
     expect(outline(editor)[2]).toMatch(/^paragraph:more/);
     // A move puts both tables whole where it drops them.
+    expect(outline(editor).filter((line) => line === 'table')).toHaveLength(moved === 1 ? 2 : 0);
+  });
+
+  it.each(HOW.map(([how, act], moved) => [how, act, moved] as const))('%s from a new table whose first cell starts with a divider into a stored one takes the new table whole', async (_how, act, moved) => {
+    const editor = await openReady([{ type: 'paragraph', content: 'lead' }, DIVIDED, { type: 'paragraph', content: 'mid' }, STORED, { type: 'paragraph', content: 'more' }]);
+    select(editor, positionOf(editor, 'n1', 1), positionOf(editor, 'l1', 1));
+    act(editor);
+    await settled();
+    expect(outline(editor).slice(0, 2)).toEqual(['paragraph:lead', 'paragraph:']);
     expect(outline(editor).filter((line) => line === 'table')).toHaveLength(moved === 1 ? 2 : 0);
   });
 

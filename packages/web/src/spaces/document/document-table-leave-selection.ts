@@ -98,7 +98,7 @@ export function heldTables(selection: Selection): HeldTables | null {
  * What a selection that takes tables whole acts on: its range widened over
  * those tables.
  * @param selection - The selection.
- * @param tables - The tables it takes whole.
+ * @param tables - The tables it takes whole; passed only for a stored (legacy) table's ends (`document-table-copy.ts`), temporary with #1362's conversion of stored tables.
  * @returns The range, or null when it takes no table whole.
  */
 export function heldRange(selection: Selection, tables = heldTables(selection)): { from: number; to: number } | null {
@@ -133,7 +133,7 @@ function emptyLineFor(table: PMNode): PMNode {
  * @param selection - The selection.
  * @param tr - The transaction.
  * @param rebuild - Builds a selection of the same kind on the changed document.
- * @param tables - The tables it takes whole.
+ * @param tables - The tables it takes whole; passed only for a stored (legacy) table's ends (`document-table-copy.ts`), temporary with #1362's conversion of stored tables.
  * @returns That selection on the changed document, or null when the selection takes no table whole.
  */
 export function swapHeld(selection: Selection, tr: Transaction, rebuild: Rebuild, tables = heldTables(selection)): Selection | null {
@@ -145,6 +145,8 @@ export function swapHeld(selection: Selection, tr: Transaction, rebuild: Rebuild
   for (const table of held) {
     const line = emptyLineFor(table.node);
     // A table standing in a block (a stored one) turns into that block's line.
+    // Temporary, with #1362's conversion of stored tables: it goes once no
+    // stored document holds a `table` node.
     tr.replaceWith(table.pos, endOf(table), doc.resolve(table.pos).parent.type === line.type ? line.firstChild! : line);
   }
   const mapping = tr.mapping.slice(steps);
@@ -174,7 +176,7 @@ export function swapHeld(selection: Selection, tr: Transaction, rebuild: Rebuild
  * @param tr - The transaction.
  * @param content - What goes in its place: a slice (`replace`), a node (`replaceWith`), or nothing.
  * @param rebuild - Builds a selection of the same kind on the changed document.
- * @param tables - The tables it takes whole.
+ * @param tables - The tables it takes whole; passed only for a stored (legacy) table's ends (`document-table-copy.ts`), temporary with #1362's conversion of stored tables.
  * @returns Whether the selection took a table whole; false leaves it to the selection's usual replace.
  */
 export function replaceHeld(selection: Selection, tr: Transaction, content: Slice | PMNode | undefined, rebuild: Rebuild, tables = heldTables(selection)): boolean {
