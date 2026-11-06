@@ -27,6 +27,8 @@ interface TimelineClipPropertiesProps {
 
 type Field = 'start' | 'in' | 'duration';
 
+const LABEL = 'text-xs text-muted-foreground';
+
 /** The clip property each field edits. */
 const FRAME_OF = { start: 'startFrame', in: 'sourceInFrame', duration: 'durationFrames' } as const satisfies Record<Field, keyof TimelineVideoClip>;
 
@@ -61,7 +63,7 @@ function syncDrafts(drafts: Drafts | null, clip: TimelineVideoClip, editable: Re
 }
 
 /**
- * Track, start, in-point and duration of the selected clip; edits commit on Enter or blur.
+ * Track, start, in-point and duration of the selected clip, and its video's length; edits commit on Enter or blur.
  * @param props - The clip, its context and the commit callback.
  * @param props.spaceId - The Space, for field ids.
  * @param props.document - The current Timeline, for the clip's source extent.
@@ -123,33 +125,35 @@ export function TimelineClipProperties({ spaceId, document, clip, name, conflict
     const id = `timeline-clip-${which}-${spaceId}`;
     const testId = `timeline-clip-${which}`;
     return <div className='flex flex-col gap-1'>
-      <Label htmlFor={editable[which] ? id : undefined}>{t(label)}</Label>
+      <Label htmlFor={editable[which] ? id : undefined} className={LABEL}>{t(label)}</Label>
       {editable[which]
-        ? <Input id={id} data-testid={testId} type='number' inputMode='numeric' autoComplete='off' step={1} value={current[which].value} className='h-8 w-28'
-          onChange={(event) => change(which, event.target.value)} onBlur={() => commit(which)}
+        ? <Input id={id} data-testid={testId} type='number' inputMode='numeric' autoComplete='off' step={1} value={current[which].value} className='h-8 w-full'
+          aria-invalid={current[which].error} onChange={(event) => change(which, event.target.value)} onBlur={() => commit(which)}
           onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); commit(which); } }} />
-        : <span data-testid={testId} className='text-sm tabular-nums'>{current[which].value}</span>}
-      {which === 'start' && startLocked && !readOnly && <span className='text-2xs text-muted-foreground'>{t('timeline.edit.magnetStartHint')}</span>}
-      {current[which].error && <span data-testid='timeline-clip-field-error' className='text-2xs text-status-error-foreground'>{t('timeline.errors.invalid_range')}</span>}
+        : <span data-testid={testId} className='flex h-8 items-center text-sm tabular-nums'>{current[which].value}</span>}
+      {which === 'start' && startLocked && !readOnly && <span className='text-xs text-muted-foreground'>{t('timeline.edit.magnetStartHint')}</span>}
+      {current[which].error && <span data-testid='timeline-clip-field-error' className='text-xs text-status-error-foreground'>{t('timeline.errors.invalid_range')}</span>}
     </div>;
   }
 
-  return <div className='flex flex-wrap items-start gap-4'>
+  return <div className='flex flex-col gap-3'>
     <div className='flex min-w-0 flex-col gap-1'>
-      <span className='max-w-64 truncate font-medium leading-normal'>{name}</span>
+      <span className='truncate text-sm font-semibold leading-normal'>{name}</span>
       {conflict && <span className='text-status-error-foreground'>{t('timeline.conflict')}</span>}
     </div>
     <div className='flex flex-col gap-1'>
-      <Label htmlFor={`timeline-clip-track-${spaceId}`}>{t('timeline.edit.track')}</Label>
+      <Label htmlFor={`timeline-clip-track-${spaceId}`} className={LABEL}>{t('timeline.edit.track')}</Label>
       {readOnly
         ? <span data-testid='timeline-clip-track' className='text-sm'>{trackName ?? t('timeline.edit.trackRemoved')}</span>
         : <Select value={trackName === null ? '' : clip.trackId} onValueChange={changeTrack}>
-          <SelectTrigger id={`timeline-clip-track-${spaceId}`} data-testid='timeline-clip-track' className='h-8 w-40'><SelectValue placeholder={t('timeline.edit.trackRemoved')} /></SelectTrigger>
+          <SelectTrigger id={`timeline-clip-track-${spaceId}`} data-testid='timeline-clip-track' className='h-8 w-full'><SelectValue placeholder={t('timeline.edit.trackRemoved')} /></SelectTrigger>
           <SelectContent>{labels.visual.map((track) => <SelectItem key={track.id} value={track.id}>{track.label}</SelectItem>)}<SelectItem value='new'>{t('timeline.edit.newTrack')}</SelectItem></SelectContent>
         </Select>}
     </div>
     {field('start', 'timeline.startFrame')}
     {field('in', 'timeline.edit.inPoint')}
     {field('duration', 'timeline.edit.duration')}
+    {source !== undefined && <span data-testid='timeline-clip-source' className='text-xs text-muted-foreground'>
+      {t('timeline.sourceExtent', { frames: source.extentFrames, fps: Math.round(fps.num / fps.den * 100) / 100 })}</span>}
   </div>;
 }

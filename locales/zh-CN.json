@@ -2830,7 +2830,9 @@
     "empty": "添加视频，开始编排 Timeline。",
     "video": "视频",
     "conflict": "冲突",
-    "conflictHelp": "片段重叠、所在轨道已被移除、超出视频范围或视频已丢失。请选择片段并移动、改换轨道、裁剪或删除。",
+    "conflictHelp": "冲突的片段不会播放，选择片段进行修改。",
+    "conflictList": "冲突",
+    "noConflicts": "没有冲突",
     "conflictReason": {
       "overlap": "与其他片段重叠",
       "missing_track": "所在轨道已被移除",
@@ -2850,6 +2852,7 @@
     "addMedia": "添加素材",
     "selectClip": "选择片段以查看属性。",
     "clipFrames": "开始 {start} · 时长 {duration} 帧",
+    "sourceExtent": "视频共 {frames} 帧 · {fps, number} fps",
     "startFrame": "开始帧",
     "cancel": "取消",
     "transport": {

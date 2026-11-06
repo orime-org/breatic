@@ -2830,7 +2830,9 @@
     "empty": "新增影片，開始編排 Timeline。",
     "video": "影片",
     "conflict": "衝突",
-    "conflictHelp": "片段重疊、所在軌道已被移除、超出影片範圍或影片已遺失。請選擇片段並移動、改換軌道、裁剪或刪除。",
+    "conflictHelp": "衝突的片段不會播放，選取片段進行修改。",
+    "conflictList": "衝突",
+    "noConflicts": "沒有衝突",
     "conflictReason": {
       "overlap": "與其他片段重疊",
       "missing_track": "所在軌道已被移除",
@@ -2850,6 +2852,7 @@
     "addMedia": "新增素材",
     "selectClip": "選擇片段以查看屬性。",
     "clipFrames": "開始 {start} · 長度 {duration} 影格",
+    "sourceExtent": "影片共 {frames} 影格 · {fps, number} fps",
     "startFrame": "開始影格",
     "cancel": "取消",
     "transport": {

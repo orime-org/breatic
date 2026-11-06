@@ -2830,7 +2830,9 @@
     "empty": "動画を追加して Timeline の編集を始めましょう。",
     "video": "動画",
     "conflict": "競合",
-    "conflictHelp": "クリップが重複しているか、トラックが削除されたか、動画の範囲外か、動画が見つかりません。クリップを選択して移動、トラックの変更、トリム、または削除してください。",
+    "conflictHelp": "競合しているクリップは再生されません。クリップを選択して修正してください。",
+    "conflictList": "競合",
+    "noConflicts": "競合はありません",
     "conflictReason": {
       "overlap": "他のクリップと重複しています",
       "missing_track": "トラックが削除されました",
@@ -2850,6 +2852,7 @@
     "addMedia": "素材を追加",
     "selectClip": "クリップを選択してプロパティを表示します。",
     "clipFrames": "開始 {start} · 長さ {duration} フレーム",
+    "sourceExtent": "動画 {frames} フレーム · {fps, number} fps",
     "startFrame": "開始フレーム",
     "cancel": "キャンセル",
     "transport": {

@@ -2830,7 +2830,9 @@
     "empty": "동영상을 추가하여 Timeline 편집을 시작하세요.",
     "video": "동영상",
     "conflict": "충돌",
-    "conflictHelp": "클립이 겹치거나, 트랙이 삭제되었거나, 동영상 범위를 벗어났거나, 동영상을 찾을 수 없습니다. 클립을 선택하고 이동, 트랙 변경, 트리밍 또는 삭제하세요.",
+    "conflictHelp": "충돌한 클립은 재생되지 않습니다. 클립을 선택해 수정하세요.",
+    "conflictList": "충돌",
+    "noConflicts": "충돌이 없습니다",
     "conflictReason": {
       "overlap": "다른 클립과 겹칩니다",
       "missing_track": "트랙이 삭제되었습니다",
@@ -2850,6 +2852,7 @@
     "addMedia": "미디어 추가",
     "selectClip": "클립을 선택하여 속성을 확인하세요.",
     "clipFrames": "시작 {start} · 길이 {duration} 프레임",
+    "sourceExtent": "동영상 {frames}프레임 · {fps, number} fps",
     "startFrame": "시작 프레임",
     "cancel": "취소",
     "transport": {

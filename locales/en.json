@@ -2830,7 +2830,9 @@
     "empty": "Add a video to start your Timeline.",
     "video": "Video",
     "conflict": "Conflict",
-    "conflictHelp": "Clips overlap, sit on a removed track, fall outside their video or lost their video. Select a clip and move it, change its track, trim or delete it.",
+    "conflictHelp": "Conflicting clips don't play. Select one to fix it.",
+    "conflictList": "Conflicts",
+    "noConflicts": "No conflicts",
     "conflictReason": {
       "overlap": "Overlaps another clip",
       "missing_track": "Its track was removed",
@@ -2850,6 +2852,7 @@
     "addMedia": "Add media",
     "selectClip": "Select a clip to view its properties.",
     "clipFrames": "Start {start} · Duration {duration} frames",
+    "sourceExtent": "Video {frames, plural, one {# frame} other {# frames}} · {fps, number} fps",
     "startFrame": "Start frame",
     "cancel": "Cancel",
     "transport": {

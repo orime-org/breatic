@@ -1215,9 +1215,10 @@ export function renderProductGuide(): string {
       `${quoted(t("timeline.pause"))} control playback; the slider below the preview selects its integer frame. ` +
       `The bottom visual track is ${quoted(t("timeline.mainTrack"))}; tracks above it are named like ` +
       `${quoted(t("timeline.track", { index: 2 }))}, and the preview shows the clip on the highest track at the playhead. ` +
-      "Click a clip to select it, or an empty part of a track to clear the selection; the bottom properties row shows its source name, " +
+      "Click a clip to select it, or an empty part of a track to clear the selection; " +
+      "the panel on the right shows its source name, " +
       `${quoted(t("timeline.edit.track"))}, ${quoted(t("timeline.startFrame"))}, ${quoted(t("timeline.edit.inPoint"))} and ` +
-      `${quoted(t("timeline.edit.duration"))}. Type a whole frame and press Enter or leave the field to apply it. ` +
+      `${quoted(t("timeline.edit.duration"))}, then the length and frame rate of its video. Type a whole frame and press Enter or leave the field to apply it. ` +
       "Drag a clip to move it, onto another track to change track, or into the dashed row above the top track to create a " +
       "new visual track. Drag the edges of the selected clip to trim it. " +
       `The toolbar has ${quoted(t("timeline.edit.undo"))}, ${quoted(t("timeline.edit.redo"))}, ` +
@@ -1236,7 +1237,9 @@ export function renderProductGuide(): string {
       "with nothing selected they move the playhead; " +
       "Alt+Up and Alt+Down change its track, and Alt+Up on the top visual track adds a new visual track; Esc cancels a drag without changing anything; Delete or Backspace deletes; Cmd/Ctrl+D duplicates; Cmd/Ctrl+B splits; " +
       "Cmd/Ctrl+Z undoes and Cmd/Ctrl+Shift+Z or Ctrl+Y redoes your own edits; N turns snapping on or off. " +
-      `Clips marked ${quoted(t("timeline.conflict"))} also appear in a selectable conflict list, each row saying why, for example ` +
+      `Clips marked ${quoted(t("timeline.conflict"))} are listed under ${quoted(t("timeline.conflictList"))} below the properties ` +
+      `(${quoted(t("timeline.noConflicts"))} when there are none); pressing a row selects the clip. ` +
+      "Each row says why, for example " +
       `${quoted(t("timeline.conflictReason.missing_track"))}, which changing the clip's track fixes, or ` +
       `${quoted(t("timeline.conflictReason.missing_source"))}, which deleting the clip fixes. ` +
       `A row reading ${quoted(t("timeline.conflictReason.damaged"))} offers ${quoted(t("timeline.edit.delete"))}. ${quoted(t("timeline.conflictHelp"))}`,

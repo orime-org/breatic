@@ -19,6 +19,8 @@ import { useTimelineAsset } from '@web/spaces/timeline/use-timeline-asset';
 
 const DRAG_ACTIVATION_PX = 3;
 const HEADER_STYLE = { width: TIMELINE_TRACK_HEADER_PX };
+// The zone hint stays beside the sticky track headers while the lanes scroll.
+const ZONE_HINT_STYLE = { left: TIMELINE_TRACK_HEADER_PX };
 
 /** What the track area needs from the editor. */
 interface TimelineTrackAreaProps {
@@ -133,7 +135,7 @@ function DeleteTrackButton({ trackId, placement, onCommit }: { trackId: string; 
  */
 function DropRow({ id, className, testId, children }: { id: string; className: string; testId: string; children: React.ReactNode }): React.JSX.Element {
   const { setNodeRef, isOver } = useDroppable({ id: `row:${id}`, data: { hover: id } });
-  return <div ref={setNodeRef} data-testid={testId} className={cn('flex border-b border-border', className, isOver && id === 'new' && 'bg-muted')}>{children}</div>;
+  return <div ref={setNodeRef} data-testid={testId} className={cn('flex border-b border-border', className, isOver && id === 'new' && 'bg-accent')}>{children}</div>;
 }
 
 /** The editor facts a drag preview reads at the moment it is computed. */
@@ -227,6 +229,11 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
   const labelStep = timelineRulerStep(fps, pixelsPerFrame, extent);
   const preview = gesture?.preview ?? null;
   const ghostStyle = React.useMemo(() => preview === null ? undefined : { left: preview.startFrame * pixelsPerFrame, width: Math.max(2, preview.durationFrames * pixelsPerFrame) }, [preview, pixelsPerFrame]);
+  const playheadStyle = React.useMemo(() => ({ left: frame * pixelsPerFrame }), [frame, pixelsPerFrame]);
+  const ghostLabel = preview === null ? null : <>
+    {t('timeline.clipFrames', { start: preview.startFrame, duration: preview.durationFrames })}
+    {gesture?.mode === 'move' && preview.trackId !== null && ` · ${t(preview.trackId === TIMELINE_MAIN_TRACK_ID && placement.magnet ? 'timeline.edit.ghostInsert' : 'timeline.edit.ghostOverwrite')}`}
+  </>;
   const header = 'sticky left-0 z-20 flex shrink-0 items-center gap-1 border-r border-border bg-background px-2 text-xs';
 
   return <DndContext sensors={sensors} onDragStart={startDrag} onDragMove={moveDrag} onDragEnd={endDrag} onDragCancel={cancelDrag} autoScroll={false}>
@@ -236,11 +243,17 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
           <div className={header} style={HEADER_STYLE} />
           <div data-testid='timeline-ruler' className='relative flex-1 cursor-pointer' onPointerDown={seekFromRuler}>
             {Array.from({ length: Math.floor(seconds / labelStep) + 1 }, (_, index) => index * labelStep).map((second) => <span key={second} className='absolute inset-y-0 border-l border-border pl-1 text-2xs tabular-nums text-muted-foreground' style={{ left: second * fps * pixelsPerFrame }}>{second}s</span>)}
+            <div data-testid='timeline-playhead-head' className='pointer-events-none absolute bottom-0 h-1.5 w-2.5 -translate-x-1/2 bg-active-border [clip-path:polygon(0_0,100%_0,50%_100%)]' style={playheadStyle} />
           </div>
         </div>
         {!readOnly && <DropRow id='new' testId='timeline-new-track-zone' className='h-7 border-dashed'>
           <div className={header} style={HEADER_STYLE} />
-          <div className='flex flex-1 items-center px-2 text-2xs text-muted-foreground'>{gesture?.mode === 'move' ? t('timeline.edit.newTrackZone') : null}</div>
+          <div className='relative flex flex-1 items-center text-2xs text-muted-foreground'>
+            {gesture?.mode === 'move' && <span className='sticky px-2' style={ZONE_HINT_STYLE}>{t('timeline.edit.newTrackZone')}</span>}
+            {preview !== null && preview.trackId === null && <div className='pointer-events-none absolute inset-y-1 rounded-chrome border border-active-border bg-muted/60' style={ghostStyle}>
+              <span data-testid='timeline-ghost-label' className='absolute inset-y-0 left-0 flex items-center whitespace-nowrap rounded-chrome border border-border bg-background px-1 text-2xs tabular-nums text-foreground'>{ghostLabel}</span>
+            </div>}
+          </div>
         </DropRow>}
         {rows.map((track) => {
           const clips = orderedTimelineClips(document.clips, track.id);
@@ -248,8 +261,10 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
           const showGhost = preview !== null && (preview.trackId ?? '') === track.id;
           return <DropRow key={track.id} id={track.id} testId={`timeline-track-${track.id}`} className={isMain ? 'h-16' : 'h-12'}>
             <div className={header} style={HEADER_STYLE}>
-              <span className='min-w-0 truncate'>{labels.nameOf(track.id) ?? track.id}</span>
-              {isMain && <span className='rounded-chrome border border-border px-1 text-2xs text-muted-foreground'>{placement.magnet ? t('timeline.edit.magnetOn') : t('timeline.edit.magnetOff')}</span>}
+              <span className='flex min-w-0 flex-col items-start gap-0.5'>
+                <span className='max-w-full truncate'>{labels.nameOf(track.id) ?? track.id}</span>
+                {isMain && <span className='rounded-chrome border border-border px-1 text-2xs text-muted-foreground'>{placement.magnet ? t('timeline.edit.magnetOn') : t('timeline.edit.magnetOff')}</span>}
+              </span>
               {!isMain && !readOnly && clips.length === 0 && <DeleteTrackButton trackId={track.id} placement={placement} onCommit={onCommit} />}
             </div>
             <div data-testid={`timeline-lane-${track.id}`} className='relative flex-1' onPointerDown={clearOnBlank}>
@@ -257,14 +272,11 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
                 selected={selectedId === clip.id} conflict={!readyIds.has(clip.id)} dragging={gesture?.clipId === clip.id && preview !== null}
                 readOnly={readOnly} pixelsPerFrame={pixelsPerFrame} onSelect={onSelect} />)}
               {showGhost && preview !== null && <div className='pointer-events-none absolute inset-y-1 rounded-chrome border border-active-border bg-muted/60' style={ghostStyle}>
-                <span data-testid='timeline-ghost-label' className='absolute -top-5 left-0 whitespace-nowrap rounded-chrome border border-border bg-background px-1 text-2xs tabular-nums'>
-                  {t('timeline.clipFrames', { start: preview.startFrame, duration: preview.durationFrames })}
-                  {gesture?.mode === 'move' && ` · ${t(isMain && placement.magnet ? 'timeline.edit.ghostInsert' : 'timeline.edit.ghostOverwrite')}`}
-                </span>
+                <span data-testid='timeline-ghost-label' className='absolute -top-5 left-0 whitespace-nowrap rounded-chrome border border-border bg-background px-1 text-2xs tabular-nums'>{ghostLabel}</span>
               </div>}
               {showGhost && isMain && placement.magnet && gesture?.mode === 'move' && <div data-testid='timeline-insert-marker' className='pointer-events-none absolute -inset-y-1 w-px bg-active-border' style={{ left: timelineInsertMarkerFrame(document, gesture.clipId, preview?.startFrame ?? 0) * pixelsPerFrame }} />}
               {showGhost && preview?.snapFrame !== null && preview !== null && <div className='pointer-events-none absolute -inset-y-1 w-px bg-status-warning-foreground' style={{ left: (preview.snapFrame ?? 0) * pixelsPerFrame }} />}
-              <div className='pointer-events-none absolute inset-y-0 w-px bg-active-border' style={{ left: frame * pixelsPerFrame }} />
+              <div className='pointer-events-none absolute inset-y-0 w-px bg-active-border' style={playheadStyle} />
             </div>
           </DropRow>;
         })}

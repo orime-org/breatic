@@ -14,6 +14,7 @@ import { orderedTimelineClips } from '@web/data/yjs/timeline-order';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
+import { Separator } from '@web/components/ui/separator';
 import { Slider } from '@web/components/ui/slider';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { useSpaceConnection } from '@web/data/yjs/space-connection';
@@ -94,14 +95,30 @@ function TimelineConflictRow({ projectId, clip, assetId, reason, selected, onSel
   const asset = useTimelineAsset(projectId, assetId);
   const select = React.useCallback((): void => onSelect(clip.id), [onSelect, clip.id]);
   return <Button data-testid={`timeline-conflict-${clip.id}`} type='button' variant={null} size={null} aria-pressed={selected} onClick={select}
-    className={cn('flex w-full min-w-0 justify-start gap-2 overflow-hidden rounded-chrome border border-status-error-border bg-status-error-bg px-2 py-2 text-xs hover-enabled:bg-accent', selected && 'border-active-border')}>
-    <Film className='size-4 shrink-0' />
-    <span className='min-w-0 truncate leading-normal'>{asset.data?.displayName || t('timeline.video')}</span>
-    <span className='shrink-0 text-status-error-foreground'>{t('timeline.conflict')}</span>
-    {reason !== null && <span data-testid={`timeline-reason-${clip.id}`} className='min-w-0 truncate text-status-error-foreground'>{t(`timeline.conflictReason.${reason}`)}</span>}
-    <span className='shrink-0 text-muted-foreground'>{t('timeline.clipFrames', { start: clip.startFrame, duration: clip.durationFrames })}</span>
+    className={cn('flex w-full min-w-0 flex-col items-start gap-0.5 overflow-hidden rounded-chrome border border-status-error-border bg-status-error-bg px-2 py-1.5 text-left text-xs hover-enabled:bg-accent', selected && 'border-active-border')}>
+    <span className='flex w-full min-w-0 items-center gap-2'>
+      <Film className='size-4 shrink-0' />
+      <span className='min-w-0 truncate leading-normal'>{asset.data?.displayName || t('timeline.video')}</span>
+    </span>
+    {reason !== null && <span data-testid={`timeline-reason-${clip.id}`} className='w-full truncate text-status-error-foreground'>{t(`timeline.conflictReason.${reason}`)}</span>}
+    <span className='w-full truncate tabular-nums text-muted-foreground'>{t('timeline.clipFrames', { start: clip.startFrame, duration: clip.durationFrames })}</span>
   </Button>;
 }
+
+/**
+ * A toolbar button's shortcut, in the type the menus use for theirs.
+ * @param props - The shortcut and its button's state.
+ * @param props.children - The shortcut label.
+ * @param props.pressed - Whether its toggle is on, which shows it in the button's text colour.
+ * @returns The shortcut.
+ * @throws {never} Never.
+ */
+function ToolbarShortcut({ children, pressed = false }: { children: string; pressed?: boolean }): React.JSX.Element {
+  return <kbd className={cn('font-sans text-xs tracking-widest', pressed ? 'text-foreground' : 'text-muted-foreground')}>{children}</kbd>;
+}
+
+const TOGGLE = 'gap-1.5 aria-pressed:border-active-border aria-pressed:bg-accent-strong aria-pressed:hover-enabled:bg-accent-strong';
+const PANEL = 'flex flex-col gap-2 rounded-chrome border border-border p-3 text-xs';
 
 /**
  * Arrange registered videos on tracks, edit them and preview the shared integer-frame sequence.
@@ -258,8 +275,9 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     }
   }, [session, fps, readOnly, undo, redo, duplicate, split, remove, toggleSnap, nudge, changeTrack]);
   const root = React.useRef<HTMLDivElement>(null);
+  const editorColumn = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
-    const element = root.current;
+    const element = editorColumn.current;
     if (element === null) return;
     const observer = new ResizeObserver(() => setTrackWidth(Math.max(0, element.clientWidth - TIMELINE_TRACK_HEADER_PX)));
     observer.observe(element);
@@ -338,52 +356,70 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const previewStyle = React.useMemo(() => ({ aspectRatio: `${document.settings.width} / ${document.settings.height}` }), [document.settings.width, document.settings.height]);
   const inConflict = clips.some((clip) => !readyIds.has(clip.id) && frame >= clip.startFrame && frame < clip.startFrame + clip.durationFrames);
   const noSelection = selected === undefined;
+  const hasConflicts = arrangement.hasConflicts || damagedClipIds.length > 0;
   // Click-focusable, not tab-reachable: where the keyboard goes when the focused element leaves the page.
-  return <div ref={root} data-testid='timeline-space' data-project-id={projectId} data-space-id={spaceId} tabIndex={-1} data-space-focus-root='' className='flex h-full min-h-0 min-w-0 flex-col bg-background outline-none'>
-    <div className='flex min-h-0 flex-1 items-center justify-center bg-muted/40 p-6'>
-      <div data-testid='timeline-preview' data-active-clip-id={active?.id ?? ''} className='relative flex max-h-full w-full max-w-4xl items-center justify-center overflow-hidden rounded-content-sm border border-border bg-background' style={previewStyle}>
-        {source !== null && resource.data !== undefined && !resource.isError && (
-          // eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded asset; no caption track until caption authoring lands.
-          <video key={`${source.id}:${assetId}:${resource.data.fileUrl}`} ref={setMedia} src={resource.data.fileUrl} poster={resource.data.coverUrl ?? undefined} preload='auto' playsInline className='absolute inset-0 h-full w-full object-contain' />
-        )}
-        {clips.length === 0 && <div data-testid='timeline-space-empty' className='flex flex-col items-center gap-3 p-6 text-center text-sm text-muted-foreground'><Film className='size-8' /><p>{t('timeline.empty')}</p></div>}
-        {inConflict && active === null && <p className='p-6 text-center text-sm text-status-error-foreground'>{t('timeline.conflictHelp')}</p>}
-        {source !== null && resource.isPending && <p className='p-6 text-sm text-muted-foreground'>{t('timeline.loadingMedia')}</p>}
-        {(resource.isError || playback.state === 'failed') && source !== null && <div className='relative flex flex-col items-center gap-3 p-6 text-sm'><p>{t('timeline.mediaUnavailable')}</p><Button variant='outline' onClick={retryPreview}>{t('timeline.retry')}</Button></div>}
+  return <div ref={root} data-testid='timeline-space' data-project-id={projectId} data-space-id={spaceId} tabIndex={-1} data-space-focus-root='' className='flex h-full min-h-0 min-w-0 bg-background outline-none'>
+    <div ref={editorColumn} className='flex min-h-0 min-w-0 flex-1 flex-col'>
+      <div className='flex min-h-0 flex-1 items-center justify-center bg-muted/40 p-6'>
+        <div data-testid='timeline-preview' data-active-clip-id={active?.id ?? ''} className='relative flex max-h-full w-full max-w-4xl items-center justify-center overflow-hidden rounded-content-sm border border-border bg-background' style={previewStyle}>
+          {source !== null && resource.data !== undefined && !resource.isError && (
+            // eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded asset; no caption track until caption authoring lands.
+            <video key={`${source.id}:${assetId}:${resource.data.fileUrl}`} ref={setMedia} src={resource.data.fileUrl} poster={resource.data.coverUrl ?? undefined} preload='auto' playsInline className='absolute inset-0 h-full w-full object-contain' />
+          )}
+          {clips.length === 0 && <div data-testid='timeline-space-empty' className='flex flex-col items-center gap-3 p-6 text-center text-sm text-muted-foreground'><Film className='size-8' /><p>{t('timeline.empty')}</p></div>}
+          {inConflict && active === null && <p className='p-6 text-center text-sm text-status-error-foreground'>{t('timeline.conflictHelp')}</p>}
+          {source !== null && resource.isPending && <p className='p-6 text-sm text-muted-foreground'>{t('timeline.loadingMedia')}</p>}
+          {(resource.isError || playback.state === 'failed') && source !== null && <div className='relative flex flex-col items-center gap-3 p-6 text-sm'><p>{t('timeline.mediaUnavailable')}</p><Button variant='outline' onClick={retryPreview}>{t('timeline.retry')}</Button></div>}
+        </div>
       </div>
+      <div className='flex shrink-0 items-center gap-3 border-t border-border px-4 py-2'>
+        <Button data-testid='timeline-play' variant='outline' size='sm' className='gap-1.5' disabled={duration === 0} onClick={playback.toggle} icon={playback.intent === 'play' ? <Pause className='size-4' /> : <Play className='size-4' />}>{playback.intent === 'play' ? t('timeline.pause') : t('timeline.play')}</Button>
+        <span className='shrink-0 text-xs tabular-nums'>{t('timeline.framePosition', { frame, total: duration })}</span>
+        <Slider aria-label={t('timeline.seek')} value={seekValue} onValueChange={onSeek} min={0} max={Math.max(1, duration - 1)} step={1} disabled={duration === 0} className='min-w-0 flex-1' />
+        <span className='shrink-0 text-xs text-muted-foreground'>{t(`timeline.transport.${playback.state}`)}</span>
+      </div>
+      <div role='toolbar' aria-label={t('timeline.tracks')} className='flex shrink-0 flex-wrap items-center gap-2 border-t border-border px-4 py-2'>
+        <div className='flex flex-wrap items-center gap-2'>
+          {!readOnly && <Button data-testid='timeline-add-media' variant='outline' size='sm' className='gap-1.5' onClick={openMaterial} icon={<Plus className='size-4' />}>{t('timeline.addMedia')}</Button>}
+          <Button data-testid='timeline-undo' variant='outline' size='sm' className='gap-1.5' disabled={readOnly || !history.canUndo} onClick={undo} icon={<Undo2 className='size-4' />}>{t('timeline.edit.undo')}</Button>
+          <Button data-testid='timeline-redo' variant='outline' size='sm' className='gap-1.5' disabled={readOnly || !history.canRedo} onClick={redo} icon={<Redo2 className='size-4' />}>{t('timeline.edit.redo')}</Button>
+          <Separator orientation='vertical' className='h-5' />
+          <Button data-testid='timeline-split' variant='outline' size='sm' disabled={readOnly} aria-disabled={noSelection} className={cn('gap-1.5', noSelection && 'opacity-50')} onClick={split} icon={<Scissors className='size-4' />}>{t('timeline.edit.split')}<ToolbarShortcut>{formatShortcut({ mod: true, key: 'B' })}</ToolbarShortcut></Button>
+          <Button data-testid='timeline-duplicate' variant='outline' size='sm' disabled={readOnly} aria-disabled={noSelection} className={cn('gap-1.5', noSelection && 'opacity-50')} onClick={duplicate} icon={<Copy className='size-4' />}>{t('timeline.edit.duplicate')}<ToolbarShortcut>{formatShortcut({ mod: true, key: 'D' })}</ToolbarShortcut></Button>
+          <Button data-testid='timeline-delete' variant='outline' size='sm' disabled={readOnly} aria-disabled={noSelection} className={cn('gap-1.5', noSelection && 'opacity-50')} onClick={remove} icon={<Trash2 className='size-4' />}>{t('timeline.edit.delete')}<ToolbarShortcut>{formatShortcut({ key: 'Delete' })}</ToolbarShortcut></Button>
+        </div>
+        <div className='ml-auto flex flex-wrap items-center gap-2'>
+          <Button data-testid='timeline-toggle-magnet' variant='outline' size='sm' aria-pressed={prefs.magnet} className={TOGGLE} onClick={toggleMagnet} icon={<Magnet className='size-4' />}>{t('timeline.edit.magnet')}</Button>
+          <Button data-testid='timeline-toggle-snap' variant='outline' size='sm' aria-pressed={prefs.snap} className={TOGGLE} onClick={toggleSnap}>{t('timeline.edit.snap')}<ToolbarShortcut pressed={prefs.snap}>N</ToolbarShortcut></Button>
+          <Button data-testid='timeline-toggle-linkage' variant='outline' size='sm' aria-pressed={prefs.linkage} className={TOGGLE} onClick={toggleLinkage} icon={<Link2 className='size-4' />}>{t('timeline.edit.linkage')}</Button>
+          <span className='flex items-center gap-2'>
+            <span className='text-xs text-muted-foreground'>{t('timeline.edit.zoom')}</span>
+            <Slider data-testid='timeline-zoom' aria-label={t('timeline.edit.zoom')} value={zoomValue} onValueChange={changeZoom} min={Math.log2(minZoom)} max={Math.log2(TIMELINE_MAX_PIXELS_PER_FRAME)} step={ZOOM_STEP} className='w-28' />
+          </span>
+        </div>
+      </div>
+      <TimelineTrackArea projectId={projectId} document={document} labels={labels} readyIds={readyIds} selectedId={selectedId} frame={frame} extent={extent}
+        pixelsPerFrame={pixelsPerFrame} readOnly={readOnly} snap={prefs.snap} placement={placement} onSelect={selectClip} onSeek={seekTo} onCommit={commitCommand} onVanished={vanished} onDraggingChange={draggingChange} />
     </div>
-    <div className='flex shrink-0 items-center gap-3 border-t border-border px-4 py-2'>
-      <Button data-testid='timeline-play' variant='outline' size='sm' disabled={duration === 0} onClick={playback.toggle} icon={playback.intent === 'play' ? <Pause className='size-4' /> : <Play className='size-4' />}>{playback.intent === 'play' ? t('timeline.pause') : t('timeline.play')}</Button>
-      <span className='shrink-0 text-xs tabular-nums'>{t('timeline.framePosition', { frame, total: duration })}</span>
-      <Slider aria-label={t('timeline.seek')} value={seekValue} onValueChange={onSeek} min={0} max={Math.max(1, duration - 1)} step={1} disabled={duration === 0} className='min-w-0 flex-1' />
-      <span className='shrink-0 text-xs text-muted-foreground'>{t(`timeline.transport.${playback.state}`)}</span>
-    </div>
-    <div role='toolbar' aria-label={t('timeline.tracks')} className='flex shrink-0 flex-wrap items-center gap-2 border-t border-border px-4 py-2'>
-      {!readOnly && <Button data-testid='timeline-add-media' variant='outline' size='sm' onClick={openMaterial} icon={<Plus className='size-4' />}>{t('timeline.addMedia')}</Button>}
-      <Button data-testid='timeline-undo' variant='outline' size='sm' disabled={readOnly || !history.canUndo} onClick={undo} icon={<Undo2 className='size-4' />}>{t('timeline.edit.undo')}</Button>
-      <Button data-testid='timeline-redo' variant='outline' size='sm' disabled={readOnly || !history.canRedo} onClick={redo} icon={<Redo2 className='size-4' />}>{t('timeline.edit.redo')}</Button>
-      <Button data-testid='timeline-split' variant='outline' size='sm' disabled={readOnly} aria-disabled={noSelection} className={cn(noSelection && 'opacity-50')} onClick={split} icon={<Scissors className='size-4' />}>{t('timeline.edit.split')} <kbd className='text-muted-foreground'>{formatShortcut({ mod: true, key: 'B' })}</kbd></Button>
-      <Button data-testid='timeline-duplicate' variant='outline' size='sm' disabled={readOnly} aria-disabled={noSelection} className={cn(noSelection && 'opacity-50')} onClick={duplicate} icon={<Copy className='size-4' />}>{t('timeline.edit.duplicate')} <kbd className='text-muted-foreground'>{formatShortcut({ mod: true, key: 'D' })}</kbd></Button>
-      <Button data-testid='timeline-delete' variant='outline' size='sm' disabled={readOnly} aria-disabled={noSelection} className={cn(noSelection && 'opacity-50')} onClick={remove} icon={<Trash2 className='size-4' />}>{t('timeline.edit.delete')}</Button>
-      <span className='flex-1' />
-      <Button data-testid='timeline-toggle-magnet' variant='outline' size='sm' aria-pressed={prefs.magnet} className={cn(prefs.magnet && 'border-active-border bg-accent')} onClick={toggleMagnet} icon={<Magnet className='size-4' />}>{t('timeline.edit.magnet')}</Button>
-      <Button data-testid='timeline-toggle-snap' variant='outline' size='sm' aria-pressed={prefs.snap} className={cn(prefs.snap && 'border-active-border bg-accent')} onClick={toggleSnap}>{t('timeline.edit.snap')} <kbd className='text-muted-foreground'>N</kbd></Button>
-      <Button data-testid='timeline-toggle-linkage' variant='outline' size='sm' aria-pressed={prefs.linkage} className={cn(prefs.linkage && 'border-active-border bg-accent')} onClick={toggleLinkage} icon={<Link2 className='size-4' />}>{t('timeline.edit.linkage')}</Button>
-      <span className='text-xs text-muted-foreground'>{t('timeline.edit.zoom')}</span>
-      <Slider data-testid='timeline-zoom' aria-label={t('timeline.edit.zoom')} value={zoomValue} onValueChange={changeZoom} min={Math.log2(minZoom)} max={Math.log2(TIMELINE_MAX_PIXELS_PER_FRAME)} step={ZOOM_STEP} className='w-28' />
-    </div>
-    <TimelineTrackArea projectId={projectId} document={document} labels={labels} readyIds={readyIds} selectedId={selectedId} frame={frame} extent={extent}
-      pixelsPerFrame={pixelsPerFrame} readOnly={readOnly} snap={prefs.snap} placement={placement} onSelect={selectClip} onSeek={seekTo} onCommit={commitCommand} onVanished={vanished} onDraggingChange={draggingChange} />
-    {(arrangement.hasConflicts || damagedClipIds.length > 0) && <ScrollArea className='h-28 shrink-0 border-t border-border' viewportClassName='flex flex-col gap-2 p-3'>
-      <p className='text-xs text-status-error-foreground'>{t('timeline.conflictHelp')}</p>
-      {clips.filter((clip) => !readyIds.has(clip.id)).map((clip) => <TimelineConflictRow key={clip.id} projectId={projectId} clip={clip} assetId={document.sources[clip.sourceId]?.assetId ?? ''} reason={reasons.get(clip.id) ?? null} selected={selectedId === clip.id} onSelect={selectClip} />)}
-      {damagedClipIds.map((clipId) => <TimelineDamagedRow key={clipId} clipId={clipId} readOnly={readOnly} onDelete={removeDamaged} />)}
-    </ScrollArea>}
-    <div className='flex min-h-16 shrink-0 flex-wrap items-center gap-3 border-t border-border px-4 py-3 text-xs'>
-      {selected === undefined ? <p className='text-muted-foreground'>{t('timeline.selectClip')}</p>
-        : <TimelineClipProperties key={selected.id} spaceId={spaceId} document={document} clip={selected} conflict={!readyIds.has(selected.id)} labels={labels} readOnly={readOnly} placement={placement} onCommit={commitCommand}
-          name={selectedResource.data?.displayName || t(selectedResource.isError ? 'timeline.mediaUnavailable' : 'timeline.video')} />}
-    </div>
+    <aside data-testid='timeline-side-panel' className='flex w-72 shrink-0 flex-col border-l border-border'>
+      <ScrollArea className='min-h-0 flex-1' viewportClassName='p-3'>
+        <div className='flex flex-col gap-3'>
+          <section className={PANEL}>
+            {selected === undefined ? <p className='text-muted-foreground'>{t('timeline.selectClip')}</p>
+              : <TimelineClipProperties key={selected.id} spaceId={spaceId} document={document} clip={selected} conflict={!readyIds.has(selected.id)} labels={labels} readOnly={readOnly} placement={placement} onCommit={commitCommand}
+                name={selectedResource.data?.displayName || t(selectedResource.isError ? 'timeline.mediaUnavailable' : 'timeline.video')} />}
+          </section>
+          <section data-testid='timeline-conflicts' className={PANEL}>
+            <h3 className='text-sm font-semibold'>{t('timeline.conflictList')}</h3>
+            {hasConflicts ? <>
+              <p className='text-status-error-foreground'>{t('timeline.conflictHelp')}</p>
+              {clips.filter((clip) => !readyIds.has(clip.id)).map((clip) => <TimelineConflictRow key={clip.id} projectId={projectId} clip={clip} assetId={document.sources[clip.sourceId]?.assetId ?? ''} reason={reasons.get(clip.id) ?? null} selected={selectedId === clip.id} onSelect={selectClip} />)}
+              {damagedClipIds.map((clipId) => <TimelineDamagedRow key={clipId} clipId={clipId} readOnly={readOnly} onDelete={removeDamaged} />)}
+            </> : <p className='text-muted-foreground'>{t('timeline.noConflicts')}</p>}
+          </section>
+        </div>
+      </ScrollArea>
+    </aside>
     {materialState.open && materialOpen && <TimelineMaterialDialog key={`${projectId}:${spaceId}`} projectId={projectId} spaceId={spaceId} draft={material} canWrite={!readOnly} document={document} placement={placement} onClose={closeMaterial} />}
   </div>;
 }
