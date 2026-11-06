@@ -51,6 +51,23 @@ const removeBackgroundSchema = z.strictObject({
   }).default(preparationDefaults),
 });
 
+// Lip-sync (execution design §9.3): the selectable single-person models, the tracking model's duration range and the run
+// caps. No default: the models' contract values are measured per model, so a deployment without them offers no lip-sync.
+const durationRange = { min_duration_seconds: z.number().positive(), max_duration_seconds: z.number().positive() };
+const lipSyncSchema = containerExecutionSchema.extend({
+  models: z.array(z.strictObject({
+    name: z.string().min(1),
+    schema_fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+    ...durationRange,
+    crop_size: z.number().int().positive(),
+    accepts_sync_mode: z.boolean(),
+    async_rejection: z.strictObject({ path: z.string().min(1), equals: z.json() }).optional(),
+  }).refine((model) => model.max_duration_seconds > model.min_duration_seconds)).min(1),
+  tracking: z.strictObject({ model: z.string().min(1), ...durationRange }).refine((tracking) => tracking.max_duration_seconds > tracking.min_duration_seconds),
+  max_people: z.number().int().positive(),
+  max_dialogues: z.number().int().positive(),
+});
+
 // Chunked encoding (design §5.4): encode jobs run only on standard-4, so the encoder's rates are configured once, for it.
 const encoderDefaults = {
   container_class: "MiniToolContainerStd4" as const,
@@ -167,6 +184,7 @@ export const miniToolsConfigSchema = z
       "video.remove-bg": removeBackgroundSchema,
       "video.extract-frames": containerExecutionSchema.default(executionDefaults),
       "video.split": containerExecutionSchema.default(executionDefaults),
+      "video.lip-sync": lipSyncSchema.optional(),
     }).default({ "video.remove-bg": removeBackgroundDefaults, "video.extract-frames": executionDefaults, "video.split": executionDefaults }),
     encoding: encodingSchema.default(encodingDefaults),
     presentation: z.strictObject({
@@ -231,8 +249,9 @@ export const miniToolsConfigSchema = z
     for (const [path, name] of [[["encoding", "encoder", "container_class"], config.encoding.encoder.container_class], [["executions", "video.remove-bg", "preparation", "container_class"], config.executions["video.remove-bg"].preparation.container_class]] as const) {
       if (!(name in config.classes)) ctx.addIssue({ code: "custom", path: [...path], message: "Names an undeclared container class" });
     }
-    for (const tool of ["video.extract-frames", "video.split"] as const) {
-      if (!(config.executions[tool].container_class in config.classes)) {
+    for (const tool of ["video.extract-frames", "video.split", "video.lip-sync"] as const) {
+      const execution = config.executions[tool];
+      if (execution !== undefined && !(execution.container_class in config.classes)) {
         ctx.addIssue({ code: "custom", path: ["executions", tool, "container_class"], message: "Execution names an undeclared container class" });
       }
     }
