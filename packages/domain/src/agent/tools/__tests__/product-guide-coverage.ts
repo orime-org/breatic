@@ -79,6 +79,9 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.miniTool.videoUI.invalidNumber": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
   "canvas.miniTool.videoUI.video": { excluded: REASONS.FILLS_A_VALUE },
   // Batch-six video tools (inner#1306): transitions, the lip-sync failure lines, range toasts and the tracking cost.
+  "canvas.miniTool.videoUI.addVideoSlot": { described: /one video picked under/ },
+  "canvas.miniTool.videoUI.timelineComposition": { described: /plays the result/ },
+  "canvas.miniTool.videoUI.timelineProperties": { described: /Select a clip and edit/ },
   "canvas.miniTool.videoUI.transitionTooShort": { described: /clips too short for one leave only Cut/ },
   "canvas.miniTool.videoUI.personFailNoFace": { described: /lists one line per person with the step that failed/ },
   "canvas.miniTool.videoUI.personFailRejected": { described: /lists one line per person with the step that failed/ },
