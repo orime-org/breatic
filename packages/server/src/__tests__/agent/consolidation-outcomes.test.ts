@@ -99,6 +99,8 @@ const { consolidateWindow } = await import("@server/agent/memory-consolidator.js
 const { logger } = await import("@breatic/core");
 const { createUsageRecorder } = await import("@breatic/domain");
 
+/** The part of a charge key that tells one fold from another. */
+const FOLD_ID = "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 const USER = "11111111-1111-4111-8111-111111111111";
 const CONVERSATION = "22222222-2222-4222-8222-222222222222";
 const PROJECT = "33333333-3333-4333-8333-333333333333";
@@ -153,7 +155,6 @@ async function consolidate(over: Record<string, unknown> = {}) {
     turns: TURNS,
     watermarkBefore: 7,
     newWatermark: 19,
-    turnIndex: 20,
     ...over,
   });
 }
@@ -344,9 +345,9 @@ describe("a consolidation that works", () => {
   it("bills the studio once for the call, under the key of this fold and this attempt", async () => {
     await consolidate();
 
-    const key = `consolidate:${CONVERSATION}:7:20:1`;
+    const key = chargeOnceForGeneration.mock.calls[0]?.[0] as string;
+    expect(key).toMatch(new RegExp(`^consolidate:${CONVERSATION}:7:${FOLD_ID}:1$`));
     expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
-    expect(chargeOnceForGeneration.mock.calls[0]?.[0]).toBe(key);
     expect(chargeOnceForGeneration.mock.calls[0]?.[1]).toMatchObject({ projectId: PROJECT, actorUserId: USER, amount: 400 });
     expect(vi.mocked(createUsageRecorder).mock.calls[0]?.[0]).toMatchObject({
       operationKey: key,
@@ -369,7 +370,7 @@ describe("a consolidation that works", () => {
     const { mocks } = await import("../helpers/mock-core.js");
     const recordModelCall = vi.fn();
     const operation = {
-      operationKey: `consolidate:${CONVERSATION}:7:20:1`,
+      operationKey: `consolidate:${CONVERSATION}:7:fold:1`,
       feature: "memory_consolidation" as const,
       actorUserId: USER,
       projectId: PROJECT,
@@ -412,15 +413,24 @@ describe("an answer that fails its checks", () => {
     expect(second[2]?.content).toContain(TITLE_ONLY);
   });
 
-  it("charges every attempt, each under its own key", async () => {
+  it("charges every attempt, each under its own key, both naming the same fold", async () => {
     generateTextRetry.mockResolvedValueOnce(reply("Sure! Here is a summary.")).mockResolvedValueOnce(GOOD_ANSWER);
 
     await consolidate();
 
-    expect(chargeOnceForGeneration.mock.calls.map((call) => call[0])).toEqual([
-      `consolidate:${CONVERSATION}:7:20:1`,
-      `consolidate:${CONVERSATION}:7:20:2`,
-    ]);
+    const [first, second] = chargeOnceForGeneration.mock.calls.map((call) => call[0] as string);
+    expect(first).toMatch(new RegExp(`^consolidate:${CONVERSATION}:7:${FOLD_ID}:1$`));
+    expect(second).toBe(first?.replace(/:1$/, ":2"));
+  });
+
+  it("charges a second fold from the same watermark under keys of its own", async () => {
+    generateTextRetry.mockResolvedValue(reply("not json at all"));
+    await consolidate();
+    await consolidate();
+
+    const keys = chargeOnceForGeneration.mock.calls.map((call) => call[0] as string);
+    expect(keys).toHaveLength(2 * ATTEMPTS);
+    expect(new Set(keys).size).toBe(keys.length);
   });
 
   it("fails after consolidation_answer_attempts answers, writes nothing and leaves memory as it was", async () => {

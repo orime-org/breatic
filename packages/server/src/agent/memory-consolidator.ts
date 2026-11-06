@@ -23,6 +23,7 @@
  * is charged once, under its own key.
  */
 
+import { randomUUID } from "node:crypto";
 import { parseCreditDecimal } from "@breatic/shared";
 
 import { stepCountIs } from "ai";
@@ -93,8 +94,6 @@ export interface ConsolidationWindow {
   watermarkBefore: number;
   /** The turn the window ends on. */
   newWatermark: number;
-  /** The turn the fold runs in; part of each call's charge key. */
-  turnIndex: number;
   /** Raised when the reader stopped the turn or the client went away. */
   signal?: AbortSignal;
 }
@@ -219,17 +218,17 @@ interface ConsolidationBill {
  * The key one model call of a consolidation is recorded and charged under.
  *
  * Each attempt of each fold is its own call and is paid for once. A fold that
- * failed leaves the watermark where it was, so a later turn folds from the
- * same one; the turn it runs in tells that call apart from this one. The same
+ * failed leaves the watermark where it was, so another fold can start from
+ * the same one; the id each fold draws tells their calls apart. The same
  * attempt of the same fold presented twice is refused the second charge.
  * @param conversationId - The conversation it folded.
  * @param watermarkBefore - Where the watermark stood.
- * @param turnIndex - The turn the fold ran in.
+ * @param foldId - The id this fold drew when it started.
  * @param attempt - Which answer this was, from 1.
  * @returns The key.
  */
-function consolidationKey(conversationId: string, watermarkBefore: number, turnIndex: number, attempt: number): string {
-  return `consolidate:${conversationId}:${String(watermarkBefore)}:${String(turnIndex)}:${String(attempt)}`;
+function consolidationKey(conversationId: string, watermarkBefore: number, foldId: string, attempt: number): string {
+  return `consolidate:${conversationId}:${String(watermarkBefore)}:${foldId}:${String(attempt)}`;
 }
 
 /**
@@ -300,7 +299,7 @@ async function bill(input: ConsolidationBill): Promise<void> {
  *   the rest, where the history it measured still stands.
  */
 export async function consolidateWindow(window: ConsolidationWindow): Promise<ConsolidationOutcome> {
-  const { userId, conversationId, projectId, watermarkBefore, newWatermark, turnIndex, turns, signal } = window;
+  const { userId, conversationId, projectId, watermarkBefore, newWatermark, turns, signal } = window;
 
   // A model call with a bill on it and nobody left to read what it produces.
   if (signal?.aborted) return "aborted";
@@ -348,6 +347,7 @@ export async function consolidateWindow(window: ConsolidationWindow): Promise<Co
   };
   const messages: ModelMessage[] = [{ role: "user", content: promptFor(input, turns) }];
   let errors: string[] = [];
+  const foldId = randomUUID();
 
   // From here on the model is involved, so every ending below has calls
   // behind it that were paid for.
@@ -370,7 +370,7 @@ export async function consolidateWindow(window: ConsolidationWindow): Promise<Co
       // Billed the moment the call comes back, which is the moment the tokens
       // are gone, whatever becomes of the answer.
       const usage = createUsageRecorder({
-        operationKey: consolidationKey(conversationId, watermarkBefore, turnIndex, attempt),
+        operationKey: consolidationKey(conversationId, watermarkBefore, foldId, attempt),
         feature: "memory_consolidation",
         actorUserId: userId,
         projectId,

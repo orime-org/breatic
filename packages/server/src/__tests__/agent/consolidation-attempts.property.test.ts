@@ -10,8 +10,9 @@
  *   answer that passed its checks;
  * - nothing is written once an answer was cut off, a call failed or the
  *   attempts ran out;
- * - every call that came back is charged once, under a key no other call of
- *   the same fold shares.
+ * - every call that came back is charged once, under a key no other call
+ *   shares, of the same fold or of any other fold, from the same watermark or
+ *   not.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -115,7 +116,6 @@ describe("one consolidation under any run of answers", () => {
           turns: [{ turnIndex: 1, messages: [{ role: "user", content: "hi" }] }],
           watermarkBefore: 0,
           newWatermark: 1,
-          turnIndex: 2,
         });
 
         // The run the model actually went through: up to the first answer
@@ -134,6 +134,41 @@ describe("one consolidation under any run of answers", () => {
         expect(keys).toHaveLength(ran.filter((a) => a !== "throws").length);
         expect(new Set(keys).size).toBe(keys.length);
       }),
+      { numRuns: 200 },
+    );
+  });
+
+  it("charges every call of every fold under its own key, however many folds start from the same watermark", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(fc.record({ watermarkBefore: fc.integer({ min: 0, max: 2 }), attempts: fc.array(attemptArbitrary, { minLength: ATTEMPTS, maxLength: ATTEMPTS }) }), {
+          minLength: 1,
+          maxLength: 5,
+        }),
+        async (folds) => {
+          vi.clearAllMocks();
+          commitConsolidation.mockResolvedValue("written");
+          let came = 0;
+          for (const fold of folds) {
+            const queue = [...fold.attempts];
+            generateTextRetry.mockImplementation(async () => respond(queue.shift() ?? "invalid"));
+            const before = generateTextRetry.mock.calls.length;
+            await consolidateWindow({
+              userId: "11111111-1111-4111-8111-111111111111",
+              conversationId: "22222222-2222-4222-8222-222222222222",
+              projectId: "33333333-3333-4333-8333-333333333333",
+              turns: [{ turnIndex: 1, messages: [{ role: "user", content: "hi" }] }],
+              watermarkBefore: fold.watermarkBefore,
+              newWatermark: fold.watermarkBefore + 1,
+            });
+            came += fold.attempts.slice(0, generateTextRetry.mock.calls.length - before).filter((a) => a !== "throws").length;
+          }
+
+          const keys = chargeOnceForGeneration.mock.calls.map((call) => call[0]);
+          expect(keys).toHaveLength(came);
+          expect(new Set(keys).size).toBe(keys.length);
+        },
+      ),
       { numRuns: 200 },
     );
   });

@@ -13,9 +13,9 @@
  * - every call that reported usage is recorded once, and nothing else is;
  * - the turn is charged once, for exactly what those calls reported, so a
  *   rejected call costs nothing;
- * - every fold starts from a different watermark, so each has its own refKey
- *   (`consolidate:${conversationId}:${watermarkBefore}`) and none is refused
- *   as a duplicate;
+ * - every fold that moved the watermark is followed by one from a later
+ *   watermark, so no window is consolidated twice (each call's own charge key
+ *   is pinned in consolidation-attempts.property.test.ts);
  * - a turn nobody stopped, within its fold limit, ends with its answer.
  */
 
@@ -92,7 +92,7 @@ function reported(call: ScriptedCall): number | undefined {
 }
 
 describe("charging a turn that folds and continues", () => {
-  it("records and charges exactly the calls that reported usage, and gives every fold its own refKey", async () => {
+  it("records and charges exactly the calls that reported usage, and folds every window once", async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.array(stepArbitrary, { maxLength: 5 }),
@@ -123,8 +123,8 @@ describe("charging a turn that folds and continues", () => {
           const turnCharges = world.charges.filter((one) => one.key === "turn:c1:9");
           expect(turnCharges).toEqual(owed === 0 ? [] : [{ key: "turn:c1:9", amount: owed }]);
 
-          const keys = world.folds.map((fold) => `consolidate:c1:${String(fold.watermarkBefore)}`);
-          expect(new Set(keys).size).toBe(keys.length);
+          const starts = world.folds.map((fold) => fold.watermarkBefore);
+          expect(new Set(starts).size).toBe(starts.length);
 
           const stopped = outcomes.slice(0, world.folds.length).includes("aborted");
           const overflows = steps.filter((step) => step.kind === "overflow").length;

@@ -217,7 +217,6 @@ export async function foldIfTooLong(
       })),
     watermarkBefore: assembly.watermark,
     newWatermark,
-    turnIndex: who.turnIndex,
     ...(who.signal ? { signal: who.signal } : {}),
   });
 
