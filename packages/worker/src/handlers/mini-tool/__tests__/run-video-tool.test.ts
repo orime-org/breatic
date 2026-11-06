@@ -535,6 +535,20 @@ describe("an oversized segment: run-chunk jobs and one run-stitch (§93 D5-10)",
     expect(statuses(completion)).toEqual(["registered"]);
   });
 
+  // inner#1306 test plan §97 (frames-split §5.4 预算 row: 同一阶段派出的作业数不大于冻结的阶段计数; D12-1): the worker sends the
+  // frozen layout as it is, so the distinct jobs of each stage (attempts of one job counted once) never exceed the frozen
+  // `stageJobs` beside the layout; here every frozen job of each stage is sent, and no more.
+  it("VC03 never sends more distinct jobs in a stage than the frozen stageJobs", async () => {
+    const stageJobs = [{ stage: "encode", jobs: 3 }, { stage: "stitch", jobs: 1 }];
+    serve({ ...plan("video.split", { batches: [[1]], encodes: [{ outputIndex: 0, chunks: CHUNKS }] }, 2, [WHOLE, RECIPES["video.split"][1]!]), stageJobs });
+    await drive();
+    const job = (id: string): string => id.replace(/:a\d+$/, "");
+    const encode = new Set([...h.openPlan.mock.calls.map((call) => job((call[0] as OpenMiniToolPlanJobInput).request.jobId)), ...submitted().filter((request) => request.jobId.includes(":batch:")).map((request) => job(request.jobId))]);
+    const stitch = new Set(submitted().filter((request) => request.jobId.includes(":stitch:")).map((request) => job(request.jobId)));
+    expect(encode.size).toBe(3);
+    expect(stitch.size).toBe(1);
+  });
+
   it("VC02 a chunk whose attempts are exhausted fails only its own segment; another segment is delivered and no stitch runs", async () => {
     // Output 1 [1.92, 3.84) overlaps output 0 only so that both start on a cfr96 keyframe (48); the runner does not care.
     serve(plan("video.split", { batches: [[1]], encodes: [{ outputIndex: 0, chunks: CHUNKS }] }, 0, [WHOLE, RECIPES["video.split"][1]!]));
