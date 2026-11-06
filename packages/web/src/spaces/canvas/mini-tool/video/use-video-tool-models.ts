@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The model facts a video tool panel reads beyond its draft (inner#1306; canvas design §4 去背景 and 对口型 rows): the
+ * The model facts a video tool panel reads beyond its draft (inner#1306; canvas design §4 remove-background and lip-sync rows): the
  * configured models from `GET /canvas/limits`, joined to their catalog entries; the footer estimate of the model the run
  * uses; and, for lip-sync, the last run's failure and its retry (execution design §9.4, frames-split §7.11 retry row).
  */

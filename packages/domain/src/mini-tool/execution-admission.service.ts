@@ -496,7 +496,7 @@ async function prepare(request: MiniToolPlannedRequest): Promise<ExecutionProjec
 }
 
 /**
- * Freeze a transitions run (frames-split §5.4 预算 row, §7.17 转场输出档 row; §97 D23-3): each clip's selected tool input and
+ * Freeze a transitions run (frames-split §5.4 budget row, §7.17 transition output profile row; §97 D23-3): each clip's selected tool input and
  * full ledger, the output profile of the two plans in timeline order, the timeline on its grid and every chunk boundary,
  * the stage counts, and the encode and window classes; the quote is the encode work of every output frame, each job's
  * start and the stitch's one AAC track.
