@@ -35,7 +35,7 @@ function provider(): ReturnType<typeof createProvider> {
     model_id: "mureka-ai/mureka-v9.5/generate-song",
     prompt_field: "prompt",
     params: { lyrics: { field: "lyrics" }, vocal: { field: "vocal_id" } },
-    extra_steps: [{ kind: "vocal", endpoint: "mureka-ai/vocal-clone", at: "before", for_param: "vocal", reused: true, pricing: flat(clone) }],
+    extra_steps: [{ kind: "vocal", endpoint: "mureka-ai/vocal-clone", at: "before", for_param: "vocal", pricing: flat(clone) }],
     pricing: flat(own),
   });
   return createProvider({
@@ -67,7 +67,6 @@ function provider(): ReturnType<typeof createProvider> {
                 at: "before",
                 for_param: "elements",
                 per_item: true,
-                reused: true,
                 describe: { model: "google/gemini-test", question: "Describe this image in one sentence.", max_output_tokens: 200 },
                 pricing: flat(10_000),
               }],
@@ -89,13 +88,13 @@ function provider(): ReturnType<typeof createProvider> {
  * @param clones - The live clones; undefined when the caller does not know them (the browser).
  * @returns The input.
  */
-const run = (params: Record<string, unknown>, clones?: EstimateInput["clones"]): EstimateInput => ({
+const run = (params: Record<string, unknown>, clones?: NonNullable<EstimateInput["known"]>["clones"]): EstimateInput => ({
   params,
   prompt: "a song",
   durations: {},
   placeholders: [],
   durationsMissing: [],
-  ...(clones === undefined ? {} : { sourceKeys: SOURCE_KEYS, clones }),
+  ...(clones === undefined ? {} : { known: { sourceKeys: SOURCE_KEYS, clones } }),
 });
 
 const p = provider();
@@ -113,6 +112,10 @@ describe("estimates with the caller's live clones", () => {
 
   it("stays an upper bound when the caller does not know its clones", async () => {
     expect(await cheapest("voice", run({ audio: VOICE }))).toEqual({ usd: 1.53, bound: "at_most", upstream: "ws_b" });
+  });
+
+  it("stays an upper bound for a vocal clone when the caller does not know its clones", async () => {
+    expect(await cheapest("song", run({ lyrics: "la", vocal: VOCAL }))).toEqual({ usd: 5.15, bound: "at_most", upstream: "ws_b" });
   });
 
   it("leaves out a vocal clone the upstream holds", async () => {

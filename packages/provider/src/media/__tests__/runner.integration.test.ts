@@ -109,7 +109,7 @@ function config(): ProviderConfigInput {
             ...mureka[0]!,
             upstream,
             weight: i + 1,
-            extra_steps: [{ kind: "vocal", endpoint: "mureka-ai/vocal-clone", at: "before", for_param: "vocal", reused: true, pricing: { ...pricing, base_price: upstream === "ws_a" ? 7_500_000 : 5_000_000 } }],
+            extra_steps: [{ kind: "vocal", endpoint: "mureka-ai/vocal-clone", at: "before", for_param: "vocal", pricing: { ...pricing, base_price: upstream === "ws_a" ? 7_500_000 : 5_000_000 } }],
             pricing: { ...pricing, base_price: upstream === "ws_a" ? 225_000 : 150_000 },
           })),
         },
@@ -549,7 +549,7 @@ describe("cheapest mode with a live clone", () => {
   const provider = (): ReturnType<typeof createProvider> => createProvider({ config: config(), keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
   const estimated = async (model: string, input: { prompt: string; params: Record<string, unknown> }, planOptions: PlanOptions): Promise<unknown> => {
     const p = provider();
-    const prepared = { ...input, durations: planOptions.durations, placeholders: [], durationsMissing: [], sourceKeys: planOptions.sourceKeys, clones: planOptions.clones };
+    const prepared = { ...input, durations: planOptions.durations, placeholders: [], durationsMissing: [], known: { sourceKeys: planOptions.sourceKeys, clones: planOptions.clones } };
     return estimateCost(p.pricingRules(model), p.availability(model), prepared, { mode: "cheapest" });
   };
 
@@ -572,27 +572,25 @@ describe("cheapest mode with a live clone", () => {
     expect(await estimated("mureka-priced", song, held)).toEqual({ usd: 0.225, bound: "exact", upstream: "ws_a" });
   });
 
-  it("property: the estimate names the upstream the plan sends to, whichever upstream holds which clone", async () => {
-    const song = { prompt: "pop", params: { lyrics: "la la", vocal: "https://cdn.example/vocal.mp3" } };
-    const speech = { prompt: "hello there", params: { audio: "https://cdn.example/a.mp3" } };
-    await fc.assert(fc.asyncProperty(
-      fc.constantFrom("mureka-priced", "voice-clone-priced"),
-      fc.subarray(["ws_a", "ws_b"]),
-      async (model, holders) => {
-        const vocal = model === "mureka-priced";
-        const planOptions: PlanOptions = {
-          idempotencyKey: "task-1",
-          sourceKeys: { "https://cdn.example/vocal.mp3": "sha-vocal", "https://cdn.example/a.mp3": "sha-a" },
-          clones: holders.map((upstream) => ({ upstream, kind: vocal ? "vocal" : "voice", sourceKey: vocal ? "sha-vocal" : "sha-a", upstreamId: `id-${upstream}` })),
-          durations: {},
-        };
-        const input = vocal ? song : speech;
-        const planned = expectState(await runner().plan(model, input, { mode: "cheapest" }, planOptions), "send");
-        const estimate = (await estimated(model, input, planOptions)) as { upstream: string };
-        expect(estimate.upstream).toBe((planned.ticket as unknown as { upstream: string }).upstream);
-      },
-    ), { numRuns: 20 });
-  });
+  const holderSets = [[], ["ws_a"], ["ws_b"], ["ws_a", "ws_b"]];
+  it.each(["mureka-priced", "voice-clone-priced"].flatMap((model) => holderSets.map((holders) => ({ model, holders }))))(
+    "estimates the upstream the plan sends $model to when $holders hold the clone",
+    async ({ model, holders }) => {
+      const vocal = model === "mureka-priced";
+      const planOptions: PlanOptions = {
+        idempotencyKey: "task-1",
+        sourceKeys: { "https://cdn.example/vocal.mp3": "sha-vocal", "https://cdn.example/a.mp3": "sha-a" },
+        clones: holders.map((upstream) => ({ upstream, kind: vocal ? "vocal" : "voice", sourceKey: vocal ? "sha-vocal" : "sha-a", upstreamId: `id-${upstream}` })),
+        durations: {},
+      };
+      const input = vocal
+        ? { prompt: "pop", params: { lyrics: "la la", vocal: "https://cdn.example/vocal.mp3" } }
+        : { prompt: "hello there", params: { audio: "https://cdn.example/a.mp3" } };
+      const planned = expectState(await runner().plan(model, input, { mode: "cheapest" }, planOptions), "send");
+      const estimate = (await estimated(model, input, planOptions)) as { upstream: string };
+      expect(estimate.upstream).toBe((planned.ticket as unknown as { upstream: string }).upstream);
+    },
+  );
 });
 
 describe("ticketFromLegacy", () => {

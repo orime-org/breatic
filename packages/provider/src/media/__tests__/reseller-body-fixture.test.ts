@@ -4,7 +4,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { catalog, coveredValues, shipped, yaml } from "../../config/__tests__/shipped.js";
+import { catalog, coveredValues, shipped } from "../../config/__tests__/shipped.js";
 import { adapterOf } from "../adapters.js";
 import { missingRequired, type SchemaSnapshot } from "../../config/upstream-schema.js";
 import { firstBody, takes, type SampleRun } from "./reseller-bodies.js";
@@ -35,10 +35,9 @@ interface BodySample {
 
 const BODIES = resolve(__dirname, "../../../test/fixtures/bodies");
 const config = shipped();
-const offered = new Map(catalog().models.map((m) => [m.name, m.params as Record<string, { values?: unknown[]; min?: number; max?: number }>]));
-const MODEL_FILES = ["image/models.yaml", "video/models.yaml", "audio/models.yaml", "tts/models.yaml", "three_d/meshy.yaml", "three_d/hunyuan3d.yaml"];
+const offered = new Map(catalog().models.map((m) => [m.name, m.params as Record<string, { values?: unknown[]; min?: number; max?: number; accepts?: string; fill?: string }>]));
 /** Per model, the params of which a run must carry at least one, per mode, as the catalog lists them. */
-const sourceGroups = new Map(MODEL_FILES.flatMap((f) => yaml<{ models: { name: string; source_groups?: { mode: string; any_of: string[] }[] }[] }>(`models/${f}`).models.map((m) => [m.name, m.source_groups ?? []] as const)));
+const sourceGroups = new Map(catalog().models.map((m) => [m.name, m.source_groups ?? []] as const));
 const cases = Object.entries(config.media.models).flatMap(([model, { upstreams }]) => upstreams.filter((b) => b.upstream !== "wavespeed").map((binding) => ({ model, binding })));
 /**
  * The committed sample of a binding.
@@ -88,15 +87,21 @@ describe.each(cases)("the request bodies of $model on $binding.upstream", ({ mod
     expect(group.any_of.filter((p) => first[p] !== undefined && first[p] !== null), JSON.stringify(group)).not.toEqual([]);
   });
 
-  it("sample each source with a file of the kind its param accepts", () => {
+  it("start from a run carrying each param the panel always sends, the text the editor holds", () => {
+    const first = sample.runs[0]!.params;
+    const editor = Object.entries(offered.get(model) ?? {}).filter(([, p]) => p.fill === "editor").map(([name]) => name);
+    expect(editor.filter((name) => typeof first[name] !== "string" || first[name] === "")).toEqual([]);
+  });
+
+  it("sample each source with a file of the kind its param accepts, in the runs and in each step's context", () => {
     const EXTENSIONS: Record<string, RegExp> = { image: /\.(png|jpe?g|webp)$/, video: /\.mp4$/, audio: /\.mp3$/ };
     const wrong: string[] = [];
     for (const [name, param] of Object.entries(offered.get(model) ?? {})) {
-      const kind = (param as { accepts?: string }).accepts;
-      const pattern = kind === undefined ? undefined : EXTENSIONS[kind];
+      const pattern = param.accepts === undefined ? undefined : EXTENSIONS[param.accepts];
       if (pattern === undefined) continue;
-      for (const run of sample.runs) {
-        const value = run.params[name];
+      const values = [...sample.runs.map((r) => r.params[name]), ...sample.steps.map((s) => s.context.params[name])];
+      for (const step of sample.steps.filter((s) => s.context.param === name)) values.push(step.context.source);
+      for (const value of values) {
         for (const url of (Array.isArray(value) ? value : [value]).filter((v): v is string => typeof v === "string")) {
           if (!pattern.test(url)) wrong.push(`${name}=${url}`);
         }

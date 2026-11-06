@@ -96,7 +96,7 @@ describe("orderByPrice and estimateCost", () => {
   it.each([
     ["for_param", { for_param: 7 }],
     ["per_item", { per_item: "yes" }],
-    ["reused", { reused: "true" }],
+    ["kind", { kind: 7 }],
   ])("refuses a step whose %s is of the wrong type, which estimateCost would misread", (_field, step) => {
     const wire = JSON.parse(JSON.stringify(priced([1, 2, 3]).pricingRules("m"))) as { upstreams: { steps: unknown[] }[] };
     wire.upstreams[0]!.steps = [{ ...step }];

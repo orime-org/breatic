@@ -108,6 +108,12 @@ describe("parseProviderConfig", () => {
     expect(problems.join("\n")).toContain("discount_rat");
   });
 
+  it("refuses a step that says whether a clone lets a later run skip it, which its kind decides", () => {
+    const step = { kind: "vocal", endpoint: "mureka-ai/vocal-clone", at: "before", for_param: "vocal", reused: true };
+    const problems = problemsOf(input([bind("wavespeed", 1, { extra_steps: [step] as unknown as MediaBinding["extra_steps"] })]));
+    expect(problems.join("\n")).toContain("reused");
+  });
+
   it.each(["fal", "openrouter", "toString"])("refuses a media binding on an upstream of kind %s, which no media adapter speaks to", (kind) => {
     const raw: ProviderConfigInput = {
       upstreams: { ...upstreams, typo: { kind, base_url: "https://x.example", key_env: "TYPO_KEY" } },

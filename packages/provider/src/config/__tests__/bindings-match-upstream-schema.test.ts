@@ -11,7 +11,7 @@ import { buildBody } from "@provider/media/body.js";
 import type { StepContext } from "@provider/media/adapter.js";
 import { rejectedInput, type EstimateInput } from "@provider/pricing/estimate.js";
 import { createProvider } from "@provider/provider.js";
-import { ROOT, catalog, shipped, yaml } from "./shipped.js";
+import { ROOT, catalog, shipped } from "./shipped.js";
 import { RESELLER_LACKS, WAVESPEED_LACKS } from "./wavespeed-lacks.js";
 
 /** One param of our catalog as its yaml writes it. */
@@ -262,11 +262,7 @@ const models = new Map(catalog().models.map((m) => [m.name, m.params as Record<s
 const cases = Object.entries(config.media.models).flatMap(([model, { upstreams }]) => upstreams.map((binding) => ({ model, binding })));
 const provider = createProvider({ config, keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
 /** The longest prompt each catalog model takes, where it states one. */
-const promptLimits = new Map(
-  ["image/models.yaml", "video/models.yaml", "audio/models.yaml", "tts/models.yaml", "three_d/meshy.yaml", "three_d/hunyuan3d.yaml"]
-    .flatMap((f) => yaml<{ models: { name: string; max_input_chars?: number }[] }>(`models/${f}`).models)
-    .flatMap((m) => (m.max_input_chars === undefined ? [] : [[m.name, m.max_input_chars] as const])),
-);
+const promptLimits = new Map(catalog().models.flatMap((m) => (m.max_input_chars === undefined ? [] : [[m.name, m.max_input_chars] as const])));
 
 /**
  * The endpoints one binding's runs reach: the model's own, and each extra step's.
@@ -763,7 +759,6 @@ describe.each(cases)("$model on $binding.upstream", ({ model, binding }) => {
     expect(differ, differ.join("\n")).toEqual([]);
   });
 
-
   it("leaves a field WaveSpeed does not have at its default only where that gives WaveSpeed's result", () => {
     if (binding.upstream === "wavespeed") return;
     const unreviewed = needingReview(model, binding).filter((u) => WAVESPEED_LACKS[u.key] === undefined).map((u) => u.shown);
@@ -775,13 +770,11 @@ describe.each(cases)("$model on $binding.upstream", ({ model, binding }) => {
     expect(unreviewed, unreviewed.join("\n")).toEqual([]);
   });
 
-
   it("leaves a param the run does not set at a default that gives WaveSpeed's result", () => {
     if (binding.upstream === "wavespeed") return;
     const differ = unsetDiffering(model, binding).filter((u) => SAME_EFFECT[u.key] === undefined).map((u) => u.shown);
     expect(differ, differ.join("\n")).toEqual([]);
   });
-
 
   it("writes its extra steps into fields their endpoints take", () => {
     for (const step of binding.extra_steps ?? []) {

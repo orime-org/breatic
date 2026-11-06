@@ -30,13 +30,24 @@ export function shipped(): ProviderConfigInput {
   };
 }
 
+/** Our catalog's files, below `config/models/`. */
+export const CATALOG_FILES = ["image/models.yaml", "video/models.yaml", "audio/models.yaml", "tts/models.yaml", "three_d/meshy.yaml", "three_d/hunyuan3d.yaml"] as const;
+
+/** One model of our catalog, as the files write it; the fields the provider checks are typed. */
+export type CatalogModel = CatalogShape["models"][number] & {
+  /** Per mode, the params of which a run must carry at least one. */
+  source_groups?: { mode: string; any_of: string[] }[];
+  /** The longest prompt the model takes, where it states one. */
+  max_input_chars?: number;
+  [field: string]: unknown;
+};
+
 /**
- * Our catalog: every model and the values each param offers.
+ * Our catalog: every model as its file writes it, `params` always present.
  * @returns The catalog.
  */
-export function catalog(): CatalogShape {
-  const files = ["image/models.yaml", "video/models.yaml", "audio/models.yaml", "tts/models.yaml", "three_d/meshy.yaml", "three_d/hunyuan3d.yaml"];
-  return { models: files.flatMap((f) => yaml<CatalogShape>(`models/${f}`).models.map(({ name, params }) => ({ name, params: params ?? {} }))) };
+export function catalog(): { models: CatalogModel[] } {
+  return { models: CATALOG_FILES.flatMap((f) => yaml<{ models: CatalogModel[] }>(`models/${f}`).models.map((m) => ({ ...m, params: m.params ?? {} }))) };
 }
 
 /** One of our catalog's params, as far as a request-body sample needs it. */

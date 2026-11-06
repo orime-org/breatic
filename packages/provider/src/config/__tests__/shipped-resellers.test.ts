@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildBody } from "../../media/body.js";
-import { estimateCost, rejectedInput, type EstimateInput } from "../../pricing/estimate.js";
+import { estimateCost, orderByPrice, rejectedInput, type EstimateInput } from "../../pricing/estimate.js";
 import { createProvider } from "../../provider.js";
 import { droppedValues, type MediaBinding } from "../schema.js";
 import type { SchemaSnapshot } from "../upstream-schema.js";
@@ -153,6 +153,10 @@ describe("the reseller bindings that serve only part of a model, or always send 
     expect(bindingOf("gemini-omni-1.1-flash-reference-to-video", "wavespeed")?.mentions).toMatchObject({ images: "<IMAGE_REF_{i}>", videos: "<VIDEO_REF_{i}>" });
   });
 
+  it("names HappyHorse 1.1 reference images on SandBase the way SandBase's own docs and example prompt do", () => {
+    expect(bindingOf("happyhorse-1.1-reference-to-video", "sandbase")?.mentions).toEqual({ images: "[Image {n}]" });
+  });
+
   it("states the voice-clone preview model drop by what fal's field is", () => {
     expect(String((bindingOf("minimax-voice-clone", "fal")?.drops?.model as { all_values?: string } | undefined)?.all_values)).not.toMatch(/no such field/);
   });
@@ -293,7 +297,39 @@ describe("the limits a reseller states beyond its schema", () => {
   it("prices each GPT Image 2.5 edit reference on fal at fal's figure for a large image", async () => {
     const input = run({ prompt: "make it blue", params: { images: ["https://a/1.png", "https://a/2.png"], aspect_ratio: "1:1", quality: "high" } });
     const estimate = await estimateCost(provider.pricingRules("gpt-image-2.5-sunburst-edit"), provider.availability("gpt-image-2.5-sunburst-edit"), input, { mode: "upstream", upstream: "fal" });
-    expect(estimate?.usd).toBeCloseTo(0.05268 + 2 * 0.012, 6);
+    expect(estimate?.usd).toBeCloseTo(0.05268 + 2 * 0.012 + 0.000005 * (12 / 4), 6);
+  });
+
+  describe("GPT Image 2.5 prompt text on fal, at $5.00 per 1M tokens", () => {
+    const params = { aspect_ratio: "1:1", quality: "low", resolution: "1k" };
+    const onFal = async (prompt: string): Promise<{ usd: number; bound: string } | null> =>
+      estimateCost(provider.pricingRules("gpt-image-2.5-sunburst-text-to-image"), provider.availability("gpt-image-2.5-sunburst-text-to-image"), run({ prompt, params }), { mode: "upstream", upstream: "fal" });
+
+    it("counts about four ASCII characters a token", async () => {
+      expect((await onFal("x".repeat(400)))?.usd).toBeCloseTo(0.00588 + 0.000005 * 100, 7);
+    });
+
+    it("counts each other character a token", async () => {
+      expect((await onFal("狐".repeat(1000)))?.usd).toBeCloseTo(0.00588 + 0.000005 * 1000, 7);
+    });
+
+    it("prices a run with no prompt yet as at least the image", async () => {
+      expect(await onFal("")).toEqual({ usd: 0.00588, bound: "at_least", upstream: "fal" });
+    });
+
+    it("ranks WaveSpeed's flat $0.01 ahead of fal once the prompt costs more than the difference", async () => {
+      const order = await orderByPrice(provider.pricingRules("gpt-image-2.5-sunburst-text-to-image"), provider.availability("gpt-image-2.5-sunburst-text-to-image"), run({ prompt: "狐".repeat(1000), params }));
+      const at = (upstream: string): number => order.findIndex((e) => e.upstream === upstream);
+      expect(at("wavespeed")).toBeLessThan(at("fal"));
+    });
+  });
+
+  // fal states Sync Lipsync 3 per minute of video; whether a longer audio or the output decides it is to be measured (inner#1859).
+  it("prices fal Sync Lipsync 3 by the video's length", async () => {
+    const input = run({ params: { video: "https://a/v.mp4", audio: "https://a/a.mp3" }, durations: { video: [60], audio: [10] } });
+    const estimate = await estimateCost(provider.pricingRules("sync-lipsync-3"), provider.availability("sync-lipsync-3"), input, { mode: "upstream", upstream: "fal" });
+    const rule = bindingOf("sync-lipsync-3", "fal")?.pricing as { base_price: number };
+    expect(estimate?.usd).toBeCloseTo(rule.base_price / 1_000_000, 6);
   });
 
   it.each([[60, 10], [10, 60]])("prices SandBase Sync Lipsync 3 per output second, the shorter input (video %i s, audio %i s)", async (video, audio) => {
