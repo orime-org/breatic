@@ -9,8 +9,11 @@
  *
  * - The transition output profile: `{ width, height, fps, timeBase, pixFmt, color, codec, encode: { crf, preset }, alpha }`;
  *   timeBase is 1/fps, alpha goes with vp9 and yuva420p, no alpha with h264 and yuv420p, and h264 has even sides.
- * - `transition_window`: `{ kind, clips: [two { inputId, entries }], frames, window: { startFrame, frameCount },
- *   transition, profile }`; `frames` is the chunk's [k0, k1) on the output grid and lies inside the window.
+ * - `transition_window`: `{ kind, clips: [two { inputId, entries, colorMatrix, toneMap }], frames, window: { startFrame,
+ *   frameCount }, transition, profile }`; `frames` is the chunk's [k0, k1) on the output grid and lies inside the window.
+ *   Each clip carries its own source conversion (frames-split §4.3 colour/HDR row): the decode matrix its plan resolved and
+ *   `toneMap: "sdr-bt709"` for an HDR source, the same two fields and values the `segment`/`chunk_encode` target and the
+ *   `scene_cuts` analysis target carry, because the profile is the output's and both clips decode into it.
  * - `chunk_encode` gains an optional `profile`.
  * - The transition `stitch`: `{ kind, chunks, clips: [two { inputId, audio }], crossfade: { startFrame, frameCount } | null,
  *   profile }`; `audio` is the existing audio entry, null for a clip without audio (silence over its span); `crossfade` is
@@ -41,7 +44,9 @@ const TRANSPARENT = { ...OPAQUE, width: 97, pixFmt: "yuva420p", codec: "vp9", al
 const TARGET = { width: 320, height: 180, displayRect: null, colorMatrix: "bt709", toneMap: "none", alpha: "none", crf: 18, preset: "medium", format: "mp4-h264" };
 const AUDIO = { start: r(0), end: r(3), origin: r(0), spans: null };
 
-const windowClips = (): Recipe[] => [{ inputId: SOURCE_A, entries: [entryAt(75, 15)] }, { inputId: SOURCE_B, entries: [entryAt(0, 15)] }];
+const SDR = { colorMatrix: "bt709", toneMap: "none" };
+const HDR = { colorMatrix: "bt2020nc", toneMap: "sdr-bt709" };
+const windowClips = (): Recipe[] => [{ inputId: SOURCE_A, entries: [entryAt(75, 15)], ...HDR }, { inputId: SOURCE_B, entries: [entryAt(0, 15)], ...SDR }];
 const windowChunk = (): Recipe => ({
   kind: "transition_window", clips: windowClips(),
   frames: { start: 75, end: 90 }, window: { startFrame: 75, frameCount: 15 }, transition: "fade", profile: OPAQUE,
@@ -148,6 +153,21 @@ describe("transition_window (§97 D15-6; frames-split §7.17)", () => {
     ["no profile", { profile: undefined }],
     ["a segment target instead of the profile", { profile: undefined, target: TARGET }],
   ])("BW02 refuses %s", (_name, edits) => {
+    refuses(windowChunk(), changed(windowChunk(), edits));
+  });
+
+  it("BW04 each clip carries its own conversion: an HDR clip tone mapped with its plan matrix beside an SDR clip (§4.3)", () => {
+    const parsed = miniToolPlanRecipeSchema.parse(windowChunk()) as { clips: Recipe[] };
+    expect(parsed.clips.map(({ colorMatrix, toneMap }) => ({ colorMatrix, toneMap }))).toEqual([HDR, SDR]);
+  });
+
+  it.each([
+    ["a clip without its matrix", { "clips.0.colorMatrix": undefined }],
+    ["a clip without its tone mapping", { "clips.0.toneMap": undefined }],
+    ["an empty matrix", { "clips.1.colorMatrix": "" }],
+    ["an unknown tone mapping", { "clips.0.toneMap": "hdr10" }],
+    ["one conversion for the whole window instead of per clip", { "clips.0.colorMatrix": undefined, "clips.0.toneMap": undefined, "clips.1.colorMatrix": undefined, "clips.1.toneMap": undefined, colorMatrix: "bt709", toneMap: "none" }],
+  ])("BW05 refuses %s", (_name, edits) => {
     refuses(windowChunk(), changed(windowChunk(), edits));
   });
 
