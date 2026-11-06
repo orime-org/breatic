@@ -10,7 +10,7 @@ import { boundSignal } from "@provider/http/request.js";
 import { outputUrls, type MediaAdapter, type Reach, type RequestBounds, type StepCodec, type StepContext, type StepOutput } from "@provider/media/adapter.js";
 import { adapterOf } from "@provider/media/adapters.js";
 import { buildBody } from "@provider/media/body.js";
-import { assess, cloneKeyOf, heldClone, isPresent, stepCalls, type CloneKind, type HeldClone } from "@provider/pricing/estimate.js";
+import { assess, cloneKeyOf, heldClone, isPresent, stepCalls, stepSource, type CloneKind, type HeldClone } from "@provider/pricing/estimate.js";
 import type { Provider } from "@provider/provider.js";
 import { decide, passingStatus, type Failure } from "@provider/routing/decide.js";
 import { planRoute, type Candidate, type Route, type RoutePlan } from "@provider/routing/route.js";
@@ -452,9 +452,8 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @throws {Error} When the param carries none.
    */
   const sourceOf = (ticket: Ticket, step: Step): string => {
-    const value = ticket.input.params[step.param ?? ""];
-    const url = step.itemIndex === null ? value : Array.isArray(value) ? value[step.itemIndex] : undefined;
-    if (typeof url !== "string" || url === "") throw new Error(`The ${step.kind} step needs a source in '${step.param ?? ""}'`);
+    const url = stepSource(ticket.input.params, step.param, step.itemIndex);
+    if (url === undefined) throw new Error(`The ${step.kind} step needs a source in '${step.param ?? ""}'`);
     return url;
   };
 

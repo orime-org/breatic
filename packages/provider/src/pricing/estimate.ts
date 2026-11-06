@@ -80,7 +80,7 @@ export function cloneKeyOf(
  * @param kind - The call's kind.
  * @returns True for a voice, vocal or element clone.
  */
-export function makesClone(kind: string): kind is CloneKind {
+function makesClone(kind: string): kind is CloneKind {
   return kind === "voice" || kind === "vocal" || kind === "element";
 }
 
@@ -108,6 +108,19 @@ export function stepCalls(step: { for_param?: string; per_item?: boolean }, para
   const value = params[step.for_param];
   if (!isPresent(value)) return [];
   return step.per_item === true && Array.isArray(value) ? value.map((_, i) => i) : [null];
+}
+
+/**
+ * The url one call of a step reads: its param's value, or that value's item at the call's index.
+ * @param params - Our params.
+ * @param param - The param the step serves.
+ * @param itemIndex - The call's item index; null for a step that runs once.
+ * @returns The url, or undefined when the param carries none there.
+ */
+export function stepSource(params: Readonly<Record<string, unknown>>, param: string | undefined, itemIndex: number | null): string | undefined {
+  const value = params[param ?? ""];
+  const url: unknown = itemIndex === null ? value : Array.isArray(value) ? value[itemIndex] : undefined;
+  return typeof url === "string" && url !== "" ? url : undefined;
 }
 
 /** How sure an estimate is. */
