@@ -95,6 +95,33 @@ describe("terminal release (design §7.15 可重试结束)", () => {
     expect(await queued(keys.source)).toEqual([]);
   });
 
+  // inner#1306 test plan §97 (frames-split §7.15 可重试结束; execution design §9.4): a failed output whose failure reason is
+  // not retryable (a lip-sync reason with `no_face` or `model_rejected`, judged by shared `lipsyncFailureRetryable`) ends
+  // retryability at the terminal commit, so the pins are released there; a retryable reason keeps them for a takeover.
+  // The reason is the failed output's `error` (§9.4: CommitFail writes the one reason).
+  it.each([
+    ["no_face", { kind: "lipsync", persons: [{ personId: "person-1", detectionNumber: 1, step: "faces", category: "no_face" }], shared: null }],
+    ["model_rejected beside a stopped person", { kind: "lipsync", persons: [
+      { personId: "person-1", detectionNumber: 1, step: "gen", category: "model_rejected" },
+      { personId: "person-2", detectionNumber: 2, step: "track", category: "stopped" },
+    ], shared: null }],
+  ])("TR05 a terminal commit whose failed output's lip-sync reason is %s releases the pins and registers their keys", async (_name, reason) => {
+    const f = await seedExecution(pg, "running"); const keys = await pinned(f);
+    const failed = { ...completion(f, true), error: reason, outputs: [{ ...f.plan.outputs[0]!, result: { status: "failed" as const, error: reason }, late: false }] };
+    expect((await miniToolExecutionService.finishMiniToolExecution(f.taskId, failed)).record.status).toBe("failed");
+    expect(await livePins(f)).toEqual([]);
+    expect(await queued(keys.source)).toEqual([keys.full, keys.prepared, keys.table].sort());
+  });
+
+  it("TR06 a terminal commit whose failed output's lip-sync reason is retryable keeps the pins", async () => {
+    const f = await seedExecution(pg, "running"); const keys = await pinned(f);
+    const reason = { kind: "lipsync", persons: [{ personId: "person-1", detectionNumber: 1, step: "gen", category: "timeout" }], shared: { step: "stitch", category: "failed" } };
+    const failed = { ...completion(f, true), error: reason, outputs: [{ ...f.plan.outputs[0]!, result: { status: "failed" as const, error: reason }, late: false }] };
+    await miniToolExecutionService.finishMiniToolExecution(f.taskId, failed);
+    expect(await livePins(f)).toEqual(["execution", "prepared"]);
+    expect(await queued(keys.source)).toEqual([]);
+  });
+
   it("TR04 replaying the completed terminal commit releases and registers nothing more", async () => {
     const f = await seedExecution(pg, "running"); const keys = await pinned(f);
     await miniToolExecutionService.finishMiniToolExecution(f.taskId, completion(f, false));
