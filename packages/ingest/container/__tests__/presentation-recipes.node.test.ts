@@ -482,6 +482,17 @@ describe('stitch (§5.4 块的时间、拼接)', () => {
     expect(await packets(file!)).toHaveLength(10);
   });
 
+  // inner#1306 test plan §97 D15 (frames-split §5.4 拼接 row): before joining, the stitch compares every chunk's codec
+  // headers (H.264 avcC/SPS/PPS) and fails that output when they differ. A second chunk encoded with another preset has
+  // other SPS/PPS (reference frames, entropy coding), so stream copy would join two incompatible streams.
+  it('ST07 refuses to stitch chunks whose codec headers differ', async () => {
+    const [a, b] = await produce({ [SOURCE]: join(dir, 'cfr.mp4') }, [FIRST, { ...SECOND, target: { ...TARGET, preset: 'ultrafast' } }]);
+    const { report } = await runJob({ [SOURCE]: join(dir, 'cfr.mp4'), [CHUNKS[0]!]: a!, [CHUNKS[1]!]: b! },
+      [{ kind: 'stitch', inputId: SOURCE, target: TARGET, chunks: [{ inputId: CHUNKS[0], duration: r(4, 5) }, { inputId: CHUNKS[1], duration: r(6, 5) }], audio: null }]);
+    expect(report.ok).toBe(false);
+    expect(report.outputs).toEqual([]);
+  });
+
   it('ST04 a packed chunk stitches into a packed carrier of the same geometry and reports that geometry', async () => {
     const packed = { ...TARGET, width: 128, height: 36, alpha: 'packed' };
     const [a] = await produce({ [SOURCE]: join(dir, 'alpha.mov') }, [chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], packed)]);
