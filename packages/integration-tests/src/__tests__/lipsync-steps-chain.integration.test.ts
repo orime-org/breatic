@@ -85,6 +85,13 @@ type Person = (typeof PEOPLE)[number];
 const BOX_X: Record<number, Person> = { 80: "person-1", 200: "person-3" };
 const LAYOUT = { preparation: [{ start: 0, end: 50 }], persons: 2, composite: [{ start: 0, end: 25 }, { start: 25, end: 50 }] };
 
+type Exact = { numerator: string; denominator: string };
+/**
+ * An exact recipe time in seconds.
+ * @param value - The rational.
+ * @returns Its value.
+ */
+const seconds = (value: Exact): number => Number(value.numerator) / Number(value.denominator);
 interface Job { jobId: string; containerClass: string; inputs: { inputId: string; storageKey: string }[]; outputs: { outputIndex: number; storageKey: string; contentType: string; recipe: Record<string, unknown> }[] }
 interface Fixture { execution: Record<string, unknown> & { taskId: string; persons: { personId: Person; stepKeys: Record<string, string> }[] }; userId: string; deadlineAt: number; audioKeys: Record<Person, string[]> }
 
@@ -367,9 +374,10 @@ describe("lip-sync step bodies after track submits (§97 D21; execution design �
       expect(bound(clip, c.track)).toBe(await rleKey(f, person));
       expect(c).toMatchObject({ cropSize: 512, timeline: { duration: 2, videoDuration: 3.84, syncMode: "cut_off" } });
       expect(clip.outputs[0]).toMatchObject({ storageKey: videoPresentationWorkKeyFor(SOURCE_KEY, clip.jobId), contentType: "video/mp4" });
-      const s = stem.outputs[0]!.recipe as { rows: { inputId: string; startTime: number }[]; duration: number };
-      expect(s.duration).toBe(2);
-      expect(s.rows.map((row) => ({ key: bound(stem, row.inputId), startTime: row.startTime })))
+      // Times are exact rationals, as every recipe carries them (§97 D20-1 lipsync_stem shape).
+      const s = stem.outputs[0]!.recipe as { rows: { inputId: string; startTime: Exact }[]; duration: Exact };
+      expect(seconds(s.duration)).toBe(2);
+      expect(s.rows.map((row) => ({ key: bound(stem, row.inputId), startTime: seconds(row.startTime) })))
         .toEqual(person === "person-1" ? [{ key: f.audioKeys["person-1"][0], startTime: 0 }]
           : [{ key: f.audioKeys["person-3"][0], startTime: 0.25 }, { key: f.audioKeys["person-3"][1], startTime: 1 }]);
       expect(stem.outputs[0]!.storageKey).toBe(videoPresentationWorkKeyFor(SOURCE_KEY, stem.jobId));
@@ -477,10 +485,14 @@ describe("a lip-sync retry reuses the done steps by their frozen keys (§97 D21-
     expect(outside.runPrediction.mock.calls.map((call) => [call[1], (call[2] as { video?: string }).video])).toEqual([[GENERATOR, person3Video]]);
     expect(submitted.filter((job) => ["prepare_model_input", "lipsync_faces", "lipsync_clip", "lipsync_stem"].includes(String(job.outputs[0]?.recipe.kind)))).toEqual([]);
     const steps = await upstreamStepRepo.listSteps(retry.execution.taskId);
+    // Person 1's own steps: a generate step whose body is person 1's (its track box or its person video), or a container
+    // step whose own job id carries one of person 1's step keys. Composite and stitch jobs read person 1's objects as inputs
+    // and are shared steps, so they are not counted here.
+    const person1Keys = (["track", "faces", "clip", "stem", "gen"] as const).map((kind) => lipsyncStepKey(PLAN, "person-1", kind));
     const person1Steps = steps.filter((step) => {
-      const body = step.output.miniToolStep === undefined ? null : miniToolStepStateSchema.parse(step.output.miniToolStep).requestBody as { video?: string } | null;
-      return body?.video === person1Video || PEOPLE.slice(0, 1).some((person) => ["track", "faces", "clip", "stem", "gen"]
-        .some((kind) => JSON.stringify(step.output.miniToolPlanJob ?? "").includes(lipsyncStepKey(PLAN, person, kind as "faces"))));
+      const body = step.output.miniToolStep === undefined ? null : miniToolStepStateSchema.parse(step.output.miniToolStep).requestBody as { video?: string; box_prompts?: { x_min: number }[] } | null;
+      const jobId = (step.output.miniToolPlanJob as { jobId?: string } | undefined)?.jobId ?? "";
+      return body?.video === person1Video || body?.box_prompts?.[0]?.x_min === 80 || person1Keys.some((key) => jobId.includes(key));
     });
     expect(person1Steps.filter((step) => step.output.miniToolConsumption !== undefined)).toEqual([]);
   });
