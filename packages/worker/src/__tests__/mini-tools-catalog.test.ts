@@ -68,6 +68,8 @@ const plannedClaims = {
 const plannedContainerClasses = {
   "video.extract-frames": "MiniToolContainerStd4",
   "video.split": "MiniToolContainerStd4",
+  // Transitions encode and stitch on standard-4; their window chunks run on the GL class (frames-split §5.4 dispatch row).
+  "video.transitions": "MiniToolContainerStd4",
 } as const;
 
 /**
@@ -106,6 +108,7 @@ describe("model tools against the catalog", () => {
       expect(execution).toMatchObject({ container_class: plannedContainerClasses[operation as keyof typeof plannedContainerClasses],
         precheck_seconds: expect.any(Number), max_outputs: expect.any(Number) });
     }
+    expect(config.executions["video.transitions"]).toMatchObject({ window_container_class: "MiniToolContainerGl", max_outputs: 1 });
     expect(config.classes.MiniToolContainerStd4).toMatchObject({ vcpu: 4, memory_gib: 12 });
   });
   it.each(modelTools.map((tool) => [tool.id, tool] as const))(
