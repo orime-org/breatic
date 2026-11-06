@@ -519,7 +519,7 @@ export function acquireDocProvider(
  * new generation and syncs a fresh document from the server.
  * @param name - Canonical document name.
  */
-export function resetDocument(name: string): void {
+function resetDocument(name: string): void {
   const entry = docEntries.get(name);
   if (!entry) return;
   // Out of the socket's map first, so destroying the provider sends no CLOSE:

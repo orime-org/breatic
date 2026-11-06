@@ -38,7 +38,9 @@ vi.mock('@web/lib/toast', () => ({
 import { toast } from '@web/lib/toast';
 import { _resetCollabSocketForTests } from '@web/data/yjs/collab-socket';
 import { docName, _resetForTests } from '@web/data/yjs/manager';
-import { commentsOn, threadIsPaintedIn } from '@web/spaces/document/document-comment-extension';
+import { COMMENT_MARK, commentsOn, threadIsPaintedIn } from '@web/spaces/document/document-comment-extension';
+import { estimateNodeBytes } from '@web/data/yjs/space-write';
+import { markBytes } from '@web/features/collab-editor/space-size-gate';
 import { commentOn } from '@web/spaces/document/document-comment-post';
 import {
   _resetDocumentEditorCacheForTests,
@@ -231,6 +233,23 @@ describe('posting a comment holds room for the thread and its mark together', ()
     expect(board.store.getThread(id)).toBeDefined();
     expect(threadIsPaintedIn((board.editor as unknown as { prosemirrorView: { state: { doc: never } } }).prosemirrorView.state.doc, id)).toBe(true);
     expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it('writes neither when the thread fits but its mark does not', async () => {
+    const board = await open(F_WARNING);
+    const view = (board.editor as unknown as { prosemirrorView: EditorView }).prosemirrorView;
+    const ranges = aim(view.state)!;
+    const sized = view.state.schema.marks[COMMENT_MARK]!.create({ threadId: '00000000-0000-0000-0000-000000000000', orphan: false });
+    const room = estimateNodeBytes({ initialComment: { body: body('new') } }) + markBytes(view.state.doc, ranges, sized) - 1;
+    pushSize(sizeGateProviders.at(-1)!, { ...F_WARNING, room });
+    vi.mocked(toast.warning).mockClear();
+    const before = Y.encodeStateAsUpdate(board.doc);
+
+    const result = await commentOn(board.editor, body('new'), aim);
+
+    expect(result).toMatchObject({ ok: false, reason: 'no_room' });
+    expect(Y.encodeStateAsUpdate(board.doc)).toEqual(before);
+    expect(toast.warning).toHaveBeenCalledTimes(1);
   });
 
   it('refuses a reply that does not fit the room left', async () => {
