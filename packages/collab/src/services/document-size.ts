@@ -708,7 +708,7 @@ function phaseOf(bytes: number): DocSizePhase {
  * @returns The message.
  * @throws {Error} When the YAML is missing / unreadable or fails validation.
  */
-export function docSizeStatus(name: string): DocSizeStatus {
+function docSizeStatus(name: string): DocSizeStatus {
   const record = records.get(name);
   if (!record) return { type: "doc:size", bytes: 0, limit: 0, ceiling: 0, room: 0, overwriteRoom: 0, phase: "normal" };
   const l = limits();
@@ -753,7 +753,7 @@ function pushAll(name: string, record: SizeRecord): void {
  * @returns True when it is tracked.
  * @throws {Error} When the YAML is missing / unreadable or fails validation.
  */
-export function tracksSize(name: string): boolean {
+function tracksSize(name: string): boolean {
   const parsed = parseDocName(name);
   return parsed !== null && parsed.kind !== "meta" && getCollabConfig().max_document_bytes > 0;
 }

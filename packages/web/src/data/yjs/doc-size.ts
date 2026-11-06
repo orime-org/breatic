@@ -232,7 +232,7 @@ export function clearAllDocSizes(): void {
  * @param name - Canonical document name.
  * @returns The count.
  */
-export function readDocGeneration(name: string): number {
+function readDocGeneration(name: string): number {
   return generations.get(name) ?? 0;
 }
 
