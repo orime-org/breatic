@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { estimateNodeBytes } from '@web/data/yjs/space-write';
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -27,6 +28,9 @@ const editAnnotationBody = vi.fn();
 const editReply = vi.fn();
 const removeReply = vi.fn();
 const deleteNode = vi.fn();
+const batchOptions = vi.fn();
+const EDIT_JUDGED = { kind: 'overwrite' } as const;
+const annotationEditWrite = vi.fn(() => ({ name: 'canvas-space:p1:s1', options: EDIT_JUDGED }));
 
 vi.mock('@web/data/yjs/canvas-space', () => ({
   addReply: (...a: unknown[]) => addReply(...a),
@@ -34,7 +38,9 @@ vi.mock('@web/data/yjs/canvas-space', () => ({
   editReply: (...a: unknown[]) => editReply(...a),
   removeReply: (...a: unknown[]) => removeReply(...a),
   // The sticky judges each write as one batch for the size cap (inner#1790).
-  runCanvasUndoBatch: (_p: string, _s: string, _o: unknown, write: () => void) => {
+  annotationEditWrite: (...a: unknown[]) => annotationEditWrite(...(a as [])),
+  runCanvasUndoBatch: (_p: string, _s: string, options: unknown, write: () => void) => {
+    batchOptions(options);
     write();
     return { ok: true };
   },
@@ -480,6 +486,17 @@ describe('a sticky on the canvas', () => {
       'a cooler, slower shot',
       expect.any(Number),
     );
+  });
+
+  it('judges a body rewrite by what it adds over the body it replaces', async () => {
+    const user = userEvent.setup();
+    mount(sticky({ content: 'a cooler shot here' }));
+    await user.click(screen.getByTestId('annotation-sticky-body-menu'));
+    await user.click(screen.getByTestId('annotation-sticky-body-edit'));
+    fireEvent.change(screen.getByTestId('annotation-sticky-body-input'), { target: { value: 'short' } });
+    await user.click(screen.getByTestId('annotation-sticky-body-save'));
+    expect(annotationEditWrite).toHaveBeenCalledWith('p1', 's1', 'n1', null, 'short', expect.any(Number));
+    expect(batchOptions).toHaveBeenCalledWith(EDIT_JUDGED);
   });
 
   it('writes nothing when a rewrite is cancelled', async () => {
@@ -1337,6 +1354,18 @@ describe('the replies scroller', () => {
       expect.any(Number),
     );
     expect(editAnnotationBody).not.toHaveBeenCalled();
+    expect(annotationEditWrite).toHaveBeenCalledWith('p1', 's1', 'n1', 'r1', 'one, reworded', expect.any(Number));
+    expect(batchOptions).toHaveBeenCalledWith(EDIT_JUDGED);
+  });
+
+  it('judges a new reply as an add of its whole text', () => {
+    mount(sticky());
+    const box = screen.getByTestId('annotation-sticky-reply-input');
+    fireEvent.focus(box);
+    fireEvent.change(box, { target: { value: 'agreed, slower' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(batchOptions).toHaveBeenCalledWith({ kind: 'add', estimate: estimateNodeBytes('agreed, slower') });
+    expect(annotationEditWrite).not.toHaveBeenCalled();
   });
 
   it('asks the canvas to remove the sticky, rather than writing it away', async () => {

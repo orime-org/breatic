@@ -181,6 +181,25 @@ function run(name: string, write: () => void): void {
   }
 }
 
+const KIND_RANK: Record<SpaceWriteKind, number> = { delete: 0, overwrite: 1, add: 2 };
+
+/**
+ * How several writes made as one are judged: the strongest kind
+ * (`add` > `overwrite` > `delete`) and the adds' estimates summed.
+ * @param writes - Each write's options; null entries are skipped.
+ * @returns The options for the writes together.
+ */
+export function strongestWrite(...writes: ReadonlyArray<SpaceWriteOptions | null>): SpaceWriteOptions {
+  let kind: SpaceWriteKind = 'delete';
+  let estimate = 0;
+  for (const write of writes) {
+    if (!write) continue;
+    if (KIND_RANK[write.kind] > KIND_RANK[kind]) kind = write.kind;
+    if (write.kind === 'add') estimate += write.estimate ?? 0;
+  }
+  return kind === 'add' ? { kind, estimate } : { kind };
+}
+
 /**
  * Write a Space document if its size allows the write.
  * @param name - Canonical document name.

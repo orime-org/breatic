@@ -17,7 +17,7 @@ import { addShot, enterCustom, newId, removeShot, retotal, stepShot } from '@bre
 
 import { CANVAS_UNDO, canvasWrite, nodeDataMap } from '@web/data/yjs/canvas-space';
 import { docName, getDoc } from '@web/data/yjs/manager';
-import { writeSpaceDoc, type SpaceWriteKind } from '@web/data/yjs/space-write';
+import { estimateNodeBytes, writeSpaceDoc, type SpaceWriteKind, type SpaceWriteOptions } from '@web/data/yjs/space-write';
 
 /** One shot as read off the document. */
 export interface StoryboardShotView {
@@ -127,6 +127,19 @@ function writeDurations(shots: Y.Array<Y.Map<unknown>>, durations: readonly numb
 }
 
 /**
+ * How entering the multi-shot mode is judged: laying out the two first
+ * shots is an add, re-splitting existing ones an overwrite.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - The video node.
+ * @returns The options.
+ */
+export function storyboardEntryWrite(projectId: string, spaceId: string, nodeId: string): SpaceWriteOptions {
+  const shots = shotListOf(projectId, spaceId, nodeId);
+  return shots && shots.length > 0 ? { kind: 'overwrite' } : { kind: 'add', estimate: 2 * estimateNodeBytes(SHOT_ESTIMATE) };
+}
+
+/**
  * Enters the multi-shot mode: two shots when there are none, the existing
  * ones re-split to the total when they drifted from it.
  * @param projectId - Project the canvas space belongs to.
@@ -135,7 +148,7 @@ function writeDurations(shots: Y.Array<Y.Map<unknown>>, durations: readonly numb
  * @param total - The model's total seconds.
  */
 export function enterStoryboardShots(projectId: string, spaceId: string, nodeId: string, total: number): void {
-  editShots(projectId, spaceId, nodeId, 'add', (shots, durations) => {
+  editShots(projectId, spaceId, nodeId, storyboardEntryWrite(projectId, spaceId, nodeId).kind, (shots, durations) => {
     const next = enterCustom(durations, total);
     if (shots.length === 0) shots.push(next.map((d) => newShot(d)));
     else writeDurations(shots, next);
@@ -220,7 +233,7 @@ export function removeStoryboardShot(
  * @param total - The new total seconds.
  */
 export function retotalStoryboard(projectId: string, spaceId: string, nodeId: string, total: number): void {
-  editShots(projectId, spaceId, nodeId, 'add', (shots, durations) => writeDurations(shots, retotal(durations, total)));
+  editShots(projectId, spaceId, nodeId, 'overwrite', (shots, durations) => writeDurations(shots, retotal(durations, total)));
 }
 
 /**

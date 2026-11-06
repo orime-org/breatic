@@ -174,7 +174,7 @@ describe('W-46 add-kind canvas writes are refused once the Space is full', () =>
     ['addReply', () => addReply(PID, SID, 'a1', { id: 'r9', content: 'hi', createdBy: 'u1', createdAt: 3 }), (doc) => expect((data(doc, 'a1').get('replies') as Y.Array<unknown>).length).toBe(1)],
     ['editAnnotationBody', () => editAnnotationBody(PID, SID, 'a1', 'new', 4), (doc) => expect(data(doc, 'a1').get('content')).toBe('note')],
     ['editReply', () => editReply(PID, SID, 'a1', 'r1', 'new', 4), (doc) => expect(((data(doc, 'a1').get('replies') as Y.Array<Y.Map<unknown>>).get(0)).get('content')).toBe('first')],
-    ['setNodeName', () => setNodeName(PID, SID, 't1', 'x'), (doc) => expect(data(doc, 't1').get('name')).toBe('t1')],
+    ['setNodeName', () => setNodeName(PID, SID, 't1', 'a longer name'), (doc) => expect(data(doc, 't1').get('name')).toBe('t1')],
     ['setNodeTemplateNode', () => setNodeTemplateNode(PID, SID, 't1', { template: 't', key: 'k' }), (doc) => expect(data(doc, 't1').has('templateNode')).toBe(false)],
     ['setNodeParams', () => setNodeParams(PID, SID, 'v1', { 'm-old': { duration: 8 } }), (doc) => expect(data(doc, 'v1').has('paramsByModel')).toBe(false)],
     ['setNodeSlotValue', () => setNodeSlotValue(PID, SID, 'v1', 'first_frame', 'https://cdn.example.test/url.png'), (doc) => expect(data(doc, 'v1').has('first_frame')).toBe(false)],
@@ -185,7 +185,7 @@ describe('W-46 add-kind canvas writes are refused once the Space is full', () =>
     ['ensureTextBody', () => ensureTextBody(PID, SID, 'tb'), (doc) => expect(data(doc, 'tb').has('body')).toBe(false)],
     ['setNodeExtractedText', () => setNodeExtractedText(PID, SID, 't1', 'abc'), () => expect(readTextBodies(PID, SID, ['t1']).get('t1')).toBe('hello')],
     ['restoreNodeMedia', () => restoreNodeMedia(PID, SID, 'v1', { content: 'https://cdn.example.test/v.mp4', media: { coverUrl: 'https://cdn.example.test/c.jpg', width: 10, height: 10, duration: 1, mimeType: 'video/mp4', size: 1 } satisfies NodeMediaFields }), (doc) => expect(data(doc, 'v1').has('content')).toBe(false)],
-    ['setGroupBackground', () => setGroupBackground(PID, SID, 'g1', 'red'), (doc) => expect(data(doc, 'g1').get('backgroundColor')).toBe('blue')],
+    ['setGroupBackground', () => setGroupBackground(PID, SID, 'g1', 'magenta'), (doc) => expect(data(doc, 'g1').get('backgroundColor')).toBe('blue')],
   ];
 
   it.each(cases)('%s writes nothing and warns once', (name, call, unchanged) => {
@@ -198,6 +198,79 @@ describe('W-46 add-kind canvas writes are refused once the Space is full', () =>
     expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(COPY_EN.T_ADD_BLOCKED);
     expect(toast.error).not.toHaveBeenCalled();
     if (name === 'setNodeExtractedText' || name === 'addNode') expect(result).toEqual({ ok: false, reason: 'full' });
+  });
+});
+
+describe('W-46b a write replacing a value is judged by what it adds over the value it replaces', () => {
+  const LONG = 'n'.repeat(300);
+  // Each seeds a long value while the size is unknown, then shortens it.
+  const shorter: ReadonlyArray<readonly [string, () => void, () => void, (doc: Y.Doc) => unknown, unknown]> = [
+    ['setNodeName', () => setNodeName(PID, SID, 't1', LONG), () => setNodeName(PID, SID, 't1', 'short'),
+      (doc) => data(doc, 't1').get('name'), 'short'],
+    ['editAnnotationBody', () => editAnnotationBody(PID, SID, 'a1', LONG, 3), () => editAnnotationBody(PID, SID, 'a1', 'short', 4),
+      (doc) => data(doc, 'a1').get('content'), 'short'],
+    ['editReply', () => editReply(PID, SID, 'a1', 'r1', LONG, 3), () => editReply(PID, SID, 'a1', 'r1', 'short', 4),
+      (doc) => (data(doc, 'a1').get('replies') as Y.Array<Y.Map<unknown>>).get(0).get('content'), 'short'],
+    ['setGroupBackground', () => undefined, () => setGroupBackground(PID, SID, 'g1', 'red'),
+      (doc) => data(doc, 'g1').get('backgroundColor'), 'red'],
+    ['setNodeParams', () => setNodeParams(PID, SID, 'v1', { 'm-old': { prompt: LONG } }), () => setNodeParams(PID, SID, 'v1', { 'm-old': {} }),
+      (doc) => data(doc, 'v1').get('paramsByModel'), { 'm-old': {} }],
+    ['setNodeSlotValue', () => setNodeSlotValue(PID, SID, 'v1', 'first_frame', `https://cdn.example.test/${LONG}.png`),
+      () => setNodeSlotValue(PID, SID, 'v1', 'first_frame', 'https://cdn.example.test/a.png'),
+      (doc) => data(doc, 'v1').get('first_frame'), 'https://cdn.example.test/a.png'],
+    ['setNodeTemplateNode', () => setNodeTemplateNode(PID, SID, 't1', { template: LONG, key: 'k' }),
+      () => setNodeTemplateNode(PID, SID, 't1', { template: 't', key: 'k' }),
+      (doc) => data(doc, 't1').get('templateNode'), { template: 't', key: 'k' }],
+    ['setNodeMode', () => setNodeMode(PID, SID, 'v1', 'text_to_video', 'm-old', { 'm-old': { prompt: LONG } }),
+      () => setNodeMode(PID, SID, 'v1', 'image_to_video', 'm-old', {}),
+      (doc) => data(doc, 'v1').get('mode'), 'image_to_video'],
+    ['setNodeModel', () => setNodeModel(PID, SID, 'v1', 'text_to_video', 'm-old', { 'm-old': { prompt: LONG } }),
+      () => setNodeModel(PID, SID, 'v1', 'text_to_video', 'm-new', {}),
+      (doc) => data(doc, 'v1').get('model'), 'm-new'],
+  ];
+
+  /**
+   * Seeds the board, writes the long value, then delivers one push.
+   * @param seed - Writes the long value.
+   * @param push - The size push.
+   * @returns The document after the push.
+   */
+  function seededAt(seed: () => void, push: DocSizePush): Y.Doc {
+    const doc = seedBoard();
+    seed();
+    pushSize(sizeGateProviders.at(-1)!, push);
+    vi.mocked(toast.warning).mockClear();
+    return doc;
+  }
+
+  it.each(shorter)('%s writes a shorter value at full as an overwrite', (_name, seed, call, read, after) => {
+    const doc = seededAt(seed, F_FULL);
+    call();
+    expect(read(doc)).toEqual(after);
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it.each(shorter)('%s is refused with the overwrite notice once the overwrite room is 0', (_name, seed, call) => {
+    const doc = seededAt(seed, F_FULL_NEAR);
+    const before = Y.encodeStateAsUpdate(doc);
+    call();
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(COPY_EN.T_OVERWRITE_BLOCKED);
+  });
+
+  it('lets a one-character longer name in when the room covers the change but not the whole name', () => {
+    const doc = seededAt(() => setNodeName(PID, SID, 't1', LONG), { ...F_WARNING, room: 100 });
+    setNodeName(PID, SID, 't1', `${LONG}n`);
+    expect(data(doc, 't1').get('name')).toBe(`${LONG}n`);
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it('refuses a longer name when the room is short of the change', () => {
+    const doc = seededAt(() => setNodeName(PID, SID, 't1', 'short'), { ...F_WARNING, room: 100 });
+    setNodeName(PID, SID, 't1', LONG);
+    expect(data(doc, 't1').get('name')).toBe('short');
+    expect(toast.warning).toHaveBeenCalledTimes(1);
   });
 });
 

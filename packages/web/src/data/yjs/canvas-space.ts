@@ -396,6 +396,131 @@ export function canvasWrite(
   return { name, options: estimate === undefined ? { kind } : { kind, estimate } };
 }
 
+/**
+ * The options for a write that sets keys of one map, judged by what it adds
+ * over the values it replaces (inner#1790): yjs deletes a key's old value as
+ * it writes the new one, so values no larger than the ones they replace are
+ * an overwrite, which collab admits up to the hard ceiling.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space the write goes to.
+ * @param map - The map whose keys are set.
+ * @param next - The keys and the values they get.
+ * @returns The document name and the options for `writeSpaceDoc`.
+ */
+function replacementWrite(
+  projectId: string,
+  spaceId: string,
+  map: Y.Map<unknown>,
+  next: Readonly<Record<string, unknown>>,
+): { name: string; options: SpaceWriteOptions } {
+  const current = Object.fromEntries(Object.keys(next).map((key) => [key, map.get(key)]));
+  const grows = estimateNodeBytes(next) - estimateNodeBytes(current);
+  const name = docName.canvasSpace(projectId, spaceId);
+  return { name, options: grows <= 0 ? { kind: 'overwrite' } : { kind: 'add', estimate: grows + 64 } };
+}
+
+/**
+ * The options for setting fields of a node's data, judged as
+ * {@link replacementWrite} judges them.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - The node.
+ * @param next - The fields and the values they get.
+ * @returns The document name and options, or null when the node is gone.
+ */
+export function nodeFieldsWrite(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  next: Readonly<Record<string, unknown>>,
+): { name: string; options: SpaceWriteOptions } | null {
+  const data = nodeDataMap(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId);
+  return data ? replacementWrite(projectId, spaceId, data, next) : null;
+}
+
+/**
+ * The fields picking a model writes: the model, every per-model record, and
+ * the pick remembered under the mode.
+ * @param data - The node's data map.
+ * @param mode - The active mode.
+ * @param model - The picked model.
+ * @param paramsByModel - Every per-model record, written whole.
+ * @returns The fields.
+ */
+function modelPickFields(
+  data: Y.Map<unknown>,
+  mode: string,
+  model: string,
+  paramsByModel: Record<string, Record<string, unknown>>,
+): { model: string; paramsByModel: Record<string, Record<string, unknown>>; modelByMode: Record<string, string> } {
+  const prev = data.get('modelByMode');
+  const base =
+    prev != null && typeof prev === 'object'
+      ? (prev as Record<string, string>)
+      : {};
+  return { model, paramsByModel, modelByMode: { ...base, [mode]: model } };
+}
+
+/**
+ * The options for {@link setNodeModel} with the same arguments.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - The node.
+ * @param mode - The active mode.
+ * @param model - The picked model.
+ * @param paramsByModel - Every per-model record.
+ * @returns The document name and options, or null when the node is gone.
+ */
+export function nodeModelWrite(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  mode: string,
+  model: string,
+  paramsByModel: Record<string, Record<string, unknown>>,
+): { name: string; options: SpaceWriteOptions } | null {
+  const data = nodeDataMap(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId);
+  return data ? replacementWrite(projectId, spaceId, data, modelPickFields(data, mode, model, paramsByModel)) : null;
+}
+
+/**
+ * The options for rewriting an annotation's body or one of its replies, the
+ * same judgement {@link editAnnotationBody} and {@link editReply} make.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space holding the annotation.
+ * @param nodeId - Id of the annotation.
+ * @param replyId - The reply to rewrite, or null for the body.
+ * @param content - The new text.
+ * @param editedAt - When this edit happened, epoch milliseconds.
+ * @returns The document name and options, or null when the target is gone.
+ */
+export function annotationEditWrite(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  replyId: string | null,
+  content: string,
+  editedAt: number,
+): { name: string; options: SpaceWriteOptions } | null {
+  const target = annotationEditTarget(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId, replyId);
+  return target ? replacementWrite(projectId, spaceId, target, { content, editedAt }) : null;
+}
+
+/**
+ * The map an annotation edit writes: the annotation's data, or one reply.
+ * @param doc - The canvas document.
+ * @param nodeId - Id of the annotation.
+ * @param replyId - The reply, or null for the body.
+ * @returns The map, or null when it is gone.
+ */
+function annotationEditTarget(doc: Y.Doc, nodeId: string, replyId: string | null): Y.Map<unknown> | null {
+  if (replyId === null) return nodeDataMap(doc, nodeId);
+  const replies = repliesArray(doc, nodeId);
+  if (!replies) return null;
+  const index = replyIndex(replies, replyId);
+  return index === -1 ? null : replies.get(index);
+}
+
 /** Who made a canvas document's writes, as far as the canvas needs to know. */
 interface WriteOrigins {
   /** Whether this client made the newest write to the nodes. */
@@ -892,7 +1017,7 @@ export function setNodeName(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  const write = canvasWrite(projectId, spaceId, 'add', name);
+  const write = replacementWrite(projectId, spaceId, data, { name });
   writeSpaceDoc(write.name, write.options, () => {
     doc.transact(() => data.set('name', name), CANVAS_UNDO);
   });
@@ -918,7 +1043,7 @@ export function setNodeTemplateNode(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  const { name, options } = canvasWrite(projectId, spaceId, 'add', templateNode);
+  const { name, options } = replacementWrite(projectId, spaceId, data, { templateNode });
   writeSpaceDoc(name, options, () => {
     doc.transact(() => data.set('templateNode', { ...templateNode }), CANVAS_UNDO);
   });
@@ -1041,9 +1166,9 @@ export function editAnnotationBody(
   editedAt: number,
 ): boolean {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const data = nodeDataMap(doc, nodeId);
+  const data = annotationEditTarget(doc, nodeId, null);
   if (!data) return false;
-  const { name, options } = canvasWrite(projectId, spaceId, 'add', content);
+  const { name, options } = replacementWrite(projectId, spaceId, data, { content, editedAt });
   return writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       data.set('content', content);
@@ -1072,12 +1197,9 @@ export function editReply(
   editedAt: number,
 ): boolean {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const replies = repliesArray(doc, nodeId);
-  if (!replies) return false;
-  const index = replyIndex(replies, replyId);
-  if (index === -1) return false;
-  const reply = replies.get(index);
-  const { name, options } = canvasWrite(projectId, spaceId, 'add', content);
+  const reply = annotationEditTarget(doc, nodeId, replyId);
+  if (!reply) return false;
+  const { name, options } = replacementWrite(projectId, spaceId, reply, { content, editedAt });
   return writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       reply.set('content', content);
@@ -1145,7 +1267,7 @@ export function setNodeParams(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  const { name, options } = canvasWrite(projectId, spaceId, 'add', paramsByModel);
+  const { name, options } = replacementWrite(projectId, spaceId, data, { paramsByModel });
   writeSpaceDoc(name, options, () => {
     doc.transact(() => data.set('paramsByModel', paramsByModel), CANVAS_UNDO);
   });
@@ -1191,7 +1313,7 @@ export function setNodeSlotValue(
   if (!(data instanceof Y.Map)) return;
   const { name, options } = value === null
     ? canvasWrite(projectId, spaceId, 'delete')
-    : canvasWrite(projectId, spaceId, 'add', value);
+    : replacementWrite(projectId, spaceId, data, { [key]: value });
   writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       if (value === null) {
@@ -1497,18 +1619,14 @@ export function setNodeModel(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  const { name, options } = canvasWrite(projectId, spaceId, 'add', { mode, model, paramsByModel });
+  const fields = modelPickFields(data, mode, model, paramsByModel);
+  const { name, options } = replacementWrite(projectId, spaceId, data, fields);
   writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       data.set('model', model);
       // Whole, not merged (see setNodeParams for why).
       data.set('paramsByModel', paramsByModel);
-      const prev = data.get('modelByMode');
-      const base =
-        prev != null && typeof prev === 'object'
-          ? (prev as Record<string, string>)
-          : {};
-      data.set('modelByMode', { ...base, [mode]: model });
+      data.set('modelByMode', fields.modelByMode);
     }, CANVAS_UNDO);
   });
 }
@@ -1542,7 +1660,7 @@ export function setNodeMode(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  const { name, options } = canvasWrite(projectId, spaceId, 'add', { mode, model, paramsByModel });
+  const { name, options } = replacementWrite(projectId, spaceId, data, { mode, model, paramsByModel });
   writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       data.set('mode', mode);
@@ -1927,7 +2045,7 @@ export function setGroupBackground(
   if (!(data instanceof Y.Map)) return;
   const { name, options } = color === undefined
     ? canvasWrite(projectId, spaceId, 'delete')
-    : canvasWrite(projectId, spaceId, 'add', color);
+    : replacementWrite(projectId, spaceId, data, { backgroundColor: color });
   writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       if (color === undefined) data.delete('backgroundColor');

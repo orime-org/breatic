@@ -53,7 +53,7 @@ const NAME = docName.canvasSpace(PID, SID);
  * @returns The ids of the two shots, in order.
  * @throws {Error} When seeding fails.
  */
-function storyboardAt(push: DocSizePush): { shot0: string; shot1: string } {
+function storyboardAt(push: DocSizePush, { shots = true }: { shots?: boolean } = {}): { shot0: string; shot1: string } {
   const { provider } = openSizedDoc(NAME);
   addNode(PID, SID, {
     id: 'v1',
@@ -61,12 +61,11 @@ function storyboardAt(push: DocSizePush): { shot0: string; shot1: string } {
     position: { x: 0, y: 0 },
     data: { name: 'v1', createdAt: 1, createdBy: 'u1', locked: false, attachments: [], mode: 'multi_shot' },
   } as CanvasNodeFields);
-  setStoryboardShots(PID, SID, 'v1', [5, 5]);
-  const shots = readShots(PID, SID, 'v1')!;
-  expect(shots.map((s) => s.duration)).toEqual([5, 5]);
+  if (shots) setStoryboardShots(PID, SID, 'v1', [5, 5]);
+  const list = readShots(PID, SID, 'v1')!;
   pushSize(provider, push);
   vi.mocked(toast.warning).mockClear();
-  return { shot0: shots[0].id, shot1: shots[1].id };
+  return { shot0: list[0]?.id ?? '', shot1: list[1]?.id ?? '' };
 }
 
 /**
@@ -90,10 +89,8 @@ afterEach(() => {
 
 describe('W-90 storyboard writes are judged by kind', () => {
   it.each([
-    ['enterStoryboardShots', (): void => enterStoryboardShots(PID, SID, 'v1', 10)],
     ['addStoryboardShot', (): void => addStoryboardShot(PID, SID, 'v1', 10, 6)],
     ['setStoryboardShots', (): void => { setStoryboardShots(PID, SID, 'v1', [3, 3]); }],
-    ['retotalStoryboard', (): void => retotalStoryboard(PID, SID, 'v1', 12)],
   ] as const)('(a) %s is an add and is refused at full', (_name, call) => {
     storyboardAt(F_FULL);
     const before = shotsJson();
@@ -124,6 +121,35 @@ describe('W-90 storyboard writes are judged by kind', () => {
     stepStoryboardShot(PID, SID, 'v1', shot0, 1);
     expect(shotsJson()).toEqual(before);
     expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(COPY_EN.T_OVERWRITE_BLOCKED);
+  });
+
+  it('(a) entering the shots on a node with none is an add and is refused at full', () => {
+    storyboardAt(F_FULL, { shots: false });
+    enterStoryboardShots(PID, SID, 'v1', 10);
+    expect(readShots(PID, SID, 'v1')).toHaveLength(0);
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(COPY_EN.T_ADD_BLOCKED);
+  });
+
+  it.each([
+    ['retotalStoryboard', (): void => retotalStoryboard(PID, SID, 'v1', 12)],
+    ['enterStoryboardShots on existing shots', (): void => enterStoryboardShots(PID, SID, 'v1', 12)],
+  ] as const)('(f) %s rewrites durations as an overwrite at full', (_name, call) => {
+    storyboardAt(F_FULL);
+    call();
+    expect(readShots(PID, SID, 'v1')!.map((s) => s.duration)).toEqual([6, 6]);
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['retotalStoryboard', (): void => retotalStoryboard(PID, SID, 'v1', 12)],
+    ['enterStoryboardShots on existing shots', (): void => enterStoryboardShots(PID, SID, 'v1', 12)],
+  ] as const)('(f) %s is refused once the overwrite room is gone', (_name, call) => {
+    storyboardAt(F_FULL_NEAR);
+    const before = shotsJson();
+    call();
+    expect(shotsJson()).toEqual(before);
     expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(COPY_EN.T_OVERWRITE_BLOCKED);
   });
 

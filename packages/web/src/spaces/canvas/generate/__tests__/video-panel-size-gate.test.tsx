@@ -132,12 +132,13 @@ function shotSeconds(): number[] | undefined {
  * panel, then delivers the push.
  * @param mode - The mode v1 stores.
  * @param push - The size push.
+ * @param params - Kling's stored params.
  * @throws {Error} When the panel does not open.
  */
-async function openAt(mode: 't2v' | 'multi_shot', push: DocSizePush): Promise<void> {
+async function openAt(mode: 't2v' | 'multi_shot', push: DocSizePush, params: Record<string, unknown> = {}): Promise<void> {
   vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
   const { provider } = openSizedDoc(NAME);
-  const data = { mode, model: 'kling-v3', modelByMode: { [mode]: 'kling-v3' }, paramsByModel: { 'kling-v3': {} } };
+  const data = { mode, model: 'kling-v3', modelByMode: { [mode]: 'kling-v3' }, paramsByModel: { 'kling-v3': params } };
   addNode('p', 's', {
     id: 'v1',
     type: 'video',
@@ -244,6 +245,14 @@ describe('W-60 editing the total and re-splitting the shots is one add', () => {
     await expectAddBlockedOnce();
     expect(stored().paramsByModel).toEqual(before);
     expect(shotSeconds()).toEqual([2, 3]);
+  });
+
+  it('writes a total no longer than the stored one at full, as an overwrite', async () => {
+    await openAt('multi_shot', F_FULL, { duration: 10 });
+    fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
+    fireEvent.click(await screen.findByTestId('generate-video-duration-option-5'));
+    await waitFor(() => expect((stored().paramsByModel as Record<string, Record<string, unknown>>)['kling-v3']?.duration).toBe(5));
+    expect(toast.warning).not.toHaveBeenCalled();
   });
 
   it('writes the new total while the Space is only near full', async () => {

@@ -7,6 +7,8 @@ import * as React from 'react';
 import {
   getPromptFragment,
   isNodeLocked,
+  nodeFieldsWrite,
+  nodeModelWrite,
   readCanvasGraph,
   setNodeMode,
   setNodeModel,
@@ -14,7 +16,7 @@ import {
   setNodeParams,
   type CanvasEdge,
 } from '@web/data/yjs/canvas-space';
-import { estimateNodeBytes } from '@web/data/yjs/space-write';
+import { estimateNodeBytes, strongestWrite } from '@web/data/yjs/space-write';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
 import {
   addStoryboardShot,
@@ -23,6 +25,7 @@ import {
   removeStoryboardShot,
   retotalStoryboard,
   stepStoryboardShot,
+  storyboardEntryWrite,
   type StoryboardShotView,
 } from '@web/data/yjs/node-storyboard';
 import { useShots } from '@web/data/yjs/use-storyboard';
@@ -433,8 +436,11 @@ function VideoGeneratePanelBody({
       // In the multi-shot mode the shots follow the new model's total, in the
       // same undo step as the switch.
       const pickedSpec = specOf(picked, liveMode);
-      // One add for the size cap: the switch and the re-split shots.
-      runCanvasUndoBatch(projectId, spaceId, { kind: 'add', estimate: estimateNodeBytes({ liveMode, modelId, paramsByModel }) }, () => {
+      // One write for the size cap: the switch, judged by what it adds over
+      // the fields it replaces, and the re-split shots, which overwrite.
+      const switched = nodeModelWrite(projectId, spaceId, nodeId, liveMode, modelId, paramsByModel)?.options
+        ?? { kind: 'add', estimate: estimateNodeBytes({ liveMode, modelId, paramsByModel }) };
+      runCanvasUndoBatch(projectId, spaceId, switched, () => {
         setNodeModel(projectId, spaceId, nodeId, liveMode, modelId, paramsByModel);
         if (pickedSpec) retotalStoryboard(projectId, spaceId, nodeId, totalOf(pickedSpec, params));
       });
@@ -468,7 +474,12 @@ function VideoGeneratePanelBody({
       // Entering the multi-shot mode with no shots lays out two, splitting
       // the model's total, in the same step as the switch.
       const targetSpec = specOf(models.find((m) => m.name === model), target);
-      runCanvasUndoBatch(projectId, spaceId, { kind: 'add', estimate: estimateNodeBytes({ target, model, paramsByModel }) }, () => {
+      const fields = { mode: target, model, paramsByModel };
+      const toggled = strongestWrite(
+        nodeFieldsWrite(projectId, spaceId, nodeId, fields)?.options ?? { kind: 'add', estimate: estimateNodeBytes(fields) },
+        targetSpec ? storyboardEntryWrite(projectId, spaceId, nodeId) : null,
+      );
+      runCanvasUndoBatch(projectId, spaceId, toggled, () => {
         setNodeMode(projectId, spaceId, nodeId, target, model, paramsByModel);
         if (targetSpec) {
           enterStoryboardShots(projectId, spaceId, nodeId, totalOf(targetSpec, paramsByModel[model] ?? {}));
@@ -499,7 +510,10 @@ function VideoGeneratePanelBody({
       const next = liveSpec?.totalParam === undefined
         ? undefined
         : (partial as Record<string, unknown>)[liveSpec.totalParam];
-      runCanvasUndoBatch(projectId, spaceId, { kind: 'add', estimate: estimateNodeBytes(paramsByModel) }, () => {
+      // Re-splitting the shots only rewrites their seconds, an overwrite.
+      const edited = nodeFieldsWrite(projectId, spaceId, nodeId, { paramsByModel })?.options
+        ?? { kind: 'add', estimate: estimateNodeBytes(paramsByModel) };
+      runCanvasUndoBatch(projectId, spaceId, edited, () => {
         setNodeParams(projectId, spaceId, nodeId, paramsByModel);
         if (typeof next === 'number') retotalStoryboard(projectId, spaceId, nodeId, next);
       });

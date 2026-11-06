@@ -19,7 +19,7 @@ import {
 import {
   COPY_EN, F_FULL, F_FULL_NEAR, F_NORMAL, F_OVER, F_WARNING, type DocSizePush,
 } from '@web/data/yjs/__tests__/helpers/doc-size-fixtures';
-import { estimateNodeBytes, estimateTextBodyBytes, reserveSpaceRoom, writeSpaceDoc } from '@web/data/yjs/space-write';
+import { estimateNodeBytes, estimateTextBodyBytes, reserveSpaceRoom, strongestWrite, writeSpaceDoc } from '@web/data/yjs/space-write';
 import { acquireDocProvider, _resetCollabSocketForTests } from '@web/data/yjs/collab-socket';
 import { getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { changeLocale } from '@web/i18n/locale-bootstrap';
@@ -278,5 +278,13 @@ describe('estimates of plain text, which becomes one block per line', () => {
     const one = estimateNodeBytes({ content: 'ab' });
     const three = estimateNodeBytes({ content: 'a\nb\nc' });
     expect(three - one).toBeGreaterThanOrEqual(2 * 64);
+  });
+});
+
+describe('strongestWrite judges writes made as one', () => {
+  it('takes the strongest kind and sums only the adds', () => {
+    expect(strongestWrite({ kind: 'overwrite' }, { kind: 'add', estimate: 10 }, { kind: 'add', estimate: 5 }, null)).toEqual({ kind: 'add', estimate: 15 });
+    expect(strongestWrite({ kind: 'delete' }, { kind: 'overwrite' }, null)).toEqual({ kind: 'overwrite' });
+    expect(strongestWrite(null, { kind: 'delete' })).toEqual({ kind: 'delete' });
   });
 });
