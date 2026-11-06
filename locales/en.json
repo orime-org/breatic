@@ -1375,7 +1375,7 @@
       "goal": {
         "character": "Character design & consistency",
         "comics-storyboards": "Comics & storyboards",
-        "social-hooks": "Social hook videos"
+        "social-hooks": "Social hooks"
       },
       "storyboard-grid-25": {
         "name": "25-panel storyboard",
@@ -1544,7 +1544,7 @@
       "carried-object-transition": {
         "name": "Object-carried transition",
         "description": "One object carries the view from scene A to scene B",
-        "prompt": "(💡 Generate Scene A first, then pick it into the first frame)(💡 Generate Scene B first, then pick it into the end frame)The video starts on the first frame and ends on the end frame. The object in the middle of both frames is the same object at the same place and size; the camera follows it the whole time. 0–2 s: in scene A, {✏️ how the object moves, e.g. a hand tosses it up}. 2–4 s: the object fills more of the frame as it passes the camera, and as it moves away again the world around it has become scene B. 4–5 s: settles on the end frame. One continuous shot, no cut; the transition is made by the object. Sound: the sound of the object moving, the ambience changing from scene A's to scene B's. No text on screen.",
+        "prompt": "(💡 Generate Scene A first, then set it as the First frame)(💡 Generate Scene B first, then set it as the End frame)The video starts on the first frame and ends on the end frame. The object in the middle of both frames is the same object at the same place and size; the camera follows it the whole time. 0–2 s: in scene A, {✏️ how the object moves, e.g. a hand tosses it up}. 2–4 s: the object fills more of the frame as it passes the camera, and as it moves away again the world around it has become scene B. 4–5 s: settles on the end frame. One continuous shot, no cut; the transition is made by the object. Sound: the sound of the object moving, the ambience changing from scene A's to scene B's. No text on screen.",
         "input": {
           "object": {
             "name": "Object",
@@ -1622,9 +1622,9 @@
         "description": "Result first, three steps, then back to the start",
         "shot": {
           "1": "Hook, the end shown first: [📎 Subject] already done, {✏️ what it looks like when done, e.g. a shirt folded flat and square}, close-up, vertical frame, the camera already pushing in slowly. Bright even light. No text on screen.",
-          "2": "Step 1: [📎 Subject], {✏️ the first step}, close on the hands, the camera still. The same light and setting as the first shot. No text on screen.",
-          "3": "Step 2: [📎 Subject], {✏️ the second step}, close on the hands, the camera still. The same light and setting. No text on screen.",
-          "4": "Step 3: [📎 Subject], {✏️ the third step}, close on the hands, the camera still. The same light and setting. No text on screen.",
+          "2": "Step 1: [📎 Subject], {✏️ the first step, e.g. lay the shirt face down and fold both sleeves to the back}, close on the hands, the camera still. The same light and setting as the first shot. No text on screen.",
+          "3": "Step 2: [📎 Subject], {✏️ the second step, e.g. fold both sides in to the middle}, close on the hands, the camera still. The same light and setting. No text on screen.",
+          "4": "Step 3: [📎 Subject], {✏️ the third step, e.g. fold the bottom up to the collar}, close on the hands, the camera still. The same light and setting. No text on screen.",
           "5": "Loop: [📎 Subject] ends on exactly the same finished result and framing as the first shot, so the video loops. No text on screen."
         },
         "input": {
