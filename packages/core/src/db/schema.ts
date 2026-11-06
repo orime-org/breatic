@@ -987,13 +987,15 @@ export const nodeTasks = pgTable(
     // Rides the event so collab can name the document. Not a foreign key:
     // spaces live in Yjs, not in a table.
     spaceId: uuid("space_id").notNull(),
-    // Same: the node lives in the canvas document.
-    nodeId: uuid("node_id").notNull(),
+    // Same: the node lives in the canvas document. Null on a 3D Space's
+    // model upload (inner#1690), which belongs to the Space's own list; 0113
+    // allows that for the scene import action only.
+    nodeId: uuid("node_id"),
 
     kind: varchar("kind", { length: 20 }).notNull(), // 'upload' | 'generation'
     // What the row's first line names: 'upload' | 'generate' | 'understand'
-    // | 'mini_tool' (inner#888) | 'transcribe' (inner#856). Its CHECK lives in
-    // 0092, widened in 0101.
+    // | 'mini_tool' (inner#888) | 'transcribe' (inner#856) | 'scene_import'
+    // (inner#1690). Its CHECK lives in 0092, widened in 0101 and 0113.
     action: varchar("action", { length: 20 }).notNull(),
     // 'running' | 'done' | 'failed' | 'expired'
     status: varchar("status", { length: 20 }).notNull(),
@@ -1035,6 +1037,9 @@ export const nodeTasks = pgTable(
     taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
     // The upload grant this task was opened for; null on generations.
     storageKey: text("storage_key"),
+    // The registered model a Space-level row holds (inner#1690): written once,
+    // by the settle into `done` or onto an expired row its result outlived.
+    assetId: uuid("asset_id").references(() => studioAssets.id, { onDelete: "restrict" }),
 
     ...timestamps,
     // Stamped when the user clears the record. The row stays: the system only
@@ -1055,6 +1060,10 @@ export const nodeTasks = pgTable(
     index("node_tasks_job_node_idx")
       .on(table.taskId, table.nodeId)
       .where(sql`${table.taskId} IS NOT NULL`),
+    // A Space's own list.
+    index("node_tasks_space_live_idx")
+      .on(table.projectId, table.spaceId, table.startedAt)
+      .where(sql`${table.nodeId} IS NULL AND ${table.deletedAt} IS NULL`),
   ],
 );
 

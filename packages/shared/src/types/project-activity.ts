@@ -48,6 +48,8 @@ export const AssetActivityPayloadSchema = z.object({
    * uploads omit it (mirrors the generation payload's `thumbnailUrl`).
    */
   thumbnailUrl: z.string().min(1).optional(),
+  /** A 3D model upload names the model as the user called it (inner#1690). */
+  model: z.object({ name: z.string().min(1) }).optional(),
 });
 
 /**
@@ -186,4 +188,16 @@ export const CREDITS_CHANGED_SIGNAL = "credits:changed" as const;
 export interface CreditsChangedSignal {
   t: typeof CREDITS_CHANGED_SIGNAL;
   projectId: string;
+}
+
+/**
+ * Stateless WS signal broadcast on the project meta doc when a 3D Space's task
+ * list changed (inner#1690) - members with that Space open read it again.
+ */
+export const SPACE_TASKS_CHANGED_SIGNAL = "space-tasks:changed" as const;
+
+export interface SpaceTasksChangedSignal {
+  t: typeof SPACE_TASKS_CHANGED_SIGNAL;
+  projectId: string;
+  spaceId: string;
 }

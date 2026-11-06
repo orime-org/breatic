@@ -56,9 +56,11 @@ const TICKET = {
   totalParts: 1, taskId: undefined,
 };
 const MODEL = {
-  project_id: PROJECT, purpose: "scene_model", filename: "model.glb",
+  project_id: PROJECT, purpose: "scene_model", space_id: SPACE, label: "Lamp", filename: "model.glb",
   content_type: "model/gltf-binary", size: 4096, client_hash: "a".repeat(64),
 };
+/** The same file as a plain project upload, without the model's Space and name. */
+const { space_id: _space, label: _label, ...PLAIN } = MODEL;
 
 /**
  * Exercise the real request schema and authorization before the upload service.
@@ -134,15 +136,25 @@ describe("scene model upload request contract", () => {
 
   it.each([
     ["node", { node_id: NODE }],
-    ["Space", { space_id: SPACE }],
     ["mini-tool source", { source: "mini_tool", tool_name: BROWSER_TOOL }],
     ["client-selected Studio", { studio_id: STUDIO }],
+    ["no Space", { space_id: undefined }],
+    ["no model name", { label: undefined }],
+    ["a blank model name", { label: "  " }],
   ])("rejects a model purpose mixed with %s", async (_label, extra) => {
     const response = await requestTicket({ ...MODEL, ...extra });
 
     expect(response.status).toBe(422);
     expect(issueUploadTicket).not.toHaveBeenCalled();
     expect(mocks.assetService.resolveOwnerStudioId).not.toHaveBeenCalled();
+  });
+
+  it("refuses a model name on any other upload", async () => {
+    const { purpose: _purpose, ...generic } = PLAIN;
+    const response = await requestTicket({ ...generic, content_type: "image/png", label: "Lamp" });
+
+    expect(response.status).toBe(422);
+    expect(issueUploadTicket).not.toHaveBeenCalled();
   });
 
   it("requires a Project for the model purpose", async () => {
@@ -155,7 +167,7 @@ describe("scene model upload request contract", () => {
   });
 
   it.each(["model/gltf-binary", "application/zip"])("keeps %s outside generic uploads", async (contentType) => {
-    const { purpose: _purpose, ...generic } = MODEL;
+    const { purpose: _purpose, ...generic } = PLAIN;
     const response = await requestTicket({ ...generic, content_type: contentType });
 
     expect(response.status).toBe(422);
@@ -173,7 +185,7 @@ describe("scene model upload request contract", () => {
   );
 
   it.each(["image/png", "video/mp4", "audio/mpeg"])("preserves the generic %s entry", async (contentType) => {
-    const { purpose: _purpose, ...generic } = MODEL;
+    const { purpose: _purpose, ...generic } = PLAIN;
     const response = await requestTicket({ ...generic, content_type: contentType });
 
     expect(response.status).toBe(201);
@@ -182,7 +194,7 @@ describe("scene model upload request contract", () => {
   });
 
   it("preserves Project cover authorization", async () => {
-    const response = await requestTicket({ ...MODEL, purpose: "project_cover", content_type: "image/png" });
+    const response = await requestTicket({ ...PLAIN, purpose: "project_cover", content_type: "image/png" });
 
     expect(response.status).toBe(201);
     expect(mocks.projectService.assertMayManage).toHaveBeenCalledWith(PROJECT, "user-1");
@@ -191,7 +203,7 @@ describe("scene model upload request contract", () => {
   });
 
   it("preserves Studio avatar authorization", async () => {
-    const { project_id: _projectId, ...avatar } = MODEL;
+    const { project_id: _projectId, ...avatar } = PLAIN;
     const response = await requestTicket({ ...avatar, studio_id: STUDIO, purpose: "studio_avatar", content_type: "image/png" });
 
     expect(response.status).toBe(201);

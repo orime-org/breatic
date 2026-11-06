@@ -24,6 +24,7 @@ import {
   reduceMediaType,
   isUploadableMediaType,
   isSceneModelMediaType,
+  SceneObjectValuesSchema,
   REQUEST_SHAPE_PARAMS,
   INGEST_NOT_STARTED,
   UPLOAD_STATUS_MAX_KEYS,
@@ -190,6 +191,8 @@ const uploadTicketFields = z.object({
   /** Where the bytes land. Absent for a focus crop, which has no node. */
   node_id: z.string().uuid().optional(),
   space_id: z.string().uuid().optional(),
+  /** The name a 3D model is imported under, shown on its task row (inner#1690). */
+  label: SceneObjectValuesSchema.shape.name.optional(),
   /**
    * What started this upload. Only the mini-tool value is ever sent, and it
    * decides how the ledger files what is stored — a column the offline reclaim
@@ -225,6 +228,7 @@ const uploadTicketSchema = z
       purpose: z.literal("studio_avatar"),
       node_id: z.never().optional(),
       space_id: z.never().optional(),
+      label: z.never().optional(),
     }),
   ])
   // The purpose selects the format gate and whether node metadata is meaningful.
@@ -241,10 +245,18 @@ const uploadTicketSchema = z
       if (!isSceneModelMediaType(body.content_type)) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["content_type"], message: "a scene model requires a complete model container" });
       }
-      if (body.node_id !== undefined || body.space_id !== undefined || body.source !== undefined || body.tool_name !== undefined) {
+      // A model lands on its 3D Space's task list under the name the user
+      // gave it, never on a node (inner#1690).
+      if (body.space_id === undefined || body.label === undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["purpose"], message: "a scene model upload names its Space and the model", params: REQUEST_SHAPE_PARAMS });
+      }
+      if (body.node_id !== undefined || body.source !== undefined || body.tool_name !== undefined) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["purpose"], message: "a scene model upload carries no node or mini-tool context", params: REQUEST_SHAPE_PARAMS });
       }
       return;
+    }
+    if (body.label !== undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["label"], message: "only a scene model upload carries a label", params: REQUEST_SHAPE_PARAMS });
     }
     if (!isUploadableMediaType(body.content_type)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["content_type"], message: "content_type is not an uploadable kind" });
@@ -316,6 +328,8 @@ function ticketBody(outcome: Exclude<TicketOutcome, { kind: "refused" }>): Recor
         alreadyExists: true,
         // The row a cover or an avatar is then pointed at.
         assetId: outcome.assetId,
+        // A 3D model's task row, opened already done (inner#1690).
+        ...(outcome.taskId !== undefined && { taskId: outcome.taskId }),
         fileUrl: outcome.fileUrl,
         kind: outcome.assetKind,
         // The picture's size, read off it when it was stored (inner#1367).

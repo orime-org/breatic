@@ -75,6 +75,8 @@ const openSignedUpload = vi.fn();
 const uploadDeadlineByKey = vi.fn();
 const noteIngestSideEffects = vi.fn();
 const assertStudioStorageAllowance = vi.fn();
+const openDone = vi.fn();
+const publishSpaceTasksQuietly = vi.fn();
 
 vi.mock("@breatic/core", () => ({
   AppError: class AppError extends Error {},
@@ -99,6 +101,7 @@ vi.mock("@breatic/domain", () => ({
   },
   safeExt: (filename: string) => filename.slice(filename.lastIndexOf(".")),
   uploadDeadlineByKey,
+  sceneTaskService: { openDone },
   uploadTicketService: { openSignedUpload },
   UploadOpenFailed: h.UploadOpenFailed,
 }));
@@ -110,6 +113,7 @@ vi.mock("@server/modules/asset/storageQuota.service.js", () => ({
 }));
 vi.mock("@server/modules/asset/upload-opening.js", () => ({ openUpload }));
 vi.mock("@server/modules/asset/ingest-side-effects.js", () => ({ noteIngestSideEffects }));
+vi.mock("@server/modules/task/publish-counts.js", () => ({ publishSpaceTasksQuietly }));
 
 const { issueTransferTicket, issueUploadTicket, issueUploadTicketBatch } = await import(
   "@server/modules/asset/upload-ticket.service.js"
@@ -123,6 +127,9 @@ const SCOPE = {
 
 /** The size the browser asks for: the whole transfer file, signature included. */
 const SIZE = 1500019;
+
+/** The 3D Space a model is imported into. */
+const SCENE_SPACE = "66666666-6666-4666-8666-666666666666";
 
 /** One picture onto one node. */
 const ITEM = {
@@ -418,7 +425,7 @@ describe("scene model upload provenance", () => {
     const admitStorage = vi.fn(async () => true);
     const model = {
       filename, content_type: contentType, size: 4096, client_hash: "a".repeat(64),
-      purpose: "scene_model" as const,
+      purpose: "scene_model" as const, space_id: SCENE_SPACE, label: "Lamp",
     };
 
     const outcome = await issueUploadTicket(SCOPE, model, admitStorage);
@@ -433,29 +440,34 @@ describe("scene model upload provenance", () => {
       projectId: SCOPE.projectId, actingUserId: SCOPE.userId, declaredSize: model.size,
       taskType: "file", ext: filename.slice(filename.lastIndexOf(".")), expiresAt: expect.any(Date),
       context: {
-        nodeId: null, spaceId: null, source: null, toolName: null,
+        nodeId: null, spaceId: SCENE_SPACE, source: null, toolName: null,
         derived: true, filename, assetSource: null,
       },
-    }, { budgetMs: 7200000, action: "upload", label: filename });
+    }, { budgetMs: 7200000, action: "scene_import", label: "Lamp" }, true);
     expect(openSignedUpload.mock.calls[0]?.[0]).toMatchObject({
       studioId: SCOPE.studioId, userId: SCOPE.userId,
       contentType, declaredSize: model.size,
     });
   });
 
-  it("returns the registered model dedup hit without opening or consuming storage", async () => {
+  it("answers the registered model dedup hit with its done Space row, without opening or consuming storage", async () => {
     const assetId = "55555555-5555-4555-8555-555555555555";
     const fileUrl = "https://assets.example.test/registered-model.glb";
     checkUploadDedup.mockResolvedValue({ assetId, fileUrl, kind: "file", width: null, height: null });
+    openDone.mockResolvedValue("scene-task-1");
     const admitStorage = vi.fn(async () => true);
     const model = {
       filename: "model.glb", content_type: "model/gltf-binary", size: 4096,
-      client_hash: "a".repeat(64), purpose: "scene_model" as const,
+      client_hash: "a".repeat(64), purpose: "scene_model" as const, space_id: SCENE_SPACE, label: "Lamp",
     };
 
     expect(await issueUploadTicket(SCOPE, model, admitStorage)).toEqual({
-      kind: "alreadyExists", assetId, fileUrl, assetKind: "file", width: null, height: null,
+      kind: "alreadyExists", assetId, fileUrl, assetKind: "file", width: null, height: null, taskId: "scene-task-1",
     });
+    expect(openDone).toHaveBeenCalledWith({
+      projectId: SCOPE.projectId, spaceId: SCENE_SPACE, startedByUserId: SCOPE.userId, label: "Lamp", assetId,
+    });
+    expect(publishSpaceTasksQuietly).toHaveBeenCalledWith(SCOPE.projectId, SCENE_SPACE);
     expect(admitStorage).not.toHaveBeenCalled();
     expect(openUpload).not.toHaveBeenCalled();
     expect(openSignedUpload).not.toHaveBeenCalled();
@@ -464,7 +476,7 @@ describe("scene model upload provenance", () => {
       hit: { assetId, fileUrl, kind: "file", width: null, height: null },
       userId: SCOPE.userId,
       metadata: { filename: model.filename, size: model.size, mimeType: model.content_type },
-      row: { action: "upload", label: model.filename }, nodeId: undefined, spaceId: undefined,
+      row: { action: "scene_import", label: "Lamp" }, nodeId: undefined, spaceId: SCENE_SPACE,
     });
   });
 
