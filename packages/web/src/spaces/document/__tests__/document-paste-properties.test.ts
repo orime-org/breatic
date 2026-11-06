@@ -379,21 +379,35 @@ function checkPut({ body, pieces, source, aim: chosen }: Sample): void {
  * suite's per-test limit when the whole suite runs at once.
  */
 const PROPERTY_TIMEOUT = 60_000;
+
+/**
+ * A property's check behind a turn of the event loop. Run back to back, the
+ * properties hold the worker for over a minute, and the runner's own calls to
+ * it time out unanswered; a turn before each example lets them through.
+ * @param check - The check.
+ * @returns The check, run after the turn.
+ */
+function yielding<T>(check: (value: T) => boolean | void): (value: T) => Promise<boolean | void> {
+  return async (value) => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return check(value);
+  };
+}
 describe('content holding a medium, a table or a divider, put anywhere a reader can aim', () => {
-  it('keeps the reader\'s words, nests nothing, repeats no id, ends the caret in a line, quotes as the target and lands every medium', { timeout: PROPERTY_TIMEOUT }, () => {
-    fc.assert(
-      fc.property(property, checkPut),
+  it('keeps the reader\'s words, nests nothing, repeats no id, ends the caret in a line, quotes as the target and lands every medium', { timeout: PROPERTY_TIMEOUT }, async () => {
+    await fc.assert(
+      fc.asyncProperty(property, yielding(checkPut)),
       { numRuns: 400 },
     );
   });
 });
 
 describe('a drop', () => {
-  it('lands as a paste at its point', { timeout: PROPERTY_TIMEOUT }, () => {
-    fc.assert(
-      fc.property(
+  it('lands as a paste at its point', { timeout: PROPERTY_TIMEOUT }, async () => {
+    await fc.assert(
+      fc.asyncProperty(
         fc.record({ body, pieces: fc.array(piece, { minLength: 1, maxLength: 4 }), at: fc.nat(), source: fc.constantFrom<Source>('web', 'own') }),
-        ({ body, pieces, at, source }) => {
+        yielding(({ body, pieces, at, source }) => {
           const pasted = open(body).editor;
           const point = textPositions(pasted.prosemirrorView.state.doc)[at % textPositions(pasted.prosemirrorView.state.doc).length]!;
           pasted.prosemirrorView.dispatch(pasted.prosemirrorView.state.tr.setSelection(TextSelection.create(pasted.prosemirrorView.state.doc, point)));
@@ -415,7 +429,7 @@ describe('a drop', () => {
           view.dom.dispatchEvent(event);
           expect(shape(dropped), `${source} ${JSON.stringify(body)} ${JSON.stringify(pieces)} @${point}`).toBe(expectedShape);
           unmountAll();
-        },
+        }),
       ),
       { numRuns: 300 },
     );
@@ -423,11 +437,11 @@ describe('a drop', () => {
 });
 
 describe('a drag within the body', () => {
-  it('lands as its copy pasted at the drop point', { timeout: PROPERTY_TIMEOUT }, () => {
-    fc.assert(
-      fc.property(
+  it('lands as its copy pasted at the drop point', { timeout: PROPERTY_TIMEOUT }, async () => {
+    await fc.assert(
+      fc.asyncProperty(
         fc.record({ body, from: fc.nat(), to: fc.nat(), at: fc.nat() }),
-        ({ body, from, to, at }) => {
+        yielding(({ body, from, to, at }) => {
           /**
            * Opens the body with a range selected and the drop point found.
            * @returns The editor and the drop point.
@@ -469,7 +483,7 @@ describe('a drag within the body', () => {
           view.dom.dispatchEvent(event);
           expect(shape(dropped.editor), `${JSON.stringify(body)} ${from}..${to} @${dropped.point}`).toBe(expectedShape);
           unmountAll();
-        },
+        }),
       ),
       { numRuns: 300 },
     );
@@ -477,11 +491,11 @@ describe('a drag within the body', () => {
 });
 
 describe('a drag within the body that moves its content', () => {
-  it('leaves no row id twice and takes the content from where it was', { timeout: PROPERTY_TIMEOUT }, () => {
-    fc.assert(
-      fc.property(
+  it('leaves no row id twice and takes the content from where it was', { timeout: PROPERTY_TIMEOUT }, async () => {
+    await fc.assert(
+      fc.asyncProperty(
         fc.record({ body, from: fc.nat(), to: fc.nat(), at: fc.nat() }),
-        ({ body, from, to, at }) => {
+        yielding(({ body, from, to, at }) => {
           const editor = open(body).editor;
           const view = editor.prosemirrorView;
           const text = textPositions(view.state.doc);
@@ -509,7 +523,7 @@ describe('a drag within the body that moves its content', () => {
           });
           expect(ids.length - new Set(ids).size, `${JSON.stringify(body)} ${from}..${to} @${point}`).toBe(0);
           unmountAll();
-        },
+        }),
       ),
       { numRuns: 300 },
     );
@@ -517,9 +531,9 @@ describe('a drag within the body that moves its content', () => {
 });
 
 describe('content put on an empty plain line (design §5.4.3)', () => {
-  it('becomes that line when it ends in words, and leaves the line for the caret otherwise', { timeout: PROPERTY_TIMEOUT }, () => {
-    fc.assert(
-      fc.property(
+  it('becomes that line when it ends in words, and leaves the line for the caret otherwise', { timeout: PROPERTY_TIMEOUT }, async () => {
+    await fc.assert(
+      fc.asyncProperty(
         fc.record({
           body,
           index: fc.nat(),
@@ -527,7 +541,7 @@ describe('content put on an empty plain line (design §5.4.3)', () => {
           pieces: fc.array(piece, { minLength: 1, maxLength: 4 }).filter((p) => p.some((x) => !isWords(x))),
           source: fc.constantFrom<Source>('web', 'own'),
         }),
-        ({ body: blocks, index, inCell, pieces, source }) => {
+        yielding(({ body: blocks, index, inCell, pieces, source }) => {
           // A table in a cell is filled or refused (§5.4.7), not put on the line.
           if (inCell && pieces.some((p) => p.kind === 'table')) return;
           const line = { type: 'paragraph', id: 'emptyline' };
@@ -565,7 +579,7 @@ describe('content put on an empty plain line (design §5.4.3)', () => {
             expect({ type: own.type.name, size: own.content.size, caretHere: selection.$head.parent === own }, `kept: ${where}`).toEqual({ type: 'paragraph', size: 0, caretHere: true });
           }
           unmountAll();
-        },
+        }),
       ),
       { numRuns: 300 },
     );
@@ -614,11 +628,11 @@ function readerLines(doc: PMNode): string[] {
 }
 
 describe('a drop, then deleting what it selected (design §5.4.1)', () => {
-  it('keeps every line the reader wrote, its words and its own line', { timeout: PROPERTY_TIMEOUT }, () => {
-    fc.assert(
-      fc.property(
+  it('keeps every line the reader wrote, its words and its own line', { timeout: PROPERTY_TIMEOUT }, async () => {
+    await fc.assert(
+      fc.asyncProperty(
         fc.record({ body: letteredBody, pieces: fc.array(piece, { minLength: 1, maxLength: 4 }), at: fc.nat(), source: fc.constantFrom<Source>('web', 'own') }),
-        ({ body: blocks, pieces, at, source }) => {
+        yielding(({ body: blocks, pieces, at, source }) => {
           const { editor } = open(blocks as never);
           const view = editor.prosemirrorView;
           const points = textPositions(view.state.doc);
@@ -652,7 +666,7 @@ describe('a drop, then deleting what it selected (design §5.4.1)', () => {
           if (whole) for (const line of readerLines(view.state.doc)) expect(new Set(line).size, `lines: ${where}`).toBe(1);
           else expect(readerLines(view.state.doc), `lines: ${where}`).toEqual(linesBefore);
           unmountAll();
-        },
+        }),
       ),
       { numRuns: 300 },
     );
@@ -660,10 +674,10 @@ describe('a drop, then deleting what it selected (design §5.4.1)', () => {
 });
 
 describe('a copy whose lines are nested (design §5.4.1)', () => {
-  it('pastes as the same lines copied at the top level', { timeout: PROPERTY_TIMEOUT }, () => {
+  it('pastes as the same lines copied at the top level', { timeout: PROPERTY_TIMEOUT }, async () => {
     const line = fc.oneof(readerWords, fc.constant(''));
-    fc.assert(
-      fc.property(
+    await fc.assert(
+      fc.asyncProperty(
         fc.record({
           lines: fc.array(line, { minLength: 1, maxLength: 4 }),
           from: fc.nat(),
@@ -672,7 +686,7 @@ describe('a copy whose lines are nested (design §5.4.1)', () => {
           toAt: fc.nat(4),
           at: fc.constantFrom(0, 2, 4),
         }),
-        ({ lines, from, fromAt, to, toAt, at }) => {
+        yielding(({ lines, from, fromAt, to, toAt, at }) => {
           const items = lines.map((content) => ({ type: 'bulletListItem', content }));
           // Each line the copy can reach, in order: their parent (-1), the
           // lines, then the one after them.
@@ -719,7 +733,7 @@ describe('a copy whose lines are nested (design §5.4.1)', () => {
           const nested = pasted([{ type: 'bulletListItem', content: 'par', children: items }, { type: 'paragraph', content: 'tail' }, { type: 'paragraph', content: 'xxyy' }], 1);
           const flat = pasted([{ type: 'bulletListItem', content: 'par' }, ...items, { type: 'paragraph', content: 'tail' }, { type: 'paragraph', content: 'xxyy' }], 1);
           expect(nested, `${JSON.stringify(lines)} ${first}@${fromAt}..${last}@${toAt} @${at}`).toBe(flat);
-        },
+        }),
       ),
       // From the end of the parent's words to the end of its first nested
       // line: the start opens into an empty line that is only the copy's
