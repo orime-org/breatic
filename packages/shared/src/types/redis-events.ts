@@ -128,6 +128,32 @@ export function creditsChangedChannel(prefix: string, projectId: string): string
   return `${prefix}:project:${projectId}:credits:changed`;
 }
 
+/**
+ * Control event announcing that a 3D Space's task list changed (inner#1690):
+ * a row opened, settled, expired on read, or was removed. Collab relays it as
+ * the `space-tasks:changed` stateless signal on the project meta doc, and
+ * members with that Space open read its list again. Fire-and-forget like
+ * {@link ActivityNewControlEvent}: a page that misses it reads the list when
+ * it next opens the panel.
+ */
+export interface SpaceTasksChangedControlEvent {
+  type: "project-space-tasks:changed";
+  projectId: string;
+  spaceId: string;
+  ts: number;
+}
+
+/**
+ * Pub/sub channel for {@link SpaceTasksChangedControlEvent}. Matched by
+ * {@link allProjectChannelsPattern}.
+ * @param prefix - Deployment namespace (`REDIS_KEY_PREFIX`, defaults to `ENV`).
+ * @param projectId - Project the Space belongs to.
+ * @returns The channel name `{prefix}:project:{projectId}:space-tasks:changed`.
+ */
+export function spaceTasksChangedChannel(prefix: string, projectId: string): string {
+  return `${prefix}:project:${projectId}:space-tasks:changed`;
+}
+
 /** Why every collab instance closes a project's connections. */
 export type ProjectConnectionsCloseReason = "content-updated" | "archived" | "restored";
 

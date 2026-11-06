@@ -14,6 +14,7 @@ import { useSocket } from '@web/data/yjs/use-socket';
 import { SceneConnectionLifetime } from '@web/data/yjs/scene-lifetime';
 import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
 import { CanvasActivityPublisher } from '@web/spaces/canvas/use-publish-activity';
+import { SceneUploadProgressPublisher } from '@web/spaces/three-d/scene-upload-progress';
 import { DocumentInterceptGuard } from '@web/spaces/document/DocumentInterceptGuard';
 
 interface OpenSpaceProps {
@@ -114,6 +115,8 @@ export const OpenSpace = React.memo(function OpenSpace({
         screens while another tab is on screen, so it is published with the tab. */}
       {type === 'canvas' ? <CanvasActivityPublisher spaceId={spaceId} /> : null}
       {type === '3d' ? <SceneConnectionLifetime name={buildName(projectId, spaceId)} readOnly={readOnly} /> : null}
+      {/* A 3D Space's upload progress stays on the peers' screens while another tab is on screen. */}
+      {type === '3d' ? <SceneUploadProgressPublisher projectId={projectId} spaceId={spaceId} name={buildName(projectId, spaceId)} /> : null}
       {body}
     </SpaceConnection>
   );

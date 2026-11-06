@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, fireEvent, render, waitFor } from '@testing-library/react';
+import { act, fireEvent, waitFor } from '@testing-library/react';
+
+import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import * as canvasSpace from '@web/data/yjs/canvas-space';
@@ -172,7 +174,7 @@ function mount(): void {
 function mountReadOnly(): void {
   mockUseCanvasSpace.mockReturnValue(mockSpace([...readNodes(doc())], true));
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+  renderWithTooltips(
     <QueryClientProvider client={client}>
       <CanvasSpace projectId='p' spaceId='s' readOnly />
     </QueryClientProvider>,

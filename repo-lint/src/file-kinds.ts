@@ -15,7 +15,7 @@
  * somebody decides whether it is binary or is broken text.
  */
 const BINARY =
-  /\.(png|jpe?g|gif|webp|avif|ico|icns|bmp|woff2?|ttf|otf|eot|pdf|zip|t?gz|bz2|mp4|mov|webm|mp3|wav|m4a|wasm)$/i;
+  /\.(png|jpe?g|gif|webp|avif|ico|icns|bmp|woff2?|ttf|otf|eot|pdf|zip|t?gz|bz2|mp4|mov|webm|mp3|wav|m4a|wasm|ktx2)$/i;
 
 /** How much of a file decides whether it is text — the length git reads. */
 const SNIFF = 8000;

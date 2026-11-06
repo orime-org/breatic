@@ -1950,12 +1950,12 @@ body {
     border-top-color: var(--color-border);
   }
 
-  /* A media block's toolbar, caption field and resize handles are for editing
-     it (the toolbar's full-screen and download go with them), so a body the
-     reader may not write to shows none of them
-     (inner#1127 A11). Read off the surface's own editability: the node view
-     that draws them is not rebuilt when that changes. */
-  .doc-body[contenteditable='false'] [data-media-chrome] {
+  /* A media block's caption field and resize handles are for editing it, so a
+     body the reader may not write to shows none of them (inner#1127 A11). Read
+     off the surface's own editability: the node view that draws them is not
+     rebuilt when that changes. The toolbar over a picture or a video stays,
+     holding only full screen for a viewer (inner#1844). */
+  .doc-body[contenteditable='false'] [data-media-chrome]:not([data-media-viewer]) {
     display: none;
   }
 

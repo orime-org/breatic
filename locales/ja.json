@@ -1862,6 +1862,11 @@
     },
     "runOnce": {
       "unknownResult": "先ほどの操作が完了したか確認できませんでした。結果を確認してください。"
+    },
+    "mediaViewer": {
+      "fullscreen": "全画面で表示",
+      "close": "閉じる",
+      "loadFailed": "このファイルを読み込めません"
     }
   },
   "members": {
@@ -2108,8 +2113,6 @@
         "remove": "削除",
         "caption": "キャプション",
         "captionPlaceholder": "キャプションを追加",
-        "fullscreen": "全画面で表示",
-        "close": "閉じる",
         "download": "ダウンロード",
         "delete": "削除",
         "leftOut": "{count} 件の画像・動画・音声は貼り付けられませんでした。ファイルを直接ドロップまたは貼り付けてください。",
@@ -2160,7 +2163,7 @@
       "generate": "AI 生成",
       "annotationsLater": "注釈（後日提供）",
       "controls": "操作説明",
-      "tasks": "生成タスク",
+      "tasks": "タスク",
       "minimap": "シーンのミニマップ",
       "generationDev": "3D モデル生成は開発中です",
       "prompt": "生成する 3D モデルを説明してください",
@@ -2168,7 +2171,74 @@
       "chooseReference": "参照画像を選択",
       "submit": "生成",
       "helpBody": "オブジェクトをクリックして選択します。空白をドラッグして視点を回転し、ホイールで拡大縮小します。選択後はフローティングメニューで移動・回転・拡大縮小できます。",
-      "closePanel": "閉じる"
+      "closePanel": "閉じる",
+      "importModel": {
+        "title": "モデルをインポート",
+        "description": "GLB、glTF または ZIP を選択し、モデルの関連ファイルも含めてください。",
+        "chooseFiles": "ファイルを選択",
+        "chooseFolder": "フォルダーを選択",
+        "inputLimit": "最大 {size} MiB",
+        "dropFiles": "モデルと関連ファイルをここにドロップ",
+        "resourceHint": "GLB はそのまま選択できます。glTF はテクスチャと bin ファイルを含めるか、完全な ZIP を選択してください。",
+        "readOnly": "現在は読み取り専用です",
+        "readOnlyHint": "編集権限を取得するとモデルをインポートできます。",
+        "checking": "モデルを確認中…",
+        "preview": "モデルプレビュー",
+        "previewFailed": "モデルプレビューを表示できませんでした。",
+        "entry": "メインファイル",
+        "chooseEntry": "メインファイルを選択",
+        "name": "モデル名",
+        "fileCount": "{count} ファイル",
+        "meshCount": "{count} メッシュ",
+        "skinned": "スケルトンを含む",
+        "checkingResources": "形式と関連ファイルを確認中",
+        "ready": "モデルと関連ファイルの準備ができました",
+        "addResources": "関連ファイルを追加",
+        "optionalExtensions": "次のオプション拡張は表示が異なる場合があります：",
+        "showFiles": "ファイル一覧を表示",
+        "hideFiles": "ファイル一覧を閉じる",
+        "hide": "閉じる",
+        "retry": "再試行",
+        "confirm": "インポート",
+        "errorMissing": "不足している関連ファイルを追加してください。",
+        "errorEntry": "プレビューするメインファイルを選択してください。",
+        "errorUnsupported": "このモデル形式または必須拡張には対応していません。",
+        "errorEmpty": "モデルに表示可能なメッシュがありません。",
+        "errorBudget": "モデルがインポート制限を超えています。",
+        "errorInvalid": "モデルまたは関連ファイルを読み取れませんでした。",
+        "errorDuplicate": "同じパスのファイルがあります。競合のないファイル一式を選択してください。",
+        "errorUpload": "モデルをアップロードできませんでした。再試行してください。",
+        "errorLoad": "モデルを読み込めませんでした。再試行してください。",
+        "limit": {
+          "input": "選択したファイルは合計 {actual} MiB です（上限 {allowed} MiB）。",
+          "files": "ファイル数は {actual} 個です（上限 {allowed} 個）。",
+          "expanded": "展開後のサイズは {actual} MiB です（上限 {allowed} MiB）。",
+          "entryJson": "モデル記述ファイルは {actual} MiB です（上限 {allowed} MiB）。",
+          "artifact": "パッケージ後のサイズは {actual} MiB です（上限 {allowed} MiB）。",
+          "textureEdge": "テクスチャの辺の長さは {actual} px です（上限 {allowed} px）。",
+          "textureBytes": "テクスチャのメモリは {actual} MiB です（上限 {allowed} MiB）。"
+        }
+      },
+      "taskList": {
+        "kind": "インポート",
+        "you": "あなた",
+        "member": "メンバー",
+        "uploading": "アップロード中 {percent}%",
+        "running": "アップロード中",
+        "runningFor": "アップロード中 · {minutes} 分経過",
+        "registering": "登録中",
+        "done": "完了",
+        "failed": "失敗",
+        "expired": "タイムアウト",
+        "failedReason": "モデルをアップロードできませんでした。",
+        "place": "シーンに配置",
+        "retry": "再試行",
+        "remove": "削除",
+        "empty": "インポートしたモデルがここに表示されます。",
+        "loadFailed": "タスクを読み込めませんでした。",
+        "removeFailed": "タスクを削除できませんでした。もう一度お試しください。",
+        "placeFailed": "モデルをシーンに配置できませんでした。"
+      }
     }
   },
   "menu": {
@@ -2701,7 +2771,8 @@
       "spaceLocked": "{actor} が Space {spaceName} をロックしました",
       "spaceUnlocked": "{actor} が Space {spaceName} のロックを解除しました",
       "spaceRestored": "{actor} が Space {spaceName} を復元しました",
-      "spaceRenamed": "{actor} が Space {oldSpaceName} の名前を {spaceName} に変更しました"
+      "spaceRenamed": "{actor} が Space {oldSpaceName} の名前を {spaceName} に変更しました",
+      "assetUploadedModel": "{actor} がモデル「{name}」をアップロードしました"
     },
     "header": "Project アクティビティ",
     "label": "Project アクティビティ",

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
+import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SceneViewport from '@web/spaces/three-d/viewport/SceneViewport';
@@ -9,13 +10,13 @@ import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-view
 
 const mocks = vi.hoisted(() => ({
   construct: vi.fn(),
-  instances: [] as { update: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn> }[],
+  instances: [] as { update: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn>; acquireModel: ReturnType<typeof vi.fn> }[],
 }));
 
 vi.mock('@web/spaces/three-d/viewport/scene-viewport-runtime', () => ({
   SceneViewportRuntime: vi.fn(function (host: HTMLDivElement, props: SceneViewportProps) {
     mocks.construct(host, props);
-    const instance = { update: vi.fn(), dispose: vi.fn() };
+    const instance = { update: vi.fn(), dispose: vi.fn(), acquireModel: vi.fn() };
     mocks.instances.push(instance);
     return instance;
   }),
@@ -28,7 +29,7 @@ function props(): SceneViewportProps {
   return {
     objects: [], selectedIds: [], mode: 'translate', readOnly: false,
     view: { position: [7, 5, 8], target: [0, 1, 0] }, focusRevision: 0, cancelRevision: 0,
-    remotePeers: [], scaleSensitivity: 0.006,
+    remotePeers: [], scaleSensitivity: 0.006, importLimits: IMPORT_LIMITS,
     onSelect: vi.fn(), onGestureStart: vi.fn(() => true), onGestureChange: vi.fn(), onGestureEnd: vi.fn(), onViewChange: vi.fn(), onError: vi.fn(),
     resolveAsset: vi.fn(),
   };
@@ -95,4 +96,18 @@ describe('viewport effect ownership under React Activity (inner#1689)', () => {
     expect(initial.onError).toHaveBeenCalledWith(failure);
     expect(mocks.instances).toHaveLength(0);
   });
+
+  it('hands the viewport\'s own model holder up while it lives, and takes it back before releasing it', () => {
+    const onResources = vi.fn();
+    const { unmount } = render(<SceneViewport {...props()} onResources={onResources} />);
+    const instance = mocks.instances[0]!;
+    expect(onResources).toHaveBeenLastCalledWith(instance.acquireModel);
+    instance.dispose.mockImplementation(() => {
+      expect(onResources).toHaveBeenLastCalledWith(null);
+    });
+    unmount();
+    expect(instance.dispose).toHaveBeenCalledTimes(1);
+    expect(onResources).toHaveBeenLastCalledWith(null);
+  });
+
 });

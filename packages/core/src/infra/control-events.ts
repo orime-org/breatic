@@ -55,11 +55,13 @@ import { env } from "@core/config/runtime.js";
 import {
   activityNewChannel,
   creditsChangedChannel,
+  spaceTasksChangedChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
   type ActivityNewControlEvent,
   type CreditsChangedControlEvent,
+  type SpaceTasksChangedControlEvent,
   type ProjectConnectionsCloseEvent,
   type ProjectConnectionsCloseReason,
   type SessionsRevokedEvent,
@@ -115,6 +117,25 @@ export async function publishCreditsChanged(projectId: string): Promise<void> {
     ts: Date.now(),
   };
   await getStreamRedis().publish(creditsChangedChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
+}
+
+/**
+ * Announce that a 3D Space's task list changed (inner#1690); collab relays it
+ * to connected members as the `space-tasks:changed` stateless signal.
+ * Fire-and-forget like {@link publishActivityNew}.
+ * @param projectId - Project the Space belongs to.
+ * @param spaceId - The Space whose list changed.
+ * @returns Nothing.
+ * @throws {Error} When Redis rejects the publish.
+ */
+export async function publishSpaceTasksChanged(projectId: string, spaceId: string): Promise<void> {
+  const event: SpaceTasksChangedControlEvent = {
+    type: "project-space-tasks:changed",
+    projectId,
+    spaceId,
+    ts: Date.now(),
+  };
+  await getStreamRedis().publish(spaceTasksChangedChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
 }
 
 /**

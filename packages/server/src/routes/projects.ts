@@ -37,7 +37,7 @@ import * as projectTransferService from "@server/modules/project/projectTransfer
 import { getSceneConfig, projectAuthService } from "@breatic/core";
 import { AppError, logger, NotFoundError } from "@breatic/core";
 import { projectNameSchema, t } from "@breatic/shared";
-import type { ProjectDetail } from "@breatic/shared";
+import type { ProjectDetail, SceneControlsConfig } from "@breatic/shared";
 
 const projects = new Hono<{ Variables: AuthVariables }>();
 
@@ -45,18 +45,36 @@ projects.use(requireAuth);
 
 /**
  * `GET /projects/:id/three-d/config` — scene controls configuration for a Viewer.
- * @returns The scale sensitivity used by the versioned controls adapter.
+ * @returns The configured scene controls and model import budgets, the same for every Project.
  */
 projects.get(
   "/:id/three-d/config",
   validate("param", z.object({ id: z.string().uuid() })),
   requireRoleOnParam("id", "viewer"),
-  (c) => c.json({ data: { scaleSensitivity: getSceneConfig().scale_sensitivity } }),
+  (c) => {
+    const config = getSceneConfig();
+    const limits = config.import;
+    const data: SceneControlsConfig = {
+      scaleSensitivity: config.scale_sensitivity,
+      import: {
+        maxInputBytes: limits.max_input_bytes,
+        maxExpandedBytes: limits.max_expanded_bytes,
+        maxArtifactBytes: limits.max_artifact_bytes,
+        maxFiles: limits.max_files,
+        maxEntryJsonBytes: limits.max_entry_json_bytes,
+        decoderWorkerLimit: limits.decoder_worker_limit,
+        maxTextureEdge: limits.max_texture_edge,
+        maxTextureBytes: limits.max_texture_bytes,
+      },
+      progressPublishMs: limits.progress_publish_ms,
+    };
+    return c.json({ data });
+  },
 );
 
 /**
  * `GET /projects/:id/three-d/assets/:assetId` — resolve a registered scene model.
- * @returns The registered model URL and MIME type in the standard data envelope.
+ * @returns The registered model URL, MIME type and registered size in the standard data envelope.
  */
 projects.get(
   "/:id/three-d/assets/:assetId",
