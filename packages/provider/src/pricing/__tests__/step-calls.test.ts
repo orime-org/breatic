@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { stepCalls, stepSource } from "../estimate.js";
+import { cloneKeyOf, stepCalls, stepSource } from "../estimate.js";
 
 const params = { elements: ["https://a/1.png", "https://a/2.png"], song: "https://a/song.mp3", empty: "", none: [] };
 
@@ -22,5 +23,21 @@ describe("the calls an extra step makes and the source each reads", () => {
     expect(stepSource(params, "elements", null)).toBeUndefined();
     expect(stepSource(params, "empty", null)).toBeUndefined();
     expect(stepSource(params, "elements", 2)).toBeUndefined();
+  });
+});
+
+describe("the source a clone is keyed by", () => {
+  it("is the url the same call reads, for every kind, value shape and item index", () => {
+    const urls = ["https://a/1.png", "https://a/2.png", "https://a/3.png"];
+    const sourceKeys = Object.fromEntries(urls.map((u, i) => [u, `sha${i}`]));
+    const value = fc.oneof(fc.constantFrom(...urls), fc.array(fc.constantFrom(...urls), { maxLength: 3 }), fc.constant(""), fc.constant(undefined));
+    fc.assert(
+      fc.property(fc.constantFrom("voice", "vocal", "element"), value, fc.option(fc.nat(3), { nil: null }), (kind, v, itemIndex) => {
+        const params = { src: v };
+        const url = stepSource(params, "src", itemIndex);
+        const key = cloneKeyOf(kind, "src", params, sourceKeys, itemIndex);
+        expect(key?.sourceKey.split(":")[0]).toBe(url === undefined ? undefined : sourceKeys[url]);
+      }),
+    );
   });
 });

@@ -10,9 +10,9 @@ import { missingRequired, type SchemaSnapshot } from "../../config/upstream-sche
 import { stepCalls, stepSource } from "../../pricing/estimate.js";
 import { firstBody, takes, type SampleRun } from "./reseller-bodies.js";
 
-/** The step context a body sample was built with; `source` is the url the step reads, and absent fields are unset. */
+/** The step context a body sample was built with; `source` is the url the step reads, absent for a step that reads none, and absent fields are unset. */
 interface StepSampleContext {
-  source: string;
+  source?: string;
   params: Record<string, unknown>;
   prompt: string;
   customVoiceId: string;
@@ -95,26 +95,13 @@ describe.each(cases)("the request bodies of $model on $binding.upstream", ({ mod
     expect(editor.filter((name) => typeof first[name] !== "string" || first[name] === "")).toEqual([]);
   });
 
-  it("sample each source at a url of its own param, so a step reading another param shows", () => {
+  it("sample each source at a url named by its param, of the kind it accepts, in the runs and in each step's context", () => {
+    const EXTENSIONS: Record<string, string> = { image: "(png|jpe?g|webp)", video: "mp4", audio: "mp3" };
     const wrong: string[] = [];
     for (const [name, param] of Object.entries(offered.get(model) ?? {})) {
-      if (param.accepts === undefined) continue;
-      for (const run of sample.runs) {
-        const value = run.params[name];
-        for (const url of (Array.isArray(value) ? value : [value]).filter((v): v is string => typeof v === "string")) {
-          if (!new RegExp(`/${name}\\.[a-z0-9]+$`).test(url)) wrong.push(`${name}=${url}`);
-        }
-      }
-    }
-    expect([...new Set(wrong)]).toEqual([]);
-  });
-
-  it("sample each source with a file of the kind its param accepts, in the runs and in each step's context", () => {
-    const EXTENSIONS: Record<string, RegExp> = { image: /\.(png|jpe?g|webp)$/, video: /\.mp4$/, audio: /\.mp3$/ };
-    const wrong: string[] = [];
-    for (const [name, param] of Object.entries(offered.get(model) ?? {})) {
-      const pattern = param.accepts === undefined ? undefined : EXTENSIONS[param.accepts];
-      if (pattern === undefined) continue;
+      const ext = param.accepts === undefined ? undefined : EXTENSIONS[param.accepts];
+      if (ext === undefined) continue;
+      const pattern = new RegExp(`/${name}\\.${ext}$`);
       const values = [...sample.runs.map((r) => r.params[name]), ...sample.steps.map((s) => s.context.params[name])];
       for (const step of sample.steps.filter((s) => s.context.param === name)) values.push(step.context.source);
       for (const value of values) {
@@ -153,7 +140,7 @@ describe.each(cases)("the request bodies of $model on $binding.upstream", ({ mod
   });
 
   it("show each extra step on a run that makes it, reading its source as the runner does", () => {
-    const wrong = sample.steps.filter((s) => s.context.param !== undefined && s.context.source !== stepSource(s.context.params, s.context.param, s.context.itemIndex)).map((s) => `${s.kind} ${s.context.param}=${JSON.stringify(s.context.params[s.context.param!])} source=${s.context.source}`);
+    const wrong = sample.steps.filter((s) => s.context.source !== stepSource(s.context.params, s.context.param, s.context.itemIndex)).map((s) => `${s.kind} ${s.context.param ?? "(no param)"}=${JSON.stringify(s.context.params[s.context.param ?? ""])} source=${s.context.source}`);
     expect(wrong).toEqual([]);
   });
 
@@ -163,7 +150,12 @@ describe.each(cases)("the request bodies of $model on $binding.upstream", ({ mod
     expect(sample.steps.map((s) => `${s.kind} ${s.endpoint}`).sort()).toEqual(made.map((s) => `${s.kind} ${s.endpoint}`).sort());
     for (const step of sample.steps) {
       const codec = adapterOf(kind).steps[step.kind as keyof ReturnType<typeof adapterOf>["steps"]]!;
-      expect(codec.body({ ...step.context, source: () => step.context.source, binding, voiceId: step.context.voiceId, description: step.context.description, param: step.context.param }), `${step.kind} ${step.endpoint}`).toEqual(step.body);
+      const source = (): string => {
+        if (step.context.source === undefined) throw new Error(`The ${step.kind} step reads no source`);
+        return step.context.source;
+      };
+      expect((JSON.stringify(step.body).match(/https:\/\/example\.com\/[^"]+/g) ?? []).filter((u) => u !== step.context.source), `${step.kind} reads another source`).toEqual([]);
+      expect(codec.body({ ...step.context, source, binding, voiceId: step.context.voiceId, description: step.context.description, param: step.context.param }), `${step.kind} ${step.endpoint}`).toEqual(step.body);
     }
   });
 });

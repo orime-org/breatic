@@ -7,6 +7,7 @@ import type { Cost } from "../../cost.js";
 import type { MediaBinding, ProviderConfigInput } from "../../config/schema.js";
 import { costsOf, DeadlinePassed, SendNotAccepted, UpstreamTaskFailed } from "../../errors.js";
 import { Aborted, NoAnswer } from "../../http/errors.js";
+import { SIDE_REQUEST_MS } from "../../http/request.js";
 import { createProvider, type Provider } from "../../provider.js";
 import type { Route } from "../../routing/route.js";
 import { createMediaRunner, type MediaAnswer, type MediaRunner, type MediaTicket } from "../runner.js";
@@ -311,6 +312,26 @@ describe("pacing and the deadline", () => {
   });
 });
 
+describe("a billing read is a side request", () => {
+  it("hands back a finished run within the side-request limit while its billing endpoint hangs, its cost pending", async () => {
+    a.answer(({ method, path }) => (path === "/billings/search" ? "hang" : method === "POST" ? accepted("p1") : result("p1", "completed", ["https://out.example/v.mp4"])));
+    const r = runner();
+    const running = expectState(await submitVideo(r) as MediaAnswer, "running");
+    const started = Date.now();
+    const done = expectState(await r.poll(stored(running.ticket), { deadlineAt: started + 600_000 }), "done");
+    expect(Date.now() - started).toBeLessThan(SIDE_REQUEST_MS + 5_000);
+    expect(done.costs).toEqual([lookupOf("p1")]);
+  }, 60_000);
+
+  it("ends a last cost lookup within the side-request limit while the billing endpoint hangs, its cost missing", async () => {
+    a.answer(() => "hang");
+    const started = Date.now();
+    const cost = await provider().cost.lookup({ upstream: "ws_a", predictionId: "p1" }, { lastAttempt: true });
+    expect(Date.now() - started).toBeLessThan(SIDE_REQUEST_MS + 5_000);
+    expect(cost.state).toBe("missing");
+  }, 60_000);
+});
+
 describe("a run's billed predictions reach the caller once, however it ends (critical path)", () => {
   const SUBMITS = ["accept", "finishNow", "busy", "refused", "unreadable"] as const;
   const POLLS = ["processing", "completed", "failed"] as const;
@@ -376,7 +397,7 @@ describe("a run's billed answers on fal and SandBase reach the caller once, howe
   const FAL_STATUSES = ["inProgress", "completed", "completedWithError"] as const;
   const FAL_RESULTS = ["ok", "dataUri", "busyForAPoll", "refused"] as const;
   const FAL_BILLINGS = ["events", "none", "forbidden", "busy", "malformed"] as const;
-  const SB_SUBMITS = ["accept", "finishNow", "finishNowDataUri", "finishNowNoId", "failedNow", "overLimitNamed", "overLimitUnnamed", "unreadable", "cutNamed", "cutUnnamed", "emptyId", "busy", "balance", "noModel"] as const;
+  const SB_SUBMITS = ["accept", "finishNow", "finishNowDataUri", "finishNowNoId", "failedNow", "overLimitNamed", "overLimitUnnamed", "unreadable", "cutNamed", "cutUnnamed", "cutEmptyTaskId", "emptyId", "emptyHeader", "busy", "balance", "noModel"] as const;
   const SB_ASKS = ["running", "completed", "completedEmpty", "dataUri", "failed", "overLimit", "busy"] as const;
   const SB_COSTS = ["settled", "unsettled", "unknown", "busy", "malformed", "noCost"] as const;
   /** The caller's media limit here: a SandBase answer carrying a bigger inline file is over the read limit. */
@@ -542,6 +563,11 @@ describe("a run's billed answers on fal and SandBase reach the caller once, howe
               anonymous++;
               return { status: 202, body: { id: "", status: "pending" } };
             }
+            if (next === "emptyHeader") {
+              anonymous++;
+              return { status: 200, headers: { "x-task-id": "" }, body: done("https://out.example/empty-header.mp3") };
+            }
+            if (next === "cutEmptyTaskId") return { status: 202, raw: `{"id":"${bill("s")}","sta`, contentType: "application/json", headers: { "x-task-id": "", "x-request-id": `s${n}` }, cut: true };
             if (next === "cutUnnamed") {
               anonymous++;
               return { status: 202, raw: "{\"id\":\"s", contentType: "application/json", cut: true };
