@@ -8,8 +8,8 @@ import {
   type MiniToolPlanTarget, type TaskEntity, type TaskStatusType, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from "@breatic/shared";
 import {
-  batchVideoRunOutputs, canonicalMiniToolValue, estimateVideoJobSeconds, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, miniToolPresentationRefSchema, planVideoEncodeChunks,
-  plannedStageJobs, planVideoFrames, planVideoSplit, type FrameWindow, type FramesExecutionLayout, type MiniToolExecutionRequest, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type MiniToolSourceBinding, type MiniToolStageJobs,
+  batchVideoRunOutputs, canonicalMiniToolValue, estimateVideoJobSeconds, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
+  plannedStageJobs, planVideoFrames, planVideoSplit, type FrameWindow, type FramesExecutionLayout, type MiniToolExecutionRequest, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type MiniToolPresentationRef, type MiniToolSourceBinding, type MiniToolStageJobs,
   type VideoEncodeChunk, type VideoEncoderRates, type VideoJobWork, type VideoPresentationTable,
 } from "@breatic/shared/mini-tools";
 import { prepareVideoRemoveBackground, type PreparedVideoRemoveBackground } from "@domain/mini-tool/remove-background-preparation.service.js";
@@ -36,7 +36,7 @@ export type MiniToolContainerPolicy = { containerClass: "MiniToolContainerStd4";
 export type PreparedModelInputRef = { kind: "prepared"; inputId: "source"; job: string };
 /** What every planned video execution freezes about its tool input (§7.11): the ref, both receipts and the selected version. */
 type FrozenToolInput = {
-  presentationRef: z.infer<typeof miniToolPresentationRefSchema>;
+  presentationRef: MiniToolPresentationRef;
   ledgerReceipts: Record<"source", VideoPresentationLedgerReceipt>;
   versionIds: Record<"source", string>;
   retry?: MiniToolExecutionRetryRequest["retry"];

@@ -19,6 +19,8 @@ const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const toolInputRef = z.strictObject({ toolInputId: hash, planSha256: hash });
 /** The tool input each request input was planned against (§7.11, §7.13); the single-input tools name theirs `source`. */
 export const miniToolPresentationRefSchema = z.strictObject({ source: toolInputRef });
+/** A single-input tool's ref. */
+export type MiniToolPresentationRef = z.infer<typeof miniToolPresentationRefSchema>;
 /** A multi-input tool's refs, keyed by the draft input id each clip plays (§97 D11-3). */
 const inputPresentationRefSchema = z.record(z.uuid(), toolInputRef);
 const common = { project_id: z.uuid(), space_id: z.uuid(), run_id: z.uuid(), analysis_refs: z.array(videoToolAnalysisRefSchema), presentation_ref: miniToolPresentationRefSchema };
