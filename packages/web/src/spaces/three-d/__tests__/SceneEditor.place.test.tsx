@@ -17,11 +17,14 @@ import { SceneSession } from '@web/data/yjs/scene-session';
 import SceneEditor from '@web/spaces/three-d/SceneEditor';
 import type * as ToastModule from '@web/lib/toast';
 import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
+import { importErrorKey } from '@web/spaces/three-d/model-import-error-text';
 
 const h = vi.hoisted(() => ({
   reportError: vi.fn(),
   release: vi.fn(),
   latest: { props: null as SceneViewportProps | null },
+  bounds: null as Promise<{ center: [number, number, number]; min: [number, number, number] }> | null,
   tasks: [] as unknown[],
 }));
 
@@ -35,7 +38,7 @@ vi.mock('@web/spaces/three-d/viewport/SceneViewport', () => ({
   default: function ViewportStandIn(props: SceneViewportProps): React.JSX.Element {
     h.latest.props = props;
     React.useEffect(() => {
-      props.onResources?.(() => ({ bounds: Promise.resolve({ center: [1, 0, 2], min: [0, -0.5, 0] }), release: h.release }));
+      props.onResources?.(() => ({ bounds: h.bounds ?? Promise.resolve({ center: [1, 0, 2], min: [0, -0.5, 0] }), release: h.release }));
       return (): void => props.onResources?.(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the stand-in hands its holder up once, as the runtime does
     }, []);
@@ -105,6 +108,7 @@ async function pressPlace(): Promise<void> {
 }
 
 afterEach(() => {
+  h.bounds = null;
   cleanup();
   for (const { session, doc } of owners.splice(0)) { session.destroy(); doc.destroy(); }
   vi.clearAllMocks();
@@ -147,4 +151,15 @@ describe('placing a finished model from the task list (inner#1690)', () => {
     expect(h.release).toHaveBeenCalledTimes(1);
     expect(h.reportError).toHaveBeenCalledWith(t('spaces.threeD.taskList.placeFailed'));
   });
+
+  it('says why the model could not be placed when its content is refused, and writes nothing', async () => {
+    h.bounds = Promise.reject(new ModelImportError('budget', 'too large', { detail: '' }));
+    h.bounds.catch(() => undefined);
+    const session = await placeable();
+    await pressPlace();
+    expect(readSceneDocument(session.doc).objects).toEqual([]);
+    expect(h.release).toHaveBeenCalledTimes(1);
+    expect(h.reportError).toHaveBeenCalledWith(`${t('spaces.threeD.taskList.placeFailed')} ${t(importErrorKey('budget'))}`);
+  });
+
 });

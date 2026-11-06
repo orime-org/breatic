@@ -303,9 +303,10 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
     let bounds;
     try {
       bounds = await lease.bounds;
-    } catch {
+    } catch (error) {
       lease.release();
-      toast.error(placeFailedText);
+      // A refused model says why, as the viewport's failure notice does; a transport failure has nothing to add.
+      toast.error(error instanceof ModelImportError ? `${placeFailedText} ${t(importErrorKey(error.code))}` : placeFailedText);
       return;
     }
     const id = crypto.randomUUID();
@@ -321,7 +322,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
     pendingFocusIds.current.add(id);
     keepTasksPanel.current = true;
     session.select(id, false);
-  }, [session, placeFailedText]);
+  }, [session, placeFailedText, t]);
 
   React.useEffect(() => {
     /** Share this page's progress for the uploads it is sending into this Space. */

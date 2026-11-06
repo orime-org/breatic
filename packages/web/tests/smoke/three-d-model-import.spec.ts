@@ -234,12 +234,24 @@ async function reopenScene(page: Page, spaceId: string): Promise<void> {
 }
 
 /**
+ * Show the selection's properties; placing from the task list keeps the task list open.
+ * @param page - Scene with a selection.
+ * @throws {Error} When the properties panel cannot be shown.
+ */
+async function showProperties(page: Page): Promise<void> {
+  if (await page.getByTestId('scene-properties-panel').count()) return;
+  await visibleSpace(page).getByTestId('scene-properties-trigger').click();
+  await expect(page.getByTestId('scene-properties-panel')).toBeVisible();
+}
+
+/**
  * Commit a selected object's position through its real property field.
  * @param page - Scene whose imported object is currently selected.
  * @param value - New X coordinate in metres.
  * @throws {Error} When the inspector cannot accept the command.
  */
 async function setX(page: Page, value: number): Promise<void> {
+  await showProperties(page);
   const input = page.getByTestId('scene-properties-panel').getByRole('group', { name: 'Position (m)', exact: true }).getByLabel('X', { exact: true });
   await input.fill(String(value));
   await input.press('Enter');
@@ -268,7 +280,7 @@ test('model import checks original dependencies and retains a prepared model acr
     await previewReady(reopened);
     await page.keyboard.press('Escape');
     await expect(reopened).toHaveCount(0);
-    await expect(visibleSpace(page).getByRole('button', { name: 'Add', exact: true })).toBeFocused();
+    await expect(visibleSpace(page).getByRole('button', { name: 'Import model', exact: true })).toBeFocused();
     expect(await sceneObjects(page, id)).toEqual([]);
   } finally {
     await deleteSpace(page, id);
@@ -413,6 +425,7 @@ for (const role of ['editor', 'viewer'] as const) {
         const name = peer.getByTestId('scene-properties-panel').getByLabel('Name', { exact: true });
         await name.fill('Collaborator model name');
         await name.press('Enter');
+        await showProperties(page);
         await expect(ownerName).toHaveValue('Collaborator model name');
         await setX(page, 4);
         await expect.poll(async () => (await renderedObjects(peer))[0].position[0]).toBe(4);
@@ -425,11 +438,12 @@ for (const role of ['editor', 'viewer'] as const) {
         expect(stored.status).toBe(200);
         const bytes = new Uint8Array(await stored.arrayBuffer());
         const refused = await peerContext.request.post('/api/v1/assets/upload-ticket', { data: {
-          project_id: projectId, purpose: 'scene_model', filename: 'shared-model.zip', content_type: 'application/zip',
+          project_id: projectId, purpose: 'scene_model', space_id: id, label: 'Shared model', filename: 'shared-model.zip', content_type: 'application/zip',
           size: bytes.byteLength, client_hash: createHash('sha256').update(bytes).digest('hex'),
         } });
         expect(refused.status()).toBe(403);
       }
+      await showProperties(page);
       await ownerName.fill('Owner model update');
       await ownerName.press('Enter');
       await expect.poll(async () => (await sceneObjects(peer, id!))[0].name).toBe('Owner model update');
@@ -553,7 +567,10 @@ test('closing the Space tab is held back while a model\'s bytes are being sent @
   const parts = Promise.withResolvers<void>();
   await page.route(partsPattern, async (route) => {
     if (route.request().method() === 'PUT') await parts.promise;
-    await route.continue();
+    // A held part the page already gave up on (its idle timeout aborts and resends) has nothing left to continue.
+    await route.continue().catch((err: unknown) => {
+      if (!String(err).includes('already handled')) throw err;
+    });
   });
   try {
     const dialog = await openImport(page);
@@ -567,14 +584,18 @@ test('closing the Space tab is held back while a model\'s bytes are being sent @
     await page.getByTestId(`space-tab-close-${id}`).click();
     await expect(page.getByText('An operation is still in progress — finish it before closing this Space.', { exact: true })).toBeVisible();
     await expect(tab).toHaveCount(1);
+    // The Tasks panel the import opened stays until closed; the tab it lives in cannot close yet.
+    await visibleSpace(page).getByTestId('scene-right-panel').getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(visibleSpace(page).getByTestId('scene-tasks-panel')).toHaveCount(0);
   } finally {
     parts.resolve();
-    await page.unroute(partsPattern);
+    // The held part is still on its way through the handler; let it finish before the route goes.
+    await page.unroute(partsPattern, undefined, { behavior: 'wait' });
     await deleteSpace(page, id);
   }
 });
 
-test('a failed transfer keeps existing objects and its retry from the task list uploads the same file @needs-storage @needs-ingest', async ({ page }) => {
+test('a failed transfer and a failed load keep existing objects; the task list retries the upload and the placement @needs-storage @needs-ingest', async ({ page }) => {
   await openSmokeProject(page);
   const id = await createSpace(page, '3d', `Retried model ${crypto.randomUUID()}`);
   const partsPattern = '**/uploads/**/parts/*';
@@ -620,12 +641,12 @@ test('a failed transfer keeps existing objects and its retry from the task list 
     await expect(failedRow.getByRole('button', { name: 'Retry', exact: true })).toHaveCount(0);
     await expect(failedRow.getByRole('button', { name: 'Remove', exact: true })).toBeVisible();
     await placeFromTasks(page, retried.taskId);
-    await expect(editor.getByText('A model could not be loaded.', { exact: true })).toBeVisible({ timeout: test.info().timeout });
-    expect((await sceneObjects(page, id)).find((object) => object.id === original.id)).toEqual(original);
-    expect((await sceneObjects(page, id)).filter((object) => object.name === 'Retried character')).toHaveLength(1);
+    await expect(page.getByText('The model couldn’t be placed in the scene.', { exact: true })).toBeVisible({ timeout: test.info().timeout });
+    expect(await sceneObjects(page, id)).toEqual([original]);
     failResolve = false;
-    await editor.getByRole('button', { name: 'Retry', exact: true }).click();
+    await placeFromTasks(page, retried.taskId);
     await expect.poll(async () => (await renderedObjects(page)).length, { timeout: test.info().timeout }).toBe(2);
+    expect((await sceneObjects(page, id)).filter((object) => object.name === 'Retried character')).toHaveLength(1);
     expect((await sceneObjects(page, id)).find((object) => object.id === original.id)).toEqual(original);
   } finally {
     failTransfer = false;
