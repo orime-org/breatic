@@ -268,7 +268,8 @@
       "lipSyncTooManyPeople": "립싱크는 한 번에 최대 {max}명까지 지원합니다.",
       "lipSyncTooManyDialogues": "립싱크 대사는 최대 {max}줄입니다.",
       "lipSyncPeopleRunning": "인물 감지가 아직 진행 중입니다. 완료되면 다시 시도하세요.",
-      "lipSyncPeopleStale": "감지된 인물이 더 이상 이 동영상과 맞지 않습니다. 인물을 다시 감지하세요."
+      "lipSyncPeopleStale": "감지된 인물이 더 이상 이 동영상과 맞지 않습니다. 인물을 다시 감지하세요.",
+      "lipSyncStepTooLong": "이 립싱크는 너무 길어 한 번의 처리 단계로 완료할 수 없습니다. 대사나 동영상을 줄이세요."
     },
     "idempotency": {
       "missing": "페이지가 업데이트되었습니다. 새로고침한 후 다시 시도하세요.",

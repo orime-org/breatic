@@ -268,7 +268,8 @@
       "lipSyncTooManyPeople": "Lip sync works with up to {max} people at a time.",
       "lipSyncTooManyDialogues": "Lip sync takes up to {max} dialogue lines.",
       "lipSyncPeopleRunning": "Person detection is still running. Try again when it finishes.",
-      "lipSyncPeopleStale": "The detected people no longer match this video. Detect people again."
+      "lipSyncPeopleStale": "The detected people no longer match this video. Detect people again.",
+      "lipSyncStepTooLong": "This lip-sync run is too long for one processing step. Shorten the dialogue or the video."
     },
     "idempotency": {
       "missing": "This page was updated. Refresh it and try again.",

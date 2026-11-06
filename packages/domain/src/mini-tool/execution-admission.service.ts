@@ -8,7 +8,7 @@ import {
   type MiniToolPlanTarget, type TaskEntity, type TaskStatusType, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from "@breatic/shared";
 import {
-  batchVideoRunOutputs, canonicalMiniToolValue, estimateAudioEncodeSeconds, estimateVideoJobSeconds, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
+  batchVideoRunOutputs, canonicalMiniToolValue, estimateAudioEncodeSeconds, estimateVideoJobSeconds, lipsyncMonotonicSegments, planLipsyncCompositeChunks, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
   plannedStageJobs, planVideoFrames, planVideoSplit, type FrameWindow, type FramesExecutionLayout, type MiniToolExecutionRequest, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type MiniToolPresentationRef, type MiniToolSourceBinding, type MiniToolStageJobs,
   type LipsyncExecutionLayout, type LipsyncTimeline, type VideoEncodeChunk, type VideoEncoderRates, type VideoExecutionDialogue, type VideoJobWork, type VideoPresentationTable,
 } from "@breatic/shared/mini-tools";
@@ -302,8 +302,8 @@ function preparationLayout(ledger: VideoPresentationLedger, config: MiniToolsCon
  * The prepared video covers the used source range, chunked like a removal's preparation; each person runs one faces job
  * (the used frames decoded and searched by YuNet), one clip job (decoded, cropped and encoded at the crop size over the
  * result frames) and one stem job (the result length encoded to AAC); the composite decodes the source and every person's
- * result per result frame and encodes the picture, chunked on the result timeline by the chunk share; the stitch encodes
- * the result's audio once.
+ * result per result frame and encodes the picture, chunked inside each monotonic segment of the result by the chunk share;
+ * the stitch encodes the result's audio once.
  * @param ledger - The validated full ledger.
  * @param table - The compact table.
  * @param timing - The frozen timeline, the used range and the referenced people's count and crop size.
@@ -315,6 +315,7 @@ function preparationLayout(ledger: VideoPresentationLedger, config: MiniToolsCon
  * @param timing.cropSize - The model's crop side.
  * @param config - The acceptance snapshot.
  * @returns The layout and its planned seconds.
+ * @throws {AppError} When one faces, clip, stem, composite or stitch job alone would exceed one chunk share.
  * @throws {RangeError} When the work or the configuration is out of range.
  */
 function lipSyncLayout(ledger: VideoPresentationLedger, table: VideoPresentationTable,
@@ -335,14 +336,20 @@ function lipSyncLayout(ledger: VideoPresentationLedger, table: VideoPresentation
    */
   const decode = (pixels: number): number => pixels / rates.decodeConvertPixelsPerSecond[`${isHdrTransfer(ledger.plan.source.transfer) ? "hdr" : "sdr"}_${ledger.plan.source.bitDepth > 8 ? 10 : 8}bit`];
   const crop = timing.cropSize * timing.cropSize;
-  const frameSeconds = table.runs[0]!.step / table.timescale;
-  const resultFrames = Math.max(1, Math.ceil(timing.timeline.duration / frameSeconds));
+  // The result grid split where the source mapping turns (§97 D23-5): a clip decodes each segment's source frames and
+  // pre-roll once, a reverse segment GOP by GOP forward, so its work equals a forward pass over the same interval.
+  const segments = lipsyncMonotonicSegments(timing.timeline, table, videoPresentationKeyframeFlags(ledger));
+  const resultFrames = segments.at(-1)!.resultEnd;
+  const clipDecoded = segments.reduce((total, segment) => total + segment.sourceEnd - segment.sourceStart + segment.prerollFrames, 0);
   // A stem and the stitch each encode one AAC track over the result; the stitch copies the composite chunks' packets (§97 D24-3).
   const audio = estimateAudioEncodeSeconds(timing.timeline.duration, { startSeconds: rates.startSeconds, aacEncodeSecondsPerSecond: config.encoding.encoder.aac_encode_seconds_per_second });
   const faces = rates.startSeconds + used * (decode(width * height) + (width * height) / config.encoding.encoder.face_detect_pixels_per_second);
-  const clip = rates.startSeconds + used * decode(width * height) + resultFrames * (crop / rates.encodePixelsPerSecond);
+  const clip = rates.startSeconds + clipDecoded * decode(width * height) + resultFrames * (crop / rates.encodePixelsPerSecond);
   const compositeFrame = decode(width * height + timing.persons * crop) + (width * height) / rates.encodePixelsPerSecond;
-  const composite = planVideoEncodeChunks({ keyframes: Array.from({ length: resultFrames }, () => true), frameSeconds: compositeFrame, targetSeconds: share - rates.startSeconds });
+  const composite = planLipsyncCompositeChunks({ segments, frameSeconds: compositeFrame, targetSeconds: share - rates.startSeconds });
+  // Every single job fits one share, as every chunk of the preparation does (frames-split §5.4 dispatch row).
+  const longest = Math.max(faces, clip, audio, ...composite.map((chunk) => rates.startSeconds + (chunk.end - chunk.start) * compositeFrame));
+  if (longest > share) throw new AppError(400, t("server.mini_tool.lipSyncStepTooLong"));
   const seconds = prepareWork + rates.startSeconds * (preparation.length + (preparation.length > 1 ? 1 : 0)) + timing.persons * (faces + clip + audio)
     + resultFrames * compositeFrame + rates.startSeconds * composite.length + audio;
   return { layout: { preparation, persons: timing.persons, composite }, seconds };

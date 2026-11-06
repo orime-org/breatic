@@ -268,7 +268,8 @@
       "lipSyncTooManyPeople": "リップシンクは一度に最大 {max} 人まで対応します。",
       "lipSyncTooManyDialogues": "リップシンクのセリフは最大 {max} 行です。",
       "lipSyncPeopleRunning": "人物の検出がまだ実行中です。完了してからもう一度お試しください。",
-      "lipSyncPeopleStale": "検出した人物がこの動画と一致しなくなりました。人物をもう一度検出してください。"
+      "lipSyncPeopleStale": "検出した人物がこの動画と一致しなくなりました。人物をもう一度検出してください。",
+      "lipSyncStepTooLong": "このリップシンクは長すぎて、1 つの処理ステップで完了できません。セリフか動画を短くしてください。"
     },
     "idempotency": {
       "missing": "ページが更新されました。再読み込みしてからもう一度お試しください。",

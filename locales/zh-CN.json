@@ -268,7 +268,8 @@
       "lipSyncTooManyPeople": "对口型一次最多支持 {max} 个人物。",
       "lipSyncTooManyDialogues": "对口型最多支持 {max} 行对白。",
       "lipSyncPeopleRunning": "人物识别仍在进行，完成后再试。",
-      "lipSyncPeopleStale": "识别出的人物已和这个视频对不上，请重新识别人物。"
+      "lipSyncPeopleStale": "识别出的人物已和这个视频对不上，请重新识别人物。",
+      "lipSyncStepTooLong": "这次对口型太长，单个处理步骤无法完成。请缩短对白或视频。"
     },
     "idempotency": {
       "missing": "页面已更新，请刷新后重试。",
