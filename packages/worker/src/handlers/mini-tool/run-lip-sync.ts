@@ -70,7 +70,7 @@ export async function runMiniToolLipSync(execution: LipSyncExecution, userId: st
           pickup.waiting = true;
           if (kind === "track" || kind === "gen") person[kind] = "submitted";
         } else if (outcome.state === "failed") {
-          person.failure = { step: kind as "track" | "faces" | "clip" | "stem" | "gen", category: outcome.category };
+          person.failure = { step: outcome.step as "track" | "faces" | "clip" | "stem" | "gen", category: outcome.category };
         } else if (kind === "track" || kind === "gen") person[kind] = "done";
       }
     }

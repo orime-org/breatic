@@ -16,7 +16,8 @@ export interface LipSyncStep { kind: LipSyncStepKind; personId: string | null }
 export type LipSyncStepOutcome =
   | { state: "done"; result?: MiniToolExecutionRegistered }
   | { state: "running" }
-  | { state: "failed"; category: "no_face" | "model_rejected" | "timeout" | "failed" };
+  /** A failed step names the step its line is written under: a faces job that found no tracked foreground names track (§97 D21-5). */
+  | { state: "failed"; step: LipSyncStepKind; category: "no_face" | "model_rejected" | "timeout" | "failed" };
 
 /**
  * Advance one step.
