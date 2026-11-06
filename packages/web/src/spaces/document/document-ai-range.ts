@@ -32,12 +32,10 @@ import {
   aimAt,
   changesText,
   localRangeTracker,
-  localRangeView,
   type LocalRange,
 } from '@web/spaces/document/document-local-range';
 import { documentBarsOf } from '@web/spaces/document/document-bars';
 import { bodyHolds } from '@web/spaces/document/document-body-focus';
-import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
 
 /** The original range: on its words, or gone. */
 export type AiRange =
@@ -95,10 +93,6 @@ function paintRange(state: EditorState): DecorationSet {
       .map(({ from, to }) => Decoration.inline(from, to, { 'data-show-selection': 'true' })),
   );
 }
-
-/** The broadcast for the range: opening and closing it dispatch nothing but the meta. */
-const watch = watchPluginState(aiRangeIn);
-
 
 /** Who closes the open dialog when Escape is typed in a given editor's body. */
 const escapeListeners = new WeakMap<object, Set<() => void>>();
@@ -183,11 +177,11 @@ export const documentAiRange = createExtension(() => {
         },
 
         /**
-         * Broadcasts the range, and names it in Yjs terms after every change.
+         * Names the range in Yjs terms after every change.
          * @param view - The editor view.
          * @returns The view's update and teardown.
          */
-        view: (view) => localRangeView(view, watch, tracker),
+        view: (view) => tracker.view(view),
       }),
     ],
   };

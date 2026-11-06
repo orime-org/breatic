@@ -15,8 +15,8 @@
  * puts a space after every hard break.
  */
 
-import { inlineContentToNodes, nodeToBlock } from '@blocknote/core';
-import type { Fragment, Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { blockToNode, inlineContentToNodes, nodeToBlock } from '@blocknote/core';
+import type { Fragment, Node as ProseMirrorNode, Schema } from '@tiptap/pm/model';
 import type { Transaction } from '@tiptap/pm/state';
 import { yUndoPluginKey } from 'y-prosemirror';
 
@@ -73,6 +73,8 @@ export interface AiUnitResult {
 
 /** An answer read into blocks. */
 export interface AiAnswer {
+  /** The units sent. */
+  readonly units: readonly AiTextUnit[];
   /** Tags were expected and no unit sent was recognised. */
   readonly formatFailed: boolean;
   /** The answered units, in document order. */
@@ -212,24 +214,75 @@ function lineOf(doc: ProseMirrorNode, unit: AiTextUnit): Line | null {
 }
 
 /**
- * Where a unit's selected words are now.
- * @param doc - The body now.
- * @param unit - The unit.
- * @param segments - The original range, where it is now.
- * @returns The span, or null when no selected word of it is left.
+ * The stretch of a textblock the range covers.
+ * @param doc - The body.
+ * @param start - Where the textblock's content starts.
+ * @param size - Its content's size.
+ * @param segments - The range.
+ * @returns The stretch, or null when it covers no word there.
  */
-export function unitSpan(doc: ProseMirrorNode, unit: AiTextUnit, segments: readonly LocalRange[]): LocalRange | null {
-  const line = lineOf(doc, unit);
-  if (line === null) return null;
-  const end = line.start + line.node.content.size;
+function spanOn(doc: ProseMirrorNode, start: number, size: number, segments: readonly LocalRange[]): LocalRange | null {
   let span: LocalRange | null = null;
   for (const segment of segments) {
-    const from = Math.max(segment.from, line.start);
-    const to = Math.min(segment.to, end);
+    const from = Math.max(segment.from, start);
+    const to = Math.min(segment.to, start + size);
     if (from >= to || doc.textBetween(from, to) === '') continue;
     span = span === null ? { from, to } : { from: Math.min(span.from, from), to: Math.max(span.to, to) };
   }
   return span;
+}
+
+/**
+ * The first textblock from a position on.
+ * @param doc - The body.
+ * @param pos - The position.
+ * @returns Where its content starts, or null when there is none.
+ */
+function textblockFrom(doc: ProseMirrorNode, pos: number): number | null {
+  let found: number | null = null;
+  doc.nodesBetween(pos, doc.content.size, (node, at) => {
+    if (found !== null) return false;
+    if (!node.isTextblock) return true;
+    found = at + 1;
+    return false;
+  });
+  return found;
+}
+
+/**
+ * Where a unit's selected words are now: in its own block, or, once Enter
+ * at their very start has left the block's id on the words before them, in
+ * the new block right after it that no other unit holds.
+ * @param doc - The body now.
+ * @param unit - The unit.
+ * @param segments - The original range, where it is now.
+ * @param units - Every unit sent.
+ * @returns The span, or null when no selected word of it is left.
+ */
+export function unitSpan(doc: ProseMirrorNode, unit: AiTextUnit, segments: readonly LocalRange[], units: readonly AiTextUnit[]): LocalRange | null {
+  const line = lineOf(doc, unit);
+  if (line === null) return null;
+  const own = spanOn(doc, line.start, line.node.content.size, segments);
+  if (own !== null || unit.cell !== null) return own;
+  const start = textblockFrom(doc, line.start + line.node.content.size + 1);
+  if (start === null) return null;
+  const $start = doc.resolve(start);
+  const container = $start.node($start.depth - 1);
+  if (container.type.name !== 'blockContainer' || units.some((u) => u.blockId === String(container.attrs['id']))) return null;
+  return spanOn(doc, start, $start.parent.content.size, segments);
+}
+
+/**
+ * The line a span sits on, and the block around it.
+ * @param doc - The body.
+ * @param span - The span.
+ * @returns The line, and where its block starts.
+ */
+function lineAt(doc: ProseMirrorNode, span: LocalRange): Line & { readonly containerPos: number } {
+  const $from = doc.resolve(span.from);
+  let depth = $from.depth - 1;
+  while ($from.node(depth).type.name !== 'blockContainer') depth -= 1;
+  return { node: $from.parent, start: $from.start(), container: $from.node(depth), containerPos: $from.before(depth) };
 }
 
 /**
@@ -375,7 +428,10 @@ function escapeContent(content: readonly Inline[]): Inline[] {
     return { ...piece, text: escaped.replace(/\n/g, '&#10;') };
   };
   return shaped.map((c) => {
-    if (c.type === 'link') return { ...c, content: (c.content ?? []).map(one) };
+    // The parser ends an address at white space and decodes nothing, and the
+    // way back decodes every entity and unescapes it once: all three are
+    // spelled as entities.
+    if (c.type === 'link') return { ...c, href: (c.href ?? '').replace(/&/g, '&amp;').replace(/[\\\s]/g, (ch) => `&#${String(ch.codePointAt(0))};`), content: (c.content ?? []).map(one) };
     return c.type === 'text' ? one(c) : c;
   });
 }
@@ -420,11 +476,10 @@ export function aiUnitsRequest(
   command: AiCommand['id'],
 ): string {
   return units.map((unit) => {
-    const line = lineOf(doc, unit);
-    const span = unitSpan(doc, unit, segments);
+    const span = unitSpan(doc, unit, segments, units);
     const open = `<u id="${String(unit.id)}" kind="${unit.kind}">`;
-    if (line === null || span === null) return `${open}</u>`;
-    const piece = pieceOf(doc, line, span.from, span.to);
+    if (span === null) return `${open}</u>`;
+    const piece = pieceOf(doc, lineAt(doc, span), span.from, span.to);
     let body: string;
     if (unit.kind === CODE) {
       // A line break at either end is spelled as an entity: a raw one right
@@ -714,7 +769,7 @@ function keepingProps(blocks: readonly Read[], original: Read): Read[] {
     for (const key of KEPT_PROPS) {
       if (key in props && original.props !== undefined && key in original.props) props[key] = original.props[key];
     }
-    return { ...block, props };
+    return { ...block, props, children: keepingProps(block.children ?? [], original) };
   });
 }
 
@@ -946,6 +1001,9 @@ function previewOf(doc: ProseMirrorNode, units: readonly AiTextUnit[], results: 
   };
   const out: WrittenBlock[] = [];
   const done = new Set<string>();
+  // Each answered unit's last block, which its answered descendants go under,
+  // as replace leaves them (writeUnit).
+  const under = new Map<string, Read>();
   for (const r of results) {
     const place = places.get(r.unit.id) ?? null;
     if (place !== null && copied(place.table)) {
@@ -958,10 +1016,33 @@ function previewOf(doc: ProseMirrorNode, units: readonly AiTextUnit[], results: 
       if (copy !== null) out.push(copy);
       continue;
     }
-    if (r.write.kind === 'inline') out.push(r.write.block);
-    else if (r.write.kind === 'blocks') out.push(...r.write.blocks);
+    const written = r.write.kind === 'inline' ? [r.write.block] : r.write.kind === 'blocks' ? r.write.blocks : [];
+    const pieces = (written as Read[]).map((b) => ({ ...b, children: [...(b.children ?? [])] }));
+    if (pieces.length === 0) continue;
+    const parent = answeredAncestor(doc, r.unit.blockId, under);
+    if (parent === null) out.push(...pieces);
+    else parent.children = [...(parent.children ?? []), ...pieces];
+    under.set(r.unit.blockId, pieces[pieces.length - 1]!);
   }
   return out;
+}
+
+/**
+ * The nearest block around a unit's block that an answered unit stands for.
+ * @param doc - The body.
+ * @param blockId - The unit's block.
+ * @param under - Each answered unit's last block, by its block id.
+ * @returns That block, or null for none.
+ */
+function answeredAncestor(doc: ProseMirrorNode, blockId: string, under: ReadonlyMap<string, Read>): Read | null {
+  const found = blockById(doc, blockId);
+  if (found === null) return null;
+  const $pos = doc.resolve(found.pos);
+  for (let depth = $pos.depth; depth > 0; depth -= 1) {
+    const parent = under.get(String($pos.node(depth).attrs['id']));
+    if (parent !== undefined) return parent;
+  }
+  return null;
 }
 
 /**
@@ -992,13 +1073,14 @@ export function aiAnswer(
     leftOut += dropped;
     if (write !== null) results.push({ unit, write });
   }
-  return { formatFailed, results, preview: previewOf(doc, units, results), leftOut };
+  return { units, formatFailed, results, preview: previewOf(doc, units, results), leftOut };
 }
 
 /**
- * Whether replace can be pressed: some unit is answered, and every unit
- * with a non-empty answer still has selected words. What else the body
- * gained meanwhile is the reader's call: replace is one edit undo takes back.
+ * Whether replace can be pressed: every unit with a non-empty answer still
+ * has selected words, or, as for insert, the answer held only outside media,
+ * which a press reports. What else the body gained meanwhile is the reader's
+ * call: replace is one edit undo takes back.
  * @param doc - The body now.
  * @param answer - The answer.
  * @param segments - The original range, where it is now.
@@ -1006,7 +1088,8 @@ export function aiAnswer(
  */
 export function aiReplaceAvailable(doc: ProseMirrorNode, answer: AiAnswer, segments: readonly LocalRange[]): boolean {
   const written = answer.results.filter((r) => r.write.kind !== 'clear');
-  return written.length > 0 && written.every((r) => unitSpan(doc, r.unit, segments) !== null);
+  if (written.length === 0) return answer.leftOut > 0;
+  return written.every((r) => unitSpan(doc, r.unit, segments, answer.units) !== null);
 }
 
 /**
@@ -1017,6 +1100,28 @@ export function aiReplaceAvailable(doc: ProseMirrorNode, answer: AiAnswer, segme
 function undoOf(handle: Pick<DocumentEditorHandle, 'editor'>): UndoBoundary | null {
   const state = yUndoPluginKey.getState(handle.editor.prosemirrorState) as { undoManager?: UndoBoundary } | undefined;
   return state?.undoManager ?? null;
+}
+
+/**
+ * A block id no block has yet.
+ * @param schema - The body's schema.
+ * @returns It.
+ */
+function freshId(schema: Schema): string {
+  return String(blockToNode({ type: 'paragraph' }, schema).attrs['id']);
+}
+
+/**
+ * A block with more children after its own.
+ * @param block - The block.
+ * @param children - The blockGroup holding the children.
+ * @returns It.
+ */
+function withChildren(block: ProseMirrorNode, children: ProseMirrorNode): ProseMirrorNode {
+  const own = block.childCount > 1 ? block.lastChild : null;
+  return own === null
+    ? block.copy(block.content.addToEnd(children))
+    : block.copy(block.content.replaceChild(block.childCount - 1, own.copy(own.content.append(children.content))));
 }
 
 /**
@@ -1033,27 +1138,27 @@ function writeUnit(editor: ViewedEditor, tr: Transaction, result: AiUnitResult, 
     tr.replaceWith(span.from, span.to, nodes);
     return;
   }
+  const line = lineAt(tr.doc, span);
+  const id = String(line.container.attrs['id']);
   if (write.kind === 'clear') {
     tr.delete(span.from, span.to);
     if (unit.cell !== null) return;
-    const found = blockById(tr.doc, unit.blockId);
-    if (found !== null && found.node.childCount === 1 && found.node.firstChild?.content.size === 0) editor.removeBlocks([unit.blockId]);
+    const found = blockById(tr.doc, id);
+    if (found !== null && found.node.childCount === 1 && found.node.firstChild?.content.size === 0) editor.removeBlocks([id]);
     return;
   }
-  const line = lineOf(tr.doc, unit);
-  if (line === null) return;
-  const end = line.start + line.node.content.size;
-  const original = nodeToBlock(line.container, tr.doc) as unknown as Read;
   // The block is swapped for its words before the span, the answer and its
-  // words after, in one call: an empty end is left out, the children go
-  // under the last piece, and no id is left behind twice.
-  const pieces: Read[] = [];
-  if (span.from > line.start) pieces.push({ ...pieceOf(tr.doc, line, line.start, span.from), children: [] });
-  pieces.push(...(write.blocks as Read[]).map((b) => ({ ...b, children: [...(b.children ?? [])] })));
-  if (span.to < end) pieces.push({ ...withoutIds(pieceOf(tr.doc, line, span.to, end)), children: [] });
-  const last = pieces[pieces.length - 1]!;
-  last.children = [...(last.children ?? []), ...(original.children ?? [])];
-  editor.replaceBlocks([unit.blockId], pieces as never);
+  // words after, as nodes: the words left out keep every mark, comments
+  // included, and the children go under the last piece as they are.
+  const { node, start, container, containerPos } = line;
+  const schema = tr.doc.type.schema;
+  const pieces: ProseMirrorNode[] = [];
+  if (span.from > start) pieces.push(container.type.create(container.attrs, [node.copy(node.content.cut(0, span.from - start))]));
+  pieces.push(...(write.blocks as Read[]).map((b) => blockToNode(b as never, schema)));
+  if (span.to < start + node.content.size) pieces.push(container.type.create({ ...container.attrs, id: freshId(schema) }, [node.copy(node.content.cut(span.to - start))]));
+  const children = container.childCount > 1 ? container.lastChild : null;
+  if (children !== null) pieces.push(withChildren(pieces.pop()!, children));
+  tr.replaceWith(containerPos, containerPos + container.nodeSize, pieces);
 }
 
 /**
@@ -1075,9 +1180,10 @@ export function replaceAiAnswer(
   const { editor } = handle;
   const before = editor.prosemirrorState.doc;
   const spans = answer.results
-    .map((r) => ({ r, span: unitSpan(before, r.unit, segments) }))
+    .map((r) => ({ r, span: unitSpan(before, r.unit, segments, answer.units) }))
     .filter((x): x is { r: AiUnitResult; span: LocalRange } => x.span !== null)
     .sort((a, b) => b.span.from - a.span.from);
+  if (spans.every(({ r }) => r.write.kind === 'clear') && answer.leftOut > 0) return { outcome: 'mediaOnly', leftOut: answer.leftOut };
   asOneUndoStep(undoOf(handle), () => {
     editor.transact((tr) => {
       for (const { r, span } of spans) writeUnit(editor, tr, r, span);

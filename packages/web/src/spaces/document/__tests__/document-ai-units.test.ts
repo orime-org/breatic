@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
+import { TextSelection } from '@tiptap/pm/state';
 
 import { aiRangeIn, DOCUMENT_AI_RANGE } from '@web/spaces/document/document-ai-range';
 import {
@@ -325,8 +326,8 @@ describe('the units of a range', () => {
     const gone = rangeOf(h, 'one');
     view.dispatch(view.state.tr.delete(gone.from, gone.to));
     const doc = h.editor.prosemirrorState.doc;
-    expect(unitSpan(doc, o.units[0]!, segments(h))).toBeNull();
-    expect(unitSpan(doc, o.units[1]!, segments(h))).toEqual(rangeOf(h, 'two'));
+    expect(unitSpan(doc, o.units[0]!, segments(h), o.units)).toBeNull();
+    expect(unitSpan(doc, o.units[1]!, segments(h), o.units)).toEqual(rangeOf(h, 'two'));
   });
 });
 
@@ -1051,6 +1052,154 @@ describe('round 10: answers and inline content', () => {
   });
 });
 
+/**
+ * Puts a comment on some words.
+ * @param handle - The document.
+ * @param words - The words.
+ * @param threadId - The comment's thread.
+ */
+function comment(handle: DocumentEditorHandle, words: string, threadId: string): void {
+  const view = handle.editor.prosemirrorView!;
+  const { from, to } = rangeOf(handle, words);
+  view.dispatch(view.state.tr.addMark(from, to, view.state.schema.marks['comment']!.create({ threadId, orphan: false })));
+  handle.undoManager.clear();
+}
+
+/**
+ * The commented words, as `thread:words`.
+ * @param handle - The document.
+ * @returns Them, in order.
+ */
+function commented(handle: DocumentEditorHandle): string[] {
+  const out: string[] = [];
+  handle.editor.prosemirrorState.doc.descendants((node) => {
+    for (const mark of node.marks) if (mark.type.name === 'comment') out.push(`${String(mark.attrs['threadId'])}:${node.text ?? ''}`);
+  });
+  return out;
+}
+
+/**
+ * The body's blocks as words and depth.
+ * @param list - The blocks.
+ * @param depth - Their depth.
+ * @returns `[words, depth]` for each, children after their parent.
+ */
+function shape(list: readonly Seen[], depth = 0): Array<[string, number]> {
+  return list.flatMap((b): Array<[string, number]> => [[textOf(b), depth], ...shape(b.children ?? [], depth + 1)]);
+}
+
+/**
+ * Presses Enter in the body where some words start, as the reader would.
+ * @param handle - The document.
+ * @param at - Where.
+ */
+function enterAt(handle: DocumentEditorHandle, at: number): void {
+  const view = handle.editor.prosemirrorView!;
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at)));
+  view.someProp('handleKeyDown', (f) => f(view, new KeyboardEvent('keydown', { key: 'Enter' })));
+}
+
+describe('round 11: what a write keeps', () => {
+  it('keeps the comments on the words left out and on the children when a unit is split', async () => {
+    const h = await open('- alpha beta gamma\n  - kid words');
+    comment(h, 'gamma', 't1');
+    comment(h, 'kid', 't2');
+    replaceWith(h, rangeOf(h, 'alpha'), 'custom', () => tagged({ 1: '- x\n- y' }));
+    expect(flat(h).map(textOf)).toEqual(['x', 'y', ' beta gamma', 'kid words']);
+    expect(commented(h)).toEqual(['t1:gamma', 't2:kid']);
+    const g = await open('alpha beta gamma');
+    comment(g, 'gamma', 't1');
+    replaceWith(g, rangeOf(g, 'alpha'), 'expand', () => tagged({ 1: 'One.\n\nTwo.' }));
+    expect(flat(g).map(textOf)).toEqual(['One.', 'Two.', ' beta gamma']);
+    expect(commented(g)).toEqual(['t1:gamma']);
+  });
+
+  it('previews and inserts nested units with the nesting replace keeps', async () => {
+    const h = await open('- parent\n  - child\n    - grandchild');
+    const range = { from: rangeOf(h, 'parent').from, to: rangeOf(h, 'grandchild').to };
+    const o = opening(h, range, 'refine');
+    const answer = read(h, o, tagged({ 1: 'PARENT', 2: 'CHILD', 3: 'GRAND' }), 'refine');
+    const nested = [['PARENT', 0], ['CHILD', 1], ['GRAND', 2]];
+    expect(shape(answer.preview as Seen[])).toEqual(nested);
+    expect(insertAiAnswer(h, blocks(h)[0]!.id, answer, WRITABLE).outcome).toBe('written');
+    expect(shape(blocks(h)).slice(3)).toEqual(nested);
+    h.undoManager.undo();
+    replaceAiAnswer(h, answer, segments(h), WRITABLE);
+    expect(shape(blocks(h))).toEqual(nested);
+  });
+
+  it('nests a unit under the last block of its answered parent, and lifts it past an unselected one', async () => {
+    const h = await open('- top\n  - middle\n    - low');
+    const o = opening(h, { from: rangeOf(h, 'top').from, to: rangeOf(h, 'low').to }, 'expand');
+    const answer = read(h, o, tagged({ 1: 'TOP', 3: 'LOW' }), 'expand');
+    expect(shape(answer.preview as Seen[])).toEqual([['TOP', 0], ['LOW', 1]]);
+  });
+
+  it('keeps quote, colour and alignment on every nested block of a custom answer', async () => {
+    const h = await open('one two');
+    style(h, 'one two', { quoted: true, textColor: 'red', textAlignment: 'center' });
+    replaceWith(h, rangeOf(h, 'one two'), 'custom', () => tagged({ 1: '- a\n  - b\n    - c' }));
+    const kept = flat(h).map((b) => [textOf(b), b.props['quoted'], b.props['textColor'], b.props['textAlignment']]);
+    expect(kept).toEqual([['a', true, 'red', 'center'], ['b', true, 'red', 'center'], ['c', true, 'red', 'center']]);
+  });
+
+  it('writes back a link address holding white space or an entity when the model echoes it', async () => {
+    for (const href of ['https://a.example/my file.pdf', 'https://a.example/?q=a&amp;b', 'https://a.example/a\'b c\'']) {
+      for (const command of ['refine', 'custom'] as const) {
+        const h = await open('');
+        h.editor.replaceBlocks(h.editor.document, [{ type: 'paragraph', content: [{ type: 'text', text: 'see ', styles: {} }, { type: 'link', href, content: 'file' }] }] as never);
+        h.undoManager.clear();
+        const before = structuredClone(blocks(h));
+        const o = opening(h, { from: rangeOf(h, 'see').from, to: rangeOf(h, 'file').to }, command);
+        replaceAiAnswer(h, read(h, o, echo(o.request), command), segments(h), WRITABLE);
+        expect(blocks(h)).toEqual(before);
+      }
+    }
+  });
+});
+
+describe('round 11: where a unit is', () => {
+  it('follows the selected words into the block Enter made at their start, and writes there', async () => {
+    const h = await open('intro selected words');
+    const o = opening(h, rangeOf(h, 'selected words'), 'refine');
+    enterAt(h, rangeOf(h, 'selected words').from);
+    expect(blocks(h).map(textOf)).toEqual(['intro ', 'selected words']);
+    const answer = read(h, o, tagged({ 1: 'SELECTED WORDS' }), 'refine');
+    expect(aiReplaceAvailable(h.editor.prosemirrorState.doc, answer, segments(h))).toBe(true);
+    replaceAiAnswer(h, answer, segments(h), WRITABLE);
+    expect(blocks(h).map(textOf)).toEqual(['intro ', 'SELECTED WORDS']);
+  });
+
+  it('follows the words for a structural answer too, the words before them kept', async () => {
+    const h = await open('intro selected words');
+    const o = opening(h, rangeOf(h, 'selected words'), 'custom');
+    enterAt(h, rangeOf(h, 'selected words').from);
+    replaceAiAnswer(h, read(h, o, tagged({ 1: '- a\n- b' }), 'custom'), segments(h), WRITABLE);
+    expect(blocks(h).map((b) => [b.type, textOf(b)])).toEqual([['paragraph', 'intro '], ['bulletListItem', 'a'], ['bulletListItem', 'b']]);
+  });
+
+  it('never takes the next unit\'s words for a unit whose own words were deleted', async () => {
+    const h = await open('intro selected\n\nnext');
+    const o = opening(h, { from: rangeOf(h, 'selected').from, to: rangeOf(h, 'next').to }, 'refine');
+    const view = h.editor.prosemirrorView!;
+    const gone = rangeOf(h, 'selected');
+    view.dispatch(view.state.tr.delete(gone.from, gone.to));
+    const answer = read(h, o, tagged({ 1: 'SELECTED', 2: 'NEXT' }), 'refine');
+    expect(aiReplaceAvailable(h.editor.prosemirrorState.doc, answer, segments(h))).toBe(false);
+  });
+});
+
+describe('round 11: replace with only outside media', () => {
+  it('can be pressed, writes nothing and says how many were left out, as insert does', async () => {
+    const h = await open('One.');
+    const o = opening(h, rangeOf(h, 'One.'), 'custom');
+    const answer = read(h, o, tagged({ 1: '![x](https://elsewhere.example/a.png)' }), 'custom');
+    expect(aiReplaceAvailable(h.editor.prosemirrorState.doc, answer, segments(h))).toBe(true);
+    expect(replaceAiAnswer(h, answer, segments(h), WRITABLE)).toEqual({ outcome: 'mediaOnly', leftOut: 1 });
+    expect(blocks(h).map(textOf)).toEqual(['One.']);
+  });
+});
+
 /** Words a model may send back, block syntax and escapes included. */
 const tricky = fc.stringMatching(/^[a-z *_`#>\-+.1)([\]\\&<|=~!]{1,24}$/);
 
@@ -1064,7 +1213,7 @@ const runText = fc.oneof(
 const run = fc.oneof(
   // Inline code takes no other mark in the body's schema.
   { weight: 5, arbitrary: fc.record({ text: runText, styles: fc.oneof(fc.subarray(['bold', 'italic', 'strike'] as const), fc.constant(['code'] as const)) }) },
-  { weight: 1, arbitrary: fc.record({ text: fc.stringMatching(/^[a-z_.]{1,6}$/), href: fc.constantFrom('https://a.example/x_(y)?a=1&b=2', 'https://docs.example.com/v1.2'), styles: fc.subarray(['bold', 'italic', 'strike'] as const) }) },
+  { weight: 1, arbitrary: fc.record({ text: fc.stringMatching(/^[a-z_.]{1,6}$/), href: fc.constantFrom('https://a.example/x_(y)?a=1&b=2', 'https://docs.example.com/v1.2', 'https://a.example/my file.pdf', 'https://a.example/?q=a&amp;b'), styles: fc.subarray(['bold', 'italic', 'strike'] as const) }) },
 );
 
 /** A block of a body: one with words, an indented code block, an image or an empty line. */
@@ -1124,11 +1273,12 @@ function holdSome(handle: DocumentEditorHandle, a: number, b: number): LocalRang
  * The words of a unit's block before and after its span.
  * @param handle - The document.
  * @param unit - The unit.
+ * @param units - Every unit sent.
  * @returns Them.
  */
-function around(handle: DocumentEditorHandle, unit: AiTextUnit): { before: string; after: string } {
+function around(handle: DocumentEditorHandle, unit: AiTextUnit, units: readonly AiTextUnit[]): { before: string; after: string } {
   const doc = handle.editor.prosemirrorState.doc;
-  const span = unitSpan(doc, unit, segments(handle))!;
+  const span = unitSpan(doc, unit, segments(handle), units)!;
   const $span = doc.resolve(span.from);
   const start = $span.start();
   const end = $span.end();
@@ -1158,7 +1308,7 @@ describe('properties', () => {
       const kinds = blocks(h).map((x) => [x.id, x.type, x.props]);
       const wordless = blocks(h).filter((x) => textOf(x) === '').map((x) => x.id);
       const o = opening(h, range, 'refine');
-      const outside = o.units.map((u) => around(h, u));
+      const outside = o.units.map((u) => around(h, u, o.units));
       const parts = Object.fromEntries(o.units.map((u, i) => [u.id, answers[i]!]));
       const answer = read(h, o, tagged(parts), 'refine');
       replaceAiAnswer(h, answer, segments(h), WRITABLE);
