@@ -739,3 +739,70 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
     });
   });
 });
+
+// §97 D22-3 (frames-split §7.17 stitch row, 对口型时为各人stem之和的音频条目; execution design §9.2 last paragraph; DD §7.2
+// output guarantee): the lip-sync stitch's audio is `{ kind: 'mix', inputs: [each person's stem] }`, the stems summed sample
+// by sample over the result. The rest of the recipe is the single-source stitch's (`inputId`, `chunks`, `target`).
+//
+// The coordinator asked for samples equal to the sum within ±1 LSB; the stitched output is AAC (the opaque target is MP4
+// H.264 + AAC, execution design §9.3), which no lossy decode reproduces to 1 LSB, so the sum is read per tone instead: each
+// stem is a tone at its own frequency, and over 50 ms blocks (a whole number of cycles of both, so neither leaks into the
+// other) the output's amplitude at each frequency equals that stem's own amplitude, read back from the stem, within 8 % (AAC
+// moves a steady tone's block amplitude by up to about 4 %, composite-transition-recipes TS cases). Averaging would halve
+// both, replacing would drop one, normalising would scale both.
+describe('lip-sync stitch audio mix (§97 D22-3; §7.17 stitch row; execution design §9.2)', () => {
+  const STEM = { a: '10000000-0000-4000-8000-0000000000b1', b: '10000000-0000-4000-8000-0000000000b2' };
+  const CHUNK = '10000000-0000-4000-8000-0000000000c1';
+  const BLOCK = 2400;
+
+  /**
+   * The amplitude of one frequency over a block of mono 48 kHz samples.
+   * @param samples - The samples.
+   * @param frequency - The frequency in Hz.
+   * @param start - The block's first sample.
+   * @returns The amplitude.
+   */
+  function amplitude(samples: Float32Array, frequency: number, start: number): number {
+    let re = 0;
+    let im = 0;
+    for (let n = 0; n < BLOCK; n += 1) {
+      const phase = (2 * Math.PI * frequency * n) / 48000;
+      re += samples[start + n]! * Math.cos(phase);
+      im -= samples[start + n]! * Math.sin(phase);
+    }
+    return (2 * Math.hypot(re, im)) / BLOCK;
+  }
+
+  /**
+   * A tone's mean amplitude over the inner blocks of a file's audio (the first and last block are skipped for the encoder's
+   * onset and tail).
+   * @param samples - The decoded samples.
+   * @param frequency - The tone.
+   * @returns The mean amplitude.
+   */
+  function tone(samples: Float32Array, frequency: number): number {
+    const blocks = Math.floor(samples.length / BLOCK);
+    const values = Array.from({ length: blocks - 2 }, (_unused, at) => amplitude(samples, frequency, (at + 1) * BLOCK));
+    return values.reduce((sum, value) => sum + value, 0) / values.length;
+  }
+
+  it('LT01 sums every person\'s stem over the result: each tone at its own amplitude, no clipping, lasting timeline.duration', async () => {
+    // Two stems as lipsync_stem writes them: 0.4 s AAC 48 kHz, 440 Hz and 1000 Hz, each at amplitude 0.25 (peak sum 0.5).
+    await make('stem-a.m4a', ['-f', 'lavfi', '-i', 'sine=f=440:r=48000:d=0.4,volume=2', '-c:a', 'aac', '-b:a', '192k']);
+    await make('stem-b.m4a', ['-f', 'lavfi', '-i', 'sine=f=1000:r=48000:d=0.4,volume=2', '-c:a', 'aac', '-b:a', '192k']);
+    const recipe = { kind: 'stitch', inputId: ID.video, target: OPAQUE, chunks: [{ inputId: CHUNK, duration: r(2, 5) }], audio: { kind: 'mix', inputs: [STEM.a, STEM.b] } };
+    const file = await produce({ [ID.video]: join(dir, 'comp-source.mp4'), [CHUNK]: join(dir, 'comp-source.mp4'),
+      [STEM.a]: join(dir, 'stem-a.m4a'), [STEM.b]: join(dir, 'stem-b.m4a') }, recipe, 'video/mp4');
+    const audio = (await streams(file)).filter(stream => stream.codec_type === 'audio');
+    expect(audio.map(stream => [stream.codec_name, stream.sample_rate])).toEqual([['aac', '48000']]);
+    // timeline.duration = 0.4 s (the one chunk), within one AAC frame.
+    expect(Math.abs(audio[0]!.duration_ts! / 48000 - V)).toBeLessThanOrEqual(1024 / 48000);
+    expect(await packets(file)).toHaveLength(10);
+    const [mixed, a, b] = await Promise.all([pcm(file), pcm(join(dir, 'stem-a.m4a')), pcm(join(dir, 'stem-b.m4a'))]);
+    for (const [frequency, stem] of [[440, a], [1000, b]] as const) {
+      const expected = tone(stem, frequency);
+      expect(Math.abs(tone(mixed, frequency) - expected) / expected, `${frequency} Hz keeps its stem's amplitude`).toBeLessThan(0.08);
+    }
+    expect(Math.max(...mixed.map(Math.abs))).toBeLessThan(0.6);
+  });
+});
