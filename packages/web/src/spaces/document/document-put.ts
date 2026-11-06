@@ -705,7 +705,9 @@ function putAtSelection(editor: Editor, kept: Slice, lines: Rows, options: PutOp
   // reader's line its own type (§5.4.3).
   const words = isOneLine(lines);
   if (selection instanceof NodeSelection && !selection.node.isInline) return words ? putWords(view, pasted[0]!, options.byPaste) : replaceBlock(view, placed().rows, selection);
-  if (words && textOnlyAt(selection.$from) === null) return putWords(view, pasted[0]!, options.byPaste);
+  // A gap cursor stands between blocks: its words are a block of their own,
+  // placed by the gap like any other content.
+  if (words && selection.$from.parent.isTextblock && textOnlyAt(selection.$from) === null) return putWords(view, pasted[0]!, options.byPaste);
   const replaced = !selection.empty || opened;
   if (!selection.empty) view.dispatch(view.state.tr.deleteSelection());
   const $caret = view.state.selection.$from;

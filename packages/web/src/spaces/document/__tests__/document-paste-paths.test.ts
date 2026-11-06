@@ -347,21 +347,29 @@ describe('one line of words keeps the target line\'s quote and type (§5.4.3)', 
     expect(shape(editor)).toEqual(['paragraph:lead', `${type}:w`, 'paragraph:tail']);
   });
 
-  it('pasted between two quoted pictures, lands quoted', async () => {
-    const editor = await openReady([{ type: 'paragraph', content: 'lead' }, { type: 'image', props: { url: PIC, quoted: true } }, { type: 'image', props: { url: `${OURS}q.png`, quoted: true } }, { type: 'paragraph', content: 'tail' }]);
-    const view = editor.prosemirrorView;
-    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, nodeAt(editor, 'image', 1))));
-    view.focus();
-    view.someProp('handleKeyDown', (handle) => handle(view, new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true })));
-    pasteFormats(editor, { 'text/html': '<p>w</p>', 'text/plain': 'w' });
-    await settled();
-    let found: PMNode | null = null;
-    view.state.doc.descendants((node) => {
-      if (found === null && node.isTextblock && node.textContent === 'w') found = node;
-      return found === null;
-    });
-    expect((found as PMNode | null)?.attrs['quoted']).toBe(true);
-  });
+  const PASTES = [
+    ['one line', { 'text/html': '<p>w</p>', 'text/plain': 'w' }],
+    ['two lines', { 'text/html': '<p>w</p><p>v</p>', 'text/plain': 'w\nv' }],
+  ] as const;
+  const QUOTES = [[true, true], [true, false], [false, true]] as const;
+  it.each(PASTES.flatMap(([name, formats]) => QUOTES.map(([before, after]) => [name, before, after, formats] as const)))(
+    'pasted as %s between pictures quoted %s and %s, lands as quoted as the picture before',
+    async (_name, before, after, formats) => {
+      const editor = await openReady([{ type: 'paragraph', content: 'lead' }, { type: 'image', props: { url: PIC, quoted: before } }, { type: 'image', props: { url: `${OURS}q.png`, quoted: after } }, { type: 'paragraph', content: 'tail' }]);
+      const view = editor.prosemirrorView;
+      view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, nodeAt(editor, 'image', 1))));
+      view.focus();
+      view.someProp('handleKeyDown', (handle) => handle(view, new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true })));
+      pasteFormats(editor, formats);
+      await settled();
+      const lines: PMNode[] = [];
+      view.state.doc.descendants((node) => {
+        if (node.isTextblock && ['w', 'v'].includes(node.textContent)) lines.push(node);
+        return true;
+      });
+      expect(lines.map((line) => [line.textContent, line.attrs['quoted']])).toEqual(formats['text/plain'].split('\n').map((words) => [words, before]));
+    },
+  );
 });
 
 describe('copies of every shape the body makes paste in', () => {
