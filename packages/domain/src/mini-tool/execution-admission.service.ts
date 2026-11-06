@@ -308,6 +308,8 @@ function preparationLayout(ledger: VideoPresentationLedger, config: MiniToolsCon
  * @param timing - The frozen timeline, the used range and the referenced people's count and crop size.
  * @param timing.timeline - The timeline.
  * @param timing.usedRange - The used source range.
+ * @param timing.usedRange.start - Its start, 0.
+ * @param timing.usedRange.end - Its end in seconds.
  * @param timing.persons - The referenced people.
  * @param timing.cropSize - The model's crop side.
  * @param config - The acceptance snapshot.
@@ -324,6 +326,12 @@ function lipSyncLayout(ledger: VideoPresentationLedger, table: VideoPresentation
   const preparation = rates.startSeconds + prepareWork <= share ? [{ start: 0, end: used }]
     : planVideoEncodeChunks({ keyframes: flags, frameSeconds: prepareWork / used, targetSeconds: share - rates.startSeconds });
   const { width, height } = ledger.plan.display;
+  /**
+   * Seconds to decode and convert this many source pixels at the source's depth and range.
+   * @param pixels - The pixels.
+   * @returns The seconds.
+   * @throws {never} Never.
+   */
   const decode = (pixels: number): number => pixels / rates.decodeConvertPixelsPerSecond[`${isHdrTransfer(ledger.plan.source.transfer) ? "hdr" : "sdr"}_${ledger.plan.source.bitDepth > 8 ? 10 : 8}bit`];
   const crop = timing.cropSize * timing.cropSize;
   const frameSeconds = table.runs[0]!.step / table.timescale;
