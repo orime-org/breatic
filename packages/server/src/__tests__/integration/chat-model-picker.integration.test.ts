@@ -202,6 +202,19 @@ describe("each conversation keeps its own model", () => {
     expect((await stored(reader, second.id)).conversation).toBe(OPUS.id);
   });
 
+  it("starts the conversation the open creates on the last pick, and writes it down", async () => {
+    const reader = await seedReader();
+    const first = await open(reader);
+    await pick(reader, first.id, OPUS.id);
+    await sql`UPDATE conversations SET deleted_at = now() WHERE id = ${first.id}`;
+
+    const created = await open(reader);
+
+    expect(created.id).not.toBe(first.id);
+    expect(created.agentModel).toEqual(OPUS);
+    expect((await stored(reader, created.id)).conversation).toBe(OPUS.id);
+  });
+
   it("starts a conversation from before the picker on the last pick, until its next message writes one", async () => {
     const reader = await seedReader();
     const first = await open(reader);
