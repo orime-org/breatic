@@ -109,3 +109,20 @@ export async function pinnedKeys(keys: readonly string[], tx?: DbTx): Promise<Se
     .where(and(inArray(presentationPinObjects.storageKey, [...keys]), isNull(presentationPins.deletedAt)));
   return new Set(rows.map((row) => row.storageKey));
 }
+
+/**
+ * Append keys to an execution's live pin inside the caller's registration transaction (§97 D17-7): the lip-sync
+ * intermediates stay pinned with the run and are registered with the ledgers when that pin is released.
+ * @param taskId - The execution's task.
+ * @param keys - The keys.
+ * @param tx - The registration transaction.
+ * @returns Nothing.
+ * @throws {Error} When the execution has no single live pin, or a write fails.
+ */
+export async function appendExecutionPinObjects(taskId: string, keys: readonly string[], tx: DbTx): Promise<void> {
+  if (keys.length === 0) return;
+  await lockHolder("execution", taskId, tx);
+  const live = await findLive("execution", taskId, tx);
+  if (live.length !== 1) throw new Error(`Execution ${taskId} has ${live.length} live pins; appending needs exactly one`);
+  await addObjects(live[0]!.id, keys, tx);
+}
