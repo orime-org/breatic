@@ -424,6 +424,9 @@ test('the toolbar of a first block sits on the picture, never under it, centred,
 
   await img.dblclick();
   await expect(page.getByTestId('media-fullscreen-image')).toBeVisible();
+  // The stored 400x240 reserves the box: never wider than the picture itself.
+  const full = (await page.getByTestId('media-fullscreen-image').boundingBox())!;
+  expect([Math.round(full.width), Math.round(full.height)]).toEqual([400, 240]);
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('media-fullscreen-image')).toHaveCount(0);
 });
