@@ -46,6 +46,8 @@ interface Plan extends Record<string, unknown> {
   taskId: string; binding: { assetId: string; contentHash: string; mediaInfo: { width: number; height: number; duration: number } };
   sourceKey: string; presentationRef: { source: Ref }; ledgerReceipts: { source: Receipt }; versionIds: { source: string };
   layout: { batches: number[][]; encodes: { outputIndex: number; chunks: { start: number; end: number }[] }[] };
+  // §97 D12-1: the per-stage job counts of the frozen layout, frozen beside it.
+  stageJobs?: { stage: string; jobs: number }[];
   outputs: Output[]; credits: number;
   targetNodeIds: string[]; requestFingerprint: string; planFingerprint: string;
   container: { containerClass: string; precheckSeconds: number; size: { vcpu: number; memory_gib: number; disk_gb: number }; prices: core.MiniToolsConfig["prices"]; limits: core.MiniToolsConfig["plan_limits"] };
@@ -747,6 +749,61 @@ describe("E3 job layout, parallel cap and quote at admission (inner#1306 §90 E3
     const snapshot = outside.snapshots.get(f.sourceKey) as { preparation: unknown };
     snapshot.preparation = { targetPolicyVersion: 2, jobId: "video-presentation:next", stage: "encode", failure: null };
     await accept(f);
+  });
+});
+
+// §97 D12-1 (frames-split §5.4 上限 and 预算 rows): the cap is the number of container jobs one stage sends at once, so
+// admission compares the largest stage of the frozen layout with `encoding.max_parallel_chunks`, not the total, and freezes
+// the stage counts as `stageJobs` beside `layout`. For split, encode is every batch plus every chunk, stitch one per chunked
+// output. The configuration below makes each 2 s segment (20 frames, keyframes every 10) exceed one job's share and chunk,
+// while the 0.4 s segment stays in a batch: work is one second per frame and decode is negligible.
+describe("stage job counts at admission (§97 D12-1; frames-split §5.4)", () => {
+  /** Configure chunked split outputs at a given cap. @throws {Error} When the task configuration cannot be read. */
+  function chunked(cap = 8): void {
+    const encoder = settings.encoding.encoder;
+    encoder.start_seconds = 1;
+    encoder.encode_pixels_per_second = 960 * 540;
+    for (const key of Object.keys(encoder.decode_convert_pixels_per_second) as (keyof typeof encoder.decode_convert_pixels_per_second)[]) {
+      encoder.decode_convert_pixels_per_second[key] = 1e15;
+    }
+    settings.encoding.chunk_share = 12 / (core.getNodeTaskConfig().default_budget_ms / 1000);
+    settings.encoding.max_parallel_chunks = cap;
+  }
+  /** The stages counted from a frozen split layout. @throws {never} Never. */
+  const stagesOf = (layout: Plan["layout"]): { stage: string; jobs: number }[] => [
+    { stage: "encode", jobs: layout.batches.length + layout.encodes.reduce((total, encode) => total + encode.chunks.length, 0) },
+    ...(layout.encodes.length > 0 ? [{ stage: "stitch", jobs: layout.encodes.length }] : []),
+  ];
+  /** Admit one chunked split under the default cap and return its frozen plan. @throws {Error} On admission failure. */
+  async function chunkedPlan(): Promise<Plan> {
+    const f = await seed(); chunked();
+    await accept(f);
+    const plan = (await parent(f.body.run_id)).params.miniToolExecution;
+    expect(plan.layout.encodes.length).toBeGreaterThan(0);
+    return plan;
+  }
+
+  it("SA01 freezes the stage counts of the frozen layout beside it", async () => {
+    const plan = await chunkedPlan();
+    expect(plan.stageJobs).toEqual(stagesOf(plan.layout));
+  });
+
+  it("SA02 admits a split whose total jobs exceed the cap while its largest stage does not", async () => {
+    const stages = stagesOf((await chunkedPlan()).layout);
+    const largest = Math.max(...stages.map((stage) => stage.jobs));
+    expect(stages.reduce((total, stage) => total + stage.jobs, 0)).toBeGreaterThan(largest);
+    const f = await seed(); chunked(largest);
+    await accept(f);
+    expect((await parent(f.body.run_id)).params.miniToolExecution.stageJobs).toEqual(stages);
+  });
+
+  it("SA03 refuses a split whose largest stage exceeds the cap with runTooLong and no durable effect", async () => {
+    const largest = Math.max(...stagesOf((await chunkedPlan()).layout).map((stage) => stage.jobs));
+    const f = await seed(); chunked(largest - 1);
+    const response = await post(f);
+    expect(response.status).toBe(400);
+    expect(((await response.json()) as { error: { message: string } }).error.message).toBe(shared.t("server.mini_tool.runTooLong", { max: largest - 1 }));
+    expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
   });
 });
 
