@@ -687,7 +687,7 @@ lib/        工具(cn / format / 存储键 / toast)+ 不 import 上层的 hook
 
 ### Timeline Space
 
-Timeline 在现有 Project 标签中创建、打开和关闭,使用 `SpaceConnectionContext` 持有的内容 `Y.Doc`。服务端种下 `TimelineDocumentV1`;首次同步后,前端从同一份文档投影轨道、片段和固定素材身份。文档格式 schema、整数帧和有理数 fps、半开区间、`initializeTimelineDocument` 和读取函数（`readTimelineContent`、`readTimelineDocument`、`readTimelineSource`）定义在 `@breatic/shared` 的 `timeline/`；编辑命令、规划、写入、编排校验和个人撤销会话在 web 的 `data/yjs/timeline-*.ts`。编辑界面支持多条画面轨上的视频添加、移动、换轨、裁剪、分割、复制、删除、冲突定位和个人撤销。
+Timeline 在现有 Project 标签中创建、打开和关闭,使用 `SpaceConnectionContext` 持有的内容 `Y.Doc`。服务端种下 `TimelineDocumentV1`;首次同步后,前端从同一份文档投影轨道、片段和固定素材身份。文档格式 schema、整数帧和有理数 fps、`initializeTimelineDocument` 和读取函数（`readTimelineContent`、`readTimelineDocument`、`readTimelineSource`）定义在 `@breatic/shared` 的 `timeline/`；半开区间、编辑命令、规划、写入、编排校验和个人撤销会话在 web 的 `data/yjs/timeline-*.ts`。编辑界面支持多条画面轨上的视频添加、移动、换轨、裁剪、分割、复制、删除、冲突定位和个人撤销。
 
 素材入口使用现有 Dialog、ScrollArea 和上传链:Project 视频目录及单素材读取先核当前 Project 成员权限,再返回 `project_asset_refs` 关联的规范资产;本地文件经 ingest 登记后进入相同的片段准备流程。每次添加产生独立 clip id,保存 asset id 和源区间。Project 素材关系独立记录在业务数据库,片段通过固定源引用该登记身份。上传 File、进度和对话框草稿由已有 `createDocScopedCache` 按实际文档在内存持有,文档释放时销毁。协作文档保存已接受的片段和固定素材身份。
 

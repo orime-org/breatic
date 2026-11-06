@@ -23,7 +23,7 @@ const DRAG_ACTIVATION_PX = 3;
 const HEADER_STYLE = { width: TIMELINE_TRACK_HEADER_PX };
 // Text that stays beside the sticky track headers while the lanes scroll: the zone hint, clip text, drop readouts.
 const BESIDE_HEADERS = { left: TIMELINE_TRACK_HEADER_PX };
-// The palette sits outside @theme, so its colours are written as typed arbitrary values (as DocumentTableSizeGrid does).
+// The palette sits outside @theme, so its colours are written as arbitrary values; the `color:` hint tells Tailwind a var() is a colour.
 const CLIP_FILL = {
   ready: 'border-[color:var(--color-palette-blue-border)] bg-[color:var(--color-palette-blue-bg)] hover-enabled:bg-[color:var(--color-palette-blue-highlight)]',
   conflict: 'border-status-error-border bg-status-error-bg hover-enabled:border-status-error',

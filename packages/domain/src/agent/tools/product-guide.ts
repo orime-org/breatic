@@ -1218,14 +1218,14 @@ export function renderProductGuide(): string {
       "Each clip shows its name and its length as a timecode (hours:minutes:seconds:frames), as does the position beside the play button. Click a clip to select it, or an empty part of a track to clear the selection; " +
       "the panel on the right shows its source name, " +
       `${quoted(t("timeline.edit.track"))}, ${quoted(t("timeline.startFrame"))}, ${quoted(t("timeline.edit.inPoint"))} and ` +
-      `${quoted(t("timeline.edit.duration"))}, then the length and frame rate of its video. Type a whole frame and press Enter or leave the field to apply it. ` +
+      `${quoted(t("timeline.edit.duration"))}, then its video's length in frames at the Timeline's frame rate. Type a whole frame and press Enter or leave the field to apply it. ` +
       "Drag a clip to move it, onto another track to change track, or into the dashed row above the top track to create a " +
       "new visual track. Drag the edges of the selected clip to trim it. " +
       `The toolbar has ${quoted(t("timeline.edit.undo"))}, ${quoted(t("timeline.edit.redo"))}, ` +
       `${quoted(t("timeline.edit.split"))} (splits the selected clip at the playhead), ` +
       `${quoted(t("timeline.edit.duplicate"))} (places a copy right after it) and ${quoted(t("timeline.edit.delete"))}, ` +
       `then three icon switches whose names show on hover, ${quoted(t("timeline.edit.magnet"))}, ${quoted(t("timeline.edit.snap"))} and ` +
-      `${quoted(t("timeline.edit.linkage"))}, and the ${quoted(t("timeline.edit.zoom"))} slider. The switches are yours and are kept for your account. ` +
+      `${quoted(t("timeline.edit.linkage"))}, and the ${quoted(t("timeline.edit.zoom"))} slider. The switches are yours and are kept for your account in this browser. ` +
       `With ${quoted(t("timeline.edit.magnet"))} on, clips on ${quoted(t("timeline.mainTrack"))} play end to end: a dropped clip is inserted ` +
       "and later clips move along, a deleted or trimmed clip closes its gap, and the start frame there is read only " +
       `(${quoted(t("timeline.edit.magnetStartHint"))}). On other tracks, or with the magnet off, a clip dropped on another ` +
@@ -1249,7 +1249,7 @@ export function renderProductGuide(): string {
       `For a local file press ${quoted(t("timeline.material.chooseFile"))}. The form's ` +
       `${quoted(t("timeline.edit.track"))} starts at the selected clip's track or ${quoted(t("timeline.mainTrack"))} and also offers ` +
       `${quoted(t("timeline.edit.newTrack"))}; ${quoted(t("timeline.startFrame"))} starts at the sequence end and can be changed explicitly. ` +
-      `${quoted(t("timeline.material.confirm"))} confirms that position and adds a separate clip each time. ` +
+      `${quoted(t("timeline.material.confirm"))} confirms that position and adds a separate clip each time; on the main track with the magnet on, the form names the clip it will follow and the clip is inserted there, keeping the main track end to end. ` +
       `A local file uploads at that captured position; its file and position stay in the form after a failure. ` +
       `A permission change requires another confirmation after editing is available. ` +
       `${quoted(t("timeline.cancel"))} ends the current material selection; a registered upload remains in Project videos. ` +
