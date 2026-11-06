@@ -45,7 +45,8 @@ vi.mock('@web/spaces/canvas/_shared/NodePanelMount', async (importOriginal) => (
 }));
 
 import { t, type ModelCatalog, type ModelEntry, type NodeTaskEntry } from '@breatic/shared';
-import { fingerprintMiniToolAnalysisInput, miniToolExecutionRequestSchema, projectMiniToolAnalysisInput, type LipsyncFailureReason, type MiniToolAnalysisRecord, type MiniToolExecutionRecord, type VideoToolDraftById } from '@breatic/shared/mini-tools';
+import { estimateCredits } from '@breatic/shared/pricing';
+import { fingerprintMiniToolAnalysisInput, lipsyncTimeline, lipsyncUsedSourceRange, miniToolExecutionRequestSchema, presentationFrameAt, presentationVideoEnd, projectMiniToolAnalysisInput, type LipsyncFailureReason, type MiniToolAnalysisRecord, type MiniToolExecutionRecord, type VideoToolDraftById } from '@breatic/shared/mini-tools';
 import { MiniToolPanelContainer } from '../MiniToolPanelContainer';
 import type { VideoToolPresentation } from '../video/VideoToolPanelContainer';
 import { createVideoToolDraft } from '../video/video-tool-edit';
@@ -60,6 +61,7 @@ import { miniToolsApi } from '@web/data/api/mini-tools';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { toast } from '@web/lib/toast';
+import { formatCreditAmount } from '@web/lib/format-credit-amount';
 
 const projectId = '01000000-0000-4000-8000-000000000001'; const spaceId = '02000000-0000-4000-8000-000000000001';
 const nodeId = '10000000-0000-4000-8000-000000000001'; const outputId = '10000000-0000-4000-8000-000000000002';
@@ -83,6 +85,7 @@ function model(name: string, displayName: string): ModelEntry {
   return { name, display_name: displayName, modality: 'video', mode: 'talking_head', description: '', guide: '', tier: 'optional', generation_time: 600, takes_prompt: false, params: {}, providers: [] };
 }
 // The shipped default sits in the catalog too, so a hard-coded list shows it and fails the exact-list assertion.
+let catalog: ModelCatalog;
 const CATALOG = { image: [], video: [model('sync-lipsync-3', 'Sync Lipsync 3'), model('lipsync-configured-a', 'Configured A'), model('lipsync-configured-b', 'Configured B')], audio: [], tts: [], three_d: [], total: 3, credit_multiplier: 1 } as unknown as ModelCatalog;
 
 type Range = { minDurationSeconds: number; maxDurationSeconds: number };
@@ -97,7 +100,7 @@ function limits(first: Range, tracking: Range, caps: { maxPeople: number; maxDia
     referencePoolCap: 10, nodeHistoryPageSize: 20, understandMaxBytes: 20_971_520, understandLongMediaMaxBytes: 2_147_483_648,
     waveformMaxSeconds: 600, waveformMaxBytes: 200_000_000, waveformPeaksRetryMs: 5000, waveformPeaksRetryMaxMs: 600_000,
     removeBackgroundModel: 'remove-bg-configured',
-    lipSync: { models: [{ name: 'lipsync-configured-a', ...first }, { name: 'lipsync-configured-b', minDurationSeconds: 1, maxDurationSeconds: 15 }], tracking, ...caps },
+    lipSync: { models: [{ name: 'lipsync-configured-a', ...first }, { name: 'lipsync-configured-b', minDurationSeconds: 1, maxDurationSeconds: 15 }], tracking: { model: 'tracker-configured', ...tracking }, ...caps },
   };
 }
 
@@ -239,7 +242,7 @@ async function mount(withOutput = false, rows?: Dialogue[], people?: readonly st
   const host: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
   const nodes = [host, ...(withOutput ? [addFailedOutput()] : []), ...(outputs?.() ?? [])];
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  client.setQueryData(modelCatalogQuery().queryKey, CATALOG);
+  client.setQueryData(modelCatalogQuery().queryKey, catalog);
   render(<QueryClientProvider client={client}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><MiniToolPanelContainer nodes={nodes} getLastWriteWasLocal={() => false} onRun={vi.fn()} onRunVideo={vi.fn().mockResolvedValue({ kind: 'done', result: {} })} videoPresentation={new Map([[nodeId, presentation]])} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
   await screen.findAllByText('Person 1');
 }
@@ -254,7 +257,7 @@ function ui(key: string, params?: Record<string, string | number>): string {
   return t(`canvas.miniTool.videoUI.${key}`, params);
 }
 
-beforeEach(() => { vi.clearAllMocks(); canvasApi.resetLimitsCache(); });
+beforeEach(() => { vi.clearAllMocks(); canvasApi.resetLimitsCache(); catalog = CATALOG; });
 afterEach(() => { destroyDoc(docName.canvasSpace(projectId, spaceId)); canvasSessions.of(spaceId).getState().closeActivePanel(); canvasApi.resetLimitsCache(); vi.restoreAllMocks(); });
 
 describe('the lip-sync panel reads its models and ranges from the canvas limits (§97; canvas design §4 对口型)', () => {
@@ -409,5 +412,63 @@ describe('the lip-sync panel takes its people and dialogue caps from the canvas 
     fireEvent.click(add);
     expect(toast.warning).toHaveBeenCalledExactlyOnceWith(t('server.mini_tool.lipSyncTooManyDialogues', { max: 3 }));
     expect(rowsNow()).toHaveLength(3);
+  });
+});
+
+describe('the lip-sync footer prices the run as admission quotes it (§97 ruling 6; execution design §9.3 pricing)', () => {
+  const ranges = [{ minDurationSeconds: 1, maxDurationSeconds: 300 }, { minDurationSeconds: 0.5, maxDurationSeconds: 600 }] as const;
+  // Priced by the length of what each model is sent, so a price over the 5 s source differs from one over the 3 s result.
+  const pricing = (basePrice: number): ModelEntry['pricing'] => ({ base_price: basePrice, formula: '{"total_price": get_duration(video) * base_price}', discount_rate: 100 });
+  const priced = (name: string, basePrice: number, audio: boolean): ModelEntry => ({ ...model(name, name), pricing: pricing(basePrice),
+    params: { video: { fill: 'tool', default: null }, ...(audio ? { audio: { fill: 'tool', default: null } } : {}) } } as unknown as ModelEntry);
+  const PRICED = { image: [], video: [priced('lipsync-configured-a', 400_000, true), priced('lipsync-configured-b', 900_000, true), priced('tracker-configured', 300_000, false)], audio: [], tts: [], three_d: [], total: 3, credit_multiplier: 1 } as unknown as ModelCatalog;
+
+  /**
+   * The model and tracking part of the admission quote (domain `prepareLipSync`): per referenced person, the selected model
+   * priced over `timeline.duration` for its video and audio, plus the tracking model priced over the used source range, each
+   * through shared `estimateCredits` with the inputs admission passes, the timeline and range from shared `lipsyncTimeline`
+   * and `lipsyncUsedSourceRange` over the panel's frame table.
+   * @param rows - The dialogue rows (each over the 3 s audio).
+   * @returns The credits.
+   */
+  async function quoted(rows: readonly Dialogue[]): Promise<number> {
+    const timeline = lipsyncTimeline({ videoDuration: presentationVideoEnd(frameTable), dialogues: rows.map((row) => ({ dialogueId: row.dialogueId, personId: row.personId!, audioInputId: audioId, startTime: row.startTime, duration: 3 })), syncMode: 'cut_off' });
+    const used = lipsyncUsedSourceRange(timeline, [{ time: 0, windowEnd: presentationFrameAt(frameTable, 0).displayEnd }]);
+    const entry = (name: string): ModelEntry & { pricing: NonNullable<ModelEntry['pricing']> } => PRICED.video.find((candidate) => candidate.name === name) as ModelEntry & { pricing: NonNullable<ModelEntry['pricing']> };
+    const generation = await estimateCredits(entry('lipsync-configured-a'), { params: {}, durations: { video: [timeline.duration], audio: [timeline.duration] }, sources: ['video', 'audio'] }, 1);
+    const tracking = await estimateCredits(entry('tracker-configured'), { params: {}, durations: { video: [used.end - used.start] }, sources: ['video'] }, 1);
+    // Admission floors each model at MIN_TASK_CREDIT_COST (5); the fixture stays above it, so the floor is not in play.
+    expect(generation.credits).toBeGreaterThan(5);
+    expect(tracking.credits).toBeGreaterThan(5);
+    expect(timeline.duration).toBe(3);
+    return new Set(rows.map((row) => row.personId)).size * (generation.credits + tracking.credits);
+  }
+
+  /**
+   * Waits for the footer to show this amount as its number (a bound mark may precede it).
+   * @param credits - The expected credits.
+   * @returns Nothing.
+   */
+  async function footerShows(credits: number): Promise<void> {
+    const amount = formatCreditAmount(credits).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    await waitFor(() => expect(screen.getByTestId('mini-tool-credit').textContent ?? '').toMatch(new RegExp(`(^|\\s)${amount}$`)));
+  }
+
+  it('prices one person at the model over the 3 s result plus tracking over the [0, 3] range', async () => {
+    catalog = PRICED;
+    const rows = [dialogue(ROW_A, 'person-a')];
+    serve(limits(...ranges));
+    await mount(false, rows, ['person-a']);
+    await footerShows(await quoted(rows));
+  });
+
+  it('prices two people at twice the per-person model and tracking price', async () => {
+    catalog = PRICED;
+    const rows = [dialogue(ROW_A, 'person-a'), dialogue(ROW_B, 'person-b')];
+    serve(limits(...ranges));
+    await mount(false, rows, ['person-a', 'person-b']);
+    const two = await quoted(rows);
+    expect(two).toBe(2 * await quoted([dialogue(ROW_A, 'person-a')]));
+    await footerShows(two);
   });
 });
