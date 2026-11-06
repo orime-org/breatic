@@ -1220,7 +1220,8 @@ test('S-13 a document proposal pressed on a full Space is refused with a toast',
         blockType: 'paragraph',
         lossy: false,
         kind: 'rewrite',
-        body: 'He opens the door. Her bags are packed.',
+        // Longer than the paragraph it replaces, so it adds to a full Space.
+        body: 'He pushes the door open slowly and sees her bags packed by the stairs, a note folded on top.',
       };
     });
     const card = await askForCard(page, 'document-proposal-card');
