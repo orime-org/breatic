@@ -4,16 +4,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import * as Y from 'yjs';
-import { SCENE_FORMAT_VERSION } from '@breatic/shared';
-import { SceneSession } from '@web/data/yjs/scene-session';
 import { SceneModelImportDialog } from '@web/spaces/three-d/SceneModelImportDialog';
 import SceneModelImportHost from '@web/spaces/three-d/SceneModelImportHost';
 import { toast } from '@web/lib/toast';
 import { ModelImportController } from '@web/spaces/three-d/model-import-controller';
-import type { PreparedModel } from '@web/spaces/three-d/model-import-controller';
+import type { ModelImportInputs, PreparedModel } from '@web/spaces/three-d/model-import-controller';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
-import { UploadFailedError } from '@web/data/upload/media-upload';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 
 vi.mock('@web/lib/toast', async (importOriginal) => {
@@ -28,20 +24,17 @@ const disposers: (() => void)[] = [];
  * @returns The ready import operation and its original prepared input.
  * @throws {Error} When the scene session cannot be constructed.
  */
-async function readyImport(): Promise<{ controller: ModelImportController; prepared: PreparedModel; upload: ReturnType<typeof vi.fn>; session: SceneSession }> {
-  const doc = new Y.Doc();
-  doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
-  const session = new SceneSession(doc);
-  session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });
+async function readyImport(): Promise<{ controller: ModelImportController; prepared: PreparedModel; start: ReturnType<typeof vi.fn<ModelImportInputs['start']>> }> {
   const prepared: PreparedModel = { file: new File(['model'], 'model.glb'), entry: 'model.glb', entries: ['model.glb'],
     paths: ['model.glb'], bounds: { center: [0, 0, 0], min: [0, 0, 0] }, dispose: vi.fn() };
-  const upload = vi.fn().mockResolvedValue({ assetId: '44444444-4444-4444-8444-444444444444' });
-  const controller = new ModelImportController({ session,
-    prepare: async () => prepared, upload, position: () => [0, 0, 0] });
-  disposers.push(() => { controller.dispose(); session.destroy(); doc.destroy(); });
+  const start = vi.fn<ModelImportInputs['start']>().mockResolvedValue({ kind: 'opened', taskId: TASK_ID });
+  const controller = new ModelImportController({ prepare: async () => prepared, start });
+  disposers.push(() => { controller.dispose(); });
   await controller.select([{ path: prepared.file.name, file: prepared.file }]);
-  return { controller, prepared, upload, session };
+  return { controller, prepared, start };
 }
+
+const TASK_ID = '44444444-4444-4444-8444-444444444444';
 
 afterEach(() => {
   cleanup();
@@ -78,13 +71,9 @@ function dropFolder(folder: FileSystemDirectoryEntry): void {
  * @throws {never} Never.
  */
 function idleImport(): { controller: ModelImportController; prepare: ReturnType<typeof vi.fn> } {
-  const doc = new Y.Doc();
-  doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
-  const session = new SceneSession(doc);
-  session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });
   const prepare = vi.fn(() => new Promise<PreparedModel>(() => undefined));
-  const controller = new ModelImportController({ session, upload: vi.fn(), position: () => [0, 0, 0], prepare });
-  disposers.push(() => { controller.dispose(); session.destroy(); doc.destroy(); });
+  const controller = new ModelImportController({ start: vi.fn(), prepare });
+  disposers.push(() => { controller.dispose(); });
   return { controller, prepare };
 }
 
@@ -131,22 +120,37 @@ describe('model import dialog controls', () => {
     expect(controller.getSnapshot().name).toBe('My character');
   });
 
-  it('reports placement once and releases the completed local preview', async () => {
-    const { controller, prepared, upload } = await readyImport();
+  it('starts the upload, closes the dialog and hands up the new row, releasing the local preview', async () => {
+    const { controller, prepared, start } = await readyImport();
     const onOpenChange = vi.fn();
-    const onPlaced = vi.fn();
-    const { rerender } = render(<SceneModelImportHost open onOpenChange={onOpenChange} onPlaced={onPlaced} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Import to scene' }));
-    await waitFor(() => expect(onPlaced).toHaveBeenCalledExactlyOnceWith(expect.any(String)));
+    const onStarted = vi.fn();
+    render(<SceneModelImportHost open onOpenChange={onOpenChange} onStarted={onStarted} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Import' }));
+    await waitFor(() => expect(onStarted).toHaveBeenCalledExactlyOnceWith(TASK_ID));
     expect(onOpenChange).toHaveBeenCalledWith(false);
-    expect(toast.success).toHaveBeenCalledExactlyOnceWith('Model imported.');
+    expect(start).toHaveBeenCalledExactlyOnceWith(prepared.file, 'model');
+    expect(toast.success).not.toHaveBeenCalled();
     expect(prepared.dispose).toHaveBeenCalledTimes(1);
     expect(controller.getSnapshot()).toMatchObject({ phase: 'idle', prepared: null, files: [] });
-    rerender(<SceneModelImportHost open={false} onOpenChange={onOpenChange} onPlaced={onPlaced} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
-    await controller.confirm();
-    expect(onPlaced).toHaveBeenCalledTimes(1);
-    expect(toast.success).toHaveBeenCalledTimes(1);
-    expect(upload).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds every way of closing while the upload is starting, and locks the input', async () => {
+    const { controller, start } = await readyImport();
+    start.mockReturnValueOnce(new Promise(() => undefined));
+    const onOpenChange = vi.fn();
+    render(<SceneModelImportDialog open onOpenChange={onOpenChange} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Import' }));
+    expect(controller.getSnapshot().phase).toBe('starting');
+
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    expect(screen.getByRole('textbox')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Choose files' })).toBeDisabled();
+    await user.keyboard('{Escape}');
+    const close = screen.queryByRole('button', { name: 'Close' });
+    if (close) await user.click(close);
+    fireEvent.pointerDown(document.body);
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 
   it.each([
@@ -155,27 +159,23 @@ describe('model import dialog controls', () => {
     ['rateLimited', 'Uploading too often. Try again later.', true],
     ['transfer', 'The model could not be uploaded. Try again.', true],
   ] as const)('states a %s upload failure and offers Retry only when retrying can succeed', async (reason, message, retryable) => {
-    const { controller, upload } = await readyImport();
-    upload.mockRejectedValueOnce(new UploadFailedError(reason));
+    const { controller, start } = await readyImport();
+    start.mockResolvedValueOnce({ kind: 'refused', reason });
     await controller.confirm();
     render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
     expect(screen.getByText(message)).toBeInTheDocument();
     if (retryable) expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled();
     else {
       expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
-      expect(screen.getByRole('button', { name: 'Import to scene' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Import' })).toBeDisabled();
     }
   });
 
   it('states which import limit a selection exceeded, with both sizes', async () => {
-    const doc = new Y.Doc();
-    doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
-    const session = new SceneSession(doc);
-    session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });
     const budget = { limit: 'expanded', allowed: 256 * 1024 * 1024, actual: 300 * 1024 * 1024 } as const;
-    const controller = new ModelImportController({ session, upload: vi.fn(), position: () => [0, 0, 0],
+    const controller = new ModelImportController({ start: vi.fn(),
       prepare: () => Promise.reject(new ModelImportError('budget', 'Model archive exceeds its expanded-byte budget', { detail: '', budget })) });
-    disposers.push(() => { controller.dispose(); session.destroy(); doc.destroy(); });
+    disposers.push(() => { controller.dispose(); });
     await controller.select([{ path: 'model.zip', file: new File(['zip'], 'model.zip') }]);
     render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
     expect(screen.getByText('The model exceeds an import limit.')).toBeInTheDocument();
@@ -185,69 +185,27 @@ describe('model import dialog controls', () => {
 
   it('shows no floating opener for a cancelled ready, checking or failed import, as the approved demo does', async () => {
     const { controller } = await readyImport();
-    const host = <SceneModelImportHost open={false} onOpenChange={vi.fn()} onPlaced={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />;
+    const host = <SceneModelImportHost open={false} onOpenChange={vi.fn()} onStarted={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />;
     render(host);
     expect(controller.getSnapshot().phase).toBe('ready');
     expect(screen.queryByRole('button')).toBeNull();
     cleanup();
     const checking = idleImport();
-    render(<SceneModelImportHost open={false} onOpenChange={vi.fn()} onPlaced={vi.fn()} controller={checking.controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    render(<SceneModelImportHost open={false} onOpenChange={vi.fn()} onStarted={vi.fn()} controller={checking.controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
     await act(async () => { void checking.controller.select([{ path: 'a.glb', file: new File(['a'], 'a.glb') }]); });
     expect(checking.controller.getSnapshot().phase).toBe('checking');
     expect(screen.queryByRole('button')).toBeNull();
     cleanup();
     const failing = idleImport();
     failing.prepare.mockRejectedValueOnce(new ModelImportError('invalid', 'Unreadable', { detail: '' }));
-    render(<SceneModelImportHost open={false} onOpenChange={vi.fn()} onPlaced={vi.fn()} controller={failing.controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    render(<SceneModelImportHost open={false} onOpenChange={vi.fn()} onStarted={vi.fn()} controller={failing.controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
     await act(async () => { await failing.controller.select([{ path: 'a.glb', file: new File(['a'], 'a.glb') }]); });
     expect(failing.controller.getSnapshot().phase).toBe('failed');
     expect(screen.queryByRole('button')).toBeNull();
   });
 
-  it('keeps the uploading opener mounted while its dialog is open, so closing returns focus to it', async () => {
-    const { controller, upload } = await readyImport();
-    upload.mockReturnValueOnce(new Promise(() => undefined));
-    void controller.confirm();
-    const onOpenChange = vi.fn();
-    const { rerender } = render(<SceneModelImportHost open={false} onOpenChange={onOpenChange} onPlaced={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
-    const opener = screen.getByRole('button', { name: 'Uploading 0%' });
-    opener.focus();
-    rerender(<SceneModelImportHost open onOpenChange={onOpenChange} onPlaced={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
-    expect(document.contains(opener)).toBe(true);
-    rerender(<SceneModelImportHost open={false} onOpenChange={onOpenChange} onPlaced={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
-    await waitFor(() => expect(opener).toHaveFocus());
-  });
-
-  it('keeps a registered model reachable while editing is unavailable', async () => {
-    const { controller, upload, session } = await readyImport();
-    upload.mockResolvedValueOnce({ assetId: '44444444-4444-4444-8444-444444444444' });
-    session.setEnvironment({ readOnly: true, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });
-    await controller.confirm();
-    expect(controller.getSnapshot()).toMatchObject({ phase: 'ready', assetId: '44444444-4444-4444-8444-444444444444' });
-    render(<SceneModelImportHost open={false} onOpenChange={vi.fn()} onPlaced={vi.fn()} controller={controller} canEdit={false} maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
-    expect(screen.getByRole('button', { name: 'Import model' })).toBeEnabled();
-  });
-
-  it('keeps an uploading operation reachable through its hidden-dialog opener', async () => {
-    const { controller, upload } = await readyImport();
-    const pending = Promise.withResolvers<{ assetId: string }>();
-    upload.mockReturnValueOnce(pending.promise);
-    const confirmation = controller.confirm();
-    const onOpenChange = vi.fn();
-    render(<SceneModelImportHost open={false} onOpenChange={onOpenChange} onPlaced={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
-    const opener = screen.getByRole('button', { name: 'Uploading 0%' });
-    expect(opener).toBeEnabled();
-    await userEvent.setup().click(opener);
-    expect(onOpenChange).toHaveBeenCalledWith(true);
-    expect(controller.getSnapshot().phase).toBe('uploading');
-    await act(async () => {
-      pending.resolve({ assetId: '44444444-4444-4444-8444-444444444444' });
-      await confirmation;
-    });
-  });
-
   it('keeps a prepared operation when the dialog is hidden and reopened', async () => {
-    const { controller, prepared, upload } = await readyImport();
+    const { controller, prepared, start } = await readyImport();
     const onOpenChange = vi.fn();
     const { rerender } = render(<SceneModelImportDialog open onOpenChange={onOpenChange} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
     await userEvent.setup().click(screen.getByRole('button', { name: 'Cancel' }));
@@ -257,7 +215,7 @@ describe('model import dialog controls', () => {
     expect(prepared.dispose).not.toHaveBeenCalled();
     rerender(<SceneModelImportDialog open onOpenChange={onOpenChange} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
     expect(screen.getByRole('textbox')).toHaveValue('model');
-    expect(upload).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
   });
 });
 
@@ -301,11 +259,11 @@ describe('model import dialog failures outside the model (inner#1690)', () => {
 });
 
 describe('model import dialog footer during checks and after refusals (inner#1690)', () => {
-  it('keeps Import to scene disabled, with no Retry, during a first check', async () => {
+  it('keeps Import disabled, with no Retry, during a first check', async () => {
     const pending = idleImport();
     render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={pending.controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
     await act(async () => { void pending.controller.select([{ path: 'a.glb', file: new File(['a'], 'a.glb') }]); });
-    expect(screen.getByRole('button', { name: 'Import to scene' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Import' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
@@ -320,7 +278,7 @@ describe('model import dialog footer during checks and after refusals (inner#169
     await act(async () => { void failing.controller.select(failing.controller.getSnapshot().files, 'b.glb'); });
     expect(failing.controller.getSnapshot().phase).toBe('checking');
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Import to scene' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Import' })).toBeDisabled();
   });
 
   it('moves focus to Choose files when the retried check ends in a content verdict', async () => {
@@ -348,16 +306,16 @@ describe('model import dialog footer during checks and after refusals (inner#169
   });
 
   it('moves focus to Choose files when an upload fails for a reason a retry cannot change', async () => {
-    const { controller, upload } = await readyImport();
-    upload.mockRejectedValueOnce(new UploadFailedError('storage'));
+    const { controller, start } = await readyImport();
+    start.mockResolvedValueOnce({ kind: 'refused', reason: 'storage' });
     render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
-    const confirm = screen.getByRole('button', { name: 'Import to scene' });
+    const confirm = screen.getByRole('button', { name: 'Import' });
     confirm.focus();
     await act(async () => { fireEvent.click(confirm); });
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Choose files' })));
   });
 
-  it('keeps focus on Add accompanying files while its check runs and hands it to Import to scene when the model is ready', async () => {
+  it('keeps focus on Add accompanying files while its check runs and hands it to Import when the model is ready', async () => {
     const failing = idleImport();
     const prepared: PreparedModel = { file: new File(['model'], 'a.gltf'), entry: 'a.gltf', entries: ['a.gltf'],
       paths: ['a.gltf', 'mesh.bin'], bounds: { center: [0, 0, 0], min: [0, 0, 0] }, dispose: vi.fn() };
@@ -373,7 +331,7 @@ describe('model import dialog footer during checks and after refusals (inner#169
     expect(failing.controller.getSnapshot().phase).toBe('checking');
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Add accompanying files' }));
     await act(async () => { ready.resolve(prepared); await ready.promise; });
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Import to scene' })));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Import' })));
   });
 
   /**
@@ -400,7 +358,7 @@ describe('model import dialog footer during checks and after refusals (inner#169
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Choose files' })));
   });
 
-  it('hands focus left on the dialog itself to Import to scene when the check ends ready', async () => {
+  it('hands focus left on the dialog itself to Import when the check ends ready', async () => {
     const result = await supplementCheck();
     // A browser's focus scope moves focus from an unmounted control to the dialog before React effects run.
     act(() => { screen.getByTestId('model-import-dialog').focus(); });
@@ -408,7 +366,7 @@ describe('model import dialog footer during checks and after refusals (inner#169
       result.resolve({ file: new File(['model'], 'a.gltf'), entry: 'a.gltf', entries: ['a.gltf'], paths: ['a.gltf', 'mesh.bin'], bounds: { center: [0, 0, 0], min: [0, 0, 0] }, dispose: vi.fn() });
       await result.promise;
     });
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Import to scene' })));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Import' })));
   });
 
   it('keeps the main-file choice mounted while the chosen file is checked', async () => {
@@ -434,13 +392,13 @@ describe('model import dialog footer during checks and after refusals (inner#169
     expect(prompt.parentElement?.querySelector('svg.lucide-triangle-alert')).toBeNull();
   });
 
-  it('keeps focus in the name field when clearing the name disables Import to scene', async () => {
+  it('keeps focus in the name field when clearing the name disables Import', async () => {
     const { controller } = await readyImport();
     render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
     const name = screen.getByRole('textbox', { name: 'Model name' });
     name.focus();
     await act(async () => { fireEvent.change(name, { target: { value: '' } }); });
-    expect(screen.getByRole('button', { name: 'Import to scene' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Import' })).toBeDisabled();
     expect(document.activeElement).toBe(name);
   });
 });

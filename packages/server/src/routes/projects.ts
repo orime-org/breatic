@@ -66,6 +66,7 @@ projects.get(
         maxTextureEdge: limits.max_texture_edge,
         maxTextureBytes: limits.max_texture_bytes,
       },
+      progressPublishMs: limits.progress_publish_ms,
     };
     return c.json({ data });
   },

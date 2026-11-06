@@ -64,19 +64,55 @@ async function sceneView(page: Page): Promise<SceneView> {
 }
 
 /**
- * Open the import through the keyboard-operated Add menu and its focus handoff.
+ * Open the import from the left rail by keyboard.
  * @param page - The active editable scene page.
  * @returns The visible model import dialog.
  * @throws {Error} When the scene or dialog cannot be opened.
  */
 async function openImport(page: Page): Promise<Locator> {
-  const add = visibleSpace(page).getByRole('button', { name: 'Add', exact: true });
-  await expect(add).toBeEnabled();
-  await add.press('Enter');
-  await page.getByRole('menuitem', { name: 'Import model', exact: true }).press('Enter');
+  const button = visibleSpace(page).getByRole('button', { name: 'Import model', exact: true });
+  await expect(button).toBeEnabled();
+  await button.press('Enter');
   const dialog = page.getByTestId('model-import-dialog');
   await expect(dialog).toBeVisible();
   return dialog;
+}
+
+/**
+ * The visible Space's row for one task, on its task list.
+ * @param page - The page.
+ * @param taskId - The row.
+ * @returns The row.
+ */
+function taskRow(page: Page, taskId: unknown): Locator {
+  return visibleSpace(page).getByTestId(`scene-task-${String(taskId)}`);
+}
+
+/**
+ * Open the visible Space's task list, if it is not open already.
+ * @param page - The page.
+ * @throws {Error} When the panel cannot be opened.
+ */
+async function openTasks(page: Page): Promise<void> {
+  if (await visibleSpace(page).getByTestId('scene-tasks-panel').count()) return;
+  await visibleSpace(page).getByTestId('scene-tasks-trigger').click();
+  await expect(visibleSpace(page).getByTestId('scene-tasks-panel')).toBeVisible();
+}
+
+/**
+ * Place a finished row's model into the scene from the task list.
+ * @param page - The page.
+ * @param taskId - The finished row.
+ * @throws {Error} When the row does not finish or cannot place its model.
+ */
+async function placeFromTasks(page: Page, taskId: unknown): Promise<void> {
+  await openTasks(page);
+  const row = taskRow(page, taskId);
+  const place = row.getByRole('button', { name: 'Place in scene', exact: true });
+  await expect(place).toBeVisible({ timeout: test.info().timeout });
+  await place.click();
+  await expect(place).not.toHaveAttribute('aria-busy', 'true', { timeout: test.info().timeout });
+  await expect(visibleSpace(page).getByTestId('scene-tasks-panel')).toBeVisible();
 }
 
 /**
@@ -117,10 +153,11 @@ async function importModel(page: Page, file: SceneModelInput, name: string, entr
   await roomForUploads(1);
   const answer = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/v1/assets/upload-ticket'
     && response.request().method() === 'POST', { timeout: test.info().timeout });
-  await dialog.getByRole('button', { name: 'Import to scene', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Import', exact: true }).click();
   const ticket = await dataOf<Record<string, unknown>>(await answer, 'authorize an actual model upload');
   await expect(dialog).toHaveCount(0, { timeout: test.info().timeout });
-  await expect(page.getByText('Model imported.', { exact: true })).toBeVisible();
+  await expect(taskRow(page, ticket.taskId)).toBeVisible();
+  await placeFromTasks(page, ticket.taskId);
   return ticket;
 }
 
@@ -223,7 +260,7 @@ test('model import checks original dependencies and retains a prepared model acr
     await previewReady(dialog);
     const name = dialog.getByRole('textbox', { name: 'Model name', exact: true });
     await name.fill('Prepared character');
-    await expect(dialog.getByRole('button', { name: 'Import to scene', exact: true })).toBeEnabled();
+    await expect(dialog.getByRole('button', { name: 'Import', exact: true })).toBeEnabled();
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
     await expect(dialog).toHaveCount(0);
     const reopened = await openImport(page);
@@ -250,7 +287,7 @@ test('a ZIP missing resources inside its folder is completed with accompanying f
     await dialog.getByRole('button', { name: 'Add accompanying files', exact: true }).click();
     await (await chooserPromise).setFiles(sceneFiles('zip-supplement').slice(1));
     await previewReady(dialog);
-    await expect(dialog.getByRole('button', { name: 'Import to scene', exact: true })).toBeEnabled();
+    await expect(dialog.getByRole('button', { name: 'Import', exact: true })).toBeEnabled();
     expect(await sceneObjects(page, id)).toEqual([]);
   } finally {
     await deleteSpace(page, id);
@@ -264,7 +301,7 @@ test('a textured GLB is registered once, independently edited, undone and reopen
     const file = sceneGlb(crypto.randomUUID());
     const first = await importModel(page, file, 'First imported character');
     expect(first.alreadyExists).not.toBe(true);
-    expect(first).not.toHaveProperty('taskId');
+    expect(typeof first.taskId).toBe('string');
     await expect.poll(async () => (await renderedObjects(page)).length, { timeout: test.info().timeout }).toBe(1);
     const original = (await sceneObjects(page, id))[0];
     if (original.model.kind !== 'asset') throw new Error('Expected a registered model reference');
@@ -275,6 +312,7 @@ test('a textured GLB is registered once, independently edited, undone and reopen
     expect(asset).toMatchObject({ mimeType: 'model/gltf-binary', sizeBytes: file.buffer.byteLength });
     const repeated = await importModel(page, file, 'Second imported character');
     expect(repeated).toMatchObject({ alreadyExists: true, assetId });
+    expect(repeated.taskId).not.toBe(first.taskId);
     await expect.poll(async () => (await renderedObjects(page)).length, { timeout: test.info().timeout }).toBe(2);
     const objects = await sceneObjects(page, id);
     expect(objects.map((object) => object.model)).toEqual([{ kind: 'asset', assetId }, { kind: 'asset', assetId }]);
@@ -432,7 +470,7 @@ for (const [codec, label] of [['draco', 'Draco'], ['meshopt', 'EXT Meshopt'], ['
         failure.waitFor({ state: 'visible', timeout: test.info().timeout }).then(async () => { throw new Error(await failure.innerText()); }),
       ]);
       await previewReady(dialog);
-      await expect(dialog.getByRole('button', { name: 'Import to scene', exact: true })).toBeEnabled();
+      await expect(dialog.getByRole('button', { name: 'Import', exact: true })).toBeEnabled();
       expect(await sceneObjects(page, id)).toEqual([]);
       expect(colourWarnings).toEqual([]);
     } finally {
@@ -468,73 +506,75 @@ test('a registered model whose decoder download fails offers Retry and loads onc
   }
 });
 
-test('closing an import during registration preserves its Studio asset without writing a reopened scene @needs-storage @needs-ingest', async ({ page }) => {
+test('a model registered while its tab is closed is listed done on reopen and placed from the list @needs-storage @needs-ingest', async ({ page }) => {
   await openSmokeProject(page);
-  const otherId = await page.getByRole('tab').first().getAttribute('data-space-tab');
-  if (!otherId) throw new Error('Expected the Project initial Space');
   const id = await createSpace(page, '3d', `Closed import ${crypto.randomUUID()}`);
   const completed = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
   const keyReady = Promise.withResolvers<string>();
-  let assetId: string | undefined;
-  const stopHolding = await holdRegistration(page, keyReady.promise, (registeredId) => {
-    assetId = registeredId;
-    completed.resolve();
-  }, release.promise);
+  const stopHolding = await holdRegistration(page, keyReady.promise, () => completed.resolve(), release.promise);
   try {
     const file = sceneGlb(crypto.randomUUID());
     const dialog = await openImport(page);
     await dialog.locator('input[type="file"]').first().setInputFiles(file);
     await previewReady(dialog);
+    await dialog.getByRole('textbox', { name: 'Model name', exact: true }).fill('Closed character');
     await roomForUploads(1);
     const ticketResponse = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/v1/assets/upload-ticket'
       && response.request().method() === 'POST', { timeout: test.info().timeout });
-    await dialog.getByRole('button', { name: 'Import to scene', exact: true }).click();
-    const ticket = await dataOf<Record<string, unknown>>(await ticketResponse, 'open the actual retained model upload');
+    await dialog.getByRole('button', { name: 'Import', exact: true }).click();
+    const ticket = await dataOf<Record<string, unknown>>(await ticketResponse, 'open the actual model upload');
     if (typeof ticket.storageKey !== 'string') throw new Error('Expected a new opened model upload');
     keyReady.resolve(ticket.storageKey);
+    await expect(dialog).toHaveCount(0, { timeout: test.info().timeout });
     await completed.promise;
-    await expect(dialog.getByText('Registering model…', { exact: true })).toBeVisible();
-    await dialog.getByRole('button', { name: 'Hide', exact: true }).click();
-    await expect(dialog).toHaveCount(0);
-    await page.getByTestId(`space-tab-${otherId}`).click();
-    await expect(page.getByTestId(`space-tab-${otherId}`)).toHaveAttribute('aria-selected', 'true');
-    await page.getByTestId(`space-tab-${id}`).click();
-    await visibleSpace(page).getByRole('button', { name: 'Registering model…', exact: true }).click();
-    await expect(dialog.getByText('Registering model…', { exact: true })).toBeVisible();
-    await dialog.getByRole('button', { name: 'Hide', exact: true }).click();
-    await expect(dialog).toHaveCount(0);
+    await expect(taskRow(page, ticket.taskId)).toContainText('Closed character');
     await closeSceneTab(page, id);
-    await reopenScene(page, id);
-    const reopened = await openImport(page);
-    await expect(reopened.getByTestId('model-import-dropzone')).toBeVisible();
-    const lateResponse = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/v1/assets/upload-status');
     release.resolve();
-    await (await lateResponse).finished();
-    await page.evaluate(async () => {
-      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-    });
-    await expect(reopened.getByTestId('model-import-dropzone')).toBeVisible();
+    await reopenScene(page, id);
+    await openTasks(page);
+    await expect(taskRow(page, ticket.taskId)).toContainText('Done', { timeout: test.info().timeout });
     expect(await sceneObjects(page, id)).toEqual([]);
-    expect(typeof assetId).toBe('string');
-    const asset = await dataOf<{ mimeType: string; sizeBytes: number }>(
-      await page.request.get(`/api/v1/projects/${smokeProjectId()}/three-d/assets/${assetId}`), 'read the completed original Studio asset',
-    );
-    expect(asset).toMatchObject({ mimeType: 'model/gltf-binary', sizeBytes: file.buffer.byteLength });
+    await placeFromTasks(page, ticket.taskId);
+    await expect.poll(async () => (await renderedObjects(page)).length, { timeout: test.info().timeout }).toBe(1);
+    expect(await sceneObjects(page, id)).toMatchObject([{ name: 'Closed character' }]);
   } finally {
-    try {
-      await page.keyboard.press('Escape');
-      if (await page.getByTestId(`space-tab-${id}`).count()) await closeSceneTab(page, id);
-    } finally {
-      keyReady.resolve('');
-      release.resolve();
-      await stopHolding();
-      await deleteSpace(page, id);
-    }
+    keyReady.resolve('');
+    release.resolve();
+    await stopHolding();
+    await deleteSpace(page, id);
   }
 });
 
-test('failed model transfer and loading retain existing objects and retry the same input @needs-storage @needs-ingest', async ({ page }) => {
+test('closing the Space tab is held back while a model\'s bytes are being sent @needs-storage @needs-ingest', async ({ page }) => {
+  await openSmokeProject(page);
+  const id = await createSpace(page, '3d', `Held import ${crypto.randomUUID()}`);
+  const partsPattern = '**/uploads/**/parts/*';
+  const parts = Promise.withResolvers<void>();
+  await page.route(partsPattern, async (route) => {
+    if (route.request().method() === 'PUT') await parts.promise;
+    await route.continue();
+  });
+  try {
+    const dialog = await openImport(page);
+    await dialog.locator('input[type="file"]').first().setInputFiles(sceneGlb(crypto.randomUUID()));
+    await previewReady(dialog);
+    await roomForUploads(1);
+    await dialog.getByRole('button', { name: 'Import', exact: true }).click();
+    await expect(dialog).toHaveCount(0, { timeout: test.info().timeout });
+    const tab = page.getByTestId(`space-tab-${id}`);
+    await tab.hover();
+    await page.getByTestId(`space-tab-close-${id}`).click();
+    await expect(page.getByText('An operation is still in progress — finish it before closing this Space.', { exact: true })).toBeVisible();
+    await expect(tab).toHaveCount(1);
+  } finally {
+    parts.resolve();
+    await page.unroute(partsPattern);
+    await deleteSpace(page, id);
+  }
+});
+
+test('a failed transfer keeps existing objects and its retry from the task list uploads the same file @needs-storage @needs-ingest', async ({ page }) => {
   await openSmokeProject(page);
   const id = await createSpace(page, '3d', `Retried model ${crypto.randomUUID()}`);
   const partsPattern = '**/uploads/**/parts/*';
@@ -560,20 +600,26 @@ test('failed model transfer and loading retain existing objects and retry the sa
     const dialog = await openImport(page);
     await dialog.locator('input[type="file"]').first().setInputFiles(sceneGlb(crypto.randomUUID()));
     await previewReady(dialog);
-    const name = dialog.getByRole('textbox', { name: 'Model name', exact: true });
-    await name.fill('Retried character');
+    await dialog.getByRole('textbox', { name: 'Model name', exact: true }).fill('Retried character');
     await roomForUploads(1);
-    await dialog.getByRole('button', { name: 'Import to scene', exact: true }).click();
-    const transferFailure = dialog.locator('p.text-status-error');
-    await expect(transferFailure).toBeVisible({ timeout: test.info().timeout });
-    expect(await transferFailure.innerText()).toBe('The model could not be uploaded. Try again.');
-    await expect(name).toHaveValue('Retried character');
-    await previewReady(dialog);
+    const firstTicket = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/v1/assets/upload-ticket'
+      && response.request().method() === 'POST', { timeout: test.info().timeout });
+    await dialog.getByRole('button', { name: 'Import', exact: true }).click();
+    const failed = await dataOf<Record<string, unknown>>(await firstTicket, 'open the first model upload');
+    await expect(dialog).toHaveCount(0, { timeout: test.info().timeout });
+    const failedRow = taskRow(page, failed.taskId);
+    await expect(failedRow).toContainText('Failed', { timeout: test.info().timeout });
     expect(await sceneObjects(page, id)).toEqual([original]);
     failTransfer = false;
     await roomForUploads(1);
-    await dialog.getByRole('button', { name: 'Retry', exact: true }).click();
-    await expect(dialog).toHaveCount(0, { timeout: test.info().timeout });
+    const retryTicket = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/v1/assets/upload-ticket'
+      && response.request().method() === 'POST', { timeout: test.info().timeout });
+    await failedRow.getByRole('button', { name: 'Retry', exact: true }).click();
+    const retried = await dataOf<Record<string, unknown>>(await retryTicket, 'open the retried model upload');
+    expect(retried.taskId).not.toBe(failed.taskId);
+    await expect(failedRow.getByRole('button', { name: 'Retry', exact: true })).toHaveCount(0);
+    await expect(failedRow.getByRole('button', { name: 'Remove', exact: true })).toBeVisible();
+    await placeFromTasks(page, retried.taskId);
     await expect(editor.getByText('A model could not be loaded.', { exact: true })).toBeVisible({ timeout: test.info().timeout });
     expect((await sceneObjects(page, id)).find((object) => object.id === original.id)).toEqual(original);
     expect((await sceneObjects(page, id)).filter((object) => object.name === 'Retried character')).toHaveLength(1);
@@ -590,80 +636,52 @@ test('failed model transfer and loading retain existing objects and retry the sa
   }
 });
 
-test('registration retains an asset across live permission loss and places it once after editing returns @needs-storage @needs-ingest', async ({ page, browser, baseURL }) => {
+test('every member sees one task list: another editor\'s upload is placed by anyone, and a viewer only reads it @needs-storage @needs-ingest', async ({ page, browser, baseURL }) => {
   const peerContext = await browser.newContext({ baseURL, storageState: stateFile('B') });
   const projectId = smokeProjectId();
-  const keyReady = Promise.withResolvers<string>();
-  const completed = Promise.withResolvers<string>();
-  const release = Promise.withResolvers<void>();
   let id: string | undefined;
   let peerId: string | undefined;
   let peer: Page | undefined;
-  let stopHolding: (() => Promise<void>) | undefined;
   try {
     await openSmokeProject(page);
-    id = await createSpace(page, '3d', `Permission-bound model ${crypto.randomUUID()}`);
+    id = await createSpace(page, '3d', `Shared task list ${crypto.randomUUID()}`);
     peerId = (await dataOf<{ id: string }>(await peerContext.request.get('/api/v1/auth/me'), 'read uploading account identity')).id;
     peer = await inviteMember(page, peerContext, projectId, credentialsFor('B').email, 'editor');
     watchUploadTickets(peer, 'B');
-    let tickets = 0;
-    peer.on('request', (request) => {
-      if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/v1/assets/upload-ticket'
-        && (request.postDataJSON() as { purpose?: string }).purpose === 'scene_model') tickets += 1;
-    });
     await peer.goto(smokeProjectUrl());
     await reopenScene(peer, id);
-    stopHolding = await holdRegistration(peer, keyReady.promise, completed.resolve, release.promise);
     const dialog = await openImport(peer);
     await dialog.locator('input[type="file"]').first().setInputFiles(sceneGlb(crypto.randomUUID()));
     await previewReady(dialog);
-    await dialog.getByRole('textbox', { name: 'Model name', exact: true }).fill('Permission-bound character');
+    await dialog.getByRole('textbox', { name: 'Model name', exact: true }).fill('Shared character');
     await roomForUploads(1, 'B');
     const ticketResponse = peer.waitForResponse((response) => new URL(response.url()).pathname === '/api/v1/assets/upload-ticket'
       && response.request().method() === 'POST', { timeout: test.info().timeout });
-    await dialog.getByRole('button', { name: 'Import to scene', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Import', exact: true }).click();
     const ticket = await dataOf<Record<string, unknown>>(await ticketResponse, 'open the collaborator model upload');
-    if (typeof ticket.storageKey !== 'string') throw new Error('Expected a newly opened collaborator upload');
-    keyReady.resolve(ticket.storageKey);
-    const assetId = await completed.promise;
-    await dataOf(await page.request.patch(`/api/v1/projects/${projectId}/members/${peerId}`, { data: { role: 'viewer' } }), 'revoke editing during registration');
-    await expect(dialog.getByText('You can import a model once you have editing access.', { exact: true })).toBeVisible();
-    const lateResponse = peer.waitForResponse((response) => new URL(response.url()).pathname === '/api/v1/assets/upload-status');
-    release.resolve();
-    await (await lateResponse).finished();
-    await expect(dialog.getByText('The model is uploaded. You can place it once editing access returns.', { exact: true })).toBeVisible();
-    await expect(dialog.getByRole('button', { name: 'Import to scene', exact: true })).toBeDisabled();
-    expect(await sceneObjects(peer, id)).toEqual([]);
-    expect(await sceneObjects(page, id)).toEqual([]);
-    await dataOf(await page.request.patch(`/api/v1/projects/${projectId}/members/${peerId}`, { data: { role: 'editor' } }), 'restore editing after registration');
-    await expect(dialog.getByRole('button', { name: 'Import to scene', exact: true })).toBeEnabled();
-    await dialog.getByRole('button', { name: 'Import to scene', exact: true }).click();
-    await expect(dialog).toHaveCount(0, { timeout: test.info().timeout });
-    await expect.poll(async () => (await renderedObjects(page)).length, { timeout: test.info().timeout }).toBe(1);
+    await openTasks(page);
+    await expect(taskRow(page, ticket.taskId)).toContainText('Shared character', { timeout: test.info().timeout });
+    await expect(taskRow(page, ticket.taskId)).toContainText('Done', { timeout: test.info().timeout });
+    await placeFromTasks(page, ticket.taskId);
     await expect.poll(async () => (await renderedObjects(peer!)).length, { timeout: test.info().timeout }).toBe(1);
-    expect(await sceneObjects(page, id)).toMatchObject([{ name: 'Permission-bound character', model: { kind: 'asset', assetId } }]);
-    expect(tickets).toBe(1);
+    await page.reload();
+    await reopenScene(page, id);
+    await openTasks(page);
+    await expect(taskRow(page, ticket.taskId)).toContainText('Done');
+    await dataOf(await page.request.patch(`/api/v1/projects/${projectId}/members/${peerId}`, { data: { role: 'viewer' } }), 'make the uploader a viewer');
+    await peer.reload();
+    await reopenScene(peer, id);
+    await openTasks(peer);
+    await expect(taskRow(peer, ticket.taskId)).toContainText('Shared character');
+    await expect(taskRow(peer, ticket.taskId).getByRole('button')).toHaveCount(0);
   } finally {
     try {
-      if (peer && id && !peer.isClosed() && await peer.getByTestId(`space-tab-${id}`).count()) {
-        await peer.keyboard.press('Escape');
-        await closeSceneTab(peer, id);
-      }
+      await peerContext.close();
     } finally {
-      keyReady.resolve('');
-      release.resolve();
       try {
-        await stopHolding?.();
+        if (peerId) await cleanMembership(page, projectId, peerId);
       } finally {
-        try {
-          await peerContext.close();
-        } finally {
-          try {
-            if (peerId) await cleanMembership(page, projectId, peerId);
-          } finally {
-            if (id) await deleteSpace(page, id);
-          }
-        }
+        if (id) await deleteSpace(page, id);
       }
     }
   }

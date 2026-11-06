@@ -16,7 +16,9 @@ import { SceneSession } from '@web/data/yjs/scene-session';
 import SceneEditor from '@web/spaces/three-d/SceneEditor';
 import { useUIStore } from '@web/stores/ui';
 
-vi.mock('@web/data/api/scene', () => ({
+vi.mock('@web/data/api/scene', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/scene')>()),
+  listSpaceTasks: vi.fn(async () => ({ serverNow: new Date().toISOString(), tasks: [] })),
   getSceneControls: vi.fn(async () => ({ scaleSensitivity: 1, import: IMPORT_LIMITS })),
   resolveSceneAsset: vi.fn(async () => ({ url: 'https://example.invalid/model.glb', mimeType: 'model/gltf-binary', sizeBytes: 100 })),
 }));
@@ -117,9 +119,9 @@ describe('approved scene layout (inner#1724)', () => {
     act(() => session.select(ID, false));
     expect(await screen.findByLabelText(t('spaces.threeD.name'))).toHaveValue('Figure');
     fireEvent.click(screen.getByTestId('scene-tasks-trigger'));
-    expect(await screen.findByTestId('scene-tasks-panel')).toHaveTextContent(t('spaces.threeD.generationDev'));
+    expect(await screen.findByText(t('spaces.threeD.taskList.empty'))).toBeVisible();
     act(() => session.execute({ type: 'patch', patches: [{ id: ID, position: [4, 0, 0] }] }));
-    expect(screen.getByTestId('scene-tasks-panel')).toHaveTextContent(t('spaces.threeD.generationDev'));
+    expect(screen.getByTestId('scene-tasks-panel')).toHaveTextContent(t('spaces.threeD.taskList.empty'));
     act(() => session.select(SECOND, true));
     expect(await screen.findByText(t('spaces.threeD.selectedCount', { count: 2 }))).toBeVisible();
     expect(screen.getByTestId('scene-object-menu')).toBeVisible();

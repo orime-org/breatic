@@ -4,9 +4,10 @@
 import type * as Y from 'yjs';
 import type { Group } from 'three';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
-import type { SceneSession } from '@web/data/yjs/scene-session';
+import { UploadFailedError } from '@web/data/upload/media-upload';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import type { ModelSource } from '@web/spaces/three-d/model-source';
+import type { SceneUploadStart } from '@web/spaces/three-d/scene-uploads';
 
 export interface ModelBounds {
   center: readonly [number, number, number];
@@ -25,19 +26,15 @@ export interface PreparedModel {
   warnings?: readonly string[];
 }
 export interface ModelImportInputs {
-  session: SceneSession;
   prepare: (files: readonly ModelSource[], entry: string | undefined, signal: AbortSignal) => Promise<PreparedModel>;
-  upload: (file: File, signal: AbortSignal, onProgress: (fraction: number) => void, onRegistering: () => void) => Promise<{ assetId: string }>;
-  position: (bounds: ModelBounds) => [number, number, number];
+  /** Begin the page-held upload under the given name; answers once its task row exists or it was refused. */
+  start: (file: File, name: string) => Promise<SceneUploadStart>;
 }
 export interface ModelImportSnapshot {
-  phase: 'idle' | 'checking' | 'ready' | 'uploading' | 'registering' | 'placed' | 'failed' | 'disposed';
+  phase: 'idle' | 'checking' | 'ready' | 'starting' | 'failed' | 'disposed';
   name: string;
-  progress: number;
   error: Error | null;
   prepared: PreparedModel | null;
-  assetId: string | null;
-  objectId: string | null;
   files: readonly ModelSource[];
   entry: string | undefined;
   entries: readonly string[];
@@ -45,13 +42,21 @@ export interface ModelImportSnapshot {
   missing: readonly string[];
 }
 
-/** Own a local import for the lifetime of one open collaborative document. */
+const IDLE: ModelImportSnapshot = { phase: 'idle', name: '', error: null, prepared: null,
+  files: [], entry: undefined, entries: [], paths: [], missing: [] };
+
+/**
+ * Own the import dialog's input for the lifetime of one open collaborative document.
+ *
+ * It checks the picked files and, on confirmation, starts their upload; once
+ * the upload has a task row it returns to idle, because the upload itself is
+ * held by the page (scene-uploads) and shown on the Space's task list.
+ */
 export class ModelImportController {
-  private snapshot: ModelImportSnapshot = { phase: 'idle', name: '', progress: 0, error: null, prepared: null, assetId: null,
-    objectId: null, files: [], entry: undefined, entries: [], paths: [], missing: [] };
+  private snapshot: ModelImportSnapshot = IDLE;
   private readonly listeners = new Set<() => void>();
   private operation = new AbortController();
-  private inFlight: Promise<void> | null = null;
+  private inFlight: Promise<string | null> | null = null;
   /** Counts selection requests so a slow read is dropped once a newer selection was made. */
   private requests = 0;
   /** Whether the shown name was typed; otherwise it follows the main file. */
@@ -123,13 +128,13 @@ export class ModelImportController {
    */
   private async inspect(files: readonly ModelSource[], entry: string | undefined, same: boolean): Promise<void> {
     this.requests += 1;
-    if (['disposed', 'uploading', 'registering'].includes(this.snapshot.phase)) return;
+    if (['disposed', 'starting'].includes(this.snapshot.phase)) return;
     this.operation.abort();
     this.snapshot.prepared?.dispose();
     const operation = new AbortController();
     this.operation = operation;
     if (!same) this.named = false;
-    this.publish({ phase: 'checking', prepared: null, assetId: null, objectId: null, error: null, progress: 0,
+    this.publish({ phase: 'checking', prepared: null, error: null,
       files, entry, entries: same ? this.snapshot.entries : [], paths: [], missing: [], name: same ? this.snapshot.name : '' });
     try {
       const prepared = await this.inputs.prepare(files, entry, operation.signal);
@@ -162,7 +167,7 @@ export class ModelImportController {
    * @throws {never} Never.
    */
   setName(name: string): void {
-    if (this.snapshot.phase === 'disposed') return;
+    if (this.snapshot.phase === 'disposed' || this.snapshot.phase === 'starting') return;
     this.named = name.trim() !== '';
     this.publish({ name });
   }
@@ -183,61 +188,54 @@ export class ModelImportController {
    * @throws {never} Never directly.
    */
   reset(): void {
-    if (['disposed', 'uploading', 'registering'].includes(this.snapshot.phase)) return;
+    if (['disposed', 'starting'].includes(this.snapshot.phase)) return;
+    this.clear();
+  }
+
+  /**
+   * Return to an empty dialog, releasing the preview.
+   * @throws {never} Never directly.
+   */
+  private clear(): void {
     this.operation.abort();
     this.snapshot.prepared?.dispose();
     this.operation = new AbortController();
     this.named = false;
-    this.publish({ phase: 'idle', prepared: null, files: [], entry: undefined, entries: [], paths: [], missing: [],
-      name: '', assetId: null, objectId: null, progress: 0, error: null });
+    this.publish(IDLE);
   }
 
   /**
-   * Begin confirmation only after a local model is ready.
-   * @returns Completion of the current confirmation.
-   * @throws {never} Failures are retained in the snapshot.
+   * Start the checked model's upload under the shown name.
+   * @returns The new task row once the upload has one, or null when it did not start.
+   * @throws {never} A refusal is retained in the snapshot.
    */
-  async confirm(): Promise<void> {
+  async confirm(): Promise<string | null> {
     if (this.inFlight) return this.inFlight;
-    if (!this.snapshot.prepared || !['ready', 'failed'].includes(this.snapshot.phase)) return;
-    const pending = this.place(this.snapshot.prepared, this.operation.signal);
+    const { prepared, phase, name } = this.snapshot;
+    if (!prepared || !['ready', 'failed'].includes(phase)) return null;
+    const pending = this.begin(prepared, name, this.operation.signal);
     this.inFlight = pending;
-    try { await pending; } finally { if (this.inFlight === pending) this.inFlight = null; }
+    try { return await pending; } finally { if (this.inFlight === pending) this.inFlight = null; }
   }
 
   /**
-   * Register original bytes before creating exactly one collaborative object.
+   * Hand the file to the page's upload and wait for its task row.
    * @param prepared - Checked input owned by this operation.
+   * @param name - The model's name.
    * @param signal - Cancelled when this operation loses its document owner.
-   * @returns Completion of registration and the attempted scene command.
-   * @throws {never} Failures are retained for retry without losing registered content.
+   * @returns The new task row, or null when the upload did not start.
+   * @throws {never} A refusal is retained in the snapshot.
    */
-  private async place(prepared: PreparedModel, signal: AbortSignal): Promise<void> {
-    try {
-      let assetId = this.snapshot.assetId;
-      if (!assetId) {
-        this.publish({ phase: 'uploading', progress: 0, error: null });
-        const result = await this.inputs.upload(prepared.file, signal, (progress) => {
-          if (!signal.aborted) this.publish({ progress });
-        }, () => {
-          if (!signal.aborted) this.publish({ phase: 'registering' });
-        });
-        if (signal.aborted) return;
-        assetId = result.assetId;
-        this.publish({ assetId, progress: 1 });
-      }
-      if (signal.aborted) return;
-      if (!this.inputs.session.getSnapshot().canEdit) { this.publish({ phase: 'ready' }); return; }
-      const id = crypto.randomUUID();
-      const result = this.inputs.session.execute({ type: 'create', objects: [{
-        id, name: this.snapshot.name, model: { kind: 'asset', assetId }, position: this.inputs.position(prepared.bounds),
-        rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false,
-      }] });
-      if (!result.ok) throw new ModelImportError('invalid', `Model placement refused: ${result.reason}`, { detail: '' });
-      this.publish({ phase: 'placed', objectId: id, error: null });
-    } catch (error) {
-      if (!signal.aborted) this.publish({ phase: 'failed', error: error instanceof Error ? error : new Error(String(error)) });
+  private async begin(prepared: PreparedModel, name: string, signal: AbortSignal): Promise<string | null> {
+    this.publish({ phase: 'starting', error: null });
+    const answer = await this.inputs.start(prepared.file, name.trim());
+    if (signal.aborted) return answer.kind === 'opened' ? answer.taskId : null;
+    if (answer.kind === 'opened') {
+      this.clear();
+      return answer.taskId;
     }
+    this.publish({ phase: 'failed', error: answer.kind === 'refused' ? new UploadFailedError(answer.reason) : new Error('Upload did not start') });
+    return null;
   }
 
   /**

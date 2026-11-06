@@ -12,10 +12,10 @@ import { SceneCreationMenu } from '@web/spaces/three-d/SceneCreationMenu';
  * Render the 3D left rail.
  * @returns The render result.
  */
-function renderMenu(importing = false): ReturnType<typeof render> {
+function renderMenu(canEdit = true, onImport = vi.fn()): ReturnType<typeof render> {
   return render(
     <TooltipProvider>
-      <SceneCreationMenu canEdit importing={importing} onAdd={vi.fn()} onImport={vi.fn()} />
+      <SceneCreationMenu canEdit={canEdit} onAdd={vi.fn()} onImport={onImport} />
     </TooltipProvider>,
   );
 }
@@ -38,10 +38,27 @@ describe('SceneCreationMenu controls entry', () => {
     expect(dialog).toHaveTextContent('Drag empty space to orbit');
   });
 
-  it.each([[false, 'Import model'], [true, 'View import progress']])('names the import item for a running import (%s) after what it opens', async (importing, label) => {
+  it('puts Import model second on the rail, between Add and AI generation, and opens the import from it', async () => {
     const user = userEvent.setup();
-    renderMenu(importing);
+    const onImport = vi.fn();
+    renderMenu(true, onImport);
+    const rail = screen.getByTestId('scene-left-menu');
+    const names = within(rail).getAllByRole('button').map((button) => button.getAttribute('aria-label') ?? button.textContent);
+    expect(names.slice(0, 3)).toEqual(['Add', 'Import model', 'AI generation']);
+    await user.click(within(rail).getByRole('button', { name: 'Import model' }));
+    expect(onImport).toHaveBeenCalledTimes(1);
+  });
+
+  it('makes Import model unavailable while the Space is read-only', () => {
+    renderMenu(false);
+    expect(within(screen.getByTestId('scene-left-menu')).getByRole('button', { name: 'Import model' })).toBeDisabled();
+  });
+
+  it('keeps only the built-in objects in the Add menu', async () => {
+    const user = userEvent.setup();
+    renderMenu();
     await user.click(screen.getByRole('button', { name: 'Add' }));
-    expect(await screen.findByRole('menuitem', { name: label })).toBeInTheDocument();
+    const items = await screen.findAllByRole('menuitem');
+    expect(items.map((item) => item.textContent)).toEqual(['Add block', 'Add figure']);
   });
 });

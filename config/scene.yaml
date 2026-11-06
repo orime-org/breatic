@@ -20,3 +20,5 @@ import:
   max_texture_edge: 8192
   # Cumulative texture upload bytes for any browser that can open the model, counted from the declarations.
   max_texture_bytes: 268435456
+  # Shortest gap between two upload-progress updates an uploader shares with the Space's other members.
+  progress_publish_ms: 1000

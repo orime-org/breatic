@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { Bone, BoxGeometry, BufferGeometry, Group, InstancedMesh, LineBasicMaterial, LineSegments, Mesh, MeshStandardMaterial, Points, Skeleton, SkinnedMesh, Texture } from 'three';
-import { ModelResourceCache } from '@web/spaces/three-d/viewport/model-resources';
+import { ModelResourceCache, acquireMeasured } from '@web/spaces/three-d/viewport/model-resources';
 
 /** Make a real Three model whose ownership can be inspected.
  * @throws {never} Never.
@@ -142,6 +142,43 @@ describe('scene model resource ownership (inner#1689)', () => {
     expect(load).toHaveBeenCalledTimes(2);
     cache.dispose();
     retried.release();
+  });
+
+
+  it('measures a placement from the shared template, and the viewport reuses it without loading again', async () => {
+    const root = model();
+    root.children[0]!.position.set(2, 0.5, -1);
+    const geometryDispose = vi.spyOn(mesh(root).geometry, 'dispose');
+    const load = vi.fn().mockResolvedValue(root);
+    const cache = new ModelResourceCache(load);
+    const placing = acquireMeasured(cache, { kind: 'asset', assetId: 'model' });
+    await expect(placing.bounds).resolves.toEqual({ center: [2, 0.5, -1], min: [1.5, 0, -1.5] });
+    const viewport = cache.acquire({ kind: 'asset', assetId: 'model' });
+    placing.release();
+    await viewport.ready;
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(geometryDispose).not.toHaveBeenCalled();
+    viewport.release();
+    expect(geometryDispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases a placement still held when the viewport goes away', async () => {
+    const root = model();
+    const geometryDispose = vi.spyOn(mesh(root).geometry, 'dispose');
+    const cache = new ModelResourceCache(vi.fn().mockResolvedValue(root));
+    const placing = acquireMeasured(cache, { kind: 'asset', assetId: 'model' });
+    await placing.bounds;
+    cache.dispose();
+    expect(geometryDispose).toHaveBeenCalledTimes(1);
+    placing.release();
+    expect(geometryDispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects the placement of a model that cannot load', async () => {
+    const cache = new ModelResourceCache(vi.fn().mockRejectedValue(new Error('unreachable')));
+    const placing = acquireMeasured(cache, { kind: 'asset', assetId: 'model' });
+    await expect(placing.bounds).rejects.toThrow('unreachable');
+    placing.release();
   });
 
 });

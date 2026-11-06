@@ -183,14 +183,20 @@ export interface MediaUploadDeps {
   waitForEnding?: (storageKey: string, signal?: AbortSignal) => Promise<UploadEnding>;
   /** The accepted finish is now awaiting authoritative registration. */
   onRegistering?: () => void;
+  /**
+   * An upload with a task row registered: its row now holds the result. Told
+   * only for such uploads, whose content reaches its place through the server.
+   */
+  onRegistered?: () => void;
   /** Told the share of the file that has landed, from 0 to 1, after each part. */
   onProgress?: (fraction: number) => void;
   /**
    * The server answered: an opened upload or one it could not open, either of
    * which opened the upload's task row, or a copy the studio already holds.
-   * Told once, before any bytes move.
+   * Told once, before any bytes move, with the row the answer names (a 3D
+   * model's dedup hit names one too).
    */
-  onAnswered?: () => void;
+  onAnswered?: (taskId?: string) => void;
   /**
    * The bytes are delivered and the server has them.
    *
@@ -283,7 +289,7 @@ export async function runMediaUpload(
 }
 
 /** Where one file's outcome goes. */
-type UploadSinks = Pick<MediaUploadDeps, 'onProgress' | 'onAnswered' | 'onRegistering' | 'onSuccess' | 'onFailure'>;
+type UploadSinks = Pick<MediaUploadDeps, 'onProgress' | 'onAnswered' | 'onRegistering' | 'onRegistered' | 'onSuccess' | 'onFailure'>;
 
 /** What the delivery half calls out to. */
 type DeliveryDeps = Pick<MediaUploadDeps, 'sendToIngest' | 'waitForEnding'>;
@@ -309,7 +315,7 @@ async function deliverTicket(
   signal?: AbortSignal,
 ): Promise<void> {
   signal?.throwIfAborted();
-  sinks.onAnswered?.();
+  sinks.onAnswered?.(answer.taskId);
   signal?.throwIfAborted();
   if (isAlreadyStored(answer)) {
     // Nothing moves. When a node is behind this upload, the server has already
@@ -357,6 +363,7 @@ async function deliverTicket(
   if (taskId !== undefined) {
     void ending.then((end) => {
       if (end.state !== 'completed') sinks.onFailure({ reason: failureOfEnding(end), taskId });
+      else sinks.onRegistered?.();
     });
     return;
   }

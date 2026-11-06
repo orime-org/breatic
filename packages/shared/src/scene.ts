@@ -63,6 +63,8 @@ export interface SceneImportLimits {
 export interface SceneControlsConfig {
   scaleSensitivity: number;
   import: SceneImportLimits;
+  /** Shortest gap between two upload-progress updates shared with the Space's members. */
+  progressPublishMs: number;
 }
 
 /**

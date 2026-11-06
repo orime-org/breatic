@@ -79,6 +79,7 @@ export const assetsApi = {
    * @param params.derived - True for a byproduct, which is registered without
    *   an activity-feed row of its own.
    * @param params.purpose - Upload use context; models retain the ordinary upload source.
+   * @param params.label - The name a 3D model is imported under.
    * @param signal - Cancellation belonging to this authorization request.
    * @returns The opened upload, the existing asset to reuse, or the open
    *   that failed.
@@ -98,6 +99,7 @@ export const assetsApi = {
       ...(params.toolName !== undefined && { tool_name: params.toolName }),
       ...(params.derived !== undefined && { derived: params.derived }),
       ...(params.purpose !== undefined && { purpose: params.purpose }),
+      ...(params.label !== undefined && { label: params.label }),
     }, { ...NO_CLIENT_TIMEOUT, ...(signal !== undefined && { signal }) });
   },
 

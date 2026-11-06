@@ -2004,7 +2004,7 @@
       "generate": "AI generation",
       "annotationsLater": "Annotations (coming later)",
       "controls": "Controls",
-      "tasks": "Generation tasks",
+      "tasks": "Tasks",
       "minimap": "Scene minimap",
       "generationDev": "3D model generation is in development",
       "prompt": "Describe the 3D model you want to generate",
@@ -2015,7 +2015,6 @@
       "closePanel": "Close",
       "importModel": {
         "title": "Import model",
-        "viewProgress": "View import progress",
         "description": "Choose GLB, glTF or ZIP; include the model’s accompanying files.",
         "chooseFiles": "Choose files",
         "chooseFolder": "Choose folder",
@@ -2024,7 +2023,6 @@
         "resourceHint": "Choose a GLB directly. For glTF, include its textures and bin files, or choose a complete ZIP.",
         "readOnly": "Currently read-only",
         "readOnlyHint": "You can import a model once you have editing access.",
-        "registeredReadOnly": "The model is uploaded. You can place it once editing access returns.",
         "checking": "Checking model…",
         "preview": "Model preview",
         "previewFailed": "The model preview could not be displayed.",
@@ -2035,9 +2033,6 @@
         "meshCount": "{count, plural, one {# mesh} other {# meshes}}",
         "skinned": "Includes skeletons",
         "checkingResources": "Checking format and accompanying files",
-        "uploading": "Uploading {progress}%",
-        "registering": "Registering model…",
-        "placingHint": "The model will be placed in this 3D scene.",
         "ready": "Model and accompanying files are ready",
         "addResources": "Add accompanying files",
         "optionalExtensions": "Optional extensions may display differently:",
@@ -2045,7 +2040,7 @@
         "hideFiles": "Hide file list",
         "hide": "Hide",
         "retry": "Retry",
-        "confirm": "Import to scene",
+        "confirm": "Import",
         "errorMissing": "Add the missing accompanying files.",
         "errorEntry": "Choose a main file to preview.",
         "errorUnsupported": "Unsupported model format or required extension.",
@@ -2055,7 +2050,6 @@
         "errorDuplicate": "Some files have the same path. Choose a collection without conflicts.",
         "errorUpload": "The model could not be uploaded. Try again.",
         "errorLoad": "The model could not be loaded. Try again.",
-        "success": "Model imported.",
         "limit": {
           "input": "Selected files total {actual} MiB; the limit is {allowed} MiB.",
           "files": "{actual} files; the limit is {allowed}.",
@@ -2065,6 +2059,25 @@
           "textureEdge": "Texture edge {actual} px; the limit is {allowed} px.",
           "textureBytes": "Texture memory {actual} MiB; the limit is {allowed} MiB."
         }
+      },
+      "taskList": {
+        "kind": "Import",
+        "you": "You",
+        "uploading": "Uploading {percent}%",
+        "running": "Uploading",
+        "runningFor": "Uploading · {minutes} min",
+        "registering": "Registering",
+        "done": "Done",
+        "failed": "Failed",
+        "expired": "Timed out",
+        "failedReason": "The model failed to upload.",
+        "place": "Place in scene",
+        "retry": "Retry",
+        "remove": "Remove",
+        "empty": "No tasks",
+        "loadFailed": "Couldn’t load tasks.",
+        "removeFailed": "Couldn’t remove the task. Try again.",
+        "placeFailed": "The model couldn’t be placed in the scene."
       }
     }
   },
@@ -2598,7 +2611,8 @@
       "spaceLocked": "{actor} locked space {spaceName}",
       "spaceUnlocked": "{actor} unlocked space {spaceName}",
       "spaceRestored": "{actor} restored space {spaceName}",
-      "spaceRenamed": "{actor} renamed space {oldSpaceName} to {spaceName}"
+      "spaceRenamed": "{actor} renamed space {oldSpaceName} to {spaceName}",
+      "assetUploadedModel": "{actor} uploaded the model {name}"
     },
     "header": "Project activity",
     "label": "Project activity",

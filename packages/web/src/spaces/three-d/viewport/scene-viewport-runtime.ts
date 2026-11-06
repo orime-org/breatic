@@ -8,7 +8,7 @@ import type { Object3D } from 'three';
 import type { SceneObject } from '@breatic/shared';
 import { SceneMiniMapRuntime } from '@web/spaces/three-d/viewport/scene-mini-map';
 import { applySceneGridTheme } from '@web/spaces/three-d/viewport/scene-grid-theme';
-import { ModelResourceCache, loadSceneModel } from '@web/spaces/three-d/viewport/model-resources';
+import { ModelResourceCache, acquireMeasured, loadSceneModel, type MeasuredSceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
 import type { SceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
 import { createTransformGesture, transformPatches } from '@web/spaces/three-d/viewport/scene-transform';
 import type { SceneTransformGesture } from '@web/spaces/three-d/viewport/scene-transform';
@@ -86,6 +86,14 @@ export class SceneViewportRuntime {
   private readonly pivot = new Group();
   private readonly grid = new GridHelper(200, 200);
   private readonly resources: ModelResourceCache;
+  /**
+   * Hold one model through this view's cache, measured for placing it; the
+   * view's own hold on the placed object then reuses the same template.
+   * @param source - The model to place.
+   * @returns The bounds and this holder's release.
+   * @throws {Error} The bounds reject when the model cannot load.
+   */
+  readonly acquireModel = (source: SceneObject['model']): MeasuredSceneModelLease => acquireMeasured(this.resources, source);
   private readonly items = new Map<string, RenderedObject>();
   private overview: SceneMiniMapRuntime | null = null;
   private overviewHost: HTMLDivElement | null = null;

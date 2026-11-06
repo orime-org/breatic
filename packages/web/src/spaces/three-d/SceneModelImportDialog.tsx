@@ -26,6 +26,8 @@ interface SceneModelImportDialogProps {
   controller: ModelImportController;
   canEdit: boolean;
   maxInputBytes: number;
+  /** Told the new task row once the upload has one. */
+  onStarted?: (taskId: string) => void;
 }
 
 const NAME_MAX_LENGTH = SceneObjectValuesSchema.shape.name.maxLength ?? undefined;
@@ -49,10 +51,11 @@ function allowDrop(event: React.DragEvent<HTMLDivElement>): void {
  * @param props.controller - Import owner retained while the Space is open.
  * @param props.canEdit - Current scene write permission.
  * @param props.maxInputBytes - Configured input-byte budget shown before selection.
+ * @param props.onStarted - Told the new task row once the upload has one.
  * @returns The approved file, preview and model-information dialog.
  * @throws {never} Import failures remain visible in the controller snapshot.
  */
-export const SceneModelImportDialog = React.memo(function SceneModelImportDialog({ open, onOpenChange, controller, canEdit, maxInputBytes }: SceneModelImportDialogProps): React.JSX.Element {
+export const SceneModelImportDialog = React.memo(function SceneModelImportDialog({ open, onOpenChange, controller, canEdit, maxInputBytes, onStarted }: SceneModelImportDialogProps): React.JSX.Element {
   const snapshot = React.useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const t = useTranslation();
   const id = React.useId();
@@ -61,12 +64,12 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
   const appendFiles = React.useRef(false);
   const [details, setDetails] = React.useState(false);
   const returnFocus = useReturnFocus(open);
-  const busy = snapshot.phase === 'uploading' || snapshot.phase === 'registering';
+  // Starting holds the dialog: the file is being fingerprinted and its upload asked for.
+  const busy = snapshot.phase === 'starting';
   const checking = snapshot.phase === 'checking';
   const prepared = snapshot.prepared;
-  const progress = Math.round(snapshot.progress * 100);
   const failedUpload = snapshot.phase === 'failed' && prepared !== null;
-  const hasInput = snapshot.phase !== 'idle' && snapshot.phase !== 'placed';
+  const hasInput = snapshot.phase !== 'idle';
   const error = snapshot.error;
   const uploadFailure = failedUpload && !(error instanceof ModelImportError) ? modelUploadFailure(error, prepared.file.name) : null;
   const errorText = error instanceof ModelImportError ? t(importErrorKey(error.code))
@@ -78,7 +81,7 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
   const [started, setStarted] = React.useState<{ snapshot: typeof snapshot; control: 'retry' | 'supplement' } | null>(null);
   const checkRetrying = checking && started?.snapshot === snapshot && started.control === 'retry';
   const supplementing = checking && started?.snapshot === snapshot && started.control === 'supplement';
-  const confirmDisabled = !prepared || !['ready', 'failed', 'uploading', 'registering'].includes(snapshot.phase) || (failedUpload && !retryable) || !canEdit || !snapshot.name.trim();
+  const confirmDisabled = !prepared || !['ready', 'failed', 'starting'].includes(snapshot.phase) || (failedUpload && !retryable) || !canEdit || !snapshot.name.trim();
   const primaryUnavailable = !retryCheck && !checkRetrying && !busy && confirmDisabled;
   const primaryButton = React.useRef<HTMLButtonElement>(null);
   const chooseFilesButton = React.useRef<HTMLButtonElement>(null);
@@ -165,10 +168,16 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
     controller.setName(event.currentTarget.value);
   }, [controller]);
   /**
-   * Confirm through the operation's common upload and scene-command boundary.
-   * @throws {never} Controller state retains any failed confirmation.
+   * Start the upload; once it has a task row the dialog closes and the row is handed up.
+   * @throws {never} Controller state retains any refusal.
    */
-  const confirm = React.useCallback((): void => { void controller.confirm(); }, [controller]);
+  const confirm = React.useCallback((): void => {
+    void controller.confirm().then((taskId) => {
+      if (taskId === null) return;
+      onOpenChange(false);
+      onStarted?.(taskId);
+    });
+  }, [controller, onOpenChange, onStarted]);
   /**
    * Check the retained collection and main file again.
    * @throws {never} Never directly.
@@ -178,10 +187,19 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
     setStarted({ snapshot: controller.getSnapshot(), control: 'retry' });
   }, [controller, snapshot.files, snapshot.entry]);
   /**
-   * Hide this view while the document retains any active import.
+   * Hide this view while the document retains its checked input.
    * @throws {never} Never directly.
    */
   const hide = React.useCallback((): void => onOpenChange(false), [onOpenChange]);
+  /**
+   * Close on every request except while the upload is starting, so its answer has a dialog to show in.
+   * @param next - The requested open state.
+   * @throws {never} Never directly.
+   */
+  const changeOpen = React.useCallback((next: boolean): void => {
+    if (!next && controller.getSnapshot().phase === 'starting') return;
+    onOpenChange(next);
+  }, [controller, onOpenChange]);
   /**
    * Show or hide the selected collection's file list.
    * @throws {never} Never.
@@ -189,7 +207,7 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
   const toggleDetails = React.useCallback((): void => setDetails((value) => !value), []);
   const detailsIcon = React.useMemo(() => <ChevronRight className={details ? 'mr-1 size-3 rotate-90' : 'mr-1 size-3'} />, [details]);
 
-  return <Dialog open={open} onOpenChange={onOpenChange}>
+  return <Dialog open={open} onOpenChange={changeOpen}>
     <DialogContent ref={content} className='max-w-[760px]' onCloseAutoFocus={returnFocus} data-testid='model-import-dialog'>
       <DialogHeader><DialogTitle>{t('spaces.threeD.importModel.title')}</DialogTitle><DialogDescription>{t('spaces.threeD.importModel.description')}</DialogDescription></DialogHeader>
       <ScrollArea viewportClassName='max-h-[calc(100dvh-200px)] p-4'>
@@ -222,11 +240,10 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
                 {snapshot.paths.length > 0 && <p>{t('spaces.threeD.importModel.fileCount', { count: snapshot.paths.length })}{prepared?.meshCount !== undefined && <> · {t('spaces.threeD.importModel.meshCount', { count: prepared.meshCount })}</>}{prepared?.skinned && <> · {t('spaces.threeD.importModel.skinned')}</>}</p>}
               </div>
               {checking ? <p className='flex items-center gap-2 text-sm text-muted-foreground'><Loader2 className='size-4 shrink-0 animate-spin' />{t('spaces.threeD.importModel.checkingResources')}</p>
-                : busy ? <div className='space-y-3'><p className='flex items-center gap-2 text-sm'><Loader2 className='size-4 shrink-0 animate-spin' />{snapshot.phase === 'uploading' ? t('spaces.threeD.importModel.uploading', { progress }) : t('spaces.threeD.importModel.registering')}</p><div className='h-1 overflow-hidden rounded-full bg-muted'><div className='h-full rounded-full bg-foreground transition-all' style={{ width: `${progress}%` }} /></div><p className='text-xs text-muted-foreground'>{t('spaces.threeD.importModel.placingHint')}</p></div>
-                  : error instanceof ModelImportError && error.code === 'entry' ? <p className='text-sm text-muted-foreground'>{errorText}</p>
-                    : error ? <div className='space-y-2'><p className='flex items-start gap-2 text-sm text-status-error'><TriangleAlert className='mt-0.5 size-4 shrink-0' /><span>{errorText}</span></p>{error instanceof ModelImportError && error.budget && <p className='pl-6 text-xs text-muted-foreground'>{budgetText(t, error.budget)}</p>}{error instanceof ModelImportError && error.detail && <p className='break-all pl-6 text-xs text-muted-foreground'>{error.detail}</p>}{snapshot.missing.length > 0 && <ScrollArea viewportClassName='max-h-24'><div className='space-y-1 pl-6 text-xs text-muted-foreground'>{snapshot.missing.map((path) => <p className='break-all' key={path}>{path}</p>)}</div></ScrollArea>}</div>
-                      : <p className='flex items-center gap-2 text-sm'><Check className='size-4 shrink-0 text-status-success' />{t('spaces.threeD.importModel.ready')}</p>}
-              {!canEdit && <p className='text-sm text-muted-foreground'>{snapshot.assetId ? t('spaces.threeD.importModel.registeredReadOnly') : t('spaces.threeD.importModel.readOnlyHint')}</p>}
+                : error instanceof ModelImportError && error.code === 'entry' ? <p className='text-sm text-muted-foreground'>{errorText}</p>
+                  : error ? <div className='space-y-2'><p className='flex items-start gap-2 text-sm text-status-error'><TriangleAlert className='mt-0.5 size-4 shrink-0' /><span>{errorText}</span></p>{error instanceof ModelImportError && error.budget && <p className='pl-6 text-xs text-muted-foreground'>{budgetText(t, error.budget)}</p>}{error instanceof ModelImportError && error.detail && <p className='break-all pl-6 text-xs text-muted-foreground'>{error.detail}</p>}{snapshot.missing.length > 0 && <ScrollArea viewportClassName='max-h-24'><div className='space-y-1 pl-6 text-xs text-muted-foreground'>{snapshot.missing.map((path) => <p className='break-all' key={path}>{path}</p>)}</div></ScrollArea>}</div>
+                    : <p className='flex items-center gap-2 text-sm'><Check className='size-4 shrink-0 text-status-success' />{t('spaces.threeD.importModel.ready')}</p>}
+              {!canEdit && <p className='text-sm text-muted-foreground'>{t('spaces.threeD.importModel.readOnlyHint')}</p>}
               {(snapshot.missing.length > 0 || supplementing) && <Button ref={addResourcesButton} variant='outline' className='w-fit' loading={supplementing} onClick={supplement} disabled={busy || !canEdit}>{t('spaces.threeD.importModel.addResources')}</Button>}
               {prepared?.warnings?.length ? <div className='space-y-1 text-xs text-muted-foreground'><p>{t('spaces.threeD.importModel.optionalExtensions')}</p>{prepared.warnings.map((warning) => <p key={warning} className='break-all'>{warning}</p>)}</div> : null}
               {snapshot.paths.length > 0 && <Button variant='ghost' size='compact' className='w-fit text-xs text-muted-foreground' icon={detailsIcon} onClick={toggleDetails}>{details ? t('spaces.threeD.importModel.hideFiles') : t('spaces.threeD.importModel.showFiles')}</Button>}
@@ -235,7 +252,7 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
           </div>}
         </div>
       </ScrollArea>
-      <DialogFooter><Button variant='outline' onClick={hide}>{busy || checking ? t('spaces.threeD.importModel.hide') : t('common.cancel')}</Button>{retryCheck || checkRetrying ? <Button ref={primaryButton} loading={checkRetrying} onClick={checkAgain} disabled={!canEdit}>{t('spaces.threeD.importModel.retry')}</Button>
+      <DialogFooter><Button variant='outline' onClick={hide} disabled={busy}>{checking ? t('spaces.threeD.importModel.hide') : t('common.cancel')}</Button>{retryCheck || checkRetrying ? <Button ref={primaryButton} loading={checkRetrying} onClick={checkAgain} disabled={!canEdit}>{t('spaces.threeD.importModel.retry')}</Button>
         : <Button ref={primaryButton} loading={busy} onClick={confirm} disabled={confirmDisabled}>{retryable ? t('spaces.threeD.importModel.retry') : t('spaces.threeD.importModel.confirm')}</Button>}</DialogFooter>
     </DialogContent>
   </Dialog>;

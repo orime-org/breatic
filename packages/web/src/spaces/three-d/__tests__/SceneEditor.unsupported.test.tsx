@@ -17,7 +17,9 @@ import type * as ToastModule from '@web/lib/toast';
 
 const { reportError } = vi.hoisted(() => ({ reportError: vi.fn() }));
 
-vi.mock('@web/data/api/scene', () => ({
+vi.mock('@web/data/api/scene', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/scene')>()),
+  listSpaceTasks: vi.fn(async () => ({ serverNow: new Date().toISOString(), tasks: [] })),
   getSceneControls: vi.fn(async () => ({ scaleSensitivity: 1 })),
   resolveSceneAsset: vi.fn(async () => ({ url: 'https://example.invalid/model.glb', mimeType: 'model/gltf-binary' })),
 }));

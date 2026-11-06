@@ -10,13 +10,13 @@ import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-view
 
 const mocks = vi.hoisted(() => ({
   construct: vi.fn(),
-  instances: [] as { update: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn> }[],
+  instances: [] as { update: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn>; acquireModel: ReturnType<typeof vi.fn> }[],
 }));
 
 vi.mock('@web/spaces/three-d/viewport/scene-viewport-runtime', () => ({
   SceneViewportRuntime: vi.fn(function (host: HTMLDivElement, props: SceneViewportProps) {
     mocks.construct(host, props);
-    const instance = { update: vi.fn(), dispose: vi.fn() };
+    const instance = { update: vi.fn(), dispose: vi.fn(), acquireModel: vi.fn() };
     mocks.instances.push(instance);
     return instance;
   }),
@@ -96,4 +96,18 @@ describe('viewport effect ownership under React Activity (inner#1689)', () => {
     expect(initial.onError).toHaveBeenCalledWith(failure);
     expect(mocks.instances).toHaveLength(0);
   });
+
+  it('hands the viewport\'s own model holder up while it lives, and takes it back before releasing it', () => {
+    const onResources = vi.fn();
+    const { unmount } = render(<SceneViewport {...props()} onResources={onResources} />);
+    const instance = mocks.instances[0]!;
+    expect(onResources).toHaveBeenLastCalledWith(instance.acquireModel);
+    instance.dispose.mockImplementation(() => {
+      expect(onResources).toHaveBeenLastCalledWith(null);
+    });
+    unmount();
+    expect(instance.dispose).toHaveBeenCalledTimes(1);
+    expect(onResources).toHaveBeenLastCalledWith(null);
+  });
+
 });

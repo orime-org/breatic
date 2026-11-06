@@ -2004,7 +2004,7 @@
       "generate": "AI 生成",
       "annotationsLater": "注釈（後日提供）",
       "controls": "操作説明",
-      "tasks": "生成タスク",
+      "tasks": "タスク",
       "minimap": "シーンのミニマップ",
       "generationDev": "3D モデル生成は開発中です",
       "prompt": "生成する 3D モデルを説明してください",
@@ -2015,7 +2015,6 @@
       "closePanel": "閉じる",
       "importModel": {
         "title": "モデルをインポート",
-        "viewProgress": "インポートの進行状況を表示",
         "description": "GLB、glTF または ZIP を選択し、モデルの関連ファイルも含めてください。",
         "chooseFiles": "ファイルを選択",
         "chooseFolder": "フォルダーを選択",
@@ -2024,7 +2023,6 @@
         "resourceHint": "GLB はそのまま選択できます。glTF はテクスチャと bin ファイルを含めるか、完全な ZIP を選択してください。",
         "readOnly": "現在は読み取り専用です",
         "readOnlyHint": "編集権限を取得するとモデルをインポートできます。",
-        "registeredReadOnly": "モデルはアップロード済みです。編集権限が戻るとシーンに配置できます。",
         "checking": "モデルを確認中…",
         "preview": "モデルプレビュー",
         "previewFailed": "モデルプレビューを表示できませんでした。",
@@ -2035,9 +2033,6 @@
         "meshCount": "{count} メッシュ",
         "skinned": "スケルトンを含む",
         "checkingResources": "形式と関連ファイルを確認中",
-        "uploading": "アップロード中 {progress}%",
-        "registering": "モデルを登録中…",
-        "placingHint": "完了すると現在の 3D シーンに配置されます。",
         "ready": "モデルと関連ファイルの準備ができました",
         "addResources": "関連ファイルを追加",
         "optionalExtensions": "次のオプション拡張は表示が異なる場合があります：",
@@ -2045,7 +2040,7 @@
         "hideFiles": "ファイル一覧を閉じる",
         "hide": "閉じる",
         "retry": "再試行",
-        "confirm": "シーンにインポート",
+        "confirm": "インポート",
         "errorMissing": "不足している関連ファイルを追加してください。",
         "errorEntry": "プレビューするメインファイルを選択してください。",
         "errorUnsupported": "このモデル形式または必須拡張には対応していません。",
@@ -2055,7 +2050,6 @@
         "errorDuplicate": "同じパスのファイルがあります。競合のないファイル一式を選択してください。",
         "errorUpload": "モデルをアップロードできませんでした。再試行してください。",
         "errorLoad": "モデルを読み込めませんでした。再試行してください。",
-        "success": "モデルをインポートしました。",
         "limit": {
           "input": "選択したファイルは合計 {actual} MiB です（上限 {allowed} MiB）。",
           "files": "ファイル数は {actual} 個です（上限 {allowed} 個）。",
@@ -2065,6 +2059,25 @@
           "textureEdge": "テクスチャの辺の長さは {actual} px です（上限 {allowed} px）。",
           "textureBytes": "テクスチャのメモリは {actual} MiB です（上限 {allowed} MiB）。"
         }
+      },
+      "taskList": {
+        "kind": "インポート",
+        "you": "あなた",
+        "uploading": "アップロード中 {percent}%",
+        "running": "アップロード中",
+        "runningFor": "アップロード中 · {minutes} 分経過",
+        "registering": "登録中",
+        "done": "完了",
+        "failed": "失敗",
+        "expired": "タイムアウト",
+        "failedReason": "モデルをアップロードできませんでした。",
+        "place": "シーンに配置",
+        "retry": "再試行",
+        "remove": "削除",
+        "empty": "タスクはありません",
+        "loadFailed": "タスクを読み込めませんでした。",
+        "removeFailed": "タスクを削除できませんでした。もう一度お試しください。",
+        "placeFailed": "モデルをシーンに配置できませんでした。"
       }
     }
   },
@@ -2598,7 +2611,8 @@
       "spaceLocked": "{actor} が Space {spaceName} をロックしました",
       "spaceUnlocked": "{actor} が Space {spaceName} のロックを解除しました",
       "spaceRestored": "{actor} が Space {spaceName} を復元しました",
-      "spaceRenamed": "{actor} が Space {oldSpaceName} の名前を {spaceName} に変更しました"
+      "spaceRenamed": "{actor} が Space {oldSpaceName} の名前を {spaceName} に変更しました",
+      "assetUploadedModel": "{actor} がモデル「{name}」をアップロードしました"
     },
     "header": "Project アクティビティ",
     "label": "Project アクティビティ",

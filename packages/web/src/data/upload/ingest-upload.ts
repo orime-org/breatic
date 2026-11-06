@@ -70,6 +70,8 @@ export type UploadContext = UploadTargetParams & {
   toolName?: string;
   /** True for a byproduct, registered without an activity-feed row of its own. */
   derived?: true;
+  /** The name a 3D model is imported under; required with `scene_model`. */
+  label?: string;
 };
 
 /**
@@ -103,6 +105,8 @@ export interface UploadAlreadyStored {
   /** Its pixel size, read off it when it was stored; null when there is none. */
   width: number | null;
   height: number | null;
+  /** A 3D model's task row, opened already holding the model (inner#1690). */
+  taskId?: string;
 }
 
 /**

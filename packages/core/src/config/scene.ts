@@ -20,6 +20,7 @@ export const sceneConfigSchema = z.object({
     decoder_worker_limit: z.number().int().positive().default(1),
     max_texture_edge: z.number().int().positive().default(8192),
     max_texture_bytes: z.number().int().positive().default(268435456),
+    progress_publish_ms: z.number().int().positive().default(1000),
   }).prefault({}),
 });
 

@@ -1,13 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { Group, InstancedMesh, SkinnedMesh, Texture } from 'three';
+import { Box3, Group, InstancedMesh, SkinnedMesh, Texture, Vector3 } from 'three';
 import type { BufferGeometry, Material, Skeleton, WebGLRenderer } from 'three';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { httpRequest, isSceneModelMediaType } from '@breatic/shared';
 import type { SceneImportLimits, SceneObject } from '@breatic/shared';
 import { createBuiltinModel } from '@web/spaces/three-d/viewport/builtin-models';
 import type { ResolvedSceneAsset } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import type { ModelBounds } from '@web/spaces/three-d/model-import-controller';
 import { inspectModelFiles } from '@web/spaces/three-d/model-package';
 import { readRegisteredModelPackageInWorker } from '@web/spaces/three-d/model-import-worker-client';
 import type { ModelPackage } from '@web/spaces/three-d/model-package';
@@ -201,6 +202,31 @@ export class ModelResourceCache {
   dispose(): void {
     for (const release of [...this.holders]) release();
   }
+}
+
+/** A placement's hold on one model, answering where its geometry sits. */
+export interface MeasuredSceneModelLease {
+  bounds: Promise<ModelBounds>;
+  release: () => void;
+}
+
+/**
+ * Hold a model for placing it: measure the shared template's bounds so the object
+ * can be put on the ground, and keep the template until the viewport holds it too.
+ * @param cache - The viewport's own cache, so the viewport reuses what this loads.
+ * @param source - The model to place.
+ * @returns The bounds and this holder's release.
+ * @throws {Error} The bounds reject when the model cannot load.
+ */
+export function acquireMeasured(cache: ModelResourceCache, source: SceneModelSource): MeasuredSceneModelLease {
+  const lease = cache.acquire(source);
+  return {
+    bounds: lease.ready.then((instance) => {
+      const box = new Box3().setFromObject(instance);
+      return { center: box.getCenter(new Vector3()).toArray(), min: box.min.toArray() };
+    }),
+    release: lease.release,
+  };
 }
 
 /**
