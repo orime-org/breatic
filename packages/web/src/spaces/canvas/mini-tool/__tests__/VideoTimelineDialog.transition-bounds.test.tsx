@@ -1,0 +1,130 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+/**
+ * inner#1306 test plan §97 (canvas design §4 转场行; §10 editor row; demo 2026-10-23-1306-video-tools `timeline-editor.tsx`):
+ * a non-Cut transition lasts between the bounds shared `transitionDurationBounds(clips, fps)` answers. When it answers null
+ * only Cut is usable: Crossfade, Wipe left and Wipe right stay listed with `aria-disabled` and a click explains with a toast
+ * (demo copy `transitionTooShort`). The duration input clamps what is typed into `[min, max]`. The shared function is mocked
+ * so the bounds, not the fps source, decide each case.
+ */
+
+import * as React from 'react';
+import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { VideoToolDraftById, VideoToolTimelineClip } from '@breatic/shared/mini-tools';
+
+vi.mock('@web/lib/toast', () => ({
+  toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() },
+}));
+vi.mock('@breatic/shared/mini-tools', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  transitionDurationBounds: vi.fn(),
+}));
+// The track editor and the GL preview are not under test; jsdom cannot draw either.
+vi.mock('@xzdarcy/react-timeline-editor', async () => ({ Timeline: (await import('react')).forwardRef(() => null) }));
+vi.mock('@web/spaces/canvas/mini-tool/video/VideoTimelinePreview', () => ({ VideoTimelinePreview: () => null }));
+
+import * as miniTools from '@breatic/shared/mini-tools';
+import { toast } from '@web/lib/toast';
+import { VideoTimelineDialog } from '../video/VideoTimelineDialog';
+
+type Bounds = { min: number; max: number } | null;
+const bounds = vi.mocked((miniTools as unknown as { transitionDurationBounds: (clips: readonly VideoToolTimelineClip[], fps: { numerator: string; denominator: string }) => Bounds }).transitionDurationBounds);
+
+const source = { nodeId: '10000000-0000-4000-8000-000000000001', canonicalURL: 'https://media.example.test/a.mp4', mediaInfo: { width: 960, height: 540, duration: 6, mimeType: 'video/mp4' } };
+const inputA = { inputId: '60000000-0000-4000-8000-000000000001', url: source.canonicalURL, mediaInfo: source.mediaInfo, sourceNodeId: source.nodeId };
+const inputB = { inputId: '60000000-0000-4000-8000-000000000002', url: 'https://media.example.test/b.mp4', mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' } };
+
+/**
+ * A two-clip draft of 4 s then 3 s, long enough that only the mocked bounds can refuse a transition.
+ * @param kind - The transition after the first clip.
+ * @param duration - Its length in seconds.
+ * @returns The draft.
+ */
+function draftWith(kind: VideoToolTimelineClip['transition']['kind'], duration: number): VideoToolDraftById['video.transitions'] {
+  return {
+    version: 1, draftId: '20000000-0000-4000-8000-000000000001', revision: '30000000-0000-4000-8000-000000000001', source, inputs: [inputA, inputB],
+    params: { clips: [
+      { clipId: '50000000-0000-4000-8000-000000000001', inputId: inputA.inputId, in: 1, out: 5, transition: { kind, duration } },
+      { clipId: '50000000-0000-4000-8000-000000000002', inputId: inputB.inputId, in: 0, out: 3, transition: { kind: 'cut', duration: 0 } },
+    ] },
+  };
+}
+
+/**
+ * Mounts the open Dialog on a draft.
+ * @param draft - The draft shown.
+ * @param onChange - Receives every committed edit.
+ * @returns Nothing.
+ */
+function open(draft: VideoToolDraftById['video.transitions'], onChange: (next: VideoToolDraftById['video.transitions']) => void): void {
+  render(<VideoTimelineDialog open onOpenChange={vi.fn()} draft={draft} onChange={onChange} inputNames={new Map([[inputA.inputId, 'A'], [inputB.inputId, 'B']])} disabled={false} onRun={vi.fn()} />);
+}
+
+/**
+ * Opens the transition type list and returns its options in display order (Cut, Crossfade, Wipe left, Wipe right).
+ * @param user - The user-event session.
+ * @returns The four options.
+ */
+async function transitionOptions(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement[]> {
+  // The clip selector reads "1. A"; the other combobox is the transition type.
+  const trigger = screen.getAllByRole('combobox').find((box) => !/^\d+\./.test(box.textContent ?? ''));
+  if (trigger === undefined) throw new Error('No transition type control');
+  await user.click(trigger);
+  const options = await screen.findAllByRole('option');
+  expect(options).toHaveLength(4);
+  return options;
+}
+
+beforeEach(() => { vi.clearAllMocks(); });
+
+describe('transition types follow the shared duration bounds (§97; canvas design §4 转场)', () => {
+  it('keeps Crossfade, Wipe left and Wipe right listed but aria-disabled when the bounds are null, Cut usable', async () => {
+    bounds.mockReturnValue(null);
+    const user = userEvent.setup();
+    open(draftWith('cut', 0), vi.fn());
+    const [cut, ...others] = await transitionOptions(user);
+    expect(cut).not.toHaveAttribute('aria-disabled', 'true');
+    for (const option of others) {
+      expect(option).toHaveAttribute('aria-disabled', 'true');
+      // aria-disabled, not Radix `disabled`: the click must still reach the toast.
+      expect(option).not.toHaveAttribute('data-disabled');
+    }
+    expect(bounds).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ clipId: '50000000-0000-4000-8000-000000000001' })]), expect.objectContaining({ numerator: expect.anything(), denominator: expect.anything() }));
+  });
+
+  it('explains with a toast and commits nothing when a refused type is clicked', async () => {
+    bounds.mockReturnValue(null);
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    open(draftWith('cut', 0), onChange);
+    const options = await transitionOptions(user);
+    await user.click(options[2]);
+    expect(toast.warning).toHaveBeenCalledWith('Clips too short for a transition');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('leaves every type usable when the bounds exist', async () => {
+    bounds.mockReturnValue({ min: 0.2, max: 1.2 });
+    const user = userEvent.setup();
+    open(draftWith('cut', 0), vi.fn());
+    for (const option of await transitionOptions(user)) expect(option).not.toHaveAttribute('aria-disabled', 'true');
+  });
+});
+
+describe('the transition duration input clamps to the shared bounds (§97; canvas design §4 转场)', () => {
+  it.each([
+    ['above the maximum', '5', 1.2],
+    ['below the minimum', '0.05', 0.2],
+  ])('commits the nearest bound for a value %s', (_name, typed, committed) => {
+    bounds.mockReturnValue({ min: 0.2, max: 1.2 });
+    const onChange = vi.fn();
+    open(draftWith('fade', 0.5), onChange);
+    fireEvent.change(screen.getByTestId('video-clip-overlap'), { target: { value: typed } });
+    expect(onChange).toHaveBeenCalled();
+    const last = onChange.mock.calls.at(-1)![0] as VideoToolDraftById['video.transitions'];
+    expect(last.params.clips[0].transition).toEqual({ kind: 'fade', duration: committed });
+  });
+});
