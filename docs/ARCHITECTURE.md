@@ -666,6 +666,7 @@ while a duration supplied by the node remains authoritative for the scrubber.
 | Source reset (`emptied`, `loadstart`) | Read current native transport, time and duration | Same; normally paused, time zero, decoded duration unknown |
 | `play`, `pause`, `ended` | Read current native transport, not the queued event name | Same |
 | Metadata, duration, time or volume event | Synchronize current element values | Same |
+| Mount with a `start` state (a full-screen view going on from its source player) | Write time, mute and volume through `writePlayerState` before metadata arrives; stay paused | Same writes, then `play()` in the commit of the click that opened it |
 | Play promise rejects | No optimistic state to undo; native events remain authoritative | Same |
 | Unmount | Remove all listeners; no further writes | Same |
 
