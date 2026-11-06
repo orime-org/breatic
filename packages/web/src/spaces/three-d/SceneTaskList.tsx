@@ -3,12 +3,15 @@
 
 import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Upload } from 'lucide-react';
 import { listSpaceTasks, removeSpaceTask, spaceTasksQueryKey, type SpaceTask } from '@web/data/api/scene';
 import { Button } from '@web/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
+import { KindBadge } from '@web/spaces/canvas/_shared/KindBadge';
 import { failureSentence } from '@web/spaces/canvas/failure-sentence';
 import type { SceneUploads } from '@web/spaces/three-d/scene-uploads';
 
@@ -31,10 +34,10 @@ interface SceneTaskListProps {
 
 const MINUTE_MS = 60_000;
 const DOT_CLASS: Record<SpaceTask['status'], string> = {
-  running: 'bg-status-warning',
+  running: 'bg-status-info',
   done: 'bg-status-success',
   failed: 'bg-status-error',
-  expired: 'bg-muted-foreground',
+  expired: 'bg-status-warning',
 };
 
 /**
@@ -147,21 +150,21 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
     void uploads.retry(task.id).then(() => queryClient.invalidateQueries({ queryKey }));
   }, [uploads, queryClient, queryKey]);
 
-  if (query.isPending) return <p className='p-4 text-sm text-muted-foreground' data-testid='scene-tasks-panel'>{t('spaces.threeD.loading')}</p>;
+  if (query.isPending) return <p className='p-4 text-xs text-muted-foreground' data-testid='scene-tasks-panel'>{t('spaces.threeD.loading')}</p>;
   if (query.isError || !data) {
-    return <div className='flex flex-col items-start gap-2 p-4 text-sm' data-testid='scene-tasks-panel'>
+    return <div className='flex flex-col items-start gap-2 p-4 text-xs' data-testid='scene-tasks-panel'>
       <p>{t('spaces.threeD.taskList.loadFailed')}</p>
       <Button variant='outline' size='sm' onClick={() => { void query.refetch(); }}>{t('spaces.threeD.retry')}</Button>
     </div>;
   }
-  if (data.tasks.length === 0) return <p className='p-4 text-sm text-muted-foreground' data-testid='scene-tasks-panel'>{t('spaces.threeD.taskList.empty')}</p>;
+  if (data.tasks.length === 0) return <p className='p-4 text-xs text-muted-foreground' data-testid='scene-tasks-panel'>{t('spaces.threeD.taskList.empty')}</p>;
 
   const readAt = query.dataUpdatedAt;
   const serverNow = Date.parse(data.serverNow);
   return <div ref={list} className='flex flex-col gap-2 p-2' data-testid='scene-tasks-panel'>
     {data.tasks.map((task) => {
       const own = uploads.get(task.id);
-      const starter = task.startedByUserId === userId ? t('spaces.threeD.taskList.you') : names?.resolve(task.startedByUserId) ?? null;
+      const starter = task.startedByUserId === userId ? t('spaces.threeD.taskList.you') : names?.resolve(task.startedByUserId) ?? t('spaces.threeD.taskList.member');
       const percent = own?.phase === 'uploading' ? own.percent : remoteUploads[task.id];
       const minutes = Math.floor((serverNow - Date.parse(task.startedAt) + Date.now() - readAt) / MINUTE_MS);
       const state = task.status === 'running'
@@ -175,17 +178,18 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
       return <div key={task.id} tabIndex={-1} className='rounded-chrome border border-border p-2.5 text-sm outline-none focus-visible:border-active-border' data-testid={`scene-task-${task.id}`}>
         <div className='flex items-center gap-2'>
           <span className={cn('size-2 shrink-0 rounded-full', DOT_CLASS[task.status])} />
-          <span className='min-w-0 flex-1 truncate font-medium'>{task.label}</span>
-          <span className='shrink-0 rounded-sm border border-border px-1.5 text-xs text-muted-foreground'>{t('spaces.threeD.taskList.kind')}</span>
+          <Tooltip><TooltipTrigger asChild><span className='min-w-0 flex-1 truncate font-medium'>{task.label}</span></TooltipTrigger>
+            <TooltipContent portal side='top'>{task.label}</TooltipContent></Tooltip>
+          <KindBadge icon={Upload} label={t('spaces.threeD.taskList.kind')} colorClassName='text-muted-foreground' />
         </div>
-        <p className='mt-1 text-xs text-muted-foreground'>{starter === null ? state : `${starter} · ${state}`}</p>
+        <p className='mt-1 text-xs text-muted-foreground'>{`${starter} · ${state}`}</p>
         {task.status === 'running' && percent !== undefined && own?.phase !== 'registering'
           ? <div className='mt-1.5 h-1 overflow-hidden rounded-full bg-muted'><div className='h-full rounded-full bg-foreground' style={{ width: `${percent}%` }} /></div> : null}
         {task.status === 'failed' ? <p className='mt-1 text-xs text-status-error'>{task.errorMessage ? failureSentence(task.errorMessage, t) : t('spaces.threeD.taskList.failedReason')}</p> : null}
         {placeable || removable || retryable ? <div className='mt-2 flex gap-1.5'>
-          {placeable ? <Button size='sm' loading={placing.has(task.id)} onClick={() => place(task)}>{t('spaces.threeD.taskList.place')}</Button> : null}
-          {retryable ? <Button size='sm' variant='outline' loading={own?.phase === 'retrying'} onClick={() => retry(task)}>{t('spaces.threeD.taskList.retry')}</Button> : null}
-          {removable ? <Button size='sm' variant='ghost' loading={removing.has(task.id)} onClick={() => remove(task)}>{t('spaces.threeD.taskList.remove')}</Button> : null}
+          {placeable ? <Button size='compact' loading={placing.has(task.id)} onClick={() => place(task)}>{t('spaces.threeD.taskList.place')}</Button> : null}
+          {retryable ? <Button size='compact' variant='outline' loading={own?.phase === 'retrying'} onClick={() => retry(task)}>{t('spaces.threeD.taskList.retry')}</Button> : null}
+          {removable ? <Button size='compact' variant='outline' loading={removing.has(task.id)} onClick={() => remove(task)}>{t('spaces.threeD.taskList.remove')}</Button> : null}
         </div> : null}
       </div>;
     })}

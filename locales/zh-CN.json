@@ -2063,6 +2063,7 @@
       "taskList": {
         "kind": "导入",
         "you": "你",
+        "member": "一位成员",
         "uploading": "正在上传 {percent}%",
         "running": "上传中",
         "runningFor": "上传中 · 已用 {minutes} 分钟",
@@ -2074,7 +2075,7 @@
         "place": "放入场景",
         "retry": "重试",
         "remove": "移除",
-        "empty": "暂无任务",
+        "empty": "你导入的模型会显示在这里。",
         "loadFailed": "任务加载失败。",
         "removeFailed": "移除失败，请重试。",
         "placeFailed": "模型未能放入场景。"

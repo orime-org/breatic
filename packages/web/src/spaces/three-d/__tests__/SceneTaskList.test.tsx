@@ -7,6 +7,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as React from 'react';
 import type { SpaceTask, SpaceTaskList } from '@web/data/api/scene';
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
 import type { CollaboratorNames } from '@web/features/collab-editor/use-collaborator-names';
 import type { SceneUploadEntry, SceneUploads } from '@web/spaces/three-d/scene-uploads';
@@ -86,9 +87,9 @@ function renderList({ uploads = store(), canEdit = true, remoteUploads = {}, onP
   uploads?: SceneUploads; canEdit?: boolean; remoteUploads?: Record<string, number>; onPlace?: (task: SpaceTask) => Promise<void>; focusTaskId?: string | null; onFocused?: () => void;
 } = {}): QueryClient {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<QueryClientProvider client={client}><CollaboratorNamesProvider value={names}>
+  render(<QueryClientProvider client={client}><TooltipProvider><CollaboratorNamesProvider value={names}>
     <SceneTaskList projectId={P} spaceId={S} userId={ME} canEdit={canEdit} uploads={uploads} remoteUploads={remoteUploads} onPlace={onPlace} focusTaskId={focusTaskId} onFocused={onFocused} />
-  </CollaboratorNamesProvider></QueryClientProvider>);
+  </CollaboratorNamesProvider></TooltipProvider></QueryClientProvider>);
   return client;
 }
 
@@ -130,6 +131,21 @@ describe('the 3D Space task list (inner#1690)', () => {
     expect(screen.getAllByTestId(/^scene-task-/).map((element) => element.dataset.testid)).toEqual(['scene-task-zhang', 'scene-task-li', 'scene-task-done']);
   });
 
+  it('names a starter it cannot resolve as a member, so every row says who and what', async () => {
+    api.listSpaceTasks.mockResolvedValue(listed(row({ id: 'gone', startedByUserId: 'user-left' })));
+    renderList({ remoteUploads: { gone: 7 } });
+    expect(await rowOf('gone')).toHaveTextContent('A member · Uploading 7%');
+  });
+
+  it('shows a row\'s whole name when the pointer rests on it', async () => {
+    const label = 'Cathedral interior with a very long descriptive model name';
+    api.listSpaceTasks.mockResolvedValue(listed(row({ id: 'long', label })));
+    renderList();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    await user.hover(within(await rowOf('long')).getByText(label));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(label);
+  });
+
   it('shows this page\'s own percent and registration for the uploads it sends', async () => {
     api.listSpaceTasks.mockResolvedValue(listed(row({ id: 'mine' }), row({ id: 'registering' })));
     renderList({ uploads: store([{ taskId: 'mine', phase: 'uploading', percent: 42 }, { taskId: 'registering', phase: 'registering' }]) });
@@ -169,7 +185,7 @@ describe('the 3D Space task list (inner#1690)', () => {
   it('says so when the Space has no tasks', async () => {
     api.listSpaceTasks.mockResolvedValue(listed());
     renderList();
-    expect(await screen.findByText('No tasks')).toBeInTheDocument();
+    expect(await screen.findByText('Models you import appear here.')).toBeInTheDocument();
   });
 
   it('reads the list again for a row this page just opened, then gives that row focus and says so once', async () => {

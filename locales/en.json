@@ -2063,6 +2063,7 @@
       "taskList": {
         "kind": "Import",
         "you": "You",
+        "member": "A member",
         "uploading": "Uploading {percent}%",
         "running": "Uploading",
         "runningFor": "Uploading · {minutes} min",
@@ -2074,7 +2075,7 @@
         "place": "Place in scene",
         "retry": "Retry",
         "remove": "Remove",
-        "empty": "No tasks",
+        "empty": "Models you import appear here.",
         "loadFailed": "Couldn’t load tasks.",
         "removeFailed": "Couldn’t remove the task. Try again.",
         "placeFailed": "The model couldn’t be placed in the scene."

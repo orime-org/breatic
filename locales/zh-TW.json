@@ -2063,6 +2063,7 @@
       "taskList": {
         "kind": "匯入",
         "you": "你",
+        "member": "一位成員",
         "uploading": "正在上傳 {percent}%",
         "running": "上傳中",
         "runningFor": "上傳中 · 已用 {minutes} 分鐘",
@@ -2074,7 +2075,7 @@
         "place": "放入場景",
         "retry": "重試",
         "remove": "移除",
-        "empty": "暫無任務",
+        "empty": "你匯入的模型會顯示在這裡。",
         "loadFailed": "任務載入失敗。",
         "removeFailed": "移除失敗，請重試。",
         "placeFailed": "模型未能放入場景。"

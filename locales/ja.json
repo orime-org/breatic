@@ -2063,6 +2063,7 @@
       "taskList": {
         "kind": "インポート",
         "you": "あなた",
+        "member": "メンバー",
         "uploading": "アップロード中 {percent}%",
         "running": "アップロード中",
         "runningFor": "アップロード中 · {minutes} 分経過",
@@ -2074,7 +2075,7 @@
         "place": "シーンに配置",
         "retry": "再試行",
         "remove": "削除",
-        "empty": "タスクはありません",
+        "empty": "インポートしたモデルがここに表示されます。",
         "loadFailed": "タスクを読み込めませんでした。",
         "removeFailed": "タスクを削除できませんでした。もう一度お試しください。",
         "placeFailed": "モデルをシーンに配置できませんでした。"

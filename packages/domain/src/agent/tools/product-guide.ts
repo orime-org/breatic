@@ -1309,14 +1309,14 @@ export function renderProductGuide(): string {
       "Opening a header menu while the panel is open keeps keyboard focus in that new menu. " +
       "The minimap button toggles the scene's top view; clicking that map navigates your personal viewing camera.",
     `The ${quoted(t("spaces.threeD.tasks"))} panel lists every member's model imports in this Space, newest first, the same for everyone. ` +
-      `Each row shows the model's name, ${quoted(t("spaces.threeD.taskList.kind"))}, who started it (${quoted(t("spaces.threeD.taskList.you"))} for you) and its state: ` +
+      `Each row shows the model's name, ${quoted(t("spaces.threeD.taskList.kind"))}, who started it (${quoted(t("spaces.threeD.taskList.you"))} for you, ${quoted(t("spaces.threeD.taskList.member"))} when the name is unknown) and its state: ` +
       `${quoted(t("spaces.threeD.taskList.running"))} with a percentage while the uploader's page is sending it, ${quoted(t("spaces.threeD.taskList.registering"))}, ` +
       `${quoted(t("spaces.threeD.taskList.done"))}, ${quoted(t("spaces.threeD.taskList.failed"))} or ${quoted(t("spaces.threeD.taskList.expired"))} after two hours without an end. ` +
-      `A finished row has ${quoted(t("spaces.threeD.taskList.place"))}: each press puts one copy on the ground at the centre of your view and selects it, ` +
+      `Resting the pointer on a cut-off name shows it whole. A finished row has ${quoted(t("spaces.threeD.taskList.place"))}: each press puts one copy on the ground at the centre of your view and selects it, ` +
       "and the panel stays open for the next one; a row that timed out but whose model arrived later has it too. " +
       `A failed row, and a timed-out one with no model, has ${quoted(t("spaces.threeD.taskList.remove"))}; the page that uploaded a failed row also has ` +
       `${quoted(t("spaces.threeD.taskList.retry"))}, until it is reloaded. A row holding a model cannot be removed. A Viewer sees the list without buttons. ` +
-      `When there are none it says ${quoted(t("spaces.threeD.taskList.empty"))}. The project activity records each successful import under the model's name.`,
+      `When there are none it says ${quoted(t("spaces.threeD.taskList.empty"))} The project activity records each successful import under the model's name.`,
     `The ${quoted(t("spaces.threeD.objects"))} panel lists scene objects; when empty it says ${quoted(t("spaces.threeD.empty"))} ` +
       "Click an object in the list or viewport to select it; Shift-click adds it to or removes it from the selection. " +
       "Click empty space to clear the selection. Selected objects have outlines; the list also marks selected rows and locked objects.",

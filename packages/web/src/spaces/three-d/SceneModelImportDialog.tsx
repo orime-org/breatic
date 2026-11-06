@@ -226,7 +226,7 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
         <div className='space-y-4'>
           <div className='flex items-center gap-2'>
             <Button ref={chooseFilesButton} variant='outline' icon={uploadIcon} onClick={chooseFiles} disabled={busy || !canEdit}>{t('spaces.threeD.importModel.chooseFiles')}</Button>
-            <Button variant='ghost' icon={folderIcon} onClick={chooseFolder} disabled={busy || !canEdit}>{t('spaces.threeD.importModel.chooseFolder')}</Button>
+            <Button variant='outline' icon={folderIcon} onClick={chooseFolder} disabled={busy || !canEdit}>{t('spaces.threeD.importModel.chooseFolder')}</Button>
             <span className='ml-auto shrink-0 text-xs text-muted-foreground'>{t('spaces.threeD.importModel.inputLimit', { size: Math.floor(maxInputBytes / 1024 / 1024) })}</span>
             <input ref={fileInput} type='file' multiple hidden onChange={selectedFiles} />
             <input ref={folderInput} type='file' multiple hidden {...{ webkitdirectory: '' }} onChange={selectedFiles} />
