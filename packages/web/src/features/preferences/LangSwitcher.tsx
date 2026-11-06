@@ -90,15 +90,19 @@ export function LangSwitcher(): React.JSX.Element {
                   'bg-accent-strong hover-enabled:bg-accent-strong',
               )}
               loading={pending === l.code}
+              // The glyph is the item's icon, so while its strings download
+              // the spinner takes the glyph's column and the row stays put.
+              icon={
+                <span
+                  aria-hidden='true'
+                  className='inline-flex h-4 w-4 shrink-0 items-center justify-center text-sm font-medium text-muted-foreground'
+                >
+                  {l.glyph}
+                </span>
+              }
               onClick={() => pick(l.code)}
               data-testid={`lang-option-${l.code}`}
             >
-              <span
-                aria-hidden='true'
-                className='inline-flex w-4 shrink-0 justify-center text-sm font-medium text-muted-foreground'
-              >
-                {l.glyph}
-              </span>
               {l.nativeName}
             </Button>
           ))}
