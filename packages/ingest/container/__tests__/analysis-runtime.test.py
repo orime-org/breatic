@@ -4,11 +4,13 @@
 """Exercise the real isolated detector CLI inside the media image."""
 import copy
 import importlib.util
+import io
 import json
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 
 
@@ -19,6 +21,21 @@ SCENE = {
 }
 BLACK = bytes(64 * 64 * 3)
 WHITE = bytes([255]) * len(BLACK)
+# The lip-sync faces request (frames-split §7.17 lipsync_faces row): every prepared frame of one person, the people YuNet profile.
+FACES = {
+    "kind": "faces", "width": 64, "height": 64, "expectedFrameCount": 3,
+    "profile": {"id": "opencv-yunet-2023mar", "version": "2023mar",
+                "weightsHash": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
+                "params": {"scoreThreshold": 0.6, "nmsThreshold": 0.3, "topK": 5000}},
+}
+
+
+def load_runtime():
+    """Load the installed runtime as a module, as the reader test does."""
+    spec = importlib.util.spec_from_file_location("runtime", "/app/analysis-runtime.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 class AnalysisRuntimeTests(unittest.TestCase):
@@ -80,6 +97,59 @@ class AnalysisRuntimeTests(unittest.TestCase):
         result = self.invoke(request, BLACK * 2)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(b"exactly one anchor", result.stderr)
+
+    def test_faces_rows_follow_frame_order(self) -> None:
+        """Each frame gets its own detector rows or null, in input order (§7.17 lipsync_faces: one row per frame)."""
+        module = load_runtime()
+        real = module.cv2
+        seen = []
+
+        class Detector:
+            """Report one face whose x is the frame's first blue byte, none on a black frame."""
+
+            def detect(self, frame):
+                """Record the frame and answer as FaceDetectorYN.detect does."""
+                value = int(frame[0, 0, 0])
+                seen.append(value)
+                return (1, None) if value == 0 else (1, module.np.array([[float(value)] + [1.0] * 14], dtype=module.np.float32))
+
+        module.cv2 = types.SimpleNamespace(__version__=real.__version__, setNumThreads=real.setNumThreads,
+                                           FaceDetectorYN=types.SimpleNamespace(create=lambda *_args: Detector()))
+        values = [0, 40, 0, 120]
+        frames = b"".join(bytes([value]) * len(BLACK) for value in values)
+        result = module.analyze({**FACES, "expectedFrameCount": 4}, io.BytesIO(frames))
+        self.assertEqual(seen, values)
+        self.assertEqual(result, {"frames": [None, [[40.0] + [1.0] * 14], None, [[120.0] + [1.0] * 14]]})
+
+    def test_faces_real_yunet_answers_null_per_frame(self) -> None:
+        """Actual YuNet finds no face on three black frames: three nulls, never one merged answer."""
+        result = self.invoke(FACES, BLACK * 3)
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+        self.assertEqual(json.loads(result.stdout), {"frames": [None, None, None]})
+
+    def test_faces_single_frame_answers_as_the_anchor(self) -> None:
+        """One prepared frame is answered in the people shape, which lipsync-recipes.ts reads as `answer.faces`."""
+        result = self.invoke({**FACES, "expectedFrameCount": 1}, BLACK)
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+        self.assertEqual(json.loads(result.stdout), {"faces": None})
+
+    def test_faces_frame_count_is_enforced(self) -> None:
+        """A missing frame, a short frame and a surplus frame all fail without publishing rows."""
+        for data in [BLACK * 2, BLACK * 2 + BLACK[:5], BLACK * 3 + b"x", BLACK * 4]:
+            with self.subTest(length=len(data)):
+                result = self.invoke(FACES, data)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, b"")
+                self.assertIn(b"BGR24", result.stderr)
+
+    def test_faces_profile_is_frozen(self) -> None:
+        """Faces takes only the frozen YuNet profile; the scene profile or an extra parameter fails."""
+        for profile in [SCENE["profile"], {**FACES["profile"], "params": {**FACES["profile"]["params"], "extra": 1}}]:
+            with self.subTest(profile=profile["id"]):
+                result = self.invoke({**FACES, "profile": profile}, BLACK * 3)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, b"")
+                self.assertIn(b"analysis runtime:", result.stderr)
 
     def test_real_reader_reassembles_short_reads_and_bgr_order(self) -> None:
         """The independent 2x2 oracle survives every possible fixed chunk width."""
