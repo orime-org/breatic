@@ -241,7 +241,7 @@ import { useResolvedVideoPresentation } from '@web/spaces/canvas/video-presentat
 import { createVideoPresentationRecovery } from '@web/spaces/canvas/video-presentation/video-presentation-recovery';
 import { TranscribePanelContainer } from '@web/spaces/canvas/transcribe/TranscribePanelContainer';
 import { exportsBeforeRun } from '@web/spaces/canvas/mini-tool/mini-tool-view';
-import { startPlannedVideoRun } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
+import { startPlannedVideoRun, type PlannedVideoPress } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
 import { toolLayerOpen, useToolLayerArrows } from '@web/spaces/canvas/mini-tool/tool-layer-input';
 import {
   startMiniToolRun,
@@ -4275,7 +4275,7 @@ function CanvasSpaceInner({
    * @returns The existing tracked press outcome.
    * @throws {never} The press owns request errors and node marks.
    */
-  const runVideoMiniTool = React.useCallback((nodeId: string, toolId: VideoToolId, draft: VideoToolDraft, analyses: readonly MiniToolAnalysisRecord[]): Promise<unknown> => {
+  const runVideoMiniTool = React.useCallback((nodeId: string, toolId: VideoToolId, draft: VideoToolDraft, analyses: readonly MiniToolAnalysisRecord[], plan?: PlannedVideoPress): Promise<unknown> => {
     if (readOnly) return Promise.resolve();
     const host = nodes.find((node) => node.id === nodeId);
     const view = asContentView(host?.data);
@@ -4284,11 +4284,13 @@ function CanvasSpaceInner({
     if (gate !== null) { warnNodeGate(t(gate.toastKey)); return Promise.resolve(); }
     const group = host.parentId === undefined ? undefined : nodes.find((node) => node.id === host.parentId);
     // The run is bound to the selected version the panel shows for this host; without one it is not sent (§10.8, §7.12).
-    const presentationRef = videoRuntime.presentations.get(nodeId)?.presentationRef;
+    // A quoted press names the inputs, analysis refs and output node its quote named (§97 D27-1).
+    const presentationRef = plan?.presentationRef ?? videoRuntime.presentations.get(nodeId)?.presentationRef;
     if (presentationRef === undefined) return Promise.resolve();
     const session = sessionStore.getState().panelSession;
     return startPlannedVideoRun({
       projectId, spaceId, userId: viewerId ?? '', toolId, draft, analyses, presentationRef,
+      ...(plan === undefined ? {} : { plan: { analysisRefs: plan.analysisRefs, outputNodeIds: plan.outputNodeIds } }),
       source: { id: host.id, name: view.name, position: host.position, groupOrigin: group?.position ?? null,
         mimeType: view.mimeType, width: draft.source.mediaInfo.width, height: draft.source.mediaInfo.height },
       sourceExists: () => buffer.settled().some((node) => node.id === nodeId),

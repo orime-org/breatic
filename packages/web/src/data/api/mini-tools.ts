@@ -44,6 +44,15 @@ export const miniToolsApi = {
     );
   },
   /**
+   * Quotes a planned request by the admission's own computation, writing nothing (§97 D26-1).
+   * @param body - The planned request the Run would send.
+   * @returns The credits admission would freeze.
+   * @throws {import('@web/data/api/types').ApiException} When admission would refuse the body, or the server is unreachable.
+   */
+  quotePlannedVideoRun(body: MiniToolPlannedRequest): Promise<{ credits: number }> {
+    return apiPost<{ credits: number }>('/mini-tools/quote', body);
+  },
+  /**
    * Reads the project-authorized original run and canonical results.
    * @param projectId - The containing Project.
    * @param runId - The original accepted run identity.
