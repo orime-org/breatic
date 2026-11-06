@@ -462,29 +462,60 @@ function evenChunks(from: number, to: number, target: number): FrameWindow[] {
   return Array.from({ length: count }, (_, at) => ({ start: from + Math.floor((length * at) / count), end: from + Math.floor((length * (at + 1)) / count) }));
 }
 
+/** A cost budget for transition chunks: the seconds one chunk's frames may take, and what each output frame costs. */
+export interface TransitionChunkBudget {
+  targetSeconds: number;
+  /** One output frame's work: each clip's decode it shows at that clip's own size, its encode, and a window frame's render. */
+  frameSeconds: (frame: number, window: boolean) => number;
+}
+
 /** The two-clip timeline on the output grid that transition chunks are planned on (§97 D15-3). */
 export interface TransitionChunkTimeline { frameCount: number; clips: readonly { startFrame: number; frameCount: number }[]; window: { startFrame: number; frameCount: number } | null }
 
 /**
  * The transition chunks on the output grid (§97 D15-4; frames-split §5.4): the window chunks partition the
  * overlap window, the encode chunks partition each clip's frames outside it, and no chunk exceeds the target; a Cut has
- * no window chunks.
+ * no window chunks. The target is a frame count, or a share in seconds with each output frame's own cost, so a chunk holds
+ * as many frames as its own clips' work allows (§97, the per-clip cost the quote sums).
  * @param timeline - The frame-grid timeline.
- * @param targetFrames - The largest chunk in frames.
+ * @param target - The largest chunk in frames, or the cost budget.
  * @returns The encode and window chunks.
  * @throws {RangeError} When the target is not a positive integer.
  */
-export function planTransitionChunks(timeline: TransitionChunkTimeline, targetFrames: number): { encode: FrameWindow[]; window: FrameWindow[] } {
-  positiveInteger(targetFrames, "targetFrames");
+export function planTransitionChunks(timeline: TransitionChunkTimeline, target: number | TransitionChunkBudget): { encode: FrameWindow[]; window: FrameWindow[] } {
+  /**
+   * Split one region into chunks: as even as whole frames allow under a frame count, or filled greedily up to the share under
+   * a per-frame cost, so no two neighbouring chunks of the region would fit together.
+   * @param from - The region's first frame.
+   * @param to - Its end.
+   * @param window - Whether it is the overlap window.
+   * @returns The chunks.
+   * @throws {never} Never.
+   */
+  const chunk = (from: number, to: number, window: boolean): FrameWindow[] => {
+    if (typeof target === "number") return evenChunks(from, to, target);
+    const chunks: FrameWindow[] = [];
+    let start = from;
+    let spent = 0;
+    for (let frame = from; frame < to; frame += 1) {
+      const cost = target.frameSeconds(frame, window);
+      // A frame over the whole share still makes a chunk of one; admission refuses a job over its share elsewhere.
+      if (frame > start && spent + cost > target.targetSeconds) { chunks.push({ start, end: frame }); start = frame; spent = 0; }
+      spent += cost;
+    }
+    if (to > start) chunks.push({ start, end: to });
+    return chunks;
+  };
+  if (typeof target === "number") positiveInteger(target, "targetFrames");
   const window = timeline.window;
   if (window === null) {
     const boundary = timeline.clips[1]?.startFrame ?? timeline.frameCount;
-    return { encode: [...evenChunks(0, boundary, targetFrames), ...evenChunks(boundary, timeline.frameCount, targetFrames)], window: [] };
+    return { encode: [...chunk(0, boundary, false), ...chunk(boundary, timeline.frameCount, false)], window: [] };
   }
   const end = window.startFrame + window.frameCount;
   return {
-    encode: [...evenChunks(0, window.startFrame, targetFrames), ...evenChunks(end, timeline.frameCount, targetFrames)],
-    window: evenChunks(window.startFrame, end, targetFrames),
+    encode: [...chunk(0, window.startFrame, false), ...chunk(end, timeline.frameCount, false)],
+    window: chunk(window.startFrame, end, true),
   };
 }
 

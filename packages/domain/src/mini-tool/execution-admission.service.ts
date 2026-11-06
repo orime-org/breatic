@@ -552,17 +552,27 @@ async function prepareTransitions(request: Extract<MiniToolPlannedRequest, { too
    */
   const decodeFrame = (ledger: VideoPresentationLedger): number => ledger.encoding.codedWidth * ledger.encoding.codedHeight
     / rates.decodeConvertPixelsPerSecond[`${isHdrTransfer(ledger.plan.source.transfer) ? "hdr" : "sdr"}_${ledger.plan.source.bitDepth > 8 ? 10 : 8}bit`];
-  // ponytail: the chunk target takes the costlier clip's frame for every frame; the quote below sums each clip's own.
-  const frameSeconds = Math.max(...inputs.map(({ ledger }) => decodeFrame(ledger))) + outputPixels / rates.encodePixelsPerSecond;
-  const targetFrames = Math.max(1, Math.floor((shareSeconds(config) - rates.startSeconds) / frameSeconds));
-  const layout = planTransitionChunks(timeline, targetFrames);
-  const stageJobs = plannedStageJobs(layout);
-  assertWithinParallelCap(stageJobs, config);
-  const container = { ...containerPolicy(settings.container_class, settings.precheck_seconds, config), startSeconds: rates.startSeconds, encode, chunkRetries: config.encoding.chunk_retries };
   const gl = config.classes[settings.window_container_class];
   if (gl === undefined || settings.window_container_class !== "MiniToolContainerGl" || gl.render_pixels_per_second === undefined) {
     throw new Error(`Container class ${settings.window_container_class} is not the configured GL class with a render rate`);
   }
+  const renderRate = gl.render_pixels_per_second;
+  /**
+   * One output frame's work, by the same per-clip cost the quote sums: each clip it shows decoded at that clip's own size and
+   * tier, its encode, and a window frame's render.
+   * @param frame - The output frame.
+   * @param window - Whether it lies in the overlap window.
+   * @returns The seconds.
+   * @throws {never} Never.
+   */
+  const frameSeconds = (frame: number, window: boolean): number => timeline.clips.reduce((total, clip, at) =>
+    frame >= clip.startFrame && frame < clip.startFrame + clip.frameCount ? total + decodeFrame(inputs[at]!.ledger) : total, 0)
+    + outputPixels / rates.encodePixelsPerSecond + (window ? outputPixels / renderRate : 0);
+  // ponytail: a chunk's decode pre-roll is not in its size; with sparse keyframes a chunk can pass its share by that pre-roll.
+  const layout = planTransitionChunks(timeline, { targetSeconds: shareSeconds(config) - rates.startSeconds, frameSeconds });
+  const stageJobs = plannedStageJobs(layout);
+  assertWithinParallelCap(stageJobs, config);
+  const container = { ...containerPolicy(settings.container_class, settings.precheck_seconds, config), startSeconds: rates.startSeconds, encode, chunkRetries: config.encoding.chunk_retries };
   const size = { instance_type: gl.instance_type, vcpu: gl.vcpu, memory_gib: gl.memory_gib, disk_gb: gl.disk_gb };
   const windowContainer = { containerClass: "MiniToolContainerGl" as const, precheckSeconds: settings.precheck_seconds, size, prices: config.prices, limits: config.plan_limits };
   // frames-split §5.4 (transition chunks): each chunk decodes each clip's source frames it shows, pre-roll included, at that
@@ -594,7 +604,7 @@ async function prepareTransitions(request: Extract<MiniToolPlannedRequest, { too
   const chunks = [...layout.encode, ...layout.window];
   const windowFrames = layout.window.reduce((total, chunk) => total + chunk.end - chunk.start, 0);
   const seconds = chunks.reduce((total, chunk) => total + chunkDecode(chunk), 0) + timeline.frameCount * outputPixels / rates.encodePixelsPerSecond
-    + windowFrames * outputPixels / gl.render_pixels_per_second + rates.startSeconds * chunks.length
+    + windowFrames * outputPixels / renderRate + rates.startSeconds * chunks.length
     + estimateAudioEncodeSeconds(timeline.frameCount * fpsSeconds, { startSeconds: rates.startSeconds, aacEncodeSecondsPerSecond: config.encoding.encoder.aac_encode_seconds_per_second });
   /**
    * One value per clip input, by input id.
