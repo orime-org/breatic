@@ -101,7 +101,7 @@ function TimelineConflictRow({ projectId, clip, assetId, track, reason, selected
   const name = asset.data?.displayName || t('timeline.video');
   const locate = React.useCallback((): void => onLocate(clip.id), [onLocate, clip.id]);
   return <Button data-testid={`timeline-conflict-${clip.id}`} type='button' variant={null} size={null} aria-pressed={selected} onClick={locate}
-    className={cn('flex w-full min-w-0 flex-col items-start gap-0.5 overflow-hidden rounded-chrome border border-status-error-border bg-status-error-bg px-2 py-1.5 text-left text-xs hover-enabled:bg-accent', selected && 'border-active-border')}>
+    className={cn('flex w-full min-w-0 flex-col items-start gap-0.5 overflow-hidden rounded-chrome border border-status-error-border bg-status-error-bg px-2 py-1.5 text-left text-xs hover-enabled:border-status-error', selected && 'border-active-border')}>
     <span className='flex w-full min-w-0 items-center gap-2'>
       <Film className='size-4 shrink-0' />
       <Tooltip>
@@ -404,7 +404,8 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const hasConflicts = arrangement.hasConflicts || damagedClipIds.length > 0;
   // Click-focusable, not tab-reachable: where the keyboard goes when the focused element leaves the page.
   return <div ref={root} data-testid='timeline-space' data-project-id={projectId} data-space-id={spaceId} tabIndex={-1} data-space-focus-root='' className='flex h-full min-h-0 min-w-0 bg-background outline-none'>
-    <div ref={editorColumn} className='flex min-h-0 min-w-0 flex-1 flex-col'>
+    {/* The tracks take their content's height up to half the column; the preview takes the rest. */}
+    <div ref={editorColumn} className='grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,1fr)_auto_auto_fit-content(50%)]'>
       <div className='flex min-h-0 flex-1 items-center justify-center bg-muted/40 p-6'>
         <div data-testid='timeline-preview' data-active-clip-id={active?.id ?? ''} className='relative flex max-h-full w-full max-w-4xl items-center justify-center overflow-hidden rounded-content-sm border border-border bg-background' style={previewStyle}>
           {source !== null && resource.data !== undefined && !resource.isError && (
@@ -425,7 +426,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       </div>
       <div role='toolbar' aria-label={t('timeline.tracks')} className='flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-2'>
         <div className='flex flex-wrap items-center gap-2'>
-          {!readOnly && <Button data-testid='timeline-add-media' variant='outline' size='sm' className='gap-1.5' onClick={openMaterial} icon={<Plus className='size-4' />}>{t('timeline.addMedia')}</Button>}
+          <Button data-testid='timeline-add-media' variant='outline' size='sm' className='gap-1.5' disabled={readOnly} onClick={openMaterial} icon={<Plus className='size-4' />}>{t('timeline.addMedia')}</Button>
           <Button data-testid='timeline-undo' variant='outline' size='sm' className='gap-1.5' disabled={readOnly || !history.canUndo} onClick={undo} icon={<Undo2 className='size-4' />}>{t('timeline.edit.undo')}</Button>
           <Button data-testid='timeline-redo' variant='outline' size='sm' className='gap-1.5' disabled={readOnly || !history.canRedo} onClick={redo} icon={<Redo2 className='size-4' />}>{t('timeline.edit.redo')}</Button>
           <Separator orientation='vertical' className='h-5' />

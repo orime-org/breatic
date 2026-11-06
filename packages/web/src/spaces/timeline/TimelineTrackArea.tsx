@@ -26,7 +26,7 @@ const BESIDE_HEADERS = { left: TIMELINE_TRACK_HEADER_PX };
 // The palette sits outside @theme, so its colours are written as typed arbitrary values (as DocumentTableSizeGrid does).
 const CLIP_FILL = {
   ready: 'border-[color:var(--color-palette-blue-border)] bg-[color:var(--color-palette-blue-bg)] hover-enabled:bg-[color:var(--color-palette-blue-highlight)]',
-  conflict: 'border-status-error-border bg-status-error-bg hover-enabled:bg-accent',
+  conflict: 'border-status-error-border bg-status-error-bg hover-enabled:border-status-error',
 };
 
 /** What the track area needs from the editor. */
@@ -265,7 +265,7 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
   const header = 'sticky left-0 z-20 flex shrink-0 items-center gap-1 border-r border-border bg-background px-2 text-xs';
 
   return <DndContext sensors={sensors} onDragStart={startDrag} onDragMove={moveDrag} onDragEnd={endDrag} onDragCancel={cancelDrag} autoScroll={false}>
-    <ScrollArea scrollbars='both' viewportRef={viewportRef} className='h-48 shrink-0 border-t border-border'>
+    <ScrollArea scrollbars='both' viewportRef={viewportRef} className='h-full min-h-0 border-t border-border'>
       <div style={{ width: width + TIMELINE_TRACK_HEADER_PX }} className='relative min-w-full'>
         <div className='sticky top-0 z-30 flex h-6 border-b border-border bg-background'>
           <div className={header} style={HEADER_STYLE} />
