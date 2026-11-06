@@ -887,6 +887,28 @@ describe('the preview', () => {
     });
   });
 
+  it('reads the answer again for body changes once it is in, never for a caret that only moves', async () => {
+    const editor = await selected('<p>hello</p><p>world</p>', 0, 10);
+    await press('refine');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    await streams(calls[0]!, ['<u id="1">HELLO</u>\n<u id="2">WORLD</u>'], true);
+    await waitFor(() => {
+      expect(previewText()).toContain('WORLD');
+    });
+    const parse = vi.spyOn(BlockNoteEditor.prototype, 'tryParseMarkdownToBlocks');
+    try {
+      await act(async () => {
+        selectTextRange(editor, 1, 2);
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      });
+      expect(parse).not.toHaveBeenCalled();
+    } finally {
+      parse.mockRestore();
+    }
+  });
+
   it('parses a burst of pieces fewer times than they arrived, and shows the latest', async () => {
     const parse = vi.spyOn(BlockNoteEditor.prototype, 'tryParseMarkdownToBlocks');
     try {

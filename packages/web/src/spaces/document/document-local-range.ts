@@ -174,22 +174,42 @@ function endLineAt(doc: ProseMirrorNode, pos: number, side: Side): EndLine | nul
 
 /**
  * Where an end is after a change, found again by its line: in the row with
- * the line's id, at the letter it named, while that line's words are the
+ * the line's id, at the letter it named, while that line's letters are the
  * same. The way BlockNote keeps a selection across a block move
  * (`moveBlocks.ts`, `getBlockSelectionData`), each end on its own. A line
- * whose words changed leaves only the text to say where the letter went, and
- * nothing is guessed from the text (the comment draft's A21).
+ * rebuilt without some of its leaf nodes, as a hard break is dropped when a
+ * line turns into code, keeps its letters, counted without the leaves. A line
+ * whose letters changed leaves only the text to say where the letter went,
+ * and nothing is guessed from the text (the comment draft's A21).
  * @param doc - The body after the change.
  * @param line - The line the end sat in before it.
- * @returns The position, or null when the row is gone or its words changed.
+ * @returns The position, or null when the row is gone or its letters changed.
  */
 function lineNow(doc: ProseMirrorNode, line: EndLine): number | null {
   const row = rowById(doc, line.id);
   const words = row === undefined ? undefined : contentRangeOf(row);
-  if (words === undefined || wordsBetween(doc, words.from, words.to) !== line.words) {
-    return null;
+  if (words === undefined) return null;
+  const now = wordsBetween(doc, words.from, words.to);
+  const after = line.side === 'end' ? 1 : 0;
+  if (now === line.words) return words.from + line.letter + after;
+  if (lettersOf(now) !== lettersOf(line.words)) return null;
+  // The letters before the end, counted without leaves, then the same many
+  // in the line now.
+  const before = lettersOf(line.words.slice(0, line.letter + after)).length;
+  let offset = 0;
+  for (let counted = 0; offset < now.length && counted < before; offset += 1) {
+    if (now[offset] !== LEAF) counted += 1;
   }
-  return words.from + line.letter + (line.side === 'end' ? 1 : 0);
+  return words.from + offset;
+}
+
+/**
+ * A line's letters without its leaf nodes.
+ * @param words - The line's words, a leaf as one character.
+ * @returns The letters.
+ */
+function lettersOf(words: string): string {
+  return words.split(LEAF).join('');
 }
 
 /**
@@ -207,7 +227,8 @@ function inLine(doc: ProseMirrorNode, pos: number, line: EndLine): boolean {
 /**
  * Carries one end of a range across a change: where its path puts it while
  * that is still in the line the end sat in, otherwise found again by that
- * line, otherwise where its path puts it after all. Neither path's own answer
+ * line, otherwise, its row gone, where the change put that line's words in
+ * once (`movedInto`), otherwise where its path puts it after all. Neither path's own answer
  * says which line a position is in: mapping sends an end whose line was moved
  * into the gap it left, and a peer's editor that rewrites a line into another
  * line's words keeps the letters the two share.
@@ -417,10 +438,11 @@ function carryAcrossYjs(
 /**
  * Carries a local range across one of the reader's own changes, each end on
  * its own: where ProseMirror maps it while that stays in the end's line,
- * otherwise found again by that line. A line moved is taken out and put back,
- * which mapping reads as a deletion; a line the reader deleted or changed is
- * gone, and the mapped position — the range drawn in, or nothing left —
- * stands.
+ * otherwise found again by that line (`carryEnd`). A line moved is taken out
+ * and put back, which mapping reads as a deletion; a line joined into another
+ * is followed to its words there; a line the reader deleted or whose letters
+ * changed is gone, and the mapped position — the range drawn in, or nothing
+ * left — stands.
  * @param range - Where the range was before this change.
  * @param tr - The change.
  * @returns Where it is now, or null once the text it covered is gone.

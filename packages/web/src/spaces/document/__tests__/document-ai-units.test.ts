@@ -1461,6 +1461,93 @@ describe('round 14: units through block edits', () => {
   });
 });
 
+/**
+ * Moves a block up, as the reader would.
+ * @param handle - The document.
+ * @param id - The block.
+ */
+function moveUp(handle: DocumentEditorHandle, id: string): void {
+  handle.editor.setTextCursorPosition(id);
+  handle.editor.moveBlocksUp();
+}
+
+describe('round 15: copies and writes agree after the body moved', () => {
+  it('copies a docTable without the selected words Enter moved out of a unit, as replace writes it', async () => {
+    const h = await open('| one two three | bee |\n| --- | --- |\n| c | d |');
+    const o = opening(h, { from: rangeOf(h, 'one two three').from, to: rangeOf(h, 'bee').to }, 'refine');
+    pressKey(h, rangeOf(h, 'three').from, 'Enter');
+    const answer = read(h, o, tagged({ 1: 'ONE TWO THREE', 2: 'BEE' }), 'refine');
+    expect(cellWords(answer.preview[0] as Seen)).toEqual([['ONE TWO THREE', 'BEE'], ['c', 'd']]);
+    replaceAiAnswer(h, answer, segments(h), WRITABLE);
+    expect(cellWords(blocks(h).find((b) => b.type === 'docTable')!)).toEqual([['ONE TWO THREE', 'BEE'], ['c', 'd']]);
+  });
+
+  it('copies a legacy table with the line a unit\'s moved words left emptied, as replace writes it', async () => {
+    const h = await open('tail');
+    const view = h.editor.prosemirrorView!;
+    const s = view.state.schema;
+    const cell = (lines: string[]): ReturnType<typeof s.node> => s.nodes['tableCell']!.create(null, lines.map((t) => s.nodes['tableParagraph']!.create(null, [s.text(t)])));
+    view.dispatch(view.state.tr.insert(1, s.nodes['blockContainer']!.create({ id: 'legacy-table' }, [s.nodes['table']!.create(null, [s.nodes['tableRow']!.create(null, [cell(['one two']), cell(['bee'])])])])));
+    h.undoManager.clear();
+    const o = opening(h, { from: rangeOf(h, 'one two').from, to: rangeOf(h, 'bee').to }, 'refine');
+    view.dispatch(view.state.tr.split(rangeOf(h, 'two').from));
+    const answer = read(h, o, tagged({ 1: 'ONE TWO', 2: 'BEE' }), 'refine');
+    replaceAiAnswer(h, answer, segments(h), WRITABLE);
+    expect(cellWords(answer.preview[0] as Seen)).toEqual([['ONE TWO|', 'BEE']]);
+    const lines: string[] = [];
+    h.editor.prosemirrorState.doc.descendants((node) => {
+      if (node.type.name !== 'tableCell') return true;
+      if (lines.length === 0) node.forEach((line) => lines.push(line.textContent));
+      return false;
+    });
+    expect(lines).toEqual(['ONE TWO', '']);
+  });
+
+  it('joins the answers of units in one block in the order their words now stand', async () => {
+    const h = await open('| aaa | zzz |\n| --- | --- |\n| c | d |');
+    const cell = flat(h).find((b) => textOf(b) === 'aaa')!;
+    h.editor.replaceBlocks([cell.id], [{ type: 'paragraph', content: 'aaa' }, { type: 'paragraph', content: 'bbb' }] as never);
+    h.undoManager.clear();
+    const o = opening(h, { from: rangeOf(h, 'aaa').from, to: rangeOf(h, 'zzz').to }, 'refine');
+    moveUp(h, flat(h).find((b) => textOf(b) === 'bbb')!.id);
+    pressKey(h, rangeOf(h, 'aaa').from, 'Backspace');
+    const answer = read(h, o, tagged({ 1: 'AAA', 2: 'BBB', 3: 'ZZZ' }), 'refine');
+    expect(cellWords(answer.preview[0] as Seen)).toEqual([['BBBAAA', 'ZZZ'], ['c', 'd']]);
+    replaceAiAnswer(h, answer, segments(h), WRITABLE);
+    expect(cellWords(blocks(h).find((b) => b.type === 'docTable')!)).toEqual([['BBBAAA', 'ZZZ'], ['c', 'd']]);
+  });
+
+  it('writes each unit where its words stand after the writes before it, when their stretches overlap', async () => {
+    const h = await open('aa cc\n\nbb XX\n\ntail');
+    const o = opening(h, { from: rangeOf(h, 'aa').from, to: rangeOf(h, 'XX').to }, 'refine');
+    pressKey(h, rangeOf(h, 'cc').from, 'Enter');
+    pressKey(h, rangeOf(h, 'XX').from, 'Enter');
+    moveUp(h, blocks(h).find((b) => textOf(b) === 'bb ')!.id);
+    pressKey(h, rangeOf(h, 'bb').from, 'Backspace');
+    pressKey(h, rangeOf(h, 'cc').from, 'Backspace');
+    expect(blocks(h).map(textOf)).toEqual(['aa bb cc', 'XX', 'tail']);
+    replaceAiAnswer(h, read(h, o, tagged({ 1: 'ONE', 2: 'TWOOOOO' }), 'refine'), segments(h), WRITABLE);
+    expect(blocks(h).map(textOf)).toEqual(['ONE', 'tail']);
+  });
+
+  it('keeps the children Enter carried with a unit\'s words under the unit\'s line', async () => {
+    const h = await open('- one two\n  - kid');
+    const o = opening(h, rangeOf(h, 'one two'), 'refine');
+    pressKey(h, rangeOf(h, 'two').from, 'Enter');
+    replaceAiAnswer(h, read(h, o, tagged({ 1: 'ONE TWO' }), 'refine'), segments(h), WRITABLE);
+    expect(shape(blocks(h))).toEqual([['ONE TWO', 0], ['kid', 1]]);
+  });
+
+  it('keeps a unit on its words when a line with a hard break is turned into code', async () => {
+    const h = await open('');
+    h.editor.replaceBlocks(h.editor.document, [{ type: 'paragraph', content: [{ type: 'text', text: 'a\nb ', styles: {} }, { type: 'text', text: 'bold', styles: { bold: true } }] }] as never);
+    h.undoManager.clear();
+    const o = opening(h, { from: rangeOf(h, 'a').from, to: rangeOf(h, 'bold').to }, 'refine');
+    h.editor.updateBlock(blocks(h)[0]!.id, { type: 'codeBlock' } as never);
+    expect(aiReplaceAvailable(h.editor.prosemirrorState.doc, read(h, o, tagged({ 1: 'X' }), 'refine'), segments(h))).toBe(true);
+  });
+});
+
 describe('round 11: replace with only outside media', () => {
   it('can be pressed, writes nothing and says how many were left out, as insert does', async () => {
     const h = await open('One.');
