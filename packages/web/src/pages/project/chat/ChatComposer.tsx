@@ -249,7 +249,11 @@ function ChatComposerInner({
         </ChatAttachmentsContext.Provider>
       </ScrollArea>
       <div className='flex items-center justify-between gap-2 px-2 pb-2 pt-1.5'>
-        <div className='flex min-w-0 flex-1 items-center gap-1.5'>
+        {/* Takes what the model picker leaves, but never less than the +
+            button, the gap and the Space chip's floor (SpaceContextChip:
+            3em of its text-xs plus 2.125rem), so a tight footer truncates the
+            model name and the chip never spills under the picker. */}
+        <div className='flex min-w-[calc(var(--btn-inline)+0.375rem+3em+2.125rem)] flex-1 items-center gap-1.5 text-xs'>
           <input
             ref={picker}
             type='file'
