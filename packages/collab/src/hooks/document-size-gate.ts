@@ -5,8 +5,9 @@
  * The size cap's half of `beforeSync` (inner#1790): admit or refuse each sync
  * message of a writable connection before Hocuspocus applies it.
  *
- * The upper bound only admits; a refusal comes from yjs reporting new pending
- * content, from the trial budget, or from an exact trial on a copy. A refused
+ * The upper bound only admits; a refusal comes from an update that lists a
+ * client twice, from yjs reporting new pending content, from the trial budget,
+ * or from an exact trial on a copy. A refused
  * message is not applied and Hocuspocus closes that document's connection
  * with the error's reason; the inbound filter then drops what the client had
  * already sent for it until it authenticates the document again.
@@ -28,7 +29,7 @@ import {
 const logger = createLogger("document-size-gate");
 
 /** Why a message was refused, as the refusal log names it. */
-type RefusalStep = "pending" | "budget_user" | "budget_process" | "trial";
+type RefusalStep = "malformed" | "pending" | "budget_user" | "budget_process" | "trial";
 
 /**
  * Build the size gate. Its token bucket bounds the time this process spends
@@ -84,6 +85,7 @@ export function createDocumentSizeGate(): (data: beforeSyncPayload<AuthContext>)
       refill(ended);
       balance -= (ended - analyzed) * 1000;
     }
+    if (a.malformed) refuse("malformed");
     if (a.wouldPend) refuse("pending");
     if (!a.integratesStored) {
       const g = a.growthBound;

@@ -20,6 +20,7 @@
 
 import { DOC_SIZE_EVENT_BYTES, parseDocName, type DocSizeStatus } from "@breatic/shared";
 import type { Document } from "@hocuspocus/server";
+import * as decoding from "lib0/decoding";
 import * as encoding from "lib0/encoding";
 import * as Y from "yjs";
 import { getCollabConfig } from "@collab/config.js";
@@ -31,6 +32,9 @@ type Struct = Y.Item | Y.GC | Y.Skip;
 type DeleteSet = ReturnType<typeof Y.createDeleteSet>;
 /** Any shared type, typed as the document's own share map holds them. */
 type SharedType = NonNullable<ReturnType<Y.Doc["share"]["get"]>>;
+
+/** The type an update item goes into and the map key it writes. */
+type Place = { parent: SharedType; key: string | null };
 
 /** Half-open clock intervals, `[start, end)`, sorted and disjoint. */
 type Ranges = Array<[number, number]>;
@@ -63,6 +67,42 @@ export interface UpdateAnalysis {
   skeletonBuilt: boolean;
   /** A skeleton was built, for the pending check or to see stored pending content integrate. */
   skeletonRan: boolean;
+  /** The update lists a client in more than one struct group; nothing else in the analysis is read. */
+  malformed: boolean;
+}
+
+/** The analysis of a malformed update. */
+const MALFORMED: Readonly<UpdateAnalysis> = {
+  growthBound: 0,
+  freedBytes: 0,
+  structs: 0,
+  structBytes: 0,
+  liveRanges: 0,
+  liveEndpoints: 0,
+  cascadeItems: 0,
+  formatItems: 0,
+  wouldPend: false,
+  integratesStored: false,
+  deletesLive: false,
+  skeletonBuilt: false,
+  skeletonRan: false,
+  malformed: true,
+};
+
+/**
+ * Whether an update lists some client in more than one struct group (an
+ * empty group counts). yjs integrates only the last group of each client
+ * (`readClientsStructRefs`), while `Y.decodeUpdate` returns every group, so
+ * nothing read from the decoded structs says what yjs will do; yjs's own
+ * encoders write each client once.
+ * @param update - A V1 update.
+ * @param structs - Its decoded structs.
+ * @returns True when the groups outnumber the clients.
+ */
+function malformedGroups(update: Uint8Array, structs: Struct[]): boolean {
+  const clients = new Set<number>();
+  for (const s of structs) clients.add(s.id.client);
+  return decoding.readVarUint(decoding.createDecoder(update)) !== clients.size;
 }
 
 /**
@@ -174,7 +214,7 @@ function refsOf(s: Struct): Y.ID[] {
  */
 export function precheckMayPend(update: Uint8Array, store: Store): boolean {
   const { structs, ds } = Y.decodeUpdate(update);
-  return mayPend(structs, ds, store, reach(structs, store));
+  return malformedGroups(update, structs) || mayPend(structs, ds, store, reach(structs, store));
 }
 
 /**
@@ -418,6 +458,7 @@ export function analyze(update: Uint8Array, document: Y.Doc): UpdateAnalysis {
   const store = document.store;
   const decoded = Y.decodeUpdate(update);
   const structs = decoded.structs;
+  if (malformedGroups(update, structs)) return MALFORMED;
   const ds = Y.mergeDeleteSets([decoded.ds]);
   const reached = reach(structs, store);
 
@@ -455,56 +496,70 @@ export function analyze(update: Uint8Array, document: Y.Doc): UpdateAnalysis {
     return s && id.clock >= s.id.clock ? s : null;
   };
 
-  // An update's own items anchor on each other in long chains (a paste of many
-  // blocks), and the structs are visited in order, so each resolved place is kept.
-  const places = new Map<Y.Item, { parent: SharedType; key: string | null }>();
   /**
-   * The type an update item goes into and the map key it writes, read the
-   * way yjs reads it: from the origin, the right origin, or the item itself.
+   * One step of reading where an update item goes, the way yjs reads it:
+   * from the origin, the right origin, or the item itself.
    * @param s - An update item.
-   * @param depth - Guard against reference loops.
-   * @returns The parent and key, or null when they cannot be resolved here.
+   * @returns The place, or the update item its anchor sits in.
    */
-  const placeOf = (s: Y.Item, depth = 0): { parent: SharedType; key: string | null } | null => {
-    const known = places.get(s);
-    if (known) return known;
-    const place = resolvePlace(s, depth);
-    if (place) places.set(s, place);
-    return place;
-  };
-  /**
-   * {@link placeOf} without the kept results.
-   * @param s - An update item.
-   * @param depth - Guard against reference loops.
-   * @returns The parent and key, or null.
-   */
-  const resolvePlace = (s: Y.Item, depth: number): { parent: SharedType; key: string | null } | null => {
-    if (depth > 64) return null;
+  const placeStep = (s: Y.Item): { place: Place | null } | { next: Y.Item } => {
     const anchor = s.origin ?? s.rightOrigin;
     if (anchor) {
       const next = itemAt(anchor);
-      if (!next) return null;
-      if (!ownById.has(`${next.id.client}:${next.id.clock}`)) {
-        return next.parent instanceof Y.AbstractType ? { parent: next.parent, key: next.parentSub } : null;
-      }
-      return placeOf(next, depth + 1);
+      if (!next) return { place: null };
+      if (ownById.has(`${next.id.client}:${next.id.clock}`)) return { next };
+      return { place: next.parent instanceof Y.AbstractType ? { parent: next.parent, key: next.parentSub } : null };
     }
     if (typeof s.parent === "string") {
       const root = document.share.get(s.parent);
-      return root ? { parent: root, key: s.parentSub } : null;
+      return { place: root ? { parent: root, key: s.parentSub } : null };
     }
     if (s.parent instanceof Y.ID) {
       const holder = itemAt(s.parent);
-      return holder?.content instanceof Y.ContentType ? { parent: holder.content.type, key: s.parentSub } : null;
+      return { place: holder?.content instanceof Y.ContentType ? { parent: holder.content.type, key: s.parentSub } : null };
     }
-    return null;
+    return { place: null };
+  };
+
+  // An update's own items anchor on each other in long chains (a paste of many
+  // blocks), so every item on a walked chain keeps the result, unresolvable
+  // ones included, and each item is read once.
+  const places = new Map<Y.Item, Place | null>();
+  /**
+   * The type an update item goes into and the map key it writes; null when
+   * it cannot be resolved here, an anchor loop included.
+   * @param s - An update item.
+   * @returns The place, or null.
+   */
+  const placeOf = (s: Y.Item): Place | null => {
+    const path: Y.Item[] = [];
+    const onPath = new Set<Y.Item>();
+    let place: Place | null = null;
+    let at: Y.Item | null = s;
+    while (at && !onPath.has(at)) {
+      if (places.has(at)) {
+        place = places.get(at) ?? null;
+        break;
+      }
+      path.push(at);
+      onPath.add(at);
+      const step = placeStep(at);
+      if ("next" in step) {
+        at = step.next;
+      } else {
+        place = step.place;
+        at = null;
+      }
+    }
+    for (const item of path) places.set(item, place);
+    return place;
   };
 
   // A struct written to a map key deletes the value it replaces while it
   // integrates, before yjs applies the delete set, so a range over that value
   // finds it deleted already (its event is the struct's `C`).
   const replaced = new Set<Y.Item>();
-  const deletedTypes: SharedType[] = [];
+  const deletedTypes = new Set<SharedType>();
   const formatTexts = new Set<Y.Text>();
   /**
    * Note a text whose formatting yjs may clean up after the update.
@@ -522,7 +577,7 @@ export function analyze(update: Uint8Array, document: Y.Doc): UpdateAnalysis {
     const current = place.parent._map.get(place.key);
     if (!current || current.deleted || ownById.has(`${current.id.client}:${current.id.clock}`)) continue;
     replaced.add(current);
-    if (current.content instanceof Y.ContentType) deletedTypes.push(current.content.type);
+    if (current.content instanceof Y.ContentType) deletedTypes.add(current.content.type);
   }
 
   let liveRanges = 0;
@@ -546,7 +601,7 @@ export function analyze(update: Uint8Array, document: Y.Doc): UpdateAnalysis {
           if (s.id.clock < clock) liveEndpoints++;
           if (s.id.clock + s.length > end) liveEndpoints++;
           freedBytes += freedBy(s, from - s.id.clock, to - from);
-          if (s.content instanceof Y.ContentType) deletedTypes.push(s.content.type);
+          if (s.content instanceof Y.ContentType) deletedTypes.add(s.content.type);
           noteText(s.parent);
         }
       }
@@ -620,6 +675,7 @@ export function analyze(update: Uint8Array, document: Y.Doc): UpdateAnalysis {
     deletesLive: liveRanges > 0,
     skeletonBuilt,
     skeletonRan,
+    malformed: false,
   };
 }
 

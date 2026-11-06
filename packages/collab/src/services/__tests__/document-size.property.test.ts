@@ -264,6 +264,8 @@ describe("C-60 to C-64: analyze against yjs on a full replica", () => {
         if (g === "G9") expect(truth).toBe(true);
         if (g === "G11") expect(truth).toBe(false);
         const a = size.analyze(s.u, s.d);
+        // Every generated update is one yjs or a client could write.
+        expect(a.malformed).toBe(false);
         if (invs.includes(3)) {
           // INV-3 (C-62): wouldPend iff the replica gains pending units.
           expect(a.wouldPend).toBe(truth);

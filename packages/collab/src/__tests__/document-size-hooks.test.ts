@@ -58,6 +58,7 @@ import {
   updateShape,
 } from "./helpers/document-size-fixtures.js";
 import { authFrame, SYNC, syncFrame, WIRE } from "./helpers/live-hocuspocus.js";
+import { craft } from "../services/__tests__/helpers/doc-size-ref.js";
 
 const { serverSpy, logger, rateLimit, rateRedis, collabRedis, overrides, trial, activity, analysis, S_CONFIG } = vi.hoisted(() => ({
   // Spec 0.2 S configuration.
@@ -343,7 +344,7 @@ function handshake(socketId: string, key: string): void {
 
 /** What a refusal must look like (spec section 6 opening, 0.5.1). */
 interface Refusal {
-  step: "pending" | "budget_user" | "budget_process" | "trial";
+  step: "malformed" | "pending" | "budget_user" | "budget_process" | "trial";
   after?: number;
 }
 
@@ -1261,6 +1262,17 @@ describe("beforeSync: the token bucket under concurrent messages", () => {
     // Balance min(200, 200) - 1500 = -1300.
     needTrial();
     await refuse(doc, c, SYNC.update, appendUpdate(doc, 100), { step: "budget_process" });
+  });
+
+  it("refuses an update listing one client in two groups before any bound or trial", async () => {
+    await boot();
+    const doc = await load(NAME, helloDoc());
+    const writer = syncedClient(doc, 50);
+    const structs = Y.decodeUpdate(capture(writer, (d) => d.getText("t").insert(5, "x".repeat(20)))).structs as Y.Item[];
+    const junk = new Y.Item(Y.createID(50, 10_000_000), null, structs[0]!.origin, null, null, null, null, new Y.ContentString("z"));
+    const twice = craft([{ client: 50, clock: 10_000_000, structs: [junk] }, { client: 50, clock: 0, structs }]);
+    await refuse(doc, conn(doc), SYNC.update, twice, { step: "malformed" });
+    expect(rateLimit).not.toHaveBeenCalled();
   });
 });
 

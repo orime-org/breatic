@@ -26,6 +26,7 @@ import {
   C,
   S,
   capture,
+  craft,
   cycle,
   deleteOnly,
   dsAdjacent,
@@ -489,6 +490,50 @@ describe("analyze: pending content (C-46 to C-50)", () => {
   });
 });
 
+describe("analyze: update shape", () => {
+  /**
+   * A server text "hello" and a 20-char insertion written by client 50, as
+   * yjs encodes it.
+   * @returns The server and the insertion's structs.
+   */
+  function insertion(): { server: Y.Doc; structs: Y.Item[] } {
+    const server = hello();
+    const writer = new Y.Doc();
+    writer.clientID = 50;
+    Y.applyUpdate(writer, Y.encodeStateAsUpdate(server));
+    const sv = Y.encodeStateVector(writer);
+    writer.getText("t").insert(5, "x".repeat(20));
+    return { server, structs: Y.decodeUpdate(Y.encodeStateAsUpdate(writer, sv)).structs as Y.Item[] };
+  }
+
+  it("marks an update listing one client in two groups as malformed (yjs keeps only the last)", () => {
+    const { server, structs } = insertion();
+    const junk = new Y.Item(Y.createID(50, 10_000_000), null, structs[0]!.origin, null, null, null, null, new Y.ContentString("z"));
+    const twice = craft([{ client: 50, clock: 10_000_000, structs: [junk] }, { client: 50, clock: 0, structs }], [[50, [[0, 1], [2, 1]]]]);
+    expect(analyze(twice, server).malformed).toBe(true);
+    expect(precheckMayPend(twice, server.store)).toBe(true);
+  });
+
+  it("marks two groups of one client that continue each other's clocks as malformed", () => {
+    const { server, structs } = insertion();
+    const head = new Y.Item(Y.createID(50, 0), null, structs[0]!.origin, null, null, null, null, new Y.ContentString("a".repeat(20)));
+    const tail = new Y.Item(Y.createID(50, 20), null, Y.createID(50, 19), null, null, null, null, new Y.ContentString("b"));
+    const twice = craft([{ client: 50, clock: 0, structs: [head] }, { client: 50, clock: 20, structs: [tail] }]);
+    expect(analyze(twice, server).malformed).toBe(true);
+  });
+
+  it("marks a group with no structs as malformed", () => {
+    const { server, structs } = insertion();
+    expect(analyze(craft([{ client: 50, clock: 0, structs: [] }, { client: 50, clock: 0, structs }]), server).malformed).toBe(true);
+  });
+
+  it("reads what yjs writes as well formed", () => {
+    const { server, structs } = insertion();
+    expect(analyze(craft([{ client: 50, clock: 0, structs }]), server).malformed).toBe(false);
+    expect(analyze(Y.encodeStateAsUpdate(server), new Y.Doc()).malformed).toBe(false);
+  });
+});
+
 describe("analyze: skeleton reporting and cost", () => {
   it("reports a skeleton built on the stored-pending path, which the C-48 flag leaves false", () => {
     const writer = new Y.Doc();
@@ -590,5 +635,51 @@ describe("analyze: skeleton reporting and cost", () => {
       return { server, update: deleteOnly([[5, ranges]]) };
     };
     expect(growth(cascade, 2500)).toBeLessThan(10);
+  });
+
+  it("stays near linear when one update writes the same map key over a type with many children", () => {
+    const sameKey = (count: number): { server: Y.Doc; update: Uint8Array } => {
+      const server = new Y.Doc();
+      const list = new Y.Array<number>();
+      server.getMap("m").set("x", list);
+      // One insert each at the front, so every child is its own item.
+      for (let i = 0; i < count; i++) list.insert(0, [i]);
+      const current = server.getMap("m")._map.get("x")!;
+      const structs = Array.from({ length: count }, (_, i) =>
+        new Y.Item(Y.createID(777, i), null, i === 0 ? current.id : Y.createID(777, i - 1), null, null, null, null, new Y.ContentAny([i])));
+      return { server, update: craft([{ client: 777, clock: 0, structs }]) };
+    };
+    expect(growth(sameKey, 2000)).toBeLessThan(10);
+  });
+
+  it("resolves a chain anchored on a GC struct about as fast as a chain anchored on a live item", () => {
+    const count = 20_000;
+    const server = new Y.Doc();
+    server.getArray("a").insert(0, [0]);
+    const seed = server.getArray("a")._start!;
+    /**
+     * A same-client chain of `count` items after a first struct.
+     * @param first - The chain's first struct.
+     * @returns The update.
+     */
+    const chain = (first: Y.Item | Y.GC): Uint8Array => craft([{
+      client: 7,
+      clock: 0,
+      structs: [first, ...Array.from({ length: count }, (_, i) =>
+        new Y.Item(Y.createID(7, i + 1), null, Y.createID(7, i), null, null, null, null, new Y.ContentAny([0])))],
+    }]);
+    const live = chain(new Y.Item(Y.createID(7, 0), null, seed.id, null, null, null, null, new Y.ContentAny([0])));
+    const gcRooted = chain(new Y.GC(Y.createID(7, 0), 1));
+    let bestLive = Number.POSITIVE_INFINITY;
+    let bestGc = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < 3; i++) {
+      let started = performance.now();
+      analyze(live, server);
+      bestLive = Math.min(bestLive, performance.now() - started);
+      started = performance.now();
+      analyze(gcRooted, server);
+      bestGc = Math.min(bestGc, performance.now() - started);
+    }
+    expect(bestGc / Math.max(0.5, bestLive)).toBeLessThan(3);
   });
 });
