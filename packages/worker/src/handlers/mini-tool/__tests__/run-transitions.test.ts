@@ -9,7 +9,8 @@
  * the frozen plan as it is: one `chunk_encode` job on the frozen `container` class (standard-4) per frozen `layout.encode`
  * window, one `transition_window` job on the frozen `windowContainer` class (`MiniToolContainerGl`) per frozen
  * `layout.window` window, then exactly one `stitch` on standard-4 that binds every chunk in output-frame order, both clips'
- * audio in timeline order (`audio: null` for a clip without audio, D16-1) and the `crossfade` window (null for a Cut). Every
+ * audio in timeline order (an audio entry for every clip, §97 D23: the frozen plan holds no has-audio fact, and the
+ * container fills silence for a file without an audio track) and the `crossfade` window (null for a Cut). Every
  * job carries the frozen `profile`. A Cut sends no window job. Job ids follow §5.4: `<taskId>:out:0:enc:<k>:a<m>`,
  * `<taskId>:out:0:win:<k>:a<m>`, `<taskId>:out:0:stitch:a<m>`.
  *
@@ -530,7 +531,7 @@ describe("the frozen chunk boundaries are dispatched as they are (§97 D23-3)", 
   });
 });
 
-describe("a Cut transition (§5.4 派发: 转场选「直接切换」时不派 transition_window; §97 D16-1)", () => {
+describe("a Cut transition (§5.4 派发: 转场选「直接切换」时不派 transition_window; §97 D23)", () => {
   // The current video, a Cut, then 1.48 s (37 frames) of a source without audio; chunks of at most 48 frames.
   const cut = (): Run => run({ kind: "cut", duration: 0 }, SILENT, 1.48, 48);
 
@@ -540,7 +541,7 @@ describe("a Cut transition (§5.4 派发: 转场选「直接切换」时不派 t
     expect(value.layout).toEqual({ encode: [{ start: 0, end: 48 }, { start: 48, end: 96 }, { start: 96, end: 133 }], window: [] });
   });
 
-  it("TC01 sends no transition_window and nothing to MiniToolContainerGl; the stitch has no crossfade and silence for the clip without audio", async () => {
+  it("TC01 sends no transition_window and nothing to MiniToolContainerGl; the stitch has no crossfade and an audio entry for every clip, the silent source's included", async () => {
     const value = cut();
     serve(plan(value));
     const completion = await drive();
@@ -553,8 +554,9 @@ describe("a Cut transition (§5.4 派发: 转场选「直接切换」时不派 t
     expect(recipe).toMatchObject({ kind: "stitch", crossfade: null, profile: value.profile });
     const clips = recipe.clips as { inputId: string; audio: unknown }[];
     expect(clips.map((clip) => bound(request, clip.inputId))).toEqual([A.key, SILENT.key]);
-    expect(clips[0]!.audio).not.toBeNull();
-    expect(clips[1]!.audio).toBeNull();
+    // The plan cannot tell a silent source from one with audio (`audioSpans: null` is ambiguous), so the stitch names both
+    // clips' audio and the container reads the real file, filling silence where it has no audio track.
+    expect(clips.every((clip) => clip.audio !== null && typeof clip.audio === "object")).toBe(true);
     expect(statuses(completion)).toEqual(["registered"]);
   });
 });
