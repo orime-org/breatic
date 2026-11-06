@@ -244,10 +244,12 @@ export async function insertEntry(entry: NewEntry, tx?: DbTx): Promise<AgentMemo
   return toEntity(row);
 }
 
-/** An entry's title and content, as a writer read them. */
-export interface EntryText {
+/** An entry as a writer read it: its text and where it is read. */
+export interface EntryAsRead {
   title: string;
   content: string;
+  /** The conversation it belongs to alone; null for a Project entry. */
+  conversationId: string | null;
 }
 
 /**
@@ -258,11 +260,19 @@ export interface EntryText {
  * @returns The condition.
  * @throws {never} Never.
  */
-function liveEntry(id: string, unchanged?: EntryText): SQL | undefined {
+function liveEntry(id: string, unchanged?: EntryAsRead): SQL | undefined {
   return and(
     eq(agentMemories.id, id),
     isNull(agentMemories.deletedAt),
-    ...(unchanged === undefined ? [] : [eq(agentMemories.title, unchanged.title), eq(agentMemories.content, unchanged.content)]),
+    ...(unchanged === undefined
+      ? []
+      : [
+        eq(agentMemories.title, unchanged.title),
+        eq(agentMemories.content, unchanged.content),
+        unchanged.conversationId === null
+          ? isNull(agentMemories.conversationId)
+          : eq(agentMemories.conversationId, unchanged.conversationId),
+      ]),
   );
 }
 
@@ -281,7 +291,7 @@ export async function updateEntry(
   id: string,
   change: { title: string; content: string; conversationId?: string | null },
   tx?: DbTx,
-  unchanged?: EntryText,
+  unchanged?: EntryAsRead,
 ): Promise<AgentMemoryEntity | null> {
   const [row] = await (tx ?? db)
     .update(agentMemories)
@@ -298,7 +308,7 @@ export async function updateEntry(
  * @param unchanged - What the caller read; given, the delete happens only while the entry still holds it.
  * @returns The entry, or null when there is no live entry by that id holding what the caller read.
  */
-export async function softDeleteEntry(id: string, tx?: DbTx, unchanged?: EntryText): Promise<AgentMemoryEntity | null> {
+export async function softDeleteEntry(id: string, tx?: DbTx, unchanged?: EntryAsRead): Promise<AgentMemoryEntity | null> {
   const [row] = await (tx ?? db)
     .update(agentMemories)
     .set({ deletedAt: new Date() })

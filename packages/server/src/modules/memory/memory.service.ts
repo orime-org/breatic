@@ -109,7 +109,7 @@ export type MemoryOperation =
 /** One consolidation's results, and the watermark they cover. */
 export interface ConsolidationCommit extends MemoryScopeKey {
   /** The entries the consolidation was shown in full, as it read them. */
-  shown: ReadonlyArray<{ id: string; title: string; content: string }>;
+  shown: ReadonlyArray<{ id: string; scope: MemoryScope; title: string; content: string }>;
   /** The watermark the consolidation read. */
   watermarkBefore: number;
   /** The turn the window ended on. */
@@ -134,9 +134,9 @@ export interface ConsolidationCommit extends MemoryScopeKey {
  * and it costs the caller a reassembly rather than any data.
  *
  * An entry is changed or deleted only while it still holds what the
- * consolidation was shown. A Project entry another conversation changed or
- * deleted while the fold ran fails the whole write, so the next fold reads it
- * as it now is.
+ * consolidation was shown, scope included. A Project entry another
+ * conversation changed, moved or deleted while the fold ran fails the whole
+ * write, so the next fold reads it as it now is.
  * @param commit - The results and the watermark they cover.
  * @returns Whether this call's memory landed.
  * @throws {Error} When a write fails, or an entry it changes no longer holds
@@ -144,7 +144,12 @@ export interface ConsolidationCommit extends MemoryScopeKey {
  */
 export async function commitConsolidation(commit: ConsolidationCommit): Promise<"written" | "superseded"> {
   const { userId, projectId, conversationId, shown, watermarkBefore, newWatermark, progress, operations } = commit;
-  const read = new Map(shown.map((entry) => [entry.id, { title: entry.title, content: entry.content }]));
+  const read = new Map(
+    shown.map((entry) => [
+      entry.id,
+      { title: entry.title, content: entry.content, conversationId: entry.scope === "conversation" ? conversationId : null },
+    ]),
+  );
   return db.transaction(async (tx) => {
     const moved = await conversationRepo.advanceConsolidatedTurn(conversationId, watermarkBefore, newWatermark, tx);
     if (!moved) return "superseded";

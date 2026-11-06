@@ -15,7 +15,7 @@
 import { describe, it, expect, beforeAll, afterAll, inject } from "vitest";
 import postgres from "postgres";
 import { db, initCore } from "@breatic/core";
-import { MemoryRefused } from "@breatic/domain";
+import { MemoryRefused, type MemoryScope } from "@breatic/domain";
 import { memoryService } from "@server/modules";
 import * as memoryRepo from "@server/modules/memory/memory.repo.js";
 import * as conversationRepo from "@server/modules/conversation/conversation.repo.js";
@@ -130,11 +130,13 @@ async function watermarkOf(conversationId: string): Promise<number> {
 /**
  * Entries as a consolidation is shown them in full, read from the table now.
  * @param ids - The entries.
- * @returns Each one's id, title and content.
+ * @returns Each one's id, scope, title and content.
  */
-async function shownOf(...ids: string[]): Promise<Array<{ id: string; title: string; content: string }>> {
-  return sql<{ id: string; title: string; content: string }[]>`
-    SELECT id, title, content FROM agent_memories WHERE id IN ${sql(ids)}
+async function shownOf(...ids: string[]): Promise<Array<{ id: string; scope: MemoryScope; title: string; content: string }>> {
+  return sql<{ id: string; scope: MemoryScope; title: string; content: string }[]>`
+    SELECT id, title, content,
+      CASE WHEN conversation_id IS NULL THEN 'project' ELSE 'conversation' END AS scope
+    FROM agent_memories WHERE id IN ${sql(ids)}
   `;
 }
 
@@ -437,15 +439,19 @@ describe("what a consolidation writes", () => {
     expect((await memoryService.buildContext(owner.userId, owner.conversationId, owner.projectId)).progress).toBe("");
   });
 
+  const update = (id: string) => ({ op: "update" as const, id, title: "Palette", content: "Teal and orange." });
+  const remove = (id: string) => ({ op: "delete" as const, id });
   it.each([
-    ["update", (id: string) => ({ op: "update" as const, id, title: "Palette", content: "Teal and orange." })],
-    ["delete", (id: string) => ({ op: "delete" as const, id })],
-  ])("writes nothing when an entry it would %s was changed in another conversation since it read it", async (_op, operation) => {
+    ["update", "its content", update, "project", "Blue."],
+    ["delete", "its content", remove, "project", "Blue."],
+    ["update", "its scope", update, "conversation", "Teal."],
+    ["delete", "its scope", remove, "conversation", "Teal."],
+  ] as const)("writes nothing when an entry it would %s had %s changed in another conversation since it read it", async (_op, _what, operation, scope, content) => {
     const owner = await seed();
     const other = await newConversation(owner.userId, owner.projectId);
     const keep = await seedEntry(owner, { title: "Palette", content: "Teal." });
     const shown = await shownOf(keep);
-    await agentMemoryFor({ ...owner, conversationId: other }).save({ id: keep, scope: "project", title: "Palette", content: "Blue." });
+    await agentMemoryFor({ ...owner, conversationId: other }).save({ id: keep, scope, title: "Palette", content });
 
     const failed = await rejectionOf(
       memoryService.commitConsolidation({
@@ -457,13 +463,14 @@ describe("what a consolidation writes", () => {
         operations: [{ op: "add", scope: "project", title: "New", content: "n" }, operation(keep)],
       }),
     );
-    const context = await memoryService.buildContext(owner.userId, owner.conversationId, owner.projectId);
+    const rows = await sql<{ id: string; content: string; conversation_id: string | null; deleted_at: Date | null }[]>`
+      SELECT id, content, conversation_id, deleted_at FROM agent_memories WHERE user_id = ${owner.userId}
+    `;
 
     expect(failed).toBeInstanceOf(Error);
     expect(await watermarkOf(owner.conversationId)).toBe(0);
-    expect(context.entries.map((e) => e.title)).toEqual(["Palette"]);
-    expect((await agentMemoryFor(owner).read([keep]))[0]?.content).toBe("Blue.");
-    expect(context.progress).toBe("");
+    expect(rows).toEqual([{ id: keep, content, conversation_id: scope === "conversation" ? other : null, deleted_at: null }]);
+    expect((await memoryService.buildContext(owner.userId, owner.conversationId, owner.projectId)).progress).toBe("");
   });
 
   it("writes nothing when an entry it would change was deleted in another conversation since it read it", async () => {
