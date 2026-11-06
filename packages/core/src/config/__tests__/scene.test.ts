@@ -14,6 +14,7 @@ const IMPORT_DEFAULTS = {
   decoder_worker_limit: 1,
   max_texture_edge: 8192,
   max_texture_bytes: 268435456,
+  progress_publish_ms: 1000,
 };
 const IMPORT_FIELDS = Object.keys(IMPORT_DEFAULTS) as (keyof typeof IMPORT_DEFAULTS)[];
 
@@ -57,6 +58,7 @@ describe("scene model import budgets", () => {
       decoder_worker_limit: 2,
       max_texture_edge: 4096,
       max_texture_bytes: 100663296,
+      progress_publish_ms: 500,
     };
 
     expect(sceneConfigSchema.parse({ scale_sensitivity: 0.025, import: configured })).toEqual({
