@@ -657,6 +657,56 @@ test('a failed transfer and a failed load keep existing objects; the task list r
   }
 });
 
+test('an editor\'s upload progress stays on everyone\'s task list while that editor has another tab on screen @needs-storage @needs-ingest', async ({ page, browser, baseURL }) => {
+  const peerContext = await browser.newContext({ baseURL, storageState: stateFile('B') });
+  const projectId = smokeProjectId();
+  const partsPattern = '**/uploads/**/parts/*';
+  const parts = Promise.withResolvers<void>();
+  const spaces: string[] = [];
+  let peerId: string | undefined;
+  let peer: Page | undefined;
+  try {
+    await openSmokeProject(page);
+    const id = await createSpace(page, '3d', `Shared progress ${crypto.randomUUID()}`);
+    spaces.push(id);
+    peerId = (await dataOf<{ id: string }>(await peerContext.request.get('/api/v1/auth/me'), 'read uploading account identity')).id;
+    peer = await inviteMember(page, peerContext, projectId, credentialsFor('B').email, 'editor');
+    watchUploadTickets(peer, 'B');
+    await peer.route(partsPattern, async (route) => {
+      if (route.request().method() === 'PUT') await parts.promise;
+      await route.continue().catch((err: unknown) => {
+        if (!String(err).includes('already handled')) throw err;
+      });
+    });
+    await peer.goto(smokeProjectUrl());
+    await reopenScene(peer, id);
+    const dialog = await openImport(peer);
+    await dialog.locator('input[type="file"]').first().setInputFiles(sceneGlb(crypto.randomUUID()));
+    await previewReady(dialog);
+    await roomForUploads(1, 'B');
+    const ticketResponse = peer.waitForResponse((response) => new URL(response.url()).pathname === '/api/v1/assets/upload-ticket'
+      && response.request().method() === 'POST', { timeout: test.info().timeout });
+    await dialog.getByRole('button', { name: 'Import', exact: true }).click();
+    const ticket = await dataOf<Record<string, unknown>>(await ticketResponse, 'open the held model upload');
+    // The uploader moves to another Space; its 3D tab stays open behind it.
+    spaces.push(await createSpace(peer, 'canvas', `Other tab ${crypto.randomUUID()}`));
+    await openTasks(page);
+    await expect(taskRow(page, ticket.taskId)).toContainText(/Uploading \d+%/, { timeout: 15_000 });
+  } finally {
+    parts.resolve();
+    try {
+      if (peer) await peer.unrouteAll({ behavior: 'wait' });
+      await peerContext.close();
+    } finally {
+      try {
+        if (peerId) await cleanMembership(page, projectId, peerId);
+      } finally {
+        for (const space of spaces) await deleteSpace(page, space);
+      }
+    }
+  }
+});
+
 test('every member sees one task list: another editor\'s upload is placed by anyone, and a viewer only reads it @needs-storage @needs-ingest', async ({ page, browser, baseURL }) => {
   const peerContext = await browser.newContext({ baseURL, storageState: stateFile('B') });
   const projectId = smokeProjectId();
