@@ -378,6 +378,9 @@ test('the toolbar of a first block sits on the picture, never under it, centred,
   });
   const img = page.locator(`${IMAGE} img`);
   await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  // Hovered once the picture has its own size: until it loads it holds a 3:2
+  // box across the row (A23), and shrinking leaves the pointer beside it.
+  await expect.poll(async () => (await img.boundingBox())?.width).toBe(400);
 
   await img.hover();
   const toolbar = page.locator(`${IMAGE} [data-testid="doc-media-toolbar"]`);
