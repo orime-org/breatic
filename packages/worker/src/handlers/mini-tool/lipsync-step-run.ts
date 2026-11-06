@@ -97,6 +97,21 @@ async function runsOf(execution: LipSync): Promise<string[]> {
 }
 
 /**
+ * The composite's step key (DD §7.1): the digest over the plan fingerprint of the retry chain's original run, so a retry of
+ * a retry finds a chunk any run of the chain composited (its inputs are the same done steps).
+ * @param execution - The frozen run.
+ * @returns The key.
+ * @throws {Error} When a run of the chain cannot be read.
+ */
+async function compositeKeyOf(execution: LipSync): Promise<string> {
+  const root = (await runsOf(execution)).at(-1)!;
+  if (root === execution.taskId) return lipsyncStepKey(execution.planFingerprint, null, "composite");
+  const task = await taskRepo.getMiniToolExecutionTask(root);
+  const fingerprint = z.object({ miniToolExecution: z.object({ planFingerprint: z.string().min(1) }) }).parse(task?.params).miniToolExecution.planFingerprint;
+  return lipsyncStepKey(fingerprint, null, "composite");
+}
+
+/**
  * The stored request of a container step, if any.
  * @param step - The step.
  * @returns The request.
@@ -481,7 +496,7 @@ async function personStep(execution: LipSync, kind: "track" | "faces" | "clip" |
  * @throws {Error} When persistence or IO fails.
  */
 async function composite(execution: LipSync, userId: string, deadlineAt: number): Promise<{ keys: string[] } | { failed: Category }> {
-  const stepKey = lipsyncStepKey(execution.planFingerprint, null, "composite");
+  const stepKey = await compositeKeyOf(execution);
   const keys: string[] = [];
   let running = false;
   for (const [chunk, window] of execution.layout.composite.entries()) {
@@ -525,7 +540,7 @@ async function composite(execution: LipSync, userId: string, deadlineAt: number)
 async function stitch(execution: LipSync, userId: string, deadlineAt: number): Promise<LipSyncStepOutcome> {
   const chunks = await composite(execution, userId, deadlineAt);
   if (!("keys" in chunks)) return { state: "failed", step: "stitch", category: chunks.failed };
-  const stepKey = lipsyncStepKey(execution.planFingerprint, null, "composite");
+  const stepKey = await compositeKeyOf(execution);
   for (let attempt = 1; attempt <= execution.container.chunkRetries + 1; attempt += 1) {
     const jobId = `${execution.taskId}:${stepKey}:stitch:a${attempt}`;
     const steps = await upstreamStepRepo.listSteps(execution.taskId);
