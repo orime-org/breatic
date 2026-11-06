@@ -12,7 +12,7 @@
  */
 
 import { z } from "zod";
-import { MEMORY_CONTENT_MAX_CHARS, MEMORY_TITLE_MAX_CHARS } from "@breatic/core";
+import { memoryContent as content, memoryTitle as title } from "@breatic/domain";
 import type { MemoryOperation } from "@server/modules/memory/memory.service.js";
 
 /** What an answer is checked against. */
@@ -43,19 +43,6 @@ export type AnswerRead = { ok: true; answer: ConsolidationAnswer } | { ok: false
 function characters(text: string): number {
   return [...text].length;
 }
-
-const title = z
-  .string()
-  .trim()
-  .min(1, "must not be empty")
-  .refine((t) => characters(t) <= MEMORY_TITLE_MAX_CHARS, `must be at most ${String(MEMORY_TITLE_MAX_CHARS)} characters`)
-  .refine((t) => !/[\r\n\u2028\u2029]/.test(t), "must be one line");
-
-const content = z
-  .string()
-  .trim()
-  .min(1, "must not be empty")
-  .refine((c) => characters(c) <= MEMORY_CONTENT_MAX_CHARS, `must be at most ${String(MEMORY_CONTENT_MAX_CHARS)} characters`);
 
 const operation = z.discriminatedUnion("op", [
   z.object({ op: z.literal("add"), scope: z.enum(["project", "conversation"]), title, content }).strict(),

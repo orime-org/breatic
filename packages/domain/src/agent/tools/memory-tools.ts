@@ -19,6 +19,8 @@ import { FAILURE_LINES } from "@breatic/shared";
 import { isStop, stoppedByUser, toolFailed, turnedAway } from "@domain/agent/tools/failure.js";
 import {
   MemoryRefused,
+  memoryContent,
+  memoryTitle,
   type AgentMemory,
   type MemoryEntry,
   type MemoryToolContext,
@@ -44,31 +46,11 @@ const memoryContextSchema: z.ZodType<MemoryToolContext> = z.object({
   memory: z.custom<AgentMemory>(isMemory, "the turn's memory"),
 });
 
-/**
- * How many characters a text holds, counted the way the limits are: by code
- * point, so an emoji is one.
- * @param text - The text.
- * @returns Its length in characters.
- * @throws {never} Never.
- */
-function characters(text: string): number {
-  return [...text].length;
-}
+const titleField = memoryTitle.describe(
+  `One line, at most ${String(MEMORY_TITLE_MAX_CHARS)} characters, saying what the entry is about.`,
+);
 
-const titleField = z
-  .string()
-  .trim()
-  .min(1)
-  .refine((t) => characters(t) <= MEMORY_TITLE_MAX_CHARS, `at most ${String(MEMORY_TITLE_MAX_CHARS)} characters`)
-  .refine((t) => !/[\r\n\u2028\u2029]/.test(t), "one line")
-  .describe(`One line, at most ${String(MEMORY_TITLE_MAX_CHARS)} characters, saying what the entry is about.`);
-
-const contentField = z
-  .string()
-  .trim()
-  .min(1)
-  .refine((c) => characters(c) <= MEMORY_CONTENT_MAX_CHARS, `at most ${String(MEMORY_CONTENT_MAX_CHARS)} characters`)
-  .describe(
+const contentField = memoryContent.describe(
     `The facts and decisions the user gave, in the user's language, at most ${String(MEMORY_CONTENT_MAX_CHARS)} characters.`,
   );
 

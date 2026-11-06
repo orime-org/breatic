@@ -83,6 +83,8 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     // The real one. What it puts on the call is the thing being asserted,
     // and a stub would be answering the question with its own return value.
     callOptionsFor: actual.callOptionsFor,
+    memoryTitle: actual.memoryTitle,
+    memoryContent: actual.memoryContent,
     creditLotService: { chargeOnceForGeneration },
   };
 });

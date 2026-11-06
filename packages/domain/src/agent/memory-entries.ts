@@ -11,6 +11,35 @@
  * and the words to look for.
  */
 
+import { z } from "zod";
+import { MEMORY_CONTENT_MAX_CHARS, MEMORY_TITLE_MAX_CHARS } from "@breatic/core";
+
+/**
+ * How many characters a text holds, counted the way the limits are: by code
+ * point, so an emoji is one.
+ * @param text - The text.
+ * @returns Its length in characters.
+ * @throws {never} Never.
+ */
+function characters(text: string): number {
+  return [...text].length;
+}
+
+/** An entry's title, as the memory tools and a consolidation answer are held to it. */
+export const memoryTitle = z
+  .string()
+  .trim()
+  .min(1, "must not be empty")
+  .refine((t) => characters(t) <= MEMORY_TITLE_MAX_CHARS, `must be at most ${String(MEMORY_TITLE_MAX_CHARS)} characters`)
+  .refine((t) => !/[\r\n\u2028\u2029]/.test(t), "must be one line");
+
+/** An entry's content, as the memory tools and a consolidation answer are held to it. */
+export const memoryContent = z
+  .string()
+  .trim()
+  .min(1, "must not be empty")
+  .refine((c) => characters(c) <= MEMORY_CONTENT_MAX_CHARS, `must be at most ${String(MEMORY_CONTENT_MAX_CHARS)} characters`);
+
 /** Where an entry is read: every conversation of the member's in the Project, or one conversation. */
 export type MemoryScope = "project" | "conversation";
 

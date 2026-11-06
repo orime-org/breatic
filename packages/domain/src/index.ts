@@ -142,7 +142,7 @@ export type {
   NodeRecords,
   ActivityPage,
 } from "@domain/agent/tools/project-records.js";
-export { MemoryRefused } from "@domain/agent/memory-entries.js";
+export { MemoryRefused, memoryContent, memoryTitle } from "@domain/agent/memory-entries.js";
 export type {
   AgentMemory,
   MemoryEntry,
