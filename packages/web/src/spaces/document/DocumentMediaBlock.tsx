@@ -744,7 +744,9 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         {/* Above the media, the gap between it and its bar is padding on this
             layer, not a margin, so a pointer crossing it stays inside the
             block and the bar stays up. It takes the pointer only while the bar is shown, so
-            the line above the media is clickable the rest of the time. */}
+            the line above the media is clickable the rest of the time. A
+            narrow video's bar is in its floating panel, and passes through
+            here on its way: it must not land under the pointer there. */}
         <div
           ref={holdLayer}
           data-media-chrome=''
@@ -753,7 +755,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
           onPointerLeave={pointerOff}
           style={inCell ? layerStyles : undefined}
           className={cn(
-            toolbarShown ? 'pointer-events-auto' : 'pointer-events-none',
+            toolbarShown && !floating ? 'pointer-events-auto' : 'pointer-events-none',
             inCell
               // Over the table's row and column handles (10), as the
               // selection bubble bar is: both are summoned by the reader's

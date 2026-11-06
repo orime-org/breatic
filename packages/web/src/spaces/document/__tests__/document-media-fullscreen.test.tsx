@@ -141,3 +141,23 @@ describe('a read-only media toolbar', () => {
     expect(toolbar.className).toContain('invisible');
   });
 });
+
+// inner#1844: a narrow video's row of icons belongs to its floating panel. The
+// layer over the picture takes no pointer, so the bar passing through it on its
+// way into the panel never lands under the hand and closes the panel.
+describe('a narrow video', () => {
+  it('lets the pointer through the layer over its picture while the panel is open', async () => {
+    open('video', 80);
+    fireEvent.pointerEnter(screen.getByTestId('doc-media-frame'));
+    await screen.findByTestId('doc-media-video-panel');
+    const layer = document.querySelector('[data-media-viewer]');
+    expect(layer?.className).toContain('pointer-events-none');
+  });
+
+  it('keeps the layer over a wide video taking the pointer while its bar is up', () => {
+    open('video', 600);
+    fireEvent.pointerEnter(screen.getByTestId('doc-media-frame'));
+    const layer = document.querySelector('[data-media-viewer]');
+    expect(layer?.className).toContain('pointer-events-auto');
+  });
+});
