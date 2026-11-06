@@ -496,7 +496,7 @@ describe("the model call", () => {
     expect(model.calls[0]).not.toHaveProperty("temperature");
   });
 
-  it("streams the model's text as it comes: the reader's screen paces it", async () => {
+  it("streams the model's text as it comes: the user's screen paces it", async () => {
     await run(bodyFor("polish"));
 
     expect(model.calls[0]).not.toHaveProperty("experimental_transform");

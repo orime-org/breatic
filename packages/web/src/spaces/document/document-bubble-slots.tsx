@@ -90,7 +90,7 @@ import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
  * Says a control was pressed before anyone wrote the command behind it.
  *
  * The console rather than the screen: these controls look and behave the way
- * the demo draws them, and the product is not launched, so a reader is not
+ * the demo draws them, and the product is not launched, so a user is not
  * told anything (user 2026-08-26). Whoever is holding the browser open sees
  * which command they reached.
  * @param what - The control that was pressed.
@@ -396,7 +396,7 @@ export const AlignSlot = React.memo(function AlignSlot({
   const id = 'doc-bubble-align';
   const label = t('spaces.document.commands.align');
   // One reading covers both states the slot draws: whether it is live, and
-  // which row is lit. Two readers would walk the covered blocks twice per
+  // which row is lit. Two users would walk the covered blocks twice per
   // keystroke and could disagree about what is under the selection.
   const face = useEditorSnapshot(editor, alignFace);
   const active = face === MIXED_ALIGNMENT ? undefined : face;

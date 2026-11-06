@@ -746,7 +746,7 @@ export {
 } from "@shared/upload/upload-status.js";
 export { uprightKeyFor, type UprightCopy } from "@shared/upload/upright.js";
 // Why a task failed, as a code rather than a sentence: the writer is a server
-// and the reader is whoever opens the list, in their own language.
+// and the user is whoever opens the list, in their own language.
 export {
   TASK_FAILURE_REASONS,
   encodeTaskFailure,
@@ -813,7 +813,7 @@ export {
   type LongMediaSourceReference,
 } from "@shared/media/long-media-job.js";
 // The media fields a result puts on a node, written the same way by collab
-// when a task settles and by the canvas when a reader restores one.
+// when a task settles and by the canvas when a user restores one.
 export {
   NODE_MEDIA_KEYS,
   writeNodeMedia,

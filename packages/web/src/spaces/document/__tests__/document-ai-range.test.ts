@@ -3,11 +3,11 @@
 
 /**
  * The AI output dialog's original range (inner#1860, design §5.4, §6.3): the
- * words the reader selected, followed while the dialog is open, through the
+ * words the user selected, followed while the dialog is open, through the
  * same local-range tracking the unposted comment uses, in an instance of its
  * own. Every editor `buildDocumentEditor` builds carries it.
  *
- * present → gone once no letter is left, by the reader's own edit or one that
+ * present → gone once no letter is left, by the user's own edit or one that
  * comes in through Yjs; gone stays gone, even when undo writes the words back
  * (the comment draft's rule, `document-comment-draft-range.ts`).
  *
@@ -59,7 +59,7 @@ async function openHandle(words: string): Promise<DocumentEditorHandle> {
   const doc = new Y.Doc();
   const handle = getDocumentEditor(doc, `project-p/document-${String(Math.random())}`, {
     caretProvider: { awareness: new Awareness(doc) },
-    readWho: () => ({ role: 'editor', viewerId: 'reader-1' }),
+    readWho: () => ({ role: 'editor', viewerId: 'user-1' }),
     editable: true,
   });
   const root = document.createElement('div');
@@ -131,7 +131,7 @@ describe('the AI dialog\'s range', () => {
     expect(aiRangeIn(handle.editor.prosemirrorState)).toBeNull();
   });
 
-  it('holds the words it was opened on and follows them through the reader\'s edits', async () => {
+  it('holds the words it was opened on and follows them through the user\'s edits', async () => {
     const handle = await openHandle('The quick brown fox.');
     const view = handle.editor.prosemirrorView!;
     view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, [rangeOf(handle.editor, 'quick brown')]));
@@ -208,18 +208,18 @@ describe('the AI dialog\'s range', () => {
 });
 
 describe('the AI range under any mix of edits (property)', () => {
-  /** One edit: by the reader (local) or a collaborator (through Yjs), or an undo / redo of the reader's. */
+  /** One edit: by the user (local) or a collaborator (through Yjs), or an undo / redo of the user's. */
   type Edit =
-    | { readonly by: 'reader' | 'collaborator'; readonly kind: 'insert'; readonly at: number; readonly text: string }
-    | { readonly by: 'reader' | 'collaborator'; readonly kind: 'delete'; readonly at: number; readonly length: number }
-    | { readonly by: 'reader'; readonly kind: 'overtype'; readonly at: number; readonly length: number; readonly text: string }
-    | { readonly by: 'reader'; readonly kind: 'undo' | 'redo' };
+    | { readonly by: 'user' | 'collaborator'; readonly kind: 'insert'; readonly at: number; readonly text: string }
+    | { readonly by: 'user' | 'collaborator'; readonly kind: 'delete'; readonly at: number; readonly length: number }
+    | { readonly by: 'user'; readonly kind: 'overtype'; readonly at: number; readonly length: number; readonly text: string }
+    | { readonly by: 'user'; readonly kind: 'undo' | 'redo' };
 
   const edit: fc.Arbitrary<Edit> = fc.oneof(
-    fc.record({ by: fc.constantFrom('reader' as const, 'collaborator' as const), kind: fc.constant('insert' as const), at: fc.nat(), text: fc.constantFrom('x', 'yz', ' ') }),
-    fc.record({ by: fc.constantFrom('reader' as const, 'collaborator' as const), kind: fc.constant('delete' as const), at: fc.nat(), length: fc.integer({ min: 1, max: 6 }) }),
-    fc.record({ by: fc.constant('reader' as const), kind: fc.constantFrom('undo' as const, 'redo' as const) }),
-    fc.record({ by: fc.constant('reader' as const), kind: fc.constant('overtype' as const), at: fc.nat(), length: fc.integer({ min: 1, max: 6 }), text: fc.constantFrom('x', 'yz') }),
+    fc.record({ by: fc.constantFrom('user' as const, 'collaborator' as const), kind: fc.constant('insert' as const), at: fc.nat(), text: fc.constantFrom('x', 'yz', ' ') }),
+    fc.record({ by: fc.constantFrom('user' as const, 'collaborator' as const), kind: fc.constant('delete' as const), at: fc.nat(), length: fc.integer({ min: 1, max: 6 }) }),
+    fc.record({ by: fc.constant('user' as const), kind: fc.constantFrom('undo' as const, 'redo' as const) }),
+    fc.record({ by: fc.constant('user' as const), kind: fc.constant('overtype' as const), at: fc.nat(), length: fc.integer({ min: 1, max: 6 }), text: fc.constantFrom('x', 'yz') }),
   );
 
   /**
@@ -255,7 +255,7 @@ describe('the AI range under any mix of edits (property)', () => {
         if (step.kind === 'undo') undo.manager.undo();
         else undo.manager.redo();
       } else {
-        const view = step.by === 'reader' ? viewA : b.prosemirrorView!;
+        const view = step.by === 'user' ? viewA : b.prosemirrorView!;
         const size = view.state.doc.content.size;
         // Positions inside the paragraph's text: 1 past the block wrappers.
         const textStart = 3;
@@ -265,14 +265,14 @@ describe('the AI range under any mix of edits (property)', () => {
         const tr = step.kind === 'insert'
           ? view.state.tr.insertText(step.text, at)
           : step.kind === 'overtype' ? view.state.tr.insertText(step.text, at, end) : view.state.tr.delete(at, end);
-        // A collaborator editing the range's words while the reader edits
+        // A collaborator editing the range's words while the user edits
         // them too is outside what the range answers for (concurrent edits of
         // the same words): after it, only gone staying gone is held to.
         const held = aiRangeIn(a.prosemirrorState);
         const reach = { from: at, to: end };
         if (step.by === 'collaborator' && held?.kind === 'present' && aiUnitRangesIn(a.prosemirrorState).flat().some(({ from, to }) => reach.to >= from && reach.from <= to)) peerTouched = true;
         if (step.kind !== 'delete' || tr.docChanged) {
-          if (step.by === 'reader') undo.manager.stopCapturing();
+          if (step.by === 'user') undo.manager.stopCapturing();
           view.dispatch(tr);
         }
       }
@@ -301,24 +301,24 @@ describe('the AI range under any mix of edits (property)', () => {
     fc.assert(holdsItsLetters, { numRuns: 40, seed });
   });
 
-  it('is gone once the reader types over every original letter, and keeps them when typing over words before them', () => {
-    const overAll: Edit[] = [{ by: 'reader', kind: 'overtype', at: 5, length: 6, text: 'yz' }];
+  it('is gone once the user types over every original letter, and keeps them when typing over words before them', () => {
+    const overAll: Edit[] = [{ by: 'user', kind: 'overtype', at: 5, length: 6, text: 'yz' }];
     const overHalves: Edit[] = [
-      { by: 'reader', kind: 'overtype', at: 8, length: 3, text: 'x' },
-      { by: 'reader', kind: 'delete', at: 5, length: 3 },
+      { by: 'user', kind: 'overtype', at: 8, length: 3, text: 'x' },
+      { by: 'user', kind: 'delete', at: 5, length: 3 },
     ];
     const overBefore: Edit[] = [
-      { by: 'reader', kind: 'overtype', at: 0, length: 4, text: 'x' },
-      { by: 'reader', kind: 'insert', at: 0, text: 'x' },
+      { by: 'user', kind: 'overtype', at: 0, length: 4, text: 'x' },
+      { by: 'user', kind: 'insert', at: 0, text: 'x' },
     ];
     fc.assert(holdsItsLetters, { numRuns: 1, examples: [[overAll], [overHalves], [overBefore]] });
   });
 
   it('gives back a piece cut off by typing once undo writes its deleted letters back', () => {
     const typedThenDeleted: Edit[] = [
-      { by: 'reader', kind: 'insert', at: 957030108, text: 'x' },
-      { by: 'reader', kind: 'delete', at: 53248643, length: 3 },
-      { by: 'reader', kind: 'undo' },
+      { by: 'user', kind: 'insert', at: 957030108, text: 'x' },
+      { by: 'user', kind: 'delete', at: 53248643, length: 3 },
+      { by: 'user', kind: 'undo' },
     ];
     fc.assert(holdsItsLetters, { numRuns: 1, examples: [[typedThenDeleted]] });
   });

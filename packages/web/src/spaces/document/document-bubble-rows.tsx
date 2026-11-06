@@ -7,7 +7,7 @@
  * These menus take no keyboard input — typing while one is open reaches the
  * body (user 2026-08-26) — so they carry no menu semantics: a `role="menu"`
  * announces arrow-key navigation and a typeahead that are deliberately not
- * there. A reader picks a row with the pointer, and the row closes the menu
+ * there. A user picks a row with the pointer, and the row closes the menu
  * it belongs to on the way out.
  */
 

@@ -5,7 +5,7 @@
  * Text mini-tool configuration.
  *
  * The model, its thinking level, the two length budgets and the pace the
- * reader's screen shows the answer at are loaded from
+ * user's screen shows the answer at are loaded from
  * `config/text-tools.yaml`. System prompts are defined inline (not
  * user-configurable).
  */

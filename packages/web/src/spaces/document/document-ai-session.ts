@@ -37,7 +37,7 @@ export interface AiSession {
   readonly seq: number;
 }
 
-/** What reaches the session: the reader's presses, the stream, the body. */
+/** What reaches the session: the user's presses, the stream, the body. */
 export type AiSessionEvent =
   | { readonly type: 'open'; readonly command: AiCommand }
   | { readonly type: 'submit'; readonly instructions: string }

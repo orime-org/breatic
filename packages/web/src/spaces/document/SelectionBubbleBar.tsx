@@ -197,7 +197,7 @@ const GAP_FROM_SELECTION_PX = 8;
  * One rule covers both ways such a selection gets made, because the head of a
  * selection IS the end the user is moving: dragging with the mouse, the head
  * is where the button came up; extending with the keyboard, it is the edge
- * being pushed. Anchor there whenever the reader can see it, which is always
+ * being pushed. Anchor there whenever the user can see it, which is always
  * true of a drag — the pointer was on screen when it was released. Otherwise
  * fall back to `from`.
  *
@@ -212,7 +212,7 @@ const GAP_FROM_SELECTION_PX = 8;
  * Neither end being on screen is not this function's problem either: the bar
  * is meant to be gone by then, and the scroller's overflow is what takes it.
  * Neither Lexical, Slate, nor ProseMirror's own example hunts for a third
- * line the reader can see.
+ * line the user can see.
  *
  * Lines rather than DOM rectangles, deliberately. `Range.getClientRects()`
  * hands back the BORDER BOX of any element the range wholly contains, so a
@@ -254,7 +254,7 @@ function pickAnchorLine(
  * The live DOM range rather than `posToDOMRect`: that helper takes the min of
  * the two endpoints' x (`@tiptap/core` `dist/index.js:2443`), which over a
  * selection spanning several lines is neither endpoint's line nor the leftmost
- * edge the reader sees — a middle line starting at the block edge is left out
+ * edge the user sees — a middle line starting at the block edge is left out
  * of the sample entirely. The range's own bounding box covers every line.
  *
  * The range is in step with the editor's selection whenever the bar is up:
@@ -555,7 +555,7 @@ function BubbleBar({
    * Focus somewhere that counts, a selection that is not empty, text inside
    * it, and an editable editor. Both askers go through this — the transaction
    * path and the mouse-event path below. That path used to carry its own
-   * shorter list and so put the bar up over an editor the reader had already
+   * shorter list and so put the bar up over an editor the user had already
    * left.
    *
    * The text condition asks what the selection HOLDS, not what class it is:
@@ -655,7 +655,7 @@ function BubbleBar({
      *
      * Both acts ride on the transaction rather than on the question "should
      * the bar show". That question is asked again on every later transaction,
-     * so a co-editor's keystroke arriving while the reader's pointer has moved
+     * so a co-editor's keystroke arriving while the user's pointer has moved
      * would answer with wherever it moved to; and its first line returns on an
      * empty selection, which is the one transition the drop has to catch.
      */
@@ -669,9 +669,9 @@ function BubbleBar({
       // editor regaining focus, an undo. Acting on all of them means the pin
       // is made from wherever the pointer last happened to be, at a moment
       // nobody asked about. Measured with a second Y.Doc over the wire: the
-      // reader select-alls with the pointer outside the body (no bar, right),
+      // user select-alls with the pointer outside the body (no bar, right),
       // switches away, the pointer drifts across the text, a co-editor types,
-      // the reader comes back — and the bar appears at a spot they merely
+      // the user comes back — and the bar appears at a spot they merely
       // passed over.
       const became = isAll && !wasSelectAllRef.current;
       wasSelectAllRef.current = isAll;
@@ -766,11 +766,11 @@ function BubbleBar({
       if (!(view.state.selection instanceof AllSelection)) return;
       // `isWarranted` before `pinToPointer`, not after: pinning is a write,
       // and a pin made while no bar is warranted would sit there waiting. The
-      // reader would then get the bar at a place the pointer passed through
+      // user would then get the bar at a place the pointer passed through
       // while they were typing somewhere else entirely.
       if (!isWarranted(view) || !pinToPointer()) return;
       // Straight to the state. This path carries no transaction of its own —
-      // the reader moved the pointer, they did not edit — so there is nothing
+      // the user moved the pointer, they did not edit — so there is nothing
       // for the transaction listener to hear. `pinToPointer` answered true
       // just above, so this bar hangs off the pointer.
       setWarranted(true);
@@ -829,7 +829,7 @@ function BubbleBar({
   /**
    * Step aside while a panel is up.
    *
-   * The panel holds the focus and the reader's attention while it is open, and
+   * The panel holds the focus and the user's attention while it is open, and
    * the two would otherwise be anchored to the same line: measured, a panel
    * that `flip` sent above its target landed on the bar's own pixels.
    *
@@ -863,7 +863,7 @@ function BubbleBar({
   overlayOpenRef.current = overlayOpen;
   // An open overlay is the reason the bar stays through a blur. Once the last
   // one closes that reason is spent, and nothing else arrives to say so: a
-  // blur carries no transaction, and a reader who has left sends no further
+  // blur carries no transaction, and a user who has left sends no further
   // events. So closing the last one is itself a moment to re-ask.
   React.useEffect(() => {
     if (!overlayOpen) setWarranted(shouldShow({ view: viewOf(editor) }));
@@ -882,7 +882,7 @@ function BubbleBar({
   //
   // Same route the link panel takes — a class on the bar, rather than a
   // second condition inside `shouldShow`: what it answers is whether a bar is
-  // warranted at all, and mid-drag it is. The reader has a selection and is
+  // warranted at all, and mid-drag it is. The user has a selection and is
   // still extending it.
   //
   // A delay would judge "the selection stopped moving", which a pause mid-drag
@@ -905,7 +905,7 @@ function BubbleBar({
       setPointerDown(false);
     };
     view.dom.addEventListener('pointerdown', down);
-    // On the root, capturing: readers often drag past the editor before
+    // On the root, capturing: users often drag past the editor before
     // letting go, and a listener on `view.dom` would miss that release and
     // leave the gate shut for good.
     const root = view.root as Document | ShadowRoot;
@@ -1010,7 +1010,7 @@ function BubbleBar({
     // Not while the pointer is down. E3 settles the side "as the bar comes
     // up", and D1 keeps the bar off screen for the length of a drag-select, so
     // coming up IS the release. A side taken mid-drag is taken from a line the
-    // reader never saw the bar against: dragging upward there is room above the
+    // user never saw the bar against: dragging upward there is room above the
     // head where the drag starts and none where it ends, and with `flip` gone
     // by then only `shift` acts — which works on the cross axis and leaves the
     // bar hanging over the body's top edge. Measured in a browser: 40px of it
@@ -1051,7 +1051,7 @@ function BubbleBar({
 
   // The question is asked on every transaction, and on focus and blur — the
   // three moments that can change any of `shouldShow`'s terms. Focus and blur
-  // carry no transaction of their own, so a bar left up after the reader
+  // carry no transaction of their own, so a bar left up after the user
   // clicked away would have nothing to take it down.
   React.useEffect(() => {
     /** Re-ask whether the bar belongs on screen, and where it belongs. */
@@ -1137,7 +1137,7 @@ function BubbleBar({
         // A layer of the body, belonging where the selection is.
         {...barMark}
         // Above the whole-document entry. The bar is the transient one, summoned
-        // by a selection the reader just made, and its horizontal position
+        // by a selection the user just made, and its horizontal position
         // follows that selection far enough to reach the entry's corner. The
         // editor shell is `isolate`, so this number is compared against the
         // entry's and nothing else on the page.

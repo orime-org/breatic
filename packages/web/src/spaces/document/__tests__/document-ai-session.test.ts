@@ -61,7 +61,7 @@ function sessionOf(step: AiStep): AiSession {
 }
 
 /**
- * A session in a given state, reached the way a reader reaches it.
+ * A session in a given state, reached the way a user reaches it.
  * @param state - The state.
  * @param command - The command it runs; custom reaches streaming through a submit.
  * @returns The session.

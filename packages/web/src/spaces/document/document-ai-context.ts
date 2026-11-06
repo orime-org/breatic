@@ -23,7 +23,7 @@ export const TONE_LABEL_KEYS: Record<TextToolTone, string> = {
 };
 
 /**
- * Opens the dialog on a command, over the reader's current selection.
+ * Opens the dialog on a command, over the user's current selection.
  * @param command - The command.
  * @param opener - The bar the command was pressed on, whose place a
  *   select-all's dialog is pinned to.

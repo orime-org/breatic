@@ -139,7 +139,7 @@ test('one Escape in the body closes the dialog and the body keeps the keyboard',
   await selectParagraph(page, 0);
 
   await pressAi(page, 'refine');
-  // The reader goes back to the body while the dialog stays open.
+  // The user goes back to the body while the dialog stays open.
   await page.locator(BODY).click();
   await expect(page.locator(BODY)).toBeFocused();
 

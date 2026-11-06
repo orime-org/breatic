@@ -17,7 +17,7 @@ selection_max_chars: 40000
 # anything longer with 422. Must be at least selection_max_chars.
 context_max_chars: 200000
 
-# How fast the reader's screen shows the answer, in characters per second.
+# How fast the user's screen shows the answer, in characters per second.
 # The model sends its text in bursts; the AI dialog shows what has arrived at
 # this pace and speeds up on its own when it falls behind. Sent to the browser
 # by GET /mini-tools/text/config.

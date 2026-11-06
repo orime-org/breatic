@@ -6,15 +6,15 @@
  *
  * Between pressing the entry and posting, that range carries no mark — the
  * mark is what posting writes — so nothing in the body moves it while the
- * body keeps being edited underneath: the reader typing elsewhere, a peer
+ * body keeps being edited underneath: the user typing elsewhere, a peer
  * inserting a paragraph above, somebody pressing undo.
  *
  * The range lives only in this editor: it is never written to the shared
  * document, and closing the page ends it. That is how the editors with a
  * pending comment keep one (CKEditor 5's draft marker "is not managed using
- * operations"; BlockNote and Liveblocks use the reader's selection).
+ * operations"; BlockNote and Liveblocks use the user's selection).
  *
- * How it is carried across a change — the reader's own edits, edits that come
+ * How it is carried across a change — the user's own edits, edits that come
  * in through Yjs, undo — is the local range's (`document-local-range.ts`),
  * which the AI dialog's original range shares (inner#1860). A draft over
  * several selected table cells is one stretch per cell (inner#1126 A9): the
@@ -22,13 +22,13 @@
  * first to the last would take in cells nobody selected.
  *
  * A draft is GONE with the last of its stretches. Posting then would put the
- * reader's words in a thread pointing at nothing, which is what A21 is about —
+ * user's words in a thread pointing at nothing, which is what A21 is about —
  * the draft card keeps its place in the panel and says so instead, keeping
- * what the reader wrote.
+ * what the user wrote.
  *
  * ## One draft, one place
  *
- * Everything about the open draft that is not the reader's words lives here:
+ * Everything about the open draft that is not the user's words lives here:
  * where it is aimed, which opening it is, and — once it can no longer be
  * written — why (A21, A22). The editor outlives the panel, which a Space tab
  * switch mounts again, so a draft whose words went while its card was not on
@@ -121,7 +121,7 @@ export interface DraftAim {
   readonly opening: DraftOpening;
   /**
    * Counts the presses on a comment entry in this page; a new one is the
-   * reader asking to write again, which the card answers by taking the focus.
+   * user asking to write again, which the card answers by taking the focus.
    */
   readonly entry: number;
 }
@@ -131,7 +131,7 @@ export type DraftDropReason = 'targetGone' | 'cannotWrite';
 
 /**
  * The draft as the panel shows it: aimed at words, or dropped and saying why
- * until the reader dismisses the notice.
+ * until the user dismisses the notice.
  */
 export type Draft =
   | ({ readonly kind: 'aimed' } & DraftAim)
@@ -263,7 +263,7 @@ export const documentCommentDraftRange = createExtension(() => {
               return { kind: 'aimed', segments, slots: segments, opening, entry: entries };
             }
             // A selection change carries no steps and the range comes back
-            // unchanged — which is what a reader clicking elsewhere before
+            // unchanged — which is what a user clicking elsewhere before
             // typing their comment needs.
             if (current?.kind !== 'aimed' || !changesText(tr)) return current;
             // Stretch by stretch. A stretch whose words are gone leaves the

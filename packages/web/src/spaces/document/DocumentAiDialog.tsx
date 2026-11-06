@@ -4,7 +4,7 @@
 /**
  * The AI output dialog (inner#1860, design §5.2, §5.3, §6.2): a non-modal
  * panel under the selection where an AI text command's result streams in,
- * and nothing reaches the body until the reader presses insert or replace.
+ * and nothing reaches the body until the user presses insert or replace.
  *
  * It wraps the document editor's chrome and hands the bubble bar's AI menu a
  * launcher through context. One session at a time: the session reducer
@@ -13,7 +13,7 @@
  * toast — and draws the state it is in.
  *
  * The panel hangs under the last line of the original range, whichever end
- * the reader dragged from (user 2026-11-01), carried by the AI range
+ * the user dragged from (user 2026-11-01), carried by the AI range
  * (`document-ai-range.ts`); once those words are gone, under the insert
  * block; once that is gone too, at the last place it stood. Over a select-all
  * the place is under the bar, frozen. It stays whole inside the body's
@@ -199,7 +199,7 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
   const openedRef = React.useRef<Opened | null>(null);
   const openings = React.useRef(0);
   const requests = React.useRef(new Map<number, AbortController>());
-  // What the last failure said, when the server said something for this reader.
+  // What the last failure said, when the server said something for this user.
   const failure = React.useRef<string | null>(null);
   const configRequest = React.useRef<Promise<TextToolsConfig> | null>(null);
   const endsWithEditor = React.useRef<(() => void) | null>(null);
@@ -443,7 +443,7 @@ function AiPanel({
   dispatch,
 }: AiPanelProps): React.JSX.Element {
   const t = useTranslation();
-  // The model sends its text in bursts; the reader sees it at a reading pace
+  // The model sends its text in bursts; the user sees it at a reading pace
   // that speeds up to catch any backlog within about a second.
   const { text: shown, isComplete, flush } = useSmoothText(session.result, {
     done: session.state !== 'streaming',
@@ -799,7 +799,7 @@ function Composer({
         }}
         onKeyDown={(event) => {
           // The input method's own Escape cancels its candidates; it is not
-          // the reader asking to close the dialog.
+          // the user asking to close the dialog.
           if (event.key === 'Escape' && keyBelongsToInputMethod(event.nativeEvent, composition)) {
             event.stopPropagation();
             return;

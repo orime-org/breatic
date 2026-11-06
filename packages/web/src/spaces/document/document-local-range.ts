@@ -10,8 +10,8 @@
  * It is never written to the shared document. Changes arrive two ways, and
  * each is carried its own way:
  *
- * - The reader's own edits ride `tr.mapping`, which is how ProseMirror carries
- *   a position across a change. A line the reader moves is taken out and put
+ * - The user's own edits ride `tr.mapping`, which is how ProseMirror carries
+ *   a position across a change. A line the user moves is taken out and put
  *   back, which mapping reads as a deletion, so an end whose mapped position
  *   left its line is found again at the letter it named in the row with
  *   that line's id, while that line's words are the same — the way
@@ -23,7 +23,7 @@
  *   position to the end. Those are resolved from Yjs relative positions, the
  *   way y-prosemirror's cursor plugin places a cursor (`cursor-plugin.js`):
  *   taken again after every change to the body, so each one names the body
- *   as the change before it left it. On an undo or redo of the reader's own,
+ *   as the change before it left it. On an undo or redo of the user's own,
  *   each end is resolved from the name taken before the edit it takes back
  *   (y-prosemirror's `restoreRelativeSelection`), kept on that edit's undo
  *   stack item the way y-prosemirror's undo plugin keeps the selection, so
@@ -37,7 +37,7 @@
  *
  * The binding writes a moved line, a line whose type changed, every line
  * between, and a line an undo splits or joins as new letters, so the letter an
- * end names being deleted says nothing about the reader's words. Such an end
+ * end names being deleted says nothing about the user's words. Such an end
  * is found again by its line while that line's words are the same, the same
  * way as a mapped one; an end whose letter was itself deleted stands where
  * that letter was. One whose whole row went with its letters goes to the
@@ -55,7 +55,7 @@
  *
  * The carrying runs in a plugin's `apply`, the only place that sees every
  * transaction once and in order; the naming in Yjs terms runs in the plugin's
- * view, after the sync plugin's view has written the reader's edit into Yjs.
+ * view, after the sync plugin's view has written the user's edit into Yjs.
  */
 
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
@@ -355,21 +355,21 @@ function besideGoneRow(tr: Transaction, id: string, side: Side): number | null {
 }
 
 /**
- * Carries one end across a change that came in through Yjs. On the reader's
+ * Carries one end across a change that came in through Yjs. On the user's
  * own undo or redo, the name from before the edit being taken back is used
  * first, the way y-prosemirror puts the selection back
  * (`restoreRelativeSelection`) — while the letter it holds is there: a range,
  * unlike a caret, collapses or lands on other words in the gap a gone letter
  * leaves. Otherwise a peer's editor writes a moved line, a line whose type
  * changed, and every line between as new letters, so a letter the end names
- * being gone says nothing about the reader's words: the end is found again by
+ * being gone says nothing about the user's words: the end is found again by
  * its line when the line is still there with the same words. When the line is
  * gone and the letter with it, the end goes to the edge of the nearest
  * surviving line; otherwise it stands where the letter is.
  * @param tr - The transaction the change arrived in.
  * @param bound - The sync binding, rebuilt to the body after the change.
  * @param end - The end as Yjs names it before this change.
- * @param handed - On the reader's undo or redo, the end as named before the
+ * @param handed - On the user's undo or redo, the end as named before the
  *   edit it takes back; null otherwise.
  * @param was - The end before the change.
  * @param side - Which end it is.
@@ -414,7 +414,7 @@ function endAcrossYjs(
  * @param tr - The transaction the change arrived in.
  * @param bound - The sync binding, rebuilt to the body after the change.
  * @param link - The range as Yjs names it.
- * @param handed - On the reader's undo or redo, the range as named before the
+ * @param handed - On the user's undo or redo, the range as named before the
  *   edit it takes back, when that edit kept one; null otherwise.
  * @param range - The range before the change.
  * @returns Where the range is now, or null once an end is lost.
@@ -436,11 +436,11 @@ function carryAcrossYjs(
 }
 
 /**
- * Carries a local range across one of the reader's own changes, each end on
+ * Carries a local range across one of the user's own changes, each end on
  * its own: where ProseMirror maps it while that stays in the end's line,
  * otherwise found again by that line (`carryEnd`). A line moved is taken out
  * and put back, which mapping reads as a deletion; a line joined into another
- * is followed to its words there; a line the reader deleted or whose letters
+ * is followed to its words there; a line the user deleted or whose letters
  * changed is gone, and the mapped position — the range drawn in, or nothing
  * left — stands.
  * @param range - Where the range was before this change.
@@ -628,7 +628,7 @@ export function localRangeTracker(read: (state: EditorState) => HeldLocalRange |
       return sameSegments(moved, held.slots) ? held.slots : moved;
     },
     view: (view) => {
-      // Keeps the range as named before the reader's edit on the stack item
+      // Keeps the range as named before the user's edit on the stack item
       // the edit made, as y-prosemirror's undo plugin keeps the selection
       // (`undo-plugin.js`).
       const stopKeeping = onUndoStack.attach(view);

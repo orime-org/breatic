@@ -3,23 +3,23 @@
 
 /**
  * The AI output dialog's original range (inner#1860, design §5.4, §6.3): the
- * words the reader selected when the dialog opened, followed while it stays
+ * words the user selected when the dialog opened, followed while it stays
  * open, through the same local-range carrying the unposted comment uses
  * (`document-local-range.ts`), in an instance of its own.
  *
  * The range is one stretch per text unit (`document-ai-units.ts`), each
  * carried on its own, so a unit follows its own words when lines are split,
- * joined or moved. Words the reader types among or over a unit's words are
+ * joined or moved. Words the user types among or over a unit's words are
  * not its words: the stretch they go in or write over is taken out of it,
  * the pieces left staying the unit's. A unit whose pieces are all gone has
  * no words left; the range is gone with
- * the last of them, by the reader's own edit or one that comes in through
+ * the last of them, by the user's own edit or one that comes in through
  * Yjs. Gone stays gone, even when undo writes the words back: the comment
- * draft's rule, and replace is then not offered again for words the reader
+ * draft's rule, and replace is then not offered again for words the user
  * may since have moved on from.
  *
  * While the dialog is open the words keep the body's selected look (design
- * §5.3): the reader's own selection moves on, so the range wears the
+ * §5.3): the user's own selection moves on, so the range wears the
  * `[data-show-selection]` stand-in the link panel's words wear (`index.css`).
  *
  * Escape typed in the body closes the open dialog and leaves the keyboard in
@@ -132,7 +132,7 @@ export function aiUnitRangesIn(state: EditorState): AiUnitRanges {
 }
 
 /**
- * The stretches of the body before the reader's own change that it put
+ * The stretches of the body before the user's own change that it put
  * content in at, or wrote other words over. A stretch written over with the
  * same words, as BlockNote rebuilds a line with marks or links when it turns
  * into code, is no change to them: a leaf node without words of its own (a
@@ -156,7 +156,7 @@ function changedIn(tr: Transaction): LocalRange[] {
 }
 
 /**
- * The pieces with the stretches the reader's change rewrites taken out, so
+ * The pieces with the stretches the user's change rewrites taken out, so
  * what it puts in is no unit's word: a piece keeps its place with its first
  * part, or null when nothing of it is left, and each further part goes at
  * the end.
@@ -207,7 +207,7 @@ function presentIn(state: EditorState): PresentRange | null {
 }
 
 /**
- * The selected look over the range's words, where the reader's own selection
+ * The selected look over the range's words, where the user's own selection
  * does not already draw it: while the body holds the focus its selection is
  * painted too, and the two translucent bands over the same words would draw
  * them darker than either.

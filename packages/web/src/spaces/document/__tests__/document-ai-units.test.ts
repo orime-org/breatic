@@ -72,7 +72,7 @@ async function open(markdown: string): Promise<DocumentEditorHandle> {
   const doc = new Y.Doc();
   const handle = getDocumentEditor(doc, `project-p/document-${String(Math.random())}`, {
     caretProvider: { awareness: new Awareness(doc) },
-    readWho: () => ({ role: 'editor', viewerId: 'reader-1' }),
+    readWho: () => ({ role: 'editor', viewerId: 'user-1' }),
     editable: true,
   });
   const root = document.createElement('div');
@@ -1003,7 +1003,7 @@ describe('the escape pair, inline content (§5.1)', () => {
 });
 
 describe('edits made while the dialog is open (A7)', () => {
-  it('keeps replace available after the body was split or written into inside the selection: the reader decides, and undo takes it back', async () => {
+  it('keeps replace available after the body was split or written into inside the selection: the user decides, and undo takes it back', async () => {
     const h = await open('one two three');
     const o = opening(h, rangeOf(h, 'one two three'), 'refine');
     const view = h.editor.prosemirrorView!;
@@ -1091,7 +1091,7 @@ function shape(list: readonly Seen[], depth = 0): Array<[string, number]> {
 }
 
 /**
- * Presses Enter in the body where some words start, as the reader would.
+ * Presses Enter in the body where some words start, as the user would.
  * @param handle - The document.
  * @param at - Where.
  */
@@ -1192,7 +1192,7 @@ describe('round 11: where a unit is', () => {
 });
 
 /**
- * Presses a key in the body at a position, as the reader would.
+ * Presses a key in the body at a position, as the user would.
  * @param handle - The document.
  * @param at - Where.
  * @param key - The key.
@@ -1380,7 +1380,7 @@ describe('round 13: table copies find each unit where its words are', () => {
 });
 
 describe('round 13: words typed over the selected ones', () => {
-  it('turns replace off once the reader typed over every selected word', async () => {
+  it('turns replace off once the user typed over every selected word', async () => {
     const h = await open('left ABCDEF right');
     const o = opening(h, rangeOf(h, 'ABCDEF'), 'refine');
     const view = h.editor.prosemirrorView!;
@@ -1463,7 +1463,7 @@ describe('round 14: units through block edits', () => {
 });
 
 /**
- * Moves a block up, as the reader would.
+ * Moves a block up, as the user would.
  * @param handle - The document.
  * @param id - The block.
  */
@@ -1579,7 +1579,7 @@ describe('round 16: every unit written after the body moved', () => {
     const o = opening(h, rangeOf(h, 'aa bb'), 'refine');
     const view = h.editor.prosemirrorView!;
     /**
-     * Writes a new child line after a line, as the reader would: Enter at its end, Tab, then the words.
+     * Writes a new child line after a line, as the user would: Enter at its end, Tab, then the words.
      * @param words - The line's words.
      * @param after - The line's words before, to find its end.
      */
@@ -1738,7 +1738,7 @@ describe('round 17: the preview is built from the body as replace leaves it', ()
 });
 
 /**
- * Presses Tab with Shift in the body at a position, as the reader would.
+ * Presses Tab with Shift in the body at a position, as the user would.
  * @param handle - The document.
  * @param at - Where.
  */
@@ -1755,7 +1755,7 @@ interface MovingLine {
   kids: string[];
 }
 
-/** A body of lines, some with children, for the reader to move around. */
+/** A body of lines, some with children, for the user to move around. */
 const moving: fc.Arbitrary<MovingLine[]> = fc.array(
   fc.record({
     words: fc.stringMatching(/^[a-z]{1,4}( [a-z]{1,4}){0,2}$/),
@@ -1765,10 +1765,10 @@ const moving: fc.Arbitrary<MovingLine[]> = fc.array(
   { minLength: 1, maxLength: 4 },
 );
 
-/** What the reader does while the dialog is open: a key or a block moved up, at a place picked from a number. */
+/** What the user does while the dialog is open: a key or a block moved up, at a place picked from a number. */
 const moves = fc.array(fc.tuple(fc.constantFrom('Enter', 'Backspace', 'Delete', 'Tab', 'ShiftTab', 'MoveUp'), fc.nat()), { maxLength: 4 });
 
-describe('properties: the reader moves the body while the dialog is open', () => {
+describe('properties: the user moves the body while the dialog is open', () => {
   it('writes what the preview shows, once, whatever Enter, Backspace, Delete, Tab, Shift-Tab and moves did to the selected lines', async () => {
     const h = await open('');
     const kinds = fc.array(fc.constantFrom('one', 'several', 'none'), { minLength: 12, maxLength: 12 });

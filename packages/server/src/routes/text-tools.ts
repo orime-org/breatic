@@ -160,7 +160,7 @@ textTools.post(
         }
         ended = true;
         if (event.type === "error") {
-          // The cause stays in the log; the reader is told the run failed.
+          // The cause stays in the log; the user is told the run failed.
           await writeEvent(s, "error", { type: "error", message: t("server.text_tool.failed") });
           logger.error({ err: event.err, userId: user.id, projectId, tool }, "text_tool_error");
           continue;

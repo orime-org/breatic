@@ -223,7 +223,7 @@ export function DocumentBubbleMenu({
   const popover = (
     <Popover open={open} onOpenChange={onOpenChange} modal={false}>
       {/* A pointer cannot rest on the slot with the menu shut — entering it
-            opened the menu — so every click a reader makes lands on an open
+            opened the menu — so every click a user makes lands on an open
             one. Radix would read that click as a toggle and take the menu
             away; the slot answers it by opening, which is what it already is
             (ruling R4 / B2). */}
@@ -253,7 +253,7 @@ export function DocumentBubbleMenu({
         // The focus stays in the body, on both ways.
         //
         // These menus take no keyboard input (user 2026-08-26), so the focus
-        // has no business moving into one: a reader typing while a menu is
+        // has no business moving into one: a user typing while a menu is
         // open goes on reaching the body. Radix moves it in on open and back
         // out on close, and both halves are refused here — the way out is
         // what closed a menu that had just opened beside it, since it runs

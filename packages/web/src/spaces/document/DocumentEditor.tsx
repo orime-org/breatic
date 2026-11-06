@@ -48,7 +48,7 @@ interface DocumentEditorProps {
   /** True for a viewer. */
   readOnly?: boolean;
   /**
-   * The reader's role on the project.
+   * The user's role on the project.
    *
    * `readOnly` answers "may this person write at all", which the carriers
    * gate on. The draft card asks a second question — whether the right to
@@ -59,7 +59,7 @@ interface DocumentEditorProps {
   myRole?: ProjectRole;
   /** What takes files into this body; a body without one offers no media entries. */
   uploader?: DocumentUploader | null;
-  /** Where an Agent proposal just landed, to show the reader (inner#1509). */
+  /** Where an Agent proposal just landed, to show the user (inner#1509). */
   landed?: ProposalLocation | null;
 }
 
@@ -100,7 +100,7 @@ interface LandedBox {
  * @param root0 - Editor chrome props.
  * @param root0.handle - The editor to render, with its surface.
  * @param root0.readOnly - True for a viewer.
- * @param root0.myRole - The reader's role on the project.
+ * @param root0.myRole - The user's role on the project.
  * @param root0.uploader - What takes files into this body.
  * @param root0.landed - The block an Agent proposal just landed.
  * @returns The editor body, the comment panel beside it, the entry and the
@@ -114,7 +114,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   landed = null,
 }: DocumentEditorProps): React.JSX.Element {
   const body = React.useRef<HTMLDivElement>(null);
-  // The one bit that says whether the panel is on screen, and the reader is
+  // The one bit that says whether the panel is on screen, and the user is
   // the only one who writes it: a comment arriving from a peer marks the `⋯`
   // button and moves nothing (design §5). Held here because the menu opens
   // the panel and the panel closes itself, so neither owns it.
@@ -158,14 +158,14 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     hoverThread(handle.editor, null);
     // And the draft with them: the card it is written in lives in the panel,
     // so closing the panel is throwing it away. Left standing, the range
-    // would put an empty card back on screen the next time the reader opens
+    // would put an empty card back on screen the next time the user opens
     // the panel, with nothing to explain where it came from (§9.4).
     const view = handle.editor.prosemirrorView;
     if (view !== null) {
       view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, null));
     }
     // And every reply box's unsent words. They are kept by the editor so a
-    // Space tab switch does not take them; closing the panel is the reader's
+    // Space tab switch does not take them; closing the panel is the user's
     // own doing, and it does (§9.6).
     clearReplies(handle.editor);
   }, [handle.editor]);
@@ -197,7 +197,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   }, [handle]);
 
   // Where an Agent proposal landed is shown once per landing: a hidden Space
-  // runs its effects again when shown, and the reader may have scrolled away
+  // runs its effects again when shown, and the user may have scrolled away
   // since. Comment selection is issued once by the pickup's command outlet;
   // the rail consumes its current plugin state. A written block is scrolled
   // to a third of the way down the viewport and outlined for a moment.

@@ -572,9 +572,9 @@ function decoded(text: string): string {
     }
     // Every `<` was spelled as an entity before parsing, so the words hold no
     // markup and the browser's own decoder can read the named reference.
-    const reader = document.createElement('textarea');
-    reader.innerHTML = whole;
-    return reader.value;
+    const decoder = document.createElement('textarea');
+    decoder.innerHTML = whole;
+    return decoder.value;
   });
 }
 
@@ -1270,7 +1270,7 @@ function mediaOnly(answer: AiAnswer): boolean {
 /**
  * Whether replace can be pressed: every unit with a non-empty answer still
  * has selected words, or the answer held only outside media. What else the
- * body gained meanwhile is the reader's call: replace is one edit undo takes
+ * body gained meanwhile is the user's call: replace is one edit undo takes
  * back.
  * @param doc - The body now.
  * @param answer - The answer.
@@ -1332,7 +1332,7 @@ function takeOut(editor: ViewedEditor, tr: Transaction, span: LocalRange, inCell
 function writeUnit(editor: ViewedEditor, tr: Transaction, result: AiUnitResult, span: LocalRange): void {
   const { unit, write } = result;
   if (write.kind === 'inline') {
-    // The line's type now: the reader may have turned it into code since.
+    // The line's type now: the user may have turned it into code since.
     const type = unit.cell !== null ? 'paragraph' : lineAt(tr.doc, span).node.type.name;
     tr.replaceWith(span.from, span.to, inlineContentToNodes((write.block as Read).content as never, tr.doc.type.schema, type));
     return;

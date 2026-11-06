@@ -659,7 +659,7 @@ describe('the keyboard', () => {
 describe('the custom instruction', () => {
   /**
    * Opens the dialog on a custom instruction and writes one.
-   * @param words - What the reader writes.
+   * @param words - What the user writes.
    * @returns The box.
    */
   async function writing(words: string): Promise<HTMLTextAreaElement> {
@@ -753,7 +753,7 @@ describe('the custom instruction', () => {
 
     expect(stream).not.toHaveBeenCalled();
 
-    // The key the reader presses after the composition's own has gone by is theirs.
+    // The key the user presses after the composition's own has gone by is theirs.
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
