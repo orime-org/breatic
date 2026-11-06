@@ -176,7 +176,7 @@ async function seed(tool: Tool = "video.split"): Promise<Fixture> {
   const body: Body = { tool, project_id: target.projectId, space_id: randomUUID(), run_id: randomUUID(),
     draft: { version: 1, draftId: randomUUID(), revision: randomUUID(), source: { nodeId: randomUUID(), canonicalURL: publicUrl(sourceKey),
       mediaInfo: { width: 16, height: 16, duration: 0.1, mimeType: "video/mp4" } }, inputs: [],
-    params: tool === "video.split" ? { cuts: [2, 4] } : { mode: "interval", currentTime: 2.3, interval: 1 } },
+    params: tool === "video.split" ? { cuts: [2, 4] } : { mode: "current", currentTime: 2.3 } },
     analysis_refs: [], outputs: [], presentation_ref: { source: { toolInputId: "", planSha256: "" } } };
   const f = { ...target, body, sourceId, sourceKey, hash, viewerId: await member(target.projectId, "viewer"), otherId: await member(target.projectId, "editor") } as Fixture;
   await present(f);
@@ -184,7 +184,8 @@ async function seed(tool: Tool = "video.split"): Promise<Fixture> {
     ? [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 0, end: 2 } } },
       { outputIndex: 1, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 2, end: 4 } } },
       { outputIndex: 2, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 4, end: 4.4 } } }]
-    : [0, 1, 2, 3, 4].map((pts, i) => ({ outputIndex: i, nodeId: randomUUID(), recipe: { kind: "frame", frameIndex: i * 10, pts } }));
+    // §97 D11-1 (frames-split §10.6 删除行; 4.4.5): frame extraction plans one output, the current frame at 2.3 s.
+    : [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "frame", frameIndex: 23, pts: 2.3 } }];
   return f;
 }
 
@@ -314,7 +315,7 @@ describe("S5 fresh frame and split execution admission", () => {
     expect(planVideoSplit(TABLE, f.body.draft.params.cuts as number[])).toEqual([
       { outputIndex: 0, start: 0, end: 2 }, { outputIndex: 1, start: 2, end: 4 }, { outputIndex: 2, start: 4, end: 4.4 },
     ]);
-    expect(planVideoFrames(TABLE, { mode: "interval", interval: 1 })).toEqual([0, 1, 2, 3, 4].map((pts, i) => ({ outputIndex: i, frameIndex: i * 10, pts })));
+    expect(planVideoFrames(TABLE, { mode: "current", currentTime: 2.3 })).toEqual([{ outputIndex: 0, frameIndex: 23, pts: 2.3 }]);
   });
   it.each(["video.extract-frames", "video.split"] as const)("S5-A01 freezes every %s output, measured source, receipt and Std4 policy before the real hold and queue", async (tool) => {
     const f = await seed(tool); const original = structuredClone(f.body);
@@ -354,17 +355,17 @@ describe("S5 fresh frame and split execution admission", () => {
   it.each([
     ["first", 0, 0], ["last", 43, 4.3], ["current", 30, 3],
   ] as const)("S5-A01 resolves %s through the selected version's compact timeline", async (mode, frameIndex, pts) => {
-    const f = await seed("video.extract-frames"); f.body.draft.params = { mode, currentTime: 3, interval: 1 };
+    const f = await seed("video.extract-frames"); f.body.draft.params = { mode, currentTime: 3 };
     f.body.outputs = [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "frame", frameIndex, pts } }];
     await accept(f); expect((await parent(f.body.run_id)).params.miniToolExecution.outputs).toEqual(f.body.outputs);
   });
-  it.each(["frameIndex", "pts", "omission", "addition", "order"])("S5-A02 refuses a frame plan %s before any durable execution side effect", async (bad) => {
+  // §97 D11-1: a frame plan has one output, so its order row moved to the segment plan below (4.4.5).
+  it.each(["frameIndex", "pts", "omission", "addition"])("S5-A02 refuses a frame plan %s before any durable execution side effect", async (bad) => {
     const f = await seed("video.extract-frames"); await control(f);
     if (bad === "frameIndex") Object.assign(f.body.outputs[0]!.recipe, { frameIndex: 1 });
     else if (bad === "pts") Object.assign(f.body.outputs[0]!.recipe, { pts: 0.000001 });
     else if (bad === "omission") f.body.outputs.pop();
-    else if (bad === "addition") f.body.outputs.push({ outputIndex: 5, nodeId: randomUUID(), recipe: { kind: "frame", frameIndex: 41, pts: 4.1 } });
-    else f.body.outputs.reverse();
+    else f.body.outputs.push({ outputIndex: 1, nodeId: randomUUID(), recipe: { kind: "frame", frameIndex: 41, pts: 4.1 } });
     expect((await post(f)).status).toBe(422); expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
   });
   it.each(["start", "end", "omission", "addition", "order"])("S5-A02 refuses a segment plan %s after a valid control", async (bad) => {
@@ -416,25 +417,12 @@ describe("S5 fresh frame and split execution admission", () => {
     expect([...held]).toEqual([{ amount: estimate("video.split", multiplier), status: "held" }]);
     expect([...(await pg`SELECT DISTINCT budget_ms FROM node_tasks WHERE task_id=${f.body.run_id}`)]).toEqual([{ budget_ms: 7200000 }]);
   });
-  it.each(["video.extract-frames", "video.split"] as const)("S5-A05 enforces the configured %s output limit without claiming measured production capacity", async (tool) => {
+  // §97 D11-1 (4.4.5): every frame mode plans one output, so the output-limit refusal keeps its meaning on the segment plan only.
+  it.each(["video.split"] as const)("S5-A05 enforces the configured %s output limit without claiming measured production capacity", async (tool) => {
     const f = await seed(tool); const operation = Reflect.get(settings.executions, tool) as { max_outputs: number };
     operation.max_outputs = f.body.outputs.length;
     await control(f); operation.max_outputs -= 1;
     expect((await post(f)).status).toBe(422); expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
-  });
-  it("S5-A05 supplies the configured budget to the real shared frame planner before accepting or refusing the complete plan", async () => {
-    const f = await seed("video.extract-frames");
-    const operation = Reflect.get(settings.executions, "video.extract-frames") as { max_outputs: number };
-    const planner = vi.spyOn(miniTools, "planVideoFrames");
-    try {
-      // The seeded frame plan has five outputs (interval 1 s over 4.4 s).
-      operation.max_outputs = 5; await control(f);
-      expect(planner.mock.calls).toEqual([[TABLE, f.body.draft.params, 5]]);
-      operation.max_outputs = 4; f.body.outputs.pop();
-      expect((await post(f)).status).toBe(422);
-      expect(planner.mock.calls).toEqual([[TABLE, f.body.draft.params, 5], [TABLE, f.body.draft.params, 4]]);
-      expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
-    } finally { planner.mockRestore(); }
   });
   it("S5-A06 replays the original complete immutable plan before consulting changed source, presentation, draft or pricing", async () => {
     const f = await seed(); const original = structuredClone(f.body); const key = randomUUID(); await accept(f, original, key);
