@@ -107,6 +107,22 @@ describe('a copy of the body read back', () => {
   });
 });
 
+describe('a copy the schema does not take, read as whole blocks', () => {
+  it.each([['double', '"'], ['single', '\'']] as const)('reads one whose slice is recorded in %s quotes at once, a valid slice', (_name, quote) => {
+    const { editor } = open([{ type: 'paragraph', content: 'lead' }, { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['l1', 'l2'] }] } }] as never);
+    const view = editor.prosemirrorView;
+    // A stored cell's words as another editor copies them: inside the cell, which the body's paragraphs do not go in.
+    const { dom, text } = view.serializeForClipboard(between(editor, ['l1', 0], ['l1', 2]).content());
+    const recorded = dom.firstElementChild!.getAttribute('data-pm-slice')!;
+    const html = dom.innerHTML.replace(/data-pm-slice="[^"]*"/, `data-pm-slice=${quote}${recorded.replaceAll('"', quote === '"' ? '&quot;' : '"')}${quote}`);
+    const started = performance.now();
+    const read = readClipboardSlice(view.state.schema, html, text);
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(() => read.content.forEach((node) => node.check())).not.toThrow();
+    expect(read.content.textBetween(0, read.content.size)).toBe('l1');
+  });
+});
+
 describe('a slice read as lines', () => {
   it('reads two open lines as lines whose words join', () => {
     const { editor } = open(COPIES['twoParas']!.blocks as never);

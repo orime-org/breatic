@@ -53,12 +53,8 @@ export interface Rows {
 export function readClipboardSlice(schema: Schema, clipboard: string, text: string): Slice {
   const html = storedTablesAsTables(clipboard);
   // HTML BlockNote writes out whole (`blocksToFullHTML`), with no slice
-  // recorded, is whole blocks: closed at both ends. It is parsed in a
-  // document with no browsing context, so nothing in it loads.
-  if (!html.includes('data-pm-slice')) {
-    const body = new DOMParser().parseFromString(html, 'text/html').body;
-    return new Slice(SchemaParser.fromSchema(schema).parse(body, { topNode: schema.nodes['blockGroup']!.create() }).content, 0, 0);
-  }
+  // recorded, is whole blocks: closed at both ends.
+  if (!html.includes('data-pm-slice')) return wholeBlocks(schema, html);
   const line = schema.nodes['blockContainer']!.create(null, schema.nodes['paragraph']!.create());
   const doc = schema.nodes['doc']!.create(null, schema.nodes['blockGroup']!.create(null, line));
   const view = { state: { schema }, someProp: (): undefined => undefined } as unknown as EditorView;
@@ -67,8 +63,20 @@ export function readClipboardSlice(schema: Schema, clipboard: string, text: stri
   // The recorded context is rebuilt as written, its content unchecked: a copy
   // the schema does not take (another editor's copy inside a stored cell)
   // reads as the whole blocks its HTML holds.
-  if (closedValid(slice.content, slice.openStart, slice.openEnd)) return slice;
-  return readClipboardSlice(schema, html.replace(/\sdata-pm-slice="[^"]*"/g, ''), text);
+  return closedValid(slice.content, slice.openStart, slice.openEnd) ? slice : wholeBlocks(schema, html);
+}
+
+/**
+ * HTML read as whole blocks, closed at both ends, the slice it records left
+ * unread. It is parsed in a document with no browsing context, so nothing in
+ * it loads.
+ * @param schema - The body's schema.
+ * @param html - The HTML.
+ * @returns The slice.
+ */
+function wholeBlocks(schema: Schema, html: string): Slice {
+  const body = new DOMParser().parseFromString(html, 'text/html').body;
+  return new Slice(SchemaParser.fromSchema(schema).parse(body, { topNode: schema.nodes['blockGroup']!.create() }).content, 0, 0);
 }
 
 /**
