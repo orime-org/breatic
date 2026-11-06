@@ -68,6 +68,31 @@ describe('saving across an update', () => {
   });
 });
 
+// inner#1729: Update shows it is working until the page goes. A press after
+// it means the page stayed (the leave prompt was cancelled), so it stops.
+describe('the pending update', () => {
+  it('is pending from Update until the next press', async () => {
+    const { isUpdatePending, reloadForUpdate } = await freshModule();
+    expect(isUpdatePending()).toBe(false);
+    reloadForUpdate();
+    expect(isUpdatePending()).toBe(true);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(isUpdatePending()).toBe(false);
+  });
+
+  it('tells its subscribers each time it changes', async () => {
+    const { reloadForUpdate, subscribeUpdatePending } = await freshModule();
+    const heard = vi.fn();
+    const stop = subscribeUpdatePending(heard);
+    reloadForUpdate();
+    window.dispatchEvent(new Event('pointerdown'));
+    expect(heard).toHaveBeenCalledTimes(2);
+    stop();
+    reloadForUpdate();
+    expect(heard).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('restoring after the update', () => {
   it('hands each part its own value once, and clears the stored copy', async () => {
     sessionStorage.setItem(KEY, JSON.stringify({ a: { x: 1 }, b: ['y'] }));
