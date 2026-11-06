@@ -10,6 +10,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
+import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
 import type { Locale } from '@breatic/shared';
 import {
@@ -34,14 +35,30 @@ export function LangSwitcher(): React.JSX.Element {
   const { locale, setLocale, langs } = useLocaleSwitch();
   const current = langFor(locale);
   const [open, setOpen] = React.useState(false);
+  const [pending, setPending] = React.useState<Locale | null>(null);
+  const latestPick = React.useRef<Locale | null>(null);
 
   /**
-   * Applies the chosen locale and closes the popover.
+   * Applies the chosen locale. A language whose strings are not on the page
+   * yet keeps its item loading and the popover open until they arrive; only
+   * the latest pick's outcome is acted on. When a switch from outside the
+   * menu (the account's language at sign-in) took over, the popover closes
+   * quietly, since the language has changed.
    * @param code - Locale the user selected from the popover.
    */
   const pick = (code: Locale): void => {
-    setLocale(code);
-    setOpen(false);
+    latestPick.current = code;
+    setPending(code);
+    void setLocale(code).then((result) => {
+      if (latestPick.current !== code) return;
+      latestPick.current = null;
+      setPending(null);
+      if (result === 'failed') {
+        toast.error(t('chrome.languageLoadFailed'));
+        return;
+      }
+      setOpen(false);
+    });
   };
 
   return (
@@ -72,6 +89,7 @@ export function LangSwitcher(): React.JSX.Element {
                 locale === l.code &&
                   'bg-accent-strong hover-enabled:bg-accent-strong',
               )}
+              loading={pending === l.code}
               onClick={() => pick(l.code)}
               data-testid={`lang-option-${l.code}`}
             >

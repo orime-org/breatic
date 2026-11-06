@@ -373,11 +373,13 @@ export {
   getActiveLocale,
   getAvailableLocales,
   setLocaleMessages,
+  setEveryLocaleMessages,
+  EVERY_LOCALE_KEYS,
   setLocaleResolver,
   onLocaleChange,
   resetLocales,
 } from "@shared/i18n/index.js";
-export type { Locale } from "@shared/i18n/index.js";
+export type { EveryLocaleKey, Locale } from "@shared/i18n/index.js";
 
 export {
   projectMetaDocName,

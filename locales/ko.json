@@ -2652,6 +2652,7 @@
       "theme": "테마: {theme}"
     },
     "languageNotSaved": "언어를 계정에 저장하지 못했습니다",
+    "languageLoadFailed": "언어를 전환하지 못했습니다. 페이지를 새로고침한 후 다시 시도해 주세요.",
     "help": {
       "trigger": "도움말",
       "manual": "사용자 매뉴얼",

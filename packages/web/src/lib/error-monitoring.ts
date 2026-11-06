@@ -29,6 +29,9 @@ const IGNORED_ERRORS: readonly string[] = [
 /** Breadcrumb fields that hold an address. */
 const ADDRESS_FIELDS: readonly string[] = ['url', 'from', 'to'];
 
+/** `error_boundary` tags of chunk downloads the app catches and reports itself. */
+const CAUGHT_CHUNK_FAILURES: ReadonlySet<string> = new Set(['route-chunk', 'locale-chunk']);
+
 /**
  * Drop an event whose message is browser noise, and strip the query from the
  * page address and the referring page it carries.
@@ -38,11 +41,12 @@ const ADDRESS_FIELDS: readonly string[] = ['url', 'from', 'to'];
 function prepareEvent(event: ErrorEvent): ErrorEvent | null {
   const message = event.exception?.values?.[0]?.value ?? '';
   if (IGNORED_ERRORS.some((ignored) => message.includes(ignored))) return null;
-  // A handled route download failure is actionable, even when Firefox names
-  // it with the same message as an otherwise unclassified network failure.
+  // A handled route or locale-catalog download failure is actionable, even
+  // when Firefox names it with the same message as an otherwise unclassified
+  // network failure.
   if (
     message.includes('NetworkError when attempting to fetch resource') &&
-    event.tags?.error_boundary !== 'route-chunk'
+    !CAUGHT_CHUNK_FAILURES.has(String(event.tags?.error_boundary))
   ) return null;
   return requestWithoutQuery(event);
 }

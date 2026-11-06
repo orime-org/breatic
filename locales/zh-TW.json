@@ -2652,6 +2652,7 @@
       "theme": "主題：{theme}"
     },
     "languageNotSaved": "語言未儲存到帳號",
+    "languageLoadFailed": "語言切換失敗，請重新整理頁面後再試",
     "help": {
       "trigger": "說明",
       "manual": "使用手冊",

@@ -20,6 +20,9 @@
 //   - every chunk a release renames is named by exactly one chunk — the
 //     loader for a page, the entry for the loader — so a release re-downloads
 //     only what changed
+//   - English ships in the entry, and every other catalog in `locales/` is
+//     one `locale-<code>` chunk outside it, fetched only for a reader in that
+//     language (#1374)
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 
@@ -115,6 +118,19 @@ const problems = [];
  * same source answers differently from one build to the next; naming the
  * ambiguity is what turns that into something readable.
  */
+/**
+ * A nested catalog flattened to its leaves.
+ * @param obj - A parsed catalog or one of its namespaces.
+ * @param prefix - The dotted path of `obj`.
+ * @returns {Record<string, unknown>} Every leaf by its dotted key.
+ */
+function flatten(obj, prefix = '') {
+  return Object.entries(obj).reduce((out, [k, v]) => {
+    const key = prefix ? `${prefix}.${k}` : k;
+    return v !== null && typeof v === 'object' ? { ...out, ...flatten(v, key) } : { ...out, [key]: v };
+  }, {});
+}
+
 const chunkByPage = new Map(
   PAGES.map((page) => {
     const hits = files.filter((f) => f.startsWith(`${page}-`) && f.endsWith('.js'));
@@ -291,7 +307,47 @@ const pageChunks = new Set(
   PAGES.map((page) => chunkOf(page)).filter((chunk) => chunk !== undefined),
 );
 const { roots: entryRoots, entry: entryChunk } = entryFiles();
-const entryDownloads = closure(entryRoots, (file) => !pageChunks.has(file));
+
+// Each non-English catalog is its own `import()` chunk, named `locale-<code>`
+// in vite.config.mts: Vite's JSON modules leave no `sources` in the sourcemap
+// to recognise them by. A reader downloads at most one of them, so they stay
+// out of the entry closure like the pages; a static import of one would put
+// it back in, and the budget below would count it twice.
+const LOCALES = path.join(import.meta.dirname, '..', '..', 'locales');
+const localeChunks = readdirSync(LOCALES)
+  .filter((f) => f.endsWith('.json') && f !== 'en.json')
+  .map((f) => {
+    const code = f.slice(0, -'.json'.length);
+    const hits = files.filter((c) => c.startsWith(`locale-${code}-`) && c.endsWith('.js'));
+    if (hits.length !== 1) {
+      problems.push(`locale ${code}: ${hits.length} chunks named locale-${code} (${hits.join(', ') || 'none'})`);
+    }
+    return hits[0];
+  })
+  .filter((chunk) => chunk !== undefined);
+const localeChunkSet = new Set(localeChunks);
+const entryDownloads = closure(
+  entryRoots,
+  (file) => !pageChunks.has(file) && !localeChunkSet.has(file),
+);
+const inEntry = localeChunks.filter((chunk) => entryDownloads.has(chunk));
+if (inEntry.length > 0) {
+  problems.push(`the entry closure holds locale chunks: ${inEntry.join(', ')}`);
+}
+
+// English is the fallback every `t()` reaches for, so it has to be in what the
+// entry imports statically; following no dynamic edge is what tells an English
+// catalog moved behind `import()` apart from one still in the entry.
+const englishWord = Object.values(flatten(JSON.parse(readFileSync(path.join(LOCALES, 'en.json'), 'utf8'))))
+  .filter((v) => typeof v === 'string' && /^[A-Za-z ]+$/.test(v))
+  .sort((a, b) => b.length - a.length)[0];
+const staticEntry = closure(entryRoots, () => false);
+if (
+  englishWord === undefined ||
+  ![...staticEntry].some((f) => readFileSync(path.join(ASSETS, f), 'utf8').includes(englishWord))
+) {
+  problems.push(`the English catalog is not in what the entry imports statically (looked for "${englishWord}")`);
+}
 
 // Every page chunk has to be reachable from the entry, or that route cannot
 // load at all. It is also the one assertion that fails when the walk itself
@@ -373,25 +429,25 @@ if (projectChunk !== undefined) {
   }
 }
 
-// What every reader downloads, as a number rather than a list of names. The
-// predicates above cover the heavy things known when they were written, and a
-// number covers the ones nobody has thought of: measured, `pdfjs-dist` landing
-// in a file that gates every route grew the entry chunk from 742,834 to
-// 1,176,403 bytes with all five of them still green. The budget leaves room to
-// grow and none to grow by a library; raising it is a decision to make on
-// purpose. The closure's size on any build is the number this prints when it
-// trips, so it is not repeated here to drift. Raised from 1,200,000 to
-// 1,800,000 on purpose: the entry carries the strings of all five locales, so
-// every new feature's copy lands here five times. That holds until #1374
-// loads only the active locale.
+// What every reader downloads, as a number rather than a list of names: the
+// entry closure plus the largest locale catalog, since a reader in that
+// language fetches it before the first page. The predicates above cover the
+// heavy things known when they were written, and a number covers the ones
+// nobody has thought of: measured, `pdfjs-dist` landing in a file that gates
+// every route grew the entry chunk from 742,834 to 1,176,403 bytes with all
+// five of them still green. The budget leaves room to grow and none to grow by
+// a library; raising it is a decision to make on purpose. The size on any
+// build is the number this prints when it trips, so it is not repeated here to
+// drift. Raised from 1,200,000 to 1,800,000 on purpose, when the entry still
+// carried the strings of all five locales; every new feature's copy lands in
+// the English catalog and in each reader's own.
 const ENTRY_BUDGET = 1_800_000;
-const entryBytes = [...entryDownloads].reduce(
-  (n, f) => n + statSync(path.join(ASSETS, f)).size,
-  0,
-);
+const sizeOf = (f) => statSync(path.join(ASSETS, f)).size;
+const entryBytes = [...entryDownloads].reduce((n, f) => n + sizeOf(f), 0)
+  + Math.max(0, ...localeChunks.map(sizeOf));
 if (entryBytes > ENTRY_BUDGET) {
   problems.push(
-    `every reader downloads ${entryBytes} bytes of JS, over the ${ENTRY_BUDGET} budget`,
+    `a reader downloads up to ${entryBytes} bytes of JS before the first page (the entry plus the largest catalog), over the ${ENTRY_BUDGET} budget`,
   );
 }
 

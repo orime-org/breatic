@@ -7,10 +7,13 @@ import { visualizer } from 'rollup-plugin-visualizer';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { resolveDevPort } from './dev-ports.mjs';
 import { resolveProxyTargets } from './proxy-targets.mjs';
+import { everyLocaleMessages } from './every-locale-messages.mjs';
 
 // need to add breatic Index to serve
 // import sirv from 'sirv'
 // const breaticIndex = path.resolve(__dirname, './breatic');
+
+const LOCALES_DIR = path.resolve(__dirname, '../../locales');
 
 export default defineConfig(({ command, mode }) => {
   // Load .env from the monorepo root (shared by backend + frontend). The third
@@ -43,6 +46,11 @@ export default defineConfig(({ command, mode }) => {
       // literal, so a build without one drops the analytics code entirely.
       '__ANALYTICS_CONFIGURED__': JSON.stringify(
         Boolean(env.VITE_AMPLITUDE_API_KEY?.trim() || env.VITE_GOOGLE_ADS_TAG_ID?.trim()),
+      ),
+      // The keys `tInEveryLocale` reads back in every language, which the
+      // entry carries beside the one catalog a reader downloads (#1374).
+      '__EVERY_LOCALE_MESSAGES__': JSON.stringify(
+        everyLocaleMessages(LOCALES_DIR),
       ),
     },
     plugins: [
@@ -108,7 +116,7 @@ export default defineConfig(({ command, mode }) => {
     resolve: {
       alias: {
         '@web': path.resolve(__dirname, './src'),
-        '@locales': path.resolve(__dirname, '../../locales'),
+        '@locales': LOCALES_DIR,
       },
     },
     // No optimizeDeps.exclude: the only entry here was @ffmpeg/ffmpeg and
@@ -197,6 +205,15 @@ export default defineConfig(({ command, mode }) => {
             }
             if (/[\\/]src[\\/]app[\\/]route-imports\./.test(id)) {
               return 'route-imports';
+            }
+            // Each non-English catalog is its own `import()` chunk under a
+            // fixed name, which `verify-chunks.mjs` reads: Vite's JSON modules
+            // leave no `sources` in the sourcemap to recognise them by.
+            const locale = id.startsWith(LOCALES_DIR)
+              ? /^[\\/]([\w-]+)\.json$/.exec(id.slice(LOCALES_DIR.length))?.[1]
+              : undefined;
+            if (locale !== undefined && locale !== 'en') {
+              return `locale-${locale}`;
             }
             if (!id.includes('node_modules')) return;
             if (
