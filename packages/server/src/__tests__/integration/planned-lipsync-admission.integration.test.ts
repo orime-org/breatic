@@ -24,7 +24,7 @@ import * as shared from "@breatic/shared";
 import * as miniTools from "@breatic/shared/mini-tools";
 import { fingerprintMiniToolAnalysisInput, miniToolAnalysisRecordSchema, projectMiniToolAnalysisInput, type MiniToolAnalysisRecord } from "@breatic/shared/mini-tools";
 import {
-  containerCostUsd, creditHoldService, creditsForUsd, estimateTaskCredits, lipsyncStepKey, miniToolExecutionService, miniToolFrozenAnalysisSchema,
+  containerCostUsd, creditHoldService, creditsForUsd, estimateTaskCredits, miniToolExecutionService, miniToolFrozenAnalysisSchema,
   MIN_TASK_CREDIT_COST, presentationPinService,
 } from "@breatic/domain";
 // The worker's §7.15 write point for derived step objects; the domain entry does not export the repository.
@@ -58,6 +58,7 @@ interface Plan extends Record<string, unknown> {
   tool: string; credits: number; timeline: Timeline;
   generator: { backend: string; modelId: string; schemaFingerprint: string; providerSyncMode: "cut_off" | null };
   persons?: { personId: string; detectionNumber: number; stepKeys?: Record<string, string> }[];
+  sharedStepKeys?: Record<string, string>;
   usedRange: { start: 0; end: number };
   layout?: { preparation: { start: number; end: number }[]; persons: number; composite: { start: number; end: number }[] };
   stageJobs?: { stage: string; jobs: number }[];
@@ -642,6 +643,20 @@ describe("lip-sync retry admission (frames-split §7.11 retry row, §7.15; execu
     return { tool: "video.lip-sync", project_id: f.projectId, space_id: f.body.space_id, run_id: run, retry: { runId: f.body.run_id, outputIndexes: [0] } };
   }
 
+  /**
+   * Require the original's frozen step keys to be present, so equality with them is not equality of two absent values:
+   * five per person and the shared composite and stitch keys, every one a 64-hex digest (DD §7.1 steps row).
+   * @param frozen - The original's frozen plan, read from its task's `params.miniToolExecution`.
+   * @returns Nothing.
+   * @throws {Error} On assertion failure.
+   */
+  function frozenStepKeys(frozen: Failed["plan"]): void {
+    for (const p of frozen.persons ?? []) expect(Object.keys(p.stepKeys ?? {}).sort()).toEqual(["clip", "faces", "gen", "stem", "track"]);
+    expect(Object.keys(frozen.sharedStepKeys ?? {})).toContain("stitch");
+    expect(Object.keys(frozen.sharedStepKeys ?? {}).some((step) => step.startsWith("composite:"))).toBe(true);
+    for (const key of [...(frozen.persons ?? []).flatMap((p) => Object.values(p.stepKeys ?? {})), ...Object.values(frozen.sharedStepKeys ?? {})]) expect(key).toMatch(/^[a-f0-9]{64}$/);
+  }
+
   /** A run's live pins with their keys. @throws {Error} On SQL failure. */
   async function livePins(holderId: string): Promise<Pin[]> {
     return [...await pg<Pin[]>`SELECT p.holder_kind,p.tool_input_id,p.prepared_key,
@@ -672,7 +687,7 @@ describe("lip-sync retry admission (frames-split §7.11 retry row, §7.15; execu
     await miniToolExecutionService.startMiniToolExecution(id, `lipsync-${id}`);
     // A done track step's object, appended to the execution pin in its registration transaction (§97 D17-7), and the
     // prepared input pinned by the worker's preparation registration (§7.15 prepared row).
-    const steps = [`${frozen.sourceKey}.${id}:lipsync:${lipsyncStepKey(frozen.planFingerprint, "person-1", "track")}.json`];
+    const steps = [`${frozen.sourceKey}.${id}:lipsync:${frozen.persons![0]!.stepKeys!.track}.json`];
     const prepared = `${frozen.sourceKey}.${id}:prep:0:a1`;
     await core.db.transaction(async (tx) => appendExecutionPinObjects(id, steps, tx));
     await presentationPinService.acquire({ holderKind: "prepared", holderId: id, toolInputId, preparedKey: prepared, objectKeys: [prepared] });
@@ -710,9 +725,9 @@ describe("lip-sync retry admission (frames-split §7.11 retry row, §7.15; execu
     for (const field of ["tool", "generator", "timeline", "usedRange", "dialogues", "layout", "stageJobs", "tracking", "cropSize"]) {
       expect(retried[field], field).toEqual(original.plan[field]);
     }
-    const kinds = ["track", "faces", "clip", "stem", "gen"] as const;
-    expect(retried.persons).toEqual((original.plan.persons ?? []).map((p) => ({ ...p,
-      stepKeys: Object.fromEntries(kinds.map((kind) => [kind, lipsyncStepKey(original.plan.planFingerprint, p.personId, kind)])) })));
+    frozenStepKeys(original.plan);
+    expect(retried.persons).toEqual(original.plan.persons);
+    expect(retried.sharedStepKeys).toEqual(original.plan.sharedStepKeys);
     expect(retried.persons?.map((p) => [p.personId, p.detectionNumber])).toEqual([["person-1", 1], ["person-2", 2]]);
     // Takeover: the original's failed slot and node, a task, node task, hold and job of its own, the original unchanged.
     expect(retried.outputs).toEqual(original.plan.outputs);
@@ -777,7 +792,7 @@ describe("lip-sync retry admission (frames-split §7.11 retry row, §7.15; execu
     await accept(f, first as unknown as Body);
     await miniToolExecutionService.startMiniToolExecution(first.run_id, `lipsync-${first.run_id}`);
     // The first retry's own done step: its key is the original's, the object it registers is new (§97 D17-7).
-    const extra = `${original.plan.sourceKey}.${first.run_id}:lipsync:${lipsyncStepKey(original.plan.planFingerprint, "person-2", "gen")}.mp4`;
+    const extra = `${original.plan.sourceKey}.${first.run_id}:lipsync:${original.plan.persons![1]!.stepKeys!.gen}.mp4`;
     await core.db.transaction(async (tx) => appendExecutionPinObjects(first.run_id, [extra], tx));
     await finishFailed(first.run_id, { kind: "lipsync", persons: [person(2, "gen", "timeout")], shared: { step: "composite", category: "failed" } });
     const held = await livePins(first.run_id);
@@ -791,9 +806,9 @@ describe("lip-sync retry admission (frames-split §7.11 retry row, §7.15; execu
     for (const field of ["tool", "generator", "timeline", "usedRange", "dialogues", "layout", "stageJobs", "tracking", "cropSize", "outputs"]) {
       expect(chained[field], field).toEqual(original.plan[field]);
     }
-    const kinds = ["track", "faces", "clip", "stem", "gen"] as const;
-    expect(chained.persons).toEqual((original.plan.persons ?? []).map((p) => ({ ...p,
-      stepKeys: Object.fromEntries(kinds.map((kind) => [kind, lipsyncStepKey(original.plan.planFingerprint, p.personId, kind)])) })));
+    frozenStepKeys(original.plan);
+    expect(chained.persons).toEqual(original.plan.persons);
+    expect(chained.sharedStepKeys).toEqual(original.plan.sharedStepKeys);
     expect(chained.targetNodeIds).toEqual([f.body.outputs[0]!.nodeId]);
     expect(await effects(second.run_id)).toEqual({ tasks: 1, rows: 1, holds: 1, jobs: 1 });
     const pins = await livePins(second.run_id);
@@ -812,7 +827,7 @@ describe("lip-sync retry admission (frames-split §7.11 retry row, §7.15; execu
     const frozen = await plan(id) as Failed["plan"];
     await miniToolExecutionService.startMiniToolExecution(id, `lipsync-${id}`);
     const prepared = `${frozen.sourceKey}.${id}:prep:0:a1`;
-    await core.db.transaction(async (tx) => appendExecutionPinObjects(id, [`${frozen.sourceKey}.${id}:lipsync:${lipsyncStepKey(frozen.planFingerprint, "person-1", "track")}.json`], tx));
+    await core.db.transaction(async (tx) => appendExecutionPinObjects(id, [`${frozen.sourceKey}.${id}:lipsync:${frozen.persons![0]!.stepKeys!.track}.json`], tx));
     await presentationPinService.acquire({ holderKind: "prepared", holderId: id, toolInputId: f.body.presentation_ref.source.toolInputId, preparedKey: prepared, objectKeys: [prepared] });
     const row = await taskRow(id); const pins = await livePins(id);
     expect((row as { status: string }).status).toBe("running");
