@@ -450,7 +450,7 @@ function evenChunks(from: number, to: number, target: number): FrameWindow[] {
 export interface TransitionChunkTimeline { frameCount: number; clips: readonly { startFrame: number; frameCount: number }[]; window: { startFrame: number; frameCount: number } | null }
 
 /**
- * The transition chunks on the output grid (§97 D15-4; frames-split §5.4 切块 row): the window chunks partition the
+ * The transition chunks on the output grid (§97 D15-4; frames-split §5.4): the window chunks partition the
  * overlap window, the encode chunks partition each clip's frames outside it, and no chunk exceeds the target; a Cut has
  * no window chunks.
  * @param timeline - The frame-grid timeline.
@@ -476,7 +476,7 @@ export function planTransitionChunks(timeline: TransitionChunkTimeline, targetFr
 interface ExactRational { numerator: string; denominator: string }
 /** The SDR BT.709 colour every transition output is written in (§97 D15-5). */
 export interface TransitionOutputColor { matrix: "bt709"; range: "tv"; primaries: "bt709"; transfer: "bt709" }
-/** The one output profile both clips of a transition are encoded to (frames-split §7.17 转场输出档 row). */
+/** The one output profile both clips of a transition are encoded to (frames-split §7.17). */
 export interface TransitionOutputProfile {
   width: number; height: number; fps: ExactRational; timeBase: ExactRational; pixFmt: "yuv420p" | "yuva420p";
   color: TransitionOutputColor; codec: "h264" | "vp9"; encode: { crf: number; preset: string }; alpha: boolean;

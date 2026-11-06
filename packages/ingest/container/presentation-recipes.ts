@@ -431,7 +431,7 @@ async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_e
 }
 
 /**
- * Refuse chunks whose video codec headers differ (§5.4 拼接 row): a stream copy would join incompatible streams. The
+ * Refuse chunks whose video codec headers differ (§5.4): a stream copy would join incompatible streams. The
  * headers are the codec, profile, size, pixel format and the codec's extradata (H.264 avcC with its SPS and PPS).
  * @param chunks - The downloaded chunk files.
  * @param run - The lifetime and IO bounds.

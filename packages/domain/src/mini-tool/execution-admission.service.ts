@@ -292,7 +292,7 @@ function preparationLayout(ledger: VideoPresentationLedger, config: MiniToolsCon
 
 /**
  * Refuse a run whose largest stage sends more standard-4 jobs at once than the parallel cap, with its reason (§97 D12-1;
- * frames-split §5.4 上限 row).
+ * frames-split §5.4).
  * @param stages - The planned stages and their job counts.
  * @param config - The acceptance snapshot.
  * @throws {AppError} When a stage exceeds the cap.

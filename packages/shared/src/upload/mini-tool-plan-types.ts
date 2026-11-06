@@ -94,7 +94,7 @@ export type MiniToolPlanRecipe =
 
 /** Chunks joined by stream copy, the source's interval audio encoded once (§5.4). */
 export interface MiniToolPlanStitch { kind: "stitch"; inputId: string; chunks: { inputId: string; duration: MiniToolPlanExact }[]; audio: MiniToolPlanAudio | null; target: MiniToolPlanTarget }
-/** The one output profile both clips of a transition are encoded to (frames-split §7.17 转场输出档 row, §97 D15-5). */
+/** The one output profile both clips of a transition are encoded to (frames-split §7.17, §97 D15-5). */
 export interface MiniToolPlanTransitionProfile {
   width: number; height: number; fps: MiniToolPlanExact; timeBase: MiniToolPlanExact; pixFmt: "yuv420p" | "yuva420p";
   color: { matrix: "bt709"; range: "tv"; primaries: "bt709"; transfer: "bt709" }; codec: "h264" | "vp9";
