@@ -167,6 +167,9 @@ classes:
     vcpu: 4
     memory_gib: 12
     disk_gb: 20
+    # Output pixels the headless-gl renderer draws per second on llvmpipe: provisional, the encoder's rate until a
+    # Cloudflare standard-4 measurement replaces it.
+    render_pixels_per_second: 248000000
 
 ops:
   crop:

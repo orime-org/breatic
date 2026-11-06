@@ -8,7 +8,7 @@ import {
   type MiniToolPlanTarget, type TaskEntity, type TaskStatusType, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from "@breatic/shared";
 import {
-  batchVideoRunOutputs, canonicalMiniToolValue, lipsyncFailureReasonSchema, lipsyncFailureRetryable, estimateAudioEncodeSeconds, estimateVideoJobSeconds, lipsyncMonotonicSegments, planLipsyncCompositeChunks, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
+  batchVideoRunOutputs, canonicalMiniToolValue, presentationCoveringFrame, lipsyncFailureReasonSchema, lipsyncFailureRetryable, estimateAudioEncodeSeconds, estimateVideoJobSeconds, lipsyncMonotonicSegments, planLipsyncCompositeChunks, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
   plannedStageJobs, planVideoFrames, planVideoSplit, type FrameWindow, type FramesExecutionLayout, type MiniToolExecutionRequest, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type MiniToolPresentationRef, type MiniToolSourceBinding, type MiniToolStageJobs,
   type LipsyncExecutionLayout, type LipsyncTimeline, type TransitionExecutionLayout, type TransitionOutputProfile, planTransitionChunks, planVideoTimeline, transitionOutputProfile, type VideoEncodeChunk, type VideoEncoderRates, type VideoExecutionDialogue, type VideoJobWork, type VideoPresentationTable,
 } from "@breatic/shared/mini-tools";
@@ -543,22 +543,59 @@ async function prepareTransitions(request: Extract<MiniToolPlannedRequest, { too
     throw new ValidationError(t("server.mini_tool.foreignSource"));
   }
   const rates = encoderRates(config);
-  // ponytail: every output frame is priced as decoding the larger display and encoding the profile, so a chunk target is
-  // one number; a per-clip rate matters only where the two clips' sources differ widely.
-  const decodeRate = Math.min(...inputs.map(({ ledger }) => rates.decodeConvertPixelsPerSecond[`${isHdrTransfer(ledger.plan.source.transfer) ? "hdr" : "sdr"}_${ledger.plan.source.bitDepth > 8 ? 10 : 8}bit`]));
-  const pixels = Math.max(...inputs.map(({ ledger }) => ledger.plan.display.width * ledger.plan.display.height));
-  const frameSeconds = pixels / decodeRate + (profile.width * profile.height) / rates.encodePixelsPerSecond;
+  const outputPixels = profile.width * profile.height;
+  /**
+   * Seconds to decode one source frame of a clip at its coded size and its depth and range tier.
+   * @param ledger - The clip's full ledger.
+   * @returns The seconds.
+   * @throws {never} Never.
+   */
+  const decodeFrame = (ledger: VideoPresentationLedger): number => ledger.encoding.codedWidth * ledger.encoding.codedHeight
+    / rates.decodeConvertPixelsPerSecond[`${isHdrTransfer(ledger.plan.source.transfer) ? "hdr" : "sdr"}_${ledger.plan.source.bitDepth > 8 ? 10 : 8}bit`];
+  // ponytail: the chunk target takes the costlier clip's frame for every frame; the quote below sums each clip's own.
+  const frameSeconds = Math.max(...inputs.map(({ ledger }) => decodeFrame(ledger))) + outputPixels / rates.encodePixelsPerSecond;
   const targetFrames = Math.max(1, Math.floor((shareSeconds(config) - rates.startSeconds) / frameSeconds));
   const layout = planTransitionChunks(timeline, targetFrames);
   const stageJobs = plannedStageJobs(layout);
   assertWithinParallelCap(stageJobs, config);
   const container = { ...containerPolicy(settings.container_class, settings.precheck_seconds, config), startSeconds: rates.startSeconds, encode, chunkRetries: config.encoding.chunk_retries };
-  const size = config.classes[settings.window_container_class];
-  if (size === undefined || settings.window_container_class !== "MiniToolContainerGl") throw new Error(`Container class ${settings.window_container_class} is not the configured GL class`);
+  const gl = config.classes[settings.window_container_class];
+  if (gl === undefined || settings.window_container_class !== "MiniToolContainerGl" || gl.render_pixels_per_second === undefined) {
+    throw new Error(`Container class ${settings.window_container_class} is not the configured GL class with a render rate`);
+  }
+  const size = { instance_type: gl.instance_type, vcpu: gl.vcpu, memory_gib: gl.memory_gib, disk_gb: gl.disk_gb };
   const windowContainer = { containerClass: "MiniToolContainerGl" as const, precheckSeconds: settings.precheck_seconds, size, prices: config.prices, limits: config.plan_limits };
-  const seconds = timeline.frameCount * frameSeconds + rates.startSeconds * (layout.encode.length + layout.window.length)
-    + estimateAudioEncodeSeconds(timeline.frameCount * Number(profile.fps.denominator) / Number(profile.fps.numerator),
-      { startSeconds: rates.startSeconds, aacEncodeSecondsPerSecond: config.encoding.encoder.aac_encode_seconds_per_second });
+  // frames-split §5.4 (transition chunks): each chunk decodes each clip's source frames it shows, pre-roll included, at that
+  // clip's size and tier; it encodes its output frames, and a window chunk also renders them.
+  const fpsSeconds = Number(profile.fps.denominator) / Number(profile.fps.numerator);
+  /**
+   * The decode seconds of one chunk, summed over the clips it shows.
+   * @param chunk - The chunk's output frames.
+   * @returns The seconds.
+   * @throws {RangeError} When a frame lies outside a clip's presentation.
+   */
+  const chunkDecode = (chunk: FrameWindow): number => timeline.clips.reduce((total, clip, at) => {
+    const low = Math.max(chunk.start, clip.startFrame);
+    const high = Math.min(chunk.end, clip.startFrame + clip.frameCount);
+    if (high <= low) return total;
+    const { ledger } = inputs[at]!;
+    const table = ledger.plan.presentation;
+    /**
+     * The source frame covering an output frame's middle, as the worker cuts the chunk.
+     * @param k - The output frame.
+     * @returns The source frame.
+     * @throws {never} Never.
+     */
+    const covering = (k: number): number => presentationCoveringFrame(table, (clip.inFrame + k - clip.startFrame + 0.5) * fpsSeconds);
+    const first = covering(low);
+    const count = covering(high - 1) + 1 - first;
+    return total + (count + prerollFrames(ledger, first, count)) * decodeFrame(ledger);
+  }, 0);
+  const chunks = [...layout.encode, ...layout.window];
+  const windowFrames = layout.window.reduce((total, chunk) => total + chunk.end - chunk.start, 0);
+  const seconds = chunks.reduce((total, chunk) => total + chunkDecode(chunk), 0) + timeline.frameCount * outputPixels / rates.encodePixelsPerSecond
+    + windowFrames * outputPixels / gl.render_pixels_per_second + rates.startSeconds * chunks.length
+    + estimateAudioEncodeSeconds(timeline.frameCount * fpsSeconds, { startSeconds: rates.startSeconds, aacEncodeSecondsPerSecond: config.encoding.encoder.aac_encode_seconds_per_second });
   /**
    * One value per clip input, by input id.
    * @param pick - The value of an input.

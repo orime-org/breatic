@@ -22,6 +22,8 @@ const classSchema = z.object({
   vcpu: z.number().positive(),
   memory_gib: z.number().positive(),
   disk_gb: z.number().positive(),
+  // Output pixels a GL image renders per second (frames-split §5.4 to-be-measured row); only the GL class declares it.
+  render_pixels_per_second: z.number().positive().finite().optional(),
 });
 
 const opSchema = z.strictObject({
