@@ -64,7 +64,9 @@ vi.mock('@web/spaces/canvas/generate/AudioGeneratePanelContainer', () => ({ Audi
 import { toast } from '@web/lib/toast';
 import { modelsApi } from '@web/data/api';
 import * as canvasSpace from '@web/data/yjs/canvas-space';
+import * as storyboard from '@web/data/yjs/node-storyboard';
 import { readShots } from '@web/data/yjs/node-storyboard';
+import { writeProposalPrompt } from '@web/spaces/canvas/generate/proposal-prompt';
 import { _resetCollabSocketForTests } from '@web/data/yjs/collab-socket';
 import { docName, _resetForTests } from '@web/data/yjs/manager';
 import { reserveSpaceRoom } from '@web/data/yjs/space-write';
@@ -330,5 +332,32 @@ describe('W-75 a write that throws part way still rolls back', () => {
     expect(canvasSpace.readCanvasGraph(PID, SID)).toEqual({ nodes: [], edges: [] });
     expect(undo.undoStack.length).toBe(stack);
     expect(toast.warning).not.toHaveBeenCalled();
+  });
+});
+
+describe('a rollback that brings back more than the room left', () => {
+  it('still takes the whole placement back', () => {
+    const { doc, provider } = openSizedDoc(NAME);
+    canvasSpace.addNode(PID, SID, {
+      id: 'g', type: 'video', position: { x: 0, y: 0 },
+      data: { name: 'Clip', createdAt: 1, createdBy: 'u1', locked: false, state: 'idle', attachments: [], mode: 'multi_shot', model: 'some-model' },
+    } as never);
+    const prompt = canvasSpace.getPromptFragment(PID, SID, 'g', 'multi_shot')!;
+    doc.transact(() => writeProposalPrompt(prompt, [{ text: 'x'.repeat(3000) }]));
+    pushSize(provider, { ...F_WARNING, room: 1500 });
+    vi.spyOn(storyboard, 'setStoryboardShots').mockImplementation(() => {
+      throw new Error('write failed');
+    });
+    const reuse: CanvasProposal = {
+      nodes: [{
+        role: 'generate', type: 'video', name: 'Clip', mode: 'multi_shot', model: 'some-model', takesPrompt: true, params: {},
+        prompt: [{ text: 'short' }], shots: [{ prompt: [{ text: 's' }], duration: 2 }],
+      }],
+      edges: [],
+      rationale: 'r',
+    };
+    const { result } = renderHook(() => useNodeCreation(PID, SID));
+    expect(() => result.current.placeProposalAt(reuse, { x: 0, y: 0 }, [], new Map<number, ExistingNode>([[0, { nodeId: 'g', mention: { sourceNodeId: 'g', label: 'Clip', kind: 'video' } }]]), [0])).toThrow('write failed');
+    expect(bodyToPlainText(canvasSpace.getPromptFragment(PID, SID, 'g', 'multi_shot')!)).toBe('x'.repeat(3000));
   });
 });

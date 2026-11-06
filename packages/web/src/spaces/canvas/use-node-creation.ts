@@ -37,7 +37,6 @@ import {
   type CanvasNodeView,
   type SnapshotNode,
 } from '@web/data/yjs/canvas-space';
-import { nextHistoryStep } from '@web/data/yjs/history-step';
 import { docName, getDoc, hasDoc } from '@web/data/yjs/manager';
 import {
   estimateNodeBytes,
@@ -667,7 +666,9 @@ export function useNodeCreation(
           }
         });
       } catch (error) {
-        writeSpaceDoc(docName.canvasSpace(projectId, spaceId), nextHistoryStep(rollback, 'undo'), () => {
+        // The rollback takes back this client's own writes of this tick, so
+        // the document ends no larger than before them: it is never refused.
+        writeSpaceDoc(docName.canvasSpace(projectId, spaceId), { kind: 'delete' }, () => {
           rollback.undo();
         });
         throw error;
