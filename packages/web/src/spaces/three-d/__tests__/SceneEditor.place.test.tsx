@@ -154,13 +154,15 @@ describe('placing a finished model from the task list (inner#1690)', () => {
     expect(h.reportError).toHaveBeenCalledWith(t('spaces.threeD.commandFailed'));
   });
 
-  it('ends quietly when the viewport lets the model go before it loads', async () => {
+  it('ends quietly when the viewport lets the model go before it loads, even once a new viewport is in place', async () => {
     const pending = Promise.withResolvers<{ center: [number, number, number]; min: [number, number, number] }>();
     h.bounds = pending.promise;
     pending.promise.catch(() => undefined);
     const session = await placeable();
     await pressPlace();
     act(() => h.latest.props?.onResources?.(null));
+    // The Space is shown again before the old load settles: a new viewport hands up its own holder.
+    act(() => h.latest.props?.onResources?.(() => ({ bounds: new Promise(() => undefined), release: vi.fn() })));
     await act(async () => { pending.reject(new DOMException('Scene model holder released', 'AbortError')); await pending.promise.catch(() => undefined); });
     expect(readSceneDocument(session.doc).objects).toEqual([]);
     expect(h.release).toHaveBeenCalledTimes(1);
