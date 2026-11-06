@@ -4,7 +4,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { MiniToolPlanRecipe } from "@shared/upload/mini-tool-plan-types.js";
+import { miniToolPlanRecipeInputs, type MiniToolPlanRecipe } from "@shared/upload/mini-tool-plan-types.js";
 import type { ContainerFailure } from "@shared/mini-tools/types.js";
 import type { PlanContainerOutput, MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { executePresentationRecipe, type PlanLimits } from "@ingest/container/presentation-recipes.js";
@@ -67,13 +67,7 @@ export async function runPlanJob(job: PlanRunBody): Promise<void> {
   try {
     signal.throwIfAborted();
     const bindings = new Map(job.inputs.map((input) => [input.inputId, input.url]));
-    /**
-     * The bound inputs a recipe reads: a stitch names each chunk besides its source (§91 D3-2).
-     * @param recipe - The recipe.
-     * @returns Its input ids.
-     * @throws {never} Never.
-     */
-    const named = (recipe: MiniToolPlanRecipe): string[] => recipe.kind === "stitch" ? [recipe.inputId, ...recipe.chunks.map((chunk) => chunk.inputId)] : [recipe.inputId];
+    const named = miniToolPlanRecipeInputs;
     if (bindings.size !== job.inputs.length || job.outputs.some((output) => named(output.recipe).some((id) => !bindings.has(id)))) throw new Error("Planned recipe has an ambiguous or unbound input");
     const workDirectory = await mkdtemp(join(tmpdir(), "mini-tool-plan-"));
     directory = workDirectory;

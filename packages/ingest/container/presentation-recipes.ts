@@ -10,7 +10,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { rational } from "@shared/mini-tools/video-presentation-projection.js";
-import type { MiniToolPlanAudio, MiniToolPlanEntry, MiniToolPlanExact, MiniToolPlanPixelRect, MiniToolPlanRecipe, MiniToolPlanTarget } from "@shared/upload/mini-tool-plan-types.js";
+import type { MiniToolPlanAudio, MiniToolPlanEntry, MiniToolPlanExact, MiniToolPlanPixelRect, MiniToolPlanRecipe, MiniToolPlanStitch, MiniToolPlanTarget } from "@shared/upload/mini-tool-plan-types.js";
 import type { MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
 import { copyWithMatrixTag } from "@ingest/container/presentation-run.js";
@@ -23,7 +23,7 @@ import { readSceneCutObservations, readYuNetFaces } from "@ingest/container/anal
 /** Caller-frozen process IO bounds, with no local operational fallback. */
 export interface PlanLimits { probeStdoutBytes: number; analysisStdoutBytes: number; stderrTailBytes: number }
 /** The recipes this module runs. */
-export type PresentationRecipe = Extract<MiniToolPlanRecipe, { kind: "copy_carrier" | "chunk_encode" | "stitch" | "prepare_model_input" }>
+export type PresentationRecipe = Extract<MiniToolPlanRecipe, { kind: "copy_carrier" | "chunk_encode" | "prepare_model_input" }> | MiniToolPlanStitch
   | FrameRecipe | PeopleRecipe | SceneRecipe | SegmentRecipe;
 /** A still frame on a full-ledger entry (§91 D4-3). */
 type FrameRecipe = Extract<MiniToolPlanRecipe, { kind: "frame"; entry: MiniToolPlanEntry }>;
@@ -37,7 +37,8 @@ type SegmentRecipe = Extract<MiniToolPlanRecipe, { kind: "segment"; entries: unk
 type Run = { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: number };
 /** One recipe's local files and lifetime. */
 export interface PresentationRecipeRequest {
-  recipe: PresentationRecipe;
+  /** Any admitted recipe; the transition and composite recipes are refused until this module runs them. */
+  recipe: MiniToolPlanRecipe;
   /** Downloaded files by bound input id: the recipe's input and, for a stitch, every chunk. */
   inputs: ReadonlyMap<string, string>;
   output: string;
@@ -430,6 +431,24 @@ async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_e
 }
 
 /**
+ * Refuse chunks whose video codec headers differ (§5.4 拼接 row): a stream copy would join incompatible streams. The
+ * headers are the codec, profile, size, pixel format and the codec's extradata (H.264 avcC with its SPS and PPS).
+ * @param chunks - The downloaded chunk files.
+ * @param run - The lifetime and IO bounds.
+ * @returns Nothing when every chunk has the first one's headers.
+ * @throws {Error} When a chunk's headers differ or ffprobe fails.
+ */
+async function sameCodecHeaders(chunks: readonly string[], run: Run): Promise<void> {
+  let first: string | null = null;
+  for (const chunk of chunks) {
+    const headers = JSON.stringify(JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-select_streams", "v:0",
+      "-show_entries", "stream=codec_name,profile,width,height,pix_fmt,extradata", "-show_data", "-of", "json", chunk], run)).toString("utf8")).streams);
+    if (first === null) first = headers;
+    else if (headers !== first) throw new Error("Stitch chunks have different codec headers");
+  }
+}
+
+/**
  * Join the chunks by stream copy (§5.4 stitching): each chunk is placed for its plan duration, and the source's interval audio,
  * when the recipe names one, is encoded once as AAC at 48 kHz.
  * @param recipe - The stitch recipe.
@@ -442,6 +461,7 @@ async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_e
  */
 async function stitch(recipe: Extract<PresentationRecipe, { kind: "stitch" }>, files: ReadonlyMap<string, string>, directory: string, output: string,
   run: { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: number }): Promise<void> {
+  await sameCodecHeaders(recipe.chunks.map((chunk) => local(files, chunk.inputId)), run);
   const list = join(directory, "stitch.txt");
   await writeFile(list, recipe.chunks.map((chunk) => `file '${local(files, chunk.inputId)}'\nduration ${seconds(rational(chunk.duration))}\n`).join(""));
   const args = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file", "-copyts", "-f", "concat", "-safe", "0", "-i", list];
@@ -472,6 +492,19 @@ async function copyCarrier(recipe: Extract<PresentationRecipe, { kind: "copy_car
   if (audio === null || audio.kind === "copy") { await copyWithMatrixTag(source, output, recipe.colorMatrix, bounds, audio === null ? null : "copy"); return; }
   const { kind: _kind, ...entries } = audio;
   await copyWithMatrixTag(source, output, recipe.colorMatrix, bounds, (await sourceFacts(source, run)).audio ? audioOf(1, entries) : null);
+}
+
+/**
+ * The recipe as one this module runs.
+ * @param recipe - An admitted recipe.
+ * @returns It, when this module runs it.
+ * @throws {Error} For a transition window, a transition stitch or a model composite, which no container step runs yet.
+ */
+function presentationRecipe(recipe: MiniToolPlanRecipe): PresentationRecipe {
+  if (recipe.kind === "transition_window" || recipe.kind === "model_composite" || (recipe.kind === "stitch" && "clips" in recipe)) {
+    throw new Error(`The ${recipe.kind} recipe has no container step yet`);
+  }
+  return recipe;
 }
 
 /**
@@ -621,7 +654,8 @@ async function detectScenes(recipe: SceneRecipe, source: string, output: string,
  */
 export async function executePresentationRecipe(request: PresentationRecipeRequest): Promise<MediaOfOutput> {
   request.signal.throwIfAborted();
-  const { recipe, inputs, output, directory, signal, limits } = request;
+  const { inputs, output, directory, signal, limits } = request;
+  const recipe = presentationRecipe(request.recipe);
   const run = { signal, stdoutBytes: limits.analysisStdoutBytes, stderrTailBytes: limits.stderrTailBytes };
   if (recipe.kind === "frame") return { ...await renderFrame(recipe, local(inputs, recipe.inputId), output, run), durationSeconds: null, cover: null };
   if (recipe.kind === "people" || recipe.kind === "scene_cuts") {
