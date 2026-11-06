@@ -73,8 +73,9 @@ const storedPlanSchema = z.union([
     persons: z.array(z.strictObject({ personId: z.string().min(1), detectionNumber: z.number().int().positive(),
       anchor: z.strictObject({ frameIndex: index, pts: z.number().nonnegative() }),
       anchorFaceBox: z.strictObject({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }),
-      // A retry freezes its original run's step keys (§97 D21-6); a fresh run derives them from its own fingerprint.
-      stepKeys: z.strictObject({ track: fingerprint, faces: fingerprint, clip: fingerprint, stem: fingerprint, gen: fingerprint }).optional() })).min(1),
+      // Every step key is frozen at the first admission and copied by each retry (DD §7.1).
+      stepKeys: z.strictObject({ track: fingerprint, faces: fingerprint, clip: fingerprint, stem: fingerprint, gen: fingerprint }) })).min(1),
+    sharedStepKeys: z.record(z.string().regex(/^(composite:\d+|stitch)$/), fingerprint),
     tracking: z.strictObject({ model: z.string().min(1) }), cropSize: z.number().int().positive(),
     layout: z.strictObject({ preparation: frameWindows, persons: z.number().int().positive(), composite: frameWindows }), stageJobs,
     container: z.strictObject({ ...container, startSeconds: z.number().nonnegative().finite(),

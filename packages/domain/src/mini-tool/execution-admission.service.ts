@@ -14,7 +14,7 @@ import {
 } from "@breatic/shared/mini-tools";
 import { prepareVideoRemoveBackground, type PreparedVideoRemoveBackground } from "@domain/mini-tool/remove-background-preparation.service.js";
 import { resolveSource } from "@domain/mini-tool/analysis.service.js";
-import { lipSyncDialogues, lipSyncModel, lipSyncPeople, lipsyncPersonStepKeys, lipSyncTimeline, type LipSyncGenerator, type LipSyncPerson } from "@domain/mini-tool/lipsync-admission.js";
+import { lipSyncDialogues, lipSyncModel, lipSyncPeople, lipsyncPersonStepKeys, lipsyncSharedStepKeys, lipSyncTimeline, type LipSyncGenerator, type LipSyncPerson } from "@domain/mini-tool/lipsync-admission.js";
 import { selectedToolInput } from "@domain/mini-tool/selected-tool-input.js";
 import { executionPlanFromTask } from "@domain/mini-tool/execution-plan.service.js";
 import { recordFromPlan } from "@domain/mini-tool/execution.service.js";
@@ -63,6 +63,8 @@ export type AcceptedMiniToolExecution = ExecutionPlan & (TransitionsExecution | 
     dialogues: VideoExecutionDialogue[]; persons: LipSyncPerson[]; tracking: { model: string }; cropSize: number;
     /** The container stages (frames-split §5.4) and their job counts, frozen beside each other as split freezes them (§97 D12-1). */
     layout: LipsyncExecutionLayout; stageJobs: MiniToolStageJobs[];
+    /** The shared steps' frozen keys: `composite:<k>` per chunk and `stitch` (DD §7.1). */
+    sharedStepKeys: Record<string, string>;
     container: MiniToolContainerPolicy & { startSeconds: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; chunkRetries: number } }
 )));
 /**
@@ -444,11 +446,16 @@ async function prepareLipSync(request: Extract<MiniToolPlannedRequest, { tool: "
   assertWithinParallelCap(stageJobs, config);
   const container = { ...containerPolicy(settings.container_class, settings.precheck_seconds, config), startSeconds: config.encoding.encoder.start_seconds,
     encode: { crf: config.presentation.crf, preset: config.presentation.preset }, chunkRetries: config.encoding.chunk_retries };
-  return { ...common, tool: request.tool, binding, sourceKey, presentationRef: request.presentation_ref, ledgerReceipts: { source: receipt },
+  const plan = { ...common, tool: request.tool, binding, sourceKey, presentationRef: request.presentation_ref, ledgerReceipts: { source: receipt },
     versionIds: { source: versionId }, model: model.name, container, layout, stageJobs, timeline, usedRange, dialogues, persons, cropSize: model.crop_size,
     tracking: { model: settings.tracking.model },
-    generator: { backend: "wavespeed-crop", modelId: model.name, schemaFingerprint: model.schema_fingerprint, providerSyncMode: model.accepts_sync_mode ? "cut_off" : null },
+    generator: { backend: "wavespeed-crop" as const, modelId: model.name, schemaFingerprint: model.schema_fingerprint, providerSyncMode: model.accepts_sync_mode ? "cut_off" as const : null },
     credits: persons.length * (generation + tracking) + containerCredits(container, seconds) };
+  // Every step key is computed once here and frozen (DD §7.1 steps row): over the plan's fingerprint before the keys, which
+  // the keys cannot be part of; a retry copies them, so a step done anywhere along its chain is found again.
+  const keyed = await hashMiniToolValue(plan);
+  return { ...plan, persons: persons.map((person) => ({ ...person, stepKeys: lipsyncPersonStepKeys(keyed, person) })),
+    sharedStepKeys: lipsyncSharedStepKeys(keyed, layout.composite.length) };
 }
 
 /**
@@ -690,10 +697,9 @@ async function claimRetry(request: MiniToolExecutionRetryRequest, userId: string
       return claim;
     }
     if (frozen.tool === "video.lip-sync") {
-      // The same frozen plan and quote; each person carries the original's step keys, so the retry reuses every done step
-      // and its object (§97 D21-6, frames-split §7.11 retry row).
-      const persons = frozen.persons.map((person) => ({ ...person, stepKeys: lipsyncPersonStepKeys(plan.execution.planFingerprint, person) }));
-      const claim = await claimPrepared({ ...frozen, ...retried, persons }, request, userId, fingerprint, tx);
+      // The same frozen plan and quote with the original's frozen step keys, so the retry reuses every done step and its
+      // object (§97 D21-6, DD §7.1, frames-split §7.11 retry row).
+      const claim = await claimPrepared({ ...frozen, ...retried }, request, userId, fingerprint, tx);
       if (claim.inserted) {
         // The reused preparation and step objects stay pinned by the retry once the original stops being retryable (§7.15).
         for (const held of await presentationPinService.heldPrepared(original.id, tx)) {

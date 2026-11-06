@@ -97,18 +97,22 @@ async function runsOf(execution: LipSync): Promise<string[]> {
 }
 
 /**
- * The composite's step key (DD §7.1): the digest over the plan fingerprint of the retry chain's original run, so a retry of
- * a retry finds a chunk any run of the chain composited (its inputs are the same done steps).
+ * A shared step's frozen key (DD §7.1 steps row): `composite:<k>` or `stitch`, read from the plan, never recomputed.
  * @param execution - The frozen run.
+ * @param step - The shared step.
  * @returns The key.
  * @throws {Error} When a run of the chain cannot be read.
  */
-async function compositeKeyOf(execution: LipSync): Promise<string> {
+async function sharedKeyOf(execution: LipSync, step: `composite:${number}` | "stitch"): Promise<string> {
+  const frozen = (execution as { sharedStepKeys?: Record<string, string> }).sharedStepKeys?.[step];
+  if (frozen !== undefined) return frozen;
+  // ponytail: a plan without frozen shared keys (only test fixtures written before DD §7.1 froze them) keys the step on
+  // its chain's original plan; delete once every fixture freezes `sharedStepKeys`.
   const root = (await runsOf(execution)).at(-1)!;
-  if (root === execution.taskId) return lipsyncStepKey(execution.planFingerprint, null, "composite");
-  const task = await taskRepo.getMiniToolExecutionTask(root);
-  const fingerprint = z.object({ miniToolExecution: z.object({ planFingerprint: z.string().min(1) }) }).parse(task?.params).miniToolExecution.planFingerprint;
-  return lipsyncStepKey(fingerprint, null, "composite");
+  const task = root === execution.taskId ? null : await taskRepo.getMiniToolExecutionTask(root);
+  const fingerprint = task === null ? execution.planFingerprint
+    : z.object({ miniToolExecution: z.object({ planFingerprint: z.string().min(1) }) }).parse(task.params).miniToolExecution.planFingerprint;
+  return lipsyncStepKey(fingerprint, null, step);
 }
 
 /**
@@ -496,13 +500,13 @@ async function personStep(execution: LipSync, kind: "track" | "faces" | "clip" |
  * @throws {Error} When persistence or IO fails.
  */
 async function composite(execution: LipSync, userId: string, deadlineAt: number): Promise<{ keys: string[] } | { failed: Category }> {
-  const stepKey = await compositeKeyOf(execution);
   const keys: string[] = [];
   let running = false;
   for (const [chunk, window] of execution.layout.composite.entries()) {
     let ended: Ended;
+    const stepKey = await sharedKeyOf(execution, `composite:${chunk}`);
     try {
-      ended = await advanceContainer(execution, { stepKey: `${stepKey}:c${chunk}`, jobId: (attempt) => `${execution.taskId}:${stepKey}:c${chunk}:a${attempt}`, contentType: "video/mp4",
+      ended = await advanceContainer(execution, { stepKey, jobId: (attempt) => `${execution.taskId}:${stepKey}:a${attempt}`, contentType: "video/mp4",
         failed: () => ({ failed: "failed" }), build: async () => {
           const ledger = await ledgerOf(execution, deadlineAt);
           const persons = await Promise.all(execution.persons.map(async (person, at) => ({
@@ -540,9 +544,9 @@ async function composite(execution: LipSync, userId: string, deadlineAt: number)
 async function stitch(execution: LipSync, userId: string, deadlineAt: number): Promise<LipSyncStepOutcome> {
   const chunks = await composite(execution, userId, deadlineAt);
   if (!("keys" in chunks)) return { state: "failed", step: "stitch", category: chunks.failed };
-  const stepKey = await compositeKeyOf(execution);
+  const stepKey = await sharedKeyOf(execution, "stitch");
   for (let attempt = 1; attempt <= execution.container.chunkRetries + 1; attempt += 1) {
-    const jobId = `${execution.taskId}:${stepKey}:stitch:a${attempt}`;
+    const jobId = `${execution.taskId}:${stepKey}:a${attempt}`;
     const steps = await upstreamStepRepo.listSteps(execution.taskId);
     let step = steps.find((candidate) => storedRequest(candidate)?.jobId === jobId);
     let request = step === undefined ? null : storedRequest(step);

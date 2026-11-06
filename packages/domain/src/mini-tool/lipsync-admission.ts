@@ -42,8 +42,20 @@ export interface LipSyncPerson {
  * @returns A 64-hex key.
  * @throws {never} Never.
  */
-export function lipsyncStepKey(planFingerprint: string, personId: string | null, kind: LipSyncPersonStep | "composite"): string {
+export function lipsyncStepKey(planFingerprint: string, personId: string | null, kind: LipSyncPersonStep | `composite:${number}` | "stitch"): string {
   return createHash("sha256").update(JSON.stringify({ planFingerprint, personId, kind })).digest("hex");
+}
+
+/**
+ * The shared steps' keys a fresh plan freezes (DD §7.1 steps row): `composite:<k>` per composite chunk and `stitch`.
+ * @param planFingerprint - The fingerprint of the plan the keys are frozen into, before its keys.
+ * @param compositeChunks - The frozen composite chunk count.
+ * @returns The keys by step.
+ * @throws {never} Never.
+ */
+export function lipsyncSharedStepKeys(planFingerprint: string, compositeChunks: number): Record<string, string> {
+  const steps = [...Array.from({ length: compositeChunks }, (_, k) => `composite:${k}` as const), "stitch" as const];
+  return Object.fromEntries(steps.map((step) => [step, lipsyncStepKey(planFingerprint, null, step)]));
 }
 
 /**
