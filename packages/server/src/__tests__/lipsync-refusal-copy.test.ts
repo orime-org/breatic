@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1306 test plan §97 D19-2 (frames-split §7.11 fresh row 「否则拒绝并告诉用户原因」; D17-1, D18-1): the seven lip-sync
+ * inner#1306 test plan §97 D19-2 (frames-split §7.11 fresh row 「否则拒绝并告诉用户原因」; D17-1, D18-1, D23-5): the eight lip-sync
  * admission refusals the panel shows as a toast ship in all five locales under `server.mini_tool.*`, each translation keeping
  * the placeholders its English message names, and the English text is the coordinator's.
  */
@@ -20,6 +20,8 @@ const ENGLISH: Readonly<Record<string, string>> = {
   lipSyncTooManyDialogues: "Lip sync takes up to {max} dialogue lines.",
   lipSyncPeopleRunning: "Person detection is still running. Try again when it finishes.",
   lipSyncPeopleStale: "The detected people no longer match this video. Detect people again.",
+  // frames-split §5.4 派发 row: one faces, clip, stem or stitch job estimated over one chunk share.
+  lipSyncStepTooLong: "This lip-sync run is too long for one processing step. Shorten the dialogue or the video.",
 };
 
 /**

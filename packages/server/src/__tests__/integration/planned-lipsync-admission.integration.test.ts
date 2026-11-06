@@ -550,15 +550,15 @@ describe("lip-sync quote container work (§97; execution design §9.3; frames-sp
 
 // frames-split §5.4 派发 row: `lipsync_faces`, `lipsync_clip` and `lipsync_stem` run as one unchunked job per person, and
 // any of them estimated over one chunk share (remaining budget × `encoding.chunk_share`, 3600 s of the 2 h budget) is
-// refused at admission with its reason. §5.4 待实测 row: faces = used source frames × (source pixels ÷ decode rate + 1 ÷
-// YuNet detection fps), the fps configured under the lip-sync tool (chosen key `face_detect_fps` of
-// `executions["video.lip-sync"]`); stem = audio duration ÷ `encoding.encoder.aac_encode_seconds_per_second`. The design
-// names no separate message for one long job; the refusal is `server.mini_tool.runTooLong` with the parallel cap, the
-// message every other too-long run gets. Each case admits the run with the job about 0.9 share, then refuses it at about
-// 1.1 share, so only that one rate decides; decode is made negligible so the formula's other terms cannot cross either way.
+// refused at admission with its reason; the stitch is bound by the same share (coordinator D23-5 (d): every container job
+// fits its share). §5.4 待实测 row as implemented: faces = start + used source frames × (source pixels ÷ decode rate +
+// source pixels ÷ `encoding.encoder.face_detect_pixels_per_second`) (D23-5 (e)); stem and stitch = start + audio duration ÷
+// `encoding.encoder.aac_encode_seconds_per_second`. The refusal has its own reason, `server.mini_tool.lipSyncStepTooLong`
+// with no values (D23-5 (c)). Each case admits the run with the job at about 0.9 share, then refuses it at about 1.1 share,
+// so only that one rate decides; decode is made negligible so the formula's other terms cannot cross either way.
 describe("lip-sync single job over one chunk share (frames-split §5.4 派发 and 待实测 rows)", () => {
   /**
-   * One person speaking 4 s in cut_off: timeline 4 s, used source range [0, 4) = 800 frames of 1/200 s.
+   * One person speaking 4 s in cut_off: timeline 4 s, used source range [0, 4) = 800 frames of 1/200 s at 960 × 540.
    * @returns The fixture.
    * @throws {Error} On fixture failure.
    */
@@ -574,22 +574,24 @@ describe("lip-sync single job over one chunk share (frames-split §5.4 派发 an
 
   it("LJ01 refuses a run whose lipsync_faces alone exceeds one chunk share, after the same run is admitted just within it", async () => {
     const f = await onePerson();
-    // 800 frames ÷ 0.25 fps = 3200 s of detection, within the 3600 s share.
-    Reflect.set(lipSync, "face_detect_fps", 800 / 3200);
+    // 800 frames × 960 × 540 pixels at 129600 pixels per second = 3200 s of detection, within the 3600 s share.
+    settings.encoding.encoder.face_detect_pixels_per_second = (800 * 960 * 540) / 3200;
     const admitted = await plan(await control(f));
     expect(admitted.usedRange).toEqual({ start: 0, end: 4 });
-    // 800 frames ÷ 0.2 fps = 4000 s: the one faces job is over the share; nothing else changed.
-    Reflect.set(lipSync, "face_detect_fps", 800 / 4000);
-    await refused(f, { key: "server.mini_tool.runTooLong", params: { max: settings.encoding.max_parallel_chunks } });
+    // At 103680 pixels per second the one faces job takes 4000 s, over the share; nothing else changed.
+    settings.encoding.encoder.face_detect_pixels_per_second = (800 * 960 * 540) / 4000;
+    await refused(f, { key: "server.mini_tool.lipSyncStepTooLong" });
   });
 
-  it("LJ02 refuses a run whose lipsync_stem alone exceeds one chunk share, after the same run is admitted just within it", async () => {
+  // The implementation estimates the stitch exactly like each stem (start + the result duration ÷ the AAC rate), so no
+  // configuration moves one over the share without the other: this case covers the stem and the stitch together.
+  it("LJ02 refuses a run whose lipsync_stem and stitch exceed one chunk share, after the same run is admitted just within it", async () => {
     const f = await onePerson();
-    // The 4 s stem at 4/3200 audio seconds per second takes 3200 s.
+    // The 4 s result audio at 4/3200 audio seconds per second takes 3200 s.
     settings.encoding.encoder.aac_encode_seconds_per_second = 4 / 3200;
     expect((await plan(await control(f))).timeline.duration).toBe(4);
     settings.encoding.encoder.aac_encode_seconds_per_second = 4 / 4000;
-    await refused(f, { key: "server.mini_tool.runTooLong", params: { max: settings.encoding.max_parallel_chunks } });
+    await refused(f, { key: "server.mini_tool.lipSyncStepTooLong" });
   });
 });
 
