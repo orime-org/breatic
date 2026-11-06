@@ -208,6 +208,8 @@ exports[`every refusal states its fault, its rule and its facts > template-edge-
 
 exports[`every refusal states its fault, its rule and its facts > template-edge-missing (1): is met and says what is wrong, and its one fix clears it 1`] = `"Template "fixture-shots" anchored at node 1 ("Clip") wires its "still" node into "clip" by "pool", and node 0 ("Still"), tagged "still", has no edge there. On node 1 ("Clip"), send node 0 ("Still") into it by an edge with into: "pool" and a ref @'ing it and a note saying what to do first, its ref and note in a shot."`;
 
+exports[`every refusal states its fault, its rule and its facts > template-edge-missing (2): is met and says what is wrong, and its one fix clears it 1`] = `"Template "fixture-shots" anchored at node 1 ("Clip") wires its "still" node into "clip" by "pool", and node 0 ("Still"), tagged "still", has no edge there. On node 1 ("Clip"), send node 0 ("Still") into it by an edge with into: "pool" and a ref @'ing it and a note saying what to do first, its ref and note in a shot."`;
+
 exports[`every refusal states its fault, its rule and its facts > template-input-missing (0): is met and says what is wrong 1`] = `"Template "fixture-solo" takes input "reference" on node 0 ("Gen"), and no image node of its own is wired in there."`;
 
 exports[`every refusal states its fault, its rule and its facts > template-key-kind (0): is met and says what is wrong 1`] = `"Node "still" of template "fixture-shots" is a generate image node; "Pic" is a source image node."`;

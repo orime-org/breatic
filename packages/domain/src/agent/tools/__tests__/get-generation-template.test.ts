@@ -152,17 +152,19 @@ describe("a template with a shot list (inner#1816)", () => {
     expect(said).toContain("shots: [");
     expect(said.match(/"duration": 3\b/g)).toHaveLength(5);
     expect(said).toContain('{"ref": <index of the node wired in for input "subject">}');
-    expect(said).toContain("send its shots");
+    expect(said).toContain("sends shots and no prompt");
     expect(said).toContain(describeTemplate(byId("vertical-15s-quick-tip")));
   });
 
-  it("says a node's shots keep the template's durations or add up to the node's new duration", async () => {
+  it("says a multi_shot node sends shots adding up to its duration and any other mode sends one prompt", async () => {
     const said = await read("vertical-15s-quick-tip");
     expect(said).toContain(
-      "For a node with shots, send its shots instead and no prompt: each with the duration the template gives it, " +
-        "or, when you change the node's duration, durations that add up to the new one.",
+      "A node sent in multi_shot sends shots and no prompt, their durations adding up to the node's duration: " +
+        "the template's while the node keeps the template's mode and model, otherwise one you set in its params. " +
+        "A node sent in any other mode sends a prompt, a template's shots written as one.",
     );
-    expect(said).not.toContain("each with the duration the template gives it, and no prompt");
+    expect(said).not.toContain("For a node with shots");
+    expect(said).not.toContain("each with the duration the template gives it");
   });
 
   it("writes no shot list for a template without shots", () => {
