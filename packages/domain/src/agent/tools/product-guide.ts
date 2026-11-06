@@ -1296,6 +1296,15 @@ export function renderProductGuide(): string {
     `The floating left rail starts with a plus icon, ${quoted(t("spaces.threeD.add"))}. Its menu offers ` +
       `${quoted(t("spaces.threeD.addBox"))} and ${quoted(t("spaces.threeD.addFigure"))}, which place a ` +
       `${quoted(t("spaces.threeD.box"))} or ${quoted(t("spaces.threeD.figure"))}. ` +
+      `The upload-arrow icon below it, ${quoted(t("spaces.threeD.importModel.title"))}, opens the import dialog; it is unavailable while you cannot edit. ` +
+      `The dialog takes ${quoted(t("spaces.threeD.importModel.chooseFiles"))}, ${quoted(t("spaces.threeD.importModel.chooseFolder"))} or files dropped on it: ` +
+      "a glTF 2.0 .glb, or a .gltf with its .bin and texture files, or a ZIP holding them. It checks the files, previews the model, " +
+      `and shows ${quoted(t("spaces.threeD.importModel.name"))}, which starts as the main file's name. With several main files, pick one under ` +
+      `${quoted(t("spaces.threeD.importModel.entry"))}; when files are missing it lists their paths and ${quoted(t("spaces.threeD.importModel.addResources"))} adds them. ` +
+      "A small button under the model's details shows or hides the list of its files. " +
+      `${quoted(t("spaces.threeD.importModel.confirm"))} starts the upload: the dialog waits and cannot be closed while the upload is being prepared, ` +
+      `then closes and the ${quoted(t("spaces.threeD.tasks"))} panel opens on the new row. You can start another import at once. ` +
+      "While a file is still being sent, closing this Space's tab is held back and leaving the page asks first. " +
       `The sparkle icon opens ${quoted(t("spaces.threeD.generate"))}, a dialog displaying ` +
       `${quoted(t("spaces.threeD.generationDev"))}. It has a disabled ${quoted(t("spaces.threeD.prompt"))} field, ` +
       `a disabled ${quoted(t("spaces.threeD.chooseReference"))} button under ${quoted(t("spaces.threeD.reference"))}, ` +
@@ -1308,8 +1317,16 @@ export function renderProductGuide(): string {
       "Click one to open its panel on the right; click the same button again to close it, or another to switch content. " +
       `An X with the ${quoted(t("spaces.threeD.closePanel"))} tooltip also closes the panel. Its content scrolls above the minimap. ` +
       "Opening a header menu while the panel is open keeps keyboard focus in that new menu. " +
-      `The tasks panel currently says ${quoted(t("spaces.threeD.generationDev"))}; the minimap button toggles the scene's top view; ` +
-      "clicking that map navigates your personal viewing camera.",
+      "The minimap button toggles the scene's top view; clicking that map navigates your personal viewing camera.",
+    `The ${quoted(t("spaces.threeD.tasks"))} panel lists every member's model imports in this Space, newest first, the same for everyone. ` +
+      `Each row shows the model's name, ${quoted(t("spaces.threeD.taskList.kind"))}, who started it (${quoted(t("spaces.threeD.taskList.you"))} for you, ${quoted(t("spaces.threeD.taskList.member"))} when the name is unknown) and its state: ` +
+      `${quoted(t("spaces.threeD.taskList.running"))} with a percentage while the uploader's page is sending it, ${quoted(t("spaces.threeD.taskList.registering"))}, ` +
+      `${quoted(t("spaces.threeD.taskList.done"))}, ${quoted(t("spaces.threeD.taskList.failed"))} or ${quoted(t("spaces.threeD.taskList.expired"))} after two hours without an end. ` +
+      `Resting the pointer on a cut-off name shows it whole. A finished row has ${quoted(t("spaces.threeD.taskList.place"))}: each press puts one copy on the ground at the centre of your view and selects it, ` +
+      "and the panel stays open for the next one; a row that timed out but whose model arrived later has it too. " +
+      `A failed row, and a timed-out one with no model, has ${quoted(t("spaces.threeD.taskList.remove"))}; the page that uploaded a failed row also has ` +
+      `${quoted(t("spaces.threeD.taskList.retry"))} when sending the same file again could succeed, until that page is reloaded. A row holding a model cannot be removed. A Viewer sees the list without buttons. ` +
+      `When there are none it says ${quoted(t("spaces.threeD.taskList.empty"))} The project activity records each import whose file was uploaded, under the model's name; importing a model this studio already has adds no activity entry.`,
     `The ${quoted(t("spaces.threeD.objects"))} panel lists scene objects; when empty it says ${quoted(t("spaces.threeD.empty"))} ` +
       "Click an object in the list or viewport to select it; Shift-click adds it to or removes it from the selection. " +
       "Click empty space to clear the selection. Selected objects have outlines; the list also marks selected rows and locked objects.",

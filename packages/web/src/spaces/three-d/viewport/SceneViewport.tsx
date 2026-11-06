@@ -19,14 +19,18 @@ const SceneViewport = React.memo(function SceneViewport(props: SceneViewportProp
 
   React.useEffect(() => {
     if (!host.current) return;
+    let created: SceneViewportRuntime;
     try {
-      runtime.current = new SceneViewportRuntime(host.current, latest.current);
+      created = new SceneViewportRuntime(host.current, latest.current);
     } catch (error: unknown) {
       latest.current.onError(error instanceof Error ? error : new Error(String(error)));
       return;
     }
+    runtime.current = created;
+    latest.current.onResources?.(created.acquireModel);
     return () => {
-      runtime.current?.dispose();
+      latest.current.onResources?.(null);
+      created.dispose();
       runtime.current = null;
     };
   }, []);

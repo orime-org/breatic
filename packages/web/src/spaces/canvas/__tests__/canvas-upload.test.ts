@@ -250,7 +250,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     const deps = makeDeps({ tag: { source: 'mini_tool', toolName: 'image-rotate' } });
     await fillNodeFromFile('n1', new File(['x'], 'p.png', { type: 'image/png' }), 'image', 'p1', deps);
     expect(deps.requestTicket).toHaveBeenCalledWith(
-      expect.objectContaining({ source: 'mini_tool', toolName: 'image-rotate', nodeId: 'n1' }),
+      expect.objectContaining({ source: 'mini_tool', toolName: 'image-rotate', nodeId: 'n1' }), undefined,
     );
   });
 

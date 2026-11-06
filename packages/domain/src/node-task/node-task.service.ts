@@ -139,7 +139,8 @@ export async function deadlineFor(taskId: string): Promise<number | null> {
  *   failure lands as `expired`.
  * @returns Whether this call moved the row, plus the node's counts.
  * @throws {Error} When the task id names no row at all — a machine reporting
- *   about a task nobody opened is a wiring fault, not a late message.
+ *   about a task nobody opened is a wiring fault, not a late message — or
+ *   names a 3D Space's own row, which settles through the scene task service.
  */
 export async function settle(opts: {
   taskId: string;
@@ -151,6 +152,10 @@ export async function settle(opts: {
   if (row === null) {
     throw new Error(`settle: no node_tasks row for ${opts.taskId}`);
   }
+  if (row.nodeId === null) {
+    throw new Error(`settle: ${opts.taskId} is a Space-level row, settled by the scene task service`);
+  }
+  const nodeId = row.nodeId;
 
   // A task that failed at or past its deadline ended there, whichever exit
   // reports it (inner#1367): written the way the harvest writes it.
@@ -175,7 +180,7 @@ export async function settle(opts: {
   // The status read above predates the update: a concurrent report may have
   // moved the row between the two, so only a fresh read says where it ended.
   const landed = applied || (await repo.findById(opts.taskId))?.status === outcome;
-  const counts = await repo.countsFor(row.projectId, row.nodeId);
+  const counts = await repo.countsFor(row.projectId, nodeId);
   return { applied, landed, counts };
 }
 
@@ -187,6 +192,7 @@ export async function settle(opts: {
  *   table never held the row.
  * @param opts.nodeId - The caller's node, same purpose.
  * @returns Whether a row was hidden, plus the node's counts.
+ * @throws {Error} When the row is a 3D Space's own row, which its own list removes.
  * @throws {ConflictError} When the row is still running: a task that has not
  *   settled is not a record to clear yet.
  */
@@ -197,6 +203,9 @@ export async function dismiss(opts: {
 }): Promise<DismissResult> {
   const row = await repo.findById(opts.taskId);
 
+  if (row !== null && row.nodeId === null) {
+    throw new Error(`dismiss: ${opts.taskId} is a Space-level row, removed by the scene task service`);
+  }
   if (row !== null && row.status === "running") {
     throw new ConflictError(t("canvas.task.stillRunning"));
   }

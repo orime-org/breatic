@@ -198,6 +198,15 @@ export default defineConfig(({ command, mode }) => {
             if (/[\\/]src[\\/]app[\\/]route-imports\./.test(id)) {
               return 'route-imports';
             }
+            // The eager scene owner and lazy model readers share this error contract and its wording; neither module imports anything at runtime.
+            if (/[\\/]src[\\/]spaces[\\/]three-d[\\/]model-import-(errors|error-text)\.ts$/.test(id)) {
+              return 'model-import-errors';
+            }
+            // Shared overlay code and icons stay independent of the route that opens them.
+            if (/[\\/]src[\\/]lib[\\/]overlay-focus\.ts$/.test(id)
+              || /[\\/]node_modules[\\/]lucide-react[\\/]dist[\\/]esm[\\/]icons[\\/](upload|triangle-alert)\.m?js$/.test(id)) {
+              return 'overlay-shared';
+            }
             if (!id.includes('node_modules')) return;
             if (
               /[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(
