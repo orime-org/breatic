@@ -9,13 +9,14 @@
  * - a failed run is listed per person as "Person N" (N is the detection number) with its category and next step, plus one
  *   line for a failed shared step; "Retry failed items" is offered only when shared `lipsyncFailureRetryable(reason)` is true;
  *   beside a No face detected or Model rejected person, the other people follow that person's next step.
+ * Copy is asserted through the demo's keys under `canvas.miniTool.videoUI.*` (`personFail*`, `sharedFail*`, `retryFailedPeople`).
  * The props `lipSync`, `lipSyncFailure` and `onRetryFailed` are proposed shapes this test chose; no design fixes them yet.
  */
 
 import * as React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ModelEntry } from '@breatic/shared';
+import { t, type ModelEntry } from '@breatic/shared';
 import type { VideoToolDraftById } from '@breatic/shared/mini-tools';
 
 vi.mock('@breatic/shared/mini-tools', async (importOriginal) => ({
@@ -80,6 +81,28 @@ function panelText(): string {
   return screen.getByTestId('video-lip-sync-controls').textContent ?? '';
 }
 
+/**
+ * A `canvas.miniTool.videoUI.*` message in the active (English) locale.
+ * @param key - The key under the video tool namespace.
+ * @param params - Its ICU parameters.
+ * @returns The message.
+ */
+function ui(key: string, params?: Record<string, string | number>): string {
+  return t(`canvas.miniTool.videoUI.${key}`, params);
+}
+
+/**
+ * One person's failure line: "Person N", its category, then its next step, with any separator between them.
+ * @param detectionNumber - The person's detection number.
+ * @param categoryKey - The category's key.
+ * @param next - The next-step sentence, or empty to match the line without it.
+ * @returns The pattern.
+ */
+function line(detectionNumber: number, categoryKey: string, next: string): RegExp {
+  const escape = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`${escape(ui('personNumber', { number: detectionNumber }))}\\W+${escape(ui(categoryKey))}\\W*${escape(next)}`);
+}
+
 beforeEach(() => { vi.clearAllMocks(); });
 
 describe('lip-sync model picker (§97; canvas design §4 对口型)', () => {
@@ -107,19 +130,19 @@ describe('lip-sync failure lines (§97; canvas design §4 对口型, execution d
   it('names each failed person by detection number with its category and the retry step', () => {
     retryable.mockReturnValue(true);
     mount({ lipSyncFailure: { kind: 'lipsync', persons: [person(3, 'timeout', 'track'), person(5, 'failed', 'clip')], shared: null } satisfies FailureReason, onRetryFailed: vi.fn() });
-    expect(panelText()).toMatch(/Person 3\W+Timed out\W*Retry the failed items\./);
-    expect(panelText()).toMatch(/Person 5\W+Failed\W*Retry the failed items\./);
+    expect(panelText()).toMatch(line(3, 'personFailTimeout', ui('personFailRetryNext')));
+    expect(panelText()).toMatch(line(5, 'personFailFailed', ui('personFailRetryNext')));
   });
 
   it.each([
-    ['prepare', 'failed', 'Preparation failed'],
-    ['composite', 'failed', 'Compositing failed'],
-    ['stitch', 'failed', 'Stitching failed'],
-    ['expired', 'timeout', 'Timed out'],
-  ] as const)('shows one shared line for a failed %s step', (step, category, line) => {
+    ['prepare', 'failed', 'sharedFailPreparation'],
+    ['composite', 'failed', 'sharedFailCompositing'],
+    ['stitch', 'failed', 'sharedFailStitching'],
+    ['expired', 'timeout', 'sharedFailExpired'],
+  ] as const)('shows one shared line for a failed %s step', (step, category, key) => {
     retryable.mockReturnValue(true);
     mount({ lipSyncFailure: { kind: 'lipsync', persons: [], shared: { step, category } } satisfies FailureReason, onRetryFailed: vi.fn() });
-    expect(panelText()).toContain(line);
+    expect(panelText()).toContain(ui(key));
   });
 
   it('offers Retry failed items when the shared rule says the reason is retryable, and runs it', () => {
@@ -128,7 +151,7 @@ describe('lip-sync failure lines (§97; canvas design §4 对口型, execution d
     const reason: FailureReason = { kind: 'lipsync', persons: [person(1, 'timeout')], shared: null };
     mount({ lipSyncFailure: reason, onRetryFailed });
     expect(retryable).toHaveBeenCalledWith(reason);
-    fireEvent.click(screen.getByRole('button', { name: 'Retry failed items' }));
+    fireEvent.click(screen.getByRole('button', { name: ui('retryFailedPeople') }));
     expect(onRetryFailed).toHaveBeenCalledOnce();
   });
 
@@ -136,25 +159,26 @@ describe('lip-sync failure lines (§97; canvas design §4 对口型, execution d
     retryable.mockReturnValue(false);
     const reason: FailureReason = { kind: 'lipsync', persons: [person(1, 'timeout')], shared: null };
     mount({ lipSyncFailure: reason, onRetryFailed: vi.fn() });
-    expect(panelText()).toContain('Person 1');
+    expect(panelText()).toMatch(line(1, 'personFailTimeout', ''));
     expect(retryable).toHaveBeenCalledWith(reason);
-    expect(screen.queryByRole('button', { name: 'Retry failed items' })).toBeNull();
+    expect(screen.queryByRole('button', { name: ui('retryFailedPeople') })).toBeNull();
   });
 
   it('gives a rejected person the switch-model step', () => {
     retryable.mockReturnValue(false);
     mount({ lipSyncFailure: { kind: 'lipsync', persons: [person(2, 'model_rejected')], shared: null } satisfies FailureReason, onRetryFailed: vi.fn() });
-    expect(panelText()).toMatch(/Person 2\W+Model rejected\W*Switch to another model and run again\./);
+    expect(panelText()).toMatch(line(2, 'personFailRejected', ui('personFailRejectedNext')));
   });
 
   it('makes the timed-out, failed and stopped people follow the person with no face', () => {
     retryable.mockReturnValue(false);
     mount({ lipSyncFailure: { kind: 'lipsync', persons: [person(3, 'no_face', 'faces'), person(5, 'timeout'), person(6, 'failed'), person(7, 'stopped')], shared: null } satisfies FailureReason, onRetryFailed: vi.fn() });
     const text = panelText();
-    expect(text).toMatch(/Person 3\W+No face detected\W*Delete this person's dialogue rows, or re-detect on another frame\./);
-    expect(text).toMatch(/Person 5\W+Timed out\W*Follow Person 3's next step\./);
-    expect(text).toMatch(/Person 6\W+Failed\W*Follow Person 3's next step\./);
-    expect(text).toMatch(/Person 7\W+Stopped\W*(Stopped because of Person 3\. )?Follow Person 3's next step\./);
-    expect(text).not.toContain('Retry the failed items.');
+    expect(text).toMatch(line(3, 'personFailNoFace', ui('personFailNoFaceNext')));
+    expect(text).toMatch(line(5, 'personFailTimeout', ui('personFailFollowNext', { number: 3 })));
+    expect(text).toMatch(line(6, 'personFailFailed', ui('personFailFollowNext', { number: 3 })));
+    // The demo gives a stopped person its own sentence naming the person that stopped it.
+    expect(text).toMatch(line(7, 'personFailStopped', ui('personFailStoppedNext', { number: 3 })));
+    expect(text).not.toContain(ui('personFailRetryNext'));
   });
 });

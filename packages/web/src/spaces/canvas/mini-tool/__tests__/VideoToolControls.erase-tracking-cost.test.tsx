@@ -3,7 +3,7 @@
 
 /**
  * inner#1306 test plan §97 (canvas design §4 擦除行; demo 2026-10-23-1306-video-tools `main.tsx` `tracking-cost`,
- * `revision-messages.json` `trackingEstimate` / `trackingActual`): before tracking runs, the tracking estimate stands beside
+ * `revision-messages.json`; keys `canvas.miniTool.videoUI.trackingEstimate` / `trackingActual`): before tracking runs, the tracking estimate stands beside
  * the "Track selection" button ("Est. {credits}"); once a tracking run finished, the same place shows what it actually
  * used ("Used {credits}"). The cost is beside the button, not part of its label. `analysisActualCreditText` is a prop
  * name this test chose; no design fixes where the actual cost comes from yet.
@@ -12,6 +12,7 @@
 import * as React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { t } from '@breatic/shared';
 import type { VideoToolDraftById } from '@breatic/shared/mini-tools';
 import { VideoToolControls } from '../video/VideoToolControls';
 
@@ -29,7 +30,7 @@ const base = { toolId: 'video.erase' as const, draft, analyses: [], frameTable, 
  * @returns The element holding it.
  */
 function costBesideTrack(text: string): HTMLElement {
-  const track = screen.getByRole('button', { name: /Track selection/ });
+  const track = screen.getByRole('button', { name: new RegExp(t('canvas.miniTool.videoUI.trackObject')) });
   const cost = screen.getByText(text);
   expect(track.contains(cost)).toBe(false);
   expect(cost.closest('button')).toBeNull();
@@ -40,13 +41,13 @@ function costBesideTrack(text: string): HTMLElement {
 describe('erase tracking cost beside Track selection (§97; canvas design §4 擦除)', () => {
   it('shows the tracking estimate beside the button before tracking runs', () => {
     render(<VideoToolControls {...base} analysisCreditText='8' />);
-    costBesideTrack('Est. 8');
+    costBesideTrack(t('canvas.miniTool.videoUI.trackingEstimate', { credits: '8' }));
   });
 
   it('shows what the finished tracking actually used in the same place, instead of the estimate', () => {
     const proposed: object = { analysisActualCreditText: '6' };
     render(<VideoToolControls {...base} analysisCreditText='8' {...proposed} />);
-    costBesideTrack('Used 6');
-    expect(screen.queryByText(/Est\. 8/)).toBeNull();
+    costBesideTrack(t('canvas.miniTool.videoUI.trackingActual', { credits: '6' }));
+    expect(screen.queryByText(t('canvas.miniTool.videoUI.trackingEstimate', { credits: '8' }))).toBeNull();
   });
 });
