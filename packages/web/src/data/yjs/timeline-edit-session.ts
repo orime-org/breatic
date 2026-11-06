@@ -170,6 +170,18 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
   doc.on('update', refresh);
   // The step the current key hold made; a repeat joins it only while it is still the top step.
   let holdStep: unknown = null;
+  /**
+   * Undo or redo one step: a pop ends any key hold and any step being joined, and records the clips present before it.
+   * @param run - The history call.
+   * @throws {never} Never.
+   */
+  const pop = (run: () => void): void => {
+    added = null;
+    holdStep = null;
+    clipsBeforePop = new Set(doc.getMap('clips').keys());
+    run();
+    refresh();
+  };
 
   return {
     origin,
@@ -202,20 +214,8 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
         refresh();
       }
     },
-    undo() {
-      added = null;
-      holdStep = null;
-      clipsBeforePop = new Set(doc.getMap('clips').keys());
-      history.undo();
-      refresh();
-    },
-    redo() {
-      added = null;
-      holdStep = null;
-      clipsBeforePop = new Set(doc.getMap('clips').keys());
-      history.redo();
-      refresh();
-    },
+    undo() { pop(() => history.undo()); },
+    redo() { pop(() => history.redo()); },
     select(clipId) {
       const next = clipId !== null && doc.getMap('clips').has(clipId) ? clipId : null;
       // Focus handed back to the held clip selects it again; only a change of selection ends the hold.
