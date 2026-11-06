@@ -29,9 +29,11 @@ export interface ModelPickerProps {
  * and then shows the model the server saved. A save that fails leaves the
  * saved model and asks for the list again: the model may have been taken
  * off. While the list is loading or failed to load,
- * it shows the conversation's model and cannot be opened. A conversation whose model the deployment no
- * longer lists shows the model a new conversation would start on, and the
- * next message goes with that one; the server writes it then.
+ * it shows the conversation's model and cannot be opened. A conversation whose
+ * model the page's list lacks keeps showing it while the list is asked for
+ * again; only when that list still lacks it does it show the model a new
+ * conversation would start on, and the next message goes with that one, which
+ * the server then writes.
  * @param props - Which conversation.
  * @param props.conversationId - The conversation on screen.
  * @param props.projectId - The Project it is in.
@@ -40,8 +42,8 @@ export interface ModelPickerProps {
 function ModelPickerInner({ conversationId, projectId }: ModelPickerProps): React.JSX.Element | null {
   const t = useTranslation();
   const stored = useConversationRuntime((s) => s.conversations[conversationId]?.agentModel);
-  const refused = useConversationRuntime((s) => s.refusals);
-  const list = useChatModels(refused);
+  const asks = useConversationRuntime((s) => s.modelListAsks);
+  const list = useChatModels(asks);
   const models = list.data?.models;
   const lastUsed = list.data?.lastUsed;
 
@@ -53,7 +55,7 @@ function ModelPickerInner({ conversationId, projectId }: ModelPickerProps): Reac
   React.useEffect(() => {
     if (missing && askedFor !== stored.id) {
       setAskedFor(stored.id);
-      conversationRuntime.noteRefused();
+      conversationRuntime.askModelListAgain();
     }
   }, [missing, askedFor, stored]);
 
@@ -90,7 +92,7 @@ function ModelPickerInner({ conversationId, projectId }: ModelPickerProps): Reac
       track(conversationId, chatApi.setModel(conversationId, projectId, id)).then(
         (saved) => conversationRuntime.setAgentModel(conversationId, saved),
         () => {
-          conversationRuntime.noteRefused();
+          conversationRuntime.askModelListAgain();
           toast.error(saveFailed);
         },
       );

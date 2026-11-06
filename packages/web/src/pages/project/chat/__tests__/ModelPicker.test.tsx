@@ -47,7 +47,7 @@ function conversations(models: Record<string, { id: string; name: string }>): vo
         { projectId: 'p-1', messages: [], hasMore: false, oldestLoadedTurn: null, title: null, agentModel },
       ]),
     ),
-    refusals: s.refusals,
+    modelListAsks: s.modelListAsks,
   }));
 }
 
@@ -264,7 +264,7 @@ describe('the model picker', () => {
     renderPicker('c-1');
     await waitFor(() => expect(chatApi.models).toHaveBeenCalledTimes(1));
 
-    useConversationRuntime.setState((s) => ({ refusals: s.refusals + 1 }));
+    useConversationRuntime.setState((s) => ({ modelListAsks: s.modelListAsks + 1 }));
 
     await waitFor(() => expect(chatApi.models).toHaveBeenCalledTimes(2));
   });
@@ -275,7 +275,7 @@ describe('the model picker', () => {
     await waitFor(() => expect(trigger()).toBeEnabled());
     vi.mocked(chatApi.models).mockReturnValue(new Promise(() => undefined));
 
-    useConversationRuntime.setState((s) => ({ refusals: s.refusals + 1 }));
+    useConversationRuntime.setState((s) => ({ modelListAsks: s.modelListAsks + 1 }));
     await waitFor(() => expect(chatApi.models).toHaveBeenCalledTimes(2));
 
     expect(trigger()).toBeEnabled();

@@ -524,7 +524,7 @@ describe('when the chat never opened', () => {
 describe('a send the server refused (#1363)', () => {
   it('is counted, so the model picker asks for the list again', async () => {
     const panel = await anOpenPanel();
-    const before = useConversationRuntime.getState().refusals;
+    const before = useConversationRuntime.getState().modelListAsks;
     wire.refuseNext(422, 'The selected model is no longer available.');
 
     act(() => {
@@ -532,7 +532,7 @@ describe('a send the server refused (#1363)', () => {
     });
 
     await waitFor(() => {
-      expect(useConversationRuntime.getState().refusals).toBe(before + 1);
+      expect(useConversationRuntime.getState().modelListAsks).toBe(before + 1);
     });
   });
 
@@ -543,7 +543,7 @@ describe('a send the server refused (#1363)', () => {
       expect(panel.result.current.status).toBe('failed');
     });
     openChatAnswers([]);
-    const before = useConversationRuntime.getState().refusals;
+    const before = useConversationRuntime.getState().modelListAsks;
     wire.refuseNext(422, 'The selected model is no longer available.');
 
     act(() => {
@@ -551,7 +551,7 @@ describe('a send the server refused (#1363)', () => {
     });
 
     await waitFor(() => {
-      expect(useConversationRuntime.getState().refusals).toBe(before + 1);
+      expect(useConversationRuntime.getState().modelListAsks).toBe(before + 1);
     });
   });
 });

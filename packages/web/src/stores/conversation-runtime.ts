@@ -177,11 +177,12 @@ interface ConversationRuntimeState {
    */
   sendingByProject: Record<string, true>;
   /**
-   * How many sends and model saves the server has refused (#1363). The model
-   * picker asks for the list of models again when it rises: a page that
-   * predates a model being taken off is told so by a refusal.
+   * How many times the model list was asked for again (#1363): on a send or a
+   * model save the server refused, which is how a page learns a model was
+   * taken off, and on a conversation whose model the page's list lacks. The
+   * model picker fetches the list again when it rises.
    */
-  refusals: number;
+  modelListAsks: number;
 }
 
 /**
@@ -376,7 +377,7 @@ const useStore = create<ConversationRuntimeState>()(() => ({
   openStatus: {},
   navigatingByProject: {},
   sendingByProject: {},
-  refusals: 0,
+  modelListAsks: 0,
 }));
 
 /**
@@ -1770,7 +1771,7 @@ export function _resetForTests(): void {
     openStatus: {},
     navigatingByProject: {},
     sendingByProject: {},
-    refusals: 0,
+    modelListAsks: 0,
   });
 }
 
@@ -1785,12 +1786,9 @@ function setAgentModel(conversationId: string, agentModel: AgentModelChoice): vo
   patchConversation(conversationId, (c) => ({ ...c, agentModel }));
 }
 
-/**
- * Count a send or a model save the server refused (#1363), so the picker asks
- * for the list of models again.
- */
-function noteRefused(): void {
-  useStore.setState((s) => ({ refusals: s.refusals + 1 }));
+/** Ask for the model list again (#1363); see `modelListAsks`. */
+function askModelListAgain(): void {
+  useStore.setState((s) => ({ modelListAsks: s.modelListAsks + 1 }));
 }
 
 export const useConversationRuntime = useStore;
@@ -1812,5 +1810,5 @@ export const conversationRuntime = {
   setDraft,
   draftOf,
   setAgentModel,
-  noteRefused,
+  askModelListAgain,
 };
