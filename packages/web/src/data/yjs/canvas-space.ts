@@ -32,7 +32,7 @@ import { toNodeView } from '@web/data/yjs/node-view';
 import { fillNestedData, splitSnapshot } from '@web/data/yjs/node-data-snapshot';
 import {
   estimateNodeBytes,
-  utf8Bytes,
+  estimateTextBodyBytes,
   writeSpaceDoc,
   type SpaceReservation,
   type SpaceWriteKind,
@@ -1806,7 +1806,7 @@ export function setNodeExtractedText(
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return { ok: true };
   const name = docName.canvasSpace(projectId, spaceId);
-  const options = { kind: 'add' as const, estimate: utf8Bytes(content), notify };
+  const options = { kind: 'add' as const, estimate: estimateTextBodyBytes(content), notify };
   return writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       landHandlingContent(data, node.get('type'), content);

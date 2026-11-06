@@ -28,6 +28,7 @@ vi.mock('@web/lib/toast', () => ({
 import { toast } from '@web/lib/toast';
 import { _resetCollabSocketForTests } from '@web/data/yjs/collab-socket';
 import { docName, _resetForTests } from '@web/data/yjs/manager';
+import { estimateTextBodyBytes } from '@web/data/yjs/space-write';
 import {
   addEdge,
   addNode,
@@ -70,7 +71,6 @@ import {
   F_FULL_NEAR,
   F_OVER_BIG,
   F_WARNING,
-  F_WARNING_TIGHT,
   type DocSizePush,
 } from '@web/data/yjs/__tests__/helpers/doc-size-fixtures';
 
@@ -271,28 +271,35 @@ describe('W-49 overwrite-kind canvas writes are refused only when the overwrite 
   });
 });
 
-describe('W-50 setNodeExtractedText estimates by UTF-8 bytes and returns the gateway result', () => {
-  it('writes the empty string with room 1', () => {
-    boardAt(F_WARNING_TIGHT);
-    expect(setNodeExtractedText(PID, SID, 't1', '')).toEqual({ ok: true });
-  });
-
-  it('writes one byte when exactly one byte is left', () => {
-    boardAt(F_WARNING_TIGHT);
+describe('W-50 setNodeExtractedText estimates its bytes plus a block per line and returns the gateway result', () => {
+  it('writes text when the room is exactly its estimate', () => {
+    boardAt({ ...F_WARNING, room: 64 + 1 });
     expect(setNodeExtractedText(PID, SID, 't1', 'a')).toEqual({ ok: true });
     expect(readTextBodies(PID, SID, ['t1']).get('t1')).toBe('a');
   });
 
-  it('refuses two bytes with the room left', () => {
-    boardAt(F_WARNING_TIGHT);
-    expect(setNodeExtractedText(PID, SID, 't1', 'ab')).toEqual({ ok: false, reason: 'no_room', room: 1 });
+  it('refuses it one byte short of that', () => {
+    boardAt({ ...F_WARNING, room: 64 });
+    expect(setNodeExtractedText(PID, SID, 't1', 'a')).toEqual({ ok: false, reason: 'no_room', room: 64 });
     expect(readTextBodies(PID, SID, ['t1']).get('t1')).toBe('hello');
   });
 
+  it('counts every line as a block', () => {
+    boardAt({ ...F_WARNING, room: 2 * 64 + 3 - 1 });
+    expect(setNodeExtractedText(PID, SID, 't1', 'a\nb')).toEqual({ ok: false, reason: 'no_room', room: 2 * 64 + 2 });
+  });
+
   it('counts a three-byte character as three bytes', () => {
-    boardAt(F_WARNING_TIGHT);
-    expect(setNodeExtractedText(PID, SID, 't1', '中')).toEqual({ ok: false, reason: 'no_room', room: 1 });
-    expect(readTextBodies(PID, SID, ['t1']).get('t1')).toBe('hello');
+    boardAt({ ...F_WARNING, room: 64 + 2 });
+    expect(setNodeExtractedText(PID, SID, 't1', '中')).toEqual({ ok: false, reason: 'no_room', room: 66 });
+  });
+
+  it('covers what a body of many lines grows the document by', () => {
+    const doc = boardAt(F_WARNING);
+    const text = Array.from({ length: 10_000 }, (_, i) => `row ${i},a,b`).join('\n');
+    const before = Y.encodeStateAsUpdate(doc).byteLength;
+    expect(setNodeExtractedText(PID, SID, 't1', text)).toEqual({ ok: true });
+    expect(estimateTextBodyBytes(text)).toBeGreaterThanOrEqual(Y.encodeStateAsUpdate(doc).byteLength - before);
   });
 });
 

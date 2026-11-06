@@ -38,12 +38,24 @@ export function utf8Bytes(text: string): number {
 }
 
 /**
- * What adding one canvas node can grow its document by.
+ * What adding one canvas node can grow its document by. Multi-line text in
+ * it (a text node's content, a prompt) is written one block per line.
  * @param node - The node's fields as they are written.
  * @returns Bytes.
  */
 export function estimateNodeBytes(node: unknown): number {
-  return utf8Bytes(JSON.stringify(node) ?? '') + NODE_BYTES;
+  const json = JSON.stringify(node) ?? '';
+  return utf8Bytes(json) + NODE_BYTES * json.split('\\n').length;
+}
+
+/**
+ * What writing plain text into a body can grow its document by: one block
+ * per line, each with its own structure.
+ * @param text - The text.
+ * @returns Bytes.
+ */
+export function estimateTextBodyBytes(text: string): number {
+  return utf8Bytes(text) + NODE_BYTES * text.split('\n').length;
 }
 
 /**

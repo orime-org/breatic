@@ -19,7 +19,7 @@ import {
 import {
   COPY_EN, F_FULL, F_FULL_NEAR, F_NORMAL, F_OVER, F_WARNING, type DocSizePush,
 } from '@web/data/yjs/__tests__/helpers/doc-size-fixtures';
-import { reserveSpaceRoom, writeSpaceDoc } from '@web/data/yjs/space-write';
+import { estimateNodeBytes, estimateTextBodyBytes, reserveSpaceRoom, writeSpaceDoc } from '@web/data/yjs/space-write';
 import { acquireDocProvider, _resetCollabSocketForTests } from '@web/data/yjs/collab-socket';
 import { getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { changeLocale } from '@web/i18n/locale-bootstrap';
@@ -263,5 +263,20 @@ describe('a write that lands after writeSpaceDoc returns (landsLater)', () => {
     expectAvailable(686432);
     push(provider, F_WARNING);
     expectAvailable(786432);
+  });
+});
+
+describe('estimates of plain text, which becomes one block per line', () => {
+  it('counts a block for every line of a text body', () => {
+    expect(estimateTextBodyBytes('')).toBe(64);
+    expect(estimateTextBodyBytes('ab')).toBe(64 + 2);
+    expect(estimateTextBodyBytes('a\nb\nc')).toBe(3 * 64 + 5);
+    expect(estimateTextBodyBytes('中')).toBe(64 + 3);
+  });
+
+  it('counts a block for every line break in a node it writes', () => {
+    const one = estimateNodeBytes({ content: 'ab' });
+    const three = estimateNodeBytes({ content: 'a\nb\nc' });
+    expect(three - one).toBeGreaterThanOrEqual(2 * 64);
   });
 });
