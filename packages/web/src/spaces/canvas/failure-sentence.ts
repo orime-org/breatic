@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { readTaskFailure, uploadableFormatList, type TaskFailureReason } from '@breatic/shared';
+import { readTaskFailure, uploadableFormatList } from '@breatic/shared';
 
 import { getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
 import { formatBytes } from '@web/lib/format-bytes';
@@ -66,44 +66,26 @@ export function failureSentence(
   t: ReturnType<typeof useTranslation>,
   medium?: Medium,
 ): string {
-  const message = failureMessage(stored, medium);
-  return message === null ? (stored ?? '') : t(message.key, message.params);
-}
-
-/**
- * The message key and values {@link failureSentence} says a stored failure
- * with, for a reader that holds the two apart until it renders.
- * @param stored - What the row holds — a code of ours, or a provider's words.
- * @param medium - What the host node holds, for a refusal that names formats.
- * @returns The cause it read, the key and its values, or null when the stored
- *   text is not ours.
- */
-export function failureMessage(
-  stored: string | null | undefined,
-  medium?: Medium,
-): { reason: TaskFailureReason; key: string; params: Record<string, string> } | null {
   const held = readTaskFailure(stored ?? null);
   const reason = held.reason;
-  if (reason === null) return null;
+  if (reason === null) return stored ?? '';
   const ceiling = getCachedUnderstandMaxBytes();
   // The formats are named for the sentences that carry them; the rest hold no
   // such placeholder and ICU leaves an unused parameter alone. A node holding
   // no listed medium falls to the `other` arm, which names nothing and needs
   // nothing.
-  return {
-    reason,
-    key: `canvas.task.failure.${reason}`,
-    params: {
-      kind: medium ?? 'other',
-      formats: medium === undefined ? '' : uploadableFormatList(medium),
-      ...refusalClause(held),
-      // The size the run measured, for the one sentence that names it. A
-      // refusal that carried none selects the arm without that clause.
-      bytes: held.bytes === undefined ? 'none' : formatBytes(held.bytes),
-      // The one sentence reading it selects on this word, so a ceiling that has
-      // not arrived yet drops the clause rather than printing a blank.
-      limit: ceiling === null ? 'unknown' : formatBytes(ceiling),
-      reading: held.reading ?? 'other',
-    },
-  };
+  return t(`canvas.task.failure.${reason}`, {
+    kind: medium ?? 'other',
+    formats: medium === undefined ? '' : uploadableFormatList(medium),
+    ...refusalClause(held),
+    // The size the run measured, for the one sentence that names it. A
+    // refusal that carried none selects the arm without that clause.
+    bytes: held.bytes === undefined ? 'none' : formatBytes(held.bytes),
+    // The one sentence reading it selects on this word, so a ceiling that has
+    // not arrived yet drops the clause rather than printing a blank.
+    limit: ceiling === null ? 'unknown' : formatBytes(ceiling),
+    // Which reading failed, off the record itself, so the row and history agree
+    // (inner#856). Always a value: ICU throws on a select with none.
+    reading: held.reading ?? 'other',
+  });
 }
