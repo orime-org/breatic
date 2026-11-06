@@ -372,3 +372,168 @@ export function batchVideoRunOutputs(
   });
   return { batches, oversized };
 }
+
+/** A presentation-frame window `[start, end)`. */
+export interface FrameWindow { start: number; end: number }
+/** The §5.4 job layout of frames and split, frozen at admission: batches of output indices, and the outputs encoded in chunks. */
+export interface FramesExecutionLayout { batches: number[][]; encodes: { outputIndex: number; chunks: FrameWindow[] }[] }
+/** Remove-background: the model input's preparation chunks. */
+export interface RemovalExecutionLayout { preparation: FrameWindow[] }
+/** Erase and expand: the preparation chunks and the model composite chunks. */
+export interface CompositeExecutionLayout { preparation: FrameWindow[]; composite: FrameWindow[] }
+/** Lip-sync: the preparation chunks, the people it generates for and the composite chunks. */
+export interface LipsyncExecutionLayout { preparation: FrameWindow[]; persons: number; composite: FrameWindow[] }
+/** Transitions: the encode chunks and the overlap window chunks on the output grid. */
+export interface TransitionExecutionLayout { encode: FrameWindow[]; window: FrameWindow[] }
+/** The job layout an execution freezes at admission, by tool (§97 D12-1). */
+export type MiniToolExecutionLayout = FramesExecutionLayout | RemovalExecutionLayout | CompositeExecutionLayout | LipsyncExecutionLayout | TransitionExecutionLayout;
+/** A stage of a planned execution and the container jobs it sends at once. */
+export interface MiniToolStageJobs { stage: "prepare" | "prepare_stitch" | "encode" | "stitch" | "faces" | "clip_stem" | "model_composite" | "composite"; jobs: number }
+
+/**
+ * The container jobs each stage of a frozen layout sends, in execution order, stages with no job left out (§97 D12-1;
+ * frames-split §5.4): frames and split encode every batch and chunk, then stitch each chunked output; a prepared model
+ * input stitches its chunks only when there are several; erase and expand composite each chunk, lip-sync runs each
+ * person's faces and its clip and stem, then the composite; transitions encode the encode and window chunks; every
+ * composited or transitioned result is stitched once.
+ * @param layout - The frozen layout.
+ * @returns Each stage and its job count.
+ * @throws {never} Never.
+ */
+export function plannedStageJobs(layout: MiniToolExecutionLayout): MiniToolStageJobs[] {
+  const stages: MiniToolStageJobs[] = [];
+  /**
+   * Record a stage when it has jobs.
+   * @param stage - The stage.
+   * @param jobs - Its job count.
+   * @throws {never} Never.
+   */
+  const add = (stage: MiniToolStageJobs["stage"], jobs: number): void => { if (jobs > 0) stages.push({ stage, jobs }); };
+  if ("batches" in layout) {
+    add("encode", layout.batches.length + layout.encodes.reduce((total, encode) => total + encode.chunks.length, 0));
+    add("stitch", layout.encodes.length);
+  } else if ("encode" in layout) {
+    add("encode", layout.encode.length + layout.window.length);
+    add("stitch", 1);
+  } else {
+    add("prepare", layout.preparation.length);
+    add("prepare_stitch", layout.preparation.length > 1 ? 1 : 0);
+    if ("persons" in layout) {
+      add("faces", layout.persons);
+      add("clip_stem", layout.persons * 2);
+      add("composite", layout.composite.length);
+      add("stitch", 1);
+    } else if ("composite" in layout) {
+      add("model_composite", layout.composite.length);
+      add("stitch", 1);
+    }
+  }
+  return stages;
+}
+
+/**
+ * Split `[from, to)` into consecutive chunks of at most `target` frames, as even as whole frames allow.
+ * @param from - The first frame.
+ * @param to - The end frame.
+ * @param target - The largest chunk.
+ * @returns The chunks; none for an empty range.
+ * @throws {never} Never.
+ */
+function evenChunks(from: number, to: number, target: number): FrameWindow[] {
+  const length = to - from;
+  if (length <= 0) return [];
+  const count = Math.ceil(length / target);
+  return Array.from({ length: count }, (_, at) => ({ start: from + Math.floor((length * at) / count), end: from + Math.floor((length * (at + 1)) / count) }));
+}
+
+/** The two-clip timeline on the output grid that transition chunks are planned on (§97 D15-3). */
+export interface TransitionChunkTimeline { frameCount: number; clips: readonly { startFrame: number; frameCount: number }[]; window: { startFrame: number; frameCount: number } | null }
+
+/**
+ * The transition chunks on the output grid (§97 D15-4; frames-split §5.4 切块 row): the window chunks partition the
+ * overlap window, the encode chunks partition each clip's frames outside it, and no chunk exceeds the target; a Cut has
+ * no window chunks.
+ * @param timeline - The frame-grid timeline.
+ * @param targetFrames - The largest chunk in frames.
+ * @returns The encode and window chunks.
+ * @throws {RangeError} When the target is not a positive integer.
+ */
+export function planTransitionChunks(timeline: TransitionChunkTimeline, targetFrames: number): { encode: FrameWindow[]; window: FrameWindow[] } {
+  positiveInteger(targetFrames, "targetFrames");
+  const window = timeline.window;
+  if (window === null) {
+    const boundary = timeline.clips[1]?.startFrame ?? timeline.frameCount;
+    return { encode: [...evenChunks(0, boundary, targetFrames), ...evenChunks(boundary, timeline.frameCount, targetFrames)], window: [] };
+  }
+  const end = window.startFrame + window.frameCount;
+  return {
+    encode: [...evenChunks(0, window.startFrame, targetFrames), ...evenChunks(end, timeline.frameCount, targetFrames)],
+    window: evenChunks(window.startFrame, end, targetFrames),
+  };
+}
+
+/** An exact reduced rational. */
+interface ExactRational { numerator: string; denominator: string }
+/** The SDR BT.709 colour every transition output is written in (§97 D15-5). */
+export interface TransitionOutputColor { matrix: "bt709"; range: "tv"; primaries: "bt709"; transfer: "bt709" }
+/** The one output profile both clips of a transition are encoded to (frames-split §7.17 转场输出档 row). */
+export interface TransitionOutputProfile {
+  width: number; height: number; fps: ExactRational; timeBase: ExactRational; pixFmt: "yuv420p" | "yuva420p";
+  color: TransitionOutputColor; codec: "h264" | "vp9"; encode: { crf: number; preset: string }; alpha: boolean;
+}
+/** What a clip's selected plan gives the profile: its display, its presentation clock and its empty fill. */
+export interface TransitionClipPlan {
+  display: { width: number; height: number; duration: ExactRational };
+  presentation: { timescale: number; runs: readonly { count: number; duration: number }[] };
+  policy: { emptyFill: "black" | "transparent" };
+}
+
+/**
+ * A positive rational in lowest terms.
+ * @param numerator - Its numerator.
+ * @param denominator - Its denominator.
+ * @returns The reduced rational.
+ * @throws {never} Never.
+ */
+function reduced(numerator: bigint, denominator: bigint): ExactRational {
+  let [a, b] = [numerator < 0n ? -numerator : numerator, denominator];
+  while (b !== 0n) [a, b] = [b, a % b];
+  return { numerator: String(numerator / a), denominator: String(denominator / a) };
+}
+
+/**
+ * The transition output profile from the two clips' selected plans, in timeline order (§97 D13-1, D15-5): the first
+ * clip's display size, odd sides of an opaque output taken down to even (one up to two) and a transparent one kept; the
+ * first clip's frame rate, timescale over frame duration when constant, else frames over display duration; alpha when
+ * either clip is transparent, then VP9 and yuva420p, else H.264 and yuv420p; time base 1/fps; SDR BT.709 colour.
+ * @param first - The first clip's plan.
+ * @param second - The second clip's plan.
+ * @param config - The presentation encode settings.
+ * @param config.encode - Its crf and preset.
+ * @param config.encode.crf - The crf.
+ * @param config.encode.preset - The x264 preset.
+ * @returns The profile.
+ * @throws {RangeError} When the first plan has no frame.
+ */
+export function transitionOutputProfile(first: TransitionClipPlan, second: TransitionClipPlan, config: { encode: { crf: number; preset: string } }): TransitionOutputProfile {
+  const alpha = first.policy.emptyFill === "transparent" || second.policy.emptyFill === "transparent";
+  const { runs, timescale } = first.presentation;
+  const frames = runs.reduce((total, run) => total + run.count, 0);
+  if (frames === 0) throw new RangeError("A transition clip presents at least one frame");
+  const duration = first.display.duration;
+  const fps = runs.every((run) => run.duration === runs[0]!.duration)
+    ? reduced(BigInt(timescale), BigInt(runs[0]!.duration))
+    : reduced(BigInt(frames) * BigInt(duration.denominator), BigInt(duration.numerator));
+  /**
+   * An opaque side taken down to even, one up to two; a transparent side kept.
+   * @param side - The display side.
+   * @returns The output side.
+   * @throws {never} Never.
+   */
+  const even = (side: number): number => (alpha ? side : Math.max(2, side - (side % 2)));
+  return {
+    width: even(first.display.width), height: even(first.display.height), fps, timeBase: { numerator: fps.denominator, denominator: fps.numerator },
+    pixFmt: alpha ? "yuva420p" : "yuv420p", color: { matrix: "bt709", range: "tv", primaries: "bt709", transfer: "bt709" },
+    codec: alpha ? "vp9" : "h264", encode: { crf: config.encode.crf, preset: config.encode.preset }, alpha,
+  };
+}
