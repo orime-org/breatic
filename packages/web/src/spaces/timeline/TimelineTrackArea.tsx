@@ -196,7 +196,11 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
     if (command !== null) onCommit(command);
   }, [onCommit, onVanished, readOnly]);
   const cancelDrag = React.useCallback((): void => setGesture(null), []);
-  React.useEffect(() => { if (readOnly) setGesture(null); }, [readOnly]);
+  React.useEffect(() => {
+    if (!readOnly) return;
+    cancelled.current = true;
+    setGesture(null);
+  }, [readOnly]);
   // Leaving the window ends a drag without writing (dnd-kit itself cancels only on Esc, resize and hidden pages).
   const dragging = gesture !== null;
   React.useEffect(() => {
