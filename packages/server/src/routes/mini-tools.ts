@@ -13,8 +13,8 @@ import { admitGeneration } from "@server/modules/task/admit-generation.service.j
 import { ConflictError, currentConsent, logger } from "@breatic/core";
 import { Hono } from "hono";
 import { createQueue, defaultJobOpts } from "@breatic/core";
-import { acceptMiniToolExecution } from "@breatic/domain";
-import { miniToolById, miniToolSubmissionSchema, outputTemplateOf } from "@breatic/shared/mini-tools";
+import { acceptMiniToolExecution, quoteMiniToolExecution } from "@breatic/domain";
+import { miniToolById, miniToolPlannedRequestSchema, miniToolSubmissionSchema, outputTemplateOf } from "@breatic/shared/mini-tools";
 
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -31,6 +31,28 @@ const miniTools = new Hono<{ Variables: AuthVariables }>();
 miniTools.use("*", requireAuth);
 
 const tasksQueue = createQueue("tasks");
+
+/**
+ * Quote a planned video run with the admission's own computation and write nothing (§97 D26-1).
+ * @param c - Hono context with the planned request admission would take.
+ * @returns `200` with `{ credits }`.
+ * @throws {AppError} The refusal admission would give the same body.
+ */
+miniTools.post(
+  "/quote",
+  rateLimitFor("mini_tool_quote", "user"),
+  validate("json", miniToolPlannedRequestSchema),
+  async (c) => {
+    const user = c.get("user");
+    const body = c.req.valid("json");
+    try {
+      return c.json({ data: await quoteMiniToolExecution(body, user.id) }, 200);
+    } catch (err) {
+      logger.error({ err, ctx: { userId: user.id, projectId: body.project_id, spaceId: body.space_id, runId: body.run_id, tool: body.tool } }, "mini_tool_quote_failed");
+      throw err;
+    }
+  },
+);
 
 /**
  * Run one mini-tool onto the result nodes the browser built.

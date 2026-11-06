@@ -8,7 +8,7 @@ import {
   type MiniToolPlanTarget, type TaskEntity, type TaskStatusType, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from "@breatic/shared";
 import {
-  batchVideoRunOutputs, canonicalMiniToolValue, presentationCoveringFrame, lipsyncFailureReasonSchema, lipsyncFailureRetryable, estimateAudioEncodeSeconds, estimateVideoJobSeconds, lipsyncMonotonicSegments, planLipsyncCompositeChunks, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
+  batchVideoRunOutputs, canonicalMiniToolValue, miniToolPlannedRequestSchema, presentationCoveringFrame, lipsyncFailureReasonSchema, lipsyncFailureRetryable, estimateAudioEncodeSeconds, estimateVideoJobSeconds, lipsyncMonotonicSegments, planLipsyncCompositeChunks, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
   plannedStageJobs, planVideoFrames, planVideoSplit, type FrameWindow, type FramesExecutionLayout, type MiniToolExecutionRequest, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type MiniToolPresentationRef, type MiniToolSourceBinding, type MiniToolStageJobs,
   type LipsyncExecutionLayout, type LipsyncTimeline, type TransitionExecutionLayout, type TransitionOutputProfile, planTransitionChunks, planVideoTimeline, transitionOutputProfile, type VideoEncodeChunk, type VideoEncoderRates, type VideoExecutionDialogue, type VideoJobWork, type VideoPresentationTable,
 } from "@breatic/shared/mini-tools";
@@ -606,6 +606,25 @@ async function prepareTransitions(request: Extract<MiniToolPlannedRequest, { too
   return { ...common, tool: request.tool, binding, sourceKey, presentationRef: request.presentation_ref,
     ledgerReceipts: byInput((input) => input.receipt), versionIds: byInput((input) => input.versionId), bindings: byInput((input) => input.binding),
     sourceKeys: byInput((input) => input.sourceKey), layout, stageJobs, profile, model: request.tool, container, windowContainer, credits: containerCredits(container, seconds) };
+}
+
+/**
+ * Quote a fresh planned run by the admission's own computation, with no side effect (§97 D26-1): the credits admission would
+ * freeze for this body, task minimum included; a body admission refuses is refused the same way.
+ * @param body - The fresh press-frozen request.
+ * @param userId - The authenticated actor.
+ * @returns The credits.
+ * @throws {NotFoundError} When the actor is not a member of the project.
+ * @throws {ForbiddenError} When a viewer asks.
+ * @throws {AppError} When admission would refuse the body.
+ * @throws {Error} When a read fails.
+ */
+export async function quoteMiniToolExecution(body: MiniToolPlannedRequest, userId: string): Promise<{ credits: number }> {
+  const request = miniToolPlannedRequestSchema.parse(structuredClone(body));
+  const role = await projectAuthService.loadProjectRole(userId, request.project_id);
+  if (role === null) throw new NotFoundError(t("server.error.not_found"));
+  if (role === "viewer") throw new ForbiddenError(t("server.error.forbidden"));
+  return { credits: (await prepare(request)).credits };
 }
 
 /**

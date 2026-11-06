@@ -63,6 +63,7 @@ export { readMiniToolExecutionPlan, resolveVideoToolInput, type MiniToolExecutio
 export { lipsyncPersonStepKeys, lipsyncSharedStepKeys, lipsyncStepKey } from "@domain/mini-tool/lipsync-admission.js";
 export {
   acceptMiniToolExecution,
+  quoteMiniToolExecution,
   type AcceptedMiniToolExecution,
   type MiniToolExecutionAdmission,
   type MiniToolExecutionTaskParams,
