@@ -11,6 +11,7 @@
  * - A fold that ends `failed` moved nothing and wrote nothing (#1363): the
  *   turn goes on with the request it has, and after an overflow, where that
  *   request does not fit, it ends with an error the reader can send again.
+ *   The turn folds no more after it; the next turn folds again.
  * - A reader who stopped before the first call is owed no paid work: no fold
  *   and no model call, even with a known count over the line.
  *
@@ -252,6 +253,46 @@ describe("a fold that failed leaves the history as it was (#1363)", () => {
     expect(world.events.filter((e) => e !== "context")).toEqual(["call", "fold"]);
     expect(count(chunks, "error")).toBe(1);
     expect(stored()).not.toContainEqual({ type: "text", text: "the answer" });
+  });
+
+  it("is not tried again at a later step of the same turn", async () => {
+    threeEarlierTurns();
+    world.foldOutcomes = ["failed", "written"];
+    world.script = [callsFetch("c1", LINE, 0), callsFetch("c2", LINE, 0), answers("done")];
+
+    const chunks = await sendMessage();
+
+    expect(world.folds).toHaveLength(1);
+    expect(world.prompts).toHaveLength(3);
+    expect(count(chunks, "error")).toBe(0);
+    expect(stored()).toContainEqual({ type: "text", text: "done" });
+  });
+
+  it("is not tried again after an overflow later in the same turn, which ends with an error the reader can send again", async () => {
+    threeEarlierTurns();
+    world.foldOutcomes = ["failed", "written"];
+    world.script = [callsFetch("c1", LINE, 0), { reject: h1() }, answers("the answer")];
+
+    const chunks = await sendMessage();
+
+    expect(world.folds).toHaveLength(1);
+    expect(count(chunks, "error")).toBe(1);
+    expect(stored()).not.toContainEqual({ type: "text", text: "the answer" });
+  });
+
+  it("is tried again on the reader's next turn", async () => {
+    world.script = [answers("first answer", LINE - 616, 616)];
+    await sendMessage("first");
+    world.history = rowsOf(1);
+    world.foldOutcomes = ["failed"];
+    world.script = [answers("second answer", LINE - 616, 616)];
+    await sendMessage("second");
+    world.history = [...rowsOf(1), ...rowsOf(2)];
+    world.script = [answers("third")];
+
+    await sendMessage("third");
+
+    expect(world.folds).toHaveLength(2);
   });
 });
 

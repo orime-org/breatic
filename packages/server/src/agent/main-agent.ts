@@ -45,7 +45,7 @@ import { toStoredParts } from "@server/modules/conversation/message-part-mapping
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
 import { foldIfTooLong } from "@server/agent/turn-fold.js";
 import { knownTokensAtStart, requestTokens } from "@server/agent/request-size.js";
-import type { Assembly, TurnIdentity } from "@server/agent/turn-fold.js";
+import type { Assembly, FoldResult, FoldTrigger, TurnIdentity } from "@server/agent/turn-fold.js";
 import { readContextOverflow, unrecognised400, type ContextOverflow } from "@server/agent/context-overflow.js";
 import { claimFirstMilestone, currentConsent, getContext, serverAnalyticsWanted, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
@@ -421,6 +421,10 @@ export class MainAgent {
     let reportedRequest: { hash: string; messages: number } | undefined;
     // Folds set off by the provider turning a call away, this turn.
     let overflowFolds = 0;
+    // A fold of this turn could not start or failed. The turn folds no more:
+    // its window and the consolidation model are the same, so a second try
+    // pays again for the same answer (design 6.4).
+    let foldFailed = false;
     // The turn ended because its request could not be made to fit.
     let tooLong = false;
 
@@ -634,6 +638,22 @@ export class MainAgent {
     });
 
     /**
+     * Fold when the request does not fit, unless a fold of this turn already
+     * failed: then a precheck sends as it stands, and an overflow ends as one
+     * whose fold moved nothing.
+     * @param writer - The stream the turn is written to.
+     * @param finished - This turn's finished steps, as they go back to the model.
+     * @param trigger - What set it off.
+     * @returns How it ended; see {@link FoldResult}.
+     */
+    const fold = async (writer: UIMessageStreamWriter, finished: readonly ModelMessage[], trigger: FoldTrigger): Promise<FoldResult> => {
+      if (foldFailed) return trigger.kind === "precheck" ? "none" : "untouched";
+      const result = await foldIfTooLong(sent!, finished, foldFor(writer), trigger);
+      if (result === "untouched") foldFailed = true;
+      return result;
+    };
+
+    /**
      * Keep this turn's message as it is about to go out, so later turns send
      * it again as it is. Losing the copy costs this turn nothing: later turns
      * render the message from its parts the way they always did, so the
@@ -703,7 +723,7 @@ export class MainAgent {
         logger.warn({ userId, conversationId, model: sent.agentConfig.modelId, window: sent.agentConfig.contextWindow }, "agent_context_window_fallback");
       }
       const knownAtStart = knownTokensAtStart(sent.replayed);
-      const opened = await foldIfTooLong(sent, [], foldFor(writer), { kind: "precheck", at: "start", known: knownAtStart });
+      const opened = await fold(writer, [], { kind: "precheck", at: "start", known: knownAtStart });
       signal?.throwIfAborted();
       // The last count the conversation has stands for the first call until
       // that call reports. A fold voids it, and one that could not run is not
@@ -739,7 +759,7 @@ export class MainAgent {
         if (turnedAway === undefined) return;
 
         overflowFolds += 1;
-        const folded = await foldIfTooLong(sent, stripThinking(steps.flat()), foldFor(writer), {
+        const folded = await fold(writer, stripThinking(steps.flat()), {
           kind: "overflow",
           overflow: turnedAway.overflow,
           known: lastCallTotal,
@@ -827,7 +847,7 @@ export class MainAgent {
           // until the next call reports, so two folds always have a call
           // between them.
           if (steps.length > 0) {
-            const folded = await foldIfTooLong(sent!, stripThinking(steps.flat()), foldFor(writer), {
+            const folded = await fold(writer, stripThinking(steps.flat()), {
               kind: "precheck",
               at: "step",
               known: lastCallTotal,
