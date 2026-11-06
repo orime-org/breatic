@@ -598,7 +598,7 @@ export async function setConversationModel(
   await projectService.assertAccess(projectId, userId, "editor");
   const conversation = await assertWritable(conversationId, userId, projectId);
   await db.transaction(async (tx) => {
-    await conversationRepo.setAgentModel(conversationId, picked.id, tx);
+    await conversationRepo.setAgentModel(conversationId, picked.id, { tx });
     await userRepo.setAgentModel(userId, picked.id, tx);
   });
   return { ...conversation, agentModel: picked };
@@ -607,9 +607,9 @@ export async function setConversationModel(
 /**
  * The model a new message is answered by. The conversation's model is the
  * reader's pick, written by the pick alone; a message writes it only where
- * the conversation has none the deployment lists. A message from a page whose
- * pick is still being saved carries the model it showed, and must not undo
- * that pick.
+ * the conversation has none the deployment lists, and only while it still holds
+ * what was read. A message from a page whose pick is still being saved carries
+ * the model it showed, and must not undo that pick.
  * @param conversation - The conversation, already checked writable.
  * @param userId - The reader.
  * @param requested - The model the page sent; absent from a page that predates the picker.
@@ -625,7 +625,9 @@ export async function modelForMessage(
     requested === undefined
       ? resolveAgentModel(conversation.agentModel, await userRepo.getAgentModel(userId))
       : assertListed(requested);
-  if (listedModel(conversation.agentModel) === undefined) await conversationRepo.setAgentModel(conversation.id, model.id);
+  if (listedModel(conversation.agentModel) === undefined) {
+    await conversationRepo.setAgentModel(conversation.id, model.id, { ifStill: { agentModel: conversation.agentModel } });
+  }
   return model.id;
 }
 

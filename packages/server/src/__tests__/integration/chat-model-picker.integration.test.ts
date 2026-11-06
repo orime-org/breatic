@@ -319,6 +319,20 @@ describe("POST /chat/message with a model", () => {
     expect(await stored(reader, first.id)).toEqual({ conversation: OPUS.id, user: OPUS.id });
   });
 
+  it.each([null, "retired/model"])("leaves a pick saved after the message read a stored %s as it is", async (storedModel) => {
+    const { conversationService } = await import("@server/modules");
+    const reader = await seedReader();
+    const first = await open(reader);
+    await sql`UPDATE conversations SET agent_model = ${storedModel} WHERE id = ${first.id}`;
+    const read = await conversationService.assertWritable(first.id, reader.userId, reader.projectId);
+    await pick(reader, first.id, OPUS.id);
+
+    const answeredBy = await conversationService.modelForMessage(read, reader.userId, SONNET.id);
+
+    expect(answeredBy).toBe(SONNET.id);
+    expect(await stored(reader, first.id)).toEqual({ conversation: OPUS.id, user: OPUS.id });
+  });
+
   it("writes the model it is answered by over a stored one the deployment no longer lists", async () => {
     const { conversationService } = await import("@server/modules");
     const reader = await seedReader();

@@ -83,13 +83,28 @@ export async function createConversation(
  * picking a model is not using the conversation.
  * @param id - Conversation UUID.
  * @param agentModel - The model.
- * @param tx - The transaction to run inside, when the caller has one.
+ * @param options - How the write is made.
+ * @param options.tx - The transaction to run inside, when the caller has one.
+ * @param options.ifStill - What the caller read, when the write applies only
+ *   while the conversation still holds it, so a pick saved since then stands.
+ * @param options.ifStill.agentModel - The model the caller read.
  */
-export async function setAgentModel(id: string, agentModel: string, tx?: DbTx): Promise<void> {
+export async function setAgentModel(
+  id: string,
+  agentModel: string,
+  options: { tx?: DbTx; ifStill?: { agentModel: string | null } } = {},
+): Promise<void> {
+  const { tx, ifStill } = options;
   await (tx ?? db)
     .update(conversations)
     .set({ agentModel, updatedAt: sql`${conversations.updatedAt}` })
-    .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)));
+    .where(
+      and(
+        eq(conversations.id, id),
+        isNull(conversations.deletedAt),
+        ifStill === undefined ? undefined : sql`${conversations.agentModel} IS NOT DISTINCT FROM ${ifStill.agentModel}`,
+      ),
+    );
 }
 
 /**
