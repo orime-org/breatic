@@ -17,9 +17,10 @@
  * submitted track asks only for its stored prediction; a provider refusal on submit is `failed` for track (only `gen`
  * can be `model_rejected`) and a retryable status is `timeout` (§9.4 category table, `lipsyncStepCategory`).
  *
- * Shapes chosen here and recorded for review (§97 D21): the frozen run carries the split-like `container` (policy plus
- * `startSeconds`, `encode`, `chunkRetries`), `layout` `{ preparation, persons, composite }` and `stageJobs`; the box
- * prompt is in prepared-video pixels (`anchorFaceBox` × display size) like the recorded SAM3 probe of the lip-sync fixture.
+ * §97 D21-3: the frozen run carries the split-like `container` (policy plus `startSeconds`, `encode`, `chunkRetries`),
+ * `layout` `{ preparation, persons, composite }` and `stageJobs`. §97 D21-4: the body is exactly `video`, one box prompt in
+ * prepared-video pixels at the anchor's `frame_index` with `object_id` 1, and `apply_mask` false. §97 D21-5: a failed step
+ * names its step.
  */
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
@@ -31,6 +32,7 @@ import { HttpStatusError } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { runLipSyncStep } from "@worker/handlers/mini-tool/lipsync-step-run.js";
+import { lipsyncStepKey } from "@worker/handlers/mini-tool/lipsync-steps.js";
 import { seedStudioFixture } from "@server/__tests__/integration/studio-credit-fixtures.js";
 import { fakeIngestJobs, INGEST_ENV, type IngestJobsFake } from "./ingest-jobs-fake.js";
 
@@ -95,7 +97,9 @@ async function seed(): Promise<Fixture> {
       { dialogueId: "row-1", personId: "person-1", audioInputId: randomUUID(), startTime: 0, duration: 2 },
       { dialogueId: "row-2", personId: "person-3", audioInputId: randomUUID(), startTime: 0.5, duration: 1.5 },
     ],
-    persons: structuredClone(PERSONS), tracking: { model: "sam3-video-rle" }, cropSize: 512,
+    // DD §7.1 persons row (§97 D21-6): each person's step keys are frozen with it.
+    persons: PERSONS.map((person) => ({ ...person, stepKeys: Object.fromEntries((["track", "faces", "clip", "stem", "gen"] as const)
+      .map((kind) => [kind, lipsyncStepKey("d".repeat(64), person.personId, kind)])) })), tracking: { model: "sam3-video-rle" }, cropSize: 512,
     container: { containerClass: "MiniToolContainerStd4", precheckSeconds: 300, size: { instance_type: "standard-4", vcpu: 4, memory_gib: 12, disk_gb: 20 },
       prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
       limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, startSeconds: 3, encode: { crf: 18, preset: "medium" }, chunkRetries: 2 },
@@ -146,7 +150,9 @@ describe("the lip-sync track step (§97; execution design §9.1, §9.3; DD §7.2
       expect(body.video).toBe(publicUrl(key));
       const prompts = body.box_prompts as Record<string, unknown>[];
       expect(prompts).toHaveLength(1);
-      expect(prompts[0]).toMatchObject({ frame_index: 12, ...PIXEL_BOXES["person-1"] });
+      // §97 D21-4: one person per request, so object_id 1; the RLE is used, not the preview, so apply_mask false; no text or point prompt.
+      expect(prompts[0]).toEqual({ frame_index: 12, object_id: 1, ...PIXEL_BOXES["person-1"] });
+      expect(body).toEqual({ video: publicUrl(key), box_prompts: prompts, apply_mask: false });
       // beginMiniToolStepAttempt came first: one unresolved attempt holding exactly this body.
       const [step] = await trackSteps(f);
       const state = miniToolStepStateSchema.parse(step!.output.miniToolStep);
@@ -198,6 +204,6 @@ describe("the lip-sync track step (§97; execution design §9.1, §9.3; DD §7.2
   ] as const)("TK04 %s", async (_name, status, category) => {
     const f = await seed(); await prepared(f);
     runPrediction.mockRejectedValue(new HttpStatusError("wavespeed", status, "fixture refusal"));
-    expect(await runLipSyncStep(f.execution, { kind: "track", personId: "person-1" }, f.userId, f.deadlineAt)).toEqual({ state: "failed", category });
+    expect(await runLipSyncStep(f.execution, { kind: "track", personId: "person-1" }, f.userId, f.deadlineAt)).toEqual({ state: "failed", step: "track", category });
   });
 });
