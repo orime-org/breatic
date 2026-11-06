@@ -3,13 +3,14 @@
 
 /** The selected clip's start, in-point and duration fields (inner#1708 P4). */
 
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { t, type TimelineDocumentV1, type TimelineVideoClip } from '@breatic/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 import { MAIN, OFF, ON, SHORT_SOURCE, SOURCE, V2, cid, clip, timeline } from '@web/data/yjs/__tests__/timeline-document-fixtures';
 import { TimelineClipProperties } from '@web/spaces/timeline/TimelineClipProperties';
+import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
 import type { TimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
 
 const SELECTED = clip(cid(1), V2, 10, 14, { sourceInFrame: 4 });
@@ -27,7 +28,7 @@ afterEach(() => {
  */
 function showFields(selected: TimelineVideoClip = SELECTED): ReturnType<typeof vi.fn<(command: TimelineEditCommand) => void>> {
   const onCommit = vi.fn<(command: TimelineEditCommand) => void>();
-  render(<TimelineClipProperties spaceId='space' document={timeline([selected])} clip={selected} name='Clip' conflict={false}
+  renderWithTooltips(<TimelineClipProperties spaceId='space' document={timeline([selected])} clip={selected} name='Clip' conflict={false}
     labels={LABELS} readOnly={false} placement={OFF} onCommit={onCommit} />);
   return onCommit;
 }
@@ -124,7 +125,7 @@ function showLive(selected: TimelineVideoClip = SELECTED): { onCommit: ReturnTyp
    */
   const panel = (item: TimelineVideoClip, options: PanelOptions = {}): React.JSX.Element => <TimelineClipProperties key={item.id} spaceId='space' document={timeline([item], undefined, [SOURCE, SHORT_SOURCE])} clip={item} name='Clip' conflict={false}
     labels={LABELS} readOnly={options.readOnly ?? false} placement={options.placement ?? OFF} onCommit={onCommit} />;
-  const view = render(panel(selected));
+  const view = renderWithTooltips(panel(selected));
   return { onCommit, show: (next, options) => view.rerender(panel(next, options)) };
 }
 
@@ -405,7 +406,7 @@ describe('TimelineClipProperties names the source length and rate (inner#1708 vi
       ...base, settings: { ...base.settings, fps: ntsc },
       sources: { [SOURCE.id]: { ...SOURCE, timebase: ntsc } },
     };
-    render(<TimelineClipProperties spaceId='space' document={document} clip={SELECTED} name='Clip' conflict={false}
+    renderWithTooltips(<TimelineClipProperties spaceId='space' document={document} clip={SELECTED} name='Clip' conflict={false}
       labels={LABELS} readOnly={false} placement={OFF} onCommit={vi.fn()} />);
     expect(screen.getByTestId('timeline-clip-source')).toHaveTextContent(t('timeline.sourceExtent', { frames: SOURCE.extentFrames, fps: 29.97 }));
   });
