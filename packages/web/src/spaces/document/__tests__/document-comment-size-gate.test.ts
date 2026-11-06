@@ -289,5 +289,13 @@ describe('a peer changing a thread while the Space is full', () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(toast.warning).not.toHaveBeenCalled();
+    // The mark sync landed: the resolved thread is no longer painted here.
+    const marks: boolean[] = [];
+    view.state.doc.descendants((node) => {
+      for (const mark of node.marks) if (mark.type.name === COMMENT_MARK && mark.attrs['threadId'] === id) marks.push(mark.attrs['orphan'] === true);
+      return true;
+    });
+    expect(marks.length).toBeGreaterThan(0);
+    expect(marks.every(Boolean)).toBe(true);
   });
 });
