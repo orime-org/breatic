@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as Y from 'yjs';
-import { newId as createId } from '@breatic/shared';
+import { newId as createId, type TimelineVideoSource } from '@breatic/shared';
 import {
   attachTimelineRecord as attachRecord, freezeTimelineRecord as freezeRecord, readTimelineDocument, readTimelineSource, timelineRecordJson,
 } from '@breatic/shared/space-content';
@@ -62,7 +62,7 @@ function timelineReferencedSourceIds(doc: Y.Doc): Set<string> {
  * @returns Their ids.
  * @throws {never} Never.
  */
-function missingSourceIds(sources: Y.Map<unknown>, referenced: Iterable<string>, values: Readonly<Record<string, unknown>>): string[] {
+function missingSourceIds(sources: Y.Map<unknown>, referenced: Iterable<string>, values: Readonly<Record<string, TimelineVideoSource>>): string[] {
   // Own keys only: a damaged clip may name any string, including an Object.prototype property.
   return [...referenced].filter((id) => readTimelineSource(sources.get(id), id) === undefined && Object.hasOwn(values, id));
 }
@@ -74,7 +74,7 @@ function missingSourceIds(sources: Y.Map<unknown>, referenced: Iterable<string>,
  * @returns Their ids.
  * @throws {never} Never.
  */
-export function missingTimelineSourceIds(doc: Y.Doc, values: Readonly<Record<string, unknown>>): string[] {
+export function missingTimelineSourceIds(doc: Y.Doc, values: Readonly<Record<string, TimelineVideoSource>>): string[] {
   return missingSourceIds(doc.getMap<unknown>('sources'), timelineReferencedSourceIds(doc), values);
 }
 
@@ -89,7 +89,7 @@ export function missingTimelineSourceIds(doc: Y.Doc, values: Readonly<Record<str
  * @returns The referenced source ids.
  * @throws {never} Never.
  */
-export function restoreTimelineSources(doc: Y.Doc, values: Readonly<Record<string, unknown>>, reset: Iterable<string>): Set<string> {
+export function restoreTimelineSources(doc: Y.Doc, values: Readonly<Record<string, TimelineVideoSource>>, reset: Iterable<string>): Set<string> {
   const sources = doc.getMap<unknown>('sources');
   const referenced = timelineReferencedSourceIds(doc);
   /**
@@ -98,7 +98,7 @@ export function restoreTimelineSources(doc: Y.Doc, values: Readonly<Record<strin
    * @throws {never} Never.
    */
   const write = (id: string): void => {
-    if (Object.hasOwn(values, id)) sources.set(id, freezeRecord(structuredClone(values[id] as object)));
+    if (Object.hasOwn(values, id)) sources.set(id, freezeRecord(structuredClone(values[id])));
   };
   for (const id of new Set(reset)) if (referenced.has(id)) write(id);
   for (const id of missingSourceIds(sources, referenced, values)) write(id);
@@ -112,7 +112,7 @@ export function restoreTimelineSources(doc: Y.Doc, values: Readonly<Record<strin
  * @param reset - Ids of sources a reference was just created or revived for.
  * @throws {never} Never.
  */
-export function reconcileTimelineSources(doc: Y.Doc, values: Readonly<Record<string, unknown>>, reset: Iterable<string>): void {
+export function reconcileTimelineSources(doc: Y.Doc, values: Readonly<Record<string, TimelineVideoSource>>, reset: Iterable<string>): void {
   const referenced = restoreTimelineSources(doc, values, reset);
   const sources = doc.getMap<unknown>('sources');
   for (const id of [...sources.keys()]) if (!referenced.has(id)) sources.delete(id);

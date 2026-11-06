@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as Y from 'yjs';
+import type { TimelineVideoSource } from '@breatic/shared';
 import { readTimelineSource } from '@breatic/shared/space-content';
 
 import { MAX_UNDO_DEPTH } from '@web/data/yjs/canvas-space';
@@ -90,7 +91,7 @@ function mergeSnapshots(base: RecordSnapshot, extra: RecordSnapshot | undefined)
  * @param known - Source values this session has seen.
  * @throws {never} Never.
  */
-function repairAfterPop(doc: Y.Doc, records: RecordSnapshot | undefined, clipsBefore: ReadonlySet<string>, known: Readonly<Record<string, unknown>>): void {
+function repairAfterPop(doc: Y.Doc, records: RecordSnapshot | undefined, clipsBefore: ReadonlySet<string>, known: Readonly<Record<string, TimelineVideoSource>>): void {
   doc.transact(() => {
     const revived: string[] = [];
     for (const kind of ['clips', 'tracks'] as const) {
@@ -140,7 +141,7 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
   let clipsBeforePop = new Set<string>();
   // Every readable source seen since the session opened, as plain JSON; a source never changes once written, so any
   // copy is current, and only these are ever written back.
-  const known: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+  const known: Record<string, TimelineVideoSource> = Object.create(null) as Record<string, TimelineVideoSource>;
   let canWrite = false;
   /**
    * Remember the current readable sources and, for a session that may write, write back any referenced source a merge
