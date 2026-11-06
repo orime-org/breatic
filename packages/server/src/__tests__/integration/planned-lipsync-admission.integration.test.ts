@@ -52,6 +52,7 @@ interface Timeline { duration: number; videoDuration: number; syncMode: SyncMode
 interface Plan extends Record<string, unknown> {
   tool: string; credits: number; timeline: Timeline;
   generator: { backend: string; modelId: string; schemaFingerprint: string; providerSyncMode: "cut_off" | null };
+  persons?: { personId: string; detectionNumber: number }[];
 }
 
 const outside = vi.hoisted(() => ({ snapshots: new Map<string, unknown>(), bodies: new Map<string, string>(), ingest: vi.fn(), config: vi.fn() }));
@@ -256,19 +257,17 @@ async function control(f: Fixture): Promise<string> {
  * Require a 400 refusal that tells the user why (frames-split §7.11 「否则拒绝并告诉用户原因」; the panel shows it as a
  * toast) and no durable effect.
  * @param f - The fixture.
- * @param reason - The user-facing message key and its values; absent where no key is fixed yet, which then requires
- *   only a non-empty message.
+ * @param reason - The user-facing message key and its values.
  * @param reason.key - The locale key.
  * @param reason.params - Its ICU values.
  * @returns Nothing.
  * @throws {Error} On assertion failure.
  */
-async function refused(f: Fixture, reason?: { key: string; params?: Record<string, number> }): Promise<void> {
+async function refused(f: Fixture, reason: { key: string; params?: Record<string, number> }): Promise<void> {
   const response = await post(f);
   const json = await response.json() as { error?: { message?: string; reason?: string } };
-  const message = json.error?.message ?? "";
-  expect({ status: response.status, reason: json.error?.reason, message: reason === undefined ? message.length > 0 : message })
-    .toEqual({ status: 400, reason: undefined, message: reason === undefined ? true : shared.t(reason.key, reason.params) });
+  expect({ status: response.status, reason: json.error?.reason, message: json.error?.message })
+    .toEqual({ status: 400, reason: undefined, message: shared.t(reason.key, reason.params) });
   expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
 }
 
@@ -307,9 +306,13 @@ describe("lip-sync fresh admission: frozen generator and timeline (§97; DD §7.
   it("LA01 admits two referenced people and freezes the sync-3 generator and the timeline from registered audio durations", async () => {
     // Registered 3 s and 2.5 s; the client claims 9 s for both, which would make A = 10.5 and the timeline V.
     const f = await seed([{ registered: 3, claimed: 9 }, { registered: 2.5, claimed: 9 }]);
-    speak(f, [[0, 0, 0], [1, 1, 1.5]]);
+    // People at result positions 0 and 2 (of three detected), so a counter over the referenced people cannot pass.
+    speak(f, [[0, 0, 0], [2, 1, 1.5]]);
     await accept(f);
     const frozen = await plan(f.body.run_id);
+    // DD §7.1 persons row: detectionNumber is the person's position in the people result plus 1 (execution design §9.4).
+    expect(Object.fromEntries((frozen.persons ?? []).map((person) => [person.personId, person.detectionNumber])))
+      .toEqual({ [f.people[0]!]: 1, [f.people[2]!]: 3 });
     expect(frozen.tool).toBe("video.lip-sync");
     expect(frozen.generator).toEqual({ backend: "wavespeed-crop", modelId: SYNC, schemaFingerprint: SYNC_FINGERPRINT, providerSyncMode: "cut_off" });
     // cut_off: min(V, A) with A = max(0 + 3, 1.5 + 2.5) = 4.
@@ -410,8 +413,8 @@ describe("lip-sync fresh admission against the referenced people analysis (§97 
         presentationRef: { source: { ...f.body.presentation_ref.source, toolInputId: "b".repeat(64) } } } } }));
     } else if (bad === "a row naming a person not in the result") f.body.draft.params.dialogues[1]!.personId = "person-9";
     else f.body.draft.params.dialogues[1]!.analysisRunId = randomUUID();
-    // No user-facing message key is fixed for these refusals yet.
-    await refused(f);
+    // §97 D18: the message says what the user does next: wait for person detection, or detect people again.
+    await refused(f, { key: bad === "the analysis still pending" ? "server.mini_tool.lipSyncPeopleRunning" : "server.mini_tool.lipSyncPeopleStale" });
   });
 });
 
