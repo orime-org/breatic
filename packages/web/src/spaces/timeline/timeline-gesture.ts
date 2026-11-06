@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1 } from '@breatic/shared';
 import { timelineInsertionIndex, type TimelineEditCommand, type TimelineEditPlacement } from '@web/data/yjs/timeline-edit';

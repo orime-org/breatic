@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /** Multi-track clip editing with the pointer and keyboard on real uploaded video (inner#1708). */
 import { expect, type Locator, type Page } from 'playwright/test';
