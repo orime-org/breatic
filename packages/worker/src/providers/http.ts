@@ -164,15 +164,20 @@ export class UpstreamTaskFailed extends Error {
   /** The upstream's own words for why. */
   readonly upstreamError: string;
 
+  /** The raw value the upstream put at its error path, or null; a model's async rejection is read from it (execution design §9.4). */
+  readonly structuredError: unknown;
+
   /**
    * Record which upstream failed the task and what it said.
    * @param provider - The upstream that ran the task.
    * @param upstreamError - The upstream's own words for why.
+   * @param structuredError - The raw error value, or null when the upstream gave none.
    */
-  constructor(provider: string, upstreamError: string) {
+  constructor(provider: string, upstreamError: string, structuredError: unknown = null) {
     super(`${provider} task failed: ${upstreamError}`);
     this.name = "UpstreamTaskFailed";
     this.upstreamError = upstreamError;
+    this.structuredError = structuredError;
   }
 }
 
@@ -228,11 +233,12 @@ export async function pollOnce(
   const status = String(extractNested(resp, options.statusPath, "unknown"));
   if (options.successStatuses.has(status)) return resp;
   if (options.failureStatuses.has(status)) {
-    const errorMsg = options.errorPath ? String(extractNested(resp, options.errorPath, "unknown")) : "unknown";
+    const structuredError = options.errorPath ? extractNested(resp, options.errorPath, null) : null;
+    const errorMsg = structuredError === null ? "unknown" : String(structuredError);
     // #1628: log at the poll layer (not only via the bubbled-up job error)
     // so vendor-side failures are attributable to the specific poll URL.
     logger.warn({ provider, url, status, errorMsg }, "poll_task_failed");
-    throw new UpstreamTaskFailed(provider, errorMsg);
+    throw new UpstreamTaskFailed(provider, errorMsg, structuredError);
   }
   throw new StillRunning(Date.now() + getWorkerConfig().poll_interval);
 }
