@@ -161,6 +161,14 @@ test('a viewer opens a canvas picture full screen', async ({ page, browser }) =>
     }
     const picture = node(peer, id);
     await expect(picture.getByTestId('image-node-img')).toBeVisible({ timeout: 20_000 });
+    // The canvas eases the node into view as it opens; hover once it has settled.
+    let last = '';
+    await expect.poll(async () => {
+      const box = JSON.stringify(await picture.boundingBox());
+      const settled = box === last;
+      last = box;
+      return settled;
+    }, { intervals: [200] }).toBe(true);
     await picture.hover();
     const button = picture.getByTestId('media-fullscreen-button');
     await expect(button).toHaveCSS('opacity', '1');
