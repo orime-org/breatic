@@ -13,7 +13,7 @@ import {
 } from "@provider/config/schema.js";
 import { z } from "zod";
 import { numberLeaf, type Cost, type CostLookup, type TokenBuckets } from "@provider/cost.js";
-import { fetchJson, SIDE_REQUEST_MS } from "@provider/http/request.js";
+import { fetchJson, sideBounds, SIDE_REQUEST_MS } from "@provider/http/request.js";
 import type { LlmApi } from "@provider/llm/api.js";
 import { createLlm } from "@provider/llm/llm.js";
 import { mediaAdapter } from "@provider/media/adapters.js";
@@ -178,13 +178,13 @@ async function lookupCost(config: ProviderConfig, options: ProviderOptions, look
   const key = options.keyOf(decl.key_env) ?? "";
   const media = mediaAdapter(decl.kind);
   if (media !== undefined && typeof lookup.predictionId === "string") {
-    return (await media.billed({ name: lookup.upstream, decl, key }, lookup.predictionId, {}, lastAttempt)).cost;
+    return (await media.billed({ name: lookup.upstream, decl, key }, lookup.predictionId, sideBounds(), lastAttempt)).cost;
   }
   if (decl.kind !== "openrouter" || typeof lookup.generationId !== "string") return { state: "missing", reason: "the lookup names nothing to ask" };
   try {
     const body = await fetchJson(
       { url: `${decl.base_url}/generation?id=${encodeURIComponent(lookup.generationId)}`, method: "GET", headers: { authorization: `Bearer ${key}` } },
-      { replaySafe: true, maxBodyBytes: MAX_LOOKUP_BYTES, idleMs: SIDE_REQUEST_MS },
+      { replaySafe: true, maxBodyBytes: MAX_LOOKUP_BYTES, idleMs: SIDE_REQUEST_MS, ...sideBounds() },
     );
     const parsed = generationSchema.safeParse(body);
     if (!parsed.success) return unanswered("the generation answer is not shaped as a generation");

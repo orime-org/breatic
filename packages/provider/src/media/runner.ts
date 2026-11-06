@@ -6,7 +6,7 @@ import type { Cost } from "@provider/cost.js";
 import { DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed, type UnavailableReason } from "@provider/errors.js";
 import { Aborted, HttpStatus, NoAnswer, NotSent } from "@provider/http/errors.js";
 import { fetchMedia, MediaRefused } from "@provider/http/fetch-media.js";
-import { boundSignal } from "@provider/http/request.js";
+import { boundSignal, sideBounds } from "@provider/http/request.js";
 import { outputUrls, type MediaAdapter, type Reach, type RequestBounds, type StepCodec, type StepContext, type StepOutput } from "@provider/media/adapter.js";
 import { adapterOf } from "@provider/media/adapters.js";
 import { buildBody } from "@provider/media/body.js";
@@ -605,7 +605,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
   /**
    * Finish a run whose steps are all done: its outputs and what each prediction cost.
    * @param ticket - The ticket.
-   * @param bounds - The bounds billing is asked under.
+   * @param bounds - The call's deadline and signal; each billing read is a side request within them (`sideBounds`).
    * @param extra - Clones and warnings to carry.
    * @returns The done answer, or failed when the run produced no output.
    */
@@ -616,8 +616,9 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     const warnings = [...(extra.warnings ?? [])];
     const up = reach(ticket.upstream);
     for (const prediction of done.predictions) {
-      // Outside the cap, as the worker read it: a run that finished must not queue behind new submits.
-      const read = await adapterFor(ticket.upstream).billed(up, prediction, bounds, false);
+      // Outside the cap, as the worker read it: a run that finished must not queue behind new submits. Each read is a
+      // side request, so a hung billing endpoint holds the outputs for SIDE_REQUEST_MS at most.
+      const read = await adapterFor(ticket.upstream).billed(up, prediction, sideBounds(bounds), false);
       costs.push(read.cost);
       warnings.push(...read.warnings);
     }

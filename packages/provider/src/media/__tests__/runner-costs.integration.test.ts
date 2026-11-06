@@ -323,6 +323,28 @@ describe("a billing read is a side request", () => {
     expect(done.costs).toEqual([lookupOf("p1")]);
   }, 60_000);
 
+  it("stops a billing read at the call's own deadline when that comes sooner, its cost pending", async () => {
+    a.answer(({ method, path }) => (path === "/billings/search" ? "hang" : method === "POST" ? accepted("p1") : result("p1", "completed", ["https://out.example/v.mp4"])));
+    const r = runner();
+    const running = expectState(await submitVideo(r) as MediaAnswer, "running");
+    const started = Date.now();
+    const done = expectState(await r.poll(stored(running.ticket), { deadlineAt: started + 2_000 }), "done");
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(done.costs).toEqual([lookupOf("p1")]);
+  });
+
+  it("stops a billing read when the caller stops, its cost pending", async () => {
+    a.answer(({ method, path }) => (path === "/billings/search" ? "hang" : method === "POST" ? accepted("p1") : result("p1", "completed", ["https://out.example/v.mp4"])));
+    const r = runner();
+    const running = expectState(await submitVideo(r) as MediaAnswer, "running");
+    const stop = new AbortController();
+    const started = Date.now();
+    setTimeout(() => stop.abort(), 1_000);
+    const done = expectState(await r.poll(stored(running.ticket), { deadlineAt: started + 600_000, signal: stop.signal }), "done");
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(done.costs).toEqual([lookupOf("p1")]);
+  });
+
   it("ends a last cost lookup within the side-request limit while the billing endpoint hangs, its cost missing", async () => {
     a.answer(() => "hang");
     const started = Date.now();

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from "v
 import fc from "fast-check";
 import { ProviderConfigError } from "../../config/schema.js";
 import { NoAnswer } from "../../http/errors.js";
+import { SIDE_REQUEST_MS } from "../../http/request.js";
 import { costsOf, NoUpstreamAvailable, UpstreamRequestRejected } from "../../errors.js";
 import { generateText, type FinishReason, type LanguageModelUsage } from "ai";
 import { createProvider } from "../../provider.js";
@@ -207,6 +208,16 @@ describe("cost.lookup", () => {
       tokens: { input: 11, cachedInput: 2, output: 3, reasoning: 1 },
     });
   });
+});
+
+describe("cost.lookup is a side request", () => {
+  it("ends within the side-request limit while OpenRouter never answers, missing on the last attempt", async () => {
+    fakes.openrouter.answer(() => "hang");
+    const started = Date.now();
+    const cost = await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).cost.lookup({ upstream: "openrouter", generationId: "gen-9" }, { lastAttempt: true });
+    expect(Date.now() - started).toBeLessThan(SIDE_REQUEST_MS + 5_000);
+    expect(cost.state).toBe("missing");
+  }, 60_000);
 });
 
 describe("cost.lookup on its last attempt (critical path)", () => {

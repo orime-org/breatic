@@ -46,6 +46,17 @@ export const MAX_RETRY_AFTER_MS = 60_000;
 export const MAX_TIMER_MS = 2 ** 31 - 1;
 /** How long a request beside a call may take: a cost lookup, a file delete. */
 export const SIDE_REQUEST_MS = 30_000;
+
+/**
+ * The bounds of a side request starting now: `SIDE_REQUEST_MS` from now, or the call's own deadline when that comes
+ * sooner, and the call's signal.
+ * @param bounds - The call's deadline and signal; absent for a request beside no call.
+ * @returns The side request's deadline and signal.
+ */
+export function sideBounds(bounds: Pick<SendOptions, "deadlineAt" | "signal"> = {}): Pick<SendOptions, "deadlineAt" | "signal"> & { deadlineAt: number } {
+  return { deadlineAt: Math.min(bounds.deadlineAt ?? Infinity, Date.now() + SIDE_REQUEST_MS), ...(bounds.signal === undefined ? {} : { signal: bounds.signal }) };
+}
+
 /** Error codes that mean the request never left this machine. */
 const NOT_SENT_CODES = new Set([
   "ECONNREFUSED",

@@ -10,7 +10,7 @@
 
 import type { FinishReason } from "ai";
 import { z } from "zod";
-import { deliver, SIDE_REQUEST_MS, wait, type OutgoingRequest } from "@provider/http/request.js";
+import { deliver, sideBounds, wait, type OutgoingRequest } from "@provider/http/request.js";
 import {
   AnswerUnread,
   assertSucceeded,
@@ -165,7 +165,7 @@ async function upload(call: UnderstandCall, media: UnderstandCall["media"][numbe
   // Deleted once the whole call ends; each delete is sent once in its own window, apart from the
   // call's deadline and signal, and a file left behind expires on Google's side.
   call.session.cleanups.push(() => {
-    deliver({ url: entry.url, method: "DELETE", headers: { "x-goog-api-key": call.key } }, { replaySafe: false, deadlineAt: Date.now() + SIDE_REQUEST_MS })
+    deliver({ url: entry.url, method: "DELETE", headers: { "x-goog-api-key": call.key } }, { replaySafe: false, ...sideBounds() })
       .then((r) => r.body?.cancel())
       .catch(() => undefined);
   });
