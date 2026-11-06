@@ -916,14 +916,11 @@ function Preview({
     if (!streaming) {
       if (timer.current !== null) window.clearTimeout(timer.current);
       parse();
-      // The table copies and the nesting it shows follow the body: read again
+      // What it shows follows the body as replace would leave it: read again
       // after its changes, at most once per interval, as while it streams.
-      const stop = editor.onChange(() => {
+      return editor.onChange(() => {
         timer.current ??= window.setTimeout(parse, PREVIEW_THROTTLE_MS);
       });
-      return () => {
-        stop?.();
-      };
     }
     // While it streams, at most one parse per interval, of whatever has
     // arrived by then.

@@ -1226,6 +1226,7 @@ describe('round 12: each unit follows its own words', () => {
       expect(blocks(h).map(textOf)).toEqual(['alpha onebeta two']);
       const answer = read(h, o, both ? tagged({ 1: 'ALPHA ONE', 2: 'BETA TWO' }) : tagged({ 1: 'ALPHA ONE' }), 'translate');
       expect(aiReplaceAvailable(h.editor.prosemirrorState.doc, answer, segments(h))).toBe(true);
+      expect(answer.preview.map((b) => textOf(b as Seen))).toEqual([both ? 'ALPHA ONEBETA TWO' : 'ALPHA ONE']);
       replaceAiAnswer(h, answer, segments(h), WRITABLE);
       expect(blocks(h).map(textOf)).toEqual([both ? 'ALPHA ONEBETA TWO' : 'ALPHA ONEbeta two']);
     }
@@ -1526,7 +1527,9 @@ describe('round 15: copies and writes agree after the body moved', () => {
     pressKey(h, rangeOf(h, 'bb').from, 'Backspace');
     pressKey(h, rangeOf(h, 'cc').from, 'Backspace');
     expect(blocks(h).map(textOf)).toEqual(['aa bb cc', 'XX', 'tail']);
-    replaceAiAnswer(h, read(h, o, tagged({ 1: 'ONE', 2: 'TWOOOOO' }), 'refine'), segments(h), WRITABLE);
+    const answer = read(h, o, tagged({ 1: 'ONE', 2: 'TWOOOOO' }), 'refine');
+    expect(answer.preview.map((b) => textOf(b as Seen))).toEqual(['ONE']);
+    replaceAiAnswer(h, answer, segments(h), WRITABLE);
     expect(blocks(h).map(textOf)).toEqual(['ONE', 'tail']);
   });
 
@@ -1619,6 +1622,132 @@ describe('round 16: every unit written after the body moved', () => {
   });
 });
 
+/**
+ * Each block's words, depth and kind, children after their parent.
+ * @param list - The blocks.
+ * @param depth - Their depth.
+ * @returns `[words, depth, kind]` for each.
+ */
+function typedShape(list: readonly Seen[], depth = 0): Array<[string, number, string]> {
+  return list.flatMap((b): Array<[string, number, string]> => [[textOf(b), depth, b.type], ...typedShape(b.children ?? [], depth + 1)]);
+}
+
+/** The edits that leave two units' stretches over each other: Enter, a move up, two Backspaces. */
+function overlap(h: DocumentEditorHandle): void {
+  pressKey(h, rangeOf(h, 'cc').from, 'Enter');
+  pressKey(h, rangeOf(h, 'XX').from, 'Enter');
+  moveUp(h, blocks(h).find((b) => textOf(b) === 'bb ')!.id);
+  pressKey(h, rangeOf(h, 'bb').from, 'Backspace');
+  pressKey(h, rangeOf(h, 'cc').from, 'Backspace');
+}
+
+describe('round 17: the preview is built from the body as replace leaves it', () => {
+  it('previews units moved up in the order replace leaves them', async () => {
+    const h = await open('aa\n\nbb\n\ntail');
+    const o = opening(h, { from: rangeOf(h, 'aa').from, to: rangeOf(h, 'bb').to }, 'refine');
+    moveUp(h, blocks(h).find((b) => textOf(b) === 'bb')!.id);
+    const answer = read(h, o, tagged({ 1: 'AA', 2: 'BB' }), 'refine');
+    expect(shape(answer.preview as Seen[])).toEqual([['BB', 0], ['AA', 0]]);
+    replaceAiAnswer(h, answer, segments(h), WRITABLE);
+    expect(shape(blocks(h))).toEqual([['BB', 0], ['AA', 0], ['tail', 0]]);
+  });
+
+  it('previews a unit in the kind its line has now', async () => {
+    const h = await open('alpha one\n\n## beta two\n\ntail');
+    const o = opening(h, { from: rangeOf(h, 'alpha one').from, to: rangeOf(h, 'beta two').to }, 'refine');
+    pressKey(h, rangeOf(h, 'beta two').from, 'Backspace');
+    const answer = read(h, o, tagged({ 1: 'ALPHA ONE', 2: 'BETA TWO' }), 'refine');
+    replaceAiAnswer(h, answer, segments(h), WRITABLE);
+    expect(typedShape(answer.preview as Seen[])).toEqual(typedShape(blocks(h)).slice(0, 2));
+  });
+
+  it('previews a cleared unit that keeps its children as replace leaves it', async () => {
+    const h = await open('intro\n\n- aa\n  - kid\n\ntail');
+    const o = opening(h, { from: rangeOf(h, 'intro').from, to: rangeOf(h, 'kid').to }, 'custom');
+    const answer = read(h, o, tagged({ 1: 'INTRO AA', 2: '', 3: 'KID' }), 'custom');
+    expect(typedShape(answer.preview as Seen[])).toEqual([['INTRO AA', 0, 'paragraph'], ['', 0, 'bulletListItem'], ['KID', 1, 'paragraph']]);
+    replaceAiAnswer(h, answer, segments(h), WRITABLE);
+    expect(typedShape(blocks(h))).toEqual([['INTRO AA', 0, 'paragraph'], ['', 0, 'bulletListItem'], ['KID', 1, 'paragraph'], ['tail', 0, 'paragraph']]);
+  });
+
+  it('takes out a line emptied of moved words when Tab made it a first child', async () => {
+    const h = await open('aa bb\n\ntail');
+    const o = opening(h, rangeOf(h, 'aa bb'), 'refine');
+    pressKey(h, rangeOf(h, 'bb').from, 'Enter');
+    pressKey(h, rangeOf(h, 'bb').from, 'Tab');
+    replaceAiAnswer(h, read(h, o, tagged({ 1: 'AA BB' }), 'refine'), segments(h), WRITABLE);
+    expect(shape(blocks(h))).toEqual([['AA BB', 0], ['tail', 0]]);
+  });
+
+  it('puts the children of a first child emptied of moved words in its place', async () => {
+    const h = await open('- one two\n  - kid\n- tail');
+    const o = opening(h, { from: rangeOf(h, 'one two').from, to: rangeOf(h, 'kid').to }, 'refine');
+    pressKey(h, rangeOf(h, 'two').from, 'Enter');
+    pressKey(h, rangeOf(h, 'two').from, 'Tab');
+    expect(shape(blocks(h))).toEqual([['one ', 0], ['two', 1], ['kid', 2], ['tail', 0]]);
+    const answer = read(h, o, tagged({ 1: 'ONE TWO', 2: 'KID' }), 'refine');
+    expect(shape(answer.preview as Seen[])).toEqual([['ONE TWO', 0], ['KID', 1]]);
+    replaceAiAnswer(h, answer, segments(h), WRITABLE);
+    expect(shape(blocks(h))).toEqual([['ONE TWO', 0], ['KID', 1], ['tail', 0]]);
+  });
+
+  it('previews the answers of three units joined into one line as replace splits and joins it', async () => {
+    for (const parts of [{ 1: 'A1.', 2: 'B1.\n\nB2.', 3: 'C1.' }, { 1: 'A1.', 2: 'B1.', 3: 'C1.\n\nC2.' }, { 1: 'A1.\n\nA2.', 2: 'B1.', 3: 'C1.' }]) {
+      const h = await open('aa\n\nbb\n\ncc\n\ntail');
+      const o = opening(h, { from: rangeOf(h, 'aa').from, to: rangeOf(h, 'cc').to }, 'expand');
+      pressKey(h, rangeOf(h, 'cc').from, 'Backspace');
+      pressKey(h, rangeOf(h, 'bb').from, 'Backspace');
+      expect(blocks(h).map(textOf)).toEqual(['aabbcc', 'tail']);
+      const answer = read(h, o, tagged(parts), 'expand');
+      replaceAiAnswer(h, answer, segments(h), WRITABLE);
+      expect([...typedShape(answer.preview as Seen[]), ['tail', 0, 'paragraph']]).toEqual(typedShape(blocks(h)));
+    }
+  });
+
+  it('copies a table with a cell line in the kind it has now, as replace writes it', async () => {
+    const h = await open('| aaa | zzz |\n| --- | --- |\n| c | d |');
+    const cell = flat(h).find((b) => textOf(b) === 'aaa')!;
+    h.editor.replaceBlocks([cell.id], [{ type: 'heading', props: { level: 2 }, content: 'aaa' }] as never);
+    h.undoManager.clear();
+    const o = opening(h, { from: rangeOf(h, 'aaa').from, to: rangeOf(h, 'zzz').to }, 'refine');
+    pressKey(h, rangeOf(h, 'aaa').from, 'Backspace');
+    const answer = read(h, o, tagged({ 1: 'AAA', 2: 'ZZZ' }), 'refine');
+    /**
+     * The kind of the block holding some words, anywhere in a tree.
+     * @param list - The blocks.
+     * @param words - The words.
+     * @returns Its kind.
+     */
+    const kindOf = (list: readonly Seen[], words: string): string | undefined => list.map((b) => (textOf(b) === words ? b.type : kindOf(b.children ?? [], words))).find((k) => k !== undefined);
+    const shown = kindOf(answer.preview as Seen[], 'AAA');
+    replaceAiAnswer(h, answer, segments(h), WRITABLE);
+    expect(shown).toBe(kindOf(blocks(h), 'AAA'));
+  });
+
+  it('writes and previews units whose stretches lie over each other the same way, for answers of several blocks', async () => {
+    for (const parts of [{ 1: '- one\n- two', 2: '- three\n- four' }, { 1: '- one\n- two', 2: 'TWO' }, { 1: 'ONE', 2: '- three\n- four' }]) {
+      const h = await open('aa cc\n\nbb XX\n\ntail');
+      const o = opening(h, { from: rangeOf(h, 'aa').from, to: rangeOf(h, 'XX').to }, 'custom');
+      overlap(h);
+      const answer = read(h, o, tagged(parts), 'custom');
+      replaceAiAnswer(h, answer, segments(h), WRITABLE);
+      expect(blocks(h).map(textOf)).not.toContain('cc');
+      expect([...typedShape(answer.preview as Seen[]), ['tail', 0, 'paragraph']]).toEqual(typedShape(blocks(h)));
+    }
+  });
+});
+
+/**
+ * Presses Tab with Shift in the body at a position, as the reader would.
+ * @param handle - The document.
+ * @param at - Where.
+ */
+function shiftTab(handle: DocumentEditorHandle, at: number): void {
+  const view = handle.editor.prosemirrorView!;
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at)));
+  view.someProp('handleKeyDown', (f) => f(view, new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true })));
+}
+
 /** A line of the moving body: its words and kind, with lines nested under it. */
 interface MovingLine {
   words: string;
@@ -1636,41 +1765,53 @@ const moving: fc.Arbitrary<MovingLine[]> = fc.array(
   { minLength: 1, maxLength: 4 },
 );
 
-/** What the reader does while the dialog is open: a key at a position picked from a number. */
-const moves = fc.array(fc.tuple(fc.constantFrom('Enter', 'Backspace', 'Tab'), fc.nat()), { maxLength: 4 });
+/** What the reader does while the dialog is open: a key or a block moved up, at a place picked from a number. */
+const moves = fc.array(fc.tuple(fc.constantFrom('Enter', 'Backspace', 'Delete', 'Tab', 'ShiftTab', 'MoveUp'), fc.nat()), { maxLength: 4 });
 
 describe('properties: the reader moves the body while the dialog is open', () => {
-  it('writes every answered unit once, whatever Enter, Backspace and Tab did to the selected lines', async () => {
+  it('writes what the preview shows, once, whatever Enter, Backspace, Delete, Tab, Shift-Tab and moves did to the selected lines', async () => {
     const h = await open('');
-    await fc.assert(fc.asyncProperty(moving, moves, fc.array(fc.boolean(), { minLength: 12, maxLength: 12 }), async (lines, keys, several) => {
+    const kinds = fc.array(fc.constantFrom('one', 'several', 'none'), { minLength: 12, maxLength: 12 });
+    await fc.assert(fc.asyncProperty(moving, moves, kinds, fc.constantFrom<Command>('expand', 'custom'), async (lines, keys, answers, command) => {
       h.editor.replaceBlocks(h.editor.document, lines.map((l) => ({
         type: l.type,
         content: l.words,
         children: l.kids.map((k) => ({ type: l.type, content: k })),
       })) as never);
       h.undoManager.clear();
-      const o = opening(h, { from: 1, to: h.editor.prosemirrorState.doc.content.size - 1 }, 'expand');
+      const o = opening(h, { from: 1, to: h.editor.prosemirrorState.doc.content.size - 1 }, command);
       for (const [key, n] of keys) {
+        if (key === 'MoveUp') {
+          const all = flat(h);
+          moveUp(h, all[n % all.length]!.id);
+          continue;
+        }
         const doc = h.editor.prosemirrorState.doc;
         const at: number[] = [];
         doc.descendants((node, pos) => {
           if (!node.isTextblock) return true;
           if (key === 'Enter') for (let i = 1; i < node.content.size; i += 1) at.push(pos + 1 + i);
-          else at.push(pos + 1);
+          else at.push(key === 'Delete' ? pos + 1 + node.content.size : pos + 1);
           return false;
         });
-        if (at.length > 0) pressKey(h, at[n % at.length]!, key);
+        if (at.length === 0) continue;
+        if (key === 'ShiftTab') shiftTab(h, at[n % at.length]!);
+        else pressKey(h, at[n % at.length]!, key);
       }
-      const marks = (id: number): string[] => (several[id - 1] ? [`U${String(id)}A.`, `U${String(id)}B.`] : [`U${String(id)}A.`]);
-      const parts = Object.fromEntries(o.units.map((u) => [u.id, marks(u.id).join('\n\n')]));
-      const answer = read(h, o, tagged(parts), 'expand');
+      // Under expand an answer of several paragraphs; under custom a list, or nothing: merged into another.
+      const kind = (id: number): string => (command === 'expand' && answers[id - 1] === 'none' ? 'several' : answers[id - 1]!);
+      const marks = (id: number): string[] => (kind(id) === 'none' ? [] : kind(id) === 'several' ? [`U${String(id)}A.`, `U${String(id)}B.`] : [`U${String(id)}A.`]);
+      const spelled = (id: number): string => (command === 'custom' && kind(id) === 'several' ? marks(id).map((m) => `- ${m}`).join('\n') : marks(id).join('\n\n'));
+      const parts = Object.fromEntries(o.units.map((u) => [u.id, spelled(u.id)]));
+      const answer = read(h, o, tagged(parts), command);
       if (!aiReplaceAvailable(h.editor.prosemirrorState.doc, answer, segments(h))) return;
       replaceAiAnswer(h, answer, segments(h), WRITABLE);
+      expect(typedShape(blocks(h))).toEqual(typedShape(answer.preview as Seen[]));
       const now = flat(h).map(textOf);
       for (const r of answer.results) {
-        for (const mark of marks(r.unit.id)) expect(now.filter((t) => t.includes(mark))).toHaveLength(1);
+        for (const mark of marks(r.unit.id)) expect(now.filter((t) => t.includes(mark)).length).toBeLessThanOrEqual(1);
       }
-    }), { numRuns: 60 });
+    }), { numRuns: 80 });
   });
 });
 
