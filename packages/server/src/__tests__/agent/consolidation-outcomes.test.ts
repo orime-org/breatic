@@ -215,7 +215,7 @@ beforeEach(() => {
 });
 
 describe("a consolidation that works", () => {
-  it("writes its operations and progress note with the watermark it read", async () => {
+  it("writes its operations and progress note with the watermark and the entries it read", async () => {
     const outcome = await consolidate();
 
     expect(outcome).toBe("written");
@@ -224,6 +224,7 @@ describe("a consolidation that works", () => {
       userId: USER,
       conversationId: CONVERSATION,
       projectId: PROJECT,
+      shown: (await consolidationInput()).full,
       watermarkBefore: 7,
       newWatermark: 19,
       progress: GOOD.progress,

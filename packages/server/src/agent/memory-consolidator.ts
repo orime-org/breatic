@@ -399,6 +399,7 @@ export async function consolidateWindow(window: ConsolidationWindow): Promise<Co
           userId,
           projectId,
           conversationId,
+          shown: input.full,
           watermarkBefore,
           newWatermark,
           progress: read.answer.progress,

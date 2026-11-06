@@ -244,6 +244,28 @@ export async function insertEntry(entry: NewEntry, tx?: DbTx): Promise<AgentMemo
   return toEntity(row);
 }
 
+/** An entry's title and content, as a writer read them. */
+export interface EntryText {
+  title: string;
+  content: string;
+}
+
+/**
+ * The condition that picks the live entry by id, and, when given, only while
+ * it still holds what the writer read.
+ * @param id - The entry.
+ * @param unchanged - What it held when read; absent, any content matches.
+ * @returns The condition.
+ * @throws {never} Never.
+ */
+function liveEntry(id: string, unchanged?: EntryText): SQL | undefined {
+  return and(
+    eq(agentMemories.id, id),
+    isNull(agentMemories.deletedAt),
+    ...(unchanged === undefined ? [] : [eq(agentMemories.title, unchanged.title), eq(agentMemories.content, unchanged.content)]),
+  );
+}
+
 /**
  * Replace a live entry's title and content, and where it is read when given.
  * @param id - The entry.
@@ -252,17 +274,19 @@ export async function insertEntry(entry: NewEntry, tx?: DbTx): Promise<AgentMemo
  * @param change.content - Its content.
  * @param change.conversationId - Set to move it to that conversation alone, null to the Project; absent, it stays.
  * @param tx - The transaction to run inside, when the caller has one.
- * @returns The entry, or null when there is no live entry by that id.
+ * @param unchanged - What the caller read; given, the write happens only while the entry still holds it.
+ * @returns The entry, or null when there is no live entry by that id holding what the caller read.
  */
 export async function updateEntry(
   id: string,
   change: { title: string; content: string; conversationId?: string | null },
   tx?: DbTx,
+  unchanged?: EntryText,
 ): Promise<AgentMemoryEntity | null> {
   const [row] = await (tx ?? db)
     .update(agentMemories)
     .set({ ...change, updatedAt: new Date() })
-    .where(and(eq(agentMemories.id, id), isNull(agentMemories.deletedAt)))
+    .where(liveEntry(id, unchanged))
     .returning();
   return row ? toEntity(row) : null;
 }
@@ -271,13 +295,14 @@ export async function updateEntry(
  * Delete a live entry, softly.
  * @param id - The entry.
  * @param tx - The transaction to run inside, when the caller has one.
- * @returns The entry, or null when there is no live entry by that id.
+ * @param unchanged - What the caller read; given, the delete happens only while the entry still holds it.
+ * @returns The entry, or null when there is no live entry by that id holding what the caller read.
  */
-export async function softDeleteEntry(id: string, tx?: DbTx): Promise<AgentMemoryEntity | null> {
+export async function softDeleteEntry(id: string, tx?: DbTx, unchanged?: EntryText): Promise<AgentMemoryEntity | null> {
   const [row] = await (tx ?? db)
     .update(agentMemories)
     .set({ deletedAt: new Date() })
-    .where(and(eq(agentMemories.id, id), isNull(agentMemories.deletedAt)))
+    .where(liveEntry(id, unchanged))
     .returning();
   return row ? toEntity(row) : null;
 }

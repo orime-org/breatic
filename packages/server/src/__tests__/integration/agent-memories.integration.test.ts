@@ -128,6 +128,17 @@ async function watermarkOf(conversationId: string): Promise<number> {
 }
 
 /**
+ * Entries as a consolidation is shown them in full, read from the table now.
+ * @param ids - The entries.
+ * @returns Each one's id, title and content.
+ */
+async function shownOf(...ids: string[]): Promise<Array<{ id: string; title: string; content: string }>> {
+  return sql<{ id: string; title: string; content: string }[]>`
+    SELECT id, title, content FROM agent_memories WHERE id IN ${sql(ids)}
+  `;
+}
+
+/**
  * What a promise rejected with.
  * @param pending - The call.
  * @returns The error.
@@ -341,6 +352,7 @@ describe("what a consolidation writes", () => {
 
     const outcome = await memoryService.commitConsolidation({
       ...owner,
+      shown: await shownOf(keep, drop),
       watermarkBefore: 0,
       newWatermark: 6,
       progress: "Settled the look; next is the storyboard.",
@@ -370,6 +382,7 @@ describe("what a consolidation writes", () => {
 
     await memoryService.commitConsolidation({
       ...owner,
+      shown: [],
       watermarkBefore: 0,
       newWatermark: 4,
       progress: "p",
@@ -385,6 +398,7 @@ describe("what a consolidation writes", () => {
 
     const outcome = await memoryService.commitConsolidation({
       ...owner,
+      shown: [],
       watermarkBefore: 0,
       newWatermark: 4,
       progress: "narrower",
@@ -405,6 +419,7 @@ describe("what a consolidation writes", () => {
     const failed = await rejectionOf(
       memoryService.commitConsolidation({
         ...owner,
+        shown: await shownOf(keep),
         watermarkBefore: 0,
         newWatermark: 4,
         progress: "p",
@@ -420,6 +435,57 @@ describe("what a consolidation writes", () => {
     expect(await watermarkOf(owner.conversationId)).toBe(0);
     expect((await agentMemoryFor(owner).read([keep]))[0]?.content).toBe("Teal.");
     expect((await memoryService.buildContext(owner.userId, owner.conversationId, owner.projectId)).progress).toBe("");
+  });
+
+  it.each([
+    ["update", (id: string) => ({ op: "update" as const, id, title: "Palette", content: "Teal and orange." })],
+    ["delete", (id: string) => ({ op: "delete" as const, id })],
+  ])("writes nothing when an entry it would %s was changed in another conversation since it read it", async (_op, operation) => {
+    const owner = await seed();
+    const other = await newConversation(owner.userId, owner.projectId);
+    const keep = await seedEntry(owner, { title: "Palette", content: "Teal." });
+    const shown = await shownOf(keep);
+    await agentMemoryFor({ ...owner, conversationId: other }).save({ id: keep, scope: "project", title: "Palette", content: "Blue." });
+
+    const failed = await rejectionOf(
+      memoryService.commitConsolidation({
+        ...owner,
+        shown,
+        watermarkBefore: 0,
+        newWatermark: 4,
+        progress: "p",
+        operations: [{ op: "add", scope: "project", title: "New", content: "n" }, operation(keep)],
+      }),
+    );
+    const context = await memoryService.buildContext(owner.userId, owner.conversationId, owner.projectId);
+
+    expect(failed).toBeInstanceOf(Error);
+    expect(await watermarkOf(owner.conversationId)).toBe(0);
+    expect(context.entries.map((e) => e.title)).toEqual(["Palette"]);
+    expect((await agentMemoryFor(owner).read([keep]))[0]?.content).toBe("Blue.");
+    expect(context.progress).toBe("");
+  });
+
+  it("writes nothing when an entry it would change was deleted in another conversation since it read it", async () => {
+    const owner = await seed();
+    const keep = await seedEntry(owner, { title: "Palette", content: "Teal." });
+    const shown = await shownOf(keep);
+    await sql`UPDATE agent_memories SET deleted_at = now() WHERE id = ${keep}`;
+
+    const failed = await rejectionOf(
+      memoryService.commitConsolidation({
+        ...owner,
+        shown,
+        watermarkBefore: 0,
+        newWatermark: 4,
+        progress: "p",
+        operations: [{ op: "update", id: keep, title: "Palette", content: "Teal and orange." }],
+      }),
+    );
+
+    expect(failed).toBeInstanceOf(Error);
+    expect(await watermarkOf(owner.conversationId)).toBe(0);
+    expect(await agentMemoryFor(owner).read([keep])).toEqual([]);
   });
 
   it("shows the consolidation the migrated blocks first, then the newest in full up to the bound, the rest by title", async () => {
