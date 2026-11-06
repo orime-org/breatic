@@ -996,8 +996,8 @@ export function renderProductGuide(): string {
       "a cut removes it. The segment count reflects the complete split plan.",
     `In ${quoted(t("canvas.miniTool.video.transitions.label"))}, the timeline holds two clips: the current video and one ` +
       `video picked under ${quoted(t("canvas.miniTool.videoUI.videoInputs"))}. Open ` +
-      `${quoted(t("canvas.miniTool.videoUI.editTimeline"))} to swap their order and trim each clip with ` +
-      `${quoted(t("canvas.miniTool.videoUI.inPoint"))} and ${quoted(t("canvas.miniTool.videoUI.outPoint"))}. ` +
+      `${quoted(t("canvas.miniTool.videoUI.editTimeline"))} to swap their order. Select a clip and edit ` +
+      `${quoted(t("canvas.miniTool.videoUI.inPoint"))} and ${quoted(t("canvas.miniTool.videoUI.outPoint"))} to trim it. ` +
       `${quoted(t("canvas.miniTool.videoUI.transition"))} offers ${quoted(t("canvas.miniTool.videoUI.transitionCut"))}, ` +
       `${quoted(t("canvas.miniTool.videoUI.transitionFade"))}, ${quoted(t("canvas.miniTool.videoUI.transitionWipeLeft"))} and ` +
       `${quoted(t("canvas.miniTool.videoUI.transitionWipeRight"))}; any type but Cut lasts at most half the shorter clip, ` +
