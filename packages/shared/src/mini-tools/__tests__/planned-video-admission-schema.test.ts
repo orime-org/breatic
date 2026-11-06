@@ -24,7 +24,7 @@ function request(tool: "video.extract-frames" | "video.split" = "video.extract-f
     tool, project_id: "10000000-0000-4000-8000-000000000001", space_id: "20000000-0000-4000-8000-000000000001", run_id: RUN,
     draft: { version: 1, draftId: "60000000-0000-4000-8000-000000000001", revision: "70000000-0000-4000-8000-000000000001",
       source: { nodeId: SOURCE, canonicalURL: "https://assets.example.test/source.mp4", mediaInfo: { width: 960, height: 540, duration: 5, mimeType: "video/mp4" } },
-      inputs: [], params: tool === "video.split" ? { cuts: [3], sensitivity: 27 } : { mode: "first", currentTime: 2, interval: 1 } },
+      inputs: [], params: tool === "video.split" ? { cuts: [3], sensitivity: 27 } : { mode: "first", currentTime: 2 } },
     analysis_refs: [], presentation_ref: structuredClone(presentationRef),
     outputs: tool === "video.split"
       ? [{ outputIndex: 0, nodeId: NODES[0], recipe: { kind: "segment", range: { start: 2, end: 3 } } }, { outputIndex: 1, nodeId: NODES[1], recipe: { kind: "segment", range: { start: 3, end: 5 } } }]
@@ -54,10 +54,19 @@ function changed(body: Record<string, unknown>, path: string, value: unknown): R
 }
 
 describe("S5 planned frame and segment request contracts", () => {
-  it.each(["first", "last", "current", "interval"])("S5-Q01 accepts complete %s frame selection without stripping its receipt or recipe", (mode) => {
+  it.each(["first", "last", "current"])("S5-Q01 accepts complete %s frame selection without stripping its receipt or recipe", (mode) => {
     const body = changed(request(), "draft.params.mode", mode);
     expect(miniToolPlannedRequestSchema.parse(body)).toEqual(body);
     expect(miniToolSubmissionSchema.parse(body)).toEqual(body);
+  });
+  // §97 (frames-split §10.6 删除行; tools design acceptance item 5): the interval mode and its period are removed from the
+  // frame draft, so a planned request naming either is refused.
+  it.each([
+    ["the interval mode", (body: Record<string, unknown>) => changed(changed(body, "draft.params.mode", "interval"), "draft.params.interval", 1)],
+    ["an interval period beside a kept mode", (body: Record<string, unknown>) => changed(body, "draft.params.interval", 1)],
+  ])("S5-Q01 refuses %s", (_name, change) => {
+    expect(miniToolPlannedRequestSchema.safeParse(request()).success).toBe(true);
+    expect(miniToolPlannedRequestSchema.safeParse(change(request())).success).toBe(false);
   });
   it("S5-Q01 accepts every segment mapping and its nonzero origin", () => {
     const body = request("video.split");

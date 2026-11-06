@@ -48,7 +48,7 @@ const params: Record<VideoToolId, ObjectValue> = {
   "video.erase": { range: { start: 0, end: 5 }, anchor, region: { box: null, points: [] }, trackingPrompt: "", erasePrompt: "" },
   "video.lip-sync": { anchor, dialogues: [{ dialogueId, personId: null, analysisRunId: null, audioInputId: null, startTime: 0 }], syncMode: "cut_off" },
   "video.remove-bg": {},
-  "video.extract-frames": { mode: "current", currentTime: 0.12, interval: 1 },
+  "video.extract-frames": { mode: "current", currentTime: 0.12 },
   "video.transitions": { clips: [] },
   "video.split": { cuts: [1], sensitivity: 0.4 },
 };
@@ -130,6 +130,16 @@ describe("persistent video tool draft contract", () => {
   ])("rejects an expansion frame that loses part of the source %j", (frame) => {
     const value = draftFor("video.expand");
     expect(api.videoToolDraftSchema("video.expand").safeParse({ ...value, params: { ...value.params, frame } }).success).toBe(false);
+  });
+
+  // §97 (frames-split §10.6 删除行; tools design acceptance item 5): the frame draft keeps first, last and current only.
+  it.each([
+    ["the interval mode", { mode: "interval", currentTime: 0.12, interval: 1 }],
+    ["an interval period beside a kept mode", { mode: "current", currentTime: 0.12, interval: 1 }],
+  ])("the frame draft refuses %s", (_name, frameParams) => {
+    const value = draftFor("video.extract-frames");
+    expect(api.videoToolDraftSchema("video.extract-frames").safeParse(value).success).toBe(true);
+    expect(api.videoToolDraftSchema("video.extract-frames").safeParse({ ...value, params: frameParams }).success).toBe(false);
   });
 
   it("preserves a biased expansion and the chosen aspect ratio", () => {

@@ -15,7 +15,7 @@ interface Run { start: number; count: number; step: number; duration: number }
 interface Table { schemaVersion: 1; timescale: number; runs: Run[] }
 interface Rational { numerator: string; denominator: string }
 interface PresentedFrame { displayStart: Rational; displayEnd: Rational }
-interface FrameRequest { mode: "first" | "last" | "current" | "interval"; currentTime?: number; interval?: number }
+interface FrameRequest { mode: "first" | "last" | "current"; currentTime?: number }
 interface FrameOutput { outputIndex: number; frameIndex: number; pts: number }
 interface SegmentOutput { outputIndex: number; start: number; end: number }
 interface TableApi {
@@ -74,19 +74,7 @@ function naiveCovering(starts: readonly number[], time: number): number {
 function naiveFrames(source: Table, request: FrameRequest): FrameOutput[] {
   const frames = expand(source);
   const starts = frames.map((frame) => frame.start / source.timescale);
-  const videoEnd = frames.at(-1)!.end / source.timescale;
-  let picked: number[];
-  if (request.mode === "first") picked = [0];
-  else if (request.mode === "last") picked = [frames.length - 1];
-  else if (request.mode === "current") picked = [naiveCovering(starts, request.currentTime!)];
-  else {
-    const set = new Set<number>();
-    for (let k = 0; k * request.interval! < videoEnd; k += 1) {
-      const sample = k * request.interval!;
-      if (sample >= starts[0]!) set.add(naiveCovering(starts, sample));
-    }
-    picked = [...set].sort((a, b) => a - b);
-  }
+  const picked = request.mode === "first" ? [0] : request.mode === "last" ? [frames.length - 1] : [naiveCovering(starts, request.currentTime!)];
   return picked.map((frameIndex, outputIndex) => ({ outputIndex, frameIndex, pts: starts[frameIndex]! }));
 }
 
@@ -210,8 +198,6 @@ describe("T05–T07 frame selection", () => {
     [{ mode: "current", currentTime: 0.13 }, [{ outputIndex: 0, frameIndex: 2, pts: 0.12 }]],
     [{ mode: "current", currentTime: 0.12 }, [{ outputIndex: 0, frameIndex: 2, pts: 0.12 }]],
     [{ mode: "current", currentTime: 0.119 }, [{ outputIndex: 0, frameIndex: 1, pts: 0.04 }]],
-    [{ mode: "interval", interval: 0.05 }, [{ outputIndex: 0, frameIndex: 0, pts: 0 }, { outputIndex: 1, frameIndex: 1, pts: 0.04 }, { outputIndex: 2, frameIndex: 2, pts: 0.12 }, { outputIndex: 3, frameIndex: 3, pts: 0.2 }]],
-    [{ mode: "interval", interval: 0.001 }, [{ outputIndex: 0, frameIndex: 0, pts: 0 }, { outputIndex: 1, frameIndex: 1, pts: 0.04 }, { outputIndex: 2, frameIndex: 2, pts: 0.12 }, { outputIndex: 3, frameIndex: 3, pts: 0.2 }]],
   ] as const)("T06 selects %j", (request, expected) => {
     expect(api.planVideoFrames(source, request)).toEqual(expected);
   });
@@ -222,10 +208,17 @@ describe("T05–T07 frame selection", () => {
     expect(api.planVideoFrames(shifted, { mode: "current", currentTime: 0 })).toEqual([{ outputIndex: 0, frameIndex: 0, pts: 0.04 }]);
   });
 
-  it("T06 rejects current and interval modes without their values", () => {
+  it("T06 rejects current mode without its displayed time", () => {
     expect(api.planVideoFrames(source, { mode: "first" })).toEqual([{ outputIndex: 0, frameIndex: 0, pts: 0 }]);
     expect(() => api.planVideoFrames(source, { mode: "current" })).toThrow();
-    expect(() => api.planVideoFrames(source, { mode: "interval" })).toThrow();
+  });
+
+  // §97 (frames-split design §10.6 删除行; tools design acceptance item 5): frame extraction keeps only first, last and
+  // current; the interval mode and its period are removed, so a request naming either is refused.
+  it("T06 refuses the removed interval mode and an interval period beside a kept mode", () => {
+    expect(api.planVideoFrames(source, { mode: "first" })).toEqual([{ outputIndex: 0, frameIndex: 0, pts: 0 }]);
+    expect(() => api.planVideoFrames(source, { mode: "interval", interval: 1 } as unknown as FrameRequest)).toThrow();
+    expect(() => api.planVideoFrames(source, { mode: "first", interval: 1 } as unknown as FrameRequest)).toThrow();
   });
 
   it("T07 matches the naive planner for every mode", () => {
@@ -233,7 +226,6 @@ describe("T05–T07 frame selection", () => {
       fc.constant<FrameRequest>({ mode: "first" }),
       fc.constant<FrameRequest>({ mode: "last" }),
       fc.double({ min: 0, max: 2_000, noNaN: true }).map((currentTime): FrameRequest => ({ mode: "current", currentTime })),
-      fc.double({ min: 0.0005, max: 5, noNaN: true }).map((interval): FrameRequest => ({ mode: "interval", interval })),
     );
     fc.assert(fc.property(tableArbitrary, request, (shape, selection) => {
       expect(api.planVideoFrames(shape, selection)).toEqual(naiveFrames(shape, selection));
