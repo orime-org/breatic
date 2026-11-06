@@ -15,7 +15,8 @@
         "duration": 5,
         "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "minimax/h3/text-to-video"
       }
     },
     {
@@ -30,7 +31,8 @@
         "duration": 5,
         "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "minimax/h3/text-to-video"
       }
     },
     {
@@ -45,7 +47,8 @@
         "duration": 5,
         "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "minimax/h3/text-to-video"
       }
     },
     {
@@ -60,7 +63,8 @@
         "duration": 5,
         "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "minimax/h3/text-to-video"
       }
     },
     {
@@ -75,7 +79,8 @@
         "duration": 5,
         "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "minimax/h3/text-to-video"
       }
     },
     {
@@ -90,7 +95,8 @@
         "duration": 5,
         "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "minimax/h3/text-to-video"
       }
     },
     {
@@ -105,7 +111,8 @@
         "duration": 4,
         "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "minimax/h3/text-to-video"
       }
     },
     {
@@ -120,7 +127,8 @@
         "duration": 6,
         "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "minimax/h3/text-to-video"
       }
     },
     {
@@ -135,7 +143,8 @@
         "duration": 7,
         "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "minimax/h3/text-to-video"
       }
     },
     {
@@ -150,7 +159,8 @@
         "duration": 8,
         "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "minimax/h3/text-to-video"
       }
     },
     {
@@ -165,7 +175,8 @@
         "duration": 9,
         "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "minimax/h3/text-to-video"
       }
     },
     {
@@ -180,7 +191,8 @@
         "duration": 10,
         "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "minimax/h3/text-to-video"
       }
     },
     {
@@ -195,7 +207,8 @@
         "duration": 11,
         "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "minimax/h3/text-to-video"
       }
     },
     {
@@ -210,7 +223,8 @@
         "duration": 12,
         "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "minimax/h3/text-to-video"
       }
     },
     {
@@ -225,7 +239,8 @@
         "duration": 13,
         "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "minimax/h3/text-to-video"
       }
     },
     {
@@ -240,7 +255,8 @@
         "duration": 14,
         "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "minimax/h3/text-to-video"
       }
     },
     {
@@ -255,7 +271,8 @@
         "duration": 15,
         "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "minimax/h3/text-to-video"
       }
     },
     {
@@ -270,7 +287,8 @@
         "duration": 5,
         "resolution": "2K",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "minimax/h3/text-to-video"
       }
     }
   ],

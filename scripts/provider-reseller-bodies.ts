@@ -17,14 +17,12 @@
  * run carries. Then one run per value a param's sample covers (`coveredValues`) and one per bound
  * param without a default at a sample value (a list one url, items two items, sent without a prompt
  * when they carry the shots, a text "sample text"). A covered value the default run's variants miss
- * is tried on each run taken, and listed in `untaken` when none takes it. A param an extra step
- * serves carries the id that step answers in `ids`, as the runner writes it; a binding whose own
- * call is a voice clone (`reused_by`) shows the body of that call as the voice step writes it. Each
- * extra step's body is built by its codec on the first taken run that makes it (`stepCalls`), with
- * that run's params and prompt, the first item index `stepCalls` gives, and its source read as the
- * runner reads it: the run's value of the param it serves, or that value's item at the index;
- * a step that serves no param reads a sample url. A step no taken run makes is left out. A file
- * whose binding is gone is removed.
+ * is tried on each run taken, and listed in `untaken` when none takes it. Each run is sent through
+ * the media runner against a loopback stand-in for the binding's upstream (`runnerCalls`), and its
+ * `body` is what the runner sent for the run's own call: the voice clone for a binding whose own
+ * call is one (`reused_by`), else the generation. Each other step the runner sent is listed in
+ * `steps` once, as sent on the first run that makes it (`run`, an index into `runs`). A file whose
+ * binding is gone is removed.
  * Review the diff before committing it.
  */
 
@@ -32,14 +30,13 @@ import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import type { MediaBinding } from "../packages/provider/src/config/schema.js";
-import { adapterOf } from "../packages/provider/src/media/adapters.js";
 import type { SampleRun } from "../packages/provider/src/media/__tests__/reseller-bodies.js";
-import { isPresent, stepCalls, stepSource } from "../packages/provider/src/pricing/estimate.js";
+import { isPresent } from "../packages/provider/src/pricing/estimate.js";
 
 // The test helpers read `__dirname`, which only a CommonJS load of them has.
 const load = createRequire(import.meta.url);
 const { catalog, coveredValues, shipped } = load("../packages/provider/src/config/__tests__/shipped.ts") as typeof import("../packages/provider/src/config/__tests__/shipped.js");
-const { SAMPLE_VOICE_ID, firstBody, takes } = load("../packages/provider/src/media/__tests__/reseller-bodies.ts") as typeof import("../packages/provider/src/media/__tests__/reseller-bodies.js");
+const { runnerCalls, takes } = load("../packages/provider/src/media/__tests__/reseller-bodies.ts") as typeof import("../packages/provider/src/media/__tests__/reseller-bodies.js");
 
 /** One param of our catalog, as far as samples read it. */
 interface CatalogParam {
@@ -197,48 +194,23 @@ for (const [model, { upstreams: bindings }] of Object.entries(config.media.model
         else untaken.push({ param: name, value });
       }
     }
-    const kind = config.upstreams[binding.upstream]!.kind;
-    const served = (binding.extra_steps ?? []).filter((s) => s.for_param !== undefined);
-    const steps = (binding.extra_steps ?? []).flatMap((step) => {
-      const run = runs.find((r) => stepCalls(step, r.params).length > 0);
-      if (run === undefined) return [];
-      const codec = adapterOf(kind).steps[step.kind as keyof ReturnType<typeof adapterOf>["steps"]];
-      if (codec === undefined) throw new Error(`${model} on ${binding.upstream}: no ${step.kind} step codec`);
-      const itemIndex = stepCalls(step, run.params)[0]!;
-      const source = stepSource(run.params, step.for_param, itemIndex);
-      if (step.for_param !== undefined && source === undefined) throw new Error(`${model} on ${binding.upstream}: the ${step.kind} step needs a source in '${step.for_param}'`);
-      const context: { source?: string; params: Record<string, unknown>; prompt: string; customVoiceId: string; voiceId: string; itemIndex: number | null; description?: string; param?: string } = {
-        ...(source === undefined ? {} : { source }),
-        params: run.params,
-        prompt: run.prompt,
-        customVoiceId: SAMPLE_VOICE_ID,
-        voiceId: "voice-sample",
-        itemIndex,
-        ...(step.kind === "element" ? { description: SAMPLE_TEXT } : {}),
-        ...(step.for_param === undefined ? {} : { param: step.for_param }),
-      };
-      /**
-       * The url the step reads, as the runner's `sourceOf` gives it.
-       * @returns The url.
-       * @throws {Error} When the step reads none.
-       */
-      const sourceOf = (): string => {
-        if (source === undefined) throw new Error(`${model} on ${binding.upstream}: the ${step.kind} step reads no source`);
-        return source;
-      };
-      const body = codec.body({ ...context, source: sourceOf, binding, description: context.description, param: context.param });
-      return [{ kind: step.kind, endpoint: step.endpoint, context, body }];
-    });
+    // Each run goes through the runner; its own call is its body, and each other step is shown on the first run that makes it.
+    const own = binding.reused_by === undefined ? "generate" : "voice";
+    const samples: SampleRun[] = [];
+    const steps: { kind: string; endpoint: string; run: number; body: Record<string, unknown> }[] = [];
+    for (const [index, run] of runs.entries()) {
+      const calls = await runnerCalls(model, binding, run);
+      const body = calls.find((c) => c.kind === own)?.body;
+      if (body === undefined) throw new Error(`${model} on ${binding.upstream}: the runner sent no ${own} call for ${JSON.stringify(run.params)}`);
+      samples.push({ ...run, body });
+      for (const call of calls.filter((c) => c.kind !== own)) if (!steps.some((s) => s.kind === call.kind)) steps.push({ ...call, run: index });
+    }
     const path = resolve(BODIES, binding.upstream, `${model}.json`);
     writeJson(path, {
       model,
       upstream: binding.upstream,
       model_id: binding.model_id,
-      runs: runs.map((run) => {
-        const ids = Object.fromEntries(served.filter((s) => stepCalls(s, run.params).length > 0).map((s) => [s.for_param!, `${s.kind}-id`]));
-        const sample = { params: run.params, prompt: run.prompt, ...(Object.keys(ids).length === 0 ? {} : { ids }) };
-        return { ...sample, body: firstBody(binding, sample) };
-      }),
+      runs: samples,
       ...(untaken.length === 0 ? {} : { untaken }),
       steps,
     });

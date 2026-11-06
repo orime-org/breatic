@@ -20,7 +20,8 @@
         "quality": "medium",
         "resolution": "1k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
-        "mode": "async"
+        "mode": "async",
+        "model": "openai/gpt-image-2.5-sunburst/edit"
       }
     },
     {
@@ -41,7 +42,8 @@
         "quality": "medium",
         "resolution": "1k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
-        "mode": "async"
+        "mode": "async",
+        "model": "openai/gpt-image-2.5-sunburst/edit"
       }
     },
     {
@@ -62,7 +64,8 @@
         "quality": "medium",
         "resolution": "1k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
-        "mode": "async"
+        "mode": "async",
+        "model": "openai/gpt-image-2.5-sunburst/edit"
       }
     },
     {
@@ -83,7 +86,8 @@
         "quality": "medium",
         "resolution": "1k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
-        "mode": "async"
+        "mode": "async",
+        "model": "openai/gpt-image-2.5-sunburst/edit"
       }
     },
     {
@@ -104,7 +108,8 @@
         "quality": "medium",
         "resolution": "1k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
-        "mode": "async"
+        "mode": "async",
+        "model": "openai/gpt-image-2.5-sunburst/edit"
       }
     },
     {
@@ -125,7 +130,8 @@
         "quality": "medium",
         "resolution": "1k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
-        "mode": "async"
+        "mode": "async",
+        "model": "openai/gpt-image-2.5-sunburst/edit"
       }
     },
     {
@@ -146,7 +152,8 @@
         "quality": "medium",
         "resolution": "1k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
-        "mode": "async"
+        "mode": "async",
+        "model": "openai/gpt-image-2.5-sunburst/edit"
       }
     },
     {
@@ -167,7 +174,8 @@
         "quality": "medium",
         "resolution": "1k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
-        "mode": "async"
+        "mode": "async",
+        "model": "openai/gpt-image-2.5-sunburst/edit"
       }
     },
     {
@@ -188,7 +196,8 @@
         "quality": "medium",
         "resolution": "1k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
-        "mode": "async"
+        "mode": "async",
+        "model": "openai/gpt-image-2.5-sunburst/edit"
       }
     },
     {
@@ -209,7 +218,8 @@
         "quality": "medium",
         "resolution": "1k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
-        "mode": "async"
+        "mode": "async",
+        "model": "openai/gpt-image-2.5-sunburst/edit"
       }
     },
     {
@@ -230,7 +240,8 @@
         "quality": "medium",
         "resolution": "1k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
-        "mode": "async"
+        "mode": "async",
+        "model": "openai/gpt-image-2.5-sunburst/edit"
       }
     },
     {
@@ -251,7 +262,8 @@
         "quality": "medium",
         "resolution": "1k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
-        "mode": "async"
+        "mode": "async",
+        "model": "openai/gpt-image-2.5-sunburst/edit"
       }
     },
     {
@@ -272,7 +284,8 @@
         "quality": "medium",
         "resolution": "1k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
-        "mode": "async"
+        "mode": "async",
+        "model": "openai/gpt-image-2.5-sunburst/edit"
       }
     },
     {
@@ -293,7 +306,8 @@
         "quality": "medium",
         "resolution": "1k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
-        "mode": "async"
+        "mode": "async",
+        "model": "openai/gpt-image-2.5-sunburst/edit"
       }
     },
     {
@@ -314,7 +328,8 @@
         "quality": "medium",
         "resolution": "1k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
-        "mode": "async"
+        "mode": "async",
+        "model": "openai/gpt-image-2.5-sunburst/edit"
       }
     },
     {
@@ -335,7 +350,8 @@
         "quality": "medium",
         "resolution": "1k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
-        "mode": "async"
+        "mode": "async",
+        "model": "openai/gpt-image-2.5-sunburst/edit"
       }
     },
     {
@@ -355,7 +371,8 @@
         "quality": "low",
         "resolution": "1k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
-        "mode": "async"
+        "mode": "async",
+        "model": "openai/gpt-image-2.5-sunburst/edit"
       }
     },
     {
@@ -375,7 +392,8 @@
         "quality": "high",
         "resolution": "1k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
-        "mode": "async"
+        "mode": "async",
+        "model": "openai/gpt-image-2.5-sunburst/edit"
       }
     },
     {
@@ -395,7 +413,8 @@
         "quality": "xhigh",
         "resolution": "1k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
-        "mode": "async"
+        "mode": "async",
+        "model": "openai/gpt-image-2.5-sunburst/edit"
       }
     },
     {
@@ -415,7 +434,8 @@
         "quality": "max",
         "resolution": "1k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
-        "mode": "async"
+        "mode": "async",
+        "model": "openai/gpt-image-2.5-sunburst/edit"
       }
     },
     {
@@ -435,7 +455,8 @@
         "quality": "medium",
         "resolution": "2k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
-        "mode": "async"
+        "mode": "async",
+        "model": "openai/gpt-image-2.5-sunburst/edit"
       }
     },
     {
@@ -455,7 +476,8 @@
         "quality": "medium",
         "resolution": "4k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
-        "mode": "async"
+        "mode": "async",
+        "model": "openai/gpt-image-2.5-sunburst/edit"
       }
     }
   ],

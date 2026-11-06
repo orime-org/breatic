@@ -21,27 +21,17 @@
     {
       "kind": "speak",
       "endpoint": "fal-ai/minimax/speech-2.8-hd",
-      "context": {
-        "params": {
-          "model": "speech-2.8-hd",
-          "need_noise_reduction": true,
-          "audio": "https://example.com/audio.mp3"
-        },
-        "prompt": "a red fox running through fresh snow at dawn",
-        "customVoiceId": "BreaticSample",
-        "voiceId": "voice-sample",
-        "itemIndex": null
-      },
       "body": {
         "prompt": "a red fox running through fresh snow at dawn",
         "voice_setting": {
-          "voice_id": "voice-sample",
+          "voice_id": "BreaticSample",
           "emotion": "happy"
         },
         "normalization_setting": {
           "enabled": false
         }
-      }
+      },
+      "run": 0
     }
   ]
 }

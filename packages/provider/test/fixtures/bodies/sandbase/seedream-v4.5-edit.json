@@ -16,7 +16,8 @@
         ],
         "prompt": "a red fox running through fresh snow at dawn",
         "output_format": "jpeg",
-        "mode": "async"
+        "mode": "async",
+        "model": "bytedance/seedream/4.5/edit"
       }
     }
   ],

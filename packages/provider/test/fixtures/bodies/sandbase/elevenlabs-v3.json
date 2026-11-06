@@ -14,7 +14,8 @@
         "stability": 0.5,
         "voice": "pNInz6obpgDQGcFmaJgB",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     },
     {
@@ -28,7 +29,8 @@
         "stability": 0.5,
         "voice": "Xb7hH8MSUJpSbSDYk0k2",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     },
     {
@@ -42,7 +44,8 @@
         "stability": 0.5,
         "voice": "9BWtsMINqrJLrRacOk9x",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     },
     {
@@ -56,7 +59,8 @@
         "stability": 0.5,
         "voice": "hpp4J3VqNfWAUOO0d1Us",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     },
     {
@@ -70,7 +74,8 @@
         "stability": 0.5,
         "voice": "pqHfZKP75CvOlQylNhV4",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     },
     {
@@ -84,7 +89,8 @@
         "stability": 0.5,
         "voice": "nPczCjzI2devNBz1zQrb",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     },
     {
@@ -98,7 +104,8 @@
         "stability": 0.5,
         "voice": "N2lVS1w4EtoT3dr4eOWO",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     },
     {
@@ -112,7 +119,8 @@
         "stability": 0.5,
         "voice": "IKne3meq5aSn9XLyUdCD",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     },
     {
@@ -126,7 +134,8 @@
         "stability": 0.5,
         "voice": "XB0fDUnXU5powFXDhCwa",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     },
     {
@@ -140,7 +149,8 @@
         "stability": 0.5,
         "voice": "iP95p4xoKVk53GoZ742B",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     },
     {
@@ -154,7 +164,8 @@
         "stability": 0.5,
         "voice": "onwK4e9ZLuTAKqWW03F9",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     },
     {
@@ -168,7 +179,8 @@
         "stability": 0.5,
         "voice": "cjVigY5qzO86Huf0OWal",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     },
     {
@@ -182,7 +194,8 @@
         "stability": 0.5,
         "voice": "JBFqnCBsd6RMkjVDRZzb",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     },
     {
@@ -196,7 +209,8 @@
         "stability": 0.5,
         "voice": "SOYHLrjzK2X1ezoPC6cr",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     },
     {
@@ -210,7 +224,8 @@
         "stability": 0.5,
         "voice": "cgSgspJ2msm6clMCkdW9",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     },
     {
@@ -224,7 +239,8 @@
         "stability": 0.5,
         "voice": "FGY2WhTYpPnrIDTdsKH5",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     },
     {
@@ -238,7 +254,8 @@
         "stability": 0.5,
         "voice": "TX3LPaxmHKxFdv7VOQHJ",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     },
     {
@@ -252,7 +269,8 @@
         "stability": 0.5,
         "voice": "pFZP5JQG7iQjIQuC4Bku",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     },
     {
@@ -266,7 +284,8 @@
         "stability": 0.5,
         "voice": "XrExE9yKIg1WjnnlVkGX",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     },
     {
@@ -280,7 +299,8 @@
         "stability": 0.5,
         "voice": "SAz9YHcvj6GT2YYXdXww",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     },
     {
@@ -294,7 +314,8 @@
         "stability": 0.5,
         "voice": "CwhRBWXzGAHq8TQ4Fs17",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     },
     {
@@ -308,7 +329,8 @@
         "stability": 0.5,
         "voice": "EXAVITQu4vr4xnSDxMaL",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     },
     {
@@ -322,7 +344,8 @@
         "stability": 0.5,
         "voice": "bIHbv24MWmeRgasZH58o",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     },
     {
@@ -336,7 +359,8 @@
         "stability": 0,
         "voice": "pNInz6obpgDQGcFmaJgB",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     },
     {
@@ -350,7 +374,8 @@
         "stability": 1,
         "voice": "pNInz6obpgDQGcFmaJgB",
         "text": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "elevenlabs/v3"
       }
     }
   ],

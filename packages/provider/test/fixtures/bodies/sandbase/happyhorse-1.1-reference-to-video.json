@@ -21,7 +21,8 @@
         ],
         "resolution": "720p",
         "prompt": "a red fox running through fresh snow at dawn [Image 1]",
-        "mode": "async"
+        "mode": "async",
+        "model": "alibaba/happy-horse/1.1/reference-to-video"
       }
     },
     {
@@ -42,7 +43,8 @@
         ],
         "resolution": "720p",
         "prompt": "a red fox running through fresh snow at dawn [Image 1]",
-        "mode": "async"
+        "mode": "async",
+        "model": "alibaba/happy-horse/1.1/reference-to-video"
       }
     },
     {
@@ -63,7 +65,8 @@
         ],
         "resolution": "720p",
         "prompt": "a red fox running through fresh snow at dawn [Image 1]",
-        "mode": "async"
+        "mode": "async",
+        "model": "alibaba/happy-horse/1.1/reference-to-video"
       }
     },
     {
@@ -84,7 +87,8 @@
         ],
         "resolution": "720p",
         "prompt": "a red fox running through fresh snow at dawn [Image 1]",
-        "mode": "async"
+        "mode": "async",
+        "model": "alibaba/happy-horse/1.1/reference-to-video"
       }
     },
     {
@@ -105,7 +109,8 @@
         ],
         "resolution": "720p",
         "prompt": "a red fox running through fresh snow at dawn [Image 1]",
-        "mode": "async"
+        "mode": "async",
+        "model": "alibaba/happy-horse/1.1/reference-to-video"
       }
     },
     {
@@ -126,7 +131,8 @@
         ],
         "resolution": "720p",
         "prompt": "a red fox running through fresh snow at dawn [Image 1]",
-        "mode": "async"
+        "mode": "async",
+        "model": "alibaba/happy-horse/1.1/reference-to-video"
       }
     },
     {
@@ -147,7 +153,8 @@
         ],
         "resolution": "720p",
         "prompt": "a red fox running through fresh snow at dawn [Image 1]",
-        "mode": "async"
+        "mode": "async",
+        "model": "alibaba/happy-horse/1.1/reference-to-video"
       }
     },
     {
@@ -168,7 +175,8 @@
         ],
         "resolution": "1080p",
         "prompt": "a red fox running through fresh snow at dawn [Image 1]",
-        "mode": "async"
+        "mode": "async",
+        "model": "alibaba/happy-horse/1.1/reference-to-video"
       }
     }
   ],

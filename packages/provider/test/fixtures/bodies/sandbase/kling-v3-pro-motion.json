@@ -18,7 +18,8 @@
         "character_orientation": "video",
         "keep_original_sound": true,
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "kwaivgi/kling-video/v3/pro/motion-control"
       }
     },
     {
@@ -36,7 +37,8 @@
         "character_orientation": "image",
         "keep_original_sound": true,
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "kwaivgi/kling-video/v3/pro/motion-control"
       }
     },
     {
@@ -54,7 +56,8 @@
         "character_orientation": "video",
         "keep_original_sound": false,
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "kwaivgi/kling-video/v3/pro/motion-control"
       }
     }
   ],

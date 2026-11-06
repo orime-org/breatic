@@ -14,7 +14,8 @@
         "image": "https://example.com/image.png",
         "prompt": "",
         "mode": "async",
-        "resolution": "720p"
+        "resolution": "720p",
+        "model": "bytedance/omnihuman/1.5"
       }
     }
   ],

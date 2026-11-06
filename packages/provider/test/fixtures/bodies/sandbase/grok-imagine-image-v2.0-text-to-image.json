@@ -13,7 +13,8 @@
         "aspect_ratio": "1:1",
         "resolution": "2k",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "xai/grok-imagine-image/2.0/text-to-image"
       }
     },
     {
@@ -26,7 +27,8 @@
         "aspect_ratio": "16:9",
         "resolution": "2k",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "xai/grok-imagine-image/2.0/text-to-image"
       }
     },
     {
@@ -39,7 +41,8 @@
         "aspect_ratio": "9:16",
         "resolution": "2k",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "xai/grok-imagine-image/2.0/text-to-image"
       }
     },
     {
@@ -52,7 +55,8 @@
         "aspect_ratio": "4:3",
         "resolution": "2k",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "xai/grok-imagine-image/2.0/text-to-image"
       }
     },
     {
@@ -65,7 +69,8 @@
         "aspect_ratio": "3:4",
         "resolution": "2k",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "xai/grok-imagine-image/2.0/text-to-image"
       }
     },
     {
@@ -78,7 +83,8 @@
         "aspect_ratio": "3:2",
         "resolution": "2k",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "xai/grok-imagine-image/2.0/text-to-image"
       }
     },
     {
@@ -91,7 +97,8 @@
         "aspect_ratio": "2:3",
         "resolution": "2k",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "xai/grok-imagine-image/2.0/text-to-image"
       }
     },
     {
@@ -104,7 +111,8 @@
         "aspect_ratio": "1:1",
         "resolution": "1k",
         "prompt": "a red fox running through fresh snow at dawn",
-        "mode": "async"
+        "mode": "async",
+        "model": "xai/grok-imagine-image/2.0/text-to-image"
       }
     }
   ],

@@ -15,7 +15,8 @@
         "image": "https://example.com/image.png",
         "generate_type": "Normal",
         "enable_pbr": false,
-        "mode": "async"
+        "mode": "async",
+        "model": "tencent/hunyuan-3d/3.0/image-to-3d"
       }
     },
     {
@@ -32,7 +33,8 @@
         "back_image": "https://example.com/back_image.png",
         "generate_type": "Normal",
         "enable_pbr": false,
-        "mode": "async"
+        "mode": "async",
+        "model": "tencent/hunyuan-3d/3.0/image-to-3d"
       }
     },
     {
@@ -49,7 +51,8 @@
         "left_image": "https://example.com/left_image.png",
         "generate_type": "Normal",
         "enable_pbr": false,
-        "mode": "async"
+        "mode": "async",
+        "model": "tencent/hunyuan-3d/3.0/image-to-3d"
       }
     },
     {
@@ -66,7 +69,8 @@
         "right_image": "https://example.com/right_image.png",
         "generate_type": "Normal",
         "enable_pbr": false,
-        "mode": "async"
+        "mode": "async",
+        "model": "tencent/hunyuan-3d/3.0/image-to-3d"
       }
     },
     {
@@ -81,7 +85,8 @@
         "image": "https://example.com/image.png",
         "generate_type": "LowPoly",
         "enable_pbr": false,
-        "mode": "async"
+        "mode": "async",
+        "model": "tencent/hunyuan-3d/3.0/image-to-3d"
       }
     },
     {
@@ -96,7 +101,8 @@
         "image": "https://example.com/image.png",
         "generate_type": "Geometry",
         "enable_pbr": false,
-        "mode": "async"
+        "mode": "async",
+        "model": "tencent/hunyuan-3d/3.0/image-to-3d"
       }
     }
   ],
