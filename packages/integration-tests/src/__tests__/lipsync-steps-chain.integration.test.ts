@@ -37,6 +37,7 @@ import { createPgClient, getStorageAdapter, initCore, loadLocales } from "@breat
 import type * as coreModule from "@breatic/core";
 import { lipsyncSharedStepKeys, miniToolStepStateSchema, presentationPinService, taskRepo, upstreamStepRepo } from "@breatic/domain";
 import type * as sharedModule from "@breatic/shared";
+import type * as domainModule from "@breatic/domain";
 import { videoPresentationWorkKeyFor } from "@breatic/shared";
 import { lipsyncFailureReasonSchema, plannedStageJobs } from "@breatic/shared/mini-tools";
 import type * as wavespeedModule from "@worker/providers/wavespeed.js";
@@ -47,9 +48,25 @@ import { lipsyncObjectKey, lipsyncStepKey } from "@worker/handlers/mini-tool/lip
 import { seedStudioFixture } from "@server/__tests__/integration/studio-credit-fixtures.js";
 import { INGEST_ENV } from "./ingest-jobs-fake.js";
 
-const outside = vi.hoisted(() => ({ runPrediction: vi.fn(), fetchUrl: vi.fn(), config: { rejection: { path: "error.code", equals: "lipsync_input_rejected" } } }));
+const outside = vi.hoisted(() => ({ runPrediction: vi.fn(), fetchUrl: vi.fn(), config: { rejection: { path: "error.code", equals: "lipsync_input_rejected" } }, rename: false }));
 vi.mock("@worker/providers/wavespeed.js", async (original) => ({ ...await original<typeof wavespeedModule>(), runPrediction: outside.runPrediction }));
 vi.mock("@breatic/shared", async (original) => ({ ...await original<typeof sharedModule>(), fetchUrlToIngest: outside.fetchUrl }));
+// §97 D25-8: the model catalog the worker reads; a case renames the upstream fields the yaml declares for SAM3 and sync-3.
+vi.mock("@breatic/domain", async (original) => {
+  const actual = await original<typeof domainModule>();
+  return { ...actual, getFullModelConfig: (kind: Parameters<typeof actual.getFullModelConfig>[0]): ReturnType<typeof actual.getFullModelConfig> => {
+    const config = actual.getFullModelConfig(kind);
+    if (!outside.rename || kind !== "video") return config;
+    const renamed = structuredClone(config);
+    const params = (name: string): Record<string, Record<string, unknown>> => renamed.models.find((model) => model.name === name)!.params as Record<string, Record<string, unknown>>;
+    const sam3 = params("sam3-video-rle");
+    for (const [name, upstream] of [["video", "source_video"], ["box_prompts", "boxes"], ["apply_mask", "mask_preview"]] as const) sam3[name] = { ...sam3[name], upstream };
+    const sync = params("sync-lipsync-3");
+    for (const [name, upstream] of [["video", "input_video"], ["audio", "input_audio"]] as const) sync[name] = { ...sync[name], upstream };
+    sync.sync_mode = { ...(sync.sync_mode ?? { default: null, fill: "none" }), upstream: "mode" };
+    return renamed;
+  } };
+});
 // Today's configuration offers lip-sync with sync-3 and the asynchronous rejection field its measurement found (§9.3).
 vi.mock("@breatic/core", async (original) => {
   const actual = await original<typeof coreModule>();
@@ -136,6 +153,7 @@ beforeEach(() => {
   vi.clearAllMocks(); configure();
   submitted = []; scripted = new Map(); genFault = {}; failJob = () => false;
   outside.config.rejection = { path: "error.code", equals: "lipsync_input_rejected" };
+  outside.rename = false;
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     if (url.pathname === "/jobs" && init?.method === "POST") {
@@ -548,5 +566,28 @@ describe("a lip-sync retry reuses the done steps by their frozen keys (§97 D21-
     expect(jobsOf("stitch")).toHaveLength(1);
     const steps = await upstreamStepRepo.listSteps(second.execution.taskId);
     expect(steps.filter((step) => step.kind === "generate")).toEqual([]);
+  });
+});
+
+// Worker AGENTS.md "Upstream field names are mapped in one place": the track and gen bodies are built by
+// `providers/upstream-body.ts` from each param's `upstream` in the model yaml, so renaming a declared field in the catalog
+// renames the submitted key (§97 D25-8). `sync_mode` is declared on `sync-lipsync-3`.
+describe("lip-sync request bodies follow the model yaml's upstream names (§97 D25-8)", () => {
+  it("LU01 renaming SAM3's and sync-3's declared upstream fields renames the submitted keys", async () => {
+    outside.rename = true;
+    const f = await seed(); await drive(f);
+    const track = outside.runPrediction.mock.calls.find((call) => call[1] === TRACKER)![2] as Record<string, unknown>;
+    expect(Object.keys(track).sort()).toEqual(["boxes", "mask_preview", "source_video"]);
+    expect(track.mask_preview).toBe(false);
+    expect((track.boxes as Record<string, unknown>[])[0]).toMatchObject({ frame_index: 12, object_id: 1 });
+    const gen = outside.runPrediction.mock.calls.find((call) => call[1] === GENERATOR)![2] as Record<string, unknown>;
+    expect(Object.keys(gen).sort()).toEqual(["input_audio", "input_video", "mode"]);
+    expect(gen.mode).toBe("cut_off");
+  });
+
+  it("LU02 the catalog declares sync_mode on sync-lipsync-3", async () => {
+    const actual = await vi.importActual<typeof domainModule>("@breatic/domain");
+    const model = actual.getFullModelConfig("video").models.find((candidate) => candidate.name === "sync-lipsync-3");
+    expect(model?.params?.sync_mode, "sync-lipsync-3 declares sync_mode").toBeDefined();
   });
 });
