@@ -485,6 +485,51 @@ describe("a transitions pickup runs its frozen chunks on their container classes
   });
 });
 
+// §97 D23-3 (frames-split §5.4 预算 row: 各阶段的块数与块边界在受理事务里算出并冻结进计划，worker按冻结结果派发，不再重新切块): the
+// worker may rebuild the timeline from the frozen draft and fps, but every chunk boundary comes from the frozen layout.
+describe("the frozen chunk boundaries are dispatched as they are (§97 D23-3)", () => {
+  // A valid partition of the fade's [0, 167) that no even split by one target gives: uneven encode chunks on both sides
+  // and the window [71, 96) split at frame 90.
+  const FROZEN = { encode: [{ start: 0, end: 10 }, { start: 10, end: 71 }, { start: 96, end: 100 }, { start: 100, end: 167 }], window: [{ start: 71, end: 90 }, { start: 90, end: 96 }] };
+
+  it("TB00 the frozen layout partitions the timeline and differs from every single-target plan", () => {
+    const value = run({ kind: "fade", duration: 1 }, B, 3.84, 24);
+    const all = [...FROZEN.encode, ...FROZEN.window].sort((left, right) => left.start - right.start);
+    expect(all.every((window, at) => window.start === (at === 0 ? 0 : all[at - 1]!.end))).toBe(true);
+    expect(all.at(-1)!.end).toBe(value.timeline.frameCount);
+    for (let target = 1; target <= value.timeline.frameCount; target += 1) expect(planTransitionChunks(value.timeline, target)).not.toEqual(FROZEN);
+  });
+
+  it("TB01 every chunk_encode and transition_window covers exactly one frozen window, and the stitch binds them in output order", async () => {
+    const value = { ...run({ kind: "fade", duration: 1 }, B, 3.84, 24), layout: FROZEN };
+    serve(plan(value));
+    const completion = await drive();
+    expect(h.removal).not.toHaveBeenCalled();
+    const second = value.timeline.clips[1]!;
+    for (const [k, window] of FROZEN.encode.entries()) {
+      const request = requestOf(encId(k));
+      const recipe = recipeOf(request);
+      const onFirst = window.end <= value.timeline.window!.startFrame;
+      expect(bound(request, recipe.inputId)).toBe(onFirst ? A.key : B.key);
+      // Both clips present at the output's 25 fps from their in point 0: output frame k is the first clip's presentation
+      // frame k and the second clip's frame k − its start frame.
+      const offset = onFirst ? 0 : second.startFrame - second.inFrame;
+      expect(recipe.window).toEqual({ start: window.start - offset, end: window.end - offset });
+    }
+    for (const [k, frames] of FROZEN.window.entries()) {
+      expect(recipeOf(requestOf(winId(k)))).toMatchObject({ kind: "transition_window", frames, window: { startFrame: 71, frameCount: 25 } });
+    }
+    const sentIds = sent().map((request) => request.jobId);
+    expect(sentIds.filter((id) => /:out:0:(enc|win):/.test(id)).sort())
+      .toEqual([...FROZEN.encode.map((_, k) => encId(k)), ...FROZEN.window.map((_, k) => winId(k))].sort());
+    const order = [...FROZEN.encode.map((window, k) => ({ start: window.start, id: encId(k) })), ...FROZEN.window.map((window, k) => ({ start: window.start, id: winId(k) }))]
+      .sort((left, right) => left.start - right.start);
+    const stitch = requestOf(STITCH);
+    expect((recipeOf(stitch).chunks as { inputId: string }[]).map((chunk) => bound(stitch, chunk.inputId))).toEqual(order.map(({ id }) => requestOf(id).outputs[0]!.storageKey));
+    expect(statuses(completion)).toEqual(["registered"]);
+  });
+});
+
 describe("a Cut transition (§5.4 派发: 转场选「直接切换」时不派 transition_window; §97 D16-1)", () => {
   // The current video, a Cut, then 1.48 s (37 frames) of a source without audio; chunks of at most 48 frames.
   const cut = (): Run => run({ kind: "cut", duration: 0 }, SILENT, 1.48, 48);
