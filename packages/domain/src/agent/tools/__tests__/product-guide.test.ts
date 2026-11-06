@@ -605,10 +605,10 @@ describe("what the guide says", () => {
     expect(list).not.toMatch(/video and sound nodes list none/);
   });
 
-  it("says a template may place generations upstream to run first, wired and @'d, and an input fed upstream reuses a picture already connected", () => {
+  it("says a template may place generations upstream to run first, wired and @'d, and nodes it places to take what it needs reuse a picture already connected, even one the node itself does not use", () => {
     const generating = section("Generating");
     expect(generating).toMatch(/A template may also place picture or video nodes to the left that generate first, connected and @'d; a note at the top of the prompt says to generate them first\./);
-    expect(generating).toMatch(/When a template feeds what it needs into those nodes too, a picture already connected to the node is connected to them as well\./);
+    expect(generating).toMatch(/When a template places nodes that take what it needs, a picture already connected to the node is connected to them as well, also when the node itself does not use it\./);
     expect(generating).not.toMatch(/the two listed here do neither/);
   });
 
