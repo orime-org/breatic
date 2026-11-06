@@ -153,7 +153,15 @@ loads none of these modules into its own process.
 | LLVM 21 libraries, pulled in by llvmpipe | Apache-2.0 (Alpine's package metadata) | Alpine 3.23 `main/llvm21` |
 | Xvfb 21.1 (the X display headless-gl draws through) and its X libraries | MIT, X11 | Alpine 3.23 `community/xorg-server`, `main/libx11` and siblings |
 
-None of them is GPL or AGPL. The image carries each module's licence files and a
+Three libraries those packages link carry a GPL choice: `libelf` (elfutils,
+linked by Mesa), `nettle` and `gmp` (linked by Xvfb) are each offered under
+GPL-2.0-or-later **or** LGPL-3.0-or-later. **Our election: LGPL-3.0-or-later**,
+which lets the renderer and Xvfb load them as the shared libraries Alpine ships,
+replaceable by the recipient. Alpine's metadata for `libelf` also names
+GPL-3.0-or-later, which covers the elfutils programs, none of which this image
+runs. The rest are permissive.
+
+The image carries each module's licence files and a
 `SOURCE` file at `/usr/share/gl-renderer-source/`, written while the image is
 built: every module's version and declared licence, and every Alpine package the
 image adds to its base with its version, licence and the aports commit it was
