@@ -64,12 +64,13 @@ describe('parameter-owned overlay in the actual canonical node display', () => {
 
 
 describe('Run with a trusted frame table and an unknown presented frame', () => {
-  it.each(['current', 'first', 'last', 'interval'] as const)('gates %s by its actual frame dependency without inventing a Current time', (mode) => {
+  // §97: the interval mode is removed (frames-split §10.6), so only the three kept modes are gated (4.4.5).
+  it.each(['current', 'first', 'last'] as const)('gates %s by its actual frame dependency without inventing a Current time', (mode) => {
     const doc = getDoc(docName.canvasSpace(projectId, spaceId));
     addNode(projectId, spaceId, { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { content: sourceURL, name: 'Source', locked: false, createdAt: 0, createdBy: 'test', attachments: [] } });
     const source = { nodeId, canonicalURL: sourceURL, mediaInfo: { width: 160, height: 240, duration: 0.28, mimeType: 'video/webm' } };
     const initial = createVideoToolDraft('video.extract-frames', source);
-    const draft = { ...initial, params: { mode, currentTime: 0.13, interval: 0.04 } };
+    const draft = { ...initial, params: { mode, currentTime: 0.13 } } as typeof initial;
     commitVideoToolDraft(doc, nodeId, 'video.extract-frames', draft);
     canvasSessions.of(spaceId).getState().openMiniTool(nodeId, 'video.extract-frames', { sourceContent: sourceURL, params: {} });
     const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...source.mediaInfo } };

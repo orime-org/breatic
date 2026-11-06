@@ -6,13 +6,14 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { VideoToolControls } from '../video/VideoToolControls';
 import type { VideoToolDraftById } from '@breatic/shared/mini-tools';
+import { t } from '@breatic/shared';
 
 vi.mock('@web/spaces/canvas/mini-tool/video/use-video-frame-thumbnails', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../video/use-video-frame-thumbnails')>()),
   useVideoFrameThumbnails: () => ({ status: 'loading', frames: [] }),
 }));
 const source = { nodeId: '10000000-0000-4000-8000-000000000001', canonicalURL: 'https://media.example.test/source.webm', mediaInfo: { width: 160, height: 240, duration: 0.28, mimeType: 'video/webm' } };
-const draft: VideoToolDraftById['video.extract-frames'] = { version: 1, draftId: '20000000-0000-4000-8000-000000000001', revision: '30000000-0000-4000-8000-000000000001', source, inputs: [], params: { mode: 'first', currentTime: 0.13, interval: 0.04 } };
+const draft: VideoToolDraftById['video.extract-frames'] = { version: 1, draftId: '20000000-0000-4000-8000-000000000001', revision: '30000000-0000-4000-8000-000000000001', source, inputs: [], params: { mode: 'first', currentTime: 0.13 } } as VideoToolDraftById['video.extract-frames'];
 const table = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 1, step: 4, duration: 4 }, { start: 4, count: 3, step: 8, duration: 8 }] };
 const common = { toolId: 'video.extract-frames' as const, draft, analyses: [], frameTable: table, disabled: false, pickingSlot: null, inputNames: new Map(), onPick: vi.fn(), onAnalyse: vi.fn(), analysing: false, onEditTimeline: vi.fn() };
 
@@ -20,7 +21,17 @@ describe('explicit unknown presented frame', () => {
   it('disables only Current when no actual frame exists and keeps the real-table modes reachable', () => {
     render(<VideoToolControls {...common} presentedTime={null} onChange={vi.fn()} />);
     expect(screen.getByTestId('video-frame-mode-current')).toBeDisabled();
-    for (const mode of ['first', 'last', 'interval']) expect(screen.getByTestId(`video-frame-mode-${mode}`)).not.toBeDisabled();
+    for (const mode of ['first', 'last']) expect(screen.getByTestId(`video-frame-mode-${mode}`)).not.toBeDisabled();
+  });
+
+  // §97 (frames-split §10.6 删除行; canvas design §4 抽帧行; demo 2026-10-23-1306-video-tools): the frame modes are exactly
+  // First, Last and Current, side by side in one row; the interval mode is gone.
+  it('offers exactly the First, Last and Current modes in one row, with no interval mode', () => {
+    render(<VideoToolControls {...common} presentedTime={0.13} onChange={vi.fn()} />);
+    const modes = screen.getAllByTestId(/^video-frame-mode-/);
+    expect(modes.map((mode) => mode.getAttribute('data-testid'))).toEqual(['video-frame-mode-first', 'video-frame-mode-last', 'video-frame-mode-current']);
+    expect(new Set(modes.map((mode) => mode.parentElement)).size).toBe(1);
+    expect(screen.queryByText(t('canvas.miniTool.videoUI.interval'))).toBeNull();
   });
 
   it('never persists a fabricated zero or null Current time while selecting a table-only mode', () => {

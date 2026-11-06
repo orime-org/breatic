@@ -22,6 +22,11 @@ describe('approved video tool edit boundaries', () => {
     expect(first.draftId).not.toBe(second.draftId);
     expect(first.revision).not.toBe(second.revision);
   });
+  // §97 (frames-split §10.6 删除行): a new frame draft starts on Current with no interval period.
+  it('starts a frame draft on Current with no interval period', () => {
+    expect(createVideoToolDraft('video.extract-frames', source).params).toEqual({ mode: 'current', currentTime: 0 });
+  });
+
   it('retains every audio and explicit start when people are reidentified', () => {
     expect(resetDialoguePeople(rows)).toEqual(rows.map((row) => ({ ...row, personId: null, analysisRunId: null })));
     expect(rows.map((row) => row.personId)).toEqual(['person-a', 'person-a', 'person-a']);
