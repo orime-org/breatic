@@ -17,6 +17,10 @@
  *   `attemptId` for container steps).
  * - `lipsyncStoppedLines(people)`: once a person has `no_face` or `model_rejected`, every other person whose paid step
  *   (`track`, `gen`) is not yet submitted gets a `stopped` line on that step and is not submitted; submitted steps settle.
+ * - `lipsyncFacesFailureLine(reason)` (§97 D18-3): the person line of a failed `lipsync_faces` job. Its container reports
+ *   `empty_foreground` (no tracked foreground over the used range: the track found nobody) → `{ step: "track", category:
+ *   "no_face" }`, `no_face` (foreground but no face in any frame) → `{ step: "faces", category: "no_face" }`; any other
+ *   container failure → `{ step: "faces", category: "failed" }`.
  * - `lipsyncFailureReason(people, shared)`: the one CommitFail reason of §9.4, a line per person who did not succeed with
  *   its `detectionNumber`, successful people left out, valid under shared `lipsyncFailureReasonSchema`.
  */
@@ -36,6 +40,7 @@ interface StepsApi {
   lipsyncStepKey: (planFingerprint: string, personId: string | null, kind: PersonStep | "composite") => string;
   lipsyncObjectKey: (stepKey: string, attemptId: string) => string;
   lipsyncStoppedLines: (people: readonly PersonState[]) => Line[];
+  lipsyncFacesFailureLine: (reason: string) => { step: PersonStep; category: Category };
   lipsyncFailureReason: (people: readonly (PersonState & { succeeded: boolean })[], shared: { step: "prepare" | "composite" | "stitch" | "expired"; category: "timeout" | "failed" } | null) => unknown;
 }
 const MODULE = "@worker/handlers/mini-tool/lipsync-steps.js";
@@ -120,6 +125,17 @@ describe("stopping the other people's paid steps (§97; execution design §9.4 s
     ["only a failure", [person(1, "done", "done", { step: "gen", category: "failed" }), person(2, "unsubmitted", "unsubmitted")]],
   ] as const)("ST03 %s stops nobody", async (_name, people) => {
     expect((await steps()).lipsyncStoppedLines(people)).toEqual([]);
+  });
+});
+
+describe("the person line of a failed faces job (§97 D18-3; execution design §9.4 no_face row)", () => {
+  it.each([
+    ["empty_foreground", { step: "track", category: "no_face" }],
+    ["no_face", { step: "faces", category: "no_face" }],
+    ["tool_failed", { step: "faces", category: "failed" }],
+    ["internal", { step: "faces", category: "failed" }],
+  ] as const)("FL01 %s", async (reason, line) => {
+    expect((await steps()).lipsyncFacesFailureLine(reason)).toEqual(line);
   });
 });
 

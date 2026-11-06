@@ -222,11 +222,12 @@ describe("model_composite (§97 D15-8; frames-split §7.17, execution design §8
   });
 });
 
-// inner#1306 test plan §97 D17-7 (a) (execution design §9.4 no_face row; frames-split §7.17 lipsync_faces row): a container
-// step that finds no face (or an empty tracked foreground) over the used range ends its job as failed with `no_face`.
-describe("the no_face container failure (§97 D17-7)", () => {
-  it("NF01 a failed job report may give no_face as its reason", () => {
-    const report = { schemaVersion: 2, state: "failed", outputs: [], reason: "no_face", usage: { wallMs: 1000, cpuUsec: null } };
+// inner#1306 test plan §97 D17-7 (a), D18-3 (execution design §9.4 no_face row; frames-split §7.17 lipsync_faces row): the
+// `lipsync_faces` container reads the person's track and ends its job as failed with one of two reasons: `empty_foreground`
+// when the track has no foreground over the used range, `no_face` when there is foreground but no face in any frame.
+describe("the lip-sync faces container failures (§97 D17-7, D18-3)", () => {
+  it.each(["empty_foreground", "no_face"])("NF01 a failed job report may give %s as its reason", (reason) => {
+    const report = { schemaVersion: 2, state: "failed", outputs: [], reason, usage: { wallMs: 1000, cpuUsec: null } };
     expect(miniToolPlanJobReportSchema.safeParse({ ...report, reason: "tool_failed" }).success).toBe(true);
     expect(miniToolPlanJobReportSchema.safeParse(report).success).toBe(true);
   });

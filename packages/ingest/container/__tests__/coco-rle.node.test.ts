@@ -45,8 +45,11 @@ describe("COCO compressed RLE to VOID gray8 mask", () => {
 
 // inner#1306 test plan §97 D17-7 (a) (execution design §9.4 no_face row: 「track在用到的源区间内整段都是空前景」): on top of the
 // decoder, `trackedForegroundEmpty(masks, range, expected)` says whether a person's SAM3 track has no foreground pixel on
-// any presentation frame in the used source range [start, end) (frame indices); a frame without a mask counts as empty.
-// The container step that reads the track then reports the job failure `no_face`.
+// any frame in the used source range [start, end); a frame without a mask counts as empty. §97 D18-3: the SAM3 RLE file is a
+// JSON array of compressed counts, one per frame of the prepared video in order (inner demo lipsync-fixture
+// `track-person-*-rle.json`, 150 entries for 150 frames, no explicit frame index), so the array index is the frame index;
+// the container builds each mask from the counts and the prepared video's size. `lipsync_faces` then reports
+// `empty_foreground`.
 describe("an empty tracked foreground over the used range (§97 D17-7)", () => {
   type Empty = (masks: readonly (api.CocoRleMask | null)[], range: { start: number; end: number }, expected: { width: number; height: number }) => boolean;
   const empty = (api as unknown as { trackedForegroundEmpty?: Empty }).trackedForegroundEmpty;
