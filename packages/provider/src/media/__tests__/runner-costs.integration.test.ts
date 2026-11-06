@@ -376,7 +376,7 @@ describe("a run's billed answers on fal and SandBase reach the caller once, howe
   const FAL_STATUSES = ["inProgress", "completed", "completedWithError"] as const;
   const FAL_RESULTS = ["ok", "dataUri", "busyForAPoll", "refused"] as const;
   const FAL_BILLINGS = ["events", "none", "forbidden", "busy", "malformed"] as const;
-  const SB_SUBMITS = ["accept", "finishNow", "finishNowDataUri", "finishNowNoId", "failedNow", "overLimitNamed", "overLimitUnnamed", "unreadable", "cutNamed", "cutUnnamed", "busy", "balance", "noModel"] as const;
+  const SB_SUBMITS = ["accept", "finishNow", "finishNowDataUri", "finishNowNoId", "failedNow", "overLimitNamed", "overLimitUnnamed", "unreadable", "cutNamed", "cutUnnamed", "emptyId", "busy", "balance", "noModel"] as const;
   const SB_ASKS = ["running", "completed", "completedEmpty", "dataUri", "failed", "overLimit", "busy"] as const;
   const SB_COSTS = ["settled", "unsettled", "unknown", "busy", "malformed", "noCost"] as const;
   /** The caller's media limit here: a SandBase answer carrying a bigger inline file is over the read limit. */
@@ -538,6 +538,10 @@ describe("a run's billed answers on fal and SandBase reach the caller once, howe
             }
             if (next === "failedNow") return { status: 200, body: { id: bill("s"), status: "failed", error: "boom" } };
             if (next === "cutNamed") return { status: 202, raw: `{"id":"${bill("s")}","sta`, contentType: "application/json", headers: { "x-request-id": `s${n}` }, cut: true };
+            if (next === "emptyId") {
+              anonymous++;
+              return { status: 202, body: { id: "", status: "pending" } };
+            }
             if (next === "cutUnnamed") {
               anonymous++;
               return { status: 202, raw: "{\"id\":\"s", contentType: "application/json", cut: true };

@@ -821,6 +821,29 @@ describe("Mureka's steps", () => {
     expect(expectState(answer, "done").costs).toHaveLength(3);
   });
 
+  it("hands back only the vocal as a clone, and uploads the reference again whatever the cache holds", async () => {
+    const r = runner();
+    a.answer(({ method, path }) => {
+      if (path === "/billings/search") return billing([{ type: "deduct", price: 0.01 }]);
+      if (method === "POST" && path === "/mureka-ai/create-upload-id") return accepted("p-up");
+      if (method === "POST" && path === "/mureka-ai/vocal-clone") return accepted("p-voc");
+      if (method === "POST") return accepted("p-song");
+      if (path === "/predictions/p-up/result") return result("p-up", "completed", [{ id: "u1", purpose: "reference", reference_id: "ref-1" }]);
+      if (path === "/predictions/p-voc/result") return result("p-voc", "completed", [{ id: "v1", vocal_id: "voc-1" }]);
+      return result("p-song", "completed", ["https://out.example/song.mp3"]);
+    });
+    const sourceKeys = { ...keys.sourceKeys, "https://cdn.example/song.mp3": "sha-song" };
+    const uploaded = [{ upstream: "ws_a", kind: "upload_reference", sourceKey: "sha-song", upstreamId: "ref-old" }] as unknown as MediaClone[];
+    let answer: MediaAnswer = await r.plan("mureka", song, DEFAULT, { ...keys, sourceKeys, clones: uploaded, durations: {} });
+    expect(expectState(answer, "send").step.kind).toBe("upload_reference");
+    const clones: MediaClone[] = [];
+    while (answer.state === "send" || answer.state === "running") {
+      answer = answer.state === "send" ? await r.send(stored(answer.ticket), live()) : await r.poll(stored(answer.ticket), live());
+      clones.push(...answer.clones);
+    }
+    expect(clones).toEqual([{ upstream: "ws_a", kind: "vocal", sourceKey: "sha-vocal", upstreamId: "voc-1" }]);
+  });
+
   it("goes straight to the song when the run carries no source", async () => {
     const answer = expectState(await runner().plan("mureka", { prompt: "pop", params: { lyrics: "la la" } }, DEFAULT, { ...keys, clones: [], durations: {} }), "send");
     expect(answer.step.kind).toBe("generate");

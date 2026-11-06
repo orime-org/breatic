@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { catalog, coveredValues, shipped } from "../../config/__tests__/shipped.js";
 import { adapterOf } from "../adapters.js";
 import { missingRequired, type SchemaSnapshot } from "../../config/upstream-schema.js";
-import { stepCalls } from "../../pricing/estimate.js";
+import { stepCalls, stepSource } from "../../pricing/estimate.js";
 import { firstBody, takes, type SampleRun } from "./reseller-bodies.js";
 
 /** The step context a body sample was built with; `source` is the url the step reads, and absent fields are unset. */
@@ -67,9 +67,10 @@ describe.each(cases)("the request bodies of $model on $binding.upstream", ({ mod
   });
 
   it("are what the runner sends for each sample run, a param an extra step serves written as the id it answered", () => {
-    const served = (binding.extra_steps ?? []).map((s) => s.for_param).filter((p): p is string => p !== undefined);
     for (const run of sample.runs) {
-      for (const param of served) if (run.params[param] !== undefined && run.params[param] !== null) expect(run.ids?.[param], `${param} in ${JSON.stringify(run.params)}`).toBeDefined();
+      for (const step of binding.extra_steps ?? []) {
+        if (step.for_param !== undefined && stepCalls(step, run.params).length > 0) expect(run.ids?.[step.for_param], `${step.for_param} in ${JSON.stringify(run.params)}`).toBeDefined();
+      }
       expect(firstBody(binding, run), JSON.stringify(run.params)).toEqual(run.body);
     }
   });
@@ -92,6 +93,20 @@ describe.each(cases)("the request bodies of $model on $binding.upstream", ({ mod
     const first = sample.runs[0]!.params;
     const editor = Object.entries(offered.get(model) ?? {}).filter(([, p]) => p.fill === "editor").map(([name]) => name);
     expect(editor.filter((name) => typeof first[name] !== "string" || first[name] === "")).toEqual([]);
+  });
+
+  it("sample each source at a url of its own param, so a step reading another param shows", () => {
+    const wrong: string[] = [];
+    for (const [name, param] of Object.entries(offered.get(model) ?? {})) {
+      if (param.accepts === undefined) continue;
+      for (const run of sample.runs) {
+        const value = run.params[name];
+        for (const url of (Array.isArray(value) ? value : [value]).filter((v): v is string => typeof v === "string")) {
+          if (!new RegExp(`/${name}\\.[a-z0-9]+$`).test(url)) wrong.push(`${name}=${url}`);
+        }
+      }
+    }
+    expect([...new Set(wrong)]).toEqual([]);
   });
 
   it("sample each source with a file of the kind its param accepts, in the runs and in each step's context", () => {
@@ -138,12 +153,7 @@ describe.each(cases)("the request bodies of $model on $binding.upstream", ({ mod
   });
 
   it("show each extra step on a run that makes it, reading its source as the runner does", () => {
-    const wrong = sample.steps.filter((s) => {
-      if (s.context.param === undefined) return false;
-      const value = s.context.params[s.context.param];
-      const source = s.context.itemIndex === null ? value : Array.isArray(value) ? value[s.context.itemIndex] : undefined;
-      return typeof source !== "string" || s.context.source !== source;
-    }).map((s) => `${s.kind} ${s.context.param}=${JSON.stringify(s.context.params[s.context.param!])} source=${s.context.source}`);
+    const wrong = sample.steps.filter((s) => s.context.param !== undefined && s.context.source !== stepSource(s.context.params, s.context.param, s.context.itemIndex)).map((s) => `${s.kind} ${s.context.param}=${JSON.stringify(s.context.params[s.context.param!])} source=${s.context.source}`);
     expect(wrong).toEqual([]);
   });
 
