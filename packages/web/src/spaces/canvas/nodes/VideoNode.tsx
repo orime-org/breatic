@@ -25,7 +25,7 @@ interface VideoNodeProps {
 
 /**
  * Video node — renders the unified {@link MediaPlayer} (native `<video>` +
- * cover poster + a scrubber, volume and fullscreen control bar, zero
+ * cover poster + a scrubber and volume control bar, zero
  * third-party player dependency).
  * @param root0 - Video node props.
  * @param root0.data - Video node payload (asset URL, cover poster).
@@ -54,18 +54,24 @@ export const VideoNode = React.memo(function VideoNode({
   // Where the node's player stood as full screen opened; null while closed.
   // One player sounds at a time: the node's pauses, and takes back the full
   // screen's position and sound when it closes.
-  const [fullscreenStart, setFullscreenStart] = React.useState<MediaPlayerState | null>(null);
-  /** Opens full screen where the node's player is, and pauses it. */
-  const openFullscreen = (): void => {
-    const handle = player.current;
-    if (!handle) return;
-    setFullscreenStart(handle.read());
-    handle.pause();
-  };
+  const [fullscreen, setFullscreen] = React.useState<{
+    start: MediaPlayerState;
+    src: string;
+    poster?: string;
+    size?: { width: number; height: number };
+  } | null>(null);
   const size =
     typeof data.width === 'number' && typeof data.height === 'number'
       ? { width: data.width, height: data.height }
       : undefined;
+  /** Opens full screen where the node's player is, and pauses it. */
+  const openFullscreen = (): void => {
+    const handle = player.current;
+    if (!handle) return;
+    // What it opened on stays on screen while the node changes under it.
+    setFullscreen({ start: handle.read(), src: data.content ?? '', poster: data.coverUrl, size });
+    handle.pause();
+  };
   return (
     <ContentNodeFrame
       modality='video'
@@ -95,17 +101,17 @@ export const VideoNode = React.memo(function VideoNode({
               controlsHidden={focusPicking}
             />
             <MediaFullscreen
-              open={fullscreenStart !== null}
+              open={fullscreen !== null}
               onOpenChange={(open) => {
-                if (!open) setFullscreenStart(null);
+                if (!open) setFullscreen(null);
               }}
               onClosed={(state) => player.current?.apply(state)}
               kind='video'
-              src={data.content ?? ''}
-              poster={data.coverUrl}
+              src={fullscreen?.src ?? ''}
+              poster={fullscreen?.poster}
               name={data.name ?? ''}
-              size={size}
-              start={fullscreenStart ?? undefined}
+              size={fullscreen?.size}
+              start={fullscreen?.start}
             />
           </NodeMediaInset>
         }

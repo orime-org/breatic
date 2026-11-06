@@ -7,6 +7,7 @@ import { X } from 'lucide-react';
 import { Dialog, DialogClose, DialogContent, DialogTitle } from '@web/components/ui/dialog';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { useTranslation } from '@web/i18n/use-translation';
+import { takeStray } from '@web/lib/stray-file-drop';
 import { cn } from '@web/lib/utils';
 import { MediaPlayer, type MediaPlayerHandle } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 import type { MediaPlayerState } from '@web/spaces/canvas/nodes/_shared/use-media-player';
@@ -49,6 +50,16 @@ interface MediaFullscreenProps extends MediaFullscreenSource {
  */
 function stop(event: React.SyntheticEvent): void {
   event.stopPropagation();
+}
+
+/**
+ * Stops a file drag from reaching the host, and cancels the browser's own
+ * opening of the file: the window's stray-file guard never sees it now.
+ * @param event - A `dragover` or a `drop`.
+ */
+function stopDrop(event: React.DragEvent): void {
+  event.stopPropagation();
+  takeStray(event.nativeEvent);
 }
 
 /**
@@ -118,8 +129,8 @@ export function MediaFullscreen({
       onContextMenu={stop}
       onKeyDown={stop}
       onDragEnter={stop}
-      onDragOver={stop}
-      onDrop={stop}
+      onDragOver={stopDrop}
+      onDrop={stopDrop}
     >
       <Dialog open={open} onOpenChange={change}>
         <DialogContent
@@ -131,7 +142,8 @@ export function MediaFullscreen({
           // close button to the content's box until the animation ends.
           className={cn(
             'max-w-[min(96vw,1600px)] items-center border-0 bg-transparent shadow-none data-[state=closed]:animate-none data-[state=open]:animate-none',
-            kind === 'video' && 'w-[min(96vw,1600px,calc(90vh*var(--media-aspect,100)))]',
+            // As wide as the media, so the dark either side is backdrop and a press there closes.
+            kind === 'video' ? 'w-[min(96vw,1600px,calc(90vh*var(--media-aspect,100)))]' : 'w-fit',
           )}
           style={kind === 'video' ? aspect : undefined}
         >
@@ -160,7 +172,7 @@ export function MediaFullscreen({
             </div>
           ) : (
             <div className='w-full [&_video]:max-h-[90vh]'>
-              <MediaPlayer ref={player} modality='video' src={src} poster={poster} size={size} start={start} onDimensions={setMeasured} />
+              <MediaPlayer ref={player} modality='video' src={src} poster={poster} fullPoster size={size} start={start} onDimensions={setMeasured} />
             </div>
           )}
           <DialogClose

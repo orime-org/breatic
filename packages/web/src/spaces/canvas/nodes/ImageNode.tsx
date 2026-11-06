@@ -45,7 +45,8 @@ export const ImageNode = React.memo(function ImageNode({
   onRename,
 }: ImageNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.content);
-  const [fullscreen, setFullscreen] = React.useState(false);
+  // What full screen opened on, kept while it is open; null while closed.
+  const [fullscreen, setFullscreen] = React.useState<{ src: string; size?: { width: number; height: number } } | null>(null);
   const { resolution, setResolution } = useNodeResolution(data.content, data.width, data.height);
   // A rotate & flip panel open on this node previews its result on the
   // picture itself (inner#888 §7.4); nothing is written until Run.
@@ -98,7 +99,11 @@ export const ImageNode = React.memo(function ImageNode({
           <NodePlaceholder modality='image' onActivate={onActivate} />
         }
         content={
-          <NodeMediaInset onFullscreen={() => setFullscreen(true)}>
+          <NodeMediaInset
+            onFullscreen={() =>
+              setFullscreen({ src: data.content ?? '', size: knowsSize ? { width: data.width!, height: data.height! } : undefined })
+            }
+          >
             <div
               className='relative transition-transform duration-200'
               style={preview === undefined ? undefined : { transform: preview }}
@@ -167,12 +172,14 @@ export const ImageNode = React.memo(function ImageNode({
               ) : null}
             </div>
             <MediaFullscreen
-              open={fullscreen}
-              onOpenChange={setFullscreen}
+              open={fullscreen !== null}
+              onOpenChange={(open) => {
+                if (!open) setFullscreen(null);
+              }}
               kind='image'
-              src={data.content ?? ''}
+              src={fullscreen?.src ?? ''}
               name={data.name ?? ''}
-              size={knowsSize ? { width: data.width!, height: data.height! } : undefined}
+              size={fullscreen?.size}
             />
           </NodeMediaInset>
         }

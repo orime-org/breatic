@@ -90,6 +90,15 @@ describe('a document video full screen', () => {
     expect(inlineVideo().currentTime).toBe(12);
   });
 
+  // inner#1844 round 1: what opened stays on screen while the block changes.
+  it('keeps showing what it opened on when the block gets a new file', () => {
+    const editor = open('video', 600);
+    fireEvent.click(screen.getAllByTestId('doc-media-fullscreen')[0]!);
+    const id = (editor.document[0] as { id: string }).id;
+    act(() => editor.updateBlock(id, { props: { url: '/other.mp4' } } as never));
+    expect(fullVideo().getAttribute('src')).toBe('/clip.mp4');
+  });
+
   it('opens from the narrow video panel, closes the panel and returns the focus to the body', async () => {
     const editor = open('video', 80);
     fireEvent.pointerEnter(screen.getByTestId('doc-media-frame'));

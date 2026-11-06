@@ -270,11 +270,25 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   const actionFocused = React.useRef(false);
   const previousReadOnly = React.useRef(readOnly);
   const handoffAfterRoleChange = readOnly && !previousReadOnly.current && actionFocused.current;
-  const [fullscreen, setFullscreen] = React.useState(false);
   const fullscreenId = React.useId();
   const player = React.useRef<MediaPlayerHandle>(null);
-  // Where the inline video stood as full screen opened (inner#1844).
-  const [fullscreenStart, setFullscreenStart] = React.useState<MediaPlayerState | undefined>(undefined);
+  const { mediaWidth, mediaHeight } = props;
+  const mediaSize = React.useMemo(
+    () =>
+      type === 'video' && mediaWidth !== undefined && mediaHeight !== undefined
+        ? { width: mediaWidth, height: mediaHeight }
+        : undefined,
+    [type, mediaWidth, mediaHeight],
+  );
+  // What full screen opened on (inner#1844): the file, its size and where the
+  // inline video stood. Kept while it is open, so a new file landing on the
+  // block does not swap what is being watched.
+  const [opened, setOpened] = React.useState<{
+    src: string;
+    size?: { width: number; height: number };
+    start?: MediaPlayerState;
+  } | null>(null);
+  const fullscreen = opened !== null;
   const [narrower, setNarrower] = React.useState(false);
   // The width the media is laid out at, which the preview is judged against.
   const [shownWidth, setShownWidth] = React.useState<number | null>(null);
@@ -303,10 +317,10 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   // Opened from the narrow video's panel, it goes back to the body: the panel
   // closes, and its button moves back inline where it is not shown.
   const fullscreenOpener = React.useRef<'body' | HTMLElement | null>(null);
-  const openFullscreen = React.useCallback((fromPanel = false): void => {
+  const openFullscreen = React.useCallback((): void => {
     const held = document.activeElement;
     fullscreenOpener.current =
-      fromPanel
+      panelShown
         ? 'body'
         : held === null || held === held.ownerDocument.body
           ? null
@@ -317,10 +331,9 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
               : null;
     // One player sounds at a time: the inline one pauses and takes back the
     // full screen's position and sound when it closes.
-    setFullscreenStart(player.current?.read());
+    setOpened({ src: props.url, size: mediaSize, start: player.current?.read() });
     player.current?.pause();
-    setFullscreen(true);
-  }, [actions]);
+  }, [actions, panelShown, props.url, mediaSize]);
   // Above the media, unless the scroller has no room there — then on the
   // media itself, along its top. Never under it: below the media sit its
   // caption and the next block, and a bar there reads as theirs.
@@ -491,20 +504,12 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   }, [sized]);
 
   const width = dragWidth ?? props.previewWidth;
-  const { mediaWidth, mediaHeight } = props;
   // Until it loads, a picture or video has no width of its own: the box holds
   // the one it will be shown at, its own pixel width capped by the row (A23).
   // A picture with no stored size fills the row only while it loads.
   const boxWidth = width ?? mediaWidth;
   const waiting = settledFor !== props.url;
   const fillsRow = type === 'image' && boxWidth === undefined && waiting;
-  const mediaSize = React.useMemo(
-    () =>
-      type === 'video' && mediaWidth !== undefined && mediaHeight !== undefined
-        ? { width: mediaWidth, height: mediaHeight }
-        : undefined,
-    [type, mediaWidth, mediaHeight],
-  );
   const alignment = props.textAlignment ?? 'center';
 
   /**
@@ -579,7 +584,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         mediaHeight={props.mediaHeight}
         waiting={waiting}
         onSettle={setSettledFor}
-        onDoubleClick={() => openFullscreen()}
+        onDoubleClick={openFullscreen}
       />
     ) : (
       <MediaPlayer ref={player} modality={type} src={props.url} size={mediaSize} videoControls={type === 'video' ? videoControls : undefined} />
@@ -651,7 +656,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
           testId='doc-media-fullscreen'
           onPress={() => {
             actions.select();
-            openFullscreen(floating && panelShown);
+            openFullscreen();
           }}
         >
           <Maximize2 />
@@ -867,13 +872,15 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
       {type !== 'audio' && (
         <MediaFullscreen
           open={fullscreen}
-          onOpenChange={setFullscreen}
+          onOpenChange={(next) => {
+            if (!next) setOpened(null);
+          }}
           id={fullscreenId}
           kind={type}
-          src={props.url}
+          src={opened?.src ?? ''}
           name={props.name}
-          size={mediaSize}
-          start={fullscreenStart}
+          size={opened?.size}
+          start={opened?.start}
           onClosed={(state) => player.current?.apply(state)}
           // The keyboard goes back where it was when the media opened. Back in
           // the body it goes through the editor, which writes the kept

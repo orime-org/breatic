@@ -115,7 +115,6 @@ describe('MediaFullscreen', () => {
     expect(el.currentTime).toBe(6);
     expect(el.muted).toBe(true);
     expect(el.volume).toBe(0.3);
-    expect(screen.queryByTestId('fullscreen')).toBeNull();
   });
 
   // A video of unknown size is held to the viewport's height by its width
@@ -134,6 +133,30 @@ describe('MediaFullscreen', () => {
   it('sizes a video from the size its host knows', () => {
     render(<MediaFullscreen open onOpenChange={() => {}} kind='video' src='/v.mp4' name='v' size={{ width: 1080, height: 1920 }} />);
     expect(screen.getByTestId('media-fullscreen').style.getPropertyValue('--media-aspect')).toBe(String(1080 / 1920));
+  });
+
+  // inner#1844 round 1: beside a narrow picture is backdrop, so a press there closes.
+  it('sizes the image content to the picture', () => {
+    render(<MediaFullscreen open onOpenChange={() => {}} kind='image' src='/a.png' name='a' />);
+    expect(screen.getByTestId('media-fullscreen').className).toContain('w-fit');
+  });
+
+  // The window's stray-file guard never sees a drag this layer stops, so the
+  // layer cancels the browser's open-the-file default itself.
+  it('cancels a file dropped on the layer', () => {
+    render(<MediaFullscreen open onOpenChange={() => {}} kind='image' src='/a.png' name='a' />);
+    const img = screen.getByTestId('media-fullscreen-image');
+    const transfer = { types: ['Files'], dropEffect: 'copy' };
+    const over = fireEvent.dragOver(img, { dataTransfer: transfer });
+    const drop = fireEvent.drop(img, { dataTransfer: transfer });
+    expect(over).toBe(false);
+    expect(drop).toBe(false);
+  });
+
+  it('shows the original cover, not its stretched preview', () => {
+    const cover = 'https://resource-dev.breatic.cc/video/2026-09-30/1_18f58aed-b802-4243-a8ea-02d377de9679_cover.png';
+    render(<MediaFullscreen open onOpenChange={() => {}} kind='video' src='/v.mp4' poster={cover} name='v' />);
+    expect(screen.getByTestId('media-element').getAttribute('poster')).toBe(cover);
   });
 
   it('hands the video state back when it closes', async () => {
