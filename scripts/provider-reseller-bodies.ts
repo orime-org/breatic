@@ -9,8 +9,9 @@
  * One file per binding, `packages/provider/test/fixtures/bodies/<upstream>/<model>.json`, holding
  * only runs the binding takes (`rejectedInput`): first the run with every param at its catalog
  * default (a null default left unset), every source the catalog requires (an `accepts` param not
- * marked optional) at a sample url of the kind it accepts, a sample of the first param of the
- * model's first source group when the run carries none of that group, a voice the panel fills from
+ * marked optional) at a sample url named by the param, `https://example.com/<param>.<ext>` with
+ * the extension of the kind it accepts, a sample of the first param of the model's first source
+ * group when the run carries none of that group, a voice the panel fills from
  * the upstream's list at its first voice, and "sample text" in each param the panel fills from its
  * editor (`fill: editor`) without a default; every run's prompt mentions only the references that
  * run carries. Then one run per value a param's sample covers (`coveredValues`) and one per bound
@@ -33,7 +34,7 @@ import { dirname, resolve } from "node:path";
 import type { MediaBinding } from "../packages/provider/src/config/schema.js";
 import { adapterOf } from "../packages/provider/src/media/adapters.js";
 import type { SampleRun } from "../packages/provider/src/media/__tests__/reseller-bodies.js";
-import { isPresent, stepCalls } from "../packages/provider/src/pricing/estimate.js";
+import { isPresent, stepCalls, stepSource } from "../packages/provider/src/pricing/estimate.js";
 
 // The test helpers read `__dirname`, which only a CommonJS load of them has.
 const load = createRequire(import.meta.url);
@@ -63,8 +64,8 @@ const ROOT = resolve(import.meta.dirname, "..");
 const BODIES = resolve(ROOT, "packages/provider/test/fixtures/bodies");
 const RESELLERS = ["fal", "sandbase"] as const;
 const SAMPLE_URL = "https://example.com/sample.png";
-/** The sample url of a source, by the kind of file its param accepts. */
-const SAMPLE_URLS: Readonly<Record<string, string>> = { image: SAMPLE_URL, video: "https://example.com/sample.mp4", audio: "https://example.com/sample.mp3" };
+/** The extension of a source's sample url, by the kind of file its param accepts. */
+const SAMPLE_EXTENSIONS: Readonly<Record<string, string>> = { image: "png", video: "mp4", audio: "mp3" };
 const SAMPLE_TEXT = "sample text";
 const SAMPLE_WORD = "sample";
 const SAMPLE_PROMPT = "a red fox running through fresh snow at dawn";
@@ -88,12 +89,13 @@ function carriesShots(param: CatalogParam | undefined): boolean {
 }
 
 /**
- * The value a param without a default is sampled at.
+ * The value a param without a default is sampled at; a source's url names its param, so a step reading another shows.
+ * @param name - The param's name.
  * @param param - The catalog's param.
  * @returns The value.
  */
-function sampleOf(param: CatalogParam): unknown {
-  const url = (param.accepts === undefined ? undefined : SAMPLE_URLS[param.accepts]) ?? SAMPLE_URL;
+function sampleOf(name: string, param: CatalogParam): unknown {
+  const url = `https://example.com/${name}.${(param.accepts === undefined ? undefined : SAMPLE_EXTENSIONS[param.accepts]) ?? "png"}`;
   if (param.type === "items") return [sampleItem(param), sampleItem(param)];
   if (param.type === "list") return [url];
   if (param.accepts !== undefined || /\bURL\b/.test(param.description ?? "")) return url;
@@ -154,7 +156,7 @@ for (const [model, { upstreams: bindings }] of Object.entries(config.media.model
       if (defaults[name] !== undefined) continue;
       if (p.fill === "editor") required[name] = SAMPLE_TEXT;
       if (p.optional === true) continue;
-      if (p.accepts !== undefined) required[name] = sampleOf(p);
+      if (p.accepts !== undefined) required[name] = sampleOf(name, p);
       else if (p.remote_source !== undefined) {
         const voice = coveredValues(name, p, binding)[0];
         if (voice !== undefined) required[name] = voice;
@@ -164,7 +166,7 @@ for (const [model, { upstreams: bindings }] of Object.entries(config.media.model
     const group = sourceGroups.get(model)?.[0];
     const seeded = group?.any_of[0];
     if (group !== undefined && seeded !== undefined && params[seeded] !== undefined && !group.any_of.some((p) => isPresent(defaults[p] ?? required[p]))) {
-      required[seeded] = sampleOf(params[seeded]);
+      required[seeded] = sampleOf(seeded, params[seeded]);
     }
     const firstParams = { ...defaults, ...required };
     const first: Run = { params: firstParams, prompt: promptOf(binding, firstParams) };
@@ -172,7 +174,7 @@ for (const [model, { upstreams: bindings }] of Object.entries(config.media.model
     for (const name of bound) {
       const values = coveredValues(name, params[name], binding);
       for (const value of values) if (String(value) !== String(firstParams[name])) candidates.push(withParam(binding, first, name, value, params[name]));
-      if (values.length === 0 && firstParams[name] === undefined && params[name] !== undefined) candidates.push(withParam(binding, first, name, sampleOf(params[name]), params[name]));
+      if (values.length === 0 && firstParams[name] === undefined && params[name] !== undefined) candidates.push(withParam(binding, first, name, sampleOf(name, params[name]), params[name]));
     }
     const runs: Run[] = [];
     for (const run of candidates) if (await takes(model, binding, run.params, run.prompt)) runs.push(run);
@@ -181,7 +183,7 @@ for (const [model, { upstreams: bindings }] of Object.entries(config.media.model
     const untaken: { param: string; value: unknown }[] = [];
     for (const name of bound) {
       const values = coveredValues(name, params[name], binding);
-      const wanted = values.length === 0 && !runs.some((r) => r.params[name] !== undefined && r.params[name] !== null) && params[name] !== undefined ? [sampleOf(params[name])] : values;
+      const wanted = values.length === 0 && !runs.some((r) => r.params[name] !== undefined && r.params[name] !== null) && params[name] !== undefined ? [sampleOf(name, params[name])] : values;
       for (const value of wanted) {
         if (runs.some((r) => r.params[name] !== undefined && r.params[name] !== null && String(r.params[name]) === String(value))) continue;
         let taken: Run | undefined;
@@ -204,13 +206,8 @@ for (const [model, { upstreams: bindings }] of Object.entries(config.media.model
       const codec = adapterOf(kind).steps[step.kind as keyof ReturnType<typeof adapterOf>["steps"]];
       if (codec === undefined) throw new Error(`${model} on ${binding.upstream}: no ${step.kind} step codec`);
       const itemIndex = stepCalls(step, run.params)[0]!;
-      let source = SAMPLE_URL;
-      if (step.for_param !== undefined) {
-        const value = run.params[step.for_param];
-        const url: unknown = itemIndex === null ? value : Array.isArray(value) ? value[itemIndex] : undefined;
-        if (typeof url !== "string" || url === "") throw new Error(`${model} on ${binding.upstream}: the ${step.kind} step needs a source in '${step.for_param}'`);
-        source = url;
-      }
+      const source = step.for_param === undefined ? SAMPLE_URL : stepSource(run.params, step.for_param, itemIndex);
+      if (source === undefined) throw new Error(`${model} on ${binding.upstream}: the ${step.kind} step needs a source in '${step.for_param}'`);
       const context: { source: string; params: Record<string, unknown>; prompt: string; customVoiceId: string; voiceId: string; itemIndex: number | null; description?: string; param?: string } = {
         source,
         params: run.params,
@@ -230,7 +227,7 @@ for (const [model, { upstreams: bindings }] of Object.entries(config.media.model
       upstream: binding.upstream,
       model_id: binding.model_id,
       runs: runs.map((run) => {
-        const ids = Object.fromEntries(served.filter((s) => run.params[s.for_param!] !== undefined && run.params[s.for_param!] !== null).map((s) => [s.for_param!, `${s.kind}-id`]));
+        const ids = Object.fromEntries(served.filter((s) => stepCalls(s, run.params).length > 0).map((s) => [s.for_param!, `${s.kind}-id`]));
         const sample = { params: run.params, prompt: run.prompt, ...(Object.keys(ids).length === 0 ? {} : { ids }) };
         return { ...sample, body: firstBody(binding, sample) };
       }),

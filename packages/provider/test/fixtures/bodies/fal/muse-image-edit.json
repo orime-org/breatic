@@ -8,13 +8,13 @@
         "aspect_ratio": "auto",
         "output_format": "png",
         "images": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ]
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
         "image_urls": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ],
         "output_format": "png",
         "prompt": "a red fox running through fresh snow at dawn image 1"
@@ -25,14 +25,14 @@
         "aspect_ratio": "21:9",
         "output_format": "png",
         "images": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ]
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
         "aspect_ratio": "21:9",
         "image_urls": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ],
         "output_format": "png",
         "prompt": "a red fox running through fresh snow at dawn image 1"
@@ -43,14 +43,14 @@
         "aspect_ratio": "16:9",
         "output_format": "png",
         "images": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ]
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
         "aspect_ratio": "16:9",
         "image_urls": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ],
         "output_format": "png",
         "prompt": "a red fox running through fresh snow at dawn image 1"
@@ -61,14 +61,14 @@
         "aspect_ratio": "4:3",
         "output_format": "png",
         "images": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ]
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
         "aspect_ratio": "4:3",
         "image_urls": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ],
         "output_format": "png",
         "prompt": "a red fox running through fresh snow at dawn image 1"
@@ -79,14 +79,14 @@
         "aspect_ratio": "3:2",
         "output_format": "png",
         "images": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ]
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
         "aspect_ratio": "3:2",
         "image_urls": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ],
         "output_format": "png",
         "prompt": "a red fox running through fresh snow at dawn image 1"
@@ -97,14 +97,14 @@
         "aspect_ratio": "1:1",
         "output_format": "png",
         "images": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ]
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
         "aspect_ratio": "1:1",
         "image_urls": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ],
         "output_format": "png",
         "prompt": "a red fox running through fresh snow at dawn image 1"
@@ -115,14 +115,14 @@
         "aspect_ratio": "2:3",
         "output_format": "png",
         "images": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ]
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
         "aspect_ratio": "2:3",
         "image_urls": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ],
         "output_format": "png",
         "prompt": "a red fox running through fresh snow at dawn image 1"
@@ -133,14 +133,14 @@
         "aspect_ratio": "3:4",
         "output_format": "png",
         "images": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ]
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
         "aspect_ratio": "3:4",
         "image_urls": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ],
         "output_format": "png",
         "prompt": "a red fox running through fresh snow at dawn image 1"
@@ -151,14 +151,14 @@
         "aspect_ratio": "9:16",
         "output_format": "png",
         "images": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ]
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
         "aspect_ratio": "9:16",
         "image_urls": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ],
         "output_format": "png",
         "prompt": "a red fox running through fresh snow at dawn image 1"
@@ -169,14 +169,14 @@
         "aspect_ratio": "9:21",
         "output_format": "png",
         "images": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ]
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
         "aspect_ratio": "9:21",
         "image_urls": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ],
         "output_format": "png",
         "prompt": "a red fox running through fresh snow at dawn image 1"
@@ -187,13 +187,13 @@
         "aspect_ratio": "auto",
         "output_format": "webp",
         "images": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ]
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
         "image_urls": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ],
         "output_format": "webp",
         "prompt": "a red fox running through fresh snow at dawn image 1"
@@ -204,13 +204,13 @@
         "aspect_ratio": "auto",
         "output_format": "jpeg",
         "images": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ]
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
         "image_urls": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ],
         "output_format": "jpeg",
         "prompt": "a red fox running through fresh snow at dawn image 1"

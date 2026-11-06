@@ -8,12 +8,12 @@
         "duration": 5,
         "auto_shots": false,
         "generate_audio": false,
-        "image": "https://example.com/sample.png"
+        "image": "https://example.com/image.png"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": "5",
-        "image_url": "https://example.com/sample.png",
+        "image_url": "https://example.com/image.png",
         "generate_audio": false,
         "prompt": "a red fox running through fresh snow at dawn"
       }
@@ -23,12 +23,12 @@
         "duration": 3,
         "auto_shots": false,
         "generate_audio": false,
-        "image": "https://example.com/sample.png"
+        "image": "https://example.com/image.png"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": "3",
-        "image_url": "https://example.com/sample.png",
+        "image_url": "https://example.com/image.png",
         "generate_audio": false,
         "prompt": "a red fox running through fresh snow at dawn"
       }
@@ -38,12 +38,12 @@
         "duration": 4,
         "auto_shots": false,
         "generate_audio": false,
-        "image": "https://example.com/sample.png"
+        "image": "https://example.com/image.png"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": "4",
-        "image_url": "https://example.com/sample.png",
+        "image_url": "https://example.com/image.png",
         "generate_audio": false,
         "prompt": "a red fox running through fresh snow at dawn"
       }
@@ -53,12 +53,12 @@
         "duration": 6,
         "auto_shots": false,
         "generate_audio": false,
-        "image": "https://example.com/sample.png"
+        "image": "https://example.com/image.png"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": "6",
-        "image_url": "https://example.com/sample.png",
+        "image_url": "https://example.com/image.png",
         "generate_audio": false,
         "prompt": "a red fox running through fresh snow at dawn"
       }
@@ -68,12 +68,12 @@
         "duration": 7,
         "auto_shots": false,
         "generate_audio": false,
-        "image": "https://example.com/sample.png"
+        "image": "https://example.com/image.png"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": "7",
-        "image_url": "https://example.com/sample.png",
+        "image_url": "https://example.com/image.png",
         "generate_audio": false,
         "prompt": "a red fox running through fresh snow at dawn"
       }
@@ -83,12 +83,12 @@
         "duration": 8,
         "auto_shots": false,
         "generate_audio": false,
-        "image": "https://example.com/sample.png"
+        "image": "https://example.com/image.png"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": "8",
-        "image_url": "https://example.com/sample.png",
+        "image_url": "https://example.com/image.png",
         "generate_audio": false,
         "prompt": "a red fox running through fresh snow at dawn"
       }
@@ -98,12 +98,12 @@
         "duration": 9,
         "auto_shots": false,
         "generate_audio": false,
-        "image": "https://example.com/sample.png"
+        "image": "https://example.com/image.png"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": "9",
-        "image_url": "https://example.com/sample.png",
+        "image_url": "https://example.com/image.png",
         "generate_audio": false,
         "prompt": "a red fox running through fresh snow at dawn"
       }
@@ -113,12 +113,12 @@
         "duration": 10,
         "auto_shots": false,
         "generate_audio": false,
-        "image": "https://example.com/sample.png"
+        "image": "https://example.com/image.png"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": "10",
-        "image_url": "https://example.com/sample.png",
+        "image_url": "https://example.com/image.png",
         "generate_audio": false,
         "prompt": "a red fox running through fresh snow at dawn"
       }
@@ -128,12 +128,12 @@
         "duration": 11,
         "auto_shots": false,
         "generate_audio": false,
-        "image": "https://example.com/sample.png"
+        "image": "https://example.com/image.png"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": "11",
-        "image_url": "https://example.com/sample.png",
+        "image_url": "https://example.com/image.png",
         "generate_audio": false,
         "prompt": "a red fox running through fresh snow at dawn"
       }
@@ -143,12 +143,12 @@
         "duration": 12,
         "auto_shots": false,
         "generate_audio": false,
-        "image": "https://example.com/sample.png"
+        "image": "https://example.com/image.png"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": "12",
-        "image_url": "https://example.com/sample.png",
+        "image_url": "https://example.com/image.png",
         "generate_audio": false,
         "prompt": "a red fox running through fresh snow at dawn"
       }
@@ -158,12 +158,12 @@
         "duration": 13,
         "auto_shots": false,
         "generate_audio": false,
-        "image": "https://example.com/sample.png"
+        "image": "https://example.com/image.png"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": "13",
-        "image_url": "https://example.com/sample.png",
+        "image_url": "https://example.com/image.png",
         "generate_audio": false,
         "prompt": "a red fox running through fresh snow at dawn"
       }
@@ -173,12 +173,12 @@
         "duration": 14,
         "auto_shots": false,
         "generate_audio": false,
-        "image": "https://example.com/sample.png"
+        "image": "https://example.com/image.png"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": "14",
-        "image_url": "https://example.com/sample.png",
+        "image_url": "https://example.com/image.png",
         "generate_audio": false,
         "prompt": "a red fox running through fresh snow at dawn"
       }
@@ -188,12 +188,12 @@
         "duration": 15,
         "auto_shots": false,
         "generate_audio": false,
-        "image": "https://example.com/sample.png"
+        "image": "https://example.com/image.png"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": "15",
-        "image_url": "https://example.com/sample.png",
+        "image_url": "https://example.com/image.png",
         "generate_audio": false,
         "prompt": "a red fox running through fresh snow at dawn"
       }
@@ -203,7 +203,7 @@
         "duration": 5,
         "auto_shots": false,
         "generate_audio": false,
-        "image": "https://example.com/sample.png",
+        "image": "https://example.com/image.png",
         "multi_prompt": [
           {
             "prompt": "sample",
@@ -218,7 +218,7 @@
       "prompt": "",
       "body": {
         "duration": "5",
-        "image_url": "https://example.com/sample.png",
+        "image_url": "https://example.com/image.png",
         "multi_prompt": [
           {
             "prompt": "sample",
@@ -237,13 +237,13 @@
         "duration": 5,
         "auto_shots": false,
         "generate_audio": false,
-        "image": "https://example.com/sample.png",
+        "image": "https://example.com/image.png",
         "shot_type": "customize"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": "5",
-        "image_url": "https://example.com/sample.png",
+        "image_url": "https://example.com/image.png",
         "shot_type": "customize",
         "generate_audio": false,
         "prompt": "a red fox running through fresh snow at dawn"
@@ -254,12 +254,12 @@
         "duration": 5,
         "auto_shots": true,
         "generate_audio": false,
-        "image": "https://example.com/sample.png"
+        "image": "https://example.com/image.png"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": "5",
-        "image_url": "https://example.com/sample.png",
+        "image_url": "https://example.com/image.png",
         "shot_type": "intelligent",
         "generate_audio": false,
         "prompt": "a red fox running through fresh snow at dawn"
@@ -270,12 +270,12 @@
         "duration": 5,
         "auto_shots": false,
         "generate_audio": true,
-        "image": "https://example.com/sample.png"
+        "image": "https://example.com/image.png"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": "5",
-        "image_url": "https://example.com/sample.png",
+        "image_url": "https://example.com/image.png",
         "generate_audio": true,
         "prompt": "a red fox running through fresh snow at dawn"
       }

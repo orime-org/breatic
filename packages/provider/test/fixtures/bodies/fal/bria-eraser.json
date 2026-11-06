@@ -5,13 +5,13 @@
   "runs": [
     {
       "params": {
-        "image": "https://example.com/sample.png",
-        "mask_image": "https://example.com/sample.png"
+        "image": "https://example.com/image.png",
+        "mask_image": "https://example.com/mask_image.png"
       },
       "prompt": "",
       "body": {
-        "image_url": "https://example.com/sample.png",
-        "mask_url": "https://example.com/sample.png",
+        "image_url": "https://example.com/image.png",
+        "mask_url": "https://example.com/mask_image.png",
         "preserve_alpha": true
       }
     }

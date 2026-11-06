@@ -8,11 +8,11 @@
         "strength": 0.85,
         "target_lufs": -16,
         "output_format": "wav",
-        "audio": "https://example.com/sample.mp3"
+        "audio": "https://example.com/audio.mp3"
       },
       "prompt": "",
       "body": {
-        "audio_url": "https://example.com/sample.mp3",
+        "audio_url": "https://example.com/audio.mp3",
         "strength": 0.85,
         "target_lufs": -16,
         "output_format": "wav"
@@ -23,11 +23,11 @@
         "strength": 0,
         "target_lufs": -16,
         "output_format": "wav",
-        "audio": "https://example.com/sample.mp3"
+        "audio": "https://example.com/audio.mp3"
       },
       "prompt": "",
       "body": {
-        "audio_url": "https://example.com/sample.mp3",
+        "audio_url": "https://example.com/audio.mp3",
         "strength": 0,
         "target_lufs": -16,
         "output_format": "wav"
@@ -38,11 +38,11 @@
         "strength": 1,
         "target_lufs": -16,
         "output_format": "wav",
-        "audio": "https://example.com/sample.mp3"
+        "audio": "https://example.com/audio.mp3"
       },
       "prompt": "",
       "body": {
-        "audio_url": "https://example.com/sample.mp3",
+        "audio_url": "https://example.com/audio.mp3",
         "strength": 1,
         "target_lufs": -16,
         "output_format": "wav"

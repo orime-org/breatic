@@ -140,7 +140,7 @@
         "aspect_ratio": "1:1",
         "creativity": "medium",
         "style_images": [
-          "https://example.com/sample.png"
+          "https://example.com/style_images.png"
         ]
       },
       "prompt": "a red fox running through fresh snow at dawn",
@@ -149,7 +149,7 @@
         "creativity": "medium",
         "image_style_references": [
           {
-            "image_url": "https://example.com/sample.png"
+            "image_url": "https://example.com/style_images.png"
           }
         ],
         "prompt": "a red fox running through fresh snow at dawn"

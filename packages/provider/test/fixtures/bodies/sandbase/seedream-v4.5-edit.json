@@ -6,13 +6,13 @@
     {
       "params": {
         "images": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ]
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "images": [
-          "https://example.com/sample.png"
+          "https://example.com/images.png"
         ],
         "prompt": "a red fox running through fresh snow at dawn",
         "output_format": "jpeg",

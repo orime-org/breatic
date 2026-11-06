@@ -8,11 +8,11 @@
         "generate_type": "Normal",
         "enable_pbr": false,
         "face_count": 500000,
-        "image": "https://example.com/sample.png"
+        "image": "https://example.com/image.png"
       },
       "prompt": "",
       "body": {
-        "input_image_url": "https://example.com/sample.png",
+        "input_image_url": "https://example.com/image.png",
         "generate_type": "Normal",
         "enable_pbr": false
       }
@@ -22,13 +22,13 @@
         "generate_type": "Normal",
         "enable_pbr": false,
         "face_count": 500000,
-        "image": "https://example.com/sample.png",
-        "back_image": "https://example.com/sample.png"
+        "image": "https://example.com/image.png",
+        "back_image": "https://example.com/back_image.png"
       },
       "prompt": "",
       "body": {
-        "input_image_url": "https://example.com/sample.png",
-        "back_image_url": "https://example.com/sample.png",
+        "input_image_url": "https://example.com/image.png",
+        "back_image_url": "https://example.com/back_image.png",
         "generate_type": "Normal",
         "enable_pbr": false
       }
@@ -38,13 +38,13 @@
         "generate_type": "Normal",
         "enable_pbr": false,
         "face_count": 500000,
-        "image": "https://example.com/sample.png",
-        "left_image": "https://example.com/sample.png"
+        "image": "https://example.com/image.png",
+        "left_image": "https://example.com/left_image.png"
       },
       "prompt": "",
       "body": {
-        "input_image_url": "https://example.com/sample.png",
-        "left_image_url": "https://example.com/sample.png",
+        "input_image_url": "https://example.com/image.png",
+        "left_image_url": "https://example.com/left_image.png",
         "generate_type": "Normal",
         "enable_pbr": false
       }
@@ -54,13 +54,13 @@
         "generate_type": "Normal",
         "enable_pbr": false,
         "face_count": 500000,
-        "image": "https://example.com/sample.png",
-        "right_image": "https://example.com/sample.png"
+        "image": "https://example.com/image.png",
+        "right_image": "https://example.com/right_image.png"
       },
       "prompt": "",
       "body": {
-        "input_image_url": "https://example.com/sample.png",
-        "right_image_url": "https://example.com/sample.png",
+        "input_image_url": "https://example.com/image.png",
+        "right_image_url": "https://example.com/right_image.png",
         "generate_type": "Normal",
         "enable_pbr": false
       }
@@ -70,11 +70,11 @@
         "generate_type": "LowPoly",
         "enable_pbr": false,
         "face_count": 500000,
-        "image": "https://example.com/sample.png"
+        "image": "https://example.com/image.png"
       },
       "prompt": "",
       "body": {
-        "input_image_url": "https://example.com/sample.png",
+        "input_image_url": "https://example.com/image.png",
         "generate_type": "LowPoly",
         "enable_pbr": false
       }
@@ -84,11 +84,11 @@
         "generate_type": "Geometry",
         "enable_pbr": false,
         "face_count": 500000,
-        "image": "https://example.com/sample.png"
+        "image": "https://example.com/image.png"
       },
       "prompt": "",
       "body": {
-        "input_image_url": "https://example.com/sample.png",
+        "input_image_url": "https://example.com/image.png",
         "generate_type": "Geometry",
         "enable_pbr": false
       }

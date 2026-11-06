@@ -9,13 +9,13 @@
         "append_duration": 10,
         "double_output": false,
         "num_samples": 1,
-        "audio": "https://example.com/sample.mp3"
+        "audio": "https://example.com/audio.mp3"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "ambience": false,
         "append_duration": 10,
-        "audio_url": "https://example.com/sample.mp3",
+        "audio_url": "https://example.com/audio.mp3",
         "double_output": false,
         "num_samples": 1,
         "text_prompt": "a red fox running through fresh snow at dawn",
@@ -28,13 +28,13 @@
         "append_duration": 10,
         "double_output": false,
         "num_samples": 1,
-        "audio": "https://example.com/sample.mp3"
+        "audio": "https://example.com/audio.mp3"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "ambience": true,
         "append_duration": 10,
-        "audio_url": "https://example.com/sample.mp3",
+        "audio_url": "https://example.com/audio.mp3",
         "double_output": false,
         "num_samples": 1,
         "text_prompt": "a red fox running through fresh snow at dawn",
@@ -47,13 +47,13 @@
         "append_duration": 1,
         "double_output": false,
         "num_samples": 1,
-        "audio": "https://example.com/sample.mp3"
+        "audio": "https://example.com/audio.mp3"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "ambience": false,
         "append_duration": 1,
-        "audio_url": "https://example.com/sample.mp3",
+        "audio_url": "https://example.com/audio.mp3",
         "double_output": false,
         "num_samples": 1,
         "text_prompt": "a red fox running through fresh snow at dawn",
@@ -66,13 +66,13 @@
         "append_duration": 57,
         "double_output": false,
         "num_samples": 1,
-        "audio": "https://example.com/sample.mp3"
+        "audio": "https://example.com/audio.mp3"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "ambience": false,
         "append_duration": 57,
-        "audio_url": "https://example.com/sample.mp3",
+        "audio_url": "https://example.com/audio.mp3",
         "double_output": false,
         "num_samples": 1,
         "text_prompt": "a red fox running through fresh snow at dawn",
@@ -85,13 +85,13 @@
         "append_duration": 10,
         "double_output": true,
         "num_samples": 1,
-        "audio": "https://example.com/sample.mp3"
+        "audio": "https://example.com/audio.mp3"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "ambience": false,
         "append_duration": 10,
-        "audio_url": "https://example.com/sample.mp3",
+        "audio_url": "https://example.com/audio.mp3",
         "double_output": true,
         "num_samples": 1,
         "text_prompt": "a red fox running through fresh snow at dawn",

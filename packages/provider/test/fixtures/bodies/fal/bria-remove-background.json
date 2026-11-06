@@ -5,11 +5,11 @@
   "runs": [
     {
       "params": {
-        "image": "https://example.com/sample.png"
+        "image": "https://example.com/image.png"
       },
       "prompt": "",
       "body": {
-        "image_url": "https://example.com/sample.png"
+        "image_url": "https://example.com/image.png"
       }
     }
   ],
