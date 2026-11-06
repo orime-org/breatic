@@ -155,7 +155,10 @@ describe("what the prompt says the model can do", () => {
     expect(wording()).toMatch(/project/i);
     expect(wording()).toMatch(/canvas/i);
     expect(wording()).toMatch(/document/i);
-    expect(wording()).toMatch(/cannot see the reader's screen/i);
+  });
+
+  it("says nothing of what the model can or cannot see: the open Space comes with each message and the tools read the rest", () => {
+    expect(wording()).not.toMatch(/\b(can|cannot|can't) see\b/i);
   });
 });
 

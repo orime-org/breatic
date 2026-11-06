@@ -133,8 +133,10 @@ describe("the guide as a tool", () => {
     // The guide has a Mini-tools section; a description that leaves them out
     // let "scale this picture up" go unlooked-up (#1366).
     expect(said).toMatch(/mini-tools/i);
-    expect(said).toMatch(/cannot see/i);
     expect(said).toMatch(/icon/i);
+    // The open Space comes with each message and the tools read the rest, so
+    // the description says nothing of what the model can or cannot see.
+    expect(said).not.toMatch(/\b(can|cannot|can't) see\b/i);
   });
 });
 
