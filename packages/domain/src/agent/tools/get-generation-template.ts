@@ -27,8 +27,8 @@ const HOW_TO_SEND =
   "{ id, input } on that node is optional. A resource node lands holding the template's file: send it with no material. " +
   "Leave out the mode and model you keep. Send each generate node's prompt as its own, rewritten in the language " +
   "the reader writes in with their story or detail in it: fill a tweak segment with words or keep it for them. " +
-  "A node sent in multi_shot sends shots and no prompt, their durations adding up to the node's duration: the template's " +
-  "while the node keeps the template's mode and model, otherwise one you set in its params. " +
+  "A node sent in multi_shot sends shots and no prompt, their durations adding up to the node's duration: the one you " +
+  "write in its params, else the template's while the node keeps the template's mode and model; on another mode or model, write one. " +
   "A node sent in any other mode sends a prompt, a template's shots written as one. " +
   "A template with steps gets a text node listing them when it is placed, so write no node for them.";
 
