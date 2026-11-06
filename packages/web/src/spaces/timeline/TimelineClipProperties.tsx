@@ -99,7 +99,7 @@ export function TimelineClipProperties({ spaceId, document, clip, name, conflict
     const valid = timelineClipIntervalValid(range)
       && (field === 'start' || source === undefined || timelineSourceOverflow(range, source, fps) === 0);
     if (!valid) { update(field, { error: true }); return; }
-    update(field, { value: current[field].stored });
+    update(field, { value: current[field].stored, error: false });
     if (frame === clip[FRAME_OF[field]]) return;
     onCommit(field === 'start'
       ? { operation: 'move', parameters: { clipId: clip.id, startFrame: frame }, placement }
@@ -116,16 +116,15 @@ export function TimelineClipProperties({ spaceId, document, clip, name, conflict
    * One numeric field, or its value as text when it cannot be edited.
    * @param which - The field.
    * @param label - Its label key.
-   * @param editable - Whether it can be edited.
    * @returns The field.
    * @throws {never} Never.
    */
-  function field(which: Field, label: string, editable: boolean): React.JSX.Element {
+  function field(which: Field, label: string): React.JSX.Element {
     const id = `timeline-clip-${which}-${spaceId}`;
     const testId = `timeline-clip-${which}`;
     return <div className='flex flex-col gap-1'>
-      <Label htmlFor={editable ? id : undefined}>{t(label)}</Label>
-      {editable
+      <Label htmlFor={editable[which] ? id : undefined}>{t(label)}</Label>
+      {editable[which]
         ? <Input id={id} data-testid={testId} type='number' inputMode='numeric' autoComplete='off' step={1} value={current[which].value} className='h-8 w-28'
           onChange={(event) => change(which, event.target.value)} onBlur={() => commit(which)}
           onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); commit(which); } }} />
@@ -149,8 +148,8 @@ export function TimelineClipProperties({ spaceId, document, clip, name, conflict
           <SelectContent>{labels.visual.map((track) => <SelectItem key={track.id} value={track.id}>{track.label}</SelectItem>)}<SelectItem value='new'>{t('timeline.edit.newTrack')}</SelectItem></SelectContent>
         </Select>}
     </div>
-    {field('start', 'timeline.startFrame', !readOnly && !startLocked)}
-    {field('in', 'timeline.edit.inPoint', !readOnly)}
-    {field('duration', 'timeline.edit.duration', !readOnly)}
+    {field('start', 'timeline.startFrame')}
+    {field('in', 'timeline.edit.inPoint')}
+    {field('duration', 'timeline.edit.duration')}
   </div>;
 }
