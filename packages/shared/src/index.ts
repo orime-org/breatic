@@ -828,6 +828,7 @@ export {
   TEMPLATE_GOALS,
   templateAnchor,
   templateGoalsFor,
+  templateNodeWords,
   templatesFor,
   type GenerationTemplate,
   type TemplateEdge,
@@ -835,7 +836,9 @@ export {
   type TemplateGoal,
   type TemplateInput,
   type TemplateNodeKey,
+  type TemplateNodeWords,
   type TemplateResourceNode,
+  type TemplateShot,
   type TemplateTriggers,
 } from "@shared/canvas/generation-templates.js";
 export {
