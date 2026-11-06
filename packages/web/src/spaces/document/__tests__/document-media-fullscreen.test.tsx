@@ -99,6 +99,13 @@ describe('a document video full screen', () => {
     expect(fullVideo().getAttribute('src')).toBe('/clip.mp4');
   });
 
+  // inner#1844 round 3: a document picture's stored size reserves its box.
+  it('opens a picture with the size the block stores', () => {
+    open('image', 600);
+    fireEvent.click(screen.getAllByTestId('doc-media-fullscreen')[0]!);
+    expect(screen.getByTestId('media-fullscreen').style.getPropertyValue('--media-aspect')).toBe(String(240 / 160));
+  });
+
   // inner#1844 round 2: the new file is not handed the old one's place.
   it('hands nothing back to a block whose file was replaced while open', async () => {
     const editor = open('video', 600);

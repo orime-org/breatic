@@ -25,7 +25,7 @@ function backdrop(): HTMLElement {
 
 describe('MediaFullscreen', () => {
   it('shows the image with its close button at the top right of the viewport', () => {
-    render(<MediaFullscreen open onOpenChange={() => {}} kind='image' src='/a.png' name='a' />);
+    render(<MediaFullscreen onClose={() => {}} kind='image' src='/a.png' name='a' />);
     const img = screen.getByTestId('media-fullscreen-image');
     expect(img.getAttribute('src')).toBe('/a.png');
     expect(img.getAttribute('draggable')).toBe('false');
@@ -37,23 +37,23 @@ describe('MediaFullscreen', () => {
 
   it('closes on the close button, on Esc and on a press on the backdrop', async () => {
     const user = userEvent.setup();
-    const onOpenChange = vi.fn();
-    render(<MediaFullscreen open onOpenChange={onOpenChange} kind='image' src='/a.png' name='a' />);
+    const onClose = vi.fn();
+    render(<MediaFullscreen onClose={onClose} kind='image' src='/a.png' name='a' />);
 
     await user.click(screen.getByTestId('media-fullscreen-close'));
-    expect(onOpenChange).toHaveBeenLastCalledWith(false);
-    onOpenChange.mockClear();
+    expect(onClose).toHaveBeenCalled();
+    onClose.mockClear();
 
     await user.keyboard('{Escape}');
-    expect(onOpenChange).toHaveBeenLastCalledWith(false);
-    onOpenChange.mockClear();
+    expect(onClose).toHaveBeenCalled();
+    onClose.mockClear();
 
     fireEvent.pointerDown(backdrop());
-    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+    expect(onClose).toHaveBeenCalled();
   });
 
   it('covers the image with a skeleton until it loads, and says so when it fails', () => {
-    render(<MediaFullscreen open onOpenChange={() => {}} kind='image' src='/a.png' name='a' />);
+    render(<MediaFullscreen onClose={() => {}} kind='image' src='/a.png' name='a' />);
     expect(screen.getByTestId('media-fullscreen-skeleton')).toBeInTheDocument();
     fireEvent.error(screen.getByTestId('media-fullscreen-image'));
     expect(screen.queryByTestId('media-fullscreen-skeleton')).toBeNull();
@@ -61,7 +61,7 @@ describe('MediaFullscreen', () => {
   });
 
   it('drops the skeleton once the image loads', () => {
-    render(<MediaFullscreen open onOpenChange={() => {}} kind='image' src='/a.png' name='a' />);
+    render(<MediaFullscreen onClose={() => {}} kind='image' src='/a.png' name='a' />);
     fireEvent.load(screen.getByTestId('media-fullscreen-image'));
     expect(screen.queryByTestId('media-fullscreen-skeleton')).toBeNull();
   });
@@ -79,10 +79,10 @@ describe('MediaFullscreen', () => {
       onDragOver: vi.fn(),
       onDrop: vi.fn(),
     };
-    const onOpenChange = vi.fn();
+    const onClose = vi.fn();
     render(
       <div {...host}>
-        <MediaFullscreen open onOpenChange={onOpenChange} kind='image' src='/a.png' name='a' />
+        <MediaFullscreen onClose={onClose} kind='image' src='/a.png' name='a' />
       </div>,
     );
     const img = screen.getByTestId('media-fullscreen-image');
@@ -97,14 +97,13 @@ describe('MediaFullscreen', () => {
 
     // The backdrop press still closes: press events are not stopped.
     fireEvent.pointerDown(backdrop());
-    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+    expect(onClose).toHaveBeenCalled();
   });
 
   it('plays the video from the state it was handed', () => {
     render(
       <MediaFullscreen
-        open
-        onOpenChange={() => {}}
+        onClose={() => {}}
         kind='video'
         src='/v.mp4'
         name='v'
@@ -120,31 +119,31 @@ describe('MediaFullscreen', () => {
   // A video of unknown size is held to the viewport's height by its width
   // once its own size is read, so the bar is as wide as the picture.
   it('sizes a video of unknown size from its metadata', () => {
-    render(<MediaFullscreen open onOpenChange={() => {}} kind='video' src='/v.mp4' name='v' />);
+    render(<MediaFullscreen onClose={() => {}} kind='video' src='/v.mp4' name='v' />);
     const el = screen.getByTestId('media-element');
     Object.defineProperty(el, 'videoWidth', { value: 640, configurable: true });
     Object.defineProperty(el, 'videoHeight', { value: 480, configurable: true });
     fireEvent.loadedMetadata(el);
     const content = screen.getByTestId('media-fullscreen');
     expect(content.style.getPropertyValue('--media-aspect')).toBe(String(640 / 480));
-    expect(content.className).toContain('w-[min(96vw,1600px,calc(90vh*var(--media-aspect,100)))]');
+    expect(content.className).toContain('w-[min(96vw,1600px,calc(90vh*var(--media-aspect,100)),var(--media-width,100vw))]');
   });
 
   it('sizes a video from the size its host knows', () => {
-    render(<MediaFullscreen open onOpenChange={() => {}} kind='video' src='/v.mp4' name='v' size={{ width: 1080, height: 1920 }} />);
+    render(<MediaFullscreen onClose={() => {}} kind='video' src='/v.mp4' name='v' size={{ width: 1080, height: 1920 }} />);
     expect(screen.getByTestId('media-fullscreen').style.getPropertyValue('--media-aspect')).toBe(String(1080 / 1920));
   });
 
   // inner#1844 round 1: beside a narrow picture is backdrop, so a press there closes.
   it('sizes the image content to the picture', () => {
-    render(<MediaFullscreen open onOpenChange={() => {}} kind='image' src='/a.png' name='a' />);
+    render(<MediaFullscreen onClose={() => {}} kind='image' src='/a.png' name='a' />);
     expect(screen.getByTestId('media-fullscreen').className).toContain('w-fit');
   });
 
   // The window's stray-file guard never sees a drag this layer stops, so the
   // layer cancels the browser's open-the-file default itself.
   it('cancels a file dropped on the layer', () => {
-    render(<MediaFullscreen open onOpenChange={() => {}} kind='image' src='/a.png' name='a' />);
+    render(<MediaFullscreen onClose={() => {}} kind='image' src='/a.png' name='a' />);
     const img = screen.getByTestId('media-fullscreen-image');
     const transfer = { types: ['Files'], dropEffect: 'copy' };
     const over = fireEvent.dragOver(img, { dataTransfer: transfer });
@@ -155,8 +154,25 @@ describe('MediaFullscreen', () => {
 
   it('shows the original cover, not its stretched preview', () => {
     const cover = 'https://resource-dev.breatic.cc/video/2026-09-30/1_18f58aed-b802-4243-a8ea-02d377de9679_cover.png';
-    render(<MediaFullscreen open onOpenChange={() => {}} kind='video' src='/v.mp4' poster={cover} name='v' />);
+    render(<MediaFullscreen onClose={() => {}} kind='video' src='/v.mp4' poster={cover} name='v' />);
     expect(screen.getByTestId('media-element').getAttribute('poster')).toBe(cover);
+  });
+
+  // inner#1844 round 3: images and videos share one sizing rule. With the size
+  // known the box is reserved before the file arrives, so nothing jumps.
+  it('reserves an image box from its size before it loads', () => {
+    render(<MediaFullscreen onClose={() => {}} kind='image' src='/a.png' name='a' size={{ width: 1200, height: 800 }} />);
+    const content = screen.getByTestId('media-fullscreen');
+    expect(content.style.getPropertyValue('--media-aspect')).toBe(String(1200 / 800));
+    expect(content.style.getPropertyValue('--media-width')).toBe('1200px');
+    expect(content.className).toContain('w-[min(96vw,1600px,calc(90vh*var(--media-aspect,100)),var(--media-width,100vw))]');
+    expect(screen.getByTestId('media-fullscreen-image').className).toContain('h-full w-full');
+    expect(screen.getByTestId('media-fullscreen-skeleton').parentElement?.className).toContain('aspect-[var(--media-aspect)]');
+  });
+
+  it('holds a centred square while an image of unknown size loads', () => {
+    render(<MediaFullscreen onClose={() => {}} kind='image' src='/a.png' name='a' />);
+    expect(screen.getByTestId('media-fullscreen-skeleton').parentElement?.className).toContain('min-h-40 min-w-40');
   });
 
   it('hands the video state back when it closes', async () => {
@@ -164,9 +180,7 @@ describe('MediaFullscreen', () => {
     const onClosed = vi.fn();
     render(
       <MediaFullscreen
-        open
-        onOpenChange={() => {}}
-        onClosed={onClosed}
+        onClose={onClosed}
         kind='video'
         src='/v.mp4'
         name='v'
@@ -182,17 +196,17 @@ describe('MediaFullscreen', () => {
 
   it('lets the volume popover close on a press elsewhere inside the layer', async () => {
     const user = userEvent.setup();
-    const onOpenChange = vi.fn();
+    const onClose = vi.fn();
     const host = { onClick: vi.fn(), onKeyDown: vi.fn() };
     render(
       <div {...host}>
-        <MediaFullscreen open onOpenChange={onOpenChange} kind='video' src='/v.mp4' name='v' />
+        <MediaFullscreen onClose={onClose} kind='video' src='/v.mp4' name='v' />
       </div>,
     );
     await user.click(screen.getByTestId('volume-button'));
     expect(screen.getByTestId('volume')).toBeInTheDocument();
     await user.click(screen.getByTestId('media-element'));
     expect(screen.queryByTestId('volume')).toBeNull();
-    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

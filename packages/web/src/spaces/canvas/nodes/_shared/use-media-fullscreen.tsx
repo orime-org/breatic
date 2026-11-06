@@ -70,12 +70,9 @@ export function useMediaFullscreen({
 
   const layer = opened ? (
     <MediaFullscreen
-      open
-      onOpenChange={(next) => {
-        if (!next) setOpened(null);
-      }}
-      onClosed={(state) => {
-        if (opened.src === currentSrc) player?.current?.apply(state);
+      onClose={(state) => {
+        setOpened(null);
+        if (state && opened.src === currentSrc) player?.current?.apply(state);
       }}
       kind={opened.kind}
       src={opened.src}

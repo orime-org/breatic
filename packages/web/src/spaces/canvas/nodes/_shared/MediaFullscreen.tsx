@@ -26,18 +26,14 @@ export interface MediaFullscreenSource {
 
 /** Props for {@link MediaFullscreen}. */
 interface MediaFullscreenProps extends MediaFullscreenSource {
-  /** Whether it is open. */
-  open: boolean;
-  /** Opens or closes it. */
-  onOpenChange: (open: boolean) => void;
+  /** Closes it, with where a video stood. */
+  onClose: (state?: MediaPlayerState) => void;
   /** The file's name, for the dialog's title. */
   name: string;
   /** The content's id, for a host that points at it. */
   id?: string;
   /** Where a video starts. */
   start?: MediaPlayerState;
-  /** Where the video stood as it closed. */
-  onClosed?: (state: MediaPlayerState) => void;
   /** Where the focus goes as it closes. */
   onCloseAutoFocus?: (event: Event) => void;
 }
@@ -74,8 +70,7 @@ function stopDrop(event: React.DragEvent): void {
  * document listener in the bubble phase, which the backdrop close and the
  * volume popover rely on, and no host answers presses.
  * @param root0 - Component props.
- * @param root0.open - Whether it is open.
- * @param root0.onOpenChange - Opens or closes it.
+ * @param root0.onClose - Closes it, with where a video stood.
  * @param root0.kind - Image or video.
  * @param root0.src - The original file.
  * @param root0.poster - A video's cover.
@@ -83,13 +78,11 @@ function stopDrop(event: React.DragEvent): void {
  * @param root0.size - The media's own size when known.
  * @param root0.id - The content's id.
  * @param root0.start - Where a video starts.
- * @param root0.onClosed - Where the video stood as it closed.
  * @param root0.onCloseAutoFocus - Where the focus goes as it closes.
  * @returns The view.
  */
 export function MediaFullscreen({
-  open,
-  onOpenChange,
+  onClose,
   kind,
   src,
   poster,
@@ -97,28 +90,25 @@ export function MediaFullscreen({
   size,
   id,
   start,
-  onClosed,
   onCloseAutoFocus,
 }: MediaFullscreenProps): React.JSX.Element {
   const t = useTranslation();
   const player = React.useRef<MediaPlayerHandle>(null);
   const [image, setImage] = React.useState<'loading' | 'loaded' | 'failed'>('loading');
 
-  /**
-   * Hands the video's state back before the layer closes.
-   * @param next - Whether it is to be open.
-   */
-  const change = (next: boolean): void => {
-    if (!next && player.current) onClosed?.(player.current.read());
-    onOpenChange(next);
-  };
-
-  // A tall video is held to the viewport's height by its width, so its bar
-  // is as wide as its picture. A host that does not know the size has it
-  // from the video's own metadata.
+  // One sizing rule for images and videos: as wide as fits the viewport at
+  // the media's own shape, so a tall one is held to the viewport's height and
+  // a video's bar is as wide as its picture. With the shape known the box is
+  // there before the file arrives; a video of unknown size has it from its
+  // own metadata. A picture is never shown wider than it is.
   const [measured, setMeasured] = React.useState<{ width: number; height: number } | undefined>(undefined);
   const box = size ?? measured;
-  const aspect = box ? ({ '--media-aspect': box.width / box.height } as React.CSSProperties) : undefined;
+  const boxStyle = box
+    ? ({
+      '--media-aspect': box.width / box.height,
+      ...(kind === 'image' && { '--media-width': `${box.width}px` }),
+    } as React.CSSProperties)
+    : undefined;
 
   return (
     // Not a control: it only keeps the layer's events from its host. A span,
@@ -134,7 +124,12 @@ export function MediaFullscreen({
       onDragOver={stopDrop}
       onDrop={stopDrop}
     >
-      <Dialog open={open} onOpenChange={change}>
+      <Dialog
+        open
+        onOpenChange={(next) => {
+          if (!next) onClose(player.current?.read());
+        }}
+      >
         <DialogContent
           id={id}
           data-testid='media-fullscreen'
@@ -145,13 +140,13 @@ export function MediaFullscreen({
           className={cn(
             'max-w-[min(96vw,1600px)] items-center border-0 bg-transparent shadow-none data-[state=closed]:animate-none data-[state=open]:animate-none',
             // As wide as the media, so the dark either side is backdrop and a press there closes.
-            kind === 'video' ? 'w-[min(96vw,1600px,calc(90vh*var(--media-aspect,100)))]' : 'w-fit',
+            kind === 'image' && !box ? 'w-fit' : 'w-[min(96vw,1600px,calc(90vh*var(--media-aspect,100)),var(--media-width,100vw))]',
           )}
-          style={kind === 'video' ? aspect : undefined}
+          style={boxStyle}
         >
           <DialogTitle className='sr-only'>{name}</DialogTitle>
           {kind === 'image' ? (
-            <div className='relative'>
+            <div className={cn('relative', box ? 'aspect-[var(--media-aspect)] w-full' : image === 'loading' && 'min-h-40 min-w-40')}>
               {image === 'failed' ? (
                 <p data-testid='media-fullscreen-error' className='px-4 py-8 text-sm text-white'>
                   {t('common.mediaViewer.loadFailed')}
@@ -161,15 +156,13 @@ export function MediaFullscreen({
                 src={src}
                 alt=''
                 draggable={false}
-                width={size?.width}
-                height={size?.height}
                 data-testid='media-fullscreen-image'
                 onLoad={() => setImage('loaded')}
                 onError={() => setImage('failed')}
-                className={image === 'failed' ? 'hidden' : 'h-auto max-h-[90vh] w-auto max-w-full object-contain'}
+                className={image === 'failed' ? 'hidden' : box ? 'h-full w-full object-contain' : 'h-auto max-h-[90vh] w-auto max-w-full object-contain'}
               />
               {image === 'loading' ? (
-                <Skeleton data-testid='media-fullscreen-skeleton' className='absolute inset-0 min-h-40 min-w-40' />
+                <Skeleton data-testid='media-fullscreen-skeleton' className='absolute inset-0' />
               ) : null}
             </div>
           ) : (

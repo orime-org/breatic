@@ -7,7 +7,9 @@
  * `DocumentMediaViews`.
  *
  * Editing controls carry `[data-media-chrome]`, whose events belong to the
- * node view and whose visibility follows current edit permission. Playback
+ * node view and whose visibility follows current edit permission; the
+ * picture and video toolbar layer (`[data-media-viewer]`) stays for a viewer,
+ * holding full screen. Playback
  * controls and copyable caption drafts keep their own presentation lifetime.
  */
 
@@ -272,13 +274,12 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   const fullscreenId = React.useId();
   const player = React.useRef<MediaPlayerHandle>(null);
   const { mediaWidth, mediaHeight } = props;
-  const mediaSize = React.useMemo(
-    () =>
-      type === 'video' && mediaWidth !== undefined && mediaHeight !== undefined
-        ? { width: mediaWidth, height: mediaHeight }
-        : undefined,
-    [type, mediaWidth, mediaHeight],
+  // The size the block stores; full screen reserves its box from it.
+  const storedSize = React.useMemo(
+    () => (mediaWidth !== undefined && mediaHeight !== undefined ? { width: mediaWidth, height: mediaHeight } : undefined),
+    [mediaWidth, mediaHeight],
   );
+  const mediaSize = type === 'video' ? storedSize : undefined;
   const [narrower, setNarrower] = React.useState(false);
   // The width the media is laid out at, which the preview is judged against.
   const [shownWidth, setShownWidth] = React.useState<number | null>(null);
@@ -337,8 +338,8 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
             : held instanceof HTMLElement
               ? held
               : null;
-    openFullscreenOn({ kind: type, src: props.url, size: mediaSize });
-  }, [actions, panelShown, props.url, mediaSize, type, openFullscreenOn]);
+    openFullscreenOn({ kind: type, src: props.url, size: storedSize });
+  }, [actions, panelShown, props.url, storedSize, type, openFullscreenOn]);
   // Above the media, unless the scroller has no room there — then on the
   // media itself, along its top. Never under it: below the media sit its
   // caption and the next block, and a bar there reads as theirs.
