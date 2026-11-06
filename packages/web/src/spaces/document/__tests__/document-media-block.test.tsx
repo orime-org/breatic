@@ -763,7 +763,7 @@ describe('resizing (A8)', () => {
         fireEvent.pointerDown(handle, { clientX: 500, pointerId: 1 });
         fireEvent.pointerUp(handle, { clientX: 500 + distance, pointerId: 1 });
 
-        expect(media(editor).props['previewWidth']).toBe(distance > 0 ? available : Math.min(type === 'video' ? 128 : 48, available));
+        expect(media(editor).props['previewWidth']).toBe(distance > 0 ? available : Math.min(type === 'video' ? 92 : 48, available));
       });
     }
   }
@@ -847,7 +847,7 @@ describe('resizing (A8)', () => {
 
   it.each([
     ['image', 48],
-    ['video', 128],
+    ['video', 92],
   ] as const)('stops a %s at %ipx, however far the corner is pulled in', (type, floor) => {
     const editor = open(type, { previewWidth: 300, textAlignment: 'left' });
     selectMedia(editor);

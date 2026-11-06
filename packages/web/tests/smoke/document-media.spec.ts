@@ -419,9 +419,9 @@ test('the toolbar of a first block sits on the picture, never under it, centred,
   await expect(page.locator(`${IMAGE} [data-testid="doc-media-caption"]`)).toHaveText('Dusk');
 
   await img.dblclick();
-  await expect(page.getByTestId('doc-media-fullscreen-image')).toBeVisible();
+  await expect(page.getByTestId('media-fullscreen-image')).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.getByTestId('doc-media-fullscreen-image')).toHaveCount(0);
+  await expect(page.getByTestId('media-fullscreen-image')).toHaveCount(0);
 });
 
 /** What each download smoke uploads. */
@@ -1161,9 +1161,9 @@ test('a picture shown full screen from its hover toolbar is selected, and stays 
 
   await img.hover();
   await picture.getByTestId('doc-media-fullscreen').click();
-  await expect(page.getByTestId('doc-media-fullscreen-image')).toBeVisible();
+  await expect(page.getByTestId('media-fullscreen-image')).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.getByTestId('doc-media-fullscreen-image')).toHaveCount(0);
+  await expect(page.getByTestId('media-fullscreen-image')).toHaveCount(0);
   await page.mouse.move(5, 5);
 
   await expect(knob).toBeVisible();
@@ -1196,10 +1196,10 @@ for (const [opening, closing] of [
 
     if (opening === 'toolbar') await picture.getByTestId('doc-media-fullscreen').click();
     else await img.dblclick();
-    await expect(page.getByTestId('doc-media-fullscreen-image')).toBeVisible();
+    await expect(page.getByTestId('media-fullscreen-image')).toBeVisible();
     if (closing === 'Escape') await page.keyboard.press('Escape');
     else await page.mouse.click(10, 10);
-    await expect(page.getByTestId('doc-media-fullscreen-image')).toHaveCount(0);
+    await expect(page.getByTestId('media-fullscreen-image')).toHaveCount(0);
     await page.mouse.move(5, 5);
 
     await expect(knob).toBeVisible();
