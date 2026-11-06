@@ -82,6 +82,7 @@ export type VideoContainerJobSpec =
   | { kind: "run-batch"; taskId: string; batch: number; attempt: number }
   | { kind: "run-chunk"; taskId: string; output: number; chunk: number; attempt: number }
   | { kind: "run-stitch"; taskId: string; output: number; attempt: number }
+  | { kind: "run-window"; taskId: string; output: number; chunk: number; attempt: number }
   | { kind: "prep"; taskId: string; input: number; attempt: number }
   | { kind: "prep-chunk"; taskId: string; input: number; chunk: number; attempt: number }
   | { kind: "prep-stitch"; taskId: string; input: number; attempt: number };
@@ -343,6 +344,7 @@ export function videoContainerJobId(spec: VideoContainerJobSpec): string {
     case "run-batch": return `${owner}:batch:${spec.batch}:${a}`;
     case "run-chunk": return `${owner}:out:${spec.output}:enc:${spec.chunk}:${a}`;
     case "run-stitch": return `${owner}:out:${spec.output}:stitch:${a}`;
+    case "run-window": return `${owner}:out:${spec.output}:win:${spec.chunk}:${a}`;
     case "prep": return `${owner}:prep:${spec.input}:${a}`;
     case "prep-chunk": return `${owner}:prep:${spec.input}:enc:${spec.chunk}:${a}`;
     case "prep-stitch": return `${owner}:prep:${spec.input}:stitch:${a}`;

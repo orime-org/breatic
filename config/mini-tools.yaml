@@ -29,6 +29,11 @@ executions:
     precheck_seconds: 300
     max_outputs: 8
     max_outputs_per_job: 8
+  # Encode chunks and the stitch run on standard-4; the overlap window renders on the GL image at the same size.
+  video.transitions:
+    container_class: "MiniToolContainerStd4"
+    window_container_class: "MiniToolContainerGl"
+    precheck_seconds: 300
 
 # Chunked full-resolution encoding. Each chunk targets chunk_share of the
 # remaining task budget; a run uses at most max_parallel_chunks chunks, and a
@@ -152,6 +157,11 @@ classes:
     memory_gib: 4
     disk_gb: 8
   MiniToolContainerStd4:
+    instance_type: "standard-4"
+    vcpu: 4
+    memory_gib: 12
+    disk_gb: 20
+  MiniToolContainerGl:
     instance_type: "standard-4"
     vcpu: 4
     memory_gib: 12

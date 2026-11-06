@@ -10,7 +10,7 @@ import {
 import {
   batchVideoRunOutputs, canonicalMiniToolValue, estimateAudioEncodeSeconds, estimateVideoJobSeconds, lipsyncMonotonicSegments, planLipsyncCompositeChunks, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
   plannedStageJobs, planVideoFrames, planVideoSplit, type FrameWindow, type FramesExecutionLayout, type MiniToolExecutionRequest, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type MiniToolPresentationRef, type MiniToolSourceBinding, type MiniToolStageJobs,
-  type LipsyncExecutionLayout, type LipsyncTimeline, type VideoEncodeChunk, type VideoEncoderRates, type VideoExecutionDialogue, type VideoJobWork, type VideoPresentationTable,
+  type LipsyncExecutionLayout, type LipsyncTimeline, type TransitionExecutionLayout, type TransitionOutputProfile, planTransitionChunks, planVideoTimeline, transitionOutputProfile, type VideoEncodeChunk, type VideoEncoderRates, type VideoExecutionDialogue, type VideoJobWork, type VideoPresentationTable,
 } from "@breatic/shared/mini-tools";
 import { prepareVideoRemoveBackground, type PreparedVideoRemoveBackground } from "@domain/mini-tool/remove-background-preparation.service.js";
 import { resolveSource } from "@domain/mini-tool/analysis.service.js";
@@ -44,7 +44,7 @@ type FrozenToolInput = {
   retry?: MiniToolExecutionRetryRequest["retry"];
 };
 /** The original server-owned execution stored under tasks.params.miniToolExecution. */
-export type AcceptedMiniToolExecution = ExecutionPlan & FrozenToolInput & (
+export type AcceptedMiniToolExecution = ExecutionPlan & (TransitionsExecution | (FrozenToolInput & (
   | { tool: "video.remove-bg"; provider: PreparedVideoRemoveBackground["provider"];
     body: Omit<PreparedVideoRemoveBackground["params"], "video"> & { video: PreparedModelInputRef };
     /** The model's own quote, frozen apart from the preparation so a failed-output retry quotes generate alone. */
@@ -64,7 +64,23 @@ export type AcceptedMiniToolExecution = ExecutionPlan & FrozenToolInput & (
     /** The container stages (frames-split §5.4) and their job counts, frozen beside each other as split freezes them (§97 D12-1). */
     layout: LipsyncExecutionLayout; stageJobs: MiniToolStageJobs[];
     container: MiniToolContainerPolicy & { startSeconds: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; chunkRetries: number } }
-);
+)));
+/**
+ * A transitions run (frames-split §5.4, §7.17; §97 D23-3): both clips' frozen inputs by draft input id, the chunk layout on
+ * the output grid, the output profile, and the classes its encode and window jobs run on.
+ */
+export type TransitionsExecution = {
+  tool: "video.transitions";
+  presentationRef: Record<string, MiniToolPresentationRef["source"]>;
+  ledgerReceipts: Record<string, VideoPresentationLedgerReceipt>;
+  versionIds: Record<string, string>;
+  bindings: Record<string, MiniToolSourceBinding>;
+  sourceKeys: Record<string, string>;
+  retry?: MiniToolExecutionRetryRequest["retry"];
+  layout: TransitionExecutionLayout; stageJobs: MiniToolStageJobs[]; profile: TransitionOutputProfile;
+  container: MiniToolContainerPolicy & { startSeconds: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; chunkRetries: number };
+  windowContainer: Omit<MiniToolContainerPolicy, "containerClass"> & { containerClass: "MiniToolContainerGl" };
+};
 /** The plan facts every tool shares, before its tool-specific fields. */
 type ExecutionCommon = Omit<ExecutionPlan, "binding" | "sourceKey" | "model" | "credits" | "requestFingerprint" | "planFingerprint">;
 /** The complete executable projection hashed before its two identity fields are attached. */
@@ -447,8 +463,7 @@ async function prepare(request: MiniToolPlannedRequest): Promise<ExecutionProjec
     targetNodeIds: request.outputs.map((output) => output.nodeId), draft: request.draft, analysisRefs: request.analysis_refs, outputs: request.outputs };
   if (request.tool === "video.remove-bg") return prepareRemoval(request, common);
   if (request.tool === "video.lip-sync") return prepareLipSync(request, common);
-  // ponytail: the transitions request is admitted by the shared contract, but its execution has no worker yet; until it does, refuse it here.
-  if (request.tool === "video.transitions") throw new AppError(400, t("server.mini_tool.unavailable"));
+  if (request.tool === "video.transitions") return prepareTransitions(request, common);
   const deadlineAt = budgetDeadlineFrom(Date.now());
   const config = structuredClone(getMiniToolsConfig());
   const maxOutputs = config.executions[request.tool].max_outputs;
@@ -478,6 +493,74 @@ async function prepare(request: MiniToolPlannedRequest): Promise<ExecutionProjec
   const seconds = layoutSeconds(layout, new Map(outputs.map((output, index) => [output.outputIndex, works[index]!])), container.startSeconds);
   return { ...common, tool: request.tool, binding, sourceKey, presentationRef: request.presentation_ref, ledgerReceipts: { source: receipt },
     versionIds: { source: versionId }, layout, stageJobs, outputSeconds: works, model: request.tool, container, credits: containerCredits(container, seconds) };
+}
+
+/**
+ * Freeze a transitions run (frames-split §5.4 预算 row, §7.17 转场输出档 row; §97 D23-3): each clip's selected tool input and
+ * full ledger, the output profile of the two plans in timeline order, the timeline on its grid and every chunk boundary,
+ * the stage counts, and the encode and window classes; the quote is the encode work of every output frame, each job's
+ * start and the stitch's one AAC track.
+ * @param request - The fresh request.
+ * @param common - The shared facts.
+ * @returns The projection.
+ * @throws {AppError} When the deployment offers no transitions, or a stage exceeds the parallel cap.
+ * @throws {ValidationError} When a clip's source or plan does not fit the request.
+ * @throws {Error} When a read fails.
+ */
+async function prepareTransitions(request: Extract<MiniToolPlannedRequest, { tool: "video.transitions" }>, common: ExecutionCommon): Promise<ExecutionProjection> {
+  const config = structuredClone(getMiniToolsConfig());
+  const settings = config.executions["video.transitions"];
+  if (settings === undefined) throw new AppError(400, t("server.mini_tool.unavailable"));
+  const deadlineAt = budgetDeadlineFrom(Date.now());
+  const limits = { maxBytes: config.presentation.source_ledger.max_bytes };
+  const { binding, sourceKey } = await resolveSource(request.draft.source);
+  const clips = request.draft.params.clips;
+  const inputs = await Promise.all(clips.map(async (clip) => {
+    const input = request.draft.inputs.find((candidate) => candidate.inputId === clip.inputId);
+    const ref = request.presentation_ref[clip.inputId];
+    if (input === undefined || ref === undefined) throw new ValidationError(t("server.mini_tool.foreignSource"));
+    // Only the URL names the registered source; the rest of the draft source shape is the host's.
+    const resolved = await resolveSource({ ...request.draft.source, canonicalURL: input.url });
+    const { versionId, receipt } = await selectedToolInput(ref, resolved.binding, resolved.sourceKey, config);
+    return { inputId: clip.inputId, ...resolved, versionId, receipt, ledger: await readVideoPresentationLedger(receipt, limits, { deadlineAt }) };
+  }));
+  const [first, second] = inputs as [typeof inputs[number], typeof inputs[number]];
+  const encode = { crf: config.presentation.crf, preset: config.presentation.preset };
+  const profile = transitionOutputProfile(first.ledger.plan, second.ledger.plan, { encode });
+  let timeline: ReturnType<typeof planVideoTimeline>;
+  try {
+    timeline = planVideoTimeline(clips, profile.fps);
+  } catch (error) {
+    if (!(error instanceof RangeError || error instanceof z.ZodError)) throw error;
+    throw new ValidationError(t("server.mini_tool.foreignSource"));
+  }
+  const rates = encoderRates(config);
+  // ponytail: every output frame is priced as decoding the larger display and encoding the profile, so a chunk target is
+  // one number; a per-clip rate matters only where the two clips' sources differ widely.
+  const decodeRate = Math.min(...inputs.map(({ ledger }) => rates.decodeConvertPixelsPerSecond[`${isHdrTransfer(ledger.plan.source.transfer) ? "hdr" : "sdr"}_${ledger.plan.source.bitDepth > 8 ? 10 : 8}bit`]));
+  const pixels = Math.max(...inputs.map(({ ledger }) => ledger.plan.display.width * ledger.plan.display.height));
+  const frameSeconds = pixels / decodeRate + (profile.width * profile.height) / rates.encodePixelsPerSecond;
+  const targetFrames = Math.max(1, Math.floor((shareSeconds(config) - rates.startSeconds) / frameSeconds));
+  const layout = planTransitionChunks(timeline, targetFrames);
+  const stageJobs = plannedStageJobs(layout);
+  assertWithinParallelCap(stageJobs, config);
+  const container = { ...containerPolicy(settings.container_class, settings.precheck_seconds, config), startSeconds: rates.startSeconds, encode, chunkRetries: config.encoding.chunk_retries };
+  const size = config.classes[settings.window_container_class];
+  if (size === undefined || settings.window_container_class !== "MiniToolContainerGl") throw new Error(`Container class ${settings.window_container_class} is not the configured GL class`);
+  const windowContainer = { containerClass: "MiniToolContainerGl" as const, precheckSeconds: settings.precheck_seconds, size, prices: config.prices, limits: config.plan_limits };
+  const seconds = timeline.frameCount * frameSeconds + rates.startSeconds * (layout.encode.length + layout.window.length)
+    + estimateAudioEncodeSeconds(timeline.frameCount * Number(profile.fps.denominator) / Number(profile.fps.numerator),
+      { startSeconds: rates.startSeconds, aacEncodeSecondsPerSecond: config.encoding.encoder.aac_encode_seconds_per_second });
+  /**
+   * One value per clip input, by input id.
+   * @param pick - The value of an input.
+   * @returns The record.
+   * @throws {never} Never.
+   */
+  const byInput = <T>(pick: (input: typeof first) => T): Record<string, T> => Object.fromEntries(inputs.map((input) => [input.inputId, pick(input)]));
+  return { ...common, tool: request.tool, binding, sourceKey, presentationRef: request.presentation_ref,
+    ledgerReceipts: byInput((input) => input.receipt), versionIds: byInput((input) => input.versionId), bindings: byInput((input) => input.binding),
+    sourceKeys: byInput((input) => input.sourceKey), layout, stageJobs, profile, model: request.tool, container, windowContainer, credits: containerCredits(container, seconds) };
 }
 
 /**
@@ -535,8 +618,14 @@ async function claimPrepared(plan: ExecutionProjection, request: MiniToolExecuti
       resultVersion: 0, sourceBindings: [accepted.binding], outputs: accepted.outputs.map((output) => ({ ...output, result: null, late: false })), usage: [], billingState: "idle", error: null } } }),
   }, tx);
   // The run's inputs stay alive until it can no longer be retried (§7.15 execution row).
-  const toolInputId = accepted.presentationRef.source.toolInputId;
-  if (inserted) await presentationPinService.acquire({ holderKind: "execution", holderId: accepted.taskId, toolInputId, objectKeys: presentationPinService.ledgerObjectKeys(accepted.sourceKey, toolInputId) }, tx);
+  const inputs = accepted.tool === "video.transitions"
+    ? Object.entries(accepted.presentationRef).map(([inputId, ref]) => ({ toolInputId: ref.toolInputId, sourceKey: accepted.sourceKeys[inputId]! }))
+    : [{ toolInputId: accepted.presentationRef.source.toolInputId, sourceKey: accepted.sourceKey }];
+  if (inserted) {
+    for (const { toolInputId, sourceKey } of inputs) {
+      await presentationPinService.acquire({ holderKind: "execution", holderId: accepted.taskId, toolInputId, objectKeys: presentationPinService.ledgerObjectKeys(sourceKey, toolInputId) }, tx);
+    }
+  }
   return { accepted, inserted };
 }
 

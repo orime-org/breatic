@@ -190,6 +190,8 @@ export const miniToolsConfigSchema = z
       "video.extract-frames": containerExecutionSchema.default(executionDefaults),
       "video.split": containerExecutionSchema.default(executionDefaults),
       "video.lip-sync": lipSyncSchema.optional(),
+      // Transitions encode on one class and render their overlap windows on the GL image's class (frames-split §5.4).
+      "video.transitions": z.strictObject({ container_class: z.string().min(1), window_container_class: z.string().min(1), precheck_seconds: z.number().positive() }).optional(),
     }).default({ "video.remove-bg": removeBackgroundDefaults, "video.extract-frames": executionDefaults, "video.split": executionDefaults }),
     encoding: encodingSchema.default(encodingDefaults),
     presentation: z.strictObject({
@@ -254,7 +256,11 @@ export const miniToolsConfigSchema = z
     for (const [path, name] of [[["encoding", "encoder", "container_class"], config.encoding.encoder.container_class], [["executions", "video.remove-bg", "preparation", "container_class"], config.executions["video.remove-bg"].preparation.container_class]] as const) {
       if (!(name in config.classes)) ctx.addIssue({ code: "custom", path: [...path], message: "Names an undeclared container class" });
     }
-    for (const tool of ["video.extract-frames", "video.split", "video.lip-sync"] as const) {
+    const transitions = config.executions["video.transitions"];
+    if (transitions !== undefined && !(transitions.window_container_class in config.classes)) {
+      ctx.addIssue({ code: "custom", path: ["executions", "video.transitions", "window_container_class"], message: "Execution names an undeclared container class" });
+    }
+    for (const tool of ["video.extract-frames", "video.split", "video.lip-sync", "video.transitions"] as const) {
       const execution = config.executions[tool];
       if (execution !== undefined && !(execution.container_class in config.classes)) {
         ctx.addIssue({ code: "custom", path: ["executions", tool, "container_class"], message: "Execution names an undeclared container class" });

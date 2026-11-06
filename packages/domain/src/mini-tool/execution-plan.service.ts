@@ -52,6 +52,18 @@ const storedPlanSchema = z.union([
     outputSeconds: z.array(z.number().nonnegative().finite()), container: z.strictObject({ ...container, startSeconds: z.number().nonnegative().finite(),
       encode: z.strictObject({ crf: z.number().int().min(0).max(51), preset: x264PresetSchema }), chunkRetries: index }),
   }),
+  // A transitions run (frames-split §5.4, §7.17; §97 D23-3): both clips' inputs by draft input id.
+  z.strictObject({ ...common, tool: z.literal("video.transitions"),
+    presentationRef: z.record(z.uuid(), miniToolPresentationRefSchema.shape.source), ledgerReceipts: z.record(z.uuid(), videoPresentationLedgerReceiptSchema),
+    versionIds: z.record(z.uuid(), fingerprint), bindings: z.record(z.uuid(), miniToolSourceBindingSchema), sourceKeys: z.record(z.uuid(), z.string().min(1)),
+    retry: miniToolExecutionRetryRequestSchema.shape.retry.optional(),
+    layout: z.strictObject({ encode: z.array(z.strictObject({ start: index, end: index })), window: z.array(z.strictObject({ start: index, end: index })) }), stageJobs,
+    // The profile is checked where it is used, by the job recipe schema; the plan hash binds it here.
+    profile: z.record(z.string(), z.json()),
+    container: z.strictObject({ ...container, startSeconds: z.number().nonnegative().finite(),
+      encode: z.strictObject({ crf: z.number().int().min(0).max(51), preset: x264PresetSchema }), chunkRetries: index }),
+    windowContainer: z.strictObject({ ...container, containerClass: z.literal("MiniToolContainerGl") }),
+  }),
   // A lip-sync run (execution design §9.3; DD §7.1).
   z.strictObject({ ...common, ...frozenToolInput, tool: z.literal("video.lip-sync"),
     generator: z.strictObject({ backend: z.literal("wavespeed-crop"), modelId: z.string().min(1), schemaFingerprint: z.string().regex(/^[a-f0-9]{64}$/), providerSyncMode: z.literal("cut_off").nullable() }),
@@ -110,13 +122,27 @@ export async function executionPlanFromTask(task: TaskEntity): Promise<MiniToolE
   const { requestFingerprint: _requestFingerprint, planFingerprint, ...projection } = execution;
   if (task.taskType !== (execution.tool === "video.extract-frames" ? "image" : "video")
     || execution.taskId !== task.id || execution.projectId !== task.projectId || execution.spaceId !== task.spaceId || execution.model !== task.model
-    || execution.ledgerReceipts.source.sourceFingerprint !== execution.binding.contentHash
-    || execution.ledgerReceipts.source.toolInputId !== execution.presentationRef.source.toolInputId
+    || !frozenInputsMatch(execution)
     || ((execution.tool === "video.extract-frames" || execution.tool === "video.split") && (execution.model !== execution.tool || execution.outputSeconds.length !== execution.outputs.length))
     || (execution.tool === "video.lip-sync" && execution.model !== execution.generator.modelId)
     || canonicalMiniToolValue(execution.targetNodeIds) !== canonicalMiniToolValue(execution.outputs.map((output) => output.nodeId))
     || await hashMiniToolValue(projection) !== planFingerprint) throw new Error("Planned execution differs from its original parent or complete plan");
   return { task, execution };
+}
+
+/**
+ * Whether each frozen input's receipt is the one its ref and registered binding name.
+ * @param execution - The plan.
+ * @returns True when every input matches.
+ * @throws {never} Never.
+ */
+function frozenInputsMatch(execution: AcceptedMiniToolExecution): boolean {
+  if (execution.tool !== "video.transitions") {
+    return execution.ledgerReceipts.source.sourceFingerprint === execution.binding.contentHash && execution.ledgerReceipts.source.toolInputId === execution.presentationRef.source.toolInputId;
+  }
+  const ids = Object.keys(execution.presentationRef);
+  return ids.length === 2 && ids.every((id) => execution.ledgerReceipts[id]?.toolInputId === execution.presentationRef[id]!.toolInputId
+    && execution.ledgerReceipts[id]?.sourceFingerprint === execution.bindings[id]?.contentHash && execution.sourceKeys[id] !== undefined && execution.versionIds[id] !== undefined);
 }
 
 /** One frozen tool input resolved for execution (§5.3): never the currently selected version. */
@@ -139,7 +165,7 @@ export interface ResolvedVideoToolInput {
  * @throws {Error} When the plan names no such input or the full object no longer matches its receipt.
  */
 export async function resolveVideoToolInput(plan: AcceptedMiniToolExecution, inputId: string, bound: { deadlineAt: number; signal?: AbortSignal }): Promise<ResolvedVideoToolInput> {
-  if (plan.tool === "video.remove-bg" || inputId !== "source") throw new Error(`The plan names no frozen tool input ${inputId}`);
+  if (plan.tool === "video.remove-bg" || plan.tool === "video.transitions" || inputId !== "source") throw new Error(`The plan names no frozen tool input ${inputId}`);
   const ref = plan.presentationRef.source;
   const receipt = plan.ledgerReceipts.source;
   const validatedFullLedger = await readVideoPresentationLedger(receipt, { maxBytes: getMiniToolsConfig().presentation.source_ledger.max_bytes }, bound);
