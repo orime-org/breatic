@@ -5,7 +5,8 @@
  * inner#1306 test plan §97 (canvas design §4 对口型行; Disabled controls rule in packages/web/AGENTS.md): Run is
  * `aria-disabled` and a click explains the allowed range with a toast when the result duration (shared `lipsyncTimeline`)
  * lies outside the selected model's `min_duration_seconds`/`max_duration_seconds`, or the source range the run uses
- * (shared `lipsyncUsedSourceRange`) lies outside the tracking model's range. The panel prop `lipSync` (models and tracking
+ * (shared `lipsyncUsedSourceRange`) lies outside the tracking model's range; the toast is `canvas.miniTool.videoUI.
+ * lipSyncDurationRange` `{min, max, duration}` or `lipSyncTrackingRange` `{min, max, length}` (D18). The panel prop `lipSync` (models and tracking
  * read from config `executions.video.lip-sync`) is a shape this test chose; no design fixes how web reads that config.
  *
  * Fixture: a 5 s video and one dialogue of 3 s audio starting at 0 s in cut_off mode, so the result lasts 3 s and the run
@@ -26,6 +27,7 @@ vi.mock('@web/spaces/canvas/_shared/NodePanelMount', async (importOriginal) => (
   NodePanelMount: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
+import { t } from '@breatic/shared';
 import { fingerprintMiniToolAnalysisInput, projectMiniToolAnalysisInput, type MiniToolAnalysisRecord, type VideoToolDraftById } from '@breatic/shared/mini-tools';
 import { VideoToolPanelContainer, type VideoToolPresentation } from '../video/VideoToolPanelContainer';
 import { createVideoToolDraft } from '../video/video-tool-edit';
@@ -106,22 +108,19 @@ async function mount(lipSync: ReturnType<typeof lipSyncConfig>, onRunVideo: () =
 }
 
 /**
- * Presses Run and checks the press was refused with a toast naming both ends of the range.
+ * Presses Run and checks the press was refused with exactly the given toast.
  * @param run - The Run button.
  * @param onRunVideo - The execution entry that must stay unused.
- * @param min - The range's lower end as shown.
- * @param max - The range's upper end as shown.
+ * @param message - The toast the refusal shows.
  * @returns Nothing.
  */
-function expectRefused(run: HTMLElement, onRunVideo: () => Promise<unknown>, min: string, max: string): void {
+function expectRefused(run: HTMLElement, onRunVideo: () => Promise<unknown>, message: string): void {
   expect(run).toHaveAttribute('aria-disabled', 'true');
   expect(run).not.toBeDisabled();
   act(() => run.click());
   expect(onRunVideo).not.toHaveBeenCalled();
   expect(toast.warning).toHaveBeenCalledOnce();
-  const message = String(vi.mocked(toast.warning).mock.calls[0][0]);
-  expect(message).toContain(min);
-  expect(message).toContain(max);
+  expect(toast.warning).toHaveBeenCalledWith(message);
 }
 
 beforeEach(() => { vi.clearAllMocks(); });
@@ -140,18 +139,18 @@ describe('lip-sync Run follows the model and tracking duration ranges (§97; can
   it('refuses a 3 s result above the selected model maximum and names the model range', async () => {
     const onRunVideo = vi.fn().mockResolvedValue({ kind: 'done', result: {} });
     const run = await mount(lipSyncConfig({ min_duration_seconds: 1.5, max_duration_seconds: 2.5 }, { min_duration_seconds: 0.5, max_duration_seconds: 10 }), onRunVideo);
-    expectRefused(run, onRunVideo, '1.5', '2.5');
+    expectRefused(run, onRunVideo, t('canvas.miniTool.videoUI.lipSyncDurationRange', { min: 1.5, max: 2.5, duration: 3 }));
   });
 
   it('refuses a 3 s result below the selected model minimum and names the model range', async () => {
     const onRunVideo = vi.fn().mockResolvedValue({ kind: 'done', result: {} });
     const run = await mount(lipSyncConfig({ min_duration_seconds: 3.5, max_duration_seconds: 9.5 }, { min_duration_seconds: 0.5, max_duration_seconds: 10 }), onRunVideo);
-    expectRefused(run, onRunVideo, '3.5', '9.5');
+    expectRefused(run, onRunVideo, t('canvas.miniTool.videoUI.lipSyncDurationRange', { min: 3.5, max: 9.5, duration: 3 }));
   });
 
   it('refuses a [0, 3] source range longer than tracking accepts and names the tracking range', async () => {
     const onRunVideo = vi.fn().mockResolvedValue({ kind: 'done', result: {} });
     const run = await mount(lipSyncConfig({ min_duration_seconds: 1, max_duration_seconds: 10 }, { min_duration_seconds: 0.75, max_duration_seconds: 2.25 }), onRunVideo);
-    expectRefused(run, onRunVideo, '0.75', '2.25');
+    expectRefused(run, onRunVideo, t('canvas.miniTool.videoUI.lipSyncTrackingRange', { min: 0.75, max: 2.25, length: 3 }));
   });
 });
