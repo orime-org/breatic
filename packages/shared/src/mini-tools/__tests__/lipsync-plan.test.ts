@@ -71,11 +71,17 @@ describe("the used source range (§97 D12-4)", () => {
 // §97 D12-4 (execution design §9.2; DD §7.1 row 128): the frozen lip-sync timeline is the dialogue planner's result with
 // the video duration and mode, and `lipsyncSourceTimeAt` maps a result time to the source presentation time per mode:
 // cut_off as is, silence as is before the video ends, loop over [0, V), bounce forth and back over [0, V), remap scaled
-// from [0, A) onto [0, V). Times exactly on a loop or bounce boundary and silence's held tail are not asserted (D13 list).
+// from [0, A) onto [0, V). §97 D14-1 fixes the boundaries: the source time s lies in [0, V], s = V meaning the last
+// presentation frame; silence holds s = min(t, V); loop is half-open, s = t mod V (t = V gives 0); bounce has period 2V,
+// u = t mod 2V and s = u when u <= V, else 2V - u (u = V gives V); remap is s = t * V / duration (t = duration gives V).
+// `lipsyncSourceFrameAt(timeline, table, t)` is the presentation frame covering s, s = V giving the last frame.
 const lip = miniTools as unknown as {
   lipsyncTimeline: (input: { videoDuration: number; dialogues: readonly Record<string, unknown>[]; syncMode: Timeline["syncMode"] }) => Timeline;
   lipsyncSourceTimeAt: (timeline: Timeline, t: number) => number;
+  lipsyncSourceFrameAt: (timeline: Timeline, table: { schemaVersion: 1; timescale: number; runs: { start: number; count: number; step: number; duration: number }[] }, t: number) => number;
 };
+// 50 frames of 1/10 s: V = 5, last frame 49.
+const TABLE = { schemaVersion: 1 as const, timescale: 10, runs: [{ start: 0, count: 50, step: 1, duration: 1 }] };
 const rows = [
   { dialogueId: "60000000-0000-4000-8000-000000000001", personId: "person-1", audioInputId: "40000000-0000-4000-8000-000000000001", startTime: 0, duration: 3 },
   { dialogueId: "60000000-0000-4000-8000-000000000002", personId: "person-2", audioInputId: "40000000-0000-4000-8000-000000000002", startTime: 2, duration: 5 },
@@ -97,5 +103,27 @@ describe("the frozen lip-sync timeline and its source mapping (§97 D12-4; execu
   ] as const)("LS01 %s maps result time to source time", (syncMode, duration, points) => {
     const timeline = { duration, videoDuration: 5, syncMode };
     for (const [t, source] of points) expect(lip.lipsyncSourceTimeAt(timeline, t)).toBeCloseTo(source, 9);
+  });
+
+  it.each([
+    ["cut_off at the start and at its end", "cut_off", 5, [[0, 0], [5, 5]]],
+    ["silence at the video end and through the held tail", "silence", 7, [[5, 5], [6, 5], [7, 5]]],
+    ["loop at the period boundary restarts at 0", "loop", 7, [[0, 0], [5, 0], [7, 2]]],
+    ["bounce at V is the last frame and at 2V back at 0", "bounce", 12, [[0, 0], [5, 5], [7.5, 2.5], [10, 0], [12, 2]]],
+    ["remap at its end reaches V", "remap", 7, [[0, 0], [7, 5]]],
+  ] as const)("LS01 boundary (§97 D14-1): %s", (_name, syncMode, duration, points) => {
+    const timeline = { duration, videoDuration: 5, syncMode };
+    for (const [t, source] of points) expect(lip.lipsyncSourceTimeAt(timeline, t)).toBeCloseTo(source, 9);
+  });
+
+  it.each([
+    ["cut_off inside and at its end", "cut_off", 5, [[1.23, 12], [5, 49]]],
+    ["silence through the held tail", "silence", 7, [[4.95, 49], [5, 49], [7, 49]]],
+    ["loop just before and at the period boundary", "loop", 7, [[4.95, 49], [5, 0], [6.25, 12]]],
+    ["bounce at V and at 2V", "bounce", 12, [[5, 49], [10, 0], [6.25, 37]]],
+    ["remap inside and at its end", "remap", 7, [[3.5, 25], [7, 49]]],
+  ] as const)("LS02 the covering source frame (§97 D14-1): %s", (_name, syncMode, duration, points) => {
+    const timeline = { duration, videoDuration: 5, syncMode };
+    for (const [t, frame] of points) expect(lip.lipsyncSourceFrameAt(timeline, TABLE, t)).toBe(frame);
   });
 });
