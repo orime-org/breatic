@@ -55,7 +55,7 @@ import { buildCollabExtensions } from '@web/features/collab-editor/collab-extens
 import { yUndoPluginKey } from '@web/features/collab-editor/collab-plugin-keys';
 import { buildTextNodeExtensions } from '@web/spaces/canvas/nodes/TextNodeEditor';
 import { push, resetProviderSpies, type ProviderSpy } from '@web/data/yjs/__tests__/helpers/doc-size-driver';
-import { COPY_EN, F_FULL, F_NORMAL } from '@web/data/yjs/__tests__/helpers/doc-size-fixtures';
+import { COPY_EN, F_FULL, F_NORMAL, F_WARNING } from '@web/data/yjs/__tests__/helpers/doc-size-fixtures';
 
 const PID = '11111111-1111-4111-8111-111111111111';
 const SID = '22222222-2222-4222-8222-222222222222';
@@ -240,6 +240,21 @@ describe.each<Kind>(['text node', 'prompt'])('W-116 %s editor', (kind) => {
     expect(open.editor.state.doc.textContent).toBe('hello ');
     expect(undoSpy).not.toHaveBeenCalled();
     expectRefused(open, before);
+  });
+
+  it('Mod-z in warning with less room than the deleted text needs is refused with the room left', () => {
+    const open = buildEditor(kind);
+    deleteWorld(open);
+    enter(open, { ...F_WARNING, room: 1 });
+    const before = snapshot(open);
+
+    press(open, 'z', { mod: true });
+
+    expect(open.editor.state.doc.textContent).toBe('hello ');
+    expect(undoSpy).not.toHaveBeenCalled();
+    expect(snapshot(open)).toEqual(before);
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(toast.warning).toHaveBeenCalledWith(COPY_EN.T_NO_ROOM('1 B'));
   });
 
   it('(b) Mod-z takes typed text back under F_FULL (a delete runs)', () => {

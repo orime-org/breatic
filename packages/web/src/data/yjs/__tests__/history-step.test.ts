@@ -50,6 +50,7 @@ function pair(): Pair {
 function node(content: string): Y.Map<unknown> {
   const m = new Y.Map<unknown>();
   m.set('content', content);
+  m.set('t', new Y.Text());
   return m;
 }
 
@@ -67,7 +68,10 @@ function run(p: Pair, direction: 'undo' | 'redo'): { wrote: boolean; contentByte
   let contentBytes = 0;
   for (const s of Y.decodeUpdate(Y.encodeStateAsUpdate(p.a, sv)).structs) {
     if (s instanceof Y.Item && s.id.client === p.a.clientID) {
-      contentBytes += new TextEncoder().encode(JSON.stringify(s.content.getContent()) ?? '').byteLength;
+      const text = s.content instanceof Y.ContentFormat
+        ? s.content.key + (JSON.stringify(s.content.value) ?? '')
+        : JSON.stringify(s.content.getContent()) ?? '';
+      contentBytes += new TextEncoder().encode(text).byteLength;
     }
   }
   return { wrote: Y.getState(p.a.store, p.a.clientID) > clock, contentBytes };
@@ -116,6 +120,23 @@ describe('nextHistoryStep', () => {
     expect(nextHistoryStep(p.um, 'undo').kind).toBe('add');
   });
 
+  it('counts what a restored format carries, such as a long link address', () => {
+    const p = pair();
+    const href = `https://example.com/${'s'.repeat(800)}`;
+    p.a.transact(() => {
+      const n = node('linked');
+      const text = new Y.Text();
+      n.set('body', text);
+      p.nodes.set('n', n);
+      for (let i = 0; i < 20; i++) text.insert(text.length, 'see ', { link: { href } });
+    }, 'setup');
+    p.a.transact(() => p.nodes.delete('n'), ORIGIN);
+    const step = nextHistoryStep(p.um, 'undo');
+    const ran = run(p, 'undo');
+    expect(step.kind).toBe('add');
+    expect(step.estimate).toBeGreaterThanOrEqual(ran.contentBytes);
+  });
+
   it('skips a top step a peer already undid and judges the one below, as yjs runs it', () => {
     const p = pair();
     p.a.transact(() => p.nodes.set('X', node('x'.repeat(200_000))), 'setup');
@@ -148,6 +169,7 @@ describe('nextHistoryStep', () => {
       | { who: 'a' | 'b'; op: 'set'; key: number; content: string }
       | { who: 'a' | 'b'; op: 'del'; key: number }
       | { who: 'a' | 'b'; op: 'field'; key: number; value: number }
+      | { who: 'a' | 'b'; op: 'link'; key: number; href: string }
       | { who: 'a'; op: 'undo' }
       | { who: 'a'; op: 'redo' };
     const key = fc.integer({ min: 0, max: 3 });
@@ -156,6 +178,7 @@ describe('nextHistoryStep', () => {
       fc.record({ who, op: fc.constant('set' as const), key, content: fc.string({ maxLength: 40 }) }),
       fc.record({ who, op: fc.constant('del' as const), key }),
       fc.record({ who, op: fc.constant('field' as const), key, value: fc.integer() }),
+      fc.record({ who, op: fc.constant('link' as const), key, href: fc.string({ minLength: 100, maxLength: 400 }) }),
       fc.record({ who: fc.constant('a' as const), op: fc.constant('undo' as const) }),
       fc.record({ who: fc.constant('a' as const), op: fc.constant('redo' as const) }),
     );
@@ -170,7 +193,8 @@ describe('nextHistoryStep', () => {
         doc.transact(() => {
           if (o.op === 'set') map.set(k, node(o.content));
           else if (o.op === 'del') map.delete(k);
-          else map.get(k)?.set('x', o.value);
+          else if (o.op === 'field') map.get(k)?.set('x', o.value);
+          else (map.get(k)?.get('t') as Y.Text | undefined)?.insert(0, 'w', { link: { href: o.href } });
         }, o.who === 'a' ? ORIGIN : 'peer');
       }
       const step = nextHistoryStep(p.um, direction);

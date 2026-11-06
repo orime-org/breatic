@@ -80,6 +80,7 @@ import {
   F_FULL,
   F_FULL_NEAR,
   F_NORMAL,
+  F_WARNING,
   type DocSizePush,
 } from '@web/data/yjs/__tests__/helpers/doc-size-fixtures';
 
@@ -215,6 +216,21 @@ describe('W-111 the four stack-entry cases on the canvas', () => {
     expect(toast.warning).toHaveBeenCalledTimes(1);
     expect(toast.warning).toHaveBeenCalledWith(COPY_EN.T_ADD_BLOCKED);
     expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('(e) undoing a deletion in warning with less room than it brings back is refused with the room left', () => {
+    const hook = renderHook(() => useCanvasSpace(PID, SID));
+    const board = openBoard();
+    act(() => { removeNode(PID, SID, 't1'); });
+    enter(board, { ...F_WARNING, room: 1 });
+
+    act(() => { hook.result.current.undo(); });
+
+    expect(has(board.doc, 't1')).toBe(false);
+    expect(undoSpy).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    // The room it names is what is left after the board's own pending writes.
+    expect(vi.mocked(toast.warning).mock.calls[0]![0]).toMatch(/^This doesn't fit — the Space has \d+ B left\.$/);
   });
 
   it('(c) redoing a creation under full is an add: refused, n9 stays absent', () => {

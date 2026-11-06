@@ -131,7 +131,12 @@ function comesBack(item: Y.Item, ctx: RedoContext): boolean {
  */
 function itemBytes(item: Y.Item): number {
   const { content } = item;
-  const text = content instanceof Y.ContentString ? content.str : JSON.stringify(content.getContent()) ?? '';
+  // A format struct's getContent() is empty; what it writes is its key and value.
+  const text = content instanceof Y.ContentString
+    ? content.str
+    : content instanceof Y.ContentFormat
+      ? content.key + (JSON.stringify(content.value) ?? '')
+      : JSON.stringify(content.getContent()) ?? '';
   return utf8Bytes(text) + ITEM_BYTES;
 }
 
