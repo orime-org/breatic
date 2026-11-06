@@ -71,7 +71,7 @@ const AUTH = { Cookie: "breatic_session=valid-token" };
 
 /**
  * A configured lip-sync execution whose values differ from any shipped model, carrying the
- * fields the panel must not receive (fingerprints, crop size, sync-mode and rejection facts).
+ * fields the panel must not receive (fingerprints, crop size, the tracking model's name).
  * @returns The execution as `getMiniToolsConfig()` returns it.
  */
 function lipSyncExecution(): Record<string, unknown> {
@@ -137,7 +137,7 @@ describe("GET /canvas/limits", () => {
     expect(body.data.removeBackgroundModel).toBe("remove-bg-from-config");
   });
 
-  it("serves the configured lip-sync models in order, the tracking model and range and the caps, and nothing else of the execution", async () => {
+  it("serves the configured lip-sync models in order, the tracking range and the caps, and nothing else of the execution", async () => {
     const res = await createApp().request("/api/v1/canvas/limits", { headers: AUTH });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: Record<string, unknown> };
@@ -146,8 +146,7 @@ describe("GET /canvas/limits", () => {
         { name: "lipsync-first", minDurationSeconds: 1.5, maxDurationSeconds: 300 },
         { name: "lipsync-second", minDurationSeconds: 2, maxDurationSeconds: 15 },
       ],
-      // The panel prices tracking by this model (§97 ruling 6), so its name is served.
-      tracking: { model: "tracker-from-config", minDurationSeconds: 0.5, maxDurationSeconds: 600 },
+      tracking: { minDurationSeconds: 0.5, maxDurationSeconds: 600 },
       maxPeople: 3,
       maxDialogues: 7,
     });
