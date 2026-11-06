@@ -53,6 +53,9 @@ interface Plan extends Record<string, unknown> {
   tool: string; credits: number; timeline: Timeline;
   generator: { backend: string; modelId: string; schemaFingerprint: string; providerSyncMode: "cut_off" | null };
   persons?: { personId: string; detectionNumber: number }[];
+  usedRange: { start: 0; end: number };
+  layout?: { preparation: { start: number; end: number }[]; persons: number; composite: { start: number; end: number }[] };
+  stageJobs?: { stage: string; jobs: number }[];
 }
 
 const outside = vi.hoisted(() => ({ snapshots: new Map<string, unknown>(), bodies: new Map<string, string>(), ingest: vi.fn(), config: vi.fn() }));
@@ -442,5 +445,105 @@ describe("lip-sync fresh quote (§97; execution design §9.3 pricing paragraph)"
     expect(quotes[0]).toBeCloseTo(gen + track + std4(20000), 6);
     expect(quotes[1]).toBeCloseTo(2 * (gen + track) + std4(20000), 6);
     expect(quotes[1]! - quotes[0]!).toBeCloseTo(gen + track, 6);
+  });
+});
+
+// frames-split §5.4 上限 row: lip-sync's stages are prepare, faces (persons), clip and stem (2 × persons), composite chunks
+// and stitch; the largest is compared with `encoding.max_parallel_chunks`, counted by the shared `plannedStageJobs`, and
+// the layout and its stage counts are frozen beside each other as split freezes them (§97 D12-1).
+describe("lip-sync stage job counts at admission (§97 D12-1; frames-split §5.4 派发, 预算, 上限 rows)", () => {
+  it("LS01 freezes the layout and its stage counts, two people's clip and stem being four jobs", async () => {
+    settings.encoding.max_parallel_chunks = 4;
+    const f = await seed([{ registered: 3, claimed: 3 }, { registered: 2.5, claimed: 2.5 }]);
+    speak(f, [[0, 0, 0], [1, 1, 1.5]]);
+    await accept(f);
+    const frozen = await plan(f.body.run_id);
+    expect(frozen.layout?.persons).toBe(2);
+    for (const windows of [frozen.layout?.preparation, frozen.layout?.composite]) {
+      expect(windows?.length).toBeGreaterThan(0);
+      for (const window of windows ?? []) expect(window.end).toBeGreaterThan(window.start);
+    }
+    expect(frozen.stageJobs).toEqual(miniTools.plannedStageJobs(frozen.layout!));
+    expect(frozen.stageJobs).toContainEqual({ stage: "clip_stem", jobs: 4 });
+  });
+
+  it("LS02 refuses two people whose clip and stem stage exceeds the cap with runTooLong, after one person is admitted", async () => {
+    settings.encoding.max_parallel_chunks = 3;
+    const f = await seed([{ registered: 3, claimed: 3 }, { registered: 2.5, claimed: 2.5 }]);
+    // One person: clip and stem is two jobs, within the cap, so the refusal below is the cap and not the fixture.
+    speak(f, [[0, 0, 0], [0, 1, 1.5]]);
+    const one = await plan(await control(f));
+    expect(one.stageJobs).toContainEqual({ stage: "clip_stem", jobs: 2 });
+    speak(f, [[0, 0, 0], [1, 1, 1.5]]);
+    await refused(f, { key: "server.mini_tool.runTooLong", params: { max: 3 } });
+  });
+});
+
+// Execution design §9.3 pricing paragraph: the quote is per person (generation over `timeline.duration` + tracking over
+// the used range) plus the container work (preparation, each person's lipsync_faces, lipsync_clip and lipsync_stem, the
+// composite chunks and the stitch) under the one container quote rule. The per-step formulas are not fixed (frames-split
+// §5.4 待实测 row), so these cases assert only relations between container terms.
+describe("lip-sync quote container work (§97; execution design §9.3; frames-split §5.4 待实测 row)", () => {
+  /**
+   * Make planned container work dominate the precheck floor and the task minimum: the floor is one second, and encoding
+   * runs at one display frame per second with negligible decode, so each step's seconds lie far above credit-cent rounding.
+   * @returns Nothing.
+   * @throws {never} Never.
+   */
+  function plannedWorkDominates(): void {
+    lipSync.precheck_seconds = 1;
+    const encoder = settings.encoding.encoder;
+    encoder.encode_pixels_per_second = 960 * 540;
+    for (const key of Object.keys(encoder.decode_convert_pixels_per_second) as (keyof typeof encoder.decode_convert_pixels_per_second)[]) {
+      encoder.decode_convert_pixels_per_second[key] = 1e15;
+    }
+  }
+  /**
+   * Admit the fixture and return its container term: the quote minus each person's generation over the run's own
+   * timeline and tracking over its own used range, computed as the admission computes them.
+   * @param f - The fixture with its rows set.
+   * @param people - The referenced people.
+   * @returns The frozen plan and its container credits.
+   * @throws {Error} On admission or pricing failure.
+   */
+  async function containerTerm(f: Fixture, people: number): Promise<{ frozen: Plan; container: number }> {
+    await accept(f);
+    const frozen = await plan(f.body.run_id);
+    const { duration } = frozen.timeline;
+    const gen = await estimateTaskCredits(SYNC, { params: {}, durations: { video: [duration], audio: [duration] }, sources: ["video", "audio"] });
+    const track = await estimateTaskCredits(TRACKER, { params: {}, durations: { video: [frozen.usedRange.end - frozen.usedRange.start] }, sources: ["video"] });
+    return { frozen, container: frozen.credits - people * (gen + track) };
+  }
+
+  it("LQ01 adds each referenced person's own container steps to the container work", async () => {
+    plannedWorkDominates();
+    const terms: number[] = [];
+    // The same rows as LA09: A = 5.5 > V, so cut_off gives the timeline V and the used range [0, V) for both runs.
+    for (const second of [0, 1]) {
+      const f = await seed([{ registered: 3, claimed: 3 }, { registered: 2.5, claimed: 2.5 }]);
+      speak(f, [[0, 0, 0], [second, 1, 3]]);
+      const { frozen, container } = await containerTerm(f, second + 1);
+      expect(frozen.timeline.duration).toBe(V);
+      expect(container).toBeGreaterThan(std4(1));
+      terms.push(container);
+    }
+    // A second person adds its lipsync_faces, lipsync_clip and lipsync_stem: at least one credit cent more.
+    expect(terms[1]! - terms[0]!).toBeGreaterThanOrEqual(0.01);
+  });
+
+  it("LQ02 scales the container work with the timeline in loop mode, whose used source range stays [0, V)", async () => {
+    plannedWorkDominates();
+    const terms: number[] = [];
+    // loop: the timeline is the audio end A, 5.5 s then 11 s; the used range is [0, V) in both.
+    for (const second of [2.5, 8]) {
+      const f = await seed([{ registered: 3, claimed: 3 }, { registered: second, claimed: second }]);
+      speak(f, [[0, 0, 0], [1, 1, 3]]); f.body.draft.params.syncMode = "loop";
+      const { frozen, container } = await containerTerm(f, 2);
+      expect(frozen.timeline.duration).toBe(3 + second);
+      expect(frozen.usedRange).toEqual({ start: 0, end: V });
+      terms.push(container);
+    }
+    // Composite chunks, stitch, clip and stem all cover the longer result: at least one credit cent more.
+    expect(terms[1]! - terms[0]!).toBeGreaterThanOrEqual(0.01);
   });
 });
