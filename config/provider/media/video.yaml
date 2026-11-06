@@ -1463,6 +1463,8 @@ models:
             reason: SandBase prompt maxLength 2500
           - when: 'get_duration(video) > (character_orientation = "image" ? 10 : 30)'
             reason: "SandBase video: Duration limit depends on character_orientation: 10s max for 'image', 30s max for 'video'"
+          - when: get_duration(video, min=3, max=1000000, total=1000000) > get_duration(video)
+            reason: "SandBase video: Kling's own minimum is 3 seconds (SandBase mirrors Kling's schema)"
         pricing:
           kind: formula
           base_price: 168000
