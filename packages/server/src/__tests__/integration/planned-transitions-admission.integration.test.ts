@@ -132,15 +132,16 @@ async function registered(target: StudioFixture, presented: Presented = LARGE): 
  * @param timing.currentOut - The current video's out point.
  * @param timing.pickedOut - The picked video's out point.
  * @param timing.picked - The picked video's plan.
+ * @param timing.current - The current video's plan; the large one by default.
  * @returns The fixture.
  * @throws {Error} On fixture SQL failure.
  */
-async function seed(transition: Transition = FADE, timing: { currentOut: number; pickedOut: number; picked: Presented } = { currentOut: 4, pickedOut: 4, picked: LARGE }): Promise<Fixture> {
+async function seed(transition: Transition = FADE, timing: { currentOut: number; pickedOut: number; picked: Presented; current?: Presented } = { currentOut: 4, pickedOut: 4, picked: LARGE }): Promise<Fixture> {
   const target = await seedStudioFixture(pg, "transitions");
   await pg`INSERT INTO project_members (project_id,user_id,role) VALUES (${target.projectId},${target.userId},'editor')`;
   await seedDesignatedLot(pg, target, 1000);
   const host = randomUUID(); const current = randomUUID(); const picked = randomUUID();
-  const a = await registered(target); const b = await registered(target, timing.picked);
+  const a = await registered(target, timing.current); const b = await registered(target, timing.picked);
   const body: Body = { tool: "video.transitions", project_id: target.projectId, space_id: randomUUID(), run_id: randomUUID(),
     draft: { version: 1, draftId: randomUUID(), revision: randomUUID(), source: { nodeId: host, canonicalURL: a.url, mediaInfo: MEDIA },
       inputs: [{ inputId: current, url: a.url, mediaInfo: MEDIA, sourceNodeId: host }, { inputId: picked, url: b.url, mediaInfo: MEDIA, sourceNodeId: randomUUID() }],
@@ -317,5 +318,74 @@ describe("the transitions quote is the admission's own computation (§97 D26-1)"
     expect(pins!.count).toBe(0);
     await accept(f);
     expect((await frozen(f.body.run_id)).credits).toBe(answer.data.credits);
+  });
+});
+
+// inner#1306 §97 (frames-split §5.4 待实测 row; coordinator ruling after D26): the chunk planner holds as many output frames in
+// a chunk as that chunk's own per-clip work allows, by the same cost the quote sums (TE01): each clip's frames at its own
+// pixels and tier, plus encode, plus the GL render on window chunks, plus the job start; never every frame at the costlier
+// clip's cost. Every source frame here is a keyframe, so no chunk boundary adds decode pre-roll and only the per-frame cost
+// decides the layout.
+describe("transition chunks hold what each clip's own frames cost (§97; frames-split §5.4 待实测 row)", () => {
+  /** A rational in lowest terms. @throws {never} Never. */
+  const exact = (numerator: number, denominator: number): { numerator: string; denominator: string } => {
+    let [a, b] = [numerator, denominator]; while (b !== 0) [a, b] = [b, a % b];
+    return { numerator: String(numerator / a), denominator: String(denominator / a) };
+  };
+  const everyFrame = (width: number, height: number): Presented["encoding"] => ({ ...REMOVAL_ENCODING, codedWidth: width, codedHeight: height,
+    keyframeOrdinals: Array.from({ length: 1011 }, (_, k) => k),
+    sourceKeyframes: Array.from({ length: 1011 }, (_, k) => ({ pts: exact(k, 200), dts: exact(k, 200) })) });
+  const DENSE_LARGE: Presented = { plan: REMOVAL_PLAN, encoding: everyFrame(960, 540) };
+  const DENSE_SMALL: Presented = { plan: SMALL.plan, encoding: everyFrame(160, 90) };
+
+  it("TK01 every frozen chunk's own work fits the share, and the small clip's region is chunked as coarsely as the share allows", async () => {
+    const encoder = settings.encoding.encoder;
+    const largePixels = 960 * 540;
+    // Per frame: decoding a large frame 0.5 s, a small one 1/72 s; encoding an output frame 0.01 s; rendering one 0.1 s.
+    const decodeRate = largePixels * 2;
+    for (const tier of Object.keys(encoder.decode_convert_pixels_per_second) as (keyof typeof encoder.decode_convert_pixels_per_second)[]) {
+      encoder.decode_convert_pixels_per_second[tier] = decodeRate;
+    }
+    encoder.encode_pixels_per_second = largePixels * 100;
+    encoder.start_seconds = 1;
+    const GL_RATE = largePixels * 10;
+    Reflect.set(settings.classes.MiniToolContainerGl!, "render_pixels_per_second", GL_RATE);
+    const share = 60;
+    settings.encoding.chunk_share = share / (core.getNodeTaskConfig().default_budget_ms / 1000);
+    // The layout this test reads may hold many chunks; the parallel cap is not what is tested here.
+    settings.encoding.max_parallel_chunks = 1000;
+    // 2 s of the 960×540 current video, a 0.5 s fade, then 5 s of the 160×90 picked video: B's own region is [400, 1300).
+    const f = await seed(FADE, { currentOut: 2, pickedOut: 5, picked: DENSE_SMALL, current: DENSE_LARGE });
+    await accept(f);
+    const plan = await frozen(f.body.run_id);
+    const profile = expectedProfile();
+    const timeline = planVideoTimeline(f.body.draft.params.clips, profile.fps);
+    const windowEnd = timeline.window!.startFrame + timeline.window!.frameCount;
+    expect({ window: timeline.window, frameCount: timeline.frameCount }).toEqual({ window: { startFrame: 300, frameCount: 100, kind: "fade" }, frameCount: 1300 });
+    const sources = [largePixels, 160 * 90];
+    const outputPixels = profile.width * profile.height;
+    /**
+     * One chunk's planned seconds: its start, each clip's frames it shows at that clip's own decode cost (both clips present
+     * at the output's 200 fps from in point 0, every frame a keyframe), its encode and, for a window chunk, its render.
+     * @throws {never} Never.
+     */
+    const cost = (chunk: { start: number; end: number }, window: boolean): number => {
+      const frames = chunk.end - chunk.start;
+      const decode = timeline.clips.reduce((total, clip, c) => {
+        const low = Math.max(chunk.start, clip.startFrame); const high = Math.min(chunk.end, clip.startFrame + clip.frameCount);
+        return high <= low ? total : total + (high - low) * sources[c]! / decodeRate;
+      }, 0);
+      return encoder.start_seconds + decode + frames * outputPixels / encoder.encode_pixels_per_second + (window ? frames * outputPixels / GL_RATE : 0);
+    };
+    const tooLong = [...plan.layout.encode.map((chunk) => ({ chunk, seconds: cost(chunk, false) })), ...plan.layout.window.map((chunk) => ({ chunk, seconds: cost(chunk, true) }))]
+      .filter(({ seconds }) => seconds > share + 1e-9);
+    // Soft, so a run reports both properties.
+    expect.soft(tooLong).toEqual([]);
+    const small = plan.layout.encode.filter((chunk) => chunk.start >= windowEnd).sort((left, right) => left.start - right.start);
+    const large = plan.layout.encode.filter((chunk) => chunk.end <= timeline.window!.startFrame);
+    // Merging any two neighbouring chunks over the small clip's own region would exceed the share, or there is only one.
+    const mergeable = small.slice(1).filter((chunk, at) => cost({ start: small[at]!.start, end: chunk.end }, false) <= share);
+    expect({ count: small.length > 0, mergeable }).toEqual({ count: true, mergeable: [] });
+    expect(small.length).toBeLessThan(large.length);
   });
 });
