@@ -205,6 +205,7 @@ export type { Voice, VoicePage, VoiceQuery } from "@domain/model-catalog/voice-c
 
 // ── Node tasks (one row per task on a node; the four counts the node shows) ──
 export * as nodeTaskService from "@domain/node-task/node-task.service.js";
+export * as sceneTaskService from "@domain/node-task/scene-task.service.js";
 export { settleTaskForNode } from "@domain/node-task/settle-for-node.js";
 export { failureOutcome } from "@domain/node-task/failure-outcome.js";
 export type {

@@ -112,7 +112,7 @@ export const users = pgTable(
     membershipTier: varchar("membership_tier", { length: 16 })
       .default("base")
       .notNull(),
-    // The Agent model this account last picked (0113, #1363). Only a new
+    // The Agent model this account last picked (0114, #1363). Only a new
     // conversation reads it, as its starting model; each conversation keeps
     // its own pick in `conversations.agent_model`. Null until the first pick.
     agentModel: varchar("agent_model", { length: 100 }),
@@ -475,7 +475,7 @@ export const conversations = pgTable(
       onDelete: "set null",
     }),
     lastConsolidatedTurn: integer("last_consolidated_turn").default(0).notNull(),
-    // The Agent model this conversation is answered by (0113, #1363). Null
+    // The Agent model this conversation is answered by (0114, #1363). Null
     // for a conversation from before the picker until its next message.
     agentModel: varchar("agent_model", { length: 100 }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -994,13 +994,15 @@ export const nodeTasks = pgTable(
     // Rides the event so collab can name the document. Not a foreign key:
     // spaces live in Yjs, not in a table.
     spaceId: uuid("space_id").notNull(),
-    // Same: the node lives in the canvas document.
-    nodeId: uuid("node_id").notNull(),
+    // Same: the node lives in the canvas document. Null on a 3D Space's
+    // model upload (inner#1690), which belongs to the Space's own list; 0113
+    // allows that for the scene import action only.
+    nodeId: uuid("node_id"),
 
     kind: varchar("kind", { length: 20 }).notNull(), // 'upload' | 'generation'
     // What the row's first line names: 'upload' | 'generate' | 'understand'
-    // | 'mini_tool' (inner#888) | 'transcribe' (inner#856). Its CHECK lives in
-    // 0092, widened in 0101.
+    // | 'mini_tool' (inner#888) | 'transcribe' (inner#856) | 'scene_import'
+    // (inner#1690). Its CHECK lives in 0092, widened in 0101 and 0113.
     action: varchar("action", { length: 20 }).notNull(),
     // 'running' | 'done' | 'failed' | 'expired'
     status: varchar("status", { length: 20 }).notNull(),
@@ -1042,6 +1044,10 @@ export const nodeTasks = pgTable(
     taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
     // The upload grant this task was opened for; null on generations.
     storageKey: text("storage_key"),
+    // The registered model a Space-level row holds (inner#1690): written once,
+    // when a dedup hit opens the row already done, by the settle into `done`,
+    // or onto an expired row its result outlived.
+    assetId: uuid("asset_id").references(() => studioAssets.id, { onDelete: "restrict" }),
 
     ...timestamps,
     // Stamped when the user clears the record. The row stays: the system only
@@ -1062,6 +1068,10 @@ export const nodeTasks = pgTable(
     index("node_tasks_job_node_idx")
       .on(table.taskId, table.nodeId)
       .where(sql`${table.taskId} IS NOT NULL`),
+    // A Space's own list.
+    index("node_tasks_space_live_idx")
+      .on(table.projectId, table.spaceId, table.startedAt)
+      .where(sql`${table.nodeId} IS NULL AND ${table.deletedAt} IS NULL`),
   ],
 );
 
@@ -2082,7 +2092,7 @@ export const memoryHistoryEntries = pgTable(
 
 /**
  * The block of memory each member's agent kept about one project before
- * memory entries (#1363). Migration 0114 copied every row into
+ * memory entries (#1363). Migration 0115 copied every row into
  * `agent_memories` word for word; nothing reads or writes this table now, and
  * it stays as that migration's source.
  */
@@ -2112,7 +2122,7 @@ export const projectMemories = pgTable(
 // ── 11b. Agent Memories ──────────────────────────────────────────────
 
 /**
- * The Agent's memory, one fact per row (0113, #1363).
+ * The Agent's memory, one fact per row (0114, #1363).
  *
  * A row with no conversation belongs to the member's Project and is read in
  * every conversation of theirs there; a row with one belongs to that
@@ -2120,7 +2130,7 @@ export const projectMemories = pgTable(
  * memory tools, a consolidation, or the migration that carried each earlier
  * block of memory over word for word. The scope rule (a conversation or a
  * Project, at least one) and the three origins are CHECK constraints written
- * in 0113 only.
+ * in 0114 only.
  */
 export const agentMemories = pgTable(
   "agent_memories",

@@ -100,6 +100,8 @@ export function isTransientUploadError(err: unknown): boolean {
 
 /** Injectable knobs for {@link retryTransient} (tests avoid real timers). */
 export interface RetryOptions {
+  /** Cancellation belonging to the current caller, including its backoff. */
+  signal?: AbortSignal;
   /** Total attempts including the first. */
   attempts: number;
   /** Base backoff in ms (full jitter on base * 2^attemptIndex). */
@@ -123,20 +125,47 @@ export async function retryTransient<T>(
   fn: (attempt: number) => Promise<T>,
   opts: RetryOptions,
 ): Promise<T> {
-  const sleep =
-    opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const random = opts.random ?? Math.random;
   let lastError: unknown;
   for (let attempt = 0; attempt < opts.attempts; attempt++) {
+    opts.signal?.throwIfAborted();
     try {
-      return await fn(attempt);
+      const result = await fn(attempt);
+      opts.signal?.throwIfAborted();
+      return result;
     } catch (err: unknown) {
+      opts.signal?.throwIfAborted();
       lastError = err;
       const isLast = attempt === opts.attempts - 1;
       if (isLast || !isTransientUploadError(err)) throw err;
-      await sleep(random() * opts.baseDelayMs * 2 ** attempt);
+      await waitForRetry(random() * opts.baseDelayMs * 2 ** attempt, opts);
     }
   }
   // Unreachable: the loop always returns or throws. Kept for TS narrowing.
   throw lastError;
+}
+
+/**
+ * End only this caller's backoff and remove its timer and abort listener.
+ * @param ms - Backoff chosen by the existing jitter policy.
+ * @param options - Current operation and optional injected waiting function.
+ * @returns Completion of the wait.
+ * @throws {DOMException} When the caller cancels during backoff.
+ */
+function waitForRetry(ms: number, options: RetryOptions): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    /** Remove the wait's operation listener and owned timer. */
+    const cleanup = (): void => {
+      if (timer !== undefined) clearTimeout(timer);
+      options.signal?.removeEventListener('abort', abort);
+    };
+    /** Reject this wait without starting another attempt. */
+    const abort = (): void => { cleanup(); reject(options.signal?.reason); };
+    options.signal?.addEventListener('abort', abort, { once: true });
+    if (options.signal?.aborted) { abort(); return; }
+    if (options.sleep) {
+      void options.sleep(ms).then(() => { cleanup(); resolve(); }, (error: unknown) => { cleanup(); reject(error); });
+    } else timer = setTimeout(() => { cleanup(); resolve(); }, ms);
+  });
 }

@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
+import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
+
 import * as React from 'react';
 import * as Y from 'yjs';
 import { Unlock } from 'lucide-react';
@@ -14,9 +16,11 @@ import { SceneSession } from '@web/data/yjs/scene-session';
 import SceneEditor from '@web/spaces/three-d/SceneEditor';
 import { useUIStore } from '@web/stores/ui';
 
-vi.mock('@web/data/api/scene', () => ({
-  getSceneControls: vi.fn(async () => ({ scaleSensitivity: 1 })),
-  resolveSceneAsset: vi.fn(async () => ({ url: 'https://example.invalid/model.glb', mimeType: 'model/gltf-binary' })),
+vi.mock('@web/data/api/scene', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/scene')>()),
+  listSpaceTasks: vi.fn(async () => ({ serverNow: new Date().toISOString(), tasks: [] })),
+  getSceneControls: vi.fn(async () => ({ scaleSensitivity: 1, import: IMPORT_LIMITS })),
+  resolveSceneAsset: vi.fn(async () => ({ url: 'https://example.invalid/model.glb', mimeType: 'model/gltf-binary', sizeBytes: 100 })),
 }));
 vi.mock('@web/spaces/three-d/viewport/SceneViewport', () => ({
   default: (): React.JSX.Element => <canvas tabIndex={0} data-testid='scene-native-boundary' />,
@@ -115,9 +119,9 @@ describe('approved scene layout (inner#1724)', () => {
     act(() => session.select(ID, false));
     expect(await screen.findByLabelText(t('spaces.threeD.name'))).toHaveValue('Figure');
     fireEvent.click(screen.getByTestId('scene-tasks-trigger'));
-    expect(await screen.findByTestId('scene-tasks-panel')).toHaveTextContent(t('spaces.threeD.generationDev'));
+    expect(await screen.findByText(t('spaces.threeD.taskList.empty'))).toBeVisible();
     act(() => session.execute({ type: 'patch', patches: [{ id: ID, position: [4, 0, 0] }] }));
-    expect(screen.getByTestId('scene-tasks-panel')).toHaveTextContent(t('spaces.threeD.generationDev'));
+    expect(screen.getByTestId('scene-tasks-panel')).toHaveTextContent(t('spaces.threeD.taskList.empty'));
     act(() => session.select(SECOND, true));
     expect(await screen.findByText(t('spaces.threeD.selectedCount', { count: 2 }))).toBeVisible();
     expect(screen.getByTestId('scene-object-menu')).toBeVisible();
@@ -353,6 +357,17 @@ describe('approved scene layout (inner#1724)', () => {
     expect(screen.getByTestId('scene-right-panel')).toBeVisible();
     expect(readSceneDocument(doc).objects.find((object) => object.id === ID)).toMatchObject({ name: 'Peer name', position: [0, 0, 0] });
     expect(session.getSnapshot().objects.find((object) => object.id === ID)?.position).toEqual([0, 0, 0]);
+  });
+
+
+  it('keeps the import dialog open when a collaborator changes the selection under it (inner#1690)', async () => {
+    const { session } = setup(); await screen.findByTestId('scene-native-boundary');
+    act(() => session.select(ID, false));
+    await screen.findByLabelText(t('spaces.threeD.name'));
+    fireEvent.click(screen.getByRole('button', { name: t('spaces.threeD.importModel.title') }));
+    expect(await screen.findByTestId('model-import-dialog')).toBeVisible();
+    act(() => session.select(SECOND, true));
+    expect(screen.getByTestId('model-import-dialog')).toBeVisible();
   });
 
 });

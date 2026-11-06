@@ -1874,6 +1874,11 @@
     },
     "runOnce": {
       "unknownResult": "無法確認剛才的操作是否完成，請查看結果。"
+    },
+    "mediaViewer": {
+      "fullscreen": "全螢幕檢視",
+      "close": "關閉",
+      "loadFailed": "無法載入這個檔案"
     }
   },
   "members": {
@@ -2120,8 +2125,6 @@
         "remove": "移除",
         "caption": "說明",
         "captionPlaceholder": "新增說明",
-        "fullscreen": "全螢幕檢視",
-        "close": "關閉",
         "download": "下載",
         "delete": "刪除",
         "leftOut": "{count} 個圖片、影片或音訊沒有貼上，可以直接拖入或貼上檔案。",
@@ -2172,7 +2175,7 @@
       "generate": "AI 生成",
       "annotationsLater": "批註（稍後提供）",
       "controls": "操作說明",
-      "tasks": "生成任務",
+      "tasks": "任務",
       "minimap": "場景小地圖",
       "generationDev": "3D 模型生成正在開發中",
       "prompt": "描述你想生成的 3D 模型",
@@ -2180,7 +2183,74 @@
       "chooseReference": "選擇參考圖",
       "submit": "生成",
       "helpBody": "點擊物件以選取；拖曳空白處旋轉視角；滾輪縮放。選取物件後，使用浮動選單移動、旋轉與縮放。",
-      "closePanel": "關閉"
+      "closePanel": "關閉",
+      "importModel": {
+        "title": "匯入模型",
+        "description": "選擇 GLB、glTF 或 ZIP；可同時選擇模型的配套檔案。",
+        "chooseFiles": "選擇檔案",
+        "chooseFolder": "選擇資料夾",
+        "inputLimit": "最多 {size} MiB",
+        "dropFiles": "將模型與配套檔案拖曳到這裡",
+        "resourceHint": "GLB 可直接選擇；glTF 請同時提供紋理與 bin 檔案，或選擇完整 ZIP。",
+        "readOnly": "目前為唯讀",
+        "readOnlyHint": "取得編輯權限後即可匯入模型。",
+        "checking": "正在檢查模型…",
+        "preview": "模型預覽",
+        "previewFailed": "無法顯示模型預覽。",
+        "entry": "主檔案",
+        "chooseEntry": "選擇主檔案",
+        "name": "模型名稱",
+        "fileCount": "{count} 個檔案",
+        "meshCount": "{count} 個網格",
+        "skinned": "含骨架",
+        "checkingResources": "檢查格式與配套資源",
+        "ready": "模型與配套資源已就緒",
+        "addResources": "補充配套檔案",
+        "optionalExtensions": "以下選用擴充功能可能存在顯示差異：",
+        "showFiles": "查看檔案清單",
+        "hideFiles": "收起檔案清單",
+        "hide": "收起",
+        "retry": "重試",
+        "confirm": "匯入",
+        "errorMissing": "請補充缺少的配套檔案。",
+        "errorEntry": "請選擇要預覽的主檔案。",
+        "errorUnsupported": "目前不支援此模型格式或必要擴充。",
+        "errorEmpty": "模型中沒有可顯示的網格。",
+        "errorBudget": "模型超出匯入限制。",
+        "errorInvalid": "無法讀取模型或配套檔案。",
+        "errorDuplicate": "存在相同路徑的檔案，請重新選擇沒有衝突的檔案集合。",
+        "errorUpload": "模型上傳失敗，請重試。",
+        "errorLoad": "模型載入失敗，請重試。",
+        "limit": {
+          "input": "所選檔案共 {actual} MiB，上限 {allowed} MiB。",
+          "files": "共 {actual} 個檔案，上限 {allowed} 個。",
+          "expanded": "解壓縮後 {actual} MiB，上限 {allowed} MiB。",
+          "entryJson": "模型描述檔 {actual} MiB，上限 {allowed} MiB。",
+          "artifact": "打包後 {actual} MiB，上限 {allowed} MiB。",
+          "textureEdge": "紋理邊長 {actual} px，上限 {allowed} px。",
+          "textureBytes": "紋理記憶體 {actual} MiB，上限 {allowed} MiB。"
+        }
+      },
+      "taskList": {
+        "kind": "匯入",
+        "you": "你",
+        "member": "一位成員",
+        "uploading": "正在上傳 {percent}%",
+        "running": "上傳中",
+        "runningFor": "上傳中 · 已用 {minutes} 分鐘",
+        "registering": "登記中",
+        "done": "已完成",
+        "failed": "失敗",
+        "expired": "已逾時",
+        "failedReason": "模型上傳失敗。",
+        "place": "放入場景",
+        "retry": "重試",
+        "remove": "移除",
+        "empty": "你匯入的模型會顯示在這裡。",
+        "loadFailed": "任務載入失敗。",
+        "removeFailed": "移除失敗，請重試。",
+        "placeFailed": "模型未能放入場景。"
+      }
     }
   },
   "menu": {
@@ -2713,7 +2783,8 @@
       "spaceLocked": "{actor} 鎖定了 Space {spaceName}",
       "spaceUnlocked": "{actor} 解鎖了 Space {spaceName}",
       "spaceRestored": "{actor} 還原了 Space {spaceName}",
-      "spaceRenamed": "{actor} 把 Space {oldSpaceName} 改名為 {spaceName}"
+      "spaceRenamed": "{actor} 把 Space {oldSpaceName} 改名為 {spaceName}",
+      "assetUploadedModel": "{actor} 上傳了模型 {name}"
     },
     "header": "Project 活動",
     "label": "Project 活動",

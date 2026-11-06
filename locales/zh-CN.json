@@ -1874,6 +1874,11 @@
     },
     "runOnce": {
       "unknownResult": "无法确认刚才的操作是否完成，请查看结果。"
+    },
+    "mediaViewer": {
+      "fullscreen": "全屏查看",
+      "close": "关闭",
+      "loadFailed": "无法加载这个文件"
     }
   },
   "members": {
@@ -2120,8 +2125,6 @@
         "remove": "移除",
         "caption": "说明",
         "captionPlaceholder": "添加说明",
-        "fullscreen": "全屏查看",
-        "close": "关闭",
         "download": "下载",
         "delete": "删除",
         "leftOut": "{count} 个图片、视频或音频没有粘贴进来，可以直接拖入或粘贴文件。",
@@ -2172,7 +2175,7 @@
       "generate": "AI 生成",
       "annotationsLater": "批注（后续提供）",
       "controls": "操作说明",
-      "tasks": "生成任务",
+      "tasks": "任务",
       "minimap": "场景小地图",
       "generationDev": "3D 模型生成正在开发中",
       "prompt": "描述你想生成的 3D 模型",
@@ -2180,7 +2183,74 @@
       "chooseReference": "选择参考图",
       "submit": "生成",
       "helpBody": "点击对象选中；拖动空白处旋转视角；滚轮缩放。选中对象后，使用浮动菜单移动、旋转与缩放。",
-      "closePanel": "关闭"
+      "closePanel": "关闭",
+      "importModel": {
+        "title": "导入模型",
+        "description": "选择 GLB、glTF 或 ZIP；可同时选择模型的配套文件。",
+        "chooseFiles": "选择文件",
+        "chooseFolder": "选择文件夹",
+        "inputLimit": "最多 {size} MiB",
+        "dropFiles": "将模型和配套文件拖到这里",
+        "resourceHint": "GLB 可直接选择；glTF 请同时提供纹理与 bin 文件，或选择完整 ZIP。",
+        "readOnly": "当前为只读",
+        "readOnlyHint": "获得编辑权限后可以导入模型。",
+        "checking": "正在检查模型…",
+        "preview": "模型预览",
+        "previewFailed": "无法显示模型预览。",
+        "entry": "主文件",
+        "chooseEntry": "选择主文件",
+        "name": "模型名称",
+        "fileCount": "{count} 个文件",
+        "meshCount": "{count} 个网格",
+        "skinned": "含骨骼",
+        "checkingResources": "检查格式与配套资源",
+        "ready": "模型和配套资源已就绪",
+        "addResources": "补充配套文件",
+        "optionalExtensions": "以下可选扩展可能存在显示差异：",
+        "showFiles": "查看文件列表",
+        "hideFiles": "收起文件列表",
+        "hide": "收起",
+        "retry": "重试",
+        "confirm": "导入",
+        "errorMissing": "请补充缺失的配套文件。",
+        "errorEntry": "请选择要预览的主文件。",
+        "errorUnsupported": "当前不支持该模型格式或必需扩展。",
+        "errorEmpty": "模型中没有可显示的网格。",
+        "errorBudget": "模型超出导入限制。",
+        "errorInvalid": "无法读取模型或配套文件。",
+        "errorDuplicate": "存在相同路径的文件，请重新选择无冲突的文件集合。",
+        "errorUpload": "模型上传失败，请重试。",
+        "errorLoad": "模型加载失败，请重试。",
+        "limit": {
+          "input": "所选文件共 {actual} MiB，上限 {allowed} MiB。",
+          "files": "共 {actual} 个文件，上限 {allowed} 个。",
+          "expanded": "解压后 {actual} MiB，上限 {allowed} MiB。",
+          "entryJson": "模型描述文件 {actual} MiB，上限 {allowed} MiB。",
+          "artifact": "打包后 {actual} MiB，上限 {allowed} MiB。",
+          "textureEdge": "纹理边长 {actual} px，上限 {allowed} px。",
+          "textureBytes": "纹理内存 {actual} MiB，上限 {allowed} MiB。"
+        }
+      },
+      "taskList": {
+        "kind": "导入",
+        "you": "你",
+        "member": "一位成员",
+        "uploading": "正在上传 {percent}%",
+        "running": "上传中",
+        "runningFor": "上传中 · 已用 {minutes} 分钟",
+        "registering": "登记中",
+        "done": "已完成",
+        "failed": "失败",
+        "expired": "已超时",
+        "failedReason": "模型上传失败。",
+        "place": "放入场景",
+        "retry": "重试",
+        "remove": "移除",
+        "empty": "你导入的模型会显示在这里。",
+        "loadFailed": "任务加载失败。",
+        "removeFailed": "移除失败，请重试。",
+        "placeFailed": "模型未能放入场景。"
+      }
     }
   },
   "menu": {
@@ -2713,7 +2783,8 @@
       "spaceLocked": "{actor} 锁定了 Space {spaceName}",
       "spaceUnlocked": "{actor} 解锁了 Space {spaceName}",
       "spaceRestored": "{actor} 恢复了 Space {spaceName}",
-      "spaceRenamed": "{actor} 把 Space {oldSpaceName} 改名为 {spaceName}"
+      "spaceRenamed": "{actor} 把 Space {oldSpaceName} 改名为 {spaceName}",
+      "assetUploadedModel": "{actor} 上传了模型 {name}"
     },
     "header": "Project 活动",
     "label": "Project 活动",

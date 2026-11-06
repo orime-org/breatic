@@ -31,6 +31,7 @@ import { createLocalUserInputTracker } from '@web/features/reference-mention/ref
 import { createReferenceMentionRangeHighlight } from '@web/features/reference-mention/reference-mention-range-decoration';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
+import type { MediaFullscreenSource } from '@web/spaces/canvas/nodes/_shared/MediaFullscreen';
 import type { NodeType } from '@breatic/shared';
 import { PreviewImg } from '@web/components/PreviewImg';
 
@@ -67,6 +68,19 @@ export function chipDisplayText(element: Y.XmlElement, fallback: string): string
   if (element.nodeName !== REFERENCE_MENTION_NODE) return undefined;
   const label = element.getAttribute(MENTION_LABEL_ATTR);
   return `@${typeof label === 'string' && label !== '' ? label : fallback}`;
+}
+
+/**
+ * What a chip opens full screen (inner#1844): its source itself, where the
+ * chip and its preview carry only a thumbnail.
+ * @param row - The source's live pool row, if it is still in the pool.
+ * @returns The image or video to show, or null when there is none.
+ */
+export function referenceFullscreen(row: ReferenceRailItem | undefined): MediaFullscreenSource | null {
+  if (!row?.mediaUrl) return null;
+  if (row.sourceNodeType === 'video') return { kind: 'video', src: row.mediaUrl, poster: row.thumbnail };
+  if (row.sourceNodeType === 'image') return { kind: 'image', src: row.mediaUrl };
+  return null;
 }
 
 /**
@@ -264,6 +278,14 @@ function ReferenceMentionChip({
       ? { text: content }
       : { emptyHint: t('canvas.generatePanel.emptyTextReference') };
   }, [options, sourceId, t]);
+  // Read at hover-open from the live pool, as the text body is.
+  const resolveFullscreen = React.useCallback(
+    (): MediaFullscreenSource | null =>
+      referenceFullscreen(
+        sourceId != null ? options.getPool?.().find((r) => r.sourceNodeId === sourceId) : undefined,
+      ),
+    [options, sourceId],
+  );
   return (
     <HoverPreview
       // A text chip previews its source text live; every other chip (image /
@@ -276,6 +298,7 @@ function ReferenceMentionChip({
       alt={label}
       emptyHint={staticEmptyHint}
       resolveOnOpen={kind === 'text' ? resolveTextHover : undefined}
+      fullscreen={isVisual ? resolveFullscreen : undefined}
       // The preview is NOT dimmed, in either mode. Its job is to say what this
       // chip IS; whether the mode can use it is said by the chip body's own
       // grey-out and by the rail (user 2026-08-13). Greying it made the one

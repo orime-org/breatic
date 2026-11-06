@@ -125,6 +125,7 @@ export type {
   Space,
   ActivityNewControlEvent,
   CreditsChangedControlEvent,
+  SpaceTasksChangedControlEvent,
   ProjectConnectionsCloseEvent,
   SessionsRevokedEvent,
   ProjectConnectionsCloseReason,
@@ -160,6 +161,7 @@ export {
   CANVAS_NODES_KEY,
   activityNewChannel,
   creditsChangedChannel,
+  spaceTasksChangedChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
@@ -191,6 +193,7 @@ export {
   PROJECT_ACTIVITY_TYPES,
   ACTIVITY_NEW_SIGNAL,
   CREDITS_CHANGED_SIGNAL,
+  SPACE_TASKS_CHANGED_SIGNAL,
   AssetActivityPayloadSchema,
   GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
@@ -223,6 +226,7 @@ export type {
   ProjectActivityPage,
   ActivityNewSignal,
   CreditsChangedSignal,
+  SpaceTasksChangedSignal,
 } from "@shared/types/index.js";
 
 export {
@@ -1054,8 +1058,8 @@ export {
   type AttributionTouch,
 } from "@shared/analytics/attribution.js";
 
-export { SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, SceneObjectValuesSchema, SceneObjectSchema } from "@shared/scene.js";
-export type { SceneVector, SceneRotation, SceneModel, SceneObjectValues, SceneObject, SceneEditableField } from "@shared/scene.js";
+export { SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, SceneObjectValuesSchema, SceneObjectSchema, isSceneModelMediaType } from "@shared/scene.js";
+export type { SceneVector, SceneRotation, SceneModel, SceneObjectValues, SceneObject, SceneEditableField, SceneImportLimits, SceneControlsConfig } from "@shared/scene.js";
 export { SCENE_FORMAT_VERSION, getSceneRootMap, initializeSceneDocument } from "@shared/scene-version.js";
 
 export * from "@shared/credit-amount.js";

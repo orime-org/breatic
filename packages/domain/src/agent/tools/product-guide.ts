@@ -519,8 +519,13 @@ export function renderProductGuide(): string {
     "Apart from that placeholder, a running, failed or expired task changes nothing on the node, which keeps " +
       "showing what it holds, or its empty look; what its tasks did is in the column of task icons described under Generating. A picture or " +
       "video node shows its width × " +
-      "height just outside its top-right corner. Video and sound nodes have their own play, time, volume and, " +
-      "for video, full-screen controls.",
+      "height just outside its top-right corner. Video and sound nodes have their own play, time and volume " +
+      "controls. Hovering a picture or video node shows a full-screen button (two arrows pointing out to " +
+      "opposite corners) over the top-right corner of the picture; it opens the picture or video large over a " +
+      "dark backdrop, a video going on from where it was, and an X at the top right of the screen, Escape or " +
+      "a click on the dark area closes it. The large preview that pops up on hovering a small picture or video " +
+      "anywhere (a generate panel slot, an @ reference, node history, a chat attachment) has the same button " +
+      "at its top-right corner.",
     "Every picture, video, sound and text node shows its name just above its top-left corner, after a type " +
     "icon. A node the reader makes is named Text, Image, Audio or Video in every language, and a node placed " +
       "from a proposal card has the name the card showed. A copied node or group is named COPY- followed by the " +
@@ -1303,6 +1308,15 @@ export function renderProductGuide(): string {
     `The floating left rail starts with a plus icon, ${quoted(t("spaces.threeD.add"))}. Its menu offers ` +
       `${quoted(t("spaces.threeD.addBox"))} and ${quoted(t("spaces.threeD.addFigure"))}, which place a ` +
       `${quoted(t("spaces.threeD.box"))} or ${quoted(t("spaces.threeD.figure"))}. ` +
+      `The upload-arrow icon below it, ${quoted(t("spaces.threeD.importModel.title"))}, opens the import dialog; it is unavailable while you cannot edit. ` +
+      `The dialog takes ${quoted(t("spaces.threeD.importModel.chooseFiles"))}, ${quoted(t("spaces.threeD.importModel.chooseFolder"))} or files dropped on it: ` +
+      "a glTF 2.0 .glb, or a .gltf with its .bin and texture files, or a ZIP holding them. It checks the files, previews the model, " +
+      `and shows ${quoted(t("spaces.threeD.importModel.name"))}, which starts as the main file's name. With several main files, pick one under ` +
+      `${quoted(t("spaces.threeD.importModel.entry"))}; when files are missing it lists their paths and ${quoted(t("spaces.threeD.importModel.addResources"))} adds them. ` +
+      "A small button under the model's details shows or hides the list of its files. " +
+      `${quoted(t("spaces.threeD.importModel.confirm"))} starts the upload: the dialog waits and cannot be closed while the upload is being prepared, ` +
+      `then closes and the ${quoted(t("spaces.threeD.tasks"))} panel opens on the new row. You can start another import at once. ` +
+      "While a file is still being sent, closing this Space's tab is held back and leaving the page asks first. " +
       `The sparkle icon opens ${quoted(t("spaces.threeD.generate"))}, a dialog displaying ` +
       `${quoted(t("spaces.threeD.generationDev"))}. It has a disabled ${quoted(t("spaces.threeD.prompt"))} field, ` +
       `a disabled ${quoted(t("spaces.threeD.chooseReference"))} button under ${quoted(t("spaces.threeD.reference"))}, ` +
@@ -1315,8 +1329,16 @@ export function renderProductGuide(): string {
       "Click one to open its panel on the right; click the same button again to close it, or another to switch content. " +
       `An X with the ${quoted(t("spaces.threeD.closePanel"))} tooltip also closes the panel. Its content scrolls above the minimap. ` +
       "Opening a header menu while the panel is open keeps keyboard focus in that new menu. " +
-      `The tasks panel currently says ${quoted(t("spaces.threeD.generationDev"))}; the minimap button toggles the scene's top view; ` +
-      "clicking that map navigates your personal viewing camera.",
+      "The minimap button toggles the scene's top view; clicking that map navigates your personal viewing camera.",
+    `The ${quoted(t("spaces.threeD.tasks"))} panel lists every member's model imports in this Space, newest first, the same for everyone. ` +
+      `Each row shows the model's name, ${quoted(t("spaces.threeD.taskList.kind"))}, who started it (${quoted(t("spaces.threeD.taskList.you"))} for you, ${quoted(t("spaces.threeD.taskList.member"))} when the name is unknown) and its state: ` +
+      `${quoted(t("spaces.threeD.taskList.running"))} with a percentage while the uploader's page is sending it, ${quoted(t("spaces.threeD.taskList.registering"))}, ` +
+      `${quoted(t("spaces.threeD.taskList.done"))}, ${quoted(t("spaces.threeD.taskList.failed"))} or ${quoted(t("spaces.threeD.taskList.expired"))} after two hours without an end. ` +
+      `Resting the pointer on a cut-off name shows it whole. A finished row has ${quoted(t("spaces.threeD.taskList.place"))}: each press puts one copy on the ground at the centre of your view and selects it, ` +
+      "and the panel stays open for the next one; a row that timed out but whose model arrived later has it too. " +
+      `A failed row, and a timed-out one with no model, has ${quoted(t("spaces.threeD.taskList.remove"))}; the page that uploaded a failed row also has ` +
+      `${quoted(t("spaces.threeD.taskList.retry"))} when sending the same file again could succeed, until that page is reloaded. A row holding a model cannot be removed. A Viewer sees the list without buttons. ` +
+      `When there are none it says ${quoted(t("spaces.threeD.taskList.empty"))} The project activity records each import whose file was uploaded, under the model's name; importing a model this studio already has adds no activity entry.`,
     `The ${quoted(t("spaces.threeD.objects"))} panel lists scene objects; when empty it says ${quoted(t("spaces.threeD.empty"))} ` +
       "Click an object in the list or viewport to select it; Shift-click adds it to or removes it from the selection. " +
       "Click empty space to clear the selection. Selected objects have outlines; the list also marks selected rows and locked objects.",
@@ -1478,15 +1500,17 @@ export function renderProductGuide(): string {
       "audio, or clicking it, shows a row of icons above it: left, centre and right alignment (only when the " +
       "picture or video is narrower than the page; audio is always as wide as the page), " +
       `${quoted(t("spaces.document.media.caption"))} (a T), which opens a line under it for a caption, ` +
-      `${quoted(t("spaces.document.media.fullscreen"))} (two arrows pointing out to opposite corners, pictures only; double-clicking the ` +
-      "picture does the same, and an X at the top right closes it), " +
+      `${quoted(t("common.mediaViewer.fullscreen"))} (two arrows pointing out to opposite corners, pictures and videos; ` +
+      "double-clicking a picture does the same; a video goes on from where it was, and an X at the top right of the " +
+      "screen closes it), " +
       `${quoted(t("spaces.document.media.download"))} (an arrow into a tray), which downloads the file, and ` +
       `${quoted(t("spaces.document.media.delete"))} (a bin). Clicking a picture or video also shows a small square at each ` +
       "corner; dragging one changes its width. Dragging the picture, video or audio itself moves it, like its six " +
       "dots. Videos and audio play in place. When a video is too narrow for its playback controls, " +
-      "hover it to open a floating panel, or Tab to the video and press Enter. Editing icons occupy " +
-      "the first row and play, seek and fullscreen the second; Escape returns to the video. Someone " +
-      "who can only view the document still has playback controls, without editing icons. A caption " +
+      "hover it to open a floating panel, or Tab to the video and press Enter. The icons, full " +
+      "screen among them, occupy the first row and play and seek the second; Escape returns to the video. Someone " +
+      "who can only view the document still has playback controls, and the row of icons over a picture or video " +
+      "holds only full screen. A caption " +
       "draft stays copyable if permission becomes read-only or the media is removed; undoing the " +
       "removal restores its field. Copy a retained draft before closing the Space. Enter or blur saves " +
       "an editable changed caption; Escape cancels it to the latest shared caption.",

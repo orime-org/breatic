@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Migration 0114 (#1363): every block of memory written before entries
+ * Migration 0115 (#1363): every block of memory written before entries
  * existed becomes one entry, word for word. A project block becomes a
  * project-scope entry; a conversation block becomes a conversation-scope
  * entry and its row is emptied, because from then on that row holds the
@@ -16,7 +16,7 @@ import { readFile } from "node:fs/promises";
 import postgres from "postgres";
 
 const MIGRATION = new URL(
-  "../../../../core/src/db/migrations/0114_migrate_block_memories.sql",
+  "../../../../core/src/db/migrations/0115_migrate_block_memories.sql",
   import.meta.url,
 );
 
@@ -126,7 +126,7 @@ async function entriesOf(tx: postgres.TransactionSql, userId: string): Promise<E
 // basic plane, so a cut or a re-encoding anywhere shows up as a difference.
 const LONG_BLOCK = `Lead: Lin Wu 🧥, tear mole under the left eye.\n${"港风胶片，90 年代。".repeat(600)}`;
 
-describe("migration 0114 — block memories become entries", () => {
+describe("migration 0115 — block memories become entries", () => {
   it("turns a project block into one project entry, word for word", async () => {
     const result = await rolledBack(async (tx) => {
       const owner = await seedOwner(tx);

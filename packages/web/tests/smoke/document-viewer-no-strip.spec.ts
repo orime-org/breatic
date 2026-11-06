@@ -333,7 +333,7 @@ async function ownerPastesAPicture(): Promise<void> {
   await expect(owner.locator(`${EDITOR} [data-content-type="image"] img`)).toBeVisible({ timeout: 60_000 });
 }
 
-test('a viewer sees a picture the owner added, and none of its controls (inner#1127 A11, A13)', async () => {
+test('a viewer sees a picture the owner added, with full screen and none of its editing controls (inner#1127 A11, A13)', async () => {
   await ownerPastesAPicture();
 
   await openTheSpace(viewer);
@@ -341,9 +341,14 @@ test('a viewer sees a picture the owner added, and none of its controls (inner#1
   await expect(img).toBeVisible({ timeout: 20_000 });
   await expect.poll(() => img.evaluate((element) => (element as HTMLImageElement).naturalWidth)).toBe(240);
 
+  // inner#1844: viewing full screen is not editing, so a viewer's row of icons holds it alone.
   await img.hover();
-  await viewer.waitForTimeout(500);
-  await expect(viewer.getByTestId('doc-media-toolbar')).toBeHidden();
+  const toolbar = viewer.getByTestId('doc-media-toolbar');
+  await expect(toolbar).toBeVisible();
+  const actions = await toolbar.getByRole('button').evaluateAll(
+    (buttons) => buttons.map((b) => b.getAttribute('data-action')),
+  );
+  expect(actions).toEqual(['fullscreen']);
   await expect(viewer.getByTestId('doc-media-resize-se')).toHaveCount(0);
 });
 
@@ -442,7 +447,11 @@ test('a video caption draft survives a live role change and remote edits, deleti
   await viewer.keyboard.press('Enter');
   const readPanel = viewer.getByTestId('doc-media-video-panel');
   await expect(readPanel).toBeFocused();
-  await expect(readPanel.getByTestId('doc-media-toolbar')).toBeHidden();
+  // inner#1844: the panel's first row holds full screen alone for a viewer.
+  const readActions = await readPanel.getByTestId('doc-media-toolbar').getByRole('button').evaluateAll(
+    (buttons) => buttons.map((b) => b.getAttribute('data-action')),
+  );
+  expect(readActions).toEqual(['fullscreen']);
   await expect(readPanel.getByTestId('seek')).toBeVisible();
   await readPanel.getByTestId('play-toggle').click();
   await expect.poll(() => viewer.locator(`${EDITOR} video`).evaluate((element: HTMLVideoElement) => element.paused)).toBe(false);

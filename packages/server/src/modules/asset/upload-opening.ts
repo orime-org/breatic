@@ -17,13 +17,15 @@
  * a task that runs until a harvest calls it expired.
  *
  * Which node the row goes on is read off the grant's own context rather than
- * taken a second time, so the two cannot name different places.
+ * taken a second time, so the two cannot name different places. A 3D model
+ * upload names a Space and no node, and its row joins that Space's own task
+ * list (inner#1690).
  */
 
 import { accountActivityRepo, db } from "@breatic/core";
 import { canvasSpaceDocName, type NodeTaskAction } from "@breatic/shared";
-import { nodeTaskService, uploadGrantService } from "@breatic/domain";
-import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
+import { nodeTaskService, sceneTaskService, uploadGrantService } from "@breatic/domain";
+import { publishCountsQuietly, publishSpaceTasksQuietly } from "@server/modules/task/publish-counts.js";
 
 /** What `issueUploadGrant` takes, so a lane passes its own through unchanged. */
 type GrantInput = Parameters<typeof uploadGrantService.issueUploadGrant>[0];
@@ -112,6 +114,13 @@ export async function openUpload(
     if (recordUserAction) {
       await accountActivityRepo.recordActivity({ userId: grant.actingUserId, projectId: projectId ?? null, kind: "project_action" }, tx);
     }
+    if (task.action === "scene_import" && projectId !== undefined && spaceId != null) {
+      const sceneTaskId = await sceneTaskService.open({
+        projectId, spaceId, startedByUserId: grant.actingUserId,
+        budgetMs: task.budgetMs, label: task.label, storageKey: key,
+      }, tx);
+      return { key, studioId, taskId: sceneTaskId, sceneSpace: { projectId, spaceId } };
+    }
     if (projectId === undefined || nodeId == null || spaceId == null) {
       return { key, studioId, taskId: undefined };
     }
@@ -122,6 +131,9 @@ export async function openUpload(
     }, tx);
     return { key, studioId, taskId: opened.id, counts: opened.counts, nodeId, spaceId, projectId };
   });
+  if ("sceneSpace" in admitted && admitted.sceneSpace) {
+    await publishSpaceTasksQuietly(admitted.sceneSpace.projectId, admitted.sceneSpace.spaceId);
+  }
   if ("counts" in admitted && admitted.counts) {
     await publishCountsQuietly(canvasSpaceDocName(admitted.projectId, admitted.spaceId), admitted.nodeId, admitted.counts);
   }
