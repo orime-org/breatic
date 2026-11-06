@@ -8,15 +8,17 @@
  * edits without a trial, and per-update admission on a fragmented 8 MB text
  * stays within 20 ms.
  *
- * `Server` and `createLogger` are wrapped, not replaced, as in
- * `document-size-limit.integration.test.ts`; the `beforeSync` wrap also times
- * each production call with `performance.now()` (spec C-152).
+ * `createLogger` is wrapped, not replaced, as in
+ * `document-size-limit.integration.test.ts`; the production size gate is
+ * wrapped to time each decision with `performance.now()` (spec C-152). The
+ * account activity write that `beforeSync` makes after the decision is a
+ * Postgres round trip and is not part of it.
  */
 
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import * as Y from "yjs";
-import type * as HocuspocusServerModule from "@hocuspocus/server";
+import type * as GateModule from "@collab/hooks/document-size-gate.js";
 import type * as CoreModuleShape from "@breatic/core";
 import * as core from "@breatic/core";
 import { COLLAB_DOCUMENT_TOO_LARGE_REASON, spaceContentDocName } from "@breatic/shared";
@@ -25,7 +27,7 @@ import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 
 import { seedCollabActivity } from "./helpers/account-activity-fixture.js";
 import type { ActivityCollabFixture } from "./helpers/account-activity-fixture.js";
-import { canvasDoc, fill, fragText, refMeasure } from "./helpers/document-size-fixtures.js";
+import { FILL_CLIENT, canvasDoc, fill, fragText, refMeasure } from "./helpers/document-size-fixtures.js";
 import { openDoc, openSocket } from "./helpers/document-size-live.js";
 import type { SizeDocClient, SizeSocket } from "./helpers/document-size-live.js";
 import { SYNC } from "./helpers/live-hocuspocus.js";
@@ -37,35 +39,27 @@ const { state } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@hocuspocus/server", async (importOriginal) => {
-  const real = await importOriginal<typeof HocuspocusServerModule>();
-  type Config = ConstructorParameters<typeof real.Server>[0];
-  /**
-   * Time every production `beforeSync` call.
-   * @param config - What production passed.
-   * @returns The configuration the real server gets.
-   */
-  const wrap = (config: Config): Config => {
-    const cfg = (config ?? {}) as Record<string, unknown>;
-    const original = cfg.beforeSync as ((payload: unknown) => Promise<void>) | undefined;
-    return {
-      ...cfg,
-      beforeSync: async (payload: { documentName: string; type: number }): Promise<void> => {
+vi.mock("@collab/hooks/document-size-gate.js", async (importOriginal) => {
+  const real = await importOriginal<typeof GateModule>();
+  return {
+    ...real,
+    /**
+     * The production gate, each call timed: the size decision alone, without
+     * the account activity write `beforeSync` makes after it.
+     * @returns The timed gate.
+     */
+    createDocumentSizeGate: (): ReturnType<typeof real.createDocumentSizeGate> => {
+      const gate = real.createDocumentSizeGate();
+      return async (payload) => {
         const startedAt = performance.now();
         try {
-          await original?.(payload);
+          await gate(payload);
         } finally {
           state.timings.push({ documentName: payload.documentName, type: payload.type, ms: performance.now() - startedAt });
         }
-      },
-    };
+      };
+    },
   };
-  class Server extends real.Server {
-    constructor(config: Config) {
-      super(wrap(config));
-    }
-  }
-  return { ...real, Server };
 });
 
 vi.mock("@breatic/core", async (importOriginal) => {
@@ -194,7 +188,11 @@ describe("default limit", () => {
   it("C-152 each of 100 single-character deletes on a fragmented 8 MB text is decided within 20 ms", async () => {
     const fixture = await seedCollabActivity();
     const name = spaceContentDocName(fixture.projectId, fixture.spaceIds.canvas, "canvas");
-    const src = fragText(425_000);
+    // A fixed client: its id's encoded length is in every struct, and a
+    // random one moves the size by about 0.9 MB.
+    const src = new Y.Doc();
+    src.clientID = FILL_CLIENT;
+    fragText(425_000, src);
     const bytes = refMeasure(src);
     expect(bytes).toBeGreaterThanOrEqual(8_000_000);
     expect(bytes).toBeLessThan(8_400_000);
