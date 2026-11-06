@@ -98,10 +98,10 @@ export function heldTables(selection: Selection): HeldTables | null {
  * What a selection that takes tables whole acts on: its range widened over
  * those tables.
  * @param selection - The selection.
+ * @param tables - The tables it takes whole.
  * @returns The range, or null when it takes no table whole.
  */
-export function heldRange(selection: Selection): { from: number; to: number } | null {
-  const tables = heldTables(selection);
+export function heldRange(selection: Selection, tables = heldTables(selection)): { from: number; to: number } | null {
   if (tables === null) return null;
   return {
     from: tables.from?.pos ?? Math.min(selection.anchor, selection.head),
@@ -119,7 +119,7 @@ type Rebuild = (doc: PMNode, anchor: number, head: number) => Selection;
  * @param table - The table.
  * @returns The line's block.
  */
-export function emptyLineFor(table: PMNode): PMNode {
+function emptyLineFor(table: PMNode): PMNode {
   const { schema } = table.type;
   const paragraph = schema.nodes['paragraph']!;
   const attrs = Object.fromEntries(Object.keys(paragraph.spec.attrs ?? {}).filter((name) => name in table.attrs).map((name) => [name, table.attrs[name]]));
@@ -133,16 +133,20 @@ export function emptyLineFor(table: PMNode): PMNode {
  * @param selection - The selection.
  * @param tr - The transaction.
  * @param rebuild - Builds a selection of the same kind on the changed document.
+ * @param tables - The tables it takes whole.
  * @returns That selection on the changed document, or null when the selection takes no table whole.
  */
-export function swapHeld(selection: Selection, tr: Transaction, rebuild: Rebuild): Selection | null {
-  const tables = heldTables(selection);
+export function swapHeld(selection: Selection, tr: Transaction, rebuild: Rebuild, tables = heldTables(selection)): Selection | null {
   if (tables === null) return null;
   const doc = tr.doc;
   // The later table first, so the earlier one's position still holds.
   const held = [tables.to, tables.from?.pos === tables.to?.pos ? null : tables.from].filter((table): table is TableAt => table !== null);
   const steps = tr.steps.length;
-  for (const table of held) tr.replaceWith(table.pos, endOf(table), emptyLineFor(table.node));
+  for (const table of held) {
+    const line = emptyLineFor(table.node);
+    // A table standing in a block (a stored one) turns into that block's line.
+    tr.replaceWith(table.pos, endOf(table), doc.resolve(table.pos).parent.type === line.type ? line.firstChild! : line);
+  }
   const mapping = tr.mapping.slice(steps);
   /**
    * Where an end of the selection lands on the changed document.
@@ -153,8 +157,8 @@ export function swapHeld(selection: Selection, tr: Transaction, rebuild: Rebuild
     const edge = bodyEdgeAt(doc, pos);
     if (edge !== null) return bodyEdgePos(tr.doc, edge);
     const table = held.find((t) => pos > t.pos && pos < endOf(t));
-    // Inside the line that took the table's place: its block, then its words.
-    return table === undefined ? mapping.map(pos) : mapping.map(table.pos, -1) + 2;
+    // In the words of the line that took the table's place.
+    return table === undefined ? mapping.map(pos) : Selection.findFrom(tr.doc.resolve(mapping.map(table.pos, -1)), 1, true)!.from;
   };
   return rebuild(tr.doc, place(selection.anchor), place(selection.head));
 }
@@ -170,10 +174,11 @@ export function swapHeld(selection: Selection, tr: Transaction, rebuild: Rebuild
  * @param tr - The transaction.
  * @param content - What goes in its place: a slice (`replace`), a node (`replaceWith`), or nothing.
  * @param rebuild - Builds a selection of the same kind on the changed document.
+ * @param tables - The tables it takes whole.
  * @returns Whether the selection took a table whole; false leaves it to the selection's usual replace.
  */
-export function replaceHeld(selection: Selection, tr: Transaction, content: Slice | PMNode | undefined, rebuild: Rebuild): boolean {
-  const rest = swapHeld(selection, tr, rebuild);
+export function replaceHeld(selection: Selection, tr: Transaction, content: Slice | PMNode | undefined, rebuild: Rebuild, tables = heldTables(selection)): boolean {
+  const rest = swapHeld(selection, tr, rebuild, tables);
   if (rest === null) return false;
   if (content === undefined || content instanceof Slice) rest.replace(tr, content);
   else rest.replaceWith(tr, content);

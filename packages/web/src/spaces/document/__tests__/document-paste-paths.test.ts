@@ -17,6 +17,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { canvasClipboardOf } from './canvas-clipboard-fixture';
 import { OURS, open, pasteFormats, positionOf, settled, shape, unmountAll, type Editor } from './paste-harness';
 import { nodeAt } from './paste-matrix';
+import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selection';
 import { putContent } from '@web/spaces/document/document-put';
 import { readClipboardSlice } from '@web/spaces/document/document-paste-slice';
 import { keepTablesWhole } from '@web/spaces/document/document-table-nodes';
@@ -614,6 +615,35 @@ describe('a table at an end of a cut or a move takes it whole, stored or not', (
     dragWithin(editor, positionOf(editor, 'xone', 1), positionOf(editor, 'twox', 2), positionOf(editor, 'more', 4));
     await settled();
     expect(styleOf(editor)).toEqual(STYLE);
+  });
+
+  it.each([
+    ['a cut', ['paragraph:lead', 'paragraph:']],
+    ['a move', ['paragraph:le', 'table', 'divider:', 'paragraph:ad', 'paragraph:']],
+  ] as const)('%s from a stored table\'s cell to the body\'s end does what it does from a new table\'s', async (how, expected) => {
+    for (const [table, words] of [[STORED, 'l1'], [NEW, 'n1']] as const) {
+      const editor = await openReady([{ type: 'paragraph', content: 'lead' }, table, { type: 'divider' }]);
+      const view = editor.prosemirrorView;
+      view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, positionOf(editor, words, 1), 'end')));
+      view.focus();
+      if (how === 'a cut') cut(editor);
+      else {
+        (view as unknown as { dragging: unknown }).dragging = { slice: view.serializeForClipboard(view.state.selection.content()).slice, move: true };
+        dropFormats(editor, positionOf(editor, 'lead', 2), { 'text/html': '<p>x</p>' });
+      }
+      await settled();
+      expect(outline(editor)).toEqual(expected);
+      unmountAll();
+    }
+  });
+
+  it.each(HOW)('%s of words in one stored cell takes those words and leaves the table', async (_how, act) => {
+    const editor = await openReady([{ type: 'paragraph', content: 'lead' }, STORED, { type: 'paragraph', content: 'more' }]);
+    select(editor, positionOf(editor, 'l1', 0), positionOf(editor, 'l1', 1));
+    act(editor);
+    await settled();
+    const table = editor.prosemirrorView.state.doc.firstChild!.child(1);
+    expect([table.firstChild!.type.name, table.textContent]).toEqual(['table', '1l2']);
   });
 
   it('a cut across two cells of a stored table leaves one empty line in its place', async () => {

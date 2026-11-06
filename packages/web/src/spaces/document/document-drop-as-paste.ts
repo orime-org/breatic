@@ -32,7 +32,7 @@ import { t } from '@breatic/shared';
 import { toast } from '@web/lib/toast';
 import { landingAsDrop, landingSlice, withoutRowIdsIn } from '@web/spaces/document/document-comment-paste';
 import { readClipboardSlice, rowsOf } from '@web/spaces/document/document-paste-slice';
-import { deleteStoredTableRange, storedTableRange } from '@web/spaces/document/document-table-copy';
+import { replaceStoredHeld, storedTableRange } from '@web/spaces/document/document-table-copy';
 import { holdsContent, holdsNode, putContent, refusedInCell, selectPlaced, type Placed } from '@web/spaces/document/document-put';
 
 /** The editor a drop is put by. */
@@ -66,7 +66,7 @@ export function dropAsPaste(editor: Editor, view: EditorView, event: DragEvent, 
   const removes = moved && (node !== undefined || !selection.empty);
   const tr = view.state.tr;
   if (removes && node !== undefined) node.replace(tr);
-  else if (removes && !deleteStoredTableRange(selection, tr)) tr.deleteSelection();
+  else if (removes && !replaceStoredHeld(selection, tr)) tr.deleteSelection();
   // The drag's own content as ProseMirror took it at dragstart, through the
   // copy transforms (`document-table-copy.ts`); the slice it hands over has
   // also been through the paste transforms against the selection the drag
