@@ -67,3 +67,35 @@ describe("the used source range (§97 D12-4)", () => {
     expect(range(timeline, anchors)).toEqual({ start: 0, end });
   });
 });
+
+// §97 D12-4 (execution design §9.2; DD §7.1 row 128): the frozen lip-sync timeline is the dialogue planner's result with
+// the video duration and mode, and `lipsyncSourceTimeAt` maps a result time to the source presentation time per mode:
+// cut_off as is, silence as is before the video ends, loop over [0, V), bounce forth and back over [0, V), remap scaled
+// from [0, A) onto [0, V). Times exactly on a loop or bounce boundary and silence's held tail are not asserted (D13 list).
+const lip = miniTools as unknown as {
+  lipsyncTimeline: (input: { videoDuration: number; dialogues: readonly Record<string, unknown>[]; syncMode: Timeline["syncMode"] }) => Timeline;
+  lipsyncSourceTimeAt: (timeline: Timeline, t: number) => number;
+};
+const rows = [
+  { dialogueId: "60000000-0000-4000-8000-000000000001", personId: "person-1", audioInputId: "40000000-0000-4000-8000-000000000001", startTime: 0, duration: 3 },
+  { dialogueId: "60000000-0000-4000-8000-000000000002", personId: "person-2", audioInputId: "40000000-0000-4000-8000-000000000002", startTime: 2, duration: 5 },
+];
+
+describe("the frozen lip-sync timeline and its source mapping (§97 D12-4; execution design §9.2)", () => {
+  it.each([
+    ["cut_off", 5], ["silence", 7], ["loop", 7], ["bounce", 7], ["remap", 7],
+  ] as const)("LT01 %s: the timeline carries the planned duration, the video duration and the mode", (syncMode, duration) => {
+    expect(lip.lipsyncTimeline({ videoDuration: 5, dialogues: rows, syncMode })).toEqual({ duration, videoDuration: 5, syncMode });
+  });
+
+  it.each([
+    ["cut_off", 5, [[1.5, 1.5], [4.9, 4.9]]],
+    ["silence", 7, [[1.5, 1.5], [4.9, 4.9]]],
+    ["loop", 7, [[1.5, 1.5], [6.5, 1.5]]],
+    ["bounce", 7, [[1.5, 1.5], [6, 4]]],
+    ["remap", 7, [[3.5, 2.5], [1.4, 1]]],
+  ] as const)("LS01 %s maps result time to source time", (syncMode, duration, points) => {
+    const timeline = { duration, videoDuration: 5, syncMode };
+    for (const [t, source] of points) expect(lip.lipsyncSourceTimeAt(timeline, t)).toBeCloseTo(source, 9);
+  });
+});
