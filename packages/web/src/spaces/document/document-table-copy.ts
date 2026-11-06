@@ -171,12 +171,15 @@ function storedEnds(selection: Selection): HeldTables | null {
 /**
  * What a selection reaching into a stored (legacy) table acts on: its range
  * widened over the table at each end, stored or not (`heldRange`). A stored
- * table's range ends with the table, the lines nested under it left out.
+ * table's range starts with its block, so the copy carries the block it
+ * stands in, and ends with the table, the lines nested under it left out.
  * @param selection - The selection.
  * @returns The range, or null when the selection reaches no stored table or stays in one of its cells.
  */
 export function storedTableRange(selection: Selection): { from: number; to: number } | null {
-  return heldRange(selection, storedEnds(selection));
+  const ends = storedEnds(selection);
+  const range = heldRange(selection, ends);
+  return range !== null && ends?.from?.node.type.name === 'table' ? { ...range, from: ends.from.pos - 1 } : range;
 }
 
 /**

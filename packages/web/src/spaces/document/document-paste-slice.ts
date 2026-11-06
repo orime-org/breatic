@@ -90,8 +90,10 @@ const STORED_CELL_LINE_ATTRIBUTES = ['data-text-alignment', 'data-text-color'];
  * table of its own, which reads back as a table whose cells hold blocks, as a
  * copy of one does; the block around it would read as an empty line. As the
  * conversion of a stored document does (`legacy-table-conversion.ts`), the
- * table keeps its quote and colour, each cell's alignment and colour go onto
- * its lines, and the lines nested under the table follow it at its level.
+ * table keeps its quote and colour, each line of a cell becomes a block
+ * holding the cell's alignment and colour, written as a copy of a table of
+ * blocks writes its lines, and the lines nested under the table follow it at
+ * its level.
  * Temporary, with #1362's conversion of stored tables: it goes once no stored
  * document holds a `table` node.
  * @param html - The clipboard's HTML.
@@ -105,7 +107,7 @@ function storedTablesAsTables(html: string): string {
     const table = content.querySelector('table');
     if (outer === null || table === null) continue;
     copyAttributes(content, [table], STORED_TABLE_ATTRIBUTES);
-    for (const cell of table.querySelectorAll('td, th')) copyAttributes(cell, [...cell.querySelectorAll(':scope > p')], STORED_CELL_LINE_ATTRIBUTES);
+    for (const cell of table.querySelectorAll('td, th')) for (const line of cell.querySelectorAll(':scope > p')) lineAsBlock(line, cell);
     // An end in the lines lifted out keeps the depth recorded through the
     // table's block: ProseMirror's read closes an end only to a depth less
     // than the content's own (`closeSlice`), which is the end's.
@@ -115,6 +117,36 @@ function storedTablesAsTables(html: string): string {
     outer.replaceWith(table, ...(nested === null ? [] : [...nested.children]));
   }
   return body.innerHTML;
+}
+
+/**
+ * Rewrites a stored cell's line as the block a copy of a table of blocks
+ * writes for a line of a cell, the cell's alignment and colour on it.
+ * @param line - The line, a `<p>` in the cell.
+ * @param cell - The cell.
+ */
+function lineAsBlock(line: Element, cell: Element): void {
+  /**
+   * A `div` of the line's document.
+   * @param className - Its class.
+   * @param attributes - Its other attributes.
+   * @returns It.
+   */
+  const div = (className: string, attributes: Record<string, string>): HTMLElement => {
+    const element = line.ownerDocument.createElement('div');
+    element.className = className;
+    for (const [name, value] of Object.entries(attributes)) element.setAttribute(name, value);
+    return element;
+  };
+  const content = div('bn-block-content', { 'data-content-type': 'paragraph' });
+  copyAttributes(cell, [content], STORED_CELL_LINE_ATTRIBUTES);
+  const block = div('bn-block', { 'data-node-type': 'blockContainer' });
+  const outer = div('bn-block-outer', { 'data-node-type': 'blockOuter' });
+  line.replaceWith(outer);
+  line.classList.add('bn-inline-content');
+  content.append(line);
+  block.append(content);
+  outer.append(block);
 }
 
 /**
