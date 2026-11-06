@@ -1286,7 +1286,7 @@ models:
         fixed:
           mode: async
         mentions:
-          images: character{n}
+          images: "[Image {n}]"
         rejects:
           - when: $length(prompt) > 2500
             reason: "SandBase prompt: Max 2500 characters"

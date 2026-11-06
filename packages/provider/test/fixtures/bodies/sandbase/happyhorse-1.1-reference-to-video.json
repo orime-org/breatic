@@ -20,7 +20,7 @@
           "https://example.com/sample.png"
         ],
         "resolution": "720p",
-        "prompt": "a red fox running through fresh snow at dawn character1",
+        "prompt": "a red fox running through fresh snow at dawn [Image 1]",
         "mode": "async"
       }
     },
@@ -41,7 +41,7 @@
           "https://example.com/sample.png"
         ],
         "resolution": "720p",
-        "prompt": "a red fox running through fresh snow at dawn character1",
+        "prompt": "a red fox running through fresh snow at dawn [Image 1]",
         "mode": "async"
       }
     },
@@ -62,7 +62,7 @@
           "https://example.com/sample.png"
         ],
         "resolution": "720p",
-        "prompt": "a red fox running through fresh snow at dawn character1",
+        "prompt": "a red fox running through fresh snow at dawn [Image 1]",
         "mode": "async"
       }
     },
@@ -83,7 +83,7 @@
           "https://example.com/sample.png"
         ],
         "resolution": "720p",
-        "prompt": "a red fox running through fresh snow at dawn character1",
+        "prompt": "a red fox running through fresh snow at dawn [Image 1]",
         "mode": "async"
       }
     },
@@ -104,7 +104,7 @@
           "https://example.com/sample.png"
         ],
         "resolution": "720p",
-        "prompt": "a red fox running through fresh snow at dawn character1",
+        "prompt": "a red fox running through fresh snow at dawn [Image 1]",
         "mode": "async"
       }
     },
@@ -125,7 +125,7 @@
           "https://example.com/sample.png"
         ],
         "resolution": "720p",
-        "prompt": "a red fox running through fresh snow at dawn character1",
+        "prompt": "a red fox running through fresh snow at dawn [Image 1]",
         "mode": "async"
       }
     },
@@ -146,7 +146,7 @@
           "https://example.com/sample.png"
         ],
         "resolution": "720p",
-        "prompt": "a red fox running through fresh snow at dawn character1",
+        "prompt": "a red fox running through fresh snow at dawn [Image 1]",
         "mode": "async"
       }
     },
@@ -167,7 +167,7 @@
           "https://example.com/sample.png"
         ],
         "resolution": "1080p",
-        "prompt": "a red fox running through fresh snow at dawn character1",
+        "prompt": "a red fox running through fresh snow at dawn [Image 1]",
         "mode": "async"
       }
     }
