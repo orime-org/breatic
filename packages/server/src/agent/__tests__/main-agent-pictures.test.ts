@@ -33,7 +33,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   const { modelProducing } = await import("../../__tests__/helpers/model-double.js");
   return {
     ...actual,
-    ...domainMock(),
+    ...(await domainMock()),
     finalizeTurn: actual.finalizeTurn,
     streamTextRetry: actual.streamTextRetry,
     buildAgentConfig: async () => ({

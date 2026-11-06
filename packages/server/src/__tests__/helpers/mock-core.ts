@@ -592,7 +592,11 @@ function usageRecorderDouble(options: {
   };
 }
 
-export const domainMock = () => ({
+export const domainMock = async () => ({
+  // The real entry schemas and MemoryRefused. Loaded here: that file imports
+  // @breatic/core, whose mock factory lives in this file, so a top-level
+  // import waits on itself and the suite hangs.
+  ...(await import("../../../../domain/src/agent/memory-entries.js")),
   createUsageRecorder: vi.fn(usageRecorderDouble),
   trackOpenGeneration: realTrackOpenGeneration,
   isGenerationId: realIsGenerationId,

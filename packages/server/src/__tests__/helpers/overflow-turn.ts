@@ -476,7 +476,7 @@ export async function overflowCore(importOriginal: <T>() => Promise<T>): Promise
  */
 export async function overflowDomain(): Promise<Record<string, unknown>> {
   const { domainMock } = await import("./mock-core.js");
-  const base = domainMock() as Record<string, unknown>;
+  const base = (await domainMock()) as Record<string, unknown>;
   const actual = await vi.importActual<Record<string, unknown>>("@breatic/domain");
   const instructionsForAgentMemory = actual.instructionsForAgentMemory as (
     base: string,
