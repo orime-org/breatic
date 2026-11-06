@@ -5,7 +5,7 @@ import type { ConsentSnapshot, TaskEntity } from "@breatic/shared";
 import { t } from "@breatic/shared";
 import { z } from "zod";
 import { ConflictError, NotFoundError, db, projectAuthService, type DbTx } from "@breatic/core";
-import { canonicalMiniToolValue, miniToolExecutionOutputSchema, miniToolExecutionRecordSchema, type MiniToolExecutionRecord, type MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
+import { canonicalMiniToolValue, lipsyncFailureReasonSchema, lipsyncFailureRetryable, miniToolExecutionOutputSchema, miniToolExecutionRecordSchema, type MiniToolExecutionRecord, type MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
 import type { AcceptedMiniToolExecution } from "@domain/mini-tool/execution-admission.service.js";
 import { executionPlanFromTask, type MiniToolExecutionPlan } from "@domain/mini-tool/execution-plan.service.js";
 import { miniToolSettlementSchema } from "@domain/mini-tool/consumption.types.js";
@@ -101,8 +101,11 @@ export async function finishMiniToolExecution(taskId: string, completion: MiniTo
       finish: plan.task.status === "pending" || plan.task.status === "running",
     });
     await synchronizeMiniToolDelivery(plan.task, record, tx);
-    // No failed output: nothing can retry this run, so its pins end with this commit (§7.15 end of retryability).
-    if (status === "completed") {
+    // No failed output, or a lip-sync failure no retry can clear (§9.4 no_face, model_rejected): nothing can retry this
+    // run, so its pins end with this commit (§7.15 end of retryability).
+    const unretryable = outputs.some((output) => output.result?.status === "failed"
+      && lipsyncFailureReasonSchema.safeParse(output.result.error).success && !lipsyncFailureRetryable(output.result.error));
+    if (status === "completed" || unretryable) {
       await presentationPinService.release({ holderKind: "execution", holderId: id }, tx);
       await presentationPinService.release({ holderKind: "prepared", holderId: id }, tx);
     }
