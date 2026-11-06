@@ -99,6 +99,8 @@ export interface MiniToolPanelProps {
   /** The cost line beside Run. */
   creditText: string;
   refusal: MiniToolRefusal;
+  /** Why Run cannot run now although its inputs are there; a press shows it (packages/web/AGENTS.md#disabled-controls). */
+  runBlockedReason?: string;
   onRun: () => void;
   onClose: () => void;
   /** An expand tool's ratio presets: the one in use, which fit under the model's cap, and the setter. */
@@ -325,6 +327,7 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
     onPrompt,
     creditText,
     refusal,
+    runBlockedReason,
     onRun,
     onClose,
   } = props;
@@ -537,6 +540,7 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
         creditText={creditText}
         runLabel={t('canvas.miniTool.panel.run')}
         disabled={blocked}
+        blockedReason={blocked ? undefined : runBlockedReason}
         loading={refusal === 'exporting'}
         onRun={onRun}
         creditTestId='mini-tool-credit'

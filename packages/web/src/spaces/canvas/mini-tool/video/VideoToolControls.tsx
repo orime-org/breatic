@@ -6,8 +6,8 @@ import { useVideoFrameThumbnails } from '@web/spaces/canvas/mini-tool/video/use-
 import type { VideoPresentationSource } from '@web/spaces/canvas/video-presentation/types';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { AudioLines, Film, Plus, RefreshCw, Trash2, Users } from 'lucide-react';
-import { newId } from '@breatic/shared';
-import { planVideoFrames, planVideoSplit, presentationFrameAt, presentationFrameCount, presentationVideoEnd, type MiniToolAnalysisRecord, type VideoPresentationTable, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
+import { newId, type ModelEntry } from '@breatic/shared';
+import { lipsyncFailureRetryable, planVideoFrames, planVideoSplit, type LipsyncFailureReason, presentationFrameAt, presentationFrameCount, presentationVideoEnd, type MiniToolAnalysisRecord, type VideoPresentationTable, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
@@ -22,6 +22,12 @@ import { PARAM_OPTION_CLASS, ParamOptionGroup } from '@web/spaces/canvas/generat
 import { EXPAND_RATIOS, frameForRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
 import { editDialogue } from '@web/spaces/canvas/mini-tool/video/video-tool-edit';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
+import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
+
+/** A duration range a lip-sync model accepts, both ends included (config `executions.video.lip-sync`). */
+export interface LipSyncDurationRange { min_duration_seconds: number; max_duration_seconds: number }
+/** The configured lip-sync models in order, the first the default, and the tracking model's range. */
+export interface LipSyncChoices { models: (ModelEntry & LipSyncDurationRange)[]; tracking: LipSyncDurationRange }
 
 export interface VideoToolControlsProps<K extends VideoToolId = VideoToolId> {
   toolId: K;
@@ -38,6 +44,8 @@ export interface VideoToolControlsProps<K extends VideoToolId = VideoToolId> {
   onAnalyse: (kind: 'people' | 'scene_cuts' | 'tracked_mask') => void;
   analysing: boolean;
   analysisCreditText?: string;
+  /** What a finished tracking actually used, shown where its estimate was (canvas design §4 erase row). */
+  analysisActualCreditText?: string;
   onEditTimeline: () => void;
   onInvalidChange?: (key: string, invalid: boolean) => void;
   onActiveDialogue?: (dialogueId: string) => void;
@@ -47,6 +55,12 @@ export interface VideoToolControlsProps<K extends VideoToolId = VideoToolId> {
   onSeek?: (time: number) => void;
   sourceEpoch?: number;
   seekEpoch?: number;
+  /** The lip-sync models to choose from and the tracking range. */
+  lipSync?: LipSyncChoices;
+  /** Why the last lip-sync run failed, per person and shared step (execution design §9.4). */
+  lipSyncFailure?: LipsyncFailureReason | null;
+  /** Retries the failed items of the last lip-sync run. */
+  onRetryFailed?: () => void;
 }
 
 interface NumericProps {
@@ -148,8 +162,48 @@ function PeopleDialogues(props: VideoToolControlsProps): React.JSX.Element {
       })}
     </div>
     <Button variant='outline' size='compact' className='w-fit' disabled={props.disabled || props.analysing || !ready || people.length === 0} onClick={() => changeRows([...rows, { dialogueId: newId(), personId: null, analysisRunId: null, audioInputId: null, startTime: 0 }])} icon={<Plus className='size-3.5' />}>{t('canvas.miniTool.videoUI.addDialogue')}</Button>
+    {props.lipSync === undefined || props.lipSync.models.length === 0 ? null : <div className='flex items-center gap-1.5'><ModelPicker models={props.lipSync.models} value={draft.params.modelId ?? props.lipSync.models[0]!.name} onChange={(modelId) => props.onChange({ ...draft, params: { ...draft.params, modelId } })} /></div>}
     <ParamOptionGroup label={t('canvas.miniTool.videoUI.syncMode')} options={[{ value: 'cut_off', label: 'Cut off' }, { value: 'silence', label: 'Silence' }, { value: 'loop', label: 'Loop' }, { value: 'bounce', label: 'Bounce' }, { value: 'remap', label: 'Remap' }].map((option) => ({ ...option, disabled: props.disabled }))} value={draft.params.syncMode} testIdPrefix='video-sync' onSelect={(syncMode) => props.onChange({ ...draft, params: { ...draft.params, syncMode: syncMode as typeof draft.params.syncMode } })} />
+    {props.lipSyncFailure ? <LipSyncFailure reason={props.lipSyncFailure} disabled={props.disabled} onRetry={props.onRetryFailed} onRedetect={() => props.onAnalyse('people')} /> : null}
   </section>;
+}
+
+const PERSON_CATEGORY_KEYS = { no_face: 'personFailNoFace', model_rejected: 'personFailRejected', timeout: 'personFailTimeout', failed: 'personFailFailed', stopped: 'personFailStopped' } as const;
+const PERSON_NEXT_KEYS = { no_face: 'personFailNoFaceNext', model_rejected: 'personFailRejectedNext', timeout: 'personFailRetryNext', failed: 'personFailRetryNext', stopped: 'personFailStoppedNext' } as const;
+const SHARED_STEP_KEYS = { prepare: 'sharedFailPreparation', composite: 'sharedFailCompositing', stitch: 'sharedFailStitching', expired: 'sharedFailExpired' } as const;
+
+/**
+ * A failed lip-sync run (canvas design §4 lip-sync row, execution design §9.4): one line per person that did not succeed, by
+ * detection number, with its category and next step, and one line for a failed shared step; once a person has no face or
+ * was rejected, the other people follow that person. Retry is offered only when the shared rule says every failure can
+ * clear on a retry; with a person without a face, identifying people again is.
+ * @param props - The reason and the actions.
+ * @param props.reason - The failure reason.
+ * @param props.disabled - Whether the panel takes edits.
+ * @param props.onRetry - Retries the failed items.
+ * @param props.onRedetect - Identifies the people again.
+ * @returns The failure block.
+ * @throws {z.ZodError} When the reason is malformed.
+ */
+function LipSyncFailure(props: { reason: LipsyncFailureReason; disabled: boolean; onRetry?: () => void; onRedetect: () => void }): React.JSX.Element {
+  const t = useTranslation();
+  const { persons, shared } = props.reason;
+  const blocker = persons.find((person) => person.category === 'no_face' || person.category === 'model_rejected')?.detectionNumber;
+  const retryable = lipsyncFailureRetryable(props.reason);
+  const noFace = persons.some((person) => person.category === 'no_face');
+  return <div className='grid gap-2 rounded-chrome border border-status-error-border bg-status-error-bg p-2 text-xs text-status-error-foreground' data-testid='video-lip-sync-failure'>
+    <ul className='grid min-w-0 gap-1.5'>
+      {persons.map((person) => {
+        const follows = blocker !== undefined && person.category !== 'no_face' && person.category !== 'model_rejected';
+        const next = follows ? t(`canvas.miniTool.videoUI.${person.category === 'stopped' ? 'personFailStoppedNext' : 'personFailFollowNext'}`, { number: blocker }) : t(`canvas.miniTool.videoUI.${PERSON_NEXT_KEYS[person.category]}`);
+        return <li key={person.personId} className='grid gap-0.5'><span className='font-medium'>{`${t('canvas.miniTool.videoUI.personNumber', { number: person.detectionNumber })} · ${t(`canvas.miniTool.videoUI.${PERSON_CATEGORY_KEYS[person.category]}`)}`}</span><span>{next}</span></li>;
+      })}
+      {shared === null ? null : <li className='grid gap-0.5'><span className='font-medium'>{t(`canvas.miniTool.videoUI.${SHARED_STEP_KEYS[shared.step]}`)}</span><span>{t(`canvas.miniTool.videoUI.${PERSON_NEXT_KEYS[shared.category]}`)}</span></li>}
+    </ul>
+    {retryable || noFace ? <div className='flex justify-end'>{retryable
+      ? <Button variant='outline' size='compact' disabled={props.disabled || props.onRetry === undefined} onClick={props.onRetry}>{t('canvas.miniTool.videoUI.retryFailedPeople')}</Button>
+      : <Button variant='outline' size='compact' disabled={props.disabled} onClick={props.onRedetect}>{t('canvas.miniTool.videoUI.redetectPeople')}</Button>}</div> : null}
+  </div>;
 }
 
 /**
@@ -175,7 +229,7 @@ export function VideoToolControls(props: VideoToolControlsProps): React.JSX.Elem
     case 'video.lip-sync': return <PeopleDialogues {...props} />;
     case 'video.erase': {
       const draft = props.draft as VideoToolDraftById['video.erase'];
-      return <><ParamOptionGroup label={t('canvas.miniTool.videoUI.selection')} value={props.regionSelection ?? 'rectangle'} options={[{ value: 'rectangle', label: t('canvas.miniTool.videoUI.rectangle'), disabled: props.disabled }, { value: 'point', label: t('canvas.miniTool.videoUI.point'), disabled: props.disabled }]} testIdPrefix='video-region-selection' onSelect={(value) => props.onRegionSelection?.(value as 'rectangle' | 'point')} /><p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.drawBox')}</p><div className='relative h-12 overflow-hidden rounded-chrome border border-border'><FilmStrip src={draft.source.canonicalURL} duration={draft.source.mediaInfo.duration} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} /></div><div className='grid grid-cols-2 gap-2'><label className='grid gap-1 text-xs'>{t('canvas.miniTool.videoUI.rangeStart')}<VideoNumericInput value={draft.params.range.start} label={t('canvas.miniTool.videoUI.rangeStart')} testId='video-range-start' exclusiveMax min={0} max={draft.params.range.end} disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(start) => { if (start < draft.params.range.end) props.onChange({ ...draft, params: { ...draft.params, range: { ...draft.params.range, start } } }); }} /></label><label className='grid gap-1 text-xs'>{t('canvas.miniTool.videoUI.rangeEnd')}<VideoNumericInput value={draft.params.range.end} label={t('canvas.miniTool.videoUI.rangeEnd')} testId='video-range-end' exclusiveMin min={draft.params.range.start} max={draft.source.mediaInfo.duration} disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(end) => { if (end > draft.params.range.start) props.onChange({ ...draft, params: { ...draft.params, range: { ...draft.params.range, end } } }); }} /></label></div><Textarea autoComplete='off' value={draft.params.trackingPrompt} disabled={props.disabled} placeholder={t('canvas.miniTool.videoUI.trackingPrompt')} onChange={(event) => props.onChange({ ...draft, params: { ...draft.params, trackingPrompt: event.currentTarget.value } })} /><Button variant='outline' size='sm' loading={props.analysing} disabled={props.disabled || props.analysing || (draft.params.region.box === null && draft.params.region.points.length === 0)} onClick={() => props.onAnalyse('tracked_mask')}>{t('canvas.miniTool.videoUI.trackObject')}{props.analysisCreditText === undefined ? null : <span className='text-xs text-muted-foreground'>{props.analysisCreditText}</span>}</Button><Textarea autoComplete='off' value={draft.params.erasePrompt} disabled={props.disabled} placeholder={t('canvas.miniTool.videoUI.erasePrompt')} onChange={(event) => props.onChange({ ...draft, params: { ...draft.params, erasePrompt: event.currentTarget.value } })} /></>;
+      return <><ParamOptionGroup label={t('canvas.miniTool.videoUI.selection')} value={props.regionSelection ?? 'rectangle'} options={[{ value: 'rectangle', label: t('canvas.miniTool.videoUI.rectangle'), disabled: props.disabled }, { value: 'point', label: t('canvas.miniTool.videoUI.point'), disabled: props.disabled }]} testIdPrefix='video-region-selection' onSelect={(value) => props.onRegionSelection?.(value as 'rectangle' | 'point')} /><p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.drawBox')}</p><div className='relative h-12 overflow-hidden rounded-chrome border border-border'><FilmStrip src={draft.source.canonicalURL} duration={draft.source.mediaInfo.duration} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} /></div><div className='grid grid-cols-2 gap-2'><label className='grid gap-1 text-xs'>{t('canvas.miniTool.videoUI.rangeStart')}<VideoNumericInput value={draft.params.range.start} label={t('canvas.miniTool.videoUI.rangeStart')} testId='video-range-start' exclusiveMax min={0} max={draft.params.range.end} disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(start) => { if (start < draft.params.range.end) props.onChange({ ...draft, params: { ...draft.params, range: { ...draft.params.range, start } } }); }} /></label><label className='grid gap-1 text-xs'>{t('canvas.miniTool.videoUI.rangeEnd')}<VideoNumericInput value={draft.params.range.end} label={t('canvas.miniTool.videoUI.rangeEnd')} testId='video-range-end' exclusiveMin min={draft.params.range.start} max={draft.source.mediaInfo.duration} disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(end) => { if (end > draft.params.range.start) props.onChange({ ...draft, params: { ...draft.params, range: { ...draft.params.range, end } } }); }} /></label></div><Textarea autoComplete='off' value={draft.params.trackingPrompt} disabled={props.disabled} placeholder={t('canvas.miniTool.videoUI.trackingPrompt')} onChange={(event) => props.onChange({ ...draft, params: { ...draft.params, trackingPrompt: event.currentTarget.value } })} /><div className='flex items-center gap-2'><Button variant='outline' size='sm' loading={props.analysing} disabled={props.disabled || props.analysing || (draft.params.region.box === null && draft.params.region.points.length === 0)} onClick={() => props.onAnalyse('tracked_mask')}>{t('canvas.miniTool.videoUI.trackObject')}</Button>{props.analysisActualCreditText !== undefined ? <span className='text-xs tabular-nums text-muted-foreground'>{t('canvas.miniTool.videoUI.trackingActual', { credits: props.analysisActualCreditText })}</span> : props.analysisCreditText === undefined ? null : <span className='text-xs tabular-nums text-muted-foreground'>{t('canvas.miniTool.videoUI.trackingEstimate', { credits: props.analysisCreditText })}</span>}</div><Textarea autoComplete='off' value={draft.params.erasePrompt} disabled={props.disabled} placeholder={t('canvas.miniTool.videoUI.erasePrompt')} onChange={(event) => props.onChange({ ...draft, params: { ...draft.params, erasePrompt: event.currentTarget.value } })} /></>;
     }
     case 'video.remove-bg': return <p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.transparentOutput')}</p>;
     case 'video.extract-frames': {
