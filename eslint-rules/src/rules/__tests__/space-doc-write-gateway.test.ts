@@ -338,6 +338,15 @@ const CASES = {
   ].map((testCase) => ({ ...testCase, options: [OPTION_E] })),
   invalid: [
     {
+      name: "L-39c yjs's standalone transact through a named import",
+      code: source(
+        "import { transact } from 'yjs';",
+        "declare const doc: import('yjs').Doc;",
+        "transact(doc, () => {});",
+      ),
+      errors: [at(9, 1)],
+    },
+    {
       name: "L-39b a history chain behind a type assertion",
       code: source(
         "declare const undoManagerRef: { current: unknown };",

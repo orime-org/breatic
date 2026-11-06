@@ -22,7 +22,7 @@ type Options = Array<{ exceptions: WriteException[] }>;
 const GATEWAYS = new Set(["writeSpaceDoc", "runCanvasUndoBatch"]);
 
 /** Plain function calls that write a Space document. */
-const WRITE_FUNCTIONS = new Set(["writePlainTextIntoBody", "applyTimelineEdit"]);
+const WRITE_FUNCTIONS = new Set(["writePlainTextIntoBody", "applyTimelineEdit", "transact"]);
 
 /** A receiver segment that names an undo history, whatever the key. */
 const HISTORY_SEGMENT = /history|undomanager/i;
@@ -167,8 +167,8 @@ const FUNCTIONS = new Set<string>([
  * information, so the write shapes are syntactic: `.transact` and `.undo()` /
  * `.redo()` on anything whose last segment is not `editor` (BlockNote's own
  * commands are covered by its ProseMirror plugin); computed calls keyed `'undo'`, `'redo'` or `direction`
- * or on a `history` / `undoManager` chain; `writePlainTextIntoBody` and
- * `applyTimelineEdit`. A named function that checks the cap another way is
+ * or on a `history` / `undoManager` chain; `writePlainTextIntoBody`,
+ * `applyTimelineEdit` and yjs's standalone `transact`. A named function that checks the cap another way is
  * listed in the `exceptions` option with its reason. Aliased imports, member
  * calls of the gateway and writes deferred inside its callback are not seen.
  */
