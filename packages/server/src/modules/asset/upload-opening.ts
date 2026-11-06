@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Opening an upload: the grant, and the row on the node it lands on (#207,
@@ -20,6 +20,7 @@
  * taken a second time, so the two cannot name different places.
  */
 
+import { accountActivityRepo, db } from "@breatic/core";
 import { canvasSpaceDocName, type NodeTaskAction } from "@breatic/shared";
 import { nodeTaskService, uploadGrantService } from "@breatic/domain";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
@@ -32,9 +33,8 @@ interface TaskRowRequest {
   /**
    * How long this upload may run before a reader judges it dead.
    *
-   * Named by the lane rather than read here: the browser's is sized for a
-   * person who may genuinely still be uploading, while the lane that takes an
-   * address is bounded by one call the configuration ends in minutes.
+   * Each caller supplies the common node-task budget from
+   * getNodeTaskConfig().default_budget_ms.
    */
   budgetMs: number;
   /** What the row's first line names. */
@@ -60,6 +60,7 @@ export interface OpenedUpload {
  * something the route has to handle the absence of.
  * @param grant - What the lane asks the grant for, naming node and space.
  * @param task - The budget and the label for the row.
+ * @param recordUserAction - Explicit user admission; transport-only uploads omit it.
  * @returns The key, the studio, and the row's id.
  */
 export async function openUpload(
@@ -68,17 +69,20 @@ export async function openUpload(
     context: { nodeId: string; spaceId: string };
   },
   task: TaskRowRequest,
+  recordUserAction?: boolean,
 ): Promise<OpenedUpload & { taskId: string }>;
 
 /**
  * Open the grant, and the row when the grant names somewhere to put one.
  * @param grant - What the lane asks the grant for, passed through untouched.
  * @param task - The budget and the label for the row, when one is opened.
+ * @param recordUserAction - Explicit user admission; transport-only uploads omit it.
  * @returns The key, the studio, and the row's id when there is a row.
  */
 export async function openUpload(
   grant: GrantInput,
   task: TaskRowRequest,
+  recordUserAction?: boolean,
 ): Promise<OpenedUpload>;
 
 /**
@@ -91,44 +95,35 @@ export async function openUpload(
  * document the counts are published on.
  * @param grant - What the lane asks the grant for, passed through untouched.
  * @param task - The budget and the label for the row, when one is opened.
+ * @param recordUserAction - Explicit user admission; transport-only uploads omit it.
  * @returns The key, the studio, and the row's id when there is a row.
- * @throws {Error} Whatever issuing the grant or opening the row throws; a lane
- *   that has to settle the grant on a failed row does that itself.
+ * @throws {Error} When grant, activity or node-row persistence fails; their
+ *   shared product transaction rolls back.
  */
 export async function openUpload(
   grant: GrantInput,
   task: TaskRowRequest,
+  recordUserAction?: boolean,
 ): Promise<OpenedUpload> {
-  const { key, studioId } = await uploadGrantService.issueUploadGrant(grant);
-
-  const { nodeId, spaceId } = grant.context;
-  const { projectId } = grant;
-  if (
-    projectId === undefined ||
-    nodeId === undefined ||
-    nodeId === null ||
-    spaceId === undefined ||
-    spaceId === null
-  ) {
-    return { key, studioId, taskId: undefined };
-  }
-
-  const opened = await nodeTaskService.open({
-    projectId,
-    spaceId,
-    nodeId,
-    kind: "upload",
-    action: task.action,
-    startedByUserId: grant.actingUserId,
-    budgetMs: task.budgetMs,
-    label: task.label,
-    storageKey: key,
+  const admitted = await db.transaction(async (tx) => {
+    const { key, studioId } = await uploadGrantService.issueUploadGrant(grant, tx);
+    const { nodeId, spaceId } = grant.context;
+    const { projectId } = grant;
+    if (recordUserAction) {
+      await accountActivityRepo.recordActivity({ userId: grant.actingUserId, projectId: projectId ?? null, kind: "project_action" }, tx);
+    }
+    if (projectId === undefined || nodeId == null || spaceId == null) {
+      return { key, studioId, taskId: undefined };
+    }
+    const opened = await nodeTaskService.open({
+      projectId, spaceId, nodeId, kind: "upload", action: task.action,
+      startedByUserId: grant.actingUserId, budgetMs: task.budgetMs,
+      label: task.label, storageKey: key,
+    }, tx);
+    return { key, studioId, taskId: opened.id, counts: opened.counts, nodeId, spaceId, projectId };
   });
-  await publishCountsQuietly(
-    canvasSpaceDocName(projectId, spaceId),
-    nodeId,
-    opened.counts,
-  );
-
-  return { key, studioId, taskId: opened.id };
+  if ("counts" in admitted && admitted.counts) {
+    await publishCountsQuietly(canvasSpaceDocName(admitted.projectId, admitted.spaceId), admitted.nodeId, admitted.counts);
+  }
+  return { key: admitted.key, studioId: admitted.studioId, taskId: admitted.taskId };
 }

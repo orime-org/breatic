@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Every refusal the proposal check gives, held to what it says (design 5.10):
@@ -364,6 +364,12 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     states: ['node 0 ("Still")', 'node 1 ("Clip")', '"pool"', "its ref and note in a shot"],
     fix: group([STILL, { ...CLIP_ANCHOR, shots: [{ prompt: [GEN_FIRST, { ref: 0 }, { text: " walks along the shore." }], duration: 5 }] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     templates: FIXTURES,
+  }, {
+    // Sent multi_shot with a prompt and no shots: the ref and note still go in a shot, keyed on the sent mode.
+    meets: group([STILL, { ...CLIP_ANCHOR, shots: undefined, prompt: [{ text: "She walks along the shore." }] }]),
+    states: ['node 0 ("Still")', 'node 1 ("Clip")', '"pool"', "its ref and note in a shot"],
+    fix: group([STILL, { ...CLIP_ANCHOR, shots: [{ prompt: [GEN_FIRST, { ref: 0 }, { text: " walks along the shore." }], duration: 5 }] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
+    templates: FIXTURES,
   }],
   "template-resource-material": [{
     // A template's resource lands holding the template's own file.
@@ -415,7 +421,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }, {
     // A multi_shot generate node naming a template and sending no shots.
     meets: group([STILL, { ...CLIP_ANCHOR, shots: undefined }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    states: ['"Clip" names template "fixture-shots" and sends no prompt.', 'On node 1 ("Clip"), write a prompt.'],
+    states: ['"Clip" names template "fixture-shots" and sends no shots.', 'On node 1 ("Clip"), write the shots.'],
     fix: group([STILL, { ...CLIP_ANCHOR, shots: [{ prompt: [GEN_FIRST, { ref: 0 }, { text: " walks along the shore." }], duration: 5 }] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     templates: FIXTURES,
   }],

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * space-rpc handler tests (ADR 2026-07-04 project-activity-feed).
@@ -83,6 +83,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
   const orig = await importOriginal<Record<string, unknown>>();
   return {
     ...orig,
+    accountActivityRepo: { recordActivity: vi.fn(async () => undefined) },
     createLogger: () => ({
       info: vi.fn(),
       warn: vi.fn(),
@@ -259,7 +260,7 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
     const seeded = seedInitialStateMock.mock.calls.find((call) => call[0] === contentName)!;
     const scene = new Y.Doc();
     Y.applyUpdate(scene, seeded[1] as Uint8Array);
-    expect(scene.getMap("scene").toJSON()).toEqual({ formatVersion: 1 });
+    expect(scene.getMap("scene").toJSON()).toEqual({ formatVersion: 2 });
     expect(scene.getMap("objects").toJSON()).toEqual({});
 
     const entry = fakeMetaDoc.doc.getMap("spaces").get(id) as Y.Map<unknown>;

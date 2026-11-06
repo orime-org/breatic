@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 
 export { STRIPE_WEBHOOK_RESULTS, type StripeWebhookResult } from "@shared/types/stripe-webhook.js";
@@ -301,6 +301,9 @@ export {
   STUDIO_SLUG_BOUNDS,
   loginSchema,
   chatMessageSchema,
+  spaceRequestInputSchema,
+  sharedSpaceSchema,
+  spaceRequestAnswerSchema,
   chatAttachedChipSchema,
   taskCreateSchema,
   understandSchema,
@@ -337,6 +340,9 @@ export type {
   LoginInput,
   ChatMessageInput,
   ChatSpaceContext,
+  SpaceRequestInput,
+  SharedSpace,
+  SpaceRequestAnswer,
   ChatAttachedChip,
   ChatSpace,
   ChatCurrentSpace,
@@ -387,6 +393,7 @@ export {
 export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
 
 export { COLLAB_REAUTH_REASONS, isReauthCloseReason } from "@shared/collab-close-reasons.js";
+export { READ_ONLY_COLLAB_TOKEN } from "@shared/collab-read-only-token.js";
 export { COLLAB_CHUNK_ACK, COLLAB_FRAME_MAX_BYTES, collabChunkHeaderSchema, sendInChunks } from "@shared/collab-frame-chunks.js";
 
 export {
@@ -813,6 +820,7 @@ export {
   TEMPLATE_GOALS,
   templateAnchor,
   templateGoalsFor,
+  templateNodeWords,
   templatesFor,
   type GenerationTemplate,
   type TemplateEdge,
@@ -820,7 +828,9 @@ export {
   type TemplateGoal,
   type TemplateInput,
   type TemplateNodeKey,
+  type TemplateNodeWords,
   type TemplateResourceNode,
+  type TemplateShot,
   type TemplateTriggers,
 } from "@shared/canvas/generation-templates.js";
 export {
@@ -1035,6 +1045,13 @@ export {
   type AttributionTouch,
 } from "@shared/analytics/attribution.js";
 
-export { SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, SceneObjectValuesSchema, SceneObjectSchema, SCENE_EDITABLE_FIELDS } from "@shared/scene.js";
+export { SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, SceneObjectValuesSchema, SceneObjectSchema } from "@shared/scene.js";
 export type { SceneVector, SceneRotation, SceneModel, SceneObjectValues, SceneObject, SceneEditableField } from "@shared/scene.js";
 export { SCENE_FORMAT_VERSION, getSceneRootMap, initializeSceneDocument } from "@shared/scene-version.js";
+
+export * from "@shared/credit-amount.js";
+export { purchaseRowSchema, creditLotViewSchema, studioLotViewSchema, creditLedgerViewSchema, studioLedgerViewSchema, projectCreditsViewSchema, studioCreditsViewSchema, studioCreditSummarySchema, creditOverviewSchema, creditLotPageSchema, creditLedgerPageSchema, purchasePageSchema } from "@shared/types/credit.js";
+
+export { projectVisitRequestSchema, projectVisitReceiptSchema, projectVisitOpenedSchema, projectVisitLookupSchema } from "@shared/project-visit-contract.js";
+export type { ProjectVisitRequest, ProjectVisitReceipt, ProjectVisitOpened, ProjectVisitLookup } from "@shared/project-visit-contract.js";
+export type { AccountActivityEntity, AccountActivityKind, AccountActivityCoverageEntity } from "@shared/types/entities.js";

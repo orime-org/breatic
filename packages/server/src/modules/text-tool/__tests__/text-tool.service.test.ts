@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * 一次文本工具跑完之后，钱那一步失败了会留下什么。
@@ -108,7 +108,7 @@ vi.mock("@breatic/domain", async () => ({
     chargeOnceForGeneration: async (...args: unknown[]) => {
       charge.calls.push(args);
       if (charge.fail) throw charge.fail;
-      return { charged: 0, shortfall: 0, studioId: null, lotIds: [] };
+      return { charged: "0.000000", shortfall: "0.000000", studioId: null, lotIds: [] };
     },
   },
 }));

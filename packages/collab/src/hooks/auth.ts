@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Hocuspocus authentication hook (v10 multi-doc).
@@ -57,7 +57,7 @@ import {
   sessionId,
 } from "@breatic/core";
 import type { OwnSeat } from "@collab/services/connection-registry.js";
-import { parseDocName } from "@breatic/shared";
+import { parseDocName, READ_ONLY_COLLAB_TOKEN } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
 
 /**
@@ -185,7 +185,7 @@ export interface CreateAuthHookOptions {
  * @param root0.resolveConnectionLimit - Reads the writable-connection ceiling for a project from its studio's membership tier; a zero is a real zero, and a throw degrades this connection to read-only rather than refusing it. The meta doc never asks.
  * @param root0.countConnections - Counts a document's live connections cluster-wide (this connection not included) to evaluate the cap.
  * @param root0.hasOwnSeat - Asks whether the arriving person already holds a seat when the document is full, so nobody is kept out by themselves.
- * @returns The Hocuspocus `onAuthenticate` handler that resolves the authenticated user, mutates `connectionConfig.readOnly` — always for the meta doc, and for view-only members, at-capacity documents or an unresolvable ceiling — and returns the user context, or throws to reject the connection.
+ * @returns The Hocuspocus `onAuthenticate` handler that resolves the authenticated user, mutates `connectionConfig.readOnly` — always for the meta doc, and for view-only members, connections presenting `READ_ONLY_COLLAB_TOKEN`, at-capacity documents or an unresolvable ceiling — and returns the user context, or throws to reject the connection.
  */
 export function createAuthHook({
   redis,
@@ -194,6 +194,7 @@ export function createAuthHook({
   hasOwnSeat,
 }: CreateAuthHookOptions) {
   return async ({
+    token: presentedToken,
     documentName,
     requestHeaders,
     connectionConfig,
@@ -239,10 +240,12 @@ export function createAuthHook({
       // cookie (`sessionCookieName()`) sent on the WebSocket upgrade
       // request (2026-05-26 cookie migration). Hocuspocus's own
       // `token` field - sent by the client in the application-level
-      // auth frame - is treated as opaque and ignored; the client
-      // sends a placeholder like `"__cookie_auth__"` purely to trip
-      // Hocuspocus into invoking this hook (an empty token short-
-      // circuits `onAuthenticate` in v3, see ueberdosis/hocuspocus#596).
+      // auth frame - never identifies anyone; the client sends a
+      // placeholder like `"__cookie_auth__"` purely to trip Hocuspocus
+      // into invoking this hook (an empty token short-circuits
+      // `onAuthenticate` in v3, see ueberdosis/hocuspocus#596). The one
+      // value it acts on is `READ_ONLY_COLLAB_TOKEN`, which can only lower
+      // this connection's own rights (see `readsOnly` below).
       const token = readCookie(
         requestHeaders.get("cookie") ?? undefined,
         sessionCookieName(),
@@ -378,9 +381,14 @@ export function createAuthHook({
       //     to sit here meant "unlimited" and failed in the permissive
       //     direction: lowering a tier to 0 to stop concurrent editing
       //     would silently have allowed unlimited concurrent editing.
+      // A connection that asked to only read (the browser reading a Space
+      // the agent asked for, inner#1552) is treated like a viewer: read-only
+      // and judged against no seat, so it neither takes one nor makes the
+      // seat script demote the same person's editing tab.
+      const readsOnly = presentedToken === READ_ONLY_COLLAB_TOKEN;
       let atCapacity = false;
       let seatCap: number | null = null;
-      if (role !== "viewer" && parsed.kind !== "meta") {
+      if (role !== "viewer" && !readsOnly && parsed.kind !== "meta") {
         // Resolving the ceiling is the one step here that can fail on OUR
         // data rather than on anything the user did: a tier value outside
         // the enum after a hand-written UPDATE, a missing account, a
@@ -472,7 +480,7 @@ export function createAuthHook({
       // Content docs are unaffected: a canvas or a document body is the
       // user's own work, it has no rules to enforce, and role decides.
       connectionConfig.readOnly =
-        parsed.kind === "meta" || role === "viewer" || atCapacity;
+        parsed.kind === "meta" || role === "viewer" || readsOnly || atCapacity;
 
       // NOTE: this connection takes its seat in the cross-instance registry
       // in the `connected` lifecycle hook (see hocuspocus.ts), NOT here; the

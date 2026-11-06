@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Tool registry — maps tool names to AI SDK tool definitions.
@@ -8,11 +8,13 @@ import type { Tool } from "ai";
 import { env } from "@breatic/core";
 
 import { makeAskUserTool, type AskUserContext } from "@domain/agent/tools/ask-user.js";
+import { makeRequestSpaceContentTool, type RequestSpaceContentContext } from "@domain/agent/tools/request-space-content.js";
 import { makeSaveImageTool } from "@domain/agent/tools/save-image.js";
 import { recordTools, makeReadNodeHistoryTool } from "@domain/agent/tools/record-tools.js";
 import type { ToolPictureContext } from "@domain/agent/prepare-agent-pictures.js";
 import {
   ASK_USER,
+  REQUEST_SPACE_CONTENT,
   GET_CANVAS_CAPABILITIES,
   GET_GENERATION_TEMPLATE,
   GET_PRODUCT_GUIDE,
@@ -48,7 +50,7 @@ const proposeDocumentEdit = makeProposeDocumentEdit();
  * Optional at every build site: a tool built without it (a test, a probe)
  * gets `NO_TOOL_CONTEXT`, which vouches for no media address at all.
  */
-export type ToolContext = AskUserContext & ToolPictureContext;
+export type ToolContext = AskUserContext & ToolPictureContext & RequestSpaceContentContext;
 
 /** The context a tool gets when its caller has none: no media is vouched for. */
 export const NO_TOOL_CONTEXT: ToolContext = { mediaUrlAllowed: () => false };
@@ -74,6 +76,7 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   // wait for an answer read the same one, so there is no second spelling of
   // it to keep in step.
   [ASK_USER]: (context = NO_TOOL_CONTEXT) => makeAskUserTool(context),
+  [REQUEST_SPACE_CONTENT]: (context = NO_TOOL_CONTEXT) => makeRequestSpaceContentTool(context),
   // Searches for pictures and answers with the row the panel draws. It does
   // work of its own, so it is not one of the interaction tools below, even
   // though the panel is what draws its answer.
@@ -113,6 +116,7 @@ export const BASELINE_TOOLS: readonly string[] = [
   "search_images",
   UNDERSTAND_MEDIA,
   ASK_USER,
+  REQUEST_SPACE_CONTENT,
   JUDGE_LIKELIHOOD,
   // The user's own records: about the project, not the Space in front of
   // them, so offered whatever is open.
@@ -136,8 +140,12 @@ export const CANVAS_TOOLS: readonly string[] = [
   SAVE_IMAGE,
 ];
 
+export { makeRequestSpaceContentTool };
+
 export {
   ASK_USER,
+  AWAITS_READER,
+  REQUEST_SPACE_CONTENT,
   GET_CANVAS_CAPABILITIES,
   GET_GENERATION_TEMPLATE,
   GET_PRODUCT_GUIDE,

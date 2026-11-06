@@ -1,13 +1,15 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The template button in a generate panel's corner (inner#977, inner#1345,
  * inner#1807): the panel lists creative goals, each opening its templates;
  * picking one sets the panel up, @s the reference already wired in or places
  * an empty one beside the node, wired and @'d, places the generations a
- * template runs first, and picking it again reuses what it placed; a panel
- * with no templates says so.
+ * template runs first, and picking it again reuses what it placed; a template
+ * with a shot list writes its shots, and one whose pictures go into the first
+ * and end frame notes which frame each goes into (inner#1816); a panel with no
+ * templates says so.
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:
  *
@@ -20,6 +22,7 @@ import { openSmokeProject } from '../helpers/project';
 import { expectNodesInView, expectPanelInView } from '../helpers/canvas-chrome';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
+import { wire } from '../helpers/mini-tool';
 
 test.use({ viewport: { width: 1440, height: 1080 } });
 
@@ -81,24 +84,6 @@ test.afterEach(async () => {
 });
 
 /**
- * Wire one node into another through the live canvas module.
- * @param from - The node wired in.
- * @param to - The node it goes into.
- */
-async function wire(from: string, to: string): Promise<void> {
-  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
-  await page.evaluate(
-    async ([pid, sid, source, target, at]: [string, string, string, string, string]) => {
-      const canvas = (await import(/* @vite-ignore */ at)) as {
-        addEdge: (p: string, s: string, e: unknown) => boolean;
-      };
-      canvas.addEdge(pid, sid, { id: `${source}->${target}`, source, target, createdAt: Date.now() });
-    },
-    [projectId, spaceId, from, to, canvasAt] as [string, string, string, string, string],
-  );
-}
-
-/**
  * Move the pointer onto one goal's row the way a hand does, in steps, which
  * opens its submenu.
  * @param goal - The goal.
@@ -138,6 +123,35 @@ async function graph(): Promise<{ names: string[]; edges: string[] }> {
       return { names: nodes.map((n) => n.data.name ?? n.id).sort(), edges: edges.map((e) => `${name(e.source)} -> ${name(e.target)}`).sort() };
     },
     [projectId, spaceId, canvasAt] as [string, string, string],
+  );
+}
+
+/**
+ * The group a template's new nodes formed beside an anchor, read from the open Space's document.
+ * @param anchorId - The anchor.
+ * @returns The distance from the group's right edge to the anchor's left edge, the anchor card's width, and how many members the group holds.
+ */
+async function groupBesideAnchor(anchorId: string): Promise<{ gap: number; card: number; members: number }> {
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
+  return page.evaluate(
+    async ([pid, sid, anchor, at]: [string, string, string, string]) => {
+      const canvas = (await import(/* @vite-ignore */ at)) as {
+        readNodePlacements: (p: string, s: string) => { id: string; type: string; x: number; width?: number }[];
+        readCanvasGraph: (p: string, s: string) => { nodes: { parentId?: string }[] };
+      };
+      const placements = canvas.readNodePlacements(pid, sid);
+      const group = placements.find((p) => p.type === 'group');
+      const anchorAt = placements.find((p) => p.id === anchor);
+      // offsetWidth ignores the viewport's scale, so it is the card's width on the canvas.
+      const card = (document.querySelector(`.react-flow__node[data-id="${anchor}"]`) as HTMLElement | null)?.offsetWidth;
+      if (!group || !anchorAt || !card) throw new Error('no group, anchor or anchor card');
+      return {
+        gap: anchorAt.x - (group.x + (group.width ?? 0)),
+        card,
+        members: canvas.readCanvasGraph(pid, sid).nodes.filter((n) => n.parentId === group.id).length,
+      };
+    },
+    [projectId, spaceId, anchorId, canvasAt] as [string, string, string, string],
   );
 }
 
@@ -213,7 +227,7 @@ test('picking a template @s the reference already wired in and places nothing ne
     },
     [projectId, spaceId, heroId, canvasAt] as [string, string, string, string],
   );
-  await wire(heroId, nodeId);
+  await wire(page, { projectId, spaceId }, heroId, nodeId);
   await pickStoryboard();
 
   const prompt = page.getByTestId('generate-prompt-editor');
@@ -230,12 +244,12 @@ test('picking the single-view scene places the three views it generates first, a
   await page.getByTestId('generate-template-single-view-refs-scene').click();
 
   await expect(page.getByTestId('generate-model-trigger')).toContainText('Seedance 2.5', { timeout: 15_000 });
-  // The anchor, the empty character and the front, side and back views.
-  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(5, { timeout: 15_000 });
+  // The anchor, the empty character, the front, side and back views, and the group the four new nodes form.
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(6, { timeout: 15_000 });
   await expect(visibleSpace(page).locator('.react-flow__edge')).toHaveCount(7);
   // Three views into the scene, and the character into the three views and the scene.
   expect(await graph()).toEqual({
-    names: ['Back', 'Character', 'Front', 'Side', 'video-template'],
+    names: ['Back', 'Character', 'Character in a video scene', 'Front', 'Side', 'video-template'],
     edges: [
       'Back -> video-template',
       'Character -> Back',
@@ -251,6 +265,11 @@ test('picking the single-view scene places the three views it generates first, a
   // What to put in the character, and to generate each view first.
   await expect(prompt.locator('[data-prompt-note]')).toHaveCount(4);
   await expectNodesInView(page, 5);
+  // The group holds the four new nodes and stands right beside the anchor, left of it.
+  const { gap, card, members } = await groupBesideAnchor(nodeId);
+  expect(members).toBe(4);
+  expect(gap).toBeGreaterThanOrEqual(0);
+  expect(gap).toBeLessThan(card);
   await page.screenshot({ path: test.info().outputPath('single-view-scene-applied.png') });
   expect(await visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`).count()).toBe(1);
 });
@@ -273,12 +292,12 @@ test('picking the single-view scene feeds a photo already wired into the video n
     },
     [projectId, spaceId, heroId, canvasAt] as [string, string, string, string],
   );
-  await wire(heroId, nodeId);
+  await wire(page, { projectId, spaceId }, heroId, nodeId);
   await openGoal('character');
   await page.getByTestId('generate-template-single-view-refs-scene').click();
 
-  // The anchor, the photo and the three views; no empty character.
-  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(5, { timeout: 15_000 });
+  // The anchor, the photo, the three views and the group the three new views form; no empty character.
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(6, { timeout: 15_000 });
   await expect(visibleSpace(page).locator('.react-flow__edge')).toHaveCount(7);
   expect((await graph()).edges).toEqual([
     'Back -> video-template',
@@ -292,6 +311,91 @@ test('picking the single-view scene feeds a photo already wired into the video n
   const prompt = page.getByTestId('generate-prompt-editor');
   await expect(prompt.locator('[data-reference-mention]')).toHaveCount(4);
   await expect(prompt.locator('[data-reference-mention]').filter({ hasText: 'Hero photo' })).toHaveCount(1);
+});
+
+test('picking the quick tip writes its five shots of three seconds, each @ing the subject it places', async () => {
+  await openPanelOnNewNode('video');
+  await openGoal('social-hooks');
+  await page.getByTestId('generate-template-vertical-15s-quick-tip').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Seedance 2.5', { timeout: 15_000 });
+  // The anchor and the empty subject; one new node forms no group.
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(2, { timeout: 15_000 });
+  expect(await graph()).toEqual({ names: ['Subject', 'video-template'], edges: ['Subject -> video-template'] });
+  await expect(page.getByTestId('generate-storyboard-shots')).toBeVisible();
+  for (const n of [1, 2, 3, 4, 5]) {
+    await expect(page.getByTestId(`generate-storyboard-shot-${String(n)}-seconds`)).toContainText('3');
+    const editor = page.getByTestId(`generate-storyboard-shot-${String(n)}-editor`);
+    await expect(editor.locator('[data-reference-mention]').filter({ hasText: 'Subject' })).toHaveCount(1);
+    // What to put in the subject sits on top of the first shot only.
+    await expect(editor.locator('[data-prompt-note]')).toHaveCount(n === 1 ? 1 : 0);
+  }
+  await expect(page.getByTestId('generate-storyboard-shot-6')).toHaveCount(0);
+  await page.screenshot({ path: test.info().outputPath('quick-tip-applied.png') });
+});
+
+test('picking the carried-object transition places two scene pictures for the first and end frame, noted and left to pick', async () => {
+  await openPanelOnNewNode('video');
+  await openGoal('social-hooks');
+  await page.getByTestId('generate-template-carried-object-transition').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Seedance 2.5', { timeout: 15_000 });
+  // The anchor, the empty object, the two scenes and the group the three new nodes form.
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(5, { timeout: 15_000 });
+  expect(await graph()).toEqual({
+    names: ['Object', 'Object-carried transition', 'Scene A', 'Scene B', 'video-template'],
+    edges: ['Object -> Scene A', 'Object -> Scene B', 'Scene A -> video-template', 'Scene B -> video-template'],
+  });
+  const prompt = page.getByTestId('generate-prompt-editor');
+  // The scenes go into frames, not the pool: nothing is @'d, and each note names its frame.
+  await expect(prompt.locator('[data-reference-mention]')).toHaveCount(0);
+  const notes = prompt.locator('[data-prompt-note]');
+  await expect(notes).toHaveCount(2);
+  await expect(notes.nth(0)).toContainText('First frame');
+  await expect(notes.nth(1)).toContainText('End frame');
+  // The frames stay empty until the reader picks the generated scenes in.
+  await expect(page.getByTestId('generate-video-tool-first-frame')).toBeVisible();
+  await expect(page.getByTestId('generate-video-tool-end-frame')).toBeVisible();
+  await expect(page.getByTestId('generate-video-first-frame-thumbnail')).toHaveCount(0);
+  await expect(page.getByTestId('generate-video-end-frame-thumbnail')).toHaveCount(0);
+  await page.screenshot({ path: test.info().outputPath('carried-object-applied.png') });
+});
+
+test('picking the carried-object transition feeds a picture already wired into the video node into both scenes', async () => {
+  const nodeId = await openPanelOnNewNode('video');
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
+  const photoId = crypto.randomUUID();
+  await page.evaluate(
+    async ([pid, sid, id, at]: [string, string, string, string]) => {
+      const canvas = (await import(/* @vite-ignore */ at)) as {
+        addNode: (p: string, s: string, n: unknown) => void;
+      };
+      canvas.addNode(pid, sid, {
+        id,
+        type: 'image',
+        position: { x: -600, y: 0 },
+        data: { name: 'Hero photo', createdAt: Date.now(), createdBy: 'template-e2e', locked: false, state: 'idle', attachments: [] },
+      });
+    },
+    [projectId, spaceId, photoId, canvasAt] as [string, string, string, string],
+  );
+  await wire(page, { projectId, spaceId }, photoId, nodeId);
+  await openGoal('social-hooks');
+  await page.getByTestId('generate-template-carried-object-transition').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Seedance 2.5', { timeout: 15_000 });
+  // The anchor, the photo, the two scenes and the group the two new scenes form; no empty object.
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(5, { timeout: 15_000 });
+  expect(await graph()).toEqual({
+    names: ['Hero photo', 'Object-carried transition', 'Scene A', 'Scene B', 'video-template'],
+    edges: [
+      'Hero photo -> Scene A',
+      'Hero photo -> Scene B',
+      'Hero photo -> video-template',
+      'Scene A -> video-template',
+      'Scene B -> video-template',
+    ],
+  });
 });
 
 test('a panel with no templates says so', async () => {

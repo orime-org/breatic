@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * How a proposed flow arranges itself on the canvas (#263).
@@ -92,6 +92,23 @@ describe('where a flow lays itself out', () => {
     expect(two.y).toBeLessThan(three.y);
     expect(one.y + one.height).toBeLessThanOrEqual(two.y);
     expect(two.y + two.height).toBeLessThanOrEqual(three.y);
+  });
+
+  it('stacks a column in the order it is given, and in proposal order without one', () => {
+    const column = flow(
+      [empty('Yours'), generates('One'), generates('Two'), generates('Three')],
+      [
+        [0, 1],
+        [0, 2],
+        [0, 3],
+      ],
+    );
+    const ordered = planFlowLayout(column, AT, [0, 2, 3, 1]);
+    expect(ordered[3]!.y).toBeLessThan(ordered[1]!.y);
+    expect(ordered[1]!.y).toBeLessThan(ordered[2]!.y);
+    const plain = planFlowLayout(column, AT);
+    expect(plain[1]!.y).toBeLessThan(plain[2]!.y);
+    expect(plain[2]!.y).toBeLessThan(plain[3]!.y);
   });
 
   it('keeps a node carrying eleven lines clear of the one under it', () => {

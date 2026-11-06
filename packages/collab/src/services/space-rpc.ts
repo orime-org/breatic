@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Collab-side handlers for client-initiated Space lifecycle RPCs.
@@ -48,6 +48,7 @@
  * Returns a `SpaceRpcResponse` whose `id` echoes the request id so
  * the client can demultiplex concurrent in-flight RPCs.
  */
+import { accountActivityRepo } from "@breatic/core";
 import { reportSpaceAction, reportSpaceCreated } from "@collab/services/space-analytics.js";
 import { randomUUID } from "node:crypto";
 
@@ -1300,18 +1301,26 @@ export async function handleSpaceRpc(
   request: SpaceRpcRequest,
 ): Promise<SpaceRpcResponse> {
   try {
+    let result: SpaceRpcResponse;
     switch (request.type) {
       case "space:create":
-        return await handleCreate(ctx, projectId, caller, request);
+        result = await handleCreate(ctx, projectId, caller, request);
+        break;
       case "space:delete":
-        return await handleDelete(ctx, projectId, caller, request);
+        result = await handleDelete(ctx, projectId, caller, request);
+        break;
       case "space:lock":
-        return await handleLock(ctx, projectId, caller, request);
+        result = await handleLock(ctx, projectId, caller, request);
+        break;
       case "space:rename":
-        return await handleRename(ctx, projectId, caller, request);
+        result = await handleRename(ctx, projectId, caller, request);
+        break;
       case "space:restore":
-        return await handleRestore(ctx, projectId, caller, request);
+        result = await handleRestore(ctx, projectId, caller, request);
+        break;
     }
+    if (result.ok) await accountActivityRepo.recordActivity({ userId: caller.userId, projectId, kind: "project_action" });
+    return result;
   } catch (e) {
     // Last resort for programmer errors only — every anticipated failure is
     // handled inside its handler with a controlled message. What a raw

@@ -1,16 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import {
-  Folders,
-  Headphones,
-  HelpCircle,
+  Keyboard,
   MessageCircle,
   Sparkles,
   Upload,
   type LucideIcon,
 } from 'lucide-react';
-import type * as React from 'react';
+import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import {
@@ -20,32 +18,21 @@ import {
 } from '@web/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
-import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
+import { suppressTooltipFocusOpen, useReturnFocus } from '@web/lib/overlay-focus';
+import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { CreatableNodeType } from '@web/spaces/canvas/node-factory';
 import { CreatableNodeMenuItems } from '@web/spaces/canvas/nodes/_shared/CreatableNodeMenuItems';
+import { CanvasShortcutsDialog } from '@web/spaces/canvas/shortcuts/CanvasShortcutsDialog';
 
-export type LeftMenuTool =
-  | 'nodes'
-  | 'upload'
-  | 'comment'
-  | 'collection'
-  | 'help'
-  | 'feedback';
+export type LeftMenuTool = 'nodes' | 'upload' | 'comment';
 
-type MenuLabelKey =
-  | 'menu.item.nodes'
-  | 'menu.item.upload'
-  | 'menu.item.comment'
-  | 'menu.item.collection'
-  | 'menu.item.help'
-  | 'menu.item.feedback';
+type MenuLabelKey = 'menu.item.nodes' | 'menu.item.upload' | 'menu.item.comment';
 
 interface MenuItem {
   id: LeftMenuTool;
   icon: LucideIcon;
   labelKey: MenuLabelKey;
-  placeholder?: boolean;
   /**
    * Only the node-library entry sets this. The featured visual is a
    * permanent highlight flagging the canvas's primary surface — NOT a
@@ -68,15 +55,14 @@ interface MenuItem {
  * Two-zone menu, mirrors the chrome-baseline mock
  * `nav.left-menu > .item / .divider` layout:
  *
- *   Upper zone — core 3 (M0' functional placeholder):
+ *   Upper zone — the three creation tools:
  *     - nodes (node library, sparkles) — FEATURED, always highlighted
  *     - upload (upload assets, upload) — pure action
  *     - comment (annotate, message-circle) — arms a mode
  *   Divider
- *   Lower zone — placeholders (M1+, muted color, toast on click):
- *     - collection (collection, folders)
- *     - help (help, help-circle)
- *     - feedback (feedback, headphones)
+ *   Lower zone:
+ *     - shortcuts (keyboard shortcuts, keyboard) — opens the shortcuts
+ *       dialog; usable by viewers too, since reading it edits nothing
  */
 const UPPER_ITEMS: ReadonlyArray<MenuItem> = [
   { id: 'nodes', icon: Sparkles, labelKey: 'menu.item.nodes', featured: true },
@@ -86,27 +72,6 @@ const UPPER_ITEMS: ReadonlyArray<MenuItem> = [
     icon: MessageCircle,
     labelKey: 'menu.item.comment',
     arms: 'comment',
-  },
-];
-
-const LOWER_ITEMS: ReadonlyArray<MenuItem> = [
-  {
-    id: 'collection',
-    icon: Folders,
-    labelKey: 'menu.item.collection',
-    placeholder: true,
-  },
-  {
-    id: 'help',
-    icon: HelpCircle,
-    labelKey: 'menu.item.help',
-    placeholder: true,
-  },
-  {
-    id: 'feedback',
-    icon: Headphones,
-    labelKey: 'menu.item.feedback',
-    placeholder: true,
   },
 ];
 
@@ -138,23 +103,20 @@ interface LeftFloatingMenuProps {
 }
 
 /**
- * Shared hit-area styling for every floating-menu tool button, branched by
- * the item's `featured` / `placeholder` visual variant.
- * @param item - The menu item whose visual variant selects the classes.
- * @param armed - Whether this button's tool is the one currently armed.
+ * Shared hit-area styling for every floating-menu tool button.
+ * @param solid - Whether the button wears the solid fill: the featured node
+ *   library, or a tool that is currently armed.
  * @returns The merged className string for the tool button.
  */
-function toolButtonClassName(item: MenuItem, armed: boolean): string {
+function toolButtonClassName(solid: boolean): string {
   return cn(
     'inline-flex h-10 w-10 items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-    item.featured || armed
+    solid
       ? // The same solid the viewport toolbar's snap / minimap toggles wear
     // while they are on — one visual for "this one is currently on"
     // across the canvas chrome.
       'bg-foreground text-background shadow-sm hover:bg-primary-hover'
-      : item.placeholder
-        ? 'bg-transparent text-foreground-disabled hover:text-muted-foreground'
-        : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
+      : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
   );
 }
 
@@ -179,17 +141,17 @@ function toolButtonClassName(item: MenuItem, armed: boolean): string {
  *     leave any pressed / pinned state behind
  *   - armed (comment, while the canvas waits for the placing click): the
  *     same solid the viewport toolbar's toggles wear while on
- *   - placeholder: foreground-disabled color, hover lifts to muted-foreground
+ *   - shortcuts: a regular action that opens the shortcuts dialog
  *
  * Divider:
  *   - 28px wide, 1px border-color line, 4px vertical margin
  * @param root0 - Component props.
  * @param root0.onPick - Fired once with the picked tool id when a menu button is clicked.
  * @param root0.onCreateNode - Fired with the picked node type from the node-library dropdown.
- * @param root0.disabled - When `true`, every tool button is disabled with an editor-permission-required tooltip.
+ * @param root0.disabled - When `true` (a viewer), every editing tool is disabled with an editor-permission-required tooltip; the shortcuts button stays usable.
  * @param root0.concealed - When `true` (reference pick running), the menu slides off through the left edge and goes inert.
  * @param root0.armedTool - The tool currently armed, whose button wears the pressed visual.
- * @returns The floating left tool menu with upper action zone, divider, and lower placeholder zone.
+ * @returns The floating left tool menu with upper action zone, divider, and the shortcuts button.
  */
 export function LeftFloatingMenu({
   onPick,
@@ -237,22 +199,14 @@ export function LeftFloatingMenu({
         data-testid='left-menu-divider'
         className='my-1 h-px w-7 bg-border'
       />
-      {LOWER_ITEMS.map((it) => (
-        <MenuButton
-          key={it.id}
-          item={it}
-          onPick={onPick}
-          disabled={disabled}
-          armedTool={armedTool}
-        />
-      ))}
+      <ShortcutsMenuButton readOnly={disabled} />
     </nav>
   );
 }
 
 /**
  * Single tooltip-wrapped tool button rendered inside the floating menu,
- * styled by its `featured` / `placeholder` flags.
+ * styled by its `featured` flag and armed state.
  * @param root0 - Component props.
  * @param root0.item - Menu item describing the button's icon, label, and visual variant.
  * @param root0.onPick - Fired with the item's tool id when the button is clicked.
@@ -291,7 +245,7 @@ function MenuButton({
           disabled={disabled}
           aria-pressed={item.arms === undefined ? undefined : armed}
           data-testid={`tool-${item.id}`}
-          className={toolButtonClassName(item, armed)}
+          className={toolButtonClassName(item.featured === true || armed)}
         >
           <Icon className='h-5 w-5' />
         </Button>
@@ -333,7 +287,7 @@ function NodesMenuButton({
       aria-label={label}
       disabled={disabled}
       data-testid={`tool-${item.id}`}
-      className={toolButtonClassName(item, false)}
+      className={toolButtonClassName(item.featured === true)}
       onFocusCapture={suppressTooltipFocusOpen}
     >
       <Icon className='h-5 w-5' />
@@ -370,5 +324,51 @@ function NodesMenuButton({
         <CreatableNodeMenuItems onPick={onCreateNode} />
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/**
+ * The keyboard shortcuts entry below the divider. Reading the list edits
+ * nothing, so it stays usable for viewers, who get the rows that work for
+ * them. The dialog opens from state, so focus is handed back to this button
+ * by `useReturnFocus`, and the button's tooltip does not pop on that refocus.
+ * @param root0 - Component props.
+ * @param root0.readOnly - Whether the reader cannot edit the canvas.
+ * @returns The shortcuts button and its dialog.
+ */
+function ShortcutsMenuButton({ readOnly }: { readOnly: boolean }): React.JSX.Element {
+  const t = useTranslation();
+  const [open, setOpen] = useExclusiveOverlay('canvas-shortcuts');
+  const returnFocus = useReturnFocus(open);
+  // The open flag lives in a global store, so a menu that unmounts (the reader
+  // switches Space) must give it back or the dialog reopens on the next mount.
+  React.useEffect(() => () => setOpen(false), [setOpen]);
+  const label = t('menu.item.shortcuts');
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant={null}
+            size={null}
+            type='button'
+            aria-label={label}
+            onClick={() => setOpen(true)}
+            onFocusCapture={suppressTooltipFocusOpen}
+            data-testid='tool-shortcuts'
+            className={toolButtonClassName(false)}
+          >
+            <Keyboard className='h-5 w-5' />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side='right'>{label}</TooltipContent>
+      </Tooltip>
+      <CanvasShortcutsDialog
+        open={open}
+        onOpenChange={setOpen}
+        readOnly={readOnly}
+        onCloseAutoFocus={returnFocus}
+      />
+    </>
   );
 }

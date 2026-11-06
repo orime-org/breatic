@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -8,6 +8,7 @@ import { Lock } from 'lucide-react';
 import { type SceneObject } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { getSceneControls, resolveSceneAsset } from '@web/data/api/scene';
+import { isOlderSceneFormat } from '@web/data/yjs/scene-document';
 import type { ScenePeer, SceneSession, SceneSessionSnapshot } from '@web/data/yjs/scene-session';
 import type { SocketState } from '@web/data/yjs/use-socket';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -137,6 +138,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
      */
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.defaultPrevented || !ownsKeyboard(event.target) || event.isComposing || event.keyCode === 229) return;
+      if (session.getSnapshot().status !== 'ready') return;
       const modifier = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
       if (event.key === 'Escape') {
@@ -184,7 +186,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
     pendingFocusIds.current.add(id);
     const object: SceneObject = { id, model: { kind: 'builtin', id: kind },
       name: kind === 'figure' ? figureName : boxName,
-      position: [session.getSnapshot().objects.length * 1.6, kind === 'box' ? 0.5 : 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false, exists: true };
+      position: [session.getSnapshot().objects.length * 1.6, kind === 'box' ? 0.5 : 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false };
     if (!session.execute({ type: 'create', objects: [object] }).ok) pendingFocusIds.current.delete(id);
   }, [session, figureName, boxName]);
 
@@ -326,9 +328,16 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
     : panel === 'objects' ? <SceneObjectList session={session} snapshot={snapshot} modelStates={modelStates} onSelect={showSelectedProperties} />
       : <p className='p-4 text-sm text-muted-foreground' data-testid='scene-tasks-panel'>{tasksText}</p>,
   [panel, inspectorFallback, session, snapshot, readObjects, namedPeers, spaceId, fieldDrafts, onFieldDraftChange, modelStates, showSelectedProperties, tasksText]);
+  // An older-format scene is never opened, so no editing chrome is shown around its message.
+  if (snapshot.status === 'unsupported' && isOlderSceneFormat(snapshot.version)) {
+    return <div ref={stage} className='relative isolate h-full min-h-0 min-w-0 bg-canvas' data-testid='three-d-space'>
+      <div className='flex h-full items-center justify-center p-4 text-sm' data-testid='scene-stage'><p>{t('spaces.threeD.unsupportedOld')}</p></div>
+    </div>;
+  }
   return <div ref={stage} className='relative isolate h-full min-h-0 min-w-0 bg-canvas' data-testid='three-d-space'>
     <div className='absolute inset-0' data-testid='scene-stage' style={stageStyle}>
-      {snapshot.status === 'unsupported' ? <div className='flex h-full flex-col items-center justify-center gap-3 p-4 text-sm'><p>{t('spaces.threeD.unsupported')}</p><Button onClick={() => window.location.reload()}>{t('spaces.threeD.reload')}</Button></div>
+      {snapshot.status === 'unsupported' ? <div className='flex h-full flex-col items-center justify-center gap-3 p-4 text-sm'>
+        <p>{t('spaces.threeD.unsupported')}</p><Button onClick={() => window.location.reload()}>{t('spaces.threeD.reload')}</Button></div>
         : snapshot.status === 'loading' ? <div className='grid h-full place-items-center p-4 text-sm'>{connection.status === 'authFailed' ? t('spaces.threeD.refused') : t('spaces.threeD.loading')}</div>
           : controls.isError || rendererFailed ? <div className='flex h-full flex-col items-center justify-center gap-3 p-4 text-sm'><p>{t('spaces.threeD.loadFailed')}</p><Button onClick={() => {
             setRendererFailed(false); setRendererRevision((value) => value + 1); void controls.refetch();

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * BullMQ job handlers for task execution.
@@ -11,6 +11,8 @@
  *
  * Anything else throws.
  */
+
+import { parseCreditDecimal } from "@breatic/shared";
 
 import { DelayedError, type Job } from "bullmq";
 import type { ResumeContext } from "@worker/providers/shared.js";
@@ -1183,7 +1185,7 @@ export async function settleRunCharge(run: RunCharge): Promise<void> {
       provider: run.provider,
       releaseHold: taskId,
     });
-    if (outcome.shortfall > 0) {
+    if (parseCreditDecimal(outcome.shortfall) > 0n) {
       // The studio's pool ran out mid-flight, or its credits were reassigned
       // while the task ran. The result is already delivered, so what is left
       // uncharged goes to reconciliation.

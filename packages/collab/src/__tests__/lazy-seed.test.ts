@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * lazySeedMeta unit tests (B.2 — meta + first Space content doc are one
@@ -159,7 +159,7 @@ describe("lazySeedMeta", () => {
 
     const scene = new Y.Doc();
     Y.applyUpdate(scene, calls[0]![1] as Uint8Array);
-    expect(scene.getMap("scene").toJSON()).toEqual({ formatVersion: 1 });
+    expect(scene.getMap("scene").toJSON()).toEqual({ formatVersion: 2 });
     expect(scene.getMap("objects").toJSON()).toEqual({});
 
     const meta = new Y.Doc();

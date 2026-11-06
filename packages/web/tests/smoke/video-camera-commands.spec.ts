@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Camera commands on MiniMax H3: the picker sits in the settings
@@ -243,12 +243,13 @@ test('picks camera commands and writes them at the caret, then sends them', asyn
   );
 });
 
-test('writes into the shot box last clicked into, and the shot line carries it', async () => {
+test('writes into the open shot, and the shot line carries it', async () => {
   const nodeId = await seedVideoNode(page);
   await openOn(page, nodeId, 'multi-shot', H3);
   await page.getByTestId('generate-storyboard-shot-1-editor').click();
   await page.keyboard.type('a paper boat');
-  await page.getByTestId('generate-storyboard-shot-2-editor').click();
+  await page.getByTestId('generate-storyboard-shot-2-toggle').click();
+  await expect(page.getByTestId('generate-storyboard-shot-2-editor').locator('.ProseMirror')).toBeFocused();
   await page.keyboard.type('the pond at dusk');
   await insert(page, 'Tilt up');
   await expect(page.getByTestId('generate-storyboard-shot-2-editor')).toHaveText('the pond at dusk [Tilt up]');

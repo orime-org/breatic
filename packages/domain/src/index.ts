@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * `@breatic/domain` — AIGC business kernel shared by server + worker.
@@ -116,6 +116,8 @@ export {
   BASELINE_TOOLS,
   TOOL_MAP,
   ASK_USER,
+  AWAITS_READER,
+  REQUEST_SPACE_CONTENT,
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
   SAVE_IMAGE,

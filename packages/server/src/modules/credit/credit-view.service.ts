@@ -1,20 +1,17 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The read side of credits (task #11) — what the overlay and the studio's
  * credits tab display.
  *
- * Credits leave here as numbers. They are stored as `numeric(20, 6)` and every
- * calculation runs in Postgres or on integer micro-credits; this boundary is
- * the one place a value stops being arithmetic and becomes something to show,
- * and the wire's number range covers billions of credits, five orders above
- * the largest pack.
+ * Credits leave here as canonical decimals; stored and aggregate values keep
+ * their full precision through the shared serialization boundary.
  */
 
-import { assetService, creditHoldService, creditLotRepo, creditLotService } from "@breatic/domain";
+import { assetService, creditHoldService, creditSourceRepo, creditLotRepo, creditLotService } from "@breatic/domain";
 import type { LotContext, PayerLedgerRow } from "@breatic/domain";
-import { decodeActivityCursor } from "@breatic/core";
+import { decodeActivityCursor, NotFoundError } from "@breatic/core";
 import { toPage } from "@server/utils/keyset-page.js";
 import type { ActivityCursor } from "@breatic/core";
 import type {
@@ -28,6 +25,7 @@ import type {
   StudioLedgerView,
   StudioLotView,
 } from "@breatic/shared";
+import { t, parseCreditDecimal, serializeCreditMicro, type CreditDecimal } from "@breatic/shared";
 import { getCreditPageLimits } from "@server/config/limits.js";
 
 /**
@@ -52,25 +50,27 @@ function pageSize(raw: string | undefined): number {
 }
 
 /**
- * Turn a stored decimal string into the number the wire carries.
+ * Normalize a stored decimal string without narrowing it.
  * @param value - A `numeric(20, 6)` value as Postgres returned it.
- * @returns The same amount as a number.
+ * @returns The same exact canonical decimal.
  */
-function toNumber(value: string): number {
-  return Number(value);
+function toDecimal(value: string): CreditDecimal {
+  return serializeCreditMicro(parseCreditDecimal(value));
 }
 
 /**
  * Map a lot to its display shape.
  * @param lot - The stored lot.
+ * @param giftOrigin - The immutable gift receipt origin, when applicable.
  * @returns The view.
  */
-function toLotView(lot: CreditLotEntity & LotContext): CreditLotView {
+function toLotView(lot: CreditLotEntity & LotContext, giftOrigin?: "registration" | "operator"): CreditLotView {
   return {
     id: lot.id,
     sourceKind: lot.sourceKind,
-    purchasedCredits: toNumber(lot.purchasedCredits),
-    remainingCredits: toNumber(lot.remainingCredits),
+    ...(giftOrigin === undefined ? {} : { giftOrigin }),
+    purchasedCredits: toDecimal(lot.purchasedCredits),
+    remainingCredits: toDecimal(lot.remainingCredits),
     designatedStudioId: lot.designatedStudioId,
     designatedStudioName: lot.designatedStudioName,
     paidCents: lot.paidCents,
@@ -92,8 +92,8 @@ function toLotView(lot: CreditLotEntity & LotContext): CreditLotView {
 function toStudioLotView(lot: creditLotRepo.StudioLot): StudioLotView {
   return {
     id: lot.id,
-    purchasedCredits: toNumber(lot.purchasedCredits),
-    remainingCredits: toNumber(lot.remainingCredits),
+    purchasedCredits: toDecimal(lot.purchasedCredits),
+    remainingCredits: toDecimal(lot.remainingCredits),
     createdAt: lot.createdAt.toISOString(),
     buyerName: lot.buyerName,
   };
@@ -116,7 +116,7 @@ function toLedgerView(row: PayerLedgerRow): CreditLedgerView {
     projectName: row.projectName,
     model: row.model,
     provider: row.provider,
-    amount: toNumber(row.amount),
+    amount: toDecimal(row.amount),
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -134,12 +134,30 @@ export async function getOverview(
 }
 
 /**
- * This account's purchases, newest first.
+ * Read one account-owned lot through the same projection as its lot list.
+ * @param userId - The holder whose ownership narrows the query.
+ * @param lotId - The just-designated lot.
+ * @returns Its complete exact-decimal view.
+ * @throws {NotFoundError} When the lot is no longer available to the holder.
+ * @throws {Error} When its receipt or database reading fails.
+ */
+export async function getLot(userId: string, lotId: string): Promise<CreditLotView> {
+  const [lot] = await creditLotRepo.listLotsByUser(userId, 1, null, undefined, lotId);
+  if (!lot) throw new NotFoundError(t("server.error.not_found"));
+  if (lot.sourceKind !== "gift") return toLotView(lot);
+  const origins = await creditSourceRepo.readGiftOrigins([lot.sourceId]);
+  const origin = origins.get(lot.sourceId);
+  if (origin === undefined) throw new Error("Gift receipt origin missing");
+  return toLotView(lot, origin);
+}
+
+/**
+ * This account's credit lots, newest first.
  * @param userId - The signed-in account.
  * @param rawLimit - The client's `?limit`, if any.
  * @param rawCursor - The client's `?cursor`, if any.
- * @param lifecycle - Narrow to one state; omit for every purchase.
- * @returns One page of purchases.
+ * @param lifecycle - Narrow to one state; omit for every lot.
+ * @returns One page of credit lots.
  */
 export async function listLots(
   userId: string,
@@ -150,7 +168,11 @@ export async function listLots(
   const size = pageSize(rawLimit);
   const cursor = readCursor(rawCursor);
   const rows = await creditLotRepo.listLotsByUser(userId, size + 1, cursor, lifecycle);
-  return toPage(rows, size, toLotView, (row) => ({
+  const origins = await creditSourceRepo.readGiftOrigins(rows.filter((row) => row.sourceKind === "gift").map((row) => row.sourceId));
+  for (const row of rows) {
+    if (row.sourceKind === "gift" && !origins.has(row.sourceId)) throw new Error("Gift receipt origin missing");
+  }
+  return toPage(rows, size, (row) => toLotView(row, origins.get(row.sourceId)), (row) => ({
     cursorAt: row.cursorAt,
     id: row.id,
   }));
@@ -217,9 +239,9 @@ function toStudioLedgerView(
     projectName: row.projectName,
     model: row.model,
     provider: row.provider,
-    charged: toNumber(row.charged),
-    consumed: toNumber(row.consumed),
-    owed: toNumber(row.owed),
+    charged: toDecimal(row.charged),
+    consumed: toDecimal(row.consumed),
+    owed: toDecimal(row.owed),
     createdAt: row.createdAt.toISOString(),
   };
 }

@@ -1,7 +1,7 @@
 # Third-Party Notices
 
-Breatic itself is distributed under the Breatic Source-Available License 1.0
-(see [LICENSE](./LICENSE)). This file lists third-party components we ship, the
+Breatic itself is distributed under the Elastic License 2.0
+(`Elastic-2.0`, see [LICENSE](./LICENSE)). This file lists third-party components we ship, the
 licence each one carries, and where to obtain its source.
 
 A component is listed here when we distribute it — in a published container

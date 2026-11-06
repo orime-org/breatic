@@ -71,6 +71,8 @@ Switching Spaces retains unfinished property input; reopen Properties on return 
 <a id="keyboard-shortcuts"></a>
 ## Keyboard shortcuts
 
+The **?** button next to the bell in the Studio and Project top bars opens the **User manual** and **Contact support** (support@breatic.ai); the sign-in pages link both in their footer. On the canvas, the **Keyboard shortcuts** button at the bottom of the left menu lists every canvas shortcut and gesture for your platform; a Viewer sees only the ones that work for them. In a 3D Space, the **Controls** button at the bottom of the left rail describes the 3D controls.
+
 Canvas shortcuts apply when the canvas Space owns keyboard focus, not while typing in chat, a text field or an editor. Editing actions require write permission. Locked items and nodes with running tasks may restrict deletion. Click the canvas before using a canvas shortcut.
 
 ### Canvas

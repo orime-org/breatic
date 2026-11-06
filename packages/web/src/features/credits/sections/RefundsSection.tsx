@@ -1,5 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
+
+import { creditSourceLabelKey } from '@web/features/credits/credit-source-label';
+
+import { parseCreditDecimal } from '@breatic/shared';
 
 import * as React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -71,7 +75,7 @@ function noteOf(
   if (refusal === 'already_spent') {
     // Spent to nothing and spent from read as different facts to the buyer,
     // though the rule refuses both on the same count.
-    return lot.remainingCredits === 0
+    return parseCreditDecimal(lot.remainingCredits) === 0n
       ? t('credits.lifecycle.depleted')
       : t('credits.refundReason.spent');
   }
@@ -279,7 +283,7 @@ const LotRow = React.memo(function LotRow({
     <Row
       main={`${
         lot.paidCents === null
-          ? t(`credits.source.${lot.sourceKind}`)
+          ? t(creditSourceLabelKey(lot))
           : formatMoney(lot.paidCents, lot.currency ?? 'usd')
       } · ${formatLocalDay(lot.createdAt)}`}
       sub={

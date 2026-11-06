@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { Circle, Eraser, Paintbrush, Redo2, Square, Trash2, Undo2, type LucideIcon } from 'lucide-react';
 import * as React from 'react';

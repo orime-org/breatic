@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Conversation service — business logic for conversations and messages.
@@ -12,10 +12,12 @@ import * as conversationRepo from "@server/modules/conversation/conversation.rep
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import * as projectService from "@server/modules/project/project.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import { answersMismatch, readQuestionnaire, t } from "@breatic/shared";
+import { answersMismatch, readQuestionnaire, spaceRequestInputSchema, t } from "@breatic/shared";
+import { spaceAnswerMismatch } from "@server/modules/conversation/space-answer-mismatch.js";
 import { db, NotFoundError, ForbiddenError, getAgentConfig } from "@breatic/core";
-import type { AskUserAnswer, ConversationEntity, MessageData } from "@breatic/shared";
-import { askResultForModel } from "@server/agent/ask-result.js";
+import { ASK_USER, REQUEST_SPACE_CONTENT } from "@breatic/domain";
+import type { AskUserAnswer, ConversationEntity, MessageData, SpaceRequestAnswer } from "@breatic/shared";
+import { askResultForModel, cardOutputOf, type SpaceRequestResult } from "@server/agent/ask-result.js";
 
 /**
  * Validate that a conversation exists and belongs to the given user.
@@ -463,6 +465,7 @@ export async function deleteConversation(
  * message written instead, the first one in is the one that counts.
  * @param conversationId - The conversation, already checked writable by the caller.
  * @param answer - What the browser sent.
+ * @param actor - Trusted account and Project admitting this answer.
  * @returns How it went: answered (with the turn to resume), already settled,
  *   not fitting the questions, or no such card.
  * @throws {NotFoundError} if the conversation is gone.
@@ -470,6 +473,7 @@ export async function deleteConversation(
 export async function answerAsk(
   conversationId: string,
   answer: AskUserAnswer,
+  actor?: messageRepo.AnswerActor,
 ): Promise<messageRepo.AnswerOutcome> {
   return messageRepo.answerWaitingAsk(conversationId, answer.toolCallId, (input) => {
     const asked = readQuestionnaire(input);
@@ -477,6 +481,35 @@ export async function answerAsk(
     const reason = answersMismatch(asked.questions, answer.answers);
     if (reason !== null) return { reason };
     const result = { answers: answer.answers };
-    return { output: result, forModel: askResultForModel(answer.toolCallId, result) };
-  });
+    return { output: result, forModel: askResultForModel(answer.toolCallId, result, ASK_USER) };
+  }, actor);
+}
+
+/**
+ * Take the reader's answer to the request to read Spaces the agent is waiting
+ * on (inner#1552), once.
+ *
+ * Held to the request as it was made, and settled only while the call still
+ * waits, as `answerAsk` is. The card keeps a summary per Space; the full
+ * result, content included, goes only to the model's copy.
+ * @param conversationId - The conversation, already checked writable by the caller.
+ * @param answer - What the browser sent.
+ * @param actor - Trusted account and Project admitting this answer.
+ * @returns How it went: answered (with the turn to resume), already settled,
+ *   not fitting the request, or no such card.
+ * @throws {NotFoundError} if the conversation is gone.
+ */
+export async function answerSpaceRequest(
+  conversationId: string,
+  answer: SpaceRequestAnswer,
+  actor?: messageRepo.AnswerActor,
+): Promise<messageRepo.AnswerOutcome> {
+  return messageRepo.answerWaitingAsk(conversationId, answer.toolCallId, (input) => {
+    const asked = spaceRequestInputSchema.safeParse(input);
+    if (!asked.success) return { reason: "The call is not a request to read Spaces." };
+    const reason = spaceAnswerMismatch(asked.data, answer);
+    if (reason !== null) return { reason };
+    const result: SpaceRequestResult = answer.decision === "shared" ? { spaces: answer.spaces } : { declined: true };
+    return { output: cardOutputOf(result), forModel: askResultForModel(answer.toolCallId, result, REQUEST_SPACE_CONTENT) };
+  }, actor);
 }

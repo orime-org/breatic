@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Whether each template the agent anchors in a proposal is there whole
@@ -25,7 +25,7 @@ import {
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { fixOn, nodeLabel, refuse, type NodeFix } from "@domain/agent/tools/proposal-refusals.js";
 import { chosenModelOf, entriesFor, entryPhrase, holdingOf } from "@domain/agent/tools/proposal-routing.js";
-import type { TemplatePlace } from "@domain/agent/tools/template-expansion.js";
+import { sentWords, type TemplatePlace } from "@domain/agent/tools/template-expansion.js";
 
 /** One anchor of the proposal and what the match found for it. */
 export interface AnchoredInstance {
@@ -126,9 +126,9 @@ export function checkTemplateInstances(proposal: CanvasProposal, instances: read
       // The registry test passes every template through this check, so its edges go a way their model takes.
       const entry = node === undefined || chosen === undefined ? undefined : entriesFor(chosen, node.type, holdingOf(node)).find((one) => one.way.into === into && one.by === "edge");
       const how = entry === undefined ? `by an edge with into: "${into}"` : entryPhrase(entry);
-      // With shots the main prompt is not sent, so refs and notes go in a shot.
       const marks = [...(entry?.ref === true ? ["ref"] : []), ...(entry?.note === true ? ["note"] : [])];
-      const shot = marks.length > 0 && generation?.shots !== undefined ? `, its ${marks.join(" and ")} in a shot` : "";
+      const placed = generation?.role === "generate" ? sentWords(generation.mode).placed : "";
+      const shot = marks.length > 0 && placed !== "" ? `, its ${marks.join(" and ")}${placed}` : "";
       const subject = nodeLabel(proposal.nodes, from);
       const lead = edge === "add" ? `send ${subject} into it` : `change the edge from ${subject} so it goes into it`;
       return fixOn(nodeLabel(proposal.nodes, to), `${lead} ${how}${shot}.`);

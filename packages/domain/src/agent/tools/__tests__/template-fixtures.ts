@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Fixture generation templates for the domain tests of the template framework
@@ -224,7 +224,10 @@ export interface AgentShape {
  * key }` (the anchor's key written or left out), one empty source node per
  * input wired into the nodes it feeds, the template edges, each generate
  * node's locale prompt with each reference mark bound by name to a ref, and
- * each input's note as a note on top of every node it feeds. No guide node.
+ * each input's note as a note on top of every node it feeds. A node with
+ * shots sends them instead of a prompt, each with its seconds and its
+ * `shot.<n>` words bound the same way, the notes on top of the first shot.
+ * No guide node.
  * @param template - The template.
  * @param options - `anchorKey`: write the anchor's key; `tagInputs`: tag each input node with `{ id, input }`.
  * @returns The proposal and where each identity sits.
@@ -262,18 +265,29 @@ export function agentShape(template: GenerationTemplate, options: { anchorKey?: 
       input.feeds.map((fed) => ({ fromIndex: index(`input:${input.key}`), toIndex: index(`node:${fed}`), into: "pool" })),
     ),
   ];
-  for (const [key, node] of skeleton.nodes) {
+  for (const node of template.nodes) {
     if (node.role !== "generate") continue;
-    const words = key === skeleton.anchor ? t(`${base}.prompt`) : t(`${base}.node.${key}.prompt`);
+    const key = node.key;
+    const head = key === skeleton.anchor ? base : `${base}.node.${key}`;
     const fedBy = skeleton.inputs.filter((input) => input.feeds.includes(key));
     // The same binding the panel and the tool description use.
     const targets = new Map(
       [...templateMarkTargets(template, key)].map(([name, target]): [string, number] => [name, index("input" in target ? `input:${target.input}` : `node:${target.node}`)]),
     );
     const notes = fedBy.map((input) => ({ slot: { kind: "note" as const, label: t(`${base}.input.${input.key}.note`) } }));
-    const prompt = [...notes, ...markedSegments(words).map((segment) => sentSegment(segment, targets))];
+    const sent = (words: string): NonNullable<SentNode["prompt"]> => markedSegments(words).map((segment) => sentSegment(segment, targets));
     const at_ = index(`node:${key}`);
-    nodes[at_] = { ...(nodes[at_] as SentNode), prompt };
+    // A node with shots sends them in place of the prompt, the notes on top of the first shot.
+    nodes[at_] =
+      node.shots === undefined
+        ? { ...(nodes[at_] as SentNode), prompt: [...notes, ...sent(t(`${head}.prompt`))] }
+        : {
+            ...(nodes[at_] as SentNode),
+            shots: node.shots.map((shot, n) => ({
+              duration: shot.seconds,
+              prompt: [...(n === 0 ? notes : []), ...sent(t(`${head}.shot.${String(n + 1)}`))],
+            })),
+          };
   }
   return { sent: { nodes, edges, rationale: "Start from the template.", groupName: "Template test" }, at };
 }

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Data access for `node_tasks` (#186).
@@ -12,7 +12,7 @@
  */
 
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { db } from "@breatic/core";
+import { db, type DbTx } from "@breatic/core";
 import { nodeHistory, nodeTasks } from "@breatic/core";
 import type { NodeTaskAction } from "@breatic/shared";
 
@@ -111,6 +111,7 @@ function rowOf(row: typeof nodeTasks.$inferSelect): NodeTaskRow {
  * @param data.label - Filename or model name, what the user reads.
  * @param data.taskId - The AIGC job; absent on uploads.
  * @param data.storageKey - The upload grant; absent on generations.
+ * @param tx - Optional transaction shared with the upload grant.
  * @returns The new row's id.
  */
 export async function insertRunning(data: {
@@ -124,8 +125,8 @@ export async function insertRunning(data: {
   label: string;
   taskId?: string;
   storageKey?: string;
-}): Promise<string> {
-  const rows = await db
+}, tx?: DbTx): Promise<string> {
+  const rows = await (tx ?? db)
     .insert(nodeTasks)
     .values({ ...data, status: "running" })
     .returning({ id: nodeTasks.id });
@@ -323,13 +324,15 @@ export async function findByTaskAndNode(
  * a number that is either current or stale cannot drift per entry.
  * @param projectId - Owning project.
  * @param nodeId - The node.
+ * @param tx - Optional transaction reading its own newly opened row.
  * @returns The four counts, zeros included.
  */
 export async function countsFor(
   projectId: string,
   nodeId: string,
+  tx?: DbTx,
 ): Promise<NodeTaskCounts> {
-  const rows = await db
+  const rows = await (tx ?? db)
     .select({ status: nodeTasks.status, n: sql<string>`count(*)` })
     .from(nodeTasks)
     .where(

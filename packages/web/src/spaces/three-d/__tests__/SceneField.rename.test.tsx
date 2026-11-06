@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 import * as Y from 'yjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { SceneObjectValuesSchema, t, type SceneObject } from '@breatic/shared';
+import { SceneObjectValuesSchema, t, SCENE_FORMAT_VERSION, type SceneObject } from '@breatic/shared';
 import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-document';
 import { SceneSession } from '@web/data/yjs/scene-session';
 import { SceneInspector } from '@web/spaces/three-d/SceneInspector';
@@ -48,10 +48,10 @@ function BoundInspector({ session }: { session: SceneSession }): React.JSX.Eleme
  */
 function setup(): { doc: Y.Doc; session: SceneSession; input: HTMLElement; user: ReturnType<typeof userEvent.setup> } {
   const doc = new Y.Doc();
-  doc.getMap('scene').set('formatVersion', 1);
+  doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
   const object: SceneObject = {
     id: ID, name: 'Figure', model: { kind: 'builtin', id: 'figure' },
-    position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false, exists: true,
+    position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false,
   };
   applySceneCommand(doc, { type: 'create', objects: [object] }, Symbol('fixture'), true);
   const session = new SceneSession(doc);

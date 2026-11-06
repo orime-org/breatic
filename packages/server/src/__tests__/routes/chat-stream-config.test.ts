@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * 心跳间隔怎么到浏览器手里。
@@ -81,6 +81,7 @@ describe("GET /chat/stream-config", () => {
       "currentSpaceMaxChars",
       "heartbeatIntervalMs",
       "spaceListMaxItems",
+      "spaceReadTimeoutMs",
     ]);
   });
 

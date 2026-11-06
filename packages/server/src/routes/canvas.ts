@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Canvas routes — task management.
@@ -9,6 +9,7 @@
  * via Yjs document sync through the Hocuspocus collab server.
  */
 
+import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
 import { randomUUID } from "node:crypto";
 import { currentConsent } from "@breatic/core";
 import { Hono } from "hono";
@@ -231,6 +232,7 @@ canvas.post(
         action: "upload",
         label: labelForUrl(url),
       },
+      true,
     );
 
     try {
@@ -371,7 +373,7 @@ canvas.post(
     // mail about storage.
     await assertStorageAllowance(projectId, "generate");
 
-    task = await taskService.create(
+    task = await admitGeneration(
       user.id,
       projectId,
       spaceId,
@@ -553,7 +555,7 @@ async function startReading(
 
   // Understand tasks transcribe / analyze a media URL into a result node;
   // they always produce a new node ('append'), no overwrite semantics.
-  const task = await taskService.create(
+  const task = await admitGeneration(
     userId,
     body.project_id,
     body.space_id,

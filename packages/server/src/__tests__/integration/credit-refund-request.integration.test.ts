@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Asking for a refund, on real Postgres (task #14).
@@ -41,7 +41,7 @@ vi.mock("ai", () => ({
 import postgres from "postgres";
 import { initCore, loadLocales } from "@breatic/core";
 import { creditLotService, creditLotRepo } from "@breatic/domain";
-import { t } from "@breatic/shared";
+import { parseCreditDecimal, t } from "@breatic/shared";
 import { openPaymentSource } from "./payment-source.js";
 
 const PG_DRIVER_LOCAL = "credit-refund-request-test-driver";
@@ -457,11 +457,11 @@ describe("the overview once a purchase is under refund", () => {
 
     const overview = await creditLotService.getOverview(fx.userId);
     const held =
-      overview.assignedCredits +
-      overview.unassignedCredits +
-      overview.underRefundCredits;
-    expect(overview.underRefundCredits).toBe(25);
-    expect(held).toBe(165);
+      parseCreditDecimal(overview.assignedCredits) +
+      parseCreditDecimal(overview.unassignedCredits) +
+      parseCreditDecimal(overview.underRefundCredits);
+    expect(overview.underRefundCredits).toBe("25.000000");
+    expect(held).toBe(165_000_000n);
     expect(assigned).toBeTruthy();
   });
 
@@ -474,6 +474,6 @@ describe("the overview once a purchase is under refund", () => {
 
     const overview = await creditLotService.getOverview(fx.userId);
 
-    expect(overview.underRefundCredits).toBe(0);
+    expect(overview.underRefundCredits).toBe("0.000000");
   });
 });

@@ -1,14 +1,31 @@
-# Breatic
+<h1 align="center">Breatic</h1>
 
-[English](README.md) | **简体中文**
+<p align="center"><strong>面向创意团队的实时协作 AI 工作空间。</strong></p>
+<p align="center">线上已开放 · 源码公开 · 桌面浏览器</p>
 
-**面向创意团队的实时协作 AI 工作空间。**
+<p align="center">
+  <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_cn">官网</a> ·
+  <a href="https://breatic.ai/login?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_cn">在线体验</a> ·
+  <a href="https://youtu.be/mc1XAqtJD_M">45秒英文演示</a> ·
+  <a href="docs/USAGE-CN.md">使用指南</a> ·
+  <a href="https://discord.gg/Yeu6A4aejN">Discord</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
+  <a href="LICENSE"><img alt="License: Elastic-2.0" src="https://img.shields.io/badge/license-Elastic--2.0-blue?style=flat"></a>
+  <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
+  <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
+</p>
+
+<p align="center" dir="ltr">
+  <a href="README.md">English</a> · <strong>简体中文</strong> · <a href="README-TW.md">繁體中文</a> · <a href="README-JA.md">日本語</a> · <a href="README-KO.md">한국어</a> · <a href="README-ES.md">Español</a> · <a href="README-PT-BR.md">Português</a><br>
+  <a href="README-DE.md">Deutsch</a> · <a href="README-FR.md">Français</a> · <a href="README-AR.md">العربية</a> · <a href="README-RU.md">Русский</a> · <a href="README-UK.md">Українська</a> · <a href="README-TR.md">Türkçe</a> · <a href="README-TH.md">ภาษาไทย</a>
+</p>
+
+---
 
 将创作简报、场景与媒体组织在同一个项目里。在 Document Space 中写作，在 Canvas Space 中生成和调整素材，与 AI Agent 和团队共同推进创作，让每个环节都保留作品的上下文。
-
-**线上已开放 · 源码可用 · 桌面浏览器**
-
-[在线体验][hosted-app] · [观看45秒英文演示](https://youtu.be/mc1XAqtJD_M) · [使用指南](docs/USAGE-CN.md) · [自行部署](self-host/LOCAL-CN.md) · [发布版本](https://github.com/orime-org/breatic/releases)
 
 官方在线服务提供免费的 Starter 会员档。AI 生成积分单独购买，不包含在会员套餐内，具体见[会员与积分定价][hosted-pricing]。
 
@@ -60,6 +77,8 @@ Agent 可以先提出改写方案，团队查看后再决定是否替换共享�
 
 时间范围是创作规划：Space 名称不会设置片段时长，也不会自动合成成片，可在 Timeline 中编排和预览视频，成片整理与导出由视频编辑器完成。[配图使用指南](docs/USAGE-CN.md#example-from-a-brief-to-a-visual) 展示从简报到视觉素材的实例。
 
+<a id="get-started"></a>
+
 ## 开始使用
 
 | 你的目标 | 从这里开始 |
@@ -96,9 +115,15 @@ Breatic 官方在线服务已开放使用，并持续开发。上文各功能的
 
 ## 许可证与允许用途
 
-Breatic 采用 [Breatic Source-Available License v1.0](LICENSE)，属于**源码可用**项目，以 Apache 2.0 为基础附加条款。
+Breatic **源码公开**，采用 [Elastic License 2.0](LICENSE)（`Elastic-2.0`）。
 
-许可证允许个人使用、不公开宣传且不开放公众注册的私密群体使用，以及同一组织内部部署。未经另行授权，禁止向公众提供 Breatic 平台，**无论收费还是免费**。是否有域名、是否部署在服务器上，本身不决定允许的访问群体。请保留产品品牌与版权标识。完整条款以许可证为准；面向公众部署的授权咨询请联系 [contact@breatic.ai](mailto:contact@breatic.ai)。
+你可以阅读、修改和再分发 Breatic，也可以自己使用或在你所在的组织内部部署，包括用于商业工作。你不可以把 Breatic 作为托管服务或代管服务提供给第三方。完整条款以许可证为准。
+
+Breatic 的名称和标识是 Orime, Inc. 的商标，不在许可证授权范围内，使用规则见 [TRADEMARKS.md](TRADEMARKS.md)。许可证不限制你用 Breatic 创作的内容。
+
+### 生成内容
+
+Breatic 是 AI 辅助内容创作工具。Breatic 实例的运营者和用户须自行负责：生成内容符合适用法律（版权、商标、隐私、数据保护、名誉权与内容审核），对所提供的输入及其后续使用拥有相应权利，并按使用场景做好内容审核。Orime, Inc. 不对生成内容的准确性、合法性、原创性或安全性作任何保证。
 
 第三方组件及许可说明见 [THIRD-PARTY.md](THIRD-PARTY.md)。
 

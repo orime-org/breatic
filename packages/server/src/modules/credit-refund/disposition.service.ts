@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What the internal API's endpoints do (inner#1410 §4.5, §5.2, §5.3, §6.5).
@@ -444,8 +444,8 @@ function assessFacts(facts: Facts): Pick<AssessInput, "lot" | "payment" | "ops" 
   return {
     lot: {
       lifecycle: facts.lot.lifecycle,
-      remainingCredits: Number(facts.lot.remainingCredits),
-      ledgerSum: Number(facts.ledgerSum),
+      remainingCredits: facts.lot.remainingCredits,
+      ledgerSum: facts.ledgerSum,
     },
     payment: {
       status: payment.status,

@@ -172,6 +172,7 @@
       "attachments_too_long": "The attached content is too long. It may hold at most {limit, number} characters; this holds {actual, number}.",
       "attachments_too_many": "Too many items are attached. At most {limit, number} may be attached; this message has {actual, number}.",
       "current_space_too_long": "The open Space's content is too long. It may hold at most {limit, number} characters; this holds {actual, number}.",
+      "shared_space_too_long": "The content shared from {name} is too long. It may hold at most {limit, number} characters; this holds {actual, number}.",
       "spaces_too_many": "Too many Spaces are listed. At most {limit, number} may be listed; this message lists {actual, number}.",
       "references_too_many": "Too many references to attachments. A message may carry at most {limit, number}; this one carries {actual, number}.",
       "ask_not_found": "This question card is not in this conversation.",
@@ -426,7 +427,8 @@
         "readNodeHistory": "Checking the node's history",
         "readActivity": "Checking Project activity",
         "other": "Calling {tool}",
-        "readTemplate": "Reading the template"
+        "readTemplate": "Reading the template",
+        "requestSpace": "Asking to look at Spaces"
       }
     },
     "loadEarlier": "Load earlier messages",
@@ -488,6 +490,7 @@
       "addComment": "Add comment",
       "apply": "Replace",
       "insert": "Insert",
+      "locate": "Locate",
       "appliedComment": "Comment added",
       "appliedRewrite": "Replaced",
       "appliedInsert": "Inserted",
@@ -499,6 +502,7 @@
       "failedComment": "Could not add the comment. Try again.",
       "failedRewrite": "Could not replace the passage. Try again.",
       "failedInsert": "Could not insert. Try again.",
+      "failedLocate": "Could not locate. Try again.",
       "lossy": "The formatting and comments in this passage will be replaced."
     },
     "thinking": "Thought for a moment",
@@ -521,6 +525,21 @@
       "show": "Show",
       "hide": "Hide",
       "atLeastOne": "Answer at least one question."
+    },
+    "spaceRequest": {
+      "title": "Agent wants to look at",
+      "allow": "Allow",
+      "decline": "Decline",
+      "shared": "Shared with Agent",
+      "declined": "Not shared with Agent",
+      "partBlocks": "{to, select, end {From block {from}} other {Blocks {from}–{to}}}",
+      "partNodes": "{count, plural, one {# node} other {# nodes}}",
+      "state": {
+        "unreadable": "Can't be read",
+        "gone": "Deleted",
+        "timedOut": "Timed out",
+        "failed": "Couldn't read"
+      }
     }
   },
   "canvas": {
@@ -1355,7 +1374,8 @@
       "unavailable": "Unavailable",
       "goal": {
         "character": "Character design & consistency",
-        "comics-storyboards": "Comics & storyboards"
+        "comics-storyboards": "Comics & storyboards",
+        "social-hooks": "Social hooks"
       },
       "storyboard-grid-25": {
         "name": "25-panel storyboard",
@@ -1371,7 +1391,7 @@
       "costume-sheet": {
         "name": "Character turnaround",
         "description": "Front, side and back views plus a close-up of a detail",
-        "prompt": "Use [📎 Character] as the character reference. Create ONE image: a character costume sheet on a plain light grey background. On the left, full-body front, side and back views of the same character standing side by side; on the right, smaller close-up frames of {✏️ the hands or another body part}. The same photorealistic photographic style as the reference, not an illustration. The face, hairstyle, outfit, colours and body proportions match the reference in every view. Even studio lighting. No text.",
+        "prompt": "Use [📎 Character] as the character reference. Create ONE image: a character costume sheet on a plain light grey background. The left two thirds: exactly 3 full-body figures of equal width side by side, left to right the front, side and back views of the same character, at the same scale; the right third: a 2 by 2 grid of exactly 4 equal close-up panels of {✏️ the hands or another body part}. The same photorealistic photographic style as the reference, not an illustration. The face, hairstyle, outfit, colours and body proportions match the reference in every view. Even studio lighting. No text.",
         "input": {
           "reference": {
             "name": "Character",
@@ -1382,7 +1402,7 @@
       "character-bible": {
         "name": "Character sheet",
         "description": "Views, expressions, poses and details of one character",
-        "prompt": "Use [📎 Character] as the only character reference; do not invent a new character. Create ONE image: a character sheet of exactly this character on a plain light grey background. The four main full-body views, front, three-quarter, side and back, take the largest area. Around them, in this order: a colour palette of the hair, skin and outfit; a black silhouette; 8 expressions; 5 micro-expressions; 4 head angles; 3 poses; one bust showing a strong emotion; close-ups of the outfit details; hand gestures. Every small frame is drawn in the same style as the main views, with the same face, hairstyle, outfit, colours and body proportions as the reference. Style: {✏️ the same style as the reference}. Even studio lighting. No text, no labels.",
+        "prompt": "Use [📎 Character] as the only character reference; do not invent a new character. Create ONE image, a 4:3 landscape character reference sheet of exactly this character: pure white background, clean technical layout, thin grey lines between panels, even margins, a clear English label in small sans-serif capitals at the top left of each section named in capital letters below, written exactly as that name; the top text block and the bands themselves get no label. The sheet has three horizontal bands, top to bottom. Top band, about 12% of the height: on the left, a text block with NAME, ROLE, AGE, PERSONALITY (3 to 5 keywords) and THEME (one sentence): {✏️ name, role, age, 3 to 5 personality keywords and a one-line theme}; on the right, COLOR PALETTE, one row of exactly 8 equal square swatches of flat colour taken from the hair, skin and outfit, with no text or pattern in them. Middle band, about 48% of the height, the largest area: on the left 70%, MAIN VIEWS, exactly 4 full-body figures of equal width in one row, left to right FRONT, 3/4, SIDE, BACK, standing in a neutral pose with nothing held in the hands and wearing everything the reference shows on the body, including anything on the back or over a shoulder, all at the same scale, with a vertical height ruler with tick marks at the left edge; on the right 30%, two panels stacked top to bottom: SILHOUETTE, a solid black front silhouette and side silhouette side by side, then CLOSE-UP, one panel, chest up, showing a strong emotion. Bottom band, about 40% of the height, three rows of equal height; within each row every panel is the same size and the panels fill the row's width. Row 1, EXPRESSIONS, exactly 8 head-and-shoulders panels: calm, curious, nervous, surprised, scared, sad, determined, relaxed. Row 2, exactly 9 panels: first MICRO-EXPRESSIONS, 5 head-and-shoulders panels: tense eyes, slight smile, clenched mouth, faint fear, controlled breathing (lips slightly parted while slowly exhaling); then HEAD ANGLES, 4 head-and-shoulders panels: three-quarter, profile, looking up, looking down. Row 3, exactly 12 panels: first POSES, 3 full-body panels: relaxed, tense, confident; then COSTUME DETAILS, 4 panels: hairstyle, fabric, accessory, shoes; then HANDS, 5 panels: relaxed, tense, pointing, gripping, touching the face. Every panel shows this same character with the same face, hairstyle, outfit, colours and body proportions as the reference. Style: {✏️ the same style as the reference}. Even studio lighting. No text except the labels and the top text block.",
         "input": {
           "reference": {
             "name": "Character",
@@ -1393,7 +1413,7 @@
       "expression-sheet": {
         "name": "Expression sheet",
         "description": "Expressions, micro-expressions and head angles of one face",
-        "prompt": "Use [📎 Character] as the character reference. Create ONE image: an expression sheet of this character on a plain light grey background, head and shoulders in every frame. Top row, 8 expressions: neutral, smiling, laughing, sad, angry, surprised, afraid, disgusted. Middle row, 5 micro-expressions: a held-back smile, doubt, contempt, holding back tears, embarrassment. Bottom row, the neutral face at 4 head angles: front, three-quarter, profile, looking down. The same face, hairstyle, skin and lighting in every frame, matching the reference. Style: {✏️ the same style as the reference}. No text, no labels.",
+        "prompt": "Use [📎 Character] as the character reference. Create ONE image, a 16:9 expression sheet of this character: pure white background, thin grey lines between panels, the whole sheet inside the image with the same margin on all four sides. Three full-width rows of exactly equal height; within each row the panels are the same size and spread evenly across the whole width, and every panel shows the whole head and shoulders with the same framing. Each row has a small English label in sans-serif capitals at its top left. Row 1, EXPRESSIONS, 8 panels left to right: calm, curious, nervous, surprised, scared, sad, determined, relaxed. Row 2, MICRO-EXPRESSIONS, 5 panels: tense eyes, slight smile, clenched mouth, faint fear, controlled breathing (lips slightly parted while slowly exhaling). Row 3, HEAD ANGLES, the calm face in 4 panels: three-quarter, profile, looking up, looking down. The same face, hairstyle, outfit, skin and lighting in every panel, matching the reference, and the reference's rendering unless the style below names another: a 3D render stays a 3D render, a drawing stays a drawing. Style: {✏️ the same style as the reference}. No text except the three row labels.",
         "input": {
           "reference": {
             "name": "Character",
@@ -1404,7 +1424,7 @@
       "character-design-from-text": {
         "name": "Character from a description",
         "description": "Design a character from words, then a full character sheet",
-        "prompt": "(💡 Generate Character design first)Use [📎 Character design] as the only character reference; do not invent a new character. Create ONE image: a character sheet of exactly this character on a plain light grey background. The four main full-body views, front, three-quarter, side and back, take the largest area. Around them, in this order: a colour palette of the hair, skin and outfit; a black silhouette; 8 expressions; 5 micro-expressions; 4 head angles; 3 poses; one bust showing a strong emotion; close-ups of the outfit details; hand gestures. Keep the reference's exact rendering in the main views and in every small frame: a 3D render stays a 3D render, a drawing stays a drawing, with the same face, hairstyle, outfit, colours and body proportions. Even studio lighting. No text, no labels.",
+        "prompt": "(💡 Generate Character design first)Use [📎 Character design] as the only character reference; do not invent a new character. Create ONE image, a 4:3 landscape character reference sheet of exactly this character: pure white background, clean technical layout, thin grey lines between panels, even margins, a clear English label in small sans-serif capitals at the top left of each section named in capital letters below, written exactly as that name; the top text block and the bands themselves get no label. The sheet has three horizontal bands, top to bottom. Top band, about 12% of the height: on the left, a text block with NAME, ROLE, AGE, PERSONALITY (3 to 5 keywords) and THEME (one sentence): {✏️ name, role, age, 3 to 5 personality keywords and a one-line theme}; on the right, COLOR PALETTE, one row of exactly 8 equal square swatches of flat colour taken from the hair, skin and outfit, with no text or pattern in them. Middle band, about 48% of the height, the largest area: on the left 70%, MAIN VIEWS, exactly 4 full-body figures of equal width in one row, left to right FRONT, 3/4, SIDE, BACK, standing in a neutral pose with nothing held in the hands and wearing everything the reference shows on the body, including anything on the back or over a shoulder, all at the same scale, with a vertical height ruler with tick marks at the left edge; on the right 30%, two panels stacked top to bottom: SILHOUETTE, a solid black front silhouette and side silhouette side by side, then CLOSE-UP, one panel, chest up, showing a strong emotion. Bottom band, about 40% of the height, three rows of equal height; within each row every panel is the same size and the panels fill the row's width. Row 1, EXPRESSIONS, exactly 8 head-and-shoulders panels: calm, curious, nervous, surprised, scared, sad, determined, relaxed. Row 2, exactly 9 panels: first MICRO-EXPRESSIONS, 5 head-and-shoulders panels: tense eyes, slight smile, clenched mouth, faint fear, controlled breathing (lips slightly parted while slowly exhaling); then HEAD ANGLES, 4 head-and-shoulders panels: three-quarter, profile, looking up, looking down. Row 3, exactly 12 panels: first POSES, 3 full-body panels: relaxed, tense, confident; then COSTUME DETAILS, 4 panels: hairstyle, fabric, accessory, shoes; then HANDS, 5 panels: relaxed, tense, pointing, gripping, touching the face. Keep the reference's exact rendering in every panel: a 3D render stays a 3D render, a drawing stays a drawing, with the same face, hairstyle, outfit, colours and body proportions. Even studio lighting. No text except the labels and the top text block.",
         "node": {
           "design": {
             "name": "Character design",
@@ -1415,7 +1435,7 @@
       "single-view-refs-scene": {
         "name": "Character in a video scene",
         "description": "Front, side and back views keep one person the same in a video",
-        "prompt": "(💡 Generate Front first)(💡 Generate Side first)(💡 Generate Back first)The person in this video is [📎 Character]; [📎 Front], [📎 Side] and [📎 Back] show the same person from the front, side and back. Take only the face, hairstyle, body shape and whole outfit from these pictures, not their background, pose or lighting. Place: {✏️ where it happens}. In one continuous shot, {✏️ one thing the person does}. Camera: {✏️ one move with a start, a direction and an end, e.g. starts wide behind the person and moves in to a close-up of the face}. The first frame is already the finished picture and already moving. One light source throughout. Sound: the ambient sound of the place and the person's footsteps, no music, no speech. No text on screen.",
+        "prompt": "(💡 Generate Front first)(💡 Generate Side first)(💡 Generate Back first)The person in this video is [📎 Character]; [📎 Front], [📎 Side] and [📎 Back] show the same person from the front, side and back. Take from these pictures only the person: identity, facial features, face shape, skin tone, apparent age, hairstyle and hair colour, height, build and body proportions, every garment, the shoes and every accessory ({✏️ name each garment, the shoes and each accessory}), and overall bearing; not their background, composition, framing, pose, lighting or any text. Place: {✏️ where it happens}. In one continuous shot, {✏️ one thing the person does}. Camera: {✏️ one move with a start, a direction and an end, e.g. starts wide behind the person and moves in to a close-up of the face}. The same face when turning, looking down or with a hand near the face; no duplicates of the person, no blending of features. The first frame is already the finished picture and already moving. One light source throughout. Sound: the ambient sound of the place and the person's footsteps, no music, no speech. No text on screen.",
         "input": {
           "reference": {
             "name": "Character",
@@ -1425,22 +1445,33 @@
         "node": {
           "front": {
             "name": "Front",
-            "prompt": "Use [📎 Character] as the character reference. The same person seen from the front, full body, standing straight, on a plain light grey background, even studio lighting. Keep only the face, hairstyle, body shape and the whole outfit from the reference; not its background, pose or lighting."
+            "prompt": "Use [📎 Character] as the character reference. The same person seen from the front, full body, standing straight, on a plain light grey background, even studio lighting. Keep from the reference the identity, facial features, face shape, skin tone, apparent age, hairstyle and hair colour, height, build and body proportions, every visible garment, the shoes and every accessory, and the overall bearing, unchanged: nothing redesigned, recoloured, added or removed; not its background, composition, framing, pose, lighting or any text."
           },
           "side": {
             "name": "Side",
-            "prompt": "Use [📎 Character] as the character reference. The same person seen from the side, full body, standing straight, on a plain light grey background, even studio lighting. Keep only the face, hairstyle, body shape and the whole outfit from the reference; not its background, pose or lighting."
+            "prompt": "Use [📎 Character] as the character reference. The same person seen from the side, full body, standing straight, on a plain light grey background, even studio lighting. Keep from the reference the identity, facial features, face shape, skin tone, apparent age, hairstyle and hair colour, height, build and body proportions, every visible garment, the shoes and every accessory, and the overall bearing, unchanged: nothing redesigned, recoloured, added or removed; not its background, composition, framing, pose, lighting or any text. Build the parts the reference does not show from its visible cut, colour, material and the way each piece is worn; do not invent a different outfit."
           },
           "back": {
             "name": "Back",
-            "prompt": "Use [📎 Character] as the character reference. The same person seen from behind, full body, standing straight, on a plain light grey background, even studio lighting. Keep only the face, hairstyle, body shape and the whole outfit from the reference; not its background, pose or lighting."
+            "prompt": "Use [📎 Character] as the character reference. The same person seen from behind, full body, standing straight, on a plain light grey background, even studio lighting. Keep from the reference the identity, facial features, face shape, skin tone, apparent age, hairstyle and hair colour, height, build and body proportions, every visible garment, the shoes and every accessory, and the overall bearing, unchanged: nothing redesigned, recoloured, added or removed; not its background, composition, framing, pose, lighting or any text. Build the parts the reference does not show from its visible cut, colour, material and the way each piece is worn; do not invent a different outfit."
           }
         }
       },
       "identity-locked-sequence": {
         "name": "One character, three shots",
         "description": "Three shots in a row of the same character",
-        "prompt": "[📎 Character] is the only character and the same person in every shot. 0–3 s: the character, {✏️ 4 features, e.g. short black hair, round glasses, red scarf, grey wool coat}, {✏️ does what, where}. 3–6 s: the character, {✏️ the same 4 features}, {✏️ does what next}. 6–8 s: the character, {✏️ the same 4 features}, {✏️ how it ends}. The face does not change, and the type and main colour of the outfit do not change. One camera move per shot, each with an end point. No text on screen.",
+        "prompt": "[📎 Character] is the only character: {✏️ 4 features, e.g. short black hair, round glasses, red scarf, grey wool coat}. The same person in all three shots, matching the reference's appearance exactly, no deformation, no drift, the face never changes; the type and main colour of the outfit do not change. 0–3 s ({✏️ shot size and camera move, e.g. wide shot, slow push in}): the character, {✏️ the same 4 features}, {✏️ does what, where}. 3–6 s ({✏️ shot size and camera move}): the character, {✏️ the same 4 features}, {✏️ does what next}. 6–8 s ({✏️ shot size and camera move}): the character, {✏️ the same 4 features}, {✏️ how it ends}. Each camera move has an end point. No text on screen.",
+        "input": {
+          "reference": {
+            "name": "Character",
+            "note": "Add a clear front-facing picture of the character first: neutral light, sharp, the face not covered by a phone, sunglasses or heavy shadow. Then generate."
+          }
+        }
+      },
+      "character-showcase-orbit": {
+        "name": "Character orbit",
+        "description": "The camera circles the character to show the look",
+        "prompt": "[📎 Character] stands still in the middle of {✏️ a place with something close to the camera and something far behind, e.g. a rooftop with railings in front and city towers far away}, relaxed, arms at the sides. The camera starts in front of the character at chest height and circles 180 degrees around the character's right side to end behind them, smoothly and at an even speed, keeping the same distance, height and focal length and always facing the character, then holds still. The character does not turn with the camera and does not step away; only the camera moves. The near things sweep past quickly and the far background moves slowly as the camera circles. Soft light from one side. No text on screen.",
         "input": {
           "reference": {
             "name": "Character",
@@ -1448,14 +1479,158 @@
           }
         }
       },
-      "character-showcase-orbit": {
-        "name": "Character orbit",
-        "description": "The camera circles the character to show the look",
-        "prompt": "[📎 Character] stands still in the middle of {✏️ a plain studio or a place}, relaxed, arms at the sides. The camera starts in front of the character at chest height and circles 180 degrees around them to end behind them, at the same height and distance throughout. The character does not turn with the camera and does not step away; only the camera moves. The background shifts with clear parallax as the camera circles. Soft light from one side. No text on screen.",
+      "pet-selfie-vlog": {
+        "name": "Pet steals the selfie vlog",
+        "description": "A selfie vlog the pet takes over, ending nose to lens",
+        "prompt": "A vertical phone selfie vlog. The only animal in the video is [📎 Pet]: exactly one, its breed, coat colour and markings, eye colour and size as in the picture, nothing else taken from the picture. 0–3 s: the phone is held at arm's length, someone starts talking to the camera in {✏️ where, e.g. a sunny living room}, and the pet already walks into the frame behind them. 3–7 s: the pet {✏️ what it does to steal the shot, e.g. jumps onto the sofa and sniffs the phone}, its ears, tail and paws moving the way this animal really moves. 7–10 s: the pet comes right up to the lens until its nose fills the frame and the picture goes soft. The camera is the hand-held phone the whole time, small wobbles, no cuts. Daylight from a window. Sound: the person's surprised laugh and the pet's own sounds, no music. No text on screen.",
         "input": {
-          "reference": {
+          "pet": {
+            "name": "Pet",
+            "note": "Add a clear photo of your pet first, the whole animal in view, then generate."
+          }
+        }
+      },
+      "phone-vlog-realism": {
+        "name": "Real phone vlog",
+        "description": "A day-in-the-life vlog that looks shot on a phone",
+        "prompt": "A vertical vlog that looks really shot on a phone, of [📎 Person]: the same face, hairstyle, skin and build as in the picture, the pores and small marks of the skin kept. {✏️ what they do, e.g. getting ready in the morning, then grabbing a coffee}. 0–3 s: already mid-action, chest-up, the person talks to the camera held in their own hand. 3–15 s: {✏️ two or three more moments of the day, each about 4 seconds}. The phone shows its flaws: small hand shake, the focus hunting now and then, the exposure jumping when a window comes into view. No stabilisation, no beauty filter, no colour grade. Framing never wider than chest-up. Ordinary room light. Sound: the person's voice, room tone and small handling noises of the phone, no music. No text on screen.",
+        "input": {
+          "person": {
+            "name": "Person",
+            "note": "Add a clear front-facing photo of the person first, then generate."
+          }
+        }
+      },
+      "retro-found-footage": {
+        "name": "Retro DV found footage",
+        "description": "Early-2000s home camcorder tape of one small event",
+        "prompt": "Found footage from an early-2000s home camcorder: low resolution, soft focus, video noise, a slight colour bleed, the white balance a little off, the zoom rocker used by hand. Place: {✏️ where it was filmed, e.g. a backyard birthday party at dusk}. 0–3 s: already recording, the camera held by someone walking. 3–8 s: {✏️ one small event that happens, e.g. the cake falls off the table}, the person filming reacts and the camera swings to follow. 8–10 s: hard cut to black. One light source as in the place. Sound: the camcorder's own microphone, muffled voices and wind noise, no music. No text on screen.",
+        "input": {}
+      },
+      "time-freeze-rewind": {
+        "name": "Time freeze and rewind",
+        "description": "Everything freezes and rewinds, except one person",
+        "prompt": "[📎 Person] is the only one not affected by time: the same face, hairstyle and outfit as in the picture. Place: {✏️ a busy place, e.g. a café terrace}. 0–4 s: normal, people moving around them. 4–8 s: {✏️ a collision, e.g. a waiter trips and a tray of drinks flies into the air}. 8–12 s: everything freezes in mid-air, drops hanging still, people stopped mid-step; only [📎 Person] keeps moving and looks around. 12–16 s: the camera slowly circles them and the frozen scene at the same height and distance. 16–20 s: everything rewinds back to just before the collision while [📎 Person] stays where they are. The first frame is already moving. One light source. Sound: café noise, which cuts to silence at the freeze and plays reversed during the rewind. No text on screen.",
+        "input": {
+          "person": {
+            "name": "Person",
+            "note": "Add a clear photo of the person who is not affected first, then generate."
+          }
+        }
+      },
+      "bullet-time-mishap": {
+        "name": "Bullet-time mishap",
+        "description": "A clumsy moment freezes while the camera circles it",
+        "prompt": "{✏️ who and what goes wrong, e.g. a cat knocks a full glass of milk off the kitchen table}. 0–1 s: already happening, the mishap starts. 1–6 s: at the worst instant time stops completely, like a frozen photograph: the subject, the splashes and the falling pieces hang perfectly still in mid-air and nothing in the scene moves at all; only the camera moves, travelling in a full circle around the frozen moment at the same height and distance, so we see it from the side, from behind, from the other side and back to the front. 6–8 s: time snaps back and the mishap finishes. One light source. Sound: a sudden silence at the freeze, a low whoosh while the camera circles, then the crash. No text on screen.",
+        "input": {}
+      },
+      "beat-sync-outfit-change": {
+        "name": "Beat-sync outfit change",
+        "description": "Each turn on the beat swaps the outfit and backdrop",
+        "prompt": "[📎 Person] does a turning outfit-change challenge: the same face, hairstyle and build as in the picture in every look. Themes in order: {✏️ 4 themes, e.g. street wear, red carpet, astronaut, knight}. 0–3 s: in the first theme's outfit and backdrop, facing the camera, already moving to the beat. 3–6 s, 6–9 s, 9–12 s: on each beat they spin once, and when they face the camera again the outfit and the backdrop have become the next theme. The camera stays still at chest height, full body in frame. Even light that changes colour with each backdrop. Sound: one upbeat music track with a clear beat, a whoosh on each spin. No text on screen.",
+        "input": {
+          "person": {
+            "name": "Person",
+            "note": "Add a clear full-body photo of the person first, then generate."
+          }
+        }
+      },
+      "pov-continuous-shot": {
+        "name": "POV one-take",
+        "description": "A first-person walk in one continuous shot",
+        "prompt": "A first-person view in one continuous shot, the camera mounted at eye height on the head of someone walking; their hands come into frame now and then. Place and goal: {✏️ where they go and what they reach, e.g. through a night market to a lantern-lit temple gate}. 0–3 s: the first frame is already full of the place and already moving forward. 3–9 s: {✏️ what they pass and do on the way}. 9–12 s: they arrive and the view settles on {✏️ what is revealed at the end}. No cuts, no zoom; the camera only walks, turns the head and stops. Light from the place itself. Sound: footsteps, breathing and the sounds of the place, no music. No text on screen.",
+        "input": {}
+      },
+      "carried-object-transition": {
+        "name": "Object-carried transition",
+        "description": "One object carries the view from scene A to scene B",
+        "prompt": "(💡 Generate Scene A first, then set it as the First frame)(💡 Generate Scene B first, then set it as the End frame)The video starts on the first frame and ends on the end frame. The object in the middle of both frames is the same object at the same place and size; the camera follows it the whole time. 0–2 s: in scene A, {✏️ how the object moves, e.g. a hand tosses it up}. 2–4 s: the object fills more of the frame as it passes the camera, and as it moves away again the world around it has become scene B. 4–5 s: settles on the end frame. One continuous shot, no cut; the transition is made by the object. Sound: the sound of the object moving, the ambience changing from scene A's to scene B's. No text on screen.",
+        "input": {
+          "object": {
+            "name": "Object",
+            "note": "Add a clear photo of the object first, then generate Scene A and Scene B."
+          }
+        },
+        "node": {
+          "scene-a": {
+            "name": "Scene A",
+            "prompt": "Use [📎 Object] as the object reference: the same shape, colours, materials and markings, nothing redesigned. A vertical photo of {✏️ scene A, e.g. a sunny beach}, with the object in the exact centre of the frame, filling about a quarter of the frame's width, seen straight on at eye height. Natural light of the place. No text."
+          },
+          "scene-b": {
+            "name": "Scene B",
+            "prompt": "Use [📎 Object] as the object reference: the same shape, colours, materials and markings, nothing redesigned. A vertical photo of {✏️ scene B, e.g. a snowy mountain hut at night}, with the object in the exact centre of the frame, filling about a quarter of the frame's width, seen straight on at eye height, the same place and size as in scene A. Natural light of the place. No text."
+          }
+        }
+      },
+      "fisheye-clone-pov": {
+        "name": "Fisheye clones",
+        "description": "A 0.5x fisheye shot filled with clones of one subject",
+        "prompt": "A phone photo taken with the 0.5x ultra-wide lens from above, strong fisheye curve at the edges. Place: {✏️ where, e.g. a basketball court}. The place is filled with many clones of [📎 Subject], about 12, each in a different pose and doing something different, near ones big and distorted by the lens, far ones small. Every clone has the same face, hairstyle and outfit as in the picture. Daylight. Real photo, not illustrated. No text.",
+        "input": {
+          "subject": {
+            "name": "Subject",
+            "note": "Add a clear photo of the subject first, then generate."
+          }
+        }
+      },
+      "flash-photo-dump-grid": {
+        "name": "Flash photo dump",
+        "description": "Six flash snapshots of one person in a 3x2 grid",
+        "prompt": "One image made of exactly 6 photos in a grid of 3 columns and 2 rows, thin white gaps between them. All 6 are of [📎 Person], used only to know who they are: the same face, hairstyle and skin in each. Each photo is a direct-flash snapshot from a small compact camera: bright flash on the face, hard shadow behind, slightly overexposed, a little grain. Six different expressions, one per photo: laughing, pouting, surprised, winking, serious, mid-sneeze. Setting: {✏️ where, e.g. a house party at night}. Close framing, chest-up. No text.",
+        "input": {
+          "person": {
+            "name": "Person",
+            "note": "Add a clear front-facing photo of the person first, then generate."
+          }
+        }
+      },
+      "game-ui-livestream": {
+        "name": "Game livestream look",
+        "description": "Gameplay that looks like a livestreamed video game",
+        "prompt": "Gameplay footage that looks like a livestreamed video game, with [📎 Character] as the player character: the same face, hairstyle and outfit as in the picture, rendered in {✏️ a game style, e.g. a stylised 3D action game}. On screen, drawn only as shapes and colours with no readable letters or numbers: a health bar top left, a round minimap top right, a row of ability icons at the bottom, a small webcam frame in one corner. 0–4 s: already in action, the camera behind the character. 4–9 s: {✏️ what happens in the game, e.g. a boss fight in a ruined castle}. 9–12 s: {✏️ how it ends, e.g. a winning move and a burst of light}. The game camera follows the character. Sound: game effects and music, no voice. No text on screen.",
+        "input": {
+          "character": {
             "name": "Character",
-            "note": "Add the character reference first, then generate."
+            "note": "Add a clear photo of the character first, then generate."
+          }
+        }
+      },
+      "travel-city-walk": {
+        "name": "City walk travel vlog",
+        "description": "One traveler walks through a city, scene by scene",
+        "prompt": "A vertical travel vlog of [📎 Traveler] walking through {✏️ a city, e.g. Lisbon}: the same face, hairstyle and outfit as in the picture in every scene. 0–4 s: {✏️ scene 1, e.g. climbing a steep tiled street}. 4–8 s: {✏️ scene 2}. 8–12 s: {✏️ scene 3}. 12–16 s: {✏️ scene 4}. 16–20 s: {✏️ scene 5}. 20–24 s: they stop at a viewpoint at golden hour and look out over the city. In each scene one camera move: following behind, then beside, then in front. Natural light, the sun getting lower scene by scene. Sound: the street sounds of each place, footsteps, light music at the end. No text on screen.",
+        "input": {
+          "traveler": {
+            "name": "Traveler",
+            "note": "Add a clear full-body photo of the traveler first, then generate."
+          }
+        }
+      },
+      "twist-comedy-skit": {
+        "name": "Twist comedy skit",
+        "description": "A deadpan skit built back from one visible punchline",
+        "prompt": "A comedy skit with [📎 Character], the same face, hairstyle and outfit as in the picture, shot completely straight like a serious drama. The punchline: {✏️ the twist we see at the end, e.g. the burglar was the dog all along}. 0–2 s hook: {✏️ something odd already happening}. 2–5 s setup: {✏️ what the character thinks is going on}. 5–7 s countdown: the tension builds, the camera slowly pushes in. 7–10 s twist: the punchline is revealed on screen. 10–13 s reaction: the character's frozen, deadpan face. 13–15 s button: {✏️ one last small gag}. Steady camera, serious lighting. Sound: dramatic music that stops dead at the twist, then silence. No text on screen.",
+        "input": {
+          "character": {
+            "name": "Character",
+            "note": "Add a clear photo of the character first, then generate."
+          }
+        }
+      },
+      "vertical-15s-quick-tip": {
+        "name": "15-second quick tip",
+        "description": "Result first, three steps, then back to the start",
+        "shot": {
+          "1": "Hook, the end shown first: [📎 Subject] already done, {✏️ what it looks like when done, e.g. a shirt folded flat and square}, close-up, vertical frame, the camera already pushing in slowly. Bright even light. No text on screen.",
+          "2": "Step 1: [📎 Subject], {✏️ the first step, e.g. lay the shirt face down and fold both sleeves to the back}, close on the hands, the camera still. The same light and setting as the first shot. No text on screen.",
+          "3": "Step 2: [📎 Subject], {✏️ the second step, e.g. fold both sides in to the middle}, close on the hands, the camera still. The same light and setting. No text on screen.",
+          "4": "Step 3: [📎 Subject], {✏️ the third step, e.g. fold the bottom up to the collar}, close on the hands, the camera still. The same light and setting. No text on screen.",
+          "5": "Loop: [📎 Subject] ends on exactly the same finished result and framing as the first shot, so the video loops. No text on screen."
+        },
+        "input": {
+          "subject": {
+            "name": "Subject",
+            "note": "Add a photo of the person or the thing the tip is about first, then generate."
           }
         }
       },
@@ -1464,6 +1639,40 @@
     },
     "promptMark": {
       "reference": "Use @ to pick {label}"
+    },
+    "shortcuts": {
+      "title": "Keyboard shortcuts",
+      "group": {
+        "edit": "Edit",
+        "group": "Group",
+        "select": "Select and move",
+        "view": "View",
+        "drawing": "Drawing tools",
+        "exit": "Exit"
+      },
+      "row": {
+        "delete": "Delete",
+        "marquee": "Box select",
+        "toggleSelect": "Add to or remove from selection",
+        "nudge": "Nudge selection",
+        "nudgeFar": "Nudge further",
+        "pan": "Pan",
+        "zoom": "Zoom",
+        "brushSize": "Brush or mark size",
+        "deleteMark": "Delete selected mark",
+        "closePanel": "Close panel",
+        "exitPick": "Stop picking",
+        "cancelNote": "Cancel placing a note"
+      },
+      "gesture": {
+        "dragEmpty": "Drag empty space",
+        "click": "Click",
+        "arrowKeys": "Arrow keys",
+        "scroll": "Scroll",
+        "spaceDrag": "Space + drag",
+        "pinch": "Pinch",
+        "wheel": "Wheel"
+      }
     }
   },
   "auth": {
@@ -1944,12 +2153,13 @@
       "invalidObject": "Unreadable object: {id}",
       "empty": "Add a figure or block to start arranging your scene.",
       "unsupported": "This scene uses an unsupported format. Reload to update the page.",
+      "unsupportedOld": "This scene uses an older format and can't be opened.",
       "modelFailed": "A model could not be loaded.",
       "peerSelection": "{name}: {count} selected",
       "add": "Add",
       "generate": "AI generation",
       "annotationsLater": "Annotations (coming later)",
-      "help": "Help",
+      "controls": "Controls",
       "tasks": "Generation tasks",
       "minimap": "Scene minimap",
       "generationDev": "3D model generation is in development",
@@ -1967,9 +2177,7 @@
       "nodes": "Node library",
       "upload": "Upload assets (mixed files)",
       "comment": "Annotate on canvas",
-      "collection": "Collection (coming soon)",
-      "help": "Help (coming soon)",
-      "feedback": "Feedback / Support (coming soon)"
+      "shortcuts": "Keyboard shortcuts"
     },
     "disabledTooltip": "Requires editor permission"
   },
@@ -2443,7 +2651,12 @@
       "language": "Language: {name}",
       "theme": "Theme: {theme}"
     },
-    "languageNotSaved": "Language not saved to your account"
+    "languageNotSaved": "Language not saved to your account",
+    "help": {
+      "trigger": "Help",
+      "manual": "User manual",
+      "contact": "Contact support"
+    }
   },
   "projectJoin": {
     "title": "You're not a member of this project",
@@ -2657,6 +2870,7 @@
     "source": {
       "payment": "Purchase",
       "gift": "Trial credits",
+      "operatorGift": "Gift credits",
       "compensation": "Compensation",
       "discount": "Discount"
     },
@@ -2707,7 +2921,7 @@
     "deletedStudio": "Deleted Studio",
     "deletedBadge": "Deleted",
     "deletedStudioHint": "This Studio is gone, so its credits cannot be spent",
-    "assignedLots": "{count, plural, one {# purchase assigned to it} other {# purchases assigned to it}}",
+    "assignedLots": "{count, plural, one {# credit pack assigned to it} other {# credit packs assigned to it}}",
     "noLotsHere": "Nothing assigned to it yet",
     "debtAndSpent": "owes {debt} · spent {spent}",
     "spentOnly": "spent {spent}",

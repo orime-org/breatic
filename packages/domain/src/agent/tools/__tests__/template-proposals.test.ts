@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The propose tool takes a template on a generate node and judges the node it
@@ -121,6 +121,20 @@ describe("templates in proposals", () => {
       expect(said).not.toContain("To use one, send each of its nodes");
     }
     setLocale("en");
+  });
+
+  // inner#1816: a template the plan gives no case for offering unasked says none.
+  it("says when to offer a template unasked only for one that has such a case", () => {
+    const lines = String(makeProposeCanvasAction().description ?? "").split(" | ");
+    /**
+     * The index line of one template.
+     * @param id - The template id.
+     * @returns Its line, or undefined.
+     */
+    const lineOf = (id: string): string | undefined => lines.find((line) => line.includes(`${id} (social-hooks,`));
+    for (const id of ["pet-selfie-vlog", "retro-found-footage"]) expect(lineOf(id), `${id} indexed`).toBeDefined();
+    expect(lineOf("pet-selfie-vlog")).toContain("Offer it unasked when");
+    expect(lineOf("retro-found-footage")).not.toContain("Offer it unasked when");
   });
 
   it("indexes the registry it is given and no other", () => {
@@ -447,7 +461,7 @@ describe("the guide text node answerFor appends (design 6.7 step 8)", () => {
 
 describe("templateNode on the nodes of a matched instance (design 6.7 step 3)", () => {
   for (const anchorKey of [false, true]) {
-    it(`marks each non-anchor template node, gives the resource its path, and marks nothing else (anchor key ${anchorKey ? "written" : "left out"})`, () => {
+    it(`marks each non-anchor template node and each input, gives the resource its path, and marks nothing else (anchor key ${anchorKey ? "written" : "left out"})`, () => {
       const shape = agentShape(SHEET, { anchorKey });
       const answer = placedAnswer(answerFor(shape.sent, undefined, FIXTURES));
       expect(answer.nodes.some((node) => "template" in node)).toBe(false);
@@ -459,7 +473,7 @@ describe("templateNode on the nodes of a matched instance (design 6.7 step 3)", 
       expect(node("node:sheet")?.templateNode).toBeUndefined();
       expect(node("node:sheet")?.resource).toBeUndefined();
       for (const input of ["pose", "front", "back", "character"]) {
-        expect(node(`input:${input}`)?.templateNode).toBeUndefined();
+        expect(node(`input:${input}`)?.templateNode).toEqual({ template: "fixture-sheet", key: input, input: true, anchor: shape.at.get("node:sheet") });
         expect(node(`input:${input}`)?.resource).toBeUndefined();
       }
       expect(parsed.nodes).toHaveLength(shape.sent.nodes.length + 1);
@@ -487,6 +501,21 @@ describe("templateNode on the nodes of a matched instance (design 6.7 step 3)", 
     expect(answer.nodes[0]?.templateNode).toBeUndefined();
   });
 
+  it("keeps an instance's own node marked as its own when it also feeds another instance's input", () => {
+    const shape = agentShape(SHEET);
+    const sketch = shape.at.get("node:sketch") ?? -1;
+    const sent: Sent = {
+      ...shape.sent,
+      nodes: [
+        ...shape.sent.nodes,
+        { role: "generate", type: "image", name: "Watercolour", template: { id: "fixture-solo" }, prompt: [{ slot: { kind: "note", label: "Generate Sketch first" } }, { text: "Redraw " }, { ref: sketch }] },
+      ],
+      edges: [...shape.sent.edges, { fromIndex: sketch, toIndex: shape.sent.nodes.length, into: "pool" }],
+    };
+    const answer = placedAnswer(answerFor(sent, undefined, FIXTURES));
+    expect(answer.nodes[sketch]?.templateNode).toEqual({ template: "fixture-sheet", key: "sketch" });
+  });
+
   it("places two instances chained, the first anchor standing as the second's input", () => {
     const first = solo();
     const sent: Sent = {
@@ -499,7 +528,8 @@ describe("templateNode on the nodes of a matched instance (design 6.7 step 3)", 
     };
     const answer = placedAnswer(answerFor(sent, undefined, FIXTURES));
     expect(answer.nodes).toHaveLength(3);
-    expect(answer.nodes.map((node) => node.templateNode)).toEqual([undefined, undefined, undefined]);
+    // The first instance's input is its own; the first anchor, fed on into the second, stays the first's.
+    expect(answer.nodes.map((node) => node.templateNode)).toEqual([{ template: "fixture-solo", key: "reference", input: true, anchor: 1 }, undefined, undefined]);
   });
 
   it("places two whole instances in one proposal, each with its own guide", () => {
@@ -730,5 +760,69 @@ describe("the consistency check, round-1 review (inner#1345)", () => {
     const reason = verdict.ok ? "" : verdict.reason;
     expect(reason).toContain('a generate image "sketch" node');
     expect(reason).toContain('"style_images"');
+  });
+});
+
+describe("a template's shots sent as HOW_TO_SEND says (inner#1816)", () => {
+  const FIRST_SHOT_NOTE = { slot: { kind: "note" as const, label: "Put the photo in first" } };
+
+  /**
+   * Shots of the given seconds, the first naming the wired picture.
+   * @param seconds - Each shot's duration.
+   * @returns The shots as the agent sends them.
+   */
+  const shotsOf = (seconds: readonly number[]): unknown[] =>
+    seconds.map((duration, i) => ({
+      duration,
+      prompt: i === 0 ? [FIRST_SHOT_NOTE, { text: "The person " }, { ref: 0 }, { text: " shows the finished dish." }] : [{ text: "The next step." }],
+    }));
+
+  /**
+   * A template's input picture wired into its anchor video node.
+   * @param template - The template id.
+   * @param input - The template's input key the picture fills.
+   * @param node - What the agent writes on the anchor beyond its template tag.
+   * @returns The proposal as the agent sends it.
+   */
+  const sentWith = (template: string, input: string, node: Record<string, unknown>): Sent =>
+    ({
+      nodes: [
+        { role: "source", type: "image", name: "Photo", template: { id: template, input } },
+        { role: "generate", type: "video", name: "Clip", template: { id: template }, ...node },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }],
+      rationale: "A short video from the photo.",
+      groupName: "Clip",
+    }) as unknown as Sent;
+
+  it("accepts the template's shot durations on a node that keeps its mode and model and writes no duration", () => {
+    expect(verdictFor(sentWith("vertical-15s-quick-tip", "subject", { shots: shotsOf([3, 3, 3, 3, 3]) }))).toEqual({ ok: true });
+  });
+
+  it("accepts shots adding up to the duration written in params on a node that keeps its mode and model", () => {
+    expect(verdictFor(sentWith("vertical-15s-quick-tip", "subject", { params: { duration: 10 }, shots: shotsOf([2, 2, 2, 2, 2]) }))).toEqual({ ok: true });
+  });
+
+  it("refuses the template's shot durations once a duration is written in params, since the written one is what they add up to", () => {
+    const verdict = verdictFor(sentWith("vertical-15s-quick-tip", "subject", { params: { duration: 10 }, shots: shotsOf([3, 3, 3, 3, 3]) }));
+    expect(verdict.ok ? "ok" : verdict.refusal).toBe("shots-duration");
+  });
+
+  it("accepts shots adding up to the duration written on another multi_shot model that takes the picture", () => {
+    const sent = sentWith("vertical-15s-quick-tip", "subject", { model: "wan-3.0-reference-to-video", params: { duration: 10 }, shots: shotsOf([2, 2, 2, 2, 2]) });
+    expect(verdictFor(sent)).toEqual({ ok: true });
+  });
+
+  it("accepts one prompt and no shots on another mode the model's family offers", () => {
+    const sent = sentWith("vertical-15s-quick-tip", "subject", {
+      mode: "t2v",
+      prompt: [{ text: "The person " }, { ref: 0 }, FIRST_SHOT_NOTE, { text: " shows the finished dish, then three steps." }],
+    });
+    expect(verdictFor(sent)).toEqual({ ok: true });
+  });
+
+  it("accepts a prompt template moved to multi_shot with shots adding up to the duration written", () => {
+    const sent = sentWith("game-ui-livestream", "character", { mode: "multi_shot", params: { duration: 10 }, shots: shotsOf([5, 5]) });
+    expect(verdictFor(sent)).toEqual({ ok: true });
   });
 });

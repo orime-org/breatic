@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { ProjectUpdateNotice } from '@web/pages/project/chrome/ProjectUpdateNotice';
 import type { ConnectionStatus } from '@web/data/yjs/use-socket';
@@ -11,7 +11,7 @@ import { Link } from 'react-router-dom';
 
 import { chromeBarBox } from '@web/pages/project/chrome/bar-box';
 
-import { Logo28 } from '@web/pages/project/chrome/top-bar/Logo28';
+import { TopBarLogo } from '@web/pages/project/chrome/top-bar/TopBarLogo';
 import { TitleEditable } from '@web/pages/project/chrome/top-bar/TitleEditable';
 import { MembersModal } from '@web/pages/project/chrome/top-bar/MembersModal';
 import { MembersStack } from '@web/pages/project/chrome/top-bar/MembersStack';
@@ -20,6 +20,7 @@ import { LangSwitcher } from '@web/features/preferences/LangSwitcher';
 import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
 import { ShareDialog } from '@web/pages/project/chrome/top-bar/ShareDialog';
 import { BellMenu } from '@web/features/notifications/BellMenu';
+import { HelpMenu } from '@web/features/help/HelpMenu';
 import { RoleTag } from '@web/pages/project/chrome/top-bar/RoleTag';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -38,7 +39,7 @@ const BAR_BOX = chromeBarBox({ sides: 'var(--space-6)', gap: 'var(--space-4)' })
  * answers that are not a balance would otherwise be printed as one.
  */
 export type CreditsReadout =
-  | { status: 'ready'; value: number }
+  | { status: 'ready'; value: string }
   | { status: 'pending' }
   | { status: 'error' };
 
@@ -144,7 +145,7 @@ export function TopBar({
         className='flex min-w-0 flex-1 items-center'
         style={{ gap: 'var(--space-6)' }}
       >
-        <Logo28 />
+        <TopBarLogo />
         <BackLink />
         <TitleEditable
           value={projectName}
@@ -180,6 +181,7 @@ export function TopBar({
               disabled, for non-owners). Backend `requireRole` enforces
               the real boundary; this hide is UX only. */}
           {role === 'owner' ? <ShareDialog projectId={projectId} currentUserRole={role} /> : null}
+          <HelpMenu />
           <BellMenu />
         </div>
       </div>

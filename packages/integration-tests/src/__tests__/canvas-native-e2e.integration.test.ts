@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Integration test: BullMQ → worker.runTask → task-counts event → Collab task-listener → Yjs
@@ -1510,7 +1510,7 @@ describe("transcription results and usage cross the real settlement and collabor
         readingCtrl.text = text;
         readingCtrl.costUsd = costUsd;
         readingCtrl.requests = [];
-        const balanceBefore = await creditLotService.getSpendableCredits(FIXTURE_STUDIO_ID);
+        const balanceBefore = Number(await creditLotService.getSpendableCredits(FIXTURE_STUDIO_ID));
         const nodeId = crypto.randomUUID();
         const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
         await seedNode(hocuspocus, docName, nodeId, {
@@ -1619,7 +1619,7 @@ describe("transcription results and usage cross the real settlement and collabor
           expect(ledgerBefore[0]).toMatchObject({ entryType: "spend", studioId: FIXTURE_STUDIO_ID });
           expect(Number(ledgerBefore[0]!.amount)).toBe(-credits);
         }
-        expect(await creditLotService.getSpendableCredits(FIXTURE_STUDIO_ID)).toBeCloseTo(balanceBefore - credits, 6);
+        expect(Number(await creditLotService.getSpendableCredits(FIXTURE_STUDIO_ID))).toBeCloseTo(balanceBefore - credits, 6);
         const hold = await db.select().from(schema.creditHolds)
           .where(eq(schema.creditHolds.referenceId, taskId));
         expect(hold).toHaveLength(1);
@@ -1636,7 +1636,7 @@ describe("transcription results and usage cross the real settlement and collabor
           .where(eq(schema.nodeHistory.taskId, taskId))).toEqual(historyBefore);
         expect(await db.select().from(schema.nodeTasks)
           .where(eq(schema.nodeTasks.taskId, taskId))).toEqual(nodeTasksBefore);
-        expect(await creditLotService.getSpendableCredits(FIXTURE_STUDIO_ID)).toBeCloseTo(balanceBefore - credits, 6);
+        expect(Number(await creditLotService.getSpendableCredits(FIXTURE_STUDIO_ID))).toBeCloseTo(balanceBefore - credits, 6);
         expect((await taskService.getByIdInternal(taskId))?.billedAt).toEqual(completed!.billedAt);
         expect((await readNodeData(hocuspocus, docName, nodeId))?.["bodyText"]).toBe(text);
       });

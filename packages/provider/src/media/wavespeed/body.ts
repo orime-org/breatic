@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { MediaBinding, ParamBinding } from "@provider/config/schema.js";
 import type { MediaInput } from "@provider/media/runner.js";

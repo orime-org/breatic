@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 import { Loader2 } from 'lucide-react';
@@ -351,7 +351,7 @@ interface RowProps {
 /** The figure to print, and an optional hook for tests. */
 interface RowBalanceProps {
   /** How many are left. */
-  credits: number;
+  credits: string;
   /** A hook for tests to name this figure. */
   'data-testid'?: string;
 }

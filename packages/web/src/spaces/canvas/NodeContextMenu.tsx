@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import {
   Bookmark,
@@ -37,6 +37,7 @@ import {
 import { useTranslation } from '@web/i18n/use-translation';
 import type { MiniToolIcon } from '@breatic/shared/mini-tools';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
+import { CANVAS_KEY_SHORTCUTS } from '@web/spaces/canvas/shortcuts/canvas-shortcuts';
 import { MINI_TOOL_ICONS } from '@web/spaces/canvas/mini-tool/tool-icons';
 
 /** One row of the tools submenu. */
@@ -414,7 +415,7 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
                 <Copy className='mr-2 h-4 w-4' aria-hidden='true' />
                 {t('canvas.contextMenu.copy')}
                 <DropdownMenuShortcut>
-                  {formatShortcut({ mod: true, key: 'C' })}
+                  {formatShortcut(CANVAS_KEY_SHORTCUTS.copy)}
                 </DropdownMenuShortcut>
               </DropdownMenuItem>
             ) : null}
@@ -426,7 +427,7 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
                 <CopyPlus className='mr-2 h-4 w-4' aria-hidden='true' />
                 {t('canvas.contextMenu.duplicate')}
                 <DropdownMenuShortcut>
-                  {formatShortcut({ mod: true, key: 'D' })}
+                  {formatShortcut(CANVAS_KEY_SHORTCUTS.duplicate)}
                 </DropdownMenuShortcut>
               </DropdownMenuItem>
             ) : null}
@@ -442,7 +443,7 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
               <Ungroup className='mr-2 h-4 w-4' aria-hidden='true' />
               {t('canvas.group.ungroup')}
               <DropdownMenuShortcut>
-                {formatShortcut({ mod: true, shift: true, key: 'G' })}
+                {formatShortcut(CANVAS_KEY_SHORTCUTS.ungroup)}
               </DropdownMenuShortcut>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
@@ -499,7 +500,7 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
                   : 'canvas.contextMenu.deleteNode',
               )}
               <DropdownMenuShortcut>
-                {formatShortcut({ key: 'Delete' })}
+                {formatShortcut(CANVAS_KEY_SHORTCUTS.delete)}
               </DropdownMenuShortcut>
             </DropdownMenuItem>
           </>

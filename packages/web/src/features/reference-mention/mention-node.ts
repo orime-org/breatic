@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /** ProseMirror / TipTap node name for a reference mention chip. */
 export const REFERENCE_MENTION_NODE = 'referenceMention';

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What the audio Generate panel looks like, measured in a browser (#1960 PR1).
@@ -178,12 +178,13 @@ test('sound effects: a length picker, and a credit figure that follows it', asyn
 
 test('text to music: two boxes, and an empty lyrics box refuses the submit', async ({ page }) => {
   const nodeId = crypto.randomUUID();
-  // Panned up first, because this panel carries two editors and stands 396px
-  // against the suite's 720px window — measured 2026-09-05, against 234px on
-  // the sound-effect mode. Left of the origin for the reason the other cases
-  // are: the minimap in the bottom-right corner takes clicks meant for it.
+  // Panned up first, because this panel carries two editors and grows when the
+  // lyrics box opens. Panned left as well: the Space frames its one node in
+  // the middle, and there the generate button lands under the minimap in the
+  // bottom-right corner, which takes clicks meant for it.
   await seedNode(nodeId, 'audio', undefined, -50);
   await panCanvasDown(250);
+  await page.mouse.wheel(200, 0);
   await openGenerate(nodeId);
 
   await page.getByTestId('generate-audio-mode-trigger').click();
@@ -197,11 +198,16 @@ test('text to music: two boxes, and an empty lyrics box refuses the submit', asy
     timeout: 15_000,
   });
 
-  // A style box and a lyrics box, each carrying a word saying which it is.
+  // A style box and a lyrics box, each carrying a word saying which it is. One
+  // is open at a time (#1201): the style box, with the lyrics as one row.
   const style = page.getByTestId('generate-prompt-editor');
   const lyrics = page.getByTestId('generate-lyrics-editor');
+  const lyricsRow = page.getByTestId('generate-prompt-group-lyrics-toggle');
+  const styleRow = page.getByTestId('generate-prompt-group-prompt-toggle');
   await expect(style).toBeVisible();
-  await expect(lyrics).toBeVisible();
+  await expect(lyrics).toBeHidden();
+  await expect(lyricsRow).toContainText('Lyrics');
+  await expect(lyricsRow).toContainText('Write the lyrics');
   await expect(style.locator('[data-placeholder]').first()).toHaveAttribute(
     'data-placeholder',
     /genre|mood|instrument/i,
@@ -211,12 +217,25 @@ test('text to music: two boxes, and an empty lyrics box refuses the submit', asy
   // The style box opens at half the lyrics box's height (user 2026-09-05): a
   // brief is a line or two of words, and the words to sing are a whole song.
   // Both grow as they are typed into and cap at the same ceiling; what differs
-  // is where each one starts.
-  const heights = await page.evaluate(() => {
-    const h = (id: string) =>
-      Math.round(document.querySelector(`[data-testid="${id}"]`)?.getBoundingClientRect().height ?? 0);
-    return { style: h('generate-prompt-editor'), lyrics: h('generate-lyrics-editor') };
-  });
+  // is where each one starts. Each is measured while it is the open one.
+  /**
+   * The rendered height of one box.
+   * @param id - The box's test id.
+   * @returns Its height in pixels, rounded.
+   */
+  const heightOf = (id: string): Promise<number> =>
+    page.evaluate(
+      (testId) => Math.round(document.querySelector(`[data-testid="${testId}"]`)?.getBoundingClientRect().height ?? 0),
+      id,
+    );
+  const heights = { style: await heightOf('generate-prompt-editor'), lyrics: 0 };
+  await lyricsRow.click();
+  await expect(lyrics).toBeVisible();
+  await expect(style).toBeHidden();
+  await expect(lyrics.locator('.ProseMirror')).toBeFocused();
+  heights.lyrics = await heightOf('generate-lyrics-editor');
+  await styleRow.click();
+  await expect(style).toBeVisible();
   expect(heights.lyrics).toBeGreaterThan(0);
   expect(heights.style).toBeGreaterThan(0);
   // 3.25rem against 6.5rem, each plus a 1px border either side: 54 against

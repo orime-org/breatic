@@ -1,14 +1,31 @@
-# Breatic
+<h1 align="center">Breatic</h1>
 
-**English** | [简体中文](README-CN.md)
+<p align="center"><strong>The real-time collaborative AI workspace for creative teams.</strong></p>
+<p align="center">Available online · Source-available · Desktop browser</p>
 
-**The real-time collaborative AI workspace for creative teams.**
+<p align="center">
+  <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_en">Website</a> ·
+  <a href="https://breatic.ai/login?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_en">Try Breatic</a> ·
+  <a href="https://youtu.be/mc1XAqtJD_M">45-second demo</a> ·
+  <a href="docs/USAGE.md">User guide</a> ·
+  <a href="https://discord.gg/Yeu6A4aejN">Discord</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
+  <a href="LICENSE"><img alt="License: Elastic-2.0" src="https://img.shields.io/badge/license-Elastic--2.0-blue?style=flat"></a>
+  <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
+  <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
+</p>
+
+<p align="center" dir="ltr">
+  <strong>English</strong> · <a href="README-CN.md">简体中文</a> · <a href="README-TW.md">繁體中文</a> · <a href="README-JA.md">日本語</a> · <a href="README-KO.md">한국어</a> · <a href="README-ES.md">Español</a> · <a href="README-PT-BR.md">Português</a><br>
+  <a href="README-DE.md">Deutsch</a> · <a href="README-FR.md">Français</a> · <a href="README-AR.md">العربية</a> · <a href="README-RU.md">Русский</a> · <a href="README-UK.md">Українська</a> · <a href="README-TR.md">Türkçe</a> · <a href="README-TH.md">ภาษาไทย</a>
+</p>
+
+---
 
 Bring your brief, scenes and media into one project. Write in Document Spaces, generate and refine assets in Canvas Spaces, and work with an AI agent and collaborators in the context of your production.
-
-**Available online · Source-available · Desktop browser**
-
-[Try Breatic][hosted-app] · [Watch the 45-second demo](https://youtu.be/mc1XAqtJD_M) · [User guide](docs/USAGE.md) · [Self-host](self-host/LOCAL.md) · [Releases](https://github.com/orime-org/breatic/releases)
 
 The hosted service has a free Starter plan. AI generation credits are purchased separately and are not included in membership plans. See [pricing and credits][hosted-pricing].
 
@@ -60,6 +77,8 @@ A **Studio** holds your projects and assets. A **Project** brings together one p
 
 The time ranges are a planning convention: Space names do not set clip duration or assemble a finished video. Use Timeline for video arrangement and preview; finishing and exporting the production use your video editor. The [illustrated user guide](docs/USAGE.md#example-from-a-brief-to-a-visual) shows a brief-to-visual example.
 
+<a id="get-started"></a>
+
 ## Get started
 
 | Your goal | Start here |
@@ -96,9 +115,15 @@ The application uses TypeScript, React/Vite, Hono, PostgreSQL, Redis/BullMQ and 
 
 ## License and permitted use
 
-Breatic is **source-available** under the [Breatic Source-Available License v1.0](LICENSE), based on Apache 2.0 with additional conditions.
+Breatic is **source-available** under the [Elastic License 2.0](LICENSE) (`Elastic-2.0`).
 
-The license permits individual use, private groups that are not publicly advertised or open to general sign-up, and internal deployment within one organization. It prohibits offering Breatic to the public without separate authorization, **whether paid or free**. A domain or a server does not by itself determine the permitted audience. Preserve the product's branding and copyright notices. See the license for the complete terms; public-facing licensing inquiries go to [contact@breatic.ai](mailto:contact@breatic.ai).
+You may read, modify and redistribute Breatic, and run it for yourself or inside your own organization, including for commercial work. You may not provide Breatic to third parties as a hosted or managed service. See the license for the complete terms.
+
+The Breatic name and logo are trademarks of Orime, Inc. and are not covered by the license; see [TRADEMARKS.md](TRADEMARKS.md). The license places no restriction on the content you create with Breatic.
+
+### Generated content
+
+Breatic is a tool for AI-assisted content creation. Operators and users of a Breatic instance are responsible for making sure generated content complies with applicable law (copyright, trademark, privacy, data protection, defamation and content moderation), for holding the rights to the inputs they supply and to their downstream use, and for moderating content in their context of use. Orime, Inc. makes no warranty about the accuracy, legality, originality or safety of generated content.
 
 Third-party components and notices are documented in [THIRD-PARTY.md](THIRD-PARTY.md).
 

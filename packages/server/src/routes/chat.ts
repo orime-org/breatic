@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Chat routes — conversational AI with SSE streaming.
@@ -8,6 +8,7 @@
  * Streaming responses use Server-Sent Events via Hono's streaming helper.
  */
 
+import { accountActivityRepo } from "@breatic/core";
 import { reportCollaboratorFirstAction } from "@breatic/core";
 import { Hono } from "hono";
 import type { Context } from "hono";
@@ -40,7 +41,7 @@ import { toUiMessages } from "@server/modules/conversation/message-part-mapping.
 import type { UIMessageChunk } from "ai";
 import { runWithContext, logger, getAgentConfig, NotFoundError, ValidationError } from "@breatic/core";
 import { attachmentSection, messageLength, referenceCount, t } from "@breatic/shared";
-import type { ChatAttachedChip, ChatSpaceContext } from "@breatic/shared";
+import type { ChatAttachedChip, ChatSpaceContext, SpaceRequestAnswer } from "@breatic/shared";
 
 /**
  * Refuse a message whose words, attachments or Spaces are past their limits.
@@ -55,18 +56,21 @@ import type { ChatAttachedChip, ChatSpaceContext } from "@breatic/shared";
  * did not ask.
  *
  * The Spaces are cut to their limits by the browser, so only a client that
- * skipped that reaches these two.
+ * skipped that reaches these checks.
  * @param message - What the user typed.
  * @param chips - What the user attached.
  * @param space - The project's Spaces and the one the reader has open.
+ * @param shared - The reader's answer to a request to read Spaces, if this is one.
  * @throws {AppError} With 422 when the words, the number of references, the
  *   number of attached items, the attachments' length, the open Space's
- *   content or its blocks' text, or the number of Spaces listed is over its limit.
+ *   content or its blocks' text, a shared Space's content, or the number of
+ *   Spaces listed is over its limit.
  */
 function assertSayable(
   message: string,
   chips: readonly ChatAttachedChip[],
   space: ChatSpaceContext,
+  shared: SpaceRequestAnswer | undefined,
 ): void {
   const {
     user_message_max_chars,
@@ -117,6 +121,15 @@ function assertSayable(
     throw new ValidationError(
       t("server.chat.current_space_too_long", { limit: current_space_max_chars, actual: content }),
     );
+  }
+  // Each Space the reader shared is read and cut the way the open one is
+  // (inner#1552), so each is held to the same limit.
+  for (const one of shared?.decision === "shared" ? shared.spaces : []) {
+    if (one.state === "read" && one.content.length > current_space_max_chars) {
+      throw new ValidationError(
+        t("server.chat.shared_space_too_long", { name: one.name, limit: current_space_max_chars, actual: one.content.length }),
+      );
+    }
   }
 }
 
@@ -258,7 +271,7 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
     body.project_id,
   );
 
-  assertSayable(body.message, body.attached_chips, body);
+  assertSayable(body.message, body.attached_chips, body, body.shared_spaces);
 
   // A turn needs a balance above zero to start (#296). Payments off: no check.
   // Checked before an answer is taken, so a refused answer leaves the card
@@ -269,10 +282,21 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
   // §4.8). Reported alongside the turn; it never rejects.
   void reportCollaboratorFirstAction({ projectId: body.project_id, userId: user.id, action: "agent" });
 
-  // An answer to a questionnaire resumes the turn that asked (inner#1542).
-  const answer = body.answer;
-  if (answer !== undefined) {
-    const taken = await conversationService.answerAsk(conversation.id, answer);
+  // An answer to a card resumes the turn that asked: a questionnaire's
+  // (inner#1542) or a request to read Spaces (inner#1552). Both are taken,
+  // refused and resumed alike; only how the answer is held to the call differs.
+  const { answer, shared_spaces: sharedSpaces } = body;
+  const card =
+    answer !== undefined
+      ? { toolCallId: answer.toolCallId, take: () => conversationService.answerAsk(conversation.id, answer, { userId: user.id, projectId: body.project_id }) }
+      : sharedSpaces !== undefined
+        ? {
+          toolCallId: sharedSpaces.toolCallId,
+          take: () => conversationService.answerSpaceRequest(conversation.id, sharedSpaces, { userId: user.id, projectId: body.project_id }),
+        }
+        : undefined;
+  if (card !== undefined) {
+    const taken = await card.take();
     if (taken.kind === "missing") throw new NotFoundError(t("server.chat.ask_not_found"));
     if (taken.kind === "mismatch") {
       logger.warn({ userId: user.id, conversationId: conversation.id, reason: taken.reason }, "chat_answer_mismatch");
@@ -293,10 +317,11 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
       c,
       { userId: user.id, conversationId: conversation.id, projectId: body.project_id },
       (signal) =>
-        new MainAgent().answer(answer.toolCallId, { answers: answer.answers }, taken.turnIndex, signal, body.time_zone, body),
+        new MainAgent().answer(card.toolCallId, taken.output, taken.turnIndex, signal, body.time_zone, body),
     );
   }
 
+  await accountActivityRepo.recordActivity({ userId: user.id, projectId: body.project_id, kind: "agent_started" });
   return streamTurn(
     c,
     { userId: user.id, conversationId: conversation.id, projectId: body.project_id },
@@ -521,7 +546,8 @@ chat.delete(
  * `GET /chat/stream-config` — the chat knobs a browser needs, from
  * `config/agent.yaml`: how often a stream says it is alive, how long the
  * attachments on one message may be and how many there may be, and how much
- * of the reader's Spaces one message may carry. The browser checks
+ * of the reader's Spaces one message may carry, and how long reading one Space
+ * the Agent asked for may take. The browser checks
  * attachments against those before sending and cuts the Spaces to them, so it
  * measures against the same limits the server enforces.
  *
@@ -548,6 +574,7 @@ chat.get("/stream-config", (c) => {
       attachmentMaxItems: config.attachment_max_items,
       currentSpaceMaxChars: config.current_space_max_chars,
       spaceListMaxItems: config.space_list_max_items,
+      spaceReadTimeoutMs: config.space_read_timeout_ms,
     },
   });
 });

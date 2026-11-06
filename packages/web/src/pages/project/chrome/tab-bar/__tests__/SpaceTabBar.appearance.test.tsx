@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 // The three appearance calls the user made on 2026-08-31 after seeing the
 // visual advice sheet: a wider gap between tabs, a close key that only takes

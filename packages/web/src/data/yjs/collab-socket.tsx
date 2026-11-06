@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import {
   HocuspocusProvider,
@@ -283,6 +283,25 @@ function destroyAccountTransport(): void {
 }
 
 /**
+ * A collaboration WebSocket dialled the way the shared one is, at the same
+ * address and with the same framing.
+ *
+ * Outside the shared socket's lifecycle: a read of Spaces the reader has not
+ * opened (inner#1552) owns one of these, attaches its providers to it
+ * explicitly (a provider handed a socket does not attach itself) and destroys
+ * it when the read ends, so the tab's documents never share it.
+ * @param url - WebSocket URL or same-origin path to the Hocuspocus server.
+ * @returns A new socket.
+ * @throws {never} Never.
+ */
+export function createCollabSocket(url: string): HocuspocusProviderWebsocket {
+  return new HocuspocusProviderWebsocket({
+    url: toAbsoluteWsUrl(url),
+    WebSocketPolyfill: ChunkingWebSocket,
+  });
+}
+
+/**
  * Get-or-create the shared WebSocket. Lazily created on the first document
  * acquisition (never before — so the userId gate, enforced by callers, keeps it
  * closed until a session is resolved).
@@ -291,10 +310,7 @@ function destroyAccountTransport(): void {
  */
 function ensureSharedSocket(url: string): HocuspocusProviderWebsocket {
   if (!sharedSocket) {
-    sharedSocket = new HocuspocusProviderWebsocket({
-      url: toAbsoluteWsUrl(url),
-      WebSocketPolyfill: ChunkingWebSocket,
-    });
+    sharedSocket = createCollabSocket(url);
     // The connection reports its own drops: each attached provider re-emits
     // this close, so reporting there sent one alert per open document. Only a
     // connection that had opened counts as dropped; while it is down every

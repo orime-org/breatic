@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The server's upload tickets: `issueTransferTicket` (inner#1006 design
@@ -78,6 +78,7 @@ const assertStudioStorageAllowance = vi.fn();
 
 vi.mock("@breatic/core", () => ({
   AppError: class AppError extends Error {},
+  accountActivityRepo: { recordActivity: vi.fn(async () => undefined) },
   env: { INGEST_SHARED_SECRET: "secret", INGEST_BASE_URL: "https://ingest.test.invalid" },
   getNodeTaskConfig: () => ({ default_budget_ms: 7_200_000 }),
   getStorageConfig: () => ({

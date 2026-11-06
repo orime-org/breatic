@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Drizzle ORM schema definitions for all database tables.
@@ -34,6 +34,7 @@ import {
 // still being defined at the point the reference is written.
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type {
+  AccountActivityKind,
   Attribution,
   ConsentRecord,
   ConsentSnapshot,
@@ -41,6 +42,7 @@ import type {
   RequestFailedReason,
 } from "@breatic/shared";
 import type { AdsConversionJob } from "@core/ads/ads-types.js";
+import type { CreditGrantResult, CreditGrantWrite } from "@core/credit/credit-grant-contract.js";
 import type { EnterpriseMembershipResult, EnterpriseMembershipWrite } from "@core/auth/enterprise-membership-contract.js";
 import type { ReclaimScope, ReclaimDecision, ReclaimControlDecision, ReclaimItemResult, ReclaimRun } from "@core/maintenance/types.js";
 import { PROJECT_NAME_MAX_CHARS, STRIPE_WEBHOOK_RESULTS } from "@breatic/shared";
@@ -106,9 +108,7 @@ export const users = pgTable(
     // Enterprise validity is read alongside this raw tier. Ordinary paid
     // validity is interpreted from subscription facts.
     //
-    // Credits are yet another leg and live in `credit_lots`, one row per
-    // purchase, never on the
-    // account row.
+    // Credits live in `credit_lots`, one row per funding source.
     membershipTier: varchar("membership_tier", { length: 16 })
       .default("base")
       .notNull(),
@@ -1137,6 +1137,47 @@ export const creditSources = pgTable(
   },
   (table) => [unique("credit_sources_id_kind_key").on(table.id, table.kind)],
 );
+
+/** Immutable original decisions retain absent logical accounts and their request keys. */
+export const creditGrantOperations = pgTable("credit_grant_operations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  key: text("key").notNull().unique(),
+  requestHash: varchar("request_hash", { length: 64 }).notNull(),
+  targetUserId: uuid("target_user_id").notNull(),
+  requestedBy: uuid("requested_by").notNull(),
+  requestBody: jsonb("request_body").$type<CreditGrantWrite>().notNull(),
+  result: jsonb("result").$type<CreditGrantResult>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Compensation evidence outlives its lot; kind and deferred operation FK live in 0109. */
+export const creditCompensations = pgTable("credit_compensations", {
+  id: uuid("id").primaryKey(),
+  sourceKind: varchar("source_kind", { length: 16 }).default("compensation").notNull(),
+  targetUserId: uuid("target_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  personalStudioId: uuid("personal_studio_id").notNull().references(() => studios.id, { onDelete: "restrict" }),
+  credits: numeric("credits", { precision: 20, scale: 6 }).notNull(),
+  reason: text("reason").notNull(),
+  operationKey: text("operation_key").notNull().unique(),
+  requestedBy: uuid("requested_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [foreignKey({ name: "credit_compensations_source_fk", columns: [table.id, table.sourceKind], foreignColumns: [creditSources.id, creditSources.kind] }).onDelete("restrict")]);
+
+/** Registration claims and operator gifts retain distinct, immutable provenance. */
+export const creditGifts = pgTable("credit_gifts", {
+  id: uuid("id").primaryKey(),
+  sourceKind: varchar("source_kind", { length: 16 }).default("gift").notNull(),
+  origin: varchar("origin", { length: 16 }).notNull(),
+  targetUserId: uuid("target_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  personalStudioId: uuid("personal_studio_id").notNull().references(() => studios.id, { onDelete: "restrict" }),
+  credits: numeric("credits", { precision: 20, scale: 6 }).notNull(),
+  /** Explicit confirmation of a pre-existing manual gift, never a new funding instruction. */
+  legacyConfirmation: jsonb("legacy_confirmation").$type<Record<string, unknown>>(),
+  reason: text("reason"),
+  operationKey: text("operation_key").unique(),
+  requestedBy: uuid("requested_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [foreignKey({ name: "credit_gifts_source_fk", columns: [table.id, table.sourceKind], foreignColumns: [creditSources.id, creditSources.kind] }).onDelete("restrict")]);
 
 export const payments = pgTable(
   "payments",
@@ -3232,3 +3273,36 @@ export const storageReclaimAttempts = pgTable("storage_reclaim_attempts", {
  result: jsonb("result").$type<ReclaimItemResult>().notNull(),
  ...timestamps, deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
+
+// ── Account interaction history and collection coverage ──────────────
+export const accountActivityEvents = pgTable("account_activity_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "restrict" }),
+  kind: text("kind").$type<AccountActivityKind>().notNull(),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).defaultNow().notNull(),
+  visitId: uuid("visit_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, (table) => [
+  uniqueIndex("account_activity_user_visit_idx").on(table.userId, table.visitId),
+  index("account_activity_user_time_idx").on(table.userId, table.occurredAt),
+  index("account_activity_time_user_idx").on(table.occurredAt, table.userId),
+  check("account_activity_kind_check", sql`${table.kind} IN ('project_access','generation_started','project_action','agent_started','project_edit')`),
+  check("account_activity_project_check", sql`${table.kind} NOT IN ('project_access','project_edit') OR ${table.projectId} IS NOT NULL`),
+  check("account_activity_visit_check", sql`(${table.kind} = 'project_access') = (${table.visitId} IS NOT NULL)`),
+]);
+
+export const accountActivityCoverage = pgTable("account_activity_coverage", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  version: integer("version").notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+  endedAt: timestamp("ended_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, (table) => [
+  uniqueIndex("account_activity_coverage_open_idx").on(table.version).where(sql`${table.endedAt} IS NULL`),
+  index("account_activity_coverage_version_time_idx").on(table.version, table.startedAt),
+  check("account_activity_coverage_version_check", sql`${table.version} > 0`),
+  check("account_activity_coverage_interval_check", sql`${table.endedAt} IS NULL OR ${table.endedAt} > ${table.startedAt}`),
+]);

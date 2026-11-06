@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Assets route — the browser's half of an upload (#173).
@@ -14,6 +14,7 @@
  * part has landed — the Worker asks for a secret the browser does not hold.
  */
 
+import { accountActivityRepo } from "@breatic/core";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
 import { validate } from "@server/middleware/validate.js";
@@ -577,6 +578,8 @@ assets.post(
     const body = c.req.valid("json");
 
     await projectService.assertAccess(body.project_id, user.id, "editor");
+
+    await accountActivityRepo.recordActivity({ userId: user.id, projectId: body.project_id, kind: "project_action" });
 
     // Report-only (no verification): deleting a node is a client-side
     // Yjs operation the collab write-authz already gates; this records

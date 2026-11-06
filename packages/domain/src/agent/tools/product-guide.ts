@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Product guide tool — how the reader operates our product (#260).
@@ -214,7 +214,10 @@ export function renderProductGuide(): string {
       `${quoted(t("server.project.invite_mail_failed"))} Other refusals include ` +
       `${quoted(t("server.project.already_member"))} or ` +
       `${quoted(t("server.project.already_invited"))} (a full project says how many collaborators its plan ` +
-      "allows: the plan of the studio's admin, so only their upgrade raises it). Last is a " +
+      "allows: the plan of the studio's admin, so only their upgrade raises it). Next is a question-mark icon " +
+      `with two entries: ${quoted(t("chrome.help.manual"))}, which opens the user manual on the official website ` +
+      `in a new tab, and ${quoted(t("chrome.help.contact"))}, which shows the support email address and starts an ` +
+      "email to it; the Studio page has the same icon beside its bell. Last is a " +
       `bell, with a red dot while anything in it is unread, which opens ${quoted(t("notifications.title"))}. ` +
       "An item someone is waiting on, such as an invitation or a transfer, shows how long is left and " +
       `${quoted(t("notifications.openDecision"))}, which leaves this page for a page where it is answered; it ` +
@@ -405,6 +408,22 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.questionnaire.skipped"))} for one left alone. A short ` +
       `message says ${quoted(t("server.chat.answer_mismatch"))} when the answers do not fit the questions, and ` +
       `${quoted(t("server.chat.ask_not_found"))} when the card is no longer in the conversation.`,
+    "A reply can also end with a card asking to look at Spaces other than the open one, headed " +
+      `${quoted(t("chat.spaceRequest.title"))}, with why the assistant asks and one line per Space: its icon and ` +
+      "name, and the part asked for when it asks for only part: a range of a Document's blocks, such as " +
+      `${quoted(t("chat.spaceRequest.partBlocks", { from: 3, to: 7 }))} or one running from a block to the end, ` +
+      `or some of a Canvas's nodes, such as ${quoted(t("chat.spaceRequest.partNodes", { count: 3 }))}; a Space ` +
+      "no longer in the Project reads " +
+      `${quoted(t("chat.spaceRequest.state.gone"))}. Two buttons sit under it: ` +
+      `${quoted(t("chat.spaceRequest.decline"))} on the left and ${quoted(t("chat.spaceRequest.allow"))} on the ` +
+      "right. Allowing reads those Spaces, including ones not open in a tab, and the assistant goes on with what " +
+      "they hold; nothing is read until it is pressed, every time. While it reads and sends, neither button can be " +
+      `pressed. The card then reads ${quoted(t("chat.spaceRequest.shared"))} and lists the Spaces, marking each ` +
+      `one that could not be read: ${quoted(t("chat.spaceRequest.state.unreadable"))} (a Timeline or 3D Space), ` +
+      `${quoted(t("chat.spaceRequest.state.gone"))}, ${quoted(t("chat.spaceRequest.state.timedOut"))} or ` +
+      `${quoted(t("chat.spaceRequest.state.failed"))}. Declining reads ` +
+      `${quoted(t("chat.spaceRequest.declined"))}. Typing a message in the box instead also closes the card, ` +
+      `which then reads ${quoted(t("chat.questionnaire.replied"))}.`,
     `When the conversation has older messages, ${quoted(t("chat.loadEarlier"))} at the top shows them. After ` +
       "scrolling up, a round button with a downward arrow at the bottom goes back to the latest. If sending fails, " +
       `a short message at the top of the screen says so, such as ${quoted(t("chat.error.network"))}, or ` +
@@ -610,9 +629,11 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.annotation.edited"))}. A locked note shows no three dots. ` +
       "Deleting someone else's note from the canvas, unless you own the project, shows " +
       `${quoted(t("canvas.gate.notYours"))}`,
-    "Below a thin line the left menu has three more icons, " +
-      `${quoted(t("menu.item.collection"))}, ${quoted(t("menu.item.help"))} and ` +
-      `${quoted(t("menu.item.feedback"))}, which do nothing yet.`,
+    `Below a thin line the left menu has a keyboard icon, ${quoted(t("menu.item.shortcuts"))}, which opens a ` +
+      "list of the canvas's keyboard shortcuts and pointer gestures in groups: editing, grouping, selecting and " +
+      "moving, the view, drawing tools, and leaving a mode. Each entry names an action and its keys, two entries " +
+      "to a line, with the ⌘ and ⇧ symbols on a Mac and Ctrl+ and Shift+ elsewhere. A viewer can open it too and " +
+      "sees only the entries that work for them.",
     "",
     "## Moving around the canvas",
     "At the bottom right of a canvas is a bar, left to right: " +
@@ -663,17 +684,27 @@ export function renderProductGuide(): string {
       `${templateMenuLine("audio", "A sound node")} A template whose model this ` +
       `deployment lacks reads ${quoted(t("canvas.template.unavailable"))} and cannot be picked. Picking one sets ` +
       "the panel's mode, model and settings to the template's and replaces that mode's prompt with the " +
-      "template's; nothing asks first. The pictures it needs are @'d in the prompt: a picture already " +
+      "template's; nothing asks first. A template with a shot list switches a video node to its multi-shot mode " +
+      "and writes the shots in place of the prompt, each with its seconds and its words. The pictures it needs are " +
+      "@'d in the prompt: a picture already " +
       "connected to the node is used as it is; for one that is missing, an empty node is placed to the left, " +
-      "connected and @'d, and a note at the top of the prompt says what to put in it. A template may also place " +
+      "connected and @'d, and a note at the top of the prompt says what to put in it (with a shot list, at the " +
+      "top of the first shot). A template may also place " +
       "picture or video nodes to the left that generate first, connected and @'d; a note at the top of the prompt " +
-      "says to generate them first. When a template feeds what it needs into those nodes too, a picture already " +
-      "connected to the node is connected to them as well. A template that brings " +
+      "says to generate them first. A picture such a template places for the first or end frame is connected " +
+      "but not @'d, and its note says to pick it into that frame once it has generated. When a template places " +
+      "nodes that take what it needs, a picture already " +
+      "connected to the node is connected to them as well, also when the node itself does not use it. A template that brings " +
       "files of its own places them as nodes to the left as well, connected and @'d, and one with steps to take " +
       "after it generates also places a text node listing them. Picking it " +
       "again on the same node reuses what it placed before. When the nodes or the panel, grown around the prompt, " +
       "reach under the left menu, the toolbar at the bottom right or the minimap, the view moves them into " +
-      "sight, zooming out only as far as that takes. Inside a group, the new nodes join the group. On a " +
+      "sight, zooming out only as far as that takes. The new nodes go beside the node even where other nodes " +
+      "already are, so they may cover them. Inside a group, the new nodes join the group; outside one, they join " +
+      "the unlocked group the template's nodes from an earlier pick are in, or else two or more " +
+      "new nodes are put in a new group named after the template, so they can be dragged aside together. When the " +
+      "group they join holds nodes from an earlier pick, they line up on those nodes, so a node put back returns to " +
+      "its place. On a " +
       `locked node nothing changes and it shows ${quoted(t("canvas.gate.locked"))} Inside a locked group that ` +
       `would need a new node, nothing changes either and it shows ${quoted(t("canvas.template.groupLocked"))} ` +
       `If placing fails, it shows ${quoted(t("canvas.template.applyFailed"))} When the prompt has places left to fill, the message ` +
@@ -733,7 +764,9 @@ export function renderProductGuide(): string {
       `prompt, the line ${quoted(t("canvas.generatePanel.promptNotUsed"))} stands in its place; on the sound ` +
       "panel the box stays, but nothing typed in it is sent. On the music modes the box is " +
       `labelled ${quoted(t("canvas.generatePanel.musicStyleLabel"))}, and some music models add a second box ` +
-      `labelled ${quoted(t("canvas.generatePanel.musicLyricsLabel"))} under it.`,
+      `labelled ${quoted(t("canvas.generatePanel.musicLyricsLabel"))} under it. Only one of the two is open at a ` +
+      "time: the other is a row with its name and the first line of its words, and clicking that row opens it " +
+      "and folds the open one. The style box is the open one when the panel opens.",
     "The bottom row, left to right: the mode, named in English on every screen (for example Text to Image); the " +
       "model's maker icon and name; a pill showing the current settings (for example 1k · 1:1 · Medium, or " +
       `${quoted(t("canvas.generatePanel.videoParams"))} or ${quoted(t("canvas.generatePanel.audioSettings"))} ` +
@@ -806,15 +839,20 @@ export function renderProductGuide(): string {
       "The picks show as their bracket beside the count at the bottom. " +
       `${quoted(t("canvas.generatePanel.cameraCommandsInsert"))} writes the picks into the prompt as one bracket, ` +
       "such as [Push in,Zoom out], at the caret last left in the prompt box, or at its end if none was; in " +
-      "Multi-Shot it goes into the shot box clicked into last, or the first shot. The bracket is ordinary text " +
+      "Multi-Shot it goes into the open shot. The bracket is ordinary text " +
       "that can be edited or deleted. Inserting again adds another bracket, and separate brackets run in the order " +
       "they appear in the prompt.",
     `- Multi-Shot, a mode in the video panel's mode picker: the prompt box gives way to one card per shot, and ` +
       "switching into it with no shots lays out two, splitting the video's length. A card, such as " +
       `${quoted(t("canvas.generatePanel.storyboard.shot", { n: 1 }))}, has a minus and a plus around its ` +
       `seconds, ${quoted(t("canvas.generatePanel.storyboard.removeShot"))}, and a box, ` +
-      `${quoted(t("canvas.generatePanel.storyboard.shotPlaceholder"))}, that takes @ mentions like the prompt; ` +
-      "clicking a chip in the strip puts it in the shot box clicked into last, or in the first shot. Under the " +
+      `${quoted(t("canvas.generatePanel.storyboard.shotPlaceholder"))}, that takes @ mentions like the prompt. ` +
+      "Only one shot is open at a time, the first when the panel opens: each other shot is one row showing its " +
+      "number, its seconds and the first line of its words, and its minus, plus and " +
+      `${quoted(t("canvas.generatePanel.storyboard.removeShot"))} still work there. Clicking a row opens that ` +
+      "shot and folds the open one; an added shot opens; removing the open shot opens the one after it, or the " +
+      "one before it when it was the last; and " +
+      "clicking a chip in the strip puts it in the open shot's box. Under the " +
       `cards, in the middle, is ${quoted(t("canvas.generatePanel.storyboard.addShot"))}. The shots' seconds keep ` +
       "adding up to the video's length: the plus takes a second from another shot and the minus gives one to " +
       "the shot after it, or to the one before it on the last shot, so the minus is greyed at one second or " +
@@ -914,8 +952,8 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.reference"))} again stops. To remove a connection, select it and press the ` +
       `scissors at its middle, right-click it and choose ${quoted(t("canvas.edge.delete"))}, or press the X on ` +
       "its chip in the panel. Removing a connection also removes every mention of that node from the prompt: " +
-      "at once from the box on screen, and from another mode's prompt or a shot not on screen the next time " +
-      "that box is shown.",
+      "at once from every box of the mode on screen, folded ones included, and from another mode's prompt, or " +
+      "from the shots while another mode is showing, the next time that box is shown.",
     "",
     "## Mini-tools",
     `Right-click a picture, video or sound node and point at ${quoted(t("canvas.nodeMenu.tools"))}: a list opens to ` +
@@ -927,7 +965,8 @@ export function renderProductGuide(): string {
       "piece of media from the canvas when the tool needs one (picking works as in the generation panel, and a " +
       "required one must be filled before the arrow works; a small X on a filled box empties it), and for some " +
       "tools a text box. A crop shows a box with " +
-      "eight handles on the node and takes a ratio and a size in pixels in the panel; rotating turns and flips the " +
+      "eight handles on the node and takes a ratio and a size in pixels in the panel; the size is the box's, " +
+      "inside the picture, so a crop never makes the picture larger. Rotating turns and flips the " +
       "picture on the node as you press. Adjusting gives a slider for each setting, starting at zero, in four " +
       `groups headed ${quoted(t("canvas.miniTool.adjustGroup.light"))}, ${quoted(t("canvas.miniTool.adjustGroup.color"))}, ` +
       `${quoted(t("canvas.miniTool.adjustGroup.detail"))} and ${quoted(t("canvas.miniTool.adjustGroup.effects"))}, and ` +
@@ -1167,10 +1206,12 @@ export function renderProductGuide(): string {
     "A comment, a rewrite or an insert you propose for the document the reader has open appears in this chat as " +
       "a card: its title; a line naming the document, which for an insert says the content goes into it, " +
       "followed after a · by the nearest heading at or above the passage, or " +
-      `${quoted(t("chat.documentProposal.end"))} for an insert at the end; then the passage. A comment card ` +
+      `${quoted(t("chat.documentProposal.end"))} for an insert at the end; then the passage. Its row of buttons ` +
+      `starts with ${quoted(t("chat.documentProposal.locate"))}, followed by the landing buttons; a button that ` +
+      "does not fit moves whole onto a second line when a language's words do not fit side by side. A comment card " +
       "quotes the words the comment hangs on and shows the comment, with one " +
-      `button, ${quoted(t("chat.documentProposal.addComment"))}. A rewrite card shows the passage with the words ` +
-      "taken out struck through in red and the new words in green, and two buttons: " +
+      `landing button, ${quoted(t("chat.documentProposal.addComment"))}. A rewrite card shows the passage with the words ` +
+      "taken out struck through in red and the new words in green, and two landing buttons: " +
       `${quoted(t("chat.documentProposal.addComment"))} puts the rewritten words on the passage as a comment, and ` +
       `${quoted(t("chat.documentProposal.apply"))} replaces the passage with them; a passage with no words, such ` +
       "as an empty code block, an image, a video or an audio block, has only the second. When the passage holds something " +
@@ -1179,7 +1220,19 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.documentProposal.insertAfter"))}, naming a passage with no words by its kind, such as ` +
       `${quoted(t("spaces.document.media.image"))} or ${quoted(t("chat.documentProposal.headingBlock"))}; it ` +
       `shows the new content drawn from its Markdown, tables included, with ${quoted(t("chat.documentProposal.insert"))}.`,
-    "Pressing a button opens the document, or switches to its tab, and the change lands. A rewrite or an insert " +
+    `Pressing ${quoted(t("chat.documentProposal.locate"))} opens the document, or switches to its tab, and ` +
+      "scrolls to and outlines for a moment what the proposal points at, writing nothing: a comment's quoted " +
+      "words, with a wide table scrolled sideways to them; the passage a rewrite replaces; the passage an insert " +
+      "goes after, or the last passage for an insert at the end. It works on a document the reader can only view " +
+      "too. The card keeps its buttons, so the reader can locate again or press a landing button next; the " +
+      "landing buttons wait while it spins. A proposal that already landed, as one may after a reload, is shown " +
+      `where it landed instead, the way ${quoted(t("chat.documentProposal.view"))} shows it, and the card then ` +
+      "shows it landed. A passage that changed since the proposal is still shown, with the " +
+      `toast ${quoted(t("chat.documentProposal.changed"))} A deleted passage or document is told as below, and ` +
+      `when locating fails the toast says ${quoted(t("chat.documentProposal.failedLocate"))} Switching to another ` +
+      "Space, or closing the document's tab, while it still waits for the document ends the wait without a word; " +
+      `the same holds for ${quoted(t("chat.documentProposal.view"))}.`,
+    "Pressing a landing button opens the document, or switches to its tab, and the change lands. A rewrite or an insert " +
       "is scrolled to and outlined for a moment; a comment opens the comments panel on its card, its words marked, " +
       "as pressing its highlight does, with a wide table scrolled sideways to them. The pressed button spins " +
       "meanwhile. A rewrite or an insert is one step " +
@@ -1269,7 +1322,7 @@ export function renderProductGuide(): string {
       `a disabled ${quoted(t("spaces.threeD.chooseReference"))} button under ${quoted(t("spaces.threeD.reference"))}, ` +
       `and a disabled ${quoted(t("spaces.threeD.submit"))} button; ` +
       `${quoted(t("common.cancel"))} and its X close it. The dimmed speech-bubble entry shows ${quoted(t("spaces.threeD.annotationsLater"))} on hover. ` +
-      `The question-mark icon opens ${quoted(t("spaces.threeD.help"))}, which says ${quoted(t("spaces.threeD.helpBody"))}`,
+      `The keyboard icon at the bottom of the left rail opens ${quoted(t("spaces.threeD.controls"))}, which says ${quoted(t("spaces.threeD.helpBody"))}`,
     `The floating bar at the bottom right orders ${quoted(t("spaces.threeD.undo"))}, ${quoted(t("spaces.threeD.redo"))}, ` +
       `${quoted(t("spaces.threeD.properties"))}, ${quoted(t("spaces.threeD.objects"))}, ${quoted(t("spaces.threeD.tasks"))} and ` +
       `${quoted(t("spaces.threeD.minimap"))}. The three panel buttons keep their ordinary appearance while open. ` +
@@ -1319,8 +1372,9 @@ export function renderProductGuide(): string {
     `During loading the viewport says ${quoted(t("spaces.threeD.loading"))}. A scene load failure says ` +
       `${quoted(t("spaces.threeD.loadFailed"))} and offers ${quoted(t("spaces.threeD.retry"))}; ${quoted(t("spaces.threeD.reload"))} reloads the page when offered. ` +
       `${quoted(t("spaces.threeD.modelFailed"))} has its own retry button for model loading. Unreadable objects appear as rows naming their object id, ` +
-      "while valid objects remain usable. An unsupported document format stays preserved and read-only, with " +
-      `${quoted(t("spaces.threeD.unsupported"))} and a reload button.`,
+      "while valid objects remain usable. A scene saved by a newer version offers a reload button and says " +
+      `${quoted(t("spaces.threeD.unsupported"))} A scene saved in an older format stays unopened and unchanged, ` +
+      `with no reload button, and says ${quoted(t("spaces.threeD.unsupportedOld"))}`,
     "",
     "## Document spaces",
     "- Markdown at the start of a line: `# `, `## `, `### ` for headings; a number, a full stop and a space " +
@@ -1606,7 +1660,8 @@ export const productGuide: Tool<z.infer<typeof inputSchema>, string> = tool({
   description:
     "How the reader operates our product: the top bar, the space tabs and the spaces list, this chat panel, and " +
     "on a canvas making, filling and connecting nodes, node menus, tasks, notes, moving around, the generation " +
-    "panel and what is in it, source slots, focus crops, mentions, groups, placing a proposal card; 3D Space " +
+    "panel and what is in it, the mini-tools on a picture, video or sound node, source slots, focus crops, " +
+    "mentions, groups, placing a proposal card; 3D Space " +
     "objects, transforms, locks, personal view and collaboration; writing in a " +
     "document; and what the screen shows when something goes wrong. Read it before telling the reader how to do something here: you cannot see " +
     "their screen. Describe only what it says. Name a control with words on it by the quoted name it gives, " +

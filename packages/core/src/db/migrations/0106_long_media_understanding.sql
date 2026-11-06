@@ -1,5 +1,5 @@
 -- Copyright (c) 2026 Orime, Inc.
--- SPDX-License-Identifier: LicenseRef-BSAL-1.0
+-- SPDX-License-Identifier: Elastic-2.0
 
 CREATE TABLE media_understanding_operations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
