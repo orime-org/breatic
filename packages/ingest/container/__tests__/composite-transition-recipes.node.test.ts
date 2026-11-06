@@ -21,7 +21,9 @@
  *   A background with `crop` (inner#1306 D20-2) is a whole model frame: the container crops it to that rectangle, in the
  *   model output's own pixels, and scales the crop to the target geometry before mapping it by PTS (execution §8: the
  *   worker never decodes pixels). `crop` is not yet in the shared schema, whose strict background object refuses it.
- * - transition_window: each clip's entries cover the chunk's own frames [k0, k1) in that clip's presentation time.
+ * - transition_window: each clip's entries cover the chunk's own frames [k0, k1) in that clip's presentation time, and each
+ *   clip carries its own `colorMatrix` and `toneMap` (frames-split §4.3 colour/HDR row), so an HDR clip is tone mapped to
+ *   SDR BT.709 with its plan matrix before the blend, exactly as its `chunk_encode`/`segment` chunks are.
  *
  * The `transition_window` cases need the headless-gl renderer process, which exists only in the `MiniToolContainerGl` image
  * (frames-split §5.4 派发 and 拼接 rows; the image is built on the `MiniToolContainerStd4` image). They run only when
@@ -29,7 +31,8 @@
  *   IMAGE=<gl image> BUILD=0 packages/ingest/scripts/test-container-in-image.sh container/__tests__/composite-transition-recipes.node.test.ts
  * once the script passes `MINI_TOOL_CONTAINER_GL=1` into the container (it does not yet: it builds only
  * `packages/ingest/Dockerfile` and forwards no environment). Elsewhere they are skipped. The transition stitch runs in the standard image and is never skipped: its chunks there are `chunk_encode`
- * chunks, because the stitch only stream-copies chunk video.
+ * chunks, because the stitch only stream-copies chunk video. TW07 runs everywhere: it stands a recorder in for the renderer
+ * process (the one `node` command the window job runs), so it checks the frames the job decodes for the blend, not the blend.
  */
 import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -38,6 +41,25 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runPlanJob, type PlanRunBody } from '@ingest/container/plan-run.js';
+import type { PlanCommandOptions } from '@ingest/container/plan-command.js';
+
+// The renderer stand-in (TW07): when on, the GL renderer command records both decoded RGBA inputs and writes the first as
+// the output, so the window job completes outside the GL image; every other command runs for real.
+const renderer = vi.hoisted(() => ({ fake: false, inputs: [] as Buffer[] }));
+vi.mock('@ingest/container/plan-command.js', async (original) => {
+  const actual = await original<{ runPlanCommand: (program: string, args: readonly string[], options: PlanCommandOptions) => Promise<Buffer> }>();
+  const { copyFile, readFile: read } = await import('node:fs/promises');
+  return {
+    ...actual,
+    runPlanCommand: async (program: string, args: readonly string[], options: PlanCommandOptions): Promise<Buffer> => {
+      if (!renderer.fake || program !== 'node' || args[0] !== '/app/gl-renderer/render.mjs') return actual.runPlanCommand(program, args, options);
+      const request = JSON.parse(await read(args[1]!, 'utf8')) as { from: string; to: string; output: string };
+      renderer.inputs = [await read(request.from), await read(request.to)];
+      await copyFile(request.from, request.output);
+      return Buffer.alloc(0);
+    },
+  };
+});
 
 const run = promisify(execFile);
 type Exact = { numerator: string; denominator: string };
@@ -65,6 +87,9 @@ function r(numerator: number, denominator = 1): Exact {
 
 const LIMITS = { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 };
 const TARGET = { width: 64, height: 36, displayRect: null, colorMatrix: 'bt709', toneMap: 'none', alpha: 'none', crf: 18, preset: 'medium' };
+// Each window clip's source conversion (frames-split §4.3): an SDR BT.709 clip as it is, a PQ BT.2020 clip tone mapped.
+const SDR = { colorMatrix: 'bt709', toneMap: 'none' };
+const HDR = { colorMatrix: 'bt2020nc', toneMap: 'sdr-bt709' };
 const PROFILE = { width: 64, height: 36, fps: r(25), timeBase: r(1, 25), pixFmt: 'yuv420p', color: { matrix: 'bt709', range: 'tv', primaries: 'bt709', transfer: 'bt709' }, codec: 'h264', encode: { crf: 18, preset: 'medium' }, alpha: false };
 const SOURCE = '10000000-0000-4000-8000-000000000001';
 const RESULT = '10000000-0000-4000-8000-0000000000e0';
@@ -113,11 +138,12 @@ function span(decodeStart: Exact, clipStart: Exact, displayStart: Exact, display
  * @param inputId - The clip.
  * @param start - Its first presented frame.
  * @param end - The frame after its last.
+ * @param conversion - The clip's source conversion.
  * @returns The recipe, carrying the transition output profile.
  */
-function clipChunk(inputId: string, start: number, end: number): Recipe {
+function clipChunk(inputId: string, start: number, end: number, conversion = SDR): Recipe {
   const from = r(start, 25);
-  return { kind: 'chunk_encode', inputId, window: { start, end }, timescale: 25, entries: [span(r(Math.floor(start / 10) * 10, 25), from, from, r(end, 25))], target: TARGET, profile: PROFILE };
+  return { kind: 'chunk_encode', inputId, window: { start, end }, timescale: 25, entries: [span(r(Math.floor(start / 10) * 10, 25), from, from, r(end, 25))], target: { ...TARGET, ...conversion }, profile: PROFILE };
 }
 
 /**
@@ -125,12 +151,13 @@ function clipChunk(inputId: string, start: number, end: number): Recipe {
  * @param transition - The transition type.
  * @param start - The chunk's first output frame.
  * @param end - The frame after its last.
+ * @param conversions - Clip A's and clip B's source conversions.
  * @returns The recipe.
  */
-function windowChunk(transition: 'fade' | 'wipeLeft' | 'wipeRight', start: number, end: number): Recipe {
+function windowChunk(transition: 'fade' | 'wipeLeft' | 'wipeRight', start: number, end: number, conversions = [SDR, SDR]): Recipe {
   const offset = start - WINDOW.startFrame;
-  const from = { inputId: CLIP_A, entries: [span(r(30, 25), r(30 + offset, 25), r(30 + offset, 25), r(30 + offset + end - start, 25))] };
-  const to = { inputId: CLIP_B, entries: [span(r(0), r(offset, 25), r(offset, 25), r(offset + end - start, 25))] };
+  const from = { inputId: CLIP_A, entries: [span(r(30, 25), r(30 + offset, 25), r(30 + offset, 25), r(30 + offset + end - start, 25))], ...conversions[0] };
+  const to = { inputId: CLIP_B, entries: [span(r(0), r(offset, 25), r(offset, 25), r(offset + end - start, 25))], ...conversions[1] };
   return { kind: 'transition_window', clips: [from, to], frames: { start, end }, window: WINDOW, transition, profile: PROFILE };
 }
 
@@ -245,6 +272,49 @@ async function columnMeans(path: string): Promise<number[][]> {
 }
 
 /**
+ * Every stored frame of a file decoded to RGBA through a filter chain (passthrough: exactly the stored frames).
+ * @param path - The file.
+ * @param filters - The chain that converts its frames to `rgba`.
+ * @returns The raw RGBA frames.
+ */
+async function rgba(path: string, filters: string): Promise<Buffer> {
+  const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-i', path, '-fps_mode', 'passthrough', '-vf', filters, '-f', 'rawvideo', '-pix_fmt', 'rgba', '-'], { encoding: 'buffer', maxBuffer: 1 << 28 });
+  return stdout;
+}
+
+/**
+ * The mean red, green and blue of every 64x36 RGBA frame.
+ * @param bytes - The raw RGBA frames.
+ * @returns Per frame, [R, G, B].
+ */
+function channelMeans(bytes: Buffer): number[][] {
+  const size = 64 * 36 * 4;
+  return Array.from({ length: bytes.length / size }, (_unused, frame) => [0, 1, 2].map((channel) => {
+    let sum = 0;
+    for (let at = frame * size + channel; at < (frame + 1) * size; at += 4) sum += bytes[at]!;
+    return sum / (64 * 36);
+  }));
+}
+
+/**
+ * The mean stored Y, U and V of every 64x36 frame, read as 8-bit 4:2:0 after an optional filter chain.
+ * @param path - The file.
+ * @param filters - A chain run before the read, none when absent.
+ * @returns Per frame, [Y, U, V].
+ */
+async function planeMeans(path: string, filters?: string): Promise<number[][]> {
+  const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-i', path, '-fps_mode', 'passthrough', ...(filters === undefined ? [] : ['-vf', filters]),
+    '-f', 'rawvideo', '-pix_fmt', 'yuv420p', '-'], { encoding: 'buffer', maxBuffer: 1 << 28 });
+  const bytes = stdout as unknown as Buffer;
+  const [luma, chroma] = [64 * 36, 32 * 18];
+  const mean = (from: number, length: number): number => bytes.subarray(from, from + length).reduce((sum, value) => sum + value, 0) / length;
+  return Array.from({ length: bytes.length / (luma + 2 * chroma) }, (_unused, frame) => {
+    const at = frame * (luma + 2 * chroma);
+    return [mean(at, luma), mean(at + luma, chroma), mean(at + luma + chroma, chroma)];
+  });
+}
+
+/**
  * The first audio stream decoded to mono 32-bit float samples at 48 kHz.
  * @param path - The file.
  * @returns Its samples.
@@ -332,10 +402,16 @@ beforeAll(async () => {
     await make(name, ['-f', 'lavfi', '-i', `color=c=${grey}:s=64x36:r=25:d=1.6`, '-f', 'lavfi', '-i', `sine=f=${tone}:r=48000:d=1.6`,
       ...h264, '-g', '10', '-video_track_timescale', '25', '-c:a', 'alac', '-shortest']);
   }
+  // An HDR clip A: 1.6 s at 25 fps, a flat colour stored as 10-bit PQ BT.2020 (the PQ fixture of frame-recipe and
+  // presentation-recipes, here at the transition clips' size and keyframe interval).
+  await make('clip-hdr.mp4', ['-f', 'lavfi', '-i', 'color=c=0xB08060:s=64x36:r=25:d=1.6', '-c:v', 'libx264', '-bf', '0', '-pix_fmt', 'yuv420p10le',
+    '-x264-params', 'colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc', '-g', '10', '-video_track_timescale', '25']);
 });
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 
 beforeEach(() => {
+  renderer.fake = false;
+  renderer.inputs = [];
   served = new Map();
   written.clear();
   vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => { logged.push(args); });
@@ -551,6 +627,46 @@ describe('transition_window (§7.17 transition_window and 转场输出档 rows; 
     const [a, b] = await greys();
     const means = await lumaMeans(file!);
     for (let i = 0; i < 10; i += 1) expect(Math.abs(means[30 + i]! - (a + (b - a) * i / 10)), `frame ${30 + i}`).toBeLessThan(3);
+  });
+
+  // TW07 reads the window chunk the job encodes from the frames it decoded for the blend (the renderer stand-in passes clip
+  // A's frames through), against clip A's own chunk_encode chunk over the same frames: the segment row's picture chain,
+  // which tone maps, on the same profile. Equal there means no colour jump where a chunk_encode chunk meets the window.
+  // Tolerance 2 stored levels per plane: measured with FFmpeg 8 on three PQ colours (0xB08060, 0x9070A0, 0x806040), a
+  // window decode that tone maps with the plan matrix and keeps the range through RGBA is within 1 of the chunk; the
+  // same chain read to RGBA without minding the limited range it ends on is up to 9 off, and no tone mapping 18 to 61.
+  const TOLERANCE = 2;
+
+  it(`TW07 an HDR clip is tone mapped with its plan matrix before the blend; the SDR clip beside it is decoded as it is (§4.3; renderer stand-in)`, async () => {
+    renderer.fake = true;
+    const [hdr, sdr] = [join(dir, 'clip-hdr.mp4'), join(dir, 'clip-b.mp4')];
+    const [window] = await produce({ [CLIP_A]: hdr, [CLIP_B]: sdr }, [windowChunk('fade', 30, 40, [HDR, SDR])]);
+    const [, to] = renderer.inputs;
+    renderer.fake = false;
+    expect(to, 'the window job ran the renderer').toBeDefined();
+    const [reference] = await produce({ [CLIP_A]: hdr }, [clipChunk(CLIP_A, 30, 40, HDR)]);
+    const expected = await planeMeans(reference!);
+    const plain = (await planeMeans(hdr, 'scale=in_color_matrix=bt2020:out_color_matrix=bt709:out_range=tv'))[0]!;
+    expect(expected).toHaveLength(10);
+    expect(Math.max(...expected[0]!.map((mean, plane) => Math.abs(mean - plain[plane]!))), 'tone mapping moves this colour').toBeGreaterThan(15);
+    const got = await planeMeans(window!);
+    expect(got).toHaveLength(10);
+    got.forEach((means, i) => means.forEach((mean, plane) => expect(Math.abs(mean - expected[i]![plane]!),
+      `frame ${30 + i} ${'YUV'[plane]}: window ${mean.toFixed(2)}, tone-mapped chunk ${expected[i]![plane]!.toFixed(2)}, plain matrix conversion ${plain[plane]!.toFixed(2)}`).toBeLessThan(TOLERANCE)));
+    // Clip B is SDR: its blend input is its own decode, not clip A's conversion.
+    const grey = channelMeans(await rgba(sdr, 'scale=in_color_matrix=bt709:in_range=tv,format=rgba'))[0]!;
+    channelMeans(to!).forEach((means, i) => means.forEach((mean, channel) => expect(Math.abs(mean - grey[channel]!), `clip B frame ${i} ${'RGB'[channel]}`).toBeLessThan(TOLERANCE)));
+  });
+
+  it.skipIf(!GL)(`TW08 fade from an HDR clip: frame k mixes the tone-mapped clip A into clip B, so progress 0 matches A's tone-mapped chunk [${GL_SKIP}]`, async () => {
+    const hdr = join(dir, 'clip-hdr.mp4');
+    const [file] = await produce({ [CLIP_A]: hdr, [CLIP_B]: join(dir, 'clip-b.mp4') }, [windowChunk('fade', 30, 40, [HDR, SDR])]);
+    const [reference] = await produce({ [CLIP_A]: hdr }, [clipChunk(CLIP_A, 30, 40, HDR)]);
+    const a = (await lumaMeans(reference!))[0]!;
+    const b = (await lumaMeans(join(dir, 'clip-b.mp4')))[0]!;
+    const means = await lumaMeans(file!);
+    expect(means).toHaveLength(10);
+    means.forEach((mean, i) => expect(Math.abs(mean - (a + (b - a) * i / 10)), `frame ${30 + i}`).toBeLessThan(3));
   });
 
   it.skipIf(!GL)(`TW06 progress is continuous across two window chunks: the second starts at progress 0.5, not 0 [${GL_SKIP}]`, async () => {
