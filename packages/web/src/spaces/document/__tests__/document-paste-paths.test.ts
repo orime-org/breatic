@@ -33,6 +33,34 @@ afterEach(unmountAll);
 
 const PIC = `${OURS}p.png`;
 const STORED = { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['l1', 'l2'] }] } };
+/** A stored table carrying its own quote and colour, its first cell an alignment and a colour. */
+const STORED_STYLED = {
+  type: 'table',
+  props: { quoted: true, textColor: 'red' },
+  content: {
+    type: 'tableContent',
+    rows: [{ cells: [{ type: 'tableCell', props: { textColor: 'green', textAlignment: 'center' }, content: [{ type: 'text', text: 'l1', styles: {} }] }, 'l2'] }],
+  },
+};
+/** What `styleOf` reads from a body holding `STORED_STYLED` as a table of blocks. */
+const STYLE = { table: { quoted: true, textColor: 'red' }, l1: { textColor: 'green', textAlignment: 'center' } };
+
+/**
+ * The quote and colour of the body's table of blocks, and the alignment and colour of the line `l1` in it.
+ * @param editor - The editor.
+ * @returns They.
+ */
+function styleOf(editor: Editor): typeof STYLE {
+  let table: PMNode | null = null;
+  let line: PMNode | null = null;
+  editor.prosemirrorView.state.doc.descendants((node: PMNode) => {
+    if (node.type.name === 'docTable') table ??= node;
+    if (node.type.name === 'paragraph' && node.textContent === 'l1') line ??= node;
+    return true;
+  });
+  const attrs = (node: PMNode | null, names: readonly string[]): Record<string, unknown> => Object.fromEntries(names.map((name) => [name, node?.attrs[name]]));
+  return { table: attrs(table, ['quoted', 'textColor']), l1: attrs(line, ['textColor', 'textAlignment']) } as typeof STYLE;
+}
 
 /**
  * Opens a body and lets its first mutations finish.
@@ -459,6 +487,12 @@ describe('copies of every shape the body makes paste in', () => {
     expect(() => editor.prosemirrorView.state.doc.check()).not.toThrow();
     expect(editor.prosemirrorView.state.doc.textContent).toContain('l1');
   });
+
+  it('a copy of a stored table keeps its quote and colour and each cell\'s alignment and colour, as its conversion does', async () => {
+    const source = await openReady([{ type: 'paragraph', content: 'xone' }, STORED_STYLED, { type: 'paragraph', content: 'twox' }]);
+    const editor = await pasteMid(copySelection(source, TextSelection.create(source.prosemirrorView.state.doc, positionOf(source, 'xone', 1), positionOf(source, 'twox', 3))));
+    expect(styleOf(editor)).toEqual(STYLE);
+  });
 });
 
 describe('a stored table dragged inside the body', () => {
@@ -564,6 +598,22 @@ describe('a table at an end of a cut or a move takes it whole, stored or not', (
     act(editor);
     await settled();
     expect(outline(editor)[0]).toBe('paragraph:x[paragraph:kid]');
+  });
+
+  it.each(HOW)('%s from a new table into a quoted stored one leaves the stored table\'s line, quoted', async (_how, act) => {
+    const editor = await openReady([{ type: 'paragraph', content: 'lead' }, NEW, { type: 'paragraph', content: 'mid' }, { ...STORED, props: { quoted: true } }, { type: 'paragraph', content: 'more' }]);
+    select(editor, positionOf(editor, 'n1', 1), positionOf(editor, 'l1', 1));
+    act(editor);
+    await settled();
+    const line = editor.prosemirrorView.state.doc.firstChild!.child(1).firstChild!;
+    expect([line.textContent, line.attrs['quoted']]).toEqual(['', true]);
+  });
+
+  it('a move of a stored table keeps its quote and colour and each cell\'s alignment and colour, as its conversion does', async () => {
+    const editor = await openReady([{ type: 'paragraph', content: 'xone' }, STORED_STYLED, { type: 'paragraph', content: 'twox' }, { type: 'paragraph', content: 'more' }]);
+    dragWithin(editor, positionOf(editor, 'xone', 1), positionOf(editor, 'twox', 2), positionOf(editor, 'more', 4));
+    await settled();
+    expect(styleOf(editor)).toEqual(STYLE);
   });
 
   it('a cut across two cells of a stored table leaves one empty line in its place', async () => {

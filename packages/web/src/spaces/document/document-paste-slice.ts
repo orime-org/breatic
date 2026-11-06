@@ -79,14 +79,21 @@ function wholeBlocks(schema: Schema, html: string): Slice {
   return new Slice(SchemaParser.fromSchema(schema).parse(body, { topNode: schema.nodes['blockGroup']!.create() }).content, 0, 0);
 }
 
+/** A stored table's own attributes, which the table of blocks keeps (`legacy-table-conversion.ts` `TABLE_ATTRIBUTES`). */
+const STORED_TABLE_ATTRIBUTES = ['data-quoted', 'data-text-color'];
+
+/** A stored cell's attributes, which the lines in it take (`legacy-table-conversion.ts` `LINE_ATTRIBUTES`). */
+const STORED_CELL_LINE_ATTRIBUTES = ['data-text-alignment', 'data-text-color'];
+
 /**
  * Clipboard HTML with each stored (legacy) table taken out of its block as a
  * table of its own, which reads back as a table whose cells hold blocks, as a
- * copy of one does; the block around it would read as an empty line. The
- * lines nested under it follow it at its level, as the conversion of a stored
- * document moves them (`legacy-table-conversion.ts`). Temporary, with #1362's
- * conversion of stored tables: it goes once no stored document holds a
- * `table` node.
+ * copy of one does; the block around it would read as an empty line. As the
+ * conversion of a stored document does (`legacy-table-conversion.ts`), the
+ * table keeps its quote and colour, each cell's alignment and colour go onto
+ * its lines, and the lines nested under the table follow it at its level.
+ * Temporary, with #1362's conversion of stored tables: it goes once no stored
+ * document holds a `table` node.
  * @param html - The clipboard's HTML.
  * @returns The HTML, parsed in a document with no browsing context.
  */
@@ -97,6 +104,8 @@ function storedTablesAsTables(html: string): string {
     const outer = content.closest('.bn-block-outer');
     const table = content.querySelector('table');
     if (outer === null || table === null) continue;
+    copyAttributes(content, [table], STORED_TABLE_ATTRIBUTES);
+    for (const cell of table.querySelectorAll('td, th')) copyAttributes(cell, [...cell.querySelectorAll(':scope > p')], STORED_CELL_LINE_ATTRIBUTES);
     // An end in the lines lifted out keeps the depth recorded through the
     // table's block: ProseMirror's read closes an end only to a depth less
     // than the content's own (`closeSlice`), which is the end's.
@@ -106,6 +115,19 @@ function storedTablesAsTables(html: string): string {
     outer.replaceWith(table, ...(nested === null ? [] : [...nested.children]));
   }
   return body.innerHTML;
+}
+
+/**
+ * Copies the attributes an element has onto other elements.
+ * @param from - The element.
+ * @param to - The elements.
+ * @param names - The attributes' names.
+ */
+function copyAttributes(from: Element, to: readonly Element[], names: readonly string[]): void {
+  for (const name of names) {
+    const value = from.getAttribute(name);
+    if (value !== null) for (const element of to) element.setAttribute(name, value);
+  }
 }
 
 /**
