@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import { useVideoFrameThumbnails } from '@web/spaces/canvas/mini-tool/video/use-video-frame-thumbnails';
 import type { VideoPresentationSource } from '@web/spaces/canvas/video-presentation/types';
 import { Skeleton } from '@web/components/ui/skeleton';
@@ -182,7 +181,7 @@ export function VideoToolControls(props: VideoToolControlsProps): React.JSX.Elem
     case 'video.extract-frames': {
       const draft = props.draft as VideoToolDraftById['video.extract-frames'];
       const planned = previewFrames;
-      return <><ParamOptionGroup label={t('canvas.miniTool.videoUI.frameMode')} value={draft.params.mode} options={[{ value: 'first', label: t('canvas.miniTool.videoUI.first') }, { value: 'last', label: t('canvas.miniTool.videoUI.last') }, { value: 'current', label: t('canvas.miniTool.videoUI.current') }, { value: 'interval', label: t('canvas.miniTool.videoUI.interval') }].map((option) => ({ ...option, disabled: props.disabled || option.value === 'current' && props.presentedTime === null }))} testIdPrefix='video-frame-mode' onSelect={(mode) => { if (mode === 'current' && props.presentedTime === null) return; props.onChange({ ...draft, params: { ...draft.params, mode: mode as typeof draft.params.mode, ...(mode === 'current' && props.presentedTime !== null ? { currentTime: props.presentedTime } : {}) } }); }} />{draft.params.mode === 'interval' ? <label className='flex items-center gap-2 text-xs'>{t('canvas.miniTool.videoUI.interval')}<VideoNumericInput value={draft.params.interval} label={t('canvas.miniTool.videoUI.interval')} testId='video-frame-interval' min={Number.MIN_VALUE} disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(interval) => props.onChange({ ...draft, params: { ...draft.params, interval } })} /><span>s</span></label> : null}<p className='text-center text-xs tabular-nums text-muted-foreground'>{props.frameTable === null ? t('canvas.miniTool.videoUI.loadingFrames') : draft.params.mode === 'current' && props.presentedTime === null ? t('canvas.miniTool.videoUI.currentFrameUnavailable') : t('canvas.miniTool.videoUI.frameCount', { count: planned.length })}</p><VideoFramePreviewCards source={props.previewSource ?? null} frames={planned} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} onSeek={props.onSeek} /></>;
+      return <><ParamOptionGroup label={t('canvas.miniTool.videoUI.frameMode')} value={draft.params.mode} options={[{ value: 'first', label: t('canvas.miniTool.videoUI.first') }, { value: 'last', label: t('canvas.miniTool.videoUI.last') }, { value: 'current', label: t('canvas.miniTool.videoUI.current') }].map((option) => ({ ...option, disabled: props.disabled || option.value === 'current' && props.presentedTime === null }))} testIdPrefix='video-frame-mode' onSelect={(mode) => { if (mode === 'current' && props.presentedTime === null) return; props.onChange({ ...draft, params: { ...draft.params, mode: mode as typeof draft.params.mode, ...(mode === 'current' && props.presentedTime !== null ? { currentTime: props.presentedTime } : {}) } }); }} /><p className='text-center text-xs tabular-nums text-muted-foreground'>{props.frameTable === null ? t('canvas.miniTool.videoUI.loadingFrames') : draft.params.mode === 'current' && props.presentedTime === null ? t('canvas.miniTool.videoUI.currentFrameUnavailable') : t('canvas.miniTool.videoUI.frameCount', { count: planned.length })}</p><VideoFramePreview source={props.previewSource ?? null} frames={planned} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} onSeek={props.onSeek} /></>;
     }
     case 'video.transitions': {
       const draft = props.draft as VideoToolDraftById['video.transitions'];
@@ -246,8 +245,8 @@ function VideoCutStrip(props: VideoToolControlsProps): React.JSX.Element {
 interface FrameCardsProps { source: VideoPresentationSource | null; frames: readonly { frameIndex: number; pts: number; displayEnd: number }[]; aspect: number; onSeek?: (time: number) => void }
 
 /**
- * Decodes only one visible two-card row while retaining real source frame identities.
- * @param props - The selected source frames and canonical source.
+ * Decodes the selected frame into one preview filling the row (canvas design §4 frames row).
+ * @param props - The selected source frame and canonical source.
  * @returns Real images, their exact source timestamps, and visible read failures.
  * @throws {never} Decode failures remain visible with a retry action.
  */
@@ -257,30 +256,16 @@ function VideoFrameCardRow(props: FrameCardsProps): React.JSX.Element {
   const t = useTranslation();
   return <div className='grid gap-2'><div className='flex justify-center gap-2'>{props.frames.map((frame) => {
     const image = decoded.frames.find((item) => item.frameIndex === frame.frameIndex);
-    return <Button key={frame.frameIndex} variant={null} size={null} className='grid w-[calc(50%_-_var(--spacing))] min-w-0 overflow-hidden rounded-chrome border border-border text-left' onClick={() => props.onSeek?.(frame.pts)}><span className='relative block w-full bg-muted' style={{ aspectRatio: props.aspect }}>{image === undefined ? <Skeleton className='absolute inset-0 size-full' /> : <img src={image.url} alt='' data-frame-time={frame.pts} className='absolute inset-0 size-full object-contain object-center' />}</span><span className='px-2 py-1 text-xs tabular-nums'>{frame.pts.toFixed(3)} s</span></Button>;
+    return <Button key={frame.frameIndex} variant={null} size={null} className='grid w-full min-w-0 overflow-hidden rounded-chrome border border-border text-left' onClick={() => props.onSeek?.(frame.pts)}><span className='relative block w-full bg-muted' style={{ aspectRatio: props.aspect }}>{image === undefined ? <Skeleton className='absolute inset-0 size-full' /> : <img src={image.url} alt='' data-frame-time={frame.pts} className='absolute inset-0 size-full object-contain object-center' />}</span><span className='px-2 py-1 text-xs tabular-nums'>{frame.pts.toFixed(3)} s</span></Button>;
   })}</div>{decoded.status === 'failed' ? <div className='flex items-center justify-center gap-2 text-xs text-status-error-foreground'><span>{t('canvas.miniTool.videoUI.mediaError')}</span><Button variant='outline' size='compact' onClick={() => setRetry((value) => value + 1)}>{t('canvas.miniTool.videoUI.retryPreview')}</Button></div> : null}</div>;
 }
 
 /**
- * Virtualizes preview rows without capping the complete selected output plan.
- * @param props - The complete selected frames and their source geometry.
- * @returns A centered preview rail that decodes only visible rows.
+ * The one preview of the selected frame, below the mode row.
+ * @param props - The selected frame and its source geometry.
+ * @returns The preview root.
  * @throws {never} Never.
  */
-function VideoFramePreviewCards(props: FrameCardsProps): React.JSX.Element {
-  const viewport = React.useRef<HTMLDivElement>(null);
-  const [width, setWidth] = React.useState(0);
-  const virtualized = props.frames.length > 2;
-  React.useLayoutEffect(() => {
-    const element = viewport.current;
-    if (element === null) return undefined;
-    const observer = new ResizeObserver(() => setWidth(element.clientWidth));
-    setWidth(element.clientWidth); observer.observe(element);
-    return () => observer.disconnect();
-  }, [virtualized]);
-  const rowHeight = width > 0 ? (width - 16) / 2 / props.aspect + 32 : 140;
-  const virtual = useVirtualizer({ count: Math.ceil(props.frames.length / 2), getScrollElement: () => viewport.current, estimateSize: () => rowHeight });
-  React.useLayoutEffect(() => virtual.measure(), [rowHeight, virtual]);
-  if (props.frames.length <= 2) return <div data-testid='video-frame-previews'><VideoFrameCardRow {...props} /></div>;
-  return <ScrollArea className='h-48' viewportRef={viewport} viewportClassName='px-1' data-testid='video-frame-previews'><div className='relative w-full' style={{ height: virtual.getTotalSize() }}>{virtual.getVirtualItems().map((row) => <div key={row.key} ref={virtual.measureElement} data-index={row.index} className='absolute left-0 top-0 w-full pb-2' style={{ transform: `translateY(${row.start}px)` }}><VideoFrameCardRow {...props} frames={props.frames.slice(row.index * 2, row.index * 2 + 2)} /></div>)}</div></ScrollArea>;
+function VideoFramePreview(props: FrameCardsProps): React.JSX.Element {
+  return <div data-testid='video-frame-previews'><VideoFrameCardRow {...props} /></div>;
 }

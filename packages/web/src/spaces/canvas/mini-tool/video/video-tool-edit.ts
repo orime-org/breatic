@@ -19,7 +19,7 @@ export function createVideoToolDraft<K extends VideoToolId>(toolId: K, source: V
     'video.erase': { ...common, params: { range: { start: 0, end: source.mediaInfo.duration }, anchor: { frameIndex: 0, pts: 0 }, region: { box: null, points: [] }, trackingPrompt: '', erasePrompt: '' } },
     'video.lip-sync': { ...common, params: { anchor: { frameIndex: 0, pts: 0 }, dialogues: [{ dialogueId: newId(), personId: null, analysisRunId: null, audioInputId: null, startTime: 0 }], syncMode: 'cut_off' } },
     'video.remove-bg': { ...common, params: {} },
-    'video.extract-frames': { ...common, params: { mode: 'current', currentTime: 0, interval: 1 } },
+    'video.extract-frames': { ...common, params: { mode: 'current', currentTime: 0 } },
     'video.transitions': { ...common, inputs: [{ inputId: sourceInputId, url: source.canonicalURL, mediaInfo: source.mediaInfo, sourceNodeId: source.nodeId }], params: { clips: [{ clipId: newId(), inputId: sourceInputId, in: 0, out: source.mediaInfo.duration, transition: { kind: 'cut', duration: 0 } }] } },
     'video.split': { ...common, params: { cuts: [] } },
   };
