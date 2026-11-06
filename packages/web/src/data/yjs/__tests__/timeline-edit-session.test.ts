@@ -1328,3 +1328,71 @@ describe('Timeline edit session around peer-written record shapes (inner#1708 Q1
     expect(readTimelineDocument(peer).clips[P]).toEqual(before);
   });
 });
+
+describe('Undo around clips a peer stored as plain objects (inner#1708 R1, R2)', () => {
+  const C1 = cid(240);
+  const C2 = cid(241);
+  const P = cid(242);
+
+  /**
+   * Store a clip as a plain object, as a peer may write it.
+   * @param doc - The replica writing it.
+   * @param item - The clip.
+   * @throws {never} Never.
+   */
+  function storePlain(doc: Y.Doc, item: ReturnType<typeof clip>): void {
+    doc.transact(() => doc.getMap('clips').set(item.id, item), 'peer');
+  }
+
+  it('keeps a peer trim of an untouched plain clip when mine undoes its own edit (R1)', () => {
+    const { mine, peer, session } = pair([clip(C1, 'v2', 0, 10)]);
+    session.setCanWrite(true);
+    storePlain(peer, clip(C2, 'v2', 50, 20));
+    expect(session.edit(move(C1, 20)).ok).toBe(true);
+    expect(applyTimelineEdit(peer, { operation: 'set_range', parameters: { clipId: C2, startFrame: 50, sourceInFrame: 0, durationFrames: 8 }, placement: OFF }, 'peer').ok).toBe(true);
+    session.undo();
+    for (const doc of [mine, peer]) {
+      expect(readTimelineDocument(doc).clips[C1]?.startFrame).toBe(0);
+      expect(readTimelineDocument(doc).clips[C2]?.durationFrames).toBe(8);
+    }
+  });
+
+  it('undoes only the user\'s fields of a converted plain clip, in one step (R2)', () => {
+    const { mine, peer, session } = pair([]);
+    session.setCanWrite(true);
+    storePlain(peer, clip(P, 'v2', 10, 20));
+    const plan = session.edit(move(P, 40));
+    expect(plan.ok).toBe(true);
+    const stored = mine.getMap('clips').get(P);
+    expect(stored).toBeInstanceOf(Y.Map);
+    if (plan.ok) expect((stored as Y.Map<unknown>).toJSON()).toEqual(plan.next.clips[P]);
+    const peerRecord = peer.getMap('clips').get(P);
+    expect(peerRecord).toBeInstanceOf(Y.Map);
+    peer.transact(() => (peerRecord as Y.Map<unknown>).set('durationFrames', 8), 'peer');
+    session.undo();
+    for (const doc of [mine, peer]) expect(readTimelineDocument(doc).clips[P]).toMatchObject({ startFrame: 10, durationFrames: 8 });
+    expect(session.getSnapshot().canUndo).toBe(false);
+  });
+
+  // Which concurrent conversion wins the clips key depends on the client ids, so both orders are pinned.
+  it.each([
+    ['mine', 1, 2], ['mine', 2, 1], ['peer', 1, 2], ['peer', 2, 1],
+  ] as const)('keeps a plain clip both replicas converted at once present after %s undoes (client ids %i and %i) (R2)', (undoer, mineId, peerId) => {
+    const mine = keep(seededDoc(timeline([])));
+    mine.clientID = mineId;
+    storePlain(mine, clip(P, 'v2', 10, 20));
+    const peer = keep(new Y.Doc());
+    peer.clientID = peerId;
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(mine));
+    const mineSession = sessionOf(mine);
+    const peerSession = sessionOf(peer, PEER_NAME);
+    mineSession.setCanWrite(true);
+    peerSession.setCanWrite(true);
+    expect(mineSession.edit(move(P, 40)).ok).toBe(true);
+    expect(peerSession.edit({ operation: 'set_range', parameters: { clipId: P, startFrame: 10, sourceInFrame: 0, durationFrames: 8 }, placement: OFF }).ok).toBe(true);
+    connect(mine, peer);
+    for (const doc of [mine, peer]) expect(readTimelineDocument(doc).clips[P]).toBeDefined();
+    (undoer === 'mine' ? mineSession : peerSession).undo();
+    for (const doc of [mine, peer]) expect(readTimelineDocument(doc).clips[P]).toBeDefined();
+  });
+});

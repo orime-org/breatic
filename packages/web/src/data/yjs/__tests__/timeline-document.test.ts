@@ -1284,3 +1284,17 @@ describe('A clip record stored as a plain object can be edited (inner#1708 Q2)',
     expect(readTimelineDocument(doc).clips[P]).toEqual(plan.next.clips[P]);
   });
 });
+
+describe('An edit leaves records it does not change in their stored shape (inner#1708 R1)', () => {
+  it('keeps a plain-object clip plain when another clip is moved', () => {
+    const C1 = cid(230);
+    const C2 = cid(231);
+    const doc = docFrom(timeline([fixtureClip(C1, V2, 0, 10)]));
+    doc.transact(() => doc.getMap('clips').set(C2, fixtureClip(C2, V2, 50, 10)), 'peer');
+    expect(readTimelineDocument(doc).clips[C2]).toEqual(fixtureClip(C2, V2, 50, 10));
+    accepted(applyTimelineEdit(doc, move(C1, 20, OFF), ORIGIN));
+    const stored = doc.getMap('clips').get(C2);
+    expect(stored).not.toBeInstanceOf(Y.Map);
+    expect(stored).toEqual(fixtureClip(C2, V2, 50, 10));
+  });
+});
