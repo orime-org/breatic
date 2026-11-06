@@ -8,7 +8,9 @@ import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFr
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodeMediaInset } from '@web/spaces/canvas/nodes/_shared/NodeMediaInset';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
-import { MediaPlayer } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
+import { MediaFullscreen } from '@web/spaces/canvas/nodes/_shared/MediaFullscreen';
+import { MediaPlayer, type MediaPlayerHandle } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
+import type { MediaPlayerState } from '@web/spaces/canvas/nodes/_shared/use-media-player';
 import { useZoomedPastPreview } from '@web/spaces/canvas/nodes/_shared/preview-zoom';
 import { useNodeResolution } from '@web/spaces/canvas/nodes/_shared/use-node-resolution';
 import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
@@ -48,6 +50,22 @@ export const VideoNode = React.memo(function VideoNode({
   const focusPicking = useCanvasSession(
     (s) => s.pickSession?.purpose === 'focus',
   );
+  const player = React.useRef<MediaPlayerHandle>(null);
+  // Where the node's player stood as full screen opened; null while closed.
+  // One player sounds at a time: the node's pauses, and takes back the full
+  // screen's position and sound when it closes.
+  const [fullscreenStart, setFullscreenStart] = React.useState<MediaPlayerState | null>(null);
+  /** Opens full screen where the node's player is, and pauses it. */
+  const openFullscreen = (): void => {
+    const handle = player.current;
+    if (!handle) return;
+    setFullscreenStart(handle.read());
+    handle.pause();
+  };
+  const size =
+    typeof data.width === 'number' && typeof data.height === 'number'
+      ? { width: data.width, height: data.height }
+      : undefined;
   return (
     <ContentNodeFrame
       modality='video'
@@ -64,20 +82,30 @@ export const VideoNode = React.memo(function VideoNode({
           <NodePlaceholder modality='video' onActivate={onActivate} />
         }
         content={
-          <NodeMediaInset>
+          <NodeMediaInset onFullscreen={openFullscreen}>
             <MediaPlayer
+              ref={player}
               modality='video'
               src={data.content ?? ''}
               poster={data.coverUrl}
               fullPoster={fullPoster}
-              size={
-                typeof data.width === 'number' && typeof data.height === 'number'
-                  ? { width: data.width, height: data.height }
-                  : undefined
-              }
+              size={size}
               duration={data.duration}
               onDimensions={setResolution}
               controlsHidden={focusPicking}
+            />
+            <MediaFullscreen
+              open={fullscreenStart !== null}
+              onOpenChange={(open) => {
+                if (!open) setFullscreenStart(null);
+              }}
+              onClosed={(state) => player.current?.apply(state)}
+              kind='video'
+              src={data.content ?? ''}
+              poster={data.coverUrl}
+              name={data.name ?? ''}
+              size={size}
+              start={fullscreenStart ?? undefined}
             />
           </NodeMediaInset>
         }

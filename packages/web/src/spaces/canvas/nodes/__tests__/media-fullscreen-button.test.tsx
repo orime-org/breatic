@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { act, render, screen } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
+
+import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
 import userEvent from '@testing-library/user-event';
 
 import { ImageNode } from '@web/spaces/canvas/nodes/ImageNode';
@@ -41,7 +43,7 @@ describe.each(NODES)('$name node full-screen button', ({ Node, content }) => {
   }
 
   it('sits in the media inset, hidden until the node is hovered', () => {
-    render(node({ content }));
+    renderWithTooltips(node({ content }));
     const button = screen.getByTestId('media-fullscreen-button');
     expect(screen.getByTestId('node-media-inset')).toContainElement(button);
     expect(button.className).toContain('opacity-0');
@@ -50,12 +52,12 @@ describe.each(NODES)('$name node full-screen button', ({ Node, content }) => {
   });
 
   it('is absent while the node holds nothing', () => {
-    render(node({}));
+    renderWithTooltips(node({}));
     expect(screen.queryByTestId('media-fullscreen-button')).toBeNull();
   });
 
   it('is absent during a pick session', () => {
-    render(node({ content }));
+    renderWithTooltips(node({ content }));
     act(() => {
       canvasSessions.of('').setState({ pickSession: { nodeId: 'other', purpose: 'reference' } });
     });
@@ -63,26 +65,37 @@ describe.each(NODES)('$name node full-screen button', ({ Node, content }) => {
   });
 
   it('is absent while a mini-tool is open on this node', () => {
-    render(node({ content }));
+    renderWithTooltips(node({ content }));
     act(() => {
       canvasSessions.of('').setState({
         panelKind: 'miniTool',
         panelHostId: 'n1',
         pickSession: null,
-        miniTool: {} as MiniToolDraft,
+        miniTool: {
+          toolId: 'crop',
+          sourceContent: content,
+          prompt: '',
+          params: {},
+          slots: {},
+          sourceSize: null,
+          drawing: null,
+          expand: null,
+          mark: null,
+          exporting: false,
+        } satisfies MiniToolDraft,
       });
     });
     expect(screen.queryByTestId('media-fullscreen-button')).toBeNull();
   });
 
   it('shows on a locked node', () => {
-    render(node({ content, locked: true }));
+    renderWithTooltips(node({ content, locked: true }));
     expect(screen.getByTestId('media-fullscreen-button')).toBeInTheDocument();
   });
 
   it('opens the full-screen layer on the original file', async () => {
     const user = userEvent.setup();
-    render(node({ content }));
+    renderWithTooltips(node({ content }));
     await user.click(screen.getByTestId('media-fullscreen-button'));
     const layer = screen.getByTestId('media-fullscreen');
     const media = layer.querySelector('img, video');
@@ -93,7 +106,7 @@ describe.each(NODES)('$name node full-screen button', ({ Node, content }) => {
 describe('video node full screen', () => {
   it('pauses the node player and hands the full-screen position back on close', async () => {
     const user = userEvent.setup();
-    render(
+    renderWithTooltips(
       <NodeIdContext.Provider value='n1'>
         <VideoNode data={{ handling: false, content: 'https://e.com/v.mp4' }} />
       </NodeIdContext.Provider>,

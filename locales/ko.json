@@ -1862,6 +1862,11 @@
     },
     "runOnce": {
       "unknownResult": "방금 작업이 완료되었는지 확인하지 못했습니다. 결과를 확인하세요."
+    },
+    "mediaViewer": {
+      "fullscreen": "전체 화면으로 보기",
+      "close": "닫기",
+      "loadFailed": "이 파일을 불러올 수 없습니다"
     }
   },
   "members": {
@@ -2108,8 +2113,6 @@
         "remove": "제거",
         "caption": "캡션",
         "captionPlaceholder": "캡션 추가",
-        "fullscreen": "전체 화면으로 보기",
-        "close": "닫기",
         "download": "다운로드",
         "delete": "삭제",
         "leftOut": "이미지, 동영상, 오디오 {count}개는 붙여넣지 않았습니다. 파일을 직접 끌어다 놓거나 붙여넣으세요.",

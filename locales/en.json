@@ -1862,6 +1862,11 @@
     },
     "runOnce": {
       "unknownResult": "Couldn't confirm whether that went through. Check the result."
+    },
+    "mediaViewer": {
+      "fullscreen": "View full screen",
+      "close": "Close",
+      "loadFailed": "Can't load this file"
     }
   },
   "members": {
@@ -2108,8 +2113,6 @@
         "remove": "Remove",
         "caption": "Caption",
         "captionPlaceholder": "Add a caption",
-        "fullscreen": "View full screen",
-        "close": "Close",
         "download": "Download",
         "delete": "Delete",
         "leftOut": "{count, plural, one {# image, video or audio was not pasted.} other {# images, videos or audio were not pasted.}} Drop or paste the files instead.",

@@ -3,6 +3,18 @@
 
 import * as React from 'react';
 
+/** Where a player stands: what one player hands another (inner#1844). */
+export interface MediaPlayerState {
+  /** Playback position, seconds. */
+  time: number;
+  /** Whether it is playing. */
+  playing: boolean;
+  /** Whether it is muted. */
+  muted: boolean;
+  /** Volume, 0..1. */
+  volume: number;
+}
+
 /** Reactive transport state + imperative actions for a native media element. */
 export interface MediaPlayerApi {
   /** Whether the element is currently playing. */
@@ -27,8 +39,6 @@ export interface MediaPlayerApi {
   setVolumeLevel: (volume: number) => void;
   /** Toggle mute. */
   toggleMute: () => void;
-  /** Request fullscreen for the element (video). */
-  requestFullscreen: () => void;
 }
 
 /**
@@ -44,11 +54,13 @@ export interface MediaPlayerApi {
  *   render, because a task can replace the medium on a node that is already
  *   mounted and the new clip's duration arrives in the same write as its
  *   content. The element is what answers for a medium the node knows none of.
+ * @param start - Where to start, written once at mount (inner#1844).
  * @returns Reactive player state plus transport actions.
  */
 export function useMediaPlayer(
   ref: React.RefObject<HTMLMediaElement | null>,
   knownDuration?: number,
+  start?: MediaPlayerState,
 ): MediaPlayerApi {
   const [playing, setPlaying] = React.useState(false);
   const [currentTime, setCurrentTime] = React.useState(0);
@@ -62,6 +74,20 @@ export function useMediaPlayer(
   React.useEffect(() => {
     const el = ref.current;
     return () => el?.pause();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Written in the commit of the click that opened this player, before any
+  // metadata: a time set at HAVE_NOTHING becomes the start position, and play()
+  // still counts as answering the click, which Safari requires for sound.
+  // Mount only: a later `start` belongs to a player that has moved on.
+  React.useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !start) return;
+    el.currentTime = start.time;
+    el.muted = start.muted;
+    el.volume = start.volume;
+    if (start.playing) void el.play().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -134,16 +160,6 @@ export function useMediaPlayer(
     if (el) el.muted = !el.muted;
   }, [ref]);
 
-  const requestFullscreen = React.useCallback((): void => {
-    const el = ref.current as
-      | (HTMLMediaElement & { webkitRequestFullscreen?: () => void })
-      | null;
-    if (!el) return;
-    // Standard API (Chrome / Edge / Firefox) + Safari-desktop webkit fallback.
-    if (el.requestFullscreen) void el.requestFullscreen();
-    else el.webkitRequestFullscreen?.();
-  }, [ref]);
-
   // The same figure the scrubber is positioned against, so a drag lands where
   // it was released. The element takes a time before it has any metadata: with
   // `readyState` at HAVE_NOTHING it keeps the write as the default playback
@@ -162,6 +178,5 @@ export function useMediaPlayer(
     seekFraction,
     setVolumeLevel,
     toggleMute,
-    requestFullscreen,
   };
 }
