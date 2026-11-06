@@ -167,6 +167,19 @@ async function fillBraces(values: string[], editorId = 'generate-prompt-editor')
 }
 
 /**
+ * Open one shot of the open multi-shot panel through its row, the way a reader does, unless it is open already:
+ * only one shot is open at a time, and a folded shot takes no typing.
+ * @param n - The shot's number, from 1.
+ */
+async function openShot(n: number): Promise<void> {
+  const toggle = page.getByTestId(`generate-storyboard-shot-${String(n)}-toggle`);
+  if ((await toggle.getAttribute('aria-expanded')) === 'true') return;
+  await bringIntoView(toggle);
+  await toggle.click();
+  await expect(page.getByTestId(`generate-storyboard-shot-${String(n)}-editor`).locator('.ProseMirror')).toBeFocused();
+}
+
+/**
  * Scroll the canvas up over an empty spot until a control of the open panel clears the viewport toolbar, the way
  * a reader does when a tall panel (five shots) runs off the bottom of the screen; a plain wheel pans the canvas.
  * @param control - The control to reach.
@@ -558,6 +571,8 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
       const shown: string[] = [];
       for (const [i, values] of run.shots.entries()) {
         const editorId = `generate-storyboard-shot-${String(i + 1)}-editor`;
+        // Opened before it is read too: a folded shot's box is hidden, and its text then loses the line breaks.
+        await openShot(i + 1);
         if (values.length > 0) await fillBraces(values, editorId);
         const text = await promptText(editorId);
         assertDraftSent(`canvas.template.${id}.shot.${String(i + 1)}`, text);
