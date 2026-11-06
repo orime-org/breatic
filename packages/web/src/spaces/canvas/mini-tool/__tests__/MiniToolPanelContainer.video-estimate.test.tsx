@@ -5,18 +5,25 @@
  * inner#1306 test plan §97 (canvas design §4 去背景、对口型 rows: the footer shows the run's estimate): `MiniToolPanelContainer`
  * owns the estimate path the other model tools use (catalog entry, `useCreditText`, `creditMode`), and it is also where a
  * video tool's panel is mounted; `CanvasSpace` passes it no `videoCosts`. So the video model tools' footer must show what
- * that path produces for the tool's model: remove-bg prices `bria-fibo-video-background-remover` (config
- * `executions.video.remove-bg.model`), lip-sync the selected model, `sync-lipsync-3` by default (config
- * `executions.video.lip-sync.models`). `useCreditText` is mocked to name the entry it priced, so the footer text proves
- * which model reached it.
+ * that path produces for the tool's model: remove-bg prices the model config `executions.video.remove-bg.model` names,
+ * lip-sync the selected model, the first of config `executions.video.lip-sync.models` by default. Web reads both from
+ * `GET /canvas/limits` (`removeBackgroundModel`, `lipSync.models`) through `canvasApi.fetchLimits`; the request layer is
+ * mocked to answer it with names no code ships, while the catalog also carries the shipped defaults, so a hard-coded model
+ * name prices the wrong entry. `useCreditText` is mocked to name the entry it priced, so the footer text proves which
+ * model reached it. The limits cache starts empty: the panel must ask for the limits itself.
  */
 
 import * as React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlowProvider } from '@xyflow/react';
 import { render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+const http = vi.hoisted(() => ({ get: vi.fn() }));
+vi.mock('@web/data/api/request', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  apiGet: http.get,
+}));
 vi.mock('@web/spaces/canvas/_shared/NodePanelMount', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   NodePanelMount: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -32,6 +39,7 @@ import { MiniToolPanelContainer } from '../MiniToolPanelContainer';
 import { createVideoToolDraft } from '../video/video-tool-edit';
 import { CanvasContext } from '../../canvas-context';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { canvasApi } from '@web/data/api/canvas';
 import { addNode, type CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { commitVideoToolDraft } from '@web/data/yjs/video-tool-drafts';
 import { docName, getDoc, destroyDoc } from '@web/data/yjs/manager';
@@ -50,7 +58,19 @@ const mediaInfo = { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' 
 function model(name: string): ModelEntry {
   return { name, display_name: name, modality: 'video', mode: 'edit', description: '', guide: '', tier: 'internal', generation_time: 600, takes_prompt: false, params: {}, providers: [] };
 }
-const CATALOG = { image: [], video: [model('bria-fibo-video-background-remover'), model('sync-lipsync-3'), model('ltx-2.3-lipsync')], audio: [], tts: [], three_d: [], total: 3, credit_multiplier: 1 } as unknown as ModelCatalog;
+// The shipped defaults sit in the catalog beside the configured names, so pricing a hard-coded name shows the wrong text.
+const CATALOG = { image: [], video: [model('bria-fibo-video-background-remover'), model('sync-lipsync-3'), model('remove-bg-configured'), model('lipsync-configured-a'), model('lipsync-configured-b')], audio: [], tts: [], three_d: [], total: 5, credit_multiplier: 1 } as unknown as ModelCatalog;
+
+/** `GET /canvas/limits` as the server answers it with this deployment's video configuration. */
+const LIMITS = {
+  referencePoolCap: 10, nodeHistoryPageSize: 20, understandMaxBytes: 20_971_520, understandLongMediaMaxBytes: 2_147_483_648,
+  waveformMaxSeconds: 600, waveformMaxBytes: 200_000_000, waveformPeaksRetryMs: 5000, waveformPeaksRetryMaxMs: 600_000,
+  removeBackgroundModel: 'remove-bg-configured',
+  lipSync: {
+    models: [{ name: 'lipsync-configured-a', minDurationSeconds: 1, maxDurationSeconds: 300 }, { name: 'lipsync-configured-b', minDurationSeconds: 1, maxDurationSeconds: 15 }],
+    tracking: { minDurationSeconds: 0.5, maxDurationSeconds: 600 }, maxPeople: 2, maxDialogues: 8,
+  },
+};
 
 /**
  * Mounts the canvas's mini-tool panel container, with no `videoCosts`, as `CanvasSpace` does, on an open video tool.
@@ -68,12 +88,19 @@ function mount(toolId: VideoToolId): void {
   render(<QueryClientProvider client={client}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><MiniToolPanelContainer nodes={[node]} getLastWriteWasLocal={() => false} onRun={vi.fn()} onRunVideo={vi.fn()} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
 }
 
-afterEach(() => { destroyDoc(docName.canvasSpace(projectId, spaceId)); canvasSessions.of(spaceId).getState().closeActivePanel(); vi.restoreAllMocks(); });
+beforeEach(() => {
+  canvasApi.resetLimitsCache();
+  http.get.mockImplementation(async (path: string): Promise<unknown> => {
+    if (path === '/canvas/limits') return structuredClone(LIMITS);
+    throw new Error(`Unexpected GET ${path}`);
+  });
+});
+afterEach(() => { destroyDoc(docName.canvasSpace(projectId, spaceId)); canvasSessions.of(spaceId).getState().closeActivePanel(); canvasApi.resetLimitsCache(); vi.restoreAllMocks(); });
 
 describe('video model tools take their footer estimate from the panel container estimate path (§97; canvas design §4)', () => {
   it.each([
-    ['video.remove-bg', 'bria-fibo-video-background-remover'],
-    ['video.lip-sync', 'sync-lipsync-3'],
+    ['video.remove-bg', 'remove-bg-configured'],
+    ['video.lip-sync', 'lipsync-configured-a'],
   ] as const)('%s shows the estimate priced for %s', async (toolId, name) => {
     mount(toolId);
     expect(screen.getByTestId('mini-tool-panel')).toBeInTheDocument();
