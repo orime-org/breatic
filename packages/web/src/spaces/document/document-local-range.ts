@@ -46,10 +46,12 @@
  * by, nothing is guessed.
  *
  * Both ends always sit against a letter: the first one covered and just past
- * the last. A range over several selected table cells is one stretch per cell
+ * the last; text is a letter, and an instance may count other inline nodes
+ * too. A range over several selected table cells is one stretch per cell
  * (inner#1126 A9), each carried on its own. A stretch is gone once it covers
- * no letters, or its end comes before its start; the range is gone with the
- * last of its stretches.
+ * no letters, or its end comes before its start; the carrying reports it as
+ * null in its place, and an undo of the edit that took its letters hands it
+ * back. The range is gone with the last of its stretches.
  *
  * The carrying runs in a plugin's `apply`, the only place that sees every
  * transaction once and in order; the naming in Yjs terms runs in the plugin's
@@ -83,21 +85,33 @@ export interface LocalRange {
   readonly to: number;
 }
 
+/** What counts as a letter a range is drawn in to. */
+export type IsLetter = (node: ProseMirrorNode) => boolean;
+
+/**
+ * Text: a letter of the words.
+ * @param node - A node.
+ * @returns True for text.
+ */
+const textLetter: IsLetter = (node) => node.isText;
+
 /**
  * Draws a range in to the letters it covers.
  * @param doc - The body.
  * @param range - The range.
+ * @param isLetter - What counts as a letter.
  * @returns From the first letter covered to just past the last, or null when
  *   it covers none.
  */
 function letterBounds(
   doc: ProseMirrorNode,
   range: LocalRange,
+  isLetter: IsLetter = textLetter,
 ): LocalRange | null {
   let from: number | null = null;
   let to = 0;
   doc.nodesBetween(range.from, range.to, (node, pos) => {
-    if (!node.isText) return true;
+    if (!isLetter(node)) return true;
     const start = Math.max(pos, range.from);
     const end = Math.min(pos + node.nodeSize, range.to);
     if (end > start) {
@@ -422,27 +436,49 @@ export function changesText(tr: Transaction): boolean {
  * @param b - The other.
  * @returns True when they match one for one.
  */
-function sameSegments(a: readonly LocalRange[], b: readonly LocalRange[]): boolean {
-  return a.length === b.length && a.every((one, i) => one.from === b[i]!.from && one.to === b[i]!.to);
+function sameSegments(a: readonly (LocalRange | null)[], b: readonly (LocalRange | null)[]): boolean {
+  return a.length === b.length && a.every((one, i) => {
+    const other = b[i]!;
+    return one === null || other === null ? one === other : one.from === other.from && one.to === other.to;
+  });
+}
+
+/**
+ * A gone stretch an undo writes back: the names taken before the edit that
+ * took its text, while both letters they hold are there.
+ * @param bound - The sync binding, rebuilt to the body after the change.
+ * @param handed - The stretch as named before that edit.
+ * @returns Where it is now, or null.
+ */
+function handedBack(bound: SyncBound, handed: TrackedLink): LocalRange | null {
+  if (!letterAlive(bound.doc.store, handed.start) || !letterAlive(bound.doc.store, handed.end)) return null;
+  const from = relativePositionToAbsolutePosition(bound.doc, bound.type, handed.start, bound.mapping);
+  const to = relativePositionToAbsolutePosition(bound.doc, bound.type, handed.end, bound.mapping);
+  return from === null || to === null ? null : { from, to };
 }
 
 /**
  * Draws stretches in to their letters and puts them in document order.
  * @param doc - The body.
  * @param ranges - The stretches.
+ * @param isLetter - What counts as a letter.
  * @returns Those that cover letters, in order.
  */
-export function aimAt(doc: ProseMirrorNode, ranges: readonly LocalRange[]): LocalRange[] {
+export function aimAt(doc: ProseMirrorNode, ranges: readonly LocalRange[], isLetter: IsLetter = textLetter): LocalRange[] {
   return ranges
-    .map((range) => letterBounds(doc, range))
+    .map((range) => letterBounds(doc, range, isLetter))
     .filter((range): range is LocalRange => range !== null)
     .sort((a, b) => a.from - b.from);
 }
 
 /** A local range as one instance holds it: its stretches, and which press put them there. */
 export interface HeldLocalRange {
-  /** The stretches, in document order; never empty. */
-  readonly segments: readonly LocalRange[];
+  /**
+   * The stretches; never empty. An instance that keeps a gone stretch's
+   * place holds null there, which an undo of the edit that took its text
+   * hands back.
+   */
+  readonly segments: readonly (LocalRange | null)[];
   /**
    * Counts the presses that aimed the range, so the Yjs names an undo hands
    * back are only ever read for the press they were taken for.
@@ -453,7 +489,7 @@ export interface HeldLocalRange {
 /** The names of one press, kept on an undo stack item. */
 interface NamedBeforeEdit {
   readonly entry: number;
-  readonly links: readonly TrackedLink[];
+  readonly links: readonly (TrackedLink | null)[];
 }
 
 /** One instance's carrying, for its plugin's state and view. */
@@ -463,10 +499,10 @@ export interface LocalRangeTracker {
    * @param tr - The transaction.
    * @param held - The range before it.
    * @param before - The state it applies to, whose sync binding is the live one.
-   * @returns The stretches after it: the same array when nothing moved, empty
-   *   once the text the range covered is gone.
+   * @returns Each stretch after it, in the same order, null for one whose
+   *   text is gone: the same array when nothing moved.
    */
-  readonly carry: (tr: Transaction, held: HeldLocalRange, before: EditorState) => readonly LocalRange[];
+  readonly carry: (tr: Transaction, held: HeldLocalRange, before: EditorState) => readonly (LocalRange | null)[];
   /**
    * The plugin view that names the range in Yjs terms after every change to
    * the body or to the range, and keeps those names on the undo stack.
@@ -508,11 +544,12 @@ export function localRangeView(
  * One instance of local-range carrying.
  * @param read - The range the instance's plugin holds in a state, or null
  *   while it holds none; the same object while the range has not changed.
+ * @param isLetter - What counts as a letter its stretches are drawn in to.
  * @returns The carrying, for the instance's plugin.
  */
-export function localRangeTracker(read: (state: EditorState) => HeldLocalRange | null): LocalRangeTracker {
+export function localRangeTracker(read: (state: EditorState) => HeldLocalRange | null, isLetter: IsLetter = textLetter): LocalRangeTracker {
   // The open range's stretches as Yjs names them.
-  let tracked: readonly TrackedLink[] | null = null;
+  let tracked: readonly (TrackedLink | null)[] | null = null;
   // The open range's names, kept on each undo stack item with the press
   // they belong to.
   const onUndoStack = namesOnUndoStack<NamedBeforeEdit>((state) => {
@@ -524,19 +561,20 @@ export function localRangeTracker(read: (state: EditorState) => HeldLocalRange |
       const kept = onUndoStack.handedFor(tr);
       const handed = kept?.entry === held.entry ? kept.links : null;
       const bound = syncBindingOf(before);
-      const moved: LocalRange[] = [];
+      const moved: (LocalRange | null)[] = [];
       held.segments.forEach((segment, index) => {
         const link = tracked?.[index] ?? null;
         // The binding has rebuilt its index to the new nodes before it
         // dispatches (`_typeChanged`), so the relative positions resolve
         // against this change.
-        const carried =
-          fromYjs(tr) && link !== null && bound !== null
-            ? carryAcrossYjs(tr, bound, link, handed?.[index] ?? null, segment)
-            : mapLocalRange(segment, tr);
+        const named = handed?.[index] ?? null;
+        let carried: LocalRange | null;
+        if (segment === null) carried = fromYjs(tr) && named !== null && bound !== null ? handedBack(bound, named) : null;
+        else if (fromYjs(tr) && link !== null && bound !== null) carried = carryAcrossYjs(tr, bound, link, named, segment);
+        else carried = mapLocalRange(segment, tr);
         const drawn =
-          carried === null || carried.to <= carried.from ? null : letterBounds(tr.doc, carried);
-        if (drawn !== null) moved.push(drawn);
+          carried === null || carried.to <= carried.from ? null : letterBounds(tr.doc, carried, isLetter);
+        moved.push(drawn);
       });
       // The SAME array back when nothing moved, not an equal one: a snapshot
       // read through `useSyncExternalStore` must stay identical while the
@@ -555,7 +593,7 @@ export function localRangeTracker(read: (state: EditorState) => HeldLocalRange |
           if (held === null) {
             tracked = null;
           } else if (bound !== null && (next.state.doc !== prev.doc || read(prev) !== held)) {
-            tracked = held.segments.map((segment) => trackRange(bound, segment));
+            tracked = held.segments.map((segment) => (segment === null ? null : trackRange(bound, segment)));
           }
         },
         destroy: (): void => {

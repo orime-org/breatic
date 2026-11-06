@@ -13,18 +13,20 @@ import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
 
-import { aiRangeIn, DOCUMENT_AI_RANGE } from '@web/spaces/document/document-ai-range';
+import { aiUnitRangesIn, DOCUMENT_AI_RANGE } from '@web/spaces/document/document-ai-range';
 import {
   aiAnswer,
   aiAnswerEmpty,
   aiReplaceAvailable,
   aiTextUnits,
+  aiUnitRanges,
   aiUnitsRequest,
   insertAiAnswer,
   replaceAiAnswer,
   unitSpan,
   type AiAnswer,
   type AiTextUnit,
+  type AiUnitRanges,
 } from '@web/spaces/document/document-ai-units';
 import type { AiCommand } from '@web/spaces/document/document-ai-session';
 import {
@@ -33,7 +35,7 @@ import {
   getDocumentEditor,
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
-import type { LocalRange } from '@web/spaces/document/document-local-range';
+import { aimAt, type LocalRange } from '@web/spaces/document/document-local-range';
 import type { ProposalAdmission } from '@web/spaces/document/document-proposal-landing';
 
 /** Our own asset host, so media there is ours and survives a write. */
@@ -143,23 +145,25 @@ function rangeOf(handle: DocumentEditorHandle, words: string): LocalRange {
 }
 
 /**
- * Opens the original range over some stretch, as the dialog does.
+ * Opens the original range over some stretch, one stretch per unit, as the dialog does.
  * @param handle - The document.
  * @param range - The stretch.
+ * @returns The selection, drawn in to its letters.
  */
-function hold(handle: DocumentEditorHandle, range: LocalRange): void {
+function hold(handle: DocumentEditorHandle, range: LocalRange): LocalRange[] {
   const view = handle.editor.prosemirrorView!;
-  view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, [range]));
+  const selected = aimAt(view.state.doc, [range]);
+  view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, aiUnitRanges(view.state.doc, selected)));
+  return selected;
 }
 
 /**
- * The original range now.
+ * Each unit's words now.
  * @param handle - The document.
- * @returns Its segments; none once gone.
+ * @returns Every unit's pieces; none once gone.
  */
-function segments(handle: DocumentEditorHandle): readonly LocalRange[] {
-  const range = aiRangeIn(handle.editor.prosemirrorState);
-  return range?.kind === 'present' ? range.segments : [];
+function segments(handle: DocumentEditorHandle): AiUnitRanges {
+  return aiUnitRangesIn(handle.editor.prosemirrorState);
 }
 
 /** One opening: its units and what it sends. */
@@ -176,9 +180,9 @@ interface Opening {
  * @returns The units and the request.
  */
 function opening(handle: DocumentEditorHandle, range: LocalRange, command: Command): Opening {
-  hold(handle, range);
+  const selected = hold(handle, range);
   const doc = handle.editor.prosemirrorState.doc;
-  const units = aiTextUnits(doc, segments(handle));
+  const units = aiTextUnits(doc, selected);
   return { units, request: aiUnitsRequest(handle.editor, doc, units, segments(handle), command) };
 }
 
@@ -326,8 +330,8 @@ describe('the units of a range', () => {
     const gone = rangeOf(h, 'one');
     view.dispatch(view.state.tr.delete(gone.from, gone.to));
     const doc = h.editor.prosemirrorState.doc;
-    expect(unitSpan(doc, o.units[0]!, segments(h), o.units)).toBeNull();
-    expect(unitSpan(doc, o.units[1]!, segments(h), o.units)).toEqual(rangeOf(h, 'two'));
+    expect(unitSpan(doc, o.units[0]!, segments(h))).toBeNull();
+    expect(unitSpan(doc, o.units[1]!, segments(h))).toEqual(rangeOf(h, 'two'));
   });
 });
 
@@ -1189,6 +1193,158 @@ describe('round 11: where a unit is', () => {
   });
 });
 
+/**
+ * Presses a key in the body at a position, as the reader would.
+ * @param handle - The document.
+ * @param at - Where.
+ * @param key - The key.
+ */
+function pressKey(handle: DocumentEditorHandle, at: number, key: string): void {
+  const view = handle.editor.prosemirrorView!;
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at)));
+  view.someProp('handleKeyDown', (f) => f(view, new KeyboardEvent('keydown', { key })));
+}
+
+/**
+ * Puts a legacy table of one cell holding some lines at the top of the body.
+ * @param handle - The document.
+ * @param lines - The cell's lines.
+ */
+function legacyCell(handle: DocumentEditorHandle, lines: string[]): void {
+  const view = handle.editor.prosemirrorView!;
+  const s = view.state.schema;
+  const cell = s.nodes['tableCell']!.create(null, lines.map((t) => s.nodes['tableParagraph']!.create(null, [s.text(t)])));
+  const table = s.nodes['table']!.create(null, [s.nodes['tableRow']!.create(null, [cell])]);
+  view.dispatch(view.state.tr.insert(1, s.nodes['blockContainer']!.create({ id: 'legacy-table' }, [table])));
+  handle.undoManager.clear();
+}
+
+describe('round 12: each unit follows its own words', () => {
+  it('writes each unit into its own words after the two blocks were joined with Backspace', async () => {
+    for (const both of [false, true]) {
+      const h = await open('alpha one\n\nbeta two');
+      const o = opening(h, { from: rangeOf(h, 'alpha one').from, to: rangeOf(h, 'beta two').to }, 'translate');
+      pressKey(h, rangeOf(h, 'beta two').from, 'Backspace');
+      expect(blocks(h).map(textOf)).toEqual(['alpha onebeta two']);
+      const answer = read(h, o, both ? tagged({ 1: 'ALPHA ONE', 2: 'BETA TWO' }) : tagged({ 1: 'ALPHA ONE' }), 'translate');
+      expect(aiReplaceAvailable(h.editor.prosemirrorState.doc, answer, segments(h))).toBe(true);
+      replaceAiAnswer(h, answer, segments(h), WRITABLE);
+      expect(blocks(h).map(textOf)).toEqual([both ? 'ALPHA ONEBETA TWO' : 'ALPHA ONEbeta two']);
+    }
+  });
+
+  it('writes each legacy cell line into its own words after a line was split above them', async () => {
+    for (const skip of [false, true]) {
+      const h = await open('tail');
+      legacyCell(h, ['head note', 'alpha', 'beta']);
+      const o = opening(h, { from: rangeOf(h, 'alpha').from, to: rangeOf(h, 'beta').to }, 'refine');
+      const view = h.editor.prosemirrorView!;
+      view.dispatch(view.state.tr.split(rangeOf(h, 'note').from));
+      const answer = read(h, o, skip ? tagged({ 2: 'BETA' }) : tagged({ 1: 'ALPHA', 2: 'BETA' }), 'refine');
+      expect(aiReplaceAvailable(h.editor.prosemirrorState.doc, answer, segments(h))).toBe(true);
+      replaceAiAnswer(h, answer, segments(h), WRITABLE);
+      expect(legacyCells(h)).toEqual([[skip ? 'head \nnote\nalpha\nBETA' : 'head \nnote\nALPHA\nBETA']]);
+    }
+  });
+
+  it('follows the words Enter carried out of a closed toggle heading, its children kept above', async () => {
+    const h = await open('');
+    h.editor.replaceBlocks(h.editor.document, [{ type: 'heading', props: { level: 2, isToggleable: true }, content: 'intro selected words', children: [{ type: 'paragraph', content: 'kid' }] }] as never);
+    h.undoManager.clear();
+    const o = opening(h, rangeOf(h, 'selected words'), 'refine');
+    pressKey(h, rangeOf(h, 'selected words').from, 'Enter');
+    expect(shape(blocks(h))).toEqual([['intro ', 0], ['kid', 1], ['selected words', 0]]);
+    const answer = read(h, o, tagged({ 1: 'SELECTED WORDS' }), 'refine');
+    expect(aiReplaceAvailable(h.editor.prosemirrorState.doc, answer, segments(h))).toBe(true);
+    replaceAiAnswer(h, answer, segments(h), WRITABLE);
+    expect(shape(blocks(h))).toEqual([['intro ', 0], ['kid', 1], ['SELECTED WORDS', 0]]);
+  });
+
+  it('turns replace off once a unit lost its words, whatever was typed into the lines between', async () => {
+    const h = await open('');
+    h.editor.replaceBlocks(h.editor.document, [{ type: 'paragraph', content: 'alpha' }, { type: 'paragraph' }, { type: 'paragraph', content: 'beta' }] as never);
+    h.undoManager.clear();
+    const o = opening(h, { from: rangeOf(h, 'alpha').from, to: rangeOf(h, 'beta').to }, 'refine');
+    h.editor.updateBlock(blocks(h)[1]!.id, { content: 'my note' } as never);
+    const view = h.editor.prosemirrorView!;
+    const gone = rangeOf(h, 'alpha');
+    view.dispatch(view.state.tr.delete(gone.from, gone.to));
+    const answer = read(h, o, tagged({ 1: 'ALPHA', 2: 'BETA' }), 'refine');
+    expect(aiReplaceAvailable(h.editor.prosemirrorState.doc, answer, segments(h))).toBe(false);
+  });
+
+  it('turns replace off once every selected word is deleted, words typed among them included', async () => {
+    const h = await open('left ABCDEF right');
+    const o = opening(h, rangeOf(h, 'ABCDEF'), 'refine');
+    const view = h.editor.prosemirrorView!;
+    view.dispatch(view.state.tr.insertText('yz', rangeOf(h, 'DEF').from));
+    const answer = read(h, o, tagged({ 1: 'NEW' }), 'refine');
+    expect(aiReplaceAvailable(h.editor.prosemirrorState.doc, answer, segments(h))).toBe(true);
+    view.dispatch(view.state.tr.delete(rangeOf(h, 'ABC').from, rangeOf(h, 'ABC').to));
+    view.dispatch(view.state.tr.delete(rangeOf(h, 'DEF').from, rangeOf(h, 'DEF').to));
+    expect(blocks(h).map(textOf)).toEqual(['left yz right']);
+    expect(aiReplaceAvailable(h.editor.prosemirrorState.doc, answer, segments(h))).toBe(false);
+  });
+
+  it('writes over the words typed among the selected ones, as one stretch', async () => {
+    const h = await open('left ABCDEF right');
+    const o = opening(h, rangeOf(h, 'ABCDEF'), 'refine');
+    const view = h.editor.prosemirrorView!;
+    view.dispatch(view.state.tr.insertText('yz', rangeOf(h, 'DEF').from));
+    replaceAiAnswer(h, read(h, o, tagged({ 1: 'NEW' }), 'refine'), segments(h), WRITABLE);
+    expect(blocks(h).map(textOf)).toEqual(['left NEW right']);
+  });
+});
+
+describe('round 12: what a write keeps', () => {
+  it('writes over a whole block that starts with a hard break inside the selection, the break included', async () => {
+    const h = await open('');
+    h.editor.replaceBlocks(h.editor.document, [{ type: 'paragraph', content: 'one' }, { type: 'paragraph', content: '\ntwo' }, { type: 'paragraph', content: 'three' }] as never);
+    h.undoManager.clear();
+    replaceWith(h, { from: rangeOf(h, 'one').from, to: rangeOf(h, 'three').to }, 'refine', () => tagged({ 1: 'ONE', 2: 'TWO', 3: 'THREE' }));
+    expect(blocks(h).map(textOf)).toEqual(['ONE', 'TWO', 'THREE']);
+  });
+
+  it('puts the children after a table the answer ends in, in replace, preview and insert alike', async () => {
+    const table = '| p | q |\n| --- | --- |\n| r | s |';
+    const h = await open('- item words\n  - kid words');
+    const o = opening(h, rangeOf(h, 'item words'), 'custom');
+    const answer = read(h, o, tagged({ 1: table }), 'custom');
+    expect(replaceAiAnswer(h, answer, segments(h), WRITABLE).outcome).toBe('written');
+    expect(blocks(h).map((b) => [b.type, textOf(b)])).toEqual([['docTable', ''], ['bulletListItem', 'kid words']]);
+    const g = await open('- item words\n  - kid words');
+    const o2 = opening(g, { from: rangeOf(g, 'item words').from, to: rangeOf(g, 'kid words').to }, 'custom');
+    const a2 = read(g, o2, tagged({ 1: table, 2: '- KID' }), 'custom');
+    expect((a2.preview as Seen[]).map((b) => [b.type, textOf(b)])).toEqual([['docTable', ''], ['bulletListItem', 'KID']]);
+    expect(insertAiAnswer(g, blocks(g)[0]!.id, a2, WRITABLE).outcome).toBe('written');
+    g.undoManager.undo();
+    expect(replaceAiAnswer(g, a2, segments(g), WRITABLE).outcome).toBe('written');
+    expect(blocks(g).map((b) => [b.type, textOf(b)])).toEqual([['docTable', ''], ['bulletListItem', 'KID']]);
+  });
+
+  it('writes a line break as code into a block turned into code while the dialog was open', async () => {
+    const h = await open('# Title words');
+    const o = opening(h, rangeOf(h, 'Title words'), 'refine');
+    h.editor.updateBlock(blocks(h)[0]!.id, { type: 'codeBlock' } as never);
+    replaceAiAnswer(h, read(h, o, tagged({ 1: 'Title  \nwords' }), 'refine'), segments(h), WRITABLE);
+    expect(blocks(h).map((b) => [b.type, textOf(b), b.children.length])).toEqual([['codeBlock', 'Title\nwords', 0]]);
+  });
+
+  it('writes back a link whose words are its address when the model echoes it', async () => {
+    for (const href of ['tel:12345', '/docs/page', 'mailto:a@b.example']) {
+      for (const command of ['refine', 'custom'] as const) {
+        const h = await open('');
+        h.editor.replaceBlocks(h.editor.document, [{ type: 'paragraph', content: [{ type: 'text', text: 'call ', styles: {} }, { type: 'link', href, content: href }, { type: 'text', text: ' now', styles: {} }] }] as never);
+        h.undoManager.clear();
+        const before = structuredClone(blocks(h));
+        const o = opening(h, { from: rangeOf(h, 'call').from, to: rangeOf(h, 'now').to }, command);
+        replaceAiAnswer(h, read(h, o, echo(o.request), command), segments(h), WRITABLE);
+        expect(blocks(h)).toEqual(before);
+      }
+    }
+  });
+});
+
 describe('round 11: replace with only outside media', () => {
   it('can be pressed, writes nothing and says how many were left out, as insert does', async () => {
     const h = await open('One.');
@@ -1273,12 +1429,11 @@ function holdSome(handle: DocumentEditorHandle, a: number, b: number): LocalRang
  * The words of a unit's block before and after its span.
  * @param handle - The document.
  * @param unit - The unit.
- * @param units - Every unit sent.
  * @returns Them.
  */
-function around(handle: DocumentEditorHandle, unit: AiTextUnit, units: readonly AiTextUnit[]): { before: string; after: string } {
+function around(handle: DocumentEditorHandle, unit: AiTextUnit): { before: string; after: string } {
   const doc = handle.editor.prosemirrorState.doc;
-  const span = unitSpan(doc, unit, segments(handle), units)!;
+  const span = unitSpan(doc, unit, segments(handle))!;
   const $span = doc.resolve(span.from);
   const start = $span.start();
   const end = $span.end();
@@ -1308,7 +1463,7 @@ describe('properties', () => {
       const kinds = blocks(h).map((x) => [x.id, x.type, x.props]);
       const wordless = blocks(h).filter((x) => textOf(x) === '').map((x) => x.id);
       const o = opening(h, range, 'refine');
-      const outside = o.units.map((u) => around(h, u, o.units));
+      const outside = o.units.map((u) => around(h, u));
       const parts = Object.fromEntries(o.units.map((u, i) => [u.id, answers[i]!]));
       const answer = read(h, o, tagged(parts), 'refine');
       replaceAiAnswer(h, answer, segments(h), WRITABLE);

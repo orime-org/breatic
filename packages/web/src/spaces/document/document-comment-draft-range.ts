@@ -264,13 +264,15 @@ export const documentCommentDraftRange = createExtension(() => {
             // draft on the ones that are still there; the draft is gone with
             // the last of them.
             const moved = tracker.carry(tr, current, before);
-            if (moved.length === 0) {
-              return { kind: 'dropped', why: 'targetGone', opening: current.opening };
-            }
             // The same object back when nothing moved: `useSyncExternalStore`
             // requires the snapshot to be identical while the store has not
             // changed.
-            return moved === current.segments ? current : { ...current, segments: moved };
+            if (moved === current.segments) return current;
+            const kept = moved.filter((segment): segment is DraftRange => segment !== null);
+            if (kept.length === 0) {
+              return { kind: 'dropped', why: 'targetGone', opening: current.opening };
+            }
+            return { ...current, segments: kept };
           },
         },
 

@@ -227,65 +227,84 @@ describe('the AI range under any mix of edits (property)', () => {
    */
   const capitals = (text: string): string => text.replace(/[^A-Z]/g, '');
 
-  it('covers exactly the original letters still in the body, and once gone stays gone', () => {
-    fc.assert(
-      fc.property(fc.array(edit, { minLength: 1, maxLength: 25 }), (edits) => {
-        const docA = new Y.Doc();
-        Y.applyUpdate(docA, encodeInitialSpaceContent('document'));
-        const docB = new Y.Doc();
-        Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA));
-        const undo = createDocumentUndo(docA);
-        const a = buildDocumentEditor({ fragment: documentBodyFragment(docA), extensions: [undo.extension] });
-        const rootA = document.createElement('div');
-        document.body.appendChild(rootA);
-        a.mount(rootA);
-        mounted.push(a);
-        const b = openClient(docB);
-        a.replaceBlocks(a.document, [{ type: 'paragraph', content: 'left ABCDEF right' }] as never);
-        sync(docA, docB);
-        undo.manager.clear();
-        const viewA = a.prosemirrorView!;
-        viewA.dispatch(viewA.state.tr.setMeta(DOCUMENT_AI_RANGE, [rangeOf(a, 'ABCDEF')]));
+  const holdsItsLetters = fc.property(fc.array(edit, { minLength: 1, maxLength: 25 }), (edits) => {
+    const docA = new Y.Doc();
+    Y.applyUpdate(docA, encodeInitialSpaceContent('document'));
+    const docB = new Y.Doc();
+    Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA));
+    const undo = createDocumentUndo(docA);
+    const a = buildDocumentEditor({ fragment: documentBodyFragment(docA), extensions: [undo.extension] });
+    const rootA = document.createElement('div');
+    document.body.appendChild(rootA);
+    a.mount(rootA);
+    mounted.push(a);
+    const b = openClient(docB);
+    a.replaceBlocks(a.document, [{ type: 'paragraph', content: 'left ABCDEF right' }] as never);
+    sync(docA, docB);
+    undo.manager.clear();
+    const viewA = a.prosemirrorView!;
+    viewA.dispatch(viewA.state.tr.setMeta(DOCUMENT_AI_RANGE, [rangeOf(a, 'ABCDEF')]));
 
-        let wasGone = false;
-        for (const step of edits) {
-          if (!('at' in step)) {
-            undo.manager.stopCapturing();
-            if (step.kind === 'undo') undo.manager.undo();
-            else undo.manager.redo();
-          } else {
-            const view = step.by === 'reader' ? viewA : b.prosemirrorView!;
-            const size = view.state.doc.content.size;
-            // Positions inside the paragraph's text: 1 past the block wrappers.
-            const textStart = 3;
-            const textEnd = Math.max(textStart, size - 3);
-            const at = textStart + (step.at % (textEnd - textStart + 1));
-            const tr = 'text' in step
-              ? view.state.tr.insertText(step.text, at)
-              : view.state.tr.delete(at, Math.min(textEnd, at + step.length));
-            if (step.kind === 'insert' || tr.docChanged) {
-              if (step.by === 'reader') undo.manager.stopCapturing();
-              view.dispatch(tr);
-            }
-          }
-          sync(docA, docB);
-
-          const range = aiRangeIn(a.prosemirrorState);
-          const left = capitals(a.prosemirrorState.doc.textContent);
-          if (wasGone) expect(range).toEqual({ kind: 'gone' });
-          if (range?.kind === 'present') {
-            expect(capitals(aiWords(a))).toBe(left);
-          } else {
-            wasGone = true;
-          }
-          if (left === '') {
-            expect(range).toEqual({ kind: 'gone' });
-            wasGone = true;
-          }
+    let wasGone = false;
+    let peerTouched = false;
+    for (const step of edits) {
+      if (!('at' in step)) {
+        undo.manager.stopCapturing();
+        if (step.kind === 'undo') undo.manager.undo();
+        else undo.manager.redo();
+      } else {
+        const view = step.by === 'reader' ? viewA : b.prosemirrorView!;
+        const size = view.state.doc.content.size;
+        // Positions inside the paragraph's text: 1 past the block wrappers.
+        const textStart = 3;
+        const textEnd = Math.max(textStart, size - 3);
+        const at = textStart + (step.at % (textEnd - textStart + 1));
+        const tr = 'text' in step
+          ? view.state.tr.insertText(step.text, at)
+          : view.state.tr.delete(at, Math.min(textEnd, at + step.length));
+        // A collaborator editing the range's words while the reader edits
+        // them too is outside what the range answers for (concurrent edits of
+        // the same words): after it, only gone staying gone is held to.
+        const held = aiRangeIn(a.prosemirrorState);
+        const reach = 'text' in step ? { from: at, to: at } : { from: at, to: at + step.length };
+        if (step.by === 'collaborator' && held?.kind === 'present' && held.segments.some(({ from, to }) => reach.to >= from && reach.from <= to)) peerTouched = true;
+        if (step.kind === 'insert' || tr.docChanged) {
+          if (step.by === 'reader') undo.manager.stopCapturing();
+          view.dispatch(tr);
         }
-      }),
-      { numRuns: 40 },
-    );
+      }
+      sync(docA, docB);
+
+      const range = aiRangeIn(a.prosemirrorState);
+      const left = capitals(a.prosemirrorState.doc.textContent);
+      if (wasGone) expect(range).toEqual({ kind: 'gone' });
+      if (range?.kind === 'present') {
+        if (!peerTouched) expect(capitals(aiWords(a))).toBe(left);
+      } else {
+        wasGone = true;
+      }
+      if (left === '' && !peerTouched) {
+        expect(range).toEqual({ kind: 'gone' });
+        wasGone = true;
+      }
+    }
+  });
+
+  it('covers exactly the original letters still in the body, and once gone stays gone', () => {
+    fc.assert(holdsItsLetters, { numRuns: 40 });
+  });
+
+  it.each([-1009072999, -1635687800])('holds to its letters under the edits of seed %i, words typed among them never kept', (seed) => {
+    fc.assert(holdsItsLetters, { numRuns: 40, seed });
+  });
+
+  it('gives back a piece cut off by typing once undo writes its deleted letters back', () => {
+    const typedThenDeleted: Edit[] = [
+      { by: 'reader', kind: 'insert', at: 957030108, text: 'x' },
+      { by: 'reader', kind: 'delete', at: 53248643, length: 3 },
+      { by: 'reader', kind: 'undo' },
+    ];
+    fc.assert(holdsItsLetters, { numRuns: 1, examples: [[typedThenDeleted]] });
   });
 });
 

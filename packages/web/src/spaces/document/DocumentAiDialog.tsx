@@ -66,7 +66,7 @@ import { cn } from '@web/lib/utils';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentAiLaunchContext, TONE_LABEL_KEYS, type AiLaunch } from '@web/spaces/document/document-ai-context';
 import { aiContextOf, aiInsertBlockId } from '@web/spaces/document/document-ai-launch';
-import { aiRangeIn, DOCUMENT_AI_RANGE, onAiEscape } from '@web/spaces/document/document-ai-range';
+import { aiRangeIn, aiUnitRangesIn, DOCUMENT_AI_RANGE, onAiEscape } from '@web/spaces/document/document-ai-range';
 import {
   aiDialogButtons,
   reduceAiSession,
@@ -83,16 +83,18 @@ import {
   aiFormatFailed,
   aiReplaceAvailable,
   aiTextUnits,
+  aiUnitRanges,
   aiUnitsRequest,
   insertAiAnswer,
   replaceAiAnswer,
   type AiAnswer,
   type AiTextUnit,
+  type AiUnitRanges,
   type AiWriteResult,
 } from '@web/spaces/document/document-ai-units';
 import { viewOf, type ViewedEditor } from '@web/spaces/document/document-editor-view';
 import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
-import { aimAt, type LocalRange } from '@web/spaces/document/document-local-range';
+import { aimAt } from '@web/spaces/document/document-local-range';
 import { blockById, type ProposalAdmission } from '@web/spaces/document/document-proposal-landing';
 import { ourMediaPrefix, ourMediaPrefixReady } from '@web/spaces/document/document-external-media';
 import { inPlaceOf } from '@web/spaces/document/document-preview-styles';
@@ -169,13 +171,12 @@ function titleOf(command: AiCommand, t: (key: string) => string): string {
 }
 
 /**
- * The original range where it is now.
+ * Each unit's words where they are now.
  * @param editor - The document editor.
- * @returns Its segments; none once gone.
+ * @returns Every unit's pieces; none once gone.
  */
-function originalSegments(editor: ViewedEditor): readonly LocalRange[] {
-  const range = aiRangeIn(editor.prosemirrorState);
-  return range?.kind === 'present' ? range.segments : [];
+function originalRanges(editor: ViewedEditor): AiUnitRanges {
+  return aiUnitRangesIn(editor.prosemirrorState);
 }
 
 interface DocumentAiDialogProps {
@@ -301,7 +302,7 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
             if (at.insertBlockId !== null) told(insertAiAnswer({ editor }, at.insertBlockId, answer, admission));
             return;
           }
-          told(replaceAiAnswer({ editor }, answer, originalSegments(editor), admission));
+          told(replaceAiAnswer({ editor }, answer, originalRanges(editor), admission));
         } catch (err) {
           failed();
           throw err;
@@ -322,7 +323,8 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
       const units = aiTextUnits(view.state.doc, segments);
       if (units.length === 0) return;
       // The budget is measured on what is sent, tags included (§5.2).
-      const tagged = aiUnitsRequest(editor, view.state.doc, units, segments, command.id);
+      const ranges = aiUnitRanges(view.state.doc, segments);
+      const tagged = aiUnitsRequest(editor, view.state.doc, units, ranges.map((range) => [range]), command.id);
       if (tagged.length > config.selectionMaxChars) {
         toast.error(t('spaces.document.ai.selectionTooLong'));
         return;
@@ -347,7 +349,7 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
       endsWithEditor.current = editor.onUnmount(() => {
         dispatch({ type: 'close' });
       });
-      view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, selection.ranges.map((r) => ({ from: r.$from.pos, to: r.$to.pos }))));
+      view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, ranges));
       dispatch({ type: 'open', command });
     }, () => {
       configRequest.current = null;
@@ -474,7 +476,7 @@ function AiPanel({
   // Blank answers leave nothing to write (§5.3).
   const resultEmpty = aiAnswerEmpty(session.result, opened.units);
   const readReplaceable = React.useCallback(
-    (current: ViewedEditor): boolean => answer !== null && aiReplaceAvailable(current.prosemirrorState.doc, answer, originalSegments(current)),
+    (current: ViewedEditor): boolean => answer !== null && aiReplaceAvailable(current.prosemirrorState.doc, answer, originalRanges(current)),
     [answer],
   );
   // Replace and its button decide by the same function (§5.3).
