@@ -109,6 +109,7 @@ const positiveSeconds = z.number().finite().positive();
 const lipsyncTimeline = z.strictObject({ duration: positiveSeconds, videoDuration: positiveSeconds, syncMode: z.enum(VIDEO_TOOL_SYNC_MODES) });
 const cropSize = z.number().int().positive();
 const windowRef = z.strictObject({ startFrame: index, frameCount: z.number().int().positive() });
+const windowClip = z.strictObject({ inputId, entries, colorMatrix: z.string().min(1), toneMap: z.enum(["none", "sdr-bt709"]) });
 
 /** Output and diagnostic byte ceilings frozen from the task's runtime configuration. */
 export const miniToolPlanLimitsSchema = z.strictObject({
@@ -159,7 +160,8 @@ const recipeUnion = z.discriminatedUnion("kind", [
   // One chunk of a transition's overlap window (§97 D15-6): both clips' entries, the chunk's frames inside the window.
   z.strictObject({
     kind: z.literal("transition_window"),
-    clips: z.tuple([z.strictObject({ inputId, entries }), z.strictObject({ inputId, entries })]),
+    // Each clip is converted with its own plan's matrix and tone mapping before the blend (§97 D23-4).
+    clips: z.tuple([windowClip, windowClip]),
     frames: ordinals, window: windowRef, transition: z.enum(["fade", "wipeLeft", "wipeRight"]), profile: transitionProfile,
   }).refine((recipe) => recipe.frames.start >= recipe.window.startFrame && recipe.frames.end <= recipe.window.startFrame + recipe.window.frameCount,
     "The chunk's frames lie inside the window"),

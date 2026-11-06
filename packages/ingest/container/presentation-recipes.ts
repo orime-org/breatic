@@ -698,8 +698,12 @@ async function renderTransitionWindow(recipe: MiniToolPlanTransitionWindow, file
   const clock = base * 1000n;
   const fill = `black@${profile.alpha ? 0 : 1}`;
   const decoded = await Promise.all(recipe.clips.map(async (clip, at) => {
+    // Each clip is decoded with its own plan's matrix and tone mapped as its own chunk_encode would be (§97 D23-4).
+    const matrix = SCALE_MATRICES[clip.colorMatrix];
+    if (matrix === undefined) throw new RangeError(`No decode matrix for ${clip.colorMatrix}`);
+    const convert = `${clip.toneMap === "sdr-bt709" ? `${TONE_MAP},` : ""}scale=${width}:${height}:force_original_aspect_ratio=decrease:in_color_matrix=${matrix}:out_range=pc`;
     const window = await windowGraph(clip.entries, clock, local(files, clip.inputId), run,
-      () => `scale=${width}:${height}:force_original_aspect_ratio=decrease:out_range=pc,format=rgba,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${fill},setsar=1`,
+      () => `${convert},format=rgba,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${fill},setsar=1`,
       (entry) => `color=c=black${entry.fill === "transparent" ? "@0" : ""}:s=${width}x${height}:r=1:d=1,format=rgba`);
     const file = join(directory, `transition-${at}.rgba`);
     await runPlanCommand("ffmpeg", [...window.args, "-filter_complex", `${window.graph.join(";").replace(/\[v\]$/u, "[w]")};[w]${profileGrid(profile, count)},format=rgba[v]`,
