@@ -411,6 +411,34 @@ describe("poll", () => {
     expect((answer.reason as UpstreamTaskFailed).upstreamError).toBe("content policy");
   });
 
+  // inner#1306 test plan §97 (execution design §9.3, §9.4): a model's async rejection is recognised by a structured field
+  // path in the upstream's error, so the WaveSpeed adapter hands back the error value as it arrived and UpstreamTaskFailed
+  // carries it as `structuredError` (the parsed JSON value, null when the upstream gave none) beside the text it had.
+  it.each([
+    ["an object error", { code: "face_not_detected", detail: { frames: 0 } }],
+    ["a string error", "content policy"],
+  ])("PF01 a failed prediction with %s carries the upstream's error value unchanged", async (_name, error) => {
+    const r = runner();
+    a.answer(({ method, path }) => {
+      if (path === "/billings/search") return billing([]);
+      return method === "POST" ? accepted("p1") : { status: 200, body: { code: 200, data: { id: "p1", status: "failed", outputs: [], error } } };
+    });
+    const answer = expectState(await r.poll(await sent(r), live()), "failed");
+    expect(answer.reason).toBeInstanceOf(UpstreamTaskFailed);
+    expect((answer.reason as UpstreamTaskFailed & { structuredError?: unknown }).structuredError).toEqual(error);
+  });
+
+  it("PF02 a failed prediction without an error carries a null structured error and the text unknown", async () => {
+    const r = runner();
+    a.answer(({ method, path }) => {
+      if (path === "/billings/search") return billing([]);
+      return method === "POST" ? accepted("p1") : { status: 200, body: { code: 200, data: { id: "p1", status: "failed", outputs: [] } } };
+    });
+    const reason = expectState(await r.poll(await sent(r), live()), "failed").reason as UpstreamTaskFailed & { structuredError?: unknown };
+    expect(reason.upstreamError).toBe("unknown");
+    expect(reason.structuredError).toBeNull();
+  });
+
   it("asks nothing after the deadline unless it is the final ask", async () => {
     const r = runner();
     a.answer(({ method, path }) => {
