@@ -51,7 +51,8 @@ export function MediaFullscreenButton({ onOpen, className }: MediaFullscreenButt
           <Maximize2 className='h-4 w-4' />
         </Button>
       </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
+      {/* Through the body: a canvas node and a hover card clip their children. */}
+      <TooltipContent portal>{label}</TooltipContent>
     </Tooltip>
   );
 }
