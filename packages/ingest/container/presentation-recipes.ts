@@ -701,7 +701,10 @@ async function renderTransitionWindow(recipe: MiniToolPlanTransitionWindow, file
     // Each clip is decoded with its own plan's matrix and tone mapped as its own chunk_encode would be (§97 D23-4).
     const matrix = SCALE_MATRICES[clip.colorMatrix];
     if (matrix === undefined) throw new RangeError(`No decode matrix for ${clip.colorMatrix}`);
-    const convert = `${clip.toneMap === "sdr-bt709" ? `${TONE_MAP},` : ""}scale=${width}:${height}:force_original_aspect_ratio=decrease:in_color_matrix=${matrix}:out_range=pc`;
+    // The chunk's own conversion to limited-range BT.709 first, then full-range RGBA for the renderer, so the window meets
+    // the chunk_encode chunks with no colour jump.
+    const convert = `${clip.toneMap === "sdr-bt709" ? `${TONE_MAP},` : ""}scale=${width}:${height}:force_original_aspect_ratio=decrease:in_color_matrix=${matrix}`
+      + ":out_color_matrix=bt709:out_range=tv,format=yuv444p,scale=in_color_matrix=bt709:in_range=tv:out_range=pc";
     const window = await windowGraph(clip.entries, clock, local(files, clip.inputId), run,
       () => `${convert},format=rgba,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${fill},setsar=1`,
       (entry) => `color=c=black${entry.fill === "transparent" ? "@0" : ""}:s=${width}x${height}:r=1:d=1,format=rgba`);
