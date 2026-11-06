@@ -791,13 +791,20 @@ test('S-06 two tabs writing past the limit at once: the refused one is told once
 });
 
 /**
- * What undoing the canvas's top step does to its size.
+ * What the canvas's next undo does to its size, as the page's own
+ * `nextHistoryStep` judges it.
  * @param p - A page with the Space open.
  * @param s - The Space.
  * @returns The kind the step is judged as.
  */
 async function undoKind(p: Page, s: SpaceRef): Promise<string> {
-  return onCanvas<string>(p, s, 'return canvas.historyStepKind(canvas.getCanvasUndoManager(manager.getDoc(name), name), "undo");');
+  const historyAt = await liveModuleUrl(p, 'data/yjs/history-step.ts');
+  return onCanvas<string>(
+    p,
+    s,
+    'return import(extra).then((history) => history.nextHistoryStep(canvas.getCanvasUndoManager(manager.getDoc(name), name), "undo").kind);',
+    historyAt,
+  );
 }
 
 test('S-07 Mod-z on a full canvas: bringing back a deleted node is refused, taking back a new one is not', async ({ page }) => {
@@ -1065,7 +1072,7 @@ test('S-10 a full Timeline refuses a local video inside the material dialog @nee
       buffer: readFileSync(resolve(__dirname, '../fixtures/media-history.mp4')),
     });
     await dialog.getByTestId('timeline-confirm-material').click();
-    await expect(dialog.getByTestId('timeline-material-error')).toHaveText(EN.timeline.errors.full);
+    await expect(dialog.getByTestId('timeline-material-error')).toHaveText(SIZE.timelineFull);
     await page.waitForTimeout(2_000);
     expect(tickets).toEqual([]);
     expect(await timelineClipIds(page)).toEqual([]);
@@ -1297,7 +1304,7 @@ test('S-15 with the overwrite reserve used up, a new start frame is refused with
     const vector = await stateVector(page, name);
     await outlet.getByTestId('timeline-start-frame').fill('7');
     await outlet.getByTestId('timeline-apply-start').click();
-    await expect(toastSaying(page, EN.timeline.errors.full).first()).toBeVisible();
+    await expect(toastSaying(page, SIZE.timelineFull).first()).toBeVisible();
     await expect(outlet.getByTestId('timeline-start-frame')).toHaveValue('7');
     await expect(outlet.getByText(EN.timeline.errors.invalid_range)).toHaveCount(0);
     expect(await stateVector(page, name)).toBe(vector);
