@@ -156,13 +156,15 @@ describe("a template with a shot list (inner#1816)", () => {
     expect(said).toContain(describeTemplate(byId("vertical-15s-quick-tip")));
   });
 
-  it("says a multi_shot node sends shots adding up to its duration and any other mode sends one prompt", async () => {
+  it("says a multi_shot node sends shots adding up to the duration written in its params, else the template's while it keeps the template's mode and model, and any other mode sends one prompt", async () => {
     const said = await read("vertical-15s-quick-tip");
     expect(said).toContain(
       "A node sent in multi_shot sends shots and no prompt, their durations adding up to the node's duration: " +
-        "the template's while the node keeps the template's mode and model, otherwise one you set in its params. " +
+        "the one you write in its params, else the template's while the node keeps the template's mode and model; " +
+        "on another mode or model, write one. " +
         "A node sent in any other mode sends a prompt, a template's shots written as one.",
     );
+    expect(said).not.toContain("the template's while the node keeps the template's mode and model, otherwise one you set in its params");
     expect(said).not.toContain("For a node with shots");
     expect(said).not.toContain("each with the duration the template gives it");
   });
