@@ -451,17 +451,22 @@ describe('generation template registry checks', () => {
     }
   });
 
-  it('never names a frame in a video template\'s agent note that its aspect ratio contradicts', () => {
+  it('names no frame in a template\'s agent note but the one its aspect ratio gives', () => {
     for (const template of GENERATION_TEMPLATES) {
       const anchor = template.nodes.find((node) => node.key === template.anchor);
-      if (anchor?.role !== 'generate' || anchor.type !== 'video') continue;
+      if (anchor?.role !== 'generate') continue;
       // With no ratio of its own, a video takes the frame of the node wired into its first frame.
-      const first = template.edges.find((edge) => edge.to === anchor.key && edge.into === 'image');
+      const first = anchor.type === 'video' ? template.edges.find((edge) => edge.to === anchor.key && edge.into === 'image') : undefined;
       const feeder = template.nodes.find((node) => node.key === first?.from);
       const ratio = anchor.params.aspect_ratio ?? (feeder?.role === 'generate' ? feeder.params.aspect_ratio : undefined);
-      const at = `${template.id} ${String(ratio)}`;
-      if (ratio === '9:16') expect.soft(template.agentNote, at).not.toContain('landscape');
-      if (ratio === '16:9') expect.soft(template.agentNote, at).not.toContain('vertical');
+      const sides = typeof ratio === 'string' ? /^(\d+):(\d+)$/.exec(ratio) : null;
+      if (sides === null) continue;
+      const [width, height] = [Number(sides[1]), Number(sides[2])];
+      const note = template.agentNote;
+      const at = `${template.id} ${String(ratio)}: ${note}`;
+      for (const literal of note.match(/\b\d+:\d+\b/g) ?? []) expect.soft(literal, at).toBe(ratio);
+      if (width <= height) expect.soft(note, at).not.toMatch(/landscape|horizontal|widescreen/i);
+      if (height <= width) expect.soft(note, at).not.toMatch(/vertical|portrait/i);
     }
   });
 

@@ -156,6 +156,15 @@ describe("a template with a shot list (inner#1816)", () => {
     expect(said).toContain(describeTemplate(byId("vertical-15s-quick-tip")));
   });
 
+  it("says a node's shots keep the template's durations or add up to the node's new duration", async () => {
+    const said = await read("vertical-15s-quick-tip");
+    expect(said).toContain(
+      "For a node with shots, send its shots instead and no prompt: each with the duration the template gives it, " +
+        "or, when you change the node's duration, durations that add up to the new one.",
+    );
+    expect(said).not.toContain("each with the duration the template gives it, and no prompt");
+  });
+
   it("writes no shot list for a template without shots", () => {
     for (const id of ["storyboard-grid-25", "single-view-refs-scene"]) {
       const said = describeTemplate(byId(id));
