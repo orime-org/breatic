@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineVideoClip } from '@breatic/shared';
+import type { TimelineArrangementReason } from '@web/data/yjs/timeline-arrangement';
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 import { parseTimelineFrame, timelineClipIntervalValid, timelineSourceOverflow } from '@web/data/yjs/timeline-time';
 
@@ -11,6 +12,7 @@ import { Label } from '@web/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
+import { cn } from '@web/lib/utils';
 import type { TimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
 
 /** The selected clip's editable properties. */
@@ -20,6 +22,7 @@ interface TimelineClipPropertiesProps {
   clip: TimelineVideoClip;
   name: string;
   conflict: boolean;
+  reason?: TimelineArrangementReason['code'] | null;
   labels: TimelineTrackLabels;
   readOnly: boolean;
   placement: TimelineEditPlacement;
@@ -71,6 +74,7 @@ function syncDrafts(drafts: Drafts | null, clip: TimelineVideoClip, editable: Re
  * @param props.clip - The selected clip.
  * @param props.name - Its display name.
  * @param props.conflict - Whether the arrangement reports a conflict.
+ * @param props.reason - The first reason it conflicts, if any (only a conflicting clip has one).
  * @param props.labels - Track names.
  * @param props.readOnly - Whether editing is unavailable.
  * @param props.placement - The editing user's switches.
@@ -78,7 +82,7 @@ function syncDrafts(drafts: Drafts | null, clip: TimelineVideoClip, editable: Re
  * @returns The properties fields.
  * @throws {never} Never.
  */
-export function TimelineClipProperties({ spaceId, document, clip, name, conflict, labels, readOnly, placement, onCommit }: TimelineClipPropertiesProps): React.JSX.Element {
+export function TimelineClipProperties({ spaceId, document, clip, name, conflict, reason = null, labels, readOnly, placement, onCommit }: TimelineClipPropertiesProps): React.JSX.Element {
   const t = useTranslation();
   const startLocked = placement.magnet && clip.trackId === TIMELINE_MAIN_TRACK_ID;
   const editable = React.useMemo(() => ({ start: !readOnly && !startLocked, in: !readOnly, duration: !readOnly }), [readOnly, startLocked]);
@@ -131,7 +135,7 @@ export function TimelineClipProperties({ spaceId, document, clip, name, conflict
         ? <Input id={id} data-testid={testId} type='number' inputMode='numeric' autoComplete='off' step={1} value={current[which].value} className='h-8 w-full'
           aria-invalid={current[which].error} onChange={(event) => change(which, event.target.value)} onBlur={() => commit(which)}
           onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); commit(which); } }} />
-        : <span data-testid={testId} className='flex h-8 items-center text-sm tabular-nums'>{current[which].value}</span>}
+        : <span data-testid={testId} className={cn('flex h-8 items-center text-sm tabular-nums', !readOnly && 'px-3')}>{current[which].value}</span>}
       {which === 'start' && startLocked && !readOnly && <span className='text-xs text-muted-foreground'>{t('timeline.edit.magnetStartHint')}</span>}
       {current[which].error && <span data-testid='timeline-clip-field-error' className='text-xs text-status-error-foreground'>{t('timeline.errors.invalid_range')}</span>}
     </div>;
@@ -143,7 +147,10 @@ export function TimelineClipProperties({ spaceId, document, clip, name, conflict
         <TooltipTrigger asChild><span className='truncate text-sm font-semibold leading-normal'>{name}</span></TooltipTrigger>
         <TooltipContent portal className='max-w-sm break-all'>{name}</TooltipContent>
       </Tooltip>
-      {conflict && <span className='text-status-error-foreground'>{t('timeline.conflict')}</span>}
+      {conflict && <span className='flex min-w-0 gap-1 text-status-error-foreground'>
+        <span className='shrink-0'>{t('timeline.conflict')}</span>
+        {reason !== null && <><span className='shrink-0'>·</span><span className='min-w-0 truncate'>{t(`timeline.conflictReason.${reason}`)}</span></>}
+      </span>}
     </div>
     <div className='flex flex-col gap-1'>
       <Label htmlFor={`timeline-clip-track-${spaceId}`} className={LABEL}>{t('timeline.edit.track')}</Label>

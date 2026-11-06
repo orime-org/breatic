@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import type * as Y from 'yjs';
-import { Copy, Film, Link2, Magnet, Pause, Play, Plus, Redo2, Scissors, Trash2, Undo2 } from 'lucide-react';
+import { ArrowRightToLine, Copy, Film, Link2, Magnet, Pause, Play, Plus, Redo2, Scissors, Trash2, Undo2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineVideoClip } from '@breatic/shared';
 import { resolveTimelineArrangement, type TimelineArrangementReason } from '@web/data/yjs/timeline-arrangement';
@@ -16,6 +16,7 @@ import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Separator } from '@web/components/ui/separator';
 import { Slider } from '@web/components/ui/slider';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { useSpaceConnection } from '@web/data/yjs/space-connection';
 import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
@@ -33,6 +34,7 @@ import { TimelineTrackArea } from '@web/spaces/timeline/TimelineTrackArea';
 import { getTimelineEditSession, type TimelineEditOptions } from '@web/data/yjs/timeline-edit-session';
 import { timelineKeyAction } from '@web/spaces/timeline/timeline-keyboard';
 import { getTimelineMediaDraft } from '@web/spaces/timeline/timeline-media-draft';
+import { formatTimelineTimecode } from '@web/spaces/timeline/timeline-timecode';
 import { useTimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
 import { useTimelineDocument } from '@web/spaces/timeline/use-timeline-document';
 import { useTimelineEditPrefs } from '@web/spaces/timeline/use-timeline-edit-prefs';
@@ -47,6 +49,7 @@ interface TimelineConflictRowProps {
   projectId: string;
   clip: TimelineVideoClip;
   assetId: string;
+  track: string;
   reason: TimelineArrangementReason['code'] | null;
   selected: boolean;
   onLocate: (clipId: string) => void;
@@ -75,6 +78,7 @@ function TimelineDamagedRow({ clipId, readOnly, onDelete }: TimelineDamagedRowPr
 }
 
 const DEFAULT_PIXELS_PER_FRAME = 2;
+const LOCATE_MARGIN_PX = 24;
 // The zoom slider moves in powers of two so every zoom level is equally reachable.
 const ZOOM_STEP = 0.1;
 
@@ -84,41 +88,71 @@ const ZOOM_STEP = 0.1;
  * @param props.projectId - The Project authorizing its source.
  * @param props.clip - The placement.
  * @param props.assetId - Its registered asset.
+ * @param props.track - Its track's name.
  * @param props.reason - The first reason it conflicts.
  * @param props.selected - Whether it is selected.
  * @param props.onLocate - Selects it, seeks to it and scrolls the tracks to it.
  * @returns The conflict row.
  * @throws {never} Never.
  */
-function TimelineConflictRow({ projectId, clip, assetId, reason, selected, onLocate }: TimelineConflictRowProps): React.JSX.Element {
+function TimelineConflictRow({ projectId, clip, assetId, track, reason, selected, onLocate }: TimelineConflictRowProps): React.JSX.Element {
   const t = useTranslation();
   const asset = useTimelineAsset(projectId, assetId);
+  const name = asset.data?.displayName || t('timeline.video');
   const locate = React.useCallback((): void => onLocate(clip.id), [onLocate, clip.id]);
   return <Button data-testid={`timeline-conflict-${clip.id}`} type='button' variant={null} size={null} aria-pressed={selected} onClick={locate}
     className={cn('flex w-full min-w-0 flex-col items-start gap-0.5 overflow-hidden rounded-chrome border border-status-error-border bg-status-error-bg px-2 py-1.5 text-left text-xs hover-enabled:bg-accent', selected && 'border-active-border')}>
     <span className='flex w-full min-w-0 items-center gap-2'>
       <Film className='size-4 shrink-0' />
-      <span className='min-w-0 truncate leading-normal'>{asset.data?.displayName || t('timeline.video')}</span>
+      <Tooltip>
+        <TooltipTrigger asChild><span className='min-w-0 truncate leading-normal'>{name}</span></TooltipTrigger>
+        <TooltipContent portal className='max-w-sm break-all'>{name}</TooltipContent>
+      </Tooltip>
     </span>
     {reason !== null && <span data-testid={`timeline-reason-${clip.id}`} className='w-full truncate text-status-error-foreground'>{t(`timeline.conflictReason.${reason}`)}</span>}
-    <span className='w-full truncate tabular-nums text-muted-foreground'>{t('timeline.clipFrames', { start: clip.startFrame, duration: clip.durationFrames })}</span>
+    <span className='w-full tabular-nums text-muted-foreground'>{`${track} · ${t('timeline.clipFrames', { start: clip.startFrame, duration: clip.durationFrames })}`}</span>
   </Button>;
 }
 
 /**
  * A toolbar button's shortcut, in the type the menus use for theirs.
- * @param props - The shortcut and its button's state.
+ * @param props - The shortcut.
  * @param props.children - The shortcut label.
- * @param props.pressed - Whether its toggle is on, which shows it in the button's text colour.
  * @returns The shortcut.
  * @throws {never} Never.
  */
-function ToolbarShortcut({ children, pressed = false }: { children: string; pressed?: boolean }): React.JSX.Element {
-  return <kbd className={cn('font-sans text-xs tracking-widest', pressed ? 'text-foreground' : 'text-muted-foreground')}>{children}</kbd>;
+function ToolbarShortcut({ children }: { children: string }): React.JSX.Element {
+  return <kbd className='font-sans text-xs tracking-widest text-muted-foreground'>{children}</kbd>;
 }
 
-const TOGGLE = 'gap-1.5 aria-pressed:border-active-border aria-pressed:bg-accent-strong aria-pressed:hover-enabled:bg-accent-strong';
+/** One of the editing switches. */
+interface TimelineSwitchProps { testId: string; label: string; shortcut?: string; pressed: boolean; icon: React.ReactElement<{ className?: string }>; onToggle: () => void }
+
+/**
+ * An editing switch drawn as an icon button whose tooltip names it and its shortcut.
+ * @param props - The switch.
+ * @param props.testId - Its test id.
+ * @param props.label - Its name.
+ * @param props.shortcut - Its key, when it has one.
+ * @param props.pressed - Whether it is on.
+ * @param props.icon - Its icon.
+ * @param props.onToggle - Turns it on or off.
+ * @returns The switch.
+ * @throws {never} Never.
+ */
+function TimelineSwitch({ testId, label, shortcut, pressed, icon, onToggle }: TimelineSwitchProps): React.JSX.Element {
+  return <Tooltip>
+    <TooltipTrigger asChild>
+      <Button data-testid={testId} variant='outline' size='sm' aria-label={label} aria-pressed={pressed} onClick={onToggle} icon={icon}
+        className='px-2 aria-pressed:border-active-border aria-pressed:bg-accent-strong aria-pressed:hover-enabled:bg-accent-strong' />
+    </TooltipTrigger>
+    <TooltipContent className='flex items-center gap-2'>{label}{shortcut !== undefined && <span className='tracking-widest text-muted-foreground'>{shortcut}</span>}</TooltipContent>
+  </Tooltip>;
+}
 const PANEL = 'flex flex-col gap-2 rounded-chrome border border-border p-3 text-xs';
+const MAGNET_ICON = <Magnet className='size-4' />;
+const SNAP_ICON = <ArrowRightToLine className='size-4' />;
+const LINKAGE_ICON = <Link2 className='size-4' />;
 
 /**
  * Arrange registered videos on tracks, edit them and preview the shared integer-frame sequence.
@@ -232,8 +266,8 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     seekTo(clip.startFrame);
     const viewport = trackViewport.current;
     const left = clip.startFrame * pixelsPerFrame;
-    // The lanes visible right of the sticky track headers.
-    if (viewport !== null && (left < viewport.scrollLeft || left >= viewport.scrollLeft + viewport.clientWidth - TIMELINE_TRACK_HEADER_PX)) viewport.scrollTo({ left });
+    // The lanes visible right of the sticky track headers; the margin keeps the start off the headers' edge.
+    if (viewport !== null && (left < viewport.scrollLeft || left >= viewport.scrollLeft + viewport.clientWidth - TIMELINE_TRACK_HEADER_PX)) viewport.scrollTo({ left: Math.max(0, left - LOCATE_MARGIN_PX) });
   }, [session, document.clips, seekTo, pixelsPerFrame]);
 
   const nudge = React.useCallback((frames: number): void => {
@@ -385,11 +419,11 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       </div>
       <div className='flex shrink-0 items-center gap-3 border-t border-border px-4 py-2'>
         <Button data-testid='timeline-play' variant='outline' size='sm' className='gap-1.5' disabled={duration === 0} onClick={playback.toggle} icon={playback.intent === 'play' ? <Pause className='size-4' /> : <Play className='size-4' />}>{playback.intent === 'play' ? t('timeline.pause') : t('timeline.play')}</Button>
-        <span className='shrink-0 text-xs tabular-nums'>{t('timeline.framePosition', { frame, total: duration })}</span>
+        <span className='shrink-0 text-xs tabular-nums'>{`${formatTimelineTimecode(frame, fps)} / ${formatTimelineTimecode(duration, fps)}`}</span>
         <Slider aria-label={t('timeline.seek')} value={seekValue} onValueChange={onSeek} min={0} max={Math.max(1, duration - 1)} step={1} disabled={duration === 0} className='min-w-0 flex-1' />
         <span className='shrink-0 text-xs text-muted-foreground'>{t(`timeline.transport.${playback.state}`)}</span>
       </div>
-      <div role='toolbar' aria-label={t('timeline.tracks')} className='flex shrink-0 flex-wrap items-center gap-2 border-t border-border px-4 py-2'>
+      <div role='toolbar' aria-label={t('timeline.tracks')} className='flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-2'>
         <div className='flex flex-wrap items-center gap-2'>
           {!readOnly && <Button data-testid='timeline-add-media' variant='outline' size='sm' className='gap-1.5' onClick={openMaterial} icon={<Plus className='size-4' />}>{t('timeline.addMedia')}</Button>}
           <Button data-testid='timeline-undo' variant='outline' size='sm' className='gap-1.5' disabled={readOnly || !history.canUndo} onClick={undo} icon={<Undo2 className='size-4' />}>{t('timeline.edit.undo')}</Button>
@@ -399,10 +433,10 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
           <Button data-testid='timeline-duplicate' variant='outline' size='sm' disabled={readOnly} aria-disabled={noSelection} className={cn('gap-1.5', noSelection && 'opacity-50')} onClick={duplicate} icon={<Copy className='size-4' />}>{t('timeline.edit.duplicate')}<ToolbarShortcut>{formatShortcut({ mod: true, key: 'D' })}</ToolbarShortcut></Button>
           <Button data-testid='timeline-delete' variant='outline' size='sm' disabled={readOnly} aria-disabled={noSelection} className={cn('gap-1.5', noSelection && 'opacity-50')} onClick={remove} icon={<Trash2 className='size-4' />}>{t('timeline.edit.delete')}<ToolbarShortcut>{formatShortcut({ key: 'Delete' })}</ToolbarShortcut></Button>
         </div>
-        <div className='ml-auto flex flex-wrap items-center gap-2'>
-          <Button data-testid='timeline-toggle-magnet' variant='outline' size='sm' aria-pressed={prefs.magnet} className={TOGGLE} onClick={toggleMagnet} icon={<Magnet className='size-4' />}>{t('timeline.edit.magnet')}</Button>
-          <Button data-testid='timeline-toggle-snap' variant='outline' size='sm' aria-pressed={prefs.snap} className={TOGGLE} onClick={toggleSnap}>{t('timeline.edit.snap')}<ToolbarShortcut pressed={prefs.snap}>N</ToolbarShortcut></Button>
-          <Button data-testid='timeline-toggle-linkage' variant='outline' size='sm' aria-pressed={prefs.linkage} className={TOGGLE} onClick={toggleLinkage} icon={<Link2 className='size-4' />}>{t('timeline.edit.linkage')}</Button>
+        <div className='flex flex-wrap items-center gap-2'>
+          <TimelineSwitch testId='timeline-toggle-magnet' label={t('timeline.edit.magnet')} pressed={prefs.magnet} icon={MAGNET_ICON} onToggle={toggleMagnet} />
+          <TimelineSwitch testId='timeline-toggle-snap' label={t('timeline.edit.snap')} shortcut='N' pressed={prefs.snap} icon={SNAP_ICON} onToggle={toggleSnap} />
+          <TimelineSwitch testId='timeline-toggle-linkage' label={t('timeline.edit.linkage')} pressed={prefs.linkage} icon={LINKAGE_ICON} onToggle={toggleLinkage} />
           <span className='flex items-center gap-2'>
             <span className='text-xs text-muted-foreground'>{t('timeline.edit.zoom')}</span>
             <Slider data-testid='timeline-zoom' aria-label={t('timeline.edit.zoom')} value={zoomValue} onValueChange={changeZoom} min={Math.log2(minZoom)} max={Math.log2(TIMELINE_MAX_PIXELS_PER_FRAME)} step={ZOOM_STEP} className='w-28' />
@@ -417,14 +451,14 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
         <div className='flex flex-col gap-3'>
           <section className={PANEL}>
             {selected === undefined ? <p className='text-muted-foreground'>{t('timeline.selectClip')}</p>
-              : <TimelineClipProperties key={selected.id} spaceId={spaceId} document={document} clip={selected} conflict={!readyIds.has(selected.id)} labels={labels} readOnly={readOnly} placement={placement} onCommit={commitCommand}
+              : <TimelineClipProperties key={selected.id} spaceId={spaceId} document={document} clip={selected} conflict={!readyIds.has(selected.id)} reason={reasons.get(selected.id) ?? null} labels={labels} readOnly={readOnly} placement={placement} onCommit={commitCommand}
                 name={selectedResource.data?.displayName || t(selectedResource.isError ? 'timeline.mediaUnavailable' : 'timeline.video')} />}
           </section>
           <section data-testid='timeline-conflicts' className={PANEL}>
             <h3 className='text-sm font-semibold'>{t('timeline.conflictList')}</h3>
             {hasConflicts ? <>
-              <p className='text-status-error-foreground'>{t('timeline.conflictHelp')}</p>
-              {clips.filter((clip) => !readyIds.has(clip.id)).map((clip) => <TimelineConflictRow key={clip.id} projectId={projectId} clip={clip} assetId={document.sources[clip.sourceId]?.assetId ?? ''} reason={reasons.get(clip.id) ?? null} selected={selectedId === clip.id} onLocate={locateClip} />)}
+              <p className='text-muted-foreground'>{t('timeline.conflictHelp')}</p>
+              {clips.filter((clip) => !readyIds.has(clip.id)).map((clip) => <TimelineConflictRow key={clip.id} projectId={projectId} clip={clip} assetId={document.sources[clip.sourceId]?.assetId ?? ''} track={labels.nameOf(clip.trackId) ?? t('timeline.edit.trackRemoved')} reason={reasons.get(clip.id) ?? null} selected={selectedId === clip.id} onLocate={locateClip} />)}
               {damagedClipIds.map((clipId) => <TimelineDamagedRow key={clipId} clipId={clipId} readOnly={readOnly} onDelete={removeDamaged} />)}
             </> : <p className='text-muted-foreground'>{t('timeline.noConflicts')}</p>}
           </section>

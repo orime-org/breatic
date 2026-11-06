@@ -1215,7 +1215,7 @@ export function renderProductGuide(): string {
       `${quoted(t("timeline.pause"))} control playback; the slider below the preview selects its integer frame. ` +
       `The bottom visual track is ${quoted(t("timeline.mainTrack"))}; tracks above it are named like ` +
       `${quoted(t("timeline.track", { index: 2 }))}, and the preview shows the clip on the highest track at the playhead. ` +
-      "Each clip shows its name and its length in frames. Click a clip to select it, or an empty part of a track to clear the selection; " +
+      "Each clip shows its name and its length as a timecode (hours:minutes:seconds:frames), as does the position beside the play button. Click a clip to select it, or an empty part of a track to clear the selection; " +
       "the panel on the right shows its source name, " +
       `${quoted(t("timeline.edit.track"))}, ${quoted(t("timeline.startFrame"))}, ${quoted(t("timeline.edit.inPoint"))} and ` +
       `${quoted(t("timeline.edit.duration"))}, then the length and frame rate of its video. Type a whole frame and press Enter or leave the field to apply it. ` +
@@ -1224,8 +1224,8 @@ export function renderProductGuide(): string {
       `The toolbar has ${quoted(t("timeline.edit.undo"))}, ${quoted(t("timeline.edit.redo"))}, ` +
       `${quoted(t("timeline.edit.split"))} (splits the selected clip at the playhead), ` +
       `${quoted(t("timeline.edit.duplicate"))} (places a copy right after it) and ${quoted(t("timeline.edit.delete"))}, ` +
-      `then the switches ${quoted(t("timeline.edit.magnet"))}, ${quoted(t("timeline.edit.snap"))} and ` +
-      `${quoted(t("timeline.edit.linkage"))} and the ${quoted(t("timeline.edit.zoom"))} slider. The switches are yours and are kept for your account. ` +
+      `then three icon switches whose names show on hover, ${quoted(t("timeline.edit.magnet"))}, ${quoted(t("timeline.edit.snap"))} and ` +
+      `${quoted(t("timeline.edit.linkage"))}, and the ${quoted(t("timeline.edit.zoom"))} slider. The switches are yours and are kept for your account. ` +
       `With ${quoted(t("timeline.edit.magnet"))} on, clips on ${quoted(t("timeline.mainTrack"))} play end to end: a dropped clip is inserted ` +
       "and later clips move along, a deleted or trimmed clip closes its gap, and the start frame there is read only " +
       `(${quoted(t("timeline.edit.magnetStartHint"))}). On other tracks, or with the magnet off, a clip dropped on another ` +
@@ -1239,7 +1239,7 @@ export function renderProductGuide(): string {
       "Cmd/Ctrl+Z undoes and Cmd/Ctrl+Shift+Z or Ctrl+Y redoes your own edits; N turns snapping on or off. " +
       `Clips marked ${quoted(t("timeline.conflict"))} are listed under ${quoted(t("timeline.conflictList"))} below the properties ` +
       `(${quoted(t("timeline.noConflicts"))} when there are none); pressing a row selects the clip, moves the playhead to its start ` +
-      "and scrolls the tracks to it. Each row says why, for example " +
+      "and scrolls the tracks to it. Each row names the clip's track and says why, as do the selected clip's properties, for example " +
       `${quoted(t("timeline.conflictReason.missing_track"))}, which changing the clip's track fixes, or ` +
       `${quoted(t("timeline.conflictReason.missing_source"))}, which deleting the clip fixes. ` +
       `A row reading ${quoted(t("timeline.conflictReason.damaged"))} offers ${quoted(t("timeline.edit.delete"))}. ${quoted(t("timeline.conflictHelp"))}`,
