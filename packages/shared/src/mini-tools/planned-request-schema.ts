@@ -13,10 +13,14 @@ export const miniToolExecutionRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("remove-bg") }),
   z.strictObject({ kind: z.literal("frame"), frameIndex: index, pts: seconds }),
   z.strictObject({ kind: z.literal("segment"), range }),
+  z.strictObject({ kind: z.literal("transitions") }),
 ]);
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
+const toolInputRef = z.strictObject({ toolInputId: hash, planSha256: hash });
 /** The tool input each request input was planned against (§7.11, §7.13); the single-input tools name theirs `source`. */
-export const miniToolPresentationRefSchema = z.strictObject({ source: z.strictObject({ toolInputId: hash, planSha256: hash }) });
+export const miniToolPresentationRefSchema = z.strictObject({ source: toolInputRef });
+/** A multi-input tool's refs, keyed by the draft input id each clip plays (§97 D11-3). */
+const inputPresentationRefSchema = z.record(z.uuid(), toolInputRef);
 const common = { project_id: z.uuid(), space_id: z.uuid(), run_id: z.uuid(), analysis_refs: z.array(videoToolAnalysisRefSchema), presentation_ref: miniToolPresentationRefSchema };
 const destination = { outputIndex: index, nodeId: z.uuid() };
 const removal = z.strictObject({
@@ -31,10 +35,28 @@ const split = z.strictObject({
   ...common, tool: z.literal("video.split"), draft: videoToolDraftSchema("video.split"),
   outputs: z.array(z.strictObject({ ...destination, recipe: miniToolExecutionRecipeSchema.options[2] })),
 });
+// Two clips, one on the node's current video and one on the picked input, a ref per clip input and one output (§97 D11-3).
+const transitions = z.strictObject({
+  ...common, presentation_ref: inputPresentationRefSchema, tool: z.literal("video.transitions"), draft: videoToolDraftSchema("video.transitions"),
+  outputs: z.array(z.strictObject({ ...destination, recipe: miniToolExecutionRecipeSchema.options[3] })),
+}).superRefine((request, ctx) => {
+  const { clips } = request.draft.params;
+  const inputs = new Map(request.draft.inputs.map((input) => [input.inputId, input]));
+  const held = clips.map((clip) => inputs.get(clip.inputId));
+  const current = held.filter((input) => input?.sourceNodeId === request.draft.source.nodeId).length;
+  if (clips.length !== 2 || held.some((input) => input === undefined) || current !== 1) {
+    ctx.addIssue({ code: "custom", path: ["draft", "params", "clips"], message: "A transition joins the current video and one picked input" });
+  }
+  const refs = Object.keys(request.presentation_ref).sort();
+  const played = [...new Set(clips.map((clip) => clip.inputId))].sort();
+  if (refs.length !== played.length || refs.some((key, at) => key !== played[at])) {
+    ctx.addIssue({ code: "custom", path: ["presentation_ref"], message: "Each clip input has exactly one tool input ref" });
+  }
+});
 /** Complete press-frozen drafts and ordered output mappings for planned execution. */
-export const miniToolPlannedRequestSchema = z.discriminatedUnion("tool", [removal, frames, split]).superRefine((request, ctx) => {
+export const miniToolPlannedRequestSchema = z.discriminatedUnion("tool", [removal, frames, split, transitions]).superRefine((request, ctx) => {
   if (request.outputs.length === 0 || request.outputs.some((output, position) => output.outputIndex !== position)
-    || (request.tool === "video.remove-bg" && request.outputs.length !== 1)) {
+    || ((request.tool === "video.remove-bg" || request.tool === "video.transitions") && request.outputs.length !== 1)) {
     ctx.addIssue({ code: "custom", path: ["outputs"], message: "A fresh execution requires its complete ordered output indices" });
   }
   if (new Set(request.outputs.map((output) => output.nodeId)).size !== request.outputs.length
