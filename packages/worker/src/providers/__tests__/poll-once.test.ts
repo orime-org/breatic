@@ -79,6 +79,28 @@ describe("pollOnce", () => {
     expect((err as InstanceType<typeof UpstreamTaskFailed>).upstreamError).toBe("content refused");
   });
 
+  // inner#1306 test plan §97 D17-4 (execution design §9.3, §9.4): a model's async rejection is recognised by a structured
+  // field path in the upstream's error, so UpstreamTaskFailed also carries `structuredError`, the raw value at `errorPath`
+  // (null when there is none), beside the text it had.
+  it.each([
+    ["an object error", { code: "face_not_detected", detail: { frames: 0 } }],
+    ["a string error", "content refused"],
+  ])("PF01 a failed task with %s carries the raw value at errorPath as structuredError", async (_name, error) => {
+    httpRequestMock.mockResolvedValue(answer(200, { data: { status: "failed", error } }));
+
+    const err = await pollOnce("https://ws/predictions/p1/result", OPTIONS).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UpstreamTaskFailed);
+    expect((err as { structuredError?: unknown }).structuredError).toEqual(error);
+  });
+
+  it("PF02 a failed task without an error value carries a null structuredError and the text unknown", async () => {
+    httpRequestMock.mockResolvedValue(answer(200, { data: { status: "failed" } }));
+
+    const err = await pollOnce("https://ws/predictions/p1/result", OPTIONS).catch((e: unknown) => e);
+    expect((err as InstanceType<typeof UpstreamTaskFailed>).upstreamError).toBe("unknown");
+    expect((err as { structuredError?: unknown }).structuredError).toBeNull();
+  });
+
   it("asks once and names the next time to ask when the task is still going", async () => {
     httpRequestMock.mockResolvedValue(answer(200, { data: { status: "processing" } }));
 
