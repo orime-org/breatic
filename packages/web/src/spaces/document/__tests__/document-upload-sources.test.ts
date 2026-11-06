@@ -18,7 +18,7 @@ import {
   createUploadSources,
   type UploadSourceDeps,
 } from '@web/spaces/document/document-upload-sources';
-import type { UploadOutcome } from '@web/spaces/document/document-upload-controller';
+import type { UploadFailure, UploadOutcome } from '@web/spaces/document/document-upload-controller';
 
 const PREFIX = 'https://cdn.example/';
 
@@ -65,11 +65,11 @@ const noProgress = (): void => {};
 /**
  * The failure an outcome holds.
  * @param outcome - The outcome.
- * @returns Its message key and whether a retry can help.
+ * @returns Why it failed and whether a retry can help.
  */
-function failure(outcome: UploadOutcome): { key: string; retryable: boolean } {
+function failure(outcome: UploadOutcome): UploadFailure {
   if (outcome.ok) throw new Error('expected a failure');
-  return { key: outcome.failure.messageKey, retryable: outcome.failure.retryable };
+  return outcome.failure;
 }
 
 describe('a file', () => {
@@ -89,19 +89,19 @@ describe('a file', () => {
   it('refused as too large says so and offers no retry', async () => {
     const { run } = sources({ uploadFile: vi.fn(async () => Promise.reject(new UploadFailedError('tooLarge'))) });
     const outcome = await run('u1', { kind: 'file', file: new File(['x'], 'a.png', { type: 'image/png' }) }, noProgress);
-    expect(failure(outcome)).toEqual({ key: 'canvas.upload.tooLarge', retryable: false });
+    expect(failure(outcome)).toEqual({ reason: 'tooLarge', retryable: false });
   });
 
   it('that failed in transfer can be retried', async () => {
     const { run } = sources({ uploadFile: vi.fn(async () => Promise.reject(new UploadFailedError('transfer'))) });
     const outcome = await run('u1', { kind: 'file', file: new File(['x'], 'a.png', { type: 'image/png' }) }, noProgress);
-    expect(failure(outcome)).toEqual({ key: 'canvas.upload.failed', retryable: true });
+    expect(failure(outcome)).toEqual({ reason: 'failed', retryable: true });
   });
 
   it('stored as something that is not a medium is refused as that type', async () => {
     const { run } = sources({ uploadFile: vi.fn(async () => stored(`${PREFIX}x.pdf`, 'document')) });
     const outcome = await run('u1', { kind: 'file', file: new File(['x'], 'a.png', { type: 'image/png' }) }, noProgress);
-    expect(failure(outcome)).toEqual({ key: 'canvas.upload.unsupportedType', retryable: false });
+    expect(failure(outcome)).toEqual({ reason: 'unsupportedType', retryable: false });
   });
 });
 
@@ -115,22 +115,32 @@ describe('an https address', () => {
   });
 
   it.each([
-    ['source_unreachable', true],
-    ['source_cut_off', true],
-    ['internal', true],
-    ['unsupported_type', false],
-    ['over_cap', false],
-    ['empty', false],
-  ])('whose fetch failed as %s says so, retryable: %s', async (reason, retryable) => {
-    const { run } = sources({ waitForEnding: vi.fn(async (key: string) => ({ key, state: 'failed' as const, reason })) });
+    ['source_unreachable', 'unreachable', true],
+    ['source_cut_off', 'failed', true],
+    ['internal', 'failed', true],
+    ['unsupported_type', 'unsupportedType', false],
+    ['over_cap', 'tooLarge', false],
+    ['empty', 'empty', false],
+  ])('whose fetch failed as %s says %s, retryable: %s', async (stored, reason, retryable) => {
+    const { run } = sources({
+      waitForEnding: vi.fn(async (key: string) => ({ key, state: 'failed' as const, reason: stored })),
+    });
     const outcome = await run('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' }, noProgress);
-    expect(failure(outcome)).toEqual({ key: `canvas.task.failure.${reason}`, retryable });
+    expect(failure(outcome)).toEqual({ reason, retryable });
+  });
+
+  it('whose fetch failed for a cause that is not ours says it failed and can be retried', async () => {
+    const { run } = sources({
+      waitForEnding: vi.fn(async (key: string) => ({ key, state: 'failed' as const, reason: 'something else' })),
+    });
+    const outcome = await run('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' }, noProgress);
+    expect(failure(outcome)).toEqual({ reason: 'failed', retryable: true });
   });
 
   it('whose ending the server does not know fails and can be retried', async () => {
     const { run } = sources({ waitForEnding: vi.fn(async (key: string) => ({ key, state: 'unknown' as const })) });
     const outcome = await run('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' }, noProgress);
-    expect(failure(outcome)).toEqual({ key: 'canvas.upload.failed', retryable: true });
+    expect(failure(outcome)).toEqual({ reason: 'failed', retryable: true });
   });
 
   it('turned away for the rate waits as long as the server says, then is sent again', async () => {
@@ -146,16 +156,16 @@ describe('an https address', () => {
   });
 
   it.each([
-    [507, 'canvas.upload.storageFull', false],
-    [400, 'canvas.upload.failed', false],
-    [0, 'canvas.upload.failed', true],
-    [503, 'canvas.upload.failed', true],
-  ])('refused with %s says %s, retryable: %s', async (status, key, retryable) => {
+    [507, 'storageFull', false],
+    [400, 'failed', false],
+    [0, 'failed', true],
+    [503, 'failed', true],
+  ])('refused with %s says %s, retryable: %s', async (status, reason, retryable) => {
     const { run } = sources({
       ingest: vi.fn(async () => Promise.reject(new ApiException({ status, message: 'no' }))),
     });
     const outcome = await run('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' }, noProgress);
-    expect(failure(outcome)).toEqual({ key, retryable });
+    expect(failure(outcome)).toEqual({ reason, retryable });
   });
 
   it('is sent only once the address before it has been taken', async () => {
@@ -209,7 +219,7 @@ describe('a data: or blob: address', () => {
   it('that cannot be read any more fails with no retry', async () => {
     const { run } = sources({ readAddress: vi.fn(async () => Promise.reject(new TypeError('revoked'))) });
     const outcome = await run('u1', { kind: 'address', url: 'blob:https://x/1' }, noProgress);
-    expect(failure(outcome)).toEqual({ key: 'canvas.upload.failed', retryable: false });
+    expect(failure(outcome)).toEqual({ reason: 'failed', retryable: false });
   });
 });
 
@@ -233,7 +243,7 @@ describe('addresses of ours', () => {
       register: vi.fn(async () => Promise.reject(new ApiException({ status: 507, message: 'full' }))),
     });
     const outcome = await run('u1', { kind: 'ours', url: `${PREFIX}a.png` }, noProgress);
-    expect(failure(outcome)).toEqual({ key: 'canvas.upload.storageFull', retryable: false });
+    expect(failure(outcome)).toEqual({ reason: 'storageFull', retryable: false });
   });
 
   it('turned away for the rate can be retried', async () => {
@@ -241,12 +251,12 @@ describe('addresses of ours', () => {
       register: vi.fn(async () => Promise.reject(new ApiException({ status: 429, message: 'slow' }))),
     });
     const outcome = await run('u1', { kind: 'ours', url: `${PREFIX}a.png` }, noProgress);
-    expect(failure(outcome)).toEqual({ key: 'canvas.upload.rateLimited', retryable: true });
+    expect(failure(outcome)).toEqual({ reason: 'rateLimited', retryable: true });
   });
 
   it('missing from the answer fails', async () => {
     const { run } = sources({ register: vi.fn(async () => ({})) });
     const outcome = await run('u1', { kind: 'ours', url: `${PREFIX}a.png` }, noProgress);
-    expect(failure(outcome)).toEqual({ key: 'canvas.upload.failed', retryable: true });
+    expect(failure(outcome)).toEqual({ reason: 'failed', retryable: true });
   });
 });

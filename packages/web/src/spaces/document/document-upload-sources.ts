@@ -17,18 +17,17 @@
  *   Studio, with every other one started in the same task, in one request.
  */
 
-import { formatNameOf, type PastePair, type TaskFailureReason } from '@breatic/shared';
+import { formatNameOf, readTaskFailure, type PastePair, type TaskFailureReason } from '@breatic/shared';
 
 import { ApiException } from '@web/data/api/types';
-import { UploadFailedError, type StoredUpload } from '@web/data/upload/media-upload';
+import { UploadFailedError, type StoredUpload, type UploadFailureReason } from '@web/data/upload/media-upload';
 import type { UploadEnding } from '@web/data/upload/upload-status';
 import { STORAGE_FULL_STATUS } from '@web/data/upload/upload-retry';
-import { refusedFormatParams } from '@web/spaces/canvas/canvas-upload';
-import { failureMessage } from '@web/spaces/canvas/failure-sentence';
-import { uploadFailureMessageKey, uploadRetryCanChange } from '@web/spaces/canvas/upload-failure';
+import { uploadRetryCanChange } from '@web/spaces/canvas/upload-failure';
 import { routeAddress } from '@web/spaces/document/document-media-address';
 import { isMediaBlockType } from '@web/spaces/document/document-media-types';
 import type {
+  PendingFailureReason,
   UploadControllerDeps,
   UploadFailure,
   UploadOutcome,
@@ -72,44 +71,50 @@ const RATE_LIMITED_STATUS = 429;
 const FALLBACK_WAIT_SECONDS = 1;
 
 /**
- * Whether fetching the address again can end differently, for every cause a
- * fetch can end in. A cause added to the vocabulary does not compile until
- * it is placed here.
+ * How a fetch that ended in each cause fails: what the block says and whether
+ * fetching the address again can end differently. A cause added to the
+ * vocabulary does not compile until it is placed here.
  */
-const FETCH_RETRY_CAN_CHANGE: Readonly<Record<TaskFailureReason, boolean>> = {
-  internal: true,
-  expired: true,
-  aborted: true,
-  source_unreachable: true,
-  source_cut_off: true,
-  unsupported_type: false,
-  over_cap: false,
-  empty: false,
-  understand_over_cap: false,
-  no_result: false,
-  understand_unsupported_type: false,
-  no_credits: false,
-  declined: false,
-  tool_failed: false,
-  media_refused: false,
-  no_audio_track: false,
-  credits_held: false,
-  cut_short: false,
+const FETCH_FAILURE: Readonly<Record<TaskFailureReason, UploadFailure>> = {
+  internal: { reason: 'failed', retryable: true },
+  expired: { reason: 'failed', retryable: true },
+  aborted: { reason: 'failed', retryable: true },
+  source_unreachable: { reason: 'unreachable', retryable: true },
+  source_cut_off: { reason: 'failed', retryable: true },
+  unsupported_type: { reason: 'unsupportedType', retryable: false },
+  over_cap: { reason: 'tooLarge', retryable: false },
+  empty: { reason: 'empty', retryable: false },
+  understand_over_cap: { reason: 'failed', retryable: false },
+  no_result: { reason: 'failed', retryable: false },
+  understand_unsupported_type: { reason: 'failed', retryable: false },
+  no_credits: { reason: 'failed', retryable: false },
+  declined: { reason: 'failed', retryable: false },
+  tool_failed: { reason: 'failed', retryable: false },
+  media_refused: { reason: 'failed', retryable: false },
+  no_audio_track: { reason: 'failed', retryable: false },
+  credits_held: { reason: 'failed', retryable: false },
+  cut_short: { reason: 'failed', retryable: false },
 };
 
-/** The failure every catch-all says. */
-const FAILED_KEY = 'canvas.upload.failed';
+/** What the block says for each way a file upload fails. */
+const FILE_FAILURE_REASON: Readonly<Record<UploadFailureReason, PendingFailureReason>> = {
+  storage: 'storageFull',
+  hash: 'hashUnavailable',
+  unsupportedType: 'unsupportedType',
+  rateLimited: 'rateLimited',
+  tooLarge: 'tooLarge',
+  upload: 'failed',
+  transfer: 'failed',
+};
 
 /**
  * A failure.
- * @param messageKey - What it says.
+ * @param reason - What it says.
  * @param retryable - Whether running it again can help.
- * @param params - The values the message is filled with.
  * @returns The outcome.
  */
-function fail(messageKey: string, retryable: boolean, params: Record<string, string> = {}): UploadOutcome {
-  const failure: UploadFailure = { messageKey, params, retryable };
-  return { ok: false, failure };
+function fail(reason: PendingFailureReason, retryable: boolean): UploadOutcome {
+  return { ok: false, failure: { reason, retryable } };
 }
 
 /**
@@ -134,12 +139,12 @@ function done(url: string, width?: number | null, height?: number | null): Uploa
  */
 function refusal(err: unknown): UploadOutcome {
   const status = err instanceof ApiException ? err.status : 0;
-  if (status === STORAGE_FULL_STATUS) return fail('canvas.upload.storageFull', false);
-  if (status === RATE_LIMITED_STATUS) return fail('canvas.upload.rateLimited', true);
+  if (status === STORAGE_FULL_STATUS) return fail('storageFull', false);
+  if (status === RATE_LIMITED_STATUS) return fail('rateLimited', true);
   // Our own request was wrong (400, 403, 404): sending it again is the same.
-  if (status >= 400 && status < 500) return fail(FAILED_KEY, false);
+  if (status >= 400 && status < 500) return fail('failed', false);
   // No answer, or the server broke.
-  return fail(FAILED_KEY, true);
+  return fail('failed', true);
 }
 
 /**
@@ -161,15 +166,14 @@ export function createUploadSources(deps: UploadSourceDeps): UploadControllerDep
    * @returns How it ended.
    */
   const uploadFile = async (file: File, onProgress: (share: number) => void): Promise<UploadOutcome> => {
-    const params = { filename: file.name, ...refusedFormatParams(file) };
     try {
       const filed = await deps.uploadFile(file, onProgress);
       // The kind the server read off the stored bytes, not the name's guess.
-      if (!isMediaBlockType(filed.kind)) return fail(uploadFailureMessageKey('unsupportedType'), false, params);
+      if (!isMediaBlockType(filed.kind)) return fail('unsupportedType', false);
       return done(filed.fileUrl, filed.width, filed.height);
     } catch (err) {
       const reason = err instanceof UploadFailedError ? err.reason : 'upload';
-      return fail(uploadFailureMessageKey(reason), uploadRetryCanChange(reason), params);
+      return fail(FILE_FAILURE_REASON[reason], uploadRetryCanChange(reason));
     }
   };
 
@@ -207,12 +211,10 @@ export function createUploadSources(deps: UploadSourceDeps): UploadControllerDep
     const ending = await deps.waitForEnding(key);
     if (ending.state === 'completed') return done(ending.result.fileUrl, ending.result.width, ending.result.height);
     if (ending.state === 'failed') {
-      const message = failureMessage(ending.reason);
-      return message === null
-        ? fail(FAILED_KEY, true)
-        : fail(message.key, FETCH_RETRY_CAN_CHANGE[message.reason], message.params);
+      const cause = readTaskFailure(ending.reason).reason;
+      return cause === null ? fail('failed', true) : { ok: false, failure: FETCH_FAILURE[cause] };
     }
-    return fail(FAILED_KEY, true);
+    return fail('failed', true);
   };
 
   /** Registers this task's addresses of ours in one request. */
@@ -235,7 +237,7 @@ export function createUploadSources(deps: UploadSourceDeps): UploadControllerDep
     }
     taken.forEach(({ source, resolve }) => {
       const copy = map[source.url];
-      resolve(typeof copy === 'string' ? done(copy) : fail(FAILED_KEY, true));
+      resolve(typeof copy === 'string' ? done(copy) : fail('failed', true));
     });
   };
 
@@ -257,10 +259,10 @@ export function createUploadSources(deps: UploadSourceDeps): UploadControllerDep
         blob = await deps.readAddress(source.url);
       } catch {
         // A blob: address revoked by the page it came from reads as nothing again.
-        return fail(FAILED_KEY, false);
+        return fail('failed', false);
       }
       return uploadFile(pastedFile(blob), onProgress);
     }
-    return fail(FAILED_KEY, false);
+    return fail('failed', false);
   };
 }

@@ -1964,6 +1964,15 @@
         "notFinished": "上传没有完成",
         "pendingExport": "{name}（尚未上传完成）",
         "uploadFailed": "上传失败",
+        "failure": {
+          "storageFull": "Studio 存储已满",
+          "rateLimited": "上传太频繁，请稍后重试",
+          "hashUnavailable": "无法校验文件，请刷新页面",
+          "unsupportedType": "格式不支持",
+          "tooLarge": "超过上传大小限制",
+          "empty": "文件是空的",
+          "unreachable": "这个地址打不开"
+        },
         "readOnlyWaiting": "这个标签页现在只读，恢复可写后写入正文",
         "notWrittenYet": "已上传，还没写进正文",
         "notPasted": "{count} 项没有粘贴进来。"

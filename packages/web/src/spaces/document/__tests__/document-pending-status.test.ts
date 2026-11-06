@@ -10,8 +10,9 @@
 import { describe, it, expect } from 'vitest';
 
 import { claimIn, pendingStatus } from '@web/spaces/document/document-pending-status';
+import type { UploadFailure } from '@web/spaces/document/document-upload-controller';
 
-const FAILURE = { messageKey: 'canvas.upload.failed', params: {}, retryable: true };
+const FAILURE: UploadFailure = { reason: 'failed', retryable: true };
 
 describe('on the uploader\'s page', () => {
   it('in flight: uploading, with its progress', () => {

@@ -1964,6 +1964,15 @@
         "notFinished": "업로드가 완료되지 않았습니다",
         "pendingExport": "{name} (업로드 미완료)",
         "uploadFailed": "업로드 실패",
+        "failure": {
+          "storageFull": "Studio 저장 공간이 가득 찼습니다",
+          "rateLimited": "업로드가 너무 잦습니다. 잠시 후 다시 시도해 주세요",
+          "hashUnavailable": "파일을 확인할 수 없습니다. 페이지를 새로 고쳐 주세요",
+          "unsupportedType": "지원하지 않는 형식입니다",
+          "tooLarge": "업로드 크기 제한을 초과했습니다",
+          "empty": "파일이 비어 있습니다",
+          "unreachable": "이 주소를 열 수 없습니다"
+        },
         "readOnlyWaiting": "이 탭은 현재 읽기 전용입니다. 다시 편집할 수 있으면 추가됩니다",
         "notWrittenYet": "업로드됨, 아직 추가되지 않음",
         "notPasted": "{count}개 항목을 붙여넣지 못했습니다."

@@ -1964,6 +1964,15 @@
         "notFinished": "上傳沒有完成",
         "pendingExport": "{name}（尚未上傳完成）",
         "uploadFailed": "上傳失敗",
+        "failure": {
+          "storageFull": "Studio 儲存空間已滿",
+          "rateLimited": "上傳太頻繁，請稍後再試",
+          "hashUnavailable": "無法驗證檔案，請重新整理頁面",
+          "unsupportedType": "格式不支援",
+          "tooLarge": "超過上傳大小限制",
+          "empty": "檔案是空的",
+          "unreachable": "這個網址打不開"
+        },
         "readOnlyWaiting": "這個分頁現在唯讀，恢復可寫後寫入正文",
         "notWrittenYet": "已上傳，還沒寫進正文",
         "notPasted": "{count} 項沒有貼上。"

@@ -167,7 +167,7 @@ describe('claims', () => {
     controller.attach(a.body);
     pending(a.doc, 'u1');
     controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
-    settle.get('u1')!({ ok: false, failure: { messageKey: 'canvas.upload.failed', params: {}, retryable: true } });
+    settle.get('u1')!({ ok: false, failure: { reason: 'failed', retryable: true } });
     await flush();
     expect(seen(a, 'u1')).toBe('failed');
   });
@@ -204,7 +204,7 @@ describe('claims', () => {
     controller.attach(a.body);
     pending(a.doc, 'u1');
     controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
-    settle.get('u1')!({ ok: false, failure: { messageKey: 'canvas.upload.failed', params: {}, retryable: false } });
+    settle.get('u1')!({ ok: false, failure: { reason: 'failed', retryable: false } });
     await flush();
     expect(seen(a, 'u1')).toBe('failed');
     remove(a.doc);

@@ -38,12 +38,20 @@ export interface UploadResult {
   readonly mediaHeight?: number;
 }
 
+/** Why an upload did not finish, in the words its block has for it. */
+export type PendingFailureReason =
+  | 'failed'
+  | 'storageFull'
+  | 'rateLimited'
+  | 'hashUnavailable'
+  | 'unsupportedType'
+  | 'tooLarge'
+  | 'empty'
+  | 'unreachable';
+
 /** Why an upload did not finish, and whether running it again can help. */
 export interface UploadFailure {
-  /** The message key the block shows. */
-  readonly messageKey: string;
-  /** The values the message is filled with. */
-  readonly params: Readonly<Record<string, string>>;
+  readonly reason: PendingFailureReason;
   readonly retryable: boolean;
 }
 

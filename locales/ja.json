@@ -1964,6 +1964,15 @@
         "notFinished": "アップロードが完了していません",
         "pendingExport": "{name}（アップロード未完了）",
         "uploadFailed": "アップロードに失敗しました",
+        "failure": {
+          "storageFull": "Studio のストレージがいっぱいです",
+          "rateLimited": "アップロードの回数が多すぎます。しばらくしてからお試しください",
+          "hashUnavailable": "ファイルを検証できません。ページを再読み込みしてください",
+          "unsupportedType": "対応していない形式です",
+          "tooLarge": "アップロードサイズの上限を超えています",
+          "empty": "ファイルが空です",
+          "unreachable": "このアドレスを開けません"
+        },
         "readOnlyWaiting": "このタブは現在読み取り専用です。編集できるようになると追加されます",
         "notWrittenYet": "アップロード済み。まだ追加されていません",
         "notPasted": "{count} 件を貼り付けられませんでした。"

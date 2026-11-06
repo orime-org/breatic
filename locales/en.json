@@ -1964,6 +1964,15 @@
         "notFinished": "Upload not finished",
         "pendingExport": "{name} (upload not finished)",
         "uploadFailed": "Upload failed",
+        "failure": {
+          "storageFull": "Studio storage is full",
+          "rateLimited": "Uploading too often, try again later",
+          "hashUnavailable": "Couldn’t verify the file, reload the page",
+          "unsupportedType": "Format not supported",
+          "tooLarge": "Exceeds the upload size limit",
+          "empty": "The file is empty",
+          "unreachable": "The address won’t open"
+        },
         "readOnlyWaiting": "This tab is read-only now; it is added once the tab can edit again",
         "notWrittenYet": "Uploaded, not added yet",
         "notPasted": "{count, plural, one {# item was not pasted.} other {# items were not pasted.}}"

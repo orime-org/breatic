@@ -127,7 +127,7 @@ describe('what tells it something changed', () => {
     open.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
     const afterStart = listener.mock.calls.length;
     expect(afterStart).toBeGreaterThan(0);
-    settle.get('u1')!({ ok: false, failure: { messageKey: 'canvas.upload.failed', params: {}, retryable: true } });
+    settle.get('u1')!({ ok: false, failure: { reason: 'failed', retryable: true } });
     await flush();
     const afterEnd = listener.mock.calls.length;
     expect(afterEnd).toBeGreaterThan(afterStart);
@@ -141,7 +141,7 @@ describe('what tells it something changed', () => {
   it('a retry runs the failed upload again', async () => {
     const { open, settle } = rig();
     open.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
-    settle.get('u1')!({ ok: false, failure: { messageKey: 'canvas.upload.failed', params: {}, retryable: true } });
+    settle.get('u1')!({ ok: false, failure: { reason: 'failed', retryable: true } });
     await flush();
     open.pending.retry('u1');
     expect(open.pending.factsOf('u1').entry?.phase).toBe('uploading');

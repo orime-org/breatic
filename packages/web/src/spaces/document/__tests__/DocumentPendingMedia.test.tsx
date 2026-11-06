@@ -14,12 +14,13 @@ import * as React from 'react';
 
 import { DocumentPendingMedia } from '@web/spaces/document/DocumentPendingMedia';
 import type { PendingStatus } from '@web/spaces/document/document-pending-status';
+import type { PendingFailureReason, UploadFailure } from '@web/spaces/document/document-upload-controller';
 
 afterEach(() => {
   cleanup();
 });
 
-const FAILURE = { messageKey: 'canvas.upload.failed', params: {}, retryable: true };
+const FAILURE: UploadFailure = { reason: 'failed', retryable: true };
 
 /**
  * Renders one pending block.
@@ -75,6 +76,53 @@ describe('the frame', () => {
   it('shows the share sent while uploading with a known size', () => {
     draw({ kind: 'uploading', progress: 0.42 });
     expect(screen.getByTestId('doc-pending-progress').getAttribute('aria-valuenow')).toBe('42');
+  });
+
+  it('keeps its numbers one width, so a changing percent does not move the name', () => {
+    draw({ kind: 'uploading', progress: 0.42 });
+    expect(root().className).toContain('tabular-nums');
+  });
+
+  it('gives every line the height of its buttons, so a failure does not move the body below', () => {
+    draw({ kind: 'uploading', progress: null });
+    expect(root().className).toContain('leading-[var(--btn-compact)]');
+  });
+
+  it('is held to the width it is given, so a cell does not widen around it', () => {
+    draw({ kind: 'uploading', progress: null });
+    expect(root().parentElement!.className).toContain('@container');
+    expect(root().className).toContain('flex-wrap');
+  });
+});
+
+describe('a failure', () => {
+  it.each<[PendingStatus, string]>([
+    [{ kind: 'failed', failure: FAILURE }, 'cover.png · Upload failed'],
+    [{ kind: 'failed', failure: { reason: 'tooLarge', retryable: false } }, 'cover.png · Exceeds the upload size limit'],
+    [{ kind: 'peerFailed' }, 'cover.png · Upload failed'],
+  ])('%o names the file and the reason in one line', (status, said) => {
+    draw(status);
+    expect(screen.getByTestId('doc-pending-failure').textContent).toBe(said);
+    expect(screen.queryByTestId('doc-pending-name')).toBeNull();
+  });
+
+  it('says the reason alone when the block has a caption', () => {
+    draw({ kind: 'failed', failure: FAILURE }, 'Hero');
+    expect(screen.getByTestId('doc-pending-failure').textContent).toBe('Upload failed');
+  });
+
+  it.each<[PendingFailureReason, string]>([
+    ['failed', 'Upload failed'],
+    ['storageFull', 'Studio storage is full'],
+    ['rateLimited', 'Uploading too often, try again later'],
+    ['hashUnavailable', 'Couldn’t verify the file, reload the page'],
+    ['unsupportedType', 'Format not supported'],
+    ['tooLarge', 'Exceeds the upload size limit'],
+    ['empty', 'The file is empty'],
+    ['unreachable', 'The address won’t open'],
+  ])('%s says %s', (reason, said) => {
+    draw({ kind: 'failed', failure: { reason, retryable: false } }, 'Hero');
+    expect(screen.getByTestId('doc-pending-failure').textContent).toBe(said);
   });
 });
 
