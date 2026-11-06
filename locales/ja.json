@@ -1470,6 +1470,7 @@
         "selection": "選択範囲",
         "rectangle": "矩形",
         "point": "ポイント",
+        "swapClips": "順序を入れ替え",
         "transitionTooShort": "クリップが短すぎてトランジションを追加できません",
         "transitionCut": "カット",
         "transitionFade": "クロスフェード",

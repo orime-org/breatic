@@ -64,6 +64,18 @@ export async function preparePlannedVideoRun(run: PlannedVideoRun): Promise<Mini
 }
 
 /**
+ * What a refused planned run tells the user: the server's own reason when it gave one (frames-split §7.11), otherwise that the
+ * run could not start.
+ * @param error - The failure.
+ * @param translate - The translator.
+ * @returns The text.
+ * @throws {never} Never.
+ */
+export function plannedRunRefusalText(error: unknown, translate: (key: string) => string): string {
+  return error instanceof ApiException && error.fromServer && error.message ? error.message : translate('canvas.miniTool.panel.couldNotStart');
+}
+
+/**
  * Drives a planned press through the existing run-once lifecycle.
  * @param run - The press snapshot and existing Canvas capabilities.
  * @returns The existing press outcome.
@@ -93,7 +105,7 @@ export function startPlannedVideoRun(run: PlannedVideoRun): Promise<RunOnceOutco
     send: (key, body) => miniToolsApi.runPlanned(body, key),
     onDone: () => { settle(); return undefined; },
     onFailure: (error) => {
-      if (operations.length === 0) toast.error(t('canvas.miniTool.panel.couldNotStart'));
+      if (operations.length === 0) toast.error(plannedRunRefusalText(error, t));
       else settle(error instanceof ApiException && error.fromServer && error.message ? { text: error.message } : { key: 'canvas.miniTool.panel.couldNotStart' });
     },
   }).then((outcome) => { if (outcome.kind === 'released') settle(); return outcome; });

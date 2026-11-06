@@ -1470,6 +1470,7 @@
         "selection": "選區",
         "rectangle": "矩形",
         "point": "點選",
+        "swapClips": "交換順序",
         "transitionTooShort": "片段太短，無法加入轉場",
         "transitionCut": "直接切換",
         "transitionFade": "交叉淡化",

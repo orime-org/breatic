@@ -1470,6 +1470,7 @@
         "selection": "Selection",
         "rectangle": "Rectangle",
         "point": "Point",
+        "swapClips": "Swap order",
         "transitionTooShort": "Clips too short for a transition",
         "transitionCut": "Cut",
         "transitionFade": "Crossfade",
