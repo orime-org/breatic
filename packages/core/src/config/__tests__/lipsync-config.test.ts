@@ -4,7 +4,7 @@
 /**
  * Lip-sync execution configuration (inner#1306 test plan §97 D11-5; execution design §9.1, §9.3; canvas design §4 lip-sync
  * row): `executions.video.lip-sync` lists the selectable models (default first, `sync-lipsync-3`), each with its schema
- * fingerprint, duration range, crop size and accepted sync modes, an optional asynchronous rejection field, the tracking
+ * fingerprint, duration range, crop size and whether it accepts the sync_mode field, an optional asynchronous rejection field, the tracking
  * model with its own duration range, and the caps of two people and eight dialogue rows. The schema keeps every field.
  */
 
@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest';
 import { MONOREPO_ROOT } from '../env.js';
 import { miniToolsConfigSchema } from '../mini-tools.js';
 
-type Model = { name: string; schema_fingerprint: string; min_duration_seconds: number; max_duration_seconds: number; crop_size: number; accepts_sync_mode: string[]; async_rejection?: { path: string; equals: unknown } };
+type Model = { name: string; schema_fingerprint: string; min_duration_seconds: number; max_duration_seconds: number; crop_size: number; accepts_sync_mode: boolean; async_rejection?: { path: string; equals: unknown } };
 type LipSync = { models: Model[]; tracking: { model: string; min_duration_seconds: number; max_duration_seconds: number }; max_people: number; max_dialogues: number };
 const raw = parse(readFileSync(resolve(MONOREPO_ROOT, 'config/mini-tools.yaml'), 'utf8')) as Record<string, unknown>;
 const parsed = (): LipSync => (miniToolsConfigSchema.parse(raw).executions as unknown as Record<string, LipSync>)['video.lip-sync']!;
@@ -29,7 +29,8 @@ describe('lip-sync execution configuration (§97 D11-5)', () => {
       expect(model.min_duration_seconds).toBeGreaterThan(0);
       expect(model.max_duration_seconds).toBeGreaterThan(model.min_duration_seconds);
       expect(Number.isInteger(model.crop_size) && model.crop_size > 0).toBe(true);
-      expect(model.accepts_sync_mode.length).toBeGreaterThan(0);
+      // §97 (execution design §9.3): whether the request carries sync_mode: "cut_off"; a boolean, not a list of modes.
+      expect(typeof model.accepts_sync_mode).toBe('boolean');
       if (model.async_rejection !== undefined) expect(typeof model.async_rejection.path).toBe('string');
     }
   });
