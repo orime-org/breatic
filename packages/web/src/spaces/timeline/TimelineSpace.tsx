@@ -315,7 +315,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   React.useEffect(() => {
     // Listening on window runs after React's root listener, so a focused control (slider, select) has
     // already handled and marked the key. Keys reach the handler from inside this Space body, or from
-    // <body> after the focused clip was removed; hidden Spaces have no listener (Activity removes effects).
+    // <body> after the focused element was removed; hidden Spaces have no listener (Activity removes effects).
     /**
      * Forward a key press inside this Timeline to the current handler.
      * @param event - The key press.
@@ -338,7 +338,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const previewStyle = React.useMemo(() => ({ aspectRatio: `${document.settings.width} / ${document.settings.height}` }), [document.settings.width, document.settings.height]);
   const inConflict = clips.some((clip) => !readyIds.has(clip.id) && frame >= clip.startFrame && frame < clip.startFrame + clip.durationFrames);
   const noSelection = selected === undefined;
-  // Click-focusable, not tab-reachable: where the keyboard goes when the focused clip is deleted.
+  // Click-focusable, not tab-reachable: where the keyboard goes when the focused element leaves the page.
   return <div ref={root} data-testid='timeline-space' data-project-id={projectId} data-space-id={spaceId} tabIndex={-1} data-space-focus-root='' className='flex h-full min-h-0 min-w-0 flex-col bg-background outline-none'>
     <div className='flex min-h-0 flex-1 items-center justify-center bg-muted/40 p-6'>
       <div data-testid='timeline-preview' data-active-clip-id={active?.id ?? ''} className='relative flex max-h-full w-full max-w-4xl items-center justify-center overflow-hidden rounded-content-sm border border-border bg-background' style={previewStyle}>

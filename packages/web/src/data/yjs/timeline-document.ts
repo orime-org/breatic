@@ -122,7 +122,8 @@ export function reconcileTimelineSources(doc: Y.Doc, values: Readonly<Record<str
 const FORMAT_ORIGIN = Symbol('timeline-record-format');
 
 /**
- * Apply a user-confirmed layout edit to the shared Y.Doc in one transaction, writing only what changed.
+ * Apply a user-confirmed layout edit to the shared Y.Doc, writing only what changed: the user's fields in one
+ * transaction under `origin`, after an untracked conversion of any plain-object record the edit changes.
  * @param doc - The current content document.
  * @param command - The normalized edit with the editing user's placement switches.
  * @param origin - The transaction origin; a Y.UndoManager tracking it undoes this edit in one step.
