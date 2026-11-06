@@ -46,11 +46,12 @@ export interface Rows {
 /**
  * Reads the body's own clipboard HTML back into the slice that was copied.
  * @param schema - The body's schema.
- * @param html - The clipboard's HTML.
+ * @param clipboard - The clipboard's HTML.
  * @param text - The clipboard's plain text.
  * @returns The slice.
  */
-export function readClipboardSlice(schema: Schema, html: string, text: string): Slice {
+export function readClipboardSlice(schema: Schema, clipboard: string, text: string): Slice {
+  const html = storedTablesAsTables(clipboard);
   // HTML BlockNote writes out whole (`blocksToFullHTML`), with no slice
   // recorded, is whole blocks: closed at both ends. It is parsed in a
   // document with no browsing context, so nothing in it loads.
@@ -68,6 +69,35 @@ export function readClipboardSlice(schema: Schema, html: string, text: string): 
   // reads as the whole blocks its HTML holds.
   if (closedValid(slice.content, slice.openStart, slice.openEnd)) return slice;
   return readClipboardSlice(schema, html.replace(/\sdata-pm-slice="[^"]*"/g, ''), text);
+}
+
+/**
+ * Clipboard HTML with each stored (legacy) table taken out of its block as a
+ * table of its own, which reads back as a table whose cells hold blocks, as a
+ * copy of one does; the block around it would read as an empty line. The
+ * lines nested under it follow it at its level, as the conversion of a stored
+ * document moves them (`legacy-table-conversion.ts`). Temporary, with #1362's
+ * conversion of stored tables: it goes once no stored document holds a
+ * `table` node.
+ * @param html - The clipboard's HTML.
+ * @returns The HTML, parsed in a document with no browsing context.
+ */
+function storedTablesAsTables(html: string): string {
+  if (!html.includes('data-content-type="table"')) return html;
+  const body = new DOMParser().parseFromString(html, 'text/html').body;
+  for (const content of body.querySelectorAll('.bn-block-content[data-content-type="table"]')) {
+    const outer = content.closest('.bn-block-outer');
+    const table = content.querySelector('table');
+    if (outer === null || table === null) continue;
+    // An end in the lines lifted out keeps the depth recorded through the
+    // table's block: ProseMirror's read closes an end only to a depth less
+    // than the content's own (`closeSlice`), which is the end's.
+    const recorded = outer.getAttribute('data-pm-slice');
+    if (recorded !== null) table.setAttribute('data-pm-slice', recorded);
+    const nested = outer.querySelector(':scope > .bn-block > .bn-block-group');
+    outer.replaceWith(table, ...(nested === null ? [] : [...nested.children]));
+  }
+  return body.innerHTML;
 }
 
 /**

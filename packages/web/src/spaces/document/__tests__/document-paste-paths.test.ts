@@ -419,14 +419,35 @@ describe('copies of every shape the body makes paste in', () => {
     expect(editor.prosemirrorView.state.doc.textContent).toContain('pppp');
   });
 
+  const TABLES = [['stored', STORED], ['new', tableBlock({ rows: [{ cells: ['l1', 'l2'] }] })]] as const;
+  const LEAVING = [
+    ['from a cell out of the table', (s: Editor) => TextSelection.create(s.prosemirrorView.state.doc, positionOf(s, 'l2', 1), positionOf(s, 'twox', 3)), ['paragraph:wx', 'paragraph:twoyz']],
+    ['from outside into a cell', (s: Editor) => TextSelection.create(s.prosemirrorView.state.doc, positionOf(s, 'xone', 1), positionOf(s, 'l1', 1)), ['paragraph:wxone', 'paragraph:yz']],
+    ['across the whole table', (s: Editor) => TextSelection.create(s.prosemirrorView.state.doc, positionOf(s, 'xone', 1), positionOf(s, 'twox', 3)), ['paragraph:wxone', 'paragraph:twoyz']],
+  ] as const;
+  it.each(TABLES.flatMap(([kind, table]) => LEAVING.map(([how, pick, ends]) => [how, kind, table, pick, ends] as const)))(
+    'a copy %s of a %s table carries the whole table and nothing more',
+    async (_how, _kind, table, pick, ends) => {
+      const source = await openReady([{ type: 'paragraph', content: 'xone' }, table, { type: 'paragraph', content: 'twox' }]);
+      const editor = await pasteMid(copySelection(source, pick(source)));
+      expect(shape(editor)).toEqual([ends[0], 'table', ends[1]]);
+      expect(editor.prosemirrorView.state.doc.textContent).toContain('l1l2');
+    },
+  );
+
+  it('a copy from a stored cell into a line nested under the next line lifts that line out', async () => {
+    const source = await openReady([STORED, { type: 'paragraph', content: 'twox', children: [{ type: 'paragraph', content: 'kid' }] }]);
+    const editor = await pasteMid(copySelection(source, TextSelection.create(source.prosemirrorView.state.doc, positionOf(source, 'l2', 1), positionOf(source, 'kid', 2))));
+    expect(shape(editor)).toEqual(['paragraph:wx', 'table', 'paragraph:twox', 'paragraph:kiyz']);
+  });
+
   it.each([
-    ['from a stored cell out of the table', (s: Editor) => TextSelection.create(s.prosemirrorView.state.doc, positionOf(s, 'l2', 1), positionOf(s, 'twox', 3))],
-    ['from outside into a stored cell', (s: Editor) => TextSelection.create(s.prosemirrorView.state.doc, positionOf(s, 'xone', 1), positionOf(s, 'l1', 1))],
-  ] as const)('a copy %s carries the whole table', async (_name, pick) => {
-    const source = await openReady([{ type: 'paragraph', content: 'xone' }, STORED, { type: 'paragraph', content: 'twox' }]);
-    const editor = await pasteMid(copySelection(source, pick(source)));
-    expect(shape(editor)).toContain('table');
-    expect(editor.prosemirrorView.state.doc.textContent).toContain('l1l2');
+    ['into a cell', (s: Editor) => positionOf(s, 'l1', 1), ['paragraph:wxone', 'table', 'paragraph:kidyz']],
+    ['into a line nested under the table', (s: Editor) => positionOf(s, 'kid', 2), ['paragraph:wxone', 'table', 'paragraph:kiyz']],
+  ] as const)('a copy from outside %s of a stored table with a line nested under it puts the line after the table', async (_name, end, expected) => {
+    const source = await openReady([{ type: 'paragraph', content: 'xone' }, { ...STORED, children: [{ type: 'paragraph', content: 'kid' }] }, { type: 'paragraph', content: 'twox' }]);
+    const editor = await pasteMid(copySelection(source, TextSelection.create(source.prosemirrorView.state.doc, positionOf(source, 'xone', 1), end(source))));
+    expect(shape(editor)).toEqual(expected);
   });
 
   it('a stored cell\'s words copied by BlockNote alone paste in as words, the body valid', async () => {
@@ -449,6 +470,14 @@ describe('a stored table dragged inside the body', () => {
     await settled();
     expect(ids(editor)).not.toContain('null');
     expectUniqueIds(editor);
+  });
+
+  it.each([['stored', STORED], ['new', tableBlock({ rows: [{ cells: ['l1', 'l2'] }] })]] as const)('a %s table moved with the words before it lands with no empty line before it', async (_kind, table) => {
+    const editor = await openReady([{ type: 'paragraph', content: 'xone' }, table, { type: 'paragraph', content: 'tail' }]);
+    dragWithin(editor, positionOf(editor, 'xone', 1), positionOf(editor, 'l1', 1), positionOf(editor, 'tail', 4));
+    await settled();
+    // The body's last block is a line after the table.
+    expect(shape(editor)).toEqual(['paragraph:x', 'paragraph:tailone', 'table', 'paragraph:']);
   });
 
   it('moved from one cell into the next takes the whole table from where it was', async () => {
