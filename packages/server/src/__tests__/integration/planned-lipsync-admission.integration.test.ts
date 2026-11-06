@@ -253,16 +253,41 @@ async function control(f: Fixture): Promise<string> {
 }
 
 /**
- * Require a refusal the user can read (a value refusal, not a stale-page structure refusal) and no durable effect.
+ * Require a 400 refusal that tells the user why (frames-split §7.11 「否则拒绝并告诉用户原因」; the panel shows it as a
+ * toast) and no durable effect.
  * @param f - The fixture.
+ * @param reason - The user-facing message key and its values; absent where no key is fixed yet, which then requires
+ *   only a non-empty message.
+ * @param reason.key - The locale key.
+ * @param reason.params - Its ICU values.
  * @returns Nothing.
  * @throws {Error} On assertion failure.
  */
-async function refused(f: Fixture): Promise<void> {
+async function refused(f: Fixture, reason?: { key: string; params?: Record<string, number> }): Promise<void> {
   const response = await post(f);
   const json = await response.json() as { error?: { message?: string; reason?: string } };
-  expect({ status: response.status, reason: json.error?.reason, explained: (json.error?.message ?? "").length > 0 }).toEqual({ status: 400, reason: undefined, explained: true });
+  const message = json.error?.message ?? "";
+  expect({ status: response.status, reason: json.error?.reason, message: reason === undefined ? message.length > 0 : message })
+    .toEqual({ status: 400, reason: undefined, message: reason === undefined ? true : shared.t(reason.key, reason.params) });
   expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
+}
+
+/**
+ * Rewrite the referenced people analysis row after a control was admitted on it.
+ * @param id - The analysis run id.
+ * @param change - Returns the new status, params and stored record from the current ones.
+ * @returns Nothing.
+ * @throws {Error} When the row is missing or the rewritten record is invalid.
+ */
+async function rewriteAnalysis(id: string, change: (current: { params: Record<string, unknown> & { analysis: Record<string, unknown> }; record: Record<string, unknown> }) => { status: string; params?: Record<string, unknown>; record?: Record<string, unknown> }): Promise<void> {
+  const [row] = await pg<{ params: Record<string, unknown> & { analysis: Record<string, unknown> }; result: { analysis: Record<string, unknown> } }[]>`SELECT params,result FROM tasks WHERE id=${id}`;
+  if (!row) throw new Error("Missing seeded people analysis");
+  const next = change({ params: row.params, record: row.result.analysis });
+  const params = next.params ?? row.params;
+  const record = miniToolAnalysisRecordSchema.parse(next.record ?? row.result.analysis);
+  miniToolFrozenAnalysisSchema.parse(params.analysis);
+  await pg`UPDATE tasks SET status=${next.status},error_message=${next.status === "failed" ? "analysis_failed" : null},
+    params=${pg.json(z.json().parse(params))},result=${pg.json(z.json().parse({ analysis: record }))} WHERE id=${id}`;
 }
 
 /** The accepted run's frozen plan. @throws {Error} On a missing task. */
@@ -307,7 +332,7 @@ describe("lip-sync fresh admission refusals and their boundaries (§97; frames-s
     const f = await seed([{ registered: 3, claimed: 3 }, { registered: 2.5, claimed: 2.5 }]);
     speak(f, [[0, 0, 0], [1, 1, 1.5]]); await control(f);
     f.body.draft.params.modelId = modelId;
-    await refused(f);
+    await refused(f, { key: "server.mini_tool.lipSyncModelUnavailable" });
   });
 
   // The planned duration is 4 s; each case moves one end of sync-3's configured range onto or past it.
@@ -321,7 +346,8 @@ describe("lip-sync fresh admission refusals and their boundaries (§97; frames-s
     speak(f, [[0, 0, 0], [1, 1, 1.5]]);
     if (!admitted) await control(f);
     lipSync.models[0]![field] = value;
-    if (admitted) await accept(f); else await refused(f);
+    const { min_duration_seconds: min, max_duration_seconds: max } = lipSync.models[0]!;
+    if (admitted) await accept(f); else await refused(f, { key: "server.mini_tool.lipSyncDurationOutOfRange", params: { min, max } });
   });
 
   // The used source range is [0, 4) for cut_off with the anchor at frame 0; each case moves one end of the tracking range.
@@ -335,7 +361,8 @@ describe("lip-sync fresh admission refusals and their boundaries (§97; frames-s
     speak(f, [[0, 0, 0], [1, 1, 1.5]]);
     if (!admitted) await control(f);
     lipSync.tracking[field] = value;
-    if (admitted) await accept(f); else await refused(f);
+    const { min_duration_seconds: min, max_duration_seconds: max } = lipSync.tracking;
+    if (admitted) await accept(f); else await refused(f, { key: "server.mini_tool.lipSyncTrackingOutOfRange", params: { min, max } });
   });
 
   it("LA06 checks the tracking range on the used source range, which reaches the anchor's window, not on the timeline duration", async () => {
@@ -345,7 +372,7 @@ describe("lip-sync fresh admission refusals and their boundaries (§97; frames-s
     lipSync.models[0]!.max_duration_seconds = 4.25;
     expect((await plan(await control(f))).timeline.duration).toBe(4);
     lipSync.tracking.max_duration_seconds = 4.25;
-    await refused(f);
+    await refused(f, { key: "server.mini_tool.lipSyncTrackingOutOfRange", params: { min: 1, max: 4.25 } });
     expect(lip.lipsyncUsedSourceRange!({ duration: 4, videoDuration: V, syncMode: "cut_off" }, [{ time: 4.5, windowEnd: 901 / 200 }])).toEqual({ start: 0, end: 901 / 200 });
   });
 
@@ -353,7 +380,7 @@ describe("lip-sync fresh admission refusals and their boundaries (§97; frames-s
     const f = await seed([{ registered: 1, claimed: 1 }, { registered: 1, claimed: 1 }, { registered: 1, claimed: 1 }], { people: 3 });
     speak(f, [[0, 0, 0], [1, 1, 1]]); await control(f);
     speak(f, [[0, 0, 0], [1, 1, 1], [2, 2, 2]]);
-    await refused(f);
+    await refused(f, { key: "server.mini_tool.lipSyncTooManyPeople", params: { max: 2 } });
   });
 
   it("LA08 admits exactly eight dialogue rows and refuses a ninth", async () => {
@@ -361,6 +388,29 @@ describe("lip-sync fresh admission refusals and their boundaries (§97; frames-s
     const rows = Array.from({ length: 9 }, (_, index): [number, number, number] => [index % 2, index, index * 0.5]);
     speak(f, rows.slice(0, 8)); await control(f);
     speak(f, rows);
+    await refused(f, { key: "server.mini_tool.lipSyncTooManyDialogues", params: { max: 8 } });
+  });
+});
+
+// §97 D17-2 (frames-split §7.11 fresh row; DD §7.1 people row): the referenced people analysis is terminal-succeeded, ran
+// on the same selected toolInputId as presentation_ref.source, names every row's personId, and every row carries its id.
+describe("lip-sync fresh admission against the referenced people analysis (§97 D17-2; DD §7.1 people row)", () => {
+  it.each([
+    "the analysis still pending", "the analysis failed", "the analysis run on another toolInputId",
+    "a row naming a person not in the result", "a row from another analysis run",
+  ])("LA10 refuses %s after a valid control", async (bad) => {
+    const f = await seed([{ registered: 3, claimed: 3 }, { registered: 2.5, claimed: 2.5 }]);
+    speak(f, [[0, 0, 0], [1, 1, 1.5]]); await control(f);
+    if (bad === "the analysis still pending") {
+      await rewriteAnalysis(f.analysisRunId, ({ record }) => ({ status: "pending", record: { ...record, status: "pending", result: null } }));
+    } else if (bad === "the analysis failed") {
+      await rewriteAnalysis(f.analysisRunId, ({ record }) => ({ status: "failed", record: { ...record, status: "failed", result: null, error: { code: "analysis_failed" } } }));
+    } else if (bad === "the analysis run on another toolInputId") {
+      await rewriteAnalysis(f.analysisRunId, ({ params }) => ({ status: "completed", params: { ...params, analysis: { ...params.analysis,
+        presentationRef: { source: { ...f.body.presentation_ref.source, toolInputId: "b".repeat(64) } } } } }));
+    } else if (bad === "a row naming a person not in the result") f.body.draft.params.dialogues[1]!.personId = "person-9";
+    else f.body.draft.params.dialogues[1]!.analysisRunId = randomUUID();
+    // No user-facing message key is fixed for these refusals yet.
     await refused(f);
   });
 });
