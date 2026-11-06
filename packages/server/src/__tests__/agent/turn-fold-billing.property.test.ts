@@ -96,7 +96,7 @@ describe("charging a turn that folds and continues", () => {
     await fc.assert(
       fc.asyncProperty(
         fc.array(stepArbitrary, { maxLength: 5 }),
-        fc.array(fc.constantFrom("written" as const, "written" as const, "written" as const, "aborted" as const), { minLength: 6, maxLength: 6 }),
+        fc.array(fc.constantFrom("written" as const, "written" as const, "failed" as const, "aborted" as const), { minLength: 6, maxLength: 6 }),
         async (steps, outcomes) => {
           resetWorld();
           world.window = 200_000;
@@ -126,9 +126,12 @@ describe("charging a turn that folds and continues", () => {
           const starts = world.folds.map((fold) => fold.watermarkBefore);
           expect(new Set(starts).size).toBe(starts.length);
 
-          const stopped = outcomes.slice(0, world.folds.length).includes("aborted");
+          const ended = outcomes.slice(0, world.folds.length);
+          const stopped = ended.includes("aborted");
           const overflows = steps.filter((step) => step.kind === "overflow").length;
-          if (!stopped && overflows <= FOLD_LIMIT) {
+          // After a failed fold the turn folds no more, so an overflow ends it.
+          const unfoldable = ended.includes("failed") && overflows > 0;
+          if (!stopped && !unfoldable && overflows <= FOLD_LIMIT) {
             expect(world.prompts).toHaveLength(script.length);
             const parts = world.replies.at(-1)?.message.parts ?? [];
             expect(parts).toContainEqual({ type: "text", text: "done" });

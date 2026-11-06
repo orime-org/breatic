@@ -13,6 +13,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject } from "vitest";
+import fc from "fast-check";
 import postgres from "postgres";
 import { db, initCore } from "@breatic/core";
 import { MemoryRefused, type MemoryScope } from "@breatic/domain";
@@ -505,6 +506,81 @@ describe("what a consolidation writes", () => {
 
     expect(input.full.map((e) => e.id)).toEqual([block, newest]);
     expect(input.titlesOnly).toEqual([{ id: oldest, title: "Oldest", scope: "project" }]);
+  });
+
+  it("moves the watermark only forward and only with the entries and progress it covers, over any run of fold endings", async () => {
+    /**
+     * What a conversation's memory holds now.
+     * @param owner - Whose.
+     * @returns The watermark, the progress note and every entry row.
+     */
+    async function stateOf(owner: Seeded): Promise<{ watermark: number; progress: string; rows: unknown[] }> {
+      const rows = await sql`
+        SELECT id, title, content, conversation_id, deleted_at IS NULL AS live
+        FROM agent_memories WHERE user_id = ${owner.userId} ORDER BY id
+      `;
+      const { progress } = await memoryService.buildContext(owner.userId, owner.conversationId, owner.projectId);
+      return { watermark: await watermarkOf(owner.conversationId), progress, rows: [...rows] };
+    }
+
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(fc.constantFrom("written" as const, "superseded" as const, "changed" as const, "aborted" as const), { minLength: 1, maxLength: 8 }),
+        fc.array(fc.integer({ min: 1, max: 3 }), { minLength: 8, maxLength: 8 }),
+        async (endings, widths) => {
+          const owner = await seed();
+          const other = await newConversation(owner.userId, owner.projectId);
+          await seedEntry(owner, { title: "Palette", content: "Teal." });
+          const covered = new Set<number>();
+
+          for (const [i, ending] of endings.entries()) {
+            const { full } = await memoryService.consolidationInput(owner, 100_000);
+            const target = full[0]!;
+            if (ending === "changed") {
+              await agentMemoryFor({ ...owner, conversationId: other }).save({ id: target.id, scope: "project", title: target.title, content: `${target.content} Changed ${String(i)}.` });
+            }
+            const before = await stateOf(owner);
+            if (ending === "aborted") {
+              expect(await stateOf(owner)).toEqual(before);
+              continue;
+            }
+            const watermarkBefore = ending === "superseded" ? before.watermark + 1 : before.watermark;
+            const newWatermark = watermarkBefore + widths[i]!;
+            const progress = `through ${String(newWatermark)}`;
+            const ended = await memoryService
+              .commitConsolidation({
+                ...owner,
+                shown: full,
+                watermarkBefore,
+                newWatermark,
+                progress,
+                operations: [
+                  { op: "add", scope: "project", title: `Fact ${String(i)}`, content: "f" },
+                  { op: "update", id: target.id, title: target.title, content: `${target.content} Fold ${String(i)}.` },
+                ],
+              })
+              .catch(() => "failed" as const);
+            const after = await stateOf(owner);
+
+            if (ending === "written") {
+              expect(ended).toBe("written");
+              expect(after.watermark).toBe(newWatermark);
+              expect(after.watermark).toBeGreaterThan(before.watermark);
+              expect(after.progress).toBe(progress);
+              expect(after.rows).toHaveLength(before.rows.length + 1);
+              for (let turn = watermarkBefore + 1; turn <= newWatermark; turn++) covered.add(turn);
+            } else {
+              expect(ended).toBe(ending === "superseded" ? "superseded" : "failed");
+              expect(after).toEqual(before);
+            }
+          }
+
+          const final = await watermarkOf(owner.conversationId);
+          expect([...covered].sort((a, b) => a - b)).toEqual(Array.from({ length: final }, (_, k) => k + 1));
+        },
+      ),
+      { numRuns: 20 },
+    );
   });
 });
 
