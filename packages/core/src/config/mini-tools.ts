@@ -191,7 +191,8 @@ export const miniToolsConfigSchema = z
       "video.split": containerExecutionSchema.default(executionDefaults),
       "video.lip-sync": lipSyncSchema.optional(),
       // Transitions encode on one class and render their overlap windows on the GL image's class (frames-split §5.4).
-      "video.transitions": z.strictObject({ container_class: z.string().min(1), window_container_class: z.string().min(1), precheck_seconds: z.number().positive() }).optional(),
+      "video.transitions": z.strictObject({ container_class: z.string().min(1), window_container_class: z.string().min(1), precheck_seconds: z.number().positive(),
+        max_outputs: z.number().int().positive() }).optional(),
     }).default({ "video.remove-bg": removeBackgroundDefaults, "video.extract-frames": executionDefaults, "video.split": executionDefaults }),
     encoding: encodingSchema.default(encodingDefaults),
     presentation: z.strictObject({

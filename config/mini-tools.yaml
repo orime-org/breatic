@@ -34,6 +34,7 @@ executions:
     container_class: "MiniToolContainerStd4"
     window_container_class: "MiniToolContainerGl"
     precheck_seconds: 300
+    max_outputs: 1
 
 # Chunked full-resolution encoding. Each chunk targets chunk_share of the
 # remaining task budget; a run uses at most max_parallel_chunks chunks, and a

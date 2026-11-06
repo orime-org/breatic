@@ -518,6 +518,7 @@ async function prepareTransitions(request: Extract<MiniToolPlannedRequest, { too
   const config = structuredClone(getMiniToolsConfig());
   const settings = config.executions["video.transitions"];
   if (settings === undefined) throw new AppError(400, t("server.mini_tool.unavailable"));
+  if (request.outputs.length > settings.max_outputs) throw new ValidationError(t("server.mini_tool.foreignSource"));
   const deadlineAt = budgetDeadlineFrom(Date.now());
   const limits = { maxBytes: config.presentation.source_ledger.max_bytes };
   const { binding, sourceKey } = await resolveSource(request.draft.source);
