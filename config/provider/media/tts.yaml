@@ -1356,6 +1356,8 @@ models:
         rejects:
           - when: get_duration(audio_url, min=10, max=1000000, total=1000000) > get_duration(audio_url)
             reason: "fal audio_url: Should be at least 10 seconds long"
+          - when: get_duration(audio_url) > 300
+            reason: "MiniMax clone audio: maximum 5 minutes (MiniMax's own upload-for-clone limit)"
         pricing:
           kind: formula
           base_price: 1500000
@@ -1391,6 +1393,8 @@ models:
         rejects:
           - when: get_duration(audio, min=10, max=1000000, total=1000000) > get_duration(audio)
             reason: "SandBase audio: Reference recording, 10 seconds or longer"
+          - when: get_duration(audio) > 300
+            reason: "MiniMax clone audio: maximum 5 minutes (MiniMax's own upload-for-clone limit)"
         pricing:
           kind: formula
           base_price: 1500000

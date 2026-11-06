@@ -1076,6 +1076,8 @@ models:
             reason: "fal reference_audio_urls: Up to 5 reference audio URLs totaling at most 15 seconds"
           - when: get_duration(reference_video_urls) > 15
             reason: "fal reference_video_urls: Up to 5 reference video URLs totaling at most 15 seconds"
+          - when: "(duration ? duration : 5) + get_duration(reference_video_urls) > 30"
+            reason: "fal reference_video_urls: Alibaba's Wan 3.0 rule, reference video length plus output length must stay within 30 seconds"
         pricing:
           kind: formula
           base_price: 50000
