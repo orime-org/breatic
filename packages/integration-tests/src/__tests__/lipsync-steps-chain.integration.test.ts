@@ -171,11 +171,12 @@ beforeEach(() => {
   outside.runPrediction.mockImplementation(async (_connection: unknown, model: string, body: Record<string, unknown>, resume: { storedTaskId: string | null; persistTaskId: (id: string) => Promise<void> }) => {
     const id = resume.storedTaskId ?? randomUUID();
     if (model === TRACKER) {
-      const person = BOX_X[((body.box_prompts as { x_min: number }[])[0]!).x_min]!;
+      // The provider reads the endpoint's field names: the renamed ones when a case renames them (LU01).
+      const person = BOX_X[(((outside.rename ? body.boxes : body.box_prompts) as { x_min: number }[])[0]!).x_min]!;
       if (resume.storedTaskId === null) await resume.persistTaskId(id);
       return { taskId: id, outputs: [{ rle_url: `https://provider.example.test/rle/${person}.json`, video_url: `https://provider.example.test/preview/${person}.mp4` }] };
     }
-    const person = personOfClip(String(body.video));
+    const person = personOfClip(String(outside.rename ? body.input_video : body.video));
     if (person !== null && genFault[person] !== undefined) throw genFault[person];
     if (resume.storedTaskId === null) await resume.persistTaskId(id);
     return { taskId: id, outputs: [`https://provider.example.test/gen/${person ?? "unknown"}.mp4`] };
