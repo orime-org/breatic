@@ -43,6 +43,8 @@ import type { Mark, Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import {
   AddMarkStep,
+  AttrStep,
+  DocAttrStep,
   RemoveMarkStep,
   RemoveNodeMarkStep,
   ReplaceAroundStep,
@@ -121,7 +123,7 @@ interface ReplaceTotals {
   removed: number;
   /** UTF-8 bytes of the text taken out. */
   removedText: number;
-  /** Some step takes out live content or changes the block around kept content. */
+  /** Some step takes out live content. */
   removesLive: boolean;
   /** Some step puts something in. */
   puts: boolean;
@@ -213,7 +215,6 @@ function judgeStep(step: Step, doc: ProseMirrorNode, judged: Judged, totals: Rep
     if (step instanceof ReplaceAroundStep && step.slice.size > 0 && text === '') {
       // Only the block around kept content changes; y-prosemirror rewrites
       // the block, which collab admits like any write deleting live content.
-      totals.removesLive = true;
       totals.wraps = true;
       return;
     }
@@ -237,8 +238,31 @@ function judgeStep(step: Step, doc: ProseMirrorNode, judged: Judged, totals: Rep
     return;
   }
   if (step instanceof RemoveMarkStep || step instanceof RemoveNodeMarkStep) return;
+  if (step instanceof AttrStep || step instanceof DocAttrStep) {
+    // y-prosemirror sets the attribute, deleting the value it replaces.
+    const replaced: unknown = step instanceof AttrStep ? doc.nodeAt(step.pos)?.attrs[step.attr] : doc.attrs[step.attr];
+    const grows = jsonBytes(step.value) - jsonBytes(replaced);
+    if (grows <= 0) {
+      judged.overwrites = true;
+      return;
+    }
+    judged.adds = true;
+    judged.estimate += MARK_BYTES + utf8Bytes(step.attr) + grows;
+    return;
+  }
   judged.adds = true;
-  judged.estimate += step instanceof AddMarkStep ? markCost(step.mark) * textNodesIn(doc, step.from, step.to) : MARK_BYTES;
+  judged.estimate += step instanceof AddMarkStep
+    ? markCost(step.mark) * textNodesIn(doc, step.from, step.to)
+    : jsonBytes(step.toJSON());
+}
+
+/**
+ * The UTF-8 bytes of a value's JSON; 0 for undefined.
+ * @param value - The value.
+ * @returns Its size.
+ */
+function jsonBytes(value: unknown): number {
+  return utf8Bytes(JSON.stringify(value) ?? '');
 }
 
 /**

@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { TextSelection, type EditorState } from '@tiptap/pm/state';
+import { AttrStep, Step, StepResult, type Mappable } from '@tiptap/pm/transform';
 import type { EditorView } from '@tiptap/pm/view';
 import { ySyncPluginKey as yProsemirrorSyncKey } from 'y-prosemirror';
 import { Awareness } from 'y-protocols/awareness';
@@ -415,6 +416,89 @@ describe('the document body size filter (y-prosemirror key)', () => {
       o.view.dispatch(o.view.state.tr.addMark(from, from + 5, o.view.state.schema.marks['bold']!.create()));
       expect(isBold(o.view.state, 'hello')).toBe(true);
       expectNoToast();
+    });
+  });
+
+  describe('attribute and node-mark steps are judged by what they write', () => {
+    /**
+     * The paragraph node inside the first block.
+     * @param o - The open body.
+     * @returns Its position.
+     */
+    function paragraphAt(o: Open): number {
+      return containers(o.view.state.doc)[0]!.pos + 1;
+    }
+
+    /** A step type the filter does not know, carrying a payload it writes. */
+    class CarryingStep extends Step {
+      /**
+       * @param inner - The change it makes.
+       * @param carried - What it carries.
+       */
+      constructor(private readonly inner: AttrStep, private readonly carried: string) {
+        super();
+      }
+
+      /**
+       * Applies the inner change.
+       * @param doc - The document.
+       * @returns The result.
+       */
+      apply(doc: PMNode): StepResult {
+        return this.inner.apply(doc);
+      }
+
+      /**
+       * Inverts the inner change.
+       * @param doc - The document before the step.
+       * @returns The inverse step.
+       */
+      invert(doc: PMNode): Step {
+        return this.inner.invert(doc);
+      }
+
+      /**
+       * Positions do not move.
+       * @param _mapping - Unused.
+       * @returns This step.
+       */
+      map(_mapping: Mappable): Step {
+        return this;
+      }
+
+      /**
+       * Serialises the step with its payload.
+       * @returns The JSON.
+       */
+      toJSON(): { stepType: string; carried: string } {
+        return { stepType: 'carrying', carried: this.carried };
+      }
+    }
+
+    it('refuses a long attribute value the room cannot take', () => {
+      const o = open();
+      size(o, { ...F_WARNING, room: 1000 });
+      const before = snapshot(o);
+      o.view.dispatch(o.view.state.tr.setNodeAttribute(paragraphAt(o), 'textAlignment', 'x'.repeat(5000)));
+      expectUnchanged(o, before);
+      expectOneWarning(COPY_EN.T_NO_ROOM(formatBytes(1000)));
+    });
+
+    it('writes an attribute value no longer than the one it replaces at full', () => {
+      const o = open([{ type: 'paragraph', content: 'hello world', props: { textAlignment: 'center' } }] as BlockInput[]);
+      size(o, F_FULL);
+      o.view.dispatch(o.view.state.tr.setNodeAttribute(paragraphAt(o), 'textAlignment', 'left'));
+      expect(o.view.state.doc.nodeAt(paragraphAt(o))!.attrs['textAlignment']).toBe('left');
+      expectNoToast();
+    });
+
+    it('refuses a step of another type by what it carries', () => {
+      const o = open();
+      size(o, { ...F_WARNING, room: 1000 });
+      const before = snapshot(o);
+      o.view.dispatch(o.view.state.tr.step(new CarryingStep(new AttrStep(paragraphAt(o), 'textAlignment', 'center'), 'x'.repeat(5000))));
+      expectUnchanged(o, before);
+      expectOneWarning(COPY_EN.T_NO_ROOM(formatBytes(1000)));
     });
   });
 
