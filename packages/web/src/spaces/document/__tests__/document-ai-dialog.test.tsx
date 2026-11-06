@@ -856,6 +856,37 @@ describe('the preview', () => {
     expect(preview.textContent).toContain('item one');
   });
 
+  it('follows the body once the answer is in: a selected block indented under another shows nested', async () => {
+    const editor = await selected('<p>hello</p><p>world</p>', 0, 10);
+    await press('refine');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    await streams(calls[0]!, ['<u id="1">HELLO</u>\n<u id="2">WORLD</u>'], true);
+    const preview = screen.getByTestId('doc-ai-preview');
+    /**
+     * Whether the preview draws WORLD inside HELLO's block.
+     * @returns True when it does.
+     */
+    const nested = (): boolean => {
+      const world = [...preview.querySelectorAll('.bn-block-content')].find((el) => el.textContent === 'WORLD');
+      return world?.closest('.bn-block-group')?.parentElement?.closest('.bn-block-group') != null;
+    };
+    await waitFor(() => {
+      expect(previewText()).toContain('WORLD');
+    });
+    expect(nested()).toBe(false);
+
+    act(() => {
+      editor.setTextCursorPosition((editor.document as unknown as Array<{ id: string }>)[1]!.id);
+      editor.nestBlock();
+    });
+
+    await waitFor(() => {
+      expect(nested()).toBe(true);
+    });
+  });
+
   it('parses a burst of pieces fewer times than they arrived, and shows the latest', async () => {
     const parse = vi.spyOn(BlockNoteEditor.prototype, 'tryParseMarkdownToBlocks');
     try {

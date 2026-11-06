@@ -287,12 +287,13 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
         // Written at the press: the original range is cleared as the session
         // closes, right after this. The panel fetched the media prefix as it opened.
         try {
-          const answer = aiAnswer(editor, editor.prosemirrorState.doc, at.units, effect.result, command, ourMediaPrefix(), aiUnitRangesIn(editor.prosemirrorState));
+          const ranges = aiUnitRangesIn(editor.prosemirrorState);
+          const answer = aiAnswer(editor, editor.prosemirrorState.doc, at.units, effect.result, command, ourMediaPrefix(), ranges);
           if (effect.how === 'insert') {
             if (at.insertBlockId !== null) told(insertAiAnswer({ editor }, at.insertBlockId, answer, admission));
             return;
           }
-          told(replaceAiAnswer({ editor }, answer, aiUnitRangesIn(editor.prosemirrorState), admission));
+          told(replaceAiAnswer({ editor }, answer, ranges, admission));
         } catch (err) {
           failed();
           throw err;
@@ -915,7 +916,8 @@ function Preview({
     if (!streaming) {
       if (timer.current !== null) window.clearTimeout(timer.current);
       parse();
-      return;
+      // The table copies and the nesting it shows follow the body.
+      return onEditorSettled(editor, parse);
     }
     // While it streams, at most one parse per interval, of whatever has
     // arrived by then.

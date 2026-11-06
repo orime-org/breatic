@@ -131,18 +131,27 @@ export function aiUnitRangesIn(state: EditorState): AiUnitRanges {
   return range === null ? [] : byUnit(range.slots, range.owners, range.units);
 }
 
+/** Stands in for a leaf node when the words of two stretches are compared. */
+const LEAF = '\ufffc';
+
 /**
  * The stretches of the body before the reader's own change that it put
- * content in at, or wrote content over.
+ * content in at, or wrote other words over. A stretch written over with the
+ * same words, as BlockNote rebuilds a line with marks or links when it turns
+ * into code, is no change to them.
  * @param tr - The change.
  * @returns The stretches, in the body before it.
  */
 function changedIn(tr: Transaction): LocalRange[] {
   const out: LocalRange[] = [];
   tr.mapping.maps.forEach((map, index) => {
+    const input = tr.docs[index]!;
+    const output = tr.docs[index + 1] ?? tr.doc;
     const back = new Mapping(tr.mapping.maps.slice(0, index)).invert();
     map.forEach((oldStart, oldEnd, newStart, newEnd) => {
-      if (newEnd > newStart) out.push({ from: back.map(oldStart, -1), to: back.map(oldEnd, 1) });
+      if (newEnd <= newStart) return;
+      if (input.textBetween(oldStart, oldEnd, '\n', LEAF) === output.textBetween(newStart, newEnd, '\n', LEAF)) return;
+      out.push({ from: back.map(oldStart, -1), to: back.map(oldEnd, 1) });
     });
   });
   return out;

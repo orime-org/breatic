@@ -16,7 +16,7 @@
  */
 
 import { blockToNode, inlineContentToNodes, nodeToBlock } from '@blocknote/core';
-import type { Fragment, Node as ProseMirrorNode } from '@tiptap/pm/model';
+import type { Fragment, Node as ProseMirrorNode, ResolvedPos } from '@tiptap/pm/model';
 import type { Transaction } from '@tiptap/pm/state';
 import { yUndoPluginKey } from 'y-prosemirror';
 
@@ -180,20 +180,11 @@ export function aiTextUnits(doc: ProseMirrorNode, segments: readonly LocalRange[
   const units = lines.map((line, index): AiTextUnit => {
     const $start = doc.resolve(line.start);
     const whole = line.from === line.start && line.to === line.start + line.node.content.size;
-    if (line.node.type.name === LEGACY_CELL_LINE) {
-      const depth = $start.depth;
-      return {
-        id: index + 1,
-        blockId: String($start.node(depth - 4).attrs['id']),
-        kind: LEGACY_KIND,
-        cell: { row: $start.index(depth - 3), col: $start.index(depth - 2), line: $start.index(depth - 1) },
-        whole,
-        props: {},
-      };
-    }
+    const place = placeAt($start);
+    if (place.cell !== null) return { id: index + 1, ...place, kind: LEGACY_KIND, whole, props: {} };
     const container = $start.node($start.depth - 1);
     const block = nodeToBlock(container.type.create(container.attrs, [line.node]), doc) as unknown as Read;
-    return { id: index + 1, blockId: String(container.attrs['id']), kind: line.node.type.name, cell: null, whole, props: block.props ?? {} };
+    return { id: index + 1, ...place, kind: line.node.type.name, whole, props: block.props ?? {} };
   });
   return { units, ranges: lines.map((line) => ({ from: line.from, to: line.to })) };
 }
@@ -209,11 +200,21 @@ export function aiTextUnits(doc: ProseMirrorNode, segments: readonly LocalRange[
 function located(doc: ProseMirrorNode, unit: AiTextUnit, ranges: AiUnitRanges): AiTextUnit {
   const span = unitSpan(doc, unit, ranges);
   if (span === null) return unit;
-  const $at = doc.resolve(span.from);
+  const place = placeAt(doc.resolve(span.from));
+  return (place.cell === null) === (unit.cell === null) ? { ...unit, ...place } : unit;
+}
+
+/**
+ * The block a line belongs to, or for a legacy cell line its table and its
+ * row, column and line.
+ * @param $at - A position in the line.
+ * @returns The block's id and the cell, or null for none.
+ */
+function placeAt($at: ResolvedPos): Pick<AiTextUnit, 'blockId' | 'cell'> {
   const depth = $at.depth;
-  if (unit.cell === null) return { ...unit, blockId: String($at.node(depth - 1).attrs['id']) };
-  if ($at.parent.type.name !== LEGACY_CELL_LINE) return unit;
-  return { ...unit, blockId: String($at.node(depth - 4).attrs['id']), cell: { row: $at.index(depth - 3), col: $at.index(depth - 2), line: $at.index(depth - 1) } };
+  return $at.parent.type.name === LEGACY_CELL_LINE
+    ? { blockId: String($at.node(depth - 4).attrs['id']), cell: { row: $at.index(depth - 3), col: $at.index(depth - 2), line: $at.index(depth - 1) } }
+    : { blockId: String($at.node(depth - 1).attrs['id']), cell: null };
 }
 
 /**
@@ -915,7 +916,8 @@ function legacyCopy(doc: ProseMirrorNode, tableId: string, answered: ReadonlyMap
 function docTableCopy(doc: ProseMirrorNode, tableId: string, results: readonly AiUnitResult[]): WrittenBlock | null {
   const found = blockById(doc, tableId);
   if (found === null) return null;
-  const byId = new Map(results.map((r) => [r.unit.blockId, r.write]));
+  const byId = new Map<string, AiUnitWrite>();
+  for (const r of results) byId.set(r.unit.blockId, combined(byId.get(r.unit.blockId), r.write));
   /**
    * Swaps answered blocks in a list for their answers.
    * @param list - The blocks.
@@ -936,6 +938,29 @@ function docTableCopy(doc: ProseMirrorNode, tableId: string, results: readonly A
   });
   const table = nodeToBlock(found.node, doc) as unknown as Read;
   return withoutIds({ ...table, children: swap(table.children ?? []) });
+}
+
+/**
+ * What two units answered in one block come to, in their order, as replace
+ * writes them into the line: their words one after another, or their blocks.
+ * @param earlier - The earlier unit's write, if any.
+ * @param later - The later unit's write.
+ * @returns The block's write.
+ */
+function combined(earlier: AiUnitWrite | undefined, later: AiUnitWrite): AiUnitWrite {
+  if (earlier === undefined || earlier.kind === 'clear') return later;
+  if (later.kind === 'clear') return earlier;
+  if (earlier.kind === 'inline' && later.kind === 'inline') {
+    const content = [...((earlier.block as Read).content as Inline[]), ...((later.block as Read).content as Inline[])];
+    return { kind: 'inline', block: { ...earlier.block, content: joined(content) } as WrittenBlock };
+  }
+  /**
+   * The blocks a write puts in.
+   * @param w - The write.
+   * @returns Its blocks.
+   */
+  const blocksOf = (w: AiUnitWrite & { kind: 'inline' | 'blocks' }): readonly WrittenBlock[] => (w.kind === 'inline' ? [w.block] : w.blocks);
+  return { kind: 'blocks', blocks: [...blocksOf(earlier), ...blocksOf(later)] };
 }
 
 /** Where a unit stands in a table: the table and the cell. */
@@ -994,9 +1019,17 @@ function previewOf(doc: ProseMirrorNode, units: readonly AiTextUnit[], results: 
       if (done.has(place.table)) continue;
       done.add(place.table);
       const group = results.filter((g) => places.get(g.unit.id)?.table === place.table);
-      const copy = r.unit.cell !== null
-        ? legacyCopy(doc, r.unit.blockId, new Map(group.map((g) => [`${String(g.unit.cell!.row)}:${String(g.unit.cell!.col)}:${String(g.unit.cell!.line)}`, g.write.kind === 'inline' ? g.write.block : null])))
-        : docTableCopy(doc, place.table, group);
+      let copy: WrittenBlock | null;
+      if (r.unit.cell === null) {
+        copy = docTableCopy(doc, place.table, group);
+      } else {
+        const lines = new Map<string, AiUnitWrite>();
+        for (const g of group) {
+          const key = `${String(g.unit.cell!.row)}:${String(g.unit.cell!.col)}:${String(g.unit.cell!.line)}`;
+          lines.set(key, combined(lines.get(key), g.write));
+        }
+        copy = legacyCopy(doc, r.unit.blockId, new Map([...lines].map(([key, w]) => [key, w.kind === 'inline' ? w.block : null])));
+      }
       if (copy !== null) out.push(copy as Read);
       continue;
     }
@@ -1113,6 +1146,22 @@ function withChildren(block: ProseMirrorNode, children: ProseMirrorNode): ProseM
 }
 
 /**
+ * Takes some words out of their line, and the line's block with them when
+ * nothing is left in it: never a legacy cell's line.
+ * @param editor - The body's editor.
+ * @param tr - The transaction it is written in.
+ * @param span - The words, still valid in `tr.doc`.
+ * @param inCell - Whether they are in a legacy cell.
+ */
+function takeOut(editor: ViewedEditor, tr: Transaction, span: LocalRange, inCell: boolean): void {
+  const line = lineAt(tr.doc, span);
+  tr.delete(span.from, span.to);
+  if (inCell) return;
+  const left = tr.doc.nodeAt(line.containerPos);
+  if (left !== null && left.childCount === 1 && left.firstChild?.content.size === 0) editor.removeBlocks([String(line.container.attrs['id'])]);
+}
+
+/**
  * Writes one unit's answer over its span (§5.3 "替换").
  * @param editor - The body's editor.
  * @param tr - The transaction it is written in.
@@ -1127,14 +1176,11 @@ function writeUnit(editor: ViewedEditor, tr: Transaction, result: AiUnitResult, 
     tr.replaceWith(span.from, span.to, inlineContentToNodes((write.block as Read).content as never, tr.doc.type.schema, type));
     return;
   }
-  const line = lineAt(tr.doc, span);
   if (write.kind === 'clear') {
-    tr.delete(span.from, span.to);
-    if (unit.cell !== null) return;
-    const left = tr.doc.nodeAt(line.containerPos);
-    if (left !== null && left.childCount === 1 && left.firstChild?.content.size === 0) editor.removeBlocks([String(line.container.attrs['id'])]);
+    takeOut(editor, tr, span, unit.cell !== null);
     return;
   }
+  const line = lineAt(tr.doc, span);
   // The block is swapped for its words before the span, the answer and its
   // words after, as nodes: the words left out keep every mark, comments
   // included, and the children go under the last piece as they are.
@@ -1180,13 +1226,21 @@ export function replaceAiAnswer(
   if (mediaOnly(answer)) return { outcome: 'mediaOnly', leftOut: answer.leftOut };
   const { editor } = handle;
   const before = editor.prosemirrorState.doc;
-  const spans = answer.results
-    .map((r) => ({ r, span: unitSpan(before, r.unit, ranges) }))
-    .filter((x): x is { r: AiUnitResult; span: LocalRange } => x.span !== null)
-    .sort((a, b) => b.span.from - a.span.from);
+  // A unit's selected words that Enter moved to other lines go too: the
+  // answer stands for all of them, in the first line.
+  const writes = answer.results.flatMap((r) => {
+    const span = unitSpan(before, r.unit, ranges);
+    if (span === null) return [];
+    const $span = before.resolve(span.from);
+    const rest = (ranges[r.unit.id - 1] ?? []).filter((piece) => !before.resolve(piece.from).sameParent($span));
+    return [{ r, span, rest: false }, ...rest.map((piece) => ({ r, span: piece, rest: true }))];
+  }).sort((a, b) => b.span.from - a.span.from);
   asOneUndoStep(undoOf(handle), () => {
     editor.transact((tr) => {
-      for (const { r, span } of spans) writeUnit(editor, tr, r, span);
+      for (const { r, span, rest } of writes) {
+        if (rest) takeOut(editor, tr, span, r.unit.cell !== null);
+        else writeUnit(editor, tr, r, span);
+      }
     });
   });
   return answer.leftOut > 0 ? { outcome: 'written', leftOut: answer.leftOut } : { outcome: 'written' };

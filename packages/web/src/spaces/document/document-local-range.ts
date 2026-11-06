@@ -60,6 +60,7 @@
 
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { EditorState, PluginView, Transaction } from '@tiptap/pm/state';
+import { Mapping } from '@tiptap/pm/transform';
 import type { EditorView } from '@tiptap/pm/view';
 import {
   absolutePositionToRelativePosition,
@@ -221,7 +222,32 @@ function carryEnd(
   at: number | null,
 ): number | null {
   if (line === null || (at !== null && inLine(tr.doc, at, line))) return at;
-  return lineNow(tr.doc, line) ?? at;
+  return lineNow(tr.doc, line) ?? movedInto(tr, line) ?? at;
+}
+
+/**
+ * Where an end is after its row went and its line's words came back inside
+ * another line in the same change, as BlockNote joins a first child into its
+ * parent: at the letter it named, while those words were put in at one place
+ * only.
+ * @param tr - The change.
+ * @param line - The line the end sat in before it.
+ * @returns The position, or null when the words were not put in once.
+ */
+function movedInto(tr: Transaction, line: EndLine): number | null {
+  if (line.words === '') return null;
+  const found: number[] = [];
+  tr.mapping.maps.forEach((map, index) => {
+    const forward = new Mapping(tr.mapping.maps.slice(index + 1));
+    map.forEach((_oldStart, _oldEnd, newStart, newEnd) => {
+      const from = forward.map(newStart, 1);
+      const to = forward.map(newEnd, -1);
+      if (to <= from || !tr.doc.resolve(from).sameParent(tr.doc.resolve(to)) || !tr.doc.resolve(from).parent.isTextblock) return;
+      const words = wordsBetween(tr.doc, from, to);
+      for (let at = words.indexOf(line.words); at >= 0; at = words.indexOf(line.words, at + 1)) found.push(from + at);
+    });
+  });
+  return found.length === 1 ? found[0]! + line.letter + (line.side === 'end' ? 1 : 0) : null;
 }
 
 /**

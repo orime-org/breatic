@@ -1409,6 +1409,58 @@ describe('round 13: words typed over the selected ones', () => {
   });
 });
 
+describe('round 14: units through block edits', () => {
+  it('keeps a unit on its words when a line with marks, links or comments is turned into code', async () => {
+    for (const md of ['plain **bold** words', 'plain [link](https://a.example) words']) {
+      const h = await open(md);
+      const o = opening(h, rangeOf(h, 'plain '), 'refine');
+      h.editor.updateBlock(blocks(h)[0]!.id, { type: 'codeBlock' } as never);
+      expect(aiReplaceAvailable(h.editor.prosemirrorState.doc, read(h, o, tagged({ 1: 'X' }), 'refine'), segments(h))).toBe(true);
+    }
+    const h = await open('plain commented words');
+    comment(h, 'commented', 't1');
+    const o = opening(h, rangeOf(h, 'plain '), 'refine');
+    h.editor.updateBlock(blocks(h)[0]!.id, { type: 'codeBlock' } as never);
+    expect(aiReplaceAvailable(h.editor.prosemirrorState.doc, read(h, o, tagged({ 1: 'X' }), 'refine'), segments(h))).toBe(true);
+  });
+
+  it('follows a child line joined into its parent, with Backspace and with Delete', async () => {
+    for (const key of ['Backspace', 'Delete']) {
+      const h = await open('');
+      h.editor.replaceBlocks(h.editor.document, [{ type: 'paragraph', content: 'parent words', children: [{ type: 'paragraph', content: 'child words' }] }] as never);
+      h.undoManager.clear();
+      const o = opening(h, { from: rangeOf(h, 'parent').from, to: rangeOf(h, 'child words').to }, 'refine');
+      pressKey(h, key === 'Backspace' ? rangeOf(h, 'child words').from : rangeOf(h, 'parent words').to, key);
+      expect(blocks(h).map(textOf)).toEqual(['parent wordschild words']);
+      const answer = read(h, o, tagged({ 1: 'PARENT', 2: 'CHILD' }), 'refine');
+      expect(aiReplaceAvailable(h.editor.prosemirrorState.doc, answer, segments(h))).toBe(true);
+      replaceAiAnswer(h, answer, segments(h), WRITABLE);
+      expect(blocks(h).map(textOf)).toEqual(['PARENTCHILD']);
+    }
+  });
+
+  it('replaces the selected words Enter moved to the next line too', async () => {
+    const h = await open('one two three');
+    const o = opening(h, rangeOf(h, 'one two three'), 'refine');
+    pressKey(h, rangeOf(h, 'three').from, 'Enter');
+    replaceAiAnswer(h, read(h, o, tagged({ 1: 'ONE TWO THREE' }), 'refine'), segments(h), WRITABLE);
+    expect(blocks(h).map(textOf)).toEqual(['ONE TWO THREE']);
+  });
+
+  it('copies every answer of units joined into one block of a table cell, as replace writes them', async () => {
+    const h = await open('| aaa | zzz |\n| --- | --- |\n| c | d |');
+    const cell = flat(h).find((b) => textOf(b) === 'aaa')!;
+    h.editor.replaceBlocks([cell.id], [{ type: 'paragraph', content: 'aaa' }, { type: 'paragraph', content: 'bbb' }] as never);
+    h.undoManager.clear();
+    const o = opening(h, { from: rangeOf(h, 'aaa').from, to: rangeOf(h, 'zzz').to }, 'refine');
+    pressKey(h, rangeOf(h, 'bbb').from, 'Backspace');
+    const answer = read(h, o, tagged({ 1: 'AAA', 2: 'BBB', 3: 'ZZZ' }), 'refine');
+    expect(cellWords(answer.preview[0] as Seen)).toEqual([['AAABBB', 'ZZZ'], ['c', 'd']]);
+    replaceAiAnswer(h, answer, segments(h), WRITABLE);
+    expect(cellWords(blocks(h).find((b) => b.type === 'docTable')!)).toEqual([['AAABBB', 'ZZZ'], ['c', 'd']]);
+  });
+});
+
 describe('round 11: replace with only outside media', () => {
   it('can be pressed, writes nothing and says how many were left out, as insert does', async () => {
     const h = await open('One.');
