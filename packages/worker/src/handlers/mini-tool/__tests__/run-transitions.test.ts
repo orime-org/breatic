@@ -150,7 +150,7 @@ function run(transition: Transition, second: Served, secondOut: number, target: 
   ];
   const profile = transitionOutputProfile(A.ledger.plan, second.ledger.plan, { encode: ENCODE });
   const timeline = planVideoTimeline(clips as Parameters<typeof planVideoTimeline>[0], profile.fps);
-  return { first: A, second, clips, timeline, layout: planTransitionChunks(timeline, target), profile };
+  return { first: A, second, clips, timeline, layout: planTransitionChunks(timeline, { targetSeconds: target, frameSeconds: () => 1 }), profile };
 }
 
 /**
@@ -498,7 +498,7 @@ describe("the frozen chunk boundaries are dispatched as they are (§97 D23-3)", 
     const all = [...FROZEN.encode, ...FROZEN.window].sort((left, right) => left.start - right.start);
     expect(all.every((window, at) => window.start === (at === 0 ? 0 : all[at - 1]!.end))).toBe(true);
     expect(all.at(-1)!.end).toBe(value.timeline.frameCount);
-    for (let target = 1; target <= value.timeline.frameCount; target += 1) expect(planTransitionChunks(value.timeline, target)).not.toEqual(FROZEN);
+    for (let target = 1; target <= value.timeline.frameCount; target += 1) expect(planTransitionChunks(value.timeline, { targetSeconds: target, frameSeconds: () => 1 })).not.toEqual(FROZEN);
   });
 
   it("TB01 every chunk_encode and transition_window covers exactly one frozen window, and the stitch binds them in output order", async () => {

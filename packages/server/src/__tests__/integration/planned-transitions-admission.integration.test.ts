@@ -211,7 +211,7 @@ describe("transitions admission freezes its layout, stage counts and output prof
     expect(timeline.window).toEqual({ startFrame: 700, frameCount: 100, kind: "fade" });
     expect(plan).toMatchObject({ tool: "video.transitions", presentationRef: f.body.presentation_ref, profile });
     expect(plan.layout).toEqual({ encode: [{ start: 0, end: 700 }, { start: 800, end: 1500 }], window: [{ start: 700, end: 800 }] });
-    expect(plan.layout).toEqual(planTransitionChunks(timeline, timeline.frameCount));
+    expect(plan.layout).toEqual(planTransitionChunks(timeline, { targetSeconds: timeline.frameCount, frameSeconds: () => 1 }));
     expect(plan.stageJobs).toEqual(plannedStageJobs(plan.layout));
     expect(plan.stageJobs).toEqual([{ stage: "encode", jobs: 3 }, { stage: "stitch", jobs: 1 }]);
   });
