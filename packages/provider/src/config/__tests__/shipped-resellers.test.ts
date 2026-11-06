@@ -9,7 +9,7 @@ import { estimateCost, orderByPrice, rejectedInput, type EstimateInput } from ".
 import { createProvider } from "../../provider.js";
 import { droppedValues, type MediaBinding } from "../schema.js";
 import type { SchemaSnapshot } from "../upstream-schema.js";
-import { ROOT, shipped, yaml } from "./shipped.js";
+import { ROOT, catalog, shipped } from "./shipped.js";
 
 /**
  * The reseller each catalog model is bound to and its id there: a model on fal or
@@ -49,7 +49,8 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
   "bria-remove-background": { fal: "fal-ai/bria/background/remove" },
   "bria-genfill": {},
   "bria-eraser": { fal: "fal-ai/bria/eraser" },
-  "seedream-v4.5-edit": { fal: "fal-ai/bytedance/seedream/v4.5/edit", sandbase: "bytedance/seedream/4.5/edit" },
+  // fal offers no output format and its example edit is a PNG, where WaveSpeed returns JPEG (inner#1859).
+  "seedream-v4.5-edit": { sandbase: "bytedance/seedream/4.5/edit" },
   "meshy6-t23d": { fal: "fal-ai/meshy/v6/text-to-3d" },
   "hunyuan3d-v3": { fal: "fal-ai/hunyuan3d-v3/text-to-3d" },
   "hunyuan3d-v3-i23d": { fal: "fal-ai/hunyuan3d-v3/image-to-3d", sandbase: "tencent/hunyuan-3d/3.0/image-to-3d" },
@@ -120,8 +121,7 @@ const bindingOf = (model: string, upstream: string): MediaBinding | undefined =>
  * @returns Our voice name and ElevenLabs' id of each.
  */
 function premadeVoices(model = "elevenlabs-v3"): { name: string; id: string }[] {
-  const tts = yaml<{ models: { name: string; voices?: { id: string; sample_url?: string }[] }[] }>("models/tts/models.yaml");
-  const voices = tts.models.find((m) => m.name === model)?.voices ?? [];
+  const voices = (catalog().models.find((m) => m.name === model)?.voices as { id: string; sample_url?: string }[] | undefined) ?? [];
   return voices.flatMap((v) => {
     const id = /\/premade\/voices\/([^/]+)\//.exec(v.sample_url ?? "")?.[1];
     return id === undefined ? [] : [{ name: v.id, id }];
@@ -330,6 +330,14 @@ describe("the limits a reseller states beyond its schema", () => {
     const estimate = await estimateCost(provider.pricingRules("sync-lipsync-3"), provider.availability("sync-lipsync-3"), input, { mode: "upstream", upstream: "fal" });
     const rule = bindingOf("sync-lipsync-3", "fal")?.pricing as { base_price: number };
     expect(estimate?.usd).toBeCloseTo(rule.base_price / 1_000_000, 6);
+  });
+
+  it.each([[[], 5], [[10], 15], [[4, 6], 15]])("prices SandBase MiniMax H3 reference runs by input and output seconds (reference clips %j)", async (clips, seconds) => {
+    const videos = clips.map((_, i) => `https://a/${i}.mp4`);
+    const input = run({ params: { duration: 5, resolution: "2k", images: ["https://a/1.png"], ...(videos.length === 0 ? {} : { videos }) }, durations: clips.length === 0 ? {} : { videos: clips } });
+    const estimate = await estimateCost(provider.pricingRules("minimax-h3-reference-to-video"), provider.availability("minimax-h3-reference-to-video"), input, { mode: "upstream", upstream: "sandbase" });
+    expect(estimate).toMatchObject({ bound: "exact" });
+    expect(estimate?.usd).toBeCloseTo(seconds * 0.13, 6);
   });
 
   it.each([[60, 10], [10, 60]])("prices SandBase Sync Lipsync 3 per output second, the shorter input (video %i s, audio %i s)", async (video, audio) => {

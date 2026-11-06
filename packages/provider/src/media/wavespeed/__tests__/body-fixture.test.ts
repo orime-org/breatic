@@ -4,8 +4,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parse } from "yaml";
-import type { MediaBinding } from "../../../config/schema.js";
+import { catalog, shipped } from "../../../config/__tests__/shipped.js";
 import { buildBody } from "../../body.js";
 import { DEPARTURES, OFF_WAVESPEED } from "./departures.js";
 
@@ -13,34 +12,17 @@ interface BodyFixture {
   cases: { model: string; kind: "catalog" | "three_d"; params: Record<string, unknown>; prompt: string; body: Record<string, unknown> }[];
 }
 
-const ROOT = resolve(__dirname, "../../../../../..");
-
 /** What today's worker sends for each case (scripts/provider-fixtures.ts). */
 const fixture = JSON.parse(readFileSync(resolve(__dirname, "../../../../test/fixtures/upstream-body.json"), "utf8")) as BodyFixture;
 
 /** Every model's WaveSpeed binding, from the binding files the configuration migration writes. */
-const bindings = new Map<string, MediaBinding>();
-for (const modality of ["image", "video", "audio", "tts", "three_d"]) {
-  const file = parse(readFileSync(resolve(ROOT, `config/provider/media/${modality}.yaml`), "utf8")) as {
-    models: Record<string, { upstreams: MediaBinding[] }>;
-  };
-  for (const [model, { upstreams }] of Object.entries(file.models)) {
-    const wavespeed = upstreams.find((b) => b.upstream === "wavespeed");
-    if (wavespeed !== undefined) bindings.set(model, wavespeed);
-  }
-}
+const bindings = new Map(Object.entries(shipped().media.models).flatMap(([model, { upstreams }]) => upstreams.filter((b) => b.upstream === "wavespeed").map((b) => [model, b] as const)));
 
 /** Params the application writes into the prompt (`into_prompt`); a run never sends them as fields. */
-const intoPrompt = new Map<string, Set<string>>();
-for (const file of ["image", "video", "audio", "tts"]) {
-  const catalog = parse(readFileSync(resolve(ROOT, `config/models/${file}/models.yaml`), "utf8")) as {
-    models: { name: string; params?: Record<string, { into_prompt?: string; upstream?: string }> }[];
-  };
-  for (const model of catalog.models) {
-    const fields = Object.entries(model.params ?? {}).filter(([, p]) => p.into_prompt !== undefined).map(([name, p]) => p.upstream ?? name);
-    if (fields.length > 0) intoPrompt.set(model.name, new Set(fields));
-  }
-}
+const intoPrompt = new Map(catalog().models.flatMap((model) => {
+  const fields = Object.entries(model.params as Record<string, { into_prompt?: string; upstream?: string }>).filter(([, p]) => p.into_prompt !== undefined).map(([name, p]) => p.upstream ?? name);
+  return fields.length === 0 ? [] : [[model.name, new Set(fields)] as const];
+}));
 
 /**
  * Today's body as the binding now writes it: the departures applied.

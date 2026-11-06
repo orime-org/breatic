@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { catalog, coveredValues, shipped } from "../../config/__tests__/shipped.js";
 import { adapterOf } from "../adapters.js";
 import { missingRequired, type SchemaSnapshot } from "../../config/upstream-schema.js";
+import { stepCalls } from "../../pricing/estimate.js";
 import { firstBody, takes, type SampleRun } from "./reseller-bodies.js";
 
 /** The step context a body sample was built with; `source` is the url the step reads, and absent fields are unset. */
@@ -136,9 +137,20 @@ describe.each(cases)("the request bodies of $model on $binding.upstream", ({ mod
     expect(uncovered).toEqual([]);
   });
 
-  it("are what each extra step's codec builds", () => {
+  it("show each extra step on a run that makes it, reading its source as the runner does", () => {
+    const wrong = sample.steps.filter((s) => {
+      if (s.context.param === undefined) return false;
+      const value = s.context.params[s.context.param];
+      const source = s.context.itemIndex === null ? value : Array.isArray(value) ? value[s.context.itemIndex] : undefined;
+      return typeof source !== "string" || s.context.source !== source;
+    }).map((s) => `${s.kind} ${s.context.param}=${JSON.stringify(s.context.params[s.context.param!])} source=${s.context.source}`);
+    expect(wrong).toEqual([]);
+  });
+
+  it("are what each extra step's codec builds, for each step a sample run makes", () => {
     const kind = config.upstreams[binding.upstream]!.kind;
-    expect(sample.steps.map((s) => `${s.kind} ${s.endpoint}`).sort()).toEqual((binding.extra_steps ?? []).map((s) => `${s.kind} ${s.endpoint}`).sort());
+    const made = (binding.extra_steps ?? []).filter((s) => sample.runs.some((r) => stepCalls(s, r.params).length > 0));
+    expect(sample.steps.map((s) => `${s.kind} ${s.endpoint}`).sort()).toEqual(made.map((s) => `${s.kind} ${s.endpoint}`).sort());
     for (const step of sample.steps) {
       const codec = adapterOf(kind).steps[step.kind as keyof ReturnType<typeof adapterOf>["steps"]]!;
       expect(codec.body({ ...step.context, source: () => step.context.source, binding, voiceId: step.context.voiceId, description: step.context.description, param: step.context.param }), `${step.kind} ${step.endpoint}`).toEqual(step.body);

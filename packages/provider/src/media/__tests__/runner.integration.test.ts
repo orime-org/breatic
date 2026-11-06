@@ -826,6 +826,12 @@ describe("Mureka's steps", () => {
     expect(answer.step.kind).toBe("generate");
   });
 
+  it("clones the vocal when this upstream holds only a voice clone of the same recording", async () => {
+    const voice: MediaClone[] = [{ upstream: "ws_a", kind: "voice", sourceKey: "sha-vocal", upstreamId: "BreaticVoice" }];
+    const planned = expectState(await runner().plan("mureka", { prompt: "a song", params: { vocal: "https://cdn.example/vocal.mp3" } }, DEFAULT, { ...keys, clones: voice, durations: {} }), "send");
+    expect(planned.step.kind).toBe("vocal");
+  });
+
   it("uses a cached vocal and keeps it through Mureka's general refusal", async () => {
     const r = runner();
     a.answer(({ method, path }) => {

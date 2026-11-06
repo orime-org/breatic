@@ -123,6 +123,11 @@ describe("estimates with the caller's live clones", () => {
     expect(await cheapest("song", run({ lyrics: "la", vocal: VOCAL }, held))).toEqual({ usd: 0.225, bound: "exact", upstream: "ws_a" });
   });
 
+  it("does not take a voice clone of the same recording for a vocal clone", async () => {
+    const held = [{ upstream: "ws_a", kind: "voice" as const, sourceKey: "sha-vocal", upstreamId: "BreaticVoice" }];
+    expect(await cheapest("song", run({ lyrics: "la", vocal: VOCAL }, held))).toEqual({ usd: 5.15, bound: "exact", upstream: "ws_b" });
+  });
+
   it("counts a clone only on the upstream that holds it", async () => {
     const held = [{ upstream: "ws_b", kind: "vocal" as const, sourceKey: "sha-vocal", upstreamId: "v-b" }];
     const order = await orderByPrice(p.pricingRules("song"), p.availability("song"), run({ lyrics: "la", vocal: VOCAL }, held));
