@@ -79,6 +79,30 @@ const CONNECTED: SocketState = {
 const clients: QueryClient[] = [];
 
 /**
+ * A frame count as the Timeline shows it, HH:MM:SS:FF at the 24 fps of these fixtures; written out here so the
+ * expectation does not come from the code under test.
+ * @param frame - Frames.
+ * @returns The timecode text.
+ * @throws {never} Never.
+ */
+function timecode(frame: number): string {
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  const seconds = Math.floor(frame / 24);
+  return `${pad(Math.floor(seconds / 3600))}:${pad(Math.floor(seconds / 60) % 60)}:${pad(seconds % 60)}:${pad(frame % 24)}`;
+}
+
+/**
+ * The play bar's position text.
+ * @param frame - The playhead frame.
+ * @param total - The sequence length.
+ * @returns The text.
+ * @throws {never} Never.
+ */
+function position(frame: number, total: number): string {
+  return `${timecode(frame)} / ${timecode(total)}`;
+}
+
+/**
  * Hold a network outcome while the user changes the current UI target.
  * @returns The pending answer and its explicit settlement functions.
  * @throws {never} Never.
@@ -1007,7 +1031,7 @@ describe('TimelineSpace clip actions', () => {
     showTimeline();
     fireEvent.click(await screen.findByTestId('timeline-clip-' + CLIP.id));
     fireEvent.keyDown(screen.getByRole('slider', { name: t('timeline.seek') }), { key: 'End' });
-    await waitFor(() => expect(screen.getByText(t('timeline.framePosition', { frame: 47, total: 48 }))).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(position(47, 48))).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('timeline-split'));
     await waitFor(() => expect(Object.values(layout().clips)).toHaveLength(2));
     const parts = Object.values(layout().clips).sort((left, right) => left.startFrame - right.startFrame);
@@ -1117,7 +1141,7 @@ describe('TimelineSpace clip actions', () => {
     await screen.findByTestId('timeline-clip-' + X);
     const before = Y.encodeStateAsUpdate(doc);
     press(screen.getByTestId('timeline-space'), 'ArrowRight', { shiftKey: true });
-    await waitFor(() => expect(screen.getByText(t('timeline.framePosition', { frame: 24, total: 48 }))).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(position(24, 48))).toBeInTheDocument());
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
 
@@ -1171,7 +1195,7 @@ describe('TimelineSpace clip actions', () => {
     showTimeline();
     fireEvent.click(await screen.findByTestId('timeline-clip-' + X));
     press(screen.getByRole('slider', { name: t('timeline.seek') }), 'ArrowRight');
-    await waitFor(() => expect(screen.getByText(t('timeline.framePosition', { frame: 1, total: 40 }))).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(position(1, 40))).toBeInTheDocument());
     expect(layout().clips[X]?.startFrame).toBe(10);
   });
 });
@@ -1448,7 +1472,7 @@ describe('TimelineSpace empty-lane press (inner#1708 D1)', () => {
     expect(screen.getByText(t('timeline.selectClip'))).toBeInTheDocument();
     expect(screen.queryByTestId('timeline-clip-start')).toBe(null);
     press(screen.getByTestId('timeline-space'), 'ArrowRight');
-    await waitFor(() => expect(screen.getByText(t('timeline.framePosition', { frame: 1, total: 24 }))).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(position(1, 24))).toBeInTheDocument());
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
 });
@@ -1891,7 +1915,7 @@ describe('TimelineSpace clips whose source is missing (inner#1708 M2, M3)', () =
     const seek = screen.getByRole('slider', { name: t('timeline.seek') });
     seek.focus();
     for (let step = 0; step < 15; step += 1) fireEvent.keyDown(seek, { key: 'ArrowRight' });
-    await waitFor(() => expect(screen.getByText(t('timeline.framePosition', { frame: 15, total: 48 }))).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(position(15, 48))).toBeInTheDocument());
     expect(screen.getByTestId('timeline-preview')).toHaveAttribute('data-active-clip-id', CLIP.id);
     expect(screen.queryByText(t('timeline.transport.failed'))).toBe(null);
     expect(screen.queryByText(t('timeline.mediaUnavailable'))).toBe(null);
@@ -2207,7 +2231,7 @@ describe('TimelineSpace ignores edit shortcuts during a drag (inner#1708 R1)', (
     let clip = await screen.findByTestId('timeline-clip-' + X);
     if (before === 'playhead') {
       for (let step = 0; step < 15; step += 1) press(screen.getByTestId('timeline-space'), 'ArrowRight');
-      await waitFor(() => expect(screen.getByText(t('timeline.framePosition', { frame: 15, total: 24 }))).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText(position(15, 24))).toBeInTheDocument());
     }
     fireEvent.click(clip);
     if (before === 'nudge' || before === 'nudge-undo') {
@@ -2567,8 +2591,8 @@ describe('TimelineSpace side panel, conflicts and clip lengths (inner#1708 visua
     viewport.scrollTo = scrollTo as unknown as typeof viewport.scrollTo;
     fireEvent.click(row);
     expect(row).toHaveAttribute('aria-pressed', 'true');
-    await waitFor(() => expect(screen.getByText(t('timeline.framePosition', { frame: startFrame, total: startFrame + 14 }))).toBeInTheDocument());
-    if (scrolls) await waitFor(() => expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ left: startFrame * pixelsPerFrame })));
+    await waitFor(() => expect(screen.getByText(position(startFrame, startFrame + 14))).toBeInTheDocument());
+    if (scrolls) await waitFor(() => expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ left: Math.max(0, startFrame * pixelsPerFrame - 24) })));
     else expect(scrollTo).not.toHaveBeenCalled();
   });
 
@@ -2588,10 +2612,10 @@ describe('TimelineSpace side panel, conflicts and clip lengths (inner#1708 visua
   it('shows each clip\'s length under its name and follows a trim (V19)', async () => {
     const doc = seedLayout([clipAt(X, 'v2', 10, 14), clipAt(Y2, MAIN, 0, 1)]);
     showTimeline();
-    expect(await screen.findByTestId('timeline-clip-' + X)).toHaveTextContent(t('timeline.frameCount', { count: 14 }));
-    expect(screen.getByTestId('timeline-clip-' + Y2)).toHaveTextContent(t('timeline.frameCount', { count: 1 }));
+    expect(await screen.findByTestId('timeline-clip-' + X)).toHaveTextContent(timecode(14));
+    expect(screen.getByTestId('timeline-clip-' + Y2)).toHaveTextContent(timecode(1));
     act(() => { write(doc, { operation: 'set_range', parameters: { clipId: X, startFrame: 10, sourceInFrame: 0, durationFrames: 20 }, placement: OFF }); });
-    await waitFor(() => expect(screen.getByTestId('timeline-clip-' + X)).toHaveTextContent(t('timeline.frameCount', { count: 20 })));
+    await waitFor(() => expect(screen.getByTestId('timeline-clip-' + X)).toHaveTextContent(timecode(20)));
   });
 
   it('shows the Delete shortcut on the Delete button, as Split and Duplicate show theirs (V21)', async () => {
@@ -2638,5 +2662,88 @@ describe('TimelineSpace previews a drop into the new-track zone (inner#1708 visu
     const label = within(zone).getByTestId('timeline-ghost-label');
     expect(label).toHaveTextContent(t('timeline.clipFrames', { start: 20, duration: 14 }));
     for (const trackId of ['v2', MAIN]) expect(dragGhost(trackId), trackId).toBe(null);
+  });
+});
+
+describe('TimelineSpace visual round 2 (inner#1708 W13, W17, W19, W20)', () => {
+  it.each([
+    ['timeline-toggle-magnet', 'timeline.edit.magnet', null],
+    ['timeline-toggle-snap', 'timeline.edit.snap', 'N'],
+    ['timeline-toggle-linkage', 'timeline.edit.linkage', null],
+  ] as const)('draws %s as an icon button named by its switch, with a tooltip (W13)', async (testId, label, key) => {
+    seedLayout([clipAt(X, 'v2', 10, 14)]);
+    showTimeline();
+    await screen.findByTestId('timeline-clip-' + X);
+    const button = screen.getByTestId(testId);
+    expect(button).toBe(screen.getByRole('button', { name: t(label) }));
+    expect(button.textContent?.trim()).toBe('');
+    const pressed = button.getAttribute('aria-pressed');
+    expect(pressed === 'true' || pressed === 'false').toBe(true);
+    act(() => button.focus());
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip).toHaveTextContent(t(label));
+    if (key !== null) expect(tooltip).toHaveTextContent(key);
+    fireEvent.click(button);
+    expect(button).toHaveAttribute('aria-pressed', pressed === 'true' ? 'false' : 'true');
+  });
+
+  it('renders Add media disabled for a Viewer, like the other edit buttons (W17)', async () => {
+    seedLayout([clipAt(X, 'v2', 10, 14)]);
+    showTimeline({ ...CONNECTED, writeAccess: 'denied' }, true);
+    await screen.findByTestId('timeline-clip-' + X);
+    for (const testId of ['timeline-add-media', 'timeline-undo', 'timeline-redo', 'timeline-split', 'timeline-duplicate', 'timeline-delete']) {
+      expect(screen.getByTestId(testId), testId).toBeDisabled();
+    }
+  });
+
+  it('keeps Add media enabled for an Editor (W17)', async () => {
+    seedLayout([clipAt(X, 'v2', 10, 14)]);
+    showTimeline();
+    await screen.findByTestId('timeline-clip-' + X);
+    expect(screen.getByTestId('timeline-add-media')).toBeEnabled();
+  });
+
+  it('shows the selected conflicting clip\'s first reason in its properties (W19)', async () => {
+    seedConflictingClips();
+    showTimeline();
+    fireEvent.click(await screen.findByTestId('timeline-conflict-' + CLIP.id));
+    const area = within(properties());
+    expect(area.getByText(t('timeline.conflict'), { exact: true })).toBeInTheDocument();
+    expect(area.getByText(t('timeline.conflictReason.overlap'), { exact: true })).toBeInTheDocument();
+  });
+
+  it('shows neither the conflict word nor a reason in a ready clip\'s properties (W19)', async () => {
+    seedLayout([clipAt(X, 'v2', 10, 14)]);
+    showTimeline();
+    fireEvent.click(await screen.findByTestId('timeline-clip-' + X));
+    const ready = within(properties());
+    expect(ready.queryByText(t('timeline.conflict'), { exact: true })).toBe(null);
+    expect(ready.queryByText(t('timeline.conflictReason.overlap'), { exact: true })).toBe(null);
+  });
+
+  it.each([
+    ['a sub track', 'v2', (): string => t('timeline.track', { index: 2 })],
+    ['the main track', MAIN, (): string => t('timeline.mainTrack')],
+  ] as const)('starts a conflict row\'s frames line with the name of %s (W20)', async (_name, trackId, name) => {
+    const doc = seedLayout([]);
+    const peer = new Y.Doc();
+    try {
+      Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
+      write(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: { ...CLIP, trackId } }, placement: OFF });
+      write(peer, { operation: 'add_video', parameters: { source: SOURCE, clip: { ...CLIP, id: Y2, trackId } }, placement: OFF });
+      Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer), 'provider');
+    } finally { peer.destroy(); }
+    showTimeline();
+    const row = await screen.findByTestId('timeline-conflict-' + CLIP.id);
+    expect(within(row).getByText(`${name()} · ${t('timeline.clipFrames', { start: 0, duration: 48 })}`, { exact: true })).toBeInTheDocument();
+  });
+
+  it('names a removed track in a conflict row\'s frames line (W20)', async () => {
+    const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
+    showTimeline();
+    await screen.findByTestId('timeline-clip-' + X);
+    act(() => { doc.transact(() => doc.getMap('tracks').delete('v2'), 'provider'); });
+    const row = await screen.findByTestId('timeline-conflict-' + X);
+    expect(within(row).getByText(`${t('timeline.edit.trackRemoved')} · ${t('timeline.clipFrames', { start: 10, duration: 14 })}`, { exact: true })).toBeInTheDocument();
   });
 });
