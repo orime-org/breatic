@@ -9,7 +9,9 @@
 
 import { z } from "zod";
 import { planVideoDialogues, type VideoDialoguePlanInput } from "@shared/mini-tools/video-plan.js";
-import type { LipsyncTimeline } from "@shared/mini-tools/lipsync-timeline.js";
+import { lipsyncSourceFrameAt, type LipsyncTimeline } from "@shared/mini-tools/lipsync-timeline.js";
+import { presentationFrameCount } from "@shared/mini-tools/video-presentation-table.js";
+import type { VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
 export { lipsyncSourceTimeAt, lipsyncSourceFrameAt, type LipsyncTimeline } from "@shared/mini-tools/lipsync-timeline.js";
 
 /**
@@ -65,4 +67,100 @@ export function lipsyncFailureRetryable(reason: unknown): boolean {
    */
   const transient = (value: string): boolean => value === "timeout" || value === "failed";
   return parsed.persons.every((person) => transient(person.category)) && (parsed.shared === null || transient(parsed.shared.category));
+}
+
+/** A run of result frames whose source frames move one way (frames-split §5.4, the row on measured decode work); frames, ranges half-open. */
+export interface LipsyncMonotonicSegment {
+  resultStart: number;
+  resultEnd: number;
+  /** The source frames the segment's decode passes: every frame of [0, V) for remap, else the frames it shows. */
+  sourceStart: number;
+  sourceEnd: number;
+  direction: "forward" | "reverse";
+  /** Frames decoded before `sourceStart` from the keyframe at or before it; a reverse segment's later GOPs start on their own keyframe. */
+  prerollFrames: number;
+}
+
+/**
+ * Split the result grid the container writes (frame k at k · step / timescale of the table's first run) into forward and
+ * reverse segments of the source mapping: loop starts a forward segment at each wrap, bounce is forward while
+ * u = t mod 2V lies in [0, V] and reverse after, every other mode is one forward segment. A reverse segment is decoded GOP by
+ * GOP forward once and emitted reversed, so its decode work is the same as a forward pass over its interval.
+ * @param timeline - The frozen timeline.
+ * @param table - The source's presentation table.
+ * @param keyframes - The per-presentation-frame keyframe flags.
+ * @returns The segments in result order.
+ * @throws {RangeError} When the table has no frame or the result has none.
+ */
+export function lipsyncMonotonicSegments(timeline: LipsyncTimeline, table: VideoPresentationTable, keyframes: readonly boolean[]): LipsyncMonotonicSegment[] {
+  const run = table.runs[0];
+  if (run === undefined) throw new RangeError("Expected a presented frame");
+  const count = Math.ceil(Math.round(timeline.duration * table.timescale) / run.step);
+  if (count <= 0) throw new RangeError("Expected a result frame");
+  const v = timeline.videoDuration;
+  /**
+   * Where a result time is in its cycle and which way it moves.
+   * @param t - The result time.
+   * @returns The position and whether it moves back.
+   * @throws {never} Never.
+   */
+  const phase = (t: number): { at: number; reverse: boolean } => {
+    if (timeline.syncMode === "loop") return { at: t % v, reverse: false };
+    if (timeline.syncMode === "bounce") { const u = t % (2 * v); return { at: u, reverse: u > v }; }
+    return { at: t, reverse: false };
+  };
+  const segments: LipsyncMonotonicSegment[] = [];
+  let open: { start: number; reverse: boolean; low: number; high: number } | null = null;
+  let previous = 0;
+  /**
+   * Close the open segment at a result frame.
+   * @param end - The result frame it ends before.
+   * @throws {never} Never.
+   */
+  const close = (end: number): void => {
+    if (open === null) return;
+    const [sourceStart, sourceEnd] = timeline.syncMode === "remap" ? [0, presentationFrameCount(table)] : [open.low, open.high + 1];
+    let key = sourceStart;
+    while (key > 0 && keyframes[key] !== true) key -= 1;
+    segments.push({ resultStart: open.start, resultEnd: end, sourceStart, sourceEnd, direction: open.reverse ? "reverse" : "forward", prerollFrames: sourceStart - key });
+  };
+  for (let k = 0; k < count; k += 1) {
+    const t = (k * run.step) / table.timescale;
+    const { at, reverse } = phase(t);
+    const frame = lipsyncSourceFrameAt(timeline, table, t);
+    if (open === null || open.reverse !== reverse || at < previous) {
+      close(k);
+      open = { start: k, reverse, low: frame, high: frame };
+    } else {
+      open.low = Math.min(open.low, frame);
+      open.high = Math.max(open.high, frame);
+    }
+    previous = at;
+  }
+  close(count);
+  return segments;
+}
+
+/**
+ * Cut composite chunks on the result axis: never across a monotonic segment, each within the chunk share, the fewest per
+ * segment, split evenly.
+ * @param input - The segments, each result frame's work in seconds and the chunk share in seconds.
+ * @param input.segments - The segments in result order.
+ * @param input.frameSeconds - One result frame's work.
+ * @param input.targetSeconds - The chunk share.
+ * @returns Half-open result-frame windows tiling the result.
+ * @throws {RangeError} When the work or the share is not positive.
+ */
+export function planLipsyncCompositeChunks(input: { segments: readonly Pick<LipsyncMonotonicSegment, "resultStart" | "resultEnd">[]; frameSeconds: number; targetSeconds: number }):
+  { start: number; end: number }[] {
+  const { segments, frameSeconds, targetSeconds } = input;
+  if (!(frameSeconds > 0) || !(targetSeconds > 0)) throw new RangeError("Expected positive work and share");
+  // A frame over the whole share still makes a chunk of one frame; admission refuses a job over its share.
+  const perChunk = Math.max(1, Math.floor(targetSeconds / frameSeconds + 1e-9));
+  return segments.flatMap((segment) => {
+    const length = segment.resultEnd - segment.resultStart;
+    const parts = Math.ceil(length / perChunk);
+    return Array.from({ length: parts }, (_, at) => ({
+      start: segment.resultStart + Math.floor((at * length) / parts), end: segment.resultStart + Math.floor(((at + 1) * length) / parts) }));
+  });
 }
