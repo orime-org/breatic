@@ -67,11 +67,13 @@ document_size_full_margin_bytes: 262144      # 256 KiB
 document_size_delete_headroom_bytes: 262144  # 256 KiB
 # This close to the hard ceiling the web client also stops moves and edits.
 document_size_overwrite_reserve_bytes: 65536 # 64 KiB
-# Fewest milliseconds between two exact re-measures of one document.
+# Fewest milliseconds between two scheduled exact re-measures of one document
+# (an exact trial and a change of stored pending content measure at once).
 document_size_measure_interval_ms: 2000
 # Whole-document trials one user may cost per document per minute.
 document_size_trials_per_user_per_minute: 6
-# Average milliseconds per second this process may spend on trials.
+# Average milliseconds per second this process may spend on trials and on
+# the pending-content skeletons of updates.
 document_size_trial_budget_ms_per_second: 200
 
 # ── Chunked Messages ──────────────────────────────

@@ -1617,8 +1617,8 @@ export function renderProductGuide(): string {
       "limit it is using; once it is full the notice says so and that deleting some content makes room. While a " +
       `space is full, anything that adds to it is refused with ${quoted(t("spaces.size.addBlocked"))} Deleting, ` +
       "and changes that make nothing larger, such as shortening text or a name, still work. Close to the very end, " +
-      `moving and changing things stop too, with ${quoted(t("spaces.size.overwriteBlocked"))} Past the limit, ` +
-      `only deleting a whole node or a whole passage works: ${quoted(t("spaces.size.overCeilingDelete"))} ` +
+      `moving and changing things stop too, with ${quoted(t("spaces.size.overwriteBlocked"))} Once a space is ` +
+      `well over its limit, only deleting a whole node or a whole passage works: ${quoted(t("spaces.size.overCeilingDelete"))} ` +
       "When something does not fit the room that is left, the message says how much room is left; an Agent " +
       `proposal that does not fit says it was not placed (${quoted(t("spaces.size.proposalFull"))} on a full space), ` +
       `text read from a dropped file is not added (${quoted(t("spaces.size.textFull"))} on a full space), and a ` +
