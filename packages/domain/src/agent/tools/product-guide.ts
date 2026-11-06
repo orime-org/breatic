@@ -507,8 +507,13 @@ export function renderProductGuide(): string {
     "Apart from that placeholder, a running, failed or expired task changes nothing on the node, which keeps " +
       "showing what it holds, or its empty look; what its tasks did is in the column of task icons described under Generating. A picture or " +
       "video node shows its width × " +
-      "height just outside its top-right corner. Video and sound nodes have their own play, time, volume and, " +
-      "for video, full-screen controls.",
+      "height just outside its top-right corner. Video and sound nodes have their own play, time and volume " +
+      "controls. Hovering a picture or video node shows a full-screen button (two arrows pointing out to " +
+      "opposite corners) over the top-right corner of the picture; it opens the picture or video large over a " +
+      "dark backdrop, a video going on from where it was, and an X at the top right of the screen, Escape or " +
+      "a click on the dark area closes it. The large preview that pops up on hovering a small picture or video " +
+      "anywhere (a generate panel slot, an @ reference, node history, a chat attachment) has the same button " +
+      "at its top-right corner.",
     "Every picture, video, sound and text node shows its name just above its top-left corner, after a type " +
     "icon. A node the reader makes is named Text, Image, Audio or Video in every language, and a node placed " +
       "from a proposal card has the name the card showed. A copied node or group is named COPY- followed by the " +
@@ -1466,15 +1471,17 @@ export function renderProductGuide(): string {
       "audio, or clicking it, shows a row of icons above it: left, centre and right alignment (only when the " +
       "picture or video is narrower than the page; audio is always as wide as the page), " +
       `${quoted(t("spaces.document.media.caption"))} (a T), which opens a line under it for a caption, ` +
-      `${quoted(t("spaces.document.media.fullscreen"))} (two arrows pointing out to opposite corners, pictures only; double-clicking the ` +
-      "picture does the same, and an X at the top right closes it), " +
+      `${quoted(t("common.mediaViewer.fullscreen"))} (two arrows pointing out to opposite corners, pictures and videos; ` +
+      "double-clicking a picture does the same; a video goes on from where it was, and an X at the top right of the " +
+      "screen closes it), " +
       `${quoted(t("spaces.document.media.download"))} (an arrow into a tray), which downloads the file, and ` +
       `${quoted(t("spaces.document.media.delete"))} (a bin). Clicking a picture or video also shows a small square at each ` +
       "corner; dragging one changes its width. Dragging the picture, video or audio itself moves it, like its six " +
       "dots. Videos and audio play in place. When a video is too narrow for its playback controls, " +
-      "hover it to open a floating panel, or Tab to the video and press Enter. Editing icons occupy " +
-      "the first row and play, seek and fullscreen the second; Escape returns to the video. Someone " +
-      "who can only view the document still has playback controls, without editing icons. A caption " +
+      "hover it to open a floating panel, or Tab to the video and press Enter. The icons, full " +
+      "screen among them, occupy the first row and play and seek the second; Escape returns to the video. Someone " +
+      "who can only view the document still has playback controls, and the row of icons over a picture or video " +
+      "holds only full screen. A caption " +
       "draft stays copyable if permission becomes read-only or the media is removed; undoing the " +
       "removal restores its field. Copy a retained draft before closing the Space. Enter or blur saves " +
       "an editable changed caption; Escape cancels it to the latest shared caption.",
