@@ -14,6 +14,7 @@ export const miniToolExecutionRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("frame"), frameIndex: index, pts: seconds }),
   z.strictObject({ kind: z.literal("segment"), range }),
   z.strictObject({ kind: z.literal("transitions") }),
+  z.strictObject({ kind: z.literal("lip-sync") }),
 ]);
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const toolInputRef = z.strictObject({ toolInputId: hash, planSha256: hash });
@@ -55,10 +56,15 @@ const transitions = z.strictObject({
     ctx.addIssue({ code: "custom", path: ["presentation_ref"], message: "Each clip input has exactly one tool input ref" });
   }
 });
+// One output over the node's video; the people the rows name come from the referenced people analysis (§97 D17-1).
+const lipSync = z.strictObject({
+  ...common, tool: z.literal("video.lip-sync"), draft: videoToolDraftSchema("video.lip-sync"),
+  outputs: z.array(z.strictObject({ ...destination, recipe: miniToolExecutionRecipeSchema.options[4] })),
+});
 /** Complete press-frozen drafts and ordered output mappings for planned execution. */
-export const miniToolPlannedRequestSchema = z.discriminatedUnion("tool", [removal, frames, split, transitions]).superRefine((request, ctx) => {
+export const miniToolPlannedRequestSchema = z.discriminatedUnion("tool", [removal, frames, split, transitions, lipSync]).superRefine((request, ctx) => {
   if (request.outputs.length === 0 || request.outputs.some((output, position) => output.outputIndex !== position)
-    || ((request.tool === "video.remove-bg" || request.tool === "video.transitions") && request.outputs.length !== 1)) {
+    || ((request.tool === "video.remove-bg" || request.tool === "video.transitions" || request.tool === "video.lip-sync") && request.outputs.length !== 1)) {
     ctx.addIssue({ code: "custom", path: ["outputs"], message: "A fresh execution requires its complete ordered output indices" });
   }
   if (new Set(request.outputs.map((output) => output.nodeId)).size !== request.outputs.length

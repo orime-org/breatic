@@ -89,6 +89,8 @@ const draftSchemas = {
       anchor: miniToolAnchorSchema,
       dialogues: z.array(videoToolDialogueRowSchema).refine((rows) => new Set(rows.map((row) => row.dialogueId)).size === rows.length),
       syncMode: videoToolSyncModeSchema,
+      // The selected lip-sync model (execution design §9.3); a draft without one runs the configured default.
+      modelId: z.string().min(1).optional(),
     }),
   }),
   "video.remove-bg": z.strictObject({ ...commonDraftShape, params: z.strictObject({}) }),
