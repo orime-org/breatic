@@ -83,13 +83,11 @@ import {
   aiFormatFailed,
   aiReplaceAvailable,
   aiTextUnits,
-  aiUnitRanges,
   aiUnitsRequest,
   insertAiAnswer,
   replaceAiAnswer,
   type AiAnswer,
   type AiTextUnit,
-  type AiUnitRanges,
   type AiWriteResult,
 } from '@web/spaces/document/document-ai-units';
 import { viewOf, type ViewedEditor } from '@web/spaces/document/document-editor-view';
@@ -170,14 +168,6 @@ function titleOf(command: AiCommand, t: (key: string) => string): string {
   }
 }
 
-/**
- * Each unit's words where they are now.
- * @param editor - The document editor.
- * @returns Every unit's pieces; none once gone.
- */
-function originalRanges(editor: ViewedEditor): AiUnitRanges {
-  return aiUnitRangesIn(editor.prosemirrorState);
-}
 
 interface DocumentAiDialogProps {
   /** The document editor. */
@@ -297,12 +287,12 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
         // Written at the press: the original range is cleared as the session
         // closes, right after this. The panel fetched the media prefix as it opened.
         try {
-          const answer = aiAnswer(editor, editor.prosemirrorState.doc, at.units, effect.result, command, ourMediaPrefix());
+          const answer = aiAnswer(editor, editor.prosemirrorState.doc, at.units, effect.result, command, ourMediaPrefix(), aiUnitRangesIn(editor.prosemirrorState));
           if (effect.how === 'insert') {
             if (at.insertBlockId !== null) told(insertAiAnswer({ editor }, at.insertBlockId, answer, admission));
             return;
           }
-          told(replaceAiAnswer({ editor }, answer, originalRanges(editor), admission));
+          told(replaceAiAnswer({ editor }, answer, aiUnitRangesIn(editor.prosemirrorState), admission));
         } catch (err) {
           failed();
           throw err;
@@ -320,10 +310,9 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
       const { selection } = view.state;
       if (selection.empty || selection instanceof CellSelection) return;
       const segments = aimAt(view.state.doc, selection.ranges.map((r) => ({ from: r.$from.pos, to: r.$to.pos })));
-      const units = aiTextUnits(view.state.doc, segments);
+      const { units, ranges } = aiTextUnits(view.state.doc, segments);
       if (units.length === 0) return;
       // The budget is measured on what is sent, tags included (§5.2).
-      const ranges = aiUnitRanges(view.state.doc, segments);
       const tagged = aiUnitsRequest(editor, view.state.doc, units, ranges.map((range) => [range]), command.id);
       if (tagged.length > config.selectionMaxChars) {
         toast.error(t('spaces.document.ai.selectionTooLong'));
@@ -417,11 +406,11 @@ function anchorBox(editor: ViewedEditor, opened: Opened): DOMRect | null {
   if (view === null) return null;
   // The panel lines up with the text column, under the line it follows.
   const left = view.dom.getBoundingClientRect().left;
-  const range = aiRangeIn(view.state);
-  if (range?.kind === 'present') {
+  const last = Math.max(...aiUnitRangesIn(view.state).flat().map(({ to }) => to));
+  if (Number.isFinite(last)) {
     // The line of the last selected character: a range ending at the start of
     // a line would otherwise measure the line after it.
-    const line = view.coordsAtPos(range.segments[range.segments.length - 1]!.to, -1);
+    const line = view.coordsAtPos(last, -1);
     return new DOMRect(left, line.top, 0, line.bottom - line.top);
   }
   if (opened.insertBlockId === null) return null;
@@ -470,13 +459,13 @@ function AiPanel({
   // The answer as insert and replace would write it, once all of it is on screen.
   const finished = (session.state === 'stopped' || session.state === 'done') && isComplete;
   const answer = React.useMemo<AiAnswer | null>(
-    () => (finished ? aiAnswer(editor, editor.prosemirrorState.doc, opened.units, session.result, session.command.id, ourPrefix) : null),
+    () => (finished ? aiAnswer(editor, editor.prosemirrorState.doc, opened.units, session.result, session.command.id, ourPrefix, aiUnitRangesIn(editor.prosemirrorState)) : null),
     [finished, editor, opened.units, session.result, session.command.id, ourPrefix],
   );
   // Blank answers leave nothing to write (§5.3).
   const resultEmpty = aiAnswerEmpty(session.result, opened.units);
   const readReplaceable = React.useCallback(
-    (current: ViewedEditor): boolean => answer !== null && aiReplaceAvailable(current.prosemirrorState.doc, answer, originalRanges(current)),
+    (current: ViewedEditor): boolean => answer !== null && aiReplaceAvailable(current.prosemirrorState.doc, answer, aiUnitRangesIn(current.prosemirrorState)),
     [answer],
   );
   // Replace and its button decide by the same function (§5.3).
@@ -920,7 +909,7 @@ function Preview({
     const parse = (): void => {
       timer.current = null;
       const shown = latest.current;
-      const blocks = shown.trim() === '' ? [] : aiAnswer(parser, editor.prosemirrorState.doc, units, shown, command, ourPrefix).preview;
+      const blocks = shown.trim() === '' ? [] : aiAnswer(parser, editor.prosemirrorState.doc, units, shown, command, ourPrefix, aiUnitRangesIn(editor.prosemirrorState)).preview;
       setHtml(blocks.length === 0 ? '' : parser.blocksToFullHTML(blocks as never));
     };
     if (!streaming) {

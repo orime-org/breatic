@@ -9,9 +9,10 @@
  *
  * The range is one stretch per text unit (`document-ai-units.ts`), each
  * carried on its own, so a unit follows its own words when lines are split,
- * joined or moved. Words the reader types among a unit's words are not its
- * words: the stretch is cut where they go in, the pieces staying the unit's.
- * A unit whose pieces are all gone has no words left; the range is gone with
+ * joined or moved. Words the reader types among or over a unit's words are
+ * not its words: the stretch they go in or write over is taken out of it,
+ * the pieces left staying the unit's. A unit whose pieces are all gone has
+ * no words left; the range is gone with
  * the last of them, by the reader's own edit or one that comes in through
  * Yjs. Gone stays gone, even when undo writes the words back: the comment
  * draft's rule, and replace is then not offered again for words the reader
@@ -31,13 +32,13 @@
 import { createExtension } from '@blocknote/core';
 import { SuggestionMenu } from '@blocknote/core/extensions';
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
+import { Mapping } from '@tiptap/pm/transform';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 import {
-  aimAt,
   changesText,
+  letterBounds,
   localRangeTracker,
-  type HeldLocalRange,
   type IsLetter,
   type LocalRange,
 } from '@web/spaces/document/document-local-range';
@@ -49,14 +50,12 @@ import { fromYjs } from '@web/spaces/document/document-yjs-origin';
 export type AiRange =
   | {
       readonly kind: 'present';
-      /** Each unit's words, in document order: its pieces, those that overlap or touch joined. */
-      readonly segments: readonly LocalRange[];
       /**
-       * The pieces as carried, null where one is gone: a piece keeps its
-       * place, and a piece cut off goes at the end, so the names an undo
+       * The units' pieces as carried, null where one is gone: a piece keeps
+       * its place, and a piece cut off goes at the end, so the names an undo
        * hands back still fit the pieces they were taken for.
        */
-      readonly pieces: readonly (LocalRange | null)[];
+      readonly slots: readonly (LocalRange | null)[];
       /** Which unit each piece is of: its index in the stretches the range opened on. */
       readonly owners: readonly number[];
       /** How many units the range opened on. */
@@ -67,6 +66,9 @@ export type AiRange =
 
 /** The range while it is on its words. */
 type PresentRange = AiRange & { kind: 'present' };
+
+/** Each unit's words where they are now, by its index in the stretches the range opened on; none for a unit whose words are gone. */
+export type AiUnitRanges = readonly (readonly LocalRange[])[];
 
 /** What a caller dispatches under the key: one stretch per unit opens the range, `null` closes it. */
 export type AiRangeCommand = readonly LocalRange[] | null;
@@ -109,69 +111,82 @@ function byUnit(pieces: readonly (LocalRange | null)[], owners: readonly number[
 
 /**
  * The range over some pieces, or gone once none is left.
- * @param pieces - The pieces, null where one is gone.
+ * @param slots - The pieces, null where one is gone.
  * @param owners - Which unit each piece is of.
  * @param units - How many units there are.
  * @param entry - The press that aimed it.
  * @returns The range.
  */
-function rangeOver(pieces: readonly (LocalRange | null)[], owners: readonly number[], units: number, entry: number): AiRange {
-  if (pieces.every((piece) => piece === null)) return { kind: 'gone' };
-  const segments = byUnit(pieces, owners, units).flat().sort((a, b) => a.from - b.from);
-  return { kind: 'present', segments, pieces, owners, units, entry };
+function rangeOver(slots: readonly (LocalRange | null)[], owners: readonly number[], units: number, entry: number): AiRange {
+  return slots.every((piece) => piece === null) ? { kind: 'gone' } : { kind: 'present', slots, owners, units, entry };
 }
 
 /**
- * Each unit's words where they are now, by its index in the stretches the
- * range opened on.
+ * Each unit's words where they are now.
  * @param state - The editor state.
- * @returns Every unit's words, none for a unit whose words are gone; none at
- *   all while the range is gone or not open.
+ * @returns Every unit's words; none at all while the range is gone or not open.
  */
-export function aiUnitRangesIn(state: EditorState): readonly (readonly LocalRange[])[] {
+export function aiUnitRangesIn(state: EditorState): AiUnitRanges {
   const range = presentIn(state);
-  return range === null ? [] : byUnit(range.pieces, range.owners, range.units);
+  return range === null ? [] : byUnit(range.slots, range.owners, range.units);
 }
 
 /**
- * Where the reader's own change put content in, in the body before it.
+ * The stretches of the body before the reader's own change that it put
+ * content in at, or wrote content over.
  * @param tr - The change.
- * @returns The positions.
+ * @returns The stretches, in the body before it.
  */
-function insertionsIn(tr: Transaction): number[] {
-  const at: number[] = [];
+function changedIn(tr: Transaction): LocalRange[] {
+  const out: LocalRange[] = [];
   tr.mapping.maps.forEach((map, index) => {
-    const back = tr.mapping.slice(0, index).invert();
-    map.forEach((oldStart, _oldEnd, newStart, newEnd) => {
-      if (newEnd > newStart) at.push(back.map(oldStart));
+    const back = new Mapping(tr.mapping.maps.slice(0, index)).invert();
+    map.forEach((oldStart, oldEnd, newStart, newEnd) => {
+      if (newEnd > newStart) out.push({ from: back.map(oldStart, -1), to: back.map(oldEnd, 1) });
     });
   });
-  return at;
+  return out;
 }
 
 /**
- * The pieces cut where the reader's change puts content in among their
- * words, so what goes in there is no unit's word: a piece keeps its place
- * up to the first cut, and each part after a cut goes at the end.
+ * The pieces with the stretches the reader's change rewrites taken out, so
+ * what it puts in is no unit's word: a piece keeps its place with its first
+ * part, or null when nothing of it is left, and each further part goes at
+ * the end.
  * @param range - The range before the change.
  * @param tr - The change.
- * @returns The pieces and their units; the range's own when nothing goes in among its words.
+ * @returns The pieces and their units; the range's own when the change rewrites none of its words.
  */
-function cutAtInsertions(range: PresentRange, tr: Transaction): Pick<PresentRange, 'pieces' | 'owners'> {
-  const at = insertionsIn(tr);
-  const pieces = [...range.pieces];
-  const owners = [...range.owners];
-  range.pieces.forEach((piece, i) => {
-    if (piece === null) return;
-    const cuts = [...new Set(at.filter((pos) => pos > piece.from && pos < piece.to))].sort((a, b) => a - b);
-    if (cuts.length === 0) return;
-    pieces[i] = { from: piece.from, to: cuts[0]! };
-    cuts.forEach((from, k) => {
-      pieces.push({ from, to: cuts[k + 1] ?? piece.to });
-      owners.push(range.owners[i]!);
+function withoutRewritten(range: PresentRange, tr: Transaction): Pick<PresentRange, 'slots' | 'owners'> {
+  let slots = [...range.slots];
+  let owners = [...range.owners];
+  let changed = false;
+  for (const change of changedIn(tr)) {
+    const nextSlots: (LocalRange | null)[] = [];
+    const nextOwners: number[] = [];
+    const after: Array<[LocalRange, number]> = [];
+    slots.forEach((piece, i) => {
+      const touches = piece !== null && (change.from === change.to
+        ? change.from > piece.from && change.from < piece.to
+        : change.from < piece.to && change.to > piece.from);
+      if (!touches) {
+        nextSlots.push(piece);
+        nextOwners.push(owners[i]!);
+        return;
+      }
+      changed = true;
+      const parts = [
+        ...(change.from > piece.from ? [{ from: piece.from, to: change.from }] : []),
+        ...(change.to < piece.to ? [{ from: change.to, to: piece.to }] : []),
+      ];
+      nextSlots.push(parts[0] ?? null);
+      nextOwners.push(owners[i]!);
+      for (const part of parts.slice(1)) after.push([part, owners[i]!]);
     });
-  });
-  return pieces.length === range.pieces.length ? range : { pieces, owners };
+    slots = [...nextSlots, ...after.map(([part]) => part)];
+    owners = [...nextOwners, ...after.map(([, owner]) => owner)];
+  }
+  return changed ? { slots, owners } : range;
 }
 
 /**
@@ -199,7 +214,7 @@ function paintRange(state: EditorState): DecorationSet {
   const drawn = bodyHolds(state) && !selection.empty ? selection : null;
   // A unit's words in one line are painted as one stretch: replace writes
   // over the words typed among them too.
-  const stretches = byUnit(range.pieces, range.owners, range.units).flatMap((words) => words.reduce<LocalRange[]>((joined, piece) => {
+  const stretches = byUnit(range.slots, range.owners, range.units).flatMap((words) => words.reduce<LocalRange[]>((joined, piece) => {
     const last = joined[joined.length - 1];
     if (last !== undefined && state.doc.resolve(last.from).sameParent(state.doc.resolve(piece.from))) joined[joined.length - 1] = { from: last.from, to: piece.to };
     else joined.push(piece);
@@ -224,23 +239,6 @@ function paintRange(state: EditorState): DecorationSet {
  */
 const inlineLetter: IsLetter = (node) => node.isText || (node.isInline && node.isLeaf);
 
-/** The range as the tracker carries it, one object per range. */
-const helds = new WeakMap<object, HeldLocalRange>();
-
-/**
- * The range as the tracker carries it: its pieces, gone ones included.
- * @param range - The range.
- * @returns The same object for the same range.
- */
-function heldOf(range: Pick<PresentRange, 'pieces' | 'entry'>): HeldLocalRange {
-  let held = helds.get(range);
-  if (held === undefined) {
-    held = { segments: range.pieces, entry: range.entry };
-    helds.set(range, held);
-  }
-  return held;
-}
-
 /** Who closes the open dialog when Escape is typed in a given editor's body. */
 const escapeListeners = new WeakMap<object, Set<() => void>>();
 
@@ -264,10 +262,7 @@ export function onAiEscape(editor: object, listener: () => void): () => void {
  * @returns The extension, for the assembly to register.
  */
 export const documentAiRange = createExtension(() => {
-  const tracker = localRangeTracker((state) => {
-    const range = presentIn(state);
-    return range === null ? null : heldOf(range);
-  }, inlineLetter);
+  const tracker = localRangeTracker(presentIn, inlineLetter);
   return {
     key: 'document-ai-range',
     keyboardShortcuts: {
@@ -312,14 +307,14 @@ export const documentAiRange = createExtension(() => {
             if (asked === null) return null;
             if (asked !== undefined) {
               entries += 1;
-              const pieces = asked.map((stretch) => aimAt(tr.doc, [stretch], inlineLetter)[0] ?? null);
-              return rangeOver(pieces, asked.map((_, unit) => unit), asked.length, entries);
+              const slots = asked.map((stretch) => letterBounds(tr.doc, stretch, inlineLetter));
+              return rangeOver(slots, asked.map((_, unit) => unit), asked.length, entries);
             }
             if (current?.kind !== 'present' || !changesText(tr)) return current;
-            const { pieces, owners } = fromYjs(tr) ? current : cutAtInsertions(current, tr);
-            const moved = tracker.carry(tr, heldOf({ ...current, pieces }), before);
-            if (moved === pieces && pieces === current.pieces) return current;
-            return rangeOver(moved, owners, current.units, current.entry);
+            const held = fromYjs(tr) ? current : { ...current, ...withoutRewritten(current, tr) };
+            const moved = tracker.carry(tr, held, before);
+            if (moved === current.slots) return current;
+            return rangeOver(moved, held.owners, current.units, current.entry);
           },
         },
 

@@ -112,6 +112,12 @@ let entries = 0;
 export interface DraftAim {
   /** The stretches it is aimed at, in document order; never empty. */
   readonly segments: readonly DraftRange[];
+  /**
+   * The stretches as carried, null where one's words are gone: a stretch
+   * keeps its place, so the names an undo hands back fit the stretch they
+   * were taken for.
+   */
+  readonly slots: readonly (DraftRange | null)[];
   readonly opening: DraftOpening;
   /**
    * Counts the presses on a comment entry in this page; a new one is the
@@ -254,7 +260,7 @@ export const documentCommentDraftRange = createExtension(() => {
                 opening = { serial: openings };
               }
               entries += 1;
-              return { kind: 'aimed', segments, opening, entry: entries };
+              return { kind: 'aimed', segments, slots: segments, opening, entry: entries };
             }
             // A selection change carries no steps and the range comes back
             // unchanged — which is what a reader clicking elsewhere before
@@ -267,12 +273,12 @@ export const documentCommentDraftRange = createExtension(() => {
             // The same object back when nothing moved: `useSyncExternalStore`
             // requires the snapshot to be identical while the store has not
             // changed.
-            if (moved === current.segments) return current;
+            if (moved === current.slots) return current;
             const kept = moved.filter((segment): segment is DraftRange => segment !== null);
             if (kept.length === 0) {
               return { kind: 'dropped', why: 'targetGone', opening: current.opening };
             }
-            return { ...current, segments: kept };
+            return { ...current, segments: kept, slots: moved };
           },
         },
 

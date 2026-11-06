@@ -25,7 +25,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { aiRangeIn, DOCUMENT_AI_RANGE } from '@web/spaces/document/document-ai-range';
+import { aiRangeIn, aiUnitRangesIn, DOCUMENT_AI_RANGE } from '@web/spaces/document/document-ai-range';
 import {
   DOCUMENT_COMMENT_DRAFT_RANGE,
   draftRangeIn,
@@ -121,7 +121,7 @@ function aiWords(editor: Pick<Editor, 'prosemirrorState'>): string {
   const range = aiRangeIn(editor.prosemirrorState);
   if (range === null) return 'none';
   if (range.kind === 'gone') return 'gone';
-  return range.segments.map(({ from, to }) => editor.prosemirrorState.doc.textBetween(from, to)).join('|');
+  return aiUnitRangesIn(editor.prosemirrorState).flat().map(({ from, to }) => editor.prosemirrorState.doc.textBetween(from, to)).join('|');
 }
 
 describe('the AI dialog\'s range', () => {
@@ -212,12 +212,14 @@ describe('the AI range under any mix of edits (property)', () => {
   type Edit =
     | { readonly by: 'reader' | 'collaborator'; readonly kind: 'insert'; readonly at: number; readonly text: string }
     | { readonly by: 'reader' | 'collaborator'; readonly kind: 'delete'; readonly at: number; readonly length: number }
+    | { readonly by: 'reader'; readonly kind: 'overtype'; readonly at: number; readonly length: number; readonly text: string }
     | { readonly by: 'reader'; readonly kind: 'undo' | 'redo' };
 
   const edit: fc.Arbitrary<Edit> = fc.oneof(
     fc.record({ by: fc.constantFrom('reader' as const, 'collaborator' as const), kind: fc.constant('insert' as const), at: fc.nat(), text: fc.constantFrom('x', 'yz', ' ') }),
     fc.record({ by: fc.constantFrom('reader' as const, 'collaborator' as const), kind: fc.constant('delete' as const), at: fc.nat(), length: fc.integer({ min: 1, max: 6 }) }),
     fc.record({ by: fc.constant('reader' as const), kind: fc.constantFrom('undo' as const, 'redo' as const) }),
+    fc.record({ by: fc.constant('reader' as const), kind: fc.constant('overtype' as const), at: fc.nat(), length: fc.integer({ min: 1, max: 6 }), text: fc.constantFrom('x', 'yz') }),
   );
 
   /**
@@ -259,16 +261,17 @@ describe('the AI range under any mix of edits (property)', () => {
         const textStart = 3;
         const textEnd = Math.max(textStart, size - 3);
         const at = textStart + (step.at % (textEnd - textStart + 1));
-        const tr = 'text' in step
+        const end = 'length' in step ? Math.min(textEnd, at + step.length) : at;
+        const tr = step.kind === 'insert'
           ? view.state.tr.insertText(step.text, at)
-          : view.state.tr.delete(at, Math.min(textEnd, at + step.length));
+          : step.kind === 'overtype' ? view.state.tr.insertText(step.text, at, end) : view.state.tr.delete(at, end);
         // A collaborator editing the range's words while the reader edits
         // them too is outside what the range answers for (concurrent edits of
         // the same words): after it, only gone staying gone is held to.
         const held = aiRangeIn(a.prosemirrorState);
-        const reach = 'text' in step ? { from: at, to: at } : { from: at, to: at + step.length };
-        if (step.by === 'collaborator' && held?.kind === 'present' && held.segments.some(({ from, to }) => reach.to >= from && reach.from <= to)) peerTouched = true;
-        if (step.kind === 'insert' || tr.docChanged) {
+        const reach = { from: at, to: end };
+        if (step.by === 'collaborator' && held?.kind === 'present' && aiUnitRangesIn(a.prosemirrorState).flat().some(({ from, to }) => reach.to >= from && reach.from <= to)) peerTouched = true;
+        if (step.kind !== 'delete' || tr.docChanged) {
           if (step.by === 'reader') undo.manager.stopCapturing();
           view.dispatch(tr);
         }
@@ -298,6 +301,19 @@ describe('the AI range under any mix of edits (property)', () => {
     fc.assert(holdsItsLetters, { numRuns: 40, seed });
   });
 
+  it('is gone once the reader types over every original letter, and keeps them when typing over words before them', () => {
+    const overAll: Edit[] = [{ by: 'reader', kind: 'overtype', at: 5, length: 6, text: 'yz' }];
+    const overHalves: Edit[] = [
+      { by: 'reader', kind: 'overtype', at: 8, length: 3, text: 'x' },
+      { by: 'reader', kind: 'delete', at: 5, length: 3 },
+    ];
+    const overBefore: Edit[] = [
+      { by: 'reader', kind: 'overtype', at: 0, length: 4, text: 'x' },
+      { by: 'reader', kind: 'insert', at: 0, text: 'x' },
+    ];
+    fc.assert(holdsItsLetters, { numRuns: 1, examples: [[overAll], [overHalves], [overBefore]] });
+  });
+
   it('gives back a piece cut off by typing once undo writes its deleted letters back', () => {
     const typedThenDeleted: Edit[] = [
       { by: 'reader', kind: 'insert', at: 957030108, text: 'x' },
@@ -305,6 +321,22 @@ describe('the AI range under any mix of edits (property)', () => {
       { by: 'reader', kind: 'undo' },
     ];
     fc.assert(holdsItsLetters, { numRuns: 1, examples: [[typedThenDeleted]] });
+  });
+});
+
+describe('the comment draft over several stretches', () => {
+  it('gives each stretch back its own words when undo writes a deleted one back', async () => {
+    const handle = await openHandle('alpha beta gamma');
+    const view = handle.editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, [rangeOf(handle.editor, 'alpha'), rangeOf(handle.editor, 'beta'), rangeOf(handle.editor, 'gamma')]));
+    handle.undoManager.stopCapturing();
+    const gone = rangeOf(handle.editor, 'beta');
+    view.dispatch(view.state.tr.delete(gone.from, gone.to));
+    handle.undoManager.stopCapturing();
+    const words = (): string[] => draftRangeIn(handle.editor.prosemirrorState)!.segments.map(({ from, to }) => handle.editor.prosemirrorState.doc.textBetween(from, to));
+    expect(words()).toEqual(['alpha', 'gamma']);
+    handle.undoManager.undo();
+    expect(words()).toEqual(['alpha', 'beta', 'gamma']);
   });
 });
 

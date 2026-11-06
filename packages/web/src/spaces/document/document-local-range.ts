@@ -103,7 +103,7 @@ const textLetter: IsLetter = (node) => node.isText;
  * @returns From the first letter covered to just past the last, or null when
  *   it covers none.
  */
-function letterBounds(
+export function letterBounds(
   doc: ProseMirrorNode,
   range: LocalRange,
   isLetter: IsLetter = textLetter,
@@ -461,12 +461,11 @@ function handedBack(bound: SyncBound, handed: TrackedLink): LocalRange | null {
  * Draws stretches in to their letters and puts them in document order.
  * @param doc - The body.
  * @param ranges - The stretches.
- * @param isLetter - What counts as a letter.
  * @returns Those that cover letters, in order.
  */
-export function aimAt(doc: ProseMirrorNode, ranges: readonly LocalRange[], isLetter: IsLetter = textLetter): LocalRange[] {
+export function aimAt(doc: ProseMirrorNode, ranges: readonly LocalRange[]): LocalRange[] {
   return ranges
-    .map((range) => letterBounds(doc, range, isLetter))
+    .map((range) => letterBounds(doc, range))
     .filter((range): range is LocalRange => range !== null)
     .sort((a, b) => a.from - b.from);
 }
@@ -474,11 +473,10 @@ export function aimAt(doc: ProseMirrorNode, ranges: readonly LocalRange[], isLet
 /** A local range as one instance holds it: its stretches, and which press put them there. */
 export interface HeldLocalRange {
   /**
-   * The stretches; never empty. An instance that keeps a gone stretch's
-   * place holds null there, which an undo of the edit that took its text
-   * hands back.
+   * The stretches as carried, never empty: null where one's text is gone,
+   * which an undo of the edit that took its text hands back.
    */
-  readonly segments: readonly (LocalRange | null)[];
+  readonly slots: readonly (LocalRange | null)[];
   /**
    * Counts the presses that aimed the range, so the Yjs names an undo hands
    * back are only ever read for the press they were taken for.
@@ -562,7 +560,7 @@ export function localRangeTracker(read: (state: EditorState) => HeldLocalRange |
       const handed = kept?.entry === held.entry ? kept.links : null;
       const bound = syncBindingOf(before);
       const moved: (LocalRange | null)[] = [];
-      held.segments.forEach((segment, index) => {
+      held.slots.forEach((segment, index) => {
         const link = tracked?.[index] ?? null;
         // The binding has rebuilt its index to the new nodes before it
         // dispatches (`_typeChanged`), so the relative positions resolve
@@ -579,7 +577,7 @@ export function localRangeTracker(read: (state: EditorState) => HeldLocalRange |
       // The SAME array back when nothing moved, not an equal one: a snapshot
       // read through `useSyncExternalStore` must stay identical while the
       // store has not changed.
-      return sameSegments(moved, held.segments) ? held.segments : moved;
+      return sameSegments(moved, held.slots) ? held.slots : moved;
     },
     view: (view) => {
       // Keeps the range as named before the reader's edit on the stack item
@@ -593,7 +591,7 @@ export function localRangeTracker(read: (state: EditorState) => HeldLocalRange |
           if (held === null) {
             tracked = null;
           } else if (bound !== null && (next.state.doc !== prev.doc || read(prev) !== held)) {
-            tracked = held.segments.map((segment) => (segment === null ? null : trackRange(bound, segment)));
+            tracked = held.slots.map((segment) => (segment === null ? null : trackRange(bound, segment)));
           }
         },
         destroy: (): void => {

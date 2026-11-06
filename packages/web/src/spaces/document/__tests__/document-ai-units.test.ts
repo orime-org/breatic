@@ -13,20 +13,18 @@ import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
 
-import { aiUnitRangesIn, DOCUMENT_AI_RANGE } from '@web/spaces/document/document-ai-range';
+import { aiUnitRangesIn, DOCUMENT_AI_RANGE, type AiUnitRanges } from '@web/spaces/document/document-ai-range';
 import {
   aiAnswer,
   aiAnswerEmpty,
   aiReplaceAvailable,
   aiTextUnits,
-  aiUnitRanges,
   aiUnitsRequest,
   insertAiAnswer,
   replaceAiAnswer,
   unitSpan,
   type AiAnswer,
   type AiTextUnit,
-  type AiUnitRanges,
 } from '@web/spaces/document/document-ai-units';
 import type { AiCommand } from '@web/spaces/document/document-ai-session';
 import {
@@ -153,7 +151,7 @@ function rangeOf(handle: DocumentEditorHandle, words: string): LocalRange {
 function hold(handle: DocumentEditorHandle, range: LocalRange): LocalRange[] {
   const view = handle.editor.prosemirrorView!;
   const selected = aimAt(view.state.doc, [range]);
-  view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, aiUnitRanges(view.state.doc, selected)));
+  view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, aiTextUnits(view.state.doc, selected).ranges));
   return selected;
 }
 
@@ -182,7 +180,7 @@ interface Opening {
 function opening(handle: DocumentEditorHandle, range: LocalRange, command: Command): Opening {
   const selected = hold(handle, range);
   const doc = handle.editor.prosemirrorState.doc;
-  const units = aiTextUnits(doc, selected);
+  const { units } = aiTextUnits(doc, selected);
   return { units, request: aiUnitsRequest(handle.editor, doc, units, segments(handle), command) };
 }
 
@@ -224,7 +222,7 @@ function tagged(parts: Record<number, string>): string {
  * @returns The answer.
  */
 function read(handle: DocumentEditorHandle, o: Opening, text: string, command: Command): AiAnswer {
-  return aiAnswer(handle.editor, handle.editor.prosemirrorState.doc, o.units, text, command, OURS);
+  return aiAnswer(handle.editor, handle.editor.prosemirrorState.doc, o.units, text, command, OURS, segments(handle));
 }
 
 /**
@@ -1342,6 +1340,72 @@ describe('round 12: what a write keeps', () => {
         expect(blocks(h)).toEqual(before);
       }
     }
+  });
+});
+
+/**
+ * A table's cells, each as its blocks' words joined by `|`.
+ * @param table - The table block.
+ * @returns Its rows.
+ */
+function cellWords(table: Seen): string[][] {
+  return table.children.map((row) => row.children.map((cell) => cell.children.map(textOf).join('|')));
+}
+
+describe('round 13: table copies find each unit where its words are', () => {
+  it('previews and inserts a docTable copy with the answer where Enter carried the selected words', async () => {
+    const h = await open('| intro selected | bbb |\n| --- | --- |\n| c | d |');
+    const o = opening(h, { from: rangeOf(h, 'selected').from, to: rangeOf(h, 'bbb').to }, 'refine');
+    pressKey(h, rangeOf(h, 'selected').from, 'Enter');
+    const answer = read(h, o, tagged({ 1: 'SELECTED', 2: 'BBB' }), 'refine');
+    expect(cellWords(answer.preview[0] as Seen)).toEqual([['intro |SELECTED', 'BBB'], ['c', 'd']]);
+    replaceAiAnswer(h, answer, segments(h), WRITABLE);
+    expect(cellWords(blocks(h).find((b) => b.type === 'docTable')!)).toEqual([['intro |SELECTED', 'BBB'], ['c', 'd']]);
+  });
+
+  it('previews a legacy table copy with each answer on the line that holds its words now', async () => {
+    const h = await open('tail');
+    const view = h.editor.prosemirrorView!;
+    const s = view.state.schema;
+    const cell = (lines: string[]): ReturnType<typeof s.node> => s.nodes['tableCell']!.create(null, lines.map((t) => s.nodes['tableParagraph']!.create(null, [s.text(t)])));
+    const table = s.nodes['table']!.create(null, [s.nodes['tableRow']!.create(null, [cell(['head note', 'alpha']), cell(['beta'])])]);
+    view.dispatch(view.state.tr.insert(1, s.nodes['blockContainer']!.create({ id: 'legacy-table' }, [table])));
+    h.undoManager.clear();
+    const o = opening(h, { from: rangeOf(h, 'alpha').from, to: rangeOf(h, 'beta').to }, 'refine');
+    view.dispatch(view.state.tr.split(rangeOf(h, 'note').from));
+    const answer = read(h, o, tagged({ 1: 'ALPHA', 2: 'BETA' }), 'refine');
+    expect(cellWords(answer.preview[0] as Seen)).toEqual([['head |note|ALPHA', 'BETA']]);
+  });
+});
+
+describe('round 13: words typed over the selected ones', () => {
+  it('turns replace off once the reader typed over every selected word', async () => {
+    const h = await open('left ABCDEF right');
+    const o = opening(h, rangeOf(h, 'ABCDEF'), 'refine');
+    const view = h.editor.prosemirrorView!;
+    view.dispatch(view.state.tr.insertText('mine', rangeOf(h, 'ABCDEF').from, rangeOf(h, 'ABCDEF').to));
+    const answer = read(h, o, tagged({ 1: 'NEW' }), 'refine');
+    expect(aiReplaceAvailable(h.editor.prosemirrorState.doc, answer, segments(h))).toBe(false);
+  });
+
+  it('keeps words typed over some selected ones out of the unit', async () => {
+    const h = await open('left ABCDEF right');
+    const o = opening(h, rangeOf(h, 'ABCDEF'), 'refine');
+    const view = h.editor.prosemirrorView!;
+    view.dispatch(view.state.tr.insertText('mine', rangeOf(h, 'DEF').from, rangeOf(h, 'DEF').to));
+    const doc = (): typeof h.editor.prosemirrorState.doc => h.editor.prosemirrorState.doc;
+    expect(segments(h).map((unit) => unit.map(({ from, to }) => doc().textBetween(from, to)))).toEqual([['ABC']]);
+    view.dispatch(view.state.tr.delete(rangeOf(h, 'ABC').from, rangeOf(h, 'ABC').to));
+    const answer = read(h, o, tagged({ 1: 'NEW' }), 'refine');
+    expect(aiReplaceAvailable(doc(), answer, segments(h))).toBe(false);
+  });
+
+  it('keeps a unit on its words when its line is retyped with the same words, as a change of block type does', async () => {
+    const h = await open('# Title words');
+    const o = opening(h, rangeOf(h, 'Title words'), 'refine');
+    h.editor.updateBlock(blocks(h)[0]!.id, { type: 'paragraph' } as never);
+    const answer = read(h, o, tagged({ 1: 'NEW' }), 'refine');
+    expect(aiReplaceAvailable(h.editor.prosemirrorState.doc, answer, segments(h))).toBe(true);
   });
 });
 

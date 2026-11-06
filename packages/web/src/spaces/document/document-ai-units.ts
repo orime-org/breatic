@@ -20,6 +20,7 @@ import type { Fragment, Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { Transaction } from '@tiptap/pm/state';
 import { yUndoPluginKey } from 'y-prosemirror';
 
+import type { AiUnitRanges } from '@web/spaces/document/document-ai-range';
 import type { AiCommand } from '@web/spaces/document/document-ai-session';
 import type { DocumentEditorHandle } from '@web/spaces/document/document-editor-cache';
 import type { ViewedEditor } from '@web/spaces/document/document-editor-view';
@@ -70,9 +71,6 @@ export interface AiUnitResult {
   readonly unit: AiTextUnit;
   readonly write: AiUnitWrite;
 }
-
-/** Each unit's words where they are now, by its id less one: its pieces, none once gone (`aiUnitRangesIn`). */
-export type AiUnitRanges = readonly (readonly LocalRange[])[];
 
 /** An answer read into blocks. */
 export interface AiAnswer {
@@ -171,14 +169,15 @@ function coveredLines(doc: ProseMirrorNode, segments: readonly LocalRange[]): Ma
 }
 
 /**
- * The units of a range, as it is when the dialog opens.
+ * The units of a range, as it is when the dialog opens, and the stretch of
+ * each, which the original range opens on.
  * @param doc - The body.
  * @param segments - The original range.
- * @returns The units, in document order.
+ * @returns The units, in document order, and their stretches in the same order.
  */
-export function aiTextUnits(doc: ProseMirrorNode, segments: readonly LocalRange[]): AiTextUnit[] {
-  const lines = [...coveredLines(doc, segments).entries()].sort(([a], [b]) => a - b);
-  return lines.map(([, line], index) => {
+export function aiTextUnits(doc: ProseMirrorNode, segments: readonly LocalRange[]): { units: AiTextUnit[]; ranges: LocalRange[] } {
+  const lines = [...coveredLines(doc, segments).entries()].sort(([a], [b]) => a - b).map(([, line]) => line);
+  const units = lines.map((line, index): AiTextUnit => {
     const $start = doc.resolve(line.start);
     const whole = line.from === line.start && line.to === line.start + line.node.content.size;
     if (line.node.type.name === LEGACY_CELL_LINE) {
@@ -196,17 +195,25 @@ export function aiTextUnits(doc: ProseMirrorNode, segments: readonly LocalRange[
     const block = nodeToBlock(container.type.create(container.attrs, [line.node]), doc) as unknown as Read;
     return { id: index + 1, blockId: String(container.attrs['id']), kind: line.node.type.name, cell: null, whole, props: block.props ?? {} };
   });
+  return { units, ranges: lines.map((line) => ({ from: line.from, to: line.to })) };
 }
 
 /**
- * The stretch of each unit of a range, in the units' order: what the original
- * range opens on, one stretch per unit.
- * @param doc - The body.
- * @param segments - The original range.
- * @returns The stretches.
+ * A unit as it stands now: its block, or its legacy cell and line, where its
+ * selected words are, so the copies and the nesting follow them.
+ * @param doc - The body now.
+ * @param unit - The unit.
+ * @param ranges - Every unit's pieces, where they are now.
+ * @returns The unit, placed where its words are; as it opened when they are gone.
  */
-export function aiUnitRanges(doc: ProseMirrorNode, segments: readonly LocalRange[]): LocalRange[] {
-  return [...coveredLines(doc, segments).entries()].sort(([a], [b]) => a - b).map(([, line]) => ({ from: line.from, to: line.to }));
+function located(doc: ProseMirrorNode, unit: AiTextUnit, ranges: AiUnitRanges): AiTextUnit {
+  const span = unitSpan(doc, unit, ranges);
+  if (span === null) return unit;
+  const $at = doc.resolve(span.from);
+  const depth = $at.depth;
+  if (unit.cell === null) return { ...unit, blockId: String($at.node(depth - 1).attrs['id']) };
+  if ($at.parent.type.name !== LEGACY_CELL_LINE) return unit;
+  return { ...unit, blockId: String($at.node(depth - 4).attrs['id']), cell: { row: $at.index(depth - 3), col: $at.index(depth - 2), line: $at.index(depth - 1) } };
 }
 
 /**
@@ -1026,21 +1033,24 @@ function answeredAncestor(doc: ProseMirrorNode, blockId: string, under: Readonly
  * An answer, as far as it is shown, read into blocks per unit.
  * @param parser - An editor with the body's schema, for the Markdown import.
  * @param doc - The body.
- * @param units - The units sent.
+ * @param sent - The units sent.
  * @param text - The answer shown so far.
  * @param command - The command.
  * @param ourPrefix - Where our own media live, or null when not known.
+ * @param ranges - Every unit's pieces, where they are now.
  * @returns The answer.
  */
 export function aiAnswer(
   parser: ViewedEditor,
   doc: ProseMirrorNode,
-  units: readonly AiTextUnit[],
+  sent: readonly AiTextUnit[],
   text: string,
   command: AiCommand['id'],
   ourPrefix: string | null,
+  ranges: AiUnitRanges,
 ): AiAnswer {
-  const { answers, formatFailed } = unitAnswers(text, units);
+  const { answers, formatFailed } = unitAnswers(text, sent);
+  const units = sent.map((unit) => located(doc, unit, ranges));
   const results: AiUnitResult[] = [];
   let leftOut = 0;
   for (const unit of units) {
