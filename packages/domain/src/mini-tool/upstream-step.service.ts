@@ -16,6 +16,7 @@ import { openMiniToolConsumptionForStepAttempt } from "@domain/mini-tool/consump
 import { completeResolvedMiniToolExecutionConsumptionSet } from "@domain/mini-tool/execution.service.js";
 import { miniToolStepStateSchema, type MiniToolStepState, type MiniToolStepJson, type MiniToolStepAttempt } from "@domain/mini-tool/upstream-step.types.js";
 import * as presentationPinService from "@domain/presentation/presentation-pin.service.js";
+import * as pinRepo from "@domain/presentation/presentation-pin.repo.js";
 
 export type { MiniToolStepJson, MiniToolStepAttempt } from "@domain/mini-tool/upstream-step.types.js";
 /** A pure operation-owned result decoder; no provider or storage IO belongs here. */
@@ -40,9 +41,10 @@ export interface RecordMiniToolStepResultInput {
   outcome: "done" | "failed"; result: unknown; error?: Record<string, MiniToolStepJson>;
   /**
    * Presentation pins written with a newly stored preparation result (§7.15 prepared row, release points): the final prepared
-   * output the run now keeps, and outputs it no longer needs (a failed attempt's, chunks after their stitch).
+   * output the run now keeps, outputs it no longer needs (a failed attempt's, chunks after their stitch), and intermediates
+   * appended to the run's execution pin (§97 D21-1: a lip-sync step's derived objects).
    */
-  presentation?: { prepared?: { toolInputId: string; preparedKey: string }; retire?: string[] };
+  presentation?: { prepared?: { toolInputId: string; preparedKey: string }; retire?: string[]; pin?: string[] };
 }
 /** Explicit attempt resolution can only describe that particular original request. */
 export interface FailMiniToolStepInput {
@@ -170,6 +172,7 @@ export async function recordMiniToolStepResult(input: RecordMiniToolStepResultIn
       await presentationPinService.acquire({ holderKind: "prepared", holderId: task.id, toolInputId: pins.prepared.toolInputId, preparedKey: pins.prepared.preparedKey, objectKeys: [pins.prepared.preparedKey] }, tx);
     }
     if (pins?.retire !== undefined) await presentationPinService.retire(pins.retire, tx);
+    if (pins?.pin !== undefined) await pinRepo.appendExecutionPinObjects(task.id, pins.pin, tx);
     return reread(task.id, step.id, tx);
   });
   if (answer instanceof Error) throw answer;
@@ -211,6 +214,7 @@ const resultSchema = z.strictObject({ ...scope, identity: miniToolConsumptionIde
   presentation: z.strictObject({
     prepared: z.strictObject({ toolInputId: z.string().regex(/^[a-f0-9]{64}$/), preparedKey: z.string().min(1) }).optional(),
     retire: z.array(z.string().min(1)).optional(),
+    pin: z.array(z.string().min(1)).optional(),
   }).optional() });
 const failureSchema = z.strictObject({ ...scope, error: jsonObject, attempt: z.strictObject({ attemptId: z.uuid(), proof: z.enum(["not_sent", "rejected"]) }).optional() });
 
