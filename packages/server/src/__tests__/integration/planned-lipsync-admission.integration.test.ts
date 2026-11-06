@@ -676,13 +676,26 @@ describe("lip-sync retry admission (frames-split §7.11 retry row, §7.15; execu
     const prepared = `${frozen.sourceKey}.${id}:prep:0:a1`;
     await core.db.transaction(async (tx) => appendExecutionPinObjects(id, steps, tx));
     await presentationPinService.acquire({ holderKind: "prepared", holderId: id, toolInputId, preparedKey: prepared, objectKeys: [prepared] });
-    const outputs = (await plan(id) as Failed["plan"]).outputs as { outputIndex: number; nodeId: string; recipe: { kind: "lip-sync" } }[];
+    await finishFailed(id, reason);
+    return { f, original: { plan: frozen, row: await taskRow(id), pins: await livePins(id), steps, prepared } };
+  }
+
+  /**
+   * End a started run as the worker ends a failed one: the terminal commit with output 0 failed on `reason`, the node task
+   * settled (settleTaskForNode's SQL effect) and the hold released.
+   * @param id - The run.
+   * @param reason - The §9.4 reason.
+   * @returns Nothing.
+   * @throws {Error} On completion or fixture SQL failure.
+   */
+  async function finishFailed(id: string, reason: Record<string, unknown>): Promise<void> {
+    const frozen = await plan(id) as Failed["plan"];
+    const outputs = frozen.outputs as { outputIndex: number; nodeId: string; recipe: { kind: "lip-sync" } }[];
+    const error = z.record(z.string(), z.json()).parse(reason);
     await miniToolExecutionService.finishMiniToolExecution(id, { planFingerprint: frozen.planFingerprint, expectedVersion: 0, consumptionSet: "uncertain",
-      error: z.record(z.string(), z.json()).parse(reason), outputs: outputs.map((output) => ({ ...output, late: false, result: { status: "failed", error: z.record(z.string(), z.json()).parse(reason) } })) });
-    // settleTaskForNode's SQL effect and the hold's release at the failed end of the run.
+      error, outputs: outputs.map((output) => ({ ...output, late: false, result: { status: "failed", error } })) });
     await pg`UPDATE node_tasks SET status='failed',settled_at=clock_timestamp() WHERE task_id=${id}`;
     await creditHoldService.releaseHold(id);
-    return { f, original: { plan: frozen, row: await taskRow(id), pins: await livePins(id), steps, prepared } };
   }
 
   it.each([
@@ -756,5 +769,63 @@ describe("lip-sync retry admission (frames-split §7.11 retry row, §7.15; execu
     expect(await livePins(f.body.run_id)).toEqual([]);
     // Pinned by the retry before the original's release, so nothing the retry reuses was registered for reclaim.
     expect([...await pg`SELECT storage_key FROM storage_reclaim_queue WHERE starts_with(storage_key, ${original.plan.sourceKey})`]).toEqual([]);
+  });
+
+  it("LR05 a retry of a failed retry keeps the original's step keys and plan and takes over every object the first retry held", async () => {
+    const { f, original } = await failedLipSync({ kind: "lipsync", persons: [person(1, "gen", "timeout"), person(2, "gen", "failed")], shared: null });
+    const first = retryBody(f);
+    await accept(f, first as unknown as Body);
+    await miniToolExecutionService.startMiniToolExecution(first.run_id, `lipsync-${first.run_id}`);
+    // The first retry's own done step: its key is the original's, the object it registers is new (§97 D17-7).
+    const extra = `${original.plan.sourceKey}.${first.run_id}:lipsync:${lipsyncStepKey(original.plan.planFingerprint, "person-2", "gen")}.mp4`;
+    await core.db.transaction(async (tx) => appendExecutionPinObjects(first.run_id, [extra], tx));
+    await finishFailed(first.run_id, { kind: "lipsync", persons: [person(2, "gen", "timeout")], shared: { step: "composite", category: "failed" } });
+    const held = await livePins(first.run_id);
+    const heldExecution = held.find((pin) => pin.holder_kind === "execution")!;
+    expect(heldExecution.keys).toEqual(expect.arrayContaining([...original.steps, extra]));
+    expect(held.filter((pin) => pin.holder_kind === "prepared").map((pin) => pin.prepared_key)).toEqual([original.prepared]);
+
+    const second = { ...retryBody(f), retry: { runId: first.run_id, outputIndexes: [0] } };
+    await accept(f, second as unknown as Body);
+    const chained = await plan(second.run_id) as Failed["plan"] & { targetNodeIds: string[] };
+    for (const field of ["tool", "generator", "timeline", "usedRange", "dialogues", "layout", "stageJobs", "tracking", "cropSize", "outputs"]) {
+      expect(chained[field], field).toEqual(original.plan[field]);
+    }
+    const kinds = ["track", "faces", "clip", "stem", "gen"] as const;
+    expect(chained.persons).toEqual((original.plan.persons ?? []).map((p) => ({ ...p,
+      stepKeys: Object.fromEntries(kinds.map((kind) => [kind, lipsyncStepKey(original.plan.planFingerprint, p.personId, kind)])) })));
+    expect(chained.targetNodeIds).toEqual([f.body.outputs[0]!.nodeId]);
+    expect(await effects(second.run_id)).toEqual({ tasks: 1, rows: 1, holds: 1, jobs: 1 });
+    const pins = await livePins(second.run_id);
+    expect(pins.find((pin) => pin.holder_kind === "execution")?.keys).toEqual(expect.arrayContaining(heldExecution.keys));
+    expect(pins.filter((pin) => pin.holder_kind === "prepared")).toEqual(held.filter((pin) => pin.holder_kind === "prepared"));
+    expect(await livePins(first.run_id)).toEqual([]);
+    expect(await livePins(f.body.run_id)).toEqual([]);
+    expect([...await pg`SELECT storage_key FROM storage_reclaim_queue WHERE starts_with(storage_key, ${original.plan.sourceKey})`]).toEqual([]);
+  });
+
+  it("LR06 refuses a retry while the original still runs, with no durable effect and its pins kept (§7.15: retryability ends only at a terminal state)", async () => {
+    const f = await seed([{ registered: 3, claimed: 3 }, { registered: 2.5, claimed: 2.5 }]);
+    speak(f, [[0, 0, 0], [1, 1, 1.5]]);
+    await accept(f);
+    const id = f.body.run_id;
+    const frozen = await plan(id) as Failed["plan"];
+    await miniToolExecutionService.startMiniToolExecution(id, `lipsync-${id}`);
+    const prepared = `${frozen.sourceKey}.${id}:prep:0:a1`;
+    await core.db.transaction(async (tx) => appendExecutionPinObjects(id, [`${frozen.sourceKey}.${id}:lipsync:${lipsyncStepKey(frozen.planFingerprint, "person-1", "track")}.json`], tx));
+    await presentationPinService.acquire({ holderKind: "prepared", holderId: id, toolInputId: f.body.presentation_ref.source.toolInputId, preparedKey: prepared, objectKeys: [prepared] });
+    const row = await taskRow(id); const pins = await livePins(id);
+    expect((row as { status: string }).status).toBe("running");
+    expect(pins.map((pin) => pin.holder_kind)).toEqual(["execution", "prepared"]);
+    const body = retryBody(f);
+    const response = await post(f, body);
+    // claimRetry reaches the selected slot's check first: output 0 has no result yet, so it is not a failed slot (422),
+    // before the active-node check that would answer 409.
+    expect({ status: response.status, message: (await response.json() as { error?: { message?: string } }).error?.message })
+      .toEqual({ status: 422, message: shared.t("server.mini_tool.foreignSource") });
+    expect(await effects(body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
+    expect(await taskRow(id)).toEqual(row);
+    expect(await livePins(id)).toEqual(pins);
+    expect(await livePins(body.run_id)).toEqual([]);
   });
 });
