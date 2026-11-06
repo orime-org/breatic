@@ -14,7 +14,7 @@ import {
 } from '@web/components/ui/alert-dialog';
 import { useStaleRelease } from '@web/data/deployment/stale-release';
 import { useTranslation } from '@web/i18n/use-translation';
-import { reloadForUpdate } from '@web/stores/reload-for-update';
+import { reloadForUpdate, useUpdatePending } from '@web/stores/reload-for-update';
 
 /**
  * The page is too old to keep working: a request it sent was refused for its
@@ -25,6 +25,7 @@ import { reloadForUpdate } from '@web/stores/reload-for-update';
 export function StaleReleaseDialog(): React.JSX.Element | null {
   const t = useTranslation();
   const stale = useStaleRelease();
+  const updating = useUpdatePending();
   if (!stale) return null;
   return (
     <AlertDialog open>
@@ -38,6 +39,7 @@ export function StaleReleaseDialog(): React.JSX.Element | null {
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogAction
+            loading={updating}
             data-testid='stale-release-refresh'
             onClick={(event) => {
               // Held open: the leave prompt may be cancelled.
