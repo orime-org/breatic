@@ -26,7 +26,7 @@ import { addNode, readNodes, useCanvasSpace } from '@web/data/yjs/canvas-space';
 import { docName, getDoc, destroyDoc } from '@web/data/yjs/manager';
 import { SpaceConnectionContext } from '@web/data/yjs/space-connection';
 import { modelsApi } from '@web/data/api/models';
-import { commitVideoToolDraft } from '@web/data/yjs/video-tool-drafts';
+import { commitVideoToolDraft, readVideoToolDraft } from '@web/data/yjs/video-tool-drafts';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { useCanvasStore } from '@web/stores/canvas';
@@ -172,3 +172,28 @@ describe('each transition clip table reaches the Dialog from its own node bindin
     await waitFor(() => expect(dialogTable(hostInput)).toEqual(TABLES[HOST_URL]));
   });
 });
+
+describe('a node picked through the transitions input slot reaches the Dialog at once (§97 D10-3; Canvas → bindings → panel)', () => {
+  it('reads the newly picked node\'s compact table and hands it to the Dialog under the new input', async () => {
+    // The panel starts on the host's video alone, before anything is picked.
+    const doc = getDoc(docName.canvasSpace(PROJECT, SPACE));
+    commitVideoToolDraft(doc, HOST, 'video.transitions', createVideoToolDraft('video.transitions', { nodeId: HOST, canonicalURL: HOST_URL, mediaInfo: { width: 400, height: 200, duration: 4, mimeType: 'video/webm' } }));
+    mount();
+    await waitFor(() => expect(dialog.props).not.toBeNull());
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).not.toContain(`${PICKED_URL}.table.json`);
+    // The real pick: the transitions input slot opens a pick, then a click on the picked video node fills it.
+    act(() => canvasSessions.of(SPACE).getState().startMiniToolSlotPick(HOST, 'timeline'));
+    const picked = document.querySelector(`.react-flow__node[data-id="${PICKED}"]`);
+    expect(picked).not.toBeNull();
+    act(() => { picked!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); });
+    let inputId: string | undefined;
+    await waitFor(() => {
+      const reading = readVideoToolDraft(doc, HOST, 'video.transitions');
+      inputId = reading.state === 'supported' ? reading.draft.inputs.find((input) => input.sourceNodeId === PICKED)?.inputId : undefined;
+      expect(inputId).toBeDefined();
+    });
+    await waitFor(() => expect(fetchMock.mock.calls.map(([input]) => String(input))).toContain(`${PICKED_URL}.table.json`));
+    await waitFor(() => expect(dialogTable(inputId!)).toEqual(TABLES[PICKED_URL]));
+  });
+});
+
