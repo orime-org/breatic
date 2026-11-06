@@ -55,6 +55,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     resolveProvider: () => "test",
     callOptionsFor: actual.callOptionsFor,
     memoryTitle: actual.memoryTitle,
+    countCharacters: actual.countCharacters,
     memoryContent: actual.memoryContent,
     creditLotService: { chargeOnceForGeneration },
   };

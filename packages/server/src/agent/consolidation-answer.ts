@@ -12,7 +12,7 @@
  */
 
 import { z } from "zod";
-import { memoryContent as content, memoryTitle as title } from "@breatic/domain";
+import { countCharacters, memoryContent as content, memoryTitle as title } from "@breatic/domain";
 import type { MemoryOperation } from "@server/modules/memory/memory.service.js";
 
 /** What an answer is checked against. */
@@ -34,16 +34,6 @@ export interface ConsolidationAnswer {
 /** How reading an answer ended. */
 export type AnswerRead = { ok: true; answer: ConsolidationAnswer } | { ok: false; errors: string[] };
 
-/**
- * How many characters a text holds, counted by code point.
- * @param text - The text.
- * @returns Its length.
- * @throws {never} Never.
- */
-function characters(text: string): number {
-  return [...text].length;
-}
-
 const operation = z.discriminatedUnion("op", [
   z.object({ op: z.literal("add"), scope: z.enum(["project", "conversation"]), title, content }).strict(),
   z.object({ op: z.literal("update"), id: z.string().uuid(), title, content }).strict(),
@@ -64,7 +54,7 @@ function answerSchema(rules: AnswerRules): z.ZodType<ConsolidationAnswer> {
         .trim()
         .min(1, "must not be empty")
         .refine(
-          (p) => characters(p) <= rules.progressMaxChars,
+          (p) => countCharacters(p) <= rules.progressMaxChars,
           `must be at most ${String(rules.progressMaxChars)} characters`,
         ),
       operations: z

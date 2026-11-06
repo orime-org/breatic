@@ -84,6 +84,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     // and a stub would be answering the question with its own return value.
     callOptionsFor: actual.callOptionsFor,
     memoryTitle: actual.memoryTitle,
+    countCharacters: actual.countCharacters,
     memoryContent: actual.memoryContent,
     creditLotService: { chargeOnceForGeneration },
   };
