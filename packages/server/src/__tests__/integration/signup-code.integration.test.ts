@@ -227,7 +227,7 @@ describe("verifying the code", () => {
   it("writes a verified account with the sign-up's password and the language the code was entered in", async () => {
     const email = freshEmail();
     const { ticket } = await startSignup({ ticket: null, email, password: "password1", locale: "ko" });
-    const user = await runWithLocale("ja", () => verifySignupCode(ticket, lastCode()));
+    const { user } = await runWithLocale("ja", () => verifySignupCode(ticket, lastCode()));
 
     expect(user.email).toBe(email);
     const row = await stored(email);
@@ -378,5 +378,76 @@ describe("submitting the form again as the sign-up expires", () => {
     };
     await startSignup({ ticket: first.ticket, email, password: "password2", locale: "en" }).catch(() => undefined);
     expect(await getRedis().pttl(pendingKey(first.ticket))).not.toBe(-1);
+  });
+});
+
+describe("two-step sign-up with a referral code (inner#1868)", () => {
+  beforeAll(() => {
+    initCore({ ...process.env, PAYMENT_ENABLED: "true", STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite", STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite" });
+  });
+  afterAll(() => {
+    initCore(process.env);
+  });
+
+  /**
+   * Inserts an approved promoter with an active code.
+   * @returns The code row and its text.
+   */
+  async function activeCode(): Promise<{ id: string; code: string }> {
+    const promoterId = crypto.randomUUID();
+    await sql`insert into users(id,email) values(${promoterId},${`${promoterId}@example.test`})`;
+    const code = `V${crypto.randomUUID().replaceAll("-", "").slice(0, 10).toUpperCase()}`;
+    const [app] = await sql<{ id: string }[]>`insert into promoter_applications
+      (user_id,status,country,channels,plan,terms_version,terms_accepted_at,decided_at,decided_by)
+      values(${promoterId},'approved','US',${sql.json(["x"])},'p','2026-11-07',now(),now(),'admin_7') returning id`;
+    const [row] = await sql<{ id: string }[]>`insert into referral_codes(code,promoter_id,application_id) values(${code},${promoterId},${app!.id}) returning id`;
+    return { id: row!.id, code };
+  }
+
+  /**
+   * Reads the binding source of the account with this email.
+   * @param email - The account's email.
+   * @returns The source, or null when unbound.
+   */
+  async function sourceOf(email: string): Promise<string | null> {
+    const [row] = await sql<{ source: string }[]>`select b.source from referral_bindings b join users u on u.id = b.user_id where u.email = ${email}`;
+    return row?.source ?? null;
+  }
+
+  it("refuses an invalid code at step one with 422 and sends no code", async () => {
+    const email = freshEmail();
+    expect(await statusOf(startSignup({ ticket: null, email, password: "password1", locale: "en", referral: { code: "NOPE-NOPE", source: "signup_typed" } }))).toBe(422);
+    expect(sent.mails).toHaveLength(0);
+  });
+
+  it("carries the code through the pending sign-up and binds it at step two", async () => {
+    const { code } = await activeCode();
+    const email = freshEmail();
+    const started = await startSignup({ ticket: null, email, password: "password1", locale: "en", referral: { code: code.toLowerCase(), source: "signup_link" } });
+    const verified = await verifySignupCode(started.ticket, lastCode());
+    expect(verified.referral).toBe("applied");
+    expect(await sourceOf(email)).toBe("signup_link");
+  });
+
+  it("creates the account unbound and says not_applied when the code was disabled in between", async () => {
+    const { id, code } = await activeCode();
+    const email = freshEmail();
+    const started = await startSignup({ ticket: null, email, password: "password1", locale: "en", referral: { code, source: "signup_typed" } });
+    await sql`update referral_codes set status = 'disabled' where id = ${id}`;
+    const verified = await verifySignupCode(started.ticket, lastCode());
+    expect(verified.referral).toBe("not_applied");
+    expect(verified.user.email).toBe(email);
+    expect(await sourceOf(email)).toBeNull();
+  });
+
+  it("drops the code when the sign-up is resubmitted without one", async () => {
+    const { code } = await activeCode();
+    const email = freshEmail();
+    const first = await startSignup({ ticket: null, email, password: "password1", locale: "en", referral: { code, source: "signup_typed" } });
+    const firstCode = lastCode();
+    await startSignup({ ticket: first.ticket, email, password: "password1", locale: "en" });
+    const verified = await verifySignupCode(first.ticket, firstCode);
+    expect(verified.referral).toBeNull();
+    expect(await sourceOf(email)).toBeNull();
   });
 });

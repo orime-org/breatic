@@ -158,12 +158,19 @@ auth.post("/register", rateLimitFor("register"), validate("json", registerSchema
   const { email, password, attribution } = body;
 
   if (signupCodeService.emailVerificationEnabled()) {
-    const sent = await signupCodeService.startSignup({
-      ticket: readSignupTicketCookie(c),
-      email,
-      password,
-      locale: getActiveLocale(),
-    });
+    let sent: Awaited<ReturnType<typeof signupCodeService.startSignup>>;
+    try {
+      sent = await signupCodeService.startSignup({
+        ticket: readSignupTicketCookie(c),
+        email,
+        password,
+        locale: getActiveLocale(),
+        referral: signupReferral(body),
+      });
+    } catch (err) {
+      if (err instanceof authService.SignupReferralRefused) return refuseSignupReferral(c);
+      throw err;
+    }
     setSignupTicketCookie(c, sent.ticket, sent.expiresInSeconds);
     return c.json({
       data: {
@@ -228,7 +235,8 @@ auth.post("/register/resend", rateLimitFor("register-resend"), async (c) => {
  * `POST /auth/register/verify` - finish an email sign-up: a matching code
  * writes the account (address verified) and signs it in.
  * @param c - Hono context with validated `signupVerifySchema` body and the ticket cookie
- * @returns `201` `{ user }` + session cookie; the ticket cookie is cleared
+ * @returns `201` `{ user, referral? }` + session cookie; the ticket cookie is
+ *   cleared. `referral` says whether the code the sign-up carried was bound.
  * @throws {NotFoundError} `404` when no email backend is enabled
  * @throws {AppError} `400` wrong code · `410` sign-up gone · `422` code used up · `409` address taken
  */
@@ -241,7 +249,7 @@ auth.post(
       throw new NotFoundError(t("server.error.not_found"));
     }
     const { code, attribution } = c.req.valid("json");
-    const user = await signupCodeService.verifySignupCode(
+    const { user, referral } = await signupCodeService.verifySignupCode(
       readSignupTicketCookie(c),
       code,
       parseAttribution(attribution),
@@ -253,7 +261,7 @@ auth.post(
     logger.info({ userId: user.id, method: "email" }, "user_logged_in");
     // Same shape as the created branch of `/register`: the personal studio
     // is the next step, and the key must be present for the onboarding gate.
-    return c.json({ data: { user: { ...user, personalStudio: null } } }, 201);
+    return c.json({ data: { user: { ...user, personalStudio: null }, ...(referral ? { referral } : {}) } }, 201);
   },
 );
 
