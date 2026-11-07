@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { ProjectRole } from '@breatic/shared';
+import type { ProjectRole, SceneGenerationProposal } from '@breatic/shared';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { toast } from '@web/lib/toast';
@@ -15,10 +15,11 @@ import { PROJECT, RAW_CATALOG, SPACE } from '@web/spaces/three-d/__tests__/scene
 const api = vi.hoisted(() => ({ get: vi.fn(async (url: string) => {
   if (url === '/models') return RAW_CATALOG;
   throw new Error(`unexpected GET ${url}`);
-}) }));
+}), post: vi.fn() }));
 vi.mock('@web/data/api/request', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/api/request')>()),
   apiGet: api.get,
+  apiPost: api.post,
 }));
 vi.mock('@web/lib/toast', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@web/lib/toast')>();
@@ -143,6 +144,67 @@ describe('SceneCreationMenu entries by project role and scene readiness (inner#1
     await user.click(generate);
     const dialog = await screen.findByRole('dialog', { name: 'AI generation' });
     expect(await within(dialog).findByTestId('scene-generate-mode-t23d')).toBeInTheDocument();
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+});
+
+describe('SceneCreationMenu receiving Agent proposals (inner#1691 design 6.2, 8.5)', () => {
+  /**
+   * The proposal mailbox, imported by a runtime path so the store's absence
+   * fails these cases alone, leaving the cases above running.
+   * @returns The store.
+   */
+  async function proposals(): Promise<typeof import('@web/stores/scene-proposals').useSceneProposals> {
+    const storePath = '@web/stores/scene-proposals';
+    const { useSceneProposals } = (await import(/* @vite-ignore */ storePath)) as typeof import('@web/stores/scene-proposals');
+    useSceneProposals.getState().reset();
+    return useSceneProposals;
+  }
+
+  const PROPOSAL: SceneGenerationProposal = {
+    proposalId: 'p1',
+    mode: 't23d',
+    model: 'tripo-h3.1-t23d',
+    prompt: 'A stone lion',
+    params: { texture: true, pbr: true, texture_quality: 'detailed', negative_prompt: 'base' },
+    images: [],
+    credits: 36,
+    rationale: 'A lion for the gate',
+    placed: true,
+  };
+
+  it('receives proposals while it is drawn, and stops once it is gone', async () => {
+    const store = await proposals();
+    expect(store.getState().listening).toBe(false);
+
+    renderRail({ myRole: 'editor', canEdit: true });
+    expect(store.getState().listening).toBe(true);
+
+    cleanup();
+    expect(store.getState().listening).toBe(false);
+  });
+
+  it('opens the generation dialog filled with a handed-in proposal, which submits as coming from the Agent', async () => {
+    const user = userEvent.setup();
+    const store = await proposals();
+    api.post.mockResolvedValue({ task_id: 'task-1', row_id: 'row-1', status: 'pending' });
+    renderRail({ myRole: 'editor', canEdit: true });
+
+    act(() => {
+      store.getState().request(PROPOSAL);
+    });
+
+    const dialog = await screen.findByRole('dialog', { name: 'AI generation' });
+    await within(dialog).findByTestId('generate-param-texture-toggle');
+    await waitFor(() => expect(within(dialog).getByTestId('scene-generate-prompt')).toHaveValue('A stone lion'));
+    expect(within(dialog).getByTestId('generate-param-negative_prompt-input')).toHaveValue('base');
+    expect(within(dialog).getByTestId('generate-param-texture_quality-option-detailed')).toHaveAttribute('aria-current', 'true');
+    expect(store.getState().incoming).toBeNull();
+
+    await user.click(within(dialog).getByTestId('scene-generate-run'));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    expect(api.post.mock.calls[0]![0]).toBe(`/projects/${PROJECT}/three-d/${SPACE}/generations`);
+    expect(api.post.mock.calls[0]![1]).toEqual(expect.objectContaining({ mode: 't23d', model: 'tripo-h3.1-t23d', prompt: 'A stone lion', origin: 'agent' }));
     expect(toast.warning).not.toHaveBeenCalled();
   });
 });

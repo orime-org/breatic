@@ -3,10 +3,11 @@
 
 /**
  * `propose_scene_generation` (inner#1691 design 6.1): a 3D generation the
- * agent proposes for one 3D Space of this turn, checked the way the submit
- * route checks it (design 4.2 steps 2 to 4) and answered with what the card
- * draws. A proposal creates no task and holds no credits; nothing runs until
- * the user presses Generate in the dialog it opens.
+ * agent proposes, bound to no Space, checked the way the submit route checks
+ * it (design 4.2 steps 2 to 4) and answered with what the card draws. The
+ * user opens it in whichever 3D Space is in front. A proposal creates no task
+ * and holds no credits; nothing runs until the user presses Generate in the
+ * dialog it opens.
  */
 
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -41,12 +42,11 @@ vi.mock("@domain/node-task/scene-task.service.js", async (importOriginal) => ({
 }));
 
 const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
-const SCENE = { id: "22222222-2222-4222-8222-222222222222", name: "Props", kind: "3d" as const };
-const NOTES = { id: "33333333-3333-4333-8333-333333333333", name: "Notes", kind: "document" as const };
+const SPACE_ID = "22222222-2222-4222-8222-222222222222";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-/** What the turn hands the tool: this turn's Spaces and the project. */
-const CONTEXT = { spaces: [SCENE, NOTES], projectId: PROJECT_ID };
+/** What the turn hands the tool: only the project, to resolve images in. */
+const CONTEXT = { projectId: PROJECT_ID };
 
 /** The tool's answer, as far as these cases read it. */
 type Answer =
@@ -104,12 +104,10 @@ function threeDEntry(name: string): ModelEntry {
 
 /** A text-to-3D proposal that holds together. */
 const TEXT_TO_3D = {
-  spaceId: SCENE.id,
   mode: "t23d",
   model: "tripo-h3.1-t23d",
   prompt: "a red fox sitting",
-  negative_prompt: "blurry",
-  params: { texture_quality: "detailed", smart_low_poly: true },
+  params: { texture_quality: "detailed", smart_low_poly: true, negative_prompt: "blurry" },
   rationale: "A fox prop for the scene.",
 };
 
@@ -122,16 +120,20 @@ function resolvedImages(ids: string[]): Array<{ assetId: string; url: string; di
   return ids.map((id) => ({ assetId: id, url: `https://cdn.example.test/${id}.png`, displayName: `${id}.png` }));
 }
 
-describe("the target Space", () => {
-  it("is refused when it is not among this turn's Spaces", async () => {
-    const missing = "44444444-4444-4444-8444-444444444444";
-    expect(await refusal({ ...TEXT_TO_3D, spaceId: missing })).toContain(missing);
+describe("no Space", () => {
+  it("is not an input the tool declares: a spaceId is refused or dropped by the input check", () => {
+    const schema = (makeProposeSceneGeneration() as unknown as {
+      inputSchema: { safeParse: (v: unknown) => { success: boolean; data?: Record<string, unknown> } };
+    }).inputSchema;
+    const parsed = schema.safeParse({ ...TEXT_TO_3D, spaceId: SPACE_ID });
+    if (parsed.success) expect(parsed.data).not.toHaveProperty("spaceId");
+    expect(schema.safeParse(TEXT_TO_3D).success).toBe(true);
   });
 
-  it("is refused when it is not a 3D Space, naming the Space and its kind", async () => {
-    const reason = await refusal({ ...TEXT_TO_3D, spaceId: NOTES.id });
-    expect(reason).toContain(NOTES.id);
-    expect(reason).toContain("document");
+  it("never answers with a Space, even when the agent sent one", async () => {
+    const answer = await propose({ ...TEXT_TO_3D, spaceId: SPACE_ID });
+    expect(answer).not.toHaveProperty("spaceId");
+    expect(answer).not.toHaveProperty("spaceName");
   });
 });
 
@@ -148,7 +150,7 @@ describe("the model and mode", () => {
 });
 
 describe("the number of images", () => {
-  const IMAGE_TO_3D = { spaceId: SCENE.id, mode: "i23d", params: {}, rationale: "A fox prop from the sketch." };
+  const IMAGE_TO_3D = { mode: "i23d", params: {}, rationale: "A fox prop from the sketch." };
 
   it("is refused when the single image entry gets two", async () => {
     vi.mocked(resolveProjectImageInputs).mockResolvedValue(resolvedImages(["a1", "a2"]));
@@ -169,7 +171,6 @@ describe("the number of images", () => {
 
 describe("the images", () => {
   const MULTI_VIEW = {
-    spaceId: SCENE.id,
     mode: "i23d",
     model: "tripo-h3.1-multiview",
     params: {},
@@ -222,15 +223,13 @@ describe("a text-to-3D proposal that holds together", () => {
 
     const answer = await propose(TEXT_TO_3D);
 
+    expect(params).toMatchObject({ negative_prompt: "blurry" });
     expect(answer).toEqual({
       placed: true,
       proposalId: expect.stringMatching(UUID),
-      spaceId: SCENE.id,
-      spaceName: "Props",
       mode: "t23d",
       model: "tripo-h3.1-t23d",
       prompt: "a red fox sitting",
-      negative_prompt: "blurry",
       params,
       images: [],
       credits: estimate.credits,

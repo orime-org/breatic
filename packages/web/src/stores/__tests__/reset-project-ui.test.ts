@@ -67,35 +67,36 @@ describe('resetProjectUiStores (#1771)', () => {
   });
 
   /**
-   * A 3D generation proposal pressed in the chat and not yet taken up by its
-   * 3D Space belongs to this project: leaving drops it, without a toast, so
-   * it never opens a dialog in the next project (inner#1691, design §6.2).
+   * The 3D proposal mailbox belongs to this project: leaving forgets both the
+   * 3D Space that was receiving and a proposal it had not taken yet, without a
+   * toast, so nothing opens a dialog in the next project (inner#1691, design
+   * §6.2 · §8.5).
    */
-  it('clears the 3D generation proposals still waiting to be taken up, saying nothing', async () => {
+  it('forgets the 3D proposal receiver and the proposal not yet taken, saying nothing', async () => {
     // Imported by a runtime path so the store's absence fails this case alone,
     // leaving the cases above running.
     const storePath = '@web/stores/scene-proposals';
     const { useSceneProposals } = (await import(/* @vite-ignore */ storePath)) as typeof import('@web/stores/scene-proposals');
-    useSceneProposals.getState().start({
+    useSceneProposals.getState().setListening(true);
+    useSceneProposals.getState().request({
       proposalId: 'p1',
-      spaceId: 's1',
-      spaceName: 'Props',
       mode: 't23d',
       model: 'tripo-h3.1-t23d',
       prompt: 'A wooden chair',
-      negative_prompt: '',
-      params: { texture: true },
+      params: { texture: true, negative_prompt: '' },
       images: [],
       credits: 30,
       rationale: 'A chair for the set',
       placed: true,
     });
-    expect(Object.keys(useSceneProposals.getState().pending)).toEqual(['p1']);
+    expect(useSceneProposals.getState().listening).toBe(true);
+    expect(useSceneProposals.getState().incoming).not.toBeNull();
     const warning = vi.spyOn(toast, 'warning');
 
     resetProjectUiStores('project-1');
 
-    expect(useSceneProposals.getState().pending).toEqual({});
+    expect(useSceneProposals.getState().listening).toBe(false);
+    expect(useSceneProposals.getState().incoming).toBeNull();
     expect(warning).not.toHaveBeenCalled();
     warning.mockRestore();
   });
