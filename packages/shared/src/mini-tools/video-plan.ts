@@ -12,10 +12,8 @@ import {
 } from "@shared/mini-tools/video-presentation-table.js";
 import {
   videoToolDialogueRowSchema,
-  videoToolExpansionFrameSchema,
   videoToolSyncModeSchema,
   videoToolTimelineClipSchema,
-  type VideoToolExpansionFrame,
   type VideoToolSyncMode,
   type VideoToolTimelineClip,
 } from "@shared/mini-tools/video-draft.js";
@@ -23,7 +21,6 @@ import {
 export interface VideoFrameRequest { mode: "first" | "last" | "current"; currentTime?: number }
 export interface VideoFrameOutput { outputIndex: number; frameIndex: number; pts: number }
 export interface VideoSplitOutput { outputIndex: number; start: number; end: number }
-export interface VideoExpandPlan { width: number; height: number; sourceX: number; sourceY: number; sourceWidth: number; sourceHeight: number }
 
 // The first, last or current frame (frames-split §10.6: the interval mode is removed).
 const frameRequestSchema = z.strictObject({
@@ -84,27 +81,6 @@ export function planVideoSplit(source: VideoPresentationTable, cuts: readonly nu
 export function chunkVideoOutputs<T>(outputs: readonly T[], chunkSize: number): T[][] {
   const capacity = z.number().int().positive().parse(chunkSize);
   return Array.from({ length: Math.ceil(outputs.length / capacity) }, (_, index) => outputs.slice(index * capacity, (index + 1) * capacity));
-}
-
-/**
- * Converts the fixed-source target frame into integral output pixel geometry.
- * @param source - The original pixel size.
- * @param source.width - Original pixel width.
- * @param source.height - Original pixel height.
- * @param frame - The target frame in source-normalized coordinates.
- * @returns Complete target dimensions and source placement.
- * @throws {z.ZodError} When source or target geometry is invalid.
- */
-export function planVideoExpand(source: { width: number; height: number }, frame: VideoToolExpansionFrame): VideoExpandPlan {
-  const size = z.strictObject({ width: z.number().int().positive(), height: z.number().int().positive() }).parse(source);
-  const target = videoToolExpansionFrameSchema.parse(frame);
-  const output = {
-    width: Math.round(size.width * target.width), height: Math.round(size.height * target.height),
-    sourceX: Math.max(0, Math.round(-size.width * target.x)), sourceY: Math.max(0, Math.round(-size.height * target.y)),
-    sourceWidth: size.width, sourceHeight: size.height,
-  };
-  z.object({ width: z.number().int().positive(), height: z.number().int().positive(), sourceX: z.number().int().nonnegative(), sourceY: z.number().int().nonnegative() }).parse(output);
-  return output;
 }
 
 const executionDialogueSchema = videoToolDialogueRowSchema.omit({ analysisRunId: true }).extend({

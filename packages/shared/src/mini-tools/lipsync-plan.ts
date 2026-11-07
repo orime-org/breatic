@@ -8,6 +8,7 @@
  */
 
 import { z } from "zod";
+import { modelRunRetryable } from "@shared/mini-tools/model-run-retryable.js";
 import { planVideoDialogues, type VideoDialoguePlanInput } from "@shared/mini-tools/video-plan.js";
 import { lipsyncSourceFrameAt, type LipsyncTimeline } from "@shared/mini-tools/lipsync-timeline.js";
 import { presentationFrameCount } from "@shared/mini-tools/video-presentation-table.js";
@@ -52,21 +53,15 @@ export const lipsyncFailureReasonSchema = z.strictObject({
 export type LipsyncFailureReason = z.infer<typeof lipsyncFailureReasonSchema>;
 
 /**
- * Whether a lip-sync failure can be retried (§9.4): only when every person line and the shared step are timeout or failed.
+ * Whether a lip-sync failure can be retried (§9.4), by shared `modelRunRetryable`: stopped people follow what stopped them,
+ * and every other person line and the shared step must be timeout or failed.
  * @param reason - The failure reason.
  * @returns True when retrying the failed items can succeed.
  * @throws {z.ZodError} When the reason is malformed.
  */
 export function lipsyncFailureRetryable(reason: unknown): boolean {
   const parsed = lipsyncFailureReasonSchema.parse(reason);
-  /**
-   * Whether a category is temporary.
-   * @param value - The category.
-   * @returns True for timeout and failed.
-   * @throws {never} Never.
-   */
-  const transient = (value: string): boolean => value === "timeout" || value === "failed";
-  return parsed.persons.every((person) => transient(person.category)) && (parsed.shared === null || transient(parsed.shared.category));
+  return modelRunRetryable({ items: parsed.persons, shared: parsed.shared });
 }
 
 /** A run of result frames whose source frames move one way (frames-split §5.4, the row on measured decode work); frames, ranges half-open. */

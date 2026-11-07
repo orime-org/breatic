@@ -45,7 +45,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runAnalysisPipeline, type AnalysisPipelineRequest } from '@ingest/container/analysis-pipeline.js';
-import { decodeCocoRleMask } from '@ingest/container/coco-rle.js';
+import { decodeCocoRleMask } from '@shared/mini-tools/coco-rle.js';
 import { cocoCounts } from './helpers/coco-counts.js';
 import { runPlanJob, type PlanRunBody } from '@ingest/container/plan-run.js';
 import { lipsyncSourceFrameAt, type LipsyncTimeline } from '@shared/mini-tools/lipsync-plan.js';
@@ -398,7 +398,7 @@ beforeEach(() => {
 });
 
 describe('the COCO counts encoder this file writes tracks with (guard)', () => {
-  // The decoder's golden counts were produced by the official COCO C reference (coco-rle.node.test.ts).
+  // The decoder's golden counts were produced by the official COCO C reference (shared coco-rle.test.ts).
   it.each([
     { height: 2, width: 3, counts: '6' }, { height: 2, width: 3, counts: '06' }, { height: 2, width: 3, counts: '213' },
     { height: 2, width: 3, counts: '01200' }, { height: 3, width: 4, counts: '142M2' }, { height: 1, width: 40, counts: '0d01]Oa0' },

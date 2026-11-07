@@ -1,10 +1,17 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
+/** One COCO compressed RLE mask, its size ordered height then width. */
 export interface CocoRleMask {
   size: readonly [number, number];
   counts: string;
 }
+
+/** A mask's pixel size. */
+export interface CocoMaskSize { width: number; height: number }
+
+/** A range of frame indices, [start, end). */
+export interface CocoFrameRange { start: number; end: number }
 
 /**
  * Decodes COCO's signed variable-length counts into row-major VOID mask bytes.
@@ -13,7 +20,7 @@ export interface CocoRleMask {
  * @returns Gray8 bytes with removed foreground zero and retained background 255.
  * @throws {RangeError} When dimensions, encoded counts or total coverage are invalid.
  */
-export function decodeCocoRleMask(rle: CocoRleMask, expected: { width: number; height: number }): Uint8Array {
+export function decodeCocoRleMask(rle: CocoRleMask, expected: CocoMaskSize): Uint8Array {
   const [height, width] = rle.size;
   if (![height, width, expected.height, expected.width].every((value) => Number.isSafeInteger(value) && value > 0)
     || height !== expected.height || width !== expected.width || !Number.isSafeInteger(height * width)) {
@@ -63,14 +70,13 @@ export function decodeCocoRleMask(rle: CocoRleMask, expected: { width: number; h
  * source range (execution design §9.4 `no_face` row). The RLE file holds one
  * mask per prepared frame in order, so the array index is the frame index; a
  * frame without a mask counts as empty. A decoded VOID mask marks foreground 0.
- *
  * @param masks - The track's masks, one per prepared frame.
  * @param range - The used frame range, `[start, end)`.
  * @param expected - The prepared video's size.
  * @returns True when no frame in the range has a foreground pixel.
  * @throws {RangeError} When a mask in the range is malformed.
  */
-export function trackedForegroundEmpty(masks: readonly (CocoRleMask | null)[], range: { start: number; end: number }, expected: { width: number; height: number }): boolean {
+export function trackedForegroundEmpty(masks: readonly (CocoRleMask | null)[], range: CocoFrameRange, expected: CocoMaskSize): boolean {
   for (let frame = range.start; frame < Math.min(range.end, masks.length); frame++) {
     const mask = masks[frame];
     if (mask && decodeCocoRleMask(mask, expected).includes(0)) return false;

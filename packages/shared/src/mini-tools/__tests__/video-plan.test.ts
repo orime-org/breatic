@@ -5,7 +5,6 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import * as miniTools from "@shared/mini-tools/index.js";
 
-interface ExpansionFrame { x: number; y: number; width: number; height: number }
 interface Dialogue { dialogueId: string; personId: string; audioInputId: string; startTime: number; duration: number }
 type SyncMode = "cut_off" | "silence" | "loop" | "bounce" | "remap";
 interface Clip { clipId: string; inputId: string; in: number; out: number; transition: { kind: "cut" | "fade" | "wipeLeft" | "wipeRight"; duration: number } }
@@ -14,7 +13,6 @@ interface PlannedClip { clipId: string; inputId: string; startFrame: number; fra
 interface FrameTimeline { fps: Rational; frameCount: number; clips: PlannedClip[]; window: { startFrame: number; frameCount: number; kind: "fade" | "wipeLeft" | "wipeRight" } | null }
 interface PlanApi {
   chunkVideoOutputs: <T>(outputs: readonly T[], chunkSize: number) => T[][];
-  planVideoExpand: (source: { width: number; height: number }, frame: ExpansionFrame) => { width: number; height: number; sourceX: number; sourceY: number; sourceWidth: number; sourceHeight: number };
   planVideoDialogues: (input: { videoDuration: number; dialogues: readonly Dialogue[]; syncMode: SyncMode }) => { duration: number; dialogues: Dialogue[] };
   // §97 D12-2, D13-2: the timeline planner takes the output frame rate as the plan's exact rational and plans on its grid.
   planVideoTimeline: (clips: readonly Clip[], fps: Rational) => FrameTimeline;
@@ -43,7 +41,7 @@ const clips: Clip[] = [
 
 describe("complete video tool execution plans", () => {
   it("exports every shared plan entry point", () => {
-    expect(["planVideoFrames", "planVideoSplit", "chunkVideoOutputs", "planVideoExpand", "planVideoDialogues", "planVideoTimeline"].filter((key) => !(key in miniTools))).toEqual([]);
+    expect(["planVideoFrames", "planVideoSplit", "chunkVideoOutputs", "planVideoDialogues", "planVideoTimeline"].filter((key) => !(key in miniTools))).toEqual([]);
   });
 
   describe("bounded container chunks", () => {
@@ -67,16 +65,6 @@ describe("complete video tool execution plans", () => {
 
     it.each([0, -1, 0.5, Number.NaN, Number.POSITIVE_INFINITY])("rejects an invalid per-job capacity %s", (cap) => {
       expect(() => api.chunkVideoOutputs([1, 2], cap)).toThrow();
-    });
-  });
-
-  describe("fixed-source expansion geometry", () => {
-    it("retains all biased margins in source pixel coordinates", () => {
-      expect(api.planVideoExpand({ width: 256, height: 128 }, { x: -0.125, y: -0.375, width: 1.375, height: 2 })).toEqual({ width: 352, height: 256, sourceX: 32, sourceY: 48, sourceWidth: 256, sourceHeight: 128 });
-    });
-
-    it("supports a larger target with the original aspect ratio", () => {
-      expect(api.planVideoExpand({ width: 256, height: 128 }, { x: -0.125, y: -0.125, width: 2, height: 2 })).toEqual({ width: 512, height: 256, sourceX: 32, sourceY: 16, sourceWidth: 256, sourceHeight: 128 });
     });
   });
 

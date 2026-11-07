@@ -22,7 +22,7 @@ describe("expand layout (execution design §10.5)", () => {
   });
 
   it("EL04 a square target is laid out like any other", () => {
-    expect(videoExpandLayout({ x: -0.5, y: 0, width: 1, height: 1 }, { width: 400, height: 800 }, 4096)).toMatchObject({ width: 800, height: 800 });
+    expect(videoExpandLayout({ x: -0.5, y: 0, width: 2, height: 1 }, { width: 400, height: 800 }, 4096)).toMatchObject({ width: 800, height: 800 });
   });
 
   it("EL05 a long side of 4097 is reported over the cap and not clamped", () => {

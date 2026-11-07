@@ -20,7 +20,7 @@ import type {
   MiniToolPlanDetectorProfile, MiniToolPlanLipsyncClip, MiniToolPlanLipsyncComposite, MiniToolPlanLipsyncFaces, MiniToolPlanLipsyncStem, MiniToolPlanPixelRect, MiniToolPlanTarget,
 } from "@shared/upload/mini-tool-plan-types.js";
 import type { MediaOfOutput } from "@ingest/jobs/container-report.js";
-import { decodeCocoRleMask } from "@ingest/container/coco-rle.js";
+import { decodeCocoRleMask } from "@shared/mini-tools/coco-rle.js";
 import { readYuNetFaces } from "@ingest/container/analysis-detection.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
 import {
