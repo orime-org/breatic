@@ -9,7 +9,7 @@ import { referralApi, type AccountReferral, type PromoterApplicationForm } from 
 import { ApiException } from '@web/data/api/types';
 import { Button } from '@web/components/ui/button';
 import { Checkbox } from '@web/components/ui/checkbox';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
@@ -104,7 +104,7 @@ export function PromoterApplyDialog({
           <DialogTitle>{t('membership.promoter.dialogTitle')}</DialogTitle>
           <DialogDescription>{t('membership.promoter.dialogDescription')}</DialogDescription>
         </DialogHeader>
-        <div className='flex flex-col gap-4'>
+        <DialogBody className='gap-4'>
           <div className='flex flex-col gap-1.5'>
             <Label htmlFor='promoter-country'>{t('membership.promoter.country')}</Label>
             <Select value={country} onValueChange={(v) => { setCountry(v); setErrors((e) => ({ ...e, country: undefined })); }}>
@@ -146,9 +146,9 @@ export function PromoterApplyDialog({
               </div>
             ))}
             {channels.length < MAX_CHANNELS ? (
-              <Button type='button' variant='link' size='compact' className='w-fit px-0 text-xs text-muted-foreground'
-                onClick={() => setChannels((list) => [...list, ''])}>
-                <Plus className='h-3 w-3' />{t('membership.promoter.addChannel')}
+              <Button type='button' variant='link' size='compact' className='w-fit gap-1 px-0 text-xs text-muted-foreground'
+                icon={<Plus className='h-3 w-3' />} onClick={() => setChannels((list) => [...list, ''])}>
+                {t('membership.promoter.addChannel')}
               </Button>
             ) : null}
             {errors.channels ? <FieldError>{errors.channels}</FieldError> : null}
@@ -185,7 +185,7 @@ export function PromoterApplyDialog({
             </label>
             {errors.agree ? <FieldError>{errors.agree}</FieldError> : null}
           </div>
-        </div>
+        </DialogBody>
         <DialogFooter>
           <Button type='button' variant='outline' onClick={() => onOpenChange(false)}>{t('membership.promoter.cancel')}</Button>
           <Button type='button' loading={pressing} onClick={submit}>{t('membership.promoter.submit')}</Button>

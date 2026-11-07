@@ -87,8 +87,8 @@ function PromoterBody({ view }: { view: AccountReferral }): React.JSX.Element {
             {promoter.code}
           </span>
           {off ? null : (
-            <Button type='button' variant='ghost' size='sm' onClick={() => copy(promoter.code, t('membership.promoter.copied'))}>
-              <Copy className='h-3.5 w-3.5' />{t('membership.promoter.copyCode')}
+            <Button type='button' variant='ghost' size='sm' className='gap-1.5' icon={<Copy className='h-3.5 w-3.5' />} onClick={() => copy(promoter.code, t('membership.promoter.copied'))}>
+              {t('membership.promoter.copyCode')}
             </Button>
           )}
         </div>
@@ -100,8 +100,8 @@ function PromoterBody({ view }: { view: AccountReferral }): React.JSX.Element {
           <>
             <div className='flex items-center gap-2'>
               <Input readOnly value={promoter.link} aria-label={t('membership.promoter.copyLink')} className='text-muted-foreground' />
-              <Button type='button' variant='outline' onClick={() => copy(promoter.link, t('membership.promoter.copied'))}>
-                <Copy className='h-3.5 w-3.5' />{t('membership.promoter.copyLink')}
+              <Button type='button' variant='outline' className='gap-1.5' icon={<Copy className='h-3.5 w-3.5' />} onClick={() => copy(promoter.link, t('membership.promoter.copied'))}>
+                {t('membership.promoter.copyLink')}
               </Button>
             </div>
             <p className='text-xs text-muted-foreground'>{t('membership.promoter.shareHint', figure)}</p>
