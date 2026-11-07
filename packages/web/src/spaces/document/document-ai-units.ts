@@ -19,7 +19,7 @@ import { Fragment, type Node as ProseMirrorNode, type Schema } from '@tiptap/pm/
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { yUndoPluginKey } from 'y-prosemirror';
 
-import { aiCoverIn, BLOCK_GROUP } from '@web/spaces/document/document-ai-range';
+import { aiCoverIn, BN_BLOCK } from '@web/spaces/document/document-ai-range';
 import type { DocumentEditorHandle } from '@web/spaces/document/document-editor-cache';
 import type { ViewedEditor } from '@web/spaces/document/document-editor-view';
 import type { WrittenBlock } from '@web/spaces/document/document-external-media';
@@ -182,7 +182,8 @@ function exportable(content: readonly Inline[]): Inline[] {
     if (last !== undefined) {
       const left = edgeEmphasis(last, 'end');
       const right = edgeEmphasis(piece, 'start');
-      if (left !== '' && right !== '' && (left !== right || last.type !== piece.type)) out.push(RUN_BREAK_PIECE);
+      // Two links side by side are closed and reopened one after the other, emphasis and all.
+      if (left !== '' && right !== '' && (left !== right || last.type !== piece.type || piece.type === 'link')) out.push(RUN_BREAK_PIECE);
     }
     out.push(piece);
   }
@@ -233,10 +234,10 @@ function escapeContent(content: readonly Inline[]): Inline[] {
   };
   return shaped.map((c) => {
     if (c.type === 'link') {
-      // The parser ends an address at white space and decodes nothing, and
-      // the way back decodes every entity and unescapes it once: all three
-      // are spelled as entities.
-      const href = (c.href ?? '').replace(/&/g, '&amp;').replace(/[\\\s]/g, entity);
+      // The parser ends an address at white space, reads emphasis and strike
+      // delimiters in it, and decodes nothing; the way back decodes every
+      // entity and unescapes it once: all of them are spelled as entities.
+      const href = (c.href ?? '').replace(/&/g, '&amp;').replace(/[\\\s*~]/g, entity);
       const content = (c.content ?? []).map(one);
       // Words that read as their address are exported as the bare address,
       // which reads back as words: their first character is spelled another
@@ -546,7 +547,7 @@ type Span =
  * @param side - Which end.
  * @returns The block and the cut.
  */
-function endOf(doc: ProseMirrorNode, pos: number, side: 'start' | 'end'): { block: number; cut: LineCut | null; atEdge: boolean } {
+function endOf(doc: ProseMirrorNode, pos: number, side: 'start' | 'end'): { block: number; cut: LineCut | null } {
   const $pos = doc.resolve(pos);
   let block: number;
   let offset: number | null;
@@ -563,10 +564,19 @@ function endOf(doc: ProseMirrorNode, pos: number, side: 'start' | 'end'): { bloc
   }
   const container = doc.nodeAt(block)!;
   const line = container.type.name === 'blockContainer' && container.firstChild!.isTextblock ? container.firstChild! : null;
-  if (line === null) return { block, cut: null, atEdge: true };
+  if (line === null) return { block, cut: null };
   const at = offset ?? line.content.size;
   const words = side === 'start' ? line.content.cut(0, at) : line.content.cut(at);
-  return { block, cut: { at: block, container, line, words }, atEdge: words.size === 0 };
+  return { block, cut: { at: block, container, line, words } };
+}
+
+/**
+ * Whether a range's end leaves no words of its line outside it.
+ * @param cut - The line it cuts; null at a block without words.
+ * @returns True when nothing is left.
+ */
+function noWordsLeft(cut: LineCut | null): boolean {
+  return cut === null || cut.words.size === 0;
 }
 
 /**
@@ -587,7 +597,7 @@ function spanOf(doc: ProseMirrorNode, cover: LocalRange): Span {
   }
   const start = endOf(doc, from, 'start');
   const end = endOf(doc, to, 'end');
-  if (start.atEdge && end.atEdge) return { kind: 'blocks', from, to, first: start.block, last: end.block };
+  if (noWordsLeft(start.cut) && noWordsLeft(end.cut)) return { kind: 'blocks', from, to, first: start.block, last: end.block };
   return { kind: 'words', from, to, first: start.block, last: end.block, before: start.cut, after: end.cut };
 }
 
@@ -614,7 +624,7 @@ function blocksOf(doc: ProseMirrorNode, span: Span): Read[] {
    */
   const take = (node: ProseMirrorNode): void => {
     if (node.type.name === 'blockContainer' && node.firstChild?.type.name === 'blockGroup') node.firstChild.forEach(take);
-    else if (node.type.isInGroup(BLOCK_GROUP)) out.push(nodeToBlock(node, doc) as unknown as Read);
+    else if (node.type.isInGroup(BN_BLOCK)) out.push(nodeToBlock(node, doc) as unknown as Read);
   };
   doc.slice(span.kind === 'blocks' ? span.first : span.from, span.to).content.forEach(take);
   return out;
@@ -622,8 +632,8 @@ function blocksOf(doc: ProseMirrorNode, span: Span): Read[] {
 
 /**
  * The `selection` field a command sends (§5.1, §5.2): the range's Markdown,
- * its words escaped; words inside one line as a paragraph of them, a code
- * block's as its code.
+ * its words escaped; part of one line as a paragraph of its words, a whole
+ * line or more as its blocks, a code block's words as its code.
  * @param editor - An editor with the body's schema, for the Markdown export.
  * @param doc - The body.
  * @param cover - The range.
@@ -729,9 +739,10 @@ function sourceOf(doc: ProseMirrorNode, span: Span & { kind: 'blocks' | 'words' 
 
 /**
  * Reads an answer into the blocks the preview shows and insert and replace
- * write (§5.3): parsed whole, outside media and blocks past the
- * body's levels left out, the first block formatted from the range's, a
- * table inside a cell unfolded, and for a legacy cell its words on lines.
+ * write (§5.3): parsed whole, outside media left out and counted, headings
+ * brought within the body's levels, the first block formatted from the
+ * range's, a table inside a cell unfolded, and for a legacy cell its words
+ * on lines, empty when no words are left.
  * For words inside a code block it is that code: one fence the model
  * wrapped it in taken off, the entities decoded, one code block.
  * @param parser - An editor with the body's schema.
@@ -746,14 +757,15 @@ export function aiAnswer(parser: ViewedEditor, state: EditorState, text: string,
   const { doc } = state;
   const cover = aiCoverIn(state);
   const span = cover === null ? null : spanOf(doc, cover);
-  if (span?.kind === 'cell') {
-    return { preview: [{ type: 'paragraph', props: {}, content: flattened(parsed(parser, text.trim())), children: [] } as WrittenBlock], leftOut: 0 };
-  }
   if (span?.kind === 'code') {
     const code = decoded(text.replace(/^\s*```[^\n]*\n([\s\S]*?)\n?```\s*$/, '$1'));
     return { preview: [{ type: CODE, props: { ...span.line.attrs }, content: [{ type: 'text', text: code, styles: {} }], children: [] } as WrittenBlock], leftOut: 0 };
   }
   const { blocks, leftOut } = keepWritable(parsed(parser, text.trim()), ourPrefix);
+  if (span?.kind === 'cell') {
+    const content = flattened(blocks as Read[]);
+    return { preview: content.length === 0 ? [] : [{ type: 'paragraph', props: {}, content, children: [] } as WrittenBlock], leftOut };
+  }
   const shaped = formatted(blocks as Read[], span === null ? null : sourceOf(doc, span));
   // One preview serves both writes, so it fits a cell when either lands in one.
   const inCell = blockInTableCell(doc, insertBlockId) || (cover !== null && cellDepthOf(doc.resolve(cover.from)) > 0);
@@ -857,19 +869,21 @@ function holdsLine(node: ProseMirrorNode): boolean {
  * @param before - The words before the range; null at a block without words.
  * @param after - The words after the range; null at a block without words.
  * @param answer - The answer, laid flat.
+ * @param afterLevel - The level of the line the words after stand in, below the first line's.
  * @returns The blocks that take the lines' place, laid flat.
  */
-function wordsJoined(before: LineCut | null, after: LineCut | null, answer: readonly Flat[]): Flat[] {
+function wordsJoined(before: LineCut | null, after: LineCut | null, answer: readonly Flat[], afterLevel: number): Flat[] {
   /**
    * A line's own kind of block holding some words.
    * @param cut - The line.
    * @param words - The words.
    * @param id - Its block id; null for a new one, which BlockNote's `UniqueID` gives it.
+   * @param depth - Its level.
    * @returns The block.
    */
-  const ownBlock = (cut: LineCut, words: Fragment, id: unknown): Flat => ({
+  const ownBlock = (cut: LineCut, words: Fragment, id: unknown, depth = 0): Flat => ({
     node: cut.container.type.create({ ...cut.container.attrs, id }, cut.line.copy(words)),
-    depth: 0,
+    depth,
     pos: -1,
   });
   /**
@@ -890,7 +904,7 @@ function wordsJoined(before: LineCut | null, after: LineCut | null, answer: read
     const words = last.node.firstChild!;
     out[out.length - 1] = { ...last, node: last.node.copy(Fragment.from(words.copy(words.content.append(after.words)))) };
   } else if (after.words.size > 0) {
-    out.push(ownBlock(after, after.words, firstKept && before?.at === after.at ? null : after.container.attrs['id']));
+    out.push(ownBlock(after, after.words, firstKept && before?.at === after.at ? null : after.container.attrs['id'], afterLevel));
   }
   return out;
 }
@@ -918,7 +932,6 @@ function writeOver(tr: Transaction, span: Span, preview: readonly WrittenBlock[]
     return;
   }
   const answer = laidFlat(preview.map((b) => blockToNode(withoutIds(b as Read) as never, schema)), -1, 0);
-  const written = span.kind === 'blocks' ? answer : wordsJoined(span.before, span.after, answer);
   // The stretch is every subtree of the first and the last block's common
   // parent from the first's to the last's.
   const $first = tr.doc.resolve(span.first);
@@ -931,11 +944,23 @@ function writeOver(tr: Transaction, span: Span, preview: readonly WrittenBlock[]
   const stretch = laidFlat(parent.content.content.slice(firstIndex, lastIndex + 1), from, 0);
   const start = stretch.findIndex((item) => item.pos >= span.first);
   const level = stretch[start]!.depth;
+  // The words left of the last line stay at that line's own level.
+  const afterLevel = span.kind === 'words' && span.after !== null ? stretch.find((item) => item.pos === span.after!.at)!.depth - level : 0;
+  const middle = span.kind === 'blocks' ? answer : wordsJoined(span.before, span.after, answer, afterLevel);
   tr.replaceWith(from, to, rebuilt([
     ...stretch.slice(0, start),
-    ...written.map((item) => ({ ...item, depth: item.depth + level })),
+    ...middle.map((item) => ({ ...item, depth: item.depth + level })),
     ...stretch.filter((item) => item.pos > span.last),
   ], schema));
+}
+
+/**
+ * How a write that landed ended.
+ * @param answer - The answer written.
+ * @returns The result, with the outside media left out.
+ */
+function written(answer: AiAnswer): AiWriteResult {
+  return answer.leftOut > 0 ? { outcome: 'written', leftOut: answer.leftOut } : { outcome: 'written' };
 }
 
 /**
@@ -954,14 +979,14 @@ export function replaceAiAnswer(
   if (refusal !== null) return { outcome: refusal };
   const cover = aiCoverIn(handle.editor.prosemirrorState);
   if (cover === null) return { outcome: 'targetGone' };
-  if (answer.preview.length === 0) return answer.leftOut > 0 ? { outcome: 'mediaOnly', leftOut: answer.leftOut } : { outcome: 'failed' };
+  if (answer.preview.length === 0) return { outcome: 'mediaOnly', leftOut: answer.leftOut };
   const { editor } = handle;
   asOneUndoStep(undoOf(handle), () => {
     editor.transact((tr) => {
       writeOver(tr, spanOf(tr.doc, cover), answer.preview);
     });
   });
-  return answer.leftOut > 0 ? { outcome: 'written', leftOut: answer.leftOut } : { outcome: 'written' };
+  return written(answer);
 }
 
 /**
@@ -982,10 +1007,10 @@ export function insertAiAnswer(
   if (refusal !== null) return { outcome: refusal };
   const doc = handle.editor.prosemirrorState.doc;
   if (blockById(doc, blockId) === null) return { outcome: 'targetGone' };
-  const written = answer.preview.map((b) => withoutIds(b as Read));
-  if (written.length === 0) return { outcome: 'mediaOnly', leftOut: answer.leftOut };
+  const blocks = answer.preview.map((b) => withoutIds(b as Read));
+  if (blocks.length === 0) return { outcome: 'mediaOnly', leftOut: answer.leftOut };
   asOneUndoStep(undoOf(handle), () => {
-    handle.editor.insertBlocks(written as never, blockId, 'after');
+    handle.editor.insertBlocks(blocks as never, blockId, 'after');
   });
-  return answer.leftOut > 0 ? { outcome: 'written', leftOut: answer.leftOut } : { outcome: 'written' };
+  return written(answer);
 }

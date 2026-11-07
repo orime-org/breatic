@@ -14,9 +14,10 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { EditorState } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 
-import { blockAround, inlineLetter, inOneCell, ownContentEnd, type AiCapture } from '@web/spaces/document/document-ai-range';
+import { blockAround, BN_BLOCK, containerAt, inlineLetter, inOneCell, ownContentEnd, type AiCapture } from '@web/spaces/document/document-ai-range';
 import { readTopBlocks } from '@web/spaces/document/document-blocks-read';
 import { letterBounds } from '@web/spaces/document/document-local-range';
+import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 
 /** The blank line Markdown puts between two blocks. */
@@ -43,34 +44,55 @@ function lastCovered(doc: ProseMirrorNode, from: number, to: number): number {
   return last;
 }
 
-/**
- * Where the first thing the selection covers starts: the first letter, or
- * the first block with no letters it takes in, past its start.
- * @param doc - The body.
- * @param from - The selection's start.
- * @param to - Its end.
- * @returns The position; `to` when the selection covers nothing.
- */
-function firstCovered(doc: ProseMirrorNode, from: number, to: number): number {
-  let first = to;
-  doc.nodesBetween(from, to, (node, pos) => {
-    if (first < to) return false;
-    if ((node.isText || node.isAtom) && pos + node.nodeSize > from) {
-      first = Math.max(pos, from);
-      return false;
-    }
-    return true;
-  });
-  return first;
+/** A block of the body, a container or a table, and where it starts. */
+interface BlockAt {
+  readonly pos: number;
+  readonly node: ProseMirrorNode;
 }
 
 /**
- * The range the AI dialog opens on (§4.6), the way Plate's
- * `captureTextRange` takes it: a block the selection only ends at the start
- * of, or only starts at the end of, is left out; what is left inside one
- * line of words is the selected words, and anything else takes the whole
- * blocks it touches, a table it runs into whole. The insert block (§5.4) is
- * the range's last block: the whole table for a range that takes one in,
+ * The body's blocks in reading order, a table before the blocks of its cells.
+ * @param doc - The body.
+ * @returns The blocks.
+ */
+function blocksInOrder(doc: ProseMirrorNode): BlockAt[] {
+  const out: BlockAt[] = [];
+  doc.descendants((node, pos) => {
+    if (node.type.isInGroup(BN_BLOCK)) out.push({ pos, node });
+    return true;
+  });
+  return out;
+}
+
+/**
+ * Where a block's words start and end: its first line's start and its last
+ * line's end, or its own content's edges for a block without lines.
+ * @param doc - The body.
+ * @param block - The block.
+ * @returns The two positions.
+ */
+function wordEdges(doc: ProseMirrorNode, block: BlockAt): { start: number; end: number } {
+  const own = ownContentEnd(doc, block.pos);
+  let start = -1;
+  let end = -1;
+  doc.nodesBetween(block.pos, own, (node, pos) => {
+    if (!node.isTextblock) return true;
+    if (start < 0) start = pos + 1;
+    end = pos + 1 + node.content.size;
+    return false;
+  });
+  return start < 0 ? { start: block.pos, end: own } : { start, end };
+}
+
+/**
+ * The range the AI dialog opens on (§4.6), Plate's `captureTextRange`: an
+ * end at the start of a block other than the start's steps back one block
+ * in reading order, and a start at the end of a block other than the end's
+ * steps on one; what is then inside one line of words is the selected
+ * words, and anything else takes the whole blocks it runs from and to, a
+ * table it runs into whole. An end outside any line (select-all, a block
+ * selected) takes the blocks the selection holds. The insert block (§5.4)
+ * is the range's last block: the whole table for a range that takes one in,
  * the block in the cell for words inside a single cell.
  * @param state - The editor state, holding the selection.
  * @returns The range, or null when it holds no words.
@@ -78,25 +100,45 @@ function firstCovered(doc: ProseMirrorNode, from: number, to: number): number {
 export function aiCapture(state: EditorState): AiCapture | null {
   const { doc, selection } = state;
   if (selection.empty || selection instanceof CellSelection) return null;
-  const { from, to } = selection;
-  const firstAt = firstCovered(doc, from, to);
-  if (firstAt >= to) return null;
-  const $first = doc.resolve(firstAt);
-  const $last = doc.resolve(lastCovered(doc, from, to));
+  const order = blocksInOrder(doc);
+  /**
+   * Where a block stands in reading order.
+   * @param pos - Where it starts.
+   * @returns Its index.
+   */
+  const at = (pos: number): number => order.findIndex((block) => block.pos === pos);
+  const $from = doc.resolve(selection.from);
+  const $to = doc.resolve(selection.to);
+  let first = $from.parent.isTextblock ? at(containerAt(doc, selection.from)!) : order.findIndex((block) => ownContentEnd(doc, block.pos) > selection.from);
+  let last = $to.parent.isTextblock ? at(containerAt(doc, selection.to)!) : order.findLastIndex((block) => block.pos < selection.to);
+  if (first < 0 || last < first) return null;
+  let from = selection.from;
+  let to = selection.to;
+  // A table's words are its cells': a step goes past it into them.
+  if (first !== last && $to.parent.isTextblock && to === wordEdges(doc, order[last]!).start) {
+    do last -= 1; while (last > first && order[last]!.node.type.name === DOC_TABLE);
+    to = wordEdges(doc, order[last]!).end;
+  }
+  if (first !== last && $from.parent.isTextblock && from === wordEdges(doc, order[first]!).end) {
+    do first += 1; while (first < last && order[first]!.node.type.name === DOC_TABLE);
+    from = wordEdges(doc, order[first]!).start;
+  }
+  const $first = doc.resolve(order[first]!.pos + 1);
+  const $last = doc.resolve(order[last]!.pos + 1);
   const oneCell = inOneCell($first, $last);
-  const first = blockAround($first, oneCell);
-  const last = blockAround($last, oneCell);
-  if (first === null || last === null) return null;
-  const lastId = String(doc.nodeAt(last)!.attrs['id']);
+  const firstBlock = blockAround($first, oneCell)!;
+  const lastBlock = blockAround($last, oneCell)!;
+  const lastId = String(doc.nodeAt(lastBlock)!.attrs['id']);
   // Inside one block is inside one line of words: a legacy table's cells
   // are lines of one block, and a selection across them takes the table.
-  if (first === last && $first.sameParent($last)) {
+  const $start = doc.resolve(from);
+  if (first === last && $start.parent.isTextblock && $start.sameParent(doc.resolve(to))) {
     const letters = letterBounds(doc, { from, to }, inlineLetter);
     return letters === null ? null : { range: letters, firstId: null, lastId: null, insertId: lastId };
   }
-  const range = { from: first, to: ownContentEnd(doc, last) };
+  const range = { from: firstBlock, to: ownContentEnd(doc, lastBlock) };
   if (letterBounds(doc, range, inlineLetter) === null) return null;
-  return { range, firstId: String(doc.nodeAt(first)!.attrs['id']), lastId, insertId: lastId };
+  return { range, firstId: String(doc.nodeAt(firstBlock)!.attrs['id']), lastId, insertId: lastId };
 }
 
 /** One top-level block of the context: its Markdown and its place in the body. */

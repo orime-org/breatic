@@ -112,8 +112,8 @@ function presentIn(state: EditorState): PresentRange | null {
   return range?.kind === 'present' ? range : null;
 }
 
-/** What a block is told apart by in the body: a block's container, or a table. */
-export const BLOCK_GROUP = 'bnBlock';
+/** The schema group of the body's blocks: a block's container, or a table. */
+export const BN_BLOCK = 'bnBlock';
 
 /**
  * The position before the innermost block around a position.
@@ -124,7 +124,7 @@ export const BLOCK_GROUP = 'bnBlock';
 export function containerAt(doc: ProseMirrorNode, pos: number): number | null {
   const $pos = doc.resolve(pos);
   for (let depth = $pos.depth; depth > 0; depth -= 1) {
-    if ($pos.node(depth).type.isInGroup(BLOCK_GROUP)) return $pos.before(depth);
+    if ($pos.node(depth).type.isInGroup(BN_BLOCK)) return $pos.before(depth);
   }
   return null;
 }

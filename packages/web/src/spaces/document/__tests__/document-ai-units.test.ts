@@ -583,6 +583,63 @@ describe('the escape pair (§5.1)', () => {
     );
   });
 
+  it('echoes two italic links side by side unchanged', async () => {
+    const h = await openBlocks([{ type: 'paragraph', content: [
+      { type: 'text', text: 'see ', styles: {} },
+      { type: 'link', href: 'https://en.wikipedia.org/wiki/A', content: [{ type: 'text', text: 'Foo', styles: { italic: true } }] },
+      { type: 'link', href: 'https://x.com/b/', content: [{ type: 'text', text: 'Bar', styles: { italic: true } }] },
+      { type: 'text', text: ' after', styles: {} },
+    ] }, { type: 'paragraph', content: 'Next.' }]);
+    const before = blocks(h)[0]!.content;
+    replaceWith(h, { from: rangeOf(h, 'see').from, to: rangeOf(h, 'Next.').to }, (sent) => sent);
+    expect(blocks(h)[0]!.content).toEqual(before);
+  });
+
+  it('echoes an emphasised link whose address holds emphasis marks unchanged', async () => {
+    const h = await openBlocks([{ type: 'paragraph', content: [
+      { type: 'text', text: 'see ', styles: {} },
+      { type: 'link', href: 'https://x.com/a*b~~c', content: [{ type: 'text', text: 'wiki', styles: { italic: true } }] },
+      { type: 'text', text: ' after', styles: {} },
+    ] }, { type: 'paragraph', content: 'Next.' }]);
+    const before = blocks(h)[0]!.content;
+    replaceWith(h, { from: rangeOf(h, 'see').from, to: rangeOf(h, 'Next.').to }, (sent) => sent);
+    expect(blocks(h)[0]!.content).toEqual(before);
+  });
+
+  it('echoes any styled words and links in paragraphs, headings and list items unchanged', async () => {
+    const punctuation = [...'!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'];
+    const style = fc.constantFrom({}, { bold: true }, { italic: true }, { strike: true }, { code: true }, { bold: true, italic: true });
+    const piece = fc.record({
+      text: fc.string({ unit: fc.constantFrom('a', 'b', ' ', '*', '_', '~', '[', ']', '(', ')', '\\', '&', '<', '`'), minLength: 1, maxLength: 6 }),
+      style,
+      href: fc.option(fc.string({ unit: fc.constantFrom('a', ...punctuation), minLength: 1, maxLength: 5 }), { nil: null }),
+    });
+    const block = fc.record({ type: fc.constantFrom('paragraph', 'heading', 'bulletListItem'), pieces: fc.array(piece, { minLength: 1, maxLength: 4 }) });
+    await fc.assert(
+      fc.asyncProperty(block, async ({ type, pieces }) => {
+        fc.pre(pieces.some((x) => /\S/.test(x.text)));
+        // Plain words first: 'single' puts the first words' styles under the whole first block.
+        const content = [{ type: 'text', text: 'Lead ', styles: {} }, ...pieces.map((x) => (x.href === null
+          ? { type: 'text', text: x.text, styles: x.style }
+          : { type: 'link', href: `https://x.com/${x.href}`, content: [{ type: 'text', text: x.text, styles: x.style }] }))];
+        let h: DocumentEditorHandle;
+        try {
+          h = await openBlocks([{ type, content }, { type: 'paragraph', content: 'Next.' }]);
+        } catch {
+          // Code takes no other mark, a link included: not a document the body holds.
+          fc.pre(false);
+          return;
+        }
+        const before = blocks(h)[0]!.content;
+        replaceWith(h, { from: contentOf(h, blocks(h)[0]!.id).from, to: rangeOf(h, 'Next.').to }, (sent) => sent);
+        expect(blocks(h)[0]!.content).toEqual(before);
+        _resetDocumentEditorCacheForTests();
+        document.body.innerHTML = '';
+      }),
+      { numRuns: 150 },
+    );
+  });
+
   it('echoes any document of paragraphs, headings and list items unchanged', async () => {
     const block = fc.record({
       type: fc.constantFrom('paragraph', 'heading', 'bulletListItem', 'numberedListItem'),
@@ -693,6 +750,27 @@ describe('the answer as blocks (§5.3)', () => {
     expect((answer.preview as Seen[]).some((b) => b.type === 'docTable')).toBe(false);
     expect(replaceAiAnswer(h, answer, WRITABLE).outcome).toBe('written');
     expect(flat(h).filter((b) => b.type === 'docTable')).toHaveLength(1);
+  });
+
+  it('leaves a legacy cell\'s words when the answer holds only an outside image, and counts it', async () => {
+    const h = await open('next');
+    legacyTable(h, [['one two', 'y']]);
+    capture(h, rangeOf(h, 'two'));
+    const answer = read(h, '![i](https://elsewhere.example/x.png)');
+    expect(answer).toEqual({ preview: [], leftOut: 1 });
+    expect(replaceAiAnswer(h, answer, WRITABLE)).toEqual({ outcome: 'mediaOnly', leftOut: 1 });
+    expect(legacyCells(h)).toEqual([['one two', 'y']]);
+  });
+
+  it('writes nothing into a legacy cell for an answer of only a table, by replace or insert alike', async () => {
+    const h = await open('next');
+    legacyTable(h, [['one two', 'y']]);
+    capture(h, rangeOf(h, 'two'));
+    const answer = read(h, '| a | b |\n| --- | --- |\n| c | d |');
+    const count = flat(h).length;
+    expect(replaceAiAnswer(h, answer, WRITABLE)).toEqual({ outcome: 'mediaOnly', leftOut: 0 });
+    expect(insertAiAnswer(h, insertBlock(h)!, answer, WRITABLE)).toEqual({ outcome: 'mediaOnly', leftOut: 0 });
+    expect([legacyCells(h), flat(h).length]).toEqual([[['one two', 'y']], count]);
   });
 
   it('writes a list answered for a legacy cell as its words on lines', async () => {
@@ -1181,6 +1259,24 @@ describe('replace, words inside one line (§5.3, Plate openTextBlock)', () => {
     expect([parentWords(h, 'c'), parentWords(h, 'kid'), parentWords(h, 'b')]).toEqual(['P', 'c', 'P']);
   });
 
+  it('keeps the words left after the range at their own line\'s level when the answer ends with a code block', async () => {
+    const h = await open('- Parent.\n  - Child one.\n- Tail two.\n- End.');
+    capture(h, { from: rangeOf(h, 'Child').from, to: rangeOf(h, 'two.').to });
+    type(h, rangeOf(h, 'two.').to, ' zz');
+    replaceAiAnswer(h, read(h, 'X\n\n```js\nq\n```'), WRITABLE);
+    expect(flat(h).map(textOf)).toEqual(['Parent.', 'X', 'q', ' zz', 'End.']);
+    expect([parentWords(h, 'X'), parentWords(h, ' zz')]).toEqual(['Parent.', null]);
+  });
+
+  it('keeps the words left after the range under their own parent when the range starts higher', async () => {
+    const h = await open('- Parent one.\n  - Child two.\n    - grandkid\n- Tail.');
+    capture(h, { from: rangeOf(h, 'Parent').from, to: rangeOf(h, 'two.').to });
+    type(h, rangeOf(h, 'two.').to, ' zz');
+    replaceAiAnswer(h, read(h, 'X\n\n```js\nq\n```'), WRITABLE);
+    expect(flat(h).map(textOf)).toEqual(['X', 'q', ' zz', 'grandkid', 'Tail.']);
+    expect([parentWords(h, ' zz'), parentWords(h, 'grandkid')]).toEqual(['q', ' zz']);
+  });
+
   it('lands an answer opening with a code block before a line whose words start the range, no empty block', async () => {
     const h = await open('x Intro\n\nAfter');
     replaceWith(h, rangeOf(h, 'x'), () => '```js\nc\n```\n\nT');
@@ -1292,6 +1388,13 @@ describe('edits while the dialog is open (A6, A7)', () => {
     expect(painted(h).join('')).toContain('keep4');
     replaceAiAnswer(h, read(h, 'New.'), WRITABLE);
     expect(blocks(h).map(textOf)).toEqual(['New.', 'After.']);
+  });
+
+  it('overwrites an empty line a Shift+Down selection runs over', async () => {
+    const h = await openBlocks([{ type: 'paragraph', content: 'Before.' }, { type: 'paragraph', content: 'One.' }, { type: 'paragraph', content: 'Two.' }, { type: 'paragraph' }, { type: 'paragraph', content: 'After.' }]);
+    capture(h, { from: rangeOf(h, 'One.').from, to: rangeOf(h, 'After.').from });
+    replaceAiAnswer(h, read(h, 'Z.'), WRITABLE);
+    expect(blocks(h).map(textOf)).toEqual(['Before.', 'Z.', 'After.']);
   });
 
   it('has nothing to cover once every word of the range is deleted', async () => {

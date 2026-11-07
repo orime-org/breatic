@@ -11,7 +11,7 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { TextSelection } from '@tiptap/pm/state';
+import { AllSelection, TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
@@ -145,6 +145,42 @@ describe('the range captured (§4.6, Plate captureTextRange)', () => {
     select(editor, at(editor, 'One') + 3, at(editor, 'Three') + 2);
     const captured = aiCapture(editor.prosemirrorState)!;
     expect([captured.firstId, captured.lastId]).toEqual([blockHolding(editor, 'Two'), blockHolding(editor, 'Three')]);
+  });
+
+  it('keeps an empty line before the block a selection ends at the start of, stepping back one block', () => {
+    const editor = open([
+      { type: 'paragraph', content: 'Before.' },
+      { type: 'paragraph', content: 'One.' },
+      { type: 'paragraph', content: 'Two.' },
+      { type: 'paragraph' },
+      { type: 'paragraph', content: 'After.' },
+    ]);
+    select(editor, at(editor, 'One.'), at(editor, 'After.'));
+    const captured = aiCapture(editor.prosemirrorState)!;
+    const ids = topIds(editor);
+    expect([captured.firstId, captured.lastId]).toEqual([ids[1], ids[3]]);
+  });
+
+  it('keeps an empty line after the block a selection starts at the end of, stepping on one block', () => {
+    const editor = open([
+      { type: 'paragraph', content: 'Before.' },
+      { type: 'paragraph' },
+      { type: 'paragraph', content: 'One.' },
+      { type: 'paragraph', content: 'Two.' },
+    ]);
+    select(editor, at(editor, 'Before.') + 'Before.'.length, at(editor, 'Two.') + 'Two.'.length);
+    const captured = aiCapture(editor.prosemirrorState)!;
+    const ids = topIds(editor);
+    expect([captured.firstId, captured.lastId]).toEqual([ids[1], ids[3]]);
+  });
+
+  it('takes every block a select-all holds, empty lines at the edges included', () => {
+    const editor = open([{ type: 'paragraph' }, { type: 'paragraph' }, { type: 'paragraph', content: 'One.' }, { type: 'paragraph' }]);
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+    const captured = aiCapture(editor.prosemirrorState)!;
+    const ids = topIds(editor);
+    expect([captured.firstId, captured.lastId]).toEqual([ids[0], ids[3]]);
   });
 
   it('takes the whole table a selection runs into from outside', () => {
