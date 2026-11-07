@@ -73,7 +73,6 @@ const BATCH_ONE = {
     "audio.pitch",
     "audio.enhance",
     "audio.separate",
-    "audio.extend",
   ],
 } as const;
 

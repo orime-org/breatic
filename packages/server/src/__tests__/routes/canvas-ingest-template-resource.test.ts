@@ -51,6 +51,17 @@ vi.mock("@server/modules", async (importOriginal) => {
   return serverModulesMock(importOriginal);
 });
 
+// The lane's gates live in modules/asset/url-ingest.ts, which imports them by
+// file; they answer from the same doubles the barrel hands the route.
+vi.mock("../../modules/project/project.service.js", async (importOriginal) => {
+  const { mocks } = await import("../helpers/mock-core.js");
+  return { ...(await importOriginal<object>()), ...mocks.projectService };
+});
+vi.mock("../../modules/asset/storageQuota.service.js", async (importOriginal) => {
+  const { mocks } = await import("../helpers/mock-core.js");
+  return { ...(await importOriginal<object>()), assertStorageAllowance: mocks.assertStorageAllowance };
+});
+
 // The grant and the row are pinned by ingest-url.integration.test.ts; here
 // only what the route hands them matters.
 vi.mock("../../modules/asset/upload-opening.js", () => ({

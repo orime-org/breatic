@@ -129,6 +129,7 @@ export function DocumentSpace({
     name,
     uploadTarget,
     caretProvider: provider,
+    ...(provider !== null && { provider }),
     readWho,
     // Only the ROLE decides this. A refused or read-only connection is reported
     // to the user, not enforced against them — see above.
@@ -235,7 +236,8 @@ export function DocumentSpace({
             handle={shown}
             readOnly={readOnly}
             myRole={myRole}
-            uploader={shown.uploader}
+            files={shown.files}
+            pending={shown.pending}
             landed={landed}
           />
         </DocumentProjectProvider>

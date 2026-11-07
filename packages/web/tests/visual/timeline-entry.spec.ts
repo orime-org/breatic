@@ -19,7 +19,7 @@ type ThemeMode = 'light' | 'dark' | 'system';
 interface TimelineCopy {
   empty: string;
   addMedia: string;
-  visualTrack: string;
+  mainTrack: string;
   play: string;
   startFrame: string;
   cancel: string;
@@ -163,11 +163,11 @@ for (const locale of LOCALES) {
         await expect(timeline).toHaveAttribute('data-project-id', projectId);
         await expect(timeline).toHaveAttribute('data-space-id', spaceId);
         await expect(timeline.getByTestId('timeline-space-empty')).toHaveText(copy.empty);
-        await expect(timeline.getByText(copy.visualTrack, { exact: true })).toBeVisible();
+        await expect(timeline.getByText(copy.mainTrack, { exact: true })).toBeVisible();
         await expect(timeline.getByTestId('timeline-track-visual-1')).toBeVisible();
         await expect(timeline.getByTestId('timeline-play')).toHaveText(copy.play);
         await expect(timeline.getByTestId('timeline-play')).toBeDisabled();
-        await expect(timeline.locator('[data-testid^="timeline-clip-"]')).toHaveCount(0);
+        await expect(timeline.locator('[data-testid^="timeline-clip-"][data-track-id]')).toHaveCount(0);
         const addMedia = timeline.getByTestId('timeline-add-media');
         await expect(addMedia).toHaveText(copy.addMedia);
         await expect(addMedia).toBeEnabled();

@@ -130,7 +130,6 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
   "minimax/music-cover": [{ input: {}, usd: 0.15 }],
   "minimax/speech-2.8-hd": [{ input: { text: text(1000) }, usd: 0.1 }],
   "minimax/voice-clone": [{ input: {}, usd: 1.6 }],
-  "mirelo-ai/sfx-1.6/extend-audio": [{ input: { append_duration: 10, num_samples: 1 }, usd: 0.1 }],
   "mirelo-ai/sfx-1.6/text-to-audio": [{ input: { duration: 30, num_samples: 1 }, usd: 0.3 }],
   "mureka-ai/mureka-v9.5/generate-bgm": [{ input: {}, usd: 0.225 }],
   "mureka-ai/mureka-v9.5/generate-song": [{ input: {}, usd: 0.225 }],
@@ -222,7 +221,7 @@ function wavespeedEndpoints(): Map<string, FullProviderEndpoint> {
 describe("WaveSpeed pricing contracts in the catalog", () => {
   const endpoints = wavespeedEndpoints();
 
-  it("covers exactly the 65 endpoints of the finalized catalog", () => {
+  it("covers exactly the 64 endpoints of the finalized catalog", () => {
     expect([...endpoints.keys()].sort()).toEqual(Object.keys(CASES).sort());
   });
 

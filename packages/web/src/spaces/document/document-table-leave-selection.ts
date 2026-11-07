@@ -15,8 +15,8 @@
  * the body-edge selection's end in text), which makes its range every word of
  * the table; what has to act on the whole table, the blocks without words at
  * its edges included, reads `heldRange`: the decoration
- * drawing every cell selected, copying (`document-table-copy.ts`) and a
- * drag's content (`transformCopied`).
+ * drawing every cell selected, and copying and a drag's content
+ * (`document-table-copy.ts`).
  *
  * Deleting is the selection's own replace, `replaceHeld`, shared by
  * `TableSpanSelection` and the body-edge selection: each table it takes
@@ -98,10 +98,10 @@ export function heldTables(selection: Selection): HeldTables | null {
  * What a selection that takes tables whole acts on: its range widened over
  * those tables.
  * @param selection - The selection.
+ * @param tables - The tables it takes whole; passed only for a stored (legacy) table's ends (`document-table-copy.ts`), temporary with #1362's conversion of stored tables.
  * @returns The range, or null when it takes no table whole.
  */
-export function heldRange(selection: Selection): { from: number; to: number } | null {
-  const tables = heldTables(selection);
+export function heldRange(selection: Selection, tables = heldTables(selection)): { from: number; to: number } | null {
   if (tables === null) return null;
   return {
     from: tables.from?.pos ?? Math.min(selection.anchor, selection.head),
@@ -133,16 +133,22 @@ function emptyLineFor(table: PMNode): PMNode {
  * @param selection - The selection.
  * @param tr - The transaction.
  * @param rebuild - Builds a selection of the same kind on the changed document.
+ * @param tables - The tables it takes whole; passed only for a stored (legacy) table's ends (`document-table-copy.ts`), temporary with #1362's conversion of stored tables.
  * @returns That selection on the changed document, or null when the selection takes no table whole.
  */
-export function swapHeld(selection: Selection, tr: Transaction, rebuild: Rebuild): Selection | null {
-  const tables = heldTables(selection);
+export function swapHeld(selection: Selection, tr: Transaction, rebuild: Rebuild, tables = heldTables(selection)): Selection | null {
   if (tables === null) return null;
   const doc = tr.doc;
   // The later table first, so the earlier one's position still holds.
   const held = [tables.to, tables.from?.pos === tables.to?.pos ? null : tables.from].filter((table): table is TableAt => table !== null);
   const steps = tr.steps.length;
-  for (const table of held) tr.replaceWith(table.pos, endOf(table), emptyLineFor(table.node));
+  for (const table of held) {
+    const line = emptyLineFor(table.node);
+    // A table standing in a block (a stored one) turns into that block's line.
+    // Temporary, with #1362's conversion of stored tables: it goes once no
+    // stored document holds a `table` node.
+    tr.replaceWith(table.pos, endOf(table), doc.resolve(table.pos).parent.type === line.type ? line.firstChild! : line);
+  }
   const mapping = tr.mapping.slice(steps);
   /**
    * Where an end of the selection lands on the changed document.
@@ -153,8 +159,8 @@ export function swapHeld(selection: Selection, tr: Transaction, rebuild: Rebuild
     const edge = bodyEdgeAt(doc, pos);
     if (edge !== null) return bodyEdgePos(tr.doc, edge);
     const table = held.find((t) => pos > t.pos && pos < endOf(t));
-    // Inside the line that took the table's place: its block, then its words.
-    return table === undefined ? mapping.map(pos) : mapping.map(table.pos, -1) + 2;
+    // In the words of the line that took the table's place.
+    return table === undefined ? mapping.map(pos) : Selection.findFrom(tr.doc.resolve(mapping.map(table.pos, -1)), 1, true)!.from;
   };
   return rebuild(tr.doc, place(selection.anchor), place(selection.head));
 }
@@ -170,10 +176,11 @@ export function swapHeld(selection: Selection, tr: Transaction, rebuild: Rebuild
  * @param tr - The transaction.
  * @param content - What goes in its place: a slice (`replace`), a node (`replaceWith`), or nothing.
  * @param rebuild - Builds a selection of the same kind on the changed document.
+ * @param tables - The tables it takes whole; passed only for a stored (legacy) table's ends (`document-table-copy.ts`), temporary with #1362's conversion of stored tables.
  * @returns Whether the selection took a table whole; false leaves it to the selection's usual replace.
  */
-export function replaceHeld(selection: Selection, tr: Transaction, content: Slice | PMNode | undefined, rebuild: Rebuild): boolean {
-  const rest = swapHeld(selection, tr, rebuild);
+export function replaceHeld(selection: Selection, tr: Transaction, content: Slice | PMNode | undefined, rebuild: Rebuild, tables = heldTables(selection)): boolean {
+  const rest = swapHeld(selection, tr, rebuild, tables);
   if (rest === null) return false;
   if (content === undefined || content instanceof Slice) rest.replace(tr, content);
   else rest.replaceWith(tr, content);
@@ -192,7 +199,7 @@ interface SwapsTables {
  * Turns the tables the editor's selection takes whole into empty lines and
  * leaves the selection over what is left, for an input the body then handles
  * as its own: a pasted table, text the browser inserts, a paste over ends in
- * code blocks (`document-table-paste.ts`).
+ * code blocks (`putContent` in `document-put.ts`).
  * @param view - The editor view.
  */
 export function swapHeldTables(view: EditorView): void {
@@ -362,13 +369,6 @@ export const documentTableLeaveSelectionExtension = createExtension(() => ({
           if (tables.from !== null && tr.storedMarks === null) tr.setStoredMarks([]);
           view.dispatch(tr.insertText(text).scrollIntoView());
           return true;
-        },
-        // A drag of such a selection carries the whole table, which the drop
-        // takes away (`tr.deleteSelection()`, the selection's own replace).
-        transformCopied: (slice, view) => {
-          const range = heldRange(view.state.selection);
-          if (range === null || !slice.eq(view.state.selection.content())) return slice;
-          return view.state.doc.slice(range.from, range.to);
         },
         handleDOMEvents: {
           compositionstart: (view) => {

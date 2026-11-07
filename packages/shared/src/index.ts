@@ -438,8 +438,8 @@ export {
   TimelineTrackSchema,
   TimelineVideoSourceSchema,
   TimelineVideoClipSchema,
-  TimelineEditCommandSchema,
   TimelineDocumentV1Schema,
+  TIMELINE_MAIN_TRACK_ID,
 } from "@shared/timeline/schema.js";
 export type {
   TimelineRate,
@@ -447,14 +447,10 @@ export type {
   TimelineTrack,
   TimelineVideoSource,
   TimelineVideoClip,
-  TimelineEditCommand,
   TimelineDocumentV1,
 } from "@shared/timeline/schema.js";
-export { durationToFrames, timelineSourceSeconds, validateTimelineRange } from "@shared/timeline/time.js";
-export type { TimelineRangeValidation } from "@shared/timeline/time.js";
-
-export { resolveTimelineArrangement } from "@shared/timeline/arrangement.js";
-export type { TimelineArrangement, TimelineArrangementClip, TimelineArrangementReason, TimelinePlacement } from "@shared/timeline/arrangement.js";
+export { assertTimelineRate, durationToFrames, timelineDurationFraction } from "@shared/timeline/time.js";
+export type { TimelineFraction } from "@shared/timeline/time.js";
 export { MAX_TIMELINE_ASSET_PAGE_SIZE } from "@shared/timeline/api.js";
 export type { TimelineClientLimits } from "@shared/timeline/api.js";
 

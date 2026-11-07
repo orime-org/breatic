@@ -49,6 +49,8 @@ export interface MediaBlockProps {
   readonly url: string;
   readonly name: string;
   readonly caption: string;
+  /** The upload the block waits for; empty once its address is written (inner#1351). */
+  readonly uploadId: string;
   /** Image and video only. */
   readonly previewWidth?: number;
   /** Image and video only: the pixel size the server read off the stored file (its upright copy for a picture with an EXIF orientation). */
@@ -119,6 +121,20 @@ export const MEDIA_CONTROLS = `${MEDIA_CHROME}, ${MEDIA_PLAYBACK}`;
 
 /** What the block shows: the picture or the player. */
 export const MEDIA_FRAME = '[data-media-frame]';
+
+/**
+ * A media block's caption, under the media.
+ * @param props - The caption.
+ * @param props.caption - Its words.
+ * @returns The line.
+ */
+export function MediaCaption({ caption }: { readonly caption: string }): React.JSX.Element {
+  return (
+    <div data-testid='doc-media-caption' className='mt-1.5 text-center text-sm text-muted-foreground'>
+      {caption}
+    </div>
+  );
+}
 
 /** The caption field, open while the caption is edited. */
 export const MEDIA_CAPTION_INPUT = '[data-testid="doc-media-caption-input"]';
@@ -866,12 +882,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
             }}
           />
         ) : props.caption !== '' ? (
-          <div
-            data-testid='doc-media-caption'
-            className='mt-1.5 text-center text-sm text-muted-foreground'
-          >
-            {props.caption}
-          </div>
+          <MediaCaption caption={props.caption} />
         ) : null}
         {editingCaption && readOnly && <p className='text-xs text-muted-foreground'>{t('spaces.document.media.captionReadOnly')}</p>}
       </div>

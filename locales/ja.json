@@ -850,7 +850,6 @@
         "character_orientation": "向きの基準",
         "keep_original_sound": "元の音声を保持",
         "motion_prompt": "動きの説明",
-        "append_duration": "延長する長さ",
         "ambience": "環境音",
         "double_output": "2 パターン生成",
         "light_azimuth": "光の方向",
@@ -1182,10 +1181,6 @@
       "audio": {
         "separate": {
           "label": "ボーカル分離"
-        },
-        "extend": {
-          "label": "延長",
-          "prompt": "続ける音を説明"
         },
         "denoise": {
           "label": "ノイズ除去"
@@ -2114,13 +2109,15 @@
         "mergeCells": "セルを結合",
         "textHighlight": "背景（文字のハイライト）"
       },
+      "paste": {
+        "unsupportedInCell": "この形式は貼り付けできません"
+      },
       "media": {
         "image": "画像",
         "audio": "音声",
         "video": "動画",
         "uploading": "アップロード中",
         "uploadingPercent": "アップロード中 {percent}%",
-        "readOnly": "現在は読み取り専用です。",
         "retry": "再試行",
         "remove": "削除",
         "caption": "キャプション",
@@ -2129,7 +2126,22 @@
         "delete": "削除",
         "leftOut": "{count} 件の画像・動画・音声は貼り付けられませんでした。ファイルを直接ドロップまたは貼り付けてください。",
         "captionReadOnly": "読み取り専用です。この下書きはコピーできます。",
-        "captionRetained": "メディアが削除されました。Spaceを閉じる前に下書きをコピーしてください。"
+        "captionRetained": "メディアが削除されました。Spaceを閉じる前に下書きをコピーしてください。",
+        "notFinished": "アップロードが完了していません",
+        "pendingExport": "{name}（アップロード未完了）",
+        "uploadFailed": "アップロードに失敗しました",
+        "failure": {
+          "storageFull": "Studio のストレージがいっぱいです",
+          "rateLimited": "アップロードの回数が多すぎます。しばらくしてからお試しください",
+          "hashUnavailable": "ファイルを検証できません。ページを再読み込みしてください",
+          "unsupportedType": "対応していない形式です",
+          "tooLarge": "アップロードサイズの上限を超えています",
+          "empty": "ファイルが空です",
+          "unreachable": "このアドレスを開けません"
+        },
+        "readOnlyWaiting": "このタブは現在読み取り専用です。編集できるようになると追加されます",
+        "notWrittenYet": "アップロード済み。まだ追加されていません",
+        "notPasted": "{count} 件を貼り付けられませんでした。"
       }
     },
     "readOnlyReconnect": "再接続",
@@ -3128,22 +3140,29 @@
     "empty": "動画を追加して Timeline の編集を始めましょう。",
     "video": "動画",
     "conflict": "競合",
-    "conflictHelp": "クリップが重複しています。クリップを選択して開始フレームを変更してください。",
+    "conflictHelp": "競合しているクリップは再生されません。クリップを選択して修正してください。",
+    "conflictList": "競合",
+    "noConflicts": "競合はありません",
+    "conflictReason": {
+      "overlap": "他のクリップと重複しています",
+      "missing_track": "トラックが削除されました",
+      "invalid_range": "動画の範囲外です",
+      "incompatible_track": "種類の異なるトラックにあります",
+      "damaged": "このクリップは読み込めなくなりました",
+      "missing_source": "動画が見つかりません"
+    },
     "loadingMedia": "動画を読み込み中…",
     "mediaUnavailable": "この動画を利用できません。",
     "retry": "再試行",
     "play": "再生",
     "pause": "一時停止",
     "seek": "プレビューフレーム",
-    "framePosition": "フレーム {frame} / {total}",
     "tracks": "トラック",
     "addMedia": "素材を追加",
-    "visualTrack": "映像 1",
     "selectClip": "クリップを選択してプロパティを表示します。",
     "clipFrames": "開始 {start} · 長さ {duration} フレーム",
-    "editStart": "開始フレームを変更",
+    "sourceExtent": "動画 {frames} フレーム · {fps, number} fps",
     "startFrame": "開始フレーム",
-    "apply": "適用",
     "cancel": "キャンセル",
     "transport": {
       "paused": "一時停止中",
@@ -3165,17 +3184,54 @@
       "fileEmpty": "ローカルの動画ファイルを選択してください。",
       "preparing": "動画を準備中…",
       "progress": "アップロード中 {progress}%",
-      "confirm": "Timeline に追加"
+      "confirm": "Timeline に追加",
+      "insertAfter": "{name} の後に挿入",
+      "insertFirst": "メイントラックの先頭に挿入"
     },
     "errors": {
+      "missing_source": "クリップの動画が見つかりません。先にクリップを削除してください。",
+      "covers_missing_source": "この位置にあるクリップの動画が見つかりません。先にそのクリップを削除してください。",
       "readonly": "現在の役割では編集できません。",
       "source_unavailable": "この動画を利用できません。再試行するか別の動画を選択してください。",
       "metadata_unavailable": "動画の長さを取得できません。再試行するか別の動画を選択してください。",
-      "invalid_range": "有効な開始フレームを入力してください。",
-      "overlap": "この位置は別のクリップと重複しています。開始フレームを変更してください。",
+      "invalid_range": "動画の範囲内のフレームを入力してください。",
       "target_missing": "追加先が変更されました。位置を確認して再試行してください。",
+      "clip_removed": "このクリップは他のメンバーによって削除されました。",
       "upload": "アップロードに失敗しました。選択したファイルで再試行できます。",
-      "permission_changed": "編集権限が変更されました。動画の追加をもう一度確認してください。"
+      "permission_changed": "編集権限が変更されました。動画の追加をもう一度確認してください。",
+      "track_missing": "対象のトラックは削除されました。別のトラックを選択してください。",
+      "id_taken": "この項目はすでに存在します。もう一度お試しください。",
+      "main_track": "メイントラックは削除できません。",
+      "track_not_empty": "空のトラックのみ削除できます。"
+    },
+    "mainTrack": "メイントラック",
+    "track": "映像 {index}",
+    "edit": {
+      "undo": "元に戻す",
+      "redo": "やり直す",
+      "split": "分割",
+      "duplicate": "複製",
+      "delete": "削除",
+      "magnet": "メイントラックのマグネット",
+      "magnetOn": "マグネット",
+      "magnetOff": "フリー",
+      "snap": "自動スナップ",
+      "linkage": "連動",
+      "zoom": "ズーム",
+      "track": "トラック",
+      "inPoint": "イン点",
+      "duration": "長さ",
+      "newTrack": "新しい映像トラック",
+      "newTrackZone": "ここにドロップして新しいトラックを作成",
+      "trackRemoved": "トラックは削除されました",
+      "deleteTrack": "トラックを削除",
+      "ghostInsert": "挿入",
+      "ghostOverwrite": "下のクリップを上書き",
+      "selectFirst": "先にクリップを選択してください。",
+      "magnetStartHint": "メイントラックのマグネットがオンです。ドラッグで順序を変更します。",
+      "splitOutside": "分割するには再生ヘッドを選択中のクリップ内に移動してください。",
+      "lowestTrack": "このクリップはすでに一番下の映像トラックにあります。",
+      "bumped": "連動クリップ {count, plural, other {# 件}}を上のトラックに移動しました。"
     }
   }
 }

@@ -95,7 +95,7 @@ Full Docker deployment: `cp .env.docker .env`, follow [self-host/LOCAL.md](self-
 |---|---|
 | in the browser | hash in the browser first; a dedup hit skips the upload |
 | in our process (provider-returned audio) | upload first without hashing locally; dedup after the Worker reports |
-| only a URL (AIGC temporary link, user link via `POST /canvas/ingest-url`) | hand the URL to the ingest Worker to fetch; never download and re-upload; a user URL is untrusted and is validated and rate-limited first |
+| only a URL (AIGC temporary link, user link via `POST /canvas/ingest-url` or, for a document's pending media, `POST /assets/ingest-url`) | hand the URL to the ingest Worker to fetch; never download and re-upload; a user URL is untrusted and is validated and rate-limited first |
 | produced in a container we started | the container writes through the ingest Worker and registers like an upload |
 
 Upload and generation paths only insert objects, never delete them (dedup losers are queued for offline reclaim); every URL a consumer stores comes from the registered record (`publicUrl(record.storage_key)`), never from a freshly written key; a failed registration is a failed upload; hash, size and content type come from the Worker's report on the stored bytes, never from client claims. Mechanism, thumbnails, covers and avatars: the storage paragraph of [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) "Canvas collaboration".

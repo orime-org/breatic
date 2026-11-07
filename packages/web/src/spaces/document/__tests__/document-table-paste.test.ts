@@ -276,7 +276,7 @@ describe('a table pasted into a line with words (A16)', () => {
 
   it.each([
     ['in the middle, the line split around it', 2, ['paragraph:le', 'table:t1t2t3t4', 'paragraph:ad']],
-    ['at the end, under the line', 4, ['paragraph:lead', 'table:t1t2t3t4']],
+    ['at the end, under the line', 4, ['paragraph:lead', 'table:t1t2t3t4', 'paragraph:']],
     ['at the start, above the line', 0, ['table:t1t2t3t4', 'paragraph:lead']],
   ] as const)('lands as a table %s', (_name, offset, expected) => {
     const editor = open();

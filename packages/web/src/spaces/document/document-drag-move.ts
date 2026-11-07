@@ -33,22 +33,30 @@ import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { dropPoint } from '@tiptap/pm/transform';
 import type { EditorView } from '@tiptap/pm/view';
 
+import { t } from '@breatic/shared';
+
+import { toast } from '@web/lib/toast';
+
 import {
   rowById,
   type RowInDocument,
 } from '@web/spaces/document/document-row-by-id';
 import { cellDepthOf, DOC_TABLE, isTableCell } from '@web/spaces/document/document-table-nodes';
 
+/** Table nodes: ours, and the stored (legacy) one documents from before hold. */
+const TABLES = new Set([DOC_TABLE, 'table']);
+
 /**
- * Whether a carried block is a table or contains one in its children.
- * @param node - The carried block.
- * @returns True when moving it would move a table too.
+ * Whether a row, or a block nested under it, is a table of either kind: a row
+ * holding one is refused in a cell (inner#1312 A14).
+ * @param row - The row: a block container, or a table, which holds its own id.
+ * @returns True when it does.
  */
-function carriesTable(node: PMNode): boolean {
-  if (node.type.name === DOC_TABLE) return true;
+function carriesTable(row: PMNode): boolean {
+  if (TABLES.has(row.type.name)) return true;
   let found = false;
-  node.descendants((child) => {
-    if (child.type.name === DOC_TABLE) found = true;
+  row.descendants((child) => {
+    if (TABLES.has(child.type.name)) found = true;
     return !found;
   });
   return found;
@@ -60,7 +68,9 @@ function carriesTable(node: PMNode): boolean {
  * `dropPoint` is what ProseMirror uses for the same question
  * (`input.ts:802`): it walks outwards from the position until the slice fits,
  * which is what turns a position inside a paragraph into the gap between two
- * blocks.
+ * blocks. It only walks outwards, so the document's two edges (0 and its
+ * size), outside the one group that holds every row, find no gap; they are
+ * the gap before the first row and after the last.
  * @param doc - The document to land in.
  * @param at - The position the pointer is over.
  * @param node - The row being carried.
@@ -68,7 +78,8 @@ function carriesTable(node: PMNode): boolean {
  */
 export function landingFor(doc: PMNode, at: number, node: PMNode): number {
   const carried = new Slice(Fragment.from(node), 0, 0);
-  return dropPoint(doc, at, carried) ?? at;
+  const inGroup = Math.min(Math.max(at, 1), doc.content.size - 1);
+  return dropPoint(doc, inGroup, carried) ?? inGroup;
 }
 
 /**
@@ -124,7 +135,10 @@ export function moveRowTo(view: EditorView, blockId: string, at: number): void {
 
   const landing = landingFor(view.state.doc, at, row.node);
   if (landing >= row.from && landing <= row.to) return;
-  if (cellDepthOf(view.state.doc.resolve(landing)) > 0 && carriesTable(row.node)) return;
+  if (cellDepthOf(view.state.doc.resolve(landing)) > 0 && carriesTable(row.node)) {
+    toast.warning(t('spaces.document.paste.unsupportedInCell'));
+    return;
+  }
 
   const leaving = rangeToLift(view.state.doc, row);
   const tr = view.state.tr;

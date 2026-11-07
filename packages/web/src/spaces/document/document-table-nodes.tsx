@@ -37,7 +37,7 @@ import {
   tableEditing,
 } from '@tiptap/pm/tables';
 import { ReplaceStep, type Step } from '@tiptap/pm/transform';
-import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
 import { createRoot, type Root } from 'react-dom/client';
 
@@ -276,26 +276,35 @@ function unwrapOpenSides(slice: Slice): Slice {
 }
 
 /**
- * Keeps a pasted table whole. A layout block's node is never isolating
- * (BlockNote `meta.ts`), so a slice opened through a table would join its
- * first or last cell's block with the block around the caret and leave the
- * cell without it. Closing the slice at the table lands the table as a block:
- * in the middle of a line the line splits around it, at its end the table
- * goes under it, and at its start above it, the line kept whole.
+ * A pasted slice with its tables kept whole. A layout block's node is never
+ * isolating (BlockNote `meta.ts`), so a slice opened through a table would
+ * join its first or last cell's block with the block around the caret and
+ * leave the cell without it. Closing the slice at the table lands the table
+ * as a block: in the middle of a line the line splits around it, at its end
+ * the table goes under it, and at its start above it, the line kept whole.
+ * It reads its target from the selection, so it runs once the selection is
+ * on the target (inner#1351 design §5.4.3 "the slice transformed once on the
+ * target").
+ * @param slice - The slice.
+ * @param view - The view, its selection on the target.
+ * @returns The slice.
  */
+export function keepTablesWhole(slice: Slice, view: EditorView): Slice {
+  const start = openAboveTables(slice.content, slice.openStart, -1);
+  const end = openAboveTables(slice.content, slice.openEnd, 1);
+  if (start === slice.openStart && end === slice.openEnd) return slice;
+  const closed = new Slice(slice.content, start, end);
+  const { selection } = view.state;
+  // A cell holds blocks but no table, so a table pasted in a cell is fitted
+  // into the cell; what a paste into a cell does is inner#1312's.
+  return cellDepthOf(selection.$from) > 0 && heldTables(selection) === null ? closed : unwrapOpenSides(closed);
+}
+
+/** Keeps tables whole on ProseMirror's own paste (`keepTablesWhole`). */
 const keepPastedTablesWhole = new Plugin({
   key: new PluginKey('doc-table-paste-whole'),
   props: {
-    // A cell holds blocks but no table, so a table pasted in a cell is fitted
-    // into the cell as before; what a paste into a cell does is inner#1312's.
-    transformPasted: (slice, view) => {
-      const start = openAboveTables(slice.content, slice.openStart, -1);
-      const end = openAboveTables(slice.content, slice.openEnd, 1);
-      if (start === slice.openStart && end === slice.openEnd) return slice;
-      const closed = new Slice(slice.content, start, end);
-      const { selection } = view.state;
-      return cellDepthOf(selection.$from) > 0 && heldTables(selection) === null ? closed : unwrapOpenSides(closed);
-    },
+    transformPasted: (slice, view) => keepTablesWhole(slice, view),
     // At the start of a line with words, ProseMirror splits the line before
     // the table and leaves its empty first half above it.
     handlePaste: (view, _event, slice) => {

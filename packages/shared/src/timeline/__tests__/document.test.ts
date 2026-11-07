@@ -1,11 +1,16 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
+/**
+ * Seeding and reading the Timeline document (inner#1707, inner#1708 F1b). Editing lives in web; these tests write
+ * records directly, as a collaborator's update would.
+ */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
-import fc from "fast-check";
 import * as Y from "yjs";
 
-import { applyTimelineEdit, initializeTimelineDocument, prepareTimelineEdit, readTimelineDocument } from "../document.js";
+import * as spaceContent from "../../space-content.js";
+import { initializeTimelineDocument, readTimelineContent, readTimelineDocument, readTimelineSource } from "../document.js";
 import { TimelineDocumentV1Schema } from "../schema.js";
 
 const settings = { width: 1920, height: 1080, fps: { num: 24, den: 1 } };
@@ -31,15 +36,12 @@ const clip = {
   mute: false,
   transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
 };
-const add = {
-  operation: "add_video" as const,
-  parameters: { source, clip },
-};
 const docs: Y.Doc[] = [];
 
 /**
  * Keep each real Yjs document available for deterministic cleanup.
- * @returns A new document, optionally loaded from an encoded snapshot.
+ * @param update - An encoded snapshot to load, if any.
+ * @returns A new document.
  * @throws {Error} When the supplied Yjs update cannot be decoded.
  */
 function trackedDoc(update?: Uint8Array): Y.Doc {
@@ -50,7 +52,7 @@ function trackedDoc(update?: Uint8Array): Y.Doc {
 }
 
 /**
- * Create the server-owned initial Timeline state for an editing test.
+ * Create the server-owned initial Timeline state.
  * @returns The seeded document.
  * @throws {Error} When the initial state cannot be constructed.
  */
@@ -58,6 +60,20 @@ function seededDoc(): Y.Doc {
   const doc = trackedDoc();
   initializeTimelineDocument(doc, settings);
   return doc;
+}
+
+/**
+ * Write the fixture source and an attached clip record directly, as an accepted addition leaves them.
+ * @param doc - A seeded document.
+ * @throws {Error} When Yjs cannot attach the map.
+ */
+function attachClip(doc: Y.Doc): void {
+  doc.transact(() => {
+    doc.getMap("sources").set(source.id, source);
+    const record = new Y.Map<unknown>();
+    doc.getMap("clips").set(clip.id, record);
+    for (const [key, value] of Object.entries(clip)) record.set(key, value);
+  }, "peer");
 }
 
 afterEach(() => {
@@ -104,7 +120,7 @@ describe("Timeline document ownership and schema", () => {
 
   it("requires a strict integer-frame DTO rather than a third-party or URL-bearing source", () => {
     const doc = seededDoc();
-    applyTimelineEdit(doc, add);
+    attachClip(doc);
     const value = readTimelineDocument(doc);
     expect(TimelineDocumentV1Schema.safeParse({ ...value, schemaVersion: 2 }).success).toBe(false);
     expect(TimelineDocumentV1Schema.safeParse({ ...value, settings: { ...settings, fps: { num: 24, den: 0 } } }).success).toBe(false);
@@ -115,7 +131,7 @@ describe("Timeline document ownership and schema", () => {
 
   it("preserves existing content and non-empty delete sets when initialization is attempted", () => {
     const existing = seededDoc();
-    applyTimelineEdit(existing, add);
+    attachClip(existing);
     const unknown = trackedDoc();
     unknown.getMap("legacy").set("retained", "original content");
     const deleted = trackedDoc();
@@ -171,185 +187,219 @@ describe("Timeline document ownership and schema", () => {
   });
 });
 
-describe("Timeline native edit transactions", () => {
-  it("prepares a valid edit without writing source or layout", () => {
+describe("Timeline content with damaged records (inner#1708 F1b)", () => {
+  const BAD_CLIP = "30000000-0000-4000-8000-0000000000bd";
+  const BAD_TRACK = "track-damaged";
+
+  /**
+   * A document holding one valid clip, a clip record missing most fields and a track record missing its kind.
+   * @returns The document.
+   * @throws {Error} When seeding fails.
+   */
+  function damagedDoc(): Y.Doc {
     const doc = seededDoc();
-    const before = Y.encodeStateAsUpdate(doc);
-    expect(prepareTimelineEdit(doc, add)).toEqual({ clipId: clip.id, clip, source });
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-    expect(readTimelineDocument(doc).clips).toEqual({});
-    expect(readTimelineDocument(doc).sources).toEqual({});
+    attachClip(doc);
+    doc.transact(() => {
+      const partialClip = new Y.Map<unknown>();
+      doc.getMap("clips").set(BAD_CLIP, partialClip);
+      partialClip.set("startFrame", 100);
+      const partialTrack = new Y.Map<unknown>();
+      doc.getMap("tracks").set(BAD_TRACK, partialTrack);
+      partialTrack.set("order", 3);
+    }, "peer");
+    return doc;
+  }
+
+  it("reads every valid record and lists the damaged ones", () => {
+    const doc = damagedDoc();
+    const content = readTimelineContent(doc);
+    expect(content.document.clips).toEqual({ [clip.id]: clip });
+    expect(content.document.tracks).toEqual({ "visual-1": { id: "visual-1", kind: "visual", order: 0 } });
+    expect(content.document.sources).toEqual({ [source.id]: source });
+    // A damaged track record is left out of the document but not listed (inner#1708 Q3).
+    expect(content.damaged).toEqual({ clips: [BAD_CLIP] });
   });
 
-  it("writes the source and attached clip in one transaction", () => {
-    const doc = seededDoc();
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const snapshots: ReturnType<typeof readTimelineDocument>[] = [];
-    doc.on("afterTransaction", () => snapshots.push(readTimelineDocument(doc)));
-    expect(applyTimelineEdit(doc, add)).toBe(true);
-    expect(snapshots).toHaveLength(1);
-    expect(snapshots[0]).toMatchObject({
-      clips: { [clip.id]: clip },
-      sources: { [source.id]: source },
-    });
-    expect(doc.getMap("clips").get(clip.id)).toBeInstanceOf(Y.Map);
-    expect(warn.mock.calls.filter((args) => args.some((arg) => String(arg).includes("Invalid access")))).toEqual([]);
+  it("reads the same valid document through readTimelineDocument without throwing", () => {
+    const doc = damagedDoc();
+    expect(() => readTimelineDocument(doc)).not.toThrow();
+    expect(readTimelineDocument(doc)).toEqual(readTimelineContent(doc).document);
   });
 
-  it("reopens the exact document parameters, source and placement", () => {
+  it("reports nothing damaged for intact content", () => {
     const doc = seededDoc();
-    applyTimelineEdit(doc, add);
-    const reopened = trackedDoc(Y.encodeStateAsUpdate(doc));
-    expect(readTimelineDocument(reopened)).toEqual(readTimelineDocument(doc));
-    expect(readTimelineDocument(reopened).settings).toEqual(settings);
-    expect(readTimelineDocument(reopened).clips[clip.id]).toEqual(clip);
+    attachClip(doc);
+    expect(readTimelineContent(doc)).toEqual({ document: readTimelineDocument(doc), damaged: { clips: [] } });
   });
 
-  it("changes only the current clip start while preserving its source", () => {
-    const doc = seededDoc();
-    expect(applyTimelineEdit(doc, add)).toBe(true);
-    const command = {
-      operation: "set_start" as const,
-      parameters: { clipId: clip.id, startFrame: 144 },
-    };
-    expect(applyTimelineEdit(doc, command)).toBe(true);
-    expect(readTimelineDocument(doc).clips[clip.id]).toEqual({ ...clip, startFrame: 144 });
-    expect(readTimelineDocument(doc).sources).toEqual({ [source.id]: source });
+  it("still refuses missing and unsupported Timeline roots", () => {
+    expect(typeof readTimelineContent).toBe("function");
+    expect(() => readTimelineContent(trackedDoc())).toThrow(Error);
+    const unsupported = seededDoc();
+    unsupported.getMap("timeline").set("schemaVersion", 2);
+    expect(() => readTimelineContent(unsupported)).toThrow(Error);
+  });
+});
+
+describe("Timeline sources read one by one (inner#1708 F1)", () => {
+  const OTHER_ID = "10000000-0000-4000-8000-0000000000bb";
+  const MAP_ID = "10000000-0000-4000-8000-0000000000cc";
+
+  /**
+   * Store a value under a key of the sources map.
+   * @param doc - The document.
+   * @param key - The map key.
+   * @param value - The stored value.
+   * @throws {Error} When Yjs refuses the value.
+   */
+  function store(doc: Y.Doc, key: string, value: unknown): void {
+    doc.transact(() => doc.getMap("sources").set(key, value), "peer");
+  }
+
+  /**
+   * Store a source as a Y.Map holding its fields.
+   * @param doc - The document.
+   * @param value - The source.
+   * @param value.id - Its key.
+   * @returns The attached map.
+   * @throws {Error} When Yjs cannot attach the map.
+   */
+  function storeAsMap(doc: Y.Doc, value: { id: string }): Y.Map<unknown> {
+    const record = new Y.Map<unknown>();
+    doc.transact(() => {
+      doc.getMap("sources").set(value.id, record);
+      for (const [key, field] of Object.entries(value)) record.set(key, field);
+    }, "peer");
+    return record;
+  }
+
+  it("reads a valid plain source stored under its own id", () => {
+    expect(readTimelineSource(source, source.id)).toEqual(source);
   });
 
-  it("keeps stored source and clip snapshots unchanged when callers mutate their command inputs", () => {
+  it("reads a valid source stored as a Y.Map", () => {
     const doc = seededDoc();
-    const command = structuredClone(add);
-    expect(applyTimelineEdit(doc, command)).toBe(true);
-    const before = Y.encodeStateAsUpdate(doc);
-    for (const mutate of [
-      () => Reflect.set(command.parameters.source, "durationSeconds", "9"),
-      () => Reflect.set(command.parameters.clip, "startFrame", 144),
-      () => Reflect.set(command.parameters.clip.transform, "x", 17),
-    ]) {
-      try {
-        mutate();
-      } catch (error) {
-        expect(error).toBeInstanceOf(TypeError);
-      }
-    }
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-    expect(readTimelineDocument(doc).sources[source.id]).toEqual(source);
-    expect(readTimelineDocument(doc).clips[clip.id]).toEqual(clip);
-  });
-
-  it("refuses an overlapping addition without changing document bytes or its occupied clip", () => {
-    const doc = seededDoc();
-    expect(applyTimelineEdit(doc, add)).toBe(true);
-    const nextSource = { ...source, id: "10000000-0000-4000-8000-000000000002" };
-    const nextClip = { ...clip, id: "30000000-0000-4000-8000-000000000002", sourceId: nextSource.id, startFrame: 24 };
-    const command = {
-      operation: "add_video" as const,
-      parameters: { source: nextSource, clip: nextClip },
-    };
-    const before = Y.encodeStateAsUpdate(doc);
-    expect(prepareTimelineEdit(doc, command)).toEqual({ clipId: nextClip.id, reason: "overlap" });
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-    expect(applyTimelineEdit(doc, command)).toBe(false);
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-    expect(readTimelineDocument(doc).clips).toEqual({ [clip.id]: clip });
-    expect(readTimelineDocument(doc).sources).toEqual({ [source.id]: source });
-  });
-
-  it("refuses a missing target without writing and can edit it once the clip exists", () => {
-    const doc = seededDoc();
-    const missing = {
-      operation: "set_start" as const,
-      parameters: { clipId: clip.id, startFrame: 144 },
-    };
-    const before = Y.encodeStateAsUpdate(doc);
-    expect(prepareTimelineEdit(doc, missing)).toEqual({ clipId: clip.id, reason: "target_missing" });
-    expect(applyTimelineEdit(doc, missing)).toBe(false);
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-    expect(readTimelineDocument(doc).clips).toEqual({});
-    expect(readTimelineDocument(doc).sources).toEqual({});
-    expect(applyTimelineEdit(doc, add)).toBe(true);
-    expect(applyTimelineEdit(doc, missing)).toBe(true);
-    expect(readTimelineDocument(doc).clips[clip.id]).toEqual({ ...clip, startFrame: 144 });
-  });
-
-  it("refuses an addition whose clip identity already exists without replacing its layout or source", () => {
-    const doc = seededDoc();
-    expect(applyTimelineEdit(doc, add)).toBe(true);
-    const nextSource = { ...source, id: "10000000-0000-4000-8000-000000000002" };
-    const reused = { operation: "add_video" as const, parameters: {
-      source: nextSource, clip: { ...clip, sourceId: nextSource.id, startFrame: 144 },
-    } };
-    const before = Y.encodeStateAsUpdate(doc);
-    expect(prepareTimelineEdit(doc, reused)).toEqual({ clipId: clip.id, reason: "target_missing" });
-    expect(applyTimelineEdit(doc, reused)).toBe(false);
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-    expect(readTimelineDocument(doc).clips).toEqual({ [clip.id]: clip });
-    expect(readTimelineDocument(doc).sources).toEqual({ [source.id]: source });
+    expect(readTimelineSource(storeAsMap(doc, { ...source, id: MAP_ID }), MAP_ID)).toEqual({ ...source, id: MAP_ID });
   });
 
   it.each([
-    { sourceInFrame: 1 },
-    { durationFrames: 49 },
-    { startFrame: Number.MAX_SAFE_INTEGER },
-  ])("refuses a semantically invalid range without writing: %s", (changedFields) => {
+    ["a number", 42],
+    ["a record missing fields", { id: source.id, kind: "video" }],
+    ["null", null],
+    ["a string", "https://cdn.example/video.mp4"],
+  ])("reads %s as no source", (_name, value) => {
+    expect(readTimelineSource(value, source.id)).toBe(undefined);
+  });
+
+  it("reads a valid source stored under another key as no source", () => {
+    expect(readTimelineSource({ ...source, id: OTHER_ID }, source.id)).toBe(undefined);
+  });
+
+  it("is exported from the space-content entry", () => {
+    expect(typeof spaceContent.readTimelineSource).toBe("function");
+    expect(spaceContent.readTimelineSource).toBe(readTimelineSource);
+  });
+
+  it("leaves out unreadable sources and keeps the readable ones, without throwing", () => {
     const doc = seededDoc();
-    const command = { operation: "add_video" as const, parameters: { source, clip: { ...clip, ...changedFields } } };
-    const before = Y.encodeStateAsUpdate(doc);
-    expect(prepareTimelineEdit(doc, command)).toEqual({ clipId: clip.id, reason: "invalid_range" });
-    expect(applyTimelineEdit(doc, command)).toBe(false);
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-    expect(readTimelineDocument(doc).clips).toEqual({});
-    expect(readTimelineDocument(doc).sources).toEqual({});
+    attachClip(doc);
+    store(doc, "10000000-0000-4000-8000-0000000000a1", 42);
+    store(doc, "10000000-0000-4000-8000-0000000000a2", { id: "10000000-0000-4000-8000-0000000000a2", kind: "video" });
+    store(doc, "10000000-0000-4000-8000-0000000000a3", { ...source, id: OTHER_ID });
+    storeAsMap(doc, { ...source, id: MAP_ID });
+    expect(() => readTimelineContent(doc)).not.toThrow();
+    expect(readTimelineContent(doc).document.sources).toEqual({ [source.id]: source, [MAP_ID]: { ...source, id: MAP_ID } });
+    expect(readTimelineDocument(doc).clips[clip.id]).toEqual(clip);
+  });
+});
+
+describe("Timeline records stored under a key other than their id (inner#1708 Q1)", () => {
+  const OTHER_KEY = "30000000-0000-4000-8000-0000000000ee";
+
+  /**
+   * Attach a record map under a key, with the given fields.
+   * @param doc - The document.
+   * @param map - The collection.
+   * @param key - The map key.
+   * @param fields - The record.
+   * @throws {Error} When Yjs cannot attach the map.
+   */
+  function attachUnder(doc: Y.Doc, map: "clips" | "tracks", key: string, fields: object): void {
+    doc.transact(() => {
+      const record = new Y.Map<unknown>();
+      doc.getMap(map).set(key, record);
+      for (const [name, value] of Object.entries(fields)) record.set(name, value);
+    }, "peer");
+  }
+
+  it("leaves a clip stored under another key out of the clips and lists it as damaged", () => {
+    const doc = seededDoc();
+    attachClip(doc);
+    attachUnder(doc, "clips", OTHER_KEY, { ...clip, id: "30000000-0000-4000-8000-0000000000ef", startFrame: 100 });
+    const content = readTimelineContent(doc);
+    expect(content.document.clips).toEqual({ [clip.id]: clip });
+    expect(content.damaged).toEqual({ clips: [OTHER_KEY] });
   });
 
-  it("keeps independent fields of a nested clip when clients merge", () => {
-    const base = seededDoc();
-    applyTimelineEdit(base, add);
-    const bytes = Y.encodeStateAsUpdate(base);
-    const first = trackedDoc(bytes);
-    const second = trackedDoc(bytes);
-    applyTimelineEdit(first, {
-      operation: "set_start",
-      parameters: { clipId: clip.id, startFrame: 96 },
-    });
-    const secondClip = second.getMap<Y.Map<unknown>>("clips").get(clip.id);
-    if (secondClip === undefined) throw new Error("The fixture clip is missing");
-    secondClip.set("gain", 0.5);
-    Y.applyUpdate(first, Y.encodeStateAsUpdate(second));
-    expect(readTimelineDocument(first).clips[clip.id]).toEqual({ ...clip, startFrame: 96, gain: 0.5 });
+  it("leaves a track stored under another key out of the tracks without listing it", () => {
+    const doc = seededDoc();
+    attachUnder(doc, "tracks", "track-key", { id: "track-other", kind: "visual", order: 1 });
+    const content = readTimelineContent(doc);
+    expect(content.document.tracks).toEqual({ "visual-1": { id: "visual-1", kind: "visual", order: 0 } });
+    expect(content.damaged).toEqual({ clips: [] });
+  });
+});
+
+describe("timelineRecordJson reads one stored Timeline value as JSON (inner#1708 Q1)", () => {
+  /**
+   * The export under test, read from a module namespace so a missing export fails as an assertion.
+   * @param module - The module namespace.
+   * @returns The function.
+   * @throws {Error} When it is not exported.
+   */
+  function exported(module: object): (value: unknown) => unknown {
+    const value: unknown = (module as Record<string, unknown>).timelineRecordJson;
+    if (typeof value !== "function") throw new Error("timelineRecordJson is not exported");
+    return value as (value: unknown) => unknown;
+  }
+
+  it("is exported from the document module and @breatic/shared/space-content as the same function", async () => {
+    const documentModule = await import("../document.js");
+    expect(exported(spaceContent)).toBe(exported(documentModule));
   });
 
-  it("refuses repeated additions of the same clip identity without changing accepted bytes", () => {
-    fc.assert(fc.property(fc.integer({ min: 1, max: 20 }), fc.integer({ min: 0, max: 10000 }), (count, startFrame) => {
-      const doc = seededDoc();
-      const command = { ...add, parameters: { source, clip: { ...clip, startFrame } } };
-      expect(applyTimelineEdit(doc, command)).toBe(true);
-      const bytes = Y.encodeStateAsUpdate(doc);
-      for (let attempt = 0; attempt < count; attempt += 1) expect(applyTimelineEdit(doc, command)).toBe(false);
-      expect(Object.keys(readTimelineDocument(doc).clips)).toEqual([clip.id]);
-      expect(readTimelineDocument(doc).sources).toEqual({ [source.id]: source });
-      expect(Y.encodeStateAsUpdate(doc)).toEqual(bytes);
-    }));
+  it("returns toJSON() for a Y.Map, a Y.Text and a Y.Array, and anything else unchanged", async () => {
+    const read = exported(await import("../document.js"));
+    const doc = trackedDoc();
+    const map = doc.getMap("probe");
+    const record = new Y.Map<unknown>();
+    map.set("record", record);
+    record.set("a", 1);
+    const text = new Y.Text();
+    map.set("text", text);
+    text.insert(0, "hello");
+    const list = new Y.Array<unknown>();
+    map.set("list", list);
+    list.push([1, "two"]);
+    expect(read(record)).toEqual({ a: 1 });
+    expect(read(text)).toBe("hello");
+    expect(read(list)).toEqual([1, "two"]);
+    const plain = { a: 1 };
+    expect(read(plain)).toBe(plain);
+    for (const value of [42, "s", null, undefined, true]) expect(read(value)).toBe(value);
   });
 
-  it("preserves both locally accepted clips and sources in either merge order", () => {
-    fc.assert(fc.property(fc.integer({ min: 0, max: 1000 }), (startFrame) => {
-      const initial = Y.encodeStateAsUpdate(seededDoc());
-      const first = trackedDoc(initial);
-      const second = trackedDoc(initial);
-      const secondSource = { ...source, id: "10000000-0000-4000-8000-000000000002" };
-      const secondClip = { ...clip, id: "30000000-0000-4000-8000-000000000002", sourceId: secondSource.id, startFrame };
-      applyTimelineEdit(first, { ...add, parameters: { source, clip: { ...clip, startFrame } } });
-      applyTimelineEdit(second, { operation: "add_video", parameters: { source: secondSource, clip: secondClip } });
-      const firstBytes = Y.encodeStateAsUpdate(first);
-      const secondBytes = Y.encodeStateAsUpdate(second);
-      Y.applyUpdate(first, secondBytes);
-      Y.applyUpdate(second, firstBytes);
-      expect(readTimelineDocument(first)).toEqual(readTimelineDocument(second));
-      expect(readTimelineDocument(first).clips).toEqual({ [clip.id]: { ...clip, startFrame }, [secondClip.id]: secondClip });
-      expect(readTimelineDocument(first).sources).toEqual({ [source.id]: source, [secondSource.id]: secondSource });
-      expect(TimelineDocumentV1Schema.safeParse(readTimelineDocument(first)).success).toBe(true);
-    }));
+  it("reads a clip whose sourceId is a Y.Text as a valid clip", () => {
+    const doc = seededDoc();
+    doc.transact(() => {
+      doc.getMap("sources").set(source.id, source);
+      const record = new Y.Map<unknown>();
+      doc.getMap("clips").set(clip.id, record);
+      for (const [key, value] of Object.entries(clip)) if (key !== "sourceId") record.set(key, value);
+      const text = new Y.Text();
+      record.set("sourceId", text);
+      text.insert(0, source.id);
+    }, "peer");
+    expect(readTimelineContent(doc)).toEqual({ document: expect.objectContaining({ clips: { [clip.id]: clip } }), damaged: { clips: [] } });
   });
 });

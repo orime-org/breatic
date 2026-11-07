@@ -164,6 +164,8 @@ test('quick edit holds Run until it is told what to change @needs-internet', asy
 // Each run gets twice the slowest, so a stuck run fails within minutes.
 const RUN_MS = 5 * 60_000;
 
+// Each real run is set to its model's cheapest settings (docs/TEST-MANDATE.md 2.2).
+
 test.describe('real runs @needs-internet @needs-model', () => {
   // The opening, the run and the stored picture together.
   test.beforeEach(() => test.setTimeout(RUN_MS + 60_000));
@@ -175,6 +177,7 @@ test.describe('real runs @needs-internet @needs-model', () => {
 
   test('relight runs to a new picture downstream with the light set by hand, in a colour picked by hand', async () => {
     await openTool(page, source, 'image.relight');
+    await page.getByTestId('generate-param-resolution-option-0.5k').click();
     await page.getByTestId('generate-param-light_color-swatch-custom').click();
     await page.getByTestId('generate-param-light_color-custom-input').fill('ff3d7f');
     await expect(page.getByTestId('generate-param-light_color-value')).toHaveText('#FF3D7F');
@@ -184,6 +187,7 @@ test.describe('real runs @needs-internet @needs-model', () => {
 
   test('relight runs to a new picture downstream with the light of a reference and a colour set by hand', async () => {
     await openTool(page, source, 'image.relight');
+    await page.getByTestId('generate-param-resolution-option-0.5k').click();
     await pickOther('mini-tool-slot-image.relight-light_reference');
     await expect(page.getByTestId('mini-tool-reference-preview')).toBeVisible({ timeout: 15_000 });
     await page.getByTestId('generate-param-light_color-swatch-red').click();
@@ -192,6 +196,9 @@ test.describe('real runs @needs-internet @needs-model', () => {
 
   test('restyle runs to a new picture downstream, and Run ends the pick of more styles', async () => {
     await openTool(page, source, 'image.restyle');
+    // Set before the pick: the pick goes on after it, and the case reads that.
+    await page.getByTestId('generate-param-resolution-option-1k').click();
+    await page.getByTestId('generate-param-quality-option-low').click();
     await pickOther('mini-tool-slot-image.restyle-style');
     // The slot takes up to three, so picking goes on after the first.
     await expect(page.getByTestId('reference-pick-exit')).toBeVisible();
@@ -201,6 +208,7 @@ test.describe('real runs @needs-internet @needs-model', () => {
 
   test('quick edit runs to a new picture downstream', async () => {
     await openTool(page, source, 'image.quickEdit');
+    await page.getByTestId('generate-param-resolution-option-0.5k').click();
     await page.getByTestId('mini-tool-prompt').fill('make it a rainy night');
     expect(await runToResult('EDIT')).toMatch(/^https?:\/\//);
   });

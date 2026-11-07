@@ -103,7 +103,7 @@ async function rowOf(id: string): Promise<HTMLElement> {
 }
 
 beforeEach(() => {
-  vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'], shouldAdvanceTime: true });
+  vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'requestAnimationFrame', 'cancelAnimationFrame'], shouldAdvanceTime: true });
   vi.setSystemTime(NOW);
   api.listSpaceTasks.mockReset();
   api.removeSpaceTask.mockReset();
