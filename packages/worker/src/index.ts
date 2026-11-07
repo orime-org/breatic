@@ -33,6 +33,9 @@ import {
   runGracefulShutdown,
   getAgentConfig,
   getWorkerConfig,
+  getTimelineConfig,
+  TIMELINE_QUEUE,
+  type TimelineExecutionJobData,
   assertKnownQueues,
   installDeadlineBoundDispatcher,
   flushServerAnalytics,
@@ -132,6 +135,12 @@ import {
   runLongMediaDispatchSweep,
   type LongMediaOperationJob,
 } from "@worker/handlers/long-media-dispatch.js";
+import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-execution.js";
+import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-sweep.js";
+import { reportTimelineJobFailed } from "@worker/handlers/timeline/timeline-failed-job.js";
+
+/** Queue holding the recurring sweep of Timeline executions that have not ended (inner#1711). */
+const TIMELINE_SWEEP_QUEUE = "timeline-sweep";
 
 /** Every BullMQ queue this process runs a worker for. */
 const WORKER_QUEUES: readonly string[] = [
@@ -144,6 +153,8 @@ const WORKER_QUEUES: readonly string[] = [
   MAIL_QUEUE,
   ADS_CONVERSION_QUEUE,
   LONG_MEDIA_DISPATCH_QUEUE,
+  TIMELINE_QUEUE,
+  TIMELINE_SWEEP_QUEUE,
 ];
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
@@ -215,6 +226,36 @@ export function startWorker(): void {
   });
 
   const worker = createWorker<TaskJobData>("tasks", runTask);
+
+  // Timeline web-animation executions (inner#1711). A job waiting on its container goes back to the queue as
+  // delayed; one that used up its retries is only logged, and the sweep adds it again under the original deadline.
+  const timelineQueue = createQueue(TIMELINE_QUEUE);
+  const timelineWorker = createWorker<TimelineExecutionJobData>(TIMELINE_QUEUE, runTimelineExecution);
+  timelineWorker.on("failed", (job, err) => {
+    logger.error(
+      { err, executionId: job?.data.executionId, attemptsMade: job?.attemptsMade, attemptsAllowed: job?.opts?.attempts },
+      "timeline_job_failed",
+    );
+  });
+  const timelineEvents = createQueueEvents(TIMELINE_QUEUE);
+  timelineEvents.on("failed", ({ jobId, failedReason }) => {
+    void reportTimelineJobFailed(timelineQueue, jobId, failedReason).catch((err: unknown) => {
+      logger.error({ err, jobId }, "timeline_failed_job_report_error");
+    });
+  });
+  const timelineSweepQueue = createQueue(TIMELINE_SWEEP_QUEUE);
+  const timelineSweep = createWorker<Record<string, never>>(TIMELINE_SWEEP_QUEUE, () => sweepTimelineExecutions(timelineQueue));
+  timelineSweep.on("failed", (job, err) => {
+    logger.error({ err, jobId: job?.id }, "timeline_sweep_failed");
+  });
+  const timelineSweepJob = "timeline-sweep";
+  void timelineSweepQueue.upsertJobScheduler(
+    timelineSweepJob,
+    { every: getTimelineConfig().web_animation.sweep_interval_ms },
+    { name: timelineSweepJob, data: {}, opts: defaultJobOpts() },
+  ).catch((err: unknown) => {
+    logger.error({ err }, "timeline_sweep_schedule_failed");
+  });
 
   // Its own queue, because `runTask` is a generation: past the dispatch it
   // records a provider result, bills the studio and writes a generation
@@ -490,6 +531,9 @@ export function startWorker(): void {
       releaseListenSocket: () => {},
       drains: [
         () => worker.close(),
+        () => timelineWorker.close(),
+        () => timelineSweep.close(),
+        () => timelineEvents.close(),
         () => urlIngest.close(),
         () => uploadFinish.close(),
         () => usageLookup.close(),

@@ -31,6 +31,8 @@ export type TimelineExecutionEvent =
 
 /** The fields an accepted execution is inserted with. */
 export interface NewTimelineExecution {
+  /** The id to insert under, when the caller already keyed something by it (the credit hold); generated otherwise. */
+  id?: string;
   projectId: string;
   spaceId: string;
   actorUserId: string;
@@ -137,6 +139,19 @@ export async function findById(id: string, tx?: DbTx): Promise<TimelineExecution
 }
 
 /**
+ * Read live executions.
+ * @param ids - The executions.
+ * @param tx - The transaction to read in.
+ * @returns The ones that exist, in no particular order.
+ * @throws {Error} When the read fails.
+ */
+export async function findByIds(ids: readonly string[], tx?: DbTx): Promise<TimelineExecution[]> {
+  if (ids.length === 0) return [];
+  const rows = await (tx ?? db).select(columns).from(t).where(and(inArray(t.id, [...ids]), isNull(t.deletedAt)));
+  return rows.map(toEntity);
+}
+
+/**
  * Read the live execution an action created.
  * @param key - The action.
  * @param key.projectId - Its Project.
@@ -180,7 +195,8 @@ function plan(event: TimelineExecutionEvent): { where: SQL | undefined; set: PgU
     case "land":
       return {
         where: and(eq(t.status, "awaiting_landing"), eq(t.inputHash, event.inputHash), gt(t.deadlineAt, sql`now()`)),
-        set: { status: "queued" },
+        // Due at once: the sweep adds the job again if the enqueue right after this is lost.
+        set: { status: "queued", nextDispatchAt: sql`now()` },
       };
     case "targetGone":
       return { where: eq(t.status, "awaiting_landing"), set: { status: "failed", failureReason: "target_unavailable" } };
@@ -246,6 +262,25 @@ export async function transition(
   const current = await findById(input.id, tx);
   if (current === undefined) throw new Error(`Timeline execution ${input.id} does not exist`);
   return { applied: false, row: current };
+}
+
+/**
+ * Replace what an attempt reports about its run: the container job it submits under, then the runtime's own steps.
+ * @param input - The write.
+ * @param input.id - The execution.
+ * @param input.fence - The attempt; only the attempt holding the row may write.
+ * @param input.steps - The whole list.
+ * @param tx - The transaction to write in.
+ * @returns True when the row was written; false when the attempt no longer holds it.
+ * @throws {Error} When the write fails.
+ */
+export async function recordSteps(input: { id: string; fence: string | null; steps: unknown[] }, tx?: DbTx): Promise<boolean> {
+  const rows = await (tx ?? db)
+    .update(t)
+    .set({ steps: input.steps, updatedAt: sql`now()` })
+    .where(and(eq(t.id, input.id), isNull(t.deletedAt), fenced(input.fence)))
+    .returning({ id: t.id });
+  return rows.length > 0;
 }
 
 /**

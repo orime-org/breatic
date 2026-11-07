@@ -422,11 +422,13 @@ export default tseslint.config(
   },
   {
     // yjs_documents is written by collab and by the server, so it gets one
-    // repo and everyone else calls it. The repo itself and the schema that
-    // defines the table are the two places the name legitimately appears.
+    // repo and everyone else calls it. The repo itself, the one live-row read
+    // core lends the worker (which collab's repo answers through) and the
+    // schema that defines the table are where the name legitimately appears.
     files: ["packages/{collab,core,domain,integration-tests,provider,server,shared,worker}/src/**/*.{ts,tsx}"],
     ignores: [
       "packages/collab/src/services/yjs-documents.repo.ts",
+      "packages/core/src/db/yjs-documents-read.repo.ts",
       "packages/core/src/db/yjs-schema.ts",
       "**/__tests__/**",
       "**/*.test.{ts,tsx}",

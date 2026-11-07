@@ -963,3 +963,24 @@ export interface TimelineExecution {
   createdAt: string;
   updatedAt: string;
 }
+
+/** The immutable source version a web-animation execution produced (inner#1711). `createdAt` is UTC ISO at microsecond precision. */
+export interface WebAnimationSourceVersion {
+  id: string;
+  executionId: string;
+  /** Private `web-animation/` keys, read only through the signed preview route. */
+  packageKey: string;
+  manifestKey: string;
+  packageSha256: string;
+  packageBytes: number;
+  manifestSha256: string;
+  /** The animation runtime the package was built with, as `@hyperframes/core@<version>`. */
+  runtimeVersion: string;
+  fontSetVersion: number;
+  width: number;
+  height: number;
+  fpsNum: number;
+  fpsDen: number;
+  durationFrames: number;
+  createdAt: string;
+}

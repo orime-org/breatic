@@ -32,7 +32,8 @@ export type UsageFeature =
   | "text_tool"
   | "canvas_understand"
   | "canvas_transcribe"
-  | "mini_tool";
+  | "mini_tool"
+  | "timeline_web_animation";
 
 /** What inside the operation made the call. */
 export type UsageSource =
@@ -45,6 +46,9 @@ export type UsageSource =
 
 /** A service priced per request in `config/usage-pricing.yaml`. */
 export type PricedService = keyof UsagePricing["services"];
+
+/** The prices a recorder reads; a service without a price throws when it is recorded. */
+export type RecorderPricing = Pick<UsagePricing, "models"> & { services: Partial<UsagePricing["services"]> };
 
 /** One row of `agent_usage_records`, before it is written. */
 export interface UsageRow {
@@ -63,6 +67,8 @@ export interface UsageRow {
   costUsd: number;
   costSource: CostSource;
   credits: number;
+  /** The call's stable identity, when it has one; a second row with the same identity is never written. */
+  costIdentity: string | null;
 }
 
 /** A paid call to a service that is not a language model. */
@@ -83,6 +89,11 @@ export interface RecordedModelCall extends ModelCall {
   source: UsageSource;
   /** The OpenRouter generation id, when the caller has one. */
   generationId?: string;
+  /**
+   * A stable identity for the call (a Timeline execution's `timeline:<executionId>:<seq>`), so settling the same
+   * call again writes nothing.
+   */
+  costIdentity?: string;
 }
 
 /** An OpenRouter call whose cost was not in hand, once its generation was looked up. */
@@ -127,7 +138,7 @@ export interface UsageRecorderOptions {
   actorUserId: string;
   projectId: string | null;
   /** Defaults to `config/usage-pricing.yaml`. */
-  pricing?: UsagePricing;
+  pricing?: RecorderPricing;
   /** Defaults to `CREDIT_MULTIPLIER`. */
   multiplier?: number;
   /** Defaults to appending to `agent_usage_records`. */
@@ -149,7 +160,7 @@ export interface UsageRecorderOptions {
  */
 function serviceCost(
   call: ServiceCall,
-  pricing: UsagePricing,
+  pricing: RecorderPricing,
 ): { costUsd: number; costSource: CostSource } {
   if (call.costUsd !== undefined) return { costUsd: call.costUsd, costSource: call.costSource ?? "provider" };
   // OpenRouter reports what it charged on every answer and has no table of
@@ -221,6 +232,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
         costUsd: cost.costUsd,
         costSource: cost.costSource,
         credits: creditsForUsd(cost.costUsd, multiplier),
+        costIdentity: call.costIdentity ?? null,
       });
     },
     recordServiceCall(call) {
@@ -238,6 +250,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
         costUsd: cost.costUsd,
         costSource: cost.costSource,
         credits: creditsForUsd(cost.costUsd, multiplier),
+        costIdentity: null,
       });
     },
     recordLookedUpCall(call) {
@@ -255,6 +268,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
         costUsd,
         costSource: call.costUsd === undefined ? "missing" : "generation_lookup",
         credits: creditsForUsd(costUsd, multiplier),
+        costIdentity: null,
       });
     },
     awaitingLookup() {

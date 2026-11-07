@@ -2213,6 +2213,66 @@ export const timelineExecutions = pgTable(
   ],
 );
 
+/**
+ * The immutable source version a web-animation execution produced (0118, inner#1711).
+ *
+ * At most one per execution: every settlement of the same terminal report
+ * lands on the row the first wrote. Insert-only, so `created_at` alone.
+ */
+export const timelineWebAnimationSources = pgTable(
+  "timeline_web_animation_sources",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    executionId: uuid("execution_id")
+      .notNull()
+      .unique("timeline_web_animation_sources_execution_id_key")
+      .references(() => timelineExecutions.id, { onDelete: "restrict" }),
+    packageKey: text("package_key").notNull(),
+    manifestKey: text("manifest_key").notNull(),
+    packageSha256: text("package_sha256").notNull(),
+    packageBytes: bigint("package_bytes", { mode: "number" }).notNull(),
+    manifestSha256: text("manifest_sha256").notNull(),
+    runtimeVersion: text("runtime_version").notNull(),
+    fontSetVersion: integer("font_set_version").notNull(),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    fpsNum: integer("fps_num").notNull(),
+    fpsDen: integer("fps_den").notNull(),
+    durationFrames: integer("duration_frames").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+);
+
+/**
+ * Which Projects may resolve and preview an execution's result (0118, inner#1711).
+ *
+ * One live row per execution and Project; duplicating a Project copies every
+ * live row of its source.
+ */
+export const timelineExecutionGrants = pgTable(
+  "timeline_execution_grants",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    executionId: uuid("execution_id")
+      .notNull()
+      .references(() => timelineExecutions.id, { onDelete: "restrict" }),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("timeline_execution_grants_live_idx")
+      .on(table.executionId, table.projectId)
+      .where(sql`${table.deletedAt} IS NULL`),
+    index("timeline_execution_grants_project_idx")
+      .on(table.projectId)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
+);
+
 // ── 12. Project Memory Entries ───────────────────────────────────────
 
 export const projectMemoryEntries = pgTable(

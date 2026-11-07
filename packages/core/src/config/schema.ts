@@ -331,6 +331,13 @@ export const coreConfigSchema = z.object({
   // through `wrangler secret put` (`.dev.vars` locally); both sides
   // read it from their own runtime's injection point.
   INGEST_SHARED_SECRET: z.string().default(""),
+  // Where a Timeline web-animation preview is read (inner#1711): the ingest
+  // Worker's signed `/web-animation/<token>/index.html` route, on a host of its
+  // own in production so the sandboxed page shares no origin with the app.
+  WEB_ANIMATION_PREVIEW_BASE_URL: z
+    .string()
+    .default("")
+    .transform((value) => value.replace(/\/+$/, "")),
   // ── Upload Size Limits (MB, per asset kind) ─────
   UPLOAD_MAX_IMAGE_MB: numeric(z.coerce.number().positive().default(50)),
   UPLOAD_MAX_VIDEO_MB: numeric(z.coerce.number().positive().default(1024)),

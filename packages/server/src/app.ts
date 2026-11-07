@@ -34,6 +34,7 @@ import { subscriptionRoute } from "@server/routes/subscription.js";
 import { activitiesRoute } from "@server/routes/activities.js";
 import { projectAssetsRoute } from "@server/routes/project-assets.js";
 import { threeDTasksRoute } from "@server/routes/three-d-tasks.js";
+import { timelineRoute } from "@server/routes/timeline.js";
 import { membersRoute } from "@server/routes/members.js";
 import { usersRoute } from "@server/routes/users.js";
 import { studiosRoute, studioRoute } from "@server/routes/studios.js";
@@ -110,6 +111,7 @@ export function createApp(): Hono {
   app.route("/api/v1/projects", activitiesRoute);
   app.route("/api/v1/projects", projectAssetsRoute);
   app.route("/api/v1/projects", threeDTasksRoute);
+  app.route("/api/v1/timeline", timelineRoute);
 
   return app;
 }

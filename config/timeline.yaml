@@ -8,3 +8,34 @@ assets:
   page_size: 50
   page_max: 100
   backfill_batch_size: 200
+# Web-animation executions (inner#1711). A task's deadline is
+# default_budget_ms in node-tasks.yaml; nothing here shortens it.
+web_animation:
+  prompt_max_length: 4000
+  duration_seconds:
+    min: 1
+    max: 60
+  viewports:
+    "16:9": { width: 1920, height: 1080 }
+    "9:16": { width: 1080, height: 1920 }
+    "1:1": { width: 1080, height: 1080 }
+  # Held at acceptance; also the run's model spend ceiling
+  # (reserve_credits / 100 / CREDIT_MULTIPLIER USD). Charged at actual use.
+  reserve_credits: 100
+  model: deepseek/deepseek-v4.1-flash-1017
+  max_tokens: 32000
+  # One model call's limit; a cancel or the deadline waits at most this long to drain it.
+  call_timeout_ms: 300000
+  max_package_bytes: 5000000
+  font_set_version: 1
+  preview_token_ttl_ms: 3600000
+  player_load_timeout_ms: 15000
+  sweep_interval_ms: 30000
+  sweep_batch_size: 200
+  poll_interval_ms: 5000
+  source_refresh_interval_ms: 10000
+  # The instance a run is billed for, at the prices in mini-tools.yaml.
+  container:
+    vcpu: 1
+    memory_gib: 6
+    disk_gb: 12

@@ -85,7 +85,7 @@ function bucketsOf(usage: ModelCallUsage): TokenBuckets {
  * @returns The cost, where it came from, and the tokens behind it.
  * @throws {Error} When a directly reached model has no price in the table.
  */
-export function costOfModelCall(call: ModelCall, pricing: UsagePricing): ModelCallCost {
+export function costOfModelCall(call: ModelCall, pricing: Pick<UsagePricing, "models">): ModelCallCost {
   const tokens = bucketsOf(call.usage);
 
   if (call.provider === "openrouter") {

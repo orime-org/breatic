@@ -9,6 +9,7 @@
 import { z } from "zod";
 
 import { TimelineRateSchema, type TimelineRate } from "@shared/timeline/schema.js";
+import { durationToFrames } from "@shared/timeline/time.js";
 import { decodeBase64Utf8, encodeBase64Utf8 } from "@shared/upload/base64.js";
 
 /** The animation runtime every source package is built with. */
@@ -75,6 +76,26 @@ export const TimelineExecutionCreateInputSchema = z.object({
 
 /** A parsed create-execution input. */
 export type TimelineExecutionCreateInput = z.infer<typeof TimelineExecutionCreateInputSchema>;
+
+/** The input an accepted execution freezes: the dialog's fields without the Space and action that key it. */
+export const TimelineExecutionInputSchema = TimelineExecutionCreateInputSchema.omit({ spaceId: true, actionId: true });
+
+/** A frozen execution input. */
+export type TimelineExecutionInput = z.infer<typeof TimelineExecutionInputSchema>;
+
+/**
+ * The frames an accepted input asks for: its seconds at its frozen frame rate. A placeholder clip is this long and the
+ * Manifest must say the same.
+ * @param input - The frozen input.
+ * @returns The frame count.
+ * @throws {RangeError} When the rate or the resulting count is invalid.
+ */
+export function webAnimationDurationFrames(input: Pick<TimelineExecutionInput, "durationSeconds" | "fps">): number {
+  return durationToFrames(input.durationSeconds, input.fps);
+}
+
+/** The most bytes a Manifest may take; it is a few hundred. */
+export const WEB_ANIMATION_MANIFEST_MAX_BYTES = 64 * 1024;
 
 const BASE64URL = /^[A-Za-z0-9_-]+$/;
 
