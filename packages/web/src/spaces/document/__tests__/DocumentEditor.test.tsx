@@ -84,7 +84,7 @@ describe('DocumentEditor', () => {
     doc.destroy();
   });
 
-  it('keeps the editor in the body when the reader turns read-only while it is open', () => {
+  it('keeps the editor in the body when the user turns read-only while it is open', () => {
     // A role change or an archive refetches the project with the Space open
     // (`use-refresh-on-reauth.ts`), so `readOnly` flips on a mounted body.
     const uploader: DocumentUploader = {
@@ -110,7 +110,7 @@ describe('DocumentEditor', () => {
     // renders while a selection exists, and anything portalled out.
     //
     // The shell holds one row, and the row is where the columns go: the body
-    // and, once the reader opens it, the comment panel (#18, A18).
+    // and, once the user opens it, the comment panel (#18, A18).
     const { container } = render(<DocumentEditor handle={handle} />);
     const shell = [...container.firstElementChild!.children];
     expect(shell).toHaveLength(1);
@@ -439,7 +439,7 @@ describe('DocumentEditor', () => {
     }
   });
 
-  it('opens the panel on a comment an Agent proposal landed, the way a comment the reader wrote is shown (inner#1509)', async () => {
+  it('opens the panel on a comment an Agent proposal landed, the way a comment the user wrote is shown (inner#1509)', async () => {
     const uploader = { start: () => Promise.resolve(), retry: () => undefined, remove: () => undefined } as unknown as DocumentUploader;
     const { editor } = handle;
     const { rerender } = render(<DocumentEditor handle={handle} uploader={uploader} />);

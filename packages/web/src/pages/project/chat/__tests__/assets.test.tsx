@@ -323,7 +323,7 @@ describe('the row of assets', () => {
   });
 });
 
-describe('getting the reader back where they were', () => {
+describe('getting the user back where they were', () => {
   /**
    * A reply carrying that many pictures.
    * @param n - How many.

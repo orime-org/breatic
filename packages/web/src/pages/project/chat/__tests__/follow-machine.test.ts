@@ -76,7 +76,7 @@ const REACHABLE: readonly Cell[] = [
  * The eight cells §4 marks impossible, each with what makes it so. The column
  * never asks the machine about them; the machine answers anyway, and what it
  * answers is "nothing changed", so a design that turns out to be wrong about
- * one of these leaves the reader where they are instead of somewhere new.
+ * one of these leaves the user where they are instead of somewhere new.
  */
 const UNREACHABLE: readonly (Cell & { readonly because: string })[] = [
   {

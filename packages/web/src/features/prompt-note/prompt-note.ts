@@ -3,14 +3,14 @@
 
 /**
  * A note at the top of a prompt (inner#977): how to operate the panel, put
- * there by a proposal or a template, shown to the reader and never sent to
+ * there by a proposal or a template, shown to the user and never sent to
  * the model.
  *
  * A block atom with its words in an attribute. Being an atom, nothing typed
  * or pasted as plain text becomes one, and every reader of the prompt that
  * walks text skips it. With no `parseHTML` rule, markup that looks like one
  * stays words too: only we put notes in, so leaving them out of what the
- * model gets can never drop something the reader wrote.
+ * model gets can never drop something the user wrote.
  */
 
 import { Document } from '@tiptap/extension-document';

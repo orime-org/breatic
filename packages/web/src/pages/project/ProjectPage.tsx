@@ -346,7 +346,7 @@ function ProjectWorkspace({
   // read the project query, so that is refetched too.
   useRefreshOnReauth(provider, projectId, onAuthenticated);
   // The top bar's credits are read again whenever they may have moved: this
-  // reader's own spend returning, or anyone's generation here ending.
+  // user's own spend returning, or anyone's generation here ending.
   useProjectCreditsRefresh(projectId, provider);
   useSpaceTasksRefresh(projectId, provider);
   // The whole tab bar, held here and nowhere else. Every cell of the
@@ -384,7 +384,7 @@ function ProjectWorkspace({
   // until `ready`, because the strip is empty before the Spaces arrive and
   // storing that would erase what is being restored, and until `persist`,
   // which is false for a strip that changed because Spaces left rather than
-  // because the reader did something.
+  // because the user did something.
   React.useEffect(() => {
     if (!tabs.ready || !tabs.persist) return;
     writeOpenTabs(userId, projectId, tabs.openIds, tabs.activeId);
@@ -431,7 +431,7 @@ function ProjectWorkspace({
         throw err;
       }
       if (!res.ok) {
-        // The server's message is a developer string in English; the reader
+        // The server's message is a developer string in English; the user
         // gets a line in their own language for the codes they can act on.
         const notice = spaceRpcFailureNotice(req.type, res.error.code);
         if (notice.level === 'warning') {
@@ -709,7 +709,7 @@ function ProjectWorkspace({
         'project.space.error.create',
       );
     } catch (err) {
-      // callRpc has already told the reader, on every way it fails.
+      // callRpc has already told the user, on every way it fails.
       setSpaceOpInProgress(null);
       pendingCreateTokenRef.current = null;
       throw err;
@@ -873,7 +873,7 @@ function ProjectWorkspace({
             // The connection was refused, which this banner answers with
             // "sign in again": drop the stored account on this device (local
             // only, no server logout) so the sign-in page does not act for it.
-            // ProtectedRoute then sends the reader to /login with this address
+            // ProtectedRoute then sends the user to /login with this address
             // as `?next=`.
             onReLogin={clearCurrentUser}
           />

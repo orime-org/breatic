@@ -339,7 +339,7 @@ describe('ProjectActivityButton (activity feed)', () => {
   });
 
   it('settles the Restore button after a refused restore without leaving a rejection behind', async () => {
-    // The host has already told the reader (`callRpc` toasts before it
+    // The host has already told the user (`callRpc` toasts before it
     // throws); the button only has to come back.
     const unhandled = vi.fn();
     process.on('unhandledRejection', unhandled);
@@ -665,7 +665,7 @@ describe('activity feed: failure icon + trigger icon (#1820 polish)', () => {
 });
 
 describe('relativeTime', () => {
-  it('dates an entry older than a year by the day of the reader', () => {
+  it('dates an entry older than a year by the day of the user', () => {
     const real = process.env['TZ'];
     try {
       process.env['TZ'] = 'Asia/Shanghai';

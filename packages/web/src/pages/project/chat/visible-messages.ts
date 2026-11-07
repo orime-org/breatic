@@ -7,7 +7,7 @@
 import type { ChatStatus, UIMessage } from 'ai';
 
 /**
- * Drop the message the reader has sent but the server has not answered.
+ * Drop the message the user has sent but the server has not answered.
  *
  * Only in `submitted`, and only the last one. Earlier user messages end a
  * history for reasons of their own -- a turn that failed, one still being

@@ -30,7 +30,7 @@ export type FollowEvent =
  * Eight of these forty-two the column never asks about; what makes each one
  * unreachable is recorded beside it in `__tests__/follow-machine.test.ts`.
  * They answer "nothing changed", so a reason that turns out to be wrong leaves
- * the reader where they are rather than somewhere new.
+ * the user where they are rather than somewhere new.
  */
 const TRANSITIONS: Readonly<Record<FollowState, Readonly<Record<FollowEvent, FollowState>>>> = {
   following: {

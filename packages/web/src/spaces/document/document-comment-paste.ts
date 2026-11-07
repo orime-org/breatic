@@ -26,7 +26,7 @@
  * both copies and every word between them.
  *
  * DRAGGED CONTENT KEEPS ITS COMMENTS, because a drag is one continuous act
- * the reader watches from start to finish: the same words, in a new place,
+ * the user watches from start to finish: the same words, in a new place,
  * and what was said about them still applies (user 2026-09-23). Dragging away
  * part of a commented run leaves both halves carrying the comment — the half
  * that moved brings its marks along, the half left behind was never touched —

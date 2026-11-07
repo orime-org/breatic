@@ -769,7 +769,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
             toolbarShown && !floating ? 'pointer-events-auto' : 'pointer-events-none',
             inCell
               // Over the table's row and column handles (10), as the
-              // selection bubble bar is: both are summoned by the reader's
+              // selection bubble bar is: both are summoned by the user's
               // hand and go when it leaves.
               ? ['z-20', side === 'top' && 'pb-2']
               : ['absolute left-1/2 z-10 -translate-x-1/2', side === 'top' ? 'bottom-full pb-2' : 'top-2'],
@@ -852,7 +852,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
               closedOnKey.current = true;
               const { value } = event.currentTarget;
               // The keyboard goes back to the body while the field still holds
-              // it: a focused field leaving the page reads as the reader
+              // it: a focused field leaving the page reads as the user
               // leaving the body, which lets go of the block.
               actions.focusBody();
               if (event.key === 'Enter') commitCaption(value);
@@ -860,7 +860,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
             }}
             onBlur={(event) => {
               // A key already closed it, or the window went to another app and
-              // the field is still the reader's to come back to.
+              // the field is still the user's to come back to.
               if (closedOnKey.current || !event.currentTarget.ownerDocument.hasFocus()) return;
               commitCaption(event.currentTarget.value);
             }}

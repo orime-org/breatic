@@ -182,7 +182,7 @@ export function createDocumentUndo(doc: Y.Doc): DocumentUndo {
  * so it is named false instead of passed over: a transaction that only moves
  * comment highlights. A comment is withdrawn from the card that holds it, so
  * Cmd+Z is not the way back from one, and the library's own `orphan` rewrites
- * are not the reader's doing at all — {@link isCommentMarkWrite} carries both
+ * are not the user's doing at all — {@link isCommentMarkWrite} carries both
  * halves of that reasoning. Passing over would not help: the marker would
  * keep the `true` their last real edit left, and the highlight write would be
  * captured anyway.

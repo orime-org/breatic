@@ -22,7 +22,7 @@ import { looksLikeEmail } from '@web/lib/looks-like-email';
  *   - email enabled → `POST /auth/forgot-password` mails a reset link. An
  *     account made here proved its address with a code at sign-up, so the
  *     mailbox is the way back.
- *   - email disabled → `/reset-password?mode=recovery`, where the reader types
+ *   - email disabled → `/reset-password?mode=recovery`, where the user types
  *     the recovery code saved at sign-up. Nothing can be mailed, so the page
  *     does not offer to.
  */

@@ -147,7 +147,7 @@ export function RefundsSection({
       scrolls={false}
       title={t('credits.section.refunds')}
       // The terms hold whatever the list is doing, so they stay on screen for
-      // a reader whose list is empty or still arriving.
+      // a user whose list is empty or still arriving.
       //
       // The lines the rule is published as, read back from the version in
       // force today. A summary written separately said two of them, and one

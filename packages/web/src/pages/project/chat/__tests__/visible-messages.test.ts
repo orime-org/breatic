@@ -4,7 +4,7 @@
 /**
  * What the conversation shows while the server has not answered yet.
  *
- * The library pushes the message the reader sent before it sets the status
+ * The library pushes the message the user sent before it sets the status
  * to `submitted`, so between the press and the first frame the list already
  * holds it. Showing it there would put the sentence on screen twice over --
  * once as a bubble, once still sitting in the box it has not left -- and it
@@ -12,7 +12,7 @@
  *
  * So the renderer leaves the last message out while the status says the
  * request is still unanswered. One line of translation between what the
- * library holds and what a reader sees, and every case it has to get right
+ * library holds and what a user sees, and every case it has to get right
  * is here: a history that already ends in a user message, someone who sent
  * two in a row, a status where this does not apply at all.
  */

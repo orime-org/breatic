@@ -6,12 +6,12 @@
  *
  * The library carries a row drag on a node selection it puts on the row, and
  * that selection is still there when the drag ends. Nothing is drawn for one
- * any more (user 2026-09-18), so what a surviving one costs the reader is the
+ * any more (user 2026-09-18), so what a surviving one costs the user is the
  * bubble bar: it comes up for any selection that is not empty, and a node
  * selection is not empty — measured 2026-09-18, a drag whose row a co-editor
  * deleted mid-flight ended with `bar: true` over a row nobody selected.
  *
- * So putting the reader back is two things, and only the first depends on
+ * So putting the user back is two things, and only the first depends on
  * knowing where they were: a text selection goes down whatever happens, and
  * the remembered place decides where.
  */
@@ -61,7 +61,7 @@ function open(): ReturnType<typeof buildDocumentEditor> {
     { type: 'paragraph', content: 'alpha' },
     { type: 'paragraph', content: 'beta' },
   ] as never);
-  // The reader is working in the body: it holds the focus.
+  // The user is working in the body: it holds the focus.
   editor.prosemirrorView.dom.focus();
   return editor;
 }
@@ -80,12 +80,12 @@ function selectTheRow(editor: ReturnType<typeof buildDocumentEditor>): void {
   view.dispatch(view.state.tr.setSelection(over));
 }
 
-describe('putting the reader back after a drag', () => {
+describe('putting the user back after a drag', () => {
   it('goes back to where they were when that row is still there', () => {
     const editor = open();
     const view = editor.prosemirrorView;
     const second = (editor.document[1] as unknown as Seen).id;
-    // The reader is in the row that is NOT the one about to be dragged.
+    // The user is in the row that is NOT the one about to be dragged.
     view.dispatch(
       view.state.tr.setSelection(
         selectionOverBlockContent(view.state.doc, second),
@@ -148,7 +148,7 @@ describe('putting back a selection that reaches past the last block', () => {
 });
 
 describe('a drag started from a body that does not hold the focus (inner#1127)', () => {
-  it('has no place of the reader’s to hand back', () => {
+  it('has no place of the user’s to hand back', () => {
     const editor = open();
     const view = editor.prosemirrorView;
     selectTheRow(editor);

@@ -3,7 +3,7 @@
 
 /**
  * inner#1126 §5.0 and A6, A11: every command on a table acts on the cell
- * the menu was opened on, writes in place, and leaves the reader's caret where
+ * the menu was opened on, writes in place, and leaves the user's caret where
  * it was.
  */
 
@@ -56,7 +56,7 @@ function open(): Editor {
       rows: [{ cells: ['a1', 'b1', 'c1'] }, { cells: ['a2', 'b2', 'c2'] }],
     }),
   ] as never);
-  // The reader's caret, in the paragraph, after "rea".
+  // The user's caret, in the paragraph, after "rea".
   const view = editor.prosemirrorView;
   view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 6)));
   return editor;
@@ -102,7 +102,7 @@ function grid(editor: Editor): string[][] {
 }
 
 /**
- * Whether the reader's caret is still after "rea" in the paragraph.
+ * Whether the user's caret is still after "rea" in the paragraph.
  * @param editor - The editor.
  * @returns True when it is.
  */

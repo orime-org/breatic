@@ -146,7 +146,7 @@ interface FieldCellProps {
 
 /**
  * One field of one entry: a choice list, or a text box written when the
- * reader leaves it (one write per edit, so each is one canvas undo step).
+ * user leaves it (one write per edit, so each is one canvas undo step).
  * @param root0 - Props.
  * @param root0.testId - The cell's test id.
  * @param root0.field - The field.

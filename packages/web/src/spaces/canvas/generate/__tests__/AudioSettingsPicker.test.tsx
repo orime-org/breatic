@@ -492,7 +492,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
     expect(screen.queryByTestId('generate-audio-row-voice_id')).toBeNull();
   });
 
-  it('names each language in the reader\'s language and picks one from a searchable list beside', () => {
+  it('names each language in the user\'s language and picks one from a searchable list beside', () => {
     const onChange = vi.fn();
     render(<AudioSettingsPicker mode='tts' voice={NO_VOICE} model={GEMINI} value={resolveParamsForModel(GEMINI, {})} onChange={onChange} />);
     fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
@@ -506,7 +506,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
     fireEvent.click(screen.getByText(nameOf('ja-JP')));
     expect(onChange).toHaveBeenCalledWith({ language: 'lang ja-JP' });
     expect(screen.queryByTestId('generate-audio-second-panel')).toBeNull();
-    // The first panel stays: the reader may have more to set.
+    // The first panel stays: the user may have more to set.
     expect(screen.getByTestId('generate-audio-row-language')).toBeInTheDocument();
   });
 

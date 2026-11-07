@@ -7,7 +7,7 @@
  * pasting cells over cells fills them in place.
  *
  * Each paste goes in as a real `paste` event on the editor, so it runs the
- * whole way a reader's paste does: BlockNote's clipboard handler, our
+ * whole way a user's paste does: BlockNote's clipboard handler, our
  * comment-stripping transform, and the table plugin's own paste handling.
  */
 
@@ -55,7 +55,7 @@ function open(text = 'lead'): Editor {
 }
 
 /**
- * Pastes clipboard data the way a reader's paste delivers it.
+ * Pastes clipboard data the way a user's paste delivers it.
  * @param editor - The editor.
  * @param data - The clipboard, by MIME type.
  */

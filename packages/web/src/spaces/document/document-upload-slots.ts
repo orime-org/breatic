@@ -13,10 +13,10 @@
  *
  * A batch remembers its gap as a position between two blocks, carried the way
  * the comment draft carries its range (`document-comment-draft-range.ts`):
- * the reader's own edits move it through `tr.mapping`; a change that comes in
+ * the user's own edits move it through `tr.mapping`; a change that comes in
  * through Yjs — a co-editor's edit, which reaches ProseMirror as one
  * replacement of the whole body — is followed by the Yjs relative position
- * taken after the change before it; the reader's undo or redo hands back the
+ * taken after the change before it; the user's undo or redo hands back the
  * position as it stood before the edit it takes back (`namesOnUndoStack`),
  * and a batch started after that edit follows its Yjs relative position. A
  * position that lands inside a block is lifted to the gap under that block's
@@ -74,7 +74,7 @@ export interface UploadBatch {
   readonly id: string;
   /** The gap the files go into. */
   readonly gap: UploadGap;
-  /** The empty line the reader aimed the files at, when they did. */
+  /** The empty line the user aimed the files at, when they did. */
   readonly aimedRow: string | null;
   readonly slots: readonly UploadSlot[];
 }
@@ -149,7 +149,7 @@ function insertedSibling(batch: UploadBatch, k: number, doc: PMNode): InsertedSi
  * batch already inserted, after the nearest earlier one, or at the batch's
  * gap, so every file keeps the order it came in, whichever finishes first. It
  * is quoted as the files of the batch already inserted beside it, so a batch
- * lands quoted as one; else as the empty line the reader aimed it at, while
+ * lands quoted as one; else as the empty line the user aimed it at, while
  * that line still follows its gap; else as the block before it, or the block
  * after it at the head of a level.
  * @param batch - The batch.
@@ -235,7 +235,7 @@ function gapNamed(bound: SyncBound, name: Y.RelativePosition): UploadGap | null 
  * @param tr - The change.
  * @param state - The state after it.
  * @param named - The gaps as Yjs named them before a change from Yjs.
- * @param handed - On the reader's undo or redo, the gaps as named before the
+ * @param handed - On the user's undo or redo, the gaps as named before the
  *   edit it takes back; a batch started after that edit has none there and
  *   goes by `named`.
  * @returns The batches, the same array when no gap moved.
@@ -480,9 +480,9 @@ function send(view: EditorView, action: UploadsAction): void {
  * @param view - The editor view.
  * @param gap - The gap, a position between two blocks.
  * @param names - The files' names, in the order they came in.
- * @param aimed - Whether the reader aimed the files at the empty line right
+ * @param aimed - Whether the user aimed the files at the empty line right
  *   after the gap: its insert menu, or a paste with the caret in it.
- * @param undo - Closes the undo step the reader is in, so undoing an edit
+ * @param undo - Closes the undo step the user is in, so undoing an edit
  *   made after the batch started hands its gap back as it stood then.
  * @returns The slots' ids, in the same order.
  */
@@ -511,7 +511,7 @@ export function addUploadBatch(
 
 /**
  * Holds a gap until its batch is started, which waits on admission: named in
- * Yjs, so the reader's edits and a co-editor's meanwhile carry it along.
+ * Yjs, so the user's edits and a co-editor's meanwhile carry it along.
  * @param view - The editor view.
  * @param gap - The gap as it is now.
  * @returns A function giving the gap as it stands when called.
@@ -549,9 +549,9 @@ export function removeUploadSlot(view: EditorView, slotId: string): void {
 /**
  * Inserts the block a slot became, where its placeholder is drawn.
  *
- * One transaction, kept apart from the reader's typing on either side so that
+ * One transaction, kept apart from the user's typing on either side so that
  * one undo takes exactly the block back. The selection is mapped through the
- * insert and nothing else: the reader may be typing anywhere.
+ * insert and nothing else: the user may be typing anywhere.
  * @param view - The editor view.
  * @param slotId - Which slot.
  * @param block - The block, as BlockNote takes it.

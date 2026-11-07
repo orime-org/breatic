@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Cmd+Z takes back the reader's own text edit, never a comment (#18, A16).
+ * Cmd+Z takes back the user's own text edit, never a comment (#18, A16).
  *
  * A comment is withdrawn from the card that holds it, so undo is not the way
- * back from one — and the library's `orphan` rewrites are not the reader's
+ * back from one — and the library's `orphan` rewrites are not the user's
  * doing at all: they run from the thread store's subscription, so a PEER
  * resolving a thread produces a local transaction here. Both are transactions
  * of nothing but comment mark steps, and neither goes on the stack.
@@ -188,7 +188,7 @@ function peerPostsAThread(doc: Y.Doc): void {
 }
 
 describe('undo around comment highlights', () => {
-  it('leaves both the reader-made highlight and the flag rewrite alone', () => {
+  it('leaves both the user-made highlight and the flag rewrite alone', () => {
     const { editor, manager } = open();
 
     userOpensAComment(editor);
@@ -207,8 +207,8 @@ describe('undo around comment highlights', () => {
     expect(commentMarks(editor)).toEqual([{ threadId: 't1', orphan: true }]);
   });
 
-  it('still takes back a text edit the reader makes after a sync', () => {
-    // A highlight write leaves the marker false, and this says the reader's
+  it('still takes back a text edit the user makes after a sync', () => {
+    // A highlight write leaves the marker false, and this says the user's
     // next real edit puts it back to true rather than being swallowed.
     const { editor, manager } = open();
 
@@ -265,9 +265,9 @@ describe('undo right after posting a comment', () => {
     expect(threadCount(doc)).toBe(1);
   });
 
-  it('reaches past it to the text edit the reader made before', async () => {
+  it('reaches past it to the text edit the user made before', async () => {
     // Undo is not swallowed by a comment sitting on top of the stack: it
-    // never went on the stack, so the reader's last real edit is still what
+    // never went on the stack, so the user's last real edit is still what
     // comes back.
     const { editor, manager } = openWithComments();
     const view = editor.prosemirrorView!;
@@ -282,12 +282,12 @@ describe('undo right after posting a comment', () => {
     expect(commentMarks(editor)).toHaveLength(1);
   });
 
-  it('gives the reader their edit back when they redo it', async () => {
+  it('gives the user their edit back when they redo it', async () => {
     // The marker the manager reads carries across dispatches, so naming a
     // comment write false has to not outlive that write. The undo pressed
     // next puts its content back through the manager itself, and a marker
     // still reading false refuses that transaction a place on the redo
-    // stack — leaving the reader's edit gone for good.
+    // stack — leaving the user's edit gone for good.
     const { editor, manager } = openWithComments();
     const view = editor.prosemirrorView!;
     view.dispatch(view.state.tr.insertText('!', firstRun(editor).to - 1));
@@ -302,11 +302,11 @@ describe('undo right after posting a comment', () => {
     expect(editor.prosemirrorState.doc.textContent).toContain('!');
   });
 
-  it('holds the reader to their own text when they settle a thread', async () => {
-    // The reader settling one goes down the same road a peer's does: the
+  it('holds the user to their own text when they settle a thread', async () => {
+    // The user settling one goes down the same road a peer's does: the
     // library rewrites the mark, and the sync binding follows with a replace
     // over the whole body (measured 2026-09-23). Nothing about that is the
-    // reader's edit, so undo reaches past it and redo brings it back.
+    // user's edit, so undo reaches past it and redo brings it back.
     const { editor, manager } = openWithComments();
     const view = editor.prosemirrorView!;
     view.dispatch(view.state.tr.insertText('!', firstRun(editor).to - 1));

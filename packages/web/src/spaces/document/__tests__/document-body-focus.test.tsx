@@ -260,7 +260,7 @@ describe('whether the body holds the focus', () => {
     expect(focus.bodyHolds(view.state)).toBe(true);
   });
 
-  it('has no reader selection while it does not hold', () => {
+  it('has no user selection while it does not hold', () => {
     const { editor, scroller } = open(TEXT);
     const view = editor.prosemirrorView!;
     selectWords(editor);

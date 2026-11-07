@@ -33,7 +33,7 @@ interface SectionProps {
  *
  * The heading and the terms under a list are about the whole section, so they
  * stay on screen. Scrolling the whole column instead carries the heading away
- * on the first turn of the wheel and hides the terms until the reader reaches
+ * on the first turn of the wheel and hides the terms until the user reaches
  * the end of the list.
  * @param props - The heading, the content, the fixed line and the layout.
  * @param props.title - The heading.
@@ -215,7 +215,7 @@ interface ScrollCardProps {
    * What sits at the top of the block and stays there.
    *
    * For a control that acts on the whole list — what it is called, what it is
-   * filtered by. Scrolling it away takes the filter with it, and the reader
+   * filtered by. Scrolling it away takes the filter with it, and the user
    * has to come back up to find out what they are looking at.
    */
   head?: React.ReactNode;
@@ -234,7 +234,7 @@ interface ScrollCardProps {
  * The border is the frame around a list, so it stays whole: all four corners
  * on screen at every offset, with the rows moving behind it. A block that
  * scrolls with the page instead is cut off at the top and bottom of the
- * panel, and its corners come and go as the reader scrolls.
+ * panel, and its corners come and go as the user scrolls.
  *
  * Padding goes on the viewport rather than this element, so the first and
  * last rows clear the border the same way the middle ones clear the sides.
@@ -361,7 +361,7 @@ interface RowBalanceProps {
  *
  * The three screens this panel shows a purchase on each answer a different
  * question, and each used to put the balance wherever its own answer left
- * room — right and bold on one, left and grey on the others. A reader
+ * room — right and bold on one, left and grey on the others. A user
  * switching between them then hunts for the same figure in two places. It
  * goes here, first line of the right column, at one size, and each screen's
  * own answer goes under it.
@@ -440,7 +440,7 @@ interface NoticeProps {
   /** The explanation under it. */
   body: string;
   /**
-   * Whether it is telling the reader something needs doing. Warnings carry
+   * Whether it is telling the user something needs doing. Warnings carry
    * the amber fill; anything merely informative stays neutral.
    */
   tone?: 'warning' | 'info';
@@ -449,7 +449,7 @@ interface NoticeProps {
 }
 
 /**
- * A block saying what the reader may want to do next.
+ * A block saying what the user may want to do next.
  * @param props - Its text and tone.
  * @param props.title - Its first line.
  * @param props.body - The explanation under it.
@@ -521,7 +521,7 @@ export function TableHead({ columns }: TableHeadProps): React.JSX.Element {
  *
  * The amount is stored in the currency's smallest unit, which is a hundredth
  * for the currencies this takes; `Intl` is told the currency and places the
- * symbol and the decimals the way the reader's language does.
+ * symbol and the decimals the way the user's language does.
  * @param cents - The amount, in the smallest unit of `currency`.
  * @param currency - Its ISO 4217 code.
  * @returns The amount, formatted.
@@ -574,8 +574,8 @@ export function ListEnd({ paging }: ListEndProps): React.JSX.Element {
     <div className='flex items-center justify-center py-2 text-2xs tracking-widest text-muted-foreground'>
       <span ref={sentinelRef} aria-hidden='true' />
       {/* A page that did not arrive says so. The watcher stops until the
-          reader scrolls again, so with nothing here the list looks exactly
-          like one that still has more coming and the reader waits for a page
+          user scrolls again, so with nothing here the list looks exactly
+          like one that still has more coming and the user waits for a page
           nobody is fetching. */}
       {loading ? (
         <Loader2 className='h-4 w-4 animate-spin' aria-hidden='true' />

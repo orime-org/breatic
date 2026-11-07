@@ -95,7 +95,7 @@ function keepInline(node: MarkdownNode, source: string): MarkdownNode {
  * and never reaches for its source; and remark-gfm has already moved the
  * marker out of the words into `checked` by the time this plugin runs.
  * Measured without it: `- [x] shipped` and `- [ ] shipped` both reached the
- * reader as the single word "shipped".
+ * user as the single word "shipped".
  * @param node - A list item, already rewritten.
  * @param source - The markdown the parser was handed.
  */

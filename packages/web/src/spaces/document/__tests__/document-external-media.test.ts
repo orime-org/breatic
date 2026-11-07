@@ -4,7 +4,7 @@
 /**
  * inner#1127 A18: media in pasted content is kept only when its address is one
  * of ours. Anything else is left out with the words around it pasted as they
- * are, and the reader is told how many were left out.
+ * are, and the user is told how many were left out.
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';

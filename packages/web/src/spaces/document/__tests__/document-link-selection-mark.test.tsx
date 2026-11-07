@@ -4,7 +4,7 @@
 /**
  * #916 acceptance C1 to C3: the text being linked stays visibly marked.
  *
- * The panel takes the focus so the reader can type an address, and a
+ * The panel takes the focus so the user can type an address, and a
  * contenteditable that is not focused has its selection painted by nobody. The
  * mark that stands in for it is a ProseMirror decoration, which survives the
  * focus leaving because it is the document's own render and not the browser's.
@@ -111,7 +111,7 @@ describe('the text a new link is being written onto', () => {
     expect(markedText(editor)).toBe('see');
   });
 
-  it('stays marked while the reader types an address', async () => {
+  it('stays marked while the user types an address', async () => {
     const editor = mounted();
     await openPanelOver(editor, 'see');
 

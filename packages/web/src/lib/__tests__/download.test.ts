@@ -92,7 +92,7 @@ describe('starting a download', () => {
   // The page this was pressed on holds a beforeunload guard while an upload is
   // in flight, and a navigation of the current document runs it before the
   // request goes out — long before the answer could say it is a download. The
-  // reader would get "Leave site?" on the happy path, and pressing Cancel
+  // user would get "Leave site?" on the happy path, and pressing Cancel
   // would leave them with no download and nothing said. Aiming elsewhere takes
   // this document out of it.
   it('aims the navigation away from the page it was pressed on', () => {

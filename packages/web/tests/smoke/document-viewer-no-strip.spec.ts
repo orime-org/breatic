@@ -4,7 +4,7 @@
 /**
  * #113 A3: a viewer gets no block strip.
  *
- * Every command off the strip writes to the document, so a reader who is only
+ * Every command off the strip writes to the document, so a user who is only
  * allowed to read must not be able to reach it. The gate is one line —
  * `DocumentEditor.tsx` mounts `DocumentBlockControls` only when `readOnly` is
  * false — and a jsdom case already pins that line
@@ -184,7 +184,7 @@ test.beforeEach(async ({ browser }) => {
   await expect(editor).toBeVisible({ timeout: 15_000 });
   await editor.click();
   await owner.keyboard.type(ROW);
-  // A table under the row, pasted the way a reader pastes one (inner#1126 A18).
+  // A table under the row, pasted the way a user pastes one (inner#1126 A18).
   await owner.keyboard.press('Enter');
   await owner.evaluate(([selector, words]) => {
     const transfer = new DataTransfer();
@@ -226,7 +226,7 @@ test.beforeEach(async ({ browser }) => {
   // The owner's page asks for the roster when it loads and holds the answer,
   // so an acceptance that happened on another page is not on it yet. Measured
   // 2026-09-20: the whole run made one `GET /members`, before the invite went
-  // out, and the reading below found a roster of one. A reader in this spot
+  // out, and the reading below found a roster of one. A user in this spot
   // reloads; so does this.
   await owner.reload();
 

@@ -30,7 +30,7 @@ import type { Mark, Node as PMNode } from '@tiptap/pm/model';
 export const COMMENT_MARK: string = CommentMark.name;
 
 /**
- * Whether a mark is a highlight the reader can still act on.
+ * Whether a mark is a highlight the user can still act on.
  *
  * A settled thread keeps its mark with `orphan` set so the words under it
  * read as prose (A8), and the library's own press handler reads the
@@ -137,13 +137,13 @@ export function commentsOn(editor: Extensible): CommentsApi | undefined {
 }
 
 /**
- * The reader's words in the shape a comment body takes.
+ * The user's words in the shape a comment body takes.
  *
  * A comment body is a BlockNote document, so one paragraph holding one text
  * run is the whole of a plain-text comment. Written here because an opening
  * comment and a reply are the same kind of thing and go through two different
  * modules to reach the same Y.Map.
- * @param text - What the reader wrote.
+ * @param text - What the user wrote.
  * @returns That text as a comment body.
  */
 export function asCommentBody(text: string): unknown {

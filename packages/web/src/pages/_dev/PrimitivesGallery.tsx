@@ -345,7 +345,7 @@ export default function PrimitivesGallery(): React.JSX.Element {
                     </div>
                   </ScrollArea>
                   {/* A scroll region that ends at the box's own edge gives the
-                      reader no way to tell a half-shown last row from the end
+                      user no way to tell a half-shown last row from the end
                       of the list. A footer is the edge. */}
                   <DialogFooter>
                     <DialogClose asChild>

@@ -12,7 +12,7 @@
  *
  * Two consequences, both of which this file pins:
  *
- * A reader who opens a document changes it. The editor is set non-editable for
+ * A user who opens a document changes it. The editor is set non-editable for
  * a viewer, which stops KEYSTROKES — it does not stop a plugin's own
  * appendTransaction, and the server silently drops the update rather than
  * erroring, so the viewer ends up permanently one paragraph ahead of everyone

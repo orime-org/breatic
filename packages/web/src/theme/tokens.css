@@ -184,7 +184,7 @@ html[data-theme='light'] {
      editor's substitute decoration — and they have to be the same colour. The
      substitute asked for the system keyword `highlight`, which nothing ties to
      what the browser actually paints: measured in Chromium the paint is this
-     value while `highlight` resolves to rgb(128, 188, 254) at 0.6, so a reader
+     value while `highlight` resolves to rgb(128, 188, 254) at 0.6, so a user
      with a link panel open saw the selection change colour under them.
 
      The value is what this browser paints today, solved from the same text over
@@ -429,7 +429,7 @@ html[data-theme='light'] {
      same control drawn by the editor.
 
      Chrome rather than a content radius: those answer the Tweaks slider and
-     this one is fixed, so a reader moving that slider would round the tick
+     this one is fixed, so a user moving that slider would round the tick
      boxes with it. */
   --radius-chrome-sm: 4px;
   --radius-content-xs: 2px;

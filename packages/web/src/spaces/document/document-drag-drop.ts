@@ -13,7 +13,7 @@
  * and neither says which row the drag came from — the payload is HTML. The
  * handle tells this extension at dragstart instead, through `rowIsFlying`.
  *
- * A TEXT DRAG IS NOT THIS. When the reader drags a selected word,
+ * A TEXT DRAG IS NOT THIS. When the user drags a selected word,
  * `view.dragging` is ProseMirror's own and no row was picked up, so this
  * declines and ProseMirror's own handling runs as it always did (A19).
  */
@@ -31,7 +31,7 @@ import { moveRowTo } from '@web/spaces/document/document-drag-move';
 interface RowInFlight {
   /** The row being carried. */
   readonly blockId: string;
-  /** Where the reader was when they reached for the handle. */
+  /** Where the user was when they reached for the handle. */
   readonly place: UserPlace | undefined;
 }
 
@@ -43,10 +43,10 @@ let flying: RowInFlight | undefined;
  * Module state rather than plugin state: the handle is a React component
  * outside the editor, and one drag is in flight at a time — the browser has
  * one drag at a time, and a second editor on the page has its own plugin
- * instance reading this same answer, which is correct since the reader is
+ * instance reading this same answer, which is correct since the user is
  * dragging the one row.
  * @param blockId - The row that was picked up.
- * @param place - Where the reader's own selection was, if it was a text one.
+ * @param place - Where the user's own selection was, if it was a text one.
  */
 export function rowIsFlying(
   blockId: string,
@@ -104,13 +104,13 @@ export const documentDragDropExtension = createExtension(() => ({
           flying = undefined;
           event.preventDefault();
 
-          // The reader's own place goes back BEFORE the move, because an undo
+          // The user's own place goes back BEFORE the move, because an undo
           // item records the selection from before the change that made it
           // (`y-prosemirror/src/plugins/undo-plugin.js`: `prevSel` is read off
           // `oldState` and handed to `stack-item-added`). With the node
           // selection `blockDragStart` leaves on the row still standing, Cmd+Z
           // brought the row back node-selected, with the bubble bar over a row
-          // the reader never selected — reported 2026-09-18. A
+          // the user never selected — reported 2026-09-18. A
           // selection-only transaction writes nothing to the
           // document, so it adds no undo item of its own.
           restoreAfterRowDrag(view, row.place, row.blockId);

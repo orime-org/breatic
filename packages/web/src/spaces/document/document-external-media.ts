@@ -11,7 +11,7 @@
  * (`Image/block.ts:55-75`, `Video/block.ts:35-49`, `Audio/block.ts:53-67`).
  * A block in this body has to carry an address our storage registered, so
  * each pasted medium is judged by its own address: under our public prefix
- * it stays, otherwise it is left out and the reader is told how many were.
+ * it stays, otherwise it is left out and the user is told how many were.
  *
  * `transformPasted` sees every paste and every drop from outside the editor.
  * A row dragged within the body never reaches it — `document-drag-move.ts`
@@ -129,7 +129,7 @@ function strip(fragment: Fragment, prefix: string | null): { fragment: Fragment;
   fragment.forEach((node) => {
     if (isOutsideMedium(node, prefix)) {
       count += 1;
-      // The rows nested under it are text the reader pasted: they take its place.
+      // The rows nested under it are text the user pasted: they take its place.
       const group = node.lastChild;
       if (group?.type.name === 'blockGroup') {
         const inner = strip(group.content, prefix);

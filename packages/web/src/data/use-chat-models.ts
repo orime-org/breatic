@@ -5,11 +5,11 @@ import { keepPreviousData, useQuery, type UseQueryResult } from '@tanstack/react
 
 import { chatApi, type ChatModels } from '@web/data/api/chat';
 
-/** Query key prefix of the models the reader can pick. */
+/** Query key prefix of the models the user can pick. */
 const CHAT_MODELS_KEY = 'chat-models';
 
 /**
- * The models the reader can pick in the chat panel, and the one a new
+ * The models the user can pick in the chat panel, and the one a new
  * conversation of theirs starts on (#1363).
  * @param asked - Asked again whenever this rises: the caller passes the
  *   store's `modelListAsks`. The list in hand stays while it is asked.

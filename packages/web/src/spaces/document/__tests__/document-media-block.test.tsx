@@ -723,7 +723,7 @@ describe('a caption written through an input method (A16)', () => {
     fireEvent.change(input, { target: { value: '说明' } });
     fireEvent.compositionEnd(input, { data: '说明' });
     // The Enter that confirms the candidate is the input method's; the
-    // reader's own Enter afterwards commits.
+    // user's own Enter afterwards commits.
     await new Promise((done) => setTimeout(done, 0));
     fireEvent.keyDown(input, { key: 'Enter' });
 
@@ -1828,7 +1828,7 @@ describe('the caption field and the keyboard', () => {
     const { editor, field } = openCaption();
     const view = editor.prosemirrorView!;
     // The body takes the keyboard while the field is still on the page, so
-    // the field's going is not read as the reader leaving the body.
+    // the field's going is not read as the user leaving the body.
     let fieldWhenBodyFocused: boolean | null = null;
     view.dom.addEventListener('focus', () => {
       fieldWhenBodyFocused = field.isConnected;

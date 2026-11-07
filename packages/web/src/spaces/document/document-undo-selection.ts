@@ -175,7 +175,7 @@ export interface NamesOnUndoStack<T> {
   /**
    * The names as they stood before the edit an undo or redo takes back.
    * @param tr - The transaction being applied.
-   * @returns Those names on the reader's undo or redo of an edit that kept
+   * @returns Those names on the user's undo or redo of an edit that kept
    *   some; null for every other transaction.
    */
   readonly handedFor: (tr: Transaction) => T | null;

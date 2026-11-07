@@ -18,7 +18,7 @@ const ZOOMS = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 4, 8];
 
 describe('the pin a collapsed annotation is', () => {
   it('holds 28 screen pixels at every zoom the canvas allows', () => {
-    // The reader zooms out to find which notes still need answering, so a pin
+    // The user zooms out to find which notes still need answering, so a pin
     // that shrinks with the board makes that whole move pointless (user
     // 2026-09-15). Delivered by the box rather than by a transform: xyflow
     // measures a node with `offsetWidth` (@xyflow/system@0.0.79:854), which a

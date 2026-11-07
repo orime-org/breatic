@@ -7,8 +7,8 @@ import { TASK_FAILURE_REASONS } from '@breatic/shared';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
 // The sentence a task row shows for a failure it can name. The code is stored
-// and the sentence is made where the reader is, so every code needs a line in
-// all five catalogs — miss English and the reader gets the bare identifier,
+// and the sentence is made where the user is, so every code needs a line in
+// all five catalogs — miss English and the user gets the bare identifier,
 // miss one of the other four and that language shows an English sentence.
 //
 // Neither is caught by anything else: `i18n-no-missing-keys` only sees keys

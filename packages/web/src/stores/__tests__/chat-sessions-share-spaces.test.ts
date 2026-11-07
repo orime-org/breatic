@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The reader's answer to a request to look at Spaces, sent through the
+ * The user's answer to a request to look at Spaces, sent through the
  * conversation's own session (inner#1552, design 4.4).
  *
  * It goes out the way a questionnaire answer does: no message of the
- * reader's, the paused reply carried on, one request at a time on a
+ * user's, the paused reply carried on, one request at a time on a
  * conversation. The body carries `shared_spaces` beside the usual Space
  * context and goes through the same over-the-limit transfer as any turn. A
  * refused answer is said and leaves the card waiting; one the server says
@@ -27,7 +27,7 @@ const { chatSessionFor, evictAllChatSessions, sendInSession, shareSpacesInSessio
 
 const INPUT = { reason: 'To answer about the cast.', spaces: [{ id: 'c1' }] };
 
-/** What the paused reply holds: a request card waiting on the reader. */
+/** What the paused reply holds: a request card waiting on the user. */
 const PAUSED: StoredUiMessage[] = [
   { id: 'u-1', role: 'user', parts: [{ type: 'text', text: 'what do the characters wear?' }], metadata: { turnIndex: 1, ts: '' } },
   {

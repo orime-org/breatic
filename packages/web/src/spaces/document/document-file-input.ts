@@ -98,7 +98,7 @@ export function fileDropPosition(context: ComputeDropPositionContext): ComputeDr
   return { pos: gapAtDrop(view.state.doc, defaultPosition.pos), orientation: 'block-horizontal' };
 }
 
-/** Where a paste of files goes, and whether the reader aimed it at a line. */
+/** Where a paste of files goes, and whether the user aimed it at a line. */
 export interface PasteTarget {
   readonly gap: UploadGap;
   /** The caret is in an empty line and the gap is right above it. */

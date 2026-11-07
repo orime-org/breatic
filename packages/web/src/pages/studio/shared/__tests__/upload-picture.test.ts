@@ -113,7 +113,7 @@ describe('pictureErrorMessage', () => {
     expect(pictureErrorMessage(refused, t, KEYS)).toBe('Only the owner can do that.');
   });
 
-  it('keeps a transport failure to the caller\'s retry sentence, since its message is not written for a reader', () => {
+  it('keeps a transport failure to the caller\'s retry sentence, since its message is not written for a user', () => {
     const dropped = new ApiException({ status: 0, message: 'Network Error', fromServer: false });
     expect(pictureErrorMessage(dropped, t, KEYS)).toBe('k.upload');
   });

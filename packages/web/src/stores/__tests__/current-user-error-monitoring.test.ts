@@ -10,8 +10,8 @@ import { useCurrentUserStore, type CurrentUser } from '@web/stores/current-user'
 
 const user: CurrentUser = {
   id: 'user-1',
-  name: 'Reader',
-  email: 'reader@example.test',
+  name: 'User',
+  email: 'user@example.test',
   personalStudio: null,
   membershipTier: 'base',
 };

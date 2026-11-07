@@ -113,7 +113,7 @@ test('refuses an equivalent picture URL from another Studio @needs-model @needs-
     const sourceUrl = `${source.protocol}//${source.hostname.toUpperCase()}:${source.port || '443'}${source.pathname}?view=1#preview`;
 
     await openSmokeProject(page);
-    userSpace = await createSpace(page, 'canvas', `agent-source-reader-${Date.now()}`);
+    userSpace = await createSpace(page, 'canvas', `agent-source-user-${Date.now()}`);
     await startNewConversation(page);
     await attachCanvasSource(page, userSpace, sourceUrl);
     const result = await askAboutPictures(page,

@@ -48,7 +48,7 @@ export interface DocumentUploaderDeps {
   readonly unregister: (operationId: string) => void;
   /** Says why a file was turned away before it was sent. */
   readonly refuse: (messageKey: string, params: Readonly<Record<string, string>>) => void;
-  /** Closes the reader's undo step around a batch's start and each insert. */
+  /** Closes the user's undo step around a batch's start and each insert. */
   readonly undo: UndoCapture;
 }
 
@@ -57,7 +57,7 @@ export interface DocumentUploader {
   /**
    * Admits the files and starts the ones that pass at one gap, asked for only
    * once at least one file is admitted (the insert menu makes its gap then);
-   * null puts nothing anywhere. `aimed` says the reader aimed the files at
+   * null puts nothing anywhere. `aimed` says the user aimed the files at
    * the empty line right after the gap (its insert menu, or a paste with the
    * caret in it), so they land quoted as that line.
    */

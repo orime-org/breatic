@@ -254,7 +254,7 @@ describe('where the placeholder and the block go', () => {
     expect(landedAt).toBe(drawn);
   });
 
-  it('goes under a block the reader inserts right at its gap', () => {
+  it('goes under a block the user inserts right at its gap', () => {
     const { editor } = open();
     const ids = addUploadBatch(
       editor.prosemirrorView!,
@@ -459,7 +459,7 @@ describe('where the placeholder and the block go', () => {
     expect(shape(editor)).toEqual(['A', 'm1', 'B', 'Cxyz']);
   });
 
-  it('stays at its gap when the reader types somewhere else', () => {
+  it('stays at its gap when the user types somewhere else', () => {
     const { editor } = open();
     const view = editor.prosemirrorView!;
     const [slot] = addUploadBatch(view, gapBefore(view.state.doc, idOf(editor, 'B')), ['m1']);
@@ -471,7 +471,7 @@ describe('where the placeholder and the block go', () => {
     expect(shape(editor)).toEqual(['A', 'm1', 'B', 'Cxyz']);
   });
 
-  it('goes under a row the reader moves into its gap', () => {
+  it('goes under a row the user moves into its gap', () => {
     const { editor } = open();
     const [slot] = addUploadBatch(
       editor.prosemirrorView!,
@@ -751,7 +751,7 @@ describe('where the placeholder and the block go', () => {
   });
 });
 
-describe('landing a block leaves the reader where they are (A4)', () => {
+describe('landing a block leaves the user where they are (A4)', () => {
   it('keeps the caret in the block being typed into', () => {
     const { editor } = open();
     const view = editor.prosemirrorView!;
@@ -798,7 +798,7 @@ describe('landing a block leaves the reader where they are (A4)', () => {
     expect(shape(editor)).toEqual(['A', 'm1', 'B', 'C']);
   });
 
-  it('leaves what the reader types while a file uploads in one undo step', () => {
+  it('leaves what the user types while a file uploads in one undo step', () => {
     const { editor, manager } = open();
     const view = editor.prosemirrorView!;
     const [slot] = addUploadBatch(

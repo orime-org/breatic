@@ -248,7 +248,7 @@ describe('an explicit Agent comment View', () => {
     expect(selectedThreadsIn(handle.editor.prosemirrorState)).toEqual([threadId]);
   });
 
-  it('does not restore an old View selection after the reader opens a draft', async () => {
+  it('does not restore an old View selection after the user opens a draft', async () => {
     const { proposal, rerender } = await fixture();
     await view(proposal);
     await screen.findByTestId('doc-comment-card');
@@ -267,7 +267,7 @@ describe('an explicit Agent comment View', () => {
     expect(screen.getByTestId('doc-comment-draft-input')).toHaveValue('Unsent thought');
   });
 
-  it('keeps the panel closed after the reader closes a viewed comment', async () => {
+  it('keeps the panel closed after the user closes a viewed comment', async () => {
     const { proposal, rerender } = await fixture();
     await view(proposal);
     await screen.findByTestId('doc-comment-card');

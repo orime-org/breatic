@@ -56,7 +56,7 @@ export function startRowDrag(
   // range. A selection taking a table whole has an end in a cell, so that
   // range can open in a row, which has no block to draw, and the drag throws.
   // The drop moves the row alone (`rowIsFlying`), so the library is given
-  // that row; the reader's selection comes back when the drag ends.
+  // that row; the user's selection comes back when the drag ends.
   const row = heldTables(view.state.selection) === null ? undefined : rowById(view.state.doc, blockId);
   if (row !== undefined) view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, row.from)));
   const sideMenu = editor.getExtension(SideMenuExtension)!;
@@ -72,7 +72,7 @@ export function startRowDrag(
     page.removeEventListener('drop', onDrop, true);
     rowHasLanded();
     sideMenu.blockDragEnd();
-    // A text selection goes back to whatever the reader had: the node
+    // A text selection goes back to whatever the user had: the node
     // selection the library put on the row at dragstart is still there, and
     // the bubble bar comes up for any selection that is not empty.
     restoreAfterRowDrag(view, held, blockId);

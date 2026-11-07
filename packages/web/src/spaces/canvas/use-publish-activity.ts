@@ -43,7 +43,7 @@ function writeActivity(awareness: Awareness, activity: readonly NodeActivity[] |
 /**
  * Publish this client's waiting operations on a Space as `activity`
  * (inner#1303 §6.8), the one writer of that field. Mounted with the Space's
- * tab: an operation runs on while the reader looks at another Space, so its
+ * tab: an operation runs on while the user looks at another Space, so its
  * line stays on the peers' screens until it is answered, fails, is replaced
  * by the next start or has its server tool's press released, or the tab
  * closes. When the page goes, Hocuspocus drops the removal the provider sends

@@ -37,7 +37,7 @@ export function noteConsolidating(conversationId: string): void {
  * Take the word back down.
  *
  * Called when the reply starts and when the turn ends however it ended. A
- * fold that failed, a model that errored and a reader who pressed stop all
+ * fold that failed, a model that errored and a user who pressed stop all
  * leave the same thing behind otherwise: a line about the previous turn,
  * still on screen the next time this conversation is opened.
  * @param conversationId - The conversation to clear.

@@ -532,7 +532,7 @@ describe('MembersTab — joined date', () => {
     else process.env['TZ'] = REAL_TZ;
   });
 
-  it('shows the day the member joined in the timezone of the reader', () => {
+  it('shows the day the member joined in the timezone of the user', () => {
     // 23:00 UTC on 2 April is already 3 April in Shanghai.
     process.env['TZ'] = 'Asia/Shanghai';
     renderTab(

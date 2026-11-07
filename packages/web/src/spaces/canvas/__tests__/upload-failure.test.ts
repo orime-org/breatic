@@ -9,7 +9,7 @@
  * down — leaves a row nobody else will end, so it is reported;
  * every other failure is said in a toast, and keeps the File only where a
  * Retry can end differently. The node stays in all of them — a node that
- * exists is the reader's to remove, and only theirs (#2177).
+ * exists is the user's to remove, and only theirs (#2177).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -57,7 +57,7 @@ describe('resolveUploadFailure', () => {
   // server was never told. Both ways that half can end are in here — the bytes
   // never got out, and the edge turned them down (`UPLOAD_FAILURE_REASONS` in
   // `media-upload.ts`). This is the
-  // one plan that reports, and it carries no sentence — what the reader sees is
+  // one plan that reports, and it carries no sentence — what the user sees is
   // the row itself, in the failed count, where it survives them looking away.
   it('reports a transfer that never landed, and keeps its File', () => {
     expect(resolveUploadFailure({ reason: 'transfer', taskId: 't-1' })).toEqual({
@@ -121,7 +121,7 @@ describe('resolveUploadFailure', () => {
   });
 
   it('warns for a refusal and errors for a breakdown', () => {
-    // The colour a toast carries is its severity, and the reader cannot see
+    // The colour a toast carries is its severity, and the user cannot see
     // which gate caught the file. A format we do not take is the same refusal
     // whether the browser or the edge said so; a full studio, a broken hasher
     // and a transfer that died are failures of the attempt.

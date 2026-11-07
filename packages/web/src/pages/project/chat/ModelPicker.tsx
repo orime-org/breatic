@@ -23,7 +23,7 @@ export interface ModelPickerProps {
 
 /**
  * The model picker in the composer (#1363): the model the conversation on
- * screen is answered by, and a menu of the models the reader can pick.
+ * screen is answered by, and a menu of the models the user can pick.
  *
  * A pick is saved first: the button waits, still showing the saved model,
  * and then shows the model the server saved. A save that fails leaves the
@@ -82,7 +82,7 @@ function ModelPickerInner({ conversationId, projectId }: ModelPickerProps): Reac
 
   const saveFailed = t('chat.modelPicker.saveFailed');
   const [open, setOpen] = React.useState(false);
-  // Kept per conversation: the reader may switch away while a save is out.
+  // Kept per conversation: the user may switch away while a save is out.
   const saving = usePendingKeys();
   const { track } = saving;
   const choose = React.useCallback(
@@ -100,7 +100,7 @@ function ModelPickerInner({ conversationId, projectId }: ModelPickerProps): Reac
     [stored, track, conversationId, projectId, saveFailed],
   );
   // Focus goes to the menu itself, so a row shows a focus ring only once the
-  // reader moved there by keyboard; Radix would focus the first row on open.
+  // user moved there by keyboard; Radix would focus the first row on open.
   const focusMenu = React.useCallback((event: Event): void => {
     event.preventDefault();
     (event.currentTarget as HTMLElement).focus();

@@ -66,7 +66,7 @@ export function SpaceConnection({
  * The tab holds its document's connection from open to close, whichever tab is
  * on screen, so a background tab stays live. Its body mounts the first time
  * the tab is on screen and from then on is hidden rather than unmounted when
- * the reader switches away, so it comes back as it was left; closing the tab
+ * the user switches away, so it comes back as it was left; closing the tab
  * unmounts it.
  *
  * Memoized: its props are all plain values, and the project page re-renders on
@@ -111,7 +111,7 @@ export const OpenSpace = React.memo(function OpenSpace({
       {type === 'document' ? (
         <DocumentInterceptGuard projectId={projectId} spaceId={spaceId} />
       ) : null}
-      {/* What this reader is waiting on in a canvas Space stays on the peers'
+      {/* What this user is waiting on in a canvas Space stays on the peers'
         screens while another tab is on screen, so it is published with the tab. */}
       {type === 'canvas' ? <CanvasActivityPublisher spaceId={spaceId} /> : null}
       {type === '3d' ? <SceneConnectionLifetime name={buildName(projectId, spaceId)} readOnly={readOnly} /> : null}

@@ -9,7 +9,7 @@
  * made the badge the loudest thing in the panel while the filename — the only
  * thing telling two rows apart — came second (user 2026-09-06).
  *
- * The word stays in the accessible tree: a reader landing on a row rather than
+ * The word stays in the accessible tree: a user landing on a row rather than
  * on the heading still hears the state, and the colour is never the only thing
  * carrying it (WCAG 1.4.1).
  */

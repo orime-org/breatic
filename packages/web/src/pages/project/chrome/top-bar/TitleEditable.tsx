@@ -26,7 +26,7 @@ interface TitleEditableProps {
   /**
    * How many characters the name may run to: the limit of wherever the
    * caller stores it. A smaller number would shorten a legal name the moment
-   * the box was opened and closed, without the reader having changed a thing.
+   * the box was opened and closed, without the user having changed a thing.
    */
   maxLength: number;
   /**

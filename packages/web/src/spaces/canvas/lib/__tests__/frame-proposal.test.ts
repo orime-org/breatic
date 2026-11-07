@@ -3,7 +3,7 @@
 
 /**
  * Where the camera goes once a proposal has landed (inner#1443): centred on
- * what was placed, at the reader's zoom while it fits, zoomed out just enough
+ * what was placed, at the user's zoom while it fits, zoomed out just enough
  * when it does not.
  */
 
@@ -25,7 +25,7 @@ const middle = (v: { x: number; y: number; zoom: number }): { x: number; y: numb
 });
 
 describe('frameProposal', () => {
-  it('keeps the reader zoom and centres on the batch when it fits', () => {
+  it('keeps the user zoom and centres on the batch when it fits', () => {
     const bounds = { x: 2000, y: -300, width: 288, height: 192 };
     const v = frameProposal(bounds, pane, 0.8);
     expect(v.zoom).toBe(0.8);
@@ -43,7 +43,7 @@ describe('frameProposal', () => {
     expect(middle(v).y).toBeCloseTo(200);
   });
 
-  it('never zooms in past where the reader was', () => {
+  it('never zooms in past where the user was', () => {
     const v = frameProposal({ x: 0, y: 0, width: 100, height: 100 }, pane, 0.3);
     expect(v.zoom).toBe(0.3);
   });

@@ -99,7 +99,7 @@ function handleQuotedEnter(editor: ListEditor): boolean {
     // Both of the reads below are about the block the selection OPENS in, and
     // both stay true once it runs past that block. The empty branch answers by
     // opening a block rather than replacing anything, so a selection reaching
-    // it would leave what the reader highlighted where it was.
+    // it would leave what the user highlighted where it was.
     const blockEmpty = tr.selection.empty && blockContent.node.childCount === 0;
     // Indented means nested under another block; a block at the top of a
     // table cell is at the top of that cell's own body (inner#1619).
@@ -224,7 +224,7 @@ function handleWholeDocumentEnter(editor: ListEditor): boolean {
 /**
  * Enter with one whole block selected.
  *
- * A reader reaches this by holding the platform's select-node modifier over a
+ * A user reaches this by holding the platform's select-node modifier over a
  * block, and what Enter gets them is a new block after that one — the block
  * they selected untouched, which is what every editor with a block handle
  * does.

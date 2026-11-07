@@ -283,7 +283,7 @@ export function readsShownSize(spec: MiniToolSpec): boolean {
  * @param input.params - The draft params.
  * @param input.expandFrame - An expand tool's frame.
  * @param input.mark - A markup tool's draft.
- * @returns The first reason in the order the reader would fix them, or null.
+ * @returns The first reason in the order the user would fix them, or null.
  */
 export function miniToolRefusal(input: {
   spec: MiniToolSpec;
@@ -433,7 +433,7 @@ export function rectForAspect(ratio: number, source: SourceSize): CropRect {
 }
 
 /**
- * The rectangle after the reader types one side: a locked ratio moves the
+ * The rectangle after the user types one side: a locked ratio moves the
  * other side, and the rectangle is kept inside the source from where it
  * starts.
  * @param rect - The rectangle now.

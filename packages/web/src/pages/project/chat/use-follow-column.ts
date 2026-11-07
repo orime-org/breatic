@@ -10,7 +10,7 @@ import {
 } from '@web/pages/project/chat/follow-machine';
 import { AT_END_EPSILON_PX, readScroll } from '@web/pages/project/chat/scroll-reading';
 
-/** The things a reader does that the column hears about from our own callbacks. */
+/** The things a user does that the column hears about from our own callbacks. */
 export type UserAction = Extract<
   FollowEvent,
   'wayBackPressed' | 'messageSent' | 'conversationSwitched' | 'thinkingOpened' | 'earlierLoaded'
@@ -24,7 +24,7 @@ export interface FollowColumn {
   setContent: (node: HTMLElement | null) => void;
   /** Whether to draw the way back to the newest message. */
   showWayBack: boolean;
-  /** Tell it about something the reader did elsewhere. */
+  /** Tell it about something the user did elsewhere. */
   send: (action: UserAction) => void;
 }
 
@@ -46,7 +46,7 @@ interface Column {
   /**
    * Where its end was at that same moment. Only the end coming closer moves a
    * column up on its own, which is how the browser's doing is told from the
-   * reader's -- and reading it against a position established at some other
+   * user's -- and reading it against a position established at some other
    * moment would compare the two across a change neither of them saw.
    */
   lastEnd: number;
@@ -102,7 +102,7 @@ function writeTop(column: Column, top: number): void {
  * Work out whether the way back is owed, and tell whoever is drawing.
  *
  * The one place that question is answered. It takes both halves: the column
- * has to belong to the reader, and there has to be somewhere below to go --
+ * has to belong to the user, and there has to be somewhere below to go --
  * a held column that the browser has carried onto the end would otherwise
  * offer a way to where it already is.
  * @param column - The column.
@@ -290,15 +290,15 @@ function createColumn(): Column {
 
 /**
  * A message column that keeps up with a reply while it is being written, and
- * hands itself to the reader the moment they move it.
+ * hands itself to the user the moment they move it.
  *
  * Who it belongs to is settled by the transition table in `follow-machine`,
  * and every event goes through it. What a scroll event stands for is settled
  * by `scroll-reading`, which rules out our own writes and the browser's clamp
- * and calls whatever is left the reader -- so the ways a column can be moved
+ * and calls whatever is left the user -- so the ways a column can be moved
  * do not have to be listed anywhere.
  * @returns The refs to hand it, whether to draw the way back, and how to tell
- *   it what the reader did elsewhere.
+ *   it what the user did elsewhere.
  */
 export function useFollowColumn(): FollowColumn {
   const held = React.useRef<Column | null>(null);

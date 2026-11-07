@@ -6,7 +6,7 @@
  * (inner#1552, design 4.4).
  *
  * The card is drawn from the `request_space_content` call and the server's
- * mark naming it as the card the reader is shown, the way a questionnaire is:
+ * mark naming it as the card the user is shown, the way a questionnaire is:
  * the two tools share the one mark, and a step keeps only its first card.
  */
 import { describe, it, expect } from 'vitest';
@@ -53,7 +53,7 @@ function ask(toolCallId: string): Record<string, unknown> {
 }
 
 /**
- * The mark naming the card the reader is shown.
+ * The mark naming the card the user is shown.
  * @param toolCallId - The call.
  * @returns The part.
  */
@@ -62,7 +62,7 @@ function awaiting(toolCallId: string): Record<string, unknown> {
 }
 
 describe('the request card a message draws', () => {
-  it('waits for the reader when the server named it, with the reason and the Spaces asked for', () => {
+  it('waits for the user when the server named it, with the reason and the Spaces asked for', () => {
     const view = toChatMessage(reply([{ type: 'text', text: 'Let me look first.' }, request('req-1', 'input-available'), awaiting('req-1')]));
 
     expect(view.spaceRequests).toEqual([
@@ -72,7 +72,7 @@ describe('the request card a message draws', () => {
     expect(view.toolCalls?.[0]).not.toHaveProperty('failureKind');
   });
 
-  it('shows what was shared once the reader allowed it, from the stored summary', () => {
+  it('shows what was shared once the user allowed it, from the stored summary', () => {
     const summary = [
       { id: 'd1', name: 'Script v3', kind: 'document', part: { blocks: { from: 41 } }, state: 'read' },
       { id: 'c1', name: 'Cast', kind: 'canvas', part: { node_ids: ['n1', 'n2', 'n3'] }, state: 'read' },
@@ -92,7 +92,7 @@ describe('the request card a message draws', () => {
     expect(view.spaceRequests?.[0]).toMatchObject({ state: 'shared', results: summary });
   });
 
-  it('says the reader declined', () => {
+  it('says the user declined', () => {
     const view = toChatMessage(reply([request('req-1', 'output-available', { output: { declined: true } })]));
 
     expect(view.spaceRequests).toEqual([
@@ -100,7 +100,7 @@ describe('the request card a message draws', () => {
     ]);
   });
 
-  it('says the reader replied in the chat when they wrote a message instead', () => {
+  it('says the user replied in the chat when they wrote a message instead', () => {
     const view = toChatMessage(reply([request('req-1', 'output-available', { output: { repliedInChat: true } })]));
 
     expect(view.spaceRequests).toEqual([

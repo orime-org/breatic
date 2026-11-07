@@ -290,7 +290,7 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
     expect(screen.queryByText('?')).toBeNull();
   });
 
-  it('says how long ago a row arrived in the reader\'s language', async () => {
+  it('says how long ago a row arrived in the user\'s language', async () => {
     vi.mocked(notificationsApi.list).mockResolvedValue({
       items: [fakeNotification('n-8', 'studio.transfer_approved', { studioId: N1 })],
       resolved: EMPTY_RESOLVED,

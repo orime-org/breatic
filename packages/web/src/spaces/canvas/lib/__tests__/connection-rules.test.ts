@@ -23,7 +23,7 @@ describe('the rule the canvas reads and the rule the agent is held to', () => {
     // The agent proposes edges (#263) and its check runs in a library package
     // that cannot reach into this one, so the whitelist moved to the package
     // both sides can read. A copy would agree until the first change to it,
-    // and then the reader's own drag and the agent's proposal would part
+    // and then the user's own drag and the agent's proposal would part
     // company with nothing failing.
     expect(canConnect).toBe(shared);
   });

@@ -5,7 +5,7 @@
  * How a proposed flow arranges itself on the canvas (#263).
  *
  * The arrangement is the only thing on screen that says which node feeds
- * which: a reader looking at three nodes in a row reads them as three steps,
+ * which: a user looking at three nodes in a row reads them as three steps,
  * and one photo feeding three angles is not three steps. So the cases below
  * ask where the nodes end up relative to each other, never for the pixels.
  */
@@ -19,10 +19,10 @@ import { GENERATE_PANEL_WIDTH_PX } from '@web/spaces/canvas/generate/panel-width
 
 const AT = { x: 1000, y: 500 };
 
-/** An empty node waiting for the reader's material. */
+/** An empty node waiting for the user's material. */
 const empty = (name: string): ProposalNode => ({ role: 'source', type: 'image', name });
 
-/** A node waiting for the reader to press Generate. */
+/** A node waiting for the user to press Generate. */
 const generates = (name: string): ProposalNode => ({
   role: 'generate',
   type: 'image',
@@ -51,7 +51,7 @@ const flow = (
 });
 
 describe('where one node lands', () => {
-  it('sits centred on the point the reader was looking at', () => {
+  it('sits centred on the point the user was looking at', () => {
     const [only] = planFlowLayout(flow([generates('Result')]), AT);
     if (!only) throw new Error('nothing was placed');
 

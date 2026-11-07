@@ -4,7 +4,7 @@
 /**
  * Each document proposal card's state (inner#1509, design §5.7).
  *
- * A card's state is written by `start` when the reader presses it, `view`
+ * A card's state is written by `start` when the user presses it, `view`
  * when they press "View" on a card that landed, and `report` (or
  * `reportSpace` for every press on one document) when the press ends -- the
  * project page reports a document that is gone or a tab closed before the
@@ -27,7 +27,7 @@ import { t, type DocumentProposal } from '@breatic/shared';
 
 import { toast } from '@web/lib/toast';
 
-/** What the reader pressed: put it on as a comment, or write it into the body. */
+/** What the user pressed: put it on as a comment, or write it into the body. */
 export type LandingAction = 'comment' | 'write';
 
 /** Where a card stands. */
@@ -37,7 +37,7 @@ export type DocumentProposalCardState = 'working' | 'applied';
  * How a press ended. `gone`: a "View" press found the change no longer in
  * the document. `mediaOnly`: nothing was left to write once the media whose
  * address is not in our storage were left out. `located`: a locate press
- * showed where the proposal points. `left`: the reader switched away from, or
+ * showed where the proposal points. `left`: the user switched away from, or
  * closed, the document a locate or "View" press was waiting on (inner#1646).
  */
 export type DocumentProposalOutcome =
@@ -82,7 +82,7 @@ const FAILED_KEY: Readonly<Record<PressKind, string>> = {
 };
 
 /**
- * Tells the reader how a press ended, when it is anything a toast says.
+ * Tells the user how a press ended, when it is anything a toast says.
  * @param proposal - The proposal pressed.
  * @param action - What it was pressed to do.
  * @param outcome - How it ended.
@@ -99,7 +99,7 @@ function tell(proposal: DocumentProposal, action: LandingAction, outcome: Docume
 }
 
 /**
- * Tells the reader how a locate press ended: it writes nothing, so only a
+ * Tells the user how a locate press ended: it writes nothing, so only a
  * passage or Document that is gone or changed, or a failure, is said.
  * @param outcome - How it ended.
  */
@@ -200,7 +200,7 @@ export const useDocumentProposals = create<DocumentProposalsState>()((set, get) 
     const card = cards[proposalId];
     if (waiting === undefined) return;
     // A locate press wrote nothing, and a View press that could not reach its
-    // document, or whose document the reader left, wrote nothing while the
+    // document, or whose document the user left, wrote nothing while the
     // change is still there: the card keeps how it was. When the editor could
     // not be built the document Space shows why; a tab closed or switched away
     // from ends the press with nothing to say.

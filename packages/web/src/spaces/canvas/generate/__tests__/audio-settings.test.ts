@@ -100,7 +100,7 @@ describe('hasSettings', () => {
 describe('choiceLabel', () => {
   const spec = { values: ['English (United States)', 'Japanese (Japan)'], value_locales: ['en-US', 'ja-JP'] };
 
-  it('names a language in the reader\'s own language', () => {
+  it('names a language in the user\'s own language', () => {
     expect(choiceLabel(spec, 'Japanese (Japan)', 'zh-CN')).toBe(
       new Intl.DisplayNames(['zh-CN'], { type: 'language' }).of('ja-JP'),
     );

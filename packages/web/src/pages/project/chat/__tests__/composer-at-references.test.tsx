@@ -204,12 +204,12 @@ describe('@ in the chat box', () => {
 
     expect(box().state.doc.textContent).toBe('ask about @');
     // The list is built for the `@` all the same; what matters is that the
-    // reader is not shown one they never asked for.
+    // user is not shown one they never asked for.
     expect(await screen.findByTestId('reference-mention-option-a1')).not.toBeVisible();
   });
 
   it('counts a reference as one character against the limit', () => {
-    // Nine thousand nine hundred and ninety-nine as the reader sees it: the
+    // Nine thousand nine hundred and ninety-nine as the user sees it: the
     // block counts once, its marker is far longer.
     const { onChange } = setup({ draft: `y ${attachmentMarker('a1')} ${'y'.repeat(9_995)}`, attachments: [cover] });
     act(() => box().commands.focus('end'));

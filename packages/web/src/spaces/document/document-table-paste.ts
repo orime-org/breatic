@@ -12,7 +12,7 @@
  * placeholder cells until a command on the table evens it.
  *
  * Here every rowspan is cut to the rows below it and every row is filled at
- * its end to the widest row, the shape the reader saw on the page.
+ * its end to the widest row, the shape the user saw on the page.
  *
  * The same hook turns the tables a selection takes whole into empty lines
  * before a paste whose ends stand in code blocks (inner#1619 T14).

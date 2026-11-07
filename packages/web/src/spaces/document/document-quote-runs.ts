@@ -5,7 +5,7 @@
  * Where one quote begins and ends.
  *
  * A quote is a prop on each block rather than a container (§5.2), so what the
- * reader sees as one quote is however many blocks carry it in a row. In a row
+ * user sees as one quote is however many blocks carry it in a row. In a row
  * means READING order — the order the blocks are drawn in — which is why an
  * indented block belongs to the run of the block it is indented under: on the
  * screen the two are stacked with nothing between them.

@@ -4,7 +4,7 @@
 /**
  * How big a collapsed annotation is, and where its coordinate sits.
  *
- * A pin holds the same size on screen at every zoom, because a reader zooms
+ * A pin holds the same size on screen at every zoom, because a user zooms
  * out to see which notes on the whole board still need answering (user
  * 2026-09-15) — a pin too small to hit makes that move pointless.
  *

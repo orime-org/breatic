@@ -346,7 +346,7 @@ describe('ProjectPage — the strip on a browser that has not been here', () => 
 });
 
 // The two lines that join the strip to the browser's storage: the seed the
-// page opens on, and the write that follows every change the reader makes.
+// page opens on, and the write that follows every change the user makes.
 // Both modules either side of them are covered on their own, so nothing goes
 // red when the join itself is cut.
 describe('ProjectPage — the strip the browser was holding', () => {
@@ -421,7 +421,7 @@ describe('ProjectPage — the strip the browser was holding', () => {
     await waitFor(() => expect(shownOrder()).toEqual([SPACE_C]));
   });
 
-  it('stores the strip the reader is left with after closing a tab', async () => {
+  it('stores the strip the user is left with after closing a tab', async () => {
     setup();
     await waitFor(() => expect(shownOrder()).toEqual([SPACE_C]));
     await act(async () => {

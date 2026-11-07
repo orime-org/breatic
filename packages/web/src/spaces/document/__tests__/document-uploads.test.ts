@@ -185,7 +185,7 @@ describe('admission (A5)', () => {
 });
 
 describe('a batch and the undo step (A10)', () => {
-  it('closes the reader\'s undo step before the batch starts', async () => {
+  it('closes the user\'s undo step before the batch starts', async () => {
     const editor = open();
     const { deps: d } = deps();
     const view = editor.prosemirrorView!;

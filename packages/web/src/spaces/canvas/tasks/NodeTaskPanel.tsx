@@ -5,7 +5,7 @@
  * The list that opens beside a node when one of its counts is clicked
  * (#186 §7.1).
  *
- * It holds one state's rows: the reader asked for the failures, so the
+ * It holds one state's rows: the user asked for the failures, so the
  * successes are not what they are looking at. The rows are fetched from the
  * server rather than read off the shared document — the document carries four
  * numbers and nothing else (§3.3), so the detail behind a number is only
@@ -43,7 +43,7 @@ export interface NodeTaskPanelProps {
   status: TaskStatus;
   /** Every live task on the node, as the server last listed them. */
   entries: readonly NodeTaskEntry[];
-  /** The reader's clock, ticking once a second while rows are running. */
+  /** The user's clock, ticking once a second while rows are running. */
   now: number;
   /** Whether the list is still being fetched. */
   isLoading: boolean;
@@ -53,7 +53,7 @@ export interface NodeTaskPanelProps {
   hasRetryFile: (taskId: string) => boolean;
   /** Whether one request on one task's row is still waiting for the server. */
   isWaiting: (taskId: string, request: TaskActionRequest) => boolean;
-  /** Whether this reader may write; a read-only row carries no buttons. */
+  /** Whether this user may write; a read-only row carries no buttons. */
   readOnly: boolean;
   /**
    * What the host node holds, when it holds one of the three media. Passed
@@ -79,12 +79,12 @@ export interface NodeTaskPanelProps {
  * @param props - The panel inputs.
  * @param props.status - The state whose count was clicked.
  * @param props.entries - Every live task on the node.
- * @param props.now - The reader's clock.
+ * @param props.now - The user's clock.
  * @param props.isLoading - Whether the list is still being fetched.
  * @param props.isError - Whether the fetch failed.
  * @param props.hasRetryFile - Whether this session holds one task's File.
  * @param props.isWaiting - Whether one request on one task's row is still waiting.
- * @param props.readOnly - Whether this reader may write.
+ * @param props.readOnly - Whether this user may write.
  * @param props.medium - What the host node holds, for a refusal's format list.
  * @param props.onReload - Fetch the list again.
  * @param props.onClose - Close the list.

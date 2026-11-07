@@ -93,7 +93,7 @@ export function hasRetryFile(
 }
 
 /**
- * Drop one task's stash, once the reader clears the row it was offered on.
+ * Drop one task's stash, once the user clears the row it was offered on.
  * @param projectId - Owning project.
  * @param spaceId - Space the task's node lives in.
  * @param taskId - The task whose stash to drop.

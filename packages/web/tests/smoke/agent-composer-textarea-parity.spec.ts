@@ -3,7 +3,7 @@
 
 /**
  * The chat box was a textarea before it took reference blocks, and what a
- * reader does in it ends the way it did there. The expected endings below
+ * user does in it ends the way it did there. The expected endings below
  * were measured on that textarea, in this browser, with these same steps.
  * Typing, an input method, pasting and dropping text go through the browser,
  * so only a real browser shows what they leave in the box.
@@ -238,7 +238,7 @@ for (const [language, steps, commit, kept] of [
     await compose(page, [...steps], commit);
 
     await expect.poll(async () => (await read(page)).text, { timeout: 1_000 }).toBe(`ab${'y'.repeat(LIMIT - 3)}${kept}`);
-    // Moving the caret afterwards leaves the reader's earlier words alone.
+    // Moving the caret afterwards leaves the user's earlier words alone.
     await page.evaluate((sel) => {
       (document.querySelector(sel) as unknown as { editor: { commands: { setTextSelection: (p: number) => void } } }).editor.commands.setTextSelection(2);
     }, BOX);
@@ -273,7 +273,7 @@ async function readMarked(page: Page): Promise<{ text: string; selected: string 
 }
 
 /**
- * Drags with the mouse the way a reader does: a press held still starts the
+ * Drags with the mouse the way a user does: a press held still starts the
  * browser's drag of what is under it.
  * @param page - The page.
  * @param from - Where the press is.

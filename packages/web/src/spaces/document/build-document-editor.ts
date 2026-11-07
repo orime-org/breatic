@@ -215,7 +215,7 @@ export function buildDocumentEditor(
       // store; inside BlockNote only its own Tab and Shift-Tab bindings do,
       // and they decline the key while the toolbar judges it should be on
       // screen — a selection that is non-empty, holds text, and does not
-      // reach into plain content like a code block — so a reader can tab
+      // reach into plain content like a code block — so a user can tab
       // INTO the toolbar.
       'formattingToolbar',
     ],

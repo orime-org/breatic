@@ -95,7 +95,7 @@ const DialogOverlayScroller = ({
     // The thumb's usual ink is muted-foreground, which reads as "quiet ink on
     // one of our surfaces". This rail is on the backdrop instead, dark in both
     // themes, and that ink composites to 1.31:1 there in light and 1.92:1 in
-    // dark — a bar the reader has to find, at a fraction of the contrast one
+    // dark — a bar the user has to find, at a fraction of the contrast one
     // needs. White at the same opacity is the same bar, seen: 3.48:1 and
     // 3.75:1, measured off the painted pixels.
     thumbClassName='bg-white'
@@ -157,7 +157,7 @@ const DialogContent = React.forwardRef<
           // every scroller in the app: a rail INSIDE a dismissable layer has
           // already set that layer's "the pointer went down in my tree" flag,
           // which only the document listener clears, so stopping the press
-          // there would cost the reader a second click on anything outside.
+          // there would cost the user a second click on anything outside.
           // Declared after the spread so a caller's own handler cannot
           // displace it, and called from here so it still runs.
           onPointerDownOutside={(e) => {

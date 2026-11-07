@@ -333,14 +333,14 @@ function NodesMenuButton({
  * them. The dialog opens from state, so focus is handed back to this button
  * by `useReturnFocus`, and the button's tooltip does not pop on that refocus.
  * @param root0 - Component props.
- * @param root0.readOnly - Whether the reader cannot edit the canvas.
+ * @param root0.readOnly - Whether the user cannot edit the canvas.
  * @returns The shortcuts button and its dialog.
  */
 function ShortcutsMenuButton({ readOnly }: { readOnly: boolean }): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = useExclusiveOverlay('canvas-shortcuts');
   const returnFocus = useReturnFocus(open);
-  // The open flag lives in a global store, so a menu that unmounts (the reader
+  // The open flag lives in a global store, so a menu that unmounts (the user
   // switches Space) must give it back or the dialog reopens on the next mount.
   React.useEffect(() => () => setOpen(false), [setOpen]);
   const label = t('menu.item.shortcuts');
