@@ -78,7 +78,7 @@ const model = vi.hoisted(() => ({
 vi.mock("@breatic/domain", async () => {
   const { domainMock } = await import("../helpers/mock-core.js");
   return {
-    ...domainMock(),
+    ...(await domainMock()),
     streamTextRetry: (opts: Record<string, unknown>) => {
       model.calls.push(opts);
       model.entered += 1;
