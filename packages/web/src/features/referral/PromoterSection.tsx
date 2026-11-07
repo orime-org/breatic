@@ -49,12 +49,19 @@ export function PromoterSection(): React.JSX.Element | null {
 }
 
 /**
- * Copies text and says so.
+ * Copies text and says how it went.
  * @param text - What to copy.
  * @param done - The confirmation.
+ * @param failed - What to say when the browser refuses.
  */
-function copy(text: string, done: string): void {
-  void navigator.clipboard?.writeText(text).then(() => toast.success(done));
+async function copy(text: string, done: string, failed: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast.success(done);
+  } catch {
+    // No clipboard outside a secure page, or the browser refused the write.
+    toast.error(failed);
+  }
 }
 
 /**
@@ -87,7 +94,7 @@ function PromoterBody({ view }: { view: AccountReferral }): React.JSX.Element {
             {promoter.code}
           </span>
           {off ? null : (
-            <Button type='button' variant='ghost' size='sm' className='gap-1.5' icon={<Copy className='h-3.5 w-3.5' />} onClick={() => copy(promoter.code, t('membership.promoter.copied'))}>
+            <Button type='button' variant='ghost' size='sm' className='gap-1.5' icon={<Copy className='h-3.5 w-3.5' />} onClick={() => void copy(promoter.code, t('membership.promoter.copied'), t('membership.promoter.copyFailed'))}>
               {t('membership.promoter.copyCode')}
             </Button>
           )}
@@ -100,7 +107,7 @@ function PromoterBody({ view }: { view: AccountReferral }): React.JSX.Element {
           <>
             <div className='flex items-center gap-2'>
               <Input readOnly value={promoter.link} aria-label={t('membership.promoter.copyLink')} className='text-muted-foreground' />
-              <Button type='button' variant='outline' className='gap-1.5' icon={<Copy className='h-3.5 w-3.5' />} onClick={() => copy(promoter.link, t('membership.promoter.copied'))}>
+              <Button type='button' variant='outline' className='gap-1.5' icon={<Copy className='h-3.5 w-3.5' />} onClick={() => void copy(promoter.link, t('membership.promoter.copied'), t('membership.promoter.copyFailed'))}>
                 {t('membership.promoter.copyLink')}
               </Button>
             </div>

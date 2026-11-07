@@ -114,6 +114,23 @@ describe('the promoter program section (inner#1868 table 12.11)', () => {
     expect(screen.getByRole('button', { name: 'Copy link' })).toBeInTheDocument();
   });
 
+  it('copies the link and says so', async () => {
+    const user = userEvent.setup();
+    setup({ ...OPEN, promoter: { state: 'approved', code: 'ALICE', link: 'https://app.example/register?ref=ALICE', codeStatus: 'active' } });
+    await user.click(await screen.findByRole('button', { name: 'Copy link' }));
+    await waitFor(() => expect(toasts.success).toHaveBeenCalledWith('Copied'));
+    expect(await navigator.clipboard.readText()).toBe('https://app.example/register?ref=ALICE');
+  });
+
+  it('says so when the browser refuses the copy', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new DOMException('denied', 'NotAllowedError'));
+    setup({ ...OPEN, promoter: { state: 'approved', code: 'ALICE', link: 'https://app.example/register?ref=ALICE', codeStatus: 'active' } });
+    await user.click(await screen.findByRole('button', { name: 'Copy code' }));
+    await waitFor(() => expect(toasts.error).toHaveBeenCalledWith('Could not copy to clipboard.'));
+    expect(toasts.success).not.toHaveBeenCalled();
+  });
+
   it('shows a disabled code as disabled, without the link', async () => {
     setup({ ...OPEN, promoter: { state: 'approved', code: 'ALICE', link: 'https://app.example/register?ref=ALICE', codeStatus: 'disabled' } });
     expect(await screen.findByText('Disabled')).toBeInTheDocument();

@@ -2992,6 +2992,7 @@
       "copyCode": "Copy code",
       "copyLink": "Copy link",
       "copied": "Copied",
+      "copyFailed": "Could not copy to clipboard.",
       "shareHint": "People who sign up with this code, or add it before their first membership, get {percent}% off the first period.",
       "disabled": "Disabled",
       "disabledDetail": "This code is disabled, so new accounts can't use it. People who already added it still get their first-period discount.",

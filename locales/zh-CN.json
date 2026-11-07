@@ -2992,6 +2992,7 @@
       "copyCode": "复制推广码",
       "copyLink": "复制链接",
       "copied": "已复制",
+      "copyFailed": "复制到剪贴板失败。",
       "shareHint": "别人用这个码注册，或在第一次开会员前填上，首期会员 {zhe} 折。",
       "disabled": "已停用",
       "disabledDetail": "这个推广码已停用，新用户不能再使用。已经用了它的人照常享受首期折扣。",
