@@ -65,14 +65,6 @@ export function deriveDisplayName(u: {
   return localPart && localPart.length > 0 ? localPart : u.email;
 }
 
-/**
- * Register / login responses no longer return a `token` field —
- * the server sets an httpOnly session cookie on the
- * response instead (2026-05-26 cookie migration). The frontend
- * never holds the token; subsequent calls authenticate via the
- * cookie automatically (axios `withCredentials: true`).
- */
-/** No email backend: the account exists and is signed in. */
 /** What became of the referral code a sign-up carried (inner#1868): bound, or not used. */
 export type SignupReferralOutcome = 'applied' | 'not_applied';
 
@@ -82,6 +74,14 @@ export interface SignupReferralFields {
   referralSource?: 'signup_link' | 'signup_typed';
 }
 
+/**
+ * Register / login responses no longer return a `token` field —
+ * the server sets an httpOnly session cookie on the
+ * response instead (2026-05-26 cookie migration). The frontend
+ * never holds the token; subsequent calls authenticate via the
+ * cookie automatically (axios `withCredentials: true`).
+ */
+/** No email backend: the account exists and is signed in. */
 interface RegisterCreated {
   status: 'created';
   user: AuthUser;
