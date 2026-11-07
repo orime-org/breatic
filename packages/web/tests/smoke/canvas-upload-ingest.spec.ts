@@ -121,14 +121,6 @@ async function noToastLeft(target: Page): Promise<void> {
     .toBe(0);
 }
 
-/** Every video node's `src` currently on the canvas. */
-async function videoSources(target: Page): Promise<string[]> {
-  return target.evaluate((space: string) =>
-    [...document.querySelectorAll(`${space} .react-flow__node video`)].map(
-      (v) => (v as HTMLVideoElement).src,
-    ), VISIBLE_SPACE);
-}
-
 /**
  * The video node's stored content and cover, as the canvas document holds them.
  * @param target - The page.
@@ -326,22 +318,25 @@ test('a video whose frame cannot be cut still lands, without a cover @needs-ffmp
     Buffer.concat([MP4_HEAD, randomBytes(4096)]),
   );
 
-  // The Space is this case's own, so the one video that appears is this drop's.
+  // The Space is this case's own, so the one video that lands is this drop's.
+  let stored = { content: '', coverUrl: '' };
   await expect
-    .poll(async () => (await videoSources(page)).length, { timeout: 120_000 })
-    .toBeGreaterThan(0);
-  const sources = await videoSources(page);
-  const landed = sources[sources.length - 1] as string;
-  expect(landed).toMatch(/^https?:\/\//);
+    .poll(async () => {
+      stored = await storedVideo(page);
+      return /^https?:\/\//.test(stored.content);
+    }, { timeout: 120_000 })
+    .toBe(true);
 
-  // Held for a while: a poster that arrives late would make this pass on
-  // timing rather than on the outcome.
+  // The node plays only through a prepared presentation, and these bytes cannot
+  // be prepared: it says the media is unavailable, and offers no Retry because
+  // a content failure comes out the same every time. Held for a while: a poster
+  // that arrives late would make this pass on timing rather than on the outcome.
+  const node = visibleSpace(page).locator('.react-flow__node');
+  await expect(node.getByText('Media unavailable')).toBeVisible({ timeout: 120_000 });
   await page.waitForTimeout(5_000);
-  const poster = await page.evaluate((space: string) => {
-    const videos = [...document.querySelectorAll(`${space} .react-flow__node video`)];
-    return (videos[videos.length - 1] as HTMLVideoElement | undefined)?.poster ?? '';
-  }, VISIBLE_SPACE);
-  expect(poster).toBe('');
+  expect((await storedVideo(page)).coverUrl).toBe('');
+  await expect(node.getByRole('button', { name: 'Retry preview' })).toHaveCount(0);
+  await expect(node.locator('[data-testid="media-player"] img')).toHaveCount(0);
 });
 
 // #186 A5: a transfer that dies AFTER the ticket. The finish needs an upload id this
