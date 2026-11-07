@@ -72,12 +72,11 @@ function trackedFixture(): { original: miniToolAnalysisService.MiniToolAnalysisE
   const computed = miniToolAnalysisResultSchema.parse({
     schemaVersion: 1, kind: "tracked_mask", draftId: record.draftId, revision: record.revision, analysisRunId: TASK,
     acceptedAt: record.acceptedAt, binding: record.binding, analysisInput: input, inputFingerprint: record.inputFingerprint,
-    ...metadata, anchor: input.anchor, regionFingerprint: "d".repeat(64), polarity: { remove: 0, keep: 255 },
+    ...metadata, anchor: input.anchor, regionFingerprint: "d".repeat(64),
     sourceFrameMapping: [0, 1, 2, 3].map((frameIndex) => ({ frameIndex, sourcePts: frameIndex / 4 })),
-    artifactRefs: ["normalized_clip", "rle", "binary_mask"].map((role, index) => ({
+    artifactRefs: ["rle"].map((role, index) => ({
       role, assetId: `90000000-0000-4000-8000-00000000000${index + 1}`, canonicalURL: `https://assets.test.invalid/${role}`,
-      contentHash: "e".repeat(64), kind: role === "rle" ? "document" : "video", mimeType: role === "rle" ? "text/plain" : "video/mp4",
-      size: 100, frameMetadata: role === "rle" ? null : metadata,
+      contentHash: "e".repeat(64), kind: "document", mimeType: "text/plain", size: 100, frameMetadata: null,
     })),
   });
   return { original, result: computed };
