@@ -1,0 +1,538 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+/**
+ * Every batch-six video mini-tool run once for real (inner#1306): each source
+ * is uploaded through the canvas, each tool is opened from the node's Tools
+ * submenu and configured through its own panel, Run is pressed, and a result
+ * counts once every node the run built holds a stored URL. ffprobe then reads
+ * what was stored.
+ *
+ * The model tools spend money upstream, every tool runs in the ingest
+ * Worker's containers, and the media are drawn by ffmpeg as the run starts;
+ * the tags keep each case out of the default run. Everything runs at the
+ * lowest settings: short, small clips, one output, the first model offered.
+ *
+ * `driving.mp4` (a person moving, with sound) and `speech.mp3` (a few seconds
+ * of speech) are fixtures made with our own generators; this run cuts them
+ * short. The rest is ffmpeg's animated test pattern over a tone.
+ */
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+
+import { expect, type Locator, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
+
+import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
+import { openSmokeProject, smokeProjectId } from '../helpers/project';
+import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
+import { roomForUploads } from '../helpers/upload-budget';
+
+/** The fixtures with people in them. */
+const FIXTURES = resolve(__dirname, '../fixtures/mini-tools');
+
+/** Where this run's media are put together. */
+let MEDIA = '';
+
+/**
+ * Run ffmpeg quietly, failing on any error.
+ * @param args - Its arguments after the global flags.
+ */
+function ffmpeg(...args: string[]): void {
+  execFileSync('ffmpeg', ['-v', 'error', '-y', ...args]);
+}
+
+/**
+ * Put the run's media in a directory of their own. Every file carries a mark
+ * of this run, so its bytes are ones the studio has not stored before.
+ * @returns The directory.
+ */
+function prepareMedia(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'mini-tools-batch-6-'));
+  const mark = ['-metadata', `comment=mini-tools-batch-6 ${String(Date.now())}`];
+  const mp4 = ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', ...mark];
+  const clip = (name: string, size: string, seconds: number, hz: number): void => ffmpeg(
+    '-f', 'lavfi', '-i', `testsrc2=size=${size}:rate=25:duration=${String(seconds)}`,
+    '-f', 'lavfi', '-i', `sine=frequency=${String(hz)}:duration=${String(seconds)}`,
+    ...mp4, join(dir, name),
+  );
+  clip('clip6.mp4', '640x360', 6, 330);
+  clip('clip3a.mp4', '640x360', 3, 440);
+  clip('clip3b.mp4', '640x360', 3, 550);
+  clip('square3.mp4', '480x480', 3, 660);
+  ffmpeg('-i', join(FIXTURES, 'driving.mp4'), '-t', '3', ...mp4, join(dir, 'driving3.mp4'));
+  ffmpeg('-i', join(FIXTURES, 'speech.mp3'), '-t', '2', ...mark, join(dir, 'speech2.mp3'));
+  return dir;
+}
+
+test.use({ viewport: { width: 1680, height: 950 }, actionTimeout: 20_000 });
+// Each case uploads, prepares presentations and waits for a container or model
+// run to finish; the slowest, a model run, takes several minutes.
+test.setTimeout(30 * 60_000);
+
+test.beforeAll(() => {
+  MEDIA = prepareMedia();
+});
+
+test.afterAll(() => {
+  if (MEDIA !== '') rmSync(MEDIA, { recursive: true, force: true });
+});
+
+/** One canvas a case works on. */
+interface Canvas {
+  page: Page;
+  projectId: string;
+  spaceId: string;
+  /** Uploaded sources by file name. */
+  sources: Map<string, string>;
+}
+
+/** One node as the document holds it, with what a waiting case reports. */
+interface DocNode {
+  id: string;
+  type: string;
+  content: string;
+  data: Record<string, unknown>;
+}
+
+/**
+ * Open a Space of the case's own on the slot's Project.
+ * @param page - The case's page.
+ * @param label - A name for the Space.
+ * @returns The canvas.
+ */
+async function openCanvas(page: Page, label: string): Promise<Canvas> {
+  await openSmokeProject(page);
+  const spaceId = await createSpace(page, 'canvas', `batch-6-${label}-${String(Date.now())}`);
+  return { page, projectId: smokeProjectId(), spaceId, sources: new Map() };
+}
+
+/**
+ * The canvas document's nodes.
+ * @param c - The canvas.
+ * @returns Every node, with its content and the fields a failure report needs.
+ */
+async function documentNodes(c: Canvas): Promise<DocNode[]> {
+  const at = await liveModuleUrl(c.page, CANVAS_SPACE);
+  return c.page.evaluate(
+    async ([pid, sid, url]: [string, string, string]) => {
+      const canvas = (await import(/* @vite-ignore */ url)) as {
+        readCanvasGraph: (p: string, s: string) => {
+          nodes: { id: string; type: string; data?: Record<string, unknown> }[];
+        };
+      };
+      return canvas.readCanvasGraph(pid, sid).nodes.map((n) => {
+        const data = n.data ?? {};
+        const pick = Object.fromEntries(['state', 'taskCounts', 'errorMessage', 'duration', 'width', 'height', 'coverUrl']
+          .filter((key) => key in data).map((key) => [key, data[key]]));
+        return { id: n.id, type: n.type, content: typeof data.content === 'string' ? data.content : '', data: pick };
+      });
+    },
+    [c.projectId, c.spaceId, at] as [string, string, string],
+  );
+}
+
+/**
+ * Move a node in the canvas document.
+ * @param c - The canvas.
+ * @param nodeId - The node.
+ * @param to - Its new position.
+ * @param to.x - Flow x.
+ * @param to.y - Flow y.
+ */
+async function moveNode(c: Canvas, nodeId: string, to: { x: number; y: number }): Promise<void> {
+  const at = await liveModuleUrl(c.page, CANVAS_SPACE);
+  await c.page.evaluate(
+    async ([pid, sid, id, x, y, url]: [string, string, string, number, number, string]) => {
+      const canvas = (await import(/* @vite-ignore */ url)) as {
+        setNodePosition: (p: string, s: string, n: string, at: { x: number; y: number }, parent: null) => void;
+      };
+      canvas.setNodePosition(pid, sid, id, { x, y }, null);
+    },
+    [c.projectId, c.spaceId, nodeId, to.x, to.y, at] as [string, string, string, number, number, string],
+  );
+}
+
+/**
+ * Upload the case's sources through the canvas, one at a time, and line them up.
+ * @param c - The canvas.
+ * @param files - File names in the media directory.
+ */
+async function upload(c: Canvas, ...files: string[]): Promise<void> {
+  await roomForUploads(files.length);
+  for (const file of files) {
+    const before = new Set((await documentNodes(c)).map((n) => n.id));
+    await c.page.locator('input[data-testid="canvas-upload-input"][multiple]').setInputFiles(join(MEDIA, file));
+    let id = '';
+    await expect
+      .poll(async () => {
+        const made = (await documentNodes(c)).find((n) => !before.has(n.id) && /^https?:\/\//.test(n.content));
+        id = made?.id ?? '';
+        return id;
+      }, { timeout: 5 * 60_000, intervals: [2_000] })
+      .not.toBe('');
+    await moveNode(c, id, { x: c.sources.size * 700, y: 0 });
+    c.sources.set(file, id);
+  }
+  await c.page.getByRole('button', { name: 'Fit to viewport' }).click();
+}
+
+/**
+ * A source's stored URL.
+ * @param c - The canvas.
+ * @param file - Its file name.
+ * @returns The URL its node holds.
+ */
+async function contentOf(c: Canvas, file: string): Promise<string> {
+  return (await documentNodes(c)).find((n) => n.id === c.sources.get(file))!.content;
+}
+
+/**
+ * A source node on screen.
+ * @param c - The canvas.
+ * @param file - Its file name.
+ * @returns Its locator.
+ */
+function nodeOf(c: Canvas, file: string): Locator {
+  return visibleSpace(c.page).locator(`.react-flow__node[data-id="${c.sources.get(file)!}"]`);
+}
+
+/**
+ * Wait until a video source plays through its presentation.
+ * @param c - The canvas.
+ * @param file - Its file name.
+ */
+async function presented(c: Canvas, file: string): Promise<void> {
+  const media = nodeOf(c, file).getByTestId('media-element');
+  await expect(media).toBeAttached({ timeout: 5 * 60_000 });
+  await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.readyState)).toBeGreaterThanOrEqual(2);
+}
+
+/**
+ * Seek a video node through its own seek bar, as a reader drags the playhead.
+ * @param c - The canvas.
+ * @param file - The source.
+ * @param fraction - Where along the bar.
+ * @returns The time the player shows afterwards.
+ */
+async function seek(c: Canvas, file: string, fraction: number): Promise<number> {
+  const node = nodeOf(c, file);
+  const media = node.getByTestId('media-element');
+  await node.hover();
+  const bar = node.getByTestId('seek');
+  const box = await bar.boundingBox();
+  if (box === null) throw new Error('the seek bar has no box');
+  await c.page.mouse.click(box.x + box.width * fraction, box.y + box.height / 2);
+  let at = 0;
+  await expect
+    .poll(async () => {
+      at = await media.evaluate((el: HTMLMediaElement) => el.currentTime);
+      return at;
+    })
+    .toBeGreaterThan(0);
+  return at;
+}
+
+/**
+ * Open a tool from a node's Tools submenu.
+ * @param c - The canvas.
+ * @param file - The source.
+ * @param tool - The tool id.
+ */
+async function openTool(c: Canvas, file: string, tool: string): Promise<void> {
+  const node = nodeOf(c, file);
+  await expect(node).toBeVisible();
+  await node.click({ button: 'right' });
+  await c.page.getByTestId('node-menu-tools').hover();
+  await c.page.getByTestId(`node-menu-tool-${tool}`).click();
+  await expect(c.page.getByRole('menu')).toHaveCount(0, { timeout: 5_000 });
+  await expect(c.page.getByTestId('mini-tool-panel-title')).toBeVisible();
+}
+
+/**
+ * Press a Run and return the nodes it built.
+ * @param c - The canvas.
+ * @param press - The press itself.
+ * @param outputs - How many nodes the run builds.
+ * @returns Their ids.
+ */
+async function runBuilding(c: Canvas, press: () => Promise<void>, outputs: number): Promise<string[]> {
+  const before = new Set((await documentNodes(c)).map((n) => n.id));
+  const toasts = new Set<string>();
+  await press();
+  let made: string[] = [];
+  // The value polled names any toast the press raised, so a refused press
+  // ends in a timeout that says why.
+  await expect
+    .poll(async () => {
+      made = (await documentNodes(c)).filter((n) => !before.has(n.id)).map((n) => n.id);
+      for (const text of await c.page.locator('[data-sonner-toast]').allInnerTexts()) toasts.add(text);
+      return made.length === outputs ? 'built' : JSON.stringify({ built: made.length, toasts: [...toasts] });
+    }, { timeout: 60_000, intervals: [250] })
+    .toBe('built');
+  return made;
+}
+
+/**
+ * Press the panel's Run once it can run.
+ * @param c - The canvas.
+ * @param outputs - How many nodes the run builds.
+ * @returns Their ids.
+ */
+async function run(c: Canvas, outputs: number): Promise<string[]> {
+  const button = c.page.getByTestId('mini-tool-run');
+  await expect(button).toBeEnabled({ timeout: 5 * 60_000 });
+  await expect(button).not.toHaveAttribute('aria-disabled', 'true');
+  return runBuilding(c, () => button.click(), outputs);
+}
+
+/**
+ * Wait until every node a run built holds a stored URL.
+ * @param c - The canvas.
+ * @param ids - The run's nodes.
+ * @returns Them, as the document holds them.
+ * @throws {Error} When a task of the run fails, or nothing is stored in time.
+ */
+async function stored(c: Canvas, ids: readonly string[]): Promise<DocNode[]> {
+  const deadline = Date.now() + 25 * 60_000;
+  for (;;) {
+    const all = new Map((await documentNodes(c)).map((n) => [n.id, n]));
+    const nodes = ids.map((id) => all.get(id)!);
+    if (nodes.every((n) => /^https?:\/\//.test(n.content))) return nodes;
+    // A failed task ends the wait at once, naming what each node shows.
+    const involved = [...nodes, ...[...c.sources.values()].map((id) => all.get(id)!)];
+    const failed = involved.some((n) => ((n.data.taskCounts as { failed?: number } | undefined)?.failed ?? 0) > 0);
+    if (failed || Date.now() > deadline) {
+      throw new Error(`the run stored no result: ${JSON.stringify(involved.map((n) => ({ id: n.id, content: n.content, ...n.data })))}`);
+    }
+    await c.page.waitForTimeout(10_000);
+  }
+}
+
+/** What ffprobe reads off one stored URL. */
+interface Probe {
+  streams: {
+    codec_type: string;
+    codec_name: string;
+    width?: number;
+    height?: number;
+    pix_fmt?: string;
+    tags?: Record<string, string>;
+  }[];
+  format: { duration?: string };
+}
+
+/**
+ * A stored URL's streams, read by ffprobe.
+ * @param url - The URL.
+ * @returns ffprobe's JSON.
+ */
+function probe(url: string): Probe {
+  return JSON.parse(
+    execFileSync('ffprobe', ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', url], { encoding: 'utf8' }),
+  ) as Probe;
+}
+
+/**
+ * A stored media's running time.
+ * @param url - The URL.
+ * @returns Seconds.
+ */
+function duration(url: string): number {
+  return Number(probe(url).format.duration);
+}
+
+/**
+ * The video stream of a stored URL.
+ * @param url - The URL.
+ * @returns Its stream.
+ */
+function videoStream(url: string): Probe['streams'][number] {
+  const stream = probe(url).streams.find((s) => s.codec_type === 'video');
+  if (stream === undefined) throw new Error(`${url} has no video stream`);
+  return stream;
+}
+
+/** One frame at 25 fps, the tolerance a duration is held to. */
+const FRAME = 0.04;
+
+test('extract frames: first, last and current frame each give one image @needs-ingest @needs-storage @needs-ffmpeg', async ({ page }) => {
+  const c = await openCanvas(page, 'frames');
+  try {
+    await upload(c, 'clip3a.mp4');
+    await presented(c, 'clip3a.mp4');
+    const source = videoStream(await contentOf(c, 'clip3a.mp4'));
+    const results: DocNode[] = [];
+    for (const mode of ['first', 'last', 'current'] as const) {
+      if (mode === 'current') await seek(c, 'clip3a.mp4', 0.5);
+      await openTool(c, 'clip3a.mp4', 'video.extract-frames');
+      await c.page.getByTestId(`video-frame-mode-${mode}`).click();
+      await expect(c.page.getByTestId(`video-frame-mode-${mode}`)).toHaveAttribute('aria-current', 'true');
+      const made = await run(c, 1);
+      await c.page.keyboard.press('Escape');
+      const [node] = await stored(c, made);
+      expect(node!.type).toBe('image');
+      results.push(node!);
+    }
+    for (const node of results) {
+      const frame = videoStream(node.content);
+      expect([frame.width, frame.height]).toEqual([source.width, source.height]);
+    }
+    expect(new Set(results.map((n) => n.content)).size).toBe(3);
+  } finally {
+    await deleteSpace(page, c.spaceId);
+  }
+});
+
+test('split: two cut points give three videos that add up to the source @needs-ingest @needs-storage @needs-ffmpeg', async ({ page }) => {
+  const c = await openCanvas(page, 'split');
+  try {
+    await upload(c, 'clip6.mp4');
+    await presented(c, 'clip6.mp4');
+    await openTool(c, 'clip6.mp4', 'video.split');
+    const atCursor = c.page.getByRole('button', { name: 'Add at cursor' });
+    for (const [index, fraction] of [0.33, 0.66].entries()) {
+      await seek(c, 'clip6.mp4', fraction);
+      await atCursor.click();
+      await expect(c.page.getByTestId(`video-cut-${String(index)}`)).toBeVisible();
+    }
+    const made = await run(c, 3);
+    await c.page.keyboard.press('Escape');
+    const parts = await stored(c, made);
+    expect(parts.every((n) => n.type === 'video')).toBe(true);
+    const total = parts.reduce((sum, n) => sum + duration(n.content), 0);
+    const whole = duration(await contentOf(c, 'clip6.mp4'));
+    expect(Math.abs(total - whole)).toBeLessThanOrEqual(2 * FRAME);
+  } finally {
+    await deleteSpace(page, c.spaceId);
+  }
+});
+
+test('transitions: two videos and a crossfade give one video as long as both less the overlap @needs-ingest @needs-storage @needs-ffmpeg', async ({ page }) => {
+  const c = await openCanvas(page, 'transitions');
+  try {
+    await upload(c, 'clip3a.mp4', 'clip3b.mp4');
+    await presented(c, 'clip3a.mp4');
+    await presented(c, 'clip3b.mp4');
+    await openTool(c, 'clip3a.mp4', 'video.transitions');
+    const add = c.page.getByTestId('video-timeline-add');
+    await add.click();
+    await nodeOf(c, 'clip3b.mp4').click();
+    await expect(c.page.locator('[data-testid^="video-timeline-thumbnail-"]')).toHaveCount(2);
+    await add.click();
+    await c.page.getByRole('button', { name: 'Edit timeline' }).click();
+    const dialog = c.page.getByTestId('video-timeline-dialog');
+    await expect(dialog).toBeVisible();
+    // The clip picker, then the transition's type.
+    await dialog.getByRole('combobox').nth(1).click();
+    await c.page.getByRole('option', { name: 'Crossfade' }).click();
+    const overlap = dialog.getByTestId('video-clip-overlap');
+    await overlap.fill('1');
+    await expect(overlap).toHaveValue('1');
+    const made = await runBuilding(c, () => dialog.getByRole('button', { name: 'Export' }).click(), 1);
+    await expect(dialog).toBeHidden({ timeout: 60_000 });
+    const [joined] = await stored(c, made);
+    const a = duration(await contentOf(c, 'clip3a.mp4'));
+    const b = duration(await contentOf(c, 'clip3b.mp4'));
+    expect(Math.abs(duration(joined!.content) - (a + b - 1))).toBeLessThanOrEqual(2 * FRAME);
+  } finally {
+    await deleteSpace(page, c.spaceId);
+  }
+});
+
+test('remove background: the result carries an alpha channel @needs-model @needs-ingest @needs-storage @needs-ffmpeg', async ({ page }) => {
+  const c = await openCanvas(page, 'remove-bg');
+  try {
+    await upload(c, 'driving3.mp4');
+    await presented(c, 'driving3.mp4');
+    await openTool(c, 'driving3.mp4', 'video.remove-bg');
+    const made = await run(c, 1);
+    await c.page.keyboard.press('Escape');
+    const [matte] = await stored(c, made);
+    const stream = videoStream(matte!.content);
+    // An alpha plane in the pixel format, or WebM's side-channel alpha (its ALPHA_MODE tag).
+    const tags = Object.fromEntries(Object.entries(stream.tags ?? {}).map(([key, value]) => [key.toLowerCase(), value]));
+    const alpha = /a/.test((stream.pix_fmt ?? '').replace(/^yuv/, '').replace(/^gbr/, '')) || tags.alpha_mode === '1';
+    expect(alpha, JSON.stringify(stream)).toBe(true);
+  } finally {
+    await deleteSpace(page, c.spaceId);
+  }
+});
+
+test('lip-sync: one person and one line of dialogue give one video as long as the result @needs-model @needs-ingest @needs-storage @needs-ffmpeg', async ({ page }) => {
+  const c = await openCanvas(page, 'lip-sync');
+  try {
+    await upload(c, 'driving3.mp4', 'speech2.mp3');
+    await presented(c, 'driving3.mp4');
+    await openTool(c, 'driving3.mp4', 'video.lip-sync');
+    // The panel identifies the people itself once the source is presented.
+    const row = c.page.locator('[data-testid^="video-dialogue-"]');
+    await expect(row).toHaveCount(1);
+    const dialogue = (await row.getAttribute('data-testid'))!.slice('video-dialogue-'.length);
+    const person = c.page.getByTestId(`video-person-${dialogue}`);
+    await expect(person).toBeEnabled({ timeout: 10 * 60_000 });
+    await person.click();
+    await c.page.getByRole('option', { name: 'Person 1' }).click();
+    const audio = c.page.getByTestId(`video-audio-${dialogue}`);
+    await audio.click();
+    await nodeOf(c, 'speech2.mp3').click();
+    await expect(c.page.getByTestId(`video-audio-clear-${dialogue}`)).toBeAttached();
+    await audio.click();
+    const made = await run(c, 1);
+    await c.page.keyboard.press('Escape');
+    const [synced] = await stored(c, made);
+    // Cut off, the panel's default: the result lasts until the shorter of the video and the dialogue ends.
+    const expected = Math.min(duration(await contentOf(c, 'driving3.mp4')), duration(await contentOf(c, 'speech2.mp3')));
+    expect(synced!.type).toBe('video');
+    expect(Math.abs(duration(synced!.content) - expected)).toBeLessThanOrEqual(2 * FRAME);
+  } finally {
+    await deleteSpace(page, c.spaceId);
+  }
+});
+
+test('erase: a tracked region is erased into one video that keeps its sound @needs-model @needs-ingest @needs-storage @needs-ffmpeg', async ({ page }) => {
+  const c = await openCanvas(page, 'erase');
+  try {
+    await upload(c, 'driving3.mp4');
+    await presented(c, 'driving3.mp4');
+    await openTool(c, 'driving3.mp4', 'video.erase');
+    const area = nodeOf(c, 'driving3.mp4').getByTestId('video-tool-region-gesture');
+    await expect(area).toBeVisible({ timeout: 60_000 });
+    const box = await area.boundingBox();
+    if (box === null) throw new Error('the region area has no box');
+    await c.page.mouse.move(box.x + box.width * 0.35, box.y + box.height * 0.2);
+    await c.page.mouse.down();
+    await c.page.mouse.move(box.x + box.width * 0.65, box.y + box.height * 0.8, { steps: 8 });
+    await c.page.mouse.up();
+    const track = c.page.getByRole('button', { name: 'Track selection' });
+    await expect(track).toBeEnabled();
+    await track.click();
+    const made = await run(c, 1);
+    await c.page.keyboard.press('Escape');
+    const [erased] = await stored(c, made);
+    expect(probe(erased!.content).streams.map((s) => s.codec_type)).toEqual(expect.arrayContaining(['video', 'audio']));
+  } finally {
+    await deleteSpace(page, c.spaceId);
+  }
+});
+
+test('expand: a widened frame gives one video larger than the source @needs-model @needs-ingest @needs-storage @needs-ffmpeg', async ({ page }) => {
+  const c = await openCanvas(page, 'expand');
+  try {
+    await upload(c, 'square3.mp4');
+    await presented(c, 'square3.mp4');
+    await openTool(c, 'square3.mp4', 'video.expand');
+    await c.page.getByTestId('video-expand-ratios').getByRole('button', { name: '16:9' }).click();
+    const made = await run(c, 1);
+    await c.page.keyboard.press('Escape');
+    const [expanded] = await stored(c, made);
+    const before = videoStream(await contentOf(c, 'square3.mp4'));
+    const after = videoStream(expanded!.content);
+    expect(after.width! * after.height!).toBeGreaterThan(before.width! * before.height!);
+    expect(after.width! / after.height!).toBeCloseTo(16 / 9, 1);
+  } finally {
+    await deleteSpace(page, c.spaceId);
+  }
+});
