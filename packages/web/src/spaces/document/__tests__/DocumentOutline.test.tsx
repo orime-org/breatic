@@ -313,6 +313,15 @@ describe('DocumentOutline', () => {
     });
 
     /**
+     * The line of a top-level heading.
+     * @param text - The heading's words.
+     * @returns Its `.bn-block-content`.
+     */
+    function lineOf(text: string): Element {
+      return document.querySelector(`.bn-block-outer[data-id="${idOf(opened.handle, text)}"] > .bn-block > .bn-block-content`)!;
+    }
+
+    /**
      * Lays out "One" above the reading line and "Two" and "Three" below it, so
      * the reading rule picks "One", or "Three" at the bottom; `scrollTo` moves
      * the viewport as a browser would.
@@ -326,11 +335,14 @@ describe('DocumentOutline', () => {
       scrollTo.mockImplementation(({ top }: { top: number }) => {
         viewport.scrollTop = Math.min(top, scrollHeight - 800);
       });
-      const lineOf = (text: string): Element =>
-        document.querySelector(`.bn-block-outer[data-id="${idOf(opened.handle, text)}"] > .bn-block > .bn-block-content`)!;
       placeAt(lineOf('One'), 40);
       placeAt(lineOf('Three'), 800);
       return viewport;
+    }
+
+    /** Runs the frame the highlight is computed in. */
+    async function nextFrame(): Promise<void> {
+      await act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
     }
 
     /**
@@ -340,13 +352,14 @@ describe('DocumentOutline', () => {
      */
     async function scrolled(viewport: HTMLElement): Promise<void> {
       fireEvent.scroll(viewport);
-      await act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+      await nextFrame();
     }
 
     const itemOf = (text: string): Element => row(text).closest('[data-outline-item]')!;
+    const DOC = [h('a', 1, 'One'), { type: 'paragraph', content: 'words' }, h('b', 2, 'Two'), h('c', 2, 'Three')];
 
-    it('keeps the clicked heading near the end of the document until the user scrolls', async () => {
-      renderWith([h('a', 1, 'One'), { type: 'paragraph', content: 'words' }, h('b', 2, 'Two'), h('c', 2, 'Three')]);
+    it('keeps the clicked heading while the body stays at its end, and lets go once the user leaves it', async () => {
+      renderWith(DOC);
       const viewport = layOutForPin(1000);
 
       fireEvent.click(row('Two'));
@@ -354,17 +367,71 @@ describe('DocumentOutline', () => {
       await scrolled(viewport);
       expect(itemOf('Two')).toHaveClass('bg-accent-strong');
 
-      viewport.scrollTop = 150;
+      viewport.scrollTop = 199;
+      await scrolled(viewport);
+      expect(itemOf('Two')).toHaveClass('bg-accent-strong');
+
+      viewport.scrollTop = 197;
       await scrolled(viewport);
       expect(itemOf('One')).toHaveClass('bg-accent-strong');
     });
 
-    it('follows the reading line after a jump that reached its landing', async () => {
-      renderWith([h('a', 1, 'One'), { type: 'paragraph', content: 'words' }, h('b', 2, 'Two'), h('c', 2, 'Three')]);
+    it('keeps the clicked heading when its landing is within 2px of the end', async () => {
+      renderWith(DOC);
+      const viewport = layOutForPin(1385);
+
+      fireEvent.click(row('Two'));
+      expect(scrollTo).toHaveBeenCalledWith({ top: 584, behavior: 'instant' });
+      await scrolled(viewport);
+      expect(itemOf('Two')).toHaveClass('bg-accent-strong');
+    });
+
+    it('keeps the clicked heading when content above grows and the browser keeps the view in place', async () => {
+      renderWith(DOC);
+      const viewport = layOutForPin(1000);
+      fireEvent.click(row('Two'));
+      await scrolled(viewport);
+
+      // Scroll anchoring moves scrollTop by the growth, so the body is still at its end.
+      Object.defineProperty(viewport, 'scrollHeight', { configurable: true, value: 1300 });
+      viewport.scrollTop = 500;
+      await scrolled(viewport);
+      expect(itemOf('Two')).toHaveClass('bg-accent-strong');
+    });
+
+    it('lets go once a rewrap leaves the body short of its end, without a scroll', async () => {
+      renderWith(DOC);
+      const viewport = layOutForPin(1000);
+      fireEvent.click(row('Two'));
+      await scrolled(viewport);
+
+      Object.defineProperty(viewport, 'scrollHeight', { configurable: true, value: 1300 });
+      resizeTo(1440);
+      await nextFrame();
+      expect(itemOf('One')).toHaveClass('bg-accent-strong');
+    });
+
+    it('lets go once the clicked heading is deleted', async () => {
+      renderWith(DOC);
+      const viewport = layOutForPin(1000);
+      fireEvent.click(row('Two'));
+      await scrolled(viewport);
+
+      act(() => opened.handle.editor.removeBlocks([idOf(opened.handle, 'Two')]));
+      await nextFrame();
+      expect(itemOf('Three')).toHaveClass('bg-accent-strong');
+    });
+
+    it('lands the heading above the reading line, and follows the reading line after a jump that reached its landing', async () => {
+      renderWith(DOC);
       const viewport = layOutForPin(5000);
 
       fireEvent.click(row('Two'));
+      placeAt(lineOf('Two'), 100 + 16);
+      await scrolled(viewport);
       expect(itemOf('Two')).toHaveClass('bg-accent-strong');
+
+      placeAt(lineOf('Two'), 300);
       await scrolled(viewport);
       expect(itemOf('One')).toHaveClass('bg-accent-strong');
     });

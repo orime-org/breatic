@@ -108,6 +108,15 @@ function headingLine(viewport: HTMLElement, id: string): HTMLElement | null {
 }
 
 /**
+ * Whether the body is scrolled to its end, give or take 2px.
+ * @param viewport - The body's scrolling viewport.
+ * @returns True at the end.
+ */
+function atEnd(viewport: HTMLElement): boolean {
+  return viewport.scrollTop + viewport.clientHeight >= viewport.scrollHeight - 2;
+}
+
+/**
  * One heading in the list: the fold arrow beside the heading's own button.
  * @param root0 - Row props.
  * @param root0.row - The entry and its depth.
@@ -249,7 +258,7 @@ export const DocumentOutline = React.memo(function DocumentOutline({
   const rows = React.useMemo(() => rowsOf(outline, folded), [outline, folded]);
 
   const [reading, setReading] = React.useState<string | null>(null);
-  const pinned = React.useRef<{ id: string; at: number } | null>(null);
+  const pinned = React.useRef<string | null>(null);
   React.useEffect(() => {
     if (viewport === null) return undefined;
     const ids = [...ancestors.keys()];
@@ -257,20 +266,20 @@ export const DocumentOutline = React.memo(function DocumentOutline({
     /**
      * Marks the last heading whose line has reached the reading line; at the
      * bottom, the lowest heading in view; while a jump is pinned, that one.
+     * A pin lasts while the body stays at its end and the heading is there.
      */
     const compute = (): void => {
       frame = 0;
-      if (pinned.current !== null) {
-        setReading(pinned.current.id);
+      if (pinned.current !== null && ancestors.has(pinned.current) && atEnd(viewport)) {
+        setReading(pinned.current);
         return;
       }
+      pinned.current = null;
       const top = viewport.getBoundingClientRect().top;
       const lines = ids.map((id) => [id, headingLine(viewport, id)?.getBoundingClientRect().top] as const);
       let current: string | null = null;
       for (const [id, at] of lines) if (at !== undefined && at <= top + READING_LINE) current = id;
-      const atBottom = viewport.scrollHeight > viewport.clientHeight
-        && viewport.scrollTop + viewport.clientHeight >= viewport.scrollHeight - 2;
-      if (atBottom) {
+      if (viewport.scrollHeight > viewport.clientHeight && atEnd(viewport)) {
         const inView = lines.filter(([, at]) => at !== undefined && at >= top && at < top + viewport.clientHeight);
         if (inView.length > 0) current = inView[inView.length - 1]![0];
       }
@@ -280,21 +289,16 @@ export const DocumentOutline = React.memo(function DocumentOutline({
     const schedule = (): void => {
       if (frame === 0) frame = requestAnimationFrame(compute);
     };
-    /** A scroll the reader makes releases a pinned jump. */
-    const onScroll = (): void => {
-      if (pinned.current !== null && Math.abs(pinned.current.at - viewport.scrollTop) > 1) pinned.current = null;
-      schedule();
-    };
     // The comment panel sits in the same scroller: opening it rewraps the
     // text without changing the viewport's size, so the content is watched too.
     const sizes = new ResizeObserver(schedule);
     sizes.observe(viewport);
     const content = viewport.querySelector('.doc-body-editor');
     if (content !== null) sizes.observe(content);
-    viewport.addEventListener('scroll', onScroll, { passive: true });
+    viewport.addEventListener('scroll', schedule, { passive: true });
     compute();
     return () => {
-      viewport.removeEventListener('scroll', onScroll);
+      viewport.removeEventListener('scroll', schedule);
       sizes.disconnect();
       if (frame !== 0) cancelAnimationFrame(frame);
     };
@@ -326,10 +330,10 @@ export const DocumentOutline = React.memo(function DocumentOutline({
     const want = viewport.scrollTop + line.getBoundingClientRect().top - viewport.getBoundingClientRect().top - LANDING;
     const target = Math.max(0, Math.min(viewport.scrollHeight - viewport.clientHeight, want));
     viewport.scrollTo({ top: target, behavior: 'instant' });
-    // Read back after the call: the end of the document can stop the scroll
-    // short of the landing, and then the clicked heading holds the highlight
-    // until the reader scrolls.
-    pinned.current = target < want ? { id, at: viewport.scrollTop } : null;
+    // At the end of the document the reading rule picks the lowest heading in
+    // view, so a jump that ends there holds the clicked heading until the body
+    // leaves the end; scroll anchoring keeps it there when content above grows.
+    pinned.current = atEnd(viewport) ? id : null;
     setReading(id);
     if (!readOnly) {
       editor.setTextCursorPosition(id, 'start');
