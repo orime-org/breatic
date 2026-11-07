@@ -1,0 +1,396 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import * as React from 'react';
+import { t } from '@breatic/shared';
+
+import { TooltipProvider } from '@web/components/ui/tooltip';
+import { ApiException } from '@web/data/api/types';
+import { toast } from '@web/lib/toast';
+import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
+import { SceneGenerateDialog } from '@web/spaces/three-d/SceneGenerateDialog';
+import { I23D, MULTIVIEW, PROJECT, RAW_CATALOG, SPACE, T23D, projectImage } from '@web/spaces/three-d/__tests__/scene-generate-fixtures';
+
+const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
+vi.mock('@web/data/api/request', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/request')>()),
+  apiGet: api.get,
+  apiPost: api.post,
+}));
+vi.mock('@web/lib/toast', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@web/lib/toast')>();
+  return { ...actual, toast: { ...actual.toast, error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() } };
+});
+
+const GENERATIONS = `/projects/${PROJECT}/three-d/${SPACE}/generations`;
+
+/** What the dialog is opened with besides blank: an Agent proposal or a Retry. */
+interface Fill {
+  source: 'agent' | 'retry';
+  origin: 'space' | 'agent';
+  mode: 't23d' | 'i23d';
+  model: string;
+  prompt: string;
+  negativePrompt: string;
+  params: Record<string, unknown>;
+  images: { assetId: string; url: string; displayName: string | null }[];
+}
+
+/**
+ * A retry or proposal fill.
+ * @param over - What differs from a blank text-to-3D fill.
+ * @returns The fill.
+ */
+function fillOf(over: Partial<Fill>): Fill {
+  return { source: 'retry', origin: 'space', mode: 't23d', model: T23D, prompt: '', negativePrompt: '', params: {}, images: [], ...over };
+}
+
+/**
+ * A Project image as a view slot holds it.
+ * @param assetId - Its asset id.
+ * @returns The slot image.
+ */
+function view(assetId: string): Fill['images'][number] {
+  return { assetId, url: `https://cdn.test/${assetId}.png`, displayName: `${assetId}.png` };
+}
+
+interface Rendered {
+  onOpenChange: ReturnType<typeof vi.fn>;
+  onSubmitted: ReturnType<typeof vi.fn>;
+  rerender: (open: boolean, fill: Fill | null) => void;
+}
+
+/**
+ * Render the dialog open inside the providers it needs.
+ * @param fill - What it opens with; null for a blank opening.
+ * @returns The handlers and a way to reopen it.
+ */
+function renderDialog(fill: Fill | null = null): Rendered {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const onOpenChange = vi.fn();
+  const onSubmitted = vi.fn();
+  /**
+   * The dialog at one open state and fill.
+   * @param open - Whether it is open.
+   * @param current - What it opens with.
+   * @returns The element.
+   */
+  const tree = (open: boolean, current: Fill | null): React.JSX.Element => <QueryClientProvider client={client}><TooltipProvider>
+    <SceneGenerateDialog projectId={PROJECT} spaceId={SPACE} open={open} onOpenChange={onOpenChange} fill={current} onSubmitted={onSubmitted} />
+  </TooltipProvider></QueryClientProvider>;
+  const result = render(tree(true, fill));
+  return { onOpenChange, onSubmitted, rerender: (open, next) => result.rerender(tree(open, next)) };
+}
+
+/**
+ * The open dialog, once the catalog has drawn its settings.
+ * @returns The dialog element.
+ */
+async function ready(): Promise<HTMLElement> {
+  await screen.findByTestId('generate-param-texture-toggle');
+  return screen.getByRole('dialog');
+}
+
+/**
+ * The image a view slot shows, by its address.
+ * @param index - The slot, front first.
+ * @returns The address, or null when the slot is empty.
+ */
+function slotImage(index: number): string | null {
+  return screen.getByTestId(`scene-generate-view-${index}`).querySelector('img')?.getAttribute('src') ?? null;
+}
+
+/**
+ * Which view slots offer to be filled now.
+ * @returns One flag per slot, front first.
+ */
+function addable(): boolean[] {
+  return [0, 1, 2, 3].map((index) => screen.queryByTestId(`scene-generate-view-${index}-add`) !== null);
+}
+
+/**
+ * The messages one toast type was shown with.
+ * @param fn - The mocked toast method.
+ * @returns Its first arguments.
+ */
+function shown(fn: unknown): unknown[] {
+  return (fn as ReturnType<typeof vi.fn>).mock.calls.map((call) => call[0]);
+}
+
+beforeEach(() => {
+  api.get.mockReset();
+  api.post.mockReset();
+  api.get.mockImplementation(async (url: string) => {
+    if (url === '/models') return RAW_CATALOG;
+    if (url === `/projects/${PROJECT}/assets`) return { items: [projectImage('a1'), projectImage('a2')], nextCursor: null };
+    throw new Error(`unexpected GET ${url}`);
+  });
+});
+afterEach(() => {
+  cleanup();
+  resetRunOnceForTests();
+  vi.clearAllMocks();
+});
+
+describe('SceneGenerateDialog (inner#1691 design 7.1)', () => {
+  it('switches between Text to 3D and Image to 3D from the bottom bar, swapping the middle section whole', async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await ready();
+    expect(screen.getByTestId('scene-generate-mode-t23d')).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByTestId('scene-generate-prompt')).toBeInTheDocument();
+    expect(screen.queryByTestId('scene-generate-view-0')).toBeNull();
+
+    await user.click(screen.getByTestId('scene-generate-mode-i23d'));
+    expect(screen.getByTestId('scene-generate-mode-i23d')).toHaveAttribute('aria-current', 'true');
+    expect(screen.queryByTestId('scene-generate-prompt')).toBeNull();
+    expect([0, 1, 2, 3].map((index) => screen.queryByTestId(`scene-generate-view-${index}`) !== null)).toEqual([true, true, true, true]);
+  });
+
+  it('draws the settings all three entries declare on top and the current mode\'s own settings in the middle', async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await ready();
+    const common = screen.getByTestId('scene-generate-common');
+    for (const name of ['texture', 'pbr', 'smart_low_poly', 'generate_parts', 'export_uv']) expect(within(common).getByTestId(`generate-param-${name}-toggle`)).toBeInTheDocument();
+    for (const name of ['face_limit', 'model_seed', 'texture_seed']) expect(within(common).getByTestId(`generate-param-${name}-input`)).toBeInTheDocument();
+    expect(within(common).getByTestId('generate-param-geometry_quality-option-detailed')).toBeInTheDocument();
+    expect(within(common).queryByTestId('generate-param-negative_prompt-input')).toBeNull();
+    expect(within(common).queryByTestId('generate-param-texture_alignment-option-geometry')).toBeNull();
+
+    const textSection = screen.getByTestId('scene-generate-mode-section');
+    expect(within(textSection).getByTestId('generate-param-negative_prompt-input')).toBeInTheDocument();
+    expect(within(textSection).queryByTestId('generate-param-enable_image_autofix-toggle')).toBeNull();
+
+    await user.click(screen.getByTestId('scene-generate-mode-i23d'));
+    const imageSection = screen.getByTestId('scene-generate-mode-section');
+    expect(within(imageSection).getByTestId('generate-param-texture_alignment-option-geometry')).toBeInTheDocument();
+    expect(within(imageSection).getByTestId('generate-param-orientation-option-align_image')).toBeInTheDocument();
+    expect(within(imageSection).getByTestId('generate-param-enable_image_autofix-toggle')).toBeInTheDocument();
+    expect(within(imageSection).queryByTestId('generate-param-negative_prompt-input')).toBeNull();
+  });
+
+  it('lets the view slots fill only in front, left, back, right order', async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await ready();
+    await user.click(screen.getByTestId('scene-generate-mode-i23d'));
+    expect(addable()).toEqual([true, false, false, false]);
+
+    await user.click(screen.getByTestId('scene-generate-view-0-add'));
+    await user.click(await screen.findByTestId('scene-generate-view-pick-project'));
+    await user.click(await screen.findByTestId('scene-image-picker-item-a1'));
+    await waitFor(() => expect(slotImage(0)).toBe('https://cdn.test/a1.png'));
+    expect(addable()).toEqual([false, true, false, false]);
+  });
+
+  it('moves the later views forward when a middle one is removed', async () => {
+    const user = userEvent.setup();
+    renderDialog(fillOf({ mode: 'i23d', model: MULTIVIEW, images: [view('front'), view('left'), view('back')] }));
+    await ready();
+    expect([0, 1, 2, 3].map(slotImage)).toEqual(['https://cdn.test/front.png', 'https://cdn.test/left.png', 'https://cdn.test/back.png', null]);
+
+    await user.click(screen.getByTestId('scene-generate-view-1-change'));
+    await user.click(await screen.findByTestId('scene-generate-view-remove'));
+    expect([0, 1, 2, 3].map(slotImage)).toEqual(['https://cdn.test/front.png', 'https://cdn.test/back.png', null, null]);
+    expect(addable()).toEqual([false, false, true, false]);
+  });
+
+  it('submits the single-image entry when only the front view is filled', async () => {
+    const user = userEvent.setup();
+    api.post.mockResolvedValue({ task_id: 'task-1', row_id: 'row-1', status: 'pending' });
+    renderDialog(fillOf({ mode: 'i23d', model: MULTIVIEW, images: [view('a1')] }));
+    await ready();
+    await user.click(screen.getByTestId('scene-generate-run'));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    expect(api.post.mock.calls[0]![0]).toBe(GENERATIONS);
+    expect(api.post.mock.calls[0]![1]).toEqual(expect.objectContaining({ mode: 'i23d', model: I23D, image_asset_ids: ['a1'], origin: 'space' }));
+    expect(api.post.mock.calls[0]![2]).toEqual(expect.objectContaining({ headers: { 'Idempotency-Key': expect.any(String) } }));
+  });
+
+  it('submits the multi-view entry, views in order, when more than the front is filled', async () => {
+    const user = userEvent.setup();
+    api.post.mockResolvedValue({ task_id: 'task-1', row_id: 'row-1', status: 'pending' });
+    renderDialog(fillOf({ mode: 'i23d', model: I23D, origin: 'agent', images: [view('a1'), view('a2')] }));
+    await ready();
+    await user.click(screen.getByTestId('scene-generate-run'));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    expect(api.post.mock.calls[0]![1]).toEqual(expect.objectContaining({ mode: 'i23d', model: MULTIVIEW, image_asset_ids: ['a1', 'a2'], origin: 'agent' }));
+  });
+
+  it('submits the text entry with the prompt as typed', async () => {
+    const user = userEvent.setup();
+    api.post.mockResolvedValue({ task_id: 'task-1', row_id: 'row-1', status: 'pending' });
+    renderDialog();
+    await ready();
+    await user.type(screen.getByTestId('scene-generate-prompt'), 'A brass desk lamp');
+    await user.click(screen.getByTestId('scene-generate-run'));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    expect(api.post.mock.calls[0]![1]).toEqual(expect.objectContaining({ mode: 't23d', model: T23D, prompt: 'A brass desk lamp', origin: 'space' }));
+  });
+
+  it('shows a control a forced value locks as aria-disabled, and a click says that force\'s reason without changing it', async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await ready();
+    // PBR is on by default, so Texture is held on by pbr_needs_texture.
+    const texture = screen.getByTestId('generate-param-texture-toggle');
+    expect(texture).toHaveAttribute('aria-disabled', 'true');
+    expect(texture).not.toBeDisabled();
+    await user.click(texture);
+    expect(texture).toHaveAttribute('aria-checked', 'true');
+    expect(shown(toast.warning)).toEqual([t('spaces.threeD.force.pbr_needs_texture')]);
+
+    await user.click(screen.getByTestId('generate-param-generate_parts-toggle'));
+    const pbr = screen.getByTestId('generate-param-pbr-toggle');
+    expect(pbr).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByTestId('generate-param-texture-toggle')).toHaveAttribute('aria-checked', 'false');
+    expect(pbr).toHaveAttribute('aria-disabled', 'true');
+    await user.click(pbr);
+    expect(pbr).toHaveAttribute('aria-checked', 'false');
+    expect(shown(toast.warning)).toEqual([t('spaces.threeD.force.pbr_needs_texture'), t('spaces.threeD.force.parts_geometry_only')]);
+  });
+
+  it('holds the texture version at v3.5 under Fast, the v3.0 option saying why when pressed', async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await ready();
+    await user.click(screen.getByTestId('generate-param-texture_quality-option-fast'));
+    expect(screen.getByTestId('generate-param-texture_version-option-v3.5')).toHaveAttribute('aria-current', 'true');
+    const older = screen.getByTestId('generate-param-texture_version-option-v3.0');
+    expect(older).toHaveAttribute('aria-disabled', 'true');
+    await user.click(older);
+    expect(screen.getByTestId('generate-param-texture_version-option-v3.5')).toHaveAttribute('aria-current', 'true');
+    expect(shown(toast.warning)).toEqual([t('spaces.threeD.force.fast_uses_v35')]);
+  });
+
+  it('marks a value outside its rule and keeps Generate unavailable until it is fixed', async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await ready();
+    await user.type(screen.getByTestId('scene-generate-prompt'), 'A lamp');
+    expect(screen.getByTestId('scene-generate-run')).toBeEnabled();
+
+    const faceLimit = screen.getByTestId('generate-param-face_limit-input');
+    await user.type(faceLimit, '0');
+    expect(faceLimit).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByTestId('scene-generate-run')).toBeDisabled();
+
+    // Smart low-poly bounds the face limit to 500 to 20000.
+    await user.clear(faceLimit);
+    await user.click(screen.getByTestId('generate-param-smart_low_poly-toggle'));
+    await user.type(faceLimit, '30000');
+    expect(faceLimit).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByTestId('scene-generate-run')).toBeDisabled();
+
+    await user.clear(faceLimit);
+    await user.type(faceLimit, '20000');
+    expect(faceLimit).not.toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByTestId('scene-generate-run')).toBeEnabled();
+  });
+
+  it('opens blank with the last input cleared, and a retry or proposal fill replaces everything', async () => {
+    const user = userEvent.setup();
+    const { rerender } = renderDialog();
+    await ready();
+    await user.type(screen.getByTestId('scene-generate-prompt'), 'A lamp');
+    await user.click(screen.getByTestId('generate-param-texture_quality-option-extreme'));
+
+    rerender(false, null);
+    rerender(true, null);
+    await ready();
+    expect(screen.getByTestId('scene-generate-prompt')).toHaveValue('');
+    expect(screen.getByTestId('generate-param-texture_quality-option-standard')).toHaveAttribute('aria-current', 'true');
+
+    await user.type(screen.getByTestId('scene-generate-prompt'), 'Something else');
+    rerender(true, fillOf({ source: 'agent', origin: 'agent', prompt: 'A stone lion', negativePrompt: 'base', params: { texture_quality: 'detailed', geometry_quality: 'detailed' } }));
+    await waitFor(() => expect(screen.getByTestId('scene-generate-prompt')).toHaveValue('A stone lion'));
+    expect(screen.getByTestId('generate-param-negative_prompt-input')).toHaveValue('base');
+    expect(screen.getByTestId('generate-param-texture_quality-option-detailed')).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByTestId('generate-param-geometry_quality-option-detailed')).toHaveAttribute('aria-current', 'true');
+
+    rerender(false, null);
+    rerender(true, fillOf({ mode: 'i23d', model: I23D, images: [view('a1')], params: { texture_alignment: 'geometry' } }));
+    await ready();
+    expect(screen.getByTestId('scene-generate-mode-i23d')).toHaveAttribute('aria-current', 'true');
+    expect(slotImage(0)).toBe('https://cdn.test/a1.png');
+    expect(screen.getByTestId('generate-param-texture_alignment-option-geometry')).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByTestId('generate-param-texture_quality-option-standard')).toHaveAttribute('aria-current', 'true');
+  });
+
+  it('cannot be closed by Esc or its close button while the submit waits', async () => {
+    const user = userEvent.setup();
+    const answer = Promise.withResolvers<unknown>();
+    api.post.mockReturnValue(answer.promise);
+    const { onOpenChange, onSubmitted } = renderDialog();
+    await ready();
+    await user.type(screen.getByTestId('scene-generate-prompt'), 'A lamp');
+    await user.click(screen.getByTestId('scene-generate-run'));
+    await waitFor(() => expect(screen.getByTestId('scene-generate-run')).toHaveAttribute('aria-busy', 'true'));
+
+    await user.keyboard('{Escape}');
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Close' }));
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+
+    answer.resolve({ task_id: 'task-1', row_id: 'row-1', status: 'pending' });
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    expect(onSubmitted).toHaveBeenCalledWith('row-1');
+  });
+
+  it('stays open with every input kept when the credits are not enough', async () => {
+    const user = userEvent.setup();
+    api.post.mockRejectedValue(new ApiException({ status: 402, message: 'Insufficient credits', fromServer: true }));
+    const { onOpenChange, onSubmitted } = renderDialog();
+    await ready();
+    await user.type(screen.getByTestId('scene-generate-prompt'), 'A lamp');
+    await user.click(screen.getByTestId('generate-param-texture_quality-option-detailed'));
+    await user.click(screen.getByTestId('scene-generate-run'));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+
+    const credits = t('canvas.generatePanel.errorCredits');
+    await waitFor(() => expect(screen.queryByText(credits) !== null || shown(toast.error).includes(credits)).toBe(true));
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+    expect(onSubmitted).not.toHaveBeenCalled();
+    expect(screen.getByTestId('scene-generate-prompt')).toHaveValue('A lamp');
+    expect(screen.getByTestId('generate-param-texture_quality-option-detailed')).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByTestId('scene-generate-run')).toBeEnabled();
+  });
+
+  it('closes and hands the failed row over when the server opened the row but could not start it', async () => {
+    const user = userEvent.setup();
+    api.post.mockResolvedValue({ task_id: 'task-9', row_id: 'row-9', status: 'failed' });
+    const { onOpenChange, onSubmitted } = renderDialog();
+    await ready();
+    await user.type(screen.getByTestId('scene-generate-prompt'), 'A lamp');
+    await user.click(screen.getByTestId('scene-generate-run'));
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    expect(onSubmitted).toHaveBeenCalledWith('row-9');
+  });
+
+  it('shows the credits the price table gives for the settings as resolved', async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await ready();
+    const credit = screen.getByTestId('scene-generate-credit');
+    // Text to 3D, Standard texture: $0.24.
+    await waitFor(() => expect(credit).toHaveTextContent(/^24$/));
+    // Image to 3D, Standard texture: $0.36.
+    await user.click(screen.getByTestId('scene-generate-mode-i23d'));
+    await waitFor(() => expect(credit).toHaveTextContent(/^36$/));
+    await user.click(screen.getByTestId('scene-generate-mode-t23d'));
+    await waitFor(() => expect(credit).toHaveTextContent(/^24$/));
+    // Detailed texture: $0.36.
+    await user.click(screen.getByTestId('generate-param-texture_quality-option-detailed'));
+    await waitFor(() => expect(credit).toHaveTextContent(/^36$/));
+    // Separate parts forces geometry only, priced as $0.12 plus $0.24 whatever the texture quality held.
+    await user.click(screen.getByTestId('generate-param-generate_parts-toggle'));
+    await waitFor(() => expect(credit).toHaveTextContent(/^36$/));
+    // Detailed geometry adds $0.24.
+    await user.click(screen.getByTestId('generate-param-geometry_quality-option-detailed'));
+    await waitFor(() => expect(credit).toHaveTextContent(/^60$/));
+  });
+});

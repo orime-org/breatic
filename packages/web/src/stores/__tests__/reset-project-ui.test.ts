@@ -9,6 +9,7 @@ import { useConversationRuntime, _resetForTests } from '@web/stores/conversation
 import { resetProjectUiStores } from '@web/stores/reset-project-ui';
 import { useUIStore } from '@web/stores/ui';
 import { canvasSessions } from '@web/stores/canvas-session';
+import { toast } from '@web/lib/toast';
 
 /**
  * #1771 — leaving a project must clear its per-user UI session state so re-entry
@@ -63,6 +64,40 @@ describe('resetProjectUiStores (#1771)', () => {
     // Chrome layout preferences.
     expect(useUIStore.getState().sidebarOpen).toBe(false);
     expect(useUIStore.getState().chatPanelCollapsed).toBe(true);
+  });
+
+  /**
+   * A 3D generation proposal pressed in the chat and not yet taken up by its
+   * 3D Space belongs to this project: leaving drops it, without a toast, so
+   * it never opens a dialog in the next project (inner#1691, design §6.2).
+   */
+  it('clears the 3D generation proposals still waiting to be taken up, saying nothing', async () => {
+    // Imported by a runtime path so the store's absence fails this case alone,
+    // leaving the cases above running.
+    const storePath = '@web/stores/scene-proposals';
+    const { useSceneProposals } = (await import(/* @vite-ignore */ storePath)) as typeof import('@web/stores/scene-proposals');
+    useSceneProposals.getState().start({
+      proposalId: 'p1',
+      spaceId: 's1',
+      spaceName: 'Props',
+      mode: 't23d',
+      model: 'tripo-h3.1-t23d',
+      prompt: 'A wooden chair',
+      negative_prompt: '',
+      params: { texture: true },
+      images: [],
+      credits: 30,
+      rationale: 'A chair for the set',
+      placed: true,
+    });
+    expect(Object.keys(useSceneProposals.getState().pending)).toEqual(['p1']);
+    const warning = vi.spyOn(toast, 'warning');
+
+    resetProjectUiStores('project-1');
+
+    expect(useSceneProposals.getState().pending).toEqual({});
+    expect(warning).not.toHaveBeenCalled();
+    warning.mockRestore();
   });
 
   /**
