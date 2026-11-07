@@ -347,4 +347,9 @@ describe("upstreamBody — Tripo H3.1 from the real 3D catalog (inner#1691)", ()
       model_seed: 0,
     });
   });
+
+  it("refuses a negative prompt over 255 characters and takes one at 255", () => {
+    expect(() => validateModelParams("three_d", "tripo-h3.1-t23d", { negative_prompt: "a".repeat(256) })).toThrow(/negative_prompt.*255|255.*negative_prompt/s);
+    expect(() => validateModelParams("three_d", "tripo-h3.1-t23d", { negative_prompt: "a".repeat(255) })).not.toThrow();
+  });
 });

@@ -394,3 +394,69 @@ describe('SceneGenerateDialog (inner#1691 design 7.1)', () => {
     await waitFor(() => expect(credit).toHaveTextContent(/^60$/));
   });
 });
+
+const upload = vi.hoisted(() => ({ run: vi.fn() }));
+vi.mock('@web/data/upload/media-upload', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/upload/media-upload')>()),
+  runMediaUpload: upload.run,
+}));
+
+/** The callbacks the dialog handed the one upload it started. */
+interface UploadSinks {
+  onProgress?: (fraction: number) => void;
+  onSuccess: (stored: { assetId: string; fileUrl: string; kind: string; width: number | null; height: number | null }) => void;
+  onFailure: (outcome: { reason: string }) => void;
+}
+
+/**
+ * Start an upload into the front view slot from its menu and keep the upload pending.
+ * @param user - The pointer driving the dialog.
+ * @returns The callbacks of the upload the dialog started.
+ */
+async function startFrontUpload(user: ReturnType<typeof userEvent.setup>): Promise<UploadSinks> {
+  let sinks: UploadSinks | undefined;
+  upload.run.mockImplementation((_file: File, _context: unknown, deps: UploadSinks) => {
+    sinks = deps;
+    return new Promise<void>(() => undefined);
+  });
+  await user.click(screen.getByTestId('scene-generate-mode-i23d'));
+  await user.click(screen.getByTestId('scene-generate-view-0-add'));
+  await user.click(await screen.findByTestId('scene-generate-view-upload'));
+  await user.upload(screen.getByTestId('scene-generate-view-file-input'), new File(['png'], 'front.png', { type: 'image/png' }));
+  await waitFor(() => expect(upload.run).toHaveBeenCalledTimes(1));
+  if (sinks === undefined) throw new Error('the dialog started no upload');
+  return sinks;
+}
+
+describe('SceneGenerateDialog view slot uploads (inner#1691 design 7.1)', () => {
+  beforeEach(() => upload.run.mockReset());
+
+  it('shows the upload progress in its slot and keeps Generate unavailable until it lands', async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await ready();
+    const sinks = await startFrontUpload(user);
+
+    sinks.onProgress?.(0.5);
+    await waitFor(() => expect(within(screen.getByTestId('scene-generate-view-0')).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50'));
+    expect(screen.getByTestId('scene-generate-run')).toBeDisabled();
+
+    sinks.onSuccess({ assetId: 'up1', fileUrl: 'https://cdn.test/up1.png', kind: 'image', width: 512, height: 512 });
+    await waitFor(() => expect(slotImage(0)).toBe('https://cdn.test/up1.png'));
+    expect(within(screen.getByTestId('scene-generate-view-0')).queryByRole('progressbar')).toBeNull();
+    expect(screen.getByTestId('scene-generate-run')).toBeEnabled();
+  });
+
+  it('says the upload failed inside its slot and empties the slot again', async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await ready();
+    const sinks = await startFrontUpload(user);
+
+    sinks.onFailure({ reason: 'network' });
+    await waitFor(() => expect(screen.getByTestId('scene-generate-view-0-error')).toBeInTheDocument());
+    expect(slotImage(0)).toBeNull();
+    expect(addable()).toEqual([true, false, false, false]);
+    expect(screen.getByTestId('scene-generate-run')).toBeDisabled();
+  });
+});
