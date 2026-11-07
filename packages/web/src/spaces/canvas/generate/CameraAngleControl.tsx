@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { RotateCcw } from 'lucide-react';
 import * as React from 'react';
@@ -123,7 +123,7 @@ function samePose(a: CameraAngle, b: CameraAngle): boolean {
 }
 
 /**
- * Whether the reader asked for less motion.
+ * Whether the user asked for less motion.
  * @returns True under prefers-reduced-motion.
  */
 function prefersReducedMotion(): boolean {

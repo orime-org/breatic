@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * What a reader calls a media format, and how several of them read as one
+ * What a user calls a media format, and how several of them read as one
  * phrase.
  *
  * Two gates refuse a file and name a format while doing it: the upload gate,

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The internal API's door (inner#1410 §4.1–§4.4, acceptance #1–#3): what a
@@ -56,6 +56,13 @@ vi.mock("@breatic/core", async (importOriginal) => {
   return { ...actual, getRedis: () => faulty(actual.getRedis()), logger };
 });
 
+/** The lingering deadline each case sets; read by `closeAfterRefusal` at each refusal. */
+const linger = vi.hoisted(() => ({ seconds: 30 }));
+vi.mock("@server/config/limits.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  getRequestBodyLingerSeconds: () => linger.seconds,
+}));
+
 vi.mock("@server/infra/stripe.js", async () => {
   const { fakeStripe } = await import("./fake-stripe-refunds.js");
   return {
@@ -68,6 +75,7 @@ vi.mock("@server/infra/stripe.js", async () => {
 
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import http from "node:http";
 import { resolve } from "node:path";
 import { getRedis } from "@breatic/core";
 import { t } from "@breatic/shared";
@@ -86,11 +94,13 @@ import {
   useInternalApp,
 } from "./internal-api-harness.js";
 import { PAID_CENTS, reId, refundObject, seedRefundLot, worldOf } from "./credit-refund-fixtures.js";
+import { expectNextOnNewConnection, expectWholeAnswerThenCloseAtBodyEnd } from "./refused-connection.js";
 
 // Registered before the suite's own hooks, so the fault mode is reset before
 // the shared beforeEach clears the rate-limit keys through the same client.
 beforeEach(() => {
   redisFault.mode = "none";
+  linger.seconds = 30;
   logged.info.mockClear();
   logged.warn.mockClear();
 });
@@ -617,6 +627,51 @@ describe("request body size (§4.6): over 64 KiB is 413 before the signature is 
     expect(res.status).not.toBe(413);
     expect(res.status).not.toBe(401);
     expect(res.json?.code).not.toBe("invalid_body");
+  });
+
+  // inner#1782 test spec I1–I5: how a refusal closes its connection.
+  const PROBE_PATH = "/internal/v1/health";
+
+  it("I1: after an endless chunked body is refused, the next request goes out on a new connection", async () => {
+    const body = await expectNextOnNewConnection(running.baseUrl, PROBE_PATH, PROBE_PATH, 5);
+    expect(JSON.parse(body)).toEqual({ code: "invalid_body" });
+  });
+
+  it.each([
+    ["I2: a declared 20 MiB body", false],
+    ["I3: a finite chunked 20 MiB body", true],
+  ])("%s sent slowly by a client that reads only afterwards gets the whole 413", async (_name, chunked) => {
+    const answer = await expectWholeAnswerThenCloseAtBodyEnd(suite.server, running.baseUrl, PROBE_PATH, chunked);
+    expect(JSON.parse(answer.body)).toEqual({ code: "invalid_body" });
+  });
+
+  it.each([0, 200])("I5: after a finite chunked body just over 64 KiB is refused, a request %i ms later goes out on a new connection", async (delayMs) => {
+    const body = await expectNextOnNewConnection(running.baseUrl, PROBE_PATH, PROBE_PATH, 10, { total: 80 * 1024, delayMs });
+    expect(JSON.parse(body)).toEqual({ code: "invalid_body" });
+  });
+
+  it("I4: a body within the limit is answered without closing the connection", async () => {
+    const url = new URL(running.baseUrl);
+    // A keep-alive agent: one with keep-alive off asks for the close itself.
+    const agent = new http.Agent({ keepAlive: true });
+    try {
+      const res = await new Promise<http.IncomingMessage>((resolve, reject) => {
+        const req = http.request(
+          { host: url.hostname, port: url.port, path: PROBE_PATH, method: "POST", agent, headers: { "Content-Type": "application/json", "Content-Length": "10240" } },
+          (r) => {
+            r.resume();
+            r.on("end", () => resolve(r));
+          },
+        );
+        req.on("error", reject);
+        req.end(Buffer.alloc(10_240, 0x20));
+      });
+
+      expect(res.statusCode).not.toBe(413);
+      expect(res.headers.connection).not.toBe("close");
+    } finally {
+      agent.destroy();
+    }
   });
 });
 

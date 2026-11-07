@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
 import { assertAllowlistIsLive } from "#repo-lint/allowlist";
 import { GENERATED, TEST_FILE } from "#repo-lint/file-kinds";
@@ -72,7 +72,7 @@ const ALLOWED: ReadonlyMap<string, string> = new Map([
 /**
  * Source, config and shell scripts are written in English.
  *
- * breatic is a global open-source project, so the code a contributor in any
+ * breatic is a global source-available project, so the code a contributor in any
  * country opens has to be readable to them — that covers comments as much
  * as identifiers. Separately, every user-facing string belongs in
  * `locales/*.json` behind `t()`, so CJK in a source string is also a string

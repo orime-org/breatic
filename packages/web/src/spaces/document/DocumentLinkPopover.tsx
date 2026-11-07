@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The link control: a button on the selection bubble bar, and the panel it
@@ -180,8 +180,8 @@ export function DocumentLinkPopover({
     setMode('closed');
     setTarget(NO_TARGET);
     // The selection goes with the panel. The bar shows on a selection, and a
-    // reader who wants it back makes one — leaving the old selection standing
-    // would put the bar back over text the reader has finished with.
+    // user who wants it back makes one — leaving the old selection standing
+    // would put the bar back over text the user has finished with.
     editor.exec((state, dispatch) => {
       dispatch?.(
         state.tr.setSelection(caretAt(state.selection, 1)),
@@ -283,7 +283,7 @@ export function DocumentLinkPopover({
     onPanelOpenChange(panelShowing);
   }, [onPanelOpenChange, panelShowing]);
 
-  // What the reader is about to link stays visible while the panel holds the
+  // What the user is about to link stays visible while the panel holds the
   // focus. The address goes into a field, so the body is not the focused
   // element any more, and a contenteditable that is not focused has its
   // selection painted by nobody. The extension draws a decoration over the

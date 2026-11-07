@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a document Space's editor is able to represent, as plain data, plus the
@@ -102,7 +102,7 @@ export interface DocumentSchema {
  * date did not move would be refused wherever an older one is published.
  */
 export const DOCUMENT_SCHEMA: DocumentSchema = {
-  publishedAt: "2026-10-18T09:00:00Z",
+  publishedAt: "2026-10-31T04:33:58Z",
 
   // Attribute names are here because adding an attribute to a node both sides
   // already know (a heading gaining an alignment, say) leaves no trace in the
@@ -113,7 +113,15 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
   // `blockContainer` per block carrying its id, and the block's own node
   // inside that. `@breatic/shared`'s `document-body` draws the shape.
   nodes: {
-    audio: ["backgroundColor", "caption", "name", "quoted", "showPreview", "url"],
+    audio: [
+      "backgroundColor",
+      "caption",
+      "name",
+      "quoted",
+      "showPreview",
+      "uploadId",
+      "url",
+    ],
     blockContainer: ["id"],
     blockGroup: [],
     bulletListItem: [
@@ -149,6 +157,7 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
       "quoted",
       "showPreview",
       "textAlignment",
+      "uploadId",
       "url",
     ],
     heading: [
@@ -170,8 +179,9 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
       "textColor",
     ],
     paragraph: ["backgroundColor", "quoted", "textAlignment", "textColor"],
-    // The table before cells held blocks. Documents keep it as stored, and
-    // the editor keeps the node so it shows.
+    // The table before cells held blocks. Collab converts a stored one when
+    // it loads the document (#1362); the editor keeps the node so a document
+    // opens before and after that.
     table: ["quoted", "textColor"],
     tableCell: [
       "backgroundColor",
@@ -208,6 +218,7 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
       "quoted",
       "showPreview",
       "textAlignment",
+      "uploadId",
       "url",
     ],
   },

@@ -2,7 +2,7 @@ name: No AI Attribution
 
 # Blocks commits whose author or co-author is attributed to an AI tool.
 # Under US copyright law, AI-generated content cannot hold copyright —
-# listing AI as an author on an open-source project creates licensing
+# listing AI as an author on a source-available project creates licensing
 # ambiguity. Description text that mentions AI assistance is fine.
 #
 # Mirrors the .husky/commit-msg client-side hook.

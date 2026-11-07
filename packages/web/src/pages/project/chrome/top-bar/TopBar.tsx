@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { ProjectUpdateNotice } from '@web/pages/project/chrome/ProjectUpdateNotice';
 import type { ConnectionStatus } from '@web/data/yjs/use-socket';
@@ -11,7 +11,7 @@ import { Link } from 'react-router-dom';
 
 import { chromeBarBox } from '@web/pages/project/chrome/bar-box';
 
-import { Logo28 } from '@web/pages/project/chrome/top-bar/Logo28';
+import { TopBarLogo } from '@web/pages/project/chrome/top-bar/TopBarLogo';
 import { TitleEditable } from '@web/pages/project/chrome/top-bar/TitleEditable';
 import { MembersModal } from '@web/pages/project/chrome/top-bar/MembersModal';
 import { MembersStack } from '@web/pages/project/chrome/top-bar/MembersStack';
@@ -20,6 +20,7 @@ import { LangSwitcher } from '@web/features/preferences/LangSwitcher';
 import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
 import { ShareDialog } from '@web/pages/project/chrome/top-bar/ShareDialog';
 import { BellMenu } from '@web/features/notifications/BellMenu';
+import { HelpMenu } from '@web/features/help/HelpMenu';
 import { RoleTag } from '@web/pages/project/chrome/top-bar/RoleTag';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -65,15 +66,15 @@ export function toCreditsReadout(query: {
 interface TopBarProps {
   projectId: string;
   projectName: string;
-  /** The role this reader acts with: `viewer` on an archived project. */
+  /** The role this user acts with: `viewer` on an archived project. */
   role: ProjectRole;
-  /** The reader's real role, shown on the role tag even while archived. */
+  /** The user's real role, shown on the role tag even while archived. */
   actualRole: ProjectRole;
   /** The project is archived; the role tag stops taking clicks. */
   archived: boolean;
-  /** The reader may rename the project: the studio's admin or its owner. */
+  /** The user may rename the project: the studio's admin or its owner. */
   canRename: boolean;
-  /** The reader may leave the project: a live project's editor or viewer. */
+  /** The user may leave the project: a live project's editor or viewer. */
   canLeave: boolean;
   credits: CreditsReadout;
   onRename: (next: string) => void;
@@ -105,8 +106,8 @@ interface TopBarProps {
  * @param root0 - Top-bar props.
  * @param root0.projectId - Id of the current project, passed to membership, share, role and bell children.
  * @param root0.projectName - Current project name shown in the editable title.
- * @param root0.role - The role the reader acts with; gates share and member management.
- * @param root0.actualRole - The reader's real role, shown on the role tag.
+ * @param root0.role - The role the user acts with; gates share and member management.
+ * @param root0.actualRole - The user's real role, shown on the role tag.
  * @param root0.archived - Whether the project is archived, which freezes the role tag.
  * @param root0.canRename - Whether the title can be edited.
  * @param root0.canLeave - Whether the members list ends with "Leave project".
@@ -144,7 +145,7 @@ export function TopBar({
         className='flex min-w-0 flex-1 items-center'
         style={{ gap: 'var(--space-6)' }}
       >
-        <Logo28 />
+        <TopBarLogo />
         <BackLink />
         <TitleEditable
           value={projectName}
@@ -180,6 +181,7 @@ export function TopBar({
               disabled, for non-owners). Backend `requireRole` enforces
               the real boundary; this hide is UX only. */}
           {role === 'owner' ? <ShareDialog projectId={projectId} currentUserRole={role} /> : null}
+          <HelpMenu />
           <BellMenu />
         </div>
       </div>

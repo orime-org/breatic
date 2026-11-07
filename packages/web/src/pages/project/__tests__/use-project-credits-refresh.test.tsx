@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The top bar's figure is read again whenever it may have moved (inner#1611):
- * when this reader's own spend returns, and when anyone's generation in the
+ * when this user's own spend returns, and when anyone's generation in the
  * project ends. Focus refetching is off app-wide, so nothing else does it.
  */
 
@@ -69,7 +69,7 @@ afterEach(() => {
 });
 
 describe('useProjectCreditsRefresh', () => {
-  it('reads the figure again when this reader\'s own spend in this project returns', () => {
+  it('reads the figure again when this user\'s own spend in this project returns', () => {
     const view = mount(null);
     noteCreditsChanged(PROJECT);
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', PROJECT, 'credits'] });
@@ -93,7 +93,7 @@ describe('useProjectCreditsRefresh', () => {
   });
 
   it('reads the figure again when the server says a charge in the project committed', () => {
-    // A chat turn is charged on the server after the reader's own stream has
+    // A chat turn is charged on the server after the user's own stream has
     // ended, and a call cut off mid-turn is charged later still.
     const { provider, send } = providerDouble();
     const view = mount(provider);

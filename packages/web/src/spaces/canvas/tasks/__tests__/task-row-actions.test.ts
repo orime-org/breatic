@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * What a task row offers the reader (#186 §7.1).
+ * What a task row offers the user (#186 §7.1).
  *
  * Two of the six rows in that table are conditional, and each condition comes
  * from somewhere the row itself cannot see: whether this session still holds
@@ -87,7 +87,7 @@ describe('taskRowActions', () => {
 
   it('offers viewing the late result in history on an expired task whose report arrived after the verdict', () => {
     // §4.5: the work finished, only too late to be counted. It sits in the
-    // node's history; the reader decides there whether to restore it.
+    // node's history; the user decides there whether to restore it.
     expect(
       taskRowActions({
         status: 'expired',
@@ -133,7 +133,7 @@ describe('taskRowActions', () => {
   });
 });
 
-describe('a reader who cannot write', () => {
+describe('a user who cannot write', () => {
   // B4 lets a read-only member open the list: the tasks on a node are part of
   // looking at it. Every button on a row is a write, and each one refuses in
   // its own way — Replace returns a noop with nothing said, Clear reaches the

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 import { act, cleanup, render, renderHook, waitFor } from '@testing-library/react';
@@ -139,7 +139,7 @@ function open(doc: Y.Doc = getDoc(NAME)): DocumentEditorHandle {
   awareness.push(cursor);
   const handle = getDocumentEditor(doc, NAME, {
     caretProvider: { awareness: cursor },
-    readWho: () => ({ role: 'editor', viewerId: 'reader-1' }),
+    readWho: () => ({ role: 'editor', viewerId: 'user-1' }),
     editable: true,
   });
   const host = document.createElement('div');
@@ -464,7 +464,7 @@ describe('proposal pickup admission while its body is hidden', () => {
     it(`uses the registry's current ${event} facts when preparation finishes under Activity`, async () => {
       // The registry binds its connections to the signed-in account before any
       // is opened (`CollabSocketProvider`), as the Project page does.
-      render(<CollabSocketProvider userId='reader-1'>{null}</CollabSocketProvider>);
+      render(<CollabSocketProvider userId='user-1'>{null}</CollabSocketProvider>);
       const handle = open();
       const provider = transport.providers[0]!;
       const waiting = gate();
@@ -491,7 +491,7 @@ describe('proposal pickup admission while its body is hidden', () => {
       /** Retains the body and its preparation across a normal Space switch. */
       function App({ visible }: { visible: boolean }): React.JSX.Element {
         return (
-          <CollabSocketProvider userId='reader-1'>
+          <CollabSocketProvider userId='user-1'>
             <Keeper />
             <React.Activity mode={visible ? 'visible' : 'hidden'}><Body /></React.Activity>
           </CollabSocketProvider>
@@ -544,4 +544,85 @@ describe('proposal pickup admission while its body is hidden', () => {
       }
     });
   }
+});
+
+describe('locating a proposal in its document (inner#1646)', () => {
+  it('publishes where the proposal points and leaves the document, its undo and the card as they were', async () => {
+    const handle = open();
+    useDocumentProposals.getState().locate(proposal());
+    const { result } = renderHook(() => useDocumentProposalPickup(SPACE_ID, handle, 'granted', false, NAME));
+
+    await waitFor(() => expect(useDocumentProposals.getState().pending).toEqual({}));
+
+    expect(result.current).toMatchObject({ how: 'source', blockId: 'target', documentName: NAME, handle });
+    expect(textOf(handle)).toBe('TARGET');
+    expect(handle.undoManager.undoStack).toHaveLength(0);
+    expect(useDocumentProposals.getState().cards[PROPOSAL_ID]).toBeUndefined();
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it('shows where a rewrite already landed when the card is located after a reload (implementation review round 1)', async () => {
+    const handle = open();
+    vi.spyOn(assetsApi, 'fetchUploadConfig').mockResolvedValue(CONFIG);
+    const rewrite: DocumentProposal = { ...proposal(), kind: 'rewrite' };
+    useDocumentProposals.getState().start(rewrite, 'write');
+    const first = renderHook(() => useDocumentProposalPickup(SPACE_ID, handle, 'granted', false, NAME));
+    await waitFor(() => expect(useDocumentProposals.getState().pending).toEqual({}));
+    first.unmount();
+    // A reload: the store forgets the press; the document keeps the rewrite.
+    useDocumentProposals.getState().reset();
+    const steps = handle.undoManager.undoStack.length;
+
+    useDocumentProposals.getState().locate(rewrite);
+    const { result } = renderHook(() => useDocumentProposalPickup(SPACE_ID, handle, 'granted', false, NAME));
+    await waitFor(() => expect(useDocumentProposals.getState().pending).toEqual({}));
+
+    expect(result.current).toMatchObject({ how: 'write', blockId: deriveId(`document-proposal:${PROPOSAL_ID}:0`) });
+    expect(textOf(handle)).toBe('AGENT OUTPUT');
+    expect(handle.undoManager.undoStack).toHaveLength(steps);
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('does not run a locate the user left before the hidden body took it up', async () => {
+    render(<CollabSocketProvider userId='user-1'>{null}</CollabSocketProvider>);
+    const handle = open();
+    const provider = transport.providers[0]!;
+    const locate = vi.spyOn(landing, 'sourceAt');
+    let published: unknown = null;
+    let lastBodyAccess = 'unknown';
+
+    /** Keeps the open Space's connection alive outside Activity. */
+    function Keeper(): null {
+      useSocket({ name: NAME, doc: provider.document });
+      return null;
+    }
+
+    /** Reproduces the document body's real connection and pickup wiring. */
+    function Body(): null {
+      const connection = useSocket({ name: NAME, doc: provider.document });
+      lastBodyAccess = connection.writeAccess;
+      published = useDocumentProposalPickup(SPACE_ID, handle, connection.writeAccess, false, NAME);
+      return null;
+    }
+
+    /** The document Space, hidden while another Space is in front. */
+    function App({ visible }: { visible: boolean }): React.JSX.Element {
+      return (
+        <CollabSocketProvider userId='user-1'>
+          <Keeper />
+          <React.Activity mode={visible ? 'visible' : 'hidden'}><Body /></React.Activity>
+        </CollabSocketProvider>
+      );
+    }
+
+    const app = render(<App visible={false} />);
+    act(() => useDocumentProposals.getState().locate(proposal()));
+    act(() => useDocumentProposals.getState().report(PROPOSAL_ID, 'left'));
+    app.rerender(<App visible />);
+    await waitFor(() => expect(lastBodyAccess).toBe('granted'));
+
+    expect(locate).not.toHaveBeenCalled();
+    expect(published).toBeNull();
+  });
 });

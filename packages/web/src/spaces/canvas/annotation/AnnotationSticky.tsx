@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A collaboration sticky: what somebody said about this part of the canvas,
  * the replies under it, and a box to answer in.
  *
- * What the reader gets when they open a pin (#1881 §8.7). It floats beside the
+ * What the user gets when they open a pin (#1881 §8.7). It floats beside the
  * pin rather than being the node itself, so it keeps one size at every zoom —
  * `getNodeToolbarTransform` (`@xyflow/system@0.0.79:1492`) turns the node's
  * rect into screen coordinates and then only translates, never scales.
@@ -271,7 +271,7 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
   // reads "an entry point does not render while a box is open") and it refuses
   // a second open on a live draft, so an Edit offered anywhere is a command
   // that cannot act. Delete goes on ONE entry: the one the box belongs to,
-  // where the "this was deleted" notice would report the reader's own action
+  // where the "this was deleted" notice would report the user's own action
   // back to them as something that had befallen them. Everywhere else Delete
   // stands — it opens no box, and taken off the whole sticky it meant one
   // character in the reply box left nothing on the note deletable.
@@ -454,7 +454,7 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
               }
               // Escape is this box's only while it holds a reply. With nothing
               // typed it belongs to the sticky, which collapses on it (§8.7.3);
-              // swallowing it here left a reader whose caret sat in this box
+              // swallowing it here left a user whose caret sat in this box
               // unable to collapse the note from the keyboard at all.
               {...replyBoxKeys.box}
             />

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type * as React from 'react';
 import { Plus } from 'lucide-react';
@@ -36,7 +36,7 @@ interface RailCreateActionsProps {
  * Create-studio used to sit here behind a rule of its own. It creates a
  * Studio rather than something inside the Studio you are already in, so it
  * moved to `RailFooter`, where that difference is what the layout says instead
- * of a rule mid-list leaving the reader to guess.
+ * of a rule mid-list leaving the user to guess.
  * @param props the action labels, the coming-soon tooltip and the create handler.
  * @param props.createProjectLabel the create-project label.
  * @param props.createCollectionLabel the create-collection label (disabled).

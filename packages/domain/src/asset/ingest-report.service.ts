@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What one upload's outcome means for the ledger (#173, design §5).
@@ -34,6 +34,7 @@ import * as assetRepo from "@domain/asset/asset.repo.js";
 import * as assetService from "@domain/asset/asset.service.js";
 import * as nodeHistoryService from "@domain/node-history/node-history.service.js";
 import * as nodeTaskService from "@domain/node-task/node-task.service.js";
+import * as sceneTaskService from "@domain/node-task/scene-task.service.js";
 import { failureOutcome } from "@domain/node-task/failure-outcome.js";
 import { uploadDeadline } from "@domain/asset/upload-deadline.js";
 import { emitNodeTaskCounts } from "@domain/canvas-node/node-state-events.js";
@@ -42,6 +43,7 @@ import {
   getStorageConfig,
   getStreamRedis,
   NotFoundError,
+  publishSpaceTasksChanged,
   reportCollaboratorFirstAction,
 } from "@breatic/core";
 import { canvasSpaceDocName, NO_CONSENT, t, uprightKeyFor } from "@breatic/shared";
@@ -320,6 +322,54 @@ async function announceSuccess(
 async function announceFailure(grant: UploadGrant, message: string): Promise<boolean> {
   if (!hasNode(grant)) return false;
   return settleUploadTask(grant, { outcome: "failed", errorMessage: message });
+}
+
+/**
+ * Settle a 3D Space's own row (inner#1690), write its activity the one time
+ * its model lands, and tell the Space's members.
+ *
+ * The activity follows the row rather than the grant: a finish run again
+ * finds the asset already written and adds nothing, and a result landing on
+ * a row that expired before it still makes the model usable, so it is
+ * announced then.
+ * @param grant - The upload's grant.
+ * @param outcome - How it ended, with the registered asset on success.
+ * @returns What did not reach its destination, for the caller to log.
+ */
+async function settleSceneUpload(
+  grant: UploadGrant,
+  outcome: { outcome: "done"; asset: StudioAssetEntity } | { outcome: "failed"; errorMessage: string },
+): Promise<Pick<IngestSideEffects, "countsPublishFailed" | "activityAppendFailed">> {
+  if (grant.nodeId !== null || grant.projectId === null) return {};
+  const row = await sceneTaskService.findByStorageKey(grant.storageKey);
+  if (row === null) return {};
+  const settled = await sceneTaskService.settle(
+    row,
+    outcome.outcome === "done" ? { outcome: "done", assetId: outcome.asset.id } : outcome,
+  );
+  let activityAppendFailed = false;
+  if (settled.assetWritten && outcome.outcome === "done") {
+    const appended = await appendProjectActivity({
+      projectId: grant.projectId,
+      actorUserId: grant.userId,
+      type: "asset:uploaded",
+      spaceId: row.spaceId,
+      nodeId: null,
+      payload: { fileUrl: outcome.asset.fileUrl, kind: outcome.asset.kind, model: { name: row.label } },
+    });
+    activityAppendFailed = !appended.ok;
+    if (appended.ok) {
+      await reportCollaboratorFirstAction(
+        { projectId: grant.projectId, userId: grant.userId, action: "asset" },
+        grant.analyticsConsent ?? NO_CONSENT,
+      );
+    }
+  }
+  const countsPublishFailed = await publishSpaceTasksChanged(grant.projectId, row.spaceId).then(() => false, () => true);
+  return {
+    ...(countsPublishFailed && { countsPublishFailed }),
+    ...(activityAppendFailed && { activityAppendFailed }),
+  };
 }
 
 /**
@@ -612,10 +662,11 @@ async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: Ing
   if (terminal.state === "void") {
     const reason = grant.failureReason ?? "aborted";
     const countsPublishFailed = await announceFailure(grant, reason);
+    const scene = await settleSceneUpload(grant, { outcome: "failed", errorMessage: reason });
     const refusal: IngestReportOutcome = reason === "empty" || reason === "over_cap"
       ? { status: "rejected", reason }
       : { status: "voided" };
-    return { ...refusal, ...sideEffects, ...(countsPublishFailed && { countsPublishFailed }) };
+    return { ...refusal, ...sideEffects, ...scene, ...(countsPublishFailed && { countsPublishFailed }) };
   }
   const asset = grant.assetId === null ? null : await assetRepo.findLiveInStudio(grant.studioId, grant.assetId);
   if (asset === null) return { status: "stale", ...sideEffects };
@@ -623,6 +674,7 @@ async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: Ing
   const coverUrl = cover?.fileUrl ?? null;
   const history = await recordRegisteredUploadHistory(grant, asset, coverUrl);
   const countsPublishFailed = await announceSuccess(grant, resultOf(asset, coverUrl), history.entryId);
+  const scene = await settleSceneUpload(grant, { outcome: "done", asset });
   return withPeaksQueued({
     status: terminal.newlyConsumed ? "registered" : "already_registered",
     assetId: asset.id,
@@ -636,6 +688,7 @@ async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: Ing
     mimeType: asset.mimeType,
     sizeBytes: asset.sizeBytes,
     ...sideEffects,
+    ...scene,
     ...(countsPublishFailed && { countsPublishFailed }),
   });
 }

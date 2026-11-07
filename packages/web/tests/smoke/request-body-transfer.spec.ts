@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Bodies over the request limit travel as transfers (inner#1006 SM1–SM3).
@@ -162,7 +162,7 @@ test('SM3 a chat message with a large attachment and a large open document goes 
   const spaceId = await createSpace(page, 'document', `transfer-chat-${Date.now()}`);
   madeSpaces.push(spaceId);
   // An open document Space of 90 000 characters, pasted into its body the
-  // way a reader pastes a long text.
+  // way a user pastes a long text.
   const documentWords = '中'.repeat(90_000);
   const editor = page.locator(DOCUMENT_EDITOR);
   await expect(editor).toBeVisible({ timeout: 15_000 });

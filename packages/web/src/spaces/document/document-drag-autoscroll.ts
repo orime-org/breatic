@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Wires the body's autoscroll (`document-body-autoscroll.ts`) to the page
@@ -33,7 +33,7 @@
  * `dragend` that reaches the document.
  *
  * A column drag scrolls the frame its table scrolls sideways in, and holds
- * the body still: the browser's own drag autoscroll scrolls any box a reader
+ * the body still: the browser's own drag autoscroll scrolls any box a user
  * could scroll that the pointer nears, and one with `overflow-y: hidden` is not
  * one. Everything else scrolls the body.
  *

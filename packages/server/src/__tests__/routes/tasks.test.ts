@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Tasks route tests — list, get, canvas task creation.
@@ -419,7 +419,7 @@ describe("Tasks routes", () => {
       );
     });
 
-    // A snapshot of nothing is not one: the row would show the reader a
+    // A snapshot of nothing is not one: the row would show the user a
     // blank line they cannot tell apart from any other. The browser greys
     // the item out on a node saying nothing; this is the same rule where it
     // is authoritative.
@@ -512,10 +512,14 @@ describe("Tasks routes", () => {
     });
   });
 
-  // The reader's language is known at one end only — the browser — and the
+  // The user's language is known at one end only — the browser — and the
   // sentence it decides is written at the other, by the model. This route
   // carries it between them without reading it.
-  it("carries the reader's locale through to the job", async () => {
+  it.each([
+    ["a page of this release", { user_locale: "ja", reader_locale: "ja" }],
+    ["a page from before #1378", { reader_locale: "ja" }],
+    ["a request naming only the new field", { user_locale: "ja" }],
+  ])("carries the user's locale through to the job under both names, from %s", async (_from, locale) => {
     const app = createApp();
     await app.request("/api/v1/canvas/understand", {
       method: "POST",
@@ -526,20 +530,22 @@ describe("Tasks routes", () => {
         source_type: "image",
         source_url: "https://cdn/x.png",
         node_ids: [READ_INTO],
-        reader_locale: "ja",
+        ...locale,
       }),
     });
 
+    // Both names until the follow-up to #1378: a worker of the previous
+    // release still running during the deploy reads only reader_locale.
     expect(mockQueueAdd).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
-        params: expect.objectContaining({ reader_locale: "ja" }),
+        params: expect.objectContaining({ user_locale: "ja", reader_locale: "ja" }),
       }),
       expect.anything(),
     );
   });
 
-  // The label is what the reader sees naming this run in the node's task
+  // The label is what the user sees naming this run in the node's task
   // list, and the two other writers of that column put the model or the tool
   // there — a proper noun, the same in every language. A reading is a model
   // call like any other, so it names the model it pins.
@@ -707,6 +713,8 @@ describe("Tasks routes", () => {
       expect.anything(),
       expect.anything(),
       "understand",
+      undefined,
+      mocks.activityTransaction,
     );
   });
 
@@ -720,6 +728,7 @@ describe("Tasks routes", () => {
       source_url: "https://cdn/x.m4a",
       node_ids: [READ_INTO],
       keep_fillers: false,
+      user_locale: "zh-TW",
       reader_locale: "zh-TW",
     };
 
@@ -753,6 +762,7 @@ describe("Tasks routes", () => {
           params: expect.objectContaining({
             reading: "transcribe",
             keep_fillers: false,
+            user_locale: "zh-TW",
             reader_locale: "zh-TW",
             source_type: "audio",
           }),
@@ -768,6 +778,8 @@ describe("Tasks routes", () => {
         expect.objectContaining({ reading: "transcribe" }),
         UNDERSTAND_PINS.model,
         "understand",
+        undefined,
+        mocks.activityTransaction,
       );
     });
 
@@ -824,7 +836,7 @@ describe("Tasks routes", () => {
     // up, read the media and bill for it. The job's id is recorded for
     // whoever has to find that job by hand — no code reads it — so a run
     // whose id went unrecorded still runs, and marking it failed would put
-    // "failed" on a node the reader
+    // "failed" on a node the user
     // then watches produce a reading, and bill them for it.
     it("leaves a queued run running when its job id cannot be recorded", async () => {
       mocks.taskService.setJobId.mockRejectedValueOnce(new Error("db down"));
@@ -872,7 +884,7 @@ describe("Tasks routes", () => {
 
     // A row on the node is the only thing that carries a cause back to the
     // canvas, so a run that names no node is refused before anything is
-    // created: it would bill and answer into nowhere while the reader
+    // created: it would bill and answer into nowhere while the user
     // watches a node that never changes.
     it("refuses a run that named no node", async () => {
       const app = createApp();
@@ -895,7 +907,7 @@ describe("Tasks routes", () => {
     // The task row is written before the node's row is opened, so opening
     // that row is one more way out that has to end the first: a task left
     // `pending` is one no worker will pick up and no sweep will end, and the
-    // reader is told by the rejection, there being no row to hold the cause.
+    // user is told by the rejection, there being no row to hold the cause.
     it("does not leave the task pending when the node's row cannot be opened", async () => {
       mocks.nodeTaskService.open.mockRejectedValueOnce(new Error("collab down"));
       const app = createApp();

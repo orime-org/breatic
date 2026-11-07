@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { z } from "zod";
 import { durationToFrames } from "@shared/timeline/time.js";
@@ -39,14 +39,8 @@ export interface TimelineVideoClip {
   transform: { x: number; y: number; scaleX: number; scaleY: number; rotation: number };
 }
 
-/** An edit to the Timeline's collaborative layout. */
-export type TimelineEditCommand = {
-  operation: "add_video";
-  parameters: { source: TimelineVideoSource; clip: TimelineVideoClip };
-} | {
-  operation: "set_start";
-  parameters: { clipId: string; startFrame: number };
-};
+/** The seeded bottom visual track; it is magnetic when the editing user turns magnet on. */
+export const TIMELINE_MAIN_TRACK_ID = "visual-1";
 
 /** Our persisted integer-frame format, independent of any editor library. */
 export interface TimelineDocumentV1 {
@@ -104,18 +98,6 @@ export const TimelineVideoClipSchema = z.object({
     rotation: z.number().finite(),
   }).strict(),
 }).strict();
-
-const addCommand = z.object({
-  operation: z.literal("add_video"),
-  parameters: z.object({ source: TimelineVideoSourceSchema, clip: TimelineVideoClipSchema }).strict(),
-}).strict();
-const startCommand = z.object({
-  operation: z.literal("set_start"),
-  parameters: z.object({ clipId: identity, startFrame: safeFrame }).strict(),
-}).strict();
-
-/** A normalized user-confirmed native edit. */
-export const TimelineEditCommandSchema = z.discriminatedUnion("operation", [addCommand, startCommand]);
 
 /** Our complete versioned DTO, independent of a presentation library. */
 export const TimelineDocumentV1Schema: z.ZodType<TimelineDocumentV1> = z.object({

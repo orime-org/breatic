@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The purchase history screen (task #13 §4.6).
@@ -134,7 +134,7 @@ describe('the purchase history', () => {
 
   it('names where granted credits came from, in the cell a price would fill', async () => {
     // Nobody paid, so there is no figure for that cell and no state a payment
-    // could be in. What the reader cannot work out from the rest of the row is
+    // could be in. What the user cannot work out from the rest of the row is
     // where the credits came from, so that is what it says.
     history.mockResolvedValue({
       items: [
@@ -369,7 +369,7 @@ describe('the purchase history', () => {
     await waitFor(() => {
       expect(screen.getAllByTestId('purchase-row')).toHaveLength(4);
     });
-    // Every row carries a badge, including the one that landed: a reader
+    // Every row carries a badge, including the one that landed: a user
     // scanning the column should not have to work out that a blank means it
     // went through.
     const badges = screen.getAllByTestId('purchase-status');

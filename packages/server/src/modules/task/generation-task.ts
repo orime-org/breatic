@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The task rows a generation leaves on the nodes it will write to (#186).
@@ -97,12 +97,12 @@ export async function openGenerationTasks(opts: {
  * said where the node can show it: the row settles `failed` carrying the
  * cause, and the node's count moves with it (downstream-node-creation
  * decision, stage 4). Publishing is quiet for the same reason opening it is —
- * a refusal that also loses its broadcast is still a refusal, and the reader
+ * a refusal that also loses its broadcast is still a refusal, and the user
  * sees it on the next read of the list.
  * @param projectId - Owning project.
  * @param spaceId - The space, so an event can name the document.
  * @param rows - What `openGenerationTasks` opened.
- * @param reason - The stored failure code the reader is told in their own language.
+ * @param reason - The stored failure code the user is told in their own language.
  */
 export async function failOpenedTasks(
   projectId: string,
@@ -130,7 +130,7 @@ export async function failOpenedTasks(
  * and its rows — each on its own, so neither settlement takes the other down:
  * a task left `pending` is one no worker picks up and no sweep ends, and a row
  * left `running` counts a run that is not happening. `no_credits` and
- * `credits_held` are the causes the reader can act on; anything else is ours,
+ * `credits_held` are the causes the user can act on; anything else is ours,
  * and the log carries it.
  * @param opts - The run.
  * @param opts.taskId - The task this run belongs to.

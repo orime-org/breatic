@@ -56,7 +56,7 @@ Check: can the mocked module be imported on its own?
 
 **A package's `test` script is `vitest run`.** Bare `vitest` starts watch mode and turbo waits on it forever.
 
-**Adding an alias to `packages/web/vite.config.mts` means adding the same alias to `packages/web/vitest.config.ts` in the same change.** The vitest config has its own `resolve.alias`; without the mirror every test importing through the alias fails with `Failed to resolve import`.
+**Adding an alias to `packages/web/vite.config.mts` means adding the same alias to `packages/web/vitest.config.mts` in the same change.** The vitest config has its own `resolve.alias`; without the mirror every test importing through the alias fails with `Failed to resolve import`.
 
 **A partial `vi.mock` must spread the real module.** The factory replaces the whole module, so any export it does not list becomes `undefined`, including exports added later.
 
@@ -78,6 +78,8 @@ Look plugins up by key object (`key.get(state)`), never by printed name. Resets 
 Check: does this test change something that exists once per process and does not belong to this file?
 
 **In `vitest.setup.ts`, run the resets that must always happen before any hygiene step that can throw.** One exception in an `afterEach` skips the lines after it for every later file in the package, not only the failing test.
+
+**A full local run of web's unit tests can stop with `JavaScript heap out of memory`, because all its files share that one fork; run web in four shards as CI does.** `pnpm turbo run test --filter=@breatic/web -- --shard=N/4` for N from 1 to 4; an out-of-memory stop is not a test failure.
 
 **vitest 3.2.7 has no `list` reporter.** `--reporter=list` makes it look for a package named `list`, it runs no tests, and the exit looks like a finished run. Use one of vitest's own reporter names (`default`, `verbose`, `dot`, `json`).
 

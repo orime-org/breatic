@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /** Project media HTTP contracts backed by real PostgreSQL and Redis (inner#1707). */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -262,7 +262,7 @@ describe("Project registered media HTTP reads", () => {
     }
   });
 
-  it.each(["unassociated", "deleted", "foreign"] as const)("returns 404 for a %s asset to an authorized Project reader", async (state) => {
+  it.each(["unassociated", "deleted", "foreign"] as const)("returns 404 for a %s asset to an authorized Project user", async (state) => {
     const fixture = await seedFixture();
     const asset = await seedAsset(state === "foreign" ? await seedFixture() : fixture);
     if (state === "deleted") {

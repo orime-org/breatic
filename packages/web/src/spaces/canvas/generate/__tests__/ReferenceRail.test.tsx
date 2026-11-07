@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -190,6 +190,22 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
     );
     fireEvent.click(screen.getByTestId('generate-ref-remove-b->me'));
     expect(onRemove).toHaveBeenCalledWith(REFS[1]);
+  });
+
+  it('takes a press on a 24px square around each 16px ✕, inside the chip so it never reaches the insert button (WCAG 2.5.8)', () => {
+    render(
+      <ReferenceRail referenceKinds={['image']} references={REFS} onRemove={() => {}} onInsert={() => {}} />,
+    );
+    for (const ref of REFS) {
+      const target = screen.getByTestId(`generate-ref-remove-${ref.refId}`);
+      // The circle stays 16px; an `::after` square 4px past each side makes it
+      // 24px. The chip leaves 6px to the name button and 6px of right padding,
+      // so 4px stays inside the chip.
+      expect(target.className).toMatch(/\bh-4\b.*\bw-4\b|\bw-4\b.*\bh-4\b/);
+      for (const token of ['relative', 'after:absolute', 'after:-inset-1']) {
+        expect(target.className.split(/\s+/), `${ref.refId} ${token}`).toContain(token);
+      }
+    }
   });
 
   it('fires onInsert with the reference row when the chip body is clicked', () => {

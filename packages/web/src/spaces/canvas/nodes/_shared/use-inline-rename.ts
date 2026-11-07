@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 
@@ -31,7 +31,7 @@ export interface InlineRename {
   /** Update the draft as the user types. */
   setDraft: (value: string) => void;
   /**
-   * The editor input's blur handler: commits when the reader leaves the input,
+   * The editor input's blur handler: commits when the user leaves the input,
    * and not when its Space is hidden or the browser loses focus.
    */
   blur: () => void;
@@ -93,7 +93,7 @@ export function useInlineRename({
 
   // On entering edit, focus AND select the whole name so a keystroke
   // replaces it immediately (matches the project-title editor). Once only: a
-  // Space shown again runs this effect again, and the reader is mid-word.
+  // Space shown again runs this effect again, and the user is mid-word.
   const selectedOnEntry = React.useRef(false);
   React.useEffect(() => {
     if (!editing) {

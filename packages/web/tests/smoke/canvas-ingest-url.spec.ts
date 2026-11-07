@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Handing the backend an address instead of bytes, end to end (#207).
@@ -200,10 +200,10 @@ test('an address that cannot be stored reaches it as a failed one @needs-interne
     .toBe(1);
 
   // The wording, not just the count. The token the edge named travels through
-  // the task row to a sentence in the reader's language, and the same token now
+  // the task row to a sentence in the user's language, and the same token now
   // arrives from a dropped file too (#240) — so the sentence can no longer
   // speak of an address. It names what an image node does take, which is what
-  // leaves the reader somewhere to go.
+  // leaves the user somewhere to go.
   await expect(page.locator('[data-testid="node-task-row"]')).toContainText(
     'Not a supported format. Images take PNG / JPG / WebP.',
   );

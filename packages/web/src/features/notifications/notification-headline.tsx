@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { parseCreditDecimal } from '@breatic/shared';
 
@@ -185,7 +185,7 @@ function headlinePartsFor(
 
   // Names and links come from `resolved`, never from the payload. The payload
   // holds ids precisely so a rename cannot strand this row: whatever the target
-  // is called RIGHT NOW is what the reader should see and click.
+  // is called RIGHT NOW is what the user should see and click.
   //
   // Two different outcomes, handled separately. A soft-deleted target IS in the
   // map, flagged `deleted` — it keeps its name and loses only the link, because
@@ -233,7 +233,7 @@ function headlinePartsFor(
 
 /**
  * Build the actor link node — the display name + a dimmer `@handle`, linking to
- * the actor's personal studio. The link opens in a NEW tab so the reader keeps
+ * the actor's personal studio. The link opens in a NEW tab so the user keeps
  * their place in the bell. When the handle is missing (a user mid-onboarding with
  * no personal studio), it degrades to plain text (the name, or a generic
  * fallback) with no broken link.
@@ -277,7 +277,7 @@ const TIER_LABEL: Record<string, string> = {
  * Build the localized, link-bearing headline for a bell notification: the actor
  * (name + `@handle` → personal studio) and the entity (project / studio name → its
  * page) are clickable links dropped into the translated sentence frame. Both links
- * open in a NEW tab so the reader keeps their place in the bell.
+ * open in a NEW tab so the user keeps their place in the bell.
  * @param n - The notification to render a headline for.
  * @param resolved - Current identities for the ids the notification carries.
  * @param t - The translation function.
@@ -312,7 +312,7 @@ export function notificationHeadline(
     const period = str(n.payload, 'toPeriod');
     // Rows written before we recorded a period carry none. Composing the key
     // from an empty string gives `membership.period.`, which resolves to
-    // nothing — and an unresolved key is rendered as itself, so the reader
+    // nothing — and an unresolved key is rendered as itself, so the user
     // was shown a key name in the middle of the sentence.
     if (period !== 'month' && period !== 'year') {
       return t(

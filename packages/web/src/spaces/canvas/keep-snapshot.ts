@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * One press of Snapshot, from the menu item to the row (#2175).
@@ -32,7 +32,7 @@ export interface SnapshotPress {
  * A node saying nothing has nothing to keep: the press produces no row, the
  * same answer the server gives a snapshot of nothing. The menu judged that
  * when it opened, so a press that arrives here on an empty node is one the
- * reader made on a live item — and it is told what it found.
+ * user made on a live item — and it is told what it found.
  * @param press - Where it happens and which node was pressed.
  * @returns Nothing; the outcome is a toast and, on success, a row holding
  *   these words: a new one, or the one the node's history already had.

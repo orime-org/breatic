@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Which ranges can carry a comment (#18, A2 · A3).
  *
  * Both entries ask this of the same range type. The bubble bar acts on what
- * the reader selected. The block handle acts on the row the pointer is over,
+ * the user selected. The block handle acts on the row the pointer is over,
  * and `selectionOverBlockContent` turns that row into a selection over its own
  * content without dispatching it — so commenting on a whole block is the same
  * operation as selecting that block's text and commenting, which is what A2
@@ -51,7 +51,7 @@ import {
 /**
  * Whether a comment could land anywhere in this range.
  * @param doc - The document.
- * @param over - The reader's selection, or the range standing for one row.
+ * @param over - The user's selection, or the range standing for one row.
  * @returns Whether the range holds text a comment could mark.
  */
 export function canCommentOver(doc: PMNode, over: Selection): boolean {

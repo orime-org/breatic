@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A turn that fails before the model is even asked still says so.
@@ -11,7 +11,7 @@
  * simply ends looks to the browser exactly like a turn that finished: the
  * reply slot stops being written to and nothing says why.
  *
- * So the failure has to leave two marks. One goes to the reader, who gets the
+ * So the failure has to leave two marks. One goes to the user, who gets the
  * same one line every other failure gets and can press send again. The other
  * goes to the log, with the three things that say whose turn this was --
  * without them the entry is a stack trace nobody can trace back to anyone.
@@ -44,6 +44,8 @@ vi.mock("@server/modules", async (importOriginal) => {
     conversationService: {
       ...base.conversationService,
       assertWritable: vi.fn().mockResolvedValue({ id: "conv-1" }),
+      modelForMessage: vi.fn().mockResolvedValue("test"),
+      modelForResume: vi.fn().mockResolvedValue("test"),
     },
   };
 });
@@ -78,7 +80,7 @@ const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
 const CONVERSATION_ID = "22222222-2222-4222-8222-222222222222";
 
 describe("a turn that fails before the model is asked", () => {
-  it("tells the reader, instead of ending the stream as if it had finished", async () => {
+  it("tells the user, instead of ending the stream as if it had finished", async () => {
     const app = createApp();
 
     const res = await app.request("/api/v1/chat/message", {

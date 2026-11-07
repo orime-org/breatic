@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Deciding where every node is drawn (#2010, design §5.5).
@@ -707,7 +707,7 @@ describe('mergeCanvasNodes, a gesture entry that rode in on a Group', () => {
 });
 
 describe('mergeCanvasNodes, a node carrying task counts (#186 E6)', () => {
-  // The counts are the one field the server rewrites while the reader watches,
+  // The counts are the one field the server rewrites while the user watches,
   // and every node on the canvas carries them. The mirror stores them as a
   // plain value, so an unchanged node hands back the same object — which is
   // what `sameData` reference-compares. Rebuild that object per pass and every

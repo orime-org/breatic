@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { candidatesOf, type MediaBinding } from "@provider/config/schema.js";
 import type { Cost } from "@provider/cost.js";

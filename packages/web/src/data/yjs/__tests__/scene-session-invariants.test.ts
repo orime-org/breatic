@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
 import * as Y from 'yjs';
+import { SCENE_FORMAT_VERSION } from '@breatic/shared';
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from 'y-protocols/awareness';
 import {
   SceneSession,
@@ -18,7 +19,7 @@ const MISSING = '33333333-3333-4333-8333-333333333333';
 const NAME = `project-${ID}/3d-${OTHER}`;
 const OBJECT = { id: ID, name: 'Figure', model: { kind: 'builtin' as const, id: 'figure' as const },
   position: [0, 0, 0] as [number, number, number], rotation: [0, 0, 0, 1] as [number, number, number, number],
-  scale: [1, 1, 1] as [number, number, number], locked: false, exists: true };
+  scale: [1, 1, 1] as [number, number, number], locked: false };
 const EDITOR: SceneEnvironment = { readOnly: false, connected: true, hasEverSynced: true,
   writeAccess: 'granted', refused: false, awareness: null };
 const managed: { session: SceneSession; doc: Y.Doc; name: string }[] = [];
@@ -28,7 +29,7 @@ const peerDocs: Y.Doc[] = [];
 /** Create a live in-memory owner for shared scene content. */
 function fixture(name = NAME): { session: SceneSession; doc: Y.Doc } {
   const doc = new Y.Doc();
-  doc.getMap('scene').set('formatVersion', 1);
+  doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
   applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol(), true);
   const session = new SceneSession(doc);
   managed.push({ session, doc, name });
@@ -190,6 +191,68 @@ describe('scene session invariants (inner#1685 acceptance 5/6/8/9/10/11/14)', ()
       expect(listener).toHaveBeenCalledOnce();
       expect(session.getSnapshot().selectedIds).toEqual([]);
     } finally { stop(); }
+  });
+
+
+  describe('upload progress over awareness (inner#1690)', () => {
+    it('reads each peer\'s whole-percent progress by task row and ignores what is not one', () => {
+      const { session, doc } = fixture();
+      const local = presence(doc, 'alice'); session.setEnvironment({ ...EDITOR, awareness: local });
+      const bob = publishPeer(local, 'bob');
+      bob.setLocalState({ user: { id: 'bob' }, sceneUploads: { 'task-1': 42, 'task-2': 'half', 'task-3': 140 } });
+      applyAwarenessUpdate(local, encodeAwarenessUpdate(bob, [bob.clientID]), 'remote');
+      const carol = publishPeer(local, 'carol');
+      carol.setLocalState({ user: { id: 'carol' }, sceneUploads: { 'task-4': 7 } });
+      applyAwarenessUpdate(local, encodeAwarenessUpdate(carol, [carol.clientID]), 'remote');
+
+      expect(session.getSnapshot().remoteUploads).toEqual({ 'task-1': 42, 'task-4': 7 });
+    });
+
+    it('follows a progress-only change without reading the scene again', () => {
+      const { session, doc } = fixture();
+      const local = presence(doc, 'alice'); session.setEnvironment({ ...EDITOR, awareness: local });
+      const bob = publishPeer(local, 'bob', { selectedIds: [], gesture: null });
+      const objects = session.getSnapshot().objects;
+      const listener = vi.fn();
+      session.subscribe(listener);
+
+      bob.setLocalState({ user: { id: 'bob' }, scenePresence: { selectedIds: [], gesture: null }, sceneUploads: { 'task-1': 10 } });
+      applyAwarenessUpdate(local, encodeAwarenessUpdate(bob, [bob.clientID]), 'remote');
+
+      expect(session.getSnapshot().remoteUploads).toEqual({ 'task-1': 10 });
+      expect(session.getSnapshot().objects).toBe(objects);
+      expect(listener).toHaveBeenCalledTimes(1);
+      applyAwarenessUpdate(local, encodeAwarenessUpdate(bob, [bob.clientID]), 'remote');
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('publishes this page\'s progress beside its presence and withdraws each row as it ends', () => {
+      const { session, doc } = fixture();
+      const local = presence(doc, 'alice'); session.setEnvironment({ ...EDITOR, awareness: local });
+      session.setUploadProgress({ 'task-1': 30, 'task-2': 5 });
+      expect(local.getLocalState()).toMatchObject({ user: { id: 'alice' }, sceneUploads: { 'task-1': 30, 'task-2': 5 } });
+      session.setUploadProgress({ 'task-2': 6 });
+      expect(local.getLocalState()?.sceneUploads).toEqual({ 'task-2': 6 });
+      session.setUploadProgress({});
+      expect(local.getLocalState()).not.toHaveProperty('sceneUploads');
+      expect(local.getLocalState()).toMatchObject({ user: { id: 'alice' } });
+    });
+  });
+
+
+  describe('stable upload progress (inner#1690)', () => {
+    it('hands out the same progress object while no upload changed', () => {
+      const { session, doc } = fixture();
+      const local = presence(doc, 'alice'); session.setEnvironment({ ...EDITOR, awareness: local });
+      const bob = publishPeer(local, 'bob', { selectedIds: [], gesture: null });
+      bob.setLocalState({ user: { id: 'bob' }, scenePresence: { selectedIds: [], gesture: null }, sceneUploads: { 'task-1': 10 } });
+      applyAwarenessUpdate(local, encodeAwarenessUpdate(bob, [bob.clientID]), 'remote');
+      const first = session.getSnapshot().remoteUploads;
+      applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, position: [3, 0, 0] }] }, Symbol(), true);
+      bob.setLocalState({ user: { id: 'bob' }, scenePresence: { selectedIds: [ID], gesture: null }, sceneUploads: { 'task-1': 10 } });
+      applyAwarenessUpdate(local, encodeAwarenessUpdate(bob, [bob.clientID]), 'remote');
+      expect(session.getSnapshot().remoteUploads).toBe(first);
+    });
   });
 
 });

@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A style lives on text, whichever control put it there.
  *
  * The rule belongs to the document rather than to any one control: a node the
- * reader cannot see a style on carries none. This schema holds two such nodes.
+ * user cannot see a style on carries none. This schema holds two such nodes.
  * `hardBreak` is a line wrap, bold or coloured or not. `unsupportedInline`
  * stands in for vocabulary a newer build wrote and this one cannot draw. Yjs
  * agrees and more strongly — `y-prosemirror` maps a non-text inline node by
@@ -72,7 +72,7 @@ import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
  * caret, so the node it weighs against is whatever sits immediately after —
  * a second `hardBreak` where the caret is on an empty line, which carries
  * nothing and so drops the `inclusive: false` marks. That is the answer this
- * document wants: a link does not reach across a line the reader left empty.
+ * document wants: a link does not reach across a line the user left empty.
  *
  * Where no text sits behind at all, the caret itself is the near end and the
  * end of the block is the far one. Nothing follows the end of a block

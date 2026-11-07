@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Where to move the canvas after an action makes something: a press that
@@ -8,7 +8,7 @@
  * A node written one step to the right of the one being read is off-screen on
  * a canvas scrolled near its right edge, and a press whose only effect is
  * off-screen looks like a press that did nothing. Moving every time is the
- * other half of that: a reader who can already see both nodes has the canvas
+ * other half of that: a user who can already see both nodes has the canvas
  * slide under them for no reason they can name.
  */
 
@@ -32,7 +32,7 @@ export const FRAME_PAN_MS = 300;
 /**
  * How long the camera takes to follow a proposal onto the canvas. Longer than
  * a slide, because it often travels further and zooms out on the way, and at
- * the slide's pace the reader loses where it went (user 2026-10-13).
+ * the slide's pace the user loses where it went (user 2026-10-13).
  */
 export const PROPOSAL_FRAME_MS = 800;
 
@@ -52,12 +52,12 @@ function contains(inner: Rect, outer: Rect): boolean {
 }
 
 /**
- * Where to centre the canvas so the node just built is in front of the reader.
+ * Where to centre the canvas so the node just built is in front of the user.
  *
  * Nothing moves while that node is already fully in view. When it is not, the
  * canvas frames it together with the node it was read from — the two belong to
  * one act, and showing one without the other says half of what happened. The
- * zoom is the reader's and stays that way, so a pair too far apart to fit at
+ * zoom is the user's and stays that way, so a pair too far apart to fit at
  * it cannot be framed together; the built node wins then, being the thing the
  * press produced.
  * @param built - What the action produced: the node a press wrote, or the
@@ -66,7 +66,7 @@ function contains(inner: Rect, outer: Rect): boolean {
  *   this canvas (a collaborator deleted it, the paste came from another Space,
  *   or the paste was text or a picture); what was produced is what has to be
  *   on screen.
- * @param viewport - What the reader can see, in canvas coordinates.
+ * @param viewport - What the user can see, in canvas coordinates.
  * @returns The point to centre on, or null when nothing needs to move.
  */
 export function frameBuiltNode(
@@ -88,7 +88,7 @@ export function frameBuiltNode(
  * fit the view together, else the first one. The middle of copies that do not
  * fit can be empty canvas, and framing it would put none of them on screen.
  * @param copies - Each copy's box, in canvas coordinates, in paste order.
- * @param viewport - What the reader can see, in canvas coordinates.
+ * @param viewport - What the user can see, in canvas coordinates.
  * @returns The box to frame, or null when there are no copies.
  */
 export function framedBox(copies: readonly Rect[], viewport: Rect): Rect | null {
@@ -120,7 +120,7 @@ export function freshNodesBox(built: readonly [Rect, ...Rect[]]): Rect {
  * Where to move the camera after a press builds something to the right of the
  * node it was read from — a tool's result, a grid's group, an Understand
  * node (inner#1303). Nothing moves while what was built is in view; else the
- * camera slides at the reader's zoom, framing the source too when both fit;
+ * camera slides at the user's zoom, framing the source too when both fit;
  * what does not fit at that zoom is shown whole by zooming out just enough, as
  * a proposal is (`frameProposal`). It never zooms in.
  * @param built - What the press built, in canvas coordinates.
@@ -128,7 +128,7 @@ export function freshNodesBox(built: readonly [Rect, ...Rect[]]): Rect {
  * @param pane - The canvas pane's size in screen pixels.
  * @param pane.width - Its width.
  * @param pane.height - Its height.
- * @param now - The viewport the reader is at.
+ * @param now - The viewport the user is at.
  * @returns The viewport to move to, or null to stay.
  * @throws {never} Never.
  */
@@ -154,7 +154,7 @@ export function viewportForBuilt(
  * its own pixels — the node then loads its full picture in place of the
  * thumbnail. The panel hangs under the node at its screen size whatever the
  * zoom, so only the node scales; centred under the node in the centred view,
- * it fits across whatever the zoom, so only its height takes part. A reader
+ * it fits across whatever the zoom, so only its height takes part. A user
  * already that close is left where they are; it never zooms out.
  * @param node - The node, in canvas coordinates.
  * @param panel - The panel under it, in screen pixels.
@@ -163,7 +163,7 @@ export function viewportForBuilt(
  * @param pane - The canvas pane's size in screen pixels.
  * @param pane.width - Its width.
  * @param pane.height - Its height.
- * @param now - The viewport the reader is at.
+ * @param now - The viewport the user is at.
  * @param oneToOne - The zoom at which the picture shows at its own pixels.
  * @returns The viewport to move to, or null to stay.
  * @throws {never} Never.
@@ -281,18 +281,18 @@ export function placedScreenBoxes(view: PlacedView, at: Viewport): { all: Rect; 
 
 /**
  * Where to move the camera once nodes have landed with the generate panel
- * open on one of them (inner#1345), so all of it is in front of the reader:
+ * open on one of them (inner#1345), so all of it is in front of the user:
  * inside the pane, a gap in from its edges and from the menu, toolbar and
- * minimap floating over it. From the reader's zoom down, step by step, the
+ * minimap floating over it. From the user's zoom down, step by step, the
  * first zoom at which everything placed fits is taken, slid the shortest way
  * from where it stands with its middle held still; it never zooms in. When
  * not even the lowest zoom fits, the panel and its node are slid clear at the
- * reader's zoom, else put at the pane's top left.
+ * user's zoom, else put at the pane's top left.
  * @param view - The placed nodes and the panel.
  * @param pane - The canvas pane's size in screen pixels.
  * @param pane.width - Its width.
  * @param pane.height - Its height.
- * @param now - The viewport the reader is at.
+ * @param now - The viewport the user is at.
  * @param chrome - What floats over the pane, in screen pixels from its top left.
  * @param minZoom - The lowest zoom the canvas allows.
  * @returns The viewport to move to, or null to stay.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What one press of Understand does (#2175).
@@ -118,7 +118,7 @@ describe('one press of Understand', () => {
 
     // The edge runs from the node being read to the node being written, which
     // is the only thing tying the two together — there is no parent and no
-    // shared id, so a reader who wants them apart deletes it.
+    // shared id, so a user who wants them apart deletes it.
     const [, , edge] = vi.mocked(addEdge).mock.calls[0] ?? [];
     expect(edge?.source).toBe('n-1');
 
@@ -165,14 +165,16 @@ describe('one press of Understand', () => {
     expect(toast.warning).not.toHaveBeenCalled();
   });
 
-  // The answer becomes this node's body, and the reader opens it in the
+  // The answer becomes this node's body, and the user opens it in the
   // language they set. Only this end knows which that is, so it travels with
   // the request; the model, four processes away, is what writes the sentence.
-  it('sends the language the reader set', async () => {
+  // Under both names until the follow-up to #1378: during a deploy this page
+  // can reach a server of the previous release, which reads only the old one.
+  it('sends the language the user set', async () => {
     await startUnderstandRun(RUN);
 
     expect(vi.mocked(canvasApi.understand)).toHaveBeenCalledWith(
-      expect.objectContaining({ reader_locale: 'zh-CN' }),
+      expect.objectContaining({ user_locale: 'zh-CN', reader_locale: 'zh-CN' }),
       expect.any(String),
     );
   });
@@ -202,7 +204,7 @@ describe('one press of Understand', () => {
   // The wire is the only thing tying the reading to what it is about, and the
   // node it runs from can go while the menu stands open: `addEdge` refuses an
   // edge whose endpoint is gone and says so in its return. The reading still
-  // has the address it captured, so it goes ahead and the reader is told the
+  // has the address it captured, so it goes ahead and the user is told the
   // wire is missing.
   it('says so when the wire to the node being read cannot be drawn', async () => {
     vi.mocked(addEdge).mockReturnValueOnce(false);
@@ -233,7 +235,7 @@ describe('one press of Understand', () => {
       source: { ...RUN.source, kind: 'audio', mimeType: 'audio/ogg' },
     });
 
-    // The sentence names the file the reader picked and what it is in, not
+    // The sentence names the file the user picked and what it is in, not
     // the ten formats a reading takes — nine of which are not the one in
     // their hand (user 2026-09-20). The name is the asset's own, read off
     // the address, which is the same one the run would read.
@@ -262,7 +264,7 @@ describe('one press of Understand', () => {
     expect(vi.mocked(canvasApi.understand)).not.toHaveBeenCalled();
   });
 
-  // The node stays. It is the reader's content now, and nothing here deletes
+  // The node stays. It is the user's content now, and nothing here deletes
   // one — a request that never reached the server has no row to carry its
   // failure, so the toast is the whole of what can be said.
   it('keeps the node when the request never reaches the server', async () => {
@@ -313,8 +315,8 @@ describe('when the press cannot reach its end', () => {
   });
 
   // Presses come in faster than the run behind them, and the throttle answers
-  // with a sentence written in the reader's own language saying which of those
-  // two just happened. Saying "try again" over it sends the reader back into
+  // with a sentence written in the user's own language saying which of those
+  // two just happened. Saying "try again" over it sends the user back into
   // the window they are already inside, where the next press fails the same
   // way and leaves another node behind.
   // inner#1490: without a final answer the press may have run, so it asks
@@ -342,9 +344,9 @@ describe('when the press cannot reach its end', () => {
     expect(toast.error).not.toHaveBeenCalled();
   });
 
-  // A permission refusal is written for the reader and it repeats: telling
+  // A permission refusal is written for the user and it repeats: telling
   // them to try again sends them at a door that answers the same way.
-  it('passes on a refusal the reader is the subject of', async () => {
+  it('passes on a refusal the user is the subject of', async () => {
     vi.mocked(canvasApi.understand).mockRejectedValueOnce(
       new ApiException({
         status: 403,
@@ -360,7 +362,7 @@ describe('when the press cannot reach its end', () => {
 
   // Every branch of the error handler writes its message through `t()`,
   // including the one a rejected schema takes, so a refusal the server wrote
-  // reaches the reader in their own language whatever its status was.
+  // reaches the user in their own language whatever its status was.
   it('passes on a refusal the server wrote, whatever the status', async () => {
     vi.mocked(canvasApi.understand).mockRejectedValueOnce(
       new ApiException({
@@ -418,6 +420,7 @@ describe('one press of Transcribe', () => {
         source_url: AUDIO.url,
         source_mime_type: 'audio/mp4',
         keep_fillers: false,
+        user_locale: 'zh-CN',
         reader_locale: 'zh-CN',
       }),
       expect.any(String),

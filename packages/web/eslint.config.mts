@@ -567,6 +567,23 @@ export default [
     },
   },
   {
+    // jsdom drives requestAnimationFrame from one setInterval it starts with
+    // the first pending frame. Faked without rAF, that interval lands on the
+    // fake clock, useRealTimers discards it, and no frame fires again in the
+    // rest of the single-fork process: a later file waiting on a frame times
+    // out, depending only on which files share its shard.
+    files: ['src/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'CallExpression[callee.property.name="useFakeTimers"] Property[key.name="toFake"] > ArrayExpression:has(Literal[value="setInterval"]):not(:has(Literal[value="requestAnimationFrame"]))',
+          message: 'Fake requestAnimationFrame and cancelAnimationFrame together with setInterval, or jsdom stops firing animation frames for every later test file in the process.',
+        },
+      ],
+    },
+  },
+  {
     // Tests included: an unlicensed file is unlicensed wherever it travels.
     // The shadcn vendor directory is excluded because it is third-party IP
     // and must not carry an Orime copyright — not merely because nobody

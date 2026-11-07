@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The browser end of the contract with the backend's content seed.
@@ -116,7 +116,7 @@ describe('a document opened straight from the backend seed', () => {
     // The seed exists so that the first client to bind invents nothing. An
     // attribute it leaves out is one the schema will supply from its default
     // the first time anyone edits — a write carried to every peer that says
-    // nothing about what the reader did.
+    // nothing about what the user did.
     //
     // Compared against the schema rather than against a list written here, so
     // that a tenth attribute added to the paragraph turns this red instead of
@@ -130,7 +130,7 @@ describe('a document opened straight from the backend seed', () => {
     // the string is the natural spelling — `setAttribute` is typed
     // `(string, string)`. A seeded attribute the schema reads differently is
     // one it overwrites on the first edit, and that write goes to every peer
-    // saying nothing about what the reader did.
+    // saying nothing about what the user did.
     // Looked up by position each time rather than held: typing into an empty
     // document leaves a second block behind it, and the write-back reuses the
     // element the seed wrote for the block that ends up second. A held

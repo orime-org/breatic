@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { ChevronDown } from 'lucide-react';
 import * as React from 'react';
@@ -112,7 +112,7 @@ export const ModelPicker = React.memo(function ModelPicker({
                 {/* Two lines, the same shape VoiceList gives its voices: the
                     name, and under it what this model is good at. The catalog's
                     `description` is written for this line — it says what sets a
-                    model apart, which is the only thing that tells a reader
+                    model apart, which is the only thing that tells a user
                     which of several models for one mode to pick. Empty when the
                     catalog leaves it blank, and then the row is one line again.
                     truncate on both: the catalog puts no length cap on either

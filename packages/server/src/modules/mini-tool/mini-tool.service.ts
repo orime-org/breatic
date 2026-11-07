@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What `POST /mini-tools` decides before any row opens (inner#888 §6.1): the
  * model a model tool is pinned to and whether the request's values fit it,
  * the stored key a container tool reads, the params the run goes out with,
- * and what the credit precheck holds the reader to.
+ * and what the credit precheck holds the user to.
  */
 
 import { AppError, env, getMiniToolsConfig, getStorageAdapter, logger } from "@breatic/core";
@@ -40,15 +40,15 @@ export interface PreparedRun {
   params: Record<string, unknown>;
   /** The stored object a container tool reads. */
   sourceKey: string | undefined;
-  /** What the precheck holds the reader to. */
+  /** What the precheck holds the user to. */
   credits: number;
 }
 
 /**
  * The prompt a run is sent: an empty one on a tool that has its own is sent as
- * that one, and a tool's preamble goes before whatever the reader wrote.
+ * that one, and a tool's preamble goes before whatever the user wrote.
  * @param spec - The tool.
- * @param typed - What the reader wrote.
+ * @param typed - What the user wrote.
  * @returns The prompt.
  */
 function promptOf(spec: MiniToolSpec, typed: string): string {

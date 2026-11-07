@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * #113 A20 for the lift a drag shows the reader.
+ * #113 A20 for the lift a drag shows the user.
  *
  * A11 asks for the row's content to lift off the page and follow the pointer
  * (user 2026-09-17, replacing the library's near-invisible clone). It is

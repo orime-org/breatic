@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Ask-user tool — put a card of questions to the reader and wait there for
+ * Ask-user tool — put a card of questions to the user and wait there for
  * the answer.
  */
 import { askUserInputSchema, type AskUserInput } from "@breatic/shared";
@@ -52,7 +52,7 @@ function schemaFor(context: AskUserContext): AskUserSchema {
 /**
  * The ask-user tool, as a turn receives it.
  *
- * It has no `execute`. A call is a card the reader answers in their own time,
+ * It has no `execute`. A call is a card the user answers in their own time,
  * and `ai@7.0.68` moves on to the next step only once every call in a step
  * has a result (`dist/index.js:10049`), so the turn stops at the card; the
  * answer comes back as this call's result in the request that resumes it.

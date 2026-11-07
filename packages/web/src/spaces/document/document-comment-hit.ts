@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Which threads a press in the body lands on (#18, A20).
@@ -7,18 +7,18 @@
  * Two comments may overlap the same run — `excludes: ""` on the mark is what
  * allows it — and the library's own handler cannot reach the second: it takes
  * `node.marks.find(...)`, the first match, and selects that one thread
- * (grep `marks.find` in `@blocknote/core/dist/comments.js`). A reader
+ * (grep `marks.find` in `@blocknote/core/dist/comments.js`). A user
  * pressing a doubly commented run
  * would get one of the two with no way to tell which, or to reach the other.
  *
- * So this names them all and the reader picks, which is what the two
+ * So this names them all and the user picks, which is what the two
  * implementations that answer the question do: the comment plugin in
  * ProseMirror's own collab example returns every comment at a position and
  * renders them all, and Lexical holds an array of ids and activates all of
  * them. (No vendor's help pages answer it, so there is no product convention
  * to follow — only these.)
  *
- * `orphan` is read, as the library's own handler reads it: what a reader can
+ * `orphan` is read, as the library's own handler reads it: what a user can
  * press is what is drawn for them. The library sets that attribute from
  * `!thread || resolved || deletedAt` (grep `isOrphan` in
  * `@blocknote/core/src/comments/extension.ts`) and

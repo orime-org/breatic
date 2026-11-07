@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The reader's answer to a questionnaire, sent through the conversation's own
+ * The user's answer to a questionnaire, sent through the conversation's own
  * session (inner#1542).
  *
  * An answer resumes the turn that asked, so it goes out the way the SDK's own
@@ -20,7 +20,7 @@ vi.mock('@web/data/api/chat', () => ({ chatApi: { streamConfig: async () => ({ h
 
 const { answerInSession, chatSessionFor, evictAllChatSessions, sendInSession } = await import('@web/stores/chat-sessions');
 
-/** What the paused reply holds: a card waiting on the reader. */
+/** What the paused reply holds: a card waiting on the user. */
 const PAUSED: StoredUiMessage[] = [
   { id: 'u-1', role: 'user', parts: [{ type: 'text', text: 'make me a poster' }], metadata: { turnIndex: 1, ts: '' } },
   {

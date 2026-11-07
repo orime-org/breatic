@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Measurements the top-up screens can only give in a real browser.
@@ -296,7 +296,7 @@ test('the buy screen and its confirm dialog measure up @needs-payments', async (
 
 // An account that has bought nothing has nothing to list, and the screen says
 // so: the empty state (`RefundsSection.tsx:227`) carrying `credits.refundsEmpty`
-// — a sentence out of the locale, which is what makes it the reader's language
+// — a sentence out of the locale, which is what makes it the user's language
 // rather than a string in the code. Pinning what a screen with purchases on it
 // draws needs an account that has bought some (#277).
 //

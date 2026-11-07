@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The `@` suggestion wiring shared by every editor with reference chips:
@@ -141,7 +141,7 @@ export function makeMentionSuggestion<T>(
        */
       let latestProps: SuggestionProps<T> | null = null;
       /**
-       * Whether the reader wants the popup: false means the user closed it, or
+       * Whether the user wants the popup: false means the user closed it, or
        * something other than the user put an `@` in range. A remote
        * collaborator's edit fires onUpdate exactly like local typing (a peer
        * inserting before the `@` shifts the range), so content refreshes must
@@ -285,7 +285,7 @@ export function makeMentionSuggestion<T>(
             editor: props.editor,
           });
           /**
-           * Hides the list when the reader turned to something outside both it
+           * Hides the list when the user turned to something outside both it
            * and the editor. Hiding keeps the plugin active (see below).
            * @param target - Where the pointer went down or focus went.
            */
@@ -418,7 +418,7 @@ export function makeMentionSuggestion<T>(
           place(props.clientRect);
         },
         onKeyDown: (props: SuggestionKeyDownProps): boolean => {
-          // A list the reader closed (or never saw) takes no keys: Enter is
+          // A list the user closed (or never saw) takes no keys: Enter is
           // theirs again, to send or to break the line.
           if (!onScreen()) return false;
           if (component?.ref?.onKeyDown(props.event) === true) return true;

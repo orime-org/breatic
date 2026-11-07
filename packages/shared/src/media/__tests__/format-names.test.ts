@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The word a format goes by on screen.
@@ -22,7 +22,7 @@ import {
 import { uploadableFormatList } from "@shared/upload/media-type.js";
 
 describe("what to call the format a file is in", () => {
-  it("gives a listed type the word a reader uses for it", () => {
+  it("gives a listed type the word a user uses for it", () => {
     expect(formatNameOf("audio/mpeg")).toBe("MP3");
     expect(formatNameOf("video/quicktime")).toBe("MOV");
     expect(formatNameOf("image/jpeg")).toBe("JPG");
@@ -125,7 +125,7 @@ describe("what the file at an address is called", () => {
     expect(assetNameFromUrl("https://cdn/x/a.mp4#t=3")).toBe("a.mp4");
   });
 
-  it("gives back the name a reader would read", () => {
+  it("gives back the name a user would read", () => {
     expect(assetNameFromUrl("https://cdn/x/my%20clip.wav")).toBe("my clip.wav");
   });
 

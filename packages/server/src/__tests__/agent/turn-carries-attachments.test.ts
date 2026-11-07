@@ -1,18 +1,18 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a turn does with the items attached to the message that opened it.
  *
  * They are stored beside the typed words rather than folded into them, so the
- * bubble shows what the reader typed and the conversation is named after it.
+ * bubble shows what the user typed and the conversation is named after it.
  * The model is sent both, attachments first, on the very turn they came with,
- * after the note that says when the reader sent it.
+ * after the note that says when the user sent it.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
 import { attachmentMarker } from "@breatic/shared";
-import { READER_LANGUAGE_REMINDER, userTurnForModel } from "@server/agent/user-turn.js";
+import { USER_LANGUAGE_REMINDER, userTurnForModel } from "@server/agent/user-turn.js";
 import type { ChatAttachedChip } from "@breatic/shared";
 import { saying } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
@@ -23,7 +23,7 @@ const modelSays = vi.hoisted(() => ({ parts: [] as unknown[], prompts: [] as unk
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { projectMemory: "", conversationMemory: "" },
+    memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
     history: [],
   })),
 }));
@@ -55,7 +55,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
-  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
+  addUserMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({ titleForTurn }));
@@ -63,7 +63,7 @@ vi.mock("@server/agent/turn-fold.js", () => ({ foldIfTooLong: vi.fn(async () => 
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 const { MainAgent } = await import("@server/agent/main-agent.js");
-const { readerClockNote } = await import("@server/agent/reader-clock.js");
+const { userClockNote } = await import("@server/agent/user-clock.js");
 const { runWithContext } = await import("@breatic/core");
 
 const image: ChatAttachedChip = {
@@ -150,7 +150,7 @@ describe("a turn opened by a message with attachments", () => {
     await runOneTurn("what is in this?", [image]);
 
     expect(lastUserTextSent()).toBe(
-      `${readerClockNote(new Date(), undefined)}\n\n${userTurnForModel({ chips: [image], message: "what is in this?" })}\n\n${READER_LANGUAGE_REMINDER}`,
+      `${userClockNote(new Date(), undefined)}\n\n${userTurnForModel({ chips: [image], message: "what is in this?" })}\n\n${USER_LANGUAGE_REMINDER}`,
     );
   });
 
@@ -161,6 +161,6 @@ describe("a turn opened by a message with attachments", () => {
       role: "user",
       parts: [{ type: "text", text: "hello" }],
     });
-    expect(lastUserTextSent()).toBe(`${readerClockNote(new Date(), undefined)}\n\nhello\n\n${READER_LANGUAGE_REMINDER}`);
+    expect(lastUserTextSent()).toBe(`${userClockNote(new Date(), undefined)}\n\nhello\n\n${USER_LANGUAGE_REMINDER}`);
   });
 });

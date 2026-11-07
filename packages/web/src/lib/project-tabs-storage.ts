@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { z } from 'zod';
 
@@ -49,13 +49,13 @@ export interface RestoredTabs {
 
 /**
  * A camera the canvas would refuse — a zoom outside what it allows, or a
- * number that is not finite — would leave the reader on a blank screen with
+ * number that is not finite — would leave the user on a blank screen with
  * nothing on it saying why.
  *
  * It costs that Space its camera and nothing else: the Space opens framed, the
  * way one with no stored camera does, while the strip it sat on and the tab
  * that was showing are still what the account left. One unusable number is a
- * reason to drop one camera, not the reader's tabs.
+ * reason to drop one camera, not the user's tabs.
  */
 const viewportSchema = z
   .object({
@@ -70,7 +70,7 @@ const viewportSchema = z
  * One account's slot for one project. `tabs` is absent while the only things
  * stored here are the Agent panel's preferences; the strip is first stored by
  * `writeOpenTabs`. A preference that does not parse costs that value and
- * nothing else, so it can never take the reader's tabs with it.
+ * nothing else, so it can never take the user's tabs with it.
  */
 const slotSchema = z.object({
   tabs: z

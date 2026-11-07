@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import {
   AudioLines,
@@ -33,7 +33,6 @@ import {
   SquarePen,
   StretchHorizontal,
   Sun,
-  Timer,
   UserRound,
   Volume2,
   Wand2,
@@ -75,7 +74,6 @@ export const MINI_TOOL_ICONS: Readonly<Record<MiniToolIcon, LucideIcon>> = {
   SquarePen,
   StretchHorizontal,
   Sun,
-  Timer,
   UserRound,
   Volume2,
   Wand2,

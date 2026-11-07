@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
@@ -62,7 +62,7 @@ describe('relativeTime', () => {
     ).toEqual({ key: 'chat.relative.yesterday' });
   });
 
-  it('dates a conversation older than a year by the day of the reader', () => {
+  it('dates a conversation older than a year by the day of the user', () => {
     const real = process.env['TZ'];
     try {
       process.env['TZ'] = 'Asia/Shanghai';
@@ -227,7 +227,7 @@ describe('ConversationHistorySheet', () => {
 });
 
 describe('asking to delete a conversation', () => {
-  it('leaves the question on screen for the reader to answer', async () => {
+  it('leaves the question on screen for the user to answer', async () => {
     // 走用户真实的三步:打开列表、打开那行的菜单、点删除。确认框必须还在 ——
     // 它要是跟着菜单一起消失,这条路上用户永远删不掉任何东西,而屏幕上只会
     // 闪一下,看不出发生过什么。

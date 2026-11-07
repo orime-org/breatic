@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a turn hands the model, and what it leaves behind however it ends.
@@ -12,7 +12,7 @@
  * say -- unless the record says otherwise.
  *
  * Stopping is driven by a signal here rather than by anything the model
- * produces, because that is how it happens: the reader presses stop or the
+ * produces, because that is how it happens: the user presses stop or the
  * page goes, the route raises the signal, and the SDK ends the turn. There is
  * no part a model can send that means "the user left".
  */
@@ -44,7 +44,7 @@ const thisCase = vi.hoisted(() => ({
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { projectMemory: "", conversationMemory: "" },
+    memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
     history: [],
   })),
 }));
@@ -112,7 +112,7 @@ const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
-  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
+  addUserMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
   getMessages,
 }));
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
@@ -221,6 +221,7 @@ describe("what a plain chat turn hands the model", () => {
     const names = (called?.tools ?? []).map((t) => t.name).sort();
     expect(names).toEqual([
       "ask_user",
+      "delete_memory",
       "get_canvas_capabilities",
       "get_generation_template",
       "get_product_guide",
@@ -229,8 +230,11 @@ describe("what a plain chat turn hands the model", () => {
       "propose_canvas_action",
       "propose_document_edit",
       "read_conversation",
+      "read_memory",
       "read_node_history",
+      "request_space_content",
       "save_image",
+      "save_memory",
       "search_conversations",
       "search_images",
       "web_search",
@@ -311,9 +315,9 @@ describe("a turn the ceiling cut off", () => {
     expect(parts?.map((p) => p.type)).toContain("truncated");
   });
 
-  it("says so on the wire, so the reader sees it without reloading", async () => {
+  it("says so on the wire, so the user sees it without reloading", async () => {
     // Whether the model runs out of room is not ours to decide. Whether the
-    // reader is told it happened is, and that half is no different from a
+    // user is told it happened is, and that half is no different from a
     // turn that failed: both are things this side knows and the browser
     // cannot work out for itself.
     await runTurn([

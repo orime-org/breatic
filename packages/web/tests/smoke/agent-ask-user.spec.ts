@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * A questionnaire the agent puts to the reader, in a browser (inner#1542).
+ * A questionnaire the agent puts to the user, in a browser (inner#1542).
  *
  * Two cases answer the turn requests here with streams written the way the
  * server writes them, so they reach the card without a model: the card
@@ -124,7 +124,7 @@ test('the card numbers its questions and sends every answer with one press, the 
   const card = await page.getByTestId('questionnaire-card').boundingBox();
   const plan = await page.getByText('Here is the plan.').boundingBox();
   expect(plan!.y).toBeGreaterThan(card!.y + card!.height - 1);
-  // Nothing of the reader's was added to the list.
+  // Nothing of the user's was added to the list.
   await expect(page.locator('[data-testid="message-bubble"][data-role="user"]')).toHaveCount(1);
 });
 

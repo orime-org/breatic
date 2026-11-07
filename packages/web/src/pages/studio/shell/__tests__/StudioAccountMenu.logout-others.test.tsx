@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * "Sign out of other devices" in the account menu (inner#1548).
@@ -130,7 +130,7 @@ describe('StudioAccountMenu — sign out of other devices', () => {
 
   it('hands focus back to the account button when it closes', async () => {
     // Opened from a menu entry that is gone by then, so without this focus
-    // lands on the page body and a keyboard reader starts over from the top.
+    // lands on the page body and a keyboard user starts over from the top.
     const user = userEvent.setup();
     setup();
     await chooseLogoutOthers(user);

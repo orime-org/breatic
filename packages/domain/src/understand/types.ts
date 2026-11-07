@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What this module takes in and hands back.
@@ -90,7 +90,7 @@ export interface UnavailableDetail {
    * The type it was settled as, when that is what disqualified it.
    *
    * From the server when it said, and from the address's extension when it did
-   * not — the reader is told what we took it for either way, and which of the
+   * not — the user is told what we took it for either way, and which of the
    * two said so is not a distinction they can act on.
    */
   declaredType?: string;
@@ -319,7 +319,7 @@ export type UnderstandAt = Omit<FetchMediaRequest, "url" | "ledgerType" | "remai
 /**
  * Who answers a reading, pinned.
  *
- * The reader is not choosing a model — they pressed Understand, or an agent
+ * The user is not choosing a model — they pressed Understand, or an agent
  * called the tool — and one model covers all three media (user 2026-09-19).
  * The agent tool, the canvas route and the worker all read these, so a change
  * reaches every lane at once.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 
@@ -250,7 +250,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     const deps = makeDeps({ tag: { source: 'mini_tool', toolName: 'image-rotate' } });
     await fillNodeFromFile('n1', new File(['x'], 'p.png', { type: 'image/png' }), 'image', 'p1', deps);
     expect(deps.requestTicket).toHaveBeenCalledWith(
-      expect.objectContaining({ source: 'mini_tool', toolName: 'image-rotate', nodeId: 'n1' }),
+      expect.objectContaining({ source: 'mini_tool', toolName: 'image-rotate', nodeId: 'n1' }), undefined,
     );
   });
 

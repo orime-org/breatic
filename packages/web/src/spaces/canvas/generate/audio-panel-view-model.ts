@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What the audio panel renders from, derived off the live canvas graph.
@@ -144,9 +144,9 @@ export function buildAudioPanelViewModel(input: {
  * The view model with the voice list's first entry standing in for a voice
  * nobody picked (user 2026-09-29: with no voice chosen, the voice is the first
  * one). The panel, the pill, the gate and the payload all read the result, so
- * the voice the reader sees marked is the voice that is sent.
+ * the voice the user sees marked is the voice that is sent.
  *
- * Read, not written: the node's record keeps holding only what the reader
+ * Read, not written: the node's record keeps holding only what the user
  * chose, so a later reorder of the list moves the default with it rather than
  * leaving a stale id behind.
  * @param vm - The view model as the node alone gives it.

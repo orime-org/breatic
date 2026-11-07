@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { CreditDecimal } from '@breatic/shared';
 
@@ -236,7 +236,7 @@ describe('CreditsTab', () => {
   });
   it('下一页没到时说出来，已经读到的照样在', async () => {
     // 失败落在一次翻页上，第一页的可用额、充值记录和已读的流水都还在手里。
-    // 底部那块本来就是给这句话留的位置 —— 空着，读者只看到滚动停住了。
+    // 底部那块本来就是给这句话留的位置 —— 空着，用户只看到滚动停住了。
     const first = credits({
       ledger: { items: credits().ledger.items, nextCursor: 'cursor-1' },
     });
@@ -259,7 +259,7 @@ describe('CreditsTab', () => {
   });
 
   it('下一页失败之后，滚动还能再要一次', async () => {
-    // 这一页没到不是终点。监听要留着，读者再滚一下就是再问一次。
+    // 这一页没到不是终点。监听要留着，用户再滚一下就是再问一次。
     const first = credits({
       ledger: { items: credits().ledger.items, nextCursor: 'cursor-1' },
     });

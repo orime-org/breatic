@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The focus crop (#1782, videos #1987, presets #1991): the marquee drawn
@@ -133,7 +133,7 @@ describe('FocusCropControls', () => {
 
   // A Space switched away from is hidden and shown again, which runs the
   // effects once more (inner#1235 C8). The target did not change, so the
-  // marquee the reader drew is still theirs.
+  // marquee the user drew is still theirs.
   it('keeps a drawn marquee across a hide and a show', () => {
     const confirm = vi.fn(() => true);
     const back = vi.fn();
@@ -174,7 +174,7 @@ describe('FocusCropControls', () => {
     expect(rectSize()).toEqual({ left: 50, top: 50, width: 100, height: 80 });
   });
 
-  // The handles are what the reader drags, so they hold their screen size at
+  // The handles are what the user drags, so they hold their screen size at
   // every zoom (user 2026-10-07).
   it('keeps the handles at their screen size at every zoom', () => {
     for (const zoom of [0.1, 0.25, 1, 4]) {

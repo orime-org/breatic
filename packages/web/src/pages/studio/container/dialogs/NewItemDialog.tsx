@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 
@@ -58,7 +58,7 @@ interface NewItemDialogProps {
   onOpenChange: (open: boolean) => void;
   /**
    * Called with the entered values on a valid submit. Returning a promise
-   * holds the dialog open until the create settles: the reader keeps what he
+   * holds the dialog open until the create settles: the user keeps what he
    * typed and the button says it is working, which is the only thing on
    * screen between the press and the new project's page (#255).
    */
@@ -76,7 +76,7 @@ interface NewItemDialogProps {
 /**
  * The new-project / new-collection dialog (spec §3.12) — a shared form (name +
  * slug) parameterized by kind. Project / collection slugs are not unique, so
- * the slug is optional: it follows the name until the reader edits it, and is
+ * the slug is optional: it follows the name until the user edits it, and is
  * checked for shape alone (inner#1463). Create is always pressable; a press
  * that cannot go ahead says why under the field (inner#1652).
  * A submit reports the values and closes once the caller's create succeeds;
@@ -101,7 +101,7 @@ export function NewItemDialog({
   const t = useTranslation();
   const [name, setName] = React.useState('');
   const [slug, setSlug] = React.useState('');
-  // Whether the reader has typed a slug of their own; until then it follows
+  // Whether the user has typed a slug of their own; until then it follows
   // the name. Clearing the field hands it back to the name on the next edit.
   const [slugEdited, setSlugEdited] = React.useState(false);
   const [nameError, setNameError] = React.useState<string | null>(null);
@@ -157,7 +157,7 @@ export function NewItemDialog({
   const slugId = `new-${kind}-slug`;
 
   /**
-   * Take a new name, and carry the slug along while the reader has not
+   * Take a new name, and carry the slug along while the user has not
    * written one of their own.
    * @param next the name as typed.
    */
@@ -171,7 +171,7 @@ export function NewItemDialog({
   };
 
   /**
-   * Take a slug the reader typed; an emptied field follows the name again.
+   * Take a slug the user typed; an emptied field follows the name again.
    * @param next the slug as typed.
    */
   const changeSlug = (next: string): void => {

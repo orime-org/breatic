@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as Sentry from "@sentry/cloudflare";
@@ -102,7 +102,7 @@ describe("noteFailure", () => {
     logged.mockRestore();
   });
 
-  it("T89: reports nothing for the reader's own input, whatever else it passes", () => {
+  it("T89: reports nothing for the user's own input, whatever else it passes", () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     noteFailure(LABEL, CTX, undefined, {

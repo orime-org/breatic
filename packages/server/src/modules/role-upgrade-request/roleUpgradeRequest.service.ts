@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Role-upgrade request service — a viewer asks the owner for editor rights.
@@ -37,6 +37,7 @@
  * this path cannot join the deadlock the other writers on that table form.
  */
 
+import { accountActivityRepo } from "@breatic/core";
 import { db } from "@breatic/core";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
@@ -151,6 +152,7 @@ export async function request(
         tx,
       });
       await requestsRepo.attachNotification(requestId, notification.id, tx);
+      await accountActivityRepo.recordActivity({ userId: input.requesterUserId, projectId: input.projectId, kind: "project_action" }, tx);
       return { requestId, notification, shareToken: filed.shareToken, ownerUserId };
     });
     if ("refusal" in filedRequest) throw refusalError(filedRequest.refusal);
@@ -275,6 +277,7 @@ export async function approve(input: DecisionInput): Promise<void> {
       },
       tx,
     });
+    await accountActivityRepo.recordActivity({ userId: input.ownerUserId, projectId: req.projectId, kind: "project_action" }, tx);
     return { projectId: req.projectId, requesterUserId: req.requesterUserId };
   });
   // The refusal is raised only now: its own writes had to commit first.
@@ -338,6 +341,7 @@ export async function reject(input: DecisionInput): Promise<void> {
       },
       tx,
     });
+    await accountActivityRepo.recordActivity({ userId: input.ownerUserId, projectId: req.projectId, kind: "project_action" }, tx);
     return { done: true };
   });
   if (isRefused(outcome)) throw refusalError(outcome.refusal);
@@ -375,6 +379,7 @@ export async function cancel(
     if (cancelled.notificationId !== null) {
       await notificationRepo.retire(cancelled.notificationId, tx);
     }
+    await accountActivityRepo.recordActivity({ userId: requesterUserId, projectId, kind: "project_action" }, tx);
     return { done: true };
   });
   if (isRefused(outcome)) throw refusalError(outcome.refusal);

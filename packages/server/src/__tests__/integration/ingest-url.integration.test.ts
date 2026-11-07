@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * `POST /canvas/ingest-url` — handing the backend an address instead of bytes
@@ -205,7 +205,7 @@ describe("POST /canvas/ingest-url — what the node's row says", () => {
     // A signed direct link is the commonest shape of an external address, and
     // its query string is a bearer credential for somebody else's origin. The
     // row is read by every viewer of this project and kept for good, while
-    // what identifies the source to a reader is the address without it.
+    // what identifies the source to a user is the address without it.
     const { projectId, cookie } = await seedEditor();
 
     await submit(cookie, {

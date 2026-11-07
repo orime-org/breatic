@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a mode is called is declared once, and it is the picker's word (#269).
  *
  * The mode code is nowhere in the panel: the selector renders the label and
- * nothing else, so it is the only thing a reader can match an answer against.
+ * nothing else, so it is the only thing a user can match an answer against.
  * Declared a second time in the catalog it came out as `audio-to-music` and
  * `digital human`, two names no selector shows -- which is what the first case
  * below now holds the yaml to.

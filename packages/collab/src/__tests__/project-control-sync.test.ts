@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Project control-plane subscriber tests.
@@ -27,6 +27,8 @@ import {
   CREDITS_CHANGED_SIGNAL,
   creditsChangedChannel,
   projectConnectionsCloseChannel,
+  SPACE_TASKS_CHANGED_SIGNAL,
+  spaceTasksChangedChannel,
 } from "@breatic/shared";
 
 // The deployment prefix under test. `vi.hoisted` because the `vi.mock` factory
@@ -157,6 +159,34 @@ describe("startProjectControlSync — credits:changed", () => {
 
     expect(metaDoc.relayStateless).toHaveBeenCalledWith(
       JSON.stringify({ t: CREDITS_CHANGED_SIGNAL, projectId: PID }),
+    );
+  });
+});
+
+describe("startProjectControlSync — space-tasks:changed", () => {
+  it("relays the Space's task list signal on the project's meta doc", async () => {
+    const metaDoc: DocSpy = {
+      doc: new Y.Doc(),
+      broadcastStateless: vi.fn(),
+      relayStateless: vi.fn(),
+      connections: new Map(),
+    };
+    const { hocuspocus } = buildHocuspocus(metaDoc);
+    const { subscriber } = buildRedis();
+    startProjectControlSync(hocuspocus, subscriber as unknown as Redis);
+    await Promise.resolve();
+
+    subscriber.emit(
+      "pmessage",
+      `${TEST_PREFIX}:project:*`,
+      spaceTasksChangedChannel(TEST_PREFIX, PID),
+      JSON.stringify({ type: "project-space-tasks:changed", projectId: PID, spaceId: "space-1", ts: Date.now() }),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(metaDoc.relayStateless).toHaveBeenCalledWith(
+      JSON.stringify({ t: SPACE_TASKS_CHANGED_SIGNAL, projectId: PID, spaceId: "space-1" }),
     );
   });
 });

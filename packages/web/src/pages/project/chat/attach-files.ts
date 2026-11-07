@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { UploadFailedError } from '@web/data/upload/media-upload';
 import type { ChatAttachedChip } from '@breatic/shared';
@@ -150,7 +150,7 @@ async function fillIn(picked: Accepted, tray: Tray, projectId: string, deps: Att
     if (media && err instanceof UploadFailedError && err.reason === 'unsupportedType') {
       chatAttachments.say(mediaFormatNotice(file));
     }
-    // The item says it failed, which is what the reader acts on: take it out
+    // The item says it failed, which is what the user acts on: take it out
     // and pick the file again, after a while when it was uploading too often.
     const rateLimited = err instanceof UploadFailedError && err.reason === 'rateLimited';
     chatAttachments.fail(
@@ -164,7 +164,7 @@ async function fillIn(picked: Accepted, tray: Tray, projectId: string, deps: Att
 }
 
 /**
- * Attach the files a reader picked.
+ * Attach the files a user picked.
  *
  * They land above the box of the conversation on screen, opened first when
  * there is none. Files of a kind that cannot be sent, or too big to fit, are

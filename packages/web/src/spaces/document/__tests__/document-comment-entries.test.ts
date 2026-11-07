@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The two entries that open a comment (#18, A1 · A2 · A3).
  *
  * They differ in one thing: where the range comes from. The bubble bar acts on
- * what the reader selected; the block handle stands its row in for a range
+ * what the user selected; the block handle stands its row in for a range
  * over that row's own content. From the moment the draft opens they are the
  * same operation, which is what A2 asks for — commenting on a whole block
  * reads as selecting its text by hand and commenting.
@@ -84,7 +84,7 @@ function firstRun(editor: Editor): { from: number; to: number } {
 }
 
 /**
- * Puts the reader's selection over the range given.
+ * Puts the user's selection over the range given.
  * @param editor - The editor.
  * @param range - What to select.
  */
@@ -131,7 +131,7 @@ describe('the bubble bar entry', () => {
     expect(commentTool.isActive(editor)).toBe(false);
   });
 
-  it('opens the draft on exactly what the reader selected', () => {
+  it('opens the draft on exactly what the user selected', () => {
     const editor = open();
     const run = firstRun(editor);
     const chosen = { from: run.from + 6, to: run.from + 11 };
@@ -156,8 +156,8 @@ describe('openCommentDraft', () => {
     });
   });
 
-  it('leaves the reader’s own selection and caret alone', () => {
-    // The handle is on screen only while the reader holds no selection, and
+  it('leaves the user’s own selection and caret alone', () => {
+    // The handle is on screen only while the user holds no selection, and
     // their caret is elsewhere. Opening a comment on a row must not move it.
     const editor = open();
     const run = firstRun(editor);

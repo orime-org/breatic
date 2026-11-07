@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { useCallback, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -12,7 +12,7 @@ import { useProjectSignal } from '@web/pages/project/use-project-signal';
 
 /**
  * Read the project's credits again whenever they may have moved (inner#1611):
- * when this reader's own run request returns (its hold), when anyone's
+ * when this user's own run request returns (its hold), when anyone's
  * generation in the project ends, and when a charge made in the project commits.
  * Focus refetching is off app-wide, so nothing else reads the figure again;
  * a hold another member's run takes shows on the next of these, or on the

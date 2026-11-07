@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The third batch of image mini-tools on a real node (inner#1303): the picture
@@ -439,7 +439,7 @@ test('a 1×1 grid cannot be run @needs-ingest @needs-internet @needs-storage', a
   await expect(page.getByTestId('mini-tool-run')).toBeDisabled();
 });
 
-// A15: the reader picks which tiles to cut on the node itself.
+// A15: the user picks which tiles to cut on the node itself.
 test('a grid cuts only the tiles picked on the node, each at its own place @needs-ingest @needs-internet @needs-storage', async () => {
   await openTool(page, imageNode, 'image.grid');
   const layer = nodeOf(imageNode).getByTestId('mini-tool-grid-layer');

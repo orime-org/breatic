@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The account mails: the password-reset mail, which carries a one-time token
@@ -66,7 +66,7 @@ export interface SignupCodeMailInput {
 }
 
 /**
- * Build the mail that carries a sign-up code. It has no button: the reader
+ * Build the mail that carries a sign-up code. It has no button: the user
  * types the code into the page they signed up on.
  * @param input - The language and address, the code, and its lifetime.
  * @returns The laid-out mail (to / subject / html / text) for `sendMail`.

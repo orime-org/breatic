@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { creditSourceLabelKey } from '@web/features/credits/credit-source-label';
 
@@ -203,7 +203,7 @@ const PurchaseLine = React.memo(function PurchaseLine({
                 them more than nothing does. */}
           {/* Credits nobody paid for have no price to print, so the cell
                 says where they came from instead — the one thing about the
-                row a reader cannot work out from the rest of it. */}
+                row a user cannot work out from the rest of it. */}
           {purchase.amountCents === null
             ? t(creditSourceLabelKey(purchase))
             : over
@@ -234,7 +234,7 @@ const PurchaseLine = React.memo(function PurchaseLine({
         //
         // A purchase on its way out of the account says where it stands
         // instead. Those three carry no designation — the database refuses
-        // one — so "Unassigned" there sends the reader to the assign screen,
+        // one — so "Unassigned" there sends the user to the assign screen,
         // which does not list them.
         //
         // Then where it points, while it still has something to point: a pack

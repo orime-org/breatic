@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A judgement call, once the agent makes one, comes back answered.
@@ -23,7 +23,7 @@ import { openSmokeProject } from '../helpers/project';
 
 let page: Page;
 
-/** What the reader says: a question with no one to ask back and odds asked for. */
+/** What the user says: a question with no one to ask back and odds asked for. */
 const PROMPT =
   'I want a thirty second product video. Do not ask me anything -- work out for ' +
   'yourself which of the ways you can build one suits this best, and tell me how ' +

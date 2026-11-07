@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Sending what the backend produced to R2 (#181, lanes ② and ③).
@@ -42,7 +42,7 @@ import {
 } from "@domain/asset/upload-ticket.service.js";
 import { extFromUrl } from "@domain/asset/source-url.js";
 import { ingestFailureReason } from "@domain/asset/ingest-failure-reason.js";
-import { storedTypeOf, TYPE_UNKNOWN } from "@domain/asset/reader-source.js";
+import { storedTypeOf, TYPE_UNKNOWN } from "@domain/asset/user-source.js";
 import {
   applyIngestReport,
   INGEST_SIDE_EFFECT_EVENTS,
@@ -296,8 +296,8 @@ export async function transferUrlToStorage(
   );
 }
 
-/** Why a reader's link did not land: the reason the grant was settled with. */
-export class ReaderUrlTransferError extends Error {
+/** Why a user's link did not land: the reason the grant was settled with. */
+export class UserUrlTransferError extends Error {
   /**
    * A refusal carrying the reason its grant was settled with.
    * @param reason - The failure reason the grant was settled with, one the
@@ -310,7 +310,7 @@ export class ReaderUrlTransferError extends Error {
     readonly reported?: string,
   ) {
     super(`the link did not land: ${reason}`);
-    this.name = "ReaderUrlTransferError";
+    this.name = "UserUrlTransferError";
   }
 }
 
@@ -324,7 +324,7 @@ export class ReaderUrlTransferError extends Error {
  * Worker take the type off the source, and what is registered is the type it
  * judged. A transfer that does not land settles its grant before it is
  * reported, the way the queued lane settles its task.
- * @param sourceUrl - The link, already checked against `readerUrlSchema`.
+ * @param sourceUrl - The link, already checked against `userUrlSchema`.
  * @param who - The project the bytes are charged to, and who asked.
  * @param who.projectId - The project; it decides the owner studio.
  * @param who.actingUserId - Who the asset is attributed to.
@@ -332,11 +332,11 @@ export class ReaderUrlTransferError extends Error {
  * @returns The registered asset, as the report handler filed it, with the key
  *   it was stored under for the caller's log lines.
  * @throws {NotFoundError} When the project does not exist or is soft-deleted.
- * @throws {ReaderUrlTransferError} When the link did not land, with the reason
+ * @throws {UserUrlTransferError} When the link did not land, with the reason
  *   its grant was settled with.
  * @throws {Error} When the report filed nothing.
  */
-export async function transferReaderUrlToStorage(
+export async function transferUserUrlToStorage(
   sourceUrl: string,
   who: { projectId: string; actingUserId: string },
   signal?: AbortSignal,
@@ -358,11 +358,11 @@ export async function transferReaderUrlToStorage(
   );
 
   const target = await signTicketFor(granted.request);
-  const pulled = await pullReaderLink(granted.storageKey, target, sourceUrl, deadlineAt, signal);
-  if (pulled.status === "failed") throw new ReaderUrlTransferError(pulled.reason, pulled.reported);
+  const pulled = await pullUserLink(granted.storageKey, target, sourceUrl, deadlineAt, signal);
+  if (pulled.status === "failed") throw new UserUrlTransferError(pulled.reason, pulled.reported);
   // A rejected report turned down what the link sent (nothing, or too much):
   // the same link gets the same answer again.
-  if (pulled.outcome.status === "rejected") throw new ReaderUrlTransferError(pulled.outcome.reason);
+  if (pulled.outcome.status === "rejected") throw new UserUrlTransferError(pulled.outcome.reason);
   const stored = landed(pulled.outcome, `the transfer of ${sourceUrl}`);
   return { ...stored, storageKey: granted.storageKey };
 }
@@ -384,8 +384,8 @@ async function settleAborted(storageKey: string, reason: string, cause: unknown)
   }
 }
 
-/** How pulling a reader's link ended: settled before any bytes were judged, or reported. */
-export type ReaderLinkPull =
+/** How pulling a user's link ended: settled before any bytes were judged, or reported. */
+export type UserLinkPull =
   | {
       status: "failed";
       /** The reason the grant was settled with. */
@@ -400,8 +400,8 @@ export type ReaderLinkPull =
   | { status: "reported"; outcome: IngestReportOutcome };
 
 /**
- * Have the Worker pull a reader's link into the object a ticket names, and
- * file what came of it: the one flow both lanes for a reader's link run (the
+ * Have the Worker pull a user's link into the object a ticket names, and
+ * file what came of it: the one flow both lanes for a user's link run (the
  * canvas paste through the worker's queue, the agent's save in its request).
  * Either way the grant ends settled; what each lane says about it is its own.
  * @param storageKey - The key the grant was opened on.
@@ -415,13 +415,13 @@ export type ReaderLinkPull =
  *   fails, carrying why it did not land and the settling error.
  * @throws {Error} When filing a landed outcome fails.
  */
-export async function pullReaderLink(
+export async function pullUserLink(
   storageKey: string,
   target: Parameters<typeof fetchUrlToIngest>[1],
   url: string,
   deadlineAt: number,
   signal?: AbortSignal,
-): Promise<ReaderLinkPull> {
+): Promise<UserLinkPull> {
   let measured;
   try {
     measured = await fetchUrlToIngest(

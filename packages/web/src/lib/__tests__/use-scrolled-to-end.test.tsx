@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * 「滚到底就再要一页」这件事的两种看法，以及它们之间的切换。
  *
- * 平时看的是「末尾进没进视野」，失败之后看的是「读者有没有再滚一下」。这个
+ * 平时看的是「末尾进没进视野」，失败之后看的是「用户有没有再滚一下」。这个
  * 切换是有代价才换的：末尾在视野里是一个状态，而失败不会让它离开视野，所以
  * 换回去的那一刻就会立刻再问一次，问出来的是失败自己造成的循环。
  */
@@ -157,7 +157,7 @@ describe('useScrolledToEnd', () => {
     expect(onReachEnd).not.toHaveBeenCalled();
   });
 
-  it('asks again once the reader scrolls toward the end after the browser pulled the scroll back', () => {
+  it('asks again once the user scrolls toward the end after the browser pulled the scroll back', () => {
     const onReachEnd = vi.fn();
     const { getByTestId, rerender } = render(
       <Harness enabled failed={false} onReachEnd={onReachEnd} />,

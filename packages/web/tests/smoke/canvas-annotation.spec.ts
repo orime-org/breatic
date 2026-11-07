@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A note crossing the collab server to the other canvas.
@@ -236,7 +236,7 @@ test('the keyboard reaches the reply buttons, and a rewrite keeps its own', asyn
   // G: the rewrite box's buttons sit under the scroller that caps the words,
   // so a note long enough to fill the cap still shows them. Measured, because
   // "outside that element" is what the unit test can see and "on the screen
-  // where the reader is" is what this is for.
+  // where the user is" is what this is for.
   await page.getByTestId('annotation-sticky-body-menu').click();
   await page.getByTestId('annotation-sticky-body-edit').click();
   await page.getByTestId('annotation-sticky-body-input').fill('a long note. '.repeat(80));

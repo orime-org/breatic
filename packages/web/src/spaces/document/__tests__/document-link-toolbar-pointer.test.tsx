@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #985: which link the toolbar is about while a pointer rests on one.
@@ -88,7 +88,7 @@ afterEach(() => {
 
 /**
  * A body with two links on one line, with the toolbar mounted over it.
- * @returns The editor, both link spans, and the two things a reader does.
+ * @returns The editor, both link spans, and the two things a user does.
  */
 function openBody(): Scene {
   const doc = new Y.Doc();
@@ -97,7 +97,7 @@ function openBody(): Scene {
   document.body.appendChild(root);
   editor.mount(root);
   mounted.push(editor);
-  // A reader working in the body: the body holds the focus, which the caret
+  // A user working in the body: the body holds the focus, which the caret
   // needs before it raises anything (inner#1127 A20).
   editor.prosemirrorView!.dom.focus();
   editor.replaceBlocks(editor.document, [
@@ -247,7 +247,7 @@ describe('the link the pointer is resting on', () => {
     });
   });
 
-  it('keeps it while the reader writes inside the link the caret is in', async () => {
+  it('keeps it while the user writes inside the link the caret is in', async () => {
     // A1 and A5. A caret that has not left its link has entered nothing, and
     // the character typed into it moves the link's own extent — which is why
     // the question is asked of the link and not of where it sat.
@@ -281,7 +281,7 @@ describe('the link the pointer is resting on', () => {
   it('goes for good when the field confirms an address', async () => {
     // D2. The hand is somewhere else by the time Confirm is pressed, so
     // standing the toolbar back up to report the write says nothing to the
-    // reader. It stays away while they are still on the link: reaching it
+    // user. It stays away while they are still on the link: reaching it
     // again is the next round.
     const { first, point } = openBody();
     point(first.from + 2);
@@ -294,7 +294,7 @@ describe('the link the pointer is resting on', () => {
 
   it('goes for good when Escape leaves the field', async () => {
     // D2b. Stepping out of the field is the same answer as confirming: the
-    // reader is done with this link for now.
+    // user is done with this link for now.
     const { first, point } = openBody();
     point(first.from + 2);
     await screen.findByTestId('doc-link-toolbar');
@@ -327,7 +327,7 @@ describe('the link the pointer is resting on', () => {
 
   it('stays away after a dismissal while the caret is in another link', async () => {
     // A4: Escape takes the toolbar away without the pointer moving, and what
-    // the reader dismissed includes the link their caret is parked in — which
+    // the user dismissed includes the link their caret is parked in — which
     // is the one the caret route would otherwise put straight back.
     const { editor, doc, first, second, point } = openBody();
     caretInside(editor, first);
@@ -350,7 +350,7 @@ describe('the link the pointer is resting on', () => {
 
   it('stays away once a press lands the caret in the link it dismissed', async () => {
     // A press is an outside press, and it dismisses before it moves the caret:
-    // the link the reader took the toolbar away from is the one the caret is
+    // the link the user took the toolbar away from is the one the caret is
     // about to land in, which is a standing reason to raise it again.
     const { editor, first, point } = openBody();
     point(first.from + 2);
@@ -373,7 +373,7 @@ describe('the link the pointer is resting on', () => {
   it('comes back when the hand leaves the link it pressed and returns', async () => {
     // Reaching the link again is a fresh ask. What holds the dismissal is the
     // hand that made it still resting there; the caret the press dropped into
-    // the link was never a reason the reader gave, so it holds nothing.
+    // the link was never a reason the user gave, so it holds nothing.
     const { editor, first, point, leaveBody } = openBody();
     point(first.from + 2);
     await waitFor(() => {
@@ -395,8 +395,8 @@ describe('the link the pointer is resting on', () => {
     });
   });
 
-  it('stays away after that dismissal when the reader writes as well', async () => {
-    // The same dismissal against this reader's own next character: both are a
+  it('stays away after that dismissal when the user writes as well', async () => {
+    // The same dismissal against this user's own next character: both are a
     // change in the document, and neither is a reason to put it back.
     const { editor, first, second, point, writes } = openBody();
     caretInside(editor, first);
@@ -418,7 +418,7 @@ describe('the link the pointer is resting on', () => {
   });
 
   it('stays away after that dismissal when the body lets the focus go and takes it back', async () => {
-    // Escape also takes the focus off the body, and the reader comes back to
+    // Escape also takes the focus off the body, and the user comes back to
     // the same caret without moving it; the caret's link is still the one
     // they dismissed.
     const { editor, first, second, point, writes } = openBody();
@@ -454,7 +454,7 @@ describe('the link the pointer is resting on', () => {
   it('stays while the hand rests on the toolbar and the caret walks out', async () => {
     // A5. The toolbar is one of the two places the hand can rest: the close
     // countdown and the step back from the field both treat it that way, and
-    // the reader reaching for Remove is the gesture it is there for.
+    // the user reaching for Remove is the gesture it is there for.
     const { editor, first, point, leaveBody } = openBody();
     caretInside(editor, first);
     await screen.findByTestId('doc-link-toolbar');
@@ -479,7 +479,7 @@ describe('the link the pointer is resting on', () => {
   });
 
   it('lets the caret reach a link the pointer was dismissed on', async () => {
-    // A4 takes away what the reader asked about, which was the pointer's claim
+    // A4 takes away what the user asked about, which was the pointer's claim
     // on that link. Reaching it with the caret is a different claim and a
     // fresh ask (A6, and §6.1's `click-link` x `closed` row).
     const { editor, first, point } = openBody();
@@ -491,7 +491,7 @@ describe('the link the pointer is resting on', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
     });
-    // The hand leaves the link, which is what ends what the reader took away.
+    // The hand leaves the link, which is what ends what the user took away.
     point(1);
     await settle();
 
@@ -543,7 +543,7 @@ describe('the link the pointer is resting on', () => {
     // Two reasons stand at once, on different links, and the caret's arrived
     // last. Nothing new happens on a co-editor's keystroke, so whichever
     // reason the toolbar is already about keeps it — asking the reasons afresh
-    // would hand it to the pointer, moving the toolbar to a link the reader
+    // would hand it to the pointer, moving the toolbar to a link the user
     // has been resting on without acting for as long as they have been typing.
     const { editor, doc, first, second, point } = openBody();
     point(second.from + 2);

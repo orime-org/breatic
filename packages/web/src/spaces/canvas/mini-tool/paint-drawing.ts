@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * How a mask or sketch drawing is painted (inner#1302 §6.2, §6.4). The screen
- * and the export both paint through {@link paintDrawing}, so what the reader
+ * and the export both paint through {@link paintDrawing}, so what the user
  * sees is what the model is sent.
  */
 

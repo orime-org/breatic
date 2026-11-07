@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The boundary between the shape we store and the shape the wire carries.
@@ -13,7 +13,7 @@
  * `failed` and `truncated` are things we know about a turn, not things a
  * model streamed, so
  * they travel as data parts -- the one channel the protocol leaves open for
- * what it does not define -- and not transient ones: a reader who reloads has
+ * what it does not define -- and not transient ones: a user who reloads has
  * to still see that a turn was cut off.
  */
 import { getToolName, isToolUIPart } from "ai";
@@ -107,7 +107,7 @@ function storedTool(part: Extract<UiPart, { toolCallId: string }>): MessagePart 
   if (status === "error") {
     // Written so that a part is never stored `error` with no account of
     // itself, and written as not knowing: what this side of the boundary has
-    // is the wire, and the wire carries the line a reader is shown, not the
+    // is the wire, and the wire carries the line a user is shown, not the
     // reason. The turn replaces this from the callbacks handed the error
     // itself -- one for a tool that ran and failed, one for a call refused
     // before it ran -- and this stands for the case where neither saw it.
@@ -157,7 +157,7 @@ export function toStoredParts(parts: UiParts): MessagePart[] {
 export function toUiParts(parts: MessagePart[]): UiParts {
   // A questionnaire still waiting reads back the way it went out: the call,
   // and after everything else the segment that asked holds, the mark naming
-  // it as the card the reader is shown.
+  // it as the card the user is shown.
   const ui = parts.map((part): UiPart =>
     part.type === "tool" && part.status === "awaiting"
       ? { type: `tool-${part.toolName}`, toolCallId: part.toolCallId, input: part.input, state: "input-available" }
@@ -167,6 +167,22 @@ export function toUiParts(parts: MessagePart[]): UiParts {
     part.type === "tool" && part.status === "awaiting" ? [{ type: ASK_AWAITING, data: { toolCallId: part.toolCallId } }] : [],
   );
   return [...ui, ...marks];
+}
+
+/**
+ * A stored failure with its line under the name this release reads.
+ *
+ * Carries the pre-#1378 name until #1387 removes it, in the release that also
+ * runs the rename migration again: a row written before migration 0116, or by
+ * a server of the previous release while a deploy rolls out, keeps the line
+ * under `readerKey`.
+ * @param failure - The failure as the row holds it.
+ * @returns The same failure, its line under `userKey`.
+ */
+function underUserKey(failure: ToolFailure): ToolFailure {
+  if ("userKey" in failure || !("readerKey" in failure)) return failure;
+  const { readerKey, ...rest } = failure as ToolFailure & { readerKey: unknown };
+  return { ...rest, userKey: readerKey } as ToolFailure;
 }
 
 /**
@@ -206,7 +222,11 @@ function toUiPart(part: MessagePart): UiPart {
     // A row stored before a call that never ran had an ending of its own
     // carries the same reason as one, and reads back as one (inner#1620).
     const failure: ToolFailure | undefined =
-      part.failure?.forModel === NOTHING_OF_IT_RAN ? { kind: "never_ran", forModel: NOTHING_OF_IT_RAN } : part.failure;
+      part.failure?.forModel === NOTHING_OF_IT_RAN
+        ? { kind: "never_ran", forModel: NOTHING_OF_IT_RAN }
+        : part.failure === undefined
+          ? undefined
+          : underUserKey(part.failure);
     return {
       ...base,
       state: "output-error",

@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as Y from "yjs";
 import type { SpaceType } from "@shared/types/space.js";
 import { CANVAS_NODES_KEY } from "@shared/types/canvas-node.js";
 import { existingDocumentBodyFragment } from "@shared/document-body.js";
+import { timelineRecordJson } from "@shared/timeline/document.js";
 import { TimelineVideoSourceSchema } from "@shared/timeline/schema.js";
 
 const PHYSICAL_NODE_TYPES = new Set(["image", "audio", "video", "3d"]);
@@ -40,7 +41,7 @@ export function readSpaceMediaReferences(kind: SpaceType, doc: Y.Doc): SpaceMedi
       const sources = existingMap(doc, "sources");
       if (sources === undefined) break;
       for (const value of sources.values()) {
-        const parsed = TimelineVideoSourceSchema.safeParse(value instanceof Y.Map ? value.toJSON() : value);
+        const parsed = TimelineVideoSourceSchema.safeParse(timelineRecordJson(value));
         if (parsed.success) assetIds.add(parsed.data.assetId);
       }
       break;

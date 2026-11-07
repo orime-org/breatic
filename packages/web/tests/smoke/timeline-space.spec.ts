@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /** Real Timeline creation and common Space lifecycle entry points (inner#1707). */
 import { expect, type Page } from 'playwright/test';
@@ -27,7 +27,7 @@ async function expectEmptyTimeline(page: Page, projectId: string, spaceId: strin
   await expect(timeline.getByTestId('timeline-space-empty')).toBeVisible();
   await expect(timeline.getByTestId('timeline-track-visual-1')).toBeVisible();
   await expect(timeline.getByTestId('timeline-add-media')).toBeEnabled();
-  await expect(timeline.locator('[data-testid^="timeline-clip-"]')).toHaveCount(0);
+  await expect(timeline.locator('[data-testid^="timeline-clip-"][data-track-id]')).toHaveCount(0);
   // A positive initialized body anchors these absence assertions after synchronization.
   await expect(outlet.getByTestId('timeline-space-loading')).toHaveCount(0);
   await expect(outlet.getByTestId('timeline-space-error')).toHaveCount(0);

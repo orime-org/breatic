@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The reader's own place in the text, across a block drag.
+ * The user's own place in the text, across a block drag.
  *
  * A drag off the handle is carried out through a node selection: the library
  * puts one on the row when the drag starts, and it is still there when the
@@ -11,9 +11,9 @@
  * wearing `ProseMirror-selectednode`). Nothing is drawn for one any more (user
  * 2026-09-18), and what is left is the selection itself: the bubble bar comes
  * up for any selection that is not empty, so a row nobody selected would carry
- * the bar until the reader clicked somewhere else.
+ * the bar until the user clicked somewhere else.
  *
- * So the drag hands the reader's place back when it ends, which is the same
+ * So the drag hands the user's place back when it ends, which is the same
  * thing every other command off this strip already does — `runBlockType` puts
  * the selection back over the words it was over, so a press on a row the
  * pointer is over never moves the caret (A5).
@@ -42,9 +42,9 @@ import {
   rowById,
 } from '@web/spaces/document/document-row-by-id';
 import { placeOnBlock } from '@web/spaces/document/document-block-place';
-import { readerSelection } from '@web/spaces/document/document-body-focus';
+import { userSelection } from '@web/spaces/document/document-body-focus';
 
-/** One end of the reader's selection, addressed so a move cannot shift it. */
+/** One end of the user's selection, addressed so a move cannot shift it. */
 interface Anchored {
   /** The block that end stands in. */
   readonly blockId: string;
@@ -61,11 +61,11 @@ interface OnEdge {
   readonly edge: BodyEdge;
 }
 
-/** One end of the reader's selection. */
+/** One end of the user's selection. */
 type End = Anchored | OnEdge;
 
-/** Where the reader was, for as long as the drag lasts. */
-export interface ReaderPlace {
+/** Where the user was, for as long as the drag lasts. */
+export interface UserPlace {
   /** Where the selection started. */
   readonly anchor: End;
   /** Where it ended; the same as the anchor for a caret. */
@@ -75,14 +75,14 @@ export interface ReaderPlace {
 /**
  * A caret at the very start of one block.
  *
- * What a drag hands back when the reader had no text selection of its own to
+ * What a drag hands back when the user had no text selection of its own to
  * hand back — a gap cursor, say. Any text selection will do to take the
  * library's node selection off the row; the start of the row that just moved
- * is the place the reader is looking at.
+ * is the place the user is looking at.
  * @param blockId - The block to put the caret in.
  * @returns That place.
  */
-export function caretAtStartOf(blockId: string): ReaderPlace {
+export function caretAtStartOf(blockId: string): UserPlace {
   const end = { blockId, offset: 0 };
   return { anchor: end, head: end };
 }
@@ -107,18 +107,18 @@ function anchor(doc: PMNode, pos: number): Anchored | undefined {
 }
 
 /**
- * Where the reader's text selection is, if they have one; an end of a
+ * Where the user's text selection is, if they have one; an end of a
  * selection that reaches past the first or last block is kept as that edge.
  *
  * A node selection is not read: the one current when a drag starts is a
- * divider the reader selected, which has no text place to hand back. Nor is a
+ * divider the user selected, which has no text place to hand back. Nor is a
  * selection the body let go of with the focus (inner#1127). Either way the
  * drag ends with the selection on the moved row ({@link restoreAfterRowDrag}).
  * @param state - The editor's state.
  * @returns The place, or undefined when there is nothing to hand back.
  */
-export function readerPlace(state: EditorState): ReaderPlace | undefined {
-  const selection = readerSelection(state);
+export function userPlace(state: EditorState): UserPlace | undefined {
+  const selection = userSelection(state);
   const { doc } = state;
   if (!(selection instanceof TextSelection) && !(selection instanceof BodyEdgeSelection)) return undefined;
   /**
@@ -155,7 +155,7 @@ function positionOf(doc: PMNode, end: End): number | undefined {
 }
 
 /**
- * Leaves the reader with a text selection, or a selection reaching the same
+ * Leaves the user with a text selection, or a selection reaching the same
  * edge of the body as before, at the place they were when there still is one.
  *
  * TWO THINGS, AND ONLY THE SECOND NEEDS THE PLACE. A text selection goes down
@@ -163,13 +163,13 @@ function positionOf(doc: PMNode, end: End): number | undefined {
  * this exists to replace; the remembered place decides WHERE it goes. A
  * co-editor can take away the row either end is anchored to while the drag is
  * on, and when that happens the caret goes to the nearest position the
- * document will hold one — a place the reader never asked for, which is the
+ * document will hold one — a place the user never asked for, which is the
  * lesser of the two, since the other is the bubble bar standing over a row
  * nobody selected (measured 2026-09-18).
  * @param view - The editor view to write to.
- * @param place - What {@link readerPlace} read.
+ * @param place - What {@link userPlace} read.
  */
-export function restoreReaderPlace(view: EditorView, place: ReaderPlace): void {
+export function restoreUserPlace(view: EditorView, place: UserPlace): void {
   const { doc } = view.state;
   const anchorPos = positionOf(doc, place.anchor);
   const headPos = positionOf(doc, place.head);
@@ -184,16 +184,16 @@ export function restoreReaderPlace(view: EditorView, place: ReaderPlace): void {
 }
 
 /**
- * Puts the selection back after a row drag: where the reader was, or, when the
+ * Puts the selection back after a row drag: where the user was, or, when the
  * body did not hold the focus as the drag began, on the row that moved.
  * @param view - The view.
- * @param place - Where the reader was, read as the drag began.
+ * @param place - Where the user was, read as the drag began.
  * @param blockId - The row that moved.
  */
-export function restoreAfterRowDrag(view: EditorView, place: ReaderPlace | undefined, blockId: string): void {
+export function restoreAfterRowDrag(view: EditorView, place: UserPlace | undefined, blockId: string): void {
   if (place === undefined && rowById(view.state.doc, blockId) !== undefined) {
     view.dispatch(view.state.tr.setSelection(placeOnBlock(view.state, blockId)));
     return;
   }
-  restoreReaderPlace(view, place ?? caretAtStartOf(blockId));
+  restoreUserPlace(view, place ?? caretAtStartOf(blockId));
 }

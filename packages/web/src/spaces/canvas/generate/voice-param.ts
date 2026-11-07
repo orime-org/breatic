@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Locating and reading the param the voice picker fills (#1960).
@@ -48,7 +48,7 @@ export function isVoiceChosen(
 }
 
 /**
- * The sample to play for a voice: the one in the language the reader picked,
+ * The sample to play for a voice: the one in the language the user picked,
  * where the voice has one per language (Gemini's), else its plain sample.
  * @param voice - The voice.
  * @param language - The value of the model's language param, if it has one.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What `understandMedia` sends, and what it makes of what comes back.
@@ -17,7 +17,7 @@
  *
  * On the way back, this layer reports and does not interpret: a body that
  * arrived is returned with its `finishReason` whatever that says, and only a
- * refusal throws. Which sentence a reader ends up seeing is the tool's to
+ * refusal throws. Which sentence a user ends up seeing is the tool's to
  * decide, one layer up.
  */
 
@@ -470,11 +470,11 @@ describe("understandMedia — what comes back", () => {
     ).rejects.toMatchObject({ name: "UnderstandRefused", kind: "deployment" });
   });
 
-  it("sends a reader back only at the statuses a second attempt could answer differently", async () => {
+  it("sends a user back only at the statuses a second attempt could answer differently", async () => {
     // Every failure this endpoint answers with carries the same error envelope
     // — a rate limit, a spent credit, an oversized body — so the envelope says
     // nothing and the status decides. Told to try again at a permanent
-    // failure, a reader retries forever.
+    // failure, a user retries forever.
     for (const status of [408, 429, 500, 502, 503, 504]) {
       httpRequestMock.mockResolvedValue(
         new Response(JSON.stringify({ error: { message: `refused with ${status}` } }), {
@@ -568,7 +568,7 @@ describe("understandMedia — what a refusal is about", () => {
     // An image is the one kind that travels as its address, so a 400 on that
     // path is about reaching the address, and the move it leaves is to host
     // the file somewhere else. Called a refusal of the file, it takes that
-    // move away and sends the reader to convert a file that was fine.
+    // move away and sends the user to convert a file that was fine.
     // A fresh response per call: a body reads once, and this case makes two.
     httpRequestMock.mockImplementation(
       () =>
@@ -638,7 +638,7 @@ describe("understandMedia — what a refusal is about", () => {
   it("calls a 403 our deployment's problem, since the content refusal arrives on a 200", async () => {
     // The service's own words for 403 name three things: "insufficient
     // permissions, guardrail block, or moderation flag". The first is our key,
-    // and telling a reader their question was declined sends it to reword and
+    // and telling a user their question was declined sends it to reword and
     // re-upload against a wall that answers the same way every time. The one
     // content refusal measured on this model arrives as a 200 carrying an
     // error with no code of its own, which is judged on its own path.
@@ -678,7 +678,7 @@ describe("understandMedia — what a refusal is about", () => {
     // The service's own words: on a non-streaming call that fails once the
     // model is already producing output, the error travels inside `choices[0]`
     // beside a `finish_reason` of "error". Read only at the top level, that
-    // body parses as an answer and half a sentence reaches the reader as the
+    // body parses as an answer and half a sentence reaches the user as the
     // whole of what is there.
     httpRequestMock.mockResolvedValue(
       new Response(

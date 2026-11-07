@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The five shipped locale catalogs, plus the one way to read a key out of
@@ -13,8 +13,9 @@
  * A hand-written list is a list that gets missed, and the miss is silent.
  *
  * This is the list for tests. Production keeps its own, in
- * `web/src/i18n/locale-bootstrap.ts` (imports, `SUPPORTED_LOCALES`, the
- * registration calls, and a prefix-matching `if` chain) and in the server's
+ * `web/src/i18n/locale-bootstrap.ts` (the English import, the
+ * `CATALOG_LOADERS` table, `SUPPORTED_LOCALES` and a prefix-matching `if`
+ * chain) and in the server's
  * `middleware/i18n.ts`. Adding a sixth locale still means editing those by
  * hand; collapsing them onto one source is tracked separately.
  */

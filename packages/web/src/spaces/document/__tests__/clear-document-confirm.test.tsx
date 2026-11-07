@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #123 验收 B3 的组件半边：全文档选区上的删除先问、确认才清、取消不动。
@@ -32,14 +32,14 @@ import { useCurrentUserStore } from '@web/stores/current-user';
 const socketAwareness = new Awareness(new Y.Doc());
 vi.mock('@web/data/yjs/use-socket', () => ({
   useSocket: (): {
-    provider: { awareness: unknown };
+    provider: { awareness: unknown; on: () => void; off: () => void };
     synced: boolean;
     hasEverSynced: boolean;
     status: string;
     writeAccess: string;
     authFailedReason: string | null;
   } => ({
-    provider: { awareness: socketAwareness },
+    provider: { awareness: socketAwareness, on: () => {}, off: () => {} },
     synced: true,
     hasEverSynced: true,
     status: 'connected',

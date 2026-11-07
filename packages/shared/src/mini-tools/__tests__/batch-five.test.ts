@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, expect, it } from "vitest";
 
@@ -29,13 +29,17 @@ const AUDIO_TOOLS = [
 ] as const;
 
 describe("batch-five audio tools", () => {
-  it("lists the ten container edits, then enhance, separate and extend", () => {
+  it("lists the ten container edits, then enhance and separate", () => {
     expect(miniToolsFor("audio").map((tool) => tool.id)).toEqual([
       ...AUDIO_TOOLS.map(([id]) => id),
       "audio.enhance",
       "audio.separate",
-      "audio.extend",
     ]);
+  });
+
+  // The upstream extend-audio endpoint was delisted, so the tool is gone.
+  it("offers no audio extend", () => {
+    expect(miniToolById("audio.extend")).toBeUndefined();
   });
 
   it("runs each edit in the container on its own operation, one audio out, with its prefix and icon", () => {

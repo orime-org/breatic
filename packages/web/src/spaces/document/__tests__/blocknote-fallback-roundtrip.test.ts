@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #904 验收 S1 · S2：vocabulary this build does not know survives a visit.
@@ -21,7 +21,7 @@
  * promised — the write-back matches children by name, and a stand-in's name is
  * never the name of the element it stands for, so any edit that moves a block
  * across one reaches `updateYFragment`'s delete-and-rebuild branch. The two
- * ways a reader could meet one are held shut elsewhere: a release only adds
+ * ways a user could meet one are held shut elsewhere: a release only adds
  * vocabulary entries, and a version that disagrees with the server's is
  * refused the editor outright (`use-document-schema-intercept.ts`).
  *
@@ -131,7 +131,7 @@ function visit(build: (fragment: Y.XmlFragment) => void): {
     return true;
   });
 
-  // What the reader sees, which is the other half of the contract: a stand-in
+  // What the user sees, which is the other half of the contract: a stand-in
   // that never arrives is only correct while the content around it does.
   const text = editor.prosemirrorState.doc.textContent;
 
@@ -205,11 +205,11 @@ describe('an element name this build does not know', () => {
     });
     expect(after).toContain('futurerootthing');
     expect(after).toBe(before);
-    // The reader's content is what has to survive, and it does — whichever
+    // The user's content is what has to survive, and it does — whichever
     // order the two arrived in. The stand-in reaches the local document here
     // and not in the case above: the root takes one `blockGroup`, and where
     // the real one has not claimed it yet ProseMirror carries the stand-in in
-    // with it. Either way it is one element the reader may not recognise
+    // with it. Either way it is one element the user may not recognise
     // beside content that is all there, rather than an empty document.
     expect(standIns).toEqual(['futureRootThing']);
     expect(text).toBe('keep me');
@@ -375,7 +375,7 @@ describe('a mark this build does not know', () => {
     // The one unknown name that really is out there. Document Spaces created
     // before this build carry a `title` element at the fragment root, and it
     // is the whole reason the stand-ins have to reach the local document
-    // rather than only survive in the shared one: a reader of one of those
+    // rather than only survive in the shared one: a user of one of those
     // Spaces sees the block, named, instead of a document that opens one
     // element short.
     const { before, after, standIns } = visit((f) => {

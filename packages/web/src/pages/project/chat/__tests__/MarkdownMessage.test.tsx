@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
@@ -246,7 +246,7 @@ describe('MarkdownMessage — typography hooks', () => {
 
 describe('MarkdownMessage — a link leaves this page alone (R1)', () => {
   it('opens what the agent links to in a new tab', () => {
-    // The reader is part-way through making something. Following a link in the
+    // The user is part-way through making something. Following a link in the
     // same tab takes the canvas, the project and the running turn with it.
     draw('详见 [官方文档](https://ai-sdk.dev/docs)');
 
@@ -276,7 +276,7 @@ describe('MarkdownMessage — a link leaves this page alone (R1)', () => {
 });
 
 describe('MarkdownMessage — a finished reply is exactly what the model sent (R3)', () => {
-  // Completion runs only while a turn is running, so these say what the reader
+  // Completion runs only while a turn is running, so these say what the user
   // is left with. What the same replies look like part-way through is the
   // library's business and is not promised (user 2026-08-25).
   const CHARACTERS_THAT_ALSO_MEAN_SOMETHING = [
@@ -334,7 +334,7 @@ describe('MarkdownMessage — the status word stays out of copied text (R11)', (
   });
 });
 
-describe('MarkdownMessage — the footnote section speaks the reader\'s language (R1)', () => {
+describe('MarkdownMessage — the footnote section speaks the user\'s language (R1)', () => {
   afterEach(() => {
     // Unmount first: changing the locale notifies every mounted subscriber,
     // and a live component would take that update outside act().

@@ -30,20 +30,24 @@ If you are joining an existing instance, use the address provided by its operato
 
 ## Arrange videos in Timeline
 
-Choose **Timeline** when creating a Project or adding a Space. Its **DEV** badge marks the editor as under development. The current editor places videos on one visual track.
+Choose **Timeline** when creating a Project or adding a Space. Its **DEV** badge marks the editor as under development. The editor arranges videos on a main track and the visual tracks above it; the clip on the highest track at the playhead is the one that plays. The preview, play bar, toolbar and tracks sit on the left, and the selected clip's properties and the conflict list sit in the panel on the right.
 
 | Control or action | Result |
 | --- | --- |
 | **Add media** | Open the material dialog and choose **Project videos** or **Local upload**. |
 | Select a Project video or use **Choose video** | Select a registered Project video or a local video file. |
-| **Start frame**, then **Add to Timeline** | Confirm a whole-frame position and add the clip; a local file uploads and registers at this step. The default is the sequence end, and each addition creates an independent clip. |
-| Select a clip and press **Change start frame** | Enter its new whole-frame start and press **Apply**. Overlapping clips appear in the conflict list, where each row can be selected for adjustment. |
-| **Play**, **Pause** and the preview slider | Play the valid sequence, pause it or select its global frame. Video buffering holds the frame until playback can continue. |
-| Close and reopen the Space from the Space list | Continue from the shared Timeline document. Viewers can inspect and preview it. |
+| **Track** and **Start frame**, then **Add to Timeline** | Confirm the track and whole-frame position and add the clip (on the main track with **Main track magnet** on, the start chooses where the clip is inserted and the main track stays end to end); a local file uploads and registers at this step. The track starts at the selected clip's track or the main track, the start at the sequence end, and each addition creates an independent clip. |
+| Click a clip | Select it; the right panel shows its **Track**, **Start frame**, **In point** and **Duration**, then its video's length in frames at the Timeline's frame rate. Type a whole frame and press Enter or leave the field to apply it. |
+| Drag a clip | Move it in time, onto another track, or into the dashed row above the top track to create a new track. Drag the edges of the selected clip to trim it. |
+| **Undo**, **Redo**, **Split**, **Duplicate**, **Delete** | Undo or redo your own edits, split the selected clip at the playhead, place a copy right after it, or delete it. |
+| The three switches beside **Zoom** | **Main track magnet** keeps main-track clips end to end, **Auto snap** (N) lines dragged edges up with clip edges, the playhead and frame 0, and **Linkage** moves or deletes the clips above a main-track clip with it. Hover a switch to see its name. |
+| **Play**, **Pause** and the preview slider | Play the valid sequence, pause it or select its global frame. The position and each clip's length show as hours:minutes:seconds:frames. Video buffering holds the frame until playback can continue. |
+| Press a row under **Conflicts** | Select that clip, move the playhead to its start and scroll the tracks to it. Each row names the clip's track and why it conflicts; the list reads **No conflicts** when there are none. |
+| Close and reopen the Space from the Space list | Continue from the shared Timeline document. Viewers can inspect and preview it; the edit buttons stay disabled for them. |
 
-A selected conflict row retains its selection border while you edit its start. Its properties show a short conflict status; the preview and conflict list provide the full adjustment instruction. A failed local upload retains its selected file and start frame in the open form for retry.
+Keys: Left and Right move the selected clip one frame (Shift one second); on the main track with **Main track magnet** on they swap it with the clip before or after it; with nothing selected they move the playhead; Alt+Up and Alt+Down change its track; Delete or Backspace deletes; Cmd/Ctrl+D duplicates; Cmd/Ctrl+B splits; Cmd/Ctrl+Z undoes and Cmd/Ctrl+Shift+Z or Ctrl+Y redoes; N turns snapping on or off; Esc cancels a drag. A failed local upload retains its selected file and position in the open form for retry.
 
-Full multi-track editing, audio/image/text placement, Web Animation creation and video export are planned additions.
+Audio/image/text placement, Web Animation creation and video export are planned additions.
 
 ## Arrange a 3D scene
 
@@ -66,6 +70,8 @@ Switching Spaces retains unfinished property input; reopen Properties on return 
 
 <a id="keyboard-shortcuts"></a>
 ## Keyboard shortcuts
+
+The **?** button next to the bell in the Studio and Project top bars opens the **User manual** and **Contact support** (support@breatic.ai); the sign-in pages link both in their footer. On the canvas, the **Keyboard shortcuts** button at the bottom of the left menu lists every canvas shortcut and gesture for your platform; a Viewer sees only the ones that work for them. In a 3D Space, the **Controls** button at the bottom of the left rail describes the 3D controls.
 
 Canvas shortcuts apply when the canvas Space owns keyboard focus, not while typing in chat, a text field or an editor. Editing actions require write permission. Locked items and nodes with running tasks may restrict deletion. Click the canvas before using a canvas shortcut.
 

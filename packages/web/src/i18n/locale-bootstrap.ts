@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Web i18n bootstrap — runs once at app startup, before React renders.
@@ -16,62 +16,93 @@
  * No URL `?lang=` override — explicitly retired per the same decision
  * to keep the resolution chain simple and avoid bookmark-locale drift.
  *
- * Locale JSON is imported via the Vite `@locales` alias at build time
- * (`vite.config.mts` maps it to repo-root `locales/`), so all five locale
- * files are bundled into the initial JS chunk. Switching locales at runtime
- * is therefore zero-RTT — no network fetch needed.
+ * English ships in the entry: `t()` falls back to it for any key the active
+ * catalog lacks. Every other catalog is its own `import()` chunk, downloaded
+ * at startup when it is the initial locale and otherwise on the first switch
+ * to it (#1374). The few keys `tInEveryLocale` reads back in every language
+ * travel separately, as the `__EVERY_LOCALE_MESSAGES__` define.
  */
 
+import { captureException } from '@sentry/react';
 import {
+  getAvailableLocales,
+  setEveryLocaleMessages,
   setLocale,
   setLocaleMessages,
   type Locale,
 } from '@breatic/shared';
 
-// Vite resolves these via the `@locales` alias to repo-root locales/*.json.
-// All five locales bundle into the initial JS chunk (~few KB each).
+// Vite resolves this via the `@locales` alias to repo-root locales/en.json.
 import en from '@locales/en.json';
-import zhCN from '@locales/zh-CN.json';
-import zhTW from '@locales/zh-TW.json';
-import ja from '@locales/ja.json';
-import ko from '@locales/ko.json';
 
 import { STORAGE_KEYS } from '@web/lib/storage-keys';
+
+/** Every locale's wording of `EVERY_LOCALE_KEYS`, set by the Vite and vitest configs. */
+declare const __EVERY_LOCALE_MESSAGES__: Record<string, Record<string, string>>;
 
 const SUPPORTED_LOCALES: Locale[] = ['en', 'zh-CN', 'zh-TW', 'ja', 'ko'];
 const FALLBACK_LOCALE: Locale = 'en';
 const STORAGE_KEY = STORAGE_KEYS.locale;
 
-/**
- * Initialize the i18n runtime. Must be called once at app startup,
- * before any component renders `useTranslation()`.
- */
-export function bootstrapLocale(): void {
-  // 1. Seed all locale message catalogs into the shared `t()` engine.
-  setLocaleMessages('en', en as Record<string, unknown>);
-  setLocaleMessages('zh-CN', zhCN as Record<string, unknown>);
-  setLocaleMessages('zh-TW', zhTW as Record<string, unknown>);
-  setLocaleMessages('ja', ja as Record<string, unknown>);
-  setLocaleMessages('ko', ko as Record<string, unknown>);
+/** The catalogs downloaded on demand, one chunk each. */
+const CATALOG_LOADERS: Record<string, () => Promise<{ default: unknown }>> = {
+  'zh-CN': () => import('@locales/zh-CN.json'),
+  'zh-TW': () => import('@locales/zh-TW.json'),
+  ja: () => import('@locales/ja.json'),
+  ko: () => import('@locales/ko.json'),
+};
 
-  // 2. Resolve the initial active locale.
+/** How a {@link changeLocale} call ended. */
+export type LocaleSwitch = 'switched' | 'superseded' | 'failed';
+
+/** The locale the most recent {@link changeLocale} call asked for. */
+let latestRequest: Locale | undefined;
+
+/**
+ * Initialize the i18n runtime. Must be awaited once at app startup, before
+ * any component renders `useTranslation()`; it settles in English when the
+ * initial locale's catalog cannot be downloaded.
+ * @returns Resolves once the initial locale is active.
+ */
+export async function bootstrapLocale(): Promise<void> {
+  setLocaleMessages('en', en as Record<string, unknown>);
+  for (const [locale, messages] of Object.entries(__EVERY_LOCALE_MESSAGES__)) {
+    setEveryLocaleMessages(locale, messages);
+  }
   const initial = resolveInitialLocale();
-  setLocale(initial);
+  if (await ensureCatalog(initial)) {
+    setLocale(initial);
+  } else {
+    // The stored choice stays, so the next page load tries again.
+    setLocale(FALLBACK_LOCALE);
+  }
 }
 
 /**
- * Change the active locale + persist the choice. Exposed for the
- * `<LangSwitcher>` component.
+ * Change the active locale + persist the choice, downloading its catalog
+ * first when it has none yet. Exposed for the `<LangSwitcher>` component.
+ *
+ * The latest call wins: a download that lands after a later call asked for
+ * another locale switches nothing and reports `'superseded'`.
  * @param locale - The locale to activate; ignored if not in `SUPPORTED_LOCALES`.
+ * @returns `'switched'` once it is active, `'superseded'` when a later call
+ * took over, `'failed'` when it is unsupported or its catalog did not download.
  */
-export function changeLocale(locale: Locale): void {
-  if (!SUPPORTED_LOCALES.includes(locale)) return;
+export async function changeLocale(locale: Locale): Promise<LocaleSwitch> {
+  if (!SUPPORTED_LOCALES.includes(locale)) return 'failed';
+  latestRequest = locale;
+  if (!getAvailableLocales().includes(locale)) {
+    const loaded = await ensureCatalog(locale);
+    if (latestRequest !== locale) return 'superseded';
+    if (!loaded) return 'failed';
+  }
   try {
     localStorage.setItem(STORAGE_KEY, locale);
   } catch {
     // localStorage may be unavailable (private mode, quota); fall through.
   }
   setLocale(locale);
+  return 'switched';
 }
 
 /**
@@ -80,6 +111,28 @@ export function changeLocale(locale: Locale): void {
  */
 export function getSupportedLocales(): ReadonlyArray<Locale> {
   return SUPPORTED_LOCALES;
+}
+
+/**
+ * Make sure a locale's catalog is registered, downloading it when needed.
+ *
+ * A failed download stays failed for the life of the page (the browser keeps
+ * it in its module map), which is why the language menu tells the user to
+ * refresh.
+ * @param locale - A supported locale.
+ * @returns Whether its catalog is registered now.
+ */
+async function ensureCatalog(locale: Locale): Promise<boolean> {
+  const load = CATALOG_LOADERS[locale];
+  if (load === undefined || getAvailableLocales().includes(locale)) return true;
+  try {
+    const catalog = await load();
+    setLocaleMessages(locale, catalog.default as Record<string, unknown>);
+    return true;
+  } catch (error) {
+    captureException(error, { tags: { error_boundary: 'locale-chunk', locale } });
+    return false;
+  }
 }
 
 /**

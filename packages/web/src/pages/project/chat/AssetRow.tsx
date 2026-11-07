@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 import { Check, Copy } from 'lucide-react';
@@ -27,7 +27,7 @@ interface AssetRowProps {
  *
  * Squares whatever shape the picture is. A row that let each thumbnail keep
  * its own proportions reads as a pile rather than as a set, and what the
- * reader is doing here is scanning several at once.
+ * user is doing here is scanning several at once.
  * @param root0 - The component props.
  * @param root0.assets - What this turn found.
  * @returns The row, and the box when one is open.

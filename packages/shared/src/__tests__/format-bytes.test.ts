@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Rendering a byte count for a reader.
+ * Rendering a byte count for a user.
  *
  * The membership ceilings are configured in bytes (base is 5368709120) and
  * nobody reads that, and every value in that file was written as a whole

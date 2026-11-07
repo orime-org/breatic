@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Send one Generate press, once (inner#1490).
@@ -86,7 +86,7 @@ export function submitGeneration(opts: {
       canvasSessions.peek(opts.spaceId)?.getState().closePanelOn(opts.nodeId, opts.panelKind);
       return undefined;
     },
-    // Unconditional: a press that failed after the reader closed the panel
+    // Unconditional: a press that failed after the user closed the panel
     // still explains itself.
     onFailure: async (err) => {
       toast.error(await executeErrorMessage(err instanceof ApiException ? err.status : undefined, t));

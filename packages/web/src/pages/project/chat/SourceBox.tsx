@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 
@@ -15,14 +15,14 @@ interface SourceBoxProps {
   sources: ChatSource[];
   /** Whether the box is up. */
   open: boolean;
-  /** Called when the reader shuts it. */
+  /** Called when the user shuts it. */
   onOpenChange: (open: boolean) => void;
 }
 
 /**
  * Every source the turn found, opened from the line under the reply.
  *
- * Titles and full addresses, and no page text: what a reader follows a source
+ * Titles and full addresses, and no page text: what a user follows a source
  * for is the page itself, and a few extracted lines here would be a worse
  * version of it that they have to read first.
  *
@@ -35,7 +35,7 @@ interface SourceBoxProps {
  * @param root0 - The component props.
  * @param root0.sources - Every page this turn found.
  * @param root0.open - Whether the box is up.
- * @param root0.onOpenChange - Called when the reader shuts it.
+ * @param root0.onOpenChange - Called when the user shuts it.
  * @returns The box.
  */
 export const SourceBox = React.memo(function SourceBox({

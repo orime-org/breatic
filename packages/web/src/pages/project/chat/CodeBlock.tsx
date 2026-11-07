@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 import { Check, Copy } from 'lucide-react';
@@ -12,7 +12,7 @@ import { CopyAnswerLabel, useCopyAnswer } from '@web/pages/project/chat/copy-ans
 /**
  * A block of code in a reply, with a way to take it.
  *
- * Code is the one thing in a reply a reader wants exactly, and selecting it
+ * Code is the one thing in a reply a user wants exactly, and selecting it
  * by hand is where the leading spaces and the wrapping get lost. The button
  * sits over the block's top right corner and comes out on hover, so a block
  * being read is a block and nothing else.

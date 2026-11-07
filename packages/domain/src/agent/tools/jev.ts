@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The decisions endpoint, as one request and one reading of its answer.
@@ -38,7 +38,7 @@ import {
  * How this tool names what it does, in the sentences a failure carries.
  *
  * The fallback says what to do instead rather than what to announce: a
- * judgement is the model's own deliberation, and the reader asked for the
+ * judgement is the model's own deliberation, and the user asked for the
  * work rather than for this.
  */
 const voice: FailureVoice = {
@@ -72,7 +72,7 @@ function unanswered(cause: unknown): Error {
  *
  * The sentence is complete when the status arrives; what the service said is
  * an addition to it. So this is short on purpose: a body that has not arrived
- * in this long is not worth holding the reader for, and the call's own budget
+ * in this long is not worth holding the user for, and the call's own budget
  * would hold them for all of it. Not a knob anyone would tune -- it answers
  * "how long is a decoration worth", not "how long may this call take".
  */
@@ -97,7 +97,7 @@ interface JevRequest {
   readonly questions: Readonly<Record<string, JevQuestion>>;
   /** How long the whole call may take, deliveries and backoffs together. */
   readonly budgetMs: number;
-  /** The reader's stop, when the caller has one. */
+  /** The user's stop, when the caller has one. */
   readonly abortSignal?: AbortSignal;
   /**
    * Called once the endpoint has answered with a success status, with what
@@ -220,10 +220,10 @@ function readAnswers(text: string, asked: readonly string[]): JevAnswers | null 
  * Only `error.message` travels. The body also carries `user_id`, which is who
  * we are to the vendor and says nothing the model can act on.
  * @param res - The refusal, body unread.
- * @param abortSignal - The reader's stop, when the caller has one.
+ * @param abortSignal - The user's stop, when the caller has one.
  * @param signal - The signal spanning the call.
  * @returns The complaint, or an empty string when there is none to read.
- * @throws {Error} The reader's stop, which outranks anything the service said.
+ * @throws {Error} The user's stop, which outranks anything the service said.
  */
 async function complaintOf(
   res: Response,
@@ -234,11 +234,11 @@ async function complaintOf(
   try {
     // The figure goes in as the read's own budget, which `readWithin` turns
     // into a clock of its own and ors with the spanning signal
-    // (`read-within.ts`), so the reader waits the shorter of the two.
+    // (`read-within.ts`), so the user waits the shorter of the two.
     said = JSON.parse(await readWithin(res, COMPLAINT_READ_MS, signal));
   } catch (err: unknown) {
     // Asked before the read is written off: a stop that landed inside it is
-    // what the reader did, and that outranks what the service said.
+    // what the user did, and that outranks what the service said.
     if (isStop(err, abortSignal)) throw stoppedByUser();
     return "";
   }
@@ -251,7 +251,7 @@ async function complaintOf(
  * Put one set of questions to the endpoint and read what comes back.
  * @param request - Everything the call needs.
  * @returns The keys that read, and the names of the keys that did not.
- * @throws {Error} Carrying tool failure detail, or the reader's stop.
+ * @throws {Error} Carrying tool failure detail, or the user's stop.
  */
 export async function askJev(request: JevRequest): Promise<JevAnswers> {
   const { apiKey, budgetMs, abortSignal, onBilled } = request;
@@ -272,7 +272,7 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
   // the server did not process the request -- so a rate-limited endpoint would
   // hold the turn for three deliveries and two backoffs. This signal is read
   // at the top of every pass (`request.ts:358`) and ends the backoff wait
-  // (`request.ts:440`), so the figure in the config is what the reader waits.
+  // (`request.ts:440`), so the figure in the config is what the user waits.
   // Truncated because this is a plain number parameter and `AbortSignal.timeout`
   // answers ERR_OUT_OF_RANGE to a fraction, which `setTimeout` does not
   // (`read-within.ts:113`). The one caller reads an integer from the config.
@@ -304,7 +304,7 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
     // A raised signal settles the retry (`request.ts:401`) and the transport
     // hands back the response it is holding (`:415`) rather than throwing, so
     // a stop that landed mid-refusal arrives here looking like an upstream
-    // fault. What the reader did outranks what the service said.
+    // fault. What the user did outranks what the service said.
     if (abortSignal?.aborted === true) {
       // A body nobody reads keeps its connection out of the pool.
       void res.body?.cancel();

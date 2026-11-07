@@ -4,8 +4,8 @@
 #
 # Only the author/co-author identity matters — mentioning AI assistance
 # in the commit description is fine. Under US copyright law, AI-generated
-# content cannot hold copyright, so listing AI as an author on an
-# open-source project creates licensing ambiguity.
+# content cannot hold copyright, so listing AI as an author on a
+# source-available project creates licensing ambiguity.
 #
 # Enforced in CI via .github/workflows/no-ai-attribution.yml as the
 # server-side safety net.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The consent banner, Cookie settings and what leaves the app (inner#1442),
@@ -15,6 +15,7 @@ import { resolve } from 'node:path';
 
 import { expect, type BrowserContext, type Page, type Request } from 'playwright/test';
 
+import { switchLanguage } from '../helpers/language';
 import { test } from '../helpers/slot';
 import { NO_VENDORS_TAG, TEST_AMPLITUDE_API_KEY, TEST_GOOGLE_ADS_TAG_ID } from './vendors';
 
@@ -131,8 +132,7 @@ test.describe('signed out', () => {
     await page.goto('/login');
     const notice = page.locator('#cc-main .cm__desc .breatic-consent-notice');
     await expect(notice).toBeVisible();
-    await page.getByTestId('lang-trigger').click();
-    await page.getByTestId('lang-option-ja').click();
+    await switchLanguage(page, 'ja');
     await expect(notice).toBeVisible();
     await page.locator('#cc-main .cm [data-role="all"]').click();
     await expect.poll(async () => (await consentCookie(context))?.categories.toSorted()).toEqual(['ads', 'analytics', 'necessary']);

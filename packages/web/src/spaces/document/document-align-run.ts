@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What pressing an alignment row does to the selection, and which row the menu
@@ -125,7 +125,7 @@ export function writeAlignment(tr: Transaction, blocks: readonly BlockUnder[], a
  * @param alignment - Which row was pressed.
  * @param over - The range to act on, where the press names one; the block
  *   handle hands in a range over the hovered block's content. Left out, it is
- *   the reader's own selection, which is what the bubble bar means.
+ *   the user's own selection, which is what the bubble bar means.
  */
 export function runAlignment(
   editor: ToolEditor,
@@ -135,10 +135,10 @@ export function runAlignment(
   editor.transact((tr) => {
     const carried = tr.storedMarks;
     writeAlignment(tr, blocksUnder(tr.doc, over ?? tr.selection), alignment);
-    // A press aimed at a range the reader is not standing in leaves the marks
+    // A press aimed at a range the user is not standing in leaves the marks
     // they are carrying where they were. Any step clears them —
     // `prosemirror-state`'s `Transaction.addStep` sets `storedMarks` to null —
-    // so a reader who pressed `Mod-b` at their caret and then coloured another
+    // so a user who pressed `Mod-b` at their caret and then coloured another
     // row would find the next character they typed no longer bold. Putting
     // them back is the last thing the transaction does, since a step after it
     // would clear them again.
@@ -177,7 +177,7 @@ export function alignFace(editor: ToolEditor): AlignFace {
  *
  * The block handle stands a block in for a selection over its content and asks
  * this about that range, so the row it lights and the greying both speak about
- * the block the pointer is over rather than about wherever the reader left
+ * the block the pointer is over rather than about wherever the user left
  * their caret.
  * @param doc - The document.
  * @param over - The range to read.

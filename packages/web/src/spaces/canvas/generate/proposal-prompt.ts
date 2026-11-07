@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Writing a proposal's or a template's prompt into a generation node's shared
  * fragment (#229, inner#977).
  *
- * The reader presses one button and the prompt is in the box, with each node
+ * The user presses one button and the prompt is in the box, with each node
  * the proposal wired into the pool already mentioned (inner#1315) and what is
  * still theirs to do marked: a template's reference to @ by hand, words to
  * fill in, and notes on operating the panel at the top.

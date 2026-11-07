@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { GenerationTemplate } from "@shared/canvas/generation-templates.js";
 
@@ -29,10 +29,10 @@ export const CHARACTER_DESIGN_FROM_TEXT: GenerationTemplate = {
   inputs: [],
   steps: [],
   agentNote:
-    "a new character designed from the reader's description and style as one full-body picture, then drawn into a full character sheet; for when there is no picture of the character yet",
+    "a new character designed from the user's description and style as one full-body picture, then drawn into a full character sheet; for when there is no picture of the character yet",
   goal: "character",
   triggers: {
     asks: ["design a character for me", "create a new character", "I need a character but have no picture of it"],
-    offerWhen: ["the reader wants work driven by a character and has no picture of that character"],
+    offerWhen: ["the user wants work driven by a character and has no picture of that character"],
   },
 };

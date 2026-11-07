@@ -1,18 +1,18 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Keeping comment highlights off the undo stack (#18, A16).
  *
  * A comment is withdrawn through the card that holds it — Delete for the
  * whole thread, Resolve to settle it — and both take its highlight away. That
- * is the way back, so Cmd+Z is not one: a reader pressing it is reaching for
+ * is the way back, so Cmd+Z is not one: a user pressing it is reaching for
  * the last thing they wrote, and a highlight is not it (user 2026-09-22).
  *
  * Which makes this one rule rather than two. Both kinds of write to a comment
  * mark are a transaction of nothing but comment mark steps:
  *
- * - the reader opening a comment, marking the words they selected;
+ * - the user opening a comment, marking the words they selected;
  * - the library rewriting `orphan` on the marks whose flag has flipped, for
  *   a thread that is resolved, soft-deleted, or no longer in the store (the
  *   mark sync the thread store's subscription drives; the three conditions
@@ -21,7 +21,7 @@
  *
  * Neither belongs on the stack, so neither needs telling apart. What made the
  * second one urgent stays true: it runs on a PEER's resolve as a local
- * transaction here, and captured, it would hand the reader's Cmd+Z somebody
+ * transaction here, and captured, it would hand the user's Cmd+Z somebody
  * else's highlight change instead of their own last edit.
  *
  * Posting also writes the thread itself into its map, and that write is out

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * User repository — data access for the users table.
@@ -217,6 +217,33 @@ export async function setStripeCustomerId(
   await db
     .update(users)
     .set({ stripeCustomerId, updatedAt: new Date() })
+    .where(eq(users.id, userId));
+}
+
+/**
+ * The Agent model an account last picked (#1363); a new conversation starts on it.
+ * @param userId - The account.
+ * @returns The model, or null before the first pick.
+ */
+export async function getAgentModel(userId: string): Promise<string | null> {
+  const rows = await db
+    .select({ agentModel: users.agentModel })
+    .from(users)
+    .where(and(eq(users.id, userId), isNull(users.deletedAt)))
+    .limit(1);
+  return rows[0]?.agentModel ?? null;
+}
+
+/**
+ * Record the Agent model an account last picked (#1363).
+ * @param userId - The account.
+ * @param agentModel - The model.
+ * @param tx - The transaction to run inside, when the caller has one.
+ */
+export async function setAgentModel(userId: string, agentModel: string, tx?: DbTx): Promise<void> {
+  await (tx ?? db)
+    .update(users)
+    .set({ agentModel, updatedAt: new Date() })
     .where(eq(users.id, userId));
 }
 

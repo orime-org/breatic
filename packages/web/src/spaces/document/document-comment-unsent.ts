@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Words written into a comment box and not sent yet, kept for as long as the
@@ -9,7 +9,7 @@
  * which can be mounted again (StrictMode mounts it twice); the editor
  * does not go with it — it belongs to the document
  * (`document-editor-cache.ts`) — so the boxes read
- * and write here and keep nothing of their own. Unsent words are the reader's
+ * and write here and keep nothing of their own. Unsent words are the user's
  * until they send or clear them.
  *
  * WeakMaps, so nothing here outlives what it is keyed by: a draft's words go

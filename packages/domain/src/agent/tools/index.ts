@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Tool registry — maps tool names to AI SDK tool definitions.
@@ -8,11 +8,14 @@ import type { Tool } from "ai";
 import { env } from "@breatic/core";
 
 import { makeAskUserTool, type AskUserContext } from "@domain/agent/tools/ask-user.js";
+import { makeRequestSpaceContentTool, type RequestSpaceContentContext } from "@domain/agent/tools/request-space-content.js";
 import { makeSaveImageTool } from "@domain/agent/tools/save-image.js";
 import { recordTools, makeReadNodeHistoryTool } from "@domain/agent/tools/record-tools.js";
+import { memoryTools } from "@domain/agent/tools/memory-tools.js";
 import type { ToolPictureContext } from "@domain/agent/prepare-agent-pictures.js";
 import {
   ASK_USER,
+  REQUEST_SPACE_CONTENT,
   GET_CANVAS_CAPABILITIES,
   GET_GENERATION_TEMPLATE,
   GET_PRODUCT_GUIDE,
@@ -24,6 +27,10 @@ import {
   READ_CONVERSATION,
   READ_NODE_HISTORY,
   RECORD_TOOL_NAMES,
+  MEMORY_TOOL_NAMES,
+  SAVE_MEMORY,
+  DELETE_MEMORY,
+  READ_MEMORY,
   SAVE_IMAGE,
   UNDERSTAND_MEDIA,
   SEARCH_CONVERSATIONS,
@@ -48,7 +55,7 @@ const proposeDocumentEdit = makeProposeDocumentEdit();
  * Optional at every build site: a tool built without it (a test, a probe)
  * gets `NO_TOOL_CONTEXT`, which vouches for no media address at all.
  */
-export type ToolContext = AskUserContext & ToolPictureContext;
+export type ToolContext = AskUserContext & ToolPictureContext & RequestSpaceContentContext;
 
 /** The context a tool gets when its caller has none: no media is vouched for. */
 export const NO_TOOL_CONTEXT: ToolContext = { mediaUrlAllowed: () => false };
@@ -74,6 +81,7 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   // wait for an answer read the same one, so there is no second spelling of
   // it to keep in step.
   [ASK_USER]: (context = NO_TOOL_CONTEXT) => makeAskUserTool(context),
+  [REQUEST_SPACE_CONTENT]: (context = NO_TOOL_CONTEXT) => makeRequestSpaceContentTool(context),
   // Searches for pictures and answers with the row the panel draws. It does
   // work of its own, so it is not one of the interaction tools below, even
   // though the panel is what draws its answer.
@@ -100,27 +108,36 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   [READ_CONVERSATION]: () => recordTools[READ_CONVERSATION],
   [READ_NODE_HISTORY]: (context = NO_TOOL_CONTEXT) => makeReadNodeHistoryTool(context),
   [LIST_PROJECT_ACTIVITY]: () => recordTools[LIST_PROJECT_ACTIVITY],
+  // The Agent's own memory, through the turn's execution context. Stateless,
+  // so one object serves every turn.
+  [SAVE_MEMORY]: () => memoryTools[SAVE_MEMORY],
+  [DELETE_MEMORY]: () => memoryTools[DELETE_MEMORY],
+  [READ_MEMORY]: () => memoryTools[READ_MEMORY],
 } as const;
 
 /**
  * The tools that do work on their own, in a stable order.
  *
  * Narrower than `TOOL_MAP`: the canvas tools below are about the spaces in
- * front of the reader, so they are kept apart.
+ * front of the user, so they are kept apart.
  */
 export const BASELINE_TOOLS: readonly string[] = [
   "web_search",
   "search_images",
   UNDERSTAND_MEDIA,
   ASK_USER,
+  REQUEST_SPACE_CONTENT,
   JUDGE_LIKELIHOOD,
   // The user's own records: about the project, not the Space in front of
   // them, so offered whatever is open.
   ...RECORD_TOOL_NAMES,
+  // The Agent's own memory: about the user and the Project, offered on every
+  // turn.
+  ...MEMORY_TOOL_NAMES,
 ];
 
 /**
- * The tools that describe the spaces the reader is looking at.
+ * The tools that describe the spaces the user is looking at.
  *
  * What makes a tool belong here is that its answer is about the product in
  * front of someone, which is why the search tools are not in it even though
@@ -136,8 +153,12 @@ export const CANVAS_TOOLS: readonly string[] = [
   SAVE_IMAGE,
 ];
 
+export { makeRequestSpaceContentTool };
+
 export {
   ASK_USER,
+  AWAITS_USER,
+  REQUEST_SPACE_CONTENT,
   GET_CANVAS_CAPABILITIES,
   GET_GENERATION_TEMPLATE,
   GET_PRODUCT_GUIDE,
@@ -146,6 +167,7 @@ export {
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
   RECORD_TOOL_NAMES,
+  MEMORY_TOOL_NAMES,
   SAVE_IMAGE,
   UNDERSTAND_MEDIA,
 } from "@domain/agent/tools/tool-names.js";

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The arithmetic of the crop box drawn inside a node (inner#888 §7.4.1). The
@@ -81,7 +81,7 @@ export const OUTSIDE_DIM = 'rgb(0 0 0 / 0.4)';
 
 /**
  * The factor that keeps a handle at its screen size inside the zoomed node
- * layer. A handle is a control the reader drags, so it holds its size at
+ * layer. A handle is a control the user drags, so it holds its size at
  * every zoom (user 2026-10-07), unlike the node's name, which stops growing
  * below half zoom.
  * @param zoom - The canvas zoom.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Where a document Space keeps its comment threads (#18, design §7).
@@ -8,7 +8,7 @@
  * connection carries both and a thread cannot arrive without the text it
  * points at. This fixes that key in one place for the same reason
  * `documentBodyFragment` does: the backend seeds the body and the editor binds
- * to it, and two spellings of one key would not fail loudly — the reader would
+ * to it, and two spellings of one key would not fail loudly — the user would
  * simply see no comments.
  *
  * TDD: red because `documentCommentThreads` does not exist yet.

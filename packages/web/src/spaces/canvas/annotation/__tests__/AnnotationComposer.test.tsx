@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -108,7 +108,7 @@ describe('the box that opens at the drop point', () => {
 
   it('keeps them when the blur comes from its Space being hidden', async () => {
     // Switching Space hides this one, which takes focus out of the box; the
-    // words are waiting for the reader when they come back (inner#1235 A14).
+    // words are waiting for the user when they come back (inner#1235 A14).
     const outlet = document.body.appendChild(document.createElement('div'));
     outlet.setAttribute('data-space-outlet', 's1');
     render(

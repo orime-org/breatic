@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * One row of a node's task list (#186 §7.1).
@@ -49,11 +49,11 @@ const ACTION_KEY: Readonly<Record<TaskRowAction, string>> = {
 export interface TaskRowProps {
   /** The task, as the server last described it. */
   entry: NodeTaskEntry;
-  /** The reader's clock, ticking in the panel above. */
+  /** The user's clock, ticking in the panel above. */
   now: number;
   /** Whether this session still holds the File this upload was carrying. */
   hasRetryFile: boolean;
-  /** Whether this reader may write; a read-only row carries no buttons. */
+  /** Whether this user may write; a read-only row carries no buttons. */
   readOnly: boolean;
   /** Whether this row's Retry is still waiting for the server. */
   retrying: boolean;
@@ -105,9 +105,9 @@ function settledNote(
  * the buttons its state allows.
  * @param props - The row inputs.
  * @param props.entry - The task, as the server last described it.
- * @param props.now - The reader's clock.
+ * @param props.now - The user's clock.
  * @param props.hasRetryFile - Whether this session holds the File.
- * @param props.readOnly - Whether this reader may write.
+ * @param props.readOnly - Whether this user may write.
  * @param props.retrying - Whether this row's Retry is still waiting.
  * @param props.dismissing - Whether this row's Finish or Clear is still waiting.
  * @param props.medium - What the host node holds, for a refusal's format list.
@@ -158,7 +158,7 @@ export const TaskRow = React.memo(function TaskRow({
   // Whichever instant this row has: a running task says when it began, a
   // settled one when it ended. §7.1 asks a running row for both its elapsed
   // time and the moment it started. One slot carrying two different facts
-  // needs the word too, or the reader cannot tell which one they are looking
+  // needs the word too, or the user cannot tell which one they are looking
   // at (user 2026-09-06).
   const instant = entry.settledAt ?? entry.startedAt;
   const instantKey =
@@ -183,7 +183,7 @@ export const TaskRow = React.memo(function TaskRow({
           label={kind.label}
           colorClassName='text-foreground-secondary'
         />
-        {/* What the task acted on, at the weight of context. What the reader
+        {/* What the task acted on, at the weight of context. What the user
             came for is the sentence below. */}
         <span className='min-w-0 flex-1 truncate text-2xs text-foreground-secondary'>
           {kind.detail !== null ? (
@@ -246,7 +246,7 @@ export const TaskRow = React.memo(function TaskRow({
             // Filling the one that puts a result on the node separates it from
             // the one that throws the row away: side by side in the same
             // outline they read as a pair of equals, and a list of five rows
-            // becomes ten identical pills the reader has to read before acting.
+            // becomes ten identical pills the user has to read before acting.
             variant={PRIMARY_ACTIONS.has(action) ? 'default' : 'outline'}
             size='compact'
             data-testid={`task-action-${action}`}

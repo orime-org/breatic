@@ -1,12 +1,15 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { statSync } from 'node:fs';
 import { join } from 'node:path';
 
-const PCM_BYTES_PER_SECOND = 16_000 * 2 * 2;
+// 48 kHz stereo: the most bytes per second, so the fewest seconds of audio a model is paid to hear
+// past the size limit (docs/TEST-MANDATE.md 2.2).
+const SAMPLE_RATE = 48_000;
+const PCM_BYTES_PER_SECOND = SAMPLE_RATE * 2 * 2;
 
 /**
  * Generate an oversized PCM WAV fixture for long-media smoke tests.
@@ -20,7 +23,7 @@ export function createOversizedLongAudioFixture(directory: string, normalLimitBy
   const durationSeconds = Math.floor(normalLimitBytes / PCM_BYTES_PER_SECOND) + 1;
   execFileSync('ffmpeg', [
     '-y', '-hide_banner', '-loglevel', 'error',
-    '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=16000',
+    '-f', 'lavfi', '-i', `sine=frequency=440:sample_rate=${String(SAMPLE_RATE)}`,
     '-t', String(durationSeconds), '-ac', '2', '-c:a', 'pcm_s16le',
     '-metadata', `comment=${randomUUID()}`,
     audioPath,

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 import { useQuery, type QueryClient } from '@tanstack/react-query';
@@ -132,7 +132,7 @@ export function useSlugAvailability(
  * A 409 does not always mean the slug: creating a team studio also answers 409
  * when the account is at its team-studio cap. Re-asking the server refreshes
  * the cached answer the field reads, so a taken slug turns the field red on
- * its own. That only tells the reader something while the field is on screen
+ * its own. That only tells the user something while the field is on screen
  * and holds the submitted slug; the caller says whether it still does, after
  * the re-ask has come back.
  * @param client - The query client holding the availability answers.

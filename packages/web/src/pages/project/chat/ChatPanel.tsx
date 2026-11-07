@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import type { SharedSpace } from '@breatic/shared';
 
 import {
   conversationRuntime,
@@ -12,6 +13,7 @@ import { chatAttachments, useTray } from '@web/stores/chat-attachments';
 import { useConsolidating } from '@web/stores/consolidating';
 import { useUIStore } from '@web/stores/ui';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
+import { chatApi } from '@web/data/api/chat';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
 import type { SpaceContextChipProps } from '@web/pages/project/chat/SpaceContextChip';
@@ -23,6 +25,10 @@ import { useChatSession } from '@web/pages/project/chat/use-chat-session';
 import { QuestionnaireAnswerContext } from '@web/pages/project/chat/questionnaire-answer';
 import { readSpaceContext } from '@web/pages/project/chat/space-context';
 import type { ReadSpaces } from '@web/pages/project/chat/space-context';
+import { SpaceRequestAnswerContext } from '@web/pages/project/chat/space-request-answer';
+import type { SpaceRequestAnswering } from '@web/pages/project/chat/space-request-answer';
+import { readRequestedSpaces } from '@web/pages/project/chat/space-request-read';
+import type { ChatSpaceRequest } from '@web/pages/project/chat/types';
 
 /**
  * How long a wait goes unmentioned.
@@ -104,7 +110,7 @@ export function ChatPanel({
   // new onSubmit.
   const spaceSource = React.useRef({ activeSpace, spaces });
   spaceSource.current = { activeSpace, spaces };
-  /** The reader's Spaces as they stand; called at the press. */
+  /** The user's Spaces as they stand; called at the press. */
   const readSpaces = React.useCallback(
     (): ReadSpaces =>
       readSpaceContext({
@@ -124,6 +130,7 @@ export function ChatPanel({
     loadEarlier,
     send,
     answer,
+    shareSpaces,
     abort,
     conversations,
     hasMoreConversations,
@@ -150,6 +157,34 @@ export function ChatPanel({
   // waiting card a new value for the same answer.
   const busy = turnPhase !== 'idle';
   const answering = React.useMemo(() => ({ answer, busy }), [answer, busy]);
+  /**
+   * Read the Spaces a request card asks for (inner#1552), from the project's
+   * Spaces as they stand at the press. Rejects only once the card stopped
+   * waiting, or after saying why nothing could be read.
+   */
+  const readRequested = React.useCallback(
+    async (request: ChatSpaceRequest, url: string, signal: AbortSignal): Promise<SharedSpace[]> => {
+      const limits = await chatApi.streamConfig().catch(() => null);
+      if (limits === null) {
+        chatAttachments.say({ key: 'sendUnavailable' });
+        throw new Error('The chat limits could not be read.');
+      }
+      return readRequestedSpaces({
+        projectId,
+        spaces: spaceSource.current.spaces,
+        requested: request.spaces,
+        queryClient,
+        url,
+        limits,
+        signal,
+      });
+    },
+    [projectId, queryClient],
+  );
+  const spaceRequestAnswering = React.useMemo(
+    (): SpaceRequestAnswering => ({ spaces, busy, read: readRequested, answer: shareSpaces }),
+    [spaces, busy, readRequested, shareSpaces],
+  );
   // A long conversation folds its oldest part into memory before this turn is
   // answered, which is a second model call in front of the reply. Read here
   // rather than passed down the turn: the panel can be unmounted when the
@@ -166,7 +201,7 @@ export function ChatPanel({
     const showing = setTimeout(() => setSkeleton(true), SKELETON_AFTER_MS);
     return () => clearTimeout(showing);
   }, [ready, status]);
-  // Sending is something the reader does, and this is where they do it. The
+  // Sending is something the user does, and this is where they do it. The
   // message list needs to know it happened — it is the one thing that should
   // bring the column back to the bottom after they have scrolled up to read.
   const [sentCount, setSentCount] = React.useState(0);
@@ -220,7 +255,7 @@ export function ChatPanel({
   /**
    * Fetch the list afresh every time it is opened.
    *
-   * Where the reader had paged to, and what they saw, belong to the last time
+   * Where the user had paged to, and what they saw, belong to the last time
    * they opened it -- and another tab of theirs may have started, renamed or
    * deleted conversations since.
    */
@@ -257,27 +292,30 @@ export function ChatPanel({
       {/* A questionnaire card inside a message answers in the conversation
           this panel holds (inner#1542). */}
       <QuestionnaireAnswerContext.Provider value={answering}>
-        <MessageList
+        <SpaceRequestAnswerContext.Provider value={spaceRequestAnswering}>
+          <MessageList
           // The conversation travels as a prop rather than as a key. The list
           // does have to notice a switch -- it is what tells it to follow the
           // bottom again -- but keying it made React tear down the scroller and
           // every bubble to do it, and the scroller it discarded stayed in the
           // document: an empty half-column above the conversation, in every
           // project, from the moment the first one opened.
-          conversationId={currentId}
-          messages={messages}
-          consolidating={consolidating}
-          ready={ready}
-          skeleton={skeleton}
-          sentCount={sentCount}
-          hasEarlier={hasMore}
-          onLoadEarlier={loadEarlier}
-          onQuickAction={quickAction}
-          navigating={navigating}
-        />
+            conversationId={currentId}
+            messages={messages}
+            consolidating={consolidating}
+            ready={ready}
+            skeleton={skeleton}
+            sentCount={sentCount}
+            hasEarlier={hasMore}
+            onLoadEarlier={loadEarlier}
+            onQuickAction={quickAction}
+            navigating={navigating}
+          />
+        </SpaceRequestAnswerContext.Provider>
       </QuestionnaireAnswerContext.Provider>
       <ChatComposer
         conversationId={currentId ?? null}
+        projectId={projectId}
         draft={draft}
         turnPhase={turnPhase}
         navigating={navigating}

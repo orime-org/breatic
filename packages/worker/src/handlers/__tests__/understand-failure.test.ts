@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Reading a failed understand run as something the reader is told (#2175).
+ * Reading a failed understand run as something the user is told (#2175).
  *
  * The run's own module says why it failed in its own vocabulary — five ways
  * an address yields nothing, five ways a service refuses. The node's task row
- * stores one of ours, and the reader is told it in their own language, so the
+ * stores one of ours, and the user is told it in their own language, so the
  * two vocabularies meet here and nowhere else.
  */
 
@@ -27,7 +27,7 @@ import { storedFailure } from "@worker/handlers/stored-failure.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 
 describe("what an address that yielded nothing is stored as", () => {
-  // Each of the five says something different about what the reader does
+  // Each of the five says something different about what the user does
   // next, and each already has a code of ours saying exactly that.
   it.each([
     ["unreachable", "source_unreachable"],
@@ -78,7 +78,7 @@ describe("what a service that would not answer is stored as", () => {
 
 describe("what a run that answered nothing is stored as", () => {
   // The service answered, so nothing refused anything — there is simply no
-  // reading to put on the node. `internal` would tell the reader we broke,
+  // reading to put on the node. `internal` would tell the user we broke,
   // and `no_result` is the code that says what happened.
   it("is stored as the run having produced none", () => {
     expect(understandFailureCode(new AnsweredNothing())).toBe("no_result");
@@ -93,7 +93,7 @@ describe("what a run that answered nothing is stored as", () => {
 
 describe("anything else", () => {
   // Something on our side broke, and which part is in the log rather than on
-  // the node: a reader has the same thing to do either way.
+  // the node: a user has the same thing to do either way.
   it("is stored as ours to answer for", () => {
     expect(understandFailureCode(new Error("boom"))).toBe("internal");
     expect(understandFailureCode("not an error")).toBe("internal");
@@ -102,7 +102,7 @@ describe("anything else", () => {
 
 describe("what a failed run's row is given", () => {
   // A read's failures are ours to name, so the row holds a code and the
-  // reader is told it in their own language.
+  // user is told it in their own language.
   it("gives a read's failure the code that names it", () => {
     expect(storedFailure("understand", new MediaUnavailable("slow", {}))).toBe(
       "source_cut_off",
@@ -117,10 +117,10 @@ describe("what a failed run's row is given", () => {
     );
   });
 
-  // A refusal over a format leaves the reader asking which of their files
+  // A refusal over a format leaves the user asking which of their files
   // this was and what it was in. This run holds both at the moment it
   // refuses — the address it was handed names the asset, the classification
-  // carries the type it judged — and the row the reader opens is on a text
+  // carries the type it judged — and the row the user opens is on a text
   // node that holds neither (user 2026-09-20).
   it("writes down the file it refused and the type it judged", () => {
     const stored = storedFailure(

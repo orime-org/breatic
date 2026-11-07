@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What the account's credit screens show, and whose activity they leave out
@@ -12,10 +12,10 @@
  * panel — naming a studio they do not administer, its projects, and what was
  * generated in them.
  *
- * So both reads narrow to the studios the reader administers. The list keeps
+ * So both reads narrow to the studios the user administers. The list keeps
  * one more thing, and that is the half easy to lose: a run that belongs to no
  * studio at all. The text tools carry no project, and a project deleted while
- * its task was running leaves the same shape — the reader ran those, so they
+ * its task was running leaves the same shape — the user ran those, so they
  * stay. The per-studio totals have nowhere to put them and do not.
  *
  * Runs against the testcontainer Postgres started by @breatic/integration-tests/containers.
@@ -121,55 +121,55 @@ async function seedSpend(
 }
 
 describe("the account's own activity, narrowed to what it administers", () => {
-  it("keeps what was spent in a studio the reader administers", async () => {
-    const reader = await seedUser();
-    const mine = await seedStudio(reader);
-    await seedSpend(reader, mine, 5);
+  it("keeps what was spent in a studio the user administers", async () => {
+    const payer = await seedUser();
+    const mine = await seedStudio(payer);
+    await seedSpend(payer, mine, 5);
 
-    const rows = await creditLotRepo.listLedgerByPayer(reader, 20, null);
+    const rows = await creditLotRepo.listLedgerByPayer(payer, 20, null);
     expect(rows.map((r) => r.studioId)).toEqual([mine]);
   });
 
   it("drops what was spent in a studio somebody else administers", async () => {
-    // The reader is a guest here: their credits paid for the run, and the
+    // The user is a guest here: their credits paid for the run, and the
     // studio, its projects and what ran in them are not theirs to read.
     // Somebody else really administers it — a studio with no admin at all
     // would be dropped by the role half of the predicate alone, and the half
     // that asks whose studio it is would go unread.
-    const reader = await seedUser();
+    const payer = await seedUser();
     const theirs = await seedStudio(await seedUser());
-    await seedSpend(reader, theirs, 5);
+    await seedSpend(payer, theirs, 5);
 
-    const rows = await creditLotRepo.listLedgerByPayer(reader, 20, null);
+    const rows = await creditLotRepo.listLedgerByPayer(payer, 20, null);
     expect(rows).toEqual([]);
 
-    // Dropped from the reader's own view, not from the books: the studio's
+    // Dropped from the user's own view, not from the books: the studio's
     // side still carries it, which is what makes this a narrowing rather
     // than a deletion.
     const theirSide = await creditLotRepo.listLedgerByStudio(theirs, 20, null);
-    expect(theirSide.map((r) => r.actorUserId)).toEqual([reader]);
+    expect(theirSide.map((r) => r.actorUserId)).toEqual([payer]);
   });
 
   it("keeps a run that belongs to no studio", async () => {
-    const reader = await seedUser();
-    await seedSpend(reader, null, 3);
+    const payer = await seedUser();
+    await seedSpend(payer, null, 3);
 
-    const rows = await creditLotRepo.listLedgerByPayer(reader, 20, null);
+    const rows = await creditLotRepo.listLedgerByPayer(payer, 20, null);
     expect(rows.map((r) => r.studioId)).toEqual([null]);
   });
 
   it("pages to the end without handing over an empty page", async () => {
     // What the narrowing costs if it is done after the read instead of
     // inside it: a page whose rows were all dropped comes back empty while
-    // the cursor still says there is more, and the reader sees the list end
+    // the cursor still says there is more, and the user sees the list end
     // early. Every case above holds one row and asks for twenty, so none of
     // them can tell the two apart.
-    const reader = await seedUser();
-    const mine = await seedStudio(reader);
+    const payer = await seedUser();
+    const mine = await seedStudio(payer);
     const theirs = await seedStudio(await seedUser());
     for (let i = 0; i < 3; i += 1) {
-      await seedSpend(reader, theirs, 1);
-      await seedSpend(reader, mine, 1);
+      await seedSpend(payer, theirs, 1);
+      await seedSpend(payer, mine, 1);
     }
 
     const seen: string[] = [];
@@ -177,7 +177,7 @@ describe("the account's own activity, narrowed to what it administers", () => {
     // Bounded so a cursor that never advances fails as a test rather than
     // hanging the suite.
     for (let page = 0; page < 10; page += 1) {
-      const rows = await creditLotRepo.listLedgerByPayer(reader, 2, cursor);
+      const rows = await creditLotRepo.listLedgerByPayer(payer, 2, cursor);
       expect(
         rows.length,
         "an empty page while the cursor said there was more",
@@ -195,45 +195,45 @@ describe("the account's own activity, narrowed to what it administers", () => {
   it("stops administering and the rows go with it", async () => {
     // Read fresh rather than carried: the answer is who administers the
     // studio now, not who did when the credits moved.
-    const reader = await seedUser();
-    const studio = await seedStudio(reader);
-    await seedSpend(reader, studio, 5);
+    const payer = await seedUser();
+    const studio = await seedStudio(payer);
+    await seedSpend(payer, studio, 5);
 
     await sql`
       UPDATE studio_members SET deleted_at = now()
-      WHERE studio_id = ${studio} AND user_id = ${reader}
+      WHERE studio_id = ${studio} AND user_id = ${payer}
     `;
 
-    expect(await creditLotRepo.listLedgerByPayer(reader, 20, null)).toEqual([]);
+    expect(await creditLotRepo.listLedgerByPayer(payer, 20, null)).toEqual([]);
   });
 });
 
 describe("the per-studio totals, narrowed the same way", () => {
-  it("totals a studio the reader administers", async () => {
-    const reader = await seedUser();
-    const mine = await seedStudio(reader);
-    await seedSpend(reader, mine, 7);
+  it("totals a studio the user administers", async () => {
+    const payer = await seedUser();
+    const mine = await seedStudio(payer);
+    await seedSpend(payer, mine, 7);
 
-    const rows = await creditLotRepo.sumSpentByStudio(reader);
+    const rows = await creditLotRepo.sumSpentByStudio(payer);
     expect(rows.map((r) => r.studioId)).toEqual([mine]);
     expect(Number(rows[0]!.spent)).toBe(7);
   });
 
   it("leaves out a studio somebody else administers", async () => {
-    const reader = await seedUser();
+    const payer = await seedUser();
     const theirs = await seedStudio(await seedUser());
-    await seedSpend(reader, theirs, 7);
+    await seedSpend(payer, theirs, 7);
 
-    expect(await creditLotRepo.sumSpentByStudio(reader)).toEqual([]);
+    expect(await creditLotRepo.sumSpentByStudio(payer)).toEqual([]);
   });
 
   it("has nowhere to put a run that belongs to no studio, and leaves it out", async () => {
     // The list above keeps this row. Here the answer is one line per studio,
     // and a run that was in none has no line — which is why the two reads
     // share the administering test and not the whole predicate.
-    const reader = await seedUser();
-    await seedSpend(reader, null, 3);
+    const payer = await seedUser();
+    await seedSpend(payer, null, 3);
 
-    expect(await creditLotRepo.sumSpentByStudio(reader)).toEqual([]);
+    expect(await creditLotRepo.sumSpentByStudio(payer)).toEqual([]);
   });
 });

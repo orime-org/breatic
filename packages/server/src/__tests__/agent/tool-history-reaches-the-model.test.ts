@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A chat turn converts a stored tool result into what the model accepts.
@@ -18,7 +18,7 @@ const streamTextRetry = vi.fn();
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { projectMemory: "", conversationMemory: "" },
+    memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
     // The history is what this case is about: a turn now reads it itself,
     // after storing the message and answering the browser, so this is where
     // it comes from.
@@ -67,7 +67,7 @@ vi.mock("@breatic/domain", async () => {
 const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({ addMessage,
-  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }), getMessages }));
+  addUserMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }), getMessages }));
 // The turn asks the conversation what it is called, so it can say so in the
 // event that opens the turn. Answered with a name already set: these tests are
 // about what a turn streams, not about how a conversation comes by its name.

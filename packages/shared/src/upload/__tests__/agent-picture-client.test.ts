@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { httpRequest } from "@shared/http/request.js";
@@ -64,7 +64,7 @@ describe("requesting an agent picture from ingest", () => {
     expect(result.agentPicture).toEqual({ outcome: "failed" });
   });
 
-  it("stops waiting on reader cancellation while preserving the original task deadline", async () => {
+  it("stops waiting on user cancellation while preserving the original task deadline", async () => {
     const controller = new AbortController();
     let started: (() => void) | undefined;
     const waiting = new Promise<void>((resolve) => { started = resolve; });
@@ -73,7 +73,7 @@ describe("requesting an agent picture from ingest", () => {
       started?.();
     }));
     const sent = about();
-    const stopped = new Error("reader stopped");
+    const stopped = new Error("user stopped");
     const reading = readStoredMediaAtIngest("https://ingest.example.com", "test-secret", sent, controller.signal);
     const rejection = expect(reading).rejects.toBe(stopped);
     await waiting;

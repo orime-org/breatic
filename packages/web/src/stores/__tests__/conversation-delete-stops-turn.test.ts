@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Deleting a conversation stops whatever it was running.
  *
  * A turn left running for a conversation that no longer exists goes on
- * calling the model and goes on being charged for, on behalf of a reader who
+ * calling the model and goes on being charged for, on behalf of a user who
  * has just said they are done with it. The reason is written beside the call
  * in `conversation-runtime.ts`; what was missing is anything that notices if
  * the call goes away.
@@ -100,7 +100,7 @@ describe('deleting a conversation that is mid-turn', () => {
 
     await conversationRuntime.remove(PROJECT, RUNNING);
 
-    // Without this the model keeps being called, and the reader keeps being
+    // Without this the model keeps being called, and the user keeps being
     // charged, for a conversation they have just deleted.
     expect(sent?.aborted).toBe(true);
   });

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * 会员面板（任务 #90）。
@@ -172,7 +172,7 @@ describe('MembershipPanel', () => {
     const { container } = setup();
     await screen.findByTestId('current-tier-name');
 
-    // The head is what the reader opened the panel to see; the quota, the
+    // The head is what the user opened the panel to see; the quota, the
     // cards and the table under it are what they scroll through. So the head
     // sits outside the scroll region and the rest sits inside it.
     // From the dialog outwards: the first `[data-scrollbars]` in the document
@@ -996,7 +996,7 @@ describe('MembershipPanel', () => {
     );
   });
 
-  it('says both of the two things this page owes the reader', async () => {
+  it('says both of the two things this page owes the user', async () => {
     // Membership and credits are separate legs. Somebody who reads a tier as
     // including generation allowance finds out part-way through generating.
     // Nothing computes tax yet (#170), so that sentence stops at "excludes
@@ -1056,7 +1056,7 @@ describe('MembershipPanel', () => {
 
     expect(screen.getByTestId('tier-price-pro')).toHaveTextContent('$19.99');
     // That line is about what a year saves. Beside monthly prices it
-    // describes something other than what the reader is looking at.
+    // describes something other than what the user is looking at.
     expect(screen.queryByTestId('membership-save-line')).toBeNull();
 
     await user.click(screen.getByTestId('membership-period-year'));

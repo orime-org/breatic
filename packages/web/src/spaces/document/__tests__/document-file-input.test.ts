@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * inner#1127 A2, A3, A11: files arriving by drop or paste, and the gap they
@@ -8,22 +8,20 @@
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';
-import { NodeSelection, TextSelection } from '@tiptap/pm/state';
+import { TextSelection } from '@tiptap/pm/state';
 
 import { documentBodyFragment } from '@breatic/shared';
 
 import { guardStrayFileDrops } from '@web/lib/stray-file-drop';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
-  pasteTarget,
   gapAtDrop,
   fileDropPosition,
   pastedFiles,
   type FilesArrival,
 } from '@web/spaces/document/document-file-input';
-import { gapAfter, gapBefore } from './textblocks';
-import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
-import { CellSelection } from '@tiptap/pm/tables';
+import { gapBefore } from './textblocks';
+import { tableBlock } from './table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -96,8 +94,12 @@ describe('which pastes are files (A3)', () => {
     expect(pastedFiles(clipboard([PNG]))).toEqual([PNG]);
   });
 
-  it('takes the file when the HTML beside it is just that one image', () => {
-    const data = clipboard([PNG], { 'text/html': '<meta charset="utf-8"><img src="https://x.example/a.png">' });
+  it.each([
+    ['image', '<img src="https://x.example/a.png">'],
+    ['video', '<video src="https://x.example/a.mp4"></video>'],
+    ['audio', '<audio src="https://x.example/a.mp3"></audio>'],
+  ])('takes the file when the HTML beside it is just that one %s', (_kind, element) => {
+    const data = clipboard([PNG], { 'text/html': `<meta charset="utf-8">${element}` });
     expect(pastedFiles(data)).toEqual([PNG]);
   });
 
@@ -130,81 +132,6 @@ describe('which pastes are files (A3)', () => {
   });
 });
 
-describe('the gap a paste goes into (A3)', () => {
-  it('is after the block the caret is in', () => {
-    const editor = open([
-      { type: 'paragraph', content: 'A' },
-      { type: 'paragraph', props: { quoted: true }, content: 'B' },
-      { type: 'paragraph', content: 'C' },
-    ]);
-    editor.setTextCursorPosition(idOf(editor, 'B'), 'end');
-
-    const { doc } = editor.prosemirrorView!.state;
-    expect(pasteTarget(editor.prosemirrorView!.state).gap).toBe(gapBefore(doc, idOf(editor, 'C')));
-  });
-
-  it('is above an empty line the caret is on, which keeps the caret', () => {
-    const editor = open([{ type: 'paragraph', content: 'A' }, { type: 'paragraph' }]);
-    const empty = (editor.document as Seen[])[1]!.id;
-    editor.setTextCursorPosition(empty, 'start');
-
-    const { doc } = editor.prosemirrorView!.state;
-    expect(pasteTarget(editor.prosemirrorView!.state).gap).toBe(gapBefore(doc, empty));
-  });
-});
-
-describe('the gap a paste goes into over a selection taking a table whole (inner#1619 T14)', () => {
-  it.each([
-    ['from above into a cell', 'A', 1, 'b1', 1],
-    ['from below into a cell', 'B', 1, 'a1', 1],
-  ] as const)('is after the table, %s', (_name, anchorWords, anchorOffset, headWords, headOffset) => {
-    const editor = open([
-      { type: 'paragraph', content: 'A' },
-      tableBlock({ rows: [{ cells: ['a1', 'b1'] }] }),
-      { type: 'paragraph', content: 'B' },
-    ]);
-    const view = editor.prosemirrorView!;
-    /**
-     * A position in some words.
-     * @param words - The words.
-     * @param offset - How far into them.
-     * @returns The position.
-     */
-    const at = (words: string, offset: number): number => {
-      let found = -1;
-      view.state.doc.descendants((node, pos) => {
-        if (found < 0 && node.isText && node.text === words) found = pos + offset;
-        return found < 0;
-      });
-      return found;
-    };
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at(anchorWords, anchorOffset), at(headWords, headOffset))));
-    const tableId = (editor.document as Seen[])[1]!.id;
-
-    expect(pasteTarget(view.state)).toEqual({ gap: gapAfter(view.state.doc, tableId), aimed: false });
-  });
-});
-
-describe('the gap a paste goes into with a block selected (A3)', () => {
-  it.each(['image', 'divider'] as const)('is after a selected %s block', (type) => {
-    const editor = open([
-      { type: 'paragraph', content: 'A' },
-      type === 'image' ? { type, props: { url: 'https://cdn.example/a.png', name: 'a.png' } } : { type },
-      { type: 'paragraph', content: 'B' },
-    ]);
-    const view = editor.prosemirrorView!;
-    let at = -1;
-    view.state.doc.descendants((node, pos) => {
-      if (node.type.name === type) at = pos;
-      return at < 0;
-    });
-    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, at)));
-    const selectedId = (editor.document as Seen[])[1]!.id;
-
-    expect(pasteTarget(view.state).gap).toBe(gapAfter(view.state.doc, selectedId));
-  });
-});
-
 describe('the gap a drop goes into (A2)', () => {
   it('names the blocks on either side of it', () => {
     const editor = open([
@@ -221,7 +148,7 @@ describe('the gap a drop goes into (A2)', () => {
 });
 
 describe('a paste of files', () => {
-  it('hands the files and the gap under the line holding the caret over, and inserts nothing itself', () => {
+  it('hands the files over to be put at the selection, and inserts nothing itself', () => {
     const sink = vi.fn();
     const editor = open(
       [
@@ -238,27 +165,9 @@ describe('a paste of files', () => {
     Object.defineProperty(event, 'clipboardData', { value: clipboard([PNG]) });
     view.dom.dispatchEvent(event);
 
-    expect(sink).toHaveBeenCalledWith({
-      files: [PNG],
-      gap: gapBefore(view.state.doc, idOf(editor, 'B')),
-      aimed: false,
-    });
+    expect(sink).toHaveBeenCalledWith({ files: [PNG] });
     expect(view.state.doc.eq(before)).toBe(true);
     expect(view.state.selection).toBeInstanceOf(TextSelection);
-  });
-
-  it('hands the files over as aimed at an empty line the caret is on', () => {
-    const sink = vi.fn();
-    const editor = open([{ type: 'paragraph', content: 'A' }, { type: 'paragraph' }], sink);
-    const empty = (editor.document as Seen[])[1]!.id;
-    editor.setTextCursorPosition(empty, 'start');
-    const view = editor.prosemirrorView!;
-
-    const event = new Event('paste', { bubbles: true, cancelable: true });
-    Object.defineProperty(event, 'clipboardData', { value: clipboard([PNG]) });
-    view.dom.dispatchEvent(event);
-
-    expect(sink).toHaveBeenCalledWith({ files: [PNG], gap: gapBefore(view.state.doc, empty), aimed: true });
   });
 
   it('hands nothing over in a read-only body', () => {
@@ -313,7 +222,7 @@ describe('a file dropped on an editable body (A1–A3)', () => {
     view.dom.firstElementChild!.dispatchEvent(event);
 
     expect(event.defaultPrevented).toBe(true);
-    expect(sink).toHaveBeenCalledWith({ files: [PNG], gap: gapAtDrop(view.state.doc, inAlpha), aimed: false });
+    expect(sink).toHaveBeenCalledWith({ files: [PNG], gap: gapAtDrop(view.state.doc, inAlpha) });
   });
 });
 
@@ -336,6 +245,44 @@ describe('the line a file drag shows (A2)', () => {
     expect(shown!.pos).toBe(gapBefore(view.state.doc, idOf(editor, 'Alpha words')));
   });
 
+  it('over the words of a table cell, keeps the editor\'s caret in the words', () => {
+    const editor = open([tableBlock({ rows: [{ cells: ['abcd', 'x'] }] })]);
+    const view = editor.prosemirrorView!;
+    let inCell = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (inCell < 0 && node.isTextblock && node.textContent === 'abcd') inCell = pos + 3;
+      return inCell < 0;
+    });
+
+    const shown = fileDropPosition({
+      editor: editor as never,
+      view,
+      event: fileDrag('dragover') as DragEvent,
+      defaultPosition: { pos: inCell, orientation: 'inline' },
+    });
+
+    expect(shown).toEqual({ pos: inCell, orientation: 'inline' });
+  });
+
+  it('over a code block in a table cell, shows the line between blocks, as in the body', () => {
+    const editor = open([tableBlock({ rows: [{ cells: [{ blocks: [{ type: 'codeBlock', content: 'abcd' }] }, 'x'] }] })]);
+    const view = editor.prosemirrorView!;
+    let inCode = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (inCode < 0 && node.type.name === 'codeBlock') inCode = pos + 3;
+      return inCode < 0;
+    });
+
+    const shown = fileDropPosition({
+      editor: editor as never,
+      view,
+      event: fileDrag('dragover') as DragEvent,
+      defaultPosition: { pos: inCode, orientation: 'inline' },
+    });
+
+    expect(shown?.orientation).toBe('block-horizontal');
+  });
+
   it('shows no line over a read-only body, where a drop does nothing', () => {
     const editor = open([{ type: 'paragraph', content: 'Alpha' }]);
     editor.isEditable = false;
@@ -348,46 +295,5 @@ describe('the line a file drag shows (A2)', () => {
     });
 
     expect(shown).toBeNull();
-  });
-});
-
-describe('the gap a paste goes into with cells of a table selected (inner#1619)', () => {
-  it('is after the table', () => {
-    const editor = open([
-      { type: 'paragraph', content: 'A' },
-      tableBlock({ rows: [{ cells: ['a1', 'b1'] }] }),
-      { type: 'paragraph', content: 'B' },
-      { type: 'paragraph', content: 'C' },
-    ]);
-    const view = editor.prosemirrorView!;
-    const cells: number[] = [];
-    view.state.doc.descendants((node, pos) => {
-      if (node.type.name === 'docTableCell') cells.push(pos);
-      return true;
-    });
-    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0]!, cells[1]!)));
-    const tableId = (editor.document as Seen[])[1]!.id;
-
-    expect(pasteTarget(view.state)).toEqual({ gap: gapAfter(view.state.doc, tableId), aimed: false });
-  });
-});
-
-describe('the gap a paste goes into with cells of a nested table selected (inner#1619)', () => {
-  it('is after the table, above the line nested after it', () => {
-    const editor = open([
-      { type: 'bulletListItem', content: 'P', children: [tableBlock({ rows: [{ cells: ['x1', 'x2'] }] }), { type: 'paragraph', content: 'after' }] },
-      { type: 'paragraph', content: 'B' },
-    ]);
-    const view = editor.prosemirrorView!;
-    const cells: number[] = [];
-    let tableId = '';
-    view.state.doc.descendants((node, pos) => {
-      if (node.type.name === 'docTableCell') cells.push(pos);
-      if (node.type.name === 'docTable') tableId = String(node.attrs['id']);
-      return true;
-    });
-    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0]!, cells[1]!)));
-
-    expect(pasteTarget(view.state)).toEqual({ gap: gapAfter(view.state.doc, tableId), aimed: false });
   });
 });

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a node's panel would run right now: the mode, model and params in
@@ -105,7 +105,7 @@ describe('what a node would run right now', () => {
     expect(now).toMatchObject({ mode: 'tts', model: 'speech', params: { voice_id: 'first' } });
   });
 
-  it('keeps the voice the reader picked', () => {
+  it('keeps the voice the user picked', () => {
     const now = currentGeneration(
       'audio',
       { handling: false, mode: 'tts', model: 'speech', paramsByModel: { speech: { voice_id: 'mine' } } },

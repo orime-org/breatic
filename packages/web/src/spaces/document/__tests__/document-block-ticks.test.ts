@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #904 验收 A5 · A7 的判据那半：which rows the menu ticks, and which one the
@@ -194,7 +194,7 @@ describe('the face the slot shows', () => {
   });
 
   it('shows the heading, not the ordered list it belongs to', () => {
-    // What the reader sees on that line is a heading: the heading's size, and
+    // What the user sees on that line is a heading: the heading's size, and
     // a heading path where a list marker would be.
     const doc = docOf([
       { type: 'heading', props: { level: 1, numbered: true } },

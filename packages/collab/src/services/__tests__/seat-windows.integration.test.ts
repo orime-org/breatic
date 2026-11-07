@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The three bounded windows in which a writable content connection may hold
@@ -134,10 +134,7 @@ async function rig(real = false): Promise<Rig> {
     sockets,
     async alive(socketId: string): Promise<void> {
       const carried: ReadonlyMap<string, unknown> = sockets.get(socketId) ?? new Map();
-      onAlive(socketId, carried as LiveSocketConnections, clock);
-      await w.flush();
-      for (let i = 0; i < 3; i++) await new Promise<void>((resolve) => setImmediate(resolve));
-      await w.flush();
+      await onAlive(socketId, carried as LiveSocketConnections, clock);
     },
     hold(socketId: string, c: FakeConn): FakeConn {
       const docs = sockets.get(socketId) ?? new Map<string, FakeConn>();

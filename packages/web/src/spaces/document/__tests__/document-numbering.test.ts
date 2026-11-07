@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #904 验收 C3–C9b · #978 验收 A1 · A2 · A3 · A4 · A5 · A12 · A14: the numbers
- * the reader sees, computed from the document alone.
+ * the user sees, computed from the document alone.
  *
  * Two counting rules live here, and they answer to different things (§3.4):
  * a numbered heading counts within the headings of its own level, ignoring
@@ -102,7 +102,7 @@ function docOf(specs: readonly Spec[]): PMNode {
 /**
  * The numbers for a document, keyed by block id.
  * @param specs - The top-level blocks, in order.
- * @returns Block id to the string the reader sees.
+ * @returns Block id to the string the user sees.
  */
 function numbersFor(specs: readonly Spec[]): Map<string, string> {
   const doc = docOf(specs);
@@ -481,7 +481,7 @@ describe('#978 — a line starts over where anything else stands in it', () => {
 describe('the numbers a row press leaves behind', () => {
   // The cases above build a document and read it. These press a row on a live
   // editor first, which is what C3 and C9b ①② ask for: their subject is a
-  // block the reader TURNED INTO something, and a fixture that starts out as
+  // block the user TURNED INTO something, and a fixture that starts out as
   // the result skips the step under test.
   const live: ReturnType<typeof buildDocumentEditor>[] = [];
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { Plus, X } from 'lucide-react';
 import * as React from 'react';
@@ -146,7 +146,7 @@ interface FieldCellProps {
 
 /**
  * One field of one entry: a choice list, or a text box written when the
- * reader leaves it (one write per edit, so each is one canvas undo step).
+ * user leaves it (one write per edit, so each is one canvas undo step).
  * @param root0 - Props.
  * @param root0.testId - The cell's test id.
  * @param root0.field - The field.

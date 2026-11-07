@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { STORAGE_KEYS } from '@web/lib/storage-keys';
 
@@ -11,7 +11,7 @@ import { STORAGE_KEYS } from '@web/lib/storage-keys';
  * `ProtectedRoute` and the server, and being wrong here costs one chunk.
  *
  * Unreadable storage answers no, which is the side that costs a round trip
- * rather than a download the reader is about to be bounced away from.
+ * rather than a download the user is about to be bounced away from.
  * @returns True when a session has been seen in this browser.
  */
 export function hasSeenSession(): boolean {
@@ -40,6 +40,6 @@ export function rememberSession(seen: boolean): void {
       localStorage.removeItem(STORAGE_KEYS.sessionSeen);
     }
   } catch {
-    // Storage is unavailable; the reader pays one uncached chunk.
+    // Storage is unavailable; the user pays one uncached chunk.
   }
 }

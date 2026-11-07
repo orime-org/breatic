@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The toolbar over a link the pointer is hovering or the caret is inside.
@@ -99,7 +99,7 @@ type ToolbarFace = 'read' | 'form';
  */
 type HoldReason = 'pointer' | 'caret';
 
-/** A link the reader took the toolbar away from, and what was standing on it. */
+/** A link the user took the toolbar away from, and what was standing on it. */
 interface Dismissal {
   /** The link, tracked so a co-editor's writing does not lose it. */
   tracked: TrackedLink;
@@ -125,7 +125,7 @@ interface HeldLink {
  * The gap between the toolbar and the link it points at.
  *
  * The panel's own rung to start from; measured on a real page at the end, as
- * the gap is counted from the edge the reader sees rather than from the
+ * the gap is counted from the edge the user sees rather than from the
  * element the library measures.
  */
 const LINK_TOOLBAR_GAP = 8;
@@ -179,9 +179,9 @@ export function DocumentLinkToolbar({
   /** The last dismissal acted on, so one event is answered once. */
   const answered = React.useRef<Event | null>(null);
   /**
-   * The links the reader was on when they took the toolbar away.
+   * The links the user was on when they took the toolbar away.
    *
-   * Up to two, because the reader can be on two at once — the pointer resting
+   * Up to two, because the user can be on two at once — the pointer resting
    * on one while the caret sits in another — and Escape takes away the whole
    * of that moment.
    *
@@ -190,7 +190,7 @@ export function DocumentLinkToolbar({
    * whole link is what makes a press on one stick: the press dismisses before
    * it moves the caret, so the caret lands in a link it would otherwise be a
    * standing reason to raise. Ending on the reasons that were there is what
-   * lets the reader come back to it: with the hand gone, the caret that press
+   * lets the user come back to it: with the hand gone, the caret that press
    * dropped in would otherwise hold the record open for as long as it sat
    * there, and reaching for the link again answered with nothing.
    *
@@ -281,7 +281,7 @@ export function DocumentLinkToolbar({
    *
    * The field takes the focus to be typed into, and a removed focused element
    * drops it on the body, where keystrokes reach nothing at all. Anywhere
-   * else the focus is someone else's: a reader typing in the chat column
+   * else the focus is someone else's: a user typing in the chat column
    * beside the body presses Escape at a toolbar their pointer raised.
    */
   const handFocusBack = React.useCallback((): void => {
@@ -320,7 +320,7 @@ export function DocumentLinkToolbar({
    * Work out what the toolbar is about, and say so.
    *
    * The ONE place the hold is decided (design §6.1.1). Every handler updates a
-   * fact — where the pointer has come to rest, what the reader dismissed,
+   * fact — where the pointer has come to rest, what the user dismissed,
    * whether an address is owed a reading — and calls this; none of them writes
    * the hold. Six rounds of review found defects only where one door asked
    * fewer of these questions than another door asked, so there is one door.
@@ -359,7 +359,7 @@ export function DocumentLinkToolbar({
       );
     });
     /**
-     * Whether the reader took the toolbar away from this link.
+     * Whether the user took the toolbar away from this link.
      * @param range - The link to ask about.
      * @returns True while that dismissal stands.
      */
@@ -458,7 +458,7 @@ export function DocumentLinkToolbar({
   }, [cancelClose, cancelOpen, setHold]);
 
   /**
-   * Let go because the reader asked, and stay away.
+   * Let go because the user asked, and stay away.
    *
    * Every edit in the document re-asks what link the caret is on, so a
    * dismissal that left no trace would last until the next keystroke anyone
@@ -487,7 +487,7 @@ export function DocumentLinkToolbar({
     ].filter((one): one is Dismissal => one !== null);
     cancelOpen();
     candidate.current = null;
-    // The field goes with it: a dismissal is the reader taking the whole
+    // The field goes with it: a dismissal is the user taking the whole
     // toolbar away, and what is left standing is asked without it.
     faceRef.current = 'read';
     setFace('read');
@@ -695,7 +695,7 @@ export function DocumentLinkToolbar({
 
   // Letting go of the link takes the rest of the toolbar with it. Written
   // once here rather than at each place that lets go, so a face and a draft
-  // cannot outlive the link they were about — and the next link the reader
+  // cannot outlive the link they were about — and the next link the user
   // reaches raises the address rather than someone else's unfinished field.
   // The caret route has no delay to wait on: the link is either under the
   // caret or it is not.
@@ -817,7 +817,7 @@ export function DocumentLinkToolbar({
    * Write what is in the field onto the link this toolbar opened over.
    *
    * The handle resolves to the link as it stands now, so an address confirmed
-   * after a co-editor wrote beside it still lands on the link the reader was
+   * after a co-editor wrote beside it still lands on the link the user was
    * looking at.
    */
   const submit = React.useCallback(

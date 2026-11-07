@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Where each comment's words are down the body (#18, user 2026-09-22).
@@ -78,7 +78,7 @@ export function useCommentAnchors(
   // Before paint, for the same reason `PlacedCard` takes a card's height
   // before paint: a frame with these missing hands `layOutCards` no anchors
   // at all, which stacks every card from the top of the column — and the
-  // cards animate their `top`, so the reader watches them slide into place
+  // cards animate their `top`, so the user watches them slide into place
   // (measured 2026-09-23: three cards painted at 11 and 141 before sliding
   // to 384 and 913).
   React.useLayoutEffect(() => {
@@ -117,7 +117,7 @@ export function useCommentAnchors(
             // thread still has its words, and the card still shows the quote
             // it took from them — dropping it here would slide that card to
             // the bottom of the panel, where the layout puts a card with no
-            // anchor, and nothing would bring it back until the reader typed.
+            // anchor, and nothing would bring it back until the user typed.
             stale.push(id);
           }
         });

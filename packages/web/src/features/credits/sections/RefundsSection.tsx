@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { creditSourceLabelKey } from '@web/features/credits/credit-source-label';
 
@@ -147,7 +147,7 @@ export function RefundsSection({
       scrolls={false}
       title={t('credits.section.refunds')}
       // The terms hold whatever the list is doing, so they stay on screen for
-      // a reader whose list is empty or still arriving.
+      // a user whose list is empty or still arriving.
       //
       // The lines the rule is published as, read back from the version in
       // force today. A summary written separately said two of them, and one

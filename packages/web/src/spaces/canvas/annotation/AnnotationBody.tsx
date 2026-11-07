@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * An annotation's words, drawn.
@@ -23,7 +23,7 @@ import { keepUnsupportedAsTyped } from '@web/spaces/canvas/annotation/keep-unsup
 /**
  * The tags this renderer emits. Anything the plugin did not already hand back
  * as text would be dropped here, so the two lists say the same thing twice on
- * purpose: the plugin decides what the reader sees, this is the floor under it.
+ * purpose: the plugin decides what the user sees, this is the floor under it.
  */
 const DRAWN_TAGS = [
   'p',

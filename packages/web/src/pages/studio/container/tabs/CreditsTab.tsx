@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
@@ -219,7 +219,7 @@ export function CreditsTab({ slug }: CreditsTabProps): React.JSX.Element {
     enabled: hasNextPage && !isFetchingNextPage,
     onReachEnd: loadMore,
     itemCount: ledgerRows.length,
-    // A page that did not arrive stops the watcher until the reader scrolls
+    // A page that did not arrive stops the watcher until the user scrolls
     // again; without it an end already in view asks for the same page back to
     // back for as long as the failure lasts.
     //

@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
-import { Play, Pause, Volume2, VolumeX, Maximize } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
 import { Skeleton } from '@web/components/ui/skeleton';
@@ -16,11 +16,25 @@ import { usePreviewSrc, usePreviewWidth } from '@web/lib/preview-src';
 import { cn } from '@web/lib/utils';
 import { formatSeconds } from '@web/spaces/canvas/lib/duration';
 import type { NodeResolution } from '@web/spaces/canvas/nodes/_shared/NodeResolutionBadge';
-import { useMediaPlayer } from '@web/spaces/canvas/nodes/_shared/use-media-player';
+import { useMediaPlayer, writePlayerState, type MediaPlayerState } from '@web/spaces/canvas/nodes/_shared/use-media-player';
 import { Waveform } from '@web/spaces/canvas/nodes/_shared/Waveform';
 import { MediaControlsPortal, useSeekPointer, type VideoControlsTarget } from '@web/spaces/canvas/nodes/_shared/media-video-controls';
 
+/** What a player lets its owner do from outside (inner#1844). */
+export interface MediaPlayerHandle {
+  /** Where the player stands now. */
+  read: () => MediaPlayerState;
+  /** Pause it. */
+  pause: () => void;
+  /** Move it to a time and set its sound, leaving it paused or playing as it is. */
+  apply: (state: MediaPlayerState) => void;
+}
+
 interface MediaPlayerProps {
+  /** The handle a full-screen view reads and writes the player through. */
+  ref?: React.Ref<MediaPlayerHandle>;
+  /** Where to start: a full-screen view goes on from its source player. */
+  start?: MediaPlayerState;
   /** Which media kind to render. */
   modality: 'audio' | 'video';
   /** Media source URL (the permanent public `adapter.publicUrl` value). */
@@ -42,13 +56,10 @@ interface MediaPlayerProps {
    */
   duration?: number;
   /**
-   * `'full'` (default) — the node player with volume + fullscreen.
-   * `'preview'` (#1622) — the hover-preview player: play + seek only, NO
-   * volume popover and NO fullscreen. Both are dropped because a hover
-   * preview is a quick "sense what it is" surface, and both would fight a
-   * HoverCard: the volume is a portaled Popover (a DOM sibling of the
-   * card, so moving to it leaves the card) and fullscreen takes over the
-   * screen (exiting it leaves the card). See the hover-preview spec.
+   * `'full'` (default) — the player with volume.
+   * `'preview'` (#1622) — the hover-preview player: play + seek only, no
+   * volume popover. The volume is a portaled Popover, a DOM sibling of the
+   * card, so moving to it would leave the HoverCard.
    */
   variant?: 'full' | 'preview';
   /**
@@ -120,19 +131,23 @@ function useOriginalCover(url: string | undefined): CoverOutcome {
  * rather than the node.
  * Zero third-party player dependency.
  * @param root0 - Component props.
+ * @param root0.ref - The handle a full-screen view reads and writes the player through.
+ * @param root0.start - Where to start.
  * @param root0.modality - `'audio'` or `'video'`.
  * @param root0.src - Media source URL.
  * @param root0.poster - Poster image (video only).
  * @param root0.fullPoster - Show the poster's original, not its preview.
  * @param root0.size - The video's own size, which reserves the box.
  * @param root0.duration - The running time the ledger measured, if any.
- * @param root0.variant - `'full'` (node player, default) or `'preview'` (hover preview: no volume / fullscreen).
+ * @param root0.variant - `'full'` (default) or `'preview'` (hover preview: no volume).
  * @param root0.onDimensions - Reports the video's intrinsic pixel size on metadata load (video only).
  * @param root0.controlsHidden - Slide the control bar out and make it unreachable (video only, #1987).
  * @param root0.videoControls - The document-owned control destination and interaction callbacks.
  * @returns The media player element.
  */
 export function MediaPlayer({
+  ref: handleRef,
+  start,
   modality,
   src,
   poster,
@@ -145,7 +160,20 @@ export function MediaPlayer({
   videoControls,
 }: MediaPlayerProps): React.JSX.Element {
   const ref = React.useRef<HTMLMediaElement>(null);
-  const p = useMediaPlayer(ref, duration);
+  const p = useMediaPlayer(ref, duration, start);
+  React.useImperativeHandle(handleRef, () => ({
+    read: () => {
+      const el = ref.current;
+      return el
+        ? { time: el.currentTime, playing: !el.paused, muted: el.muted, volume: el.volume }
+        : { time: 0, playing: false, muted: false, volume: 1 };
+    },
+    pause: () => ref.current?.pause(),
+    apply: (state) => {
+      const el = ref.current;
+      if (el) writePlayerState(el, state);
+    },
+  }), []);
   const isVideo = modality === 'video';
   const pointer = useSeekPointer(p.seekFraction, videoControls);
   React.useLayoutEffect(() => {
@@ -175,12 +203,11 @@ export function MediaPlayer({
   // Under the skeleton the video is hidden: a half-loaded or stretched poster
   // would show through it.
   const covered = loading || awaitsCover;
-  // #1622: the hover-preview variant drops volume (a portaled Popover) and
-  // fullscreen so it can live inside an auto-close HoverCard.
+  // #1622: the hover-preview variant drops volume (a portaled Popover) so it
+  // can live inside an auto-close HoverCard.
   const showVolume = variant !== 'preview';
-  const showFullscreen = variant !== 'preview';
   // The times give way only in the full player, which shares its row with the
-  // volume and full-screen buttons; the preview row has room for them.
+  // volume button; the preview row has room for them.
   const timeCls =
     variant === 'preview'
       ? 'shrink-0 text-2xs tabular-nums'
@@ -195,7 +222,7 @@ export function MediaPlayer({
   // The focus ring is the one thing the video branch has to restate. `Button`
   // rings in `--ring`, a themed colour read against a themed surface — and this
   // bar's surface is the video's own dark scrim in either theme, so in light
-  // theme the ring is dark on dark and a keyboard reader cannot see where they
+  // theme the ring is dark on dark and a keyboard user cannot see where they
   // are.
   const btnCls = `inline-flex ${BUTTON_SIZE} shrink-0 items-center justify-center rounded-chrome ${
     isVideo && !themedControls
@@ -302,26 +329,13 @@ export function MediaPlayer({
         {formatSeconds(p.duration)}
       </span>
       {showVolume ? <span className='hidden @min-[11rem]:contents'>{volumeControl}</span> : null}
-      {showFullscreen ? (
-        <Button
-          type='button'
-          variant={null}
-          size={null}
-          onClick={p.requestFullscreen}
-          aria-label='Fullscreen'
-          data-testid='fullscreen'
-          className={btnCls}
-        >
-          <Maximize className='h-4 w-4' />
-        </Button>
-      ) : null}
     </div>
   );
 
   if (isVideo) {
     return (
       // Sized as a container: narrower players drop the times, then the
-      // volume, keeping play, seek and full screen (the breakpoints a
+      // volume, keeping play and seek (the breakpoints a
       // responsive Video.js or Plyr player uses the same way).
       <div className='@container relative' data-testid='media-player'>
         {/* eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded asset; no caption track until caption authoring lands. */}

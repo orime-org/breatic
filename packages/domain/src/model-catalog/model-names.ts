@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A mode's picker names each model by its vendor's name, joining on a
  * `variant` only where two of them share one (`modelLabel` in shared). Two
  * namesakes in one mode without distinct variants would be two lines the
- * reader cannot tell apart, so the catalog refuses to load.
+ * user cannot tell apart, so the catalog refuses to load.
  */
 
 /** The fields of an entry its name on screen is made from. */

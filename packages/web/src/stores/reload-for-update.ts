@@ -1,5 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
+
+import * as React from 'react';
 
 import { STORAGE_KEYS } from '@web/lib/storage-keys';
 
@@ -12,6 +14,18 @@ const collectors = new Map<string, Collect>();
 let carried: Record<string, unknown> | null | undefined;
 /** Update was pressed and nothing has been pressed since. */
 let armed = false;
+/** Told each time `armed` changes. */
+const listeners = new Set<() => void>();
+
+/**
+ * Set whether Update is pending, telling whoever shows it.
+ * @param next - Pending or not.
+ */
+function setArmed(next: boolean): void {
+  if (armed === next) return;
+  armed = next;
+  for (const listener of listeners) listener();
+}
 
 /**
  * Reload for a new release, carrying what the user typed but has not sent.
@@ -22,8 +36,37 @@ let armed = false;
  * only when the page really goes, so that is where the write happens.
  */
 export function reloadForUpdate(): void {
-  armed = true;
+  setArmed(true);
   window.location.reload();
+}
+
+/**
+ * Whether Update was pressed and the page is still here waiting for the next
+ * one (inner#1729): the old page stays until the new one arrives.
+ * @returns True from Update until the next press.
+ */
+export function isUpdatePending(): boolean {
+  return armed;
+}
+
+/**
+ * Hear each change of {@link isUpdatePending}.
+ * @param listener - Called on each change.
+ * @returns Stops listening.
+ */
+export function subscribeUpdatePending(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+/**
+ * Whether Update is pending, for the button that shows it.
+ * @returns True from Update until the next press.
+ */
+export function useUpdatePending(): boolean {
+  return React.useSyncExternalStore(subscribeUpdatePending, isUpdatePending);
 }
 
 /**
@@ -58,7 +101,7 @@ function readCarried(): Record<string, unknown> | null {
 /** Write every part, if this unload is the one Update started. */
 function writeCarried(): void {
   if (!armed) return;
-  armed = false;
+  setArmed(false);
   const parts: Record<string, unknown> = {};
   for (const [part, collect] of collectors) parts[part] = collect();
   try {
@@ -72,10 +115,10 @@ function writeCarried(): void {
  * Any press after Update means the reload did not happen as asked: either
  * the leave prompt was cancelled and work went on, or the user is reloading
  * by hand, which carries nothing. Pressing Update again re-arms it, because
- * its own click fires after this.
+ * its own click fires after this. Its spinner stops with it.
  */
 function disarm(): void {
-  armed = false;
+  setArmed(false);
 }
 
 window.addEventListener('keydown', disarm, true);

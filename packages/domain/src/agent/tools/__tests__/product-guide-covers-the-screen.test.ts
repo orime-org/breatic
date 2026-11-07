@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The product guide accounts for every message the reader's screens show.
+ * The product guide accounts for every message the user's screens show.
  *
  * The screens are what the project page renders: every web module reachable
  * by import from the app's entry and the project page (the route table that
@@ -40,7 +40,7 @@ vi.mock("@breatic/shared", async (importOriginal) => {
 
 const PACKAGES = resolve(import.meta.dirname, "../../../../..");
 const WEB = join(PACKAGES, "web/src");
-/** The web modules the reader's screens start from. */
+/** The web modules the user's screens start from. */
 const WEB_ENTRIES = [join(WEB, "index.tsx"), join(WEB, "pages/project/ProjectPage.tsx")];
 /** The route table, which lazily imports every page of the app. */
 const ROUTE_TABLE = join(WEB, "app/route-imports.ts");

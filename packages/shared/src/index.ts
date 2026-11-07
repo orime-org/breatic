@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 
 export { STRIPE_WEBHOOK_RESULTS, type StripeWebhookResult } from "@shared/types/stripe-webhook.js";
@@ -58,6 +58,9 @@ export type {
   StudioProjectPage,
   RecentItem,
   MemoryContext,
+  AgentMemoryEntity,
+  AgentModelChoice,
+  ChatConversation,
   NodeType,
   AttachRef,
   FocusImage,
@@ -122,6 +125,7 @@ export type {
   Space,
   ActivityNewControlEvent,
   CreditsChangedControlEvent,
+  SpaceTasksChangedControlEvent,
   ProjectConnectionsCloseEvent,
   SessionsRevokedEvent,
   ProjectConnectionsCloseReason,
@@ -157,6 +161,7 @@ export {
   CANVAS_NODES_KEY,
   activityNewChannel,
   creditsChangedChannel,
+  spaceTasksChangedChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
@@ -188,6 +193,7 @@ export {
   PROJECT_ACTIVITY_TYPES,
   ACTIVITY_NEW_SIGNAL,
   CREDITS_CHANGED_SIGNAL,
+  SPACE_TASKS_CHANGED_SIGNAL,
   AssetActivityPayloadSchema,
   GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
@@ -220,6 +226,7 @@ export type {
   ProjectActivityPage,
   ActivityNewSignal,
   CreditsChangedSignal,
+  SpaceTasksChangedSignal,
 } from "@shared/types/index.js";
 
 export {
@@ -301,6 +308,9 @@ export {
   STUDIO_SLUG_BOUNDS,
   loginSchema,
   chatMessageSchema,
+  spaceRequestInputSchema,
+  sharedSpaceSchema,
+  spaceRequestAnswerSchema,
   chatAttachedChipSchema,
   taskCreateSchema,
   understandSchema,
@@ -322,6 +332,7 @@ export {
   chatEarlierMessagesQuerySchema,
   chatCreateConversationSchema,
   chatRenameConversationSchema,
+  chatSetModelSchema,
   CHAT_MESSAGE_MAX_CHARS,
   CONVERSATION_TITLE_MAX_CHARS,
   PROJECT_NAME_MAX_CHARS,
@@ -337,6 +348,9 @@ export type {
   LoginInput,
   ChatMessageInput,
   ChatSpaceContext,
+  SpaceRequestInput,
+  SharedSpace,
+  SpaceRequestAnswer,
   ChatAttachedChip,
   ChatSpace,
   ChatCurrentSpace,
@@ -357,6 +371,7 @@ export type {
   ChatConversationsQueryInput,
   ChatCreateConversationInput,
   ChatRenameConversationInput,
+  ChatSetModelInput,
 } from "@shared/schemas/index.js";
 
 export {
@@ -367,6 +382,8 @@ export {
   getActiveLocale,
   getAvailableLocales,
   setLocaleMessages,
+  setEveryLocaleMessages,
+  EVERY_LOCALE_KEYS,
   setLocaleResolver,
   onLocaleChange,
   resetLocales,
@@ -387,6 +404,7 @@ export {
 export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
 
 export { COLLAB_REAUTH_REASONS, isReauthCloseReason } from "@shared/collab-close-reasons.js";
+export { READ_ONLY_COLLAB_TOKEN } from "@shared/collab-read-only-token.js";
 export { COLLAB_CHUNK_ACK, COLLAB_FRAME_MAX_BYTES, collabChunkHeaderSchema, sendInChunks } from "@shared/collab-frame-chunks.js";
 
 export {
@@ -427,8 +445,8 @@ export {
   TimelineTrackSchema,
   TimelineVideoSourceSchema,
   TimelineVideoClipSchema,
-  TimelineEditCommandSchema,
   TimelineDocumentV1Schema,
+  TIMELINE_MAIN_TRACK_ID,
 } from "@shared/timeline/schema.js";
 export type {
   TimelineRate,
@@ -436,14 +454,10 @@ export type {
   TimelineTrack,
   TimelineVideoSource,
   TimelineVideoClip,
-  TimelineEditCommand,
   TimelineDocumentV1,
 } from "@shared/timeline/schema.js";
-export { durationToFrames, timelineSourceSeconds, validateTimelineRange } from "@shared/timeline/time.js";
-export type { TimelineRangeValidation } from "@shared/timeline/time.js";
-
-export { resolveTimelineArrangement } from "@shared/timeline/arrangement.js";
-export type { TimelineArrangement, TimelineArrangementClip, TimelineArrangementReason, TimelinePlacement } from "@shared/timeline/arrangement.js";
+export { assertTimelineRate, durationToFrames, timelineDurationFraction } from "@shared/timeline/time.js";
+export type { TimelineFraction } from "@shared/timeline/time.js";
 export { MAX_TIMELINE_ASSET_PAGE_SIZE } from "@shared/timeline/api.js";
 export type { TimelineClientLimits } from "@shared/timeline/api.js";
 
@@ -622,7 +636,7 @@ export type { AskUserAnswer, AskUserInput, AskUserQuestion, AskUserResult } from
 export {
   carrying,
   FAILURE_LINES,
-  isReaderLine,
+  isUserLine,
   LEGACY_FAILURE_LINES,
   NEVER_RAN,
   NOTHING_SAID_WHY,
@@ -824,6 +838,7 @@ export {
   TEMPLATE_GOALS,
   templateAnchor,
   templateGoalsFor,
+  templateNodeWords,
   templatesFor,
   type GenerationTemplate,
   type TemplateEdge,
@@ -831,7 +846,9 @@ export {
   type TemplateGoal,
   type TemplateInput,
   type TemplateNodeKey,
+  type TemplateNodeWords,
   type TemplateResourceNode,
+  type TemplateShot,
   type TemplateTriggers,
 } from "@shared/canvas/generation-templates.js";
 export {
@@ -1046,9 +1063,13 @@ export {
   type AttributionTouch,
 } from "@shared/analytics/attribution.js";
 
-export { SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, SceneObjectValuesSchema, SceneObjectSchema, SCENE_EDITABLE_FIELDS } from "@shared/scene.js";
-export type { SceneVector, SceneRotation, SceneModel, SceneObjectValues, SceneObject, SceneEditableField } from "@shared/scene.js";
+export { SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, SceneObjectValuesSchema, SceneObjectSchema, isSceneModelMediaType } from "@shared/scene.js";
+export type { SceneVector, SceneRotation, SceneModel, SceneObjectValues, SceneObject, SceneEditableField, SceneImportLimits, SceneControlsConfig } from "@shared/scene.js";
 export { SCENE_FORMAT_VERSION, getSceneRootMap, initializeSceneDocument } from "@shared/scene-version.js";
 
 export * from "@shared/credit-amount.js";
 export { purchaseRowSchema, creditLotViewSchema, studioLotViewSchema, creditLedgerViewSchema, studioLedgerViewSchema, projectCreditsViewSchema, studioCreditsViewSchema, studioCreditSummarySchema, creditOverviewSchema, creditLotPageSchema, creditLedgerPageSchema, purchasePageSchema } from "@shared/types/credit.js";
+
+export { projectVisitRequestSchema, projectVisitReceiptSchema, projectVisitOpenedSchema, projectVisitLookupSchema } from "@shared/project-visit-contract.js";
+export type { ProjectVisitRequest, ProjectVisitReceipt, ProjectVisitOpened, ProjectVisitLookup } from "@shared/project-visit-contract.js";
+export type { AccountActivityEntity, AccountActivityKind, AccountActivityCoverageEntity } from "@shared/types/entities.js";

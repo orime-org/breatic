@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The keys at and around tables: Tab, Shift-Tab, Enter and the arrows in a
@@ -33,6 +33,7 @@ import { Selection, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import type { BlockNoteEditor } from '@blocknote/core';
 import type { ResolvedPos } from '@tiptap/pm/model';
+import { takeAwayCellContent } from '@web/spaces/document/document-cell-content-selection';
 import { squareSelectedTable } from '@web/spaces/document/document-table-nodes';
 import { cellAt, wholeEmptyTableSelected } from '@web/spaces/document/document-table-run';
 import {
@@ -447,9 +448,9 @@ export const documentTableKeysExtension = createExtension(() => ({
     // Over a selection holding a whole table, through the selection's own
     // replace (inner#1619 T14): the body's deletes the range by position.
     Backspace: ({ editor }: { editor: KeysEditor }) =>
-      takeAwayHeldTables(editor.prosemirrorView) || deleteSelectedCells(editor) || backspaceAtEdge(editor.prosemirrorView),
+      takeAwayHeldTables(editor.prosemirrorView) || takeAwayCellContent(editor.prosemirrorView) || deleteSelectedCells(editor) || backspaceAtEdge(editor.prosemirrorView),
     Delete: ({ editor }: { editor: KeysEditor }) =>
-      takeAwayHeldTables(editor.prosemirrorView) || deleteSelectedCells(editor) || deleteAtEdge(editor.prosemirrorView),
+      takeAwayHeldTables(editor.prosemirrorView) || takeAwayCellContent(editor.prosemirrorView) || deleteSelectedCells(editor) || deleteAtEdge(editor.prosemirrorView),
     // The word and line deletes the body binds (Tiptap `keymap.ts:73-91`,
     // macOS ones included) delete the range by position as well.
     ...Object.fromEntries(
@@ -463,7 +464,7 @@ export const documentTableKeysExtension = createExtension(() => ({
         'Ctrl-Alt-Backspace',
         'Alt-Delete',
         'Alt-d',
-      ].map((key) => [key, ({ editor }: { editor: KeysEditor }) => takeAwayHeldTables(editor.prosemirrorView)]),
+      ].map((key) => [key, ({ editor }: { editor: KeysEditor }) => takeAwayHeldTables(editor.prosemirrorView) || takeAwayCellContent(editor.prosemirrorView)]),
     ),
     ArrowLeft: ({ editor }: { editor: KeysEditor }) =>
       collapseInCell(editor.prosemirrorView, -1) || leaveEdgeTable(editor, 'left'),

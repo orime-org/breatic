@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #904 验收 A10: undo never takes away what someone else wrote, and never
@@ -274,7 +274,7 @@ describe('undoing a clear', () => {
     // The guard normalises a selection the document cannot hold, and an
     // `AllSelection` restored by undo looks like one until you notice where it
     // came from: `document-select-all-guard.ts` skips undo transactions for
-    // exactly this. Reaching the clear the way a reader does — two presses of
+    // exactly this. Reaching the clear the way a user does — two presses of
     // `Mod-a`, then the confirmed clear — is what puts an `AllSelection` on
     // the stack to restore.
     const { editor } = openWithTwoBlocks();

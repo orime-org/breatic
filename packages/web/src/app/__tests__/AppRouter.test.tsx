@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import * as React from 'react';
@@ -30,7 +30,7 @@ interface PendingPage {
  * A page whose module has not arrived yet, plus the switch that delivers it.
  *
  * The promise stays pending until `deliver` is called, which is how a test
- * holds the app in the state a reader sees while a route chunk is still on
+ * holds the app in the state a user sees while a route chunk is still on
  * the wire.
  * @returns The lazy component and the function that resolves its module.
  */
@@ -83,7 +83,7 @@ describe('AppRouter', () => {
 
   it('keeps the router off React transitions', () => {
     // A router state update wrapped in `React.startTransition` leaves already
-    // revealed content on screen while the next page suspends, so the reader
+    // revealed content on screen while the next page suspends, so the user
     // would sit on the page they left until the chunk lands. `useTransitions`
     // defaults to undefined, which wraps them; false is what makes the
     // boundary above swap in on navigation too, not only on the first mount.
@@ -102,7 +102,7 @@ describe('AppRouter', () => {
     // React destroys the effects of whatever a boundary hides behind its
     // fallback. With the boundary above `RouterProvider`, the provider's
     // subscription to the router dies for the length of every chunk wait, so a
-    // reader who presses Back while the loading screen is up is not followed:
+    // user who presses Back while the loading screen is up is not followed:
     // measured on the production build, the address bar went to /studio and
     // the project page arrived four seconds later and stayed.
     //

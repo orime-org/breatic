@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a streaming reply costs the rest of the panel.
@@ -70,7 +70,7 @@ beforeEach(() => {
   wire = null;
   vi.mocked(chatApi.openChat).mockResolvedValue({
     conversations: [{ id: 'c1' }],
-    current: { conversation: { id: 'c1' }, messages: [], hasMore: false },
+    current: { conversation: { id: 'c1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
   } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
   vi.stubGlobal(
     'fetch',

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Reading a Stripe subscription into the row we store (#106 section 5.2 and
@@ -17,7 +17,7 @@
  * lookup answers both.
  *
  * An unpaid upgrade and an unpaid renewal both leave an open invoice, and the
- * two owe the reader different sentences.
+ * two owe the user different sentences.
  *
  * What Stripe charges is compared against what our own price list says. The
  * two are meant to be the same figure; a price id pasted into the wrong slot,

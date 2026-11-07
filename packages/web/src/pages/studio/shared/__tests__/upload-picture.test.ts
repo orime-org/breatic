@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi } from 'vitest';
 
@@ -97,6 +97,10 @@ describe('pictureErrorMessage', () => {
     );
   });
 
+  it('tells the person the file is over the upload size limit when the server refused it as too large', () => {
+    expect(pictureErrorMessage(new UploadFailedError('tooLarge'), t, KEYS)).toBe('server.error.upload_too_large');
+  });
+
   it('names a refused format with the shared sentence', () => {
     expect(pictureErrorMessage(new UploadFailedError('unsupportedType'), t, KEYS)).toBe(
       'studio.container.imageError.unsupported_type',
@@ -113,7 +117,7 @@ describe('pictureErrorMessage', () => {
     expect(pictureErrorMessage(refused, t, KEYS)).toBe('Only the owner can do that.');
   });
 
-  it('keeps a transport failure to the caller\'s retry sentence, since its message is not written for a reader', () => {
+  it('keeps a transport failure to the caller\'s retry sentence, since its message is not written for a user', () => {
     const dropped = new ApiException({ status: 0, message: 'Network Error', fromServer: false });
     expect(pictureErrorMessage(dropped, t, KEYS)).toBe('k.upload');
   });

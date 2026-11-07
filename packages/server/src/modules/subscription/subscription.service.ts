@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The four things a person can do to their membership (task #106, §7, §6.5.3).
@@ -19,7 +19,7 @@
  *
  * A scheduled cancellation is cleared AFTER the plan change, never before.
  * Neither order can be atomic, so the one to take is the one whose failure the
- * reader can see and undo: the upgrade is in force and the end date is still
+ * user can see and undo: the upgrade is in force and the end date is still
  * showing beside a resume button. The other order fails silently in the
  * direction of charging somebody who asked to stop.
  */
@@ -446,7 +446,7 @@ function itemToReplace(record: StoredSubscription): string {
  * The one irreversible call on this path, so it asks Stripe first rather than
  * acting on the stored row. That row is a snapshot from whichever wrote it
  * last, the webhook or one of our own calls to Stripe, and one of the ways it goes
- * out of date is the one that matters most here: the reader paid. The panel hands an account in this state a
+ * out of date is the one that matters most here: the user paid. The panel hands an account in this state a
  * payment link that opens in a NEW tab, so the tab they came from keeps
  * showing the old state and never refetches on focus; paying there and coming
  * back to press a tier button is a path we laid out ourselves. Cancelling on
@@ -664,7 +664,7 @@ export async function changePlan(input: {
   if (stored === null) {
     // Stripe took the change and what came back does not agree with our price
     // list. Reporting "applied" here is the one answer that cannot be taken
-    // back: the reader is told their plan changed while the row still holds
+    // back: the user is told their plan changed while the row still holds
     // the old one, and nothing later contradicts it.
     throw new AppError(500, t("server.membership.change_unconfirmed"));
   }
@@ -700,7 +700,7 @@ export async function changePlan(input: {
  * while the upgrade never happened: the account keeps renewing, nobody asked
  * for that, and nothing says so. After it, a failure leaves the upgrade in
  * force and the cancellation still scheduled — which the panel already draws
- * as an end date beside a "resume" button, so the reader can see it and undo
+ * as an end date beside a "resume" button, so the user can see it and undo
  * it themselves. Neither ordering can be atomic, so the one whose failure is
  * visible and reversible is the one to take.
  *
@@ -708,7 +708,7 @@ export async function changePlan(input: {
  * button is itself the statement "I am not leaving" — it is the only thing
  * that button says, and the panel offers it in this state on purpose (design
  * section 13, S3). Skipping it while the difference is still unpaid looked
- * careful and was not: the reader then pays the invoice, the upgrade applies,
+ * careful and was not: the user then pays the invoice, the upgrade applies,
  * and the scheduled ending is still there, so the plan they just paid more to
  * keep ends at the period boundary anyway.
  * @param subscriptionId - The subscription at Stripe.

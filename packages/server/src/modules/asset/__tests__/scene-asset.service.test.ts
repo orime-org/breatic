@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as fc from "fast-check";
@@ -30,16 +30,30 @@ describe("resolveSceneAsset", () => {
   it("returns the registered GLB descriptor after checking Project access", async () => {
     const mimeType = "model/gltf-binary";
     const url = "https://assets.example.test/registered-model";
+    const sizeBytes = 5956;
     findLiveInStudio.mockImplementation(async () => {
       expect(getProject).toHaveBeenCalledWith(PROJECT, USER);
-      return { fileUrl: url, mimeType };
+      return { fileUrl: url, mimeType, sizeBytes };
     });
 
-    expect(await resolveSceneAsset(PROJECT, USER, ASSET)).toEqual({ url, mimeType });
+    expect(await resolveSceneAsset(PROJECT, USER, ASSET)).toEqual({ url, mimeType, sizeBytes });
     expect(findLiveInStudio).toHaveBeenCalledWith(STUDIO, ASSET);
   });
 
-  it("leaves glTF bundles to the import follow-up because the current loader supports GLB", async () => {
+  it("returns the registered model package descriptor after Project authorization", async () => {
+    const url = "https://assets.example.test/registered-model-package.zip";
+    const mimeType = "application/zip";
+    const sizeBytes = 8948;
+    findLiveInStudio.mockImplementation(async () => {
+      expect(getProject).toHaveBeenCalledWith(PROJECT, USER);
+      return { fileUrl: url, mimeType, sizeBytes };
+    });
+
+    expect(await resolveSceneAsset(PROJECT, USER, ASSET)).toEqual({ url, mimeType, sizeBytes });
+    expect(findLiveInStudio.mock.calls).toEqual([[STUDIO, ASSET]]);
+  });
+
+  it("requires glTF dependencies to be registered as a complete model package", async () => {
     findLiveInStudio.mockResolvedValue({ fileUrl: "https://assets.example.test/scene.gltf", mimeType: "model/gltf+json" });
     await expect(resolveSceneAsset(PROJECT, USER, ASSET)).rejects.toBeInstanceOf(NotFoundError);
   });
@@ -64,12 +78,25 @@ describe("resolveSceneAsset", () => {
 
   it("INVARIANT: every unsupported MIME remains unavailable to the scene", async () => {
     await fc.assert(fc.asyncProperty(
-      fc.string().filter((mime) => mime !== "model/gltf-binary"),
+      fc.string().filter((mime) => mime !== "model/gltf-binary" && mime !== "application/zip"),
       async (mimeType) => {
         findLiveInStudio.mockResolvedValue({ fileUrl: "https://assets.example.test/non-model", mimeType });
         await expect(resolveSceneAsset(PROJECT, USER, ASSET)).rejects.toBeInstanceOf(NotFoundError);
       },
     ), { numRuns: 50 });
+  });
+
+  it("INVARIANT: registered model sizes are returned without substituting a declared size", async () => {
+    await fc.assert(fc.asyncProperty(
+      fc.constantFrom("model/gltf-binary", "application/zip"),
+      fc.integer({ min: 1, max: 268435456 }),
+      async (mimeType, sizeBytes) => {
+        const url = "https://assets.example.test/model";
+        findLiveInStudio.mockResolvedValue({ fileUrl: url, mimeType, sizeBytes });
+
+        expect(await resolveSceneAsset(PROJECT, USER, ASSET)).toEqual({ url, mimeType, sizeBytes });
+      },
+    ), { numRuns: 30 });
   });
 
   it("INVARIANT: asset ids never change the Studio selected by Project authorization", async () => {

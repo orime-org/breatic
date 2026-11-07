@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The panels' estimate: the shared pricing function run on the model and the
@@ -32,7 +32,7 @@ describe('useCreditEstimate', () => {
     await waitFor(() => expect(result.current).toEqual({ credits: 15, bound: 'exact' }));
   });
 
-  it('follows the params the reader changes', async () => {
+  it('follows the params the user changes', async () => {
     const { result, rerender } = renderHook(
       ({ hd }: { hd: boolean }) => useCreditEstimate(MIDJOURNEY, { params: { hd } }, 1),
       { initialProps: { hd: true } },

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #904 验收 A7b · C11: pressing Enter inside a quote leaves you inside it.
@@ -164,7 +164,7 @@ describe('Enter at the end of a quoted line', () => {
     // the line they had. A heading outside a quote — the one shape none of
     // these handlers claim — is the measure: it comes through with its number.
     // Measured before this, the three shapes these handlers do claim each
-    // dropped something the reader had set: the tick, the pinned number, the
+    // dropped something the user had set: the tick, the pinned number, the
     // list's own start.
     const CASES = [
       { type: 'checkListItem', props: { checked: true }, prop: 'checked', want: true },
@@ -191,7 +191,7 @@ describe('Enter at the end of a quoted line', () => {
     // direction; the cut is at `from`, which does not. Both ends sit in one
     // block here, so what this pins is the cut itself: the highlight opens at
     // offset 0, so the text goes to the new block and that block arrives as
-    // the line the reader had. Measured while the split asked the anchor, a
+    // the line the user had. Measured while the split asked the anchor, a
     // ticked task came back unticked when drawn right to left.
     const CASES = [
       { type: 'checkListItem', props: { checked: true }, prop: 'checked', want: true },
@@ -380,7 +380,7 @@ describe('Enter over a selection that opens in an empty quoted block', () => {
   // Emptiness and the caret's offset are read off the block the selection
   // OPENS in, and both stay true once it runs past that block. The branch
   // that answers an empty quoted line then opens another one without
-  // replacing anything, and what the reader had highlighted stays where it
+  // replacing anything, and what the user had highlighted stays where it
   // was — the same shape the list's Enter had.
   it('replaces what is selected', () => {
     const editor = open([

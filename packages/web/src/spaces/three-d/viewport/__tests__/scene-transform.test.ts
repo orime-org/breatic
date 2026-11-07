@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
@@ -11,7 +11,7 @@ import { createTransformGesture, transformPatches, uniformScaleRatio } from '@we
  * @throws {never} Never.
  */
 function object(id: string, x: number): SceneObject {
-  return { id, name: id, model: { kind: 'builtin', id: 'box' }, position: [x, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], exists: true, locked: false };
+  return { id, name: id, model: { kind: 'builtin', id: 'box' }, position: [x, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false };
 }
 
 describe('scene transform tuples (inner#1689)', () => {

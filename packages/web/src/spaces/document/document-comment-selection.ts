@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Which threads the reader is looking at (#18, A6 · A20).
+ * Which threads the user is looking at (#18, A6 · A20).
  *
  * A press on a highlight opens the comment it belongs to: the panel opens,
  * and the comment is read there. This holds the one thing the panel needs for
@@ -11,7 +11,7 @@
  * A LIST, NOT ONE. Two comments may cover the same run, and the library's own
  * handler reaches only the first of them (grep `marks.find` in
  * `@blocknote/core/dist/comments.js`). Naming all of them is what lets the
- * reader pick, which is what the two implementations that answer this
+ * user pick, which is what the two implementations that answer this
  * question do (see `document-comment-hit.ts`).
  * So this answers the press itself and returns true, which short-circuits the
  * rest of the chain — `prosemirror-view`'s `handleSingleClick` runs
@@ -72,7 +72,7 @@ export const DOCUMENT_COMMENT_SELECTION = new PluginKey<SelectionState>(
 
 /** What the plugin holds: which threads, and the paint that says so. */
 interface SelectionState {
-  /** The threads the reader is looking at. */
+  /** The threads the user is looking at. */
   readonly ids: readonly string[];
   /** The thread their pointer is resting on in the panel, if any. */
   readonly hovered: string | null;
@@ -97,7 +97,7 @@ const UNSELECTED: SelectionState = {
  * The meta a caller says which card the pointer is resting on with.
  *
  * Kept apart from the selection because they answer different questions and
- * outlive each other: resting on a card says where the reader is looking
+ * outlive each other: resting on a card says where the user is looking
  * right now, and leaving it leaves an open comment open.
  */
 const DOCUMENT_COMMENT_HOVER = 'documentCommentHover';
@@ -112,7 +112,7 @@ const DOCUMENT_COMMENT_HOVER = 'documentCommentHover';
 export const READING_CLASS = 'doc-comment-mark-reading';
 
 /**
- * The threads the reader is looking at.
+ * The threads the user is looking at.
  * @param state - The editor state to read.
  * @returns Their ids, empty when none is selected.
  */
@@ -166,7 +166,7 @@ function sameIds(a: readonly string[], b: readonly string[]): boolean {
 
 /**
  * Every thread whose highlight is drawn deeper right now.
- * @param ids - The threads the reader has open.
+ * @param ids - The threads the user has open.
  * @param hovered - The card their pointer is resting on, if any.
  * @returns Both, without repeats.
  */
@@ -454,7 +454,7 @@ function buildSelectionPlugin(
           }
           return false;
         }
-        // Already open: the reader is pressing the same comment again, and
+        // Already open: the user is pressing the same comment again, and
         // what they are after is whatever else those words are.
         if (
           hits.length === before.length &&

@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The two lines a turn puts under itself: what it is doing, and how it ended.
  *
  * They never coexist. While a turn runs, one line says what tool is running
  * and it is replaced as tools come and go; once the turn ends that line is
- * gone and leaves nothing behind, not even on a reload -- what a reader wants
+ * gone and leaves nothing behind, not even on a reload -- what a user wants
  * afterwards is the answer, not a log of how it was assembled.
  *
  * How it ended is drawn on the message it belongs to. Five endings, and only
@@ -78,7 +78,7 @@ describe('the line that says what a turn is doing', () => {
           content: '',
           streaming: true,
           // `search_images` declares a sentence of its own, distinct from
-          // web_search's: a reader told "searching the web" while pictures are
+          // web_search's: a user told "searching the web" while pictures are
           // being fetched is told about the wrong tool.
           toolCalls: [
             running('search_images', { query: 'cyberpunk city' }, 'chat.tool.searchingImages'),
@@ -162,7 +162,7 @@ describe('the line that says what a turn is doing', () => {
 });
 
 describe('how a turn ended', () => {
-  it('says a turn failed, and leaves the next move to the reader', () => {
+  it('says a turn failed, and leaves the next move to the user', () => {
     render(<MessageBubble message={{ id: 'm', role: 'assistant', content: '', failed: true }} />);
 
     expect(screen.getByTestId('message-bubble-error')).toBeInTheDocument();
@@ -188,7 +188,7 @@ describe('how a turn ended', () => {
     expect(screen.getByTestId('message-bubble-truncated')).toBeInTheDocument();
   });
 
-  it('says a turn is waiting on the reader', () => {
+  it('says a turn is waiting on the user', () => {
     render(<MessageBubble message={{ id: 'm', role: 'assistant', content: '', blocked: true }} />);
 
     expect(screen.getByTestId('message-bubble-blocked')).toBeInTheDocument();
@@ -263,7 +263,7 @@ describe('the line a failed tool step leaves (inner#1620)', () => {
     expect(screen.getByTestId('message-bubble-tool-failed')).toBeInTheDocument();
   });
 
-  it('draws nothing for a step the reader stopped, which the turn already says', () => {
+  it('draws nothing for a step the user stopped, which the turn already says', () => {
     drawn([
       { type: 'tool-web_search', toolCallId: 's1', state: 'input-available', input: { query: 'q' } },
       { type: 'data-interrupted', data: {} },
@@ -363,7 +363,7 @@ describe('what a finished reply offers', () => {
     expect(screen.queryByTestId('turn-copy')).not.toBeInTheDocument();
   });
 
-  it('offers copy on what the reader wrote too', () => {
+  it('offers copy on what the user wrote too', () => {
     render(<MessageBubble message={{ id: 'm', role: 'user', content: 'my question' }} />);
 
     expect(screen.getByTestId('turn-copy')).toBeInTheDocument();

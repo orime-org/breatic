@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The card a new comment is written in (#18, A1 · A2 · A21 · A22 · A29 · A30).
@@ -14,10 +14,10 @@
  * and why it was dropped live in the draft range plugin, the words in
  * `document-comment-unsent.ts`, and whether it is the card being read in the
  * selection plugin. The card can be mounted again over the same draft
- * (StrictMode mounts it twice), and what the reader wrote, and any notice they
+ * (StrictMode mounts it twice), and what the user wrote, and any notice they
  * were owed, are still there (design §9.4.1).
  *
- * A dropped draft says why until the reader dismisses it: the text it was
+ * A dropped draft says why until the user dismisses it: the text it was
  * aimed at is gone (A21), or their right to write here was taken away (A22).
  *
  * WHICH WORDS ARE BEING COMMENTED ON is said twice: the body paints them in
@@ -63,7 +63,7 @@ interface DraftCardProps {
   /** The draft this card draws. */
   draft: Draft;
   /**
-   * The reader's role on the project, watched so losing the right to write
+   * The user's role on the project, watched so losing the right to write
    * drops the draft (A22).
    *
    * Named as `SpaceBodyProps` names it. A prop called `role` on a JSX element
@@ -95,7 +95,7 @@ function readDraftQuote(editor: ToolEditor): string | null {
  * @param root0 - The editor, the draft, the role, and whether it is read.
  * @param root0.editor - The editor the comment lands in.
  * @param root0.draft - The draft this card draws.
- * @param root0.myRole - The reader's role on the project.
+ * @param root0.myRole - The user's role on the project.
  * @param root0.reading - Whether this is the card being read.
  * @returns The card.
  */
@@ -121,7 +121,7 @@ export function DocumentCommentDraftCard({
    *
    * Every way a draft closes or drops goes through here, and leaving a
    * selection behind stands the bubble bar back up the moment the card goes —
-   * which is not what the reader asked for by saving or by pressing Escape
+   * which is not what the user asked for by saving or by pressing Escape
    * (user 2026-09-22).
    * @param command - What to do with the draft.
    */
@@ -152,11 +152,11 @@ export function DocumentCommentDraftCard({
 
   // A30: an empty draft ends on a press anywhere outside the card — the body,
   // blank panel space, another card. It is the press, not the focus leaving,
-  // that says the reader went elsewhere: a menu handing the focus back to the
+  // that says the user went elsewhere: a menu handing the focus back to the
   // body as it closes, a press on the card's own padding and a switch to
-  // another window all move the focus without the reader leaving. Radix's
+  // another window all move the focus without the user leaving. Radix's
   // DismissableLayer answers "outside" the same way (`onPointerDownOutside`).
-  // Words the reader wrote are theirs to keep until they say otherwise.
+  // Words the user wrote are theirs to keep until they say otherwise.
   const card = React.useRef<HTMLElement>(null);
   const empty = draft.kind === 'aimed' && words.trim().length === 0;
   React.useEffect(() => {
@@ -177,7 +177,7 @@ export function DocumentCommentDraftCard({
     };
   }, [empty, close]);
 
-  /** Posts what the reader wrote, and closes the card once it has landed. */
+  /** Posts what the user wrote, and closes the card once it has landed. */
   const post = React.useCallback((): void => {
     // Words that are only spaces are not worth writing; the card stays open.
     if (words.trim().length === 0) return;
@@ -235,13 +235,13 @@ export function DocumentCommentDraftCard({
       )}
       <DocumentCommentWriteBox
         // Mounted afresh on every press of an entry, the first one or one
-        // that only moves the draft: each is the reader asking to write.
+        // that only moves the draft: each is the user asking to write.
         key={draft.entry}
         name='draft'
-        // The focus goes to a draft the reader just asked for, which is the
+        // The focus goes to a draft the user just asked for, which is the
         // card being read the moment it opens. The card mounting again while
         // another card is being read leaves that one alone.
-        // eslint-disable-next-line jsx-a11y/no-autofocus -- a card the reader just asked for by pressing the comment entry; they expect to type immediately
+        // eslint-disable-next-line jsx-a11y/no-autofocus -- a card the user just asked for by pressing the comment entry; they expect to type immediately
         autoFocus={reading}
         value={words}
         placeholder={t('spaces.document.comment.placeholder')}

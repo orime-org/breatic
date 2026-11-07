@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * 一次调用结束时,轮次替它说的那些话。
@@ -107,7 +107,7 @@ describe("轮次替一次调用说的每句话,都说了它自己那个下一步
     const own: ToolFailure = {
       kind: "tool_failed",
       forModel: "Fetching https://example.com failed: do not fetch the same address again.",
-      readerKey: "chat.tool.failure.upstream",
+      userKey: "chat.tool.failure.upstream",
     };
 
     expect(endingOf(carrying(new Error("the message"), own))).toStrictEqual(own);
@@ -133,17 +133,17 @@ describe("a call the SDK refused, in either shape it arrives in", () => {
 
   it("stays a failure when it is a tool's own exception or some other error", () => {
     // A bug in a tool, or the turn's own stream failing, is something the
-    // reader is told about.
+    // user is told about.
     expect(endingOf(new Error("boom"))).toMatchObject({
       kind: "tool_failed",
-      readerKey: FAILURE_LINES.ourFault,
+      userKey: FAILURE_LINES.ourFault,
     });
     // The same story to both: our side failed, the call itself was fine.
     expect(endingOf(new Error("boom")).forModel).toMatch(/our side/);
     expect(endingOf(new Error("boom")).forModel).not.toMatch(/correct the call/i);
     expect(endingOf("text part 1 not found")).toMatchObject({
       kind: "tool_failed",
-      readerKey: FAILURE_LINES.ourFault,
+      userKey: FAILURE_LINES.ourFault,
     });
   });
 });

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * inner#1127 A7–A10, A16, A17, A19: a media block in the body — what it
@@ -461,7 +461,7 @@ describe('a change to its props (A8, A9)', () => {
 describe('the toolbar', () => {
   it.each([
     ['image', ['caption', 'fullscreen', 'download', 'delete']],
-    ['video', ['caption', 'download', 'delete']],
+    ['video', ['caption', 'fullscreen', 'download', 'delete']],
     ['audio', ['caption', 'download', 'delete']],
   ] as const)('offers on %s: %j, and alignment only when narrower than the body', (type, rows) => {
     const editor = open(type);
@@ -632,11 +632,11 @@ describe('the toolbar', () => {
     const editor = open('image');
 
     fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-fullscreen'));
-    expect(screen.getByTestId('doc-media-fullscreen-image').getAttribute('src')).toBe(URL_OF);
+    expect(screen.getByTestId('media-fullscreen-image').getAttribute('src')).toBe(URL_OF);
     fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
 
     fireEvent.doubleClick(element(editor).querySelector('img')!);
-    expect(screen.getByTestId('doc-media-fullscreen-image')).toBeTruthy();
+    expect(screen.getByTestId('media-fullscreen-image')).toBeTruthy();
   });
 });
 
@@ -723,7 +723,7 @@ describe('a caption written through an input method (A16)', () => {
     fireEvent.change(input, { target: { value: '说明' } });
     fireEvent.compositionEnd(input, { data: '说明' });
     // The Enter that confirms the candidate is the input method's; the
-    // reader's own Enter afterwards commits.
+    // user's own Enter afterwards commits.
     await new Promise((done) => setTimeout(done, 0));
     fireEvent.keyDown(input, { key: 'Enter' });
 
@@ -763,7 +763,7 @@ describe('resizing (A8)', () => {
         fireEvent.pointerDown(handle, { clientX: 500, pointerId: 1 });
         fireEvent.pointerUp(handle, { clientX: 500 + distance, pointerId: 1 });
 
-        expect(media(editor).props['previewWidth']).toBe(distance > 0 ? available : Math.min(type === 'video' ? 128 : 48, available));
+        expect(media(editor).props['previewWidth']).toBe(distance > 0 ? available : Math.min(type === 'video' ? 92 : 48, available));
       });
     }
   }
@@ -847,7 +847,7 @@ describe('resizing (A8)', () => {
 
   it.each([
     ['image', 48],
-    ['video', 128],
+    ['video', 92],
   ] as const)('stops a %s at %ipx, however far the corner is pulled in', (type, floor) => {
     const editor = open(type, { previewWidth: 300, textAlignment: 'left' });
     selectMedia(editor);
@@ -1396,14 +1396,14 @@ describe('the focus around a media block', () => {
       } else {
         fireEvent.doubleClick(element(editor).querySelector('img')!);
       }
-      const picture = await screen.findByTestId('doc-media-fullscreen-image');
+      const picture = await screen.findByTestId('media-fullscreen-image');
       // The full-screen picture is the block's own: the body is not left.
       expect(view.state.selection).toBeInstanceOf(NodeSelection);
 
       fireEvent.keyDown(picture, { key: 'Escape' });
 
       await waitFor(() => {
-        expect(screen.queryByTestId('doc-media-fullscreen-image')).toBeNull();
+        expect(screen.queryByTestId('media-fullscreen-image')).toBeNull();
       });
       expect(document.activeElement).toBe(view.dom);
       expect(view.state.selection).toBeInstanceOf(NodeSelection);
@@ -1427,10 +1427,10 @@ describe('the focus around a media block', () => {
       });
 
       fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-fullscreen'));
-      const picture = await screen.findByTestId('doc-media-fullscreen-image');
+      const picture = await screen.findByTestId('media-fullscreen-image');
       fireEvent.keyDown(picture, { key: 'Escape' });
       await waitFor(() => {
-        expect(screen.queryByTestId('doc-media-fullscreen-image')).toBeNull();
+        expect(screen.queryByTestId('media-fullscreen-image')).toBeNull();
       });
 
       expect(document.activeElement).toBe(view.dom);
@@ -1473,12 +1473,12 @@ describe('the focus around a media block', () => {
     });
 
     fireEvent.doubleClick(element(editor).querySelector('img')!);
-    const picture = await screen.findByTestId('doc-media-fullscreen-image');
+    const picture = await screen.findByTestId('media-fullscreen-image');
     // The menu the keyboard was in closes while the picture is open.
     menu.remove();
     fireEvent.keyDown(picture, { key: 'Escape' });
     await waitFor(() => {
-      expect(screen.queryByTestId('doc-media-fullscreen-image')).toBeNull();
+      expect(screen.queryByTestId('media-fullscreen-image')).toBeNull();
     });
 
     expect(editor.prosemirrorView!.dom.contains(document.activeElement)).toBe(false);
@@ -1491,10 +1491,10 @@ describe('the focus around a media block', () => {
     expect(document.activeElement).toBe(document.body);
 
     fireEvent.doubleClick(element(editor).querySelector('img')!);
-    const picture = await screen.findByTestId('doc-media-fullscreen-image');
+    const picture = await screen.findByTestId('media-fullscreen-image');
     fireEvent.keyDown(picture, { key: 'Escape' });
     await waitFor(() => {
-      expect(screen.queryByTestId('doc-media-fullscreen-image')).toBeNull();
+      expect(screen.queryByTestId('media-fullscreen-image')).toBeNull();
     });
 
     expect(editor.prosemirrorView!.dom.contains(document.activeElement)).toBe(false);
@@ -1828,7 +1828,7 @@ describe('the caption field and the keyboard', () => {
     const { editor, field } = openCaption();
     const view = editor.prosemirrorView!;
     // The body takes the keyboard while the field is still on the page, so
-    // the field's going is not read as the reader leaving the body.
+    // the field's going is not read as the user leaving the body.
     let fieldWhenBodyFocused: boolean | null = null;
     view.dom.addEventListener('focus', () => {
       fieldWhenBodyFocused = field.isConnected;
@@ -1882,10 +1882,10 @@ describe('the full-screen picture and where the keyboard was', () => {
     });
 
     fireEvent.doubleClick(element(editor).querySelector('img')!);
-    const picture = await screen.findByTestId('doc-media-fullscreen-image');
+    const picture = await screen.findByTestId('media-fullscreen-image');
     fireEvent.keyDown(picture, { key: 'Escape' });
     await waitFor(() => {
-      expect(screen.queryByTestId('doc-media-fullscreen-image')).toBeNull();
+      expect(screen.queryByTestId('media-fullscreen-image')).toBeNull();
     });
 
     expect(document.activeElement).toBe(elsewhere);
@@ -1933,5 +1933,15 @@ describe('the drags a media block lets through', () => {
     selectMedia(editor);
     fireEvent.click(within(toolbar(editor)).getByTestId('doc-media-caption-button'));
     expect(refused(within(element(editor)).getByTestId('doc-media-caption-input'))).toBe(false);
+  });
+});
+
+describe.each(['image', 'video', 'audio'] as const)('a pending %s block (inner#1351 §5.5)', (type) => {
+  it('shows the pending frame and none of the media, its player, or its toolbar', () => {
+    const editor = open(type, { url: '', uploadId: 'u1', caption: '' });
+    const block = element(editor);
+    expect(within(block).getByTestId('doc-pending-media')).toBeTruthy();
+    expect(block.querySelector('img, video, audio')).toBeNull();
+    expect(within(block).queryByTestId('doc-media-toolbar')).toBeNull();
   });
 });

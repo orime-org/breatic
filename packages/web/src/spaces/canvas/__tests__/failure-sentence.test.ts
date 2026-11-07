@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A run on the sound of a source with none says what the source is
  * (inner#1305 §7.5): a video "has no audio track", an audio clip "has no
- * sound to read", in the reader's language.
+ * sound to read", in the user's language.
  */
 
 import { renderHook } from '@testing-library/react';

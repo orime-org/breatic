@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * BullMQ job handlers for task execution.
@@ -161,7 +161,7 @@ export interface TaskJobData {
  * shouldRetryJob), and `attemptsMade` counts failed attempts only: a job
  * moved back to delayed and picked up again keeps it. A terminal outcome may
  * only be settled on a terminal attempt: settling a retryable failure marks
- * the row failed while the retry is still to come, and the reader sees that
+ * the row failed while the retry is still to come, and the user sees that
  * failure sitting on a task the next attempt goes on to finish. Defensive: a
  * missing attemptsMade counts as terminal — settling a possibly-early
  * failure is the safer failure mode, since a row this settles is one `settle`
@@ -490,8 +490,8 @@ async function runTaskBody(
     await finishFailedRun({
       ...runEnd,
       // The row this lands on is read on a node, in whatever language the
-      // reader set. Which redelivery took which turn is the log's to say
-      // — it says it right above — and what the reader does next is send
+      // user set. Which redelivery took which turn is the log's to say
+      // — it says it right above — and what the user does next is send
       // it again, which is what this code says in their language.
       errorMessage: "internal" satisfies TaskFailureReason,
       settles: true,
@@ -643,7 +643,7 @@ async function runTaskBody(
       outcome: err instanceof DeadlinePassed ? "expired" : "failed",
     });
     // Rethrow to let BullMQ schedule a retry, unless the verdict already
-    // stands: the row is settled and the reader has been told, so another
+    // stands: the row is settled and the user has been told, so another
     // attempt would re-read the media and repeat the same refusal.
     if (!settlesNow) throw err;
     return { failed: true, reason: errorMsg };
@@ -698,8 +698,8 @@ async function runTaskBody(
     await finishFailedRun({
       ...runEnd,
       // Storing what broke would put one English sentence on a row read in
-      // whatever language its reader set. Which part of storing it failed is
-      // the log's to say — it says it right above — and the reader's next
+      // whatever language its user set. Which part of storing it failed is
+      // the log's to say — it says it right above — and the user's next
       // move is to run it again, which is what this code says to them.
       errorMessage: expired
         ? new DeadlinePassed().message
@@ -800,7 +800,7 @@ async function runTaskBody(
         userId,
         taskId,
         taskType,
-        // The credits are what the reader is charged, which is what the row's
+        // The credits are what the user is charged, which is what the row's
         // chip says. The provider reports dollars; the conversion happened
         // where the run was priced, and this is that result.
         metadata: generationMetadata({
@@ -1067,7 +1067,7 @@ export async function recordGenerationForNodes(
     // Stage 3, and a row left unsettled is harvested as `expired` by the next
     // read of the node's list (#196) — which names a deadline that never
     // passed. The cause is one we author, so it travels as a code and becomes
-    // a sentence in the reader's language (§7.1).
+    // a sentence in the user's language (§7.1).
     const ending: Parameters<typeof settleTaskForNode>[2] =
       result === null
         ? {
@@ -1230,7 +1230,7 @@ export async function settleRunCharge(run: RunCharge): Promise<void> {
  * nothing running to finish.
  *
  * The feed row names the node when the run had exactly one, which is what
- * lets a reader open it from the feed.
+ * lets a user open it from the feed.
  *
  * The history, settle and feed surfaces are best-effort: each logs its own
  * failure and the next one is still written. Marking the task failed and
@@ -1718,9 +1718,13 @@ export async function runUnderstand(
   // (inner#856): a transcript is every word said, and asking for an answer
   // language makes the model translate.
   const transcribing = isTranscription(params);
+  // A job queued before #1378 was deployed names the locale only under its
+  // old name. Carries the old name until #1387 removes it, in the release
+  // that also runs the rename migration again.
+  const userLocale = params.user_locale ?? params.reader_locale;
   const question = transcribing
-    ? transcribeQuestion(sourceType, params.keep_fillers !== false, params.reader_locale)
-    : understandQuestion(params.prompt, sourceType, params.reader_locale);
+    ? transcribeQuestion(sourceType, params.keep_fillers !== false, userLocale)
+    : understandQuestion(params.prompt, sourceType, userLocale);
 
   /**
    * Record the one call this run made.
@@ -1847,7 +1851,7 @@ export async function runUnderstand(
   if (transcribing) return [transcriptOf(answer), credits];
 
   // A run that answered nothing finished having put nothing on the node.
-  // Writing it would replace what the reader had with an empty node while
+  // Writing it would replace what the user had with an empty node while
   // the count says the run succeeded, so it fails instead and the row says
   // so. The call was still paid for — the media was the prompt — and its row
   // above says what it cost; a run that fails charges nothing.

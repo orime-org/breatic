@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * 一轮从按下发送到结束，中间那几样事实各自归谁写。
@@ -138,7 +138,7 @@ describe('第一帧之前被服务端拒掉', () => {
     expect(chat.messages).toHaveLength(0);
   });
 
-  it('输入框那一格没被碰过，字还在读者自己那儿', async () => {
+  it('输入框那一格没被碰过，字还在用户自己那儿', async () => {
     stubRefusingWire(402, '积分不足');
     aConversation();
     await sendInSession('c-1', '帮我找参考图');
@@ -284,12 +284,12 @@ describe('问心跳间隔的那次往返，比这一轮还长', () => {
     await sendInSession('c-1', '帮我找参考图');
     await settle();
 
-    // 这一轮已经以失败结束，读者已经被告知过一次。
+    // 这一轮已经以失败结束，用户已经被告知过一次。
     expect(chat.status).toBe('error');
     expect(told).toHaveLength(1);
 
     // 心跳间隔这时候才答复回来。
-    answerConfig?.({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 });
+    answerConfig?.({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000 });
     await settle();
     await vi.advanceTimersByTimeAsync(BEAT_MS * 4);
     await settle();
@@ -304,14 +304,14 @@ describe('问心跳间隔的那次往返，比这一轮还长', () => {
     // 所有结束方式的共同出口，所以撤不撤跟这一轮怎么结束的无关 —— 这条只走
     // 正常答完那一种，别的结束方式各有各的用例。留着不撤的后果：十五秒后它
     // 照样到点，把这条会话记进放弃名单，而名单是下一轮结束时读的，于是下一
-    // 轮明明答完了，读者却收到一句「网络问题」。
+    // 轮明明答完了，用户却收到一句「网络问题」。
     const wire = stubChatWire();
     const chat = aConversation();
     void sendInSession('c-1', '第一句');
     await settle();
 
     // 这一轮还跑着的时候心跳间隔就回来了，所以表真的装上了。
-    answerConfig?.({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 });
+    answerConfig?.({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000 });
     await settle();
 
     for (const chunk of turnOpens()) wire.current()?.push(chunk);
@@ -362,7 +362,7 @@ describe('问心跳间隔的那次往返，比这一轮还长', () => {
     await settle();
 
     // 第一轮那次现在才回来，而正在跑的是第二轮。
-    answerFirstTurn?.({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 });
+    answerFirstTurn?.({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000 });
     await settle();
     await vi.advanceTimersByTimeAsync(BEAT_MS * 4);
     await settle();
@@ -381,7 +381,7 @@ describe('问心跳间隔的那次往返，比这一轮还长', () => {
   it('会话还在不算数，要看这一轮还在不在', async () => {
     // 判据必须是轮次，不能是「这条会话的实例还在不在」：实例活得比每一轮都
     // 长，按它判就等于永远放行。装上的那块表到点之后会把这条会话记进「放弃
-    // 名单」，而名单是下一轮结束时读的 —— 于是下一轮明明好好答完，读者却收
+    // 名单」，而名单是下一轮结束时读的 —— 于是下一轮明明好好答完，用户却收
     // 到一句「网络问题」。
     const wire = stubChatWire();
     const chat = aConversation();
@@ -396,7 +396,7 @@ describe('问心跳间隔的那次往返，比这一轮还长', () => {
     expect(chat.status).toBe('ready');
 
     // 问心跳间隔的那次往返这时才回来，而这一轮早就结束了。
-    answerConfig?.({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 });
+    answerConfig?.({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000 });
     await settle();
     await vi.advanceTimersByTimeAsync(BEAT_MS * 4);
     await settle();
@@ -411,7 +411,7 @@ describe('问心跳间隔的那次往返，比这一轮还长', () => {
     wire.current()?.close();
     await settle();
 
-    // 两轮都顺利，读者一句话都不该收到。
+    // 两轮都顺利，用户一句话都不该收到。
     expect(chat.status).toBe('ready');
     expect(told).toEqual([]);
   });
@@ -428,7 +428,7 @@ describe('这一轮停下来整理记忆', () => {
 
   it('服务端说在整理，就记下来', async () => {
     // 会话长到一定程度，发下一句时服务端会先做一次归纳再回答，中间多等一次
-    // 完整的模型调用。面板这时是空的，读者看着它。
+    // 完整的模型调用。面板这时是空的，用户看着它。
     const wire = stubChatWire();
     aConversation();
     void sendInSession('c-1', '那接下来呢？');
@@ -463,7 +463,7 @@ describe('这一轮停下来整理记忆', () => {
   });
 
   it('这一轮结束了也不说了，哪怕一个字都没出', async () => {
-    // 归纳失败、模型报错、读者按停止，都走这条路。留着不清，下一轮打开这条
+    // 归纳失败、模型报错、用户按停止，都走这条路。留着不清，下一轮打开这条
     // 会话时那行字还在，而它说的是上一轮的事。
     const wire = stubChatWire();
     aConversation();

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Where the strip sits against the row it points at: vertically on the row's
@@ -9,7 +9,7 @@
  *
  * The strip is centred on the row's FIRST VISIBLE LINE, not on the row: a
  * heading is taller than the strip and a wrapped paragraph is several lines
- * tall, and in both cases the handle belongs beside the words the reader is
+ * tall, and in both cases the handle belongs beside the words the user is
  * looking at. `SideMenuController` places the carrier with `left-start`, which
  * puts its top edge on the row's top edge, so what this contributes is the
  * distance from there down to the middle of that line.
@@ -23,7 +23,7 @@
  * wrong here by construction. Measured in a browser on 2026-09-17, the strip
  * stood off the middle of the first line by +36.66px on a level-one heading,
  * −6.94 on level two, −8.48 on level three and +1.81 / +2.22 on paragraphs —
- * the reader's report was that it sat above the line on a heading. The table is
+ * the user's report was that it sat above the line on a heading. The table is
  * replaced rather than adjusted: `floatingUIOptions.useFloatingOptions` is
  * spread after the library's defaults (`SideMenuController.tsx:128-137`), so a
  * `middleware` list without it leaves the carrier exactly on the row's top
@@ -41,7 +41,7 @@
  *
  * Measuring the line rather than tabulating it also means nothing here has to
  * be revisited when the type scale moves, when a block type is added, or when
- * a reader's own font size differs.
+ * a user's own font size differs.
  */
 
 import type { Middleware } from '@floating-ui/react';

@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * What a card says about a flow, before the reader presses it (#263).
+ * What a card says about a flow, before the user presses it (#263).
  *
  * A proposal used to build one thing, so the card had one shape to draw, one
  * list of things left to do, and one price. A flow has several of each, and
@@ -17,10 +17,10 @@ import type { CanvasProposal, ModelCatalog, ModelEntry, ProposalNode } from '@br
 
 import { nameOf, shapeOf, todosOf } from '@web/pages/project/chat/proposal-card';
 
-/** An empty node waiting for the reader's material. */
+/** An empty node waiting for the user's material. */
 const empty = (name: string): ProposalNode => ({ role: 'source', type: 'image', name });
 
-/** A node waiting for the reader to press Generate, with its own marks. */
+/** A node waiting for the user to press Generate, with its own marks. */
 const generates = (name: string, model = 'flat-model', notes: string[] = []): ProposalNode => ({
   role: 'generate',
   type: 'image',
@@ -104,9 +104,9 @@ describe('the little diagram of what gets built', () => {
     ]);
   });
 
-  it('draws a node holding the reader\'s material as filled, beside the generation it fills (inner#1315)', () => {
+  it('draws a node holding the user\'s material as filled, beside the generation it fills (inner#1315)', () => {
     // A fill draws no edge, yet the portrait is part of the talking head it
-    // fills: one run, two layers, and nothing left for the reader to drop in.
+    // fills: one run, two layers, and nothing left for the user to drop in.
     const proposal: CanvasProposal = {
       ...flow([
         { ...empty('Your portrait'), material: 'https://ours.example/a.png' },
@@ -121,9 +121,9 @@ describe('the little diagram of what gets built', () => {
     expect(groups[0]?.[1]?.[0]?.label).toBe('Talking head');
   });
 
-  it('draws a template resource node as filled: we supply it, the reader does not (inner#1345 6.7)', () => {
+  it('draws a template resource node as filled: we supply it, the user does not (inner#1345 6.7)', () => {
     // The node lands empty and is fetched into storage right after; nothing is
-    // left for the reader to drop in, so the chip is not an outline.
+    // left for the user to drop in, so the chip is not an outline.
     const resource = {
       ...empty('Style'),
       resource: 'templates/fixture-flow/style.png',
@@ -150,7 +150,7 @@ describe('the little diagram of what gets built', () => {
     ]);
   });
 
-  it('marks the node the reader fills in, wherever it sits', () => {
+  it('marks the node the user fills in, wherever it sits', () => {
     const proposal = flow([empty('Your photo'), generates('On white')], [[0, 1]]);
 
     const groups = shapeOf(proposal);
@@ -160,7 +160,7 @@ describe('the little diagram of what gets built', () => {
   });
 });
 
-describe('what is left for the reader', () => {
+describe('what is left for the user', () => {
   it('hangs each note under the node it is about', () => {
     const proposal = flow([
       written('Your copy', ['Put your own brand in']),
@@ -175,7 +175,7 @@ describe('what is left for the reader', () => {
 
   it('hangs the material note under the generation when only it reads that node', () => {
     // §6.2 of the design and the demo both draw it there: one generation, one
-    // empty node, and the reader does both to-dos at that panel. Filed under
+    // empty node, and the user does both to-dos at that panel. Filed under
     // the empty node instead, a two-node group draws three to-do groups where
     // the demo draws two.
     const proposal = flow(
@@ -198,7 +198,7 @@ describe('what is left for the reader', () => {
   });
 
   it('files a slot-fed generation\'s material note under the generation', () => {
-    // Through a slot the reader picks by clicking, so no mention is written
+    // Through a slot the user picks by clicking, so no mention is written
     // and there is no empty node for the note to hang under -- the bracket
     // names the slot, and the panel it is picked in is this generation's.
     const proposal = flow(
@@ -222,7 +222,7 @@ describe('what is left for the reader', () => {
 
   it('keeps two marks in one prompt as two things to do', () => {
     // Two slots on one panel, and the model wrote the same words about each.
-    // Merged into one line the reader sees one job and two brackets.
+    // Merged into one line the user sees one job and two brackets.
     const same = { kind: 'asset' as const, label: 'a frame', note: 'Pick a frame' };
     const proposal = flow([
       {
@@ -237,7 +237,7 @@ describe('what is left for the reader', () => {
   });
 
   it('files what goes in a shared empty node under each generation, said once for the three', () => {
-    // The reader @s the node in each generation's own panel, so each of them
+    // The user @s the node in each generation's own panel, so each of them
     // lists it; three that ask for the same thing in the same words share one
     // group.
     const drop = { kind: 'asset' as const, label: 'your photo', note: 'Drop your photo in' };
@@ -260,7 +260,7 @@ describe('what is left for the reader', () => {
   });
 
   it('files every mark under the generation whose prompt carries it, in prompt order', () => {
-    // No mark is paired with a node: the reader @s by hand in that panel.
+    // No mark is paired with a node: the user @s by hand in that panel.
     const drop = (label: string): ProposalNode['prompt'] => [
       { slot: { kind: 'asset', label, note: `Drop the ${label} in` } },
     ];
@@ -324,10 +324,10 @@ describe('what is left for the reader', () => {
 });
 
 describe('where each generation\'s prompt is found (#289)', () => {
-  // The prompt the agent wrote lives in the generation panel, and a reader
+  // The prompt the agent wrote lives in the generation panel, and a user
   // new to the canvas does not know a right-click opens it. Every generation
   // says so under its own name, last, after whatever the agent asked of them.
-  it('tells the reader a written prompt is waiting in the panel', () => {
+  it('tells the user a written prompt is waiting in the panel', () => {
     const proposal = flow([empty('Your photo'), generates('On white')], [[0, 1]]);
 
     expect(todosOf(proposal, LINES)).toEqual([{ nodes: ['On white'], notes: ['PROMPT READY'] }]);
@@ -335,7 +335,7 @@ describe('where each generation\'s prompt is found (#289)', () => {
 
   it('says the settings are ready where the model draws no prompt box', () => {
     // A talking-head model takes a portrait and a recording, no prompt: the
-    // panel draws no box, so "the prompt is written" would send the reader
+    // panel draws no box, so "the prompt is written" would send the user
     // looking for something that is not there.
     const proposal = flow([{ ...generates('Talking head'), takesPrompt: false }]);
 

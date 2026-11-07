@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A chat turn whose body is over the request limit (inner#1006 design §4.7):
@@ -11,7 +11,7 @@
  *
  * Fixture as in `heartbeat-watchdog.test.ts`: fake timers, `chatApi.streamConfig`
  * mocked, a fake `fetch` answering with an SSE stream the test pushes into,
- * and `watchChatMishaps` collecting what the reader is told. The transfer's
+ * and `watchChatMishaps` collecting what the user is told. The transfer's
  * four steps (ticket, parts, finish, ending) are stubbed to succeed after a
  * stretch of fake time, and each records the signal it was handed.
  *
@@ -32,7 +32,7 @@ const BUDGET = BEAT_MS * SSE_HEARTBEAT_MISSES_ALLOWED;
 vi.mock('@web/data/api/chat', async (importOriginal) => ({
   ...(await importOriginal<typeof ChatApiModule>()),
   chatApi: {
-    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 })),
+    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000 })),
   },
 }));
 vi.mock('@web/data/api/request', async (importOriginal) => ({
@@ -374,7 +374,7 @@ describe('the heartbeat watchdog around an upload (H01-H03, H07, H08)', () => {
     timing = { ...DEFAULT_TIMING, config: 100, parts: [6000, 6000, 5000], wait: 1000 };
     vi.mocked(chatApi.streamConfig).mockImplementation(async () => {
       await sleep(3000);
-      return { heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 };
+      return { heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000 };
     });
     openSession();
     void sendInSession(CONVERSATION, LONG);
@@ -490,7 +490,7 @@ describe('stopping a turn while its body uploads (H04-H06)', () => {
   it('H06 leaving the project stops the upload the same way', async () => {
     useConversationRuntime.setState({
       conversations: {
-        [CONVERSATION]: { projectId: PROJECT, messages: [], hasMore: false, oldestLoadedTurn: null, title: null },
+        [CONVERSATION]: { projectId: PROJECT, messages: [], hasMore: false, oldestLoadedTurn: null, title: null, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       },
     });
     await uploadIntoSecondPart();

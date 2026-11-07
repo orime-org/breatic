@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -10,8 +10,8 @@ import { useCurrentUserStore, type CurrentUser } from '@web/stores/current-user'
 
 const user: CurrentUser = {
   id: 'user-1',
-  name: 'Reader',
-  email: 'reader@example.test',
+  name: 'User',
+  email: 'user@example.test',
   personalStudio: null,
   membershipTier: 'base',
 };

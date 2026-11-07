@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Closing a tab destroys two things — the Space's canvas undo manager and its
@@ -40,6 +40,8 @@ const CANVAS_DOC_A = `project-${PID}/canvas-${SPACE_A}`;
 const DOCUMENT_DOC_A = `project-${PID}/document-${SPACE_A}`;
 const CANVAS_DOC_B = `project-${PID}/canvas-${SPACE_B}`;
 const DOCUMENT_DOC_B = `project-${PID}/document-${SPACE_B}`;
+const TIMELINE_DOC_A = `project-${PID}/timeline-${SPACE_A}`;
+const TIMELINE_DOC_B = `project-${PID}/timeline-${SPACE_B}`;
 
 vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() },
@@ -108,6 +110,13 @@ vi.mock('@web/spaces/document/document-editor-cache', async () => {
     evictDocumentEditor: (name: string) => evictDocumentEditorMock(name),
   };
 });
+
+// The Timeline edit session (personal undo and selection) is a third doc-keyed cache (inner#1708 E12).
+const evictTimelineEditSessionMock = vi.fn();
+vi.mock('@web/data/yjs/timeline-edit-session', () => ({
+  evictTimelineEditSession: (name: string) => evictTimelineEditSessionMock(name),
+  getTimelineEditSession: vi.fn(),
+}));
 
 const sendSpaceRpcMock = vi.fn();
 vi.mock('@web/data/yjs/space-rpc-client', async () => {
@@ -261,6 +270,19 @@ describe('ProjectPage — closing a tab discards what that tab was holding', () 
     expect(evictDocumentEditorMock).toHaveBeenCalledWith(
       DOCUMENT_DOC_A,
     );
+  });
+
+  it('discards the closed tab\'s Timeline edit history, for that tab only', async () => {
+    await openBoth();
+
+    (await screen.findByTestId(`space-tab-close-${SPACE_A}`)).click();
+
+    await waitFor(() => {
+      expect(screen.queryByTestId(`space-tab-${SPACE_A}`)).toBeNull();
+    });
+    expect(evictTimelineEditSessionMock).toHaveBeenCalledTimes(1);
+    expect(evictTimelineEditSessionMock).toHaveBeenCalledWith(TIMELINE_DOC_A);
+    expect(evictTimelineEditSessionMock).not.toHaveBeenCalledWith(TIMELINE_DOC_B);
   });
 
   it('discards what a Space somebody else deleted was holding', async () => {

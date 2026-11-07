@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Buying credits, and what became of each purchase.
@@ -31,13 +31,13 @@ export interface PackList {
   /** The packs, in the order they are shown. */
   packs: CreditPack[];
   /**
-   * The refund rule in full, in the reader's language. Versioned on the
+   * The refund rule in full, in the user's language. Versioned on the
    * server, so a purchase made last year can still be shown what it agreed
    * to; the browser holds no copy.
    */
   refundLines: string[];
   /**
-   * The sentence the confirm dialog puts its tick against, in the reader's
+   * The sentence the confirm dialog puts its tick against, in the user's
    * language. The server holds it, so the wording shown and the version
    * recorded against the purchase come from the same place.
    */

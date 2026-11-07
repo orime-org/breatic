@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi } from 'vitest';
 
@@ -39,7 +39,7 @@ describe('isTransientUploadError — retry only what can heal', () => {
   // Carried on a flat `.status`, which is the only shape that reaches this
   // function now: presign is its one caller, and axios normalises every
   // failure into an ApiException before it arrives.
-  it('retries 5xx, never a 4xx: a 429 is a limit the reader is told about', () => {
+  it('retries 5xx, never a 4xx: a 429 is a limit the user is told about', () => {
     expect(isTransientUploadError({ status: 500 })).toBe(true);
     expect(isTransientUploadError({ status: 503 })).toBe(true);
     expect(isTransientUploadError({ status: 429 })).toBe(false);

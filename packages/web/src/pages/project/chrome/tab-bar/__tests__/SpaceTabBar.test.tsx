@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
@@ -194,7 +194,7 @@ describe('SpaceTabBar', () => {
     expect(onActivate).toHaveBeenCalledWith('s2');
   });
 
-  it('switching by a tab leaves focus where the reader was writing', async () => {
+  it('switching by a tab leaves focus where the user was writing', async () => {
     // A Space shown again finds its editor still open only if the press on
     // the tab did not take the caret away first (inner#1235 A13).
     const user = userEvent.setup();
@@ -215,7 +215,7 @@ describe('SpaceTabBar', () => {
 
   it('lets a press on a tab take focus from a box outside the Space', async () => {
     // A tab or project name being renamed is saved when it loses focus, and
-    // pressing another tab is one of the ways a reader leaves it.
+    // pressing another tab is one of the ways a user leaves it.
     const user = userEvent.setup();
     setup();
     const field = document.createElement('input');
@@ -302,7 +302,7 @@ describe('SpaceTabBar', () => {
       expect(scrollTo).toHaveBeenCalledWith({ left: 120, behavior: 'smooth' });
       // Every scroller between the tab and the document moves along with
       // `scrollIntoView`, and the project page is one of them once the window
-      // is narrower than its floor: a reader who had scrolled the page
+      // is narrower than its floor: a user who had scrolled the page
       // sideways lost that position on every arrow click.
       expect(reachesOutward).not.toHaveBeenCalled();
     });

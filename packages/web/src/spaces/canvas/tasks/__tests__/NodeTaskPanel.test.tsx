@@ -1,14 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The list that opens beside a node when one of its counts is clicked
  * (#186 §7.1).
  *
- * It shows one state's rows and nothing else: the reader asked for the
+ * It shows one state's rows and nothing else: the user asked for the
  * failures, so the successes are not what they are looking at. The rows come
  * from the server, so the panel has the three states any fetch has, and each
- * of them has to say something the reader can act on.
+ * of them has to say something the user can act on.
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
@@ -89,7 +89,7 @@ function renderPanel(
 }
 
 describe('NodeTaskPanel', () => {
-  it('shows only the state the reader clicked', () => {
+  it('shows only the state the user clicked', () => {
     renderPanel({
       status: 'failed',
       entries: [

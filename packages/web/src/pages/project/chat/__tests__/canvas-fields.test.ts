@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Which of a canvas node's fields an over-limit canvas keeps, by the field
@@ -187,7 +187,7 @@ describe('a slim entry', () => {
     expect(texts).toEqual([{ path: ['data', 'shots', 0, 'prompt'], text: 'one' }]);
   });
 
-  it('keeps the mode and model the reader picked when nothing would run', () => {
+  it('keeps the mode and model the user picked when nothing would run', () => {
     const { slim } = fitPartsOf(entryOf('image', { mode: 't2i', model: 'm1', prompts: { t2i: 'a boat' } }), undefined);
 
     expect(slim.data).toMatchObject({ mode: 't2i', model: 'm1', prompts: { t2i: 'a boat' } });

@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Nano Banana 2's camera controls have no upstream field: the family writes
- * them into the prompt, and only when the reader turned the camera on.
+ * them into the prompt, and only when the user turned the camera on.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Which range a command off the block handle acts on.
@@ -22,9 +22,9 @@ import {
  *
  * The commands behind the block type menu read a `Selection` rather than an
  * editor (`document-block-ticks.ts`, `document-block-run.ts`), because the
- * bubble bar acts on what the reader selected. The block handle acts on the
+ * bubble bar acts on what the user selected. The block handle acts on the
  * row the pointer is over instead, so this builds the selection that stands
- * for that row — WITHOUT dispatching it, which leaves the reader's own
+ * for that row — WITHOUT dispatching it, which leaves the user's own
  * selection, their caret and the undo stack untouched.
  *
  * The range covers the `blockContent` node alone. A `blockContainer` holds

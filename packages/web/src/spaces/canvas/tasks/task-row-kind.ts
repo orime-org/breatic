@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a task row opens with (inner#1454): a badge naming the kind of task,
@@ -43,7 +43,9 @@ export function taskRowKind(
   displayNameOf: (modelId: string) => string | null,
 ): TaskRowKind {
   switch (entry.action) {
+    // A 3D Space's model upload lists on that Space's own task list, never on a node.
     case 'upload':
+    case 'scene_import':
       return { icon: ArrowUp, label: t('canvas.task.kind.upload'), detail: entry.label };
     case 'generate':
       return {

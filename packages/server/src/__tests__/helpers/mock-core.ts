@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Shared @breatic/core mock for route-level tests.
@@ -21,10 +21,13 @@ import { vi } from "vitest";
 // it); test code is exempt from the alias rule.
 import {
   ASK_USER as REAL_ASK_USER,
+  AWAITS_USER as REAL_AWAITS_USER,
+  REQUEST_SPACE_CONTENT as REAL_REQUEST_SPACE_CONTENT,
   PROPOSE_CANVAS_ACTION as REAL_PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT as REAL_PROPOSE_DOCUMENT_EDIT,
   SAVE_IMAGE as REAL_SAVE_IMAGE,
   RECORD_TOOL_NAMES as REAL_RECORD_TOOL_NAMES,
+  MEMORY_TOOL_NAMES as REAL_MEMORY_TOOL_NAMES,
   UNDERSTAND_MEDIA as REAL_UNDERSTAND_MEDIA,
 } from "../../../../domain/src/agent/tools/tool-names.js";
 import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/agent/tools/failure.js";
@@ -34,7 +37,7 @@ import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/
 import {
   extFromUrl as REAL_EXT_FROM_URL,
   labelForUrl as REAL_LABEL_FOR_URL,
-  readerUrlSchema as REAL_READER_URL_SCHEMA,
+  userUrlSchema as REAL_USER_URL_SCHEMA,
   safeExt as REAL_SAFE_EXT,
 } from "../../../../domain/src/asset/source-url.js";
 // The reading's pinned model, passed through rather than typed out: the
@@ -104,6 +107,10 @@ export const mockCreateQueue = vi.fn();
 
 /** Mock references — tests can override behavior per-test. */
 export const mocks = {
+  /** The real collector is exercised by PG suites; unit callers observe its inputs. */
+  accountActivityRepo: { recordActivity: vi.fn(async () => undefined) },
+  /** Transaction identity shared by task/grant/node unit doubles. */
+  activityTransaction: { unitActivityTransaction: true },
   /** The later-lookup hand-off; tests read what a turn handed off. */
   handOffLookups: vi.fn(async (..._args: unknown[]) => undefined),
   /**
@@ -243,7 +250,7 @@ export const mocks = {
     consumeTicket: vi.fn(),
   },
   memoryService: {
-    buildContext: vi.fn().mockResolvedValue({ projectMemory: "", conversationMemory: "" }),
+    buildContext: vi.fn().mockResolvedValue({ entries: [], migrated: [], olderCount: 0, progress: "" }),
   },
   // User identity read fns. Routes reach these through `authService`
   // (prohibition #1 — routes call services, not repos); the auth service
@@ -472,7 +479,8 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
       (_s: TemplateStringsArray) => Promise.resolve([]),
       { end: () => Promise.resolve() },
     ),
-    db: {},
+    db: { transaction: vi.fn(async (callback: (tx: typeof mocks.activityTransaction) => Promise<unknown>) => callback(mocks.activityTransaction)) },
+    accountActivityRepo: mocks.accountActivityRepo,
     closeDb: () => Promise.resolve(),
     getRedis: () => mockRedis,
     // The stream client is only ever handed to an emitter, which these
@@ -509,7 +517,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     MONOREPO_ROOT: actual.MONOREPO_ROOT,
     // The real config underneath, so every field the code reads exists; only
     // the values these suites depend on are set here.
-    getAgentConfig: () => ({ ...(actual.getAgentConfig as () => Record<string, unknown>)(), default_model: "test", main_model_sees_pictures: "no", max_tool_iterations: 5, memory_project_max_size: 1000, memory_conversation_max_size: 1000, max_output_tokens: 16384, memory_keep_tokens: 500000, user_message_max_chars: 15000, user_message_max_references: 100, attachment_max_chars: 200000, attachment_max_items: 10, conversation_page_size: 30, image_search_timeout_ms: 10000 }),
+    getAgentConfig: () => ({ ...(actual.getAgentConfig as () => Record<string, unknown>)(), default_model: "test", main_model_sees_pictures: "no", max_tool_iterations: 5, memory_index_max_entries: 10, memory_progress_max_chars: 410, max_output_tokens: 16384, memory_keep_tokens: 500000, user_message_max_chars: 15000, user_message_max_references: 100, attachment_max_chars: 200000, attachment_max_items: 10, conversation_page_size: 30, image_search_timeout_ms: 10000 }),
     // Values intentionally differ from config/storage.yaml so route tests
     // prove the endpoint reads config instead of hardcoding.
     getStorageConfig: () => ({
@@ -584,7 +592,11 @@ function usageRecorderDouble(options: {
   };
 }
 
-export const domainMock = () => ({
+export const domainMock = async () => ({
+  // The real entry schemas and MemoryRefused. Loaded here: that file imports
+  // @breatic/core, whose mock factory lives in this file, so a top-level
+  // import waits on itself and the suite hangs.
+  ...(await import("../../../../domain/src/agent/memory-entries.js")),
   createUsageRecorder: vi.fn(usageRecorderDouble),
   trackOpenGeneration: realTrackOpenGeneration,
   isGenerationId: realIsGenerationId,
@@ -658,6 +670,9 @@ export const domainMock = () => ({
   // and a copy that drifts throws nothing: the match simply never happens and
   // a turn carries on talking past the question it just asked.
   ASK_USER: REAL_ASK_USER,
+  // The same reason: the tools a turn stops at for the user (inner#1552).
+  AWAITS_USER: REAL_AWAITS_USER,
+  REQUEST_SPACE_CONTENT: REAL_REQUEST_SPACE_CONTENT,
   // Read by the turn when it hands the tools their context.
   PROPOSE_CANVAS_ACTION: REAL_PROPOSE_CANVAS_ACTION,
   // Read by the turn when it hands the document proposal the open document (inner#1509).
@@ -668,9 +683,11 @@ export const domainMock = () => ({
   UNDERSTAND_MEDIA: REAL_UNDERSTAND_MEDIA,
   // Read by the turn when it hands the record tools the turn's records (inner#1469).
   RECORD_TOOL_NAMES: REAL_RECORD_TOOL_NAMES,
+  // Read by the turn when it hands the memory tools the turn's memory (#1363).
+  MEMORY_TOOL_NAMES: REAL_MEMORY_TOOL_NAMES,
   extFromUrl: REAL_EXT_FROM_URL,
   labelForUrl: REAL_LABEL_FOR_URL,
-  readerUrlSchema: REAL_READER_URL_SCHEMA,
+  userUrlSchema: REAL_USER_URL_SCHEMA,
   safeExt: REAL_SAFE_EXT,
   // Real so that a turn built on this stub throws the same detail the real
   // one does when a tool reports the stop itself.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { Activity, AlertCircle, Film, Music, RotateCcw, Star } from 'lucide-react';
 import { useEffect, useRef, type JSX } from 'react';
@@ -151,11 +151,16 @@ function entryMessage(entry: ProjectActivityEntry): {
         },
       };
     case 'asset:uploaded': {
-      // A browser tool's export arrives as an upload; what the reader did was
+      // A browser tool's export arrives as an upload; what the user did was
       // run the tool.
       const tool = toolNameOf(p);
       if (tool !== undefined) {
         return { key: 'activity.type.generationSucceededTool', params: { actor, toolName: tool } };
+      }
+      // A 3D model is named as the user called it (inner#1690).
+      const model = p['model'];
+      if (typeof model === 'object' && model !== null && typeof (model as { name?: unknown }).name === 'string') {
+        return { key: 'activity.type.assetUploadedModel', params: { actor, name: (model as { name: string }).name } };
       }
       // Specific copy per media kind (image / video / audio); a `file` kind or
       // an absent kind falls back to the generic upload message (#1622).

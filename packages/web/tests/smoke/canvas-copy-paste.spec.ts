@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Copying, pasting and duplicating canvas nodes (inner#1349).
@@ -154,7 +154,7 @@ test.beforeEach(async ({ page: opened, context }) => {
   spaceId = await createSpace(page, 'canvas', `copy-paste-e2e-${Date.now()}`);
   await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
 
-  // A picture uploaded the way a reader drops one, so it has a stored address.
+  // A picture uploaded the way a user drops one, so it has a stored address.
   const png = await freshPng();
   await page.evaluate(([encoded, space]: [string, string]) => {
     const binary = atob(encoded);

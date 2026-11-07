@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A document proposal landing (inner#1509): checked against the document as
- * it is when the reader presses, written (a rewrite or an insert as one undo
+ * it is when the user presses, written (a rewrite or an insert as one undo
  * step, a comment off the undo stack), and recognised as
  * landed from the marks it left -- a thread carrying its id, or a block whose
  * id was derived from it.
@@ -23,7 +23,7 @@ import {
   getDocumentEditor,
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
-import { landedAt, landProposal } from '@web/spaces/document/document-proposal-landing';
+import { landedAt, landProposal, sourceAt, sourceSpot } from '@web/spaces/document/document-proposal-landing';
 
 afterEach(() => {
   _resetDocumentEditorCacheForTests();
@@ -40,7 +40,7 @@ async function open(markdown: string): Promise<DocumentEditorHandle> {
   const doc = new Y.Doc();
   const handle = getDocumentEditor(doc, `project-p/document-${String(Math.random())}`, {
     caretProvider: { awareness: new Awareness(doc) },
-    readWho: () => ({ role: 'editor', viewerId: 'reader-1' }),
+    readWho: () => ({ role: 'editor', viewerId: 'user-1' }),
     editable: true,
   });
   const root = document.createElement('div');
@@ -137,7 +137,7 @@ function proposalOn(handle: DocumentEditorHandle, index: number | null, fields: 
 }
 
 describe('a comment', () => {
-  it('hangs on the quoted words, written by the reader and marked as from the Agent', async () => {
+  it('hangs on the quoted words, written by the user and marked as from the Agent', async () => {
     const handle = await open('The hero arrives at the gate.');
     const proposal = proposalOn(handle, 0, { kind: 'comment', quote: 'the gate', body: 'Which gate?' });
 
@@ -146,7 +146,7 @@ describe('a comment', () => {
     const [thread] = threads(handle);
     expect(result).toEqual({ outcome: 'applied', how: 'comment', blockId: blocks(handle)[0]!.id, threadId: thread!.id });
     expect(thread?.metadata).toEqual({ proposalId: proposal.proposalId });
-    expect(thread?.comments[0]).toMatchObject({ userId: 'reader-1', metadata: { fromAgent: true } });
+    expect(thread?.comments[0]).toMatchObject({ userId: 'user-1', metadata: { fromAgent: true } });
     expect(marked(handle)).toEqual([{ threadId: thread!.id, text: 'the gate' }]);
   });
 
@@ -198,7 +198,7 @@ describe('a rewrite', () => {
 });
 
 describe('one undo step', () => {
-  it('takes back the landing and leaves what the reader typed just before it', async () => {
+  it('takes back the landing and leaves what the user typed just before it', async () => {
     const handle = await open('Typed here.\n\nTarget.');
     const proposal = proposalOn(handle, 1, { kind: 'rewrite', body: 'Rewritten.' });
     const view = handle.editor.prosemirrorView!;
@@ -380,7 +380,7 @@ describe('the block a landed proposal is shown at (inner#1509 review round 1)', 
 });
 
 describe('a comment that lands', () => {
-  it('stays off the undo stack, like a comment the reader writes', async () => {
+  it('stays off the undo stack, like a comment the user writes', async () => {
     const handle = await open('Alpha bravo.');
     const before = handle.undoManager.undoStack.length;
 
@@ -480,5 +480,119 @@ describe('an insert at the end', () => {
     await landProposal(handle, proposalOn(handle, null, { body: 'Two.' }), 'write', () => ({ available: true, writeAccess: 'granted' }));
 
     expect(blocks(handle).map((b) => b.text)).toEqual(['One.', 'Two.']);
+  });
+});
+
+describe('where a proposal points in the document, before anything lands (inner#1646)', () => {
+  /**
+   * The words each range of a located spot covers.
+   * @param handle - The document.
+   * @param ranges - The spot's ranges.
+   * @returns The covered words.
+   */
+  function wordsOf(handle: DocumentEditorHandle, ranges: ReadonlyArray<{ from: number; to: number }>): string[] {
+    return ranges.map((r) => handle.editor.prosemirrorState.doc.textBetween(r.from, r.to));
+  }
+
+  it('is a comment\'s quoted words', async () => {
+    const handle = await open('The hero arrives at the gate.');
+    const proposal = proposalOn(handle, 0, { kind: 'comment', quote: 'the gate', body: 'Which gate?' });
+
+    const found = sourceAt(handle, proposal);
+
+    expect(found).toEqual({ outcome: 'located', target: { how: 'source', blockId: proposal.blockId, quote: 'the gate' } });
+    const spot = found.outcome === 'blockGone' ? null : sourceSpot(handle.editor.prosemirrorState.doc, found.target);
+    expect(spot?.blockId).toBe(proposal.blockId);
+    expect(wordsOf(handle, spot?.ranges ?? [])).toEqual(['the gate']);
+  });
+
+  it('is a comment\'s quoted words running across table cells, one range per cell', async () => {
+    const handle = await open('| Shot | Action |\n| --- | --- |\n| Close | She turns |');
+    const proposal = proposalOn(handle, 0, { kind: 'comment', quote: 'Close\nShe turns', body: 'Why close?' });
+
+    const found = sourceAt(handle, proposal);
+
+    const spot = found.outcome === 'blockGone' ? null : sourceSpot(handle.editor.prosemirrorState.doc, found.target);
+    expect(wordsOf(handle, spot?.ranges ?? [])).toEqual(['Close', 'She turns']);
+  });
+
+  it('is the whole block of a rewrite', async () => {
+    const handle = await open('Before.\n\nMorning light.');
+    const proposal = proposalOn(handle, 1, { kind: 'rewrite', body: 'Light.' });
+
+    const found = sourceAt(handle, proposal);
+
+    expect(found).toEqual({ outcome: 'located', target: { how: 'source', blockId: proposal.blockId } });
+    expect(sourceSpot(handle.editor.prosemirrorState.doc, { how: 'source', blockId: proposal.blockId })).toEqual({ blockId: proposal.blockId, ranges: null });
+  });
+
+  it('is the block an insert goes after', async () => {
+    const handle = await open('Scene 3.\n\nAfter.');
+    const proposal = proposalOn(handle, 0, { body: 'Scene 4.' });
+
+    expect(sourceAt(handle, proposal)).toEqual({ outcome: 'located', target: { how: 'source', blockId: proposal.blockId } });
+  });
+
+  it('is the last block for an insert at the end, read from the document as it is when drawn', async () => {
+    const handle = await open('One.\n\nTwo.');
+    const proposal = proposalOn(handle, null, { body: 'Three.' });
+
+    const found = sourceAt(handle, proposal);
+    expect(found).toEqual({ outcome: 'located', target: { how: 'source', blockId: null } });
+    expect(sourceSpot(handle.editor.prosemirrorState.doc, { how: 'source', blockId: null })).toEqual({ blockId: blocks(handle)[1]!.id, ranges: null });
+
+    handle.editor.insertBlocks([{ type: 'paragraph', content: 'Later.' }] as never, blocks(handle)[1]!.id, 'after');
+    expect(sourceSpot(handle.editor.prosemirrorState.doc, { how: 'source', blockId: null })?.blockId).toBe(blocks(handle)[2]!.id);
+  });
+
+  it('is the empty paragraph of an empty document for an insert at the end', async () => {
+    const handle = await open('');
+
+    expect(sourceSpot(handle.editor.prosemirrorState.doc, { how: 'source', blockId: null })?.blockId).toBe(blocks(handle)[0]!.id);
+  });
+
+  it('is still found, and said to have changed, when the block\'s words are not the ones proposed on', async () => {
+    const handle = await open('The hero arrives at the gate.');
+    const proposal = proposalOn(handle, 0, { kind: 'comment', quote: 'the gate', body: 'Which gate?', original: 'Something else.' });
+
+    const found = sourceAt(handle, proposal);
+
+    expect(found).toEqual({ outcome: 'changed', target: { how: 'source', blockId: proposal.blockId, quote: 'the gate' } });
+    const spot = found.outcome === 'blockGone' ? null : sourceSpot(handle.editor.prosemirrorState.doc, found.target);
+    expect(wordsOf(handle, spot?.ranges ?? [])).toEqual(['the gate']);
+  });
+
+  it('is the whole block, said to have changed, when the quoted words no longer appear once', async () => {
+    const handle = await open('She turns.');
+    handle.editor.insertInlineContent(' She turns again.');
+    const proposal = proposalOn(handle, 0, { kind: 'comment', quote: 'turns', body: 'Why?' });
+
+    const found = sourceAt(handle, proposal);
+
+    expect(found.outcome).toBe('changed');
+    const spot = found.outcome === 'blockGone' ? null : sourceSpot(handle.editor.prosemirrorState.doc, found.target);
+    expect(spot).toEqual({ blockId: proposal.blockId, ranges: null });
+  });
+
+  it('is nowhere when the block was deleted', async () => {
+    const handle = await open('One.\n\nTwo.');
+    const proposal = proposalOn(handle, 1, { kind: 'rewrite', body: 'Three.' });
+    handle.editor.removeBlocks([proposal.blockId!]);
+
+    expect(sourceAt(handle, proposal)).toEqual({ outcome: 'blockGone' });
+    expect(sourceSpot(handle.editor.prosemirrorState.doc, { how: 'source', blockId: proposal.blockId })).toBeNull();
+  });
+
+  it('is found without writing anything', async () => {
+    const handle = await open('The hero arrives at the gate.\n\nNext.');
+    const before = handle.editor.prosemirrorState.doc.toJSON() as unknown;
+
+    sourceAt(handle, proposalOn(handle, 0, { kind: 'comment', quote: 'the gate', body: 'Which gate?' }));
+    sourceAt(handle, proposalOn(handle, 1, { kind: 'rewrite', body: 'Later.' }));
+    sourceAt(handle, proposalOn(handle, null, { body: 'End.' }));
+
+    expect(handle.editor.prosemirrorState.doc.toJSON()).toEqual(before);
+    expect(threads(handle)).toHaveLength(0);
+    expect(handle.undoManager.undoStack).toHaveLength(0);
   });
 });

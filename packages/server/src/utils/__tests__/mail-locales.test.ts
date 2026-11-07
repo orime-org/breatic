@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Every product email renders in each of the five languages, in the branded
@@ -355,5 +355,11 @@ describe("the language actually changes", () => {
     });
     expect(mail.html).not.toContain("They said");
     expect(mail.text).not.toContain("They said");
+  });
+});
+
+describe("mail contact address", () => {
+  it("sends users who need help to the support mailbox", () => {
+    expect(getMailLayout().contactEmail).toBe("support@breatic.ai");
   });
 });

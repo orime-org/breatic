@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #904 验收 A11: a whole-document selection asks before it is deleted.
@@ -159,7 +159,7 @@ describe('A11 — the delete chords on a whole-document selection', () => {
     // The code block registers a Backspace of its own, and that handler asks
     // only whether the caret's block is empty and of its type — a whole
     // document selection satisfies both, so the confirmation this Space owes
-    // the reader was skipped and the document went.
+    // the user was skipped and the document went.
     const ask = vi.fn();
     const editor = buildDocumentEditor({
       fragment: documentBodyFragment(new Y.Doc()),
@@ -442,7 +442,7 @@ describe('what a selection inside the document still answers', () => {
 });
 
 describe('what one whole block selected answers', () => {
-  // A reader reaches this shape by holding the platform's select-node
+  // A user reaches this shape by holding the platform's select-node
   // modifier over a block: `prosemirror-view` answers with a `NodeSelection`,
   // which sits outside the block's content and so is neither of the two the
   // tiers are written around.

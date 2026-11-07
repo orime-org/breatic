@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Pictures the agent found, measured in a browser.
@@ -141,7 +141,7 @@ test('opening one shows it large, from that same address @needs-model @needs-sea
   expect(stageSrc).toContain('imgs.search.brave.com');
 
   // The strip along the bottom holds every one of them, including the one on
-  // the stage, so the reader can move between them without shutting the box.
+  // the stage, so the user can move between them without shutting the box.
   const strip = page.getByTestId('asset-box-thumb');
   expect(await strip.count()).toBeGreaterThan(0);
   expect(thumbSrc).toContain('imgs.search.brave.com');

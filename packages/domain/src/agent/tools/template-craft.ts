@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * How to write a template's prompts well (inner#1807), handed to the agent
@@ -15,7 +15,7 @@ export const TEMPLATE_CRAFT = {
   all:
     "Craft for every prompt: say what each reference is for, what to take from it and what not to inherit; " +
     "repeat 3 to 6 identifying features word for word and write every count as a number; name concrete light " +
-    "sources and materials, never empty words such as cinematic or 8K; put no text in the picture; write what " +
+    "sources and materials, never empty words such as cinematic or 8K; put no text in the picture unless the template asks for labels; write what " +
     "can be seen happening, not what someone feels inside.",
   video:
     "Craft for video: the first frame is already the finished picture and already moving, with a hook within " +

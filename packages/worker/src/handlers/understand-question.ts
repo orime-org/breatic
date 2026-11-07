@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * What a reading asks, in the language its reader will read the answer in.
+ * What a reading asks, in the language its user will read the answer in.
  *
  * The words this run produces become a text node's body, and whoever opens
  * that node set a language. Nothing about the media says which one that is,
@@ -30,18 +30,18 @@ const ANSWER_LANGUAGE: Readonly<Record<string, string>> = {
 
 /**
  * Build the question one reading asks.
- * @param prompt - What the reader typed, when they typed one.
+ * @param prompt - What the user typed, when they typed one.
  * @param sourceType - The medium being read, for the default question.
- * @param readerLocale - The locale the answer is read in, when one travelled.
+ * @param userLocale - The locale the answer is read in, when one travelled.
  * @returns The question, with the language named when it is one we ship.
  */
 export function understandQuestion(
   prompt: unknown,
   sourceType: string,
-  readerLocale: unknown,
+  userLocale: unknown,
 ): string {
   const asked = extractPromptText(prompt) || `Describe this ${sourceType}.`;
   const language =
-    typeof readerLocale === "string" ? ANSWER_LANGUAGE[readerLocale] : undefined;
+    typeof userLocale === "string" ? ANSWER_LANGUAGE[userLocale] : undefined;
   return language === undefined ? asked : `${asked} Answer in ${language}.`;
 }

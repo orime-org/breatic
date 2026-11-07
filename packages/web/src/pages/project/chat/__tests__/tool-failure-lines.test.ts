@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A tool step that did not finish is said where it happened in the reply,
@@ -72,6 +72,18 @@ describe('a failed step in a reply', () => {
     expect(view.failureLines).toEqual([{ step: { key }, reason: 'chat.tool.failure.notMember', count: 1 }]);
   });
 
+  it.each([
+    ['save_memory', 'chat.tool.step.saveMemory'],
+    ['delete_memory', 'chat.tool.step.deleteMemory'],
+    ['read_memory', 'chat.tool.step.readMemory'],
+  ])('names the step of %s that could not reach the memory', (tool, key) => {
+    const view = toChatMessage(
+      reply([{ type: `tool-${tool}`, toolCallId: 'm1', state: 'output-error', input: {}, errorText: FAILURE_LINES.busy }]),
+    );
+
+    expect(view.failureLines).toEqual([{ step: { key }, reason: FAILURE_LINES.busy, count: 1 }]);
+  });
+
   it('names the step of get_generation_template that could not read the template', () => {
     const view = toChatMessage(
       reply([{ type: 'tool-get_generation_template', toolCallId: 'g1', state: 'output-error', input: { id: 'costume-sheet' }, errorText: FAILURE_LINES.busy }]),
@@ -80,7 +92,7 @@ describe('a failed step in a reply', () => {
     expect(view.failureLines).toEqual([{ step: { key: 'chat.tool.step.readTemplate' }, reason: FAILURE_LINES.busy, count: 1 }]);
   });
 
-  it('leaves the prose the reader copies as it was', () => {
+  it('leaves the prose the user copies as it was', () => {
     const view = toChatMessage(reply([text('Let me look.'), failedSearch('s1', 'poster'), text('Carrying on.')]));
 
     expect(view.content).toBe('Let me look.Carrying on.');
@@ -145,7 +157,7 @@ describe('a step that draws no line', () => {
     expect(toChatMessage(reply([left])).failureLines).toBeUndefined();
   });
 
-  it('is one the reader stopped', () => {
+  it('is one the user stopped', () => {
     const left = { type: 'tool-web_search', toolCallId: 's1', state: 'input-available', input: { query: 'q' } };
     expect(toChatMessage(reply([left, { type: 'data-interrupted', data: {} }])).failureLines).toBeUndefined();
   });

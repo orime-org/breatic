@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Assistant prose, rendered as markdown.
@@ -46,7 +46,7 @@ interface MarkdownMessageProps {
   streaming?: boolean;
   /** Which step of the type scale the prose is drawn at. */
   size?: keyof typeof SIZE_CLASS;
-  /** Whether a single newline in the source is a line the reader sees. */
+  /** Whether a single newline in the source is a line the user sees. */
   softBreaks?: boolean;
   /**
    * What a `[N]` the model wrote points at.
@@ -88,17 +88,17 @@ const SIZE_CLASS = {
  * Every switch is given a value: leaving one to its default is not a decision,
  * and a later version of the package could change what a default is. The
  * values written here are the library's own defaults, which is what Streamdown
- * ships and therefore what a reader of any of these products is used to
+ * ships and therefore what a user of any of these products is used to
  * seeing.
  *
  * They do three different things — close a marker the model has opened, escape
  * a character that would read as one (`20~25`), and drop an unclosed tag with
  * the prose after it — and all three run only while a turn is running. A
- * settled reply never goes through here, so what the reader is left with is
+ * settled reply never goes through here, so what the user is left with is
  * what the model sent, and the choices below are about the time in between
  * (user 2026-08-25).
  *
- * `linkMode` reaches the reader through `MarkdownLink` below, which sends
+ * `linkMode` reaches the user through `MarkdownLink` below, which sends
  * every outbound anchor to a tab of its own, so the half-typed link this mode
  * produces costs a spare tab and leaves the page it was clicked from alone.
  */
@@ -147,7 +147,7 @@ const REMARK_PLUGINS_WITH_BREAKS: Remark = [...REMARK_PLUGINS, remarkBreaks];
 const KATEX = {
   // KaTeX's own default is a hard-coded #cc0000, which belongs to neither
   // theme. A formula that failed to parse is shown as the LaTeX the model
-  // wrote, and there is nothing the reader can do about it, so it is said
+  // wrote, and there is nothing the user can do about it, so it is said
   // quietly. The grey is what @streamdown/math ships, the package Vercel's
   // Streamdown renders maths with:
   // https://github.com/vercel/streamdown/tree/main/packages/streamdown-math
@@ -221,7 +221,7 @@ function ScrollableMath({ children }: { children?: ReactNode }): ReactElement {
  * The difference between a done item and an open one is the whole point of a
  * checklist. It reaches a screen reader through this element's label, and the
  * eye through a tick `index.css` draws — both of which stay out of the text a
- * reader selects and copies, so a copied checklist reads as the model wrote
+ * user selects and copies, so a copied checklist reads as the model wrote
  * it. `role='img'` is what gives the label a reader to reach: a label on a
  * bare span has no role to attach to.
  * @param root0 - The props react-markdown hands an `input`.
@@ -245,7 +245,7 @@ function TaskMark({ checked }: { checked?: boolean }): ReactElement {
 /**
  * A link the agent wrote, which leads away from the app.
  *
- * The reader is part-way through making something; following a link in this
+ * The user is part-way through making something; following a link in this
  * tab takes the canvas, the project and the running turn with it. Streamdown
  * hands its own links `target="_blank"` for the same reason, and the app's
  * other outbound links already carry both attributes.
@@ -305,7 +305,7 @@ const COMPONENTS = {
  * @param root0.content - The assistant's prose, as markdown.
  * @param root0.streaming - Whether this turn is still receiving tokens.
  * @param root0.size - Which step of the type scale the prose is drawn at.
- * @param root0.softBreaks - Whether a single newline is a line the reader sees.
+ * @param root0.softBreaks - Whether a single newline is a line the user sees.
  * @param root0.citations - What a `[N]` the model wrote points at.
  * @param root0.failureLines - The tool steps that did not finish.
  * @returns The rendered prose.

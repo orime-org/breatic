@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 // Typing `@` in the chat box picks one of the attached items and puts a
 // reference to it in the words.
@@ -12,7 +12,9 @@ vi.mock('@web/lib/toast', () => ({ toast: { warning: toastSpy.warning, error: vi
 beforeEach(() => {
   toastSpy.warning.mockClear();
 });
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+
+import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
 import type { Editor } from '@tiptap/core';
 import { undo } from '@tiptap/pm/history';
 import { TextSelection, type Transaction } from '@tiptap/pm/state';
@@ -62,7 +64,7 @@ function setup(props: Partial<Props> = {}): {
   const onChange = vi.fn();
   const onSubmit = vi.fn();
   const base: Props = { draft: '', onChange, onSubmit, onAbort: vi.fn(), ...props };
-  const view = render(<ChatComposer {...base} />);
+  const view = renderWithTooltips(<ChatComposer {...base} />);
   return {
     onChange,
     onSubmit,
@@ -202,12 +204,12 @@ describe('@ in the chat box', () => {
 
     expect(box().state.doc.textContent).toBe('ask about @');
     // The list is built for the `@` all the same; what matters is that the
-    // reader is not shown one they never asked for.
+    // user is not shown one they never asked for.
     expect(await screen.findByTestId('reference-mention-option-a1')).not.toBeVisible();
   });
 
   it('counts a reference as one character against the limit', () => {
-    // Nine thousand nine hundred and ninety-nine as the reader sees it: the
+    // Nine thousand nine hundred and ninety-nine as the user sees it: the
     // block counts once, its marker is far longer.
     const { onChange } = setup({ draft: `y ${attachmentMarker('a1')} ${'y'.repeat(9_995)}`, attachments: [cover] });
     act(() => box().commands.focus('end'));
@@ -560,7 +562,7 @@ describe('@ in the chat box', () => {
 
   it('names the blocks a draft starts with, once, under StrictMode', async () => {
     const onChange = vi.fn();
-    render(
+    renderWithTooltips(
       <React.StrictMode>
         {/* A draft as the box writes it: a block keeps a space on either side. */}
         <ChatComposer draft={`see ${attachmentMarker('a1')} `} attachments={[cover]} onChange={onChange} onSubmit={vi.fn()} />

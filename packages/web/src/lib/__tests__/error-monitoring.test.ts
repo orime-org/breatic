@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { Breadcrumb, ErrorEvent } from '@sentry/react';
 import { describe, expect, it } from 'vitest';
@@ -83,6 +83,17 @@ describe('errorMonitoringInit', () => {
         headers: { Referer: 'https://app.test/decision', 'User-Agent': 'ua' },
       },
     });
+  });
+
+  it('keeps a caught locale chunk NetworkError', () => {
+    const beforeSend = errorMonitoringInit({ dsn: DSN, mode: 'production', version: SHA })?.beforeSend;
+    const event: ErrorEvent = {
+      type: undefined,
+      exception: { values: [{ value: 'NetworkError when attempting to fetch resource.' }] },
+      tags: { error_boundary: 'locale-chunk' },
+    };
+
+    expect(beforeSend?.(event, {})).toEqual(event);
   });
 
   it('still filters unrelated browser noise carrying route chunk context', () => {

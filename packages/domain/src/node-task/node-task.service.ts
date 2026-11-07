@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The lifecycle of one task on a canvas node (#186).
@@ -24,7 +24,7 @@
  * always has what the next event needs.
  */
 
-import { ConflictError } from "@breatic/core";
+import { ConflictError, type DbTx } from "@breatic/core";
 import { t, type NodeTaskAction } from "@breatic/shared";
 import * as repo from "@domain/node-task/node-task.repo.js";
 import { failureOutcome } from "@domain/node-task/failure-outcome.js";
@@ -80,6 +80,7 @@ export interface DismissResult {
  * @param opts.label - Filename or model name, what the user reads.
  * @param opts.taskId - The AIGC job; absent on uploads.
  * @param opts.storageKey - The upload grant; absent on generations.
+ * @param tx - Optional transaction shared with upload admission.
  * @returns The new task's id and the node's counts after it.
  */
 export async function open(opts: {
@@ -93,9 +94,9 @@ export async function open(opts: {
   label: string;
   taskId?: string;
   storageKey?: string;
-}): Promise<{ id: string; counts: NodeTaskCounts }> {
-  const id = await repo.insertRunning(opts);
-  const counts = await repo.countsFor(opts.projectId, opts.nodeId);
+}, tx?: DbTx): Promise<{ id: string; counts: NodeTaskCounts }> {
+  const id = await repo.insertRunning(opts, tx);
+  const counts = await repo.countsFor(opts.projectId, opts.nodeId, tx);
   return { id, counts };
 }
 
@@ -138,7 +139,8 @@ export async function deadlineFor(taskId: string): Promise<number | null> {
  *   failure lands as `expired`.
  * @returns Whether this call moved the row, plus the node's counts.
  * @throws {Error} When the task id names no row at all — a machine reporting
- *   about a task nobody opened is a wiring fault, not a late message.
+ *   about a task nobody opened is a wiring fault, not a late message — or
+ *   names a 3D Space's own row, which settles through the scene task service.
  */
 export async function settle(opts: {
   taskId: string;
@@ -150,6 +152,10 @@ export async function settle(opts: {
   if (row === null) {
     throw new Error(`settle: no node_tasks row for ${opts.taskId}`);
   }
+  if (row.nodeId === null) {
+    throw new Error(`settle: ${opts.taskId} is a Space-level row, settled by the scene task service`);
+  }
+  const nodeId = row.nodeId;
 
   // A task that failed at or past its deadline ended there, whichever exit
   // reports it (inner#1367): written the way the harvest writes it.
@@ -171,8 +177,11 @@ export async function settle(opts: {
     await repo.attachResult(opts.taskId, opts.nodeHistoryId);
   }
 
-  const counts = await repo.countsFor(row.projectId, row.nodeId);
-  return { applied, landed: applied || row.status === outcome, counts };
+  // The status read above predates the update: a concurrent report may have
+  // moved the row between the two, so only a fresh read says where it ended.
+  const landed = applied || (await repo.findById(opts.taskId))?.status === outcome;
+  const counts = await repo.countsFor(row.projectId, nodeId);
+  return { applied, landed, counts };
 }
 
 /**
@@ -183,6 +192,7 @@ export async function settle(opts: {
  *   table never held the row.
  * @param opts.nodeId - The caller's node, same purpose.
  * @returns Whether a row was hidden, plus the node's counts.
+ * @throws {Error} When the row is a 3D Space's own row, which its own list removes.
  * @throws {ConflictError} When the row is still running: a task that has not
  *   settled is not a record to clear yet.
  */
@@ -193,6 +203,9 @@ export async function dismiss(opts: {
 }): Promise<DismissResult> {
   const row = await repo.findById(opts.taskId);
 
+  if (row !== null && row.nodeId === null) {
+    throw new Error(`dismiss: ${opts.taskId} is a Space-level row, removed by the scene task service`);
+  }
   if (row !== null && row.status === "running") {
     throw new ConflictError(t("canvas.task.stillRunning"));
   }

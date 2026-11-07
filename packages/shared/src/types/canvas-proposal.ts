@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The shape of a proposed group of canvas nodes (#229).
@@ -17,16 +17,16 @@ import { t, tInEveryLocale } from "@shared/i18n/index.js";
 import { isGenerationNodeType, type GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /**
- * What a marked spot in the prompt asks of the reader (inner#977): `asset`
+ * What a marked spot in the prompt asks of the user (inner#977): `asset`
  * names something to @ by hand, `tweak` words to fill in, and `note` how to
- * operate the panel -- shown to the reader and never sent to the model.
+ * operate the panel -- shown to the user and never sent to the model.
  */
 export type SlotKind = NonNullable<PromptSegment["slot"]>["kind"];
 
 /**
- * One stretch of the prompt: plain words, a place the reader acts on, or an
+ * One stretch of the prompt: plain words, a place the user acts on, or an
  * @ of another node in the proposal by its index (inner#1315), which lands as
- * the same mention the reader would insert by hand.
+ * the same mention the user would insert by hand.
  */
 const promptSegmentSchema = z.union([
   z.object({ text: z.string(), slot: z.undefined().optional(), ref: z.undefined().optional() }),
@@ -53,10 +53,10 @@ const MARK_FORM: Readonly<Record<SlotKind, { open: string; symbol: string; close
 
 /**
  * A mark as words: the bracket, symbol and label of its kind, the label of a
- * reference wrapped in the words asking the reader to @ it. A template's
+ * reference wrapped in the words asking the user to @ it. A template's
  * locale prompt writes marks this way, and so does the prompt handed to the
  * agent; {@link markedSegments} reads them back.
- * @param slot - The spot the reader acts on.
+ * @param slot - The spot the user acts on.
  * @returns The bracketed text.
  * @throws {never} Never.
  */
@@ -76,8 +76,8 @@ export function writtenMark(slot: NonNullable<PromptSegment["slot"]>): string {
  *
  * A note puts nothing in the text: it lands as a block of its own that is
  * left out of what the model receives.
- * @param slot - The spot the reader acts on.
- * @returns The bracketed text, as the reader will see it.
+ * @param slot - The spot the user acts on.
+ * @returns The bracketed text, as the user will see it.
  * @throws {never} Never.
  */
 export function markText(slot: NonNullable<PromptSegment["slot"]>): string {
@@ -88,7 +88,7 @@ export function markText(slot: NonNullable<PromptSegment["slot"]>): string {
  * Whether a mark written as words reads back as the same mark: a label
  * holding the bracket that closes its kind would read back cut short, and one
  * holding a line break is split across two paragraphs by the box.
- * @param slot - The spot the reader acts on.
+ * @param slot - The spot the user acts on.
  * @returns True when {@link markedSegments} gives the same kind and label back.
  * @throws {never} Never.
  */
@@ -102,7 +102,7 @@ const MARK_KINDS = Object.keys(MARK_FORM) as SlotKind[];
 
 /**
  * A mark as a template's locale prompt writes it, its label captured in the
- * group of its kind: the symbol picks the kind, so brackets the reader types
+ * group of its kind: the symbol picks the kind, so brackets the user types
  * stay words.
  */
 const MARK_PATTERN = new RegExp(
@@ -114,7 +114,7 @@ const MARK_PATTERN = new RegExp(
 );
 
 /**
- * A reference mark's label with the words {@link markText} asks the reader
+ * A reference mark's label with the words {@link markText} asks the user
  * with taken back off. Tried in every language, since the box may have been
  * filled in another one than the language reading it now.
  * @param label - What sits between `[📎 ` and `]`.
@@ -186,7 +186,7 @@ export function markedSegments(text: string): PromptSegment[] {
  * Projected the way the canvas writes it and the editor gives it back: a line
  * break in a proposed stretch of text starts a new block, and the editor puts
  * two between blocks. Counted any other way, a proposal sits inside the
- * model's input cap here and past it by the time the reader presses Generate.
+ * model's input cap here and past it by the time the user presses Generate.
  * @param segments - The proposed prompt.
  * @param refWords - What an @ of the node at an index sends, as the panel
  *   serialises it.
@@ -211,7 +211,7 @@ export function promptTextOf(
  * cuts its own blocks on single breaks, so doubling them there turns a note
  * with three breaks in it into six loose lines.
  *
- * The marks stay in the words either way -- a place the reader rewrites is
+ * The marks stay in the words either way -- a place the user rewrites is
  * bracketed in the body exactly as it is in a prompt.
  * @param segments - The proposed words.
  * @returns The text to write into the body.
@@ -222,7 +222,7 @@ export function promptPlainText(segments: readonly PromptSegment[]): string {
 }
 
 /**
- * What a proposed node is, in the group the reader is about to place.
+ * What a proposed node is, in the group the user is about to place.
  *
  * `source` stands empty for them to drop material into, `generate` waits for
  * them to press Generate, and `written` already holds the words -- the only
@@ -267,8 +267,8 @@ const proposalNodeSchema = z.object({
   type: proposalNodeTypeSchema,
   name: z.string(),
   /**
-   * The reader's material a source node lands holding: an address in our
-   * storage. A source node without it lands empty for the reader to fill.
+   * The user's material a source node lands holding: an address in our
+   * storage. A source node without it lands empty for the user to fill.
    */
   material: z.string().optional(),
   /**
@@ -297,7 +297,7 @@ const proposalNodeSchema = z.object({
    * Whether the panel will draw a prompt box here, answered by the check.
    *
    * Carried on the node because the catalog is the authority, the check has
-   * just read it, and a reader can press Use before the catalog has loaded on
+   * just read it, and a user can press Use before the catalog has loaded on
    * the canvas. A model drawing no box mounts no editor, so the canvas writes
    * nothing there and the card lists the marks instead. Absent on a node that
    * generates nothing.
@@ -311,11 +311,12 @@ const proposalNodeSchema = z.object({
   resource: z.string().optional(),
   /**
    * The template node this node stands for (inner#1345): its template and key,
-   * and for the guide text node the index of the anchor it explains. Written
-   * after the template check, never by the model.
+   * and for the guide text node the index of the anchor it explains; an input
+   * node carries its input's key with `input`, and its instance's anchor index. Written after the template
+   * check, never by the model.
    */
   templateNode: z
-    .object({ template: z.string(), key: z.string(), anchor: z.number().int().nonnegative().optional() })
+    .object({ template: z.string(), key: z.string(), anchor: z.number().int().nonnegative().optional(), input: z.literal(true).optional() })
     .optional(),
 });
 

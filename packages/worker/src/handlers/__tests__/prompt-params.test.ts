@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * `takePromptOutOfParams` (#1966) — the one place the prompt leaves the params
@@ -224,7 +224,7 @@ describe("cleaning the lyrics a music model is handed (#1960)", () => {
 });
 
 /**
- * Each shot of a storyboard is a prompt the reader typed in its own editor
+ * Each shot of a storyboard is a prompt the user typed in its own editor
  * (#2218), and gets the same cleaning on its way upstream.
  */
 describe("cleaning the shots of a storyboard (#2218)", () => {

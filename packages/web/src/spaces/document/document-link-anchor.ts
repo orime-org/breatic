@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What floating-ui measures a link control against.
@@ -30,7 +30,7 @@ import type { LinkRange } from '@web/spaces/document/document-link';
  * only while the document keeps the nodes it was built over. Writing an address
  * gives the run a new mark, and a mark view whose mark is not `eq` is destroyed
  * and rebuilt (`prosemirror-view/src/viewdesc.ts:637`), which leaves a Range
- * from before the write measuring nodes nothing renders — the reader sees the
+ * from before the write measuring nodes nothing renders — the user sees the
  * toolbar stop following the link it is pointing at. The library asks for a
  * rectangle when it is about to paint, so answering from the positions rather
  * than from held nodes is what keeps the two in step. CKEditor says the same of

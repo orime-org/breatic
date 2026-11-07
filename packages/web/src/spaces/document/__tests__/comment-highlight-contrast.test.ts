@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The words under a comment highlight stay readable (#18, A6 · A20 · A24).
  *
  * A highlight paints a colour behind body text, and the deeper shade a read
  * thread carries paints a second layer over the first. Two overlapping
- * threads add a third. Every one of those states is somewhere a reader is
+ * threads add a third. Every one of those states is somewhere a user is
  * taken by an acceptance item — hovering a card, pressing a highlight,
  * pressing the stretch two comments share — so each has to clear WCAG 2.2
  * SC 1.4.3, 4.5:1 for body text.

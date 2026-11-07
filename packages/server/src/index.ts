@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Application entry point.
@@ -66,7 +66,7 @@ globalThis.AI_SDK_LOG_WARNINGS = ({ warnings, provider, model }) => {
   logger.warn({ warnings, provider, model }, "ai_sdk_warning");
 };
 
-// The agent's save of a reader's link waits on the ingest Worker inside a
+// The agent's save of a user's link waits on the ingest Worker inside a
 // request, held to its grant's two hours (inner#1367), so undici's 300-second
 // wait for an answer must not cut it first.
 installDeadlineBoundDispatcher();

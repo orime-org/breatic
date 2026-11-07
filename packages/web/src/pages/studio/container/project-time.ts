@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { StudioProjectSort } from '@breatic/shared';
 
@@ -11,7 +11,7 @@ type Translate = ReturnType<typeof useTranslation>;
 
 /**
  * Which time a card shows under a sort. Sorting by name shows the edit time on
- * the live list and the archive time on the archived one, the time a reader
+ * the live list and the archive time on the archived one, the time a user
  * scanning by name most likely wants next.
  * @param sort - The list's sort.
  * @param archived - Whether this is the archived list.

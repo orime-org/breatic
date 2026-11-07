@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * inner#1127 A10: a selected media block is framed in the selection colour,
@@ -49,7 +49,7 @@ describe('a selected or hovered media block in the stylesheet', () => {
     expect(hovered).toBe(selected);
   });
 
-  it('draws the same frame on the block the reader selected, only in a body the reader can edit', () => {
+  it('draws the same frame on the block the user selected, only in a body the user can edit', () => {
     const css = readFileSync(resolve(import.meta.dirname, '../../../index.css'), 'utf8');
     let own: { selector: string; outline: string } | undefined;
     postcss.parse(css).walkRules((rule) => {

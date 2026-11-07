@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { CreditDecimal } from '@breatic/shared';
 
@@ -203,6 +203,20 @@ describe('TopBar', () => {
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
+  it.each(['owner', 'editor', 'viewer'] as const)('puts the Help menu right before the bell in the icon-only group (%s)', (role) => {
+    setup({ role, actualRole: role });
+    const group = screen.getByTestId('topbar-group-icon-only');
+    const help = within(group).getByTestId('help-menu-trigger');
+    expect(help.nextElementSibling).toBe(within(group).getByTestId('bell-trigger'));
+  });
+
+  it('draws the logo at 24px, the size the Studio top bar uses', () => {
+    setup();
+    const logo = screen.getByTestId('top-bar-logo');
+    expect(logo).toHaveAttribute('width', '24');
+    expect(logo).toHaveAttribute('height', '24');
+  });
+
   it('renders both topbar groups (text-icon + icon-only)', () => {
     setup();
     expect(screen.getByTestId('topbar-group-text-icon')).toBeInTheDocument();
@@ -227,7 +241,7 @@ describe('TopBar', () => {
       expect(screen.queryByRole('button', { name: 'Invite' })).toBeNull();
     });
 
-    it('a reader who may rename can double-click the title into edit mode', async () => {
+    it('a user who may rename can double-click the title into edit mode', async () => {
       const user = userEvent.setup();
       setup({ role: 'editor', canRename: true, projectName: 'Old' });
       await user.dblClick(screen.getByTestId('title-display'));
@@ -245,7 +259,7 @@ describe('TopBar', () => {
       expect(onRename).not.toHaveBeenCalled();
     });
 
-    it('a reader who may not rename stays on the plain title, an editor included', async () => {
+    it('a user who may not rename stays on the plain title, an editor included', async () => {
       const user = userEvent.setup();
       setup({ role: 'editor', canRename: false, projectName: 'Old' });
       await user.dblClick(screen.getByTestId('title-display'));

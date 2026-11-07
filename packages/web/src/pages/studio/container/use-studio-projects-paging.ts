@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
@@ -65,7 +65,7 @@ export function toContainerProject(p: ProjectSummary): ContainerProject {
 
 /**
  * Read a studio's projects list one page at a time, fetching the next as the
- * reader nears the end of the page's scroll area.
+ * user nears the end of the page's scroll area.
  *
  * The query key carries the interface language, because names sort by it.
  * Pages are joined dropping any project already shown: under the name sort,

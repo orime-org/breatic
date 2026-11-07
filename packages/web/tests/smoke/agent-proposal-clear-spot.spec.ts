@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A proposal put on the canvas lands clear of what is already there, and the
@@ -280,15 +280,15 @@ test('lands to the right of a node drawn over its spot, and the camera follows a
     blockerBox.y >= placedBox.y + placedBox.height;
   expect(clear, `placed ${JSON.stringify(placedBox)} clear of ${JSON.stringify(blockerBox)}`).toBe(true);
   expect(placedBox.x, 'moved to the right of the text node').toBeGreaterThanOrEqual(blockerBox.x + blockerBox.width);
-  expect(after.zoom, 'one node fits, so the zoom stays the reader’s').toBe(before.zoom);
+  expect(after.zoom, 'one node fits, so the zoom stays the user’s').toBe(before.zoom);
   await expectFramed(pane, placed, after.zoom);
 });
 
-test('zooms out to show a group that does not fit at the reader’s zoom', async () => {
+test('zooms out to show a group that does not fit at the user’s zoom', async () => {
   const pane = visibleSpace(page).locator('.react-flow__pane');
   await expect(pane).toBeVisible({ timeout: 20_000 });
   // A node first, so the canvas has framed its first content before the
-  // reader zooms in.
+  // user zooms in.
   await addText(page, 'anchor', 'x');
   await settledView(page);
   await page.getByTestId('zoom-readout-trigger').click();
@@ -330,11 +330,11 @@ test('shows a proposal kept in an older shape as expired, with nothing to press'
   await expect(page.getByTestId('proposal-use')).toHaveCount(0);
 });
 
-test('on a Space opened empty, keeps the reader\u2019s zoom and centres on what landed', async () => {
+test('on a Space opened empty, keeps the user\u2019s zoom and centres on what landed', async () => {
   const pane = visibleSpace(page).locator('.react-flow__pane');
   await expect(pane).toBeVisible({ timeout: 20_000 });
   // Nothing on the canvas yet, so its opening fit is still waiting for the
-  // first nodes; the reader zooms in before any arrive.
+  // first nodes; the user zooms in before any arrive.
   await page.getByTestId('zoom-readout-trigger').click();
   await page.getByTestId('zoom-preset-200').click();
   await expect.poll(async () => (await settledView(page)).zoom).toBe(2);
@@ -345,7 +345,7 @@ test('on a Space opened empty, keeps the reader\u2019s zoom and centres on what 
   await expect(placed).toHaveCount(1, { timeout: 20_000 });
   const after = await settledView(page);
 
-  expect(after.zoom, 'one node fits, so the zoom stays the reader\u2019s').toBe(2);
+  expect(after.zoom, 'one node fits, so the zoom stays the user\u2019s').toBe(2);
   await expectFramed(pane, placed, after.zoom);
 });
 

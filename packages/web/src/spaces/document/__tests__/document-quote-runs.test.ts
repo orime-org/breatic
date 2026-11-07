@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #904 验收 A8 · C3: what counts as one run of quote.
  *
- * A quote is a prop on each block rather than a container, so what the reader
+ * A quote is a prop on each block rather than a container, so what the user
  * sees as one quote is however many blocks carry it in a row. "In a row" is
  * READING order — the order the blocks are drawn in, which is the order the
  * user sees them stacked. An indented block follows the one it is indented

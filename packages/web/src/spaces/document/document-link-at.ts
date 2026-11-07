@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Which link the caret is in.
@@ -29,7 +29,7 @@ const NOTHING: LinkSelection = { range: null, href: null };
  * The link the caret is in.
  *
  * Inside means both sides of the caret carry the same link: the boundaries of
- * a run are outside it, which is what keeps the toolbar off a link the reader
+ * a run are outside it, which is what keeps the toolbar off a link the user
  * has just finished typing. A run one character long is the exception written
  * into the rule rather than patched around it — it has no interior, so its two
  * boundaries are all there is of it, and a caret that reaches such a link at

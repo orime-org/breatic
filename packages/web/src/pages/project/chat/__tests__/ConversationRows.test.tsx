@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A row in the conversation list, and the two things that can be done to it.
@@ -94,7 +94,7 @@ describe('what a row says', () => {
   });
 
   it('stands in for a conversation with no name of its own', () => {
-    // The server stores null rather than a placeholder, because the reader's
+    // The server stores null rather than a placeholder, because the user's
     // language is known here and nowhere else.
     renderSheet();
     const row = screen.getByTestId('conversation-c2');
@@ -113,7 +113,7 @@ describe('pressing a row', () => {
   });
 
   it('does not pick it when the press was on its menu', async () => {
-    // Opening the menu on a row the reader is not in must not take them to it:
+    // Opening the menu on a row the user is not in must not take them to it:
     // they came to rename or delete it, not to read it.
     const { onPick } = renderSheet();
     await userEvent.click(screen.getByTestId('conversation-menu-c2'));
@@ -135,8 +135,8 @@ describe('naming a conversation from its row', () => {
     expect(onRename).toHaveBeenCalledWith('c2', 'Storyboard notes');
   });
 
-  it('leaves the keyboard where the reader took it when they leave the box', async () => {
-    // Leaving the box is the reader handing the focus to something else (Tab
+  it('leaves the keyboard where the user took it when they leave the box', async () => {
+    // Leaving the box is the user handing the focus to something else (Tab
     // and a press elsewhere are the same path for this box); taking it back
     // to the row would make that keystroke count for nothing.
     renderSheet();
@@ -191,7 +191,7 @@ describe('naming a conversation from its row', () => {
     expect(onRename).not.toHaveBeenCalled();
   });
 
-  it('keeps the name to itself when the reader presses Escape', async () => {
+  it('keeps the name to itself when the user presses Escape', async () => {
     const { onRename } = renderSheet();
 
     await userEvent.click(screen.getByTestId('conversation-menu-c2'));
@@ -217,7 +217,7 @@ describe('naming a conversation from its row', () => {
 });
 
 describe('deleting a conversation from its row', () => {
-  it('asks first, and deletes once the reader says so', async () => {
+  it('asks first, and deletes once the user says so', async () => {
     const { onDelete } = renderSheet();
 
     await userEvent.click(screen.getByTestId('conversation-menu-c2'));
@@ -230,7 +230,7 @@ describe('deleting a conversation from its row', () => {
     expect(onDelete).toHaveBeenCalledWith('c2');
   });
 
-  it('deletes nothing when the reader backs out', async () => {
+  it('deletes nothing when the user backs out', async () => {
     const { onDelete } = renderSheet();
 
     await userEvent.click(screen.getByTestId('conversation-menu-c2'));
@@ -267,7 +267,7 @@ describe('the shape of a row', () => {
 describe('backing out of a rename', () => {
   it('leaves the list open', async () => {
     // Escape 在这里的意思是「不改了」，只该撤销这一次改名。这一按若继续冒泡，
-    // 抽屉自己的关闭机制会收到它，读者连会话列表一起失去，要重新打开。
+    // 抽屉自己的关闭机制会收到它，用户连会话列表一起失去，要重新打开。
     const onOpenChange = vi.fn();
     renderSheet({ onOpenChange });
 
@@ -355,7 +355,7 @@ describe('a page that arrives without filling the window', () => {
 
   it('asks again while the end is still in view', () => {
     // 一页装不满窗口时,末尾从头到尾都在视野里 —— 而进入视野这件事只发生一次,
-    // 之后它就一直在那儿。只认那一次的话,列表停在第二页,而读者滚不动、也没有
+    // 之后它就一直在那儿。只认那一次的话,列表停在第二页,而用户滚不动、也没有
     // 别的办法把剩下的拿回来。
     const onReachEnd = vi.fn();
     const { rerender } = renderSheetFor({ hasMore: true, onReachEnd, conversations: ROWS });
@@ -388,9 +388,9 @@ describe('while the next page is on its way', () => {
 });
 
 describe('when the next page cannot be fetched', () => {
-  it('waits for the reader to reach the end again', () => {
+  it('waits for the user to reach the end again', () => {
     // 失败之后页面一个像素都没动。要是失败本身就能让观察者重建,重建又立刻
-    // 上报「到底了」,请求就会一轮接一轮地打出去,而读者的手指一动没动。
+    // 上报「到底了」,请求就会一轮接一轮地打出去,而用户的手指一动没动。
     const onReachEnd = vi.fn();
     const { rerender } = renderSheetFor({ hasMore: true, onReachEnd, nextPageFailed: false });
     const asked = onReachEnd.mock.calls.length;
@@ -400,7 +400,7 @@ describe('when the next page cannot be fetched', () => {
     expect(onReachEnd).toHaveBeenCalledTimes(asked);
   });
 
-  it('asks again once the reader scrolls toward the end', () => {
+  it('asks again once the user scrolls toward the end', () => {
     // After a failure the sheet stops watching whether the end is in view (a
     // state the failure leaves as it was) and waits for a scroll toward it.
     const onReachEnd = vi.fn();
@@ -441,7 +441,7 @@ describe('when the sheet is taken away mid-confirmation', () => {
 
 describe('what the list says while it is being fetched', () => {
   it('does not claim the project has no conversations', () => {
-    // 「一条都没有」是一句关于事实的断言,而这一刻前端还不知道有没有。读者会
+    // 「一条都没有」是一句关于事实的断言,而这一刻前端还不知道有没有。用户会
     // 据此关掉列表、以为自己记错了,一两秒后它又自己冒出来 —— 这跟消息区那边
     // 已经堵住的错是同一个,只是换了个面。
     renderSheet({ conversations: [], listLoading: true });

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * One user message as the model is sent it.
@@ -36,16 +36,18 @@ export interface PreparedPicture {
 }
 
 /**
- * The project's Spaces, one line each, the open one marked.
+ * The project's Spaces, one line each with its id, the open one marked. Names
+ * may repeat, so a tool that names a Space names it by the id given here
+ * (inner#1552).
  * @param spaces - The Spaces listed.
  * @param total - How many there are, listed or not.
- * @param openId - The Space the reader has open and turned on, if any.
+ * @param openId - The Space the user has open and turned on, if any.
  * @returns The section.
  * @throws {never} Never.
  */
 function spaceListSection(spaces: readonly ChatSpace[], total: number, openId: string | undefined): string {
   const lines = spaces.map(
-    (s) => `- ${JSON.stringify(s.name)} (${s.kind})${s.id === openId ? " — the reader has this one open" : ""}`,
+    (s) => `- ${JSON.stringify(s.name)} (${s.kind}, id: ${s.id})${s.id === openId ? " — the user has this one open" : ""}`,
   );
   const unlisted = total - spaces.length;
   if (unlisted > 0) lines.push(`(${String(unlisted)} more not listed)`);
@@ -64,13 +66,13 @@ export const UNCHANGED_SPACE_NOTE = "Unchanged since the most recent message abo
  *
  * A document's text is quoted, so a heading in it is not read as a heading of
  * the turn; a canvas's text is JSON on one line and goes in as it is.
- * @param current - The Space the reader has open.
+ * @param current - The Space the user has open.
  * @param unchanged - Its content is what the history last sent of it in full.
  * @returns The section.
  * @throws {never} Never.
  */
 function openSpaceSection(current: ChatCurrentSpace, unchanged = false): string {
-  const heading = `## The Space the reader has open: ${JSON.stringify(current.name)} (${current.kind})`;
+  const heading = `## The Space the user has open: ${JSON.stringify(current.name)} (${current.kind})`;
   if (current.state === "loading") return `${heading}\n\nIts content has not loaded yet.`;
   if (current.state === "unreadable") return `${heading}\n\nThe content of a ${current.kind} Space cannot be read.`;
   if (current.content === "") return `${heading}\n\nThis Space is empty.`;
@@ -93,7 +95,7 @@ function openSpaceSection(current: ChatCurrentSpace, unchanged = false): string 
  *
  * Taken over the whole section, heading and note on what was cut included:
  * a renamed Space or a different cut is not the copy above.
- * @param current - The Space the reader has open, if any.
+ * @param current - The Space the user has open, if any.
  * @returns The Space and the hash, or undefined when its section is already
  *   one line.
  * @throws {never} Never.
@@ -115,7 +117,7 @@ function canvasNote(shown: string, detail: ChatCanvasDetail): string {
   const parts = [`(The canvas is over the limit, so it is shown in less detail: ${shown}.`];
   if (total > 0) {
     const inAttachments = attached > 0 ? ` and ${String(attached)} are complete in the attachments` : "";
-    parts.push(` The reader selected ${String(total)} nodes; ${String(whole)} of them are complete here${inAttachments}.`);
+    parts.push(` The user selected ${String(total)} nodes; ${String(whole)} of them are complete here${inAttachments}.`);
   }
   if (detail.slim) {
     parts.push(
@@ -135,15 +137,15 @@ function canvasNote(shown: string, detail: ChatCanvasDetail): string {
   const fitAtSlim = counted.every(([n]) => n === 0) && whole + attached === total;
   parts.push(
     fitAtSlim
-      ? " To see nodes in full, ask the reader to select them or add them to the Agent.)"
-      : " To see nodes in full, ask the reader to add them to the Agent.)",
+      ? " To see nodes in full, ask the user to select them or add them to the Agent.)"
+      : " To see nodes in full, ask the user to add them to the Agent.)",
   );
   return parts.join("");
 }
 
 /**
  * The Spaces a message carries: the project's list, then the one open.
- * @param space - The reader's Spaces.
+ * @param space - The user's Spaces.
  * @param spaceUnchanged - The open Space is what the history last sent of it
  *   in full, so it goes as one line.
  * @returns The sections, in order; none when there are no Spaces.
@@ -189,23 +191,23 @@ export function userTurnForModel(turn: UserTurn, spaceUnchanged = false): UserCo
  * The reminder each user message closes with.
  *
  * The rule is in the system prompt. From there alone, DeepSeek wrote the
- * proposal prompts in the reader's language in 14 of 18 runs; with this line
- * under the reader's own words (before the exceptions clause was added), Claude
+ * proposal prompts in the user's language in 14 of 18 runs; with this line
+ * under the user's own words (before the exceptions clause was added), Claude
  * Opus 5.5 did in 27 of 27 (inner#1447). Written into the message, it is
  * stored and replayed with it, so it never changes a prefix the provider has
  * cached. The product terms ride along for the same reason: from the system
- * prompt alone, the model echoed a translated term the reader had just typed
+ * prompt alone, the model echoed a translated term the user had just typed
  * (inner#1600).
  */
-export const READER_LANGUAGE_REMINDER =
+export const USER_LANGUAGE_REMINDER =
   "(Reply and write every text the user will read or edit in the language this message is written in, " +
   "unless the user has asked for a specific language or the work itself sets one. " +
   "Keep the product terms the system prompt lists in English, even where this message translates them.)";
 
 /**
- * One user message exactly as the turn sends it: the reader's clock, the
- * message itself, then the reminder of the reader's language.
- * @param clockNote - The line that says what time it is for the reader.
+ * One user message exactly as the turn sends it: the user's clock, the
+ * message itself, then the reminder of the user's language.
+ * @param clockNote - The line that says what time it is for the user.
  * @param turn - What the message is made of.
  * @param spaceUnchanged - The open Space goes as one line.
  * @returns The clock and content with the reminder in the final text part.
@@ -213,21 +215,21 @@ export const READER_LANGUAGE_REMINDER =
  */
 export function userMessageForModel(clockNote: string, turn: UserTurn, spaceUnchanged = false): UserContent {
   const content = userTurnForModel(turn, spaceUnchanged);
-  if (typeof content === "string") return `${clockNote}\n\n${content}\n\n${READER_LANGUAGE_REMINDER}`;
+  if (typeof content === "string") return `${clockNote}\n\n${content}\n\n${USER_LANGUAGE_REMINDER}`;
   return [
     { type: "text", text: `${clockNote}\n\n` },
     ...content,
-    { type: "text", text: READER_LANGUAGE_REMINDER },
+    { type: "text", text: USER_LANGUAGE_REMINDER },
   ];
 }
 
 /**
  * The message a segment resumed after a questionnaire opens with: the
- * reader's clock and Spaces as they were when the answer was sent. It carries
- * no words of the reader's -- the answer is the call's result -- so it has no
+ * user's clock and Spaces as they were when the answer was sent. It carries
+ * no words of the user's -- the answer is the call's result -- so it has no
  * heading for them and no reminder about their language.
- * @param clockNote - The line saying what time it is for the reader.
- * @param space - The reader's Spaces when they answered.
+ * @param clockNote - The line saying what time it is for the user.
+ * @param space - The user's Spaces when they answered.
  * @param spaceUnchanged - The open Space is what the history last sent of it
  *   in full, so it goes as one line.
  * @returns The message's text.

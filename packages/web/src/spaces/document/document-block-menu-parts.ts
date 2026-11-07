@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What the block handle's menus share: where a rule goes between block type
@@ -84,7 +84,7 @@ const GREYED = {
  * what they read.
  *
  * The third thing — say so — is the treatment itself, the same dimming the
- * reader has already met on the bubble bar's own two slots when the selection
+ * user has already met on the bubble bar's own two slots when the selection
  * moved out of reach. No extra words: the commands ARE built, so a "not open
  * yet" note would say something false here.
  * @param unavailable - Whether the command is out of reach on this row.

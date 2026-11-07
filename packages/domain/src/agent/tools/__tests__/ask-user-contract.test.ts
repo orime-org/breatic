@@ -1,16 +1,16 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * One tool asks the user something, and its arguments are the card.
  *
- * The questions and their options are drawn as a questionnaire the reader can
+ * The questions and their options are drawn as a questionnaire the user can
  * click, so the shape of that card is decided here rather than requested of
  * the model: one to four questions, each with a short label, up to five
  * options, and pictures or sounds only from places we can vouch for.
  *
  * The tool has no `execute`: a call to it is a question waiting for the
- * reader, and the answer comes back as its result in a later request.
+ * user, and the answer comes back as its result in a later request.
  */
 import { describe, it, expect } from "vitest";
 
@@ -192,7 +192,7 @@ describe("what the model may not send", () => {
 });
 
 describe("how the tool runs", () => {
-  it("has no execute, so a call waits for the reader's answer", () => {
+  it("has no execute, so a call waits for the user's answer", () => {
     expect((askUser as { execute?: unknown }).execute).toBeUndefined();
   });
 

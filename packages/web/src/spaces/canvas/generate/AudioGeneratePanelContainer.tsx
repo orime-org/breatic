@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The audio Generate panel's canvas integration: everything the presentational
@@ -273,6 +273,8 @@ function AudioGeneratePanelBody({
   );
   /** Whether this run shows a lyrics box, and so insists on what goes in it. */
   const lyrics = modelTakesLyrics(vm.modelEntry, mode);
+  /** The lyrics box's words while the box is on the panel: asked for, and seeded on the node. */
+  const shownLyricsFragment = lyrics ? lyricsFragment : null;
   /** The slot whose pick is running on this node, if any. */
   const activeSlot = useCanvasSession((s) => {
     const session = s.pickSession;
@@ -439,28 +441,37 @@ function AudioGeneratePanelBody({
     },
     [projectId, spaceId, nodeId],
   );
-  // Which box the caret was last in. Clicking a rail row keeps the caret where
-  // it is (`ReferenceRail` preventDefaults the mousedown, which is what lets
-  // the chip land at the caret rather than at the end), but plenty of other
-  // things take focus first: tabbing to the row, the model picker, the params
-  // popover. In every one of those neither editor is focused, so which box to
-  // insert into has to be remembered rather than read at click time.
-  const lastFocusedBox = React.useRef<'prompt' | 'lyrics'>('prompt');
-  const onPromptFocus = React.useCallback(() => {
-    lastFocusedBox.current = 'prompt';
+  // Which of the two boxes is open while both are there (#1201): the style box
+  // each time the panel shows another pair of boxes, that is, whenever the
+  // lyrics box changes words (each mode keeps its own) or goes away.
+  const [expanded, setExpanded] = React.useState<'prompt' | 'lyrics'>('prompt');
+  const [seenLyrics, setSeenLyrics] = React.useState(shownLyricsFragment);
+  if (seenLyrics !== shownLyricsFragment) {
+    setSeenLyrics(shownLyricsFragment);
+    setExpanded('prompt');
+  }
+  // Set by the user's own click on a row, and spent once that box is shown.
+  const focusOnOpen = React.useRef(false);
+  const onExpand = React.useCallback((box: 'prompt' | 'lyrics') => {
+    focusOnOpen.current = true;
+    setExpanded(box);
   }, []);
-  const onLyricsFocus = React.useCallback(() => {
-    lastFocusedBox.current = 'lyrics';
-  }, []);
+  React.useEffect(() => {
+    if (!focusOnOpen.current) return;
+    focusOnOpen.current = false;
+    (expanded === 'lyrics' ? lyricsEditorRef : promptEditorRef).current?.focus();
+  }, [expanded, lyricsEditorRef, promptEditorRef]);
+  // The rail's insert lands in the box on show: a chip put into the hidden
+  // one would arrive where the writer cannot see it.
   const onInsertReference = React.useCallback(
     (item: ReferenceRailItem) => {
       const target =
-        lastFocusedBox.current === 'lyrics' && lyricsEditorRef.current
+        expanded === 'lyrics' && lyricsEditorRef.current
           ? lyricsEditorRef.current
           : promptEditorRef.current;
       target?.insertReference(item);
     },
-    [promptEditorRef, lyricsEditorRef],
+    [expanded, promptEditorRef, lyricsEditorRef],
   );
 
   const onExecute = React.useCallback((): void => {
@@ -585,7 +596,6 @@ function AudioGeneratePanelBody({
           // An audio node collects only text rows, and a text chip serializes
           // into the prompt itself — no id ever becomes a model input here.
           onAtMentionsChange={noop}
-          onFocus={onPromptFocus}
           references={references}
           // A media `@` chip is a model input on the other two panels; here
           // no audio model declares a pool for one to travel in.
@@ -598,7 +608,6 @@ function AudioGeneratePanelBody({
       fragment,
       promptPlaceholder,
       onPromptChange,
-      onPromptFocus,
       references,
       mentionEmptyLabel,
       caretProvider,
@@ -610,7 +619,7 @@ function AudioGeneratePanelBody({
   const lyricsPlaceholder = t('canvas.generatePanel.musicLyricsPlaceholder');
   const lyricsSlot = React.useMemo(
     () =>
-      lyrics && lyricsFragment ? (
+      shownLyricsFragment ? (
         <PromptEditor
           ref={lyricsEditorRef}
           testId='generate-lyrics-editor'
@@ -618,14 +627,13 @@ function AudioGeneratePanelBody({
           // blank line between blocks, which reads as prose; here the line
           // structure is the content and the vendor is handed it as typed.
           blockSeparator={'\n'}
-          fragment={lyricsFragment}
+          fragment={shownLyricsFragment}
           placeholder={lyricsPlaceholder}
           onTextChange={onLyricsChange}
           // The `@` chip carries no id to the vendor here; it substitutes the
           // source node's words into the lyrics string, the way it does in the
           // box above.
           onAtMentionsChange={noop}
-          onFocus={onLyricsFocus}
           // The same pool the style box reads: a song's words are often
           // already written in a text node on the canvas, and `@` is how they
           // get in (user 2026-09-06).
@@ -636,11 +644,9 @@ function AudioGeneratePanelBody({
         />
       ) : null,
     [
-      lyrics,
-      lyricsFragment,
+      shownLyricsFragment,
       lyricsPlaceholder,
       onLyricsChange,
-      onLyricsFocus,
       references,
       mentionEmptyLabel,
       caretProvider,
@@ -694,6 +700,11 @@ function AudioGeneratePanelBody({
       promptSlot={promptSlot}
       lyricsSlot={lyricsSlot}
       promptLabel={promptLabel}
+      promptPlaceholder={promptPlaceholder}
+      expanded={expanded}
+      onExpand={onExpand}
+      promptFragment={fragment}
+      lyricsFragment={shownLyricsFragment}
       onToggleMode={onToggleMode}
       onSelectModel={onSelectModel}
       onVoiceOpenChange={voices.onOpenChange}

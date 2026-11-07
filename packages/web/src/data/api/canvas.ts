@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { CanvasPasteInput, NodeTaskCounts, NodeTaskEntry, TaskCreateInput } from '@breatic/shared';
 
@@ -198,7 +198,8 @@ export const canvasApi = {
    * @param body.source_type - Which of the three kinds the read node holds.
    * @param body.source_url - The address of what it is showing.
    * @param body.node_ids - The node this run writes to, which already exists.
-   * @param body.reader_locale - The language the answer is read in.
+   * @param body.user_locale - The language the answer is read in.
+   * @param body.reader_locale - The same locale under its pre-#1378 name, until #1387.
    * @param body.source_mime_type - What the ledger judged the file to be.
    * @param key - The press's `Idempotency-Key`; a re-send with it runs nothing new.
    * @returns The queued task.
@@ -210,6 +211,7 @@ export const canvasApi = {
     source_type: 'image' | 'video' | 'audio';
     source_url: string;
     node_ids: string[];
+    user_locale: string;
     reader_locale: string;
     source_mime_type?: string;
   }, key: string): Promise<CanvasTask> {
@@ -226,7 +228,8 @@ export const canvasApi = {
    * @param body.source_type - Whether the node holds audio or a video.
    * @param body.source_url - The address of what it is showing.
    * @param body.node_ids - The node this run writes to, which already exists.
-   * @param body.reader_locale - The reader's language, which picks the Chinese script.
+   * @param body.user_locale - The user's language, which picks the Chinese script.
+   * @param body.reader_locale - The same locale under its pre-#1378 name, until #1387.
    * @param body.keep_fillers - Whether filler words stay as spoken.
    * @param body.source_mime_type - What the ledger judged the file to be.
    * @param key - The press's `Idempotency-Key`; a re-send with it runs nothing new.
@@ -239,6 +242,7 @@ export const canvasApi = {
     source_type: 'video' | 'audio';
     source_url: string;
     node_ids: string[];
+    user_locale: string;
     reader_locale: string;
     keep_fillers: boolean;
     source_mime_type?: string;

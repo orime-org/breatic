@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Which modes a generation node can currently be set to, and what each is for.
@@ -66,7 +66,7 @@ interface ModeSource {
  * Every field of `ParamDescriptor` that narrows what may be set is carried
  * here. The test of what belongs is not what an agent seems to need but
  * whether the catalog states a fact that changes the answer: a range stated
- * only in yaml is a range the reader is told nothing about, and the panel
+ * only in yaml is a range the user is told nothing about, and the panel
  * builds its control out of exactly these.
  */
 export interface ParamInfo {
@@ -76,7 +76,7 @@ export interface ParamInfo {
    * The values the node's picker lists for it.
    *
    * A fixed set is listed as declared, and a range is walked the way a picker
-   * walks it, so a reader is not offered a value no control can reach. The
+   * walks it, so a user is not offered a value no control can reach. The
    * image and video panels read this through the same function; the audio one
    * resolves its own controls in `audio-params.ts`, stating the same
    * precedence in its own words.
@@ -119,7 +119,7 @@ export interface ParamInfo {
    * Whether that source is the reference pool, which takes a second gesture.
    *
    * An edge makes an image available; an `@`-mention in the prompt picks it
-   * for this run. A reader who only wires the edge submits a run with no
+   * for this run. A user who only wires the edge submits a run with no
    * source, and the gate refuses it.
    */
   fromReferencePool?: true;
@@ -133,14 +133,14 @@ export interface ParamInfo {
    *
    * The panel draws the controls it has, not one per declared parameter. A
    * parameter it cannot draw runs at whatever the upstream defaults to, and
-   * presented as a field to fill it has the reader looking for a control that
+   * presented as a field to fill it has the user looking for a control that
    * is not there.
    */
   noControl?: true;
   /**
    * What has to hold before setting this counts for anything.
    *
-   * Carried rather than flattened to a boolean, because a reader who satisfies
+   * Carried rather than flattened to a boolean, because a user who satisfies
    * it gets the control: "not yet" and "not ever" ask different things of
    * them, and {@link ParamInfo.noControl} already says the second.
    */
@@ -161,7 +161,7 @@ export interface ModelInfo {
    * The name the picker puts on screen.
    *
    * The picker renders this and never the id, so an answer carrying only the
-   * id asks the reader to map a hyphenated lowercase id onto the spaced,
+   * id asks the user to map a hyphenated lowercase id onto the spaced,
    * capitalised name in front of them.
    */
   displayName: string;
@@ -173,7 +173,7 @@ export interface ModelInfo {
    * The most prompt text one call takes, for a model that states a cap.
    *
    * The panel refuses the submit past it, so two models that differ only
-   * here are indistinguishable to a reader choosing on script length.
+   * here are indistinguishable to a user choosing on script length.
    */
   maxInputChars?: number;
   /**
@@ -195,7 +195,7 @@ export interface ModelInfo {
    * serving two modes says things about the other one -- the image-to-video
    * models mention end-frame guidance, which is the first-last-frame mode.
    * Reading that sentence against a parameter list that has no end frame, a
-   * reader takes the list for incomplete; naming the mode places it.
+   * user takes the list for incomplete; naming the mode places it.
    */
   alsoServes?: string[];
   /** Its parameters, keyed by the name the node stores them under. */
@@ -220,7 +220,7 @@ export type ModelsForMode<M extends ModelInfo = ModelInfo> =
   | { available: false; offered: string[] };
 
 /**
- * How many pieces of material one model in one mode asks the reader for.
+ * How many pieces of material one model in one mode asks the user for.
  *
  * Both layers answer and neither alone is the count: the model says which of
  * its parameters are slots and which may be left empty, and the mode says
@@ -228,7 +228,7 @@ export type ModelsForMode<M extends ModelInfo = ModelInfo> =
  * @param nodeType - The node the run is on, for the buckets it draws from.
  * @param mode - The mode it is set to.
  * @param model - The model it names.
- * @returns How many separate pieces the reader has to point at; zero for a
+ * @returns How many separate pieces the user has to point at; zero for a
  * model this node cannot reach.
  */
 export function materialNeeded(
@@ -296,7 +296,7 @@ function describeMode(
     if (!declared) continue;
     return {
       // The picker's word for it, which the declaration holds: the mode code
-      // is nowhere on screen, so the label is the only thing a reader can
+      // is nowhere on screen, so the label is the only thing a user can
       // match this answer against.
       label: declared.label,
       // One line: the yaml folds these across several, and the agent reads the
@@ -335,7 +335,7 @@ export function getCanvasCapabilities(): CanvasCapabilities {
  * Every catalog entry a generation node can draw on.
  *
  * Exported so a guard can hold the prose these entries carry to the same
- * reachability this answer uses: a claim only matters where a reader meets it.
+ * reachability this answer uses: a claim only matters where a user meets it.
  * @param nodeType - The node asking.
  * @returns The reachable models from each of that node's buckets.
  */
@@ -347,7 +347,7 @@ export function entriesForNode(nodeType: GenerationNodeType): ModelEntry[] {
 /**
  * How one parameter of one model is reached, in the mode being asked about.
  *
- * Three answers, and they decide what the reader is told to do with it: point
+ * Three answers, and they decide what the user is told to do with it: point
  * at another node, set it in the panel, or leave it be because this panel
  * draws nothing for it. A carrier field belonging to some other mode of the
  * same model is reached by nobody here, which is why the caller drops it.
@@ -396,7 +396,7 @@ function projectParam(
   by: "canvas" | "panel" | "nothing",
   entry: ModelEntry,
 ): ParamInfo {
-  // The picker's own list, so the reader is offered what the control offers.
+  // The picker's own list, so the user is offered what the control offers.
   // A stepped range is a slider: its bounds and step say more than walking it.
   const options = spec.step === undefined ? paramValues(entry, name) : [];
   // Only a control waits on something: material is held to this mode's slots
@@ -438,7 +438,7 @@ function isReferenceKind(accepts: string | undefined): accepts is ReferenceKind 
 
 /**
  * How a node going one way in is used: the prompt mentions it with a ref,
- * the reader picks it into a slot as a note asks, or landing mentions it in
+ * the user picks it into a slot as a note asks, or landing mentions it in
  * a box of its own (the lyrics box) with nothing asked of the prompt.
  */
 export type WayMark = "ref" | "note" | "placed";
@@ -464,7 +464,7 @@ export type WayKind = ReferenceKind | "text";
 /**
  * Every way a model takes each kind of node reaching it (design 5.7 table
  * A): its pool, mentioned in the prompt box by a ref; each slot, which the
- * reader picks into in the panel; and for words, the prompt box, mentioned by
+ * user picks into in the panel; and for words, the prompt box, mentioned by
  * a ref, and the lyrics box, which landing mentions them in.
  * @param chosen - The model, as the catalog projects it.
  * @returns Per kind, its ways in declaration order.
@@ -535,7 +535,7 @@ export function modelsForMode(
       return {
       name: entry.name,
       nodeType,
-      // The name this mode's picker shows, so the agent and the reader say the same one.
+      // The name this mode's picker shows, so the agent and the user say the same one.
       displayName: modelLabel(entry, inMode),
       // The guide is written for a model to read and says what the thing is
       // good at; the description is written for a person and says what it is.

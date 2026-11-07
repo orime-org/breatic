@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #904 验收 A8 · A8b: a run of quoted blocks reads as one quote.
@@ -245,7 +245,7 @@ describe('what the stylesheet reaches a quote by', () => {
     // The rule lies over the first 2px of the block's own box, and a generated
     // box takes part in hit testing like any other. Measured with it taking
     // the pointer: a click on that strip left the selection as it was, so a
-    // reader clicking the near edge of a quote did not get a caret
+    // user clicking the near edge of a quote did not get a caret
     // (`document-block-type.spec.ts`'s quote shape held the range for the full
     // ten seconds it waits). It draws and nothing else.
     expect(ruleFor('.doc-body [data-quoted-run]::after')).toContain(

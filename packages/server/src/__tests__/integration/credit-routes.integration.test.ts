@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * 积分的五个端点（任务 #11）。
@@ -950,7 +950,7 @@ describe("POST /credits/lots/:id/refund", () => {
 
   it("refuses in the language of the request", async () => {
     // The handler puts `AppError.message` on the wire as it stands, so a
-    // refusal that reached for a literal would ship English to every reader.
+    // refusal that reached for a literal would ship English to every user.
     const fx = await seedFixture();
     const lotId = await seedLot(fx, 100, fx.studioId);
 

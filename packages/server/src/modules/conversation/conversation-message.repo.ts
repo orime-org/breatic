@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Conversation message repository — one row per message.
@@ -21,6 +21,7 @@
 
 import { and, asc, desc, eq, inArray, isNull, lt, lte, gt, gte, max, sql, type SQL } from "drizzle-orm";
 import {
+  accountActivityRepo,
   db,
   conversations,
   conversationMessages,
@@ -32,6 +33,12 @@ import type { DbTx } from "@breatic/core";
 import { ASK_USER, RECORD_TOOL_NAMES } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import type { MessageData, MessageInput, MessagePart } from "@breatic/shared";
+
+/** Trusted HTTP identity accompanying a first accepted card answer. */
+export interface AnswerActor {
+  userId: string;
+  projectId: string;
+}
 
 /** A stored row, as far as the mapping functions care. */
 type StoredRow = {
@@ -107,7 +114,7 @@ function toMessageData(row: StoredRow): MessageData {
  * @returns The turn index this message went into — callers billing by turn
  *   need this exact number and recomputing it later would race
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
- *   `main-agent.ts` writes the user's own message through `addReaderMessage`,
+ *   `main-agent.ts` writes the user's own message through `addUserMessage`,
  *   which numbers it with the same locked insert, before a turn starts, so a
  *   conversation that is already gone fails the turn before any billing state
  *   exists. Here, the reply is written later in the turn, and this throw does
@@ -193,7 +200,7 @@ async function insertIn(tx: DbTx, id: string, message: MessageInput, forModel?: 
   return turnIndex;
 }
 
-/** The result a question waiting for the reader is settled with. */
+/** The result a question waiting for the user is settled with. */
 export interface AskSettlement {
   /** The call's output as stored and drawn. */
   output: unknown;
@@ -231,7 +238,7 @@ async function settleInRow(
 }
 
 /**
- * Append the reader's message and, in the same transaction, settle every
+ * Append the user's message and, in the same transaction, settle every
  * question the agent is waiting on in this conversation.
  *
  * A message written instead of answering a card closes the card. Every
@@ -239,15 +246,16 @@ async function settleInRow(
  * can be stored after a turn another tab started, and a call left without a
  * result makes every later request in the conversation fail.
  * @param id - Conversation UUID.
- * @param message - The reader's message.
- * @param settle - The settlement for a waiting call, given its id.
+ * @param message - The user's message.
+ * @param settle - The settlement for a waiting call, given its id and its
+ *   tool's name, which the result the model reads is filed under.
  * @returns The turn index the message opened, and the calls it closed.
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
  */
-export async function addReaderMessage(
+export async function addUserMessage(
   id: string,
   message: MessageInput,
-  settle: (toolCallId: string) => AskSettlement,
+  settle: (toolCallId: string, toolName: string) => AskSettlement,
 ): Promise<{ turnIndex: number; closedAsks: string[] }> {
   return db.transaction(async (tx) => {
     const turnIndex = await insertIn(tx, id, message);
@@ -269,7 +277,7 @@ export async function addReaderMessage(
       let current = row;
       for (const part of row.parts) {
         if (part.type !== "tool" || part.status !== "awaiting") continue;
-        current = await settleInRow(tx, current, part.toolCallId, settle(part.toolCallId));
+        current = await settleInRow(tx, current, part.toolCallId, settle(part.toolCallId, part.toolName));
         closedAsks.push(part.toolCallId);
       }
     }
@@ -279,13 +287,13 @@ export async function addReaderMessage(
 
 /** How an answer to a waiting question was taken. */
 export type AnswerOutcome =
-  | { kind: "answered"; turnIndex: number }
+  | { kind: "answered"; turnIndex: number; output: unknown }
   | { kind: "settled"; status: string; output: unknown }
   | { kind: "mismatch"; reason: string }
   | { kind: "missing" };
 
 /**
- * Settle a waiting question with the reader's answer, once.
+ * Settle a waiting question with the user's answer, once.
  *
  * Under the conversation lock: the question is settled only while it is still
  * waiting, so of two answers (or an answer and a message) the first to take
@@ -295,6 +303,7 @@ export type AnswerOutcome =
  * @param toolCallId - The call the answer is for.
  * @param check - Holds the answer to the call's stored input; a reason when
  *   it does not fit, otherwise the settlement.
+ * @param actor - Trusted authenticated admission context for a user answer.
  * @returns How it went.
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
  */
@@ -302,6 +311,7 @@ export async function answerWaitingAsk(
   id: string,
   toolCallId: string,
   check: (input: unknown) => { reason: string } | AskSettlement,
+  actor?: AnswerActor,
 ): Promise<AnswerOutcome> {
   return db.transaction(async (tx) => {
     const owner = await tx
@@ -334,8 +344,33 @@ export async function answerWaitingAsk(
     const checked = check(part.input);
     if ("reason" in checked) return { kind: "mismatch", reason: checked.reason };
     await settleInRow(tx, row, toolCallId, checked);
-    return { kind: "answered", turnIndex: row.turnIndex };
+    if (actor) await accountActivityRepo.recordActivity({ ...actor, kind: "agent_started" }, tx);
+    return { kind: "answered", turnIndex: row.turnIndex, output: checked.output };
   });
+}
+
+/**
+ * The model the turn that made this call started on, as its reply records it
+ * (#1363).
+ * @param id - Conversation UUID.
+ * @param toolCallId - A call the reply made.
+ * @returns The model id, or undefined when no reply holds the call or its record predates the picker.
+ */
+export async function getReplyModelId(id: string, toolCallId: string): Promise<string | undefined> {
+  const [row] = await db
+    .select({ forModel: conversationMessages.forModel })
+    .from(conversationMessages)
+    .where(
+      and(
+        eq(conversationMessages.conversationId, id),
+        eq(conversationMessages.role, "assistant"),
+        isNull(conversationMessages.deletedAt),
+        sql`${conversationMessages.parts} @> ${JSON.stringify([{ toolCallId }])}::jsonb`,
+      ),
+    )
+    .limit(1);
+  const modelId = (row?.forModel as { modelId?: unknown } | null | undefined)?.modelId;
+  return typeof modelId === "string" ? modelId : undefined;
 }
 
 /**
@@ -427,7 +462,7 @@ export async function getMessages(
   // Rows come newest first, so the last one is the oldest — and when there is
   // more behind it, it is the turn the limit cut through. Drop it whole and
   // it becomes the next page's job, complete. Unless it is the only turn
-  // here, in which case dropping it would return nothing and the reader could
+  // here, in which case dropping it would return nothing and the user could
   // never get past it.
   const oldestTurn = rows.at(-1)?.turnIndex;
   const kept =

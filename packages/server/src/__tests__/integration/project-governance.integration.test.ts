@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Who may rename, re-cover, duplicate, archive and restore a project, and
@@ -188,7 +188,7 @@ describe("duplicate", () => {
     await expect(projectService.duplicate(s.projectId, s.editorId)).rejects.toBeInstanceOf(ForbiddenError);
   });
 
-  it("names the copy in the reader's language, the copy mark first", async () => {
+  it("names the copy in the user's language, the copy mark first", async () => {
     const s = await seedScene();
     const en = await runWithLocale("en", () => projectService.duplicate(s.projectId, s.ownerId));
     expect(en.name).toBe(`Copy of ${await nameOf(s.projectId)}`);

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 
@@ -188,7 +188,7 @@ export function SignupCodeStep({
   );
 
   const waiting = waitLeft > 0;
-  // The boxes carry the error until the reader starts typing the next code.
+  // The boxes carry the error until the user starts typing the next code.
   const boxesInvalid = error !== null && code.length === 0;
 
   return (

@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * An open Space tab's connection to its document (inner#1235 §5.1).
  *
  * The tab holds it for as long as it is open. A Space body is hidden rather
- * than unmounted when the reader switches away, and hiding cleans up the
+ * than unmounted when the user switches away, and hiding cleans up the
  * body's effects; a connection held by the body would be released and read as
  * "connecting" again on the way back. Read from the tab, it stays as it was.
  */

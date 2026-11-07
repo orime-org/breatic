@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The refusal sentences, rendered in all five languages (#2175).
@@ -14,7 +14,7 @@
  * others still have to render, or that the values still have to appear.
  *
  * So every arm is rendered in every language here. English alone passing says
- * nothing about the four catalogs the other readers open.
+ * nothing about the four catalogs the other users open.
  */
 
 import { afterEach, describe, expect, it } from 'vitest';

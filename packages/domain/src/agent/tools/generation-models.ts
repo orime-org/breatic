@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Generation models tool — which models back one mode of one node, and how.
@@ -163,7 +163,7 @@ function renderModel(model: PricedModelInfo): string {
   const beyond = Object.entries(model.params)
     .filter(([, spec]) => spec.noControl && !spec.fromStoryboard)
     .map(([name]) => name);
-  // A reader picks a model off this line. A capability its prose sells whose
+  // A user picks a model off this line. A capability its prose sells whose
   // parameter nothing can set is one they cannot have, and the per-parameter
   // line saying so is read after the choice.
   const unreachable =
@@ -236,10 +236,10 @@ function renderModel(model: PricedModelInfo): string {
           ? ` ${spec.min} to ${spec.max}${spec.step !== undefined ? ` in steps of ${spec.step}` : ""};`
           : shape;
     // The control exists but does not count yet, which asks something of the
-    // reader that "no control" does not: satisfy the gate and setting it works.
+    // user that "no control" does not: satisfy the gate and setting it works.
     const waits = spec.gate === undefined ? "" : ` it applies only while ${spec.gate.param} is on;`;
     // A field served from upstream stands on the first entry of that list
-    // until the reader picks one in the panel.
+    // until the user picks one in the panel.
     const tail = spec.valuesFrom
       ? " defaults to the first entry of that list."
       : ` defaults to ${JSON.stringify(spec.default)}.`;
@@ -272,7 +272,7 @@ export const generationModels: Tool<z.infer<typeof inputSchema>, PricedModelsFor
     "is good at, what a call costs, how long it takes, and every parameter " +
     "with its default. Ask get_canvas_capabilities first for the node type " +
     "and mode to pass here. Propose only a model this returns, and only " +
-    `parameters it names. How the reader fills a source parameter on screen is in ${GET_PRODUCT_GUIDE}.`,
+    `parameters it names. How the user fills a source parameter on screen is in ${GET_PRODUCT_GUIDE}.`,
   inputSchema,
   metadata: { runningLine: "chat.tool.checkingModels" },
   // The SDK's own conversion, which is what a running turn reaches -- the

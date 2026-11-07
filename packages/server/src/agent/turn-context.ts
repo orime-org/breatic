@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a turn is given before it starts: the memory and the history.
@@ -17,7 +17,7 @@ import type { ReplayRow } from "@server/agent/history-replay.js";
 
 /** Everything a turn reads before its first token. */
 export interface TurnContext {
-  /** Both memory layers, loaded once for this turn. */
+  /** The memory entries and this conversation's progress note, loaded once for this turn. */
   memoryContext: MemoryContext;
   /** What has been said since the watermark, as stored. */
   history: ReplayRow[];

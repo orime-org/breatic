@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 export { STRIPE_WEBHOOK_RESULTS, type StripeWebhookResult } from "@shared/types/stripe-webhook.js";
 
@@ -33,6 +33,9 @@ export type {
   StudioProjectPage,
   RecentItem,
   MemoryContext,
+  AgentMemoryEntity,
+  AgentModelChoice,
+  ChatConversation,
   StoredMessageMetadata,
 } from "@shared/types/entities.js";
 
@@ -228,6 +231,7 @@ export {
   PROJECT_ACTIVITY_TYPES,
   ACTIVITY_NEW_SIGNAL,
   CREDITS_CHANGED_SIGNAL,
+  SPACE_TASKS_CHANGED_SIGNAL,
   AssetActivityPayloadSchema,
   GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
@@ -243,6 +247,7 @@ export type {
   ProjectActivityPage,
   ActivityNewSignal,
   CreditsChangedSignal,
+  SpaceTasksChangedSignal,
 } from "@shared/types/project-activity.js";
 
 export {
@@ -271,6 +276,7 @@ export type {
 export {
   activityNewChannel,
   creditsChangedChannel,
+  spaceTasksChangedChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
@@ -278,6 +284,7 @@ export {
 export type {
   ActivityNewControlEvent,
   CreditsChangedControlEvent,
+  SpaceTasksChangedControlEvent,
   ProjectConnectionsCloseEvent,
   SessionsRevokedEvent,
   ProjectConnectionsCloseReason,

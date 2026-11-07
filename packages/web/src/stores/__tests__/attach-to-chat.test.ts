@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Nodes added to the agent from the canvas.
  *
  * They land in the list above the box of the conversation on screen, which is
  * opened first when there is none, with the agent column brought back into
- * view so the reader sees them arrive.
+ * view so the user sees them arrive.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 

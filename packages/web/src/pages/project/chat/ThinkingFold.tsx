@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import * as React from 'react';
@@ -18,10 +18,10 @@ interface ThinkingFoldProps {
    * Called as this block opens, before the column has grown.
    *
    * Opening this is the one press in the chat column that makes the column
-   * taller, and the reader who made it wants to read what appeared -- not to
+   * taller, and the user who made it wants to read what appeared -- not to
    * be taken to the end of the conversation by the growth they just caused.
    * The column follows content it did not ask for; this is how it hears that
-   * this growth is the reader's own.
+   * this growth is the user's own.
    */
   onOpen?: () => void;
 }
@@ -45,7 +45,7 @@ export function ThinkingFold({
 }: ThinkingFoldProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
-  // Rounded to the second the reader is shown, so the minutes and the seconds
+  // Rounded to the second the user is shown, so the minutes and the seconds
   // are read off one figure and cannot disagree at the boundary.
   // At least one: the server sends any figure above zero, and a stretch under
   // half a second would round to none at all -- a line saying it thought for

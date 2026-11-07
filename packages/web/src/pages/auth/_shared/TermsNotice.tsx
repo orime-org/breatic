@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 
@@ -15,8 +15,8 @@ const LINK_CLASS =
  * The terms line at the foot of the sign-in and sign-up cards (#302).
  *
  * Continuing from either card is what creates an account, so this is where
- * the reader agrees to the terms. The documents open in a new tab, which keeps
- * whatever the reader has already typed into the card.
+ * the user agrees to the terms. The documents open in a new tab, which keeps
+ * whatever the user has already typed into the card.
  * @returns The line, with both documents linked.
  */
 export function TermsNotice(): React.JSX.Element {

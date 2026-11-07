@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Every request that holds or spends a project's credits says so when it
@@ -42,7 +42,7 @@ const RUNS: { name: string; run: () => Promise<unknown> }[] = [
     name: 'a reading',
     run: () =>
       canvasApi.understand(
-        { project_id: PROJECT, space_id: 's', source_type: 'image', source_url: 'u', node_ids: [], reader_locale: 'en' },
+        { project_id: PROJECT, space_id: 's', source_type: 'image', source_url: 'u', node_ids: [], user_locale: 'en', reader_locale: 'en' },
         'k2',
       ),
   },

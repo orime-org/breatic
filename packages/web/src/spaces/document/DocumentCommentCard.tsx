@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * One comment thread, as the panel draws it (#18, A4 · A7 – A13 · A17).
  *
  * The quote comes first, then the opening comment and every reply below it,
- * then what this reader may do about it. A thread whose words were deleted
+ * then what this user may do about it. A thread whose words were deleted
  * has no card (A13).
  *
  * WHAT IS OFFERED IS `annotationRights`, delivered with canvas annotations
@@ -16,7 +16,7 @@
  *
  * The thread store asks its own auth before every write, so a control drawn
  * by mistake would fail rather than damage anything. Drawing the right ones
- * is what keeps a reader from being offered something that cannot happen.
+ * is what keeps a user from being offered something that cannot happen.
  *
  * The quote does not say whether the comment was made on a selection or on a
  * whole block. Design §6.1 settles that the two entries are the same
@@ -25,7 +25,7 @@
  * WHAT IT OFFERS IS ONLY OFFERED ON THE THREAD BEING READ (user 2026-09-22).
  * The panel is a column of threads to read; a reply box and two buttons on
  * every one of them makes it a column of controls, and only the thread the
- * reader is on is the one they are about. Opening a thread — a press here, a
+ * user is on is the one they are about. Opening a thread — a press here, a
  * press on its highlight in the body — is what brings them out.
  *
  * A THREAD NOBODY IS READING IS FOLDED, for the same reason: a column where
@@ -62,7 +62,7 @@ import type {
  * The box every card in the rail is drawn on.
  *
  * Shared with the draft card: one comment being written and one already
- * written are the same object to a reader, and a surface described twice
+ * written are the same object to a user, and a surface described twice
  * drifts.
  */
 export const CARD_SURFACE =
@@ -109,25 +109,25 @@ interface DocumentCommentCardProps {
    */
   marked: boolean;
   /**
-   * Whether this is the thread the reader is reading.
+   * Whether this is the thread the user is reading.
    *
    * One at a time, even where a press marked two: two reply boxes open at
-   * once and neither is the one they meant. Everything a reader can do to a
+   * once and neither is the one they meant. Everything a user can do to a
    * thread is offered here and nowhere else.
    */
   reading: boolean;
-  /** This reader's role on the project. */
+  /** This user's role on the project. */
   myRole: ProjectRole;
-  /** This reader's account id, absent until the session resolves. */
+  /** This user's account id, absent until the session resolves. */
   viewerId: string | undefined;
   /**
-   * What the reader has written into this thread's reply box and not sent.
+   * What the user has written into this thread's reply box and not sent.
    *
    * Held by the editor (`document-comment-unsent.ts`) and handed down by the
    * panel: a thread settled by a peer takes its card out of the open filter,
    * and the panel can be mounted again (StrictMode mounts it twice), so a
    * reply living in the card's state or the panel's would go with either —
-   * words the reader typed and never agreed to throw away.
+   * words the user typed and never agreed to throw away.
    */
   draft: string;
   /** Remembers what has been written into the reply box. */
@@ -165,7 +165,7 @@ const FOLDED_LINE_CLAMP = 'line-clamp-3';
 interface EntryProps {
   /** The comment to draw. */
   entry: CommentEntryView;
-  /** Whether this reader may withdraw it. */
+  /** Whether this user may withdraw it. */
   canDelete: boolean;
   /** Whether to cut it to three lines, which every unread card does. */
   shortened: boolean;
@@ -177,7 +177,7 @@ interface EntryProps {
  * One comment or reply.
  * @param root0 - See {@link EntryProps}.
  * @param root0.entry - The comment to draw.
- * @param root0.canDelete - Whether this reader may withdraw it.
+ * @param root0.canDelete - Whether this user may withdraw it.
  * @param root0.shortened - Whether to cut it to three lines.
  * @param root0.onDelete - Withdraws it.
  * @returns The entry.
@@ -244,8 +244,8 @@ function Entry({
  * @param root0.card - The thread to draw.
  * @param root0.marked - Whether the press in the body landed on this thread.
  * @param root0.reading - Whether this is the thread being read.
- * @param root0.myRole - This reader's role.
- * @param root0.viewerId - This reader's account id.
+ * @param root0.myRole - This user's role.
+ * @param root0.viewerId - This user's account id.
  * @param root0.draft - What has been written into the reply box and not sent.
  * @param root0.onDraft - Remembers what has been written there.
  * @param root0.onReply - Adds a reply.

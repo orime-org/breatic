@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a turn says before it has anything to say.
@@ -14,7 +14,7 @@
  * mismatched. That is gone: the client's own message list is what
  * `POST /chat/open` gave it, and a connection that drops mid-reply leaves the
  * screen out of step with a server whose records are intact -- which the
- * reader gets out of by reloading.
+ * user gets out of by reloading.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
@@ -28,7 +28,7 @@ const foldIfTooLong = vi.fn(async () => "none");
 const modelSays = vi.hoisted(() => ({ parts: [] as unknown[] }));
 
 const buildTurnContext = vi.fn(async () => ({
-  memoryContext: { projectMemory: "", conversationMemory: "" },
+  memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
   history: [],
 }));
 
@@ -57,7 +57,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
-  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
+  addUserMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
 
@@ -122,7 +122,7 @@ describe("the name a turn gives its conversation", () => {
 
     // Held open, so that anything waiting on it waits forever. Three round
     // trips -- the memories, the conversation and its history -- and every
-    // one of them is time the reader spends in front of a screen where
+    // one of them is time the user spends in front of a screen where
     // nothing has happened.
     let releaseTheSlowWork = (): void => undefined;
     buildTurnContext.mockImplementationOnce(
@@ -130,7 +130,7 @@ describe("the name a turn gives its conversation", () => {
         new Promise((resolve) => {
           releaseTheSlowWork = (): void => {
             resolve({
-              memoryContext: { projectMemory: "", conversationMemory: "" },
+              memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
               history: [],
             });
           };

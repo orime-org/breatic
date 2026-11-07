@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 
@@ -42,7 +42,7 @@ function readGeometry(wrapper: HTMLElement | null): MediaGeometry | null {
  * Whether two readings describe the same media in the same place.
  * @param a - One reading.
  * @param b - The other.
- * @returns True when nothing a reader sees has changed.
+ * @returns True when nothing a user sees has changed.
  */
 function sameGeometry(a: MediaGeometry | null, b: MediaGeometry | null): boolean {
   if (a === null || b === null) return a === b;

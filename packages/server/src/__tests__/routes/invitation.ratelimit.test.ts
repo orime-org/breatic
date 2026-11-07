@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -16,7 +16,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 vi.mock("@breatic/domain", async () => {
   const { domainMock } = await import("../helpers/mock-core.js");
   return {
-    ...domainMock(),
+    ...(await domainMock()),
     studioAuthService: { assertStudioRole: vi.fn().mockResolvedValue(undefined) },
   };
 });

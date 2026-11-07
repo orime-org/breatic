@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copyright (c) 2026 Orime, Inc.
-# SPDX-License-Identifier: LicenseRef-BSAL-1.0
+# SPDX-License-Identifier: Elastic-2.0
 set -euo pipefail
 : "${TEST_IMAGE:?}" "${IMAGE_KIND:?}" "${ARCH:?}" "${VERSION:?}" "${REVISION:?}"
 [[ "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$TEST_IMAGE")" == "linux/$ARCH" ]] || exit 1

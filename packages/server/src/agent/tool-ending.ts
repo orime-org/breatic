@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Reading how a tool call ended off whatever the SDK reported.
@@ -78,7 +78,7 @@ export const NOTHING_OF_IT_RAN =
  *
  * The two halves answer different questions and are settled separately. What
  * the model is told is the same either way, because the fact is the same: this
- * never ran. What a reader is shown is not -- someone who pressed stop is told
+ * never ran. What a user is shown is not -- someone who pressed stop is told
  * their turn stopped, and a turn that failed or was cut off around the call
  * says so in its own ending line, so the call itself shows nothing.
  * @param stopped - Whether the turn ended because it was stopped.
@@ -90,7 +90,7 @@ export function endingWithNothingRun(stopped: boolean): ToolFailure {
   // that "stopped by the user" cannot be paired with a line about something
   // going wrong.
   return stopped
-    ? { kind: "user_aborted", forModel: NOTHING_OF_IT_RAN, readerKey: FAILURE_LINES.stopped }
+    ? { kind: "user_aborted", forModel: NOTHING_OF_IT_RAN, userKey: FAILURE_LINES.stopped }
     : { kind: "never_ran", forModel: NOTHING_OF_IT_RAN };
 }
 
@@ -106,7 +106,7 @@ export function endingOf(err: unknown): ToolFailure {
   // The message goes to the model and nowhere else. It is the SDK's own
   // wording for a call it would not make -- "invalid input", the schema it
   // failed against -- which is exactly what the model needs to fix the call,
-  // and exactly what a reader has no use for.
+  // and exactly what a user has no use for.
   //
   // The next step is ours to add: the SDK states the complaint and stops
   // there, and a call refused over its arguments is one the model wrote and
@@ -115,7 +115,7 @@ export function endingOf(err: unknown): ToolFailure {
   // which this does not replace. Where the sentence below is read is the next
   // turn, off the stored row.
   const said = err instanceof Error ? err.message : String(err);
-  // A refusal steers the model, and the reader is shown nothing for it.
+  // A refusal steers the model, and the user is shown nothing for it.
   if (refusedBySdk(err)) {
     return { kind: "turned_away", forModel: `${said} Correct the call and try once more.` };
   }
@@ -125,6 +125,6 @@ export function endingOf(err: unknown): ToolFailure {
     forModel:
       `${said} This failed on our side, not because of the call's arguments. Trying once more may work; ` +
       "if it fails again, tell the user it could not be done.",
-    readerKey: FAILURE_LINES.ourFault,
+    userKey: FAILURE_LINES.ourFault,
   };
 }

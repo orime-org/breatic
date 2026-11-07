@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * How the bubble bar writes a style to the body.
@@ -33,7 +33,7 @@ import type { ToolEditor } from '@web/spaces/document/document-tool-button';
  *   colour row, or nothing to take the styles off.
  * @param names - The styles' names, each also its mark's.
  * @param range - The range to write over, where the press names one. Left out,
- *   it is the reader's own selection.
+ *   it is the user's own selection.
  */
 export function writeStyle(
   editor: ToolEditor,
@@ -46,7 +46,7 @@ export function writeStyle(
     // THE BLOCK HANDLE'S PATH NEVER REACHES THE TWO CALLS BELOW. They are
     // BlockNote's `setMark` / `unsetMark`, which take no range at all and act
     // on the editor's own selection and stored marks — so a block-scoped press
-    // landing here would change what the READER types next and leave the block
+    // landing here would change what the USER types next and leave the block
     // untouched. An explicit range that is empty is an empty block, which has
     // no run to style, so nothing is written.
     if (range !== undefined) {
@@ -83,10 +83,10 @@ export function writeStyle(
         range,
       );
     }
-    // A press aimed at a range the reader is not standing in leaves the marks
+    // A press aimed at a range the user is not standing in leaves the marks
     // they are carrying where they were. Any step clears them —
     // `prosemirror-state`'s `Transaction.addStep` sets `storedMarks` to null —
-    // so a reader who pressed `Mod-b` at their caret and then coloured another
+    // so a user who pressed `Mod-b` at their caret and then coloured another
     // row would find the next character they typed no longer bold. Putting
     // them back is the last thing the transaction does, since a step after it
     // would clear them again.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What reaches Sentry when the Worker fails.
@@ -7,7 +7,7 @@
  * The SDK is the real one, pointed at a DSN whose host the fetch mock answers,
  * so what is asserted is the envelope it actually sent: whether a failure was
  * reported, under which label, and with which release and environment. A
- * failure the reader caused by handing us a link we cannot take is written to
+ * failure the user caused by handing us a link we cannot take is written to
  * the log only.
  *
  * Every case here runs under the same settings (see `helpers/reported-events`);
@@ -109,7 +109,7 @@ describe("failures on a provider's result link", () => {
   });
 });
 
-describe("failures on a link the reader handed us", () => {
+describe("failures on a link the user handed us", () => {
   it("writes an unreachable source to the log without reporting it", async () => {
     sourceUnreachable();
 

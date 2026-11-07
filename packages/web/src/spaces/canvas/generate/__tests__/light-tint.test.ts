@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The colour and strength the light sphere draws its light in (inner#1304):
- * what the reader picked, so the sphere shows it as it is chosen.
+ * what the user picked, so the sphere shows it as it is chosen.
  */
 
 import { describe, expect, it } from 'vitest';

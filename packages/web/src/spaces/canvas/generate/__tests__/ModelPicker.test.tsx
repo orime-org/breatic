@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -194,7 +194,7 @@ describe('ModelPicker — pick the generation model from the catalog', () => {
   });
 
   // When one mode offers several models, the name alone does not tell a
-  // reader which to pick — the catalog's `description` is what says what
+  // user which to pick — the catalog's `description` is what says what
   // each one is good at, so the row has to show it.
   describe('the capability line under each model name', () => {
     it('shows what the model is good at under its name', () => {

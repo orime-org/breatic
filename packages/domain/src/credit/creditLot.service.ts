@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The credit engine (task #11) — the only module that writes a lot's
@@ -140,7 +140,7 @@ export interface ChargeOutcome {
   /** The lots drawn down, oldest first. */
   lotIds: readonly string[];
   /**
-   * Why the project's readers could not be told the charge committed
+   * Why the project's users could not be told the charge committed
    * (inner#1611). The charge stands; the caller logs this, and the top bar
    * shows the old figure until its next read.
    */
@@ -430,7 +430,7 @@ export async function chargeForGeneration(
       lotIds: plan.allocations.map((allocation) => allocation.lotId),
     };
   });
-  // After the commit, so a reader who reads again sees this charge.
+  // After the commit, so a user who reads again sees this charge.
   if (input.projectId === null) return outcome;
   try {
     await publishCreditsChanged(input.projectId);
@@ -925,7 +925,7 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
  * What a studio can spend right now, which is negative when it owes.
  *
  * One number rather than a balance and a debt beside it: two numbers about
- * the same thing leave the reader to subtract, and every caller would have to
+ * the same thing leave the user to subtract, and every caller would have to
  * do it the same way for the answer to agree.
  *
  * The account overview does NOT subtract debt from its own totals. What it

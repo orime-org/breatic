@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import {
   Archive,
@@ -43,7 +43,7 @@ export type CreditsSectionId =
 /**
  * The index, in two groups.
  *
- * The split is what a reader came to do: the first group answers questions
+ * The split is what a user came to do: the first group answers questions
  * about money already spent or held, the second changes something. Buying
  * comes before assigning because a purchase has to exist before it can be
  * pointed anywhere, and refunding comes last because it undoes both.

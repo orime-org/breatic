@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect } from 'vitest';
 import type { Node } from '@xyflow/react';
@@ -214,7 +214,7 @@ describe('planGroupCreation', () => {
 
     it('centres the Group on the point the batch came in at', () => {
       // A single file puts its node's centre there, so a batch puts the centre
-      // of the Group there: the reader points at a place and what they handed
+      // of the Group there: the user points at a place and what they handed
       // over appears around it, whatever the count.
       for (const count of [2, 5, 9]) {
         const plan = wrap(count);

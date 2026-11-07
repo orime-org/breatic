@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { CanvasNodeFields, CanvasProposal } from '@breatic/shared';
 import { create } from 'zustand';
@@ -87,7 +87,7 @@ interface CanvasState {
    *
    * A proposal card sits in the chat column, which is beside the canvas, not
    * inside it: without this it would post into a mailbox nobody is holding and
-   * the reader would press a button that silently did nothing. Asking the
+   * the user would press a button that silently did nothing. Asking the
    * canvas rather than reading which space is open keeps the chat column out
    * of the space state entirely -- what it needs to know is whether anyone is
    * listening, and only the listener can answer that.

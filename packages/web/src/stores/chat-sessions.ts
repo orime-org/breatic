@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The running state of each conversation, held where a panel cannot take it.
@@ -23,7 +23,7 @@ import { tell } from '@web/stores/chat-mishaps';
 import { DefaultChatTransport } from 'ai';
 import type { ChatTransport, UIMessageChunk } from 'ai';
 import { SSE_HEARTBEAT_MISSES_ALLOWED, attachmentPart, chipOfPart, getLocale } from '@breatic/shared';
-import type { AskUserAnswer, AskUserResult, ChatAttachedChip, ChatSpaceContext } from '@breatic/shared';
+import type { AskUserAnswer, AskUserResult, ChatAttachedChip, ChatSpaceContext, SpaceRequestAnswer } from '@breatic/shared';
 import { API_BASE_PATH } from '@web/data/api/base-path';
 import { chatApi } from '@web/data/api/chat';
 import { clearConsolidating, noteConsolidating } from '@web/stores/consolidating';
@@ -66,7 +66,7 @@ export interface ChatSessionInit {
    * Called once per turn, when the first frame of it arrives.
    *
    * What it is for is emptying the composer, which happens then and not at the
-   * press: before the first frame the words are only in the box the reader
+   * press: before the first frame the words are only in the box the user
    * typed them into, and a turn the server refuses leaves them exactly there
    * with nothing to put back.
    *
@@ -75,13 +75,21 @@ export interface ChatSessionInit {
    * another conversation unmounts it while the turn goes on (A4), and a turn
    * whose first frame lands in that gap would never have its box emptied --
    * while a panel coming back to a turn already streaming would empty it a
-   * second time, over whatever the reader has typed since.
+   * second time, over whatever the user has typed since.
    *
    * Handed the items the turn carried, so they leave the list above the box
    * then too -- and only they: an item attached after the press waits for the
    * next message.
    */
   onFirstFrame: (sent: readonly ChatAttachedChip[]) => void;
+  /**
+   * The model this conversation is answered by, read when each message is
+   * sent (#1363), so a pick made a moment before goes with it. Absent, the
+   * message carries none and the server answers on the conversation's own.
+   */
+  modelOf?: () => string | undefined;
+  /** Told when the server refuses a send (#1363), so the picker can ask for the list of models again. */
+  onRefused?: () => void;
 }
 
 /** The chunk the server names a conversation on. */
@@ -94,10 +102,16 @@ const CONSOLIDATING = 'data-memory-consolidating';
 const ASK_REPLIED = 'data-ask-replied';
 
 /**
- * The conversations whose running turn is an answer to a questionnaire, and
- * which call it answers. Such a turn carries on the paused reply rather than
- * saying anything of the reader's, so the parts of a send that are about the
- * reader's words leave it alone.
+ * What a card's call ends with: a questionnaire's result, or a request to
+ * look at Spaces settled as the server stored it (inner#1552).
+ */
+type CardResult = AskUserResult | Record<string, unknown>;
+
+/**
+ * The conversations whose running turn is an answer to a card (a
+ * questionnaire, or a request to look at Spaces), and which call it answers. Such a turn carries on the paused reply rather than
+ * saying anything of the user's, so the parts of a send that are about the
+ * user's words leave it alone.
  */
 const answering = new Map<string, string>();
 
@@ -142,7 +156,7 @@ function stopBodyUpload(conversationId: string): void {
 const NOTHING_OPEN = new Chat<StoredUiMessage>({ id: 'no-conversation-yet', messages: [] });
 
 /**
- * Whether this frame is one the reader will see something of.
+ * Whether this frame is one the user will see something of.
  *
  * Not every frame is. A transient data part is handed to `onData` and dropped
  * there (`ai@7.0.68` `index.js:7416`: `if (dataChunk.transient) { onData(...);
@@ -171,7 +185,7 @@ function isAnswering(chunk: UIMessageChunk): boolean {
  *
  * Which is why the beats have to be skipped rather than counted: telling the
  * caller on the beat would empty the composer while the SDK still has the
- * reader's message held out of the list, and the sentence would be in neither
+ * user's message held out of the list, and the sentence would be in neither
  * place until the answer began.
  * @param stream - The turn's stream, as the transport built it.
  * @param onAnswering - Told on every frame that carries an answer.
@@ -254,12 +268,16 @@ function attachedOn(message: StoredUiMessage | undefined): ChatAttachedChip[] {
  * @param projectId - The project the conversation is in.
  * @param conversationId - The conversation being written to.
  * @param onFirstFrame - Told when this conversation's turn starts answering.
+ * @param modelOf - The conversation's model, read at each send.
+ * @param onRefused - Told when the server refuses a send.
  * @returns A transport pointed at the chat endpoint.
  */
 function transportFor(
   projectId: string,
   conversationId: string,
   onFirstFrame: (sent: readonly ChatAttachedChip[]) => void,
+  modelOf?: () => string | undefined,
+  onRefused?: () => void,
 ): ChatTransport<StoredUiMessage> {
   const wire = new DefaultChatTransport<StoredUiMessage>({
     // Built from the one definition of the prefix rather than spelled out.
@@ -274,24 +292,27 @@ function transportFor(
       // Read before anything is awaited: the turn this request belongs to.
       const turn = runningTurn.get(conversationId);
       const last = messages[messages.length - 1];
-      // An answer to a questionnaire says nothing of the reader's: the last
+      // An answer to a questionnaire says nothing of the user's: the last
       // message is the paused reply, whose words and items are not theirs.
       const isAnswer = answering.has(conversationId);
+      const model = modelOf?.();
       const said = (last?.parts ?? [])
         .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
         .map((part) => part.text)
         .join('');
       const body = {
-        // What the send was handed for this one message: the reader's
+        // What the send was handed for this one message: the user's
         // Spaces, read when they pressed send (`sendInSession`).
         ...carried,
         message: isAnswer ? '' : said,
         project_id: projectId,
         conversation_id: conversationId,
         attached_chips: isAnswer ? [] : attachedOn(last),
-        // Read on every send: the agent is told the time where the reader is
+        // Read on every send: the agent is told the time where the user is
         // now, and a laptop can change zones mid-session.
         time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        // Read at the press, so a pick made a moment before goes with it.
+        ...(model === undefined ? {} : { model }),
       };
       // A body over the request limit goes through storage first (inner#1006).
       // No beat can come before the request goes out, so the watch on this
@@ -314,7 +335,7 @@ function transportFor(
       if (uploaded) restartBeatWatch(conversationId, turn);
       return {
         // What the interface is in, which is what the server needs when it
-        // has something of its own to show the reader: a message refused for
+        // has something of its own to show the user: a message refused for
         // being too long comes back as our text, and without this header it is
         // negotiated from the browser's language rather than the one picked in
         // the switch. Every request carries it, the way axios does for every
@@ -341,6 +362,7 @@ function transportFor(
         // Decided before the turn settles and says anything, so an
         // out-of-date page has silenced the panel's toast by then.
         await checkStaleRelease(envelopeInBody(refused)?.reason);
+        onRefused?.();
         throw refused;
       }
       return sayWhenItOpens(
@@ -354,7 +376,7 @@ function transportFor(
         () => {
           // The turn is always there when a frame arrives: a stream is only
           // read while its turn is running, and both ways one ends -- the
-          // stream closing, or the reader stopping it -- take the reader's
+          // stream closing, or the user stopping it -- take the user's
           // end of the pipe away first, after which nothing more is pulled
           // through this transform. So this branch exists because the map
           // answers `number | undefined`, not because there is a frame it
@@ -389,7 +411,7 @@ function transportFor(
  *
  * A conversation the server no longer has is one of these, and it gets the
  * same treatment as the rest: said, and left. Opening a replacement and
- * putting the words on it would leave the reader watching their own sentence
+ * putting the words on it would leave the user watching their own sentence
  * appear in a conversation they were not in, while the one on screen still
  * shows the history it always had.
  * @param error - Whatever the turn ended with.
@@ -433,13 +455,13 @@ function envelopeInBody(error: unknown): { message?: string; reason?: string } |
  * Put a mark on the reply that was being written, if one was.
  *
  * The server writes the same mark into the row when it stores the turn, so
- * this is what a reader sees before that row is ever read back. Without it a
+ * this is what a user sees before that row is ever read back. Without it a
  * stopped turn and a failed one look on screen exactly like one that finished
  * -- until a reload, when the word appears out of nowhere.
  *
  * Only ever the last message, and only when it is a reply: a turn refused
  * before the model said anything has none, and the last message then is the
- * reader's own sentence, which nothing happened to.
+ * user's own sentence, which nothing happened to.
  * @param chat - The session whose turn ended this way.
  * @param mark - Which of the two marks, in the protocol's naming.
  */
@@ -475,7 +497,7 @@ const runningTurn = new Map<string, number>();
  * Which is also the answer to "has the server got this sentence": the route
  * opens the stream and beats on it before the turn runs at all, but the first
  * frame that carries anything comes from the turn itself -- and the turn
- * stores the reader's message on its first line (`main-agent.ts`, the
+ * stores the user's message on its first line (`main-agent.ts`, the
  * `addMessage` before anything else) before it can produce one.
  *
  * So one signal settles two things: when to empty the composer, and whether
@@ -500,13 +522,13 @@ function stopWatching(conversationId: string): void {
 /**
  * Give up on a stream that has stopped saying it is alive.
  *
- * The turn is ended the way pressing stop ends one, but the reader pressed
+ * The turn is ended the way pressing stop ends one, but the user pressed
  * nothing -- so unlike stop, this is worth a word.
  *
  * Everything that happens next belongs to {@link settleTurn}, which every
  * ending goes through. All this decides is which of the two silent endings
  * this was: stopping is stopping as far as the SDK is concerned, and only one
- * of them is news to the reader.
+ * of them is news to the user.
  * @param conversationId - The conversation whose turn is being given up on.
  */
 function giveUpOn(conversationId: string): void {
@@ -524,14 +546,14 @@ function giveUpOn(conversationId: string): void {
  * The conversations whose current turn was given up on rather than stopped.
  *
  * Pressing stop and running out of heartbeats both reach the SDK as an abort
- * and are indistinguishable there. They differ in one thing: a reader who
+ * and are indistinguishable there. They differ in one thing: a user who
  * pressed stop knows why the answer ended, and one whose connection died does
  * not, so only the second is told anything.
  */
 const givenUpOn = new Set<string>();
 
 /**
- * Write a questionnaire call's result into whichever message holds the call.
+ * Write a card call's result into whichever message holds the call.
  *
  * The call is in the reply that asked, which is not the message a turn is
  * writing when a typed message closes it, nor when the server answers a
@@ -540,7 +562,7 @@ const givenUpOn = new Set<string>();
  * @param toolCallId - The call.
  * @param result - What it ended with.
  */
-function settleAsk(chat: Chat<StoredUiMessage>, toolCallId: string, result: AskUserResult): void {
+function settleAsk(chat: Chat<StoredUiMessage>, toolCallId: string, result: CardResult): void {
   const at = chat.messages.findIndex((m) =>
     m.parts.some((p) => (p as { toolCallId?: unknown }).toolCallId === toolCallId),
   );
@@ -560,12 +582,12 @@ function settleAsk(chat: Chat<StoredUiMessage>, toolCallId: string, result: AskU
  * @param error - Whatever the turn ended with.
  * @returns The call's result, or undefined for any other refusal.
  */
-function callAlreadyAnswered(error: unknown): AskUserResult | undefined {
+function callAlreadyAnswered(error: unknown): CardResult | undefined {
   try {
     const body: unknown = JSON.parse(error instanceof Error ? error.message : '');
     const { error: envelope, call } = body as { error?: { code?: unknown }; call?: { status?: unknown; output?: unknown } };
     if (envelope?.code !== 409 || call?.status !== 'success') return undefined;
-    return call.output as AskUserResult;
+    return call.output as CardResult;
   } catch {
     return undefined;
   }
@@ -583,7 +605,7 @@ function callAlreadyAnswered(error: unknown): AskUserResult | undefined {
  *
  * Having one place is the point rather than a tidiness. Split across an error
  * handler and a watchdog, each did part of it: a turn the server refused kept
- * the reader's sentence in the list while the same sentence sat in the
+ * the user's sentence in the list while the same sentence sat in the
  * composer, and nothing but the watchdog ever took one back.
  * @param conversationId - The conversation whose turn ended.
  * @param how - What the SDK says about how it ended.
@@ -647,7 +669,7 @@ function settleTurn(
     tell({ projectId, conversationId, kind: 'network' });
     return;
   }
-  // A reader who pressed stop knows what they did.
+  // A user who pressed stop knows what they did.
   if (how.isAbort || !how.isError) return;
   const said = serverSentenceInBody(chat.error);
   if (said !== undefined) {
@@ -667,7 +689,7 @@ function settleTurn(
  * spends part of it rather than resetting it.
  * @param conversationId - The conversation being waited on.
  * @param turn - Which turn of it this wait belongs to.
- * @param pressedAt - When the reader pressed send.
+ * @param pressedAt - When the user pressed send.
  */
 async function expectAnotherBeat(
   conversationId: string,
@@ -678,7 +700,7 @@ async function expectAnotherBeat(
   try {
     ({ heartbeatIntervalMs } = await chatApi.streamConfig());
   } catch (failed) {
-    // Nothing is said to the reader: their turn is running and there is
+    // Nothing is said to the user: their turn is running and there is
     // nothing for them to do about a request they did not make. What it costs
     // is this turn going unwatched -- a stream that dies quietly will hang
     // rather than end -- so it is written down where an operator can find it
@@ -690,7 +712,7 @@ async function expectAnotherBeat(
   // whether the session is still here would not catch either: a session
   // outlives every turn it runs, so arming on that answer puts a timer on an
   // idle conversation, and fifteen seconds later it marks a finished reply as
-  // cut off and reports a network problem to a reader with nothing running.
+  // cut off and reports a network problem to a user with nothing running.
   if (runningTurn.get(conversationId) !== turn || pausedTurn.get(conversationId) === turn) return;
   stopWatching(conversationId);
   const spent = Date.now() - pressedAt;
@@ -770,9 +792,9 @@ async function runTurn(
  * belongs with the session rather than with whichever panel pressed the
  * button, for the same reason the session does.
  * @param conversationId - The conversation to say it in.
- * @param said - What the reader typed, trimmed.
- * @param attached - What the reader attached, carried ahead of the words.
- * @param spaces - The reader's Spaces, sent beside the message and not kept.
+ * @param said - What the user typed, trimmed.
+ * @param attached - What the user attached, carried ahead of the words.
+ * @param spaces - The user's Spaces, sent beside the message and not kept.
  * @returns When the turn is over, however it ended.
  */
 export async function sendInSession(
@@ -789,16 +811,38 @@ export async function sendInSession(
 }
 
 /**
- * Answer the questionnaire a conversation's turn stopped at, and watch the
- * stream the resumed turn comes back on (inner#1542).
+ * Answer the card a conversation's turn stopped at, and watch the stream the
+ * resumed turn comes back on.
  *
  * Sent with no message, the way the SDK's own human-in-the-loop carries on a
  * paused reply: what the turn says next follows the card in that message, and
- * nothing of the reader's is added to the list.
+ * nothing of the user's is added to the list.
+ * @param conversationId - The conversation.
+ * @param toolCallId - The call the card answers.
+ * @param card - The answer, under the key the route reads it from.
+ * @param spaces - The user's Spaces, sent beside the answer and not kept.
+ * @returns When the turn is over, however it ended.
+ */
+async function answerCardInSession(
+  conversationId: string,
+  toolCallId: string,
+  card: { answer: AskUserAnswer } | { shared_spaces: SpaceRequestAnswer },
+  spaces: ChatSpaceContext,
+): Promise<void> {
+  const chat = sessions.get(conversationId);
+  // One request at a time on a conversation: the turn in flight settles the
+  // card one way or the other, and the card's button waits on it meanwhile.
+  if (!chat || runningTurn.has(conversationId)) return;
+  answering.set(conversationId, toolCallId);
+  await runTurn(conversationId, chat, (session) => session.sendMessage(undefined, { body: { ...spaces, ...card } }));
+}
+
+/**
+ * Answer the questionnaire a conversation's turn stopped at (inner#1542).
  * @param conversationId - The conversation.
  * @param toolCallId - The questionnaire call answered.
  * @param answers - The answers given on the card.
- * @param spaces - The reader's Spaces, sent beside the answer and not kept.
+ * @param spaces - The user's Spaces, sent beside the answer and not kept.
  * @returns When the turn is over, however it ended.
  */
 export async function answerInSession(
@@ -807,20 +851,28 @@ export async function answerInSession(
   answers: AskUserAnswer['answers'],
   spaces: ChatSpaceContext = {},
 ): Promise<void> {
-  const chat = sessions.get(conversationId);
-  // One request at a time on a conversation: the turn in flight settles the
-  // card one way or the other, and the card's button waits on it meanwhile.
-  if (!chat || runningTurn.has(conversationId)) return;
-  answering.set(conversationId, toolCallId);
-  await runTurn(conversationId, chat, (session) =>
-    session.sendMessage(undefined, { body: { ...spaces, answer: { toolCallId, answers } } }),
-  );
+  await answerCardInSession(conversationId, toolCallId, { answer: { toolCallId, answers } }, spaces);
 }
 
 /**
- * Stop the turn a conversation is running, as the reader asked.
+ * Answer the request to look at Spaces a conversation's turn stopped at (inner#1552).
+ * @param conversationId - The conversation.
+ * @param answer - What the user shared, or that they declined.
+ * @param spaces - The user's Spaces, sent beside the answer and not kept.
+ * @returns When the turn is over, however it ended.
+ */
+export async function shareSpacesInSession(
+  conversationId: string,
+  answer: SpaceRequestAnswer,
+  spaces: ChatSpaceContext = {},
+): Promise<void> {
+  await answerCardInSession(conversationId, answer.toolCallId, { shared_spaces: answer }, spaces);
+}
+
+/**
+ * Stop the turn a conversation is running, as the user asked.
  *
- * Stopping is what this end can do; whether the server sees it as the reader
+ * Stopping is what this end can do; whether the server sees it as the user
  * stopping or as the connection dying, it records the turn the same way. What
  * this end knows -- that the reply was cut off -- is written down where every
  * other ending is, in {@link settleTurn}.
@@ -845,11 +897,11 @@ export function chatSessionFor(init: ChatSessionInit): Chat<StoredUiMessage> {
   const existing = sessions.get(init.conversationId);
   if (existing) return existing;
 
-  const { projectId, conversationId, onTitled, onFirstFrame } = init;
+  const { projectId, conversationId, onTitled, onFirstFrame, modelOf, onRefused } = init;
   const chat = new Chat<StoredUiMessage>({
     id: conversationId,
     messages: init.history,
-    transport: transportFor(projectId, conversationId, onFirstFrame),
+    transport: transportFor(projectId, conversationId, onFirstFrame, modelOf, onRefused),
     onData: (part) => {
       if (part.type === BEAT) {
         const turn = runningTurn.get(conversationId);

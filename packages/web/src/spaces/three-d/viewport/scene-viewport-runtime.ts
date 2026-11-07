@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { Box3, BoxHelper, Color, DirectionalLight, GridHelper, Group, HemisphereLight, Mesh, MeshStandardMaterial, PerspectiveCamera, Raycaster, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -7,7 +7,8 @@ import { TransformControlsGizmo } from 'three/addons/controls/TransformControls.
 import type { Object3D } from 'three';
 import type { SceneObject } from '@breatic/shared';
 import { SceneMiniMapRuntime } from '@web/spaces/three-d/viewport/scene-mini-map';
-import { ModelResourceCache, loadSceneModel } from '@web/spaces/three-d/viewport/model-resources';
+import { applySceneGridTheme } from '@web/spaces/three-d/viewport/scene-grid-theme';
+import { ModelResourceCache, acquireMeasured, loadSceneModel, type MeasuredSceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
 import type { SceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
 import { createTransformGesture, transformPatches } from '@web/spaces/three-d/viewport/scene-transform';
 import type { SceneTransformGesture } from '@web/spaces/three-d/viewport/scene-transform';
@@ -85,6 +86,14 @@ export class SceneViewportRuntime {
   private readonly pivot = new Group();
   private readonly grid = new GridHelper(200, 200);
   private readonly resources: ModelResourceCache;
+  /**
+   * Hold one model through this view's cache, measured for placing it; the
+   * view's own hold on the placed object then reuses the same template.
+   * @param source - The model to place.
+   * @returns The bounds and this holder's release.
+   * @throws {Error} The bounds reject when the model cannot load.
+   */
+  readonly acquireModel = (source: SceneObject['model']): MeasuredSceneModelLease => acquireMeasured(this.resources, source);
   private readonly items = new Map<string, RenderedObject>();
   private overview: SceneMiniMapRuntime | null = null;
   private overviewHost: HTMLDivElement | null = null;
@@ -127,7 +136,7 @@ export class SceneViewportRuntime {
     const light = new DirectionalLight(0xffffff, 3);
     light.position.set(5, 10, 4);
     this.scene.add(light);
-    this.resources = new ModelResourceCache((source, signal) => loadSceneModel(source, signal, this.props.resolveAsset, this.token('--color-muted-foreground')));
+    this.resources = new ModelResourceCache((source, signal) => loadSceneModel(source, signal, this.props.resolveAsset, this.token('--color-muted-foreground'), this.props.importLimits, this.renderer));
     this.controls.addEventListener('mouseDown', this.onGestureStart);
     this.controls.addEventListener('objectChange', this.onGestureChange);
     this.controls.addEventListener('mouseUp', this.onGestureCommit);
@@ -211,10 +220,10 @@ export class SceneViewportRuntime {
     if (this.gesture && (
       props.readOnly || props.mode !== previous.mode || props.cancelRevision !== previous.cancelRevision
       || !sameSelection(props.selectedIds, [...this.gesture.matrices.keys()])
-      || [...this.gesture.matrices.keys()].some((id) => !props.objects.some((object) => object.id === id && object.exists && !object.locked))
+      || [...this.gesture.matrices.keys()].some((id) => !props.objects.some((object) => object.id === id && !object.locked))
     )) this.endGesture(false);
     this.controls.setSensitivity(props.scaleSensitivity);
-    const visible = new Set(props.objects.filter((object) => object.exists).map((object) => object.id));
+    const visible = new Set(props.objects.map((object) => object.id));
     for (const [id, item] of this.items) {
       if (!visible.has(id)) {
         this.overview?.remove(id);
@@ -223,7 +232,6 @@ export class SceneViewportRuntime {
       }
     }
     for (const object of props.objects) {
-      if (!object.exists) continue;
       const source = JSON.stringify(object.model);
       let item = this.items.get(object.id);
       if (item && (item.source !== source || (item.state === 'failed' && props.modelRetryRevision !== previous.modelRetryRevision))) {
@@ -262,7 +270,7 @@ export class SceneViewportRuntime {
         item.lease.release();
         return;
       }
-      const latest = this.props.objects.find((candidate) => candidate.id === object.id && candidate.exists);
+      const latest = this.props.objects.find((candidate) => candidate.id === object.id);
       if (!latest) {
         item.lease.release();
         return;
@@ -305,7 +313,7 @@ export class SceneViewportRuntime {
   private mutableObjects(): SceneObject[] {
     if (this.props.readOnly || this.props.selectedIds.length === 0) return [];
     const objects = this.props.selectedIds.map((id) => this.props.objects.find((object) => object.id === id));
-    if (objects.some((object) => !object || !object.exists || object.locked || !this.items.get(object.id)?.root)) return [];
+    if (objects.some((object) => !object || object.locked || !this.items.get(object.id)?.root)) return [];
     return objects.filter((object): object is SceneObject => object !== undefined);
   }
 
@@ -545,7 +553,7 @@ export class SceneViewportRuntime {
       for (const object of peer.gesture ?? []) {
         const root = this.items.get(object.id)?.root;
         const record = this.props.objects.find((item) => item.id === object.id);
-        if (!root || !record?.exists || record.locked) continue;
+        if (!root || !record || record.locked) continue;
         const preview = root.clone(true);
         applyObject(preview, object);
         this.addOutline(preview, peer.color);
@@ -603,10 +611,7 @@ export class SceneViewportRuntime {
    */
   private onThemeChange = (): void => {
     this.scene.background = new Color(this.token('--color-background'));
-    this.grid.material.vertexColors = false;
-    this.grid.material.color.setStyle(this.token('--color-muted-foreground'));
-    this.grid.material.opacity = 0.2;
-    this.grid.material.transparent = true;
+    applySceneGridTheme(this.grid, this.token('--color-muted-foreground'));
     const color = this.token('--color-muted-foreground');
     for (const object of this.props.objects) {
       if (object.model.kind !== 'builtin') continue;

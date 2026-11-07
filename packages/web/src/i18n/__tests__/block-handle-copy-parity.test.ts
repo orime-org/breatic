@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #113 acceptance A18: every line of text the block handle puts on screen
@@ -34,7 +34,7 @@ describe.each(KEYS)('%s', (key) => {
   });
 
   it('is translated in the four non-English catalogs', () => {
-    // Copying the English across also passes the case above, and the reader
+    // Copying the English across also passes the case above, and the user
     // gets a foreign sentence.
     const english = readPath(LOCALE_CATALOGS[0][1], key);
     for (const [tag, catalog] of LOCALE_CATALOGS.slice(1)) {

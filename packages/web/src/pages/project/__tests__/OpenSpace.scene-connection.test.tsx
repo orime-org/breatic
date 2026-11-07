@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render } from '@testing-library/react';
 import * as React from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as Y from 'yjs';
 
 const { sockets, providers, lifetimeMount, lifetimeRelease } = vi.hoisted(() => ({
@@ -153,16 +154,17 @@ describe('3D Space shared connection lifecycle', () => {
   });
 
   it('keeps the scene permission lifetime outside the hidden Activity body', () => {
+    const client = new QueryClient();
     const { rerender, unmount } = render(
-      <CollabSocketProvider userId='account-a'>
+      <QueryClientProvider client={client}><CollabSocketProvider userId='account-a'>
         <OpenSpace projectId='p1' spaceId='s1' type='3d' active visited readOnly />
-      </CollabSocketProvider>,
+      </CollabSocketProvider></QueryClientProvider>,
     );
     expect(lifetimeMount).toHaveBeenCalledWith(NAME, true);
     rerender(
-      <CollabSocketProvider userId='account-a'>
+      <QueryClientProvider client={client}><CollabSocketProvider userId='account-a'>
         <OpenSpace projectId='p1' spaceId='s1' type='3d' active={false} visited readOnly />
-      </CollabSocketProvider>,
+      </CollabSocketProvider></QueryClientProvider>,
     );
     expect(lifetimeRelease).not.toHaveBeenCalled();
     expect(lifetimeMount).toHaveBeenCalledTimes(1);

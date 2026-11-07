@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { ArrowUp, Star } from 'lucide-react';
 import type * as React from 'react';
@@ -10,11 +10,11 @@ import { Button } from '@web/components/ui/button';
  * The bottom row of a panel that runs something on its node: what the run
  * costs on the left, Run on the right.
  *
- * The mini-tool panel and the transcribe panel both end on it, so a reader
+ * The mini-tool panel and the transcribe panel both end on it, so a user
  * moving between them presses the same button in the same place.
  */
 export interface PanelRunFooterProps {
-  /** What the run costs, as the reader reads it. */
+  /** What the run costs, as the user reads it. */
   creditText: string;
   /** Run's accessible name. */
   runLabel: string;

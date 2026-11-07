@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Session-scoped stash of Files whose upload failed (#1609 P4, re-keyed in
@@ -93,7 +93,7 @@ export function hasRetryFile(
 }
 
 /**
- * Drop one task's stash, once the reader clears the row it was offered on.
+ * Drop one task's stash, once the user clears the row it was offered on.
  * @param projectId - Owning project.
  * @param spaceId - Space the task's node lives in.
  * @param taskId - The task whose stash to drop.

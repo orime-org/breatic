@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /** Timeline gap, conflict-boundary and native media recovery (inner#1707). */
 import { writeFileSync } from 'node:fs';
@@ -61,7 +61,7 @@ async function observePlayback(page: Page, milliseconds = 0, expectedUrl: string
         playControl: root?.querySelector('[data-testid="timeline-play"]')?.textContent ?? null,
         reportedStates: Array.from(root?.querySelectorAll('span') ?? []).map((span) => span.textContent ?? '').filter((text) => ['Playing', 'Paused', 'Buffering…', 'Playback failed'].includes(text)),
         conflictCount: root?.querySelectorAll('[data-testid^="timeline-conflict-"]').length ?? 0,
-        clipCount: root?.querySelectorAll('[data-testid^="timeline-clip-"]').length ?? 0,
+        clipCount: root?.querySelectorAll('[data-testid^="timeline-clip-"][data-track-id]').length ?? 0,
         native: video === undefined || video === null ? null : {
           sameExpectedUrl: expected === null ? null : video.currentSrc === expected,
           time: video.currentTime, duration: video.duration, readyState: video.readyState,
@@ -131,7 +131,7 @@ test('playing continues after seeking inside the same empty gap @needs-storage @
     const uploaded = await uploadTimelineVideo(page, projectId);
     evidence.fps = uploaded.fps;
     evidence.durationFrames = uploaded.durationFrames;
-    await moveTimelineClip(page, uploaded.clipId, 240, uploaded.durationFrames);
+    await moveTimelineClip(page, uploaded.clipId, 240, uploaded.durationFrames, 'New visual track');
     const outlet = visibleSpace(page);
     const slider = outlet.getByRole('slider', { name: 'Preview frame', exact: true });
     await expect(slider).toHaveAttribute('aria-valuenow', '0');
@@ -174,10 +174,10 @@ test('playing crosses concurrent conflicts and reaches the later ready video @ne
     evidence.thirdReadyStart = duration * 2;
     expect(duration, 'this fixture leaves the fixed conflict interval before the third ready placement').toBeGreaterThan(240);
     await expectTimelineStart(page, third, duration * 2, duration);
-    // A direct initial move to 240 would overlap the still-adjacent second clip and be refused.
-    // Establish a shared legal gap first; the third ready placement remains at its original start.
-    await moveTimelineClip(page, uploaded.clipId, duration * 3, duration);
-    await moveTimelineClip(page, second, duration * 4, duration);
+    // The conflict is built on a sub track, where clips keep their frames; the magnetic main track keeps its clips end to end.
+    await moveTimelineClip(page, uploaded.clipId, duration * 3, duration, 'New visual track');
+    await moveTimelineClip(page, second, duration * 4, duration, 'Visual 2');
+    await moveTimelineClip(page, third, duration * 2, duration, 'Visual 2');
     await withTimelinePeer(page, browser, projectId, 'editor', async (peer) => {
       const peerErrors = watchTimelineErrors(peer);
       const peerGate = await installTimelineDeliveryGate(peer);

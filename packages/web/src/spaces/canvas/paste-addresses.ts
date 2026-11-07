@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a paste sends to the server and how its answer is written back
@@ -132,7 +132,7 @@ export function replaceAddresses(
  * @param body - The body tag from a snapshot.
  * @returns Its plain text.
  */
-function bodyText(body: unknown): string {
+export function bodyText(body: unknown): string {
   if (!isRecord(body) || !Array.isArray(body.children)) return '';
   /**
    * The text inside one element.

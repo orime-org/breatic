@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Moving one row by dragging it: the block handle starts it from its grip, and
@@ -14,7 +14,7 @@ import { NodeSelection } from '@tiptap/pm/state';
 import { rowHasLanded, rowIsFlying } from '@web/spaces/document/document-drag-drop';
 import { previewRowDrag } from '@web/spaces/document/document-drag-preview';
 import {
-  readerPlace,
+  userPlace,
   restoreAfterRowDrag,
 } from '@web/spaces/document/document-drag-selection';
 import { rowById } from '@web/spaces/document/document-row-by-id';
@@ -47,7 +47,7 @@ export function startRowDrag(
   const view = editor.prosemirrorView!;
   // Read before the library takes the selection for its own (`blockDragStart`
   // puts a node selection on the row).
-  const held = readerPlace(view.state);
+  const held = userPlace(view.state);
   // Which row is in flight, for the drop to read out of the document rather
   // than out of the payload.
   rowIsFlying(blockId, held);
@@ -56,7 +56,7 @@ export function startRowDrag(
   // range. A selection taking a table whole has an end in a cell, so that
   // range can open in a row, which has no block to draw, and the drag throws.
   // The drop moves the row alone (`rowIsFlying`), so the library is given
-  // that row; the reader's selection comes back when the drag ends.
+  // that row; the user's selection comes back when the drag ends.
   const row = heldTables(view.state.selection) === null ? undefined : rowById(view.state.doc, blockId);
   if (row !== undefined) view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, row.from)));
   const sideMenu = editor.getExtension(SideMenuExtension)!;
@@ -72,7 +72,7 @@ export function startRowDrag(
     page.removeEventListener('drop', onDrop, true);
     rowHasLanded();
     sideMenu.blockDragEnd();
-    // A text selection goes back to whatever the reader had: the node
+    // A text selection goes back to whatever the user had: the node
     // selection the library put on the row at dragstart is still there, and
     // the bubble bar comes up for any selection that is not empty.
     restoreAfterRowDrag(view, held, blockId);

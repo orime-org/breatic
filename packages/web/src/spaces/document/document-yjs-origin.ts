@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { Transaction } from '@tiptap/pm/state';
 import { ySyncPluginKey } from 'y-prosemirror';
@@ -16,7 +16,7 @@ export function fromYjs(tr: Transaction): boolean {
 }
 
 /**
- * Whether a transaction is the reader's own undo or redo.
+ * Whether a transaction is the user's own undo or redo.
  * @param tr - The transaction.
  * @returns True when the binding writes an undo or redo into the body.
  */

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Where one thread's highlight actually is (#18, A4).
@@ -13,7 +13,7 @@
  * without carrying the mark.
  *
  * So this walks the marks. `orphan` is not read: this answers where a thread's
- * marks are, which is a different question from whether a reader may press
+ * marks are, which is a different question from whether a user may press
  * them (`document-comment-hit.ts`). A settled thread still shows the words it
  * was about.
  *

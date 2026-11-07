@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { budgetDeadlineFrom, env, getAgentConfig, getStorageAdapter, logger } from "@breatic/core";
-import { assetRepo, createAgentPicturePreparer, readerUrlSchema, SaveRefused } from "@breatic/domain";
+import { assetRepo, createAgentPicturePreparer, userUrlSchema, SaveRefused } from "@breatic/domain";
 import type { AgentPictureSource, PrepareAgentPictures } from "@breatic/domain";
 import { agentPictureKeyFor, attachmentTitle, readStoredMediaAtIngest } from "@breatic/shared";
 import type { ChatAttachedChip } from "@breatic/shared";
@@ -18,7 +18,7 @@ interface PictureIdentity {
 
 /**
  * Bind source authorization and edge JPEG creation to one turn's identity.
- * @param who - The reader, project and owning Studio.
+ * @param who - The user, project and owning Studio.
  * @returns The turn-local bounded preparation callback.
  * @throws {unknown} Invalid runtime configuration.
  */
@@ -37,7 +37,7 @@ export function picturePreparerFor(who: PictureIdentity): PrepareAgentPictures {
           if (who.allowedExternal !== undefined && !who.allowedExternal.has(source.sourceUrl)) {
             return { status: "unavailable", reason: "The source was not provided to this turn." };
           }
-          if (!readerUrlSchema.safeParse(source.sourceUrl).success) {
+          if (!userUrlSchema.safeParse(source.sourceUrl).success) {
             return { status: "unavailable", reason: "The source must be a valid HTTPS URL within the source URL limit." };
           }
           const saved = await save(source.sourceUrl, signal);
@@ -82,7 +82,7 @@ export function picturePreparerFor(who: PictureIdentity): PrepareAgentPictures {
 
 /**
  * Read only images explicitly attached as files or picked canvas nodes.
- * @param chips - The actual attachments of the current reader message.
+ * @param chips - The actual attachments of the current user message.
  * @returns Sources in attachment and node order, retaining duplicate occurrences.
  * @throws {never} Never.
  */

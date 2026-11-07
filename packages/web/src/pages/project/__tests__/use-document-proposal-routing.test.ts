@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The project page sending a pressed document card to its document
@@ -119,6 +119,18 @@ describe('a pressed document card', () => {
     expect(toast.error).toHaveBeenCalledWith('Could not insert. Try again.');
   });
 
+  it('keeps a landing press waiting when the user switches away from its document', () => {
+    const { rerender } = run({ spaces: [DOC, CANVAS], openIds: ['c1', 'd1'], activeId: 'd1', ready: true });
+    act(() => {
+      useDocumentProposals.getState().start(proposal('p1'), 'write');
+    });
+
+    rerender({ spaces: [DOC, CANVAS], openIds: ['c1', 'd1'], activeId: 'c1', ready: true });
+
+    expect(cards().p1?.state).toBe('working');
+    expect(useDocumentProposals.getState().pending.p1).toBeDefined();
+  });
+
   it('says the document is gone when it is deleted before the document took it up', () => {
     const { rerender } = run({ spaces: [DOC], openIds: ['d1'], activeId: 'd1', ready: true });
     act(() => {
@@ -128,6 +140,83 @@ describe('a pressed document card', () => {
     rerender({ spaces: [], openIds: [], activeId: null, ready: true });
 
     expect(cards().p1).toBeUndefined();
+    expect(toast.warning).toHaveBeenCalledWith('This Document has been deleted.');
+  });
+});
+
+describe('a locate or View press whose document the user leaves (inner#1646)', () => {
+  const pending = (): ReturnType<typeof useDocumentProposals.getState>['pending'] => useDocumentProposals.getState().pending;
+
+  /**
+   * Presses a read-only action on card p1.
+   * @param action - Locate, or View on a card that landed as a write.
+   */
+  function press(action: 'locate' | 'view'): void {
+    act(() => {
+      if (action === 'locate') useDocumentProposals.getState().locate(proposal('p1'));
+      else useDocumentProposals.getState().view(proposal('p1'), 'write');
+    });
+  }
+
+  it.each(['locate', 'view'] as const)('ends a %s quietly once its document was in front and the user switched away', (action) => {
+    const { open, rerender } = run({ spaces: [DOC, CANVAS], openIds: ['c1'], activeId: 'c1', ready: true });
+    press(action);
+    expect(open.mock.calls).toEqual([['d1']]);
+
+    // The open has not taken effect yet: the canvas is still in front.
+    rerender({ spaces: [DOC, CANVAS], openIds: ['c1', 'd1'], activeId: 'c1', ready: true });
+    expect(pending().p1).toBeDefined();
+
+    rerender({ spaces: [DOC, CANVAS], openIds: ['c1', 'd1'], activeId: 'd1', ready: true });
+    expect(pending().p1).toBeDefined();
+
+    rerender({ spaces: [DOC, CANVAS], openIds: ['c1', 'd1'], activeId: 'c1', ready: true });
+    expect(pending().p1).toBeUndefined();
+    expect(cards().p1).toEqual(action === 'view' ? { state: 'applied', action: 'write' } : undefined);
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it.each(['locate', 'view'] as const)('ends a %s quietly when it was pressed with the document in front and the user switched away', (action) => {
+    const { rerender } = run({ spaces: [DOC, CANVAS], openIds: ['c1', 'd1'], activeId: 'd1', ready: true });
+    press(action);
+
+    rerender({ spaces: [DOC, CANVAS], openIds: ['c1', 'd1'], activeId: 'c1', ready: true });
+
+    expect(pending().p1).toBeUndefined();
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it.each(['locate', 'view'] as const)('ends a %s quietly when the user closes its document\'s tab', (action) => {
+    const { rerender } = run({ spaces: [DOC, CANVAS], openIds: ['c1', 'd1'], activeId: 'd1', ready: true });
+    press(action);
+
+    rerender({ spaces: [DOC, CANVAS], openIds: ['c1'], activeId: 'c1', ready: true });
+
+    expect(pending().p1).toBeUndefined();
+    expect(cards().p1).toEqual(action === 'view' ? { state: 'applied', action: 'write' } : undefined);
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('ends a locate quietly when the tab is closed before the open took effect', () => {
+    const { rerender } = run({ spaces: [DOC, CANVAS], openIds: ['c1'], activeId: 'c1', ready: true });
+    press('locate');
+
+    rerender({ spaces: [DOC, CANVAS], openIds: ['c1'], activeId: 'c1', ready: true });
+
+    expect(pending().p1).toBeUndefined();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('still says the document is gone when it is deleted while a locate waits', () => {
+    const { rerender } = run({ spaces: [DOC], openIds: ['d1'], activeId: 'd1', ready: true });
+    press('locate');
+
+    rerender({ spaces: [], openIds: [], activeId: null, ready: true });
+
+    expect(pending().p1).toBeUndefined();
     expect(toast.warning).toHaveBeenCalledWith('This Document has been deleted.');
   });
 });

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import {
   Background,
@@ -136,6 +136,7 @@ import {
   type CanvasActions,
 } from '@web/spaces/canvas/canvas-actions';
 import { matchDuplicateShortcut } from '@web/spaces/canvas/canvas-duplicate-shortcut';
+import { DELETE_KEYS } from '@web/spaces/canvas/shortcuts/canvas-shortcuts';
 import { whatToFocus } from '@web/spaces/canvas/lib/after-placing';
 import { FIT_VIEW_OPTIONS } from '@web/spaces/canvas/viewport-config';
 import {
@@ -441,8 +442,6 @@ const STAGGER_WRAP = 8;
  * busy until every batch's prefix settles.
  */
 const UPLOAD_BATCH_OP = 'upload-batch';
-
-const DELETE_KEYS = ['Backspace', 'Delete'];
 
 /**
  * Background dot grid base. Doubled from the old gap (12) + size (1) so the
@@ -751,7 +750,7 @@ function CanvasSpaceInner({
     endPick();
     if (session === null) return;
     // A caret mid-sentence is a live surface: Escape reaches here from the
-    // prompt editor, where ending the pick is what the reader asked for and
+    // prompt editor, where ending the pick is what the user asked for and
     // moving the caret is not. Focus resting anywhere else goes to the
     // trigger below.
     if (isEditableTarget(document.activeElement)) return;
@@ -853,7 +852,7 @@ function CanvasSpaceInner({
 
   // The tool is armed in the chrome and spent here. Hiding this canvas puts it
   // down, as it does a menu (§6.4's last row): coming back finds nothing armed
-  // that the reader did not just arm.
+  // that the user did not just arm.
   React.useEffect(() => () => endAnnotationPlacement(), [endAnnotationPlacement]);
 
   // Shown again, the canvas library still holds a key that was down when this
@@ -911,7 +910,7 @@ function CanvasSpaceInner({
       }
       // Clamped to the sanitizer's bound (round-5): node names are
       // unbounded collaborative data (COPY- chains, remote writes), and an
-      // over-long snapshot would make the crop invisible to every reader.
+      // over-long snapshot would make the crop invisible to every user.
       const sourceName = (typeof data?.name === 'string' ? data.name : '').slice(
         0,
         MAX_FOCUS_NAME,
@@ -1057,7 +1056,7 @@ function CanvasSpaceInner({
    * Every way the camera moves writes it: the wheel, a drag of the pane, the
    * minimap, the zoom toolbar, locate, and the framing this canvas does on a
    * Space it has nothing stored for. Nothing here asks which one it was — the
-   * reader's Space looks the way they left it either way, and a Space they
+   * user's Space looks the way they left it either way, and a Space they
    * want re-framed has "fit to window" in the toolbar. So a Space merely
    * opened and left keeps the camera that framing gave it, and opens on that
    * next time.
@@ -1067,11 +1066,11 @@ function CanvasSpaceInner({
    * library holds back until the nodes have measured — 118ms on a Space with
    * 61 nodes, measured in a browser (`demo/2026-09-17-fit-window-many-nodes`).
    * Storing inside that window would record the identity as a camera the
-   * reader chose, and a Space with a stored camera is never framed again.
+   * user chose, and a Space with a stored camera is never framed again.
    *
    * `onMove` is what says the camera has been placed. The library reports the
    * whole run — start, move, end — for its own framing as well as for every
-   * reader gesture, and `onMove` arrives before the end event the library
+   * user gesture, and `onMove` arrives before the end event the library
    * holds back 150ms, so a pan left inside that hold still has something to
    * store. Framing an empty canvas moves nothing and reports nothing, which is
    * why a Space with no content on it stores no camera.
@@ -1190,7 +1189,7 @@ function CanvasSpaceInner({
     }
     closeActivePanel();
     // The panel held the keyboard focus and has gone from the page; hand it
-    // to the canvas. Focus somewhere else is the reader's and stays there.
+    // to the canvas. Focus somewhere else is the user's and stays there.
     if (document.activeElement === document.body) containerRef.current?.focus();
   }, [panelHostGone, panelHostId, deletedByPeer, closeActivePanel, t]);
 
@@ -1344,7 +1343,7 @@ function CanvasSpaceInner({
 
   // Once nodes just placed and the generate panel opened on one of them,
   // grown around its prompt, are laid out, the camera moves once so all of
-  // it is in front of the reader, clear of the menu, toolbar and minimap
+  // it is in front of the user, clear of the menu, toolbar and minimap
   // floating over the canvas, zooming out only as far as that takes
   // (inner#1345): a template applied in a panel, and a proposal landed with
   // its panel open. A node off screen is not mounted, so its position comes
@@ -1399,23 +1398,17 @@ function CanvasSpaceInner({
     [getInternalNode, rfStoreApi, setViewport],
   );
 
-  // A template picked in a generate panel lands around that panel's node
-  // (inner#1345 6.5): every other node is in the way, and so is every group
-  // but the one the node sits in, which grows around what joins it.
+  // A template picked in a generate panel lands beside that panel's node, or
+  // in the places its earlier instance holds (inner#1345 6.5), where its flow
+  // puts it, over whatever is there (inner#1846).
   const placeTemplate = React.useCallback(
-    (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>): PlacedProposal => {
+    (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>, order: readonly number[]): PlacedProposal => {
       const anchorId = existing.get(0)?.nodeId;
-      const parentId = readCanvasGraph(projectId, spaceId).nodes.find((n) => n.id === anchorId)?.parentId;
-      const around = readNodePlacements(projectId, spaceId).filter((p) => p.id !== anchorId && p.id !== parentId);
-      const occupied = occupiedRects(around, (id) => {
-        const measured = getInternalNode(id)?.measured;
-        return measured?.width && measured.height ? { width: measured.width, height: measured.height } : undefined;
-      });
-      const placed = placeProposalAt(proposal, TEMPLATE_AIM, occupied, existing);
+      const placed = placeProposalAt(proposal, TEMPLATE_AIM, [], existing, order);
       showPlaced(placed, anchorId ?? '', FRAME_PAN_MS);
       return placed;
     },
-    [projectId, spaceId, getInternalNode, placeProposalAt, showPlaced],
+    [placeProposalAt, showPlaced],
   );
 
   // Mirror the Yjs-observed nodes into ReactFlow's render buffer. ReactFlow
@@ -1992,7 +1985,7 @@ function CanvasSpaceInner({
         // fallthrough at the end) instead of filling the slot.
         if (pickedSlot.multiple && session.capacity !== undefined) {
           // A slot holding several (inner#826): each click adds one and the
-          // pick runs on until the slot is full or the reader exits.
+          // pick runs on until the slot is full or the user exits.
           const url = pickedSlotUrl(node, pickedSlot.accepts);
           if (url === null) return;
           const result = appendNodeSlotItem(projectId, spaceId, target, pickedSlot.field, url, session.capacity);
@@ -2259,8 +2252,8 @@ function CanvasSpaceInner({
       }),
     [getInternalNode],
   );
-  // Slide what an action just made in front of the reader, together with what
-  // it was made from. Pans only, keeping the reader's zoom, the way locate does
+  // Slide what an action just made in front of the user, together with what
+  // it was made from. Pans only, keeping the user's zoom, the way locate does
   // above; `framedBox` picks what of it to frame and `frameBuiltNode` whether
   // to move at all. Returns whether the canvas moved.
   const panToFrame = React.useCallback(
@@ -2271,23 +2264,23 @@ function CanvasSpaceInner({
       const built = framedBox(made, view);
       const at = built === null ? null : frameBuiltNode(built, source, view);
       if (at === null) return false;
-      // The zoom stays the reader's, so a straight slide: the default 'smooth'
+      // The zoom stays the user's, so a straight slide: the default 'smooth'
       // path zooms out and back in on the way.
       void setCenter(at.x, at.y, { zoom, duration: FRAME_PAN_MS, interpolate: 'linear' });
       return true;
     },
     [rfStoreApi, setCenter],
   );
-  // Put what a press built to the right of a node in front of the reader
+  // Put what a press built to the right of a node in front of the user
   // (inner#1303): one rule for a tool's result, a grid's group and an
-  // Understand node — slide at the reader's zoom, and zoom out only when it
+  // Understand node — slide at the user's zoom, and zoom out only when it
   // does not fit.
   const frameBuilt = React.useCallback(
     (built: Rect, sourceNodeId: string): void => {
       const { transform: [x, y, zoom], width, height } = rfStoreApi.getState();
       // A collaborator can delete the node being read while the menu stands
       // open. The press still produced a node, so it is still what has to be
-      // in front of the reader — there is just no second box to frame it with.
+      // in front of the user — there is just no second box to frame it with.
       const next = viewportForBuilt(built, measuredRects([sourceNodeId])[0] ?? null, { width, height }, { x, y, zoom });
       if (next === null) return;
       void setViewport(next, {
@@ -2321,7 +2314,7 @@ function CanvasSpaceInner({
     focusPastedRef.current = { ids, sources };
     setSelectAfterCreate(ids);
   }, []);
-  // A paste or duplicate puts its copies in front of the reader and hands them
+  // A paste or duplicate puts its copies in front of the user and hands them
   // the keyboard, so the arrow keys move them (inner#1229) through xyflow's own
   // handler on the focused node. Each frame it waits while a menu is still
   // closing (it holds focus until it unmounts) and until xyflow has measured
@@ -2329,7 +2322,7 @@ function CanvasSpaceInner({
   // first copy shown inside the canvas: xyflow keeps a copy hidden until it has
   // measured it, and renders one that lands out of view once for that measure
   // before culling it. Only copies still selected count, so a newer paste or
-  // the reader's own pick during the slide keeps the keyboard.
+  // the user's own pick during the slide keeps the keyboard.
   const focusFirstCopy = React.useCallback(
     (ids: readonly string[], sources: readonly string[]): void => {
       let framed = false;
@@ -2518,7 +2511,7 @@ function CanvasSpaceInner({
       // Where a row exists it takes this to an end on its own, judged against
       // the budget it carries; all that is left here is the File its Retry
       // re-sends, and only where re-sending can end differently. The node stays
-      // either way — a node that exists is the reader's to remove, and only
+      // either way — a node that exists is the user's to remove, and only
       // theirs (#2177).
       if (plan.keepFileFor !== undefined) {
         stashRetryFile(projectId, spaceId, plan.keepFileFor, file, tag);
@@ -2608,10 +2601,10 @@ function CanvasSpaceInner({
           });
           const created = jobs.map((job) => job.node);
           // Files handed over together arrive as one thing, so a Group says so:
-          // the reader can see which ones came in together and take the batch
+          // the user can see which ones came in together and take the batch
           // anywhere as one. Whatever Groups already sit under the point they
           // came in at is not our business — joining one of those would assert
-          // a relationship the reader never asked for.
+          // a relationship the user never asked for.
           const plan = planGroupCreation(
             created,
             created.map((node) => node.id),
@@ -2633,7 +2626,7 @@ function CanvasSpaceInner({
             groupBackgroundFor(Math.random()),
             `${String(created.length)} files`,
           );
-          // The Group is what the reader acts on next. Its members were never
+          // The Group is what the user acts on next. Its members were never
           // selected, so there is nothing to clear first: `selectAfterCreate`
           // deselects everything else when the Group mirrors back.
           selectAfter = [plan.groupId];
@@ -3035,7 +3028,7 @@ function CanvasSpaceInner({
      */
     const onPaste = (event: ClipboardEvent): void => {
       const text = event.clipboardData?.getData('text/plain') ?? '';
-      // A tool drawing on a node holds the reader's work there (§6.6).
+      // A tool drawing on a node holds the user's work there (§6.6).
       if (readOnly || toolLayerOpen(sessionStore.getState())) return;
       if (!canvasTakesPaste(event.target, text)) return;
       // A caret in a field is answered by the field or by the browser, so
@@ -3070,7 +3063,7 @@ function CanvasSpaceInner({
      */
     const onCopy = (event: ClipboardEvent): void => {
       if (readOnly || toolLayerOpen(sessionStore.getState())) return;
-      // Words the reader dragged across are the ones they asked for, wherever
+      // Words the user dragged across are the ones they asked for, wherever
       // they sit, so the browser copies those and the nodes stay put. Words
       // left selected in a hidden Space are not on screen to be asked for
       // (inner#1235 A5): a hidden Space keeps its page and its selection.
@@ -3472,7 +3465,7 @@ function CanvasSpaceInner({
   const queryClient = useQueryClient();
   /**
    * Hand the picked piece of the canvas to the agent as one item. Without the
-   * catalog nothing is handed over and the reader hears why, as the panel
+   * catalog nothing is handed over and the user hears why, as the panel
    * says it.
    * @param ids - The picked node ids; a group brings its members.
    */
@@ -3909,7 +3902,7 @@ function CanvasSpaceInner({
   // Whether the menu's node has anything to keep — asked when the menu opens,
   // which is when the item is drawn. The words themselves are read at the
   // press (`keepSnapshot`): the menu can stand open while a collaborator
-  // types or a reading lands, and what the reader asks to keep is what the
+  // types or a reading lands, and what the user asks to keep is what the
   // node says then. The whole `nodeMenu` is the dependency because its
   // identity changes exactly when the menu opens or closes.
   const menuHasWords = React.useMemo(() => {
@@ -4067,7 +4060,7 @@ function CanvasSpaceInner({
         // on a canvas scrolled near its right edge is outside the viewport. Two
         // acts, the way the proposal path does them: selecting says which node
         // this press is about, and framing is what puts it in front of the
-        // reader — a selection flag moves nothing.
+        // user — a selection flag moves nothing.
         onBuilt: ({ id, position }) => {
           setSelectAfterCreate([id]);
           frameBuilt(freshNodesBox([{ ...position, ...EMPTY_NODE_SIZE }]), host.id);
@@ -4105,7 +4098,7 @@ function CanvasSpaceInner({
   // Whatever the press makes in the browser first (a browser tool's file, a
   // drawing tool's images), the build and the upload are one tracked
   // operation, so a tab close in the middle is held back as an upload's is.
-  // The press belongs to the opening of the panel it was made in: a reader
+  // The press belongs to the opening of the panel it was made in: a user
   // who closed it and opened another meanwhile keeps that one's state and
   // selection.
   const runMiniTool = React.useCallback(
@@ -4191,7 +4184,7 @@ function CanvasSpaceInner({
     [fillUpload],
   );
   // Error-state Retry (#1609 P4): re-run the upload from the session stash.
-  // The stash survives repeated failures and is dropped when the reader
+  // The stash survives repeated failures and is dropped when the user
   // clears that task off the list; a refresh drops it too, and the button
   // then no longer renders.
   const retryNodeUpload = React.useCallback(
@@ -4759,7 +4752,7 @@ function CanvasSpaceInner({
             onMoveEnd={rememberViewport}
             // 10%–800%, over the library's own 0.5–2. The toolbar and the stored
             // camera are checked against these same two constants, so what the
-            // wheel reaches, what the reader may type, and what comes back from
+            // wheel reaches, what the user may type, and what comes back from
             // storage all stop in the same place.
             minZoom={CANVAS_MIN_ZOOM}
             maxZoom={CANVAS_MAX_ZOOM}
@@ -4788,8 +4781,8 @@ function CanvasSpaceInner({
             panOnScrollMode={PanOnScrollMode.Free}
             // Double-click on the empty canvas must NOT zoom (#4): an accidental
             // zoom-in on a misclick is jarring, and the gesture is reserved for a
-            // future use. Zoom stays on the viewport-toolbar buttons / Cmd-+/- /
-            // ctrl-wheel / pinch — ReactFlow's default zoomOnDoubleClick is true.
+            // future use. Zoom stays on the viewport-toolbar buttons /
+            // Cmd- or Ctrl-wheel / pinch — ReactFlow's default zoomOnDoubleClick is true.
             zoomOnDoubleClick={false}
           >
             {/* Everyone else's pointer. Inside ReactFlow because it portals into
@@ -4899,7 +4892,7 @@ function CanvasSpaceInner({
               node. It takes `getLastWriteWasLocal` for the same reason the
               video panel does — voice cloning collects a slot pick (#1960
               PR2), and a mode switch that ends a running pick has to say
-              whether it was this reader's switch or a collaborator's. */}
+              whether it was this user's switch or a collaborator's. */}
             <AudioGeneratePanelContainer
               nodes={nodes}
               edges={edges}
@@ -5111,7 +5104,7 @@ function CanvasSpaceInner({
             })()}
             // Snapshot is on a text node's menu and nowhere else: every other
             // modality's content is an asset that already has a row of its own.
-            // It is there even with nothing to keep, disabled — a reader looking
+            // It is there even with nothing to keep, disabled — a user looking
             // for it finds it where it always is, greyed out.
             snapshotOffered={!readOnly && nodeMenu.isText}
             onSnapshot={menuHasWords ? snapshotFromMenu : undefined}
@@ -5198,7 +5191,7 @@ function pendingFocusCount(session: CanvasSessionStore, nodeId: string): number 
 
 /**
  * Where a template picked in a panel is aimed. Unused while the panel's node
- * is on the canvas: the template lines up on that node.
+ * is on the canvas: the template lines up on the nodes already there.
  */
 const TEMPLATE_AIM = { x: 0, y: 0 };
 

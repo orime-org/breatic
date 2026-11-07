@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Landing a finished generation on its node (#186, design §3.6).
@@ -154,7 +154,7 @@ describe("recordGenerationForNodes, the settle that carries the result", () => {
         nodeId: "node-1",
         outcome: "failed",
         // A cause we author travels as a code, so the sentence is written in
-        // the reader's language rather than frozen in the worker's (#186 §7.1).
+        // the user's language rather than frozen in the worker's (#186 §7.1).
         errorMessage: "no_result",
       }),
     );

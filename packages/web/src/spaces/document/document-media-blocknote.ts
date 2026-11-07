@@ -1,11 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The image, video and audio blocks, as this Space draws them (inner#1127).
  *
- * The library's own blocks keep their props, parse rules and HTML export;
- * only the node view is ours. Three things it does that the library's does not:
+ * The library's own blocks keep their parse rules; their props are joined by
+ * this Space's (the `uploadId` a pending block waits on), their export writes
+ * a pending block as a line naming it, and the node view is ours. Three
+ * things the view does that the library's does not:
  *
  * - **`update`.** The library's block node views have none
  *   (`blockNodeView`, `createSpec.ts:276-314`), so every prop change rebuilds the view — a
@@ -28,6 +30,8 @@
  * (`createSpec.ts:454-456`), and the schema keeps a node it is handed.
  */
 
+import { t } from '@breatic/shared';
+
 import { carriesFiles } from '@web/lib/stray-file-drop';
 import { startRowDrag } from '@web/spaces/document/document-row-drag';
 import {
@@ -48,7 +52,7 @@ import {
   type MediaBlockActions,
   type MediaBlockProps,
 } from '@web/spaces/document/DocumentMediaBlock';
-import type { MediaBlockType } from '@web/spaces/document/document-media-types';
+import { pendingUploadId, type MediaBlockType } from '@web/spaces/document/document-media-types';
 import { dropMediaView, putMediaView } from '@web/spaces/document/document-media-views';
 import { selectWordlessBlock } from '@web/spaces/document/document-block-place';
 import { drawnSelected } from '@web/spaces/document/document-body-focus';
@@ -103,6 +107,7 @@ function propsOf(node: PMNode): MediaBlockProps {
     url: typeof attrs['url'] === 'string' ? attrs['url'] : '',
     name: typeof attrs['name'] === 'string' ? attrs['name'] : '',
     caption: typeof attrs['caption'] === 'string' ? attrs['caption'] : '',
+    uploadId: typeof attrs['uploadId'] === 'string' ? attrs['uploadId'] : '',
     ...(typeof attrs['previewWidth'] === 'number' && { previewWidth: attrs['previewWidth'] }),
     ...(typeof attrs['mediaWidth'] === 'number' && { mediaWidth: attrs['mediaWidth'] }),
     ...(typeof attrs['mediaHeight'] === 'number' && { mediaHeight: attrs['mediaHeight'] }),
@@ -297,5 +302,53 @@ export function withMediaView<T extends MediaSpec>(spec: T): T {
       return (viewProps: NodeViewRendererProps) => mediaNodeView(viewProps, editor, spec);
     },
   });
-  return { ...spec, implementation: { ...spec.implementation, node } };
+  // The library's own export, which falls back to the block's render.
+  const toExternalHTML = spec.implementation['toExternalHTML'] as ExternalHTML;
+  const render = spec.implementation['render'] as Render;
+  return {
+    ...spec,
+    implementation: {
+      ...spec.implementation,
+      node,
+      // The node view above draws the block, so the library's render is
+      // reached only to serialize (pasted HTML goes to blocks and back to
+      // HTML). That render hangs its resize handlers on the window and only
+      // its `destroy` takes them off, which no serializer calls; the DOM is
+      // all a serializer reads.
+      render(this: unknown, ...args: unknown[]) {
+        const rendered = render.call(this, ...args);
+        rendered.destroy?.();
+        return rendered;
+      },
+      toExternalHTML(this: unknown, block: { props: Record<string, unknown> }, ...rest: unknown[]) {
+        return pendingExternalHTML(block) ?? toExternalHTML.call(this, block, ...rest);
+      },
+    },
+  };
+}
+
+/** The library's render of one block. */
+type Render = (this: unknown, ...args: unknown[]) => { dom: HTMLElement; destroy?: () => void };
+
+/** The library's export of one block to outside HTML. */
+type ExternalHTML = (
+  this: unknown,
+  block: { props: Record<string, unknown> },
+  ...rest: unknown[]
+) => { dom: HTMLElement };
+
+/**
+ * A pending block's outside HTML: one line naming it and saying its upload
+ * is not finished (inner#1351 design §5.10). It has no address, and an empty
+ * media element tells the Agent or another app nothing.
+ * @param block - The block.
+ * @param block.props - Its props.
+ * @returns The line, or null for a block with an address.
+ */
+function pendingExternalHTML(block: { props: Record<string, unknown> }): { dom: HTMLElement } | null {
+  if (pendingUploadId(block.props) === null) return null;
+  const { name } = block.props;
+  const line = document.createElement('p');
+  line.textContent = t('spaces.document.media.pendingExport', { name: typeof name === 'string' ? name : '' });
+  return { dom: line };
 }

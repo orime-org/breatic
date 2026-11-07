@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { Globe } from 'lucide-react';
 import * as React from 'react';
@@ -10,6 +10,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
+import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
 import type { Locale } from '@breatic/shared';
 import {
@@ -34,14 +35,30 @@ export function LangSwitcher(): React.JSX.Element {
   const { locale, setLocale, langs } = useLocaleSwitch();
   const current = langFor(locale);
   const [open, setOpen] = React.useState(false);
+  const [pending, setPending] = React.useState<Locale | null>(null);
+  const latestPick = React.useRef<Locale | null>(null);
 
   /**
-   * Applies the chosen locale and closes the popover.
+   * Applies the chosen locale. A language whose strings are not on the page
+   * yet keeps its item loading and the popover open until they arrive; only
+   * the latest pick's outcome is acted on. When a switch from outside the
+   * menu (the account's language at sign-in) took over, the popover closes
+   * quietly, since the language has changed.
    * @param code - Locale the user selected from the popover.
    */
   const pick = (code: Locale): void => {
-    setLocale(code);
-    setOpen(false);
+    latestPick.current = code;
+    setPending(code);
+    void setLocale(code).then((result) => {
+      if (latestPick.current !== code) return;
+      latestPick.current = null;
+      setPending(null);
+      if (result === 'failed') {
+        toast.error(t('chrome.languageLoadFailed'));
+        return;
+      }
+      setOpen(false);
+    });
   };
 
   return (
@@ -72,15 +89,20 @@ export function LangSwitcher(): React.JSX.Element {
                 locale === l.code &&
                   'bg-accent-strong hover-enabled:bg-accent-strong',
               )}
+              loading={pending === l.code}
+              // The glyph is the item's icon, so while its strings download
+              // the spinner takes the glyph's column and the row stays put.
+              icon={
+                <span
+                  aria-hidden='true'
+                  className='inline-flex h-4 w-4 shrink-0 items-center justify-center text-sm font-medium text-muted-foreground'
+                >
+                  {l.glyph}
+                </span>
+              }
               onClick={() => pick(l.code)}
               data-testid={`lang-option-${l.code}`}
             >
-              <span
-                aria-hidden='true'
-                className='inline-flex w-4 shrink-0 justify-center text-sm font-medium text-muted-foreground'
-              >
-                {l.glyph}
-              </span>
               {l.nativeName}
             </Button>
           ))}

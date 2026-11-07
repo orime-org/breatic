@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * One prompt per mode, and the multi-shot mode: shots typed into real
@@ -112,7 +112,9 @@ async function writeTwoShots(p: Page, model: string): Promise<void> {
   await p.getByTestId(`generate-model-option-${model}`).click();
   await p.getByTestId('generate-storyboard-shot-1-editor').click();
   await p.keyboard.type('a red paper boat floats on a still pond, close-up');
-  await p.getByTestId('generate-storyboard-shot-2-editor').click();
+  // One shot is open at a time (#1201): opening the second puts the caret in it.
+  await p.getByTestId('generate-storyboard-shot-2-toggle').click();
+  await expect(p.getByTestId('generate-storyboard-shot-2-editor').locator('.ProseMirror')).toBeFocused();
   await p.keyboard.type('the camera pulls back to show the whole pond at dusk');
 }
 
@@ -271,12 +273,27 @@ test('names a model by its vendor, joining a variant on only where namesakes mee
   await page.keyboard.press('Escape');
 });
 
-for (const [label, model] of [['Kling', KLING], ['Wan', WAN]] as const) {
+// The cheapest settings that still carry two shots (docs/TEST-MANDATE.md 2.2).
+const RUNS = [
+  // Kling stays although Wan is cheaper: this case tests Kling's own multi_prompt field.
+  // 3 s is its shortest duration; it has no resolution to lower.
+  ['Kling', KLING, 3, undefined],
+  ['Wan', WAN, 2, '480p'],
+] as const;
+
+for (const [label, model, seconds, resolution] of RUNS) {
   test(`${label} makes a video from the shots @needs-model`, async () => {
     test.setTimeout(15 * 60_000);
     const nodeId = await seedVideoNode(page);
     await openGenerate(page, nodeId);
     await writeTwoShots(page, model);
+    await page.getByTestId('generate-video-params-trigger').click();
+    await page.getByTestId(`generate-video-duration-option-${seconds}`).click();
+    if (resolution) await page.getByTestId(`generate-video-resolution-option-${resolution}`).click();
+    const audio = page.getByTestId('generate-video-audio-toggle');
+    if ((await audio.getAttribute('data-state')) === 'checked') await audio.click();
+    await expect(audio).toHaveAttribute('data-state', 'unchecked');
+    await page.keyboard.press('Escape');
 
     const accepted = page.waitForResponse(
       (res) => res.url().includes('/canvas/tasks') && res.request().method() === 'POST',

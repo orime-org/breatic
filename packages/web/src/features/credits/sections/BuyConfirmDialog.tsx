@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 
@@ -25,7 +25,7 @@ import { formatCreditAmount } from '@web/lib/format-credit-amount';
  *
  * The same string is read in three places — this dialog, the plain-text
  * confirmation and the HTML one — and each renders the emphasis its own way.
- * Reaching a reader untranslated, the markers are asterisks in the middle of
+ * Reaching a user untranslated, the markers are asterisks in the middle of
  * the sentence the buyer is agreeing to.
  */
 const EMPHASIS = /\*\*(.+?)\*\*/g;
@@ -62,10 +62,10 @@ function withEmphasis(text: string): React.ReactNode[] {
 interface BuyConfirmDialogProps {
   /** The chosen pack, or null when the dialog is closed. */
   pack: CreditPack | null;
-  /** The refund rule, in the reader's language, as the server hands it over. */
+  /** The refund rule, in the user's language, as the server hands it over. */
   refundLines: readonly string[];
   /**
-   * The sentence the tick stands for, in the reader's language, as the server
+   * The sentence the tick stands for, in the user's language, as the server
    * hands it over. It is recorded against the purchase by version, so the
    * wording shown and the wording recorded come from the same place.
    */
@@ -98,7 +98,7 @@ interface BuyConfirmDialogProps {
  * until the browser leaves for Stripe or the checkout fails.
  * @param props - The pack, the rule and the close callback.
  * @param props.pack - The chosen pack, or null when closed.
- * @param props.refundLines - The refund rule, in the reader's language.
+ * @param props.refundLines - The refund rule, in the user's language.
  * @param props.consentText - The sentence the tick stands for.
  * @param props.onOpenChange - Called when the dialog closes itself.
  * @returns The dialog.

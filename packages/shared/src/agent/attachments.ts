@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { ChatAttachedChip } from "@shared/schemas/api.js";
 
@@ -135,7 +135,7 @@ export function writeReferences<C extends { readonly id: string }>(
 /**
  * The typed words for a conversation's name: a reference to a named
  * attachment reads as that name, one to an unnamed attachment as nothing.
- * The model's own headings are English and stay out of what a reader sees.
+ * The model's own headings are English and stay out of what a user sees.
  * @param chips - What the user attached to the message.
  * @param message - What the user typed.
  * @returns The words.
@@ -146,7 +146,7 @@ export function wordsForTitle(chips: readonly ChatAttachedChip[], message: strin
 
 /**
  * How long the typed words are, counting each reference as one character, the
- * way the reader sees it in the box.
+ * way the user sees it in the box.
  * @param chips - What the user attached to the message; only their ids are read.
  * @param message - What the user typed.
  * @returns The length.

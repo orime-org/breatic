@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Every route entry waits behind the one full-screen loading screen (#142).
@@ -8,7 +8,7 @@
  * by a single `Suspense` boundary — `LoadingBoundary`, the pathless layout
  * route every entry sits under. Unit tests pin the wiring — that every page
  * goes through `lazyRoute`, and that the boundary holds the whole table — but
- * they cannot answer whether a reader opening a given address sees that
+ * they cannot answer whether a user opening a given address sees that
  * screen: the fallback lives for a few frames, and a jsdom router never
  * completes a navigation (`AppRouter.test.tsx` says why).
  *
@@ -53,7 +53,7 @@ interface Landmarks {
 }
 
 interface Entry {
-  /** The address a reader opens. */
+  /** The address a user opens. */
   address: (ids: Landmarks) => string;
   /** The page module this entry fetches, as `routes.tsx` names it. */
   module: string;
@@ -88,11 +88,11 @@ interface Watched {
 }
 
 /**
- * The thirteen entries a reader can land on, as `routes.tsx` declares them.
+ * The thirteen entries a user can land on, as `routes.tsx` declares them.
  *
  * Written out rather than derived, because a browser needs concrete ids and a
  * landmark per destination. What keeps it honest is the "covers every entry a
- * reader can land on" case in `routes-lazy.test.tsx`: it lists every path the
+ * user can land on" case in `routes-lazy.test.tsx`: it lists every path the
  * table produces, so an entry added without one fails there and sends whoever
  * added it here. That list holds fourteen items for these thirteen addresses
  * — `/studio` is both the layout route and its index child.
@@ -176,7 +176,7 @@ async function watchLoadingScreen(page: Page): Promise<void> {
     let onScreen = false;
     const drawn = new WeakSet<Element>();
     const check = (): void => {
-      // Only a screen the reader can see counts, and what tells it apart here
+      // Only a screen the user can see counts, and what tells it apart here
       // is the box: a `display: none` node has none. That is narrower than the
       // `:visible` locator the assertions use, which also rules out
       // `visibility: hidden` — nothing in this path uses it, and an observer

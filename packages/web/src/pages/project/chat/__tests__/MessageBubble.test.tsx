@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
@@ -43,7 +43,7 @@ describe('MessageBubble', () => {
   });
 
   it('第一个字还没到,气泡里只有那个点', () => {
-    // 这一刻读者除了「等着」什么都没有:回复还没长出来,按钮已经变成停止,
+    // 这一刻用户除了「等着」什么都没有:回复还没长出来,按钮已经变成停止,
     // 两样都只看得见。定稿定的是一个点呼吸(user 2026-08-12 定、08-19 复核
     // 维持),不是一个方块在闪 —— 方块是打字游标,它要有字才说得通。
     setup({ id: 'm1', role: 'assistant', content: '', streaming: true });
@@ -54,7 +54,7 @@ describe('MessageBubble', () => {
   it('字来了那个点不走,跟在最后一个字后面', () => {
     // user 2026-08-20 定:「圆点不能消失,也不能换成竖杠,那个圆点就一直是在
     // 最后一个字后面」。此前是两个标记二选一 —— 没字画点、有字换成一个闪烁
-    // 的竖条,于是那个点在读者最需要「它还在说」这个信号的整段时间里反而不
+    // 的竖条,于是那个点在用户最需要「它还在说」这个信号的整段时间里反而不
     // 在。现在只有一个标记,它从这一轮开始跟到结束。
     const { container } = setup({ id: 'm1', role: 'assistant', content: '好', streaming: true });
 
@@ -86,7 +86,7 @@ describe('MessageBubble', () => {
   });
 
   it('leaves a finished tool call off the reply entirely', () => {
-    // What a reader wants once a turn has ended is the answer, not a record
+    // What a user wants once a turn has ended is the answer, not a record
     // of how it was assembled. The line that says what is running lives only
     // while it runs, and it is pinned in turn-lines.test.tsx.
     setup({
@@ -103,7 +103,7 @@ describe('MessageBubble', () => {
 
   it('says so when the turn was stopped before it finished', () => {
     // The backend goes to the trouble of storing this mark (batch 3, item 33)
-    // so the reader can tell a cut-off answer from a complete one. Carrying it
+    // so the user can tell a cut-off answer from a complete one. Carrying it
     // to the component and not drawing it wastes the whole chain.
     render(
       <MessageBubble
@@ -116,7 +116,7 @@ describe('MessageBubble', () => {
 
   it('says so when the ceiling cut the answer off', () => {
     // Its own wording, not the stop mark's: nobody stopped this one, and a
-    // reader told they did would go looking for a stop they never made.
+    // user told they did would go looking for a stop they never made.
     render(
       <MessageBubble
         message={{ id: 'm3', role: 'assistant', content: 'half a sen', truncated: true }}
@@ -133,7 +133,7 @@ describe('MessageBubble', () => {
     expect(screen.queryByTestId('message-bubble-interrupted')).toBeNull();
   });
 
-  it('shows the failure in the reader\'s own language, not the server\'s', () => {
+  it('shows the failure in the user\'s own language, not the server\'s', () => {
     // Acceptance item 26. What the server sends on this path is a hardcoded
     // English sentence, so the panel says it itself.
     render(
@@ -160,7 +160,7 @@ describe('MessageBubble', () => {
     expect(screen.getByTestId('message-bubble-error').getAttribute('role')).toBeNull();
   });
 
-  it('announces a failure that just happened, while the reader is waiting', () => {
+  it('announces a failure that just happened, while the user is waiting', () => {
     // Acceptance item 26. Someone who sent a message and is waiting for the
     // answer has no other way to learn the turn is over: the reply simply
     // stops growing and the stop button turns back into send, both of which
@@ -189,7 +189,7 @@ describe('MessageBubble — markdown rendering', () => {
     expect(md.querySelector('strong')).toHaveTextContent('bold');
   });
 
-  it('leaves what the reader typed as plain text (R13)', () => {
+  it('leaves what the user typed as plain text (R13)', () => {
     // Someone typing **text** into the composer means those characters.
     setup({ id: 'm1', role: 'user', content: 'a line with **bold** in it' });
 
@@ -198,7 +198,7 @@ describe('MessageBubble — markdown rendering', () => {
     expect(screen.getByTestId('message-bubble').querySelector('strong')).toBeNull();
   });
 
-  it('breaks a long address the reader sent instead of running it off the bubble', () => {
+  it('breaks a long address the user sent instead of running it off the bubble', () => {
     // `white-space: pre-wrap` keeps the newlines they typed, and breaks lines at
     // spaces -- an address has none, so the whole of it is one unbreakable word
     // and `overflow-wrap` defaults to `normal`. Measured in a browser: a
@@ -305,7 +305,7 @@ describe('MessageBubble — the waiting mark is the turn\'s own state (R7)', () 
   });
 });
 
-describe('MessageBubble — what the reader attached', () => {
+describe('MessageBubble — what the user attached', () => {
   it('shows each attached item above the words, by name', () => {
     render(
       <MessageBubble

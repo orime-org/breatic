@@ -1,14 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #113 acceptance A5 and A6: a block type chosen off the block handle acts on
  * the row the pointer is over.
  *
- * The bubble bar's form of the same command reads the reader's selection. The
- * handle's form reads a row instead — one the reader has not selected and may
+ * The bubble bar's form of the same command reads the user's selection. The
+ * handle's form reads a row instead — one the user has not selected and may
  * not even be near — so two things have to hold: nothing indented under that
- * row changes, and the reader's own caret comes back where it was.
+ * row changes, and the user's own caret comes back where it was.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -84,7 +84,7 @@ describe('a block type chosen off the block handle', () => {
     ]);
   });
 
-  it('leaves the reader’s caret where it was', () => {
+  it('leaves the user’s caret where it was', () => {
     const editor = open();
     const parent = editor.document[0] as unknown as Seen;
     const elsewhere = editor.document[1] as unknown as Seen;

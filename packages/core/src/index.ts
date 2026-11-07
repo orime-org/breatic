@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * `@breatic/core` — shared backend runtime.
@@ -23,6 +23,7 @@ export { db, rawPg, pingDb, closeDb, createPgClient } from "@core/db/client.js";
 export { yjsDb, yjsRawPg, closeYjsDb } from "@core/db/client.js";
 export type { DbTx, YjsDbTx } from "@core/db/client.js";
 export { runMigrations, runYjsMigrations } from "@core/db/migrate.js";
+export type { LegacyGiftConfirmation } from "@core/db/legacy-gift-migration.js";
 export { createTestDb, migrateDatabase, migrateYjsDatabase } from "@core/db/test-support.js";
 export type { TestDb } from "@core/db/test-support.js";
 export * as schema from "@core/db/schema.js";
@@ -105,7 +106,7 @@ export type {
   SubscriptionPlans,
 } from "@core/config/subscription.js";
 export { jitterBackoffStrategy } from "@core/infra/retry.js";
-export { getAgentConfig, memoryReserveTokens } from "@core/config/loader.js";
+export { getAgentConfig, memoryReserveTokens, MEMORY_TITLE_MAX_CHARS, MEMORY_CONTENT_MAX_CHARS } from "@core/config/loader.js";
 export type { PromptCacheTtl } from "@core/config/loader.js";
 
 // ── Infrastructure ───────────────────────────────────────────────
@@ -159,6 +160,7 @@ export {
 export {
   publishActivityNew,
   publishCreditsChanged,
+  publishSpaceTasksChanged,
   publishProjectConnectionsClose,
   projectControlChannelPattern,
   sessionsRevokedChannelName,
@@ -337,3 +339,6 @@ export { createR2MaintenanceStorage, MaintenanceDeleteError, type MaintenanceSto
 export type { S3CompatibleConfig } from "@core/infra/storage/s3.js";
 
 export * from "@core/credit/credit-grant-contract.js";
+
+export * as accountActivityRepo from "@core/activity/account-activity.repo.js";
+export * as accountActivityCoverageRepo from "@core/activity/account-activity-coverage.repo.js";

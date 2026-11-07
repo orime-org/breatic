@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Where the canvas goes after a press writes a node beside another (#2175).
  *
  * Two ways to get this wrong, and they are opposites: never moving leaves a
  * press whose only effect is off-screen looking like a press that did
- * nothing, and always moving slides the canvas under a reader who could
+ * nothing, and always moving slides the canvas under a user who could
  * already see everything.
  */
 
@@ -27,13 +27,13 @@ import {
 import type { Rect } from '@web/spaces/canvas/group-geometry';
 
 const VIEWPORT = { x: 0, y: 0, width: 1000, height: 800 };
-/** A node near the right edge of what the reader can see. */
+/** A node near the right edge of what the user can see. */
 const SOURCE = { x: 650, y: 100, width: 288, height: 200 };
 /** Where one step to the right of it lands: past that edge. */
 const BUILT = { x: 962, y: 100, width: 288, height: 200 };
 
 describe('framing the node a press just wrote', () => {
-  it('moves nothing when the reader can already see it', () => {
+  it('moves nothing when the user can already see it', () => {
     expect(
       frameBuiltNode(
         { x: 100, y: 100, width: 288, height: 200 },
@@ -43,7 +43,7 @@ describe('framing the node a press just wrote', () => {
     ).toBeNull();
   });
 
-  // Partly visible is not visible: the reader sees a sliver of a node and
+  // Partly visible is not visible: the user sees a sliver of a node and
   // cannot read what landed in it.
   it('frames both nodes when the new one hangs over the edge', () => {
     // Both span x 650..1250 and y 100..300; the centre of that is the point.
@@ -53,7 +53,7 @@ describe('framing the node a press just wrote', () => {
     });
   });
 
-  // The zoom is the reader's and this does not touch it, so a pair too far
+  // The zoom is the user's and this does not touch it, so a pair too far
   // apart to fit at that zoom cannot be framed together. The press produced
   // the built node, so that is what has to be on screen.
   it('shows the new node alone when the pair does not fit', () => {
@@ -66,8 +66,8 @@ describe('framing the node a press just wrote', () => {
   });
 
   // The canvas scrolls, so the viewport is rarely at the origin — a box is
-  // judged against where the reader is looking, not against the canvas.
-  it('judges against where the reader is looking', () => {
+  // judged against where the user is looking, not against the canvas.
+  it('judges against where the user is looking', () => {
     expect(
       frameBuiltNode(BUILT, SOURCE, { x: 900, y: 0, width: 1000, height: 800 }),
     ).toBeNull();
@@ -122,7 +122,7 @@ describe('what a paste or duplicate frames', () => {
 describe('viewportForBuilt', () => {
   const pane = { width: 1000, height: 800 };
   /**
-   * What the reader sees at this viewport, in canvas coordinates.
+   * What the user sees at this viewport, in canvas coordinates.
    * @param v - The viewport.
    * @param v.x - Its x translation.
    * @param v.y - Its y translation.
@@ -140,7 +140,7 @@ describe('viewportForBuilt', () => {
     expect(viewportForBuilt({ x: 100, y: 100, width: 200, height: 200 }, null, pane, { x: 0, y: 0, zoom: 1 })).toBeNull();
   });
 
-  it('slides at the reader’s zoom to show the built node with its source when both fit', () => {
+  it('slides at the user’s zoom to show the built node with its source when both fit', () => {
     const source = { x: 900, y: 100, width: 200, height: 200 };
     const built = { x: 1200, y: 100, width: 200, height: 200 };
     const v = viewportForBuilt(built, source, pane, { x: 0, y: 0, zoom: 1 })!;
@@ -164,7 +164,7 @@ describe('viewportForBuilt', () => {
     expect(group.y + group.height).toBeLessThanOrEqual(view.y + view.height);
   });
 
-  it('never zooms in past the reader’s zoom', () => {
+  it('never zooms in past the user’s zoom', () => {
     const v = viewportForBuilt({ x: 5000, y: 0, width: 100, height: 100 }, null, pane, { x: 0, y: 0, zoom: 0.5 })!;
     expect(v.zoom).toBe(0.5);
   });
@@ -214,7 +214,7 @@ describe('viewportToInspect', () => {
     expect(viewportToInspect(node, panel, pane, { x: 0, y: 0, zoom: 0.5 }, 0.8)!.zoom).toBe(0.8);
   });
 
-  it('stays put when the reader is already as close as that, and never zooms out', () => {
+  it('stays put when the user is already as close as that, and never zooms out', () => {
     expect(viewportToInspect(node, panel, pane, { x: 0, y: 0, zoom: 2 }, 8)).toBeNull();
   });
 });
@@ -263,7 +263,7 @@ describe('viewportToShowPlaced (inner#1345)', () => {
     expect(next).toEqual({ x: 0, y: G - (30 - NODE_NAME_REACH_PX), zoom: 1 });
   });
 
-  it('slides at the reader zoom when everything fits there', () => {
+  it('slides at the user zoom when everything fits there', () => {
     const view = { nodes: [card(30, 100)] as [Rect], anchor: card(30, 100), panel: { width: 200, height: 200 } };
     const next = viewportToShowPlaced(view, pane, { x: 0, y: 0, zoom: 1 }, chrome, 0.1);
 
@@ -296,7 +296,7 @@ describe('viewportToShowPlaced (inner#1345)', () => {
     expect(next?.zoom).toBe(0.5);
   });
 
-  it('keeps the panel and its node clear at the reader zoom when the nodes cannot fit at the lowest zoom', () => {
+  it('keeps the panel and its node clear at the user zoom when the nodes cannot fit at the lowest zoom', () => {
     const view = {
       nodes: [card(-20000, 100), card(20000, 100), card(300, 100)] as [Rect, Rect, Rect],
       anchor: card(300, 100),

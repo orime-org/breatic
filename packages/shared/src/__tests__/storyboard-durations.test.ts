@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * How a Kling storyboard's shot durations move when the reader edits it.
+ * How a Kling storyboard's shot durations move when the user edits it.
  *
  * The upstream fails any run whose shot durations do not add up to the
  * top-level duration (probed 2026-09-30), so every single-user edit keeps

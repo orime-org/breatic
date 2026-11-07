@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #905 验收 A1 · A2 · A4 · A5 · A7 · A8 · A9: the two slots, wired.
@@ -11,7 +11,7 @@
  * reads the selection rather than a value written into the markup.
  *
  * The marks matter as much as the presses. A panel that always draws "default"
- * as the one in force tells the reader their red text is not red.
+ * as the one in force tells the user their red text is not red.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';

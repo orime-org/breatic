@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What the account-level credits overlay needs, and what the endpoints did
@@ -409,7 +409,7 @@ describe("a deleted studio says so on its row", () => {
   });
 });
 
-describe("a studio's debt is the studio's, not the reader's", () => {
+describe("a studio's debt is the studio's, not the user's", () => {
   it("withholds it from someone who no longer administers the studio", async () => {
     // A debt is the studio's own figure. It moves as the people inside go on
     // generating, and only an admin can act on it by pointing a purchase
@@ -440,7 +440,7 @@ describe("a studio's debt is the studio's, not the reader's", () => {
 
     const after = await creditLotService.getOverview(fx.userId);
     const row = after.studios.find((s) => s.studioId === fx.studioId);
-    // The row is still there — the reader's own purchase points at this
+    // The row is still there — the user's own purchase points at this
     // studio, and every lot they bought is counted somewhere on this panel.
     expect(row).toBeDefined();
     expect(row!.debt).toBeNull();
@@ -459,7 +459,7 @@ describe("the overview reports what is owed and how many purchases point there (
 
     expect(mine).toBeDefined();
     expect(Number(mine!['debt'])).toBe(0);
-    // A count and not a list: what the reader wants to know is whether
+    // A count and not a list: what the user wants to know is whether
     // anything points there.
     expect(Number(mine!['lotCount'])).toBe(2);
   });

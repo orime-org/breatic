@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { ArrowUp, Loader2, Plus, Square } from 'lucide-react';
 import * as React from 'react';
@@ -15,6 +15,7 @@ import type { SpaceContextChipProps } from '@web/pages/project/chat/SpaceContext
 import { ChatAttachmentsContext } from '@web/pages/project/chat/chat-reference';
 import { useAtLimitNotice } from '@web/pages/project/chat/use-at-limit-notice';
 import { useComposerEditor } from '@web/pages/project/chat/use-composer-editor';
+import { ModelPicker } from '@web/pages/project/chat/ModelPicker';
 import { NO_ATTACHMENTS, type TrayItem } from '@web/stores/chat-attachments';
 import type { TurnPhase } from '@web/stores/conversation-runtime';
 import type { ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
@@ -23,6 +24,8 @@ import type { ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
 interface ChatComposerProps {
   /** The conversation the box writes into. */
   conversationId?: string | null;
+  /** The Project the conversation is in; with a conversation, the model picker is shown (#1363). */
+  projectId?: string;
   draft: string;
   /**
    * How far along the turn is, which decides what stands where Send does.
@@ -50,7 +53,7 @@ interface ChatComposerProps {
   onChange: (next: string) => void;
   onSubmit: () => void;
   onAbort?: () => void;
-  /** Called with the files the reader picked. */
+  /** Called with the files the user picked. */
   onAttachFiles?: (files: File[]) => void;
   /** Called with canvas nodes pasted into the box. */
   onPasteCanvas?: (payload: ClipboardPayload) => void;
@@ -80,6 +83,7 @@ interface ChatComposerProps {
  *     waiting (a spinner, nothing to press), streaming (Abort)
  * @param root0 - The component props.
  * @param root0.conversationId - The conversation the box writes into.
+ * @param root0.projectId - The Project it is in, for the model picker.
  * @param root0.draft - The current draft text in the input.
  * @param root0.turnPhase - How far along the turn is: idle, sending, running.
  * @param root0.navigating - The panel is on its way to another conversation.
@@ -88,7 +92,7 @@ interface ChatComposerProps {
  * @param root0.onChange - Called with the next draft text on each edit.
  * @param root0.onSubmit - Called to send the draft message.
  * @param root0.onAbort - Called to abort the in-flight streaming response.
- * @param root0.onAttachFiles - Called with the files the reader picked.
+ * @param root0.onAttachFiles - Called with the files the user picked.
  * @param root0.onPasteCanvas - Called with the canvas clipboard payload pasted into the box.
  * @param root0.onRemoveAttachment - Called with an item's id to take it out.
  * @param root0.space - The open Space's chip beside the plus sign, if one is open.
@@ -96,6 +100,7 @@ interface ChatComposerProps {
  */
 function ChatComposerInner({
   conversationId = null,
+  projectId,
   draft,
   turnPhase = 'idle',
   navigating = false,
@@ -159,7 +164,7 @@ function ChatComposerInner({
    *
    * The same rule as {@link submit} and the same reason: this element is
    * about to be a different button. Stopping turns it back into Send, and a
-   * reader who wrote their next message while waiting would send it with the
+   * user who wrote their next message while waiting would send it with the
    * very next keypress, having aimed at stop.
    */
   const abort = (): void => {
@@ -172,11 +177,11 @@ function ChatComposerInner({
    *
    * The one slot in this row serves send, the wait and stop in turn, which is
    * what keeps focus from falling to the body when the phase changes -- and
-   * what makes standing there dangerous. The box is where the reader acts
+   * what makes standing there dangerous. The box is where the user acts
    * next anyway.
    */
   const handOverTheKeyboard = (): void => {
-    // The editor's own focus puts the caret back where the reader left it; a
+    // The editor's own focus puts the caret back where the user left it; a
     // bare DOM focus lets the browser put it at the start.
     editor?.view.focus();
   };
@@ -207,7 +212,7 @@ function ChatComposerInner({
       {/* Only what is being referenced, and only when something is. Holding a
           control here is what made this a row that could never go away, and
           an empty row at the top of the composer is a row of the
-          conversation the reader does not get. */}
+          conversation the user does not get. */}
       {attachments.length > 0 ? (
         <div className='flex min-h-[var(--btn-chrome)] flex-nowrap items-center gap-1.5 border-b border-border px-2 py-1'>
           <div
@@ -244,7 +249,11 @@ function ChatComposerInner({
         </ChatAttachmentsContext.Provider>
       </ScrollArea>
       <div className='flex items-center justify-between gap-2 px-2 pb-2 pt-1.5'>
-        <div className='flex min-w-0 flex-1 items-center gap-1.5'>
+        {/* Takes what the model picker leaves, but never less than the +
+            button, the gap and the Space chip's floor (SpaceContextChip:
+            3em of its text-xs plus 2.125rem), so a tight footer truncates the
+            model name and the chip never spills under the picker. */}
+        <div className='flex min-w-[calc(var(--btn-inline)+0.375rem+3em+2.125rem)] flex-1 items-center gap-1.5 text-xs'>
           <input
             ref={picker}
             type='file'
@@ -273,7 +282,11 @@ function ChatComposerInner({
           </Button>
           {space ? <SpaceContextChip {...space} /> : null}
         </div>
-        {turnPhase === 'sending' ? (
+        <div className='flex min-w-0 shrink items-center gap-1'>
+          {conversationId !== null && projectId !== undefined ? (
+            <ModelPicker conversationId={conversationId} projectId={projectId} />
+          ) : null}
+          {turnPhase === 'sending' ? (
           // The press landed and the server has not spoken yet. Something has
           // to stand here or the press reads as having done nothing -- but it
           // is not a control: there is nothing to press that would help, so
@@ -282,46 +295,47 @@ function ChatComposerInner({
           // this slot is the stop button, and anything focusable here can be
           // tabbed to and then turn into something else underneath whoever
           // is standing on it. What it has to say is said by the live region
-          // below, which is where a reader hears it anyway.
-          <span
-            data-testid='chat-composer-sending'
-            aria-hidden='true'
-            className='inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome text-muted-foreground'
-          >
-            <Loader2 className='h-4 w-4 animate-spin' />
-          </span>
-        ) : turnPhase === 'running' ? (
-          <Button
-            type='button'
-            variant={null}
-            size={null}
-            aria-label='Abort'
-            onClick={abort}
-            data-testid='chat-composer-abort'
-            className='inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome border border-status-error-border bg-status-error-bg text-status-error-foreground transition-colors hover:border-status-error'
-          >
-            <Square className='h-4 w-4' />
-          </Button>
-        ) : (
-          <Button
-            type='button'
-            variant={null}
-            size={null}
-            aria-label={t('chat.composer.send')}
-            title={t('chat.composer.send')}
-            disabled={!ready}
-            onClick={submit}
-            data-testid='chat-composer-send'
-            className={`inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome transition-opacity disabled:cursor-not-allowed ${
+          // below, which is where a user hears it anyway.
+            <span
+              data-testid='chat-composer-sending'
+              aria-hidden='true'
+              className='inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome text-muted-foreground'
+            >
+              <Loader2 className='h-4 w-4 animate-spin' />
+            </span>
+          ) : turnPhase === 'running' ? (
+            <Button
+              type='button'
+              variant={null}
+              size={null}
+              aria-label='Abort'
+              onClick={abort}
+              data-testid='chat-composer-abort'
+              className='inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome border border-status-error-border bg-status-error-bg text-status-error-foreground transition-colors hover:border-status-error'
+            >
+              <Square className='h-4 w-4' />
+            </Button>
+          ) : (
+            <Button
+              type='button'
+              variant={null}
+              size={null}
+              aria-label={t('chat.composer.send')}
+              title={t('chat.composer.send')}
+              disabled={!ready}
+              onClick={submit}
+              data-testid='chat-composer-send'
+              className={`inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome transition-opacity disabled:cursor-not-allowed ${
               ready
                 ? 'bg-foreground text-background transition-colors hover:bg-primary-hover'
                 : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground'
             }`}
-          >
-            <ArrowUp className='h-4 w-4' />
-          </Button>
-        )}
-        {/* Here whether or not there is anything to say, so that a reader is
+            >
+              <ArrowUp className='h-4 w-4' />
+            </Button>
+          )}
+        </div>
+        {/* Here whether or not there is anything to say, so that a user is
             told when it fills rather than when it appears: a live region
             inserted already holding its text is one many screen readers never
             announce. The wait used to be announced by the indicator itself,
@@ -344,6 +358,6 @@ function ChatComposerInner({
  * for a component whose props did not move. Every callback it is handed keeps
  * the same identity across those renders, which is what lets the comparison
  * actually stop anything; `draft` is the one prop that does change, and it
- * changes only when the reader types.
+ * changes only when the user types.
  */
 export const ChatComposer = React.memo(ChatComposerInner);

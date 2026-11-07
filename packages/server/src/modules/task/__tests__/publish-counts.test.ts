@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Publishing four numbers that nobody is waiting on (#186, design §4.6.4).
  *
  * A node's task counts go out on the cross-service stream so that everyone
  * else with this canvas open sees them move. The request that caused the
- * move already has its own answer in hand, and the reader on the other end
+ * move already has its own answer in hand, and the user on the other end
  * of that request is not the audience for the broadcast.
  *
  * So the two are separated here. Losing the stream for a few seconds is a

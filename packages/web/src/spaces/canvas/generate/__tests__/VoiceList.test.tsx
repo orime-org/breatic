@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #1960 §6.3 — the voice list, as the audio settings pill opens it beside
@@ -295,7 +295,7 @@ describe('the voice list paging (#1960 §7.1)', () => {
 describe('the voice list keeps one height for every state it can be in', () => {
   // The popover opens upward over a canvas someone is working on, and a search
   // changes how many rows there are — a box sized to its contents would move
-  // under the reader on each keystroke (user 2026-09-03).
+  // under the user on each keystroke (user 2026-09-03).
   it.each([
     ['loading', state({ status: 'loading', voices: [] })],
     ['empty', state({ status: 'empty', voices: [] })],
@@ -349,7 +349,7 @@ describe('the voice list samples (#1960 A2)', () => {
     expect(screen.queryByTestId('generate-voice-sample-beta')).toBeNull();
   });
 
-  it('plays a voice\'s sample in the language the reader picked', () => {
+  it('plays a voice\'s sample in the language the user picked', () => {
     // A Gemini voice speaks whichever language is picked in the same panel,
     // so its sample is the one in that language (user 2026-09-29).
     const multilingual: ModelEntry = {
@@ -420,7 +420,7 @@ describe('the voice list samples (#1960 A2)', () => {
 
   it('leaves the playing sample lit when a superseded one fails late', async () => {
     // A dead url, a codec the browser will not take, a blocked autoplay: the
-    // rejection lands whenever it lands, and by then the reader may have
+    // rejection lands whenever it lands, and by then the user may have
     // started something else. Clearing on it would darken the button of the
     // voice that is actually on the speakers.
     let failBeta: () => void = () => {};
@@ -486,10 +486,10 @@ describe('the voice list when a next page fails (#1960 A6)', () => {
     expect(screen.queryByTestId('generate-voice-more-retry')).toBeNull();
   });
 
-  it('does not tell the reader voices are unavailable while showing them', () => {
+  it('does not tell the user voices are unavailable while showing them', () => {
     // The whole-list failure and this one used one sentence between them, and
     // that sentence is written for an empty list. Here a full page is on
-    // screen, so "voices unavailable" contradicts what the reader can see.
+    // screen, so "voices unavailable" contradicts what the user can see.
     open({ list: state({ hasMore: true, moreFailed: true }) });
     expect(screen.getByTestId('generate-voice-option-alpha')).toBeInTheDocument();
     const whole = screen.queryByText('canvas.generatePanel.voiceError');

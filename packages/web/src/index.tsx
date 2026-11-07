@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
@@ -21,8 +21,6 @@ import { router } from '@web/app/routes';
 import { removeRetiredStorageKeys } from '@web/lib/storage-keys';
 import { guardStrayFileDrops } from '@web/lib/stray-file-drop';
 
-// i18n must initialize before any component renders useTranslation().
-bootstrapLocale();
 removeRetiredStorageKeys();
 guardStrayFileDrops(window);
 
@@ -32,6 +30,10 @@ const errorMonitoring = errorMonitoringInit({
   version: import.meta.env.VITE_APP_VERSION,
 });
 if (errorMonitoring !== null) Sentry.init(errorMonitoring);
+
+// i18n must initialize before any component renders useTranslation(); error
+// monitoring comes first so a catalog that fails to download is reported.
+await bootstrapLocale();
 startProductAnalytics();
 followPage(router.state.location.pathname);
 router.subscribe((state) => followPage(state.location.pathname));

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The items waiting above the chat box, one list per conversation.
@@ -27,7 +27,7 @@ import {
 } from '@web/stores/chat-attachments';
 
 /**
- * The last warning the reader was shown.
+ * The last warning the user was shown.
  * @returns Its text, or null.
  */
 function lastWarning(): unknown {

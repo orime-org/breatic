@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What the document hands the Agent's attachment tray (inner#936): one text
@@ -89,7 +89,7 @@ function selectionMarkdown(editor: ToolEditor, view: EditorView): string {
 }
 
 /**
- * The reader's selection, as an item for the tray.
+ * The user's selection, as an item for the tray.
  * @param editor - The document editor, mounted.
  * @returns The item.
  * @throws {Error} When the editor is not mounted.
@@ -119,7 +119,7 @@ export function blockItem(editor: ToolEditor, blockId: string): TrayItem {
   return textItem(`document-block-${blockId}`, nameFrom(words), markdown);
 }
 
-/** The bubble bar's entry, handing the reader's selection to the Agent. */
+/** The bubble bar's entry, handing the user's selection to the Agent. */
 export const addToAgentTool: ToolDef = {
   id: 'addToAgent',
   labelKey: 'canvas.contextMenu.addToAgent',

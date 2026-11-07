@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { ChevronDown, Volume2 } from 'lucide-react';
 import * as React from 'react';
@@ -142,7 +142,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
 
   const layout = React.useMemo(() => settingsLayout(model, mode, value), [model, mode, value]);
   const standIn = layout.standIn;
-  // The language the reader picked, for a voice that has a sample in each: the
+  // The language the user picked, for a voice that has a sample in each: the
   // model's param whose values name languages.
   const languageParam = Object.keys(model.params).find((name) => model.params[name]?.value_locales !== undefined);
   const language = languageParam === undefined ? undefined : asChoice(value[languageParam]);
@@ -228,7 +228,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
   /**
    * What a row of the first panel says it is set to.
    * @param row - The row.
-   * @returns The value as the reader reads it.
+   * @returns The value as the user reads it.
    */
   const rowValue = (row: SettingsRow): string => {
     if (row.kind === 'speaker') {
@@ -500,9 +500,9 @@ interface SpeakerNameBoxProps {
 }
 
 /**
- * A speaker's name, written when the reader leaves the box or presses Enter,
+ * A speaker's name, written when the user leaves the box or presses Enter,
  * so each edit is one canvas undo step. The Enter that confirms an IME word
- * is not the reader finishing the name.
+ * is not the user finishing the name.
  * @param root0 - Props.
  * @param root0.label - The box's name.
  * @param root0.placeholder - What the empty box says.

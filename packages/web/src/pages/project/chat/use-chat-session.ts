@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 import { useChat } from '@ai-sdk/react';
 
-import type { AskUserAnswer, ChatAttachedChip } from '@breatic/shared';
+import type { AskUserAnswer, ChatAttachedChip, ChatSpaceContext, SpaceRequestAnswer } from '@breatic/shared';
 
 import { joinContinued, splitAtAnswer, toChatMessage } from '@web/pages/project/chat/to-chat-message';
 import { visibleMessages } from '@web/pages/project/chat/visible-messages';
@@ -14,7 +14,7 @@ import type { OpenStatus, TurnPhase } from '@web/stores/conversation-runtime';
 import { mishapLine, watchChatMishaps } from '@web/stores/chat-mishaps';
 import { toast } from '@web/lib/toast';
 import { chatAttachments } from '@web/stores/chat-attachments';
-import { answerInSession, chatSessionFor, sendInSession, stopChatSession } from '@web/stores/chat-sessions';
+import { answerInSession, chatSessionFor, sendInSession, shareSpacesInSession, stopChatSession } from '@web/stores/chat-sessions';
 import { chatApi } from '@web/data/api/chat';
 import type { StoredUiMessage } from '@web/data/api/chat';
 import { clipSpaceContext } from '@web/pages/project/chat/space-context';
@@ -54,7 +54,7 @@ export interface ChatSession {
    * How far along the turn is, if there is one.
    *
    * Three states and not a boolean, because the middle one is a state the
-   * reader is in: they pressed send and nothing has come back. What they can
+   * user is in: they pressed send and nothing has come back. What they can
    * do differs in all three -- send, wait, or stop.
    */
   turnPhase: TurnPhase;
@@ -63,7 +63,7 @@ export interface ChatSession {
    *
    * Separate from `turnPhase`, which is about the exchange inside the
    * conversation on screen. This one is about which conversation that is:
-   * for as long as it is true, the one being shown is not the one the reader
+   * for as long as it is true, the one being shown is not the one the user
    * just asked for.
    */
   navigating: boolean;
@@ -90,6 +90,12 @@ export interface ChatSession {
    * (inner#1542); the turn that asked resumes. Resolves when that turn is over.
    */
   answer: (toolCallId: string, answers: AskUserAnswer['answers']) => Promise<void>;
+  /**
+   * Answer the request to look at Spaces the conversation on screen stopped
+   * at (inner#1552); the turn that asked resumes. Resolves when that turn is
+   * over.
+   */
+  shareSpaces: (answer: SpaceRequestAnswer) => Promise<void>;
   /** Stop the turn in flight. */
   abort: () => void;
   /** The conversations fetched so far here, most recently used first. */
@@ -104,7 +110,7 @@ export interface ChatSession {
    * While this is true the end of the list is not watched at all; a
    * single scroll is. A failure moves nothing, so an end still in view would
    * have the failure asking again on its own behalf, over and over. What asks
-   * again is the reader moving.
+   * again is the user moving.
    */
   nextPageFailed: boolean;
   /** The first page of the list is on its way. */
@@ -120,7 +126,7 @@ export interface ChatSession {
   switchTo: (conversationId: string) => void;
   /** Name one; rejects when the name was not saved. */
   rename: (conversationId: string, title: string) => Promise<void>;
-  /** Delete one, after the reader has confirmed; settles once the attempt is over. */
+  /** Delete one, after the user has confirmed; settles once the attempt is over. */
   remove: (conversationId: string) => Promise<void>;
 }
 
@@ -151,6 +157,15 @@ const NO_MESSAGES: StoredUiMessage[] = [];
 const NO_CONVERSATIONS: ConversationOnTheWire[] = [];
 
 /**
+ * How a session reads its conversation's model at each send (#1363).
+ * @param conversationId - The conversation.
+ * @returns A reader of its model id, as the picker last set it.
+ */
+function modelOfConversation(conversationId: string): () => string | undefined {
+  return () => useConversationRuntime.getState().conversations[conversationId]?.agentModel.id;
+}
+
+/**
  * The chat panel's view of the conversation it is showing.
  *
  * Reading only. What is happening in the conversation — the messages, and the
@@ -161,7 +176,7 @@ const NO_CONVERSATIONS: ConversationOnTheWire[] = [];
  * conversation rather than inside it: which one is on screen, the list, the
  * draft, and the page a session is first built from.
  * @param projectId - Project whose chat this is
- * @param readSpaces - Reads the reader's Spaces as they stand, called at the
+ * @param readSpaces - Reads the user's Spaces as they stand, called at the
  *   press (inner#1413)
  * @returns The messages, whether they have arrived, and what can be done
  */
@@ -190,14 +205,14 @@ export function useChatSession(
   // The box is emptied when the first frame lands, and the session is what
   // says so. What separates the press from the first frame is whether
   // anything of this turn exists anywhere but in this browser: before, the
-  // words are only in the box the reader typed them into, and a turn the
+  // words are only in the box the user typed them into, and a turn the
   // server refuses leaves them exactly there with nothing to put back.
   //
   // Told rather than watched, because this panel is not always here to watch:
   // collapsing the column or switching conversations unmounts it while the
   // turn goes on. A render-time watch would miss the turns whose first frame
   // lands in that gap, and empty the box a second time for the turns it comes
-  // back to — over whatever the reader has typed since.
+  // back to — over whatever the user has typed since.
   const emptyTheBox = React.useCallback(
     (id: string) =>
       (sent: readonly ChatAttachedChip[]): void => {
@@ -215,6 +230,8 @@ export function useChatSession(
     history,
     onTitled: noteTitle(conversationId ?? ''),
     onFirstFrame: emptyTheBox(conversationId ?? ''),
+    modelOf: modelOfConversation(conversationId ?? ''),
+    onRefused: conversationRuntime.askModelListAgain,
   });
   const { messages: onScreen, status, error } = useChat({
     chat,
@@ -266,7 +283,7 @@ export function useChatSession(
       if (opened === undefined) return;
       // The Spaces are cut to the server's limits, so they cannot go without
       // them. The first read is a request, and the send stays held for it like
-      // opening a conversation. A send whose reader leaves the project or moves
+      // opening a conversation. A send whose user leaves the project or moves
       // to another conversation meanwhile does not go; the words stay in the
       // draft they were typed in, which leaving the project discards.
       const limits = await conversationRuntime.whileSendHeld(projectId, () =>
@@ -279,6 +296,8 @@ export function useChatSession(
         history: NO_MESSAGES,
         onTitled: noteTitle(opened),
         onFirstFrame: emptyTheBox(opened),
+        modelOf: modelOfConversation(opened),
+        onRefused: conversationRuntime.askModelListAgain,
       });
       // Through the session rather than straight at the `Chat`: what a running
       // turn needs looking after -- the wait for the next beat, and giving up
@@ -286,7 +305,7 @@ export function useChatSession(
       // it would be a turn nobody was watching.
       // What is above the box goes with it, all of it or not at all: an item
       // still uploading or one that failed holds the send, so what is sent is
-      // what the reader sees there.
+      // what the user sees there.
       const attached = chatAttachments.sendable(opened);
       if (attached === null) return;
       // Said in a toast; the words stay in the box.
@@ -299,8 +318,8 @@ export function useChatSession(
     [projectId, noteTitle, emptyTheBox, readSpaces],
   );
 
-  const answer = React.useCallback(
-    async (toolCallId: string, answers: AskUserAnswer['answers']): Promise<void> => {
+  const answerCard = React.useCallback(
+    async (send: (opened: string, spaces: ChatSpaceContext) => Promise<void>): Promise<void> => {
       // The card is in the conversation on screen, which is where it goes.
       // The Spaces are read at the press, as for a typed message.
       const opened = conversationId;
@@ -311,9 +330,21 @@ export function useChatSession(
         chatAttachments.say({ key: 'sendUnavailable' });
         return;
       }
-      await answerInSession(opened, toolCallId, answers, clipSpaceContext(spaces, limits, []));
+      await send(opened, clipSpaceContext(spaces, limits, []));
     },
     [conversationId, readSpaces],
+  );
+
+  const answer = React.useCallback(
+    (toolCallId: string, answers: AskUserAnswer['answers']): Promise<void> =>
+      answerCard((opened, spaces) => answerInSession(opened, toolCallId, answers, spaces)),
+    [answerCard],
+  );
+
+  const shareSpaces = React.useCallback(
+    (shared: SpaceRequestAnswer): Promise<void> =>
+      answerCard((opened, spaces) => shareSpacesInSession(opened, shared, spaces)),
+    [answerCard],
   );
 
   const abort = React.useCallback((): void => {
@@ -362,12 +393,12 @@ export function useChatSession(
         if (told.projectId !== projectId) return;
         // Only this conversation's. Another one may be streaming in the
         // background -- that is allowed -- and its trouble is not this
-        // reader's to be interrupted by.
-        // Except when the reader did it on purpose. Renaming or deleting a
+        // user's to be interrupted by.
+        // Except when the user did it on purpose. Renaming or deleting a
         // conversation from the list is something they pressed and are waiting
         // to hear back about, and it is usually about a conversation other
         // than the one on screen -- that is what the list is for. The
-        // question this filter asks is "is this the reader's own doing", not
+        // question this filter asks is "is this the user's own doing", not
         // "which conversation was it about".
         if (
           told.deliberate !== true &&
@@ -377,7 +408,7 @@ export function useChatSession(
           return;
         }
         // Said once, as it happens (inner#1530). What happens while no panel
-        // is mounted is not told when one comes back: the reader comes back
+        // is mounted is not told when one comes back: the user comes back
         // to a conversation that stopped moving, which is how they know.
         toast.error(mishapLine(told));
       }),
@@ -401,7 +432,7 @@ export function useChatSession(
   const settledParts = React.useRef(new Map<string, ChatMessage>());
 
   const messages = React.useMemo(() => {
-    // The one the reader just sent is held back until the answer starts: the
+    // The one the user just sent is held back until the answer starts: the
     // SDK pushes it and only then says the turn is under way, so a list that
     // drew everything would put the message up during the wait it is supposed
     // to be waiting through.
@@ -410,7 +441,7 @@ export function useChatSession(
     const kept = new Map<StoredUiMessage, ChatMessage[]>();
     const keptParts = new Map<string, ChatMessage>();
     const out = shown.flatMap((m) => {
-      // What a reader needs announced is a failure they are living through,
+      // What a user needs announced is a failure they are living through,
       // not every failure the conversation ever had — those come back with the
       // history and would be read out again on every open. What tells the two
       // apart is the session's own error, which is set by the turn that failed
@@ -454,6 +485,7 @@ export function useChatSession(
     loadEarlier,
     send,
     answer,
+    shareSpaces,
     abort,
     conversations,
     hasMoreConversations,

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The BlockNote schema this Space runs on.
@@ -70,6 +70,15 @@ const NUMBERED_PROPS: Record<string, PropDecl> = {
 const MEDIA_SIZE_PROPS: Record<string, PropDecl> = {
   mediaWidth: { default: undefined, type: 'number' },
   mediaHeight: { default: undefined, type: 'number' },
+};
+
+/**
+ * The id of the upload a media block waits for (inner#1351 design §5.5): set
+ * while the block is pending (its `url` empty), cleared when the address is
+ * written.
+ */
+const UPLOAD_ID_PROP: Record<string, PropDecl> = {
+  uploadId: { default: '' },
 };
 
 /** Lets a list item pin a user-set number. */
@@ -143,7 +152,7 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
     checkListItem: withProps(lists.checkListItem, QUOTED_PROP),
     // The library's own `---` rule is dropped: its wrapper always ends by
     // putting the caret at the start of the new block, which for a block with
-    // no text is a node selection the reader cannot type into
+    // no text is a node selection the user cannot type into
     // (`ExtensionManager/index.ts:565-583`). `documentDividerInputExtension`
     // places the divider and the caret in one transaction instead.
     divider: { ...withProps(enabled.divider, QUOTED_PROP), extensions: [] },
@@ -153,9 +162,13 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
     ...docTableSpecs(),
     // The library's own props: image and video carry a width and an
     // alignment, audio neither (inner#1127 A8, A9).
-    image: withMediaView(withProps(enabled.image, { ...QUOTED_PROP, ...MEDIA_SIZE_PROPS })),
-    video: withMediaView(withProps(enabled.video, { ...QUOTED_PROP, ...MEDIA_SIZE_PROPS })),
-    audio: withMediaView(withProps(enabled.audio, QUOTED_PROP)),
+    image: withMediaView(
+      withProps(enabled.image, { ...QUOTED_PROP, ...MEDIA_SIZE_PROPS, ...UPLOAD_ID_PROP }),
+    ),
+    video: withMediaView(
+      withProps(enabled.video, { ...QUOTED_PROP, ...MEDIA_SIZE_PROPS, ...UPLOAD_ID_PROP }),
+    ),
+    audio: withMediaView(withProps(enabled.audio, { ...QUOTED_PROP, ...UPLOAD_ID_PROP })),
     unsupportedBlock: unsupportedBlockSpec,
   };
 

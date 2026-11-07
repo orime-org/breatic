@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { writeReferences, type ChatAttachedChip } from '@breatic/shared';
 
@@ -37,7 +37,7 @@ export function attachmentLabel(t: Translate, item: Labelled): string {
 /**
  * Typed words as plain text, each reference read as its attachment's label.
  * @param t - The translator.
- * @param content - What the reader typed.
+ * @param content - What the user typed.
  * @param attachments - What the message carried.
  * @returns The words.
  */

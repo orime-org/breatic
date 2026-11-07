@@ -1,13 +1,16 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
-import { resolveTimelineArrangement, timelineSourceSeconds, type TimelineDocumentV1, type TimelineVideoClip, type TimelineVideoSource } from '@breatic/shared';
+import type { TimelineDocumentV1, TimelineVideoClip, TimelineVideoSource } from '@breatic/shared';
+import { nextTimelinePlaybackBoundary } from '@web/data/yjs/timeline-layers';
+import { timelineSourceSeconds } from '@web/data/yjs/timeline-time';
 import { resolveTimelineMediaTransport, timelineFrameAt, type TimelineMediaTransport } from '@web/spaces/timeline/media-transport';
 
 /** The current document projection and its authorized preview resource. */
 export interface TimelinePlaybackInput {
   document: TimelineDocumentV1;
+  readyClipIds: ReadonlySet<string>;
   frame: number;
   onFrame: (frame: number) => void;
   clip: TimelineVideoClip | null;
@@ -39,13 +42,8 @@ type PlaybackActions = Pick<TimelinePlayback, 'toggle' | 'seek' | 'retry'>;
  * @throws {never} Never.
  */
 export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayback {
-  const readyClips = React.useMemo(() => {
-    const clips = Object.values(input.document.clips);
-    const ready = new Set(resolveTimelineArrangement({ tracks: Object.values(input.document.tracks), clips }).readyClipIds);
-    return clips.filter((item) => ready.has(item.id));
-  }, [input.document.clips, input.document.tracks]);
-  const latest = React.useRef({ ...input, readyClips });
-  latest.current = { ...input, readyClips };
+  const latest = React.useRef(input);
+  latest.current = input;
   const state = React.useRef<PlaybackState>({ intent: 'pause', state: 'paused' });
   const [snapshot, setSnapshot] = React.useState(state.current);
   const actions = React.useRef<PlaybackActions | null>(null);
@@ -152,9 +150,8 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       if (!active || state.current.intent !== 'play' || state.current.state !== 'playing' || anchor === null) return;
       const end = sequenceEnd();
       const fps = latest.current.document.settings.fps;
-      const boundary = clip !== null
-        ? clip.startFrame + clip.durationFrames
-        : Math.min(end, ...latest.current.readyClips.filter((item) => item.startFrame > position).map((item) => item.startFrame));
+      // Playback stops where the shown clip changes; edges hidden under a higher track do not count.
+      const boundary = nextTimelinePlaybackBoundary(latest.current.document, latest.current.readyClipIds, position, end);
       const next = Math.min(boundary, timelineFrameAt(anchor, now, fps, end));
       if (next >= end) {
         showFrame(Math.max(0, end - 1));

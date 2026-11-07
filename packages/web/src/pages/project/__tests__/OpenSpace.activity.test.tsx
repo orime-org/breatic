@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * A canvas tab publishes what its reader is waiting on with the tab, not with
+ * A canvas tab publishes what its user is waiting on with the tab, not with
  * the body on screen (inner#1303 §6.8): the line stays on the peers' screens
- * while the reader looks at another Space, and goes when the tab closes.
+ * while the user looks at another Space, and goes when the tab closes.
  */
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The box that opens where somebody put a new note, before the note exists.
@@ -121,7 +121,7 @@ export function AnnotationComposer({
           {...placingBoxKeys.box}
           onBlur={() => {
             // This box is the one whose content exists nowhere else, so a
-            // blur that is not the reader leaving must not end it.
+            // blur that is not the user leaving must not end it.
             if (placingBoxKeys.composing()) return;
             whenBlurLeaves(spaceId, () => apply({ type: 'blur' }));
           }}

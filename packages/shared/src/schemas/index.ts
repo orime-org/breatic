@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /** Shared Zod schemas for API request validation. */
 export {
@@ -17,6 +17,9 @@ export {
   loginSchema,
   googleAuthSchema,
   chatMessageSchema,
+  spaceRequestInputSchema,
+  sharedSpaceSchema,
+  spaceRequestAnswerSchema,
   chatAttachedChipSchema,
   taskCreateSchema,
   understandSchema,
@@ -38,6 +41,7 @@ export {
   chatEarlierMessagesQuerySchema,
   chatCreateConversationSchema,
   chatRenameConversationSchema,
+  chatSetModelSchema,
   CHAT_MESSAGE_MAX_CHARS,
   PROJECT_NAME_MAX_CHARS,
   projectNameSchema,
@@ -53,6 +57,9 @@ export type {
   LoginInput,
   ChatMessageInput,
   ChatSpaceContext,
+  SpaceRequestInput,
+  SharedSpace,
+  SpaceRequestAnswer,
   ChatAttachedChip,
   ChatSpace,
   ChatCurrentSpace,
@@ -73,4 +80,5 @@ export type {
   ChatConversationsQueryInput,
   ChatCreateConversationInput,
   ChatRenameConversationInput,
+  ChatSetModelInput,
 } from "@shared/schemas/api.js";

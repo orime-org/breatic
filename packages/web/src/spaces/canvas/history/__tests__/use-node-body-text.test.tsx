@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a text node says, read live (#2175).
@@ -8,7 +8,7 @@
  * the history panel reads it straight off the node. A text node's words are
  * not there — they live in the shared body the editor binds to, deliberately
  * kept out of the view (#1774) so a keystroke does not re-render the canvas.
- * This is the panel's way to that body, and it has to stay live: the reader
+ * This is the panel's way to that body, and it has to stay live: the user
  * edits the node with the panel open, and the row marked as what the node
  * holds must stop being marked.
  */

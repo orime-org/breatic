@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Finishing an upload (#186, design §6.2; #206, design §3).
@@ -8,7 +8,7 @@
  * from whoever is uploading. It judges that list against the layout its own
  * token signed, has R2 assemble the object, and answers with three
  * measurements over what landed: the hash the ledger keys on, the size it
- * charges for, and the type a reader will be served.
+ * charges for, and the type a user will be served.
  *
  * It reaches nothing to do that. The permission to finish this key is taken by
  * the caller before it asks, and the caller is what records the outcome — so

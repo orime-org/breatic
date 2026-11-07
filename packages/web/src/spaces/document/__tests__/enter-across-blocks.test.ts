@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #904 验收 A10: Enter on a selection that spans blocks does not raise.
@@ -17,7 +17,7 @@
  * - A node selection reaches `NodeSelectionKeyboard.ts:52`, which inserts a
  *   bare `paragraph` — not the `blockContainer` a `blockGroup` accepts.
  *
- * Both are shapes a reader reaches with the mouse: `Cmd`-A, and the platform's
+ * Both are shapes a user reaches with the mouse: `Cmd`-A, and the platform's
  * select-node modifier over a block.
  */
 
@@ -445,7 +445,7 @@ describe('Enter on a selection the caret did not make', () => {
 
 describe('Enter over a selected inline stand-in', () => {
   it('leaves the line as it was and opens nothing after it', () => {
-    // Content another build wrote renders as a stand-in the reader can click,
+    // Content another build wrote renders as a stand-in the user can click,
     // and a click on an inline atom selects it. That is a selection inside a
     // line, so Enter means what it means inside a line — the branch that
     // opens a block after the whole container answers a selected BLOCK.

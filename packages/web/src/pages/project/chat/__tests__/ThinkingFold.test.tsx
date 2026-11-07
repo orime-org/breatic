@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The foldable thinking block.
@@ -57,8 +57,8 @@ describe('ThinkingFold — the fold itself (B2)', () => {
 });
 
 describe('ThinkingFold — the body reads as prose (B1, B3)', () => {
-  it('hands a copier the lines the reader saw', async () => {
-    // What the reader is copying is cloned away from everything around it, so
+  it('hands a copier the lines the user saw', async () => {
+    // What the user is copying is cloned away from everything around it, so
     // a break that lived in a rule about its surroundings would not travel
     // with it — the steps would arrive as one run-on line.
     const body = await expand('step one\nstep two');
@@ -92,7 +92,7 @@ describe('ThinkingFold — the body reads as prose (B1, B3)', () => {
   });
 
   it('leaves the shape of a list to the list', async () => {
-    // Every break the reader sees is an element, so the newlines the renderer
+    // Every break the user sees is an element, so the newlines the renderer
     // writes between blocks stay what they were: separators nobody draws.
     // Loose and nested items hold blocks, and are where a rule about
     // white-space reaches furthest past what it was written for.

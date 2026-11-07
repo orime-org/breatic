@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, waitFor } from '@testing-library/react';
@@ -168,8 +168,8 @@ describe('AuthBootstrap', () => {
     expect(getByTestId('child')).toBeInTheDocument();
   });
 
-  it('leaves a reader who signed in while the ping was still out', async () => {
-    // On a slow link the boot ping can answer after the reader has signed in,
+  it('leaves a user who signed in while the ping was still out', async () => {
+    // On a slow link the boot ping can answer after the user has signed in,
     // and that answer is about a session they no longer have. Clearing on it
     // bounces them straight back to /login.
     let reject = (): void => {};
@@ -204,9 +204,9 @@ describe('AuthBootstrap', () => {
     expect(useCurrentUserStore.getState().user?.id).toBe('signed-in');
   });
 
-  it('leaves a reader who signed in while the ping was still out, when it answers', async () => {
+  it('leaves a user who signed in while the ping was still out, when it answers', async () => {
     // The mirror image of the case above: the ping succeeds, but about the
-    // session the reader had before they signed in as someone else. Writing
+    // session the user had before they signed in as someone else. Writing
     // that answer leaves the store naming one account while every request
     // carries another's cookie.
     let land = (): void => {};

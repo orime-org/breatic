@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #964: a list's marker and a heading's number are told apart from the words.
@@ -29,7 +29,7 @@ describe('what tells a marker apart from the words', () => {
   it('draws every number in the palette blue', () => {
     // The identity value doubles as the coloured-TEXT colour, which is what
     // `theme/tokens.css` says of the palette and what this needs. Taken out,
-    // the number inherits the body's foreground and is the state the reader
+    // the number inherits the body's foreground and is the state the user
     // reported.
     expect(ruleBody(NUMBER)).toContain('color: var(--color-palette-blue)');
   });

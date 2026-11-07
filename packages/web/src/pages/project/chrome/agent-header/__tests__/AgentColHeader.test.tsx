@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
@@ -68,7 +68,7 @@ describe('AgentColHeader', () => {
   });
 
   it('does not say how many conversations there are', () => {
-    // 会话总数对读者没有用处：他要知道的是自己现在在哪一条里。
+    // 会话总数对用户没有用处：他要知道的是自己现在在哪一条里。
     // 列表一分页，手上这份数组的长度也不再是总数了。
     // 判据跟 AgentColumn 那条同一个：说清顶栏允许显示哪些字符串，多出来的都报
     // 出来。换个 testid、或者把计数写成 `(7)` 挂在名字旁边，都绕不过去。

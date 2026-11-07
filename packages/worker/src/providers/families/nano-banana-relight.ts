@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The relight tool's model (inner#1304). Nano Banana 2's edit endpoint has no
@@ -33,7 +33,7 @@ const LENT = [
 /**
  * What the reference lends, named by its place in the images, as Google's
  * examples do: the direction always, and each setting the lighting block
- * leaves out because the reader left it on Auto; a setting chosen by hand
+ * leaves out because the user left it on Auto; a setting chosen by hand
  * overrides it (inner#1304 B3).
  * @param lighting - The lighting block, written without a direction.
  * @returns The sentence.
@@ -85,7 +85,7 @@ const nanoBananaRelight: ModelFamily = {
   PREPARE_IS_PAID: false,
   /**
    * Write the light settings into the prompt, and send a reference second.
-   * @param prompt - What the reader added, possibly empty.
+   * @param prompt - What the user added, possibly empty.
    * @param params - The validated run params.
    * @returns The JSON prompt, and the images and ratio when a reference goes.
    */

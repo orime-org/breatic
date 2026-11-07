@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * What the reader has drawn on the node for a mask or sketch tool
+ * What the user has drawn on the node for a mask or sketch tool
  * (inner#1302 §6.1). Coordinates are fractions of the source picture, so the
  * same steps paint the screen at any size and the export at the source's
  * own pixels.

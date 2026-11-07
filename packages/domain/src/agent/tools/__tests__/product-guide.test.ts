@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The product guide answers how the user operates our product.
@@ -20,7 +20,7 @@ import { MINI_TOOLS } from "@breatic/shared/mini-tools";
 
 import { CANVAS_TOOLS, TOOL_MAP } from "@domain/agent/tools/index.js";
 import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
-import { CREATABLE, productGuide, renderProductGuide } from "@domain/agent/tools/product-guide.js";
+import { CREATABLE, documentPasteRules, productGuide, renderProductGuide } from "@domain/agent/tools/product-guide.js";
 
 /**
  * One section of the guide, as the model reads it.
@@ -130,8 +130,13 @@ describe("the guide as a tool", () => {
     const said = typeof description === "string" ? description.replace(/\s+/g, " ") : "";
     expect(said).toMatch(/canvas/i);
     expect(said).toMatch(/document/i);
-    expect(said).toMatch(/cannot see/i);
+    // The guide has a Mini-tools section; a description that leaves them out
+    // let "scale this picture up" go unlooked-up (#1366).
+    expect(said).toMatch(/mini-tools/i);
     expect(said).toMatch(/icon/i);
+    // The open Space comes with each message and the tools read the rest, so
+    // the description says nothing of what the model can or cannot see.
+    expect(said).not.toMatch(/\b(can|cannot|can't) see\b/i);
   });
 });
 
@@ -265,6 +270,13 @@ describe("what the guide says", () => {
     expect(proposals).toContain(`"${t("canvas.generatePanel.promptNotUsed")}"`);
   });
 
+  it("tells an older 3D scene format, shown without a reload button, from a newer one that offers reload", () => {
+    const scenes = section("3D spaces");
+    expect(scenes).toContain(`"${t("spaces.threeD.unsupportedOld")}"`);
+    expect(scenes.split(`"${t("spaces.threeD.unsupportedOld")}"`)[0]?.split(". ").at(-1)).toContain("no reload button");
+    expect(scenes).toContain(`"${t("spaces.threeD.unsupported")}"`);
+  });
+
   it("says a code block is three backticks followed by a space", () => {
     // The input rule only fires on the space after the fence.
     expect(renderProductGuide()).toMatch(/three backticks then a space for a code block/);
@@ -324,8 +336,16 @@ describe("what the guide says", () => {
 
   it("says when each storyboard control is greyed and what happens when the shots stop fitting", () => {
     const panel = section("Inside the generation panel");
-    // VideoGeneratePanelContainer.tsx: one lastFocusedBox, written by the shots and by the main prompt.
-    expect(panel).toMatch(/puts it in the shot box clicked into last, or in the first shot/);
+    // VideoGeneratePanelContainer.tsx: one shot open at a time, and every insert goes into it (#1201).
+    expect(panel).toMatch(/Only one shot is open at a time/);
+    expect(panel).toMatch(/one row showing its number, its seconds and the first line of its words/);
+    expect(panel).toMatch(/clicking a chip in the strip puts it in the open shot's box/);
+    expect(panel).toMatch(/in Multi-Shot it goes into the open shot/);
+    // VideoGeneratePanelContainer.tsx: `shots[at] ?? shots[at - 1]`.
+    expect(panel).toMatch(/removing the open shot opens the one after it, or the one before it when it was the last/);
+    expect(panel).not.toMatch(/clicked into last/);
+    // AudioGeneratePanel.tsx: the style and lyrics boxes, one open at a time.
+    expect(panel).toMatch(/Only one of the two is open at a time/);
     expect(panel).toMatch(/minus is greyed at one second or when there is only one shot/);
     expect(panel).toMatch(/plus is greyed when no other shot has a second to spare/);
     expect(panel).toMatch(/"Remove" is greyed while only one shot is left/);
@@ -587,10 +607,10 @@ describe("what the guide says", () => {
     expect(list).not.toMatch(/video and sound nodes list none/);
   });
 
-  it("says a template may place generations upstream to run first, wired and @'d, and an input fed upstream reuses a picture already connected", () => {
+  it("says a template may place generations upstream to run first, wired and @'d, and nodes it places to take what it needs reuse a picture already connected, even one the node itself does not use", () => {
     const generating = section("Generating");
     expect(generating).toMatch(/A template may also place picture or video nodes to the left that generate first, connected and @'d; a note at the top of the prompt says to generate them first\./);
-    expect(generating).toMatch(/When a template feeds what it needs into those nodes too, a picture already connected to the node is connected to them as well\./);
+    expect(generating).toMatch(/When a template places nodes that take what it needs, a picture already connected to the node is connected to them as well, also when the node itself does not use it\./);
     expect(generating).not.toMatch(/the two listed here do neither/);
   });
 
@@ -737,6 +757,18 @@ describe("the guide's source", () => {
 });
 
 describe("what the guide says about each surface", () => {
+  it("names a missing video among the Timeline conflict reasons (inner#1708 M3)", () => {
+    expect(t("timeline.conflictReason.missing_source")).toBe("Its video is missing");
+    expect(section("Timeline spaces")).toContain(`"${t("timeline.conflictReason.missing_source")}"`);
+  });
+
+  it("says how the Timeline adds a top track, cancels a drag and snaps (inner#1708 G1)", () => {
+    const timeline = section("Timeline spaces");
+    expect(timeline).toMatch(/Alt\+Up on the top visual track adds a new visual track/);
+    expect(timeline).toMatch(/Esc cancels a drag without changing anything/);
+    expect(timeline).toMatch(/other clip edges, the playhead and frame 0/);
+  });
+
   it("reads the message and attachment limits off their sources", () => {
     const chat = section("The chat panel");
     expect(chat).toContain(`up to ${CHAT_MESSAGE_MAX_CHARS.toLocaleString("en")} characters`);
@@ -920,6 +952,13 @@ describe("mini-tools and the task rows", () => {
     }
   });
 
+  // The crop box is clamped to the picture (NodeCropLayer). Read as "a size in
+  // pixels" alone, the Agent told a user to crop a 500-wide picture to 2100
+  // wide (#1366).
+  it("says a crop's size is the box inside the picture and never makes it larger", () => {
+    expect(section("Mini-tools")).toMatch(/the size is the box's, inside the picture, so a crop never makes the picture larger/i);
+  });
+
   // The canvas moves by itself on these two presses; the user may ask why.
   it("says the canvas zooms in when Adjust opens and moves to show what a press built", () => {
     const tools = section("Mini-tools");
@@ -933,5 +972,46 @@ describe("mini-tools and the task rows", () => {
     expect(generating).toContain(`"${t("canvas.task.action.finish")}"`);
     expect(generating).toContain(`"${t("canvas.task.action.view")}"`);
     expect(generating).toMatch(/opens the node's history at that result/i);
+  });
+});
+
+/**
+ * The paste rules the web examples show, each id with the guide's sentence
+ * written beside it, read from the example file's source.
+ * @returns Each id and its sentence, in the file's order.
+ */
+function pasteExamples(): { id: string; sentence: string }[] {
+  const file = webSource("spaces/document/__tests__/document-paste-guide.test.ts");
+  return [...file.matchAll(/id: '([^']+)',\s*sentence: '((?:[^'\\]|\\.)*)'/g)].map(([, id, sentence]) => ({
+    id: id!,
+    sentence: sentence!.replace(/\\(.)/g, "$1"),
+  }));
+}
+
+describe("where pasted content lands in the document", () => {
+  it("states each rule exactly as its web example writes it beside the paste that shows it", () => {
+    const examples = pasteExamples();
+    expect(examples.length).toBeGreaterThan(0);
+    expect(runWithLocale("en", () => documentPasteRules())).toEqual(examples);
+  });
+
+  it("puts every rule in the document section", () => {
+    const document = section("Document spaces");
+    for (const { sentence } of runWithLocale("en", () => documentPasteRules())) expect(document).toContain(sentence);
+  });
+});
+
+// inner#1844: one full-screen view, opened from the top-right corner of a
+// node, of a hover preview and from a document's row of icons.
+describe("product guide: full screen", () => {
+  it("says where full screen opens and how it closes", () => {
+    const text = renderProductGuide();
+    expect(text).toMatch(/Hovering a picture or video node shows a full-screen button/);
+    expect(text).toMatch(/large preview that pops up on hovering a small picture or video[^.]*same button at its top-right corner/);
+    expect(text).toContain(`"${t("common.mediaViewer.fullscreen")}" (two arrows pointing out to opposite corners, pictures and videos`);
+    expect(text).toMatch(/an X at the top right of the screen closes it/);
+    expect(text).toMatch(/row of icons over a picture or video holds only full screen/);
+    expect(text).not.toMatch(/full-screen controls/);
+    expect(text).not.toMatch(/play, seek and fullscreen/);
   });
 });

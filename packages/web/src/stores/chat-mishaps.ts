@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The one channel everything wrong with chat is said on.
@@ -17,16 +17,16 @@ import { ApiException } from '@web/data/api/types';
 /**
  * Something that went wrong, told once to whoever is looking.
  *
- * Told, not kept. Every one of these belongs to a moment the reader was in --
+ * Told, not kept. Every one of these belongs to a moment the user was in --
  * they pressed send, or a reply they were watching stopped arriving -- and a
  * moment does not wait around. Nobody watching means nobody is in that
  * moment: the panel is collapsed, or they are reading another conversation.
  * What they come back to is a conversation that stopped moving, which is how
- * a reader of a stream knows something went wrong, and it needs no sentence
+ * a user watching a stream knows something went wrong, and it needs no sentence
  * from us repeating it later.
  *
  * The four kinds are not a matter of wording. What tells them apart is what
- * came back: `server` carries the sentence the server wrote for the reader --
+ * came back: `server` carries the sentence the server wrote for the user --
  * out of credits, too many requests, not allowed -- `turn` is an answer that
  * came back with none of ours in it, so there is nothing to quote and this
  * end has to supply the words, `network` is no answer at all, and `gone` is
@@ -36,7 +36,7 @@ import { ApiException } from '@web/data/api/types';
  */
 export type ChatMishap = {
   /**
-   * The reader did this on purpose and is waiting to hear back.
+   * The user did this on purpose and is waiting to hear back.
    *
    * What separates a rename they just pressed from a turn failing in some
    * other conversation in the background. The panel shows only its own
@@ -52,8 +52,8 @@ export type ChatMishap = {
   | { kind: 'network' }
   | { kind: 'server'; message: string }
   // The stream reached us and the server said this turn is over without
-  // saying anything a reader could act on. Not `server`: that one carries the
-  // sentence the server wrote for the reader, and this one has none -- what
+  // saying anything a user could act on. Not `server`: that one carries the
+  // sentence the server wrote for the user, and this one has none -- what
   // comes down the wire here is an English string written for us.
   | { kind: 'turn' }
   // The conversation asked for is not there any more, which our own server
@@ -86,7 +86,7 @@ export function tell(mishap: ChatMishap): void {
 }
 
 /**
- * The sentence our own server wrote for this reader, if it wrote one.
+ * The sentence our own server wrote for this user, if it wrote one.
  *
  * The whole of what this answers. What to say when it answers nothing is not
  * the same question in every place that asks, so it is left to whoever asked.
@@ -94,7 +94,7 @@ export function tell(mishap: ChatMishap): void {
  * @returns The server's own words, or nothing when they are not the server's.
  */
 function serverSentence(err: unknown): string | undefined {
-  // Only a sentence our own server wrote for this reader. An answer coming
+  // Only a sentence our own server wrote for this user. An answer coming
   // back is not the same thing: a gateway that timed out also answers, and
   // there is nothing of ours in what it sends -- so the exception says whether
   // the message it is carrying came out of our envelope, and this asks that
@@ -103,7 +103,7 @@ function serverSentence(err: unknown): string | undefined {
 }
 
 /**
- * Read a failed request as the reader would hear it.
+ * Read a failed request as the user would hear it.
  *
  * For every request that fetches rather than runs a turn -- opening the
  * chat, reaching further back, switching, starting, renaming, removing, and
@@ -124,10 +124,10 @@ export function readMishap(err: unknown): { kind: 'network' } | { kind: 'server'
 }
 
 /**
- * The sentence a mishap is told with, in the reader's language at the moment
+ * The sentence a mishap is told with, in the user's language at the moment
  * it is told (inner#1530: a toast, said once).
  *
- * The server's own sentence passes through -- it was written for the reader,
+ * The server's own sentence passes through -- it was written for the user,
  * in their language. A conversation that is gone is not an error, so it says
  * that. A turn that answered with nothing of ours says the reply is not
  * coming; no answer at all says only that the network failed.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 
@@ -13,7 +13,7 @@ import { type ActiveRegion, useUIStore } from '@web/stores/ui';
  * space being handed the region makes that untrue of a highlight living
  * anywhere else — in the agent panel, in the top bar, in an overlay — so those
  * go and leave one answer on the screen. A highlight inside the space itself
- * is still the reader's current one: extending a document selection with a
+ * is still the user's current one: extending a document selection with a
  * shift-click needs it as the anchor.
  *
  * The anchor decides, so a drag that started in the agent panel and ended in

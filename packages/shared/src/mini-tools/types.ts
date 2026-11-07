@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The shape of one mini-tool declaration (inner#888 §5).
@@ -76,7 +76,6 @@ export type MiniToolIcon =
   | "Crosshair"
   | "Sun"
   | "SplitSquareVertical"
-  | "Timer"
   | "Highlighter"
   | "Expand"
   | "Grid3x3"
@@ -175,7 +174,7 @@ export interface OrientParam {
   readonly key: string;
 }
 
-/** A list of numbers the reader enters, such as cut points; capped at `maxItems`. */
+/** A list of numbers the user enters, such as cut points; capped at `maxItems`. */
 export interface ListParam {
   readonly kind: "list";
   readonly key: string;
@@ -184,7 +183,7 @@ export interface ListParam {
 }
 
 /**
- * Cells of a grid the reader leaves out, by row-major index from 0; empty means
+ * Cells of a grid the user leaves out, by row-major index from 0; empty means
  * every cell. Named by a product count's `except`.
  */
 export interface CellsParam {
@@ -260,7 +259,7 @@ export interface MiniToolOutput {
 }
 
 /**
- * A layer the reader draws on the source; the run is sent an image made from
+ * A layer the user draws on the source; the run is sent an image made from
  * it, at the source's pixels as the browser shows them. A mask tool sends,
  * under `maskParam`, a black-and-white image of the same size, white where to
  * change, beside the source itself (stored upright since inner#1367); a sketch
@@ -278,7 +277,7 @@ interface MiniToolBase {
   readonly labelKey: string;
   /**
    * What the tool is for, in one English clause the product guide sets after
-   * its name, so the agent can match a reader's need to the tool.
+   * its name, so the agent can match a user's need to the tool.
    */
   readonly guide: string;
   readonly icon: MiniToolIcon;
@@ -287,10 +286,10 @@ interface MiniToolBase {
   readonly sourceParam: string;
   /** Whether that param is a list, as a slot's `many` says of its param. */
   readonly sourceMany: boolean;
-  /** Present on a tool the reader draws on the node for. */
+  /** Present on a tool the user draws on the node for. */
   readonly drawing?: MiniToolDrawing;
   /**
-   * Present on a tool the reader marks the picture up with — shapes, arrows,
+   * Present on a tool the user marks the picture up with — shapes, arrows,
    * lines, pen strokes and text that stay selectable until the run — for
    * people to read rather than for a model.
    */
@@ -304,16 +303,16 @@ interface MiniToolBase {
   readonly expand?: { readonly imageParam: string; readonly maskParam: string };
   /**
    * Present on a model tool whose pinned model takes a prompt. `defaultText`,
-   * when given, is sent in place of an empty prompt, so the reader may leave
-   * it empty. `preamble`, when given, is always sent, with what the reader
+   * when given, is sent in place of an empty prompt, so the user may leave
+   * it empty. `preamble`, when given, is always sent, with what the user
    * wrote after it.
    */
   readonly prompt?: { readonly placeholderKey: string; readonly defaultText?: string; readonly preamble?: string };
-  /** A line the panel shows under the controls, saying what the tool fixes for the reader. */
+  /** A line the panel shows under the controls, saying what the tool fixes for the user. */
   readonly noteKey?: string;
   /**
    * A catalog param the server fills with the aspect ratio nearest the
-   * source's size, read off the request; the reader never sets it.
+   * source's size, read off the request; the user never sets it.
    */
   readonly sourceAspectParam?: string;
   /**
