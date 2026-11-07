@@ -20,10 +20,17 @@
  * who sets one gets nothing for it.
  */
 export type ControlGate =
-  /** That switch has to be on; the value is dropped while it is off. */
-  { readonly kind: "flagOn"; readonly param: string };
-
-
+  /**
+   * That switch has to be on, and each param in `equals` has to hold its
+   * value; the value is dropped otherwise.
+   */
+  | {
+      readonly kind: "flagOn";
+      readonly param: string;
+      readonly equals?: Readonly<Record<string, string | number | boolean>>;
+    }
+  /** Each param has to hold its value (inner#1691). */
+  | { readonly kind: "equals"; readonly equals: Readonly<Record<string, string | number | boolean>> };
 
 /**
  * The parameter the panel keeps in a text box of its own, beside the prompt.

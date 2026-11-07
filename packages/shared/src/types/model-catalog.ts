@@ -96,10 +96,42 @@ export const PARAM_FILLS = ["canvas", "pool", "editor", "panel", "remote", "stor
 /** One way a parameter's value reaches the run. */
 export type ParamFill = (typeof PARAM_FILLS)[number];
 
-/** What has to hold before a declared control counts for anything (#269). */
+/** A value a choice or a switch can hold. */
+export type ParamScalar = string | number | boolean;
+
+/**
+ * What has to hold before a declared control counts for anything (#269);
+ * every part given has to hold (inner#1691).
+ */
 export interface ParamGate {
   /** That switch has to be on; the value is dropped while it is off. */
   flag_on?: string;
+  /** Each named param has to hold the given value. */
+  equals?: Readonly<Record<string, ParamScalar>>;
+}
+
+/**
+ * A range that applies while its condition holds (inner#1691): the first
+ * entry whose condition holds wins, and a bound it leaves out falls back to
+ * the param's own.
+ */
+export interface ParamBound {
+  readonly when: ParamGate;
+  readonly min?: number;
+  readonly max?: number;
+}
+
+/**
+ * A value the model forces while a condition holds (inner#1691). Applied in
+ * declaration order, round after round until nothing changes; `lock` draws
+ * the params it sets as locked while it applies.
+ */
+export interface ParamForce {
+  /** Names the rule; the panel's reason and the refusals say it. */
+  readonly id: string;
+  readonly when: ParamGate;
+  readonly set: Readonly<Record<string, ParamScalar>>;
+  readonly lock: boolean;
 }
 
 export interface ParamDescriptor {
@@ -157,10 +189,16 @@ export interface ParamDescriptor {
   /**
    * The shape of the value when it is not a single scalar: `list` carries
    * several sources (the reference pool), `items` is a list editor whose
-   * entries carry `fields`, `text` is a free text control. Readers compare
-   * against these exact strings, and the loader refuses any other value.
+   * entries carry `fields`, `text` is a free text control, `integer` a whole
+   * number that may be left blank, which then is not sent (inner#1691).
+   * Readers compare against these exact strings, and the loader refuses any
+   * other value.
    */
-  type?: "list" | "items" | "text";
+  type?: "list" | "items" | "text" | "integer";
+  /** Ranges that replace `min` and `max` while their condition holds (inner#1691). */
+  bounds?: readonly ParamBound[];
+  /** The most characters a text param takes, counted on the cleaned text (inner#1691). */
+  max_length?: number;
   max_items?: number;
   /** The longest the picked clips may run together, in seconds. */
   max_total_duration?: number;
@@ -260,6 +298,10 @@ export interface ModelEntry {
    * would let a forgotten line silently unmount the editor.
    */
   takes_prompt: boolean;
+  /** Values the model forces while their conditions hold, in order (inner#1691). */
+  forces?: readonly ParamForce[];
+  /** The most characters the prompt takes, counted on the cleaned text (inner#1691). */
+  prompt_max_length?: number;
   /**
    * The WaveSpeed pricing contract of the model's endpoint, which the panel,
    * the proposal card, the agent and the balance gate all estimate a run by.
@@ -415,6 +457,12 @@ export const AUDIO_GENERATION_MODES = [
   'a2m',
 ] as const;
 
+/**
+ * The modes the 3D Space's generation dialog offers (inner#1691): text to 3D
+ * and image to 3D, a product decision like the three lists above.
+ */
+export const THREE_D_GENERATION_MODES = ['t23d', 'i23d'] as const;
+
 /** A node type that anchors a Generate panel. */
 export type GenerationNodeType = 'image' | 'video' | 'audio';
 
@@ -478,6 +526,26 @@ const pricingContractSchema = z.object({
   discount_rate: z.number(),
 });
 
+const paramScalarSchema = z.union([z.string(), z.number(), z.boolean()]);
+
+const paramGateSchema = z.object({
+  flag_on: z.string().optional(),
+  equals: z.record(z.string(), paramScalarSchema).optional(),
+});
+
+const paramBoundSchema = z.object({
+  when: paramGateSchema,
+  min: z.number().optional(),
+  max: z.number().optional(),
+});
+
+const paramForceSchema = z.object({
+  id: z.string(),
+  when: paramGateSchema,
+  set: z.record(z.string(), paramScalarSchema),
+  lock: z.boolean(),
+});
+
 const paramDescriptorSchema = z
   .object({
     description: z.string().catch(""),
@@ -488,7 +556,9 @@ const paramDescriptorSchema = z
     min: z.number().optional().catch(undefined),
     max: z.number().optional().catch(undefined),
     step: z.number().optional().catch(undefined),
-    type: z.enum(["list", "items", "text"]).optional().catch(undefined),
+    type: z.enum(["list", "items", "text", "integer"]).optional().catch(undefined),
+    bounds: z.array(paramBoundSchema).optional().catch(undefined),
+    max_length: z.number().optional().catch(undefined),
     max_items: z.number().optional().catch(undefined),
     max_total_duration: z.number().optional().catch(undefined),
     max_bytes: z.number().optional().catch(undefined),
@@ -517,12 +587,7 @@ const paramDescriptorSchema = z
     joins: z.string().optional().catch(undefined),
     prompt_note: z.string().optional().catch(undefined),
     optional: z.boolean().optional().catch(undefined),
-    when: z
-      .object({
-        flag_on: z.string().optional(),
-      })
-      .optional()
-      .catch(undefined),
+    when: paramGateSchema.optional().catch(undefined),
     modes: z.array(z.string()).optional().catch(undefined),
     default: z.unknown(),
   })
@@ -584,6 +649,10 @@ const modelEntrySchema = z.object({
   // editor and then happily submit a paid generation with an empty prompt from
   // a model that actually wanted one.
   takes_prompt: z.boolean().catch(true),
+  // A malformed list degrades to absent, as a malformed contract does: half
+  // the forced values would lock half a rule (inner#1691).
+  forces: z.array(paramForceSchema).optional().catch(undefined),
+  prompt_max_length: z.number().optional().catch(undefined),
   // A malformed contract degrades to absent: the panel then states no price,
   // where a half-parsed one would state a wrong one.
   pricing: pricingContractSchema.optional().catch(undefined),

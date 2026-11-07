@@ -288,7 +288,8 @@ describe("the gate a parameter reports", () => {
         if (!answer.available) continue;
         for (const model of answer.models) {
           for (const [name, spec] of Object.entries(model.params)) {
-            if (spec.gate === undefined) continue;
+            // inner#1691: only a switch gate names one param to turn on.
+            if (spec.gate === undefined || spec.gate.kind !== "flagOn") continue;
             seen += 1;
             const reachable = spec.gate.param in model.params;
             expect(

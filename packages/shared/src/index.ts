@@ -74,6 +74,10 @@ export type {
   ModelModality,
   ModelTier,
   ParamDescriptor,
+  ParamGate,
+  ParamBound,
+  ParamForce,
+  ParamScalar,
   RemoteParamSource,
   ModelProvider,
   ModelEntry,
@@ -236,6 +240,7 @@ export {
   IMAGE_GENERATION_MODES,
   VIDEO_GENERATION_MODES,
   AUDIO_GENERATION_MODES,
+  THREE_D_GENERATION_MODES,
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   isGenerationNodeType,
@@ -601,6 +606,8 @@ export {
 // browser at `GET /chat/stream-config`.
 export { SSE_HEARTBEAT_MISSES_ALLOWED } from "@shared/agent/heartbeat.js";
 export { extractPromptText } from "@shared/agent/extract-prompt.js";
+export { applyForces, checkParamCombination, resolveParams } from "@shared/param-resolution.js";
+export type { AppliedForces, ParamViolation, ResolvableModel, ResolvableParam } from "@shared/param-resolution.js";
 export { stripUnicodeTags } from "@shared/agent/strip-unicode-tags.js";
 export { dsmlBlockStart, dsmlHeldFrom, stripDsml } from "@shared/agent/dsml.js";
 export {

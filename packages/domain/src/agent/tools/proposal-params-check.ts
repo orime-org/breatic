@@ -51,8 +51,31 @@ function isDrawn(
 ): boolean {
   const gate = info.gate;
   if (gate === undefined) return true;
-  const held = params[gate.param];
-  return typeof held === "boolean" ? held : chosen.params[gate.param]?.default === true;
+  /**
+   * What the run holds for a param: the proposal's value, else the default.
+   * @param name - The param.
+   * @returns Its value.
+   */
+  const valueOf = (name: string): unknown => params[name] ?? chosen.params[name]?.default;
+  if (gate.kind === "flagOn" && valueOf(gate.param) !== true) return false;
+  return Object.entries(gate.equals ?? {}).every(([name, value]) => valueOf(name) === value);
+}
+
+/**
+ * The condition a gate states, in words.
+ * @param gate - The gate.
+ * @param quoted - Whether each param name is quoted.
+ * @returns The condition.
+ */
+export function gateWords(gate: ControlGate, quoted = true): string {
+  /**
+   * One param name as written.
+   * @param name - The name.
+   * @returns It, quoted when asked.
+   */
+  const named = (name: string): string => (quoted ? `"${name}"` : name);
+  const equals = Object.entries(gate.equals ?? {}).map(([name, value]) => `${named(name)} is ${JSON.stringify(value)}`);
+  return [...(gate.kind === "flagOn" ? [`${named(gate.param)} is on`] : []), ...equals].join(" and ");
 }
 
 /** How many values a refusal lists before it falls back to the range and step. */
@@ -144,7 +167,7 @@ export function checkParams(chosen: ModelInfo, node: ProposalNode, at: NodeLabel
     if (elsewhere !== undefined) return elsewhere;
     if (!isDrawn(chosen, node.params ?? {}, info)) {
       const gate = info.gate as ControlGate;
-      return refuse("param-gated-off", `"${key}" only counts while "${gate.param}" is on, and this proposal leaves it off.`);
+      return refuse("param-gated-off", `"${key}" only counts while ${gateWords(gate)}, and this proposal leaves it off.`);
     }
     const options = info.options ?? [];
     if (options.length > 0 && !options.some((offered) => offered === value)) {

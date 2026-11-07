@@ -189,12 +189,10 @@ three_d:
     t23d:
       label: Text to 3D
       description: >
-        Generate a 3D model from a text description. Outputs mesh with
-        textures in GLB/FBX/OBJ format. Supports PBR materials, topology
-        control, and polycount targeting.
+        Generate a 3D model (GLB) from a text description, with optional
+        texture and PBR materials, a face limit and low-poly topology.
     i23d:
       label: Image to 3D
       description: >
-        Convert one or more 2D images into a 3D model. Single-image input
-        for quick conversion, multi-view input for higher fidelity. Some
-        models support mask-based object extraction.
+        Turn one picture of an object, or two to four views of it in front,
+        left, back, right order, into a 3D model (GLB).
