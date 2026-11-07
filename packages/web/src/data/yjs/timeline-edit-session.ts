@@ -10,6 +10,7 @@ import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import {
   applyTimelineEdit, missingTimelineSourceIds, reconcileTimelineSources, restoreTimelineSources, timelineClipSourceId,
 } from '@web/data/yjs/timeline-document';
+import { EMPTY_TIMELINE_WEB_RESOLUTION, type TimelineWebResolution } from '@web/data/yjs/timeline-arrangement';
 import type { TimelineEditCommand, TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 
@@ -30,6 +31,8 @@ export interface TimelineEditSession {
   select: (clipId: string | null) => void;
   endHold: () => void;
   setCanWrite: (canWrite: boolean) => void;
+  /** The current resolution of the document's web-animation references, which edits of web copies plan against. */
+  setWebResolution: (web: TimelineWebResolution) => void;
   dispose: () => void;
 }
 
@@ -143,6 +146,7 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
   // copy is current, and only these are ever written back.
   const known: Record<string, TimelineVideoSource> = Object.create(null) as Record<string, TimelineVideoSource>;
   let canWrite = false;
+  let web = EMPTY_TIMELINE_WEB_RESOLUTION;
   /**
    * Remember the current readable sources and, for a session that may write, write back any referenced source a merge
    * removed. Concurrent writes to one key keep only one, so the remover's own write can win and then be swept,
@@ -197,7 +201,7 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
       if (join) history.captureTimeout = Number.POSITIVE_INFINITY;
       try {
         const before = snapshotRecords(doc);
-        const plan = applyTimelineEdit(doc, command, origin);
+        const plan = applyTimelineEdit(doc, command, origin, undefined, web);
         const item = history.undoStack.at(-1);
         if (!join) holdStep = options.hold === true && item !== top ? item : null;
         if (plan.ok && item !== undefined) {
@@ -228,6 +232,9 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
     },
     setCanWrite(value) {
       canWrite = value;
+    },
+    setWebResolution(value) {
+      web = value;
     },
     dispose() {
       if (disposed) return;

@@ -3,8 +3,25 @@
 
 import {
   assertTimelineRate as assertRate, timelineDurationFraction as durationFraction,
-  type TimelineClip, type TimelineFraction as Fraction, type TimelineRate, type TimelineVideoSource,
+  type TimelineClip, type TimelineFraction as Fraction, type TimelineRate,
 } from '@breatic/shared';
+
+/**
+ * What frame arithmetic reads from a clip's source: a registered video, whose measured `durationSeconds` may end
+ * between frames, or a web-animation source, which is a whole number of frames at its timebase.
+ */
+export interface TimelineSourceExtent { timebase: TimelineRate; extentFrames: number; durationSeconds?: string }
+
+/**
+ * A source's length in seconds as an exact fraction.
+ * @param source - The source.
+ * @returns Its measured duration, or its whole frames at its timebase when it has none.
+ * @throws {RangeError} When a measured duration is invalid.
+ */
+function sourceDuration(source: TimelineSourceExtent): Fraction {
+  if (source.durationSeconds !== undefined) return durationFraction(source.durationSeconds);
+  return { num: BigInt(source.extentFrames) * BigInt(source.timebase.den), den: BigInt(source.timebase.num) };
+}
 
 /**
  * Whether a clip's frame bounds are a stored clip's: safe integers, a non-negative start and in-point, a positive
@@ -49,7 +66,7 @@ function assertClip(clip: TimelineClip): void {
  * @returns The source time as an exact fraction of seconds.
  * @throws {RangeError} When a caller has supplied an invalid rational rate.
  */
-function sampleFraction(clip: TimelineClip, source: TimelineVideoSource, fps: TimelineRate, frame: number): Fraction {
+function sampleFraction(clip: TimelineClip, source: TimelineSourceExtent, fps: TimelineRate, frame: number): Fraction {
   assertRate(fps);
   assertRate(source.timebase);
   const sourceDen = BigInt(source.timebase.num);
@@ -68,7 +85,7 @@ function sampleFraction(clip: TimelineClip, source: TimelineVideoSource, fps: Ti
  * @returns The source instant in seconds.
  * @throws {RangeError} When the clip, source or requested frame is unusable.
  */
-export function timelineSourceSeconds(clip: TimelineClip, source: TimelineVideoSource, fps: TimelineRate, frame: number): number {
+export function timelineSourceSeconds(clip: TimelineClip, source: TimelineSourceExtent, fps: TimelineRate, frame: number): number {
   if (!validateTimelineRange(clip, source, fps) || !Number.isSafeInteger(frame)
     || frame < clip.startFrame || frame >= clip.startFrame + clip.durationFrames) {
     throw new RangeError('Timeline frame is outside the usable clip interval');
@@ -85,13 +102,13 @@ export function timelineSourceSeconds(clip: TimelineClip, source: TimelineVideoS
  * @returns The frame count, capped at Number.MAX_SAFE_INTEGER.
  * @throws {RangeError} When a rate or the source duration is invalid.
  */
-export function timelineSourceRoom(clip: TimelineClip, source: TimelineVideoSource, fps: TimelineRate): number {
+export function timelineSourceRoom(clip: TimelineClip, source: TimelineSourceExtent, fps: TimelineRate): number {
   assertRate(fps);
   assertRate(source.timebase);
   assertRate(clip.rate);
   // Frame j samples in·tb.den/tb.num + j·step seconds, step = fps.den·rate.num / (fps.num·rate.den);
   // it is inside while that stays below the duration, so the count is ceil of the bound on j.
-  const duration = durationFraction(source.durationSeconds);
+  const duration = sourceDuration(source);
   const tbNum = BigInt(source.timebase.num);
   const stepDen = BigInt(fps.num) * BigInt(clip.rate.den);
   const bound = (duration.num * tbNum - BigInt(clip.sourceInFrame) * BigInt(source.timebase.den) * duration.den) * stepDen;
@@ -110,7 +127,7 @@ export function timelineSourceRoom(clip: TimelineClip, source: TimelineVideoSour
  * @returns The source frame offset, or null when it is not a whole source frame.
  * @throws {never} Never.
  */
-export function timelineSourceOffset(clip: TimelineClip, source: TimelineVideoSource, fps: TimelineRate, frames: number): number | null {
+export function timelineSourceOffset(clip: TimelineClip, source: TimelineSourceExtent, fps: TimelineRate, frames: number): number | null {
   const num = BigInt(frames) * BigInt(fps.den) * BigInt(clip.rate.num) * BigInt(source.timebase.num);
   const den = BigInt(fps.num) * BigInt(clip.rate.den) * BigInt(source.timebase.den);
   return num % den === 0n ? Number(num / den) : null;
@@ -124,7 +141,7 @@ export function timelineSourceOffset(clip: TimelineClip, source: TimelineVideoSo
  * @returns The whole Timeline frames available before the head.
  * @throws {never} Never.
  */
-export function timelineHeadRoom(clip: TimelineClip, source: TimelineVideoSource, fps: TimelineRate): number {
+export function timelineHeadRoom(clip: TimelineClip, source: TimelineSourceExtent, fps: TimelineRate): number {
   const num = BigInt(clip.sourceInFrame) * BigInt(source.timebase.den) * BigInt(fps.num) * BigInt(clip.rate.den);
   const den = BigInt(source.timebase.num) * BigInt(fps.den) * BigInt(clip.rate.num);
   return Number(num / den);
@@ -139,7 +156,7 @@ export function timelineHeadRoom(clip: TimelineClip, source: TimelineVideoSource
  * @returns The new in-point, or null when it is not a whole source frame or falls before the source start.
  * @throws {never} Never.
  */
-export function timelineTrimHead(clip: TimelineClip, source: TimelineVideoSource, fps: TimelineRate, shift: number): number | null {
+export function timelineTrimHead(clip: TimelineClip, source: TimelineSourceExtent, fps: TimelineRate, shift: number): number | null {
   const offset = timelineSourceOffset(clip, source, fps, shift);
   return offset === null || clip.sourceInFrame + offset < 0 ? null : clip.sourceInFrame + offset;
 }
@@ -152,7 +169,7 @@ export function timelineTrimHead(clip: TimelineClip, source: TimelineVideoSource
  * @returns Whether the source range is usable.
  * @throws {Error} When an unexpected arithmetic error occurs.
  */
-export function validateTimelineRange(clip: TimelineClip, source: TimelineVideoSource, fps: TimelineRate): boolean {
+export function validateTimelineRange(clip: TimelineClip, source: TimelineSourceExtent, fps: TimelineRate): boolean {
   try {
     assertClip(clip);
     assertRate(fps);
@@ -171,6 +188,6 @@ export function validateTimelineRange(clip: TimelineClip, source: TimelineVideoS
  * @returns The out-of-source frames.
  * @throws {RangeError} When a rate or the source duration is invalid.
  */
-export function timelineSourceOverflow(clip: TimelineClip, source: TimelineVideoSource, fps: TimelineRate): number {
+export function timelineSourceOverflow(clip: TimelineClip, source: TimelineSourceExtent, fps: TimelineRate): number {
   return clip.durationFrames - Math.min(clip.durationFrames, timelineSourceRoom(clip, source, fps));
 }

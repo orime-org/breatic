@@ -1,14 +1,61 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import type { TimelineClip, TimelineDocumentV1, TimelineVideoSource } from '@breatic/shared';
+import type { TimelineClip, TimelineDocumentV1, TimelineExecutionStatus, TimelineRate, TimelineVideoSource } from '@breatic/shared';
 
 import { compareTimelineIds } from '@web/data/yjs/timeline-order';
-import { timelineClipIntervalValid, validateTimelineRange } from '@web/data/yjs/timeline-time';
+import { timelineClipIntervalValid, validateTimelineRange, type TimelineSourceExtent } from '@web/data/yjs/timeline-time';
+
+/**
+ * What `GET /timeline/web-sources` answers for the references of a document's web-animation copies (inner#1711
+ * design §3.2): the succeeded source versions and the executions placeholders wait for. A reference it leaves out is
+ * unresolved.
+ */
+export interface TimelineWebResolution {
+  sources: Record<string, { durationFrames: number; fps: TimelineRate; viewport: { width: number; height: number } }>;
+  executions: Record<string, { status: TimelineExecutionStatus; resultSourceVersionId: string | null; acceptedDurationFrames: number; fps: TimelineRate }>;
+}
+
+/** A resolution that knows no reference. */
+export const EMPTY_TIMELINE_WEB_RESOLUTION: TimelineWebResolution = Object.freeze({ sources: Object.freeze({}), executions: Object.freeze({}) });
+
+/**
+ * The source version a web-animation copy shows now: its bound result, or the result of the execution it waits for
+ * once that has succeeded.
+ * @param web - The resolution.
+ * @param clip - The copy.
+ * @returns The source version id, or null while there is none to show.
+ * @throws {never} Never.
+ */
+export function timelineWebSourceOf(web: TimelineWebResolution, clip: Extract<TimelineClip, { kind: 'web-animation' }>): string | null {
+  const { baseSourceResultId, operationId } = clip.contentBinding;
+  if (baseSourceResultId !== null) return baseSourceResultId;
+  const execution = operationId === null ? undefined : web.executions[operationId];
+  return execution?.status === 'succeeded' ? execution.resultSourceVersionId : null;
+}
+
+/**
+ * The extent a clip's frames are measured against (design §3.2): a video's registered source; a web copy's bound
+ * source version; a placeholder's result once its execution succeeded, otherwise the length its execution accepted.
+ * @param document - The document, for video sources.
+ * @param web - The resolution of web references.
+ * @param clip - The clip.
+ * @returns The extent, or undefined when the source is missing or the reference is unresolved.
+ * @throws {never} Never.
+ */
+export function resolveTimelineClipExtent(document: TimelineDocumentV1, web: TimelineWebResolution, clip: TimelineClip): TimelineSourceExtent | undefined {
+  if (clip.kind === 'video') return document.sources[clip.sourceId];
+  const sourceId = timelineWebSourceOf(web, clip);
+  const source = sourceId === null ? undefined : web.sources[sourceId];
+  if (source !== undefined) return { timebase: source.fps, extentFrames: source.durationFrames };
+  const execution = clip.contentBinding.baseSourceResultId === null && clip.contentBinding.operationId !== null
+    ? web.executions[clip.contentBinding.operationId] : undefined;
+  return execution === undefined ? undefined : { timebase: execution.fps, extentFrames: execution.acceptedDurationFrames };
+}
 
 /** One stable diagnostic, retained alongside the unmodified placement. */
 export interface TimelineArrangementReason {
-  code: 'overlap' | 'missing_track' | 'incompatible_track' | 'invalid_range' | 'missing_source';
+  code: 'overlap' | 'missing_track' | 'incompatible_track' | 'invalid_range' | 'missing_source' | 'source_unresolved';
   relatedClipIds: string[];
   startFrame: number | null;
   endFrame: number | null;
@@ -21,8 +68,7 @@ export interface TimelinePlacement { clipId: string; status: 'ready' | 'conflict
 export interface TimelineArrangement { placements: TimelinePlacement[]; conflicts: TimelinePlacement[]; readyClipIds: string[]; hasConflicts: boolean }
 
 /**
- * The registered video a clip shows. A web-animation clip has none in `sources`, so every reader treats it as a clip
- * whose source is missing.
+ * The registered video a clip shows, for reading its asset; a web-animation clip has none.
  * @param sources - The document's sources.
  * @param clip - The placement.
  * @returns Its source, or undefined when it has none.
@@ -34,12 +80,13 @@ export function timelineClipSource(sources: Record<string, TimelineVideoSource>,
 
 /**
  * Diagnose the complete merged layout without moving or removing clips.
- * @param document - The current document; a clip outside its source is invalid_range, one whose source is gone is missing_source,
- *   as is a web-animation clip, whose content is not a registered video.
+ * @param document - The current document; a clip outside its source is invalid_range, one whose video is gone is
+ *   missing_source, and a web copy whose reference the resolution does not know is source_unresolved.
+ * @param web - The resolution of the document's web references.
  * @returns Stable readiness and conflict classifications.
  * @throws {never} Never.
  */
-export function resolveTimelineArrangement(document: TimelineDocumentV1): TimelineArrangement {
+export function resolveTimelineArrangement(document: TimelineDocumentV1, web: TimelineWebResolution = EMPTY_TIMELINE_WEB_RESOLUTION): TimelineArrangement {
   const tracks = new Map(Object.values(document.tracks).map((track) => [track.id, track]));
   const records = Object.values(document.clips).sort((a, b) => compareTimelineIds(a.id, b.id)).map((clip) => {
     const endFrame = clip.startFrame + clip.durationFrames;
@@ -48,8 +95,8 @@ export function resolveTimelineArrangement(document: TimelineDocumentV1): Timeli
     const track = tracks.get(clip.trackId);
     if (!track) reasons.push({ code: 'missing_track', ...detail });
     else if (track.kind !== 'visual') reasons.push({ code: 'incompatible_track', ...detail });
-    const source = timelineClipSource(document.sources, clip);
-    if (source === undefined) reasons.push({ code: 'missing_source', ...detail });
+    const source = resolveTimelineClipExtent(document, web, clip);
+    if (source === undefined) reasons.push({ code: clip.kind === 'video' ? 'missing_source' : 'source_unresolved', ...detail });
     if (!timelineClipIntervalValid(clip) || outsideSource(clip, source, document)) reasons.push({ code: 'invalid_range', ...detail });
     return { clip, endFrame, reasons };
   });
@@ -87,7 +134,7 @@ export function resolveTimelineArrangement(document: TimelineDocumentV1): Timeli
  * @returns True only when the source is present and the range is invalid for it.
  * @throws {never} Never.
  */
-function outsideSource(clip: TimelineClip, source: TimelineVideoSource | undefined, document: TimelineDocumentV1): boolean {
+function outsideSource(clip: TimelineClip, source: TimelineSourceExtent | undefined, document: TimelineDocumentV1): boolean {
   return source !== undefined && !validateTimelineRange(clip, source, document.settings.fps);
 }
 

@@ -3,6 +3,7 @@
 
 import type { TimelineClip, TimelineDocumentV1, TimelineVideoClip } from '@breatic/shared';
 
+import type { TimelineWebResolution } from '@web/data/yjs/timeline-arrangement';
 import { timelineTrackRank } from '@web/data/yjs/timeline-order';
 
 /**
@@ -43,8 +44,41 @@ export function activeTimelineClipAt(document: TimelineDocumentV1, readyClipIds:
 }
 
 /**
- * The next frame after `frame` where the shown clip changes: an edge of a ready clip at which
- * `activeTimelineClipAt` differs from the clip shown now; edges hidden under a higher track do not count.
+ * Every ready clip the preview stacks at a frame, bottom-up by track rank (inner#1711 design §7.3). The highest video
+ * hides everything below it, so only the web copies above it stack on it; ties on one rank go by id, as
+ * `activeTimelineClipAt` decides.
+ * @param document - The current document.
+ * @param _web - The resolution of web references; readiness already accounts for it.
+ * @param readyClipIds - Clips the arrangement resolved as ready.
+ * @param frame - The Timeline frame.
+ * @returns The visible clips, bottom-up.
+ * @throws {never} Never.
+ */
+export function visibleTimelineClipsAt(document: TimelineDocumentV1, _web: TimelineWebResolution, readyClipIds: ReadonlySet<string>, frame: number): TimelineClip[] {
+  return visibleAt(document, timelineTrackRank(document.tracks), readyClipIds, frame);
+}
+
+/**
+ * The body of `visibleTimelineClipsAt`, with the track ranks computed once.
+ * @param document - The current document.
+ * @param rank - Track id to rank.
+ * @param readyClipIds - Ready clips.
+ * @param frame - The frame.
+ * @returns The visible clips, bottom-up.
+ * @throws {never} Never.
+ */
+function visibleAt(document: TimelineDocumentV1, rank: ReadonlyMap<string, number>, readyClipIds: ReadonlySet<string>, frame: number): TimelineClip[] {
+  const covering = Object.values(document.clips)
+    .filter((clip) => rank.has(clip.trackId) && readyClipIds.has(clip.id) && frame >= clip.startFrame && frame < clip.startFrame + clip.durationFrames)
+    .sort((a, b) => (rank.get(a.trackId) ?? 0) - (rank.get(b.trackId) ?? 0) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
+  let floor = 0;
+  covering.forEach((clip, index) => { if (clip.kind === 'video') floor = index; });
+  return covering.slice(floor);
+}
+
+/**
+ * The next frame after `frame` where what the preview shows changes: an edge of a ready clip at which
+ * `visibleTimelineClipsAt` differs from what is visible now; edges hidden under a higher video do not count.
  * @param document - The current document.
  * @param readyClipIds - Clips the arrangement resolved as ready.
  * @param frame - The current Timeline frame.
@@ -53,15 +87,17 @@ export function activeTimelineClipAt(document: TimelineDocumentV1, readyClipIds:
  * @throws {never} Never.
  */
 export function nextTimelinePlaybackBoundary(document: TimelineDocumentV1, readyClipIds: ReadonlySet<string>, frame: number, endFrame: number): number {
-  // The shown clip changes only where it ends or where a clip that outranks it starts.
+  // What is visible changes only where a visible clip ends or where a clip that would show over the highest video
+  // starts; clips starting under it stay hidden.
   const rank = timelineTrackRank(document.tracks);
-  const shown = activeTimelineClipAt(document, readyClipIds, frame);
-  const shownRank = shown === null ? -1 : rank.get(shown.trackId) ?? -1;
-  let next = shown === null ? endFrame : Math.min(endFrame, shown.startFrame + shown.durationFrames);
+  const shown = visibleAt(document, rank, readyClipIds, frame);
+  const floor = shown[0]?.kind === 'video' ? shown[0] : null;
+  const floorRank = floor === null ? -1 : rank.get(floor.trackId) ?? -1;
+  let next = Math.min(endFrame, ...shown.map((clip) => clip.startFrame + clip.durationFrames));
   for (const clip of Object.values(document.clips)) {
     const at = rank.get(clip.trackId);
     if (at === undefined || !readyClipIds.has(clip.id) || clip.startFrame <= frame || clip.startFrame >= next) continue;
-    if (outranks(clip, at, shown, shownRank)) next = clip.startFrame;
+    if (floor === null || outranks(clip, at, floor, floorRank)) next = clip.startFrame;
   }
   return next;
 }

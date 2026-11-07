@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1 } from '@breatic/shared';
-import { timelineClipSource } from '@web/data/yjs/timeline-arrangement';
+import { EMPTY_TIMELINE_WEB_RESOLUTION, resolveTimelineClipExtent, type TimelineWebResolution } from '@web/data/yjs/timeline-arrangement';
 import { timelineInsertionIndex, type TimelineEditCommand, type TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 import { orderedTimelineClips } from '@web/data/yjs/timeline-order';
 import { timelineHeadRoom, timelineSourceRoom, timelineTrimHead } from '@web/data/yjs/timeline-time';
@@ -21,8 +21,8 @@ export interface TimelineGesturePreview {
   snapFrame: number | null;
 }
 
-/** View facts a preview depends on. */
-export interface TimelineGestureOptions { snap: boolean; pixelsPerFrame: number; playhead: number; magnet?: boolean }
+/** View facts a preview depends on; `web` resolves the extents of web-animation copies. */
+export interface TimelineGestureOptions { snap: boolean; pixelsPerFrame: number; playhead: number; magnet?: boolean; web?: TimelineWebResolution }
 
 /**
  * Clamp a value into an inclusive range.
@@ -79,7 +79,7 @@ export function previewTimelineGesture(
     return snapTimelineEdges(edges, targets, options.pixelsPerFrame, TIMELINE_SNAP_PX);
   }
   const base = { clipId, trackId: clip.trackId, startFrame: clip.startFrame, sourceInFrame: clip.sourceInFrame, durationFrames: clip.durationFrames, snapFrame: null };
-  const source = timelineClipSource(document.sources, clip);
+  const source = resolveTimelineClipExtent(document, options.web ?? EMPTY_TIMELINE_WEB_RESOLUTION, clip);
   const fps = document.settings.fps;
   const packed = options.magnet === true;
 
