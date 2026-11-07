@@ -190,7 +190,7 @@ export interface AiButtonInputs {
   readonly resultEmpty: boolean;
   /** Whether all of the result is on screen; it is revealed at a reading pace. */
   readonly revealed: boolean;
-  /** Whether replace can be written over the original words (`aiReplaceAvailable`). */
+  /** Whether replace can be written over the original words (`aiCoverIn` is not null). */
   readonly replaceable: boolean;
   readonly insertBlockPresent: boolean;
 }
@@ -201,7 +201,7 @@ export interface AiButtonInputs {
  * @param inputs.state - The session's state.
  * @param inputs.resultEmpty - Whether its result holds only blanks.
  * @param inputs.revealed - Whether all of the result is on screen.
- * @param inputs.replaceable - Whether replace can be written (`aiReplaceAvailable`).
+ * @param inputs.replaceable - Whether replace can be written (`aiCoverIn` is not null).
  * @param inputs.insertBlockPresent - Whether the insert block is in the body.
  * @returns The buttons.
  */

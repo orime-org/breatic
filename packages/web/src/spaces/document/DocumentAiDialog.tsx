@@ -82,7 +82,6 @@ import {
   aiRequest,
   insertAiAnswer,
   replaceAiAnswer,
-  type AiAnswer,
   type AiWriteResult,
 } from '@web/spaces/document/document-ai-units';
 import { viewOf, type ViewedEditor } from '@web/spaces/document/document-editor-view';
@@ -279,7 +278,7 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
           const answer = aiAnswer(editor, editor.prosemirrorState, effect.result, ourMediaPrefix(), at.insertBlockId);
           told(effect.how === 'insert'
             ? insertAiAnswer({ editor }, at.insertBlockId, answer, admission)
-            : replaceAiAnswer({ editor }, answer, aiCoverIn(editor.prosemirrorState), admission));
+            : replaceAiAnswer({ editor }, answer, admission));
         } catch (err) {
           failed();
           throw err;
@@ -443,19 +442,13 @@ function AiPanel({
   // Outside media never land in the body, so they are not counted, drawn or
   // fetched here either.
   const ourPrefix = useOurMediaPrefix();
-  // The answer as insert and replace would write it, once all of it is on screen.
+  // Insert and replace write the answer once all of it is on screen.
   const finished = (session.state === 'stopped' || session.state === 'done') && isComplete;
-  const answer = React.useMemo<AiAnswer | null>(
-    () => (finished
-      ? aiAnswer(editor, editor.prosemirrorState, session.result, ourPrefix, opened.insertBlockId)
-      : null),
-    [finished, editor, session.result, ourPrefix, opened.insertBlockId],
-  );
   // Blank answers leave nothing to write (§5.3).
   const resultEmpty = aiAnswerEmpty(session.result);
   const readReplaceable = React.useCallback(
-    (current: ViewedEditor): boolean => answer !== null && aiCoverIn(current.prosemirrorState) !== null,
-    [answer],
+    (current: ViewedEditor): boolean => finished && aiCoverIn(current.prosemirrorState) !== null,
+    [finished],
   );
   // Replace and its button decide by the same function (§5.3).
   const replaceable = useEditorSnapshot(editor, readReplaceable);

@@ -757,7 +757,7 @@ function laidFlat(nodes: readonly ProseMirrorNode[], pos: number, depth: number)
   for (const node of nodes) {
     const group = node.type.name === 'blockContainer' && node.childCount > 1 ? node.lastChild! : null;
     out.push({ node: group === null ? node : node.copy(Fragment.from(node.firstChild)), depth, pos: at });
-    if (group !== null) out.push(...laidFlat(childrenOf(group), at < 0 ? -1 : at + 1 + node.firstChild!.nodeSize + 1, depth + 1));
+    if (group !== null) out.push(...laidFlat(group.content.content, at < 0 ? -1 : at + 1 + node.firstChild!.nodeSize + 1, depth + 1));
     if (at >= 0) at += node.nodeSize;
   }
   return out;
@@ -875,7 +875,7 @@ function writeOver(tr: Transaction, span: Span, preview: readonly WrittenBlock[]
   const answer = laidFlat(preview.map((b) => blockToNode(withoutIds(b as Read) as never, schema)), -1, 0);
   if (span.kind === 'words') {
     const container = span.container!;
-    const children = container.childCount > 1 ? laidFlat(childrenOf(container.lastChild!), -1, 1) : [];
+    const children = laidFlat([container], -1, 0).slice(1);
     tr.replaceWith(span.containerPos, span.containerPos + container.nodeSize, rebuilt([...wordsJoined(span, answer), ...children], schema));
     return;
   }
@@ -888,7 +888,7 @@ function writeOver(tr: Transaction, span: Span, preview: readonly WrittenBlock[]
   const lastIndex = tr.doc.resolve(span.last).index(depth);
   const from = $first.posAtIndex(firstIndex, depth);
   const to = $first.posAtIndex(lastIndex, depth) + parent.child(lastIndex).nodeSize;
-  const stretch = laidFlat(childrenOf(parent).slice(firstIndex, lastIndex + 1), from, 0);
+  const stretch = laidFlat(parent.content.content.slice(firstIndex, lastIndex + 1), from, 0);
   const start = stretch.findIndex((item) => item.pos >= span.first);
   const level = stretch[start]!.depth;
   tr.replaceWith(from, to, rebuilt([
@@ -899,34 +899,20 @@ function writeOver(tr: Transaction, span: Span, preview: readonly WrittenBlock[]
 }
 
 /**
- * A group's blocks.
- * @param group - The block group, or any node holding blocks.
- * @returns Its children.
- */
-function childrenOf(group: ProseMirrorNode): ProseMirrorNode[] {
-  const out: ProseMirrorNode[] = [];
-  group.forEach((child) => {
-    out.push(child);
-  });
-  return out;
-}
-
-/**
  * Writes an answer over what replace covers now, in one undo step.
  * @param handle - The document, mounted.
  * @param answer - The answer.
- * @param cover - What replace covers now; null once it is gone.
  * @param readAdmission - Reads current lifecycle and write admission synchronously.
  * @returns How it ended.
  */
 export function replaceAiAnswer(
   handle: Pick<DocumentEditorHandle, 'editor'>,
   answer: AiAnswer,
-  cover: LocalRange | null,
   readAdmission: () => ProposalAdmission,
 ): AiWriteResult {
   const refusal = writeRefusal(readAdmission(), handle.editor);
   if (refusal !== null) return { outcome: refusal };
+  const cover = aiCoverIn(handle.editor.prosemirrorState);
   if (cover === null) return { outcome: 'targetGone' };
   if (answer.preview.length === 0) return answer.leftOut > 0 ? { outcome: 'mediaOnly', leftOut: answer.leftOut } : { outcome: 'failed' };
   const { editor } = handle;

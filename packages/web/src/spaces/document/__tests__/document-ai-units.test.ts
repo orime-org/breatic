@@ -250,7 +250,7 @@ function read(handle: DocumentEditorHandle, text: string): AiAnswer {
 function replaceWith(handle: DocumentEditorHandle, range: LocalRange, answerFor: (sent: string) => string): AiAnswer {
   capture(handle, range);
   const answer = read(handle, answerFor(request(handle)));
-  expect(replaceAiAnswer(handle, answer, cover(handle), WRITABLE).outcome).toBe('written');
+  expect(replaceAiAnswer(handle, answer, WRITABLE).outcome).toBe('written');
   return answer;
 }
 
@@ -629,7 +629,7 @@ describe('the answer as blocks (§5.3)', () => {
     capture(h, contentOf(h, blocks(h)[0]!.id));
     const answer = read(h, text);
     expect((answer.preview as Seen[])[0]!.type).toBe(kind);
-    expect(replaceAiAnswer(h, answer, cover(h), WRITABLE).outcome).toBe('written');
+    expect(replaceAiAnswer(h, answer, WRITABLE).outcome).toBe('written');
     expect(blocks(h)[0]!.type).toBe(kind);
   });
 
@@ -657,7 +657,7 @@ describe('the answer as blocks (§5.3)', () => {
     h.editor.removeBlocks([insertBlock(h)!]);
     const answer = read(h, '| x | y |\n| --- | --- |\n| z | w |');
     expect((answer.preview as Seen[]).some((b) => b.type === 'docTable')).toBe(false);
-    expect(replaceAiAnswer(h, answer, cover(h), WRITABLE).outcome).toBe('written');
+    expect(replaceAiAnswer(h, answer, WRITABLE).outcome).toBe('written');
     expect(flat(h).filter((b) => b.type === 'docTable')).toHaveLength(1);
   });
 
@@ -712,7 +712,7 @@ describe('replace, whole blocks (§5.3, Plate wholeTextBlocks)', () => {
     const h = await open('One.\n\nTwo.\n\nThree.\n\nAfter.');
     capture(h, { from: rangeOf(h, 'One.').from, to: rangeOf(h, 'Three.').to });
     h.editor.removeBlocks([blocks(h)[0]!.id]);
-    replaceAiAnswer(h, read(h, 'New.'), cover(h), WRITABLE);
+    replaceAiAnswer(h, read(h, 'New.'), WRITABLE);
     expect(blocks(h).map(textOf)).toEqual(['New.', 'After.']);
   });
 
@@ -721,7 +721,7 @@ describe('replace, whole blocks (§5.3, Plate wholeTextBlocks)', () => {
     capture(h, { from: rangeOf(h, 'One.').from, to: rangeOf(h, 'Two.').to });
     h.editor.setTextCursorPosition(blocks(h)[0]!.id);
     h.editor.moveBlocksDown();
-    replaceAiAnswer(h, read(h, 'New.'), cover(h), WRITABLE);
+    replaceAiAnswer(h, read(h, 'New.'), WRITABLE);
     const words = blocks(h).map(textOf);
     expect(words.at(-1)).toBe('After.');
     expect(words.filter((w) => w === 'After.')).toHaveLength(1);
@@ -979,7 +979,7 @@ describe('replace and insert keep what is outside the range (§8 property)', () 
           return node.type.name !== 'docTable';
         });
         const outside = before.filter(([id]) => !touched.has(id));
-        expect(replaceAiAnswer(h, answer, range, WRITABLE).outcome).toBe('written');
+        expect(replaceAiAnswer(h, answer, WRITABLE).outcome).toBe('written');
         const after = readingOrder(h);
         expect(idsUnique(h)).toBe(true);
         const kept = new Set(outside.map(([id]) => id));
@@ -1128,7 +1128,7 @@ describe('edits while the dialog is open (A6, A7)', () => {
     // Enter splits the line and its block, as BlockNote does.
     h.editor.prosemirrorView!.dispatch(h.editor.prosemirrorState.tr.split(rangeOf(h, 'two').from, 2));
     type(h, rangeOf(h, 'Three').from, 'typed ');
-    replaceAiAnswer(h, read(h, 'New.'), cover(h), WRITABLE);
+    replaceAiAnswer(h, read(h, 'New.'), WRITABLE);
     expect(blocks(h).map(textOf)).toEqual(['Before.', 'New.', 'After.']);
   });
 
@@ -1208,7 +1208,7 @@ describe('writing as an ordinary edit (A6)', () => {
     capture(h, rangeOf(h, 'One.'));
     const answer = read(h, 'Two.');
     const admission = (): ProposalAdmission => ({ available: true, writeAccess });
-    expect(replaceAiAnswer(h, answer, cover(h), admission)).toEqual({ outcome });
+    expect(replaceAiAnswer(h, answer, admission)).toEqual({ outcome });
     expect(insertAiAnswer(h, blocks(h)[0]!.id, answer, admission)).toEqual({ outcome });
     expect(blocks(h).map(textOf)).toEqual(['One.']);
   });
