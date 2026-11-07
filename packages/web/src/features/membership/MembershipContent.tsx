@@ -26,6 +26,7 @@ import { useSubscriptionActions } from '@web/features/membership/use-subscriptio
 import { TierCards } from '@web/features/membership/TierCards';
 import { SectionHeading } from '@web/features/membership/SectionHeading';
 import { ReferralCodeSection } from '@web/features/referral/ReferralCodeSection';
+import { PromoterSection } from '@web/features/referral/PromoterSection';
 import { TierComparison, TierComparisonSkeleton } from '@web/features/membership/TierComparison';
 import { useTranslation } from '@web/i18n/use-translation';
 
@@ -406,6 +407,8 @@ export function MembershipContent({
               </div>
             </section>
           ) : null}
+
+          <PromoterSection />
         </div>
       </ScrollArea>
     </>
