@@ -27,7 +27,7 @@ async function expectEmptyTimeline(page: Page, projectId: string, spaceId: strin
   await expect(timeline.getByTestId('timeline-space-empty')).toBeVisible();
   await expect(timeline.getByTestId('timeline-track-visual-1')).toBeVisible();
   await expect(timeline.getByTestId('timeline-add-media')).toBeEnabled();
-  await expect(timeline.locator('[data-testid^="timeline-clip-"]')).toHaveCount(0);
+  await expect(timeline.locator('[data-testid^="timeline-clip-"][data-track-id]')).toHaveCount(0);
   // A positive initialized body anchors these absence assertions after synchronization.
   await expect(outlet.getByTestId('timeline-space-loading')).toHaveCount(0);
   await expect(outlet.getByTestId('timeline-space-error')).toHaveCount(0);

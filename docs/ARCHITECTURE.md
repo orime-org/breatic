@@ -35,7 +35,7 @@ Frontend stack: see [Tech stack (frontend)](#tech-stack-frontend).
 
 ```
 packages/
-├── shared/   # 浏览器安全的 Zod schema、类型、常量和共享协议；space-content 子路径承载 Timeline Yjs 操作与 Space 媒体引用提取
+├── shared/   # 浏览器安全的 Zod schema、类型、常量和共享协议；space-content 子路径承载 Timeline 文档初始化与读取、Space 媒体引用提取
 ├── core/     # 后端共享内核 barrel (@breatic/core) — 纯地基,零 AIGC 业务
 │              auth/(共享鉴权内核:projectMembers.repo + projectAuth.service〔loadProjectRole〕,collab+server 共用) ·
 │              db/(schema.ts 66 表) · i18n/(node 适配器 loadLocales/runWithLocale) · activity/(project-activities.repo) · asset/(asset.repo〔资产账本与 Project 素材关系的唯一 SQL owner〕/project-asset-reference.service〔登记媒体解析、关联与授权读取〕/project-media-backfill〔历史来源分页协调〕) · project/(projects.repo / project-edits.repo) · infra/(redis〔含 pub/sub〕/queue/storage/session-store/control-events/rate-limiter〔多道额度一次判定的 Lua 滑窗〕/client-identity〔server 限流和 collab 连接准入共用的来源判定:回环豁免、取 nginx 的 x-real-ip、IPv6 归并到 /64〕/event-stream〔任务事件总线的 Redis Streams 发布〕/member-change-listener〔`project_members` 触发器通知的 LISTEN〕/connectivity-check〔启动时的 PG/Redis 连通检查〕/health-server〔`/healthz`〕/graceful-shutdown〔先放监听端口再整体限时收尾〕/logger/mailer〔`sendMail`〕/request-context〔AsyncLocalStorage 请求上下文〕/retry〔BullMQ 重试策略〕/idle-socket-dispatcher〔任务链上 Node `fetch` 的 undici dispatcher〕/errors〔跨 library/application 边界的类型化错误〕) · config/ · app-errors
@@ -781,7 +781,7 @@ lib/        工具(cn / format / 存储键 / toast)+ 不 import 上层的 hook
 
 ### Timeline Space
 
-Timeline 在现有 Project 标签中创建、打开和关闭,使用 `SpaceConnectionContext` 持有的内容 `Y.Doc`。服务端种下 `TimelineDocumentV1`;首次同步后,前端从同一份文档投影轨道、片段和固定素材身份。整数帧和有理数 fps、半开区间、编排校验与编辑事务定义在 `@breatic/shared` 的 `timeline/`。当前编辑界面提供单画面轨上的视频添加、开始帧调整和重叠冲突定位。
+Timeline 在现有 Project 标签中创建、打开和关闭,使用 `SpaceConnectionContext` 持有的内容 `Y.Doc`。服务端种下 `TimelineDocumentV1`;首次同步后,前端从同一份文档投影轨道、片段和固定素材身份。文档格式 schema、整数帧和有理数 fps、`initializeTimelineDocument` 和读取函数（`readTimelineContent`、`readTimelineDocument`、`readTimelineSource`）定义在 `@breatic/shared` 的 `timeline/`；半开区间、编辑命令、规划、写入、编排校验和个人撤销会话在 web 的 `data/yjs/timeline-*.ts`。编辑界面支持多条画面轨上的视频添加、移动、换轨、裁剪、分割、复制、删除、冲突定位和个人撤销。
 
 素材入口使用现有 Dialog、ScrollArea 和上传链:Project 视频目录及单素材读取先核当前 Project 成员权限,再返回 `project_asset_refs` 关联的规范资产;本地文件经 ingest 登记后进入相同的片段准备流程。每次添加产生独立 clip id,保存 asset id 和源区间。Project 素材关系独立记录在业务数据库,片段通过固定源引用该登记身份。上传 File、进度和对话框草稿由已有 `createDocScopedCache` 按实际文档在内存持有,文档释放时销毁。协作文档保存已接受的片段和固定素材身份。
 
