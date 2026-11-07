@@ -9,7 +9,7 @@
  * is not a measure of the board: it holds 28 SCREEN pixels, so in the flow
  * coordinates this map paints in it is `28 / zoom` — at 10% zoom that is 280,
  * the size of an image node. Zooming out to survey the board is exactly when
- * a reader looks at this map, and it was exactly when every note swelled to
+ * a user looks at this map, and it was exactly when every note swelled to
  * look like a picture.
  */
 

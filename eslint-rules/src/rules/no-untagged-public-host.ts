@@ -76,7 +76,7 @@ function isPublic(host: string): boolean {
  * server has a bad day, and the report blames this product.
  *
  * Reaching one is still allowed, because some cases genuinely check that we
- * can fetch a url a reader pasted. What they carry is the tag: it keeps
+ * can fetch a url a user pasted. What they carry is the tag: it keeps
  * them out of the run on a machine with no way out to the internet, so the
  * green that machine reports covers what it could actually reach.
  *

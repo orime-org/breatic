@@ -9,6 +9,12 @@
 /** The media block types. */
 export const MEDIA_BLOCK_TYPES = ['image', 'video', 'audio'] as const;
 
+/** The HTML elements that carry a picture, a video or a sound. */
+export const HTML_MEDIA_ELEMENTS = ['img', 'video', 'audio'] as const;
+
+/** A selector for {@link HTML_MEDIA_ELEMENTS}. */
+export const HTML_MEDIA_SELECTOR = HTML_MEDIA_ELEMENTS.join(', ');
+
 /** One media block type. */
 export type MediaBlockType = (typeof MEDIA_BLOCK_TYPES)[number];
 
@@ -21,4 +27,18 @@ const MEDIA = new Set<string>(MEDIA_BLOCK_TYPES);
  */
 export function isMediaBlockType(name: string): name is MediaBlockType {
   return MEDIA.has(name);
+}
+
+/**
+ * The upload a media block waits for, when it is pending: an upload id set
+ * and no address yet (inner#1351 + inner#1390 design §5.5).
+ * @param attrs - The block's attributes or props.
+ * @param attrs.uploadId - The upload it waits for, when it waits for one.
+ * @param attrs.url - Its address, when it has one.
+ * @returns The upload id, or null for a block that is not pending.
+ */
+export function pendingUploadId(attrs: { readonly uploadId?: unknown; readonly url?: unknown }): string | null {
+  const { uploadId, url } = attrs;
+  if (typeof uploadId !== 'string' || uploadId === '') return null;
+  return typeof url === 'string' && url !== '' ? null : uploadId;
 }

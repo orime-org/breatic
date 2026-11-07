@@ -59,7 +59,7 @@ function resolveModel(node: ProposalNode, index: number): { chosen: ModelInfo } 
   }
   if (!mode || !model) return refuse("no-mode-model", `Node ${index} generates, so it needs a mode and a model.`);
   // A mode this node never had and a mode no model here backs are the same
-  // answer from the reader's side -- it cannot be proposed -- and
+  // answer from the user's side -- it cannot be proposed -- and
   // `modelsForMode` already names what the node does offer instead.
   const reachable = modelsForMode(node.type, mode);
   if (!reachable.available) {
@@ -98,10 +98,10 @@ function checkSettings(node: ProposalNode, chosen: ModelInfo, at: NodeLabel): Pr
     return refuse("shots-with-prompt", "With shots the main prompt is not sent; its words, refs and notes go in the shots.", fixOn(at, "leave prompt out."));
   }
   // A model drawing no box mounts no editor and forces the box empty: only a
-  // note, which the reader reads on the card and which is never sent, has a
+  // note, which the user reads on the card and which is never sent, has a
   // place there. Words, a tweak and an @ all need a box.
   if (!chosen.takesPrompt && proposalMarkSegments(node).some((segment) => segment.slot?.kind !== "note")) {
-    return refuse("no-prompt-box", `"${chosen.name}" draws no prompt box, so words, tweak marks and refs written there reach nobody.`, fixOn(at, "keep only notes saying what the reader picks in the panel."));
+    return refuse("no-prompt-box", `"${chosen.name}" draws no prompt box, so words, tweak marks and refs written there reach nobody.`, fixOn(at, "keep only notes saying what the user picks in the panel."));
   }
   return { ok: true };
 }
@@ -207,7 +207,7 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
     }
   }
   // Every node arriving by an entry with a ref is @'d, and a ref @s only such
-  // a node: the mention lands as one the reader would insert from the pool.
+  // a node: the mention lands as one the user would insert from the pool.
   const pooled = arriving.filter(({ entry }) => entry.ref).map(({ node: n }) => proposal.nodes.indexOf(n));
   const refs = refsIn(node);
   const stray = refs.find((i) => !pooled.includes(i));

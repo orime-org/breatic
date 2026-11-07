@@ -4,7 +4,7 @@
 /**
  * `POST /canvas/ingest-url` with `template_resource` (inner#1345, design 6.6).
  *
- * A template's resource node is fetched into the reader's storage through the
+ * A template's resource node is fetched into the user's storage through the
  * same lane as any address, but the client sends only the storage path the
  * template declares. The server checks that some template in the registry
  * declares that path, builds the address with `voiceSampleUrl(path)` and hands
@@ -41,7 +41,7 @@ const RESOURCE_BASE = "https://resource.test.invalid";
 vi.mock("@breatic/domain", async () => {
   const { domainMock } = await import("../helpers/mock-core.js");
   return {
-    ...domainMock(),
+    ...(await domainMock()),
     voiceSampleUrl: vi.fn((key: string) => `${RESOURCE_BASE}/${key}`),
   };
 });
@@ -49,6 +49,17 @@ vi.mock("@breatic/domain", async () => {
 vi.mock("@server/modules", async (importOriginal) => {
   const { serverModulesMock } = await import("../helpers/mock-core.js");
   return serverModulesMock(importOriginal);
+});
+
+// The lane's gates live in modules/asset/url-ingest.ts, which imports them by
+// file; they answer from the same doubles the barrel hands the route.
+vi.mock("../../modules/project/project.service.js", async (importOriginal) => {
+  const { mocks } = await import("../helpers/mock-core.js");
+  return { ...(await importOriginal<object>()), ...mocks.projectService };
+});
+vi.mock("../../modules/asset/storageQuota.service.js", async (importOriginal) => {
+  const { mocks } = await import("../helpers/mock-core.js");
+  return { ...(await importOriginal<object>()), assertStorageAllowance: mocks.assertStorageAllowance };
 });
 
 // The grant and the row are pinned by ingest-url.integration.test.ts; here

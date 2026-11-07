@@ -192,7 +192,7 @@ export function useApplyTemplate(
       // Refused for room, with its own warning.
       if ('ok' in placed) return;
       // An empty node to fill or words in braces to write are left for the
-      // reader; nothing stops them generating as it is.
+      // user; nothing stops them generating as it is.
       const toFill =
         expansion.appended.some((node) => node.role === 'source' && node.resource === undefined) ||
         proposal.nodes.some((node) => proposalMarkSegments(node).some((segment) => segment.slot?.kind === 'tweak'));

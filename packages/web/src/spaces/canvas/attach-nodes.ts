@@ -11,10 +11,9 @@ import type { ContentNodeView } from '@web/data/yjs/node-view';
 import { toAbsolutePosition } from '@web/spaces/canvas/group-geometry';
 import { currentGeneration } from '@web/spaces/canvas/generate/current-generation';
 import { PROMPT_NOTE_LABEL_ATTR, PROMPT_NOTE_NODE } from '@web/features/prompt-note/prompt-note';
-import { REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import {
+  chipDisplayText,
   MENTION_KIND_ATTR,
-  MENTION_LABEL_ATTR,
 } from '@web/spaces/canvas/generate/reference-mention';
 import type { TrayItem } from '@web/stores/chat-attachments';
 
@@ -32,7 +31,7 @@ export interface NodeReaders {
 }
 
 /**
- * A reference mention read as the name the reader sees on its chip, and a
+ * A reference mention read as the name the user sees on its chip, and a
  * note as its words in the form a template writes it.
  * @param element - An element inside a prompt.
  * @returns The text, or undefined for anything else.
@@ -40,9 +39,7 @@ export interface NodeReaders {
 function mentionText(element: Y.XmlElement): string | undefined {
   // A note is handed over too: the agent is given everything the node holds.
   if (element.nodeName === PROMPT_NOTE_NODE) return writtenMark({ kind: 'note', label: String(element.getAttribute(PROMPT_NOTE_LABEL_ATTR) ?? '') });
-  if (element.nodeName !== REFERENCE_MENTION_NODE) return undefined;
-  const label = element.getAttribute(MENTION_LABEL_ATTR) ?? element.getAttribute(MENTION_KIND_ATTR);
-  return `@${String(label ?? '')}`;
+  return chipDisplayText(element, String(element.getAttribute(MENTION_KIND_ATTR) ?? ''));
 }
 
 /**

@@ -22,6 +22,8 @@ vi.mock('@web/data/api/chat', async (importOriginal) => ({
     listConversations: vi.fn(),
     readConversation: vi.fn(),
     createConversation: vi.fn(),
+    models: vi.fn(async () => ({ models: [{ id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' }], lastUsed: 'deepseek/deepseek-v4.1-flash-1017' })),
+    setModel: vi.fn(),
   },
 }));
 
@@ -77,7 +79,7 @@ let wire: WatchedWire;
  * 让这一轮被拒。
  *
  * 传输层非 2xx 时抛的是 `new Error(await response.text())` —— body 而已，
- * 状态码不在上面。所以「服务器写了一句给读者的话」是靠信封认出来的：我们的
+ * 状态码不在上面。所以「服务器写了一句给用户的话」是靠信封认出来的：我们的
  * 错误答 `{ error: "..." }`。
  * @param body - 服务器的答复原文。
  * @param status - 状态码。
@@ -111,7 +113,7 @@ function chatOpensWith(texts: string[]): void {
   vi.mocked(chatApi.openChat).mockResolvedValue({
     conversations: [{ id: 'c1' }],
     current: {
-      conversation: { id: 'c1' },
+      conversation: { id: 'c1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       messages: texts.map((text, i) => ({
         id: `m${i}`,
         role: i % 2 === 0 ? 'user' : 'assistant',
@@ -296,7 +298,7 @@ describe('ChatPanel', () => {
     await user.click(screen.getByTestId('chat-composer-send'));
 
     // No answer came back, so there is nothing to quote and nothing to add.
-    // Two words: what to do about it is the reader's own business.
+    // Two words: what to do about it is the user's own business.
     await waitFor(() =>
       expect(toastSpy.error).toHaveBeenCalledWith('Network error'),
     );
@@ -313,7 +315,7 @@ describe('ChatPanel', () => {
     await waitFor(() => expect(toastSpy.error).toHaveBeenCalledTimes(1));
 
     // Straight away, while the first line is still up -- which is when a
-    // reader presses again, not four seconds later.
+    // user presses again, not four seconds later.
     await user.click(screen.getByTestId('chat-composer-send'));
 
     // Same words, said again: the toast is told twice, which refreshes the
@@ -336,7 +338,7 @@ describe('ChatPanel', () => {
     conversationRuntime.setDraft(CONV, 'let me in');
     await user.click(screen.getByTestId('chat-composer-send'));
 
-    // The server went to the trouble of saying why, in the reader's language.
+    // The server went to the trouble of saying why, in the user's language.
     await waitFor(() =>
       expect(toastSpy.error).toHaveBeenCalledWith('You do not have access to this project'),
     );
@@ -347,7 +349,7 @@ describe('ChatPanel', () => {
     renderPanel();
 
     // A chat that would not open used to have its own red bar at the top of
-    // the panel. Two places that say things is one too many: the reader has
+    // the panel. Two places that say things is one too many: the user has
     // to learn where to look, and the two can disagree.
     await waitFor(() => expect(toastSpy.error).toHaveBeenCalled());
     expect(screen.queryByTestId('chat-open-failed')).not.toBeInTheDocument();
@@ -361,7 +363,7 @@ describe('ChatPanel', () => {
     await waitFor(() =>
       expect(toastSpy.error).toHaveBeenCalledWith('Network error'),
     );
-    // No button, no instruction. Reloading or trying again is the reader's own
+    // No button, no instruction. Reloading or trying again is the user's own
     // business, and telling them to do it adds nothing they cannot see.
   });
 
@@ -374,7 +376,7 @@ describe('ChatPanel', () => {
             res({
               conversations: [{ id: CONV }],
               hasMoreConversations: false,
-              current: { conversation: { id: CONV }, messages: [], hasMore: false },
+              current: { conversation: { id: CONV, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
             } as never);
         }),
     );
@@ -407,7 +409,7 @@ describe('ChatPanel', () => {
             res({
               conversations: [{ id: CONV }],
               hasMoreConversations: false,
-              current: { conversation: { id: CONV }, messages: [], hasMore: false },
+              current: { conversation: { id: CONV, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
             } as never);
         }),
     );
@@ -486,7 +488,7 @@ describe('a conversation longer than one page', () => {
     vi.mocked(chatApi.openChat).mockResolvedValue({
       conversations: [{ id: 'c1' }],
       current: {
-        conversation: { id: 'c1' },
+        conversation: { id: 'c1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
         messages: [
           {
             id: 'm1',
@@ -587,14 +589,14 @@ describe('a failure about a row in the list', () => {
   function opens(): void {
     vi.mocked(chatApi.openChat).mockResolvedValue({
       conversations: [{ id: 'c-1', title: 'one' }],
-      current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+      current: { conversation: { id: 'c-1', title: 'one', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
       hasMoreConversations: false,
     } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
   }
 
   it('is told in a toast while the list is closed', async () => {
-    // 顶栏也能改名,而那时抽屉是关着的。一条只画在抽屉里的提示,读者一个字都
-    // 看不到 —— 去向由「读者现在看得见哪儿」定,不由「从哪儿按的」定。
+    // 顶栏也能改名,而那时抽屉是关着的。一条只画在抽屉里的提示,用户一个字都
+    // 看不到 —— 去向由「用户现在看得见哪儿」定,不由「从哪儿按的」定。
     opens();
     renderPanel({ projectId: 'p1', historyOpen: false });
     await waitFor(() => expect(screen.getByTestId('chat-panel')).toBeInTheDocument());
@@ -622,7 +624,7 @@ describe('a failure about a row in the list', () => {
 
   it('draws nothing at all while the conversation is still on its way', async () => {
     // 空会话的问候语是一句断言:这条会话没有消息。会话还没到手时那句话说不出
-    // 口 —— 它可能有一整屏历史,只是还在路上。把它画出来,读者自己的历史就在
+    // 口 —— 它可能有一整屏历史,只是还在路上。把它画出来,用户自己的历史就在
     // 眼前闪过去一下,像从来没有过。
     let land: (() => void) | undefined;
     vi.mocked(chatApi.openChat).mockImplementation(
@@ -632,7 +634,7 @@ describe('a failure about a row in the list', () => {
             res({
               conversations: [{ id: 'c-1', title: 'one' }],
               current: {
-                conversation: { id: 'c-1', title: 'one' },
+                conversation: { id: 'c-1', title: 'one', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
                 messages: [],
                 hasMore: false,
               },
@@ -676,7 +678,7 @@ describe('a failure about a row in the list', () => {
   });
 
   it('says so when a new conversation could not be started', async () => {
-    // 「+」按下去之后页面一个字都不变,读者只能理解成这个按钮坏了。这一句是
+    // 「+」按下去之后页面一个字都不变,用户只能理解成这个按钮坏了。这一句是
     // 它唯一的回音,而它落在输入框上方:按「+」的同时抽屉就关掉了,所以列表
     // 那条路走不到。
     opens();
@@ -698,7 +700,7 @@ describe('opening the list', () => {
     // 中间这根线断了不会有任何东西红 —— 抽屉照样画,只是画的是上次留下的。
     vi.mocked(chatApi.openChat).mockResolvedValue({
       conversations: [{ id: 'c-1', title: 'one' }],
-      current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+      current: { conversation: { id: 'c-1', title: 'one', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
       hasMoreConversations: false,
     } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
     vi.mocked(chatApi.listConversations).mockResolvedValue({
@@ -734,7 +736,7 @@ describe('deleting a conversation from the list', () => {
         { id: 'c-1', title: 'one' },
         { id: 'c-2', title: 'two' },
       ],
-      current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+      current: { conversation: { id: 'c-1', title: 'one', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
       hasMoreConversations: false,
     } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
     vi.mocked(chatApi.listConversations).mockResolvedValue({

@@ -90,7 +90,7 @@ function isKeyMap(value: unknown): value is Record<string, string> {
  * A sample is either the vendor's own (`sample_url`, served from its CDN) or
  * one we generated (`sample_key`, a path under the one address every
  * deployment plays our samples from, #2239). A voice that speaks whichever
- * language the reader picks carries one key per language value as well
+ * language the user picks carries one key per language value as well
  * (`sample_keys`), served as `previewUrls`.
  * @param entry - The model's yaml entry.
  * @returns Every inline voice, in the order the file lists them.

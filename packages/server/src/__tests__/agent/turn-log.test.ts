@@ -33,7 +33,7 @@ const modelSays = vi.hoisted(() => ({ parts: [] as unknown[], failsToStart: null
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { projectMemory: "", conversationMemory: "" },
+    memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
     history: [],
   })),
 }));
@@ -71,7 +71,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage: vi.fn(async () => 1),
-  addReaderMessage: vi.fn(async () => ({ turnIndex: 1, closedAsks: [] })),
+  addUserMessage: vi.fn(async () => ({ turnIndex: 1, closedAsks: [] })),
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
 

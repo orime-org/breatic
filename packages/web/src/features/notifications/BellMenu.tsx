@@ -403,7 +403,7 @@ const PROJECT_ROLE_KEY: Record<string, string> = {
  * line — what you hold if you accept: an invite names the role offered, a
  * transfer the role you take over.
  *
- * The fifth waiting row does not, and cannot. A role upgrade asks the reader
+ * The fifth waiting row does not, and cannot. A role upgrade asks the user
  * to grant something rather than take it, so what is useful there is the
  * message the requester typed, and it has none when they typed nothing —
  * `message` is optional on that route. So a waiting row with no second line is

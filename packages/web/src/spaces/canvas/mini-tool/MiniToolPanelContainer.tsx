@@ -55,7 +55,7 @@ const NO_SLOTS = {} as const;
 
 export interface MiniToolPanelContainerProps {
   nodes: readonly CanvasNodeView[];
-  /** Whether the last write to the document was this reader's. */
+  /** Whether the last write to the document was this user's. */
   getLastWriteWasLocal: () => boolean;
   /**
    * Run the tool on the snapshot taken at the press, with the drawing at the
@@ -117,7 +117,7 @@ function useShownSize(
  * and hangs the panel under the node.
  * @param root0 - Component props.
  * @param root0.nodes - The canvas's node views.
- * @param root0.getLastWriteWasLocal - Whether the last document write was this reader's.
+ * @param root0.getLastWriteWasLocal - Whether the last document write was this user's.
  * @param root0.onRun - Run the tool on a snapshot.
  * @returns The panel, or null when no mini-tool panel is open.
  */
@@ -159,7 +159,7 @@ interface OpenMiniToolPanelProps {
  * @param root0.nodeId - The source node.
  * @param root0.node - Its view.
  * @param root0.spec - The tool.
- * @param root0.getLastWriteWasLocal - Whether the last document write was this reader's.
+ * @param root0.getLastWriteWasLocal - Whether the last document write was this user's.
  * @param root0.onRun - Run the tool on a snapshot.
  * @returns The mounted panel, or null while the pinned model is not known yet.
  */
@@ -260,7 +260,7 @@ function OpenMiniToolPanel({
   }, [expandRatio, sourceWidth, sourceHeight, entry, setExpand, sessionStore]);
 
   // The source took new content while the panel was open: whatever was
-  // measured on the old one is reset, and the reader is told (§7.2).
+  // measured on the old one is reset, and the user is told (§7.2).
   const sourceContent = draft?.sourceContent;
   React.useEffect(() => {
     if (sourceContent === undefined || content === '' || content === sourceContent) return;
@@ -389,7 +389,7 @@ function OpenMiniToolPanel({
       return;
     }
     if (refusal !== null) return;
-    // What the reader made on the node is copied out now, so a later change
+    // What the user made on the node is copied out now, so a later change
     // to the draft does not reach this run.
     const expandFrame = sessionStore.getState().miniTool?.expand?.frame;
     let capture: MiniToolCapture | undefined =

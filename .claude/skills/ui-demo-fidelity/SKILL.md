@@ -18,7 +18,7 @@ The package rule is in `packages/web/AGENTS.md#demo-decides-structure-tokens-dec
 
 - **Size things from the content users actually need to see.** Count the real data first (longest and typical length of that field); where it cannot be counted, say what is missing, pick a justified starting value and settle it in the real browser. Look at similar components in the repo to learn the scale of type, radius and spacing, not to cap yourself at values already used.
   Check: how much content does the user actually need to see in this element?
-- **A demo can say that an animation exists, when it starts and which state it ends in; it cannot fix speed, easing, delay, the feel of repeated use, or interruption and re-entry.** Those are settled in the running app: use it the way a reader would, tune until it feels right, and start from already-calibrated similar effects in the repo.
+- **A demo can say that an animation exists, when it starts and which state it ends in; it cannot fix speed, easing, delay, the feel of repeated use, or interruption and re-entry.** Those are settled in the running app: use it the way a user would, tune until it feels right, and start from already-calibrated similar effects in the repo.
 
 ## Checking against the demo
 

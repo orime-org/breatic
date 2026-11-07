@@ -177,6 +177,7 @@
       "references_too_many": "引用附件的次數太多。一則訊息最多 {limit, number} 次，這則有 {actual, number} 次。",
       "ask_not_found": "這段對話裡沒有這張問題卡片。",
       "ask_already_answered": "這張問題卡片已經回答過了。",
+      "model_unavailable": "所選模型已無法使用。",
       "answer_mismatch": "這些答案和卡片上的問題對不上。"
     },
     "mail": {
@@ -306,6 +307,11 @@
     }
   },
   "chat": {
+    "modelPicker": {
+      "label": "模型",
+      "listFailed": "模型清單沒有載入",
+      "saveFailed": "選擇的模型沒有儲存，已恢復原來的選擇"
+    },
     "composer": {
       "chipsAria": "已選 chips",
       "placeholder": "問點什麼，或者把 Canvas 上的東西交給我…",
@@ -410,6 +416,9 @@
       "readingConversation": "正在讀對話紀錄",
       "readingNodeHistory": "正在查節點的歷史",
       "readingActivity": "正在查 Project 活動",
+      "savingMemory": "正在記下",
+      "deletingMemory": "正在刪掉這條記憶",
+      "readingMemory": "正在查記憶",
       "running": "正在呼叫 {tool}",
       "step": {
         "webSearch": "搜尋「{query}」",
@@ -426,6 +435,9 @@
         "readConversation": "讀對話紀錄",
         "readNodeHistory": "查節點的歷史",
         "readActivity": "查 Project 活動",
+        "saveMemory": "記下",
+        "deleteMemory": "刪掉記憶",
+        "readMemory": "查記憶",
         "other": "呼叫 {tool}",
         "readTemplate": "讀範本",
         "requestSpace": "請求查看 Space"
@@ -838,7 +850,6 @@
         "character_orientation": "朝向依據",
         "keep_original_sound": "保留原聲",
         "motion_prompt": "動作描述",
-        "append_duration": "延長時長",
         "ambience": "環境音",
         "double_output": "生成兩版",
         "light_azimuth": "光源方向",
@@ -1171,10 +1182,6 @@
         "separate": {
           "label": "人聲分離"
         },
-        "extend": {
-          "label": "延長",
-          "prompt": "描述要接上的聲音"
-        },
         "denoise": {
           "label": "降噪"
         },
@@ -1374,7 +1381,8 @@
       "unavailable": "目前無法使用",
       "goal": {
         "character": "角色設定與一致性",
-        "comics-storyboards": "漫畫與分鏡"
+        "comics-storyboards": "漫畫與分鏡",
+        "social-hooks": "社群鉤子"
       },
       "storyboard-grid-25": {
         "name": "25 宮格時序圖",
@@ -1475,6 +1483,161 @@
           "reference": {
             "name": "角色",
             "note": "先放入角色參考圖，再生成"
+          }
+        }
+      },
+      "pet-selfie-vlog": {
+        "name": "寵物搶鏡自拍 vlog",
+        "description": "自拍 vlog 被寵物搶鏡，最後湊到鏡頭前",
+        "prompt": "一段直式手機自拍 vlog。影片裡唯一的動物是 [📎 寵物]：剛好一隻，品種、毛色和花紋、眼睛顏色和體型都跟照片一樣，照片裡的其他東西都不要。0–3 秒：手機舉在一臂遠，有人在{✏️ 地點，例如陽光充足的客廳}對著鏡頭開始說話，寵物已經從後面走進畫面。3–7 秒：寵物{✏️ 牠怎麼搶鏡，例如跳上沙發去聞手機}，耳朵、尾巴和爪子照這種動物真實的樣子動。7–10 秒：寵物湊到鏡頭跟前，鼻子佔滿畫面，畫面變糊。全程是手持手機拍攝，輕微晃動，沒有剪接。窗戶進來的日光。聲音：人驚訝的笑聲和寵物自己的叫聲，沒有音樂。畫面裡不出現文字。",
+        "input": {
+          "pet": {
+            "name": "寵物",
+            "note": "先放入一張清楚的寵物照片，整隻動物都在畫面裡，再生成"
+          }
+        }
+      },
+      "phone-vlog-realism": {
+        "name": "真實手機 vlog",
+        "description": "像真的用手機拍的日常 vlog",
+        "prompt": "一段看起來真的是用手機拍的直式 vlog，主角是 [📎 人物]：臉、髮型、皮膚和身形都跟照片一樣，皮膚上的毛孔和小瑕疵保留。{✏️ 在做什麼，例如早上出門前打理，然後去買咖啡}。0–3 秒：已經在做事，胸部以上，人拿著手機對著鏡頭說話。3–15 秒：{✏️ 這一天裡另外兩三個片段，每段約 4 秒}。手機拍攝的缺陷要出來：輕微手震，對焦不時來回找，鏡頭掃到窗戶時曝光跳一下。沒有防手震，沒有美顏，沒有調色。構圖最遠到胸部以上。一般室內光。聲音：人的說話聲、房間底噪和手拿手機的細小聲響，沒有音樂。畫面裡不出現文字。",
+        "input": {
+          "person": {
+            "name": "人物",
+            "note": "先放入一張清楚的正面人物照片，再生成"
+          }
+        }
+      },
+      "retro-found-footage": {
+        "name": "復古 DV 老錄影",
+        "description": "2000 年代初家用 DV 錄下的一個小事件",
+        "prompt": "2000 年代初家用 DV 攝影機錄下的老錄影：解析度低，焦點偏軟，有視訊雜訊，顏色輕微溢出，白平衡有點偏，手動推拉變焦。地點：{✏️ 在哪裡拍的，例如傍晚後院的生日派對}。0–3 秒：已經在錄，拍的人邊走邊拿著攝影機。3–8 秒：{✏️ 發生的一個小事件，例如蛋糕從桌上掉下來}，拍的人有反應，鏡頭甩過去跟拍。8–10 秒：硬切黑。光源跟地點一致，只有一個。聲音：攝影機內建麥克風錄的聲音，人聲悶悶的，有風切聲，沒有音樂。畫面裡不出現文字。",
+        "input": {}
+      },
+      "time-freeze-rewind": {
+        "name": "時間靜止再倒流",
+        "description": "一切靜止再倒回去，只有一個人不受影響",
+        "prompt": "[📎 人物] 是唯一不受時間影響的人：臉、髮型和服裝都跟照片一樣。地點：{✏️ 一個熱鬧的地方，例如咖啡館露台}。0–4 秒：一切正常，周圍的人來來往往。4–8 秒：{✏️ 一次碰撞，例如服務生絆倒，一托盤飲料飛上半空}。8–12 秒：一切在半空中靜止，水滴懸著不動，行人停在半步上；只有 [📎 人物] 還能動，四處張望。12–16 秒：鏡頭在同樣的高度和距離上，慢慢繞著這個人和靜止的場面轉。16–20 秒：一切倒回到碰撞之前，[📎 人物] 留在原地不動。第一格就已經在動。只有一個光源。聲音：咖啡館的環境聲，靜止的那一刻變成寂靜，倒流時聲音倒放。畫面裡不出現文字。",
+        "input": {
+          "person": {
+            "name": "人物",
+            "note": "先放入一張清楚的照片，拍的是不受影響的那個人，再生成"
+          }
+        }
+      },
+      "bullet-time-mishap": {
+        "name": "子彈時間出糗",
+        "description": "出糗的一瞬間凍住，鏡頭繞著轉一圈",
+        "prompt": "{✏️ 誰出了什麼糗，例如一隻貓把滿滿一杯牛奶從餐桌上碰下去}。0–1 秒：已經在發生，糗事剛開始。1–6 秒：在最糟的那一刻時間完全停住，像一張定格的照片：主體、濺出來的東西和正在掉落的東西都紋絲不動地懸在半空，畫面裡什麼都不動；只有鏡頭在動，在同樣的高度和距離上繞著這個定格的瞬間轉一整圈，先從側面、再從背後、再從另一側看，最後回到正面。6–8 秒：時間恢復，糗事做完。只有一個光源。聲音：凍住時突然安靜，鏡頭環繞時一聲低沉的呼嘯，最後是摔碎的聲音。畫面裡不出現文字。",
+        "input": {}
+      },
+      "beat-sync-outfit-change": {
+        "name": "卡點轉身換裝",
+        "description": "每次卡點轉身，服裝和背景都換一套",
+        "prompt": "[📎 人物] 做轉身換裝挑戰：每一套造型裡，臉、髮型和身形都跟照片一樣。主題依序是：{✏️ 4 個主題，例如街頭、紅毯、太空人、騎士}。0–3 秒：穿著第一個主題的服裝、站在它的背景前，面對鏡頭，已經跟著節拍在動。3–6 秒、6–9 秒、9–12 秒：每個節拍轉一圈，再面對鏡頭時服裝和背景都換成下一個主題。鏡頭固定在胸口高度，全身在畫面裡。光線均勻，顏色跟著每個背景變。聲音：一首節奏清楚的輕快音樂，每次轉身有一聲呼嘯。畫面裡不出現文字。",
+        "input": {
+          "person": {
+            "name": "人物",
+            "note": "先放入一張清楚的人物全身照，再生成"
+          }
+        }
+      },
+      "pov-continuous-shot": {
+        "name": "第一人稱一鏡到底",
+        "description": "第一人稱視角走一段，一個鏡頭拍到底",
+        "prompt": "第一人稱視角，一鏡到底，攝影機裝在走路的人頭上、眼睛的高度，他的手不時進入畫面。地點和目的地：{✏️ 從哪裡走到哪裡，例如穿過夜市走到掛滿燈籠的廟門口}。0–3 秒：第一格畫面裡已經滿是這個地方，已經在往前走。3–9 秒：{✏️ 路上經過什麼、做了什麼}。9–12 秒：走到了，視線停在{✏️ 最後看到的東西}上。沒有剪接，沒有變焦；鏡頭只是走、轉頭和停下。光來自這個地方本身。聲音：腳步聲、呼吸聲和這個地方的聲音，沒有音樂。畫面裡不出現文字。",
+        "input": {}
+      },
+      "carried-object-transition": {
+        "name": "物件帶轉場",
+        "description": "一個物件把畫面從場景 A 帶到場景 B",
+        "prompt": "(💡 先生成場景 A，再把它選進首幀)(💡 先生成場景 B，再把它選進尾幀)影片從首幀開始，到尾幀結束。兩幀中間的物件是同一個物件，位置和大小相同；鏡頭全程跟著它。0–2 秒：在場景 A 裡，{✏️ 物件怎麼動，例如被一隻手拋起來}。2–4 秒：物件從鏡頭前經過，在畫面裡越來越大，再離開時，它周圍已經變成了場景 B。4–5 秒：停在尾幀上。一個連續鏡頭，沒有剪接；轉場靠物件完成。聲音：物件移動的聲音，環境聲從場景 A 的換成場景 B 的。畫面裡不出現文字。",
+        "input": {
+          "object": {
+            "name": "物件",
+            "note": "先放入一張清楚的物件照片，再生成場景 A 和場景 B"
+          }
+        },
+        "node": {
+          "scene-a": {
+            "name": "場景 A",
+            "prompt": "以 [📎 物件] 作為物件參考：形狀、顏色、材質和標記都一樣，不重新設計。一張直式構圖照片，拍的是{✏️ 場景 A，例如陽光下的海灘}，物件在畫面正中央，寬度約佔畫面的四分之一，平視正面拍攝。地點本身的自然光。不出現文字。"
+          },
+          "scene-b": {
+            "name": "場景 B",
+            "prompt": "以 [📎 物件] 作為物件參考：形狀、顏色、材質和標記都一樣，不重新設計。一張直式構圖照片，拍的是{✏️ 場景 B，例如夜裡雪山上的小木屋}，物件在畫面正中央，寬度約佔畫面的四分之一，平視正面拍攝，位置和大小跟場景 A 一樣。地點本身的自然光。不出現文字。"
+          }
+        }
+      },
+      "fisheye-clone-pov": {
+        "name": "魚眼分身",
+        "description": "0.5x 魚眼俯拍，畫面裡擺滿同一個人的分身",
+        "prompt": "一張用手機 0.5x 超廣角鏡頭從上往下拍的照片，畫面邊緣有明顯的魚眼彎曲。地點：{✏️ 在哪裡，例如籃球場}。這個地方擺滿了 [📎 主體] 的分身，大約 12 個，每個姿勢不同、在做不同的事，近處的大且被鏡頭拉變形，遠處的小。每個分身的臉、髮型和服裝都跟照片一樣。日光。真實照片，不是插畫。不出現文字。",
+        "input": {
+          "subject": {
+            "name": "主體",
+            "note": "先放入一張清楚的主體照片，再生成"
+          }
+        }
+      },
+      "flash-photo-dump-grid": {
+        "name": "閃光燈隨拍合集",
+        "description": "同一個人的六張閃光燈隨拍，排成 3×2",
+        "prompt": "一張圖，由剛好 6 張照片組成，3 欄 2 列，照片之間有細白縫。6 張拍的都是 [📎 人物]，照片只用來認出是誰：每張的臉、髮型和皮膚都一樣。每張都是小型隨身相機直閃拍的隨拍：臉上是很亮的閃光，身後有硬陰影，略微過曝，有一點顆粒。六種不同的表情，每張一種：大笑、嘟嘴、驚訝、眨眼、嚴肅、正要打噴嚏。場合：{✏️ 在哪裡，例如晚上的居家派對}。近景，胸部以上。不出現文字。",
+        "input": {
+          "person": {
+            "name": "人物",
+            "note": "先放入一張清楚的正面人物照片，再生成"
+          }
+        }
+      },
+      "game-ui-livestream": {
+        "name": "遊戲直播風",
+        "description": "像遊戲直播畫面的一段遊戲實況",
+        "prompt": "一段像遊戲直播的遊戲實況畫面，玩家角色是 [📎 角色]：臉、髮型和服裝都跟照片一樣，算繪成{✏️ 一種遊戲畫風，例如風格化的 3D 動作遊戲}。畫面上的介面只畫成形狀和顏色，沒有能讀的字母或數字：左上角一條血條，右上角一個圓形小地圖，底部一排技能圖示，一角有一個小的攝影機畫框。0–4 秒：已經在戰鬥，鏡頭在角色身後。4–9 秒：{✏️ 遊戲裡發生什麼，例如在城堡廢墟裡打頭目}。9–12 秒：{✏️ 怎麼結束，例如一記決勝招式，一陣強光}。遊戲鏡頭跟著角色。聲音：遊戲音效和音樂，沒有人聲。畫面裡不出現文字。",
+        "input": {
+          "character": {
+            "name": "角色",
+            "note": "先放入一張清楚的角色照片，再生成"
+          }
+        }
+      },
+      "travel-city-walk": {
+        "name": "城市漫步旅行 vlog",
+        "description": "一個旅人一個場景一個場景地走過一座城",
+        "prompt": "一段直式旅行 vlog，[📎 旅人] 走過{✏️ 一座城市，例如里斯本}：每個場景裡臉、髮型和服裝都跟照片一樣。0–4 秒：{✏️ 場景 1，例如爬一條鋪著磁磚的陡街}。4–8 秒：{✏️ 場景 2}。8–12 秒：{✏️ 場景 3}。12–16 秒：{✏️ 場景 4}。16–20 秒：{✏️ 場景 5}。20–24 秒：黃金時刻，在一個觀景台停下，眺望整座城市。每個場景一個運鏡：先在身後跟拍，再到身側，再到前面。自然光，太陽一個場景比一個場景低。聲音：每個地方的街頭聲音、腳步聲，結尾有輕音樂。畫面裡不出現文字。",
+        "input": {
+          "traveler": {
+            "name": "旅人",
+            "note": "先放入一張清楚的旅人全身照，再生成"
+          }
+        }
+      },
+      "twist-comedy-skit": {
+        "name": "反轉搞笑短劇",
+        "description": "從一個看得見的笑點倒推、機位一本正經的短劇",
+        "prompt": "一段搞笑短劇，主角是 [📎 角色]，臉、髮型和服裝都跟照片一樣，整段像嚴肅正劇一樣一本正經地拍。笑點：{✏️ 結尾看到的反轉，例如小偷原來一直是那隻狗}。0–2 秒，鉤子：{✏️ 一件已經在發生的怪事}。2–5 秒，鋪陳：{✏️ 角色以為發生了什麼}。5–7 秒，倒數：緊張感上升，鏡頭慢慢推近。7–10 秒，反轉：笑點在畫面上揭開。10–13 秒，反應：角色僵住的面無表情的臉。13–15 秒，收尾：{✏️ 最後一個小梗}。鏡頭穩定，嚴肅的打光。聲音：緊張的配樂在反轉時戛然而止，之後一片寂靜。畫面裡不出現文字。",
+        "input": {
+          "character": {
+            "name": "角色",
+            "note": "先放入一張清楚的角色照片，再生成"
+          }
+        }
+      },
+      "vertical-15s-quick-tip": {
+        "name": "15 秒小技巧",
+        "description": "先給結果，再講三步，最後回到開頭",
+        "shot": {
+          "1": "鉤子，先給結局：[📎 主體] 已經做好了，{✏️ 做完是什麼樣，例如襯衫摺得方方正正}，近景，直式構圖，鏡頭已經在緩緩推近。明亮均勻的光。畫面裡不出現文字。",
+          "2": "第一步：[📎 主體]，{✏️ 第一步做什麼，例如襯衫背面朝上，兩隻袖子往背後摺}，手部近景，鏡頭不動。光線和場景跟第一鏡一樣。畫面裡不出現文字。",
+          "3": "第二步：[📎 主體]，{✏️ 第二步做什麼，例如兩側往中間摺}，手部近景，鏡頭不動。光線和場景一樣。畫面裡不出現文字。",
+          "4": "第三步：[📎 主體]，{✏️ 第三步做什麼，例如下襬往上摺到領口}，手部近景，鏡頭不動。光線和場景一樣。畫面裡不出現文字。",
+          "5": "循環：[📎 主體] 停在跟第一鏡完全一樣的成品和構圖上，影片頭尾接上。畫面裡不出現文字。"
+        },
+        "input": {
+          "subject": {
+            "name": "主體",
+            "note": "先放入一張小技巧涉及的人或東西的照片，再生成"
           }
         }
       },
@@ -1706,6 +1869,11 @@
     },
     "runOnce": {
       "unknownResult": "無法確認剛才的操作是否完成，請查看結果。"
+    },
+    "mediaViewer": {
+      "fullscreen": "全螢幕檢視",
+      "close": "關閉",
+      "loadFailed": "無法載入這個檔案"
     }
   },
   "members": {
@@ -1941,24 +2109,39 @@
         "mergeCells": "合併儲存格",
         "textHighlight": "背景（醒目提示文字）"
       },
+      "paste": {
+        "unsupportedInCell": "目前格式不支援貼上"
+      },
       "media": {
         "image": "圖片",
         "audio": "音訊",
         "video": "影片",
         "uploading": "上傳中",
         "uploadingPercent": "上傳中 {percent}%",
-        "readOnly": "目前唯讀。",
         "retry": "重試",
         "remove": "移除",
         "caption": "說明",
         "captionPlaceholder": "新增說明",
-        "fullscreen": "全螢幕檢視",
-        "close": "關閉",
         "download": "下載",
         "delete": "刪除",
         "leftOut": "{count} 個圖片、影片或音訊沒有貼上，可以直接拖入或貼上檔案。",
         "captionReadOnly": "目前為唯讀，可複製這份草稿。",
-        "captionRetained": "媒體已移除，請在關閉 Space 前複製草稿。"
+        "captionRetained": "媒體已移除，請在關閉 Space 前複製草稿。",
+        "notFinished": "上傳沒有完成",
+        "pendingExport": "{name}（尚未上傳完成）",
+        "uploadFailed": "上傳失敗",
+        "failure": {
+          "storageFull": "Studio 儲存空間已滿",
+          "rateLimited": "上傳太頻繁，請稍後再試",
+          "hashUnavailable": "無法驗證檔案，請重新整理頁面",
+          "unsupportedType": "格式不支援",
+          "tooLarge": "超過上傳大小限制",
+          "empty": "檔案是空的",
+          "unreachable": "這個網址打不開"
+        },
+        "readOnlyWaiting": "這個分頁現在唯讀，恢復可寫後寫入正文",
+        "notWrittenYet": "已上傳，還沒寫進正文",
+        "notPasted": "{count} 項沒有貼上。"
       }
     },
     "readOnlyReconnect": "重新連線",
@@ -2004,7 +2187,7 @@
       "generate": "AI 生成",
       "annotationsLater": "批註（稍後提供）",
       "controls": "操作說明",
-      "tasks": "生成任務",
+      "tasks": "任務",
       "minimap": "場景小地圖",
       "generationDev": "3D 模型生成正在開發中",
       "prompt": "描述你想生成的 3D 模型",
@@ -2012,7 +2195,74 @@
       "chooseReference": "選擇參考圖",
       "submit": "生成",
       "helpBody": "點擊物件以選取；拖曳空白處旋轉視角；滾輪縮放。選取物件後，使用浮動選單移動、旋轉與縮放。",
-      "closePanel": "關閉"
+      "closePanel": "關閉",
+      "importModel": {
+        "title": "匯入模型",
+        "description": "選擇 GLB、glTF 或 ZIP；可同時選擇模型的配套檔案。",
+        "chooseFiles": "選擇檔案",
+        "chooseFolder": "選擇資料夾",
+        "inputLimit": "最多 {size} MiB",
+        "dropFiles": "將模型與配套檔案拖曳到這裡",
+        "resourceHint": "GLB 可直接選擇；glTF 請同時提供紋理與 bin 檔案，或選擇完整 ZIP。",
+        "readOnly": "目前為唯讀",
+        "readOnlyHint": "取得編輯權限後即可匯入模型。",
+        "checking": "正在檢查模型…",
+        "preview": "模型預覽",
+        "previewFailed": "無法顯示模型預覽。",
+        "entry": "主檔案",
+        "chooseEntry": "選擇主檔案",
+        "name": "模型名稱",
+        "fileCount": "{count} 個檔案",
+        "meshCount": "{count} 個網格",
+        "skinned": "含骨架",
+        "checkingResources": "檢查格式與配套資源",
+        "ready": "模型與配套資源已就緒",
+        "addResources": "補充配套檔案",
+        "optionalExtensions": "以下選用擴充功能可能存在顯示差異：",
+        "showFiles": "查看檔案清單",
+        "hideFiles": "收起檔案清單",
+        "hide": "收起",
+        "retry": "重試",
+        "confirm": "匯入",
+        "errorMissing": "請補充缺少的配套檔案。",
+        "errorEntry": "請選擇要預覽的主檔案。",
+        "errorUnsupported": "目前不支援此模型格式或必要擴充。",
+        "errorEmpty": "模型中沒有可顯示的網格。",
+        "errorBudget": "模型超出匯入限制。",
+        "errorInvalid": "無法讀取模型或配套檔案。",
+        "errorDuplicate": "存在相同路徑的檔案，請重新選擇沒有衝突的檔案集合。",
+        "errorUpload": "模型上傳失敗，請重試。",
+        "errorLoad": "模型載入失敗，請重試。",
+        "limit": {
+          "input": "所選檔案共 {actual} MiB，上限 {allowed} MiB。",
+          "files": "共 {actual} 個檔案，上限 {allowed} 個。",
+          "expanded": "解壓縮後 {actual} MiB，上限 {allowed} MiB。",
+          "entryJson": "模型描述檔 {actual} MiB，上限 {allowed} MiB。",
+          "artifact": "打包後 {actual} MiB，上限 {allowed} MiB。",
+          "textureEdge": "紋理邊長 {actual} px，上限 {allowed} px。",
+          "textureBytes": "紋理記憶體 {actual} MiB，上限 {allowed} MiB。"
+        }
+      },
+      "taskList": {
+        "kind": "匯入",
+        "you": "你",
+        "member": "一位成員",
+        "uploading": "正在上傳 {percent}%",
+        "running": "上傳中",
+        "runningFor": "上傳中 · 已用 {minutes} 分鐘",
+        "registering": "登記中",
+        "done": "已完成",
+        "failed": "失敗",
+        "expired": "已逾時",
+        "failedReason": "模型上傳失敗。",
+        "place": "放入場景",
+        "retry": "重試",
+        "remove": "移除",
+        "empty": "你匯入的模型會顯示在這裡。",
+        "loadFailed": "任務載入失敗。",
+        "removeFailed": "移除失敗，請重試。",
+        "placeFailed": "模型未能放入場景。"
+      }
     },
     "size": {
       "warning": "這個 Space 已用 {used}，上限 {limit}。",
@@ -2513,6 +2763,7 @@
       "theme": "主題：{theme}"
     },
     "languageNotSaved": "語言未儲存到帳號",
+    "languageLoadFailed": "語言切換失敗，請重新整理頁面後再試",
     "help": {
       "trigger": "說明",
       "manual": "使用手冊",
@@ -2562,7 +2813,8 @@
       "spaceLocked": "{actor} 鎖定了 Space {spaceName}",
       "spaceUnlocked": "{actor} 解鎖了 Space {spaceName}",
       "spaceRestored": "{actor} 還原了 Space {spaceName}",
-      "spaceRenamed": "{actor} 把 Space {oldSpaceName} 改名為 {spaceName}"
+      "spaceRenamed": "{actor} 把 Space {oldSpaceName} 改名為 {spaceName}",
+      "assetUploadedModel": "{actor} 上傳了模型 {name}"
     },
     "header": "Project 活動",
     "label": "Project 活動",
@@ -2905,22 +3157,29 @@
     "empty": "新增影片，開始編排 Timeline。",
     "video": "影片",
     "conflict": "衝突",
-    "conflictHelp": "片段重疊。請選擇片段並調整開始影格。",
+    "conflictHelp": "衝突的片段不會播放，選取片段進行修改。",
+    "conflictList": "衝突",
+    "noConflicts": "沒有衝突",
+    "conflictReason": {
+      "overlap": "與其他片段重疊",
+      "missing_track": "所在軌道已被移除",
+      "invalid_range": "超出影片範圍",
+      "incompatible_track": "所在軌道類型不符",
+      "damaged": "該片段已無法讀取",
+      "missing_source": "所用影片已遺失"
+    },
     "loadingMedia": "正在載入影片…",
     "mediaUnavailable": "此影片無法使用。",
     "retry": "重試",
     "play": "播放",
     "pause": "暫停",
     "seek": "預覽影格",
-    "framePosition": "第 {frame} 影格 / 共 {total} 影格",
     "tracks": "軌道",
     "addMedia": "新增素材",
-    "visualTrack": "畫面 1",
     "selectClip": "選擇片段以查看屬性。",
     "clipFrames": "開始 {start} · 長度 {duration} 影格",
-    "editStart": "修改開始影格",
+    "sourceExtent": "影片共 {frames} 影格 · {fps, number} fps",
     "startFrame": "開始影格",
-    "apply": "套用",
     "cancel": "取消",
     "transport": {
       "paused": "已暫停",
@@ -2942,17 +3201,54 @@
       "fileEmpty": "選擇本機影片檔案。",
       "preparing": "正在準備影片…",
       "progress": "正在上傳 {progress}%",
-      "confirm": "新增至 Timeline"
+      "confirm": "新增至 Timeline",
+      "insertAfter": "將插在 {name} 之後",
+      "insertFirst": "將插在主軌最前面"
     },
     "errors": {
+      "missing_source": "片段所用影片已遺失，請先刪除該片段。",
+      "covers_missing_source": "此處有片段的影片已遺失，請先刪除那個片段。",
       "readonly": "目前角色無法編輯。",
       "source_unavailable": "此影片無法使用。請選擇其他影片或重試。",
       "metadata_unavailable": "無法取得影片長度。請重試或選擇其他影片。",
-      "invalid_range": "請輸入有效的開始影格。",
-      "overlap": "此位置與其他片段重疊。請調整開始影格。",
+      "invalid_range": "請輸入影片範圍內的影格。",
       "target_missing": "目標已變更。請檢查位置後重試。",
+      "clip_removed": "該片段已被其他成員移除。",
       "upload": "上傳失敗。可使用已選檔案重試。",
-      "permission_changed": "編輯權限已變更。請再次確認新增此影片。"
+      "permission_changed": "編輯權限已變更。請再次確認新增此影片。",
+      "track_missing": "目標軌道已被移除，請選擇其他軌道。",
+      "id_taken": "此項目已存在，請重試。",
+      "main_track": "主軌無法刪除。",
+      "track_not_empty": "只能刪除空軌道。"
+    },
+    "mainTrack": "主軌",
+    "track": "畫面 {index}",
+    "edit": {
+      "undo": "復原",
+      "redo": "重做",
+      "split": "分割",
+      "duplicate": "複製",
+      "delete": "刪除",
+      "magnet": "主軌磁吸",
+      "magnetOn": "磁吸",
+      "magnetOff": "自由",
+      "snap": "自動吸附",
+      "linkage": "連動",
+      "zoom": "縮放",
+      "track": "軌道",
+      "inPoint": "入點",
+      "duration": "時長",
+      "newTrack": "新增畫面軌",
+      "newTrackZone": "拖到這裡新增軌道",
+      "trackRemoved": "軌道已移除",
+      "deleteTrack": "刪除軌道",
+      "ghostInsert": "插入",
+      "ghostOverwrite": "覆蓋下方片段",
+      "selectFirst": "請先選擇一個片段。",
+      "magnetStartHint": "主軌磁吸已開啟，拖動調整順序。",
+      "splitOutside": "請將播放頭移到選取片段內再分割。",
+      "lowestTrack": "此片段已在最下方的畫面軌。",
+      "bumped": "{count, plural, other {# 個連動片段}}已移到上方軌道。"
     }
   }
 }

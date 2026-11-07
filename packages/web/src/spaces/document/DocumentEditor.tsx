@@ -30,15 +30,15 @@ import { useCommentRail } from '@web/spaces/document/use-comment-rail';
 import { DocumentLinkToolbar } from '@web/spaces/document/DocumentLinkToolbar';
 import { DocumentTableCellButton } from '@web/spaces/document/DocumentTableCellButton';
 import { type FocusReturn, useFocusReturn } from '@web/lib/use-focus-return';
-import { viewOf } from '@web/spaces/document/document-editor-view';
 import { DocumentMediaPicker } from '@web/spaces/document/DocumentMediaPicker';
-import { DocumentUploadPlaceholders } from '@web/spaces/document/DocumentUploadPlaceholders';
 import { DocumentMediaViews } from '@web/spaces/document/DocumentMediaViews';
 import { useDocumentBars } from '@web/spaces/document/document-bars';
 import { BODY_GUTTER_START } from '@web/spaces/document/document-strip-alignment';
 import { bodyPartMark, recomputeBodyFocus, releaseBodyFocus } from '@web/spaces/document/document-body-focus';
 import { attachBodyScroller, BODY_BLANK } from '@web/spaces/document/document-body-press';
-import type { DocumentUploader } from '@web/spaces/document/document-uploads';
+import { viewOf } from '@web/spaces/document/document-editor-view';
+import type { FileUploads } from '@web/spaces/document/document-uploads';
+import { PendingUploadsContext, type PendingUploadsStore } from '@web/spaces/document/document-pending-uploads';
 import { isCurrentProposalLocation, type ProposalLocation } from '@web/spaces/document/document-proposal-location';
 import { sourceSpot } from '@web/spaces/document/document-proposal-landing';
 import { revealInTable, tableViewportOf } from '@web/spaces/document/document-table-reveal';
@@ -49,7 +49,7 @@ interface DocumentEditorProps {
   /** True for a viewer. */
   readOnly?: boolean;
   /**
-   * The reader's role on the project.
+   * The user's role on the project.
    *
    * `readOnly` answers "may this person write at all", which the carriers
    * gate on. The draft card asks a second question — whether the right to
@@ -58,9 +58,11 @@ interface DocumentEditorProps {
    * does.
    */
   myRole?: ProjectRole;
-  /** What takes files into this body; a body without one offers no media entries. */
-  uploader?: DocumentUploader | null;
-  /** Where an Agent proposal just landed, to show the reader (inner#1509). */
+  /** What admits files into this body; a body without it offers no media entries. */
+  files?: FileUploads | null;
+  /** What the body's pending media blocks read; null shows each as not finished. */
+  pending?: PendingUploadsStore | null;
+  /** Where an Agent proposal just landed, to show the user (inner#1509). */
   landed?: ProposalLocation | null;
 }
 
@@ -126,8 +128,9 @@ function cutTo(box: DOMRect, frame: DOMRect): DOMRect {
  * @param root0 - Editor chrome props.
  * @param root0.handle - The editor to render, with its surface.
  * @param root0.readOnly - True for a viewer.
- * @param root0.myRole - The reader's role on the project.
- * @param root0.uploader - What takes files into this body.
+ * @param root0.myRole - The user's role on the project.
+ * @param root0.files - What admits files into this body.
+ * @param root0.pending - What the body's pending media blocks read.
  * @param root0.landed - The block an Agent proposal just landed.
  * @returns The editor body, the comment panel beside it, the entry and the
  *   bubble bar.
@@ -136,11 +139,12 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   handle,
   readOnly = false,
   myRole = 'viewer',
-  uploader = null,
+  files = null,
+  pending = null,
   landed = null,
 }: DocumentEditorProps): React.JSX.Element {
   const body = React.useRef<HTMLDivElement>(null);
-  // The one bit that says whether the panel is on screen, and the reader is
+  // The one bit that says whether the panel is on screen, and the user is
   // the only one who writes it: a comment arriving from a peer marks the `⋯`
   // button and moves nothing (design §5). Held here because the menu opens
   // the panel and the panel closes itself, so neither owns it.
@@ -184,14 +188,14 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     hoverThread(handle.editor, null);
     // And the draft with them: the card it is written in lives in the panel,
     // so closing the panel is throwing it away. Left standing, the range
-    // would put an empty card back on screen the next time the reader opens
+    // would put an empty card back on screen the next time the user opens
     // the panel, with nothing to explain where it came from (§9.4).
     const view = handle.editor.prosemirrorView;
     if (view !== null) {
       view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, null));
     }
     // And every reply box's unsent words. They are kept by the editor so a
-    // Space tab switch does not take them; closing the panel is the reader's
+    // Space tab switch does not take them; closing the panel is the user's
     // own doing, and it does (§9.6).
     clearReplies(handle.editor);
   }, [handle.editor]);
@@ -223,7 +227,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   }, [handle]);
 
   // Where an Agent proposal landed is shown once per landing: a hidden Space
-  // runs its effects again when shown, and the reader may have scrolled away
+  // runs its effects again when shown, and the user may have scrolled away
   // since. Comment selection is issued once by the pickup's command outlet;
   // the rail consumes its current plugin state. A written block is scrolled
   // to a third of the way down the viewport and outlined for a moment. A
@@ -348,11 +352,6 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     () => viewOf(handle.editor)?.focus(),
   );
 
-  const viewOfEditor = React.useCallback(
-    () => viewOf(handle.editor),
-    [handle.editor],
-  );
-
   const chrome = (
     // `isolate` keeps the z-values below local: the entry has to paint over
     // the body and the bubble bar over the entry, and neither of those two
@@ -443,16 +442,12 @@ export const DocumentEditor = React.memo(function DocumentEditor({
       {/* Every image, video and audio block, drawn into its node view's
           container from inside this tree (inner#1127). A viewer sees them
           too; editing controls follow permission while playback stays available. */}
-      <DocumentMediaViews editor={handle.editor} readOnly={readOnly} viewport={viewport} />
-      {/* What each upload in flight shows, in the body where it will land
-          (inner#1127 A4). Kept for a body that turned read-only meanwhile:
-          a failed file still has its placeholder to remove. */}
-      {uploader !== null && (
-        <DocumentUploadPlaceholders
-          editor={handle.editor}
-          uploader={uploader}
-          readOnly={readOnly}
-        />
+      {pending === null ? (
+        <DocumentMediaViews editor={handle.editor} readOnly={readOnly} viewport={viewport} />
+      ) : (
+        <PendingUploadsContext.Provider value={pending}>
+          <DocumentMediaViews editor={handle.editor} readOnly={readOnly} viewport={viewport} />
+        </PendingUploadsContext.Provider>
       )}
       {/* The strip beside the row under the pointer. A viewer gets none of it
           (A3): every command in the handle's menu writes to the document. */}
@@ -482,7 +477,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // A viewer gets no media entries (A11); the menus that offer them are not
   // drawn for one either.
   return (
-    <DocumentMediaPicker uploader={readOnly ? null : uploader} view={viewOfEditor}>
+    <DocumentMediaPicker files={readOnly ? null : files}>
       {chrome}
     </DocumentMediaPicker>
   );

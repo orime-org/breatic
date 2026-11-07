@@ -40,6 +40,7 @@ import { docNameOf } from '@web/data/yjs/manager';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 import { gatedHistoryCommand } from '@web/features/collab-editor/space-size-gate';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { isOwnUndoStep } from '@web/spaces/document/document-undo-step';
 import { isCommentMarkWrite } from '@web/spaces/document/document-comment-undo-filter';
 import { documentUndoSelectionPlugin } from '@web/spaces/document/document-undo-selection';
 import { fromYjs } from '@web/spaces/document/document-yjs-origin';
@@ -184,7 +185,7 @@ export function createDocumentUndo(doc: Y.Doc): DocumentUndo {
  * so it is named false instead of passed over: a transaction that only moves
  * comment highlights. A comment is withdrawn from the card that holds it, so
  * Cmd+Z is not the way back from one, and the library's own `orphan` rewrites
- * are not the reader's doing at all — {@link isCommentMarkWrite} carries both
+ * are not the user's doing at all — {@link isCommentMarkWrite} carries both
  * halves of that reasoning. Passing over would not help: the marker would
  * keep the `true` their last real edit left, and the highlight write would be
  * captured anyway.
@@ -222,6 +223,79 @@ function userDrivenPlugin(marker: UserDrivenMarker): Plugin {
   });
 }
 
+/** The events whose edits are an undo step of their own. */
+const OWN_STEP_EVENTS = ['paste', 'drop'] as const;
+
+/**
+ * The plugin that closes the undo step around a paste, a drop or a marked
+ * insert, so it is one step and typing on either side is another.
+ *
+ * A paste or a drop is closed around by its event, whichever hook writes it:
+ * a capturing listener closes the step before any handler runs, and a
+ * listener added after ProseMirror's own closes it once that one is done.
+ * Listeners on one element in one phase run in the order they were added,
+ * and the view adds its own before it builds plugin views
+ * (`prosemirror-view` `initInput`, then `updatePluginViews`). A microtask
+ * queued at the start would not do: a browser runs microtasks after each
+ * listener of an event the user caused, before ProseMirror's.
+ *
+ * A marked insert is closed before the edit reaches Yjs — state apply runs
+ * before the sync plugin's view update writes the edit through — and again
+ * in this plugin's own view update, which runs after the sync plugin's in the
+ * same dispatch, whether or not the edit came to any Yjs change.
+ * @param manager - The manager whose steps are closed.
+ * @returns The ProseMirror plugin.
+ */
+function ownStepPlugin(manager: Y.UndoManager): Plugin {
+  let closeAfter = false;
+  return new Plugin({
+    key: new PluginKey('documentUndoOwnStep'),
+    state: {
+      /**
+       * Contributes no state of its own.
+       * @returns Null.
+       */
+      init: (): null => null,
+      /**
+       * Closes the step before a marked insert, and asks the view update to
+       * close it again once the insert is written through.
+       * @param tr - The transaction being applied.
+       * @returns Null.
+       */
+      apply: (tr): null => {
+        if (isOwnUndoStep(tr)) {
+          manager.stopCapturing();
+          closeAfter = true;
+        }
+        return null;
+      },
+    },
+    view: (view) => {
+      /** Closes the step a paste or a drop opens or ends. */
+      const close = (): void => {
+        manager.stopCapturing();
+      };
+      for (const event of OWN_STEP_EVENTS) {
+        view.dom.addEventListener(event, close, true);
+        view.dom.addEventListener(event, close);
+      }
+      return {
+        update: () => {
+          if (!closeAfter) return;
+          closeAfter = false;
+          manager.stopCapturing();
+        },
+        destroy: () => {
+          for (const event of OWN_STEP_EVENTS) {
+            view.dom.removeEventListener(event, close, true);
+            view.dom.removeEventListener(event, close);
+          }
+        },
+      };
+    },
+  });
+}
+
 /**
  * The extension that registers the undo plugin over one manager.
  * @param manager - The manager the plugins drive.
@@ -243,6 +317,7 @@ function undoExtension(
       yUndoPlugin({ undoManager: manager }),
       documentUndoSelectionPlugin(),
       userDrivenPlugin(marker),
+      ownStepPlugin(manager),
     ],
     dependsOn: ['yCursor', 'ySync'],
     // Judged against the Space's size before the manager runs (inner#1790):

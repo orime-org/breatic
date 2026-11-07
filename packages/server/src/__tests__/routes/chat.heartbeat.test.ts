@@ -70,6 +70,8 @@ vi.mock("@server/modules", async (importOriginal) => {
     conversationService: {
       ...base.conversationService,
       assertWritable: vi.fn().mockResolvedValue({ id: "conv-1" }),
+      modelForMessage: vi.fn().mockResolvedValue("test"),
+      modelForResume: vi.fn().mockResolvedValue("test"),
       getConversation: vi.fn().mockResolvedValue({ id: "conv-1", lastConsolidatedTurn: 0 }),
       getMessagesForLlm: vi.fn().mockResolvedValue([]),
     },
@@ -169,7 +171,7 @@ describe("a turn that has ended", () => {
 
 describe("the first beat", () => {
   it("does not wait for the interval, because the client's clock is already running", async () => {
-    // The reader's browser starts counting at the press, and everything
+    // The user's browser starts counting at the press, and everything
     // between that and the stream opening -- the network, authorising,
     // checking the conversation is writable -- makes no sound on its clock.
     // A first beat one whole interval after the socket opens spends that

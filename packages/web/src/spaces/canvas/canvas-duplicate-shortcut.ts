@@ -10,7 +10,7 @@
  * @param event - The keydown event.
  * @returns True when the duplicate chord (mod + D, no Shift) is pressed.
  */
-export function matchDuplicateShortcut(event: KeyboardEvent): boolean {
+export function matchDuplicateShortcut(event: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'shiftKey'>): boolean {
   const mod = event.metaKey || event.ctrlKey;
   if (!mod || event.shiftKey) return false;
   return event.key.toLowerCase() === 'd';

@@ -132,7 +132,7 @@ export function useSlugAvailability(
  * A 409 does not always mean the slug: creating a team studio also answers 409
  * when the account is at its team-studio cap. Re-asking the server refreshes
  * the cached answer the field reads, so a taken slug turns the field red on
- * its own. That only tells the reader something while the field is on screen
+ * its own. That only tells the user something while the field is on screen
  * and holds the submitted slug; the caller says whether it still does, after
  * the re-ask has come back.
  * @param client - The query client holding the availability answers.

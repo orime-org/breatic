@@ -30,7 +30,7 @@ const TOKENS = fs.readFileSync(
   'utf8',
 );
 
-/** The two grounds a reader ever sees a note on. */
+/** The two grounds a user ever sees a note on. */
 type Theme = 'light' | 'dark';
 
 /**

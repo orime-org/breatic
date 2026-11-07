@@ -18,6 +18,7 @@ import type { NodeViewProps } from '@tiptap/react';
 import { Suggestion, type SuggestionOptions } from '@tiptap/suggestion';
 import { Crop } from 'lucide-react';
 import * as React from 'react';
+import type * as Y from 'yjs';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { PROMPT_NOTE_NODE } from '@web/features/prompt-note/prompt-note';
@@ -30,6 +31,7 @@ import { createLocalUserInputTracker } from '@web/features/reference-mention/ref
 import { createReferenceMentionRangeHighlight } from '@web/features/reference-mention/reference-mention-range-decoration';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
+import type { MediaFullscreenSource } from '@web/spaces/canvas/nodes/_shared/MediaFullscreen';
 import type { NodeType } from '@breatic/shared';
 import { PreviewImg } from '@web/components/PreviewImg';
 
@@ -55,6 +57,31 @@ export const MENTION_THUMBNAIL_ATTR = 'thumbnail';
 export const MENTION_LABEL_ATTR = 'label';
 /** Attr key on a reference-mention node carrying the source node modality (icon fallback). */
 export const MENTION_KIND_ATTR = 'kind';
+
+/**
+ * A stored reference chip read as the name its pill shows.
+ * @param element - An element inside a prompt fragment.
+ * @param fallback - The name for a chip that carries none.
+ * @returns `@` and the name, or undefined when the element is not a chip.
+ */
+export function chipDisplayText(element: Y.XmlElement, fallback: string): string | undefined {
+  if (element.nodeName !== REFERENCE_MENTION_NODE) return undefined;
+  const label = element.getAttribute(MENTION_LABEL_ATTR);
+  return `@${typeof label === 'string' && label !== '' ? label : fallback}`;
+}
+
+/**
+ * What a chip opens full screen (inner#1844): its source itself, where the
+ * chip and its preview carry only a thumbnail.
+ * @param row - The source's live pool row, if it is still in the pool.
+ * @returns The image or video to show, or null when there is none.
+ */
+export function referenceFullscreen(row: ReferenceRailItem | undefined): MediaFullscreenSource | null {
+  if (!row?.mediaUrl) return null;
+  if (row.sourceNodeType === 'video') return { kind: 'video', src: row.mediaUrl, poster: row.thumbnail };
+  if (row.sourceNodeType === 'image') return { kind: 'image', src: row.mediaUrl };
+  return null;
+}
 
 /**
  * Builds the ProseMirror content for a reference-mention atom from a pool row,
@@ -251,6 +278,14 @@ function ReferenceMentionChip({
       ? { text: content }
       : { emptyHint: t('canvas.generatePanel.emptyTextReference') };
   }, [options, sourceId, t]);
+  // Read at hover-open from the live pool, as the text body is.
+  const resolveFullscreen = React.useCallback(
+    (): MediaFullscreenSource | null =>
+      referenceFullscreen(
+        sourceId != null ? options.getPool?.().find((r) => r.sourceNodeId === sourceId) : undefined,
+      ),
+    [options, sourceId],
+  );
   return (
     <HoverPreview
       // A text chip previews its source text live; every other chip (image /
@@ -263,6 +298,7 @@ function ReferenceMentionChip({
       alt={label}
       emptyHint={staticEmptyHint}
       resolveOnOpen={kind === 'text' ? resolveTextHover : undefined}
+      fullscreen={isVisual ? resolveFullscreen : undefined}
       // The preview is NOT dimmed, in either mode. Its job is to say what this
       // chip IS; whether the mode can use it is said by the chip body's own
       // grey-out and by the rail (user 2026-08-13). Greying it made the one

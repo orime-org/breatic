@@ -726,8 +726,8 @@ describe('handing the Worker a URL to fetch', () => {
     expect(optionsOf(0).replaySafe).toBe(false);
   });
 
-  // A caller with a reader watching (the agent's save, inner#1315) stops the
-  // transfer when the reader stops the turn, besides the deadline.
+  // A caller with a user watching (the agent's save, inner#1315) stops the
+  // transfer when the user stops the turn, besides the deadline.
   it("stops the transfer when the caller's signal is raised", async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
     const stop = new AbortController();

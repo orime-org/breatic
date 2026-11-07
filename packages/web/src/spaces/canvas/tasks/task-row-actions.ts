@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * What one task row offers the reader (#186 §7.1).
+ * What one task row offers the user (#186 §7.1).
  *
  * Pure, and told everything it needs: neither of the two conditions is
  * visible from the row itself — whether this session still holds the File
@@ -30,7 +30,7 @@ export interface TaskRowSituation {
   /** Whether this session still holds the File this upload was carrying. */
   hasRetryFile: boolean;
   /**
-   * Whether this reader may write. B4 admits a read-only member to the list,
+   * Whether this user may write. B4 admits a read-only member to the list,
    * and every button here is a write — each refusing in its own way once
    * pressed, one of them without saying anything.
    */
@@ -46,9 +46,9 @@ export interface TaskRowSituation {
  * @param situation.status - Which of the four states the task is in.
  * @param situation.hasResult - Whether it left content behind.
  * @param situation.hasRetryFile - Whether this session still holds its File.
- * @param situation.readOnly - Whether this reader may write.
+ * @param situation.readOnly - Whether this user may write.
  * @returns The row's buttons, empty while the task is still running and for a
- *   reader who cannot write.
+ *   user who cannot write.
  */
 export function taskRowActions({
   status,
@@ -72,7 +72,7 @@ export function taskRowActions({
       return hasRetryFile ? ['retry', 'clear'] : ['clear'];
     // §4.5: a report can arrive after the verdict. It went into the node's
     // history only, since the node may hold a newer result by then; the
-    // reader decides there whether to restore it.
+    // user decides there whether to restore it.
     case 'expired':
       return hasResult ? ['view', 'clear'] : ['clear'];
   }

@@ -1,7 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen } from '@testing-library/react';
+
+import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ChatAttachedChip } from '@breatic/shared';
@@ -49,7 +51,7 @@ const canvasChip = (count: number): ChatAttachedChip => ({
 
 describe('AttachmentChip kind', () => {
   it('shows the kind as an icon before the name, with no word for it', () => {
-    render(<AttachmentChip id='f' type='image' name='a.png' testId='card' />);
+    renderWithTooltips(<AttachmentChip id='f' type='image' name='a.png' testId='card' />);
 
     expect(label().querySelector('svg')).not.toBeNull();
     expect(label().textContent).toBe('a.png');
@@ -60,7 +62,7 @@ describe('AttachmentChip hover preview', () => {
   it('shows an uploaded image when the card is hovered', () => {
     vi.useFakeTimers();
     const chip: ChatAttachedChip = { id: 'f', type: 'image', name: 'a.png', data_snapshot: { url: 'https://a/i.png' } };
-    render(<AttachmentChip id='f' type='image' name='a.png' chip={chip} testId='card' />);
+    renderWithTooltips(<AttachmentChip id='f' type='image' name='a.png' chip={chip} testId='card' />);
     hover(label());
     const content = screen.getByTestId('hover-preview-content');
     expect(content.querySelector('img')?.getAttribute('src')).toBe('https://a/i.png');
@@ -69,7 +71,7 @@ describe('AttachmentChip hover preview', () => {
   it('lists the nodes of a canvas card, with a still where there is one, and counts the rest', () => {
     vi.useFakeTimers();
     const chip = canvasChip(PREVIEW_ROWS + 2);
-    render(<AttachmentChip id='c' type='canvas' name='' chip={chip} testId='card' />);
+    renderWithTooltips(<AttachmentChip id='c' type='canvas' name='' chip={chip} testId='card' />);
     hover(label());
     const rows = screen.getAllByTestId('attachment-preview-row');
     expect(rows).toHaveLength(PREVIEW_ROWS);
@@ -81,13 +83,13 @@ describe('AttachmentChip hover preview', () => {
   });
 
   it('counts the nodes of an unnamed canvas card from what it carries', () => {
-    render(<AttachmentChip id='c' type='canvas' name='' chip={canvasChip(3)} testId='card' />);
+    renderWithTooltips(<AttachmentChip id='c' type='canvas' name='' chip={canvasChip(3)} testId='card' />);
     expect(screen.getByTestId('card').textContent).toContain('3');
   });
 
   it('opens nothing for a card that has no address yet', () => {
     vi.useFakeTimers();
-    render(<AttachmentChip id='f' type='image' name='a.png' status='uploading' testId='card' />);
+    renderWithTooltips(<AttachmentChip id='f' type='image' name='a.png' status='uploading' testId='card' />);
     hover(label());
     expect(screen.queryByTestId('hover-preview-content')).not.toBeInTheDocument();
   });
@@ -105,7 +107,7 @@ describe('AttachmentChip hover preview', () => {
         testId='card'
       />
     );
-    const { rerender } = render(view(false));
+    const { rerender } = renderWithTooltips(view(false));
     const button = screen.getByRole('button');
     button.focus();
     rerender(view(true));
@@ -116,7 +118,7 @@ describe('AttachmentChip hover preview', () => {
   it('opens its preview above the card, clear of the box below it', () => {
     vi.useFakeTimers();
     const chip: ChatAttachedChip = { id: 'f', type: 'image', name: 'a.png', data_snapshot: { url: 'https://a/i.png' } };
-    render(<AttachmentChip id='f' type='image' name='a.png' chip={chip} testId='card' />);
+    renderWithTooltips(<AttachmentChip id='f' type='image' name='a.png' chip={chip} testId='card' />);
     hover(label());
 
     expect(screen.getByTestId('hover-preview-content')).toHaveAttribute('data-side', 'top');
@@ -125,7 +127,7 @@ describe('AttachmentChip hover preview', () => {
   it('opens no preview when the keyboard lands on the remove button', () => {
     vi.useFakeTimers();
     const chip: ChatAttachedChip = { id: 'f', type: 'image', name: 'a.png', data_snapshot: { url: 'https://a/i.png' } };
-    render(<AttachmentChip id='f' type='image' name='a.png' chip={chip} onRemove={() => undefined} testId='card' />);
+    renderWithTooltips(<AttachmentChip id='f' type='image' name='a.png' chip={chip} onRemove={() => undefined} testId='card' />);
     act(() => {
       screen.getByRole('button').focus();
       vi.advanceTimersByTime(HOVER_OPEN_DELAY_MS + 10);
@@ -137,7 +139,7 @@ describe('AttachmentChip hover preview', () => {
   it('opens no preview when the pointer is on the remove button', () => {
     vi.useFakeTimers();
     const chip: ChatAttachedChip = { id: 'f', type: 'image', name: 'a.png', data_snapshot: { url: 'https://a/i.png' } };
-    render(<AttachmentChip id='f' type='image' name='a.png' chip={chip} onRemove={() => undefined} testId='card' />);
+    renderWithTooltips(<AttachmentChip id='f' type='image' name='a.png' chip={chip} onRemove={() => undefined} testId='card' />);
     hover(screen.getByRole('button'));
 
     expect(screen.queryByTestId('hover-preview-content')).not.toBeInTheDocument();
@@ -166,7 +168,7 @@ describe('AttachmentChip canvas rows — the thumbnail shows the stored preview 
         edges: [],
       },
     };
-    render(<AttachmentChip id='c' type='canvas' name='' chip={chip} testId='card' />);
+    renderWithTooltips(<AttachmentChip id='c' type='canvas' name='' chip={chip} testId='card' />);
     hover(label());
     const row = screen.getAllByTestId('attachment-preview-row')[0];
     expect(row?.querySelector('img')?.getAttribute('src')).toBe(`${stored}.preview.webp`);

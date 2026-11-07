@@ -23,7 +23,8 @@ import { toast } from '@web/lib/toast';
 import { chatApi } from '@web/data/api/chat';
 import { getRunning, runOnce, useRunning } from '@web/stores/task-actions-in-flight';
 import { ApiException } from '@web/data/api/types';
-import type { ConversationOnTheWire, OpenChatResult } from '@web/data/api/chat';
+import type { ChatConversationOnTheWire, ConversationOnTheWire, OpenChatResult } from '@web/data/api/chat';
+import type { AgentModelChoice } from '@breatic/shared';
 import {
   evictAllChatSessions,
   evictChatSession,
@@ -69,6 +70,12 @@ export interface ConversationRuntime {
    * name, which is a different sentence from the one it had.
    */
   title: string | null;
+  /**
+   * The model this conversation is answered by (#1363), as the server said
+   * when it was opened, and as the picker set it since. A message is sent
+   * with it.
+   */
+  agentModel: AgentModelChoice;
 }
 
 /** How far opening one project's chat has got. */
@@ -80,11 +87,11 @@ interface ConversationRuntimeState {
   /** Which conversation each project is showing. */
   currentByProject: Record<string, string>;
   /**
-   * Every conversation this reader has in a project, most recent first.
+   * Every conversation this user has in a project, most recent first.
    *
    * Held apart from `conversations` because the two answer different
    * questions. That one holds what is being said, and only for the ones that
-   * have been opened; this one is what the reader chooses from, and carries
+   * have been opened; this one is what the user chooses from, and carries
    * nothing but what a row shows.
    */
   listByProject: Record<string, ConversationOnTheWire[]>;
@@ -104,7 +111,7 @@ interface ConversationRuntimeState {
    * about a failed page moves, so the end of the list stays exactly where it
    * was and watching it again would report it again at once, which is the
    * failure retrying itself. While this is true the end is not watched at
-   * all; a single scroll is, because a scroll is something only the reader
+   * all; a single scroll is, because a scroll is something only the user
    * does.
    */
   listMoreFailed: Record<string, boolean>;
@@ -120,7 +127,7 @@ interface ConversationRuntimeState {
    * Which projects have the first page of the list on its way.
    *
    * "Nothing here" and "not known yet" are two different sentences, and the
-   * list holds nothing in both cases. Saying the wrong one has the reader
+   * list holds nothing in both cases. Saying the wrong one has the user
    * close the list believing they misremembered, and find it populated a
    * second later. Both routes that fetch a first page raise it -- opening the
    * panel, and opening the list -- because it is one fact about the project,
@@ -140,7 +147,7 @@ interface ConversationRuntimeState {
    * What is half-typed in each conversation, keyed by conversation.
    *
    * One per conversation and not one per panel: switching conversations puts
-   * a different one in front of the reader, and a single draft would follow
+   * a different one in front of the user, and a single draft would follow
    * them across as if they had typed it there.
    */
   draftByConversation: Record<string, string>;
@@ -164,11 +171,18 @@ interface ConversationRuntimeState {
    * where this lives for all but the first moment of one. That moment is the
    * gap: pressing send when there is no conversation opens one first, a whole
    * request during which the turn does not exist. Waiting begins when the
-   * reader presses, not when a conversation turns up to hold it, so the wait
+   * user presses, not when a conversation turns up to hold it, so the wait
    * needs somewhere to be recorded before there is a turn -- and the project
    * is what there is.
    */
   sendingByProject: Record<string, true>;
+  /**
+   * How many times the model list was asked for again (#1363): on a send or a
+   * model save the server refused, which is how a page learns a model was
+   * taken off, and on a conversation whose model the page's list lacks. The
+   * model picker fetches the list again when it rises.
+   */
+  modelListAsks: number;
 }
 
 /**
@@ -249,8 +263,8 @@ const opening: InFlight<OpenFailure | undefined> = new Map();
  *
  * A second press joins the request in flight rather than making another one.
  * Two requests would answer with the same page and both would be written to
- * the head of the list, so the reader would be shown every earlier message
- * twice -- and this is a button, which is the one thing readers press twice.
+ * the head of the list, so the user would be shown every earlier message
+ * twice -- and this is a button, which is the one thing users press twice.
  * Keying the request by what it asks for and joining the one in flight is how
  * every library that fetches for a view does this: SWR calls it deduping,
  * RTK Query keys it by endpoint and arguments, Apollo has it on by default.
@@ -274,7 +288,7 @@ function forgetEarlierPages(conversationId: string): void {
 /**
  * The visit each project is currently on.
  *
- * A reader who finds a project slow to open backs out and comes in again --
+ * A user who finds a project slow to open backs out and comes in again --
  * which is the ordinary answer to a slow screen, not an unusual sequence. The
  * first visit's requests are still running when the second one starts, and
  * their answers replace what is on screen: the open call rebuilds the whole
@@ -284,7 +298,7 @@ function forgetEarlierPages(conversationId: string): void {
  * "Is this project still on screen" cannot tell the two visits apart, because
  * coming back makes it true again. This can: every request carries the signal
  * of the visit that asked for it, leaving raises that signal, and a raised
- * signal stays raised -- so an answer to a visit the reader has left can
+ * signal stays raised -- so an answer to a visit the user has left can
  * neither arrive nor be written. It is what Apollo Client does when an
  * observer unsubscribes, and cancelling is the only property the check needs.
  */
@@ -293,7 +307,7 @@ const visits = new Map<string, AbortController>();
 /**
  * The visit a project is on, starting one if it is not on any.
  * @param projectId - The project being visited.
- * @returns Its visit, whose signal is raised when the reader leaves.
+ * @returns Its visit, whose signal is raised when the user leaves.
  */
 function currentVisit(projectId: string): AbortController {
   const existing = visits.get(projectId);
@@ -363,6 +377,7 @@ const useStore = create<ConversationRuntimeState>()(() => ({
   openStatus: {},
   navigatingByProject: {},
   sendingByProject: {},
+  modelListAsks: 0,
 }));
 
 /**
@@ -431,7 +446,7 @@ async function ensureLoaded(projectId: string): Promise<void> {
  * one of the callers is a send that is going to try again and a line about a
  * failure that healed itself is a line about nothing.
  *
- * Written once because all three callers owe the reader the same things --
+ * Written once because all three callers owe the user the same things --
  * the same status while it runs, the same check that the visit which asked is
  * still the one on screen. They are: opening the chat, a turn that finds its
  * conversation gone, and removing the last conversation there was. The first
@@ -456,7 +471,7 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
     // is take a conversation away from someone reading it: the message column
     // draws nothing while this says loading, so a re-open behind a chat that
     // works would blank it -- and a re-open is something a press causes, so the
-    // reader would press send and watch their conversation disappear.
+    // user would press send and watch their conversation disappear.
     //
     // A chat that could not be read has nothing to take away. Saying loading
     // there is the whole of what a retry looks like: the scrim goes, the wait is
@@ -471,12 +486,12 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
     try {
       const opened = await chatApi.openChat(projectId, visit.signal);
       if (visit.signal.aborted) return undefined;
-      // The reader can press "new conversation" while this is still out -- the
+      // The user can press "new conversation" while this is still out -- the
       // header is drawn before the answer arrives. What they pressed is later
       // than this, so the conversation they made is the one to stay on; only
       // the list below is still worth taking.
       // Two separate questions, and being overtaken answers only one of them.
-      // Which conversation to show: not this one, the reader has since chosen
+      // Which conversation to show: not this one, the user has since chosen
       // another. What the list holds: this answer, still -- it was assembled
       // before they chose, so it lacks what they made, but it has everything
       // else. Dropping it whole would leave the sheet showing one row where the
@@ -484,7 +499,7 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
       // recover them either.
       // A press that failed takes its navigation back, so being overtaken here
       // means something later actually stands -- and this answer, assembled
-      // before it, must not replace what the reader chose.
+      // before it, must not replace what the user chose.
       landed = stillAwaited(projectId, nav);
       if (landed) adoptConversation(projectId, opened.current);
       const wanted = wantedAfterUpdate.get(projectId);
@@ -499,7 +514,7 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
       // Both ways out of the setState below bump it, not only the replacing
       // one: being overtaken keeps the held list and appends to it, so that
       // cursor still points at a row somebody holds. Dropping the page anyway
-      // costs the reader one more scroll; keeping one that turns out to be
+      // costs the user one more scroll; keeping one that turns out to be
       // about a list nobody holds costs a gap in the middle of the list, and
       // a `hasMore` that closes paging for the rest of this visit.
       listReplaced(projectId);
@@ -516,7 +531,7 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
           // The mark said the last attempt at the next page did not arrive.
           // This answer is the whole list again, so that sentence is about a
           // list nobody is holding any more -- and left standing it would both
-          // show the reader an error belonging to something else and keep the
+          // show the user an error belonging to something else and keep the
           // paging gate shut, since the gate is read before the mark is
           // cleared.
           listMoreFailed: { ...st.listMoreFailed, [projectId]: false },
@@ -526,18 +541,18 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
     } catch (err) {
       // Except when the visit that asked is over, which includes this refusal
       // being the abort itself. Reporting it then would have the caller replace
-      // a conversation the reader is looking at now with the news that a
+      // a conversation the user is looking at now with the news that a
       // request they walked away from did not work.
       if (visit.signal.aborted) return undefined;
       // Only while this is still the navigation being waited for. Something
-      // the reader pressed later takes the question away from this one: what
+      // the user pressed later takes the question away from this one: what
       // is on its way then is theirs, and the panel is waiting for that, not
       // failing at this. Saying otherwise raises a scrim over a wait that is
       // about to end -- and if that later press lands, over a conversation
       // that works.
       // Nor over a chat that has opened before: there is a conversation on
       // screen and it is still readable, so saying it could not be opened
-      // would take it away over a request the reader did not make.
+      // would take it away over a request the user did not make.
       if (stillAwaited(projectId, nav) && useStore.getState().openStatus[projectId] !== 'ready') {
         markUnreadable(projectId, err);
       }
@@ -610,6 +625,7 @@ function adoptConversation(projectId: string, opened: OpenChatResult['current'])
         hasMore: held?.hasMore ?? opened.hasMore,
         oldestLoadedTurn: held ? held.oldestLoadedTurn : oldestTurnOf(opened.messages),
         title: opened.conversation.title ?? null,
+        agentModel: opened.conversation.agentModel,
       },
     },
   }));
@@ -623,7 +639,7 @@ const NOT_FOUND = 404;
  *
  * Not the same as a request that failed. It is our own answer, and what it
  * says is that the thing being asked about is not there -- which for a delete
- * is the outcome the reader wanted. Another tab of theirs having deleted it is
+ * is the outcome the user wanted. Another tab of theirs having deleted it is
  * how it usually got that way.
  *
  * The status alone is not enough. A proxy answering 404 for a path it does not
@@ -682,7 +698,7 @@ function stillSendingTo(projectId: string, conversationId: string): boolean {
  * Hold the project's send mark for as long as this takes.
  *
  * For the stretches of a send with no turn to carry the wait -- opening a
- * conversation, and reading the chat limits the reader's Spaces are cut to
+ * conversation, and reading the chat limits the user's Spaces are cut to
  * (inner#1413), after which {@link stillSendingTo} decides whether the send
  * still goes. Each can be a whole request long, and each would leave a live
  * send button up.
@@ -724,7 +740,7 @@ async function loadEarlier(conversationId: string): Promise<void> {
   // Keyed by what it asks for, not just who it asks about. A second press
   // after the list has moved on asks from a different cursor, and joining the
   // one still on its way would be waiting on a page that is going to be
-  // dropped -- the reader would have pressed a button and had nothing happen.
+  // dropped -- the user would have pressed a button and had nothing happen.
   await joinOrStart(loadingEarlier, `${conversationId}:${beforeTurn}`, async (): Promise<void> => {
     try {
       const earlier = await chatApi.messagesBefore(conversationId, beforeTurn, visit.signal);
@@ -750,14 +766,14 @@ async function loadEarlier(conversationId: string): Promise<void> {
       // And onto the list the panel is drawing, which is the session's. What
       // is written above is the starting point a session is built from; a
       // session that already exists never reads it again, so a page that
-      // stopped here would be a button the reader presses to no effect.
+      // stopped here would be a button the user presses to no effect.
       prependHistory(conversationId, earlier.messages);
     } catch (err) {
       // Except when the visit is over, which includes this failure being the
       // abort itself: nobody asked for this page any more.
       if (visit.signal.aborted) return;
       // Told once. The button is still there and still says there is more, so
-      // pressing it again is how the reader tries again -- and being told
+      // pressing it again is how the user tries again -- and being told
       // again is what tells them it failed again.
       tell({ projectId: before.projectId, conversationId, ...readMishap(err) });
     }
@@ -792,17 +808,17 @@ function markUnreadable(projectId: string, err: unknown): void {
  * navigation that ends removes itself, so an empty set means the last one out
  * has to settle the panel -- nobody is left who could.
  *
- * It cannot answer the other question, whether the reader is still waiting for
+ * It cannot answer the other question, whether the user is still waiting for
  * a particular one. Leaving the set is what every navigation does when it
  * ends, the newest included; asking who is highest among those left would then
  * promote an older one still travelling, and its stale answer would replace
- * what the reader actually chose. That question goes to {@link claimed}, which
- * names the one navigation the reader is waiting for.
+ * what the user actually chose. That question goes to {@link claimed}, which
+ * names the one navigation the user is waiting for.
  */
 const inFlight = new Map<string, Set<number>>();
 
 /**
- * Record that the reader has asked to be somewhere in this project.
+ * Record that the user has asked to be somewhere in this project.
  * @param projectId - The project being navigated.
  * @returns The number to check back with, and to end with.
  */
@@ -822,7 +838,7 @@ function intendToNavigate(projectId: string): number {
 /**
  * The number of the last navigation asked for, per project.
  *
- * Answers "is the reader still waiting for me": only the newest can be, and
+ * Answers "is the user still waiting for me": only the newest can be, and
  * this is the only record that survives a navigation ending. It never goes
  * backwards, so a number is never handed out twice and a stale answer can
  * never pass for the current one.
@@ -830,12 +846,12 @@ function intendToNavigate(projectId: string): number {
 const lastIssued = new Map<string, number>();
 
 /**
- * Whether the navigation the reader is waiting for is still on its way.
+ * Whether the navigation the user is waiting for is still on its way.
  *
  * Asked by whoever is about to act on the conversation that is on screen now:
  * while it is true, that conversation is about to stop being the answer. An
  * overtaken navigation does not count -- it cannot replace anything any more,
- * so waiting on it holds the reader back for an answer nobody will use.
+ * so waiting on it holds the user back for an answer nobody will use.
  * @param projectId - The project being asked about.
  * @returns Whether the awaited navigation is out for it.
  */
@@ -846,7 +862,7 @@ function awaitedNavigationInFlight(projectId: string): boolean {
 }
 
 /**
- * Whether the reader is still waiting for the navigation with this number.
+ * Whether the user is still waiting for the navigation with this number.
  * @param projectId - The project.
  * @param token - What {@link intendToNavigate} handed back.
  * @returns True while nothing later is still on its way.
@@ -856,11 +872,11 @@ function stillAwaited(projectId: string, token: number): boolean {
 }
 
 /**
- * The navigation whose answer the reader is currently waiting for.
+ * The navigation whose answer the user is currently waiting for.
  *
  * Separate from {@link lastIssued} because a press that fails asked for
  * nothing in the end: the claim goes back to the newest one still travelling,
- * whose answer is what the reader wants again. Separate from {@link inFlight}
+ * whose answer is what the user wants again. Separate from {@link inFlight}
  * because that one forgets a navigation the moment it ends, including the
  * newest -- and then an older one still on its way would look like the latest
  * word.
@@ -872,7 +888,7 @@ const claimed = new Map<string, number>();
  *
  * A navigation that failed hands its claim back to whatever is still
  * travelling, and without this that could be a number older than what is on
- * screen -- its answer was assembled before the conversation the reader is
+ * screen -- its answer was assembled before the conversation the user is
  * looking at existed, so letting it land takes that conversation away from
  * them and drops the row for it. Nothing older than this is anybody's wish
  * any more.
@@ -884,7 +900,7 @@ const lastLanded = new Map<string, number>();
  *
  * Every route that takes a number must reach here, once, whether it landed,
  * failed, or was overtaken. Being the last one out carries a duty: saying
- * `loading` promised the reader a conversation, and if nothing else is still
+ * `loading` promised the user a conversation, and if nothing else is still
  * travelling then nobody else can keep that promise. Left alone the panel
  * holds a skeleton that turns for ever -- no conversation, no scrim, and so
  * no way to ask again.
@@ -898,10 +914,10 @@ function navigationEnded(projectId: string, token: number, landed: boolean): voi
   if (landed) lastLanded.set(projectId, Math.max(lastLanded.get(projectId) ?? -1, token));
   if (!landed && claimed.get(projectId) === token) {
     // This press asked for nothing in the end, so it stops outranking the
-    // others. Whatever is still travelling is the reader's wish again -- the
+    // others. Whatever is still travelling is the user's wish again -- the
     // newest of those, since the older ones were already overtaken -- but only
     // if it is newer than what is on screen. An older one cannot be a wish:
-    // its answer was assembled before the conversation the reader is looking
+    // its answer was assembled before the conversation the user is looking
     // at, and handing the claim to it lets that answer replace them.
     const newest = flying === undefined || flying.size === 0 ? undefined : Math.max(...flying);
     const stillGoing =
@@ -913,10 +929,10 @@ function navigationEnded(projectId: string, token: number, landed: boolean): voi
   //
   // The composer is held still while the conversation on screen is about to be
   // replaced. A navigation that has been overtaken cannot replace it any more,
-  // so what matters is whether the one the reader is waiting for is still
+  // so what matters is whether the one the user is waiting for is still
   // travelling -- not whether anything is. Pressing the row already on screen
   // ends the wait at once; leaving the box frozen until an abandoned answer
-  // turns up makes the reader wait on something that will be thrown away.
+  // turns up makes the user wait on something that will be thrown away.
   if (!awaitedNavigationInFlight(projectId)) {
     useStore.setState((s) => ({
       navigatingByProject: (({ [projectId]: _done, ...rest }) => rest)(s.navigatingByProject),
@@ -940,7 +956,7 @@ function navigationEnded(projectId: string, token: number, landed: boolean): voi
 }
 
 /**
- * Write a conversation's name into the list the reader chooses from.
+ * Write a conversation's name into the list the user chooses from.
  * @param projectId - The project whose list to change.
  * @param conversationId - The conversation being named.
  * @param title - Its name now, or null if it still has none.
@@ -976,7 +992,7 @@ function applyTitle(projectId: string, conversationId: string, title: string | n
  * or the drawer is. And the order, because the list is sorted
  * most recently used first and that is the order `remove` reads to pick where
  * to land -- a list that never re-sorts makes both of those wrong the moment
- * the reader speaks in anything but the top one.
+ * the user speaks in anything but the top one.
  * @param projectId - The project the conversation is in.
  * @param conversationId - The conversation just spoken in.
  * @param title - What it is called now, or null if it still has no name.
@@ -1010,7 +1026,7 @@ function noteActivity(projectId: string, conversationId: string, title: string |
 /**
  * Read one conversation and put it on screen, under a navigation already taken.
  *
- * The two callers -- a reader picking a row, and a delete landing on the next
+ * The two callers -- a user picking a row, and a delete landing on the next
  * row -- owe the same things: check the visit is still on, check this is still
  * the navigation being waited for, and say the same thing when it fails. The
  * number is passed in rather than taken here, because both of them have work
@@ -1045,7 +1061,7 @@ async function readAndAdopt(
     // stop button of whatever turn is running in it. The scrim belongs to an
     // open that failed, where there is no conversation on screen to take away.
     if (visit.signal.aborted) return false;
-    // Only while this landing is still the one being waited for: the reader
+    // Only while this landing is still the one being waited for: the user
     // may have picked a row themselves in the meantime and be reading it, and
     // blacking out the column over a conversation they left would take away
     // one that works.
@@ -1076,7 +1092,7 @@ async function readAndAdopt(
  */
 async function switchTo(projectId: string, conversationId: string): Promise<void> {
   // Taken before the early return below, not after. Picking the row already on
-  // screen is still the reader saying where they want to be, and it has to
+  // screen is still the user saying where they want to be, and it has to
   // cancel whatever is on its way -- otherwise a switch they started and then
   // changed their mind about lands anyway, a moment later.
   const nav = intendToNavigate(projectId);
@@ -1085,7 +1101,7 @@ async function switchTo(projectId: string, conversationId: string): Promise<void
 
     // Already the one on screen. Asking again would replace a conversation with
     // an identical copy of itself for no reason -- but this press did put the
-    // reader where they asked to be, so it counts as having landed. Counting it
+    // user where they asked to be, so it counts as having landed. Counting it
     // as a press that asked for nothing would hand the claim back to whatever
     // is still travelling, and the switch they just changed their mind about
     // would arrive a moment later and take the screen.
@@ -1127,7 +1143,7 @@ export function useStartingNew(projectId: string): boolean {
  * @returns The conversation made, or null when the press was let go unanswered.
  * @throws {unknown} The final failure, when the server refused.
  */
-async function createConversationOnce(projectId: string): Promise<ConversationOnTheWire | null> {
+async function createConversationOnce(projectId: string): Promise<ChatConversationOnTheWire | null> {
   const outcome = await runOnce(newConversationIntent(projectId), {
     scope: 'conversation',
     prepare: () => projectId,
@@ -1141,7 +1157,7 @@ async function createConversationOnce(projectId: string): Promise<ConversationOn
  * Start another conversation in this project and go to it.
  *
  * Nothing on screen moves until the server has made it. The alternative --
- * switching first and reconciling after -- would take the reader out of the
+ * switching first and reconciling after -- would take the user out of the
  * conversation they were in, along with whatever they had half-typed there,
  * on the strength of a request that may be about to fail.
  * @param projectId - The project to start one in.
@@ -1161,7 +1177,7 @@ async function startNew(projectId: string): Promise<void> {
       if (created === null) return;
       if (visit.signal.aborted) return;
       // A switch started before this press may still be out. It was asked for
-      // first and will answer whenever it answers, but this is what the reader
+      // first and will answer whenever it answers, but this is what the user
       // asked for last, so the row it creates is the one to land on -- and the
       // check inside that switch will see this number and leave the screen
       // alone.
@@ -1172,13 +1188,13 @@ async function startNew(projectId: string): Promise<void> {
         listByProject: {
           ...s.listByProject,
           // At the top, where the list's order puts the most recently used one.
-          [projectId]: [created, ...(s.listByProject[projectId] ?? [])],
+          [projectId]: [{ ...created, agentModel: created.agentModel.id }, ...(s.listByProject[projectId] ?? [])],
         },
         // Never having been answered means the first page never arrived, and
         // this row is then the whole of what the list holds. What came before
         // it is unknown, which is not the same as nothing: saying nothing
         // would close paging for good, and reaching the end of a list of one
-        // is how the reader would otherwise get those conversations back --
+        // is how the user would otherwise get those conversations back --
         // the page after this row is exactly the page that failed to arrive.
         listHasMore:
           s.listHasMore[projectId] === undefined
@@ -1202,7 +1218,7 @@ async function startNew(projectId: string): Promise<void> {
 /**
  * Projects with a request out for their next page of conversations.
  *
- * Reaching the bottom of a list fires as often as the reader keeps scrolling,
+ * Reaching the bottom of a list fires as often as the user keeps scrolling,
  * and every one of those would ask for the same page again: one request per
  * scroll event, all for the same cursor. The rows themselves are safe -- the
  * answers are filtered against the ids already held -- but the requests are
@@ -1309,7 +1325,7 @@ function firstPageEnded(projectId: string): void {
  * Does nothing while a request is already out, and nothing when the list is
  * known to be complete. It continues from the last row held rather than from a
  * count of rows: this list is ordered by when each conversation was last used,
- * so it moves while the reader pages through it, and a count would land
+ * so it moves while the user pages through it, and a count would land
  * somewhere other than where the last page ended.
  *
  * A failure leaves the rows already listed exactly as they are and says so
@@ -1350,7 +1366,7 @@ async function loadMoreConversations(projectId: string): Promise<void> {
     // `hasMore` it carries could close paging on a list that is not finished.
     // Dropped, and nothing takes its place: the list that replaced this one
     // says for itself whether there is more, and reaching *its* end is what
-    // asks next. Asking here would hand the reader a page they never scrolled
+    // asks next. Asking here would hand the user a page they never scrolled
     // to -- the end they reached belonged to a list that is gone.
     if (listNow(projectId) !== asked) return;
     useStore.setState((s) => {
@@ -1370,7 +1386,7 @@ async function loadMoreConversations(projectId: string): Promise<void> {
   } catch {
     if (visit.signal.aborted) return;
     // Said in a toast as it happens (inner#1530). The mark stays: it keeps the
-    // end-of-list watcher off duty until the reader scrolls again.
+    // end-of-list watcher off duty until the user scrolls again.
     toast.error(t('chat.history.moreFailed'));
     useStore.setState((st) => ({
       listMoreFailed: { ...st.listMoreFailed, [projectId]: true },
@@ -1378,7 +1394,7 @@ async function loadMoreConversations(projectId: string): Promise<void> {
   } finally {
     // Only if this is still the visit that asked. Both of these are per
     // project, and a request abandoned with a visit lands whenever it lands --
-    // by then the reader may have come back and asked again. Clearing then
+    // by then the user may have come back and asked again. Clearing then
     // takes down the line saying a page is on its way while one still is, and
     // opens the gate that stops the same page being asked for twice.
     if (!visit.signal.aborted) {
@@ -1394,14 +1410,14 @@ async function loadMoreConversations(projectId: string): Promise<void> {
 /**
  * Fetch the first page of the list again, replacing what is held.
  *
- * Opening the list is a moment to fetch: where the reader had paged to, and
+ * Opening the list is a moment to fetch: where the user had paged to, and
  * what they saw, belong to the last time they opened it -- and in between,
  * another tab of theirs may have started conversations, deleted them, or
  * renamed them. Replacing rather than merging is the point: rows that are
  * gone have to go, and merging keeps them.
  *
  * It clears the mark left by a page that failed, which is the other half. The
- * mark takes the end-of-list watcher off duty until the reader scrolls, and a
+ * mark takes the end-of-list watcher off duty until the user scrolls, and a
  * list too short to scroll gives them no way to do that -- so without this a
  * single failed page would end paging for the rest of the visit.
  * @param projectId - The project whose list to fetch again.
@@ -1458,7 +1474,7 @@ function settleListLoading(projectId: string): void {
  * shows it until then, and puts the old one back when this rejects.
  * @param projectId - The project the conversation is in.
  * @param conversationId - The conversation being named.
- * @param title - The name the reader typed.
+ * @param title - The name the user typed.
  * @throws {Error} When the server did not store the name, after saying so.
  */
 async function rename(
@@ -1483,9 +1499,9 @@ async function rename(
  * Delete a conversation, and go somewhere sensible if it was the one on screen.
  *
  * Where "somewhere sensible" is: the next one in the list, which is ordered
- * most recently used first, so it is the one the reader was in before this.
+ * most recently used first, so it is the one the user was in before this.
  * When it was the only one, chat is opened again -- and opening a project with
- * no conversation makes one, which is the same answer the reader would get by
+ * no conversation makes one, which is the same answer the user would get by
  * leaving and coming back.
  * @param projectId - The project the conversation is in.
  * @param conversationId - The conversation to delete.
@@ -1498,12 +1514,12 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
   } catch (err) {
     if (visit.signal.aborted) return;
     // Our own "that conversation is gone" is not a failure to delete it: it is
-    // already deleted, which is what the reader asked for. Another tab of
+    // already deleted, which is what the user asked for. Another tab of
     // theirs is how it usually got that way. Treating it as a failure left a
     // row that could never be removed -- every press answered the same way.
     // Anything else, the row stays: a list that has lost a conversation the
     // server still has is worse than one that failed to lose it, because only
-    // the second is something the reader can retry.
+    // the second is something the user can retry.
     if (!alreadyGone(err)) {
       tell({ projectId, conversationId, deliberate: true, ...readMishap(err) });
       return;
@@ -1523,7 +1539,7 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
   );
   // Read now, not before the request went out. Whether this conversation is
   // the one on screen is a question about the moment it disappears, and in
-  // between the reader may have picked another row -- deciding at the start
+  // between the user may have picked another row -- deciding at the start
   // would pull them off it. Read before the write below, because that write
   // is what makes the answer unavailable.
   const wasOnScreen = useStore.getState().currentByProject[projectId] === conversationId;
@@ -1549,7 +1565,7 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
   if (!wasOnScreen) return;
 
   // Landing somewhere else is a navigation like any other, and it has to be
-  // ordered against the reader's own: whatever they pressed after this must
+  // ordered against the user's own: whatever they pressed after this must
   // win over the row this picks for them.
   const nav = intendToNavigate(projectId);
   let landed = false;
@@ -1568,7 +1584,7 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
     if (next) {
       // Under the number taken above rather than one of its own: calling
       // `switchTo` would take a second, and the two would then be ordered
-      // against each other rather than against what the reader presses next.
+      // against each other rather than against what the user presses next.
       landed = await readAndAdopt(projectId, next.id, nav, true);
       return;
     }
@@ -1578,7 +1594,7 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
     const failure = await openAndAdopt(projectId);
     // The scrim, if one is owed, is that call's to raise: it holds the number
     // for the navigation it made, so it is the one that can tell whether the
-    // reader is still waiting for it. Raising a second one from here asked
+    // user is still waiting for it. Raising a second one from here asked
     // nothing at all -- and the branch just above, which lands on the next
     // conversation instead, has always asked first.
     // What is left here is the word about it, and that is owed only while this
@@ -1666,9 +1682,9 @@ function leaveProject(projectId: string): void {
     const { [projectId]: _listLoading, ...listLoading } = s.listLoading;
     const { [projectId]: _why, ...openFailure } = s.openFailure;
     // The drafts of every conversation in this project go with it. A draft
-    // belongs to a conversation the reader was in, and coming back re-opens
+    // belongs to a conversation the user was in, and coming back re-opens
     // the project from the server -- so keeping them would hand a returning
-    // reader half a sentence they typed in a session they have left.
+    // user half a sentence they typed in a session they have left.
     const keptDrafts: Record<string, string> = {};
     for (const [id, draft] of Object.entries(s.draftByConversation)) {
       if (s.conversations[id]?.projectId !== projectId) keptDrafts[id] = draft;
@@ -1755,7 +1771,24 @@ export function _resetForTests(): void {
     openStatus: {},
     navigatingByProject: {},
     sendingByProject: {},
+    modelListAsks: 0,
   });
+}
+
+/**
+ * Set the model a conversation is answered by, here only (#1363): the picker
+ * saves a pick itself, and puts the model it shows here when the stored one
+ * is no longer listed.
+ * @param conversationId - The conversation.
+ * @param agentModel - The model.
+ */
+function setAgentModel(conversationId: string, agentModel: AgentModelChoice): void {
+  patchConversation(conversationId, (c) => ({ ...c, agentModel }));
+}
+
+/** Ask for the model list again (#1363); see `modelListAsks`. */
+function askModelListAgain(): void {
+  useStore.setState((s) => ({ modelListAsks: s.modelListAsks + 1 }));
 }
 
 export const useConversationRuntime = useStore;
@@ -1776,4 +1809,6 @@ export const conversationRuntime = {
   remove,
   setDraft,
   draftOf,
+  setAgentModel,
+  askModelListAgain,
 };

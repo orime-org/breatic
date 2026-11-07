@@ -51,9 +51,24 @@ export interface ConversationEntity {
   projectId: string | null;
   /** Turn index up to which messages have been consolidated into memory. */
   lastConsolidatedTurn: number;
+  /** The Agent model this conversation is answered by, as stored; null before its first pick (#1363). */
+  agentModel: string | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
+}
+
+/** One model the user can pick in the chat panel (#1363). */
+export interface AgentModelChoice {
+  id: string;
+  /** Shown as written; English. */
+  name: string;
+}
+
+/** A conversation as the chat panel is handed it: with the model it is answered by (#1363). */
+export interface ChatConversation extends Omit<ConversationEntity, "agentModel"> {
+  /** The stored pick when it is still listed, else the user's last pick, else the deployment's default. */
+  agentModel: AgentModelChoice;
 }
 
 /**
@@ -119,7 +134,7 @@ export type MessagePart =
    *
    * A fact about the turn rather than something the model streamed, so it
    * travels the way the four marks below do. One figure for the turn: the
-   * reader is shown one fold, and the model may think in several stretches
+   * user is shown one fold, and the model may think in several stretches
    * with tool calls between them, which is the sum this holds.
    */
   | { type: "thinking-time"; ms: number }
@@ -146,7 +161,7 @@ export type MessagePart =
       input: Record<string, unknown> | string;
       /**
        * How far this use of the tool got. `awaiting` is an `ask_user` call
-       * the reader has not answered yet: the turn stopped at it, and the
+       * the user has not answered yet: the turn stopped at it, and the
        * answer comes back as its result in a later request (inner#1542).
        */
       status: "pending" | "awaiting" | "success" | "error";
@@ -190,7 +205,7 @@ export type MessagePart =
        * A turn cut off while the model was still emitting a call leaves the
        * arguments half-parsed -- the SDK fills `input` from a partial JSON
        * parse on every delta. The panel still shows the call, because the
-       * reader watched it start; the model is not shown it, because it would
+       * user watched it start; the model is not shown it, because it would
        * read as a call it made with arguments it never sent.
        */
       argumentsIncomplete?: boolean;
@@ -216,7 +231,7 @@ export type MessagePart =
    * follows: a turn that fails before the model says a word produces nothing
    * else, and a row with an empty list cannot be told apart from a turn that
    * never happened. Being stopped, failing and running out of room are the
-   * three ways a turn ends without finishing, and a reader has to tell them apart — one is something
+   * three ways a turn ends without finishing, and a user has to tell them apart — one is something
    * the user did, the other is something that went wrong.
    */
   | {
@@ -224,7 +239,7 @@ export type MessagePart =
     /**
      * Why, when it is not an ordinary failure: `too_long` is a turn whose
      * request could not be made to fit the model's context window however
-     * much earlier history was folded into memory (inner#1567). The reader is
+     * much earlier history was folded into memory (inner#1567). The user is
      * told to narrow the request rather than to send it again.
      */
     reason?: "too_long";
@@ -234,7 +249,7 @@ export type MessagePart =
    *
    * The third way a turn ends without finishing, and it is neither of the
    * other two: nobody stopped it and nothing went wrong. What ran out is room
-   * we ourselves set, so a reader told it was stopped would look for a stop
+   * we ourselves set, so a user told it was stopped would look for a stop
    * they never made, and one told it failed would look for a fault there is
    * none of.
    *
@@ -242,10 +257,10 @@ export type MessagePart =
    */
   | { type: "truncated" }
   /**
-   * The model asked the reader something and stopped to wait for the answer.
+   * The model asked the user something and stopped to wait for the answer.
    *
    * Not a way a turn goes wrong -- it is a turn doing what it was asked to,
-   * and a reader offered a retry would be offered a way out of nothing. It is
+   * and a user offered a retry would be offered a way out of nothing. It is
    * a part rather than something read back off the tool names because the
    * list of tools that block lives in `@breatic/domain`, which the panel may
    * not import; a second copy of that list is a second thing to keep true.
@@ -436,7 +451,7 @@ export interface StudioAssetEntity {
    * row that counts toward storage, kind judged from the cover itself = image)
    * | 'project_cover' / 'studio_avatar' (a picture uploaded to be a project's
    * cover or a studio's avatar) | 'agent' (a link the agent saved for the
-   * reader, inner#1315). A dedup hit keeps the first uploader's value,
+   * user, inner#1315). A dedup hit keeps the first uploader's value,
    * so nothing may read this to decide what a row is used as.
    */
   source: "ai" | "upload" | "cover" | "project_cover" | "studio_avatar" | "agent";
@@ -748,11 +763,11 @@ export interface ProjectDetail {
    * read-only for every member; `myRole` stays the stored role.
    */
   archivedAt: Date | null;
-  /** Whether the reader may rename it — live, and they are the studio's admin or its owner. */
+  /** Whether the user may rename it — live, and they are the studio's admin or its owner. */
   canManageMeta: boolean;
-  /** Whether the reader may restore it — archived and they are the studio's admin. */
+  /** Whether the user may restore it — archived and they are the studio's admin. */
   canRestore: boolean;
-  /** Whether the reader may leave it — live, and they are an editor or a viewer. */
+  /** Whether the user may leave it — live, and they are an editor or a viewer. */
   canLeave: boolean;
 }
 
@@ -846,15 +861,40 @@ export interface RecentItem {
   lastOpenedAt: Date;
 }
 
+/** One row of the Agent's memory (#1363): a fact the member's Agent keeps. */
+export interface AgentMemoryEntity {
+  id: string;
+  userId: string;
+  /** The Project it belongs to. */
+  projectId: string | null;
+  /** The conversation it belongs to alone; null for an entry read across the member's conversations in the Project. */
+  conversationId: string | null;
+  /** The conversation it was written in; null for an entry migrated from a Project block. */
+  sourceConversationId: string | null;
+  title: string;
+  content: string;
+  /** Who wrote it: the Agent through its memory tools, a consolidation, or the migration. */
+  origin: "agent" | "consolidation" | "migration";
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+}
+
 /**
- * The two memory layers an LLM prompt carries.
+ * The Agent's memory as one turn's system prompt carries it (#1363).
  *
- * Both are the reader's own: project memory is keyed by member as well as
- * project, and conversation memory by conversation.
+ * All of it is the user's own: entries of their Project and of this
+ * conversation, and this conversation's progress note.
  */
 export interface MemoryContext {
-  projectMemory: string;
-  conversationMemory: string;
+  /** The index, newest first: one line per entry, up to the configured bound. */
+  entries: Array<{ id: string; title: string }>;
+  /** Entries migrated from an earlier block of memory, carried in full until a consolidation splits them. */
+  migrated: Array<{ id: string; title: string; content: string }>;
+  /** How many entries the index leaves out. */
+  olderCount: number;
+  /** Where this conversation has got to; empty when nothing has been folded yet. */
+  progress: string;
 }
 
 

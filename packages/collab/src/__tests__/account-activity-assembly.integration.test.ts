@@ -121,11 +121,11 @@ describe("P19/P20 createCollabServer real composition acceptance", () => {
 
   it("preserves the production viewer read-only gate and excludes its mutation from activity", async () => {
     const fixture = await seedCollabActivity();
-    const reader = await viewer(fixture);
-    const client = await connect(reader, "readonly");
+    const viewerFixture = await viewer(fixture);
+    const client = await connect(viewerFixture, "readonly");
     client.socket.send(syncFrame(client.documentName, WIRE.sync, SYNC.update, mutation(client)));
     await confirm(client, false);
-    expect(await collabActivityRows(reader)).toEqual([]);
+    expect(await collabActivityRows(viewerFixture)).toEqual([]);
     expect(await collabActivityRows(fixture)).toEqual([]);
     expect(active.hocuspocus.documents.get(client.documentName)?.getMap("activity-test").get("actor")).toBeUndefined();
   });

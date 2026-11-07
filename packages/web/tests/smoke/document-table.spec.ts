@@ -9,7 +9,7 @@
  * which needs real layout; dragging a row, a column or a column's edge, and
  * selecting across cells, are real pointer gestures; a pasted table comes in
  * through a real clipboard event; two pages on one Space are two real
- * connections. Every table here is made the way a reader makes one, off the
+ * connections. Every table here is made the way a user makes one, off the
  * block menu's grid, and every case checks the page threw nothing.
  *
  * Wants dev running:
@@ -783,7 +783,7 @@ test('A6 and A11: a cell cut by the frame of a wide table shows its button and c
     }, [box.x, right] as const);
 
   // The scroll's event lands a frame later and hides the table's controls
-  // (A6); the pointer arrives after it, as a reader's does.
+  // (A6); the pointer arrives after it, as a user's does.
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await page.mouse.click(cut!.x, cut!.y);
   await expect(page.getByTestId('doc-table-cell-button')).toHaveCount(1);
@@ -942,7 +942,7 @@ for (const theme of ['light', 'dark']) {
   });
 }
 
-test('T1 and T9: a table pasted below a list in a cell becomes its blocks on both pages', async ({ browser }) => {
+test('T1 and T9: a table nested below a list, pasted in a cell, is refused and leaves both pages as they were (inner#1312 A14)', async ({ browser }) => {
   const spaceId = await openFreshDocument(page);
   await smallTable(page);
   const other = await browser.newPage({ viewport: { width: 1680, height: 950 } });
@@ -956,7 +956,9 @@ test('T1 and T9: a table pasted below a list in a cell becomes its blocks on bot
 
     await pasteHtml(page, '<ul><li>Outer<ul><li>Inner<table><tr><td>nested1</td><td>nested2</td></tr></table></li></ul></li></ul>', 'Outer\nInner\nnested1\tnested2');
 
-    const expected = [[['a1OuterInnernested1nested2', 'b1'], ['a2', 'b2']]];
+    // A table with other content is refused in a cell (inner#1312 A14).
+    await expect(page.getByText('This format cannot be pasted here')).toBeVisible();
+    const expected = [[['a1', 'b1'], ['a2', 'b2']]];
     await expect.poll(() => grids(page)).toEqual(expected);
     await expect.poll(() => grids(other)).toEqual(expected);
     await expect(page.locator(`${EDITOR} td table, ${EDITOR} th table`)).toHaveCount(0);
@@ -1415,7 +1417,7 @@ for (const theme of ['light', 'dark']) {
         expect(sizes.cell).toBeLessThanOrEqual(desired + 1);
         expect(sizes.media).toBeGreaterThan(0);
         expect(sizes.media).toBeLessThanOrEqual(sizes.content + 1);
-        const floating = sizes.media < 128;
+        const floating = sizes.media < 92;
         await expect(media).toHaveAttribute('data-controls-mode', floating ? 'floating' : 'inline');
         const bodyHeight = await page.locator(EDITOR).evaluate((element) => element.getBoundingClientRect().height);
         if (floating) {
@@ -1447,8 +1449,8 @@ for (const theme of ['light', 'dark']) {
           const panel = (await page.getByTestId('doc-media-video-panel').boundingBox())!;
           expect(transport.x).toBeGreaterThanOrEqual(panel.x + 1);
           expect(transport.x + transport.width).toBeLessThanOrEqual(panel.x + panel.width - 1);
-          const fullscreen = (await controls.getByTestId('fullscreen').boundingBox())!;
-          expect(fullscreen.x + fullscreen.width).toBeLessThanOrEqual(panel.x + panel.width - 1);
+          const seek = (await controls.getByTestId('seek').boundingBox())!;
+          expect(seek.x + seek.width).toBeLessThanOrEqual(panel.x + panel.width - 1);
           expect(actions.y + actions.height).toBeLessThanOrEqual(transport.y);
           expect(await page.locator(EDITOR).evaluate((element) => element.getBoundingClientRect().height)).toBeCloseTo(bodyHeight, 1);
           await expect(page.getByRole('tooltip')).toHaveCount(0);
@@ -1473,7 +1475,7 @@ for (const theme of ['light', 'dark']) {
         for (const [fromWidth, toWidth] of [[240, 80], [80, 240], [240, 180]] as const) {
           await resizeDocumentColumn(peer, peerCell, fromWidth);
           await expect.poll(async () => Math.abs((await target.boundingBox())!.width - fromWidth)).toBeLessThanOrEqual(1);
-          const floating = (await media.boundingBox())!.width < 128;
+          const floating = (await media.boundingBox())!.width < 92;
           await expect(media).toHaveAttribute('data-controls-mode', floating ? 'floating' : 'inline');
           if (floating) {
             await media.getByTestId('doc-media-video-trigger').focus();
@@ -1555,13 +1557,12 @@ for (const theme of ['light', 'dark']) {
       expect(readFileSync(await download.path()).equals(readFileSync(resolve(__dirname, '../fixtures/media-history.mp4')))).toBe(true);
       expect(await video.evaluate((element: HTMLVideoElement) => ({ time: element.currentTime, paused: element.paused, volume: element.volume, muted: element.muted }))).toEqual(beforeDownload);
       await expect(page.getByTestId('doc-media-video-panel')).toBeVisible();
-      try {
-        await page.getByTestId('doc-media-video-panel').getByTestId('fullscreen').click();
-        await expect.poll(() => page.evaluate(() => document.fullscreenElement?.tagName)).toBe('VIDEO');
-      } finally {
-        await page.evaluate(async () => { if (document.fullscreenElement !== null) await document.exitFullscreen(); });
-      }
-      await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
+      // inner#1844: full screen is on the panel's row of icons and opens our own layer.
+      await page.getByTestId('doc-media-video-panel').getByTestId('doc-media-fullscreen').click();
+      await expect(page.getByTestId('media-fullscreen').locator('video')).toBeVisible();
+      await expect(page.getByTestId('doc-media-video-panel')).toHaveCount(0);
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('media-fullscreen')).toHaveCount(0);
       await media.getByTestId('doc-media-video-trigger').focus();
       await page.keyboard.press('Enter');
       await expect(page.getByTestId('doc-media-video-panel')).toBeVisible();

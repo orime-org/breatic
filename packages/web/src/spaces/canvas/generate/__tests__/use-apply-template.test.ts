@@ -138,7 +138,7 @@ let stamp = 0;
  * @param type - Node type.
  * @param extra - Further data fields, `templateNode` among them.
  */
-function seed(id: string, type: 'image' | 'text', extra: Record<string, unknown> = {}): void {
+function seed(id: string, type: 'image' | 'video' | 'text', extra: Record<string, unknown> = {}): void {
   addNode('p', 's', {
     id,
     type,
@@ -165,7 +165,7 @@ function wire(from: string, to: string, createdAt?: number): void {
  * @param anchor - The anchor's id; every other id is prefixed with it.
  * @param options - What to leave out or change.
  * @param options.guide - Whether the guide text node is there.
- * @param options.models - Models the reader switched the anchor and upstream to.
+ * @param options.models - Models the user switched the anchor and upstream to.
  */
 function seedFlowInstance(anchor: string, options: { guide?: boolean; models?: boolean } = {}): void {
   const { guide = true, models = false } = options;
@@ -395,7 +395,7 @@ describe('useApplyTemplate', () => {
       });
       // No steps, so no guide.
       expect(proposal.nodes.filter((n) => n.role === 'written')).toEqual([]);
-      // An empty node and a `{✏️ …}` are left for the reader (6.5 step 8).
+      // An empty node and a `{✏️ …}` are left for the user (6.5 step 8).
       expect(toast.info).toHaveBeenCalledWith(en.canvas.generatePanel.editProposalMarks);
     });
 
@@ -408,7 +408,7 @@ describe('useApplyTemplate', () => {
       expect(toast.error).not.toHaveBeenCalled();
     });
 
-    it('writes the anchor prompt in the reader’s language', () => {
+    it('writes the anchor prompt in the user’s language', () => {
       seed('target', 'image');
       setLocale('zh-CN');
       const place = vi.fn(lands);
@@ -418,7 +418,7 @@ describe('useApplyTemplate', () => {
       expect(words).toContain('5 行 5 列');
     });
 
-    it('names the group its new nodes may form after the template, in the reader’s language', () => {
+    it('names the group its new nodes may form after the template, in the user’s language', () => {
       seed('target', 'image');
       setLocale('zh-CN');
       const place = vi.fn(lands);
@@ -506,7 +506,7 @@ describe('useApplyTemplate', () => {
       );
       // The guide already there is neither duplicated nor rewritten.
       expect(indexOf(existing, 'target-guide')).toBe(-1);
-      // The template's own nodes are marked as this instance; the reader's inputs and the anchor are not.
+      // The template's own nodes are marked as this instance; the user's inputs and the anchor are not.
       expect([...existing.values()].filter((e) => e.instance).map((e) => e.nodeId).sort()).toEqual(['target-sheet', 'target-style']);
       expect(proposal.nodes.filter((n) => n.role === 'written')).toEqual([]);
       // Two same-type inputs each @ the node first given them.
@@ -556,7 +556,7 @@ describe('useApplyTemplate', () => {
       expect(edgesOf(proposal, existing)).not.toContain('only->target');
     });
 
-    it('keeps every node after the reader switched the anchor’s and upstream’s models', () => {
+    it('keeps every node after the user switched the anchor’s and upstream’s models', () => {
       seedFlowInstance('target', { models: true });
       const place = vi.fn(lands);
       apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
@@ -567,7 +567,7 @@ describe('useApplyTemplate', () => {
       expect(proposal.nodes[indexOf(existing, 'target-sheet')]).toMatchObject({ mode: 'i2i', model: 'model-sheet' });
     });
 
-    it('marks an input node this template placed as part of the instance, and a reader\'s own input not', () => {
+    it('marks an input node this template placed as part of the instance, and a user\'s own input not', () => {
       seedFlowInstance('target');
       setNodeTemplateNode('p', 's', 'target-pose', { template: 'fixture-flow', key: 'pose', input: true, anchor: 'target' });
       const place = vi.fn(lands);
@@ -638,7 +638,7 @@ describe('useApplyTemplate', () => {
   });
 
   describe('the guide text node', () => {
-    it('puts the guide back when the reader deleted it', () => {
+    it('puts the guide back when the user deleted it', () => {
       seedFlowInstance('target', { guide: false });
       const place = vi.fn(lands);
       apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
@@ -744,6 +744,71 @@ describe('useApplyTemplate', () => {
     });
   });
 
+  describe('a template with a shot list (inner#1816)', () => {
+    const SEEDANCE_T2V = {
+      name: 'seedance-2.5-text-to-video',
+      mode: ['t2v', 'multi_shot'],
+      params: {
+        aspect_ratio: { description: '', values: ['16:9', '9:16'], default: '16:9' },
+        duration: { description: '', min: 4, max: 30, default: 5 },
+        generate_audio: { description: '', values: [true, false], default: true },
+      },
+    } as unknown as ModelEntry;
+
+    it('writes the quick tip onto the video node in multi_shot, five shots of three seconds, each with words', () => {
+      const template = GENERATION_TEMPLATES.find((one) => one.id === 'vertical-15s-quick-tip');
+      expect(template).toBeDefined();
+      if (!template) return;
+      seed('target', 'video');
+      const place = vi.fn();
+      apply(template, 'target', [SEEDANCE_T2V], place);
+
+      const { proposal } = placed(place);
+      const anchor = proposal.nodes[0];
+      expect(anchor).toMatchObject({ role: 'generate', type: 'video', mode: 'multi_shot', model: 'seedance-2.5-text-to-video' });
+      expect(anchor?.prompt).toBeUndefined();
+      const shots = anchor?.shots ?? [];
+      expect(shots.map((shot) => shot.duration)).toEqual([3, 3, 3, 3, 3]);
+      for (const [at, shot] of shots.entries()) {
+        expect(shot.prompt.map((segment) => segment.text ?? '').join('').trim().length, `shot ${String(at + 1)}`).toBeGreaterThan(0);
+      }
+    });
+  });
+
+  describe('a template whose input feeds only nodes it places (inner#1816)', () => {
+    const SEEDANCE_I2V = {
+      name: 'seedance-2.5-image-to-video',
+      mode: 'first_last',
+      params: {
+        duration: { description: '', min: 4, max: 15, default: 5 },
+        generate_audio: { description: '', values: [true, false], default: true },
+      },
+    } as unknown as ModelEntry;
+
+    it('gives the carried object the picture wired into the video node: no Object node, the picture fed into both scenes and @\'d in both', () => {
+      const template = GENERATION_TEMPLATES.find((one) => one.id === 'carried-object-transition');
+      expect(template).toBeDefined();
+      if (!template) return;
+      seed('target', 'video');
+      seed('photo', 'image', { name: 'Hero photo', content: 'https://cdn/photo.png' });
+      wire('photo', 'target');
+      const place = vi.fn();
+      apply(template, 'target', [SEEDANCE_I2V, ULTRA], place);
+
+      const { proposal, existing } = placed(place);
+      expect(appendedOf(proposal, existing).filter((node) => node.templateNode?.input === true)).toEqual([]);
+      const sceneA = `new:${t('canvas.template.carried-object-transition.node.scene-a.name')}`;
+      const sceneB = `new:${t('canvas.template.carried-object-transition.node.scene-b.name')}`;
+      expect(edgesOf(proposal, existing)).toEqual([`photo->${sceneA}`, `photo->${sceneB}`, `${sceneA}->target`, `${sceneB}->target`].sort());
+      const objectNote = { slot: { kind: 'note', label: t('canvas.template.carried-object-transition.input.object.note') } };
+      for (const scene of [sceneA, sceneB]) {
+        const index = proposal.nodes.findIndex((_, i) => who(proposal, existing, i) === scene);
+        expect(refsOf(proposal, existing, index), scene).toEqual(['photo']);
+        expect(proposal.nodes[index]?.prompt, scene).not.toContainEqual(objectNote);
+      }
+    });
+  });
+
   it('says applying failed when placing throws (6.5 step 8)', () => {
     seed('target', 'image');
     seed('src', 'image', { name: 'Hero', content: 'https://cdn/hero.png' });
@@ -762,7 +827,7 @@ describe('the view the panel matches on', () => {
     _resetForTests();
   });
 
-  it('carries data.templateNode from the document; the anchor and a reader\'s own inputs carry none', () => {
+  it('carries data.templateNode from the document; the anchor and a user\'s own inputs carry none', () => {
     seedFlowInstance('target');
     const views = readCanvasGraph('p', 's').nodes;
     const tagOf = (id: string): unknown =>

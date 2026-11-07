@@ -69,7 +69,7 @@ describe('history-format (#1619 pure derivations)', () => {
     });
     // A node's history holds each content once (#2186), so the row holding
     // what the node holds is the current one wherever it sits in the list —
-    // an older row the reader restored included.
+    // an older row the user restored included.
     it('names the older row once the node holds what that row holds', () => {
       const list = [
         entry({ id: 'newer', content: 'b' }),
@@ -79,7 +79,7 @@ describe('history-format (#1619 pure derivations)', () => {
     });
 
     // Exactly one row is current; every other successful row stays a row the
-    // reader can restore.
+    // user can restore.
     it('marks exactly one of several successful rows', () => {
       const list = [
         entry({ id: 'c', content: 'third' }),

@@ -102,7 +102,7 @@ export interface DocumentSchema {
  * date did not move would be refused wherever an older one is published.
  */
 export const DOCUMENT_SCHEMA: DocumentSchema = {
-  publishedAt: "2026-10-18T09:00:00Z",
+  publishedAt: "2026-10-31T04:33:58Z",
 
   // Attribute names are here because adding an attribute to a node both sides
   // already know (a heading gaining an alignment, say) leaves no trace in the
@@ -113,7 +113,15 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
   // `blockContainer` per block carrying its id, and the block's own node
   // inside that. `@breatic/shared`'s `document-body` draws the shape.
   nodes: {
-    audio: ["backgroundColor", "caption", "name", "quoted", "showPreview", "url"],
+    audio: [
+      "backgroundColor",
+      "caption",
+      "name",
+      "quoted",
+      "showPreview",
+      "uploadId",
+      "url",
+    ],
     blockContainer: ["id"],
     blockGroup: [],
     bulletListItem: [
@@ -149,6 +157,7 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
       "quoted",
       "showPreview",
       "textAlignment",
+      "uploadId",
       "url",
     ],
     heading: [
@@ -209,6 +218,7 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
       "quoted",
       "showPreview",
       "textAlignment",
+      "uploadId",
       "url",
     ],
   },

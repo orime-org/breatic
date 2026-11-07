@@ -23,7 +23,7 @@ import { EARLIER_RESULT_NOTE } from "@server/agent/stored-model-output.js";
 
 const REQUEST = { reason: "To read the cast list.", spaces: [{ id: "c1" }, { id: "d1", blocks: { from: 3, to: 5 } }] };
 
-/** What the card keeps once the reader shared: a summary per Space. */
+/** What the card keeps once the user shared: a summary per Space. */
 const SUMMARY = {
   spaces: [
     { id: "c1", name: "Cast", kind: "canvas", state: "read" },
@@ -89,7 +89,7 @@ describe("a Space request rendered from its parts, for a row with no kept copy",
     ]);
   });
 
-  it("goes back with the summary it holds once the reader shared, naming each Space and how its read went", () => {
+  it("goes back with the summary it holds once the user shared, naming each Space and how its read went", () => {
     const out = toModelMessages([stored([requestPart({ status: "success", output: SUMMARY })])]);
     expect(out[0]).toEqual({
       role: "assistant",
@@ -101,12 +101,12 @@ describe("a Space request rendered from its parts, for a row with no kept copy",
     for (const piece of ['"c1"', '"d1"', '"read"', '"gone"']) expect(said).toContain(piece);
   });
 
-  it("goes back as declined when the reader declined", () => {
+  it("goes back as declined when the user declined", () => {
     const out = toModelMessages([stored([requestPart({ status: "success", output: { declined: true } })])]);
     expect(resultOf(out)).toEqual({ type: "json", value: { declined: true } });
   });
 
-  it("goes back as replied when the reader wrote a message instead", () => {
+  it("goes back as replied when the user wrote a message instead", () => {
     const out = toModelMessages([stored([requestPart({ status: "success", output: { repliedInChat: true } })])]);
     expect(resultOf(out)).toEqual({ type: "json", value: { repliedInChat: true } });
   });

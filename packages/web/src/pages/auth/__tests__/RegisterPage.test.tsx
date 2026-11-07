@@ -378,7 +378,7 @@ describe('RegisterPage with email (code step, #287)', () => {
     expect(screen.getByRole('button', { name: 'Create account' })).toBeInTheDocument();
   });
 
-  it('goes back to the form with what was typed when the reader changes the email', async () => {
+  it('goes back to the form with what was typed when the user changes the email', async () => {
     vi.mocked(authApi.register).mockResolvedValueOnce(CODE_SENT);
     const user = userEvent.setup();
     setup();

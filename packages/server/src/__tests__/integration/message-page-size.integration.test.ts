@@ -94,7 +94,7 @@ function pageSize(): number {
  */
 async function conversationOf(turns: number): Promise<string> {
   const { userId, projectId } = await seedProject();
-  const conv = await conversationRepo.createConversation(userId);
+  const conv = await conversationRepo.createConversation(userId, "deepseek/deepseek-v4.1-flash-1017");
   await conversationRepo.setProjectId(conv.id, projectId);
   for (let i = 0; i < turns; i += 1) {
     const turn = await messageRepo.addMessage(conv.id, {
@@ -122,7 +122,7 @@ describe("opening a conversation with more messages than one page holds", () => 
     expect(page.hasMore).toBe(true);
     expect(page.messages.length).toBeLessThanOrEqual(size);
     // Not merely "at most a page": a page that came back half full would
-    // satisfy the line above while making the reader scroll for what was
+    // satisfy the line above while making the user scroll for what was
     // already there.
     expect(page.messages.length).toBeGreaterThan(size - 2);
   });

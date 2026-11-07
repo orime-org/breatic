@@ -141,11 +141,11 @@ describe('resetDocument after a size refusal (design 5.3)', () => {
     const name = 'project-p1/timeline-s3';
     const oldDoc = getDoc(name);
     const provider = open(name);
-    const inputs = { projectId: 'p1', spaceId: 's3', queryClient: new QueryClient() };
+    const inputs = { projectId: 'p1', spaceId: 's3', queryClient: new QueryClient(), edit: vi.fn() };
     const draft = getTimelineMediaDraft(oldDoc, name, inputs);
     const initial = draft.getSnapshot();
     draft.setCanWrite(true);
-    draft.open(0);
+    draft.open(0, 'main');
     expect(draft.getSnapshot().open).toBe(true);
     refuse(provider);
     const fresh = getDoc(name);

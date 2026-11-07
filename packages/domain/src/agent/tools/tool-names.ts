@@ -14,7 +14,7 @@
 /**
  * Ask the user something and wait.
  *
- * Putting a question to the reader is the end of what the current turn can
+ * Putting a question to the user is the end of what the current turn can
  * do: the answer opens the next one. The other interaction tools put
  * something on screen and the model is meant to keep writing around them;
  * stopping on those would make the first card a turn draws the last thing it
@@ -27,14 +27,14 @@
  */
 export const ASK_USER = "ask_user";
 
-/** The tool that asks the reader to let the agent read other Spaces (inner#1552). */
+/** The tool that asks the user to let the agent read other Spaces (inner#1552). */
 export const REQUEST_SPACE_CONTENT = "request_space_content";
 
 /**
- * The tools a turn stops at to wait for the reader: a call with no `execute`
+ * The tools a turn stops at to wait for the user: a call with no `execute`
  * whose result comes back in the request that resumes the turn.
  */
-export const AWAITS_READER: readonly string[] = [ASK_USER, REQUEST_SPACE_CONTENT];
+export const AWAITS_USER: readonly string[] = [ASK_USER, REQUEST_SPACE_CONTENT];
 
 /**
  * Ask which modes each generation node can be set to.
@@ -48,7 +48,7 @@ export const GET_CANVAS_CAPABILITIES = "get_canvas_capabilities";
 export const LIST_GENERATION_MODELS = "list_generation_models";
 
 /**
- * Read how the reader operates our product (#260).
+ * Read how the user operates our product (#260).
  *
  * Named here because other tools' descriptions point the model at it, and a
  * pointer spelled out a second time can name a tool that is not there.
@@ -62,7 +62,7 @@ export const GET_PRODUCT_GUIDE = "get_product_guide";
  */
 export const GET_GENERATION_TEMPLATE = "get_generation_template";
 
-/** Proposes a wired group of nodes for the reader to place (#229). */
+/** Proposes a wired group of nodes for the user to place (#229). */
 export const PROPOSE_CANVAS_ACTION = "propose_canvas_action";
 
 /**
@@ -110,3 +110,19 @@ export const LIST_PROJECT_ACTIVITY = "list_project_activity";
 
 /** The four record tools' names, the one list every place that treats them alike reads. */
 export const RECORD_TOOL_NAMES = [SEARCH_CONVERSATIONS, READ_CONVERSATION, READ_NODE_HISTORY, LIST_PROJECT_ACTIVITY] as const;
+
+// The three tools the Agent keeps its own memory with (#1363). Named here
+// because the system prompt's memory protocol says when to use each, and the
+// registry key has to be the same name.
+
+/** Add a memory entry, or replace one. */
+export const SAVE_MEMORY = "save_memory";
+
+/** Delete a memory entry. */
+export const DELETE_MEMORY = "delete_memory";
+
+/** Read memory entries in full, by id or by words. */
+export const READ_MEMORY = "read_memory";
+
+/** The three memory tools' names. */
+export const MEMORY_TOOL_NAMES = [SAVE_MEMORY, DELETE_MEMORY, READ_MEMORY] as const;

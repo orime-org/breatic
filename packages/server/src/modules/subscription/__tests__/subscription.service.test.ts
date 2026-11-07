@@ -725,7 +725,7 @@ describe("the period reaches Stripe on both paths (#253 A7, A8)", () => {
     for (const period of ["month", "year"] as const) {
       it(`checks out ${tier} over ${period} with that combination's own price`, async () => {
         // A tier is sold over two prices now, and only one of them is the one
-        // the reader pressed. Sending either half of the pair without the
+        // the user pressed. Sending either half of the pair without the
         // other bills a period nobody chose.
         situationIs("none");
         await service.startCheckout({
@@ -808,7 +808,7 @@ describe("the period reaches Stripe on both paths (#253 A7, A8)", () => {
 
   it("refuses to report a change Stripe priced differently from our list", async () => {
     // Stripe took the change and billed something our price list does not
-    // sell. "Applied" is the one answer that cannot be taken back: the reader
+    // sell. "Applied" is the one answer that cannot be taken back: the user
     // is told their plan changed while the row still holds the old one, and
     // nothing afterwards contradicts it.
     situationIs("active", holding("pro", "month"));

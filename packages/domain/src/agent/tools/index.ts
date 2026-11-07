@@ -11,6 +11,7 @@ import { makeAskUserTool, type AskUserContext } from "@domain/agent/tools/ask-us
 import { makeRequestSpaceContentTool, type RequestSpaceContentContext } from "@domain/agent/tools/request-space-content.js";
 import { makeSaveImageTool } from "@domain/agent/tools/save-image.js";
 import { recordTools, makeReadNodeHistoryTool } from "@domain/agent/tools/record-tools.js";
+import { memoryTools } from "@domain/agent/tools/memory-tools.js";
 import type { ToolPictureContext } from "@domain/agent/prepare-agent-pictures.js";
 import {
   ASK_USER,
@@ -26,6 +27,10 @@ import {
   READ_CONVERSATION,
   READ_NODE_HISTORY,
   RECORD_TOOL_NAMES,
+  MEMORY_TOOL_NAMES,
+  SAVE_MEMORY,
+  DELETE_MEMORY,
+  READ_MEMORY,
   SAVE_IMAGE,
   UNDERSTAND_MEDIA,
   SEARCH_CONVERSATIONS,
@@ -103,13 +108,18 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   [READ_CONVERSATION]: () => recordTools[READ_CONVERSATION],
   [READ_NODE_HISTORY]: (context = NO_TOOL_CONTEXT) => makeReadNodeHistoryTool(context),
   [LIST_PROJECT_ACTIVITY]: () => recordTools[LIST_PROJECT_ACTIVITY],
+  // The Agent's own memory, through the turn's execution context. Stateless,
+  // so one object serves every turn.
+  [SAVE_MEMORY]: () => memoryTools[SAVE_MEMORY],
+  [DELETE_MEMORY]: () => memoryTools[DELETE_MEMORY],
+  [READ_MEMORY]: () => memoryTools[READ_MEMORY],
 } as const;
 
 /**
  * The tools that do work on their own, in a stable order.
  *
  * Narrower than `TOOL_MAP`: the canvas tools below are about the spaces in
- * front of the reader, so they are kept apart.
+ * front of the user, so they are kept apart.
  */
 export const BASELINE_TOOLS: readonly string[] = [
   "web_search",
@@ -121,10 +131,13 @@ export const BASELINE_TOOLS: readonly string[] = [
   // The user's own records: about the project, not the Space in front of
   // them, so offered whatever is open.
   ...RECORD_TOOL_NAMES,
+  // The Agent's own memory: about the user and the Project, offered on every
+  // turn.
+  ...MEMORY_TOOL_NAMES,
 ];
 
 /**
- * The tools that describe the spaces the reader is looking at.
+ * The tools that describe the spaces the user is looking at.
  *
  * What makes a tool belong here is that its answer is about the product in
  * front of someone, which is why the search tools are not in it even though
@@ -144,7 +157,7 @@ export { makeRequestSpaceContentTool };
 
 export {
   ASK_USER,
-  AWAITS_READER,
+  AWAITS_USER,
   REQUEST_SPACE_CONTENT,
   GET_CANVAS_CAPABILITIES,
   GET_GENERATION_TEMPLATE,
@@ -154,6 +167,7 @@ export {
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
   RECORD_TOOL_NAMES,
+  MEMORY_TOOL_NAMES,
   SAVE_IMAGE,
   UNDERSTAND_MEDIA,
 } from "@domain/agent/tools/tool-names.js";

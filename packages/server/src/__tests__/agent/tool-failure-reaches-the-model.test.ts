@@ -13,7 +13,7 @@
  * because what it says is checked where the real ones live. What is asserted
  * is the prompt the SDK assembled, not one this file wrote.
  *
- * Only the model's half is checked here. Whether the reader's half stays out
+ * Only the model's half is checked here. Whether the user's half stays out
  * of the prompt is not this file's to prove: within one turn the SDK reads
  * nothing but the error's message, so an assertion here would hold no matter
  * what the code did. It is checked where it can fail — the conversion that
@@ -36,7 +36,7 @@ const thisCase = vi.hoisted(() => ({ step: 0, uncarried: false }));
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { projectMemory: "", conversationMemory: "" },
+    memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
     history: [],
   })),
 }));
@@ -73,7 +73,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
             throw carrying(new Error(FOR_MODEL), {
               kind: "tool_failed",
               forModel: FOR_MODEL,
-              readerKey: FOR_READER,
+              userKey: FOR_USER,
             });
           },
         }),
@@ -102,7 +102,7 @@ const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
-  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
+  addUserMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
   getMessages,
 }));
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
@@ -131,8 +131,8 @@ const asksForTheTool: ModelStreamPart = {
 const FOR_MODEL =
   `Fetching ${REFUSED} failed: the site answered HTTP 404. Do not fetch the same address again.`;
 
-/** The coarse line a reader is shown, which the model has no use for. */
-const FOR_READER = "chat.tool.failure.upstream";
+/** The coarse line a user is shown, which the model has no use for. */
+const FOR_USER = "chat.tool.failure.upstream";
 
 /** Run one turn of the agent against the double model, to its end. */
 async function runTurn(): Promise<void> {
@@ -170,7 +170,7 @@ describe("what the model is handed after a tool fails", () => {
   it("leaves a line in the log naming the tool and why it failed", async () => {
     await runTurn();
 
-    // The tool said what went wrong, and the reader was told.
+    // The tool said what went wrong, and the user was told.
     expect(logger.error).not.toHaveBeenCalledWith(expect.anything(), "agent_tool_failed");
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({

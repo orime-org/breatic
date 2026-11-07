@@ -15,7 +15,7 @@
  * So the two readings are two functions rather than one table read twice.
  *
  * `orphan` is not read here. This answers where a thread's marks are, which
- * is a different question from whether a reader may press them
+ * is a different question from whether a user may press them
  * (`document-comment-hit.ts`) — a settled thread still shows the words it was
  * about on its card.
  */
@@ -49,7 +49,7 @@ export function threadRangesByThread(
       if (found.length === 0) byThread.set(threadId, found);
       const from = pos;
       const to = pos + node.nodeSize;
-      // Runs next to each other are one stretch as far as a reader is
+      // Runs next to each other are one stretch as far as a user is
       // concerned: a bold word inside a commented sentence splits the text
       // into three nodes carrying the same thread.
       const last = found[found.length - 1];

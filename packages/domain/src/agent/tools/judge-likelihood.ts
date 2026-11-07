@@ -67,7 +67,7 @@ const inputSchema = z.object({
   state: z
     .unknown()
     .describe(
-      "Everything you are judging against, in whatever shape you hold it: what the reader " +
+      "Everything you are judging against, in whatever shape you hold it: what the user " +
         "said, earlier turns, what is on the canvas, the catalog rows. The fuller this is, " +
         "the better the answer.",
     ),
@@ -104,10 +104,10 @@ const DESCRIPTION = [
     "Put what you are judging against into `state`.",
     "",
     "Use it when you are unsure. For instance:",
-    "- the reader's sentence has several readings and you do not know which to act on",
+    "- the user's sentence has several readings and you do not know which to act on",
     "- you can see several ways to do something and cannot tell which suits this time",
     "- you are about to say something and are unsure it squares with what you hold",
-    "- the reader asked for something you think is off, and you are unsure whether to do it",
+    "- the user asked for something you think is off, and you are unsure whether to do it",
     "- you cannot tell whether they said enough to start on, or whether to ask them first",
     "",
     "It judges the questions, so word one badly and it says so by name. When it does, " +
@@ -118,15 +118,15 @@ const DESCRIPTION = [
   "",
   "When it says it is unsure, the question has no answer in the material you gave it: the " +
       "option and scale shapes answer a confidence, and the claim shape answers a probability " +
-      "near a half. That is when to ask the reader, or to put more in and ask again.",
+      "near a half. That is when to ask the user, or to put more in and ask again.",
     "",
-    "Asking the reader is for what only they know. This is for what stands up in what you " +
+    "Asking the user is for what only they know. This is for what stands up in what you " +
       "already hold.",
 ].join("\n");
 
 /**
  * The tool, ready to be registered.
- * @throws {Error} Carrying tool failure detail, or the reader's stop.
+ * @throws {Error} Carrying tool failure detail, or the user's stop.
  */
 export const judgeLikelihood: Tool<z.infer<typeof inputSchema>, JevAnswers, UsageContext> = tool({
   description: DESCRIPTION,

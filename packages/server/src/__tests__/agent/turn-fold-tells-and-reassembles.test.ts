@@ -2,16 +2,17 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * What the reader hears of a fold, what is sent after a fold that wrote
+ * What the user hears of a fold, what is sent after a fold that wrote
  * nothing, and a turn stopped before it asked anything (inner#1567, design
  * 6.4 and the state table in 6.6).
  *
- * - Every fold that starts tells the reader once (`data-memory-consolidating`);
+ * - Every fold that starts tells the user once (`data-memory-consolidating`);
  *   a turn that folds nothing says nothing of the sort.
- * - A fold that ends `discarded` moved the watermark without writing memory
- *   (event W), so the request in hand still carries the turns it passed: the
- *   turn reads everything again and sends that, whichever trigger folded.
- * - A reader who stopped before the first call is owed no paid work: no fold
+ * - A fold that ends `failed` moved nothing and wrote nothing (#1363): the
+ *   turn goes on with the request it has, and after an overflow, where that
+ *   request does not fit, it ends with an error the user can send again.
+ *   The turn folds no more after it; the next turn folds again.
+ * - A user who stopped before the first call is owed no paid work: no fold
  *   and no model call, even with a known count over the line.
  *
  * Window 200,000 and output reserve 16,384, so a known count of 183,616 leaves
@@ -30,7 +31,6 @@ import {
   rowsOf,
   sendMessage,
   systemOf,
-  toolPairsOf,
   typesOf,
   world,
   type World,
@@ -102,7 +102,7 @@ interface SecondTurn {
  * @param firstOutput - Output tokens the first answer reports.
  * @param options - How the second turn runs.
  * @param options.outcomes - How the second turn's folds end.
- * @param options.stopped - The reader stopped the second turn before it began.
+ * @param options.stopped - The user stopped the second turn before it began.
  * @returns What the second turn did.
  */
 async function secondTurn(
@@ -141,7 +141,7 @@ function threeEarlierTurns(): void {
   world.nextTurn = 4;
 }
 
-describe("the reader is told of a precheck fold once", () => {
+describe("the user is told of a precheck fold once", () => {
   it("at the start of a turn, and not on a turn with one token of room left", async () => {
     const folded = await secondTurn(LINE - 616, 616);
     const roomLeft = await secondTurn(LINE - 616, 615);
@@ -160,7 +160,7 @@ describe("the reader is told of a precheck fold once", () => {
     world.history = rowsOf(1);
     let wireDuringFold: string[] = [];
     world.duringFold = async () => {
-      // Long enough for anything already written to reach the reader.
+      // Long enough for anything already written to reach the user.
       await new Promise((resolve) => setTimeout(resolve, 20));
       wireDuringFold = [...world.wire];
     };
@@ -211,62 +211,92 @@ describe("the reader is told of a precheck fold once", () => {
   });
 });
 
-describe("a fold that ended discarded is followed by a reassembly, and that is what is sent", () => {
-  it("at the start of a turn", async () => {
-    const turn = await secondTurn(LINE - 616, 616, { outcomes: ["discarded"] });
+describe("a fold that failed leaves the history as it was (#1363)", () => {
+  it("at the start of a turn, sends the request it has", async () => {
+    const turn = await secondTurn(LINE - 616, 616, { outcomes: ["failed"] });
 
     expect(turn.folds).toBe(1);
-    expect(turn.contextReads).toBe(2);
+    expect(turn.contextReads).toBe(1);
     expect(turn.prompts).toHaveLength(1);
-    // The watermark passed turn 1 and no memory was written for it.
-    expect(JSON.stringify(turn.prompts[0])).not.toContain("first answer");
+    // Turn 1 is still in the history: nothing passed it.
+    expect(JSON.stringify(turn.prompts[0])).toContain("first answer");
     expect(systemOf(turn.prompts[0])).not.toContain("MEMORY-THROUGH");
     expect(count(turn.chunks, "error")).toBe(0);
     expect(turn.reply).toContainEqual({ type: "text", text: "second" });
   });
 
-  it("in the middle of a turn, with the finished step carried over", async () => {
+  it("in the middle of a turn, carries on with the steps it has", async () => {
     threeEarlierTurns();
-    world.foldOutcomes = ["discarded"];
+    world.foldOutcomes = ["failed"];
     world.script = [callsFetch("c1", LINE, 0), answers("done")];
 
     const chunks = await sendMessage();
 
     expect(world.folds).toHaveLength(1);
-    expect(world.events.filter((e) => e === "context")).toHaveLength(2);
+    expect(world.events.filter((e) => e === "context")).toHaveLength(1);
     expect(world.prompts).toHaveLength(2);
-    const resent = JSON.stringify(world.prompts[1]);
-    expect(resent).not.toContain("TURN-1-REPLY");
-    expect(resent).toContain("TURN-2-REPLY");
-    expect(systemOf(world.prompts[1])).not.toContain("MEMORY-THROUGH");
-    expect(toolPairsOf(world.prompts[1] ?? [])).toEqual({ calls: ["c1"], results: ["c1"] });
+    expect(JSON.stringify(world.prompts[1])).toContain("TURN-1-REPLY");
     expect(world.toolRuns).toBe(1);
     expect(count(chunks, "error")).toBe(0);
     expect(stored()).toContainEqual({ type: "text", text: "done" });
   });
 
-  it("after an overflow, carrying on in the same reply", async () => {
+  it("after an overflow, ends the turn with an error the user can send again", async () => {
     world.window = PROBE_WINDOW;
     world.history = [...plainTurn(1, 30_000), ...plainTurn(2, 30_000)];
     world.nextTurn = 3;
-    world.foldOutcomes = ["discarded"];
+    world.foldOutcomes = ["failed"];
     world.script = [{ reject: h1() }, answers("the answer")];
 
     const chunks = await sendMessage();
 
-    expect(world.events.filter((e) => e !== "context")).toEqual(["call", "fold", "call"]);
-    expect(world.events.filter((e) => e === "context")).toHaveLength(2);
-    const resent = JSON.stringify(world.prompts[1]);
-    expect(resent).not.toContain("TURN-1-REPLY");
-    expect(resent).toContain("TURN-2-REPLY");
+    expect(world.events.filter((e) => e !== "context")).toEqual(["call", "fold"]);
+    expect(count(chunks, "error")).toBe(1);
+    expect(stored()).not.toContainEqual({ type: "text", text: "the answer" });
+  });
+
+  it("is not tried again at a later step of the same turn", async () => {
+    threeEarlierTurns();
+    world.foldOutcomes = ["failed", "written"];
+    world.script = [callsFetch("c1", LINE, 0), callsFetch("c2", LINE, 0), answers("done")];
+
+    const chunks = await sendMessage();
+
+    expect(world.folds).toHaveLength(1);
+    expect(world.prompts).toHaveLength(3);
     expect(count(chunks, "error")).toBe(0);
-    expect(count(chunks, "start")).toBe(1);
-    expect(stored()).toContainEqual({ type: "text", text: "the answer" });
-    expect(stored().some((part) => part.type === "failed")).toBe(false);
+    expect(stored()).toContainEqual({ type: "text", text: "done" });
+  });
+
+  it("is not tried again after an overflow later in the same turn, which ends with an error the user can send again", async () => {
+    threeEarlierTurns();
+    world.foldOutcomes = ["failed", "written"];
+    world.script = [callsFetch("c1", LINE, 0), { reject: h1() }, answers("the answer")];
+
+    const chunks = await sendMessage();
+
+    expect(world.folds).toHaveLength(1);
+    expect(count(chunks, "error")).toBe(1);
+    expect(stored()).not.toContainEqual({ type: "text", text: "the answer" });
+  });
+
+  it("is tried again on the user's next turn", async () => {
+    world.script = [answers("first answer", LINE - 616, 616)];
+    await sendMessage("first");
+    world.history = rowsOf(1);
+    world.foldOutcomes = ["failed"];
+    world.script = [answers("second answer", LINE - 616, 616)];
+    await sendMessage("second");
+    world.history = [...rowsOf(1), ...rowsOf(2)];
+    world.script = [answers("third")];
+
+    await sendMessage("third");
+
+    expect(world.folds).toHaveLength(2);
   });
 });
 
-describe("a turn whose reader stopped before it began", () => {
+describe("a turn whose user stopped before it began", () => {
   it("folds nothing and calls nothing, though its known count is over the line, and ends stopped", async () => {
     const stopped = await secondTurn(LINE - 616, 616, { stopped: true });
     const running = await secondTurn(LINE - 616, 616);

@@ -3,11 +3,11 @@
 
 /**
  * What a node task was doing (inner#888 §7.7). The row's first line names it,
- * so the reader tells an upload from a generation from a tool run whatever
+ * so the user tells an upload from a generation from a tool run whatever
  * state the row is in. `kind` stays the behaviour (`upload` / `generation`)
  * the server settles by; this is what the row says.
  */
-export const NODE_TASK_ACTIONS = ["upload", "generate", "understand", "mini_tool", "transcribe"] as const;
+export const NODE_TASK_ACTIONS = ["upload", "generate", "understand", "mini_tool", "transcribe", "scene_import"] as const;
 
 /** One of {@link NODE_TASK_ACTIONS}. */
 export type NodeTaskAction = (typeof NODE_TASK_ACTIONS)[number];

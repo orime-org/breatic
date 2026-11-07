@@ -61,7 +61,7 @@ export function useAgentColumnWidth(): AgentColumnWidthControls {
     const group = groupRef.current;
     if (!panel || !group) return;
 
-    // Absent from the layout means the column is collapsed or the reader is a
+    // Absent from the layout means the column is collapsed or the user is a
     // viewer: no width to keep, nothing to restore.
     const share = layout[AGENT_PANEL_ID];
     if (share === undefined) return;

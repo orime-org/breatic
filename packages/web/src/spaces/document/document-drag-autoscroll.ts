@@ -33,7 +33,7 @@
  * `dragend` that reaches the document.
  *
  * A column drag scrolls the frame its table scrolls sideways in, and holds
- * the body still: the browser's own drag autoscroll scrolls any box a reader
+ * the body still: the browser's own drag autoscroll scrolls any box a user
  * could scroll that the pointer nears, and one with `overflow-y: hidden` is not
  * one. Everything else scrolls the body.
  *

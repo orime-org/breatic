@@ -78,13 +78,14 @@ export const assetsApi = {
    * @param params.toolName - The mini-tool's name when `source` says so.
    * @param params.derived - True for a byproduct, which is registered without
    *   an activity-feed row of its own.
-   * @param params.purpose - What the picture is uploaded to become, filed as
-   *   the asset's source; a studio uploads only its avatar.
+   * @param params.purpose - Upload use context; models retain the ordinary upload source.
+   * @param params.label - The name a 3D model is imported under.
+   * @param signal - Cancellation belonging to this authorization request.
    * @returns The opened upload, the existing asset to reuse, or the open
    *   that failed.
    * @throws {ApiException} When the request fails.
    */
-  requestUploadTicket(params: UploadTicketRequest): Promise<UploadTicketResponse> {
+  requestUploadTicket(params: UploadTicketRequest, signal?: AbortSignal): Promise<UploadTicketResponse> {
     return apiPost<UploadTicketResponse>('/assets/upload-ticket', {
       filename: params.filename,
       content_type: params.contentType,
@@ -98,7 +99,8 @@ export const assetsApi = {
       ...(params.toolName !== undefined && { tool_name: params.toolName }),
       ...(params.derived !== undefined && { derived: params.derived }),
       ...(params.purpose !== undefined && { purpose: params.purpose }),
-    }, NO_CLIENT_TIMEOUT);
+      ...(params.label !== undefined && { label: params.label }),
+    }, { ...NO_CLIENT_TIMEOUT, ...(signal !== undefined && { signal }) });
   },
 
   /**
@@ -124,6 +126,21 @@ export const assetsApi = {
       })),
     }, NO_CLIENT_TIMEOUT);
     return items;
+  },
+
+  /**
+   * Have the ingest Worker fetch an address into storage with no node behind
+   * it (inner#1351 + inner#1390 design §4.1). How it ends is asked through
+   * {@link assetsApi.fetchUploadStatus} under the key this answers.
+   * @param body - The address and where it lands.
+   * @param body.url - The `https:` address.
+   * @param body.project_id - The project it lands in.
+   * @param body.space_id - The Space it lands in.
+   * @returns The storage key its finish is queued under.
+   * @throws {import('@web/data/api/types').ApiException} On 400 / 403 / 429 / 507, or 500 when the fetch could not be queued.
+   */
+  ingestUrl(body: { url: string; project_id: string; space_id: string }): Promise<{ storage_key: string }> {
+    return apiPost<{ storage_key: string }>('/assets/ingest-url', body);
   },
 
   /**

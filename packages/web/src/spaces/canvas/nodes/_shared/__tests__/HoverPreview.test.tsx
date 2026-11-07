@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { render, screen, act, cleanup, fireEvent } from '@testing-library/react';
+import { screen, act, cleanup, fireEvent } from '@testing-library/react';
+
+import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
 
 import { resetPreviewRecords } from '@web/lib/preview-src';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
@@ -44,7 +46,7 @@ describe('HoverPreview', () => {
 
   it('INV-2: no src / text / hint → renders the trigger only, never a card', () => {
     vi.useFakeTimers();
-    render(
+    renderWithTooltips(
       <HoverPreview kind='image'>
         <span data-testid='trigger'>chip</span>
       </HoverPreview>,
@@ -59,7 +61,7 @@ describe('HoverPreview', () => {
 
   it('INV-2: kind=image with src → card shows an <img>, no MediaPlayer', () => {
     vi.useFakeTimers();
-    render(
+    renderWithTooltips(
       <HoverPreview kind='image' src='/pic.png' alt='a picture'>
         <span data-testid='trigger'>chip</span>
       </HoverPreview>,
@@ -76,7 +78,7 @@ describe('HoverPreview', () => {
     // (B), so image renders on the SAME model as video — a 220px-wide wrapper
     // filled by the media (height follows aspect), never rounded.
     vi.useFakeTimers();
-    render(
+    renderWithTooltips(
       <HoverPreview kind='image' src='/pic.png' alt='a picture'>
         <span data-testid='trigger'>chip</span>
       </HoverPreview>,
@@ -93,7 +95,7 @@ describe('HoverPreview', () => {
 
   it('INV-2: kind=audio → card renders the MediaPlayer <audio>', () => {
     vi.useFakeTimers();
-    render(
+    renderWithTooltips(
       <HoverPreview kind='audio' src='/a.mp3'>
         <span data-testid='trigger'>chip</span>
       </HoverPreview>,
@@ -105,7 +107,7 @@ describe('HoverPreview', () => {
 
   it('INV-2: kind=video → card renders the MediaPlayer <video>', () => {
     vi.useFakeTimers();
-    render(
+    renderWithTooltips(
       <HoverPreview kind='video' src='/v.mp4' poster='/p.jpg'>
         <span data-testid='trigger'>chip</span>
       </HoverPreview>,
@@ -114,9 +116,9 @@ describe('HoverPreview', () => {
     expect(screen.getByTestId('media-element').tagName).toBe('VIDEO');
   });
 
-  it('INV-7 via preview variant: audio/video card drops volume + fullscreen', () => {
+  it('INV-7 via preview variant: audio/video card drops volume', () => {
     vi.useFakeTimers();
-    render(
+    renderWithTooltips(
       <HoverPreview kind='video' src='/v.mp4' poster='/p.jpg'>
         <span data-testid='trigger'>chip</span>
       </HoverPreview>,
@@ -125,14 +127,13 @@ describe('HoverPreview', () => {
     expect(screen.getByTestId('play-toggle')).toBeInTheDocument();
     expect(screen.getByTestId('seek')).toBeInTheDocument();
     expect(screen.queryByTestId('volume-button')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('fullscreen')).not.toBeInTheDocument();
   });
 
   it('INV-12: opening an audio card does NOT autoplay (click-to-play)', () => {
     vi.useFakeTimers();
     const play = vi.fn().mockResolvedValue(undefined);
     HTMLMediaElement.prototype.play = play;
-    render(
+    renderWithTooltips(
       <HoverPreview kind='audio' src='/a.mp3'>
         <span data-testid='trigger'>chip</span>
       </HoverPreview>,
@@ -144,7 +145,7 @@ describe('HoverPreview', () => {
 
   it('INV-11: HoverCardContent carries pointer-events:auto so it is clickable inside a modal Sheet', () => {
     vi.useFakeTimers();
-    render(
+    renderWithTooltips(
       <HoverPreview kind='video' src='/v.mp4' poster='/p.jpg'>
         <span data-testid='trigger'>chip</span>
       </HoverPreview>,
@@ -156,7 +157,7 @@ describe('HoverPreview', () => {
 
   it('kind=text → card shows the static text body (no media element)', () => {
     vi.useFakeTimers();
-    render(
+    renderWithTooltips(
       <HoverPreview kind='text' text='hello reference'>
         <span data-testid='trigger'>chip</span>
       </HoverPreview>,
@@ -168,7 +169,7 @@ describe('HoverPreview', () => {
 
   it('empty source with emptyHint → card shows the hint (unavailable reference)', () => {
     vi.useFakeTimers();
-    render(
+    renderWithTooltips(
       <HoverPreview kind='image' emptyHint='Not generated yet'>
         <span data-testid='trigger'>chip</span>
       </HoverPreview>,
@@ -180,7 +181,7 @@ describe('HoverPreview', () => {
   it('resolveOnOpen overrides static text and is read live at open (#1815 chip)', () => {
     vi.useFakeTimers();
     let live = 'first';
-    render(
+    renderWithTooltips(
       <HoverPreview kind='text' resolveOnOpen={() => ({ text: live })}>
         <span data-testid='trigger'>chip</span>
       </HoverPreview>,
@@ -197,7 +198,7 @@ describe('HoverPreview', () => {
     // it in onOpenChange would leave the seed unset (this catches it).
     vi.useFakeTimers();
     const resolveOnOpen = vi.fn(() => ({ text: 'seeded' }));
-    render(
+    renderWithTooltips(
       <HoverPreview
         kind='image'
         src='/pic.png'
@@ -227,7 +228,7 @@ describe('HoverPreview — its shape does not depend on having content', () => {
         </button>
       </HoverPreview>
     );
-    const { rerender } = render(view());
+    const { rerender } = renderWithTooltips(view());
     const before = screen.getByTestId('trigger');
     before.focus();
     expect(document.activeElement).toBe(before);
@@ -245,7 +246,7 @@ describe('HoverPreview — its shape does not depend on having content', () => {
 describe('HoverPreview — a body of the caller\'s own', () => {
   it('opens on the body it is handed, whatever the kind says', () => {
     vi.useFakeTimers();
-    render(
+    renderWithTooltips(
       <HoverPreview kind='image' body={<p data-testid='own-body'>rows</p>}>
         <span data-testid='trigger'>chip</span>
       </HoverPreview>,
@@ -269,7 +270,7 @@ describe('HoverPreview — one width for every form', () => {
 
   it.each(forms)('%s opens at the same fixed width', (_name, view) => {
     vi.useFakeTimers();
-    render(view);
+    renderWithTooltips(view);
     openCard(screen.getByTestId('trigger'));
     const inner = screen.getByTestId('hover-preview-content').firstElementChild;
     expect(inner?.className.split(' ')).toContain('w-[220px]');
@@ -286,7 +287,7 @@ describe('HoverPreview — a stored image shows its preview (inner#1320)', () =>
     vi.useFakeTimers();
     const stored =
       'https://resource-dev.breatic.cc/image/2026-09-30/1_18f58aed-b802-4243-a8ea-02d377de9679.png';
-    render(
+    renderWithTooltips(
       <HoverPreview kind='image' src={stored} alt='a picture'>
         <span data-testid='trigger'>chip</span>
       </HoverPreview>,

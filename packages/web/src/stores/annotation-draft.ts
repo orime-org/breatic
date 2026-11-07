@@ -71,7 +71,7 @@ export interface DraftState {
   commit?: string;
   /**
    * Set when the close was not the writer's doing, naming why. The sticky
-   * draws a line saying so, and it stands until the reader dismisses it or
+   * draws a line saying so, and it stands until the user dismisses it or
    * opens another box.
    */
   dropped?: DraftDrop;
@@ -173,7 +173,7 @@ export function reduceDraft(
       // it floats on the board with no panel around it, so focus is the whole
       // of its life, and what it holds never existed anywhere else.
       //
-      // A reply and an edit both live inside a sticky the reader opened and
+      // A reply and an edit both live inside a sticky the user opened and
       // can close, and that open-and-close is what ends them (§8.7.3) — user
       // 2026-09-15, replacing the focus rule §6.2 was written under, back when
       // a note was a 200px card always on the board and there was no pin to
@@ -185,7 +185,7 @@ export function reduceDraft(
     case 'drop':
       // Nothing to take away and nobody to tell once the box is closed, and
       // the causes fire off a render: without this a locked sticky would
-      // re-raise the notice the reader just dismissed.
+      // re-raise the notice the user just dismissed.
       if (state.mode === 'closed') return state;
       return { ...discardDraft(state), dropped: action.why };
 

@@ -58,7 +58,7 @@ vi.mock("@server/modules", () => ({
     getMessagesForLlm: vi.fn(async () => HISTORY),
   },
   memoryService: {
-    buildContext: vi.fn(async () => ({ projectMemory: "", conversationMemory: "" })),
+    buildContext: vi.fn(async () => ({ entries: [], migrated: [], olderCount: 0, progress: "" })),
   },
 }));
 
@@ -102,7 +102,7 @@ describe("what the assembly hands the turn", () => {
     });
     vi.mocked(memoryService.buildContext).mockImplementationOnce(async () => {
       order.push("memory:start");
-      return { projectMemory: "", conversationMemory: "" };
+      return { entries: [], migrated: [], olderCount: 0, progress: "" };
     });
 
     const { buildTurnContext } = await import("@server/agent/turn-context.js");

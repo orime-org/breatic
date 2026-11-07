@@ -339,7 +339,7 @@ describe('ProjectActivityButton (activity feed)', () => {
   });
 
   it('settles the Restore button after a refused restore without leaving a rejection behind', async () => {
-    // The host has already told the reader (`callRpc` toasts before it
+    // The host has already told the user (`callRpc` toasts before it
     // throws); the button only has to come back.
     const unhandled = vi.fn();
     process.on('unhandledRejection', unhandled);
@@ -469,6 +469,13 @@ describe('entryMessage specificity (#1622)', () => {
     expect(key('video')).toBe('activity.type.assetUploadedVideo');
     expect(key('audio')).toBe('activity.type.assetUploadedAudio');
     expect(key('file')).toBe('activity.type.assetUploaded');
+  });
+
+  it('asset:uploaded of a 3D model → names the model as the user called it (inner#1690)', () => {
+    const message = entryMessage(entry({ type: 'asset:uploaded', payload: { fileUrl: 'x', kind: 'file', model: { name: 'Barn lamp' } } }));
+    expect(message.key).toBe('activity.type.assetUploadedModel');
+    expect(message.params).toMatchObject({ name: 'Barn lamp' });
+    expect(message.params).toHaveProperty('actor');
   });
 
   it('generation:succeeded → kind-specific key; toolName still wins; generic fallback', () => {
@@ -658,7 +665,7 @@ describe('activity feed: failure icon + trigger icon (#1820 polish)', () => {
 });
 
 describe('relativeTime', () => {
-  it('dates an entry older than a year by the day of the reader', () => {
+  it('dates an entry older than a year by the day of the user', () => {
     const real = process.env['TZ'];
     try {
       process.env['TZ'] = 'Asia/Shanghai';

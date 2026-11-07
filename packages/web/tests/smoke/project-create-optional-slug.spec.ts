@@ -4,7 +4,7 @@
 /**
  * A Project created with only a name (inner#1463).
  *
- * The Slug is optional: it follows the name as the reader types, and the
+ * The Slug is optional: it follows the name as the user types, and the
  * Project is created with that slug and opened at `/project/{slug}-{uuid}`. The
  * server still requires a slug, so this is the one place that shows the
  * generated value satisfies it end to end.

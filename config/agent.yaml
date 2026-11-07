@@ -7,7 +7,19 @@
 max_tool_iterations: 40
 
 # ── Models ────────────────────────────────────────────────
-# Default model for MainAgent chat.
+# The models the user can pick in the chat panel, in the order shown. Each
+# conversation keeps its own pick; a new conversation starts on the user's
+# last pick. Names are shown as written.
+chat_models:
+  - id: deepseek/deepseek-v4.1-flash-1017
+    name: DeepSeek V4.1 Flash
+  - id: anthropic/claude-sonnet-5.5
+    name: Claude Sonnet 5.5
+  - id: anthropic/claude-opus-5.5
+    name: Claude Opus 5.5
+
+# The model for a conversation and a user with no pick yet. Must be one of
+# chat_models.
 default_model: deepseek/deepseek-v4.1-flash-1017
 
 # Native picture support: auto reads the public model catalog; yes/no override it.
@@ -29,15 +41,14 @@ agent_picture_concurrency: 4
 # bounds the combined audio/video download before the single model call.
 understand_media_max_items: 10
 
-# Model used for memory consolidation (summarizing old turns). The same model
-# that writes a conversation reads it back: two would put the summary in one
-# voice and the reply in another, and name two providers on one bill.
+# Model used for memory consolidation (folding old turns into memory entries).
+# One fixed model, whatever main model the user picked.
 consolidation_model: deepseek/deepseek-v4.1-flash-1017
 
 # How long a cached prompt prefix lives (5m or 1h), for the models that cache
 # only when asked (Claude). A write costs 1.25x the input price at 5m and 2x at
 # 1h; a read costs a small fraction of it. The lifetime counts from the start
-# of the last request that read or wrote it, and a reader often takes longer
+# of the last request that read or wrote it, and a user often takes longer
 # than five minutes to answer, so chat keeps it for an hour. Through
 # OpenRouter, a gap over 10 minutes also needs the request to land on the same
 # provider again: its sticky session expires after 10 minutes without calls.
@@ -49,7 +60,7 @@ prompt_cache_ttl: 1h
 conversation_title_max_chars: 60
 
 # How many conversations one page of the history list holds. The list asks for
-# the next page when the reader reaches the bottom of this one, so this is a
+# the next page when the user reaches the bottom of this one, so this is a
 # round-trip size rather than a ceiling: there is no limit on how many
 # conversations a project may have.
 conversation_page_size: 30
@@ -65,14 +76,22 @@ message_page_size: 30
 # a row happen to a stream that is doing fine.
 sse_heartbeat_interval_ms: 5000
 
-# Maximum character length for project memory injected into AI calls. The
-# conversation layer below carries the same ceiling.
-memory_project_max_size: 8192
+# How many memory entries the system prompt lists, newest first. The rest are
+# counted in one line and found through read_memory.
+memory_index_max_entries: 200
 
-# Maximum character length for conversation memory injected into AI calls.
-# Consolidation rewrites this layer whole every time it runs, so it is the one
-# segment that grows from its own output.
-memory_conversation_max_size: 8192
+# How long a conversation's progress note may be, in characters.
+memory_progress_max_chars: 2000
+
+# How many characters of entries one consolidation is shown in full; the rest
+# it sees by id and title only and cannot change.
+consolidation_entries_max_chars: 60000
+
+# How many times one consolidation asks for an answer that passes its checks.
+consolidation_answer_attempts: 3
+
+# How many entry operations one consolidation answer may carry.
+consolidation_max_operations: 50
 
 # The ceiling on one model call's answer, in tokens. Per call, not per turn:
 # a turn can make many calls and each of them is bounded by this.
@@ -80,7 +99,7 @@ max_output_tokens: 16384
 
 # How long the words of one turn's question may be, in characters.
 #
-# The browser draws a lower line (10,000) and says so as the reader types;
+# The browser draws a lower line (10,000) and says so as the user types;
 # this one is where a client cannot skip it.
 user_message_max_chars: 15000
 
@@ -123,8 +142,8 @@ space_read_timeout_ms: 20000
 # when the provider turns a request away as over its context window. It takes
 # whole turns from the oldest end, at least one, until what remains is under
 # the lower of this line and the window less max_output_tokens, less the room
-# the fold may add to memory -- the two memory ceilings, doubled, counted as
-# tokens at a character each. Must be below fold_trigger_tokens.
+# the fold may add to memory -- a full index and the progress note, doubled,
+# counted as tokens at a character each. Must be below fold_trigger_tokens.
 memory_keep_tokens: 300000
 
 # The provider's last reported count (input + output), in tokens, at which the
@@ -139,11 +158,6 @@ context_window_fallback_tokens: 1000000
 # How many folds a provider's "context too long" may set off in one turn.
 # Past it the turn ends as too long instead of paying for another fold.
 overflow_folds_per_turn: 2
-
-# How many times one fold halves what it hands the consolidation model after
-# that call is turned away as too long (six halvings leave 1/64). Past it the
-# window is discarded the way a failed fold is.
-consolidation_shrink_attempts: 6
 
 # ── Tools ─────────────────────────────────────────────────
 # How much page text one web_search asks for, in tokens. The service refuses

@@ -90,7 +90,7 @@ function asks(spaces: object[]): string {
 }
 
 /**
- * The turn going on after the reader answered, as the server sends it: the
+ * The turn going on after the user answered, as the server sends it: the
  * card's summary of the answer, then a reply of its own.
  * @param output - What the card is settled with.
  * @returns The stream.
@@ -109,7 +109,7 @@ function resumes(output: object): string {
 }
 
 /**
- * The resumed turn for whatever the reader answered: the summary the server
+ * The resumed turn for whatever the user answered: the summary the server
  * keeps for the card is each shared Space without its content.
  * @param sent - The answer's request.
  * @returns The stream.

@@ -19,7 +19,7 @@ afterEach(() => setPlatform(''));
 
 /**
  * Render the dialog open.
- * @param readOnly - Whether the reader is a read-only member.
+ * @param readOnly - Whether the user is a read-only member.
  * @returns The render result.
  */
 function renderOpen(readOnly = false): ReturnType<typeof render> {

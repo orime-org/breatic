@@ -194,7 +194,7 @@ describe('the face the slot shows', () => {
   });
 
   it('shows the heading, not the ordered list it belongs to', () => {
-    // What the reader sees on that line is a heading: the heading's size, and
+    // What the user sees on that line is a heading: the heading's size, and
     // a heading path where a list marker would be.
     const doc = docOf([
       { type: 'heading', props: { level: 1, numbered: true } },

@@ -69,7 +69,7 @@ const DARKEST = 18;
  *
  * `comment` is the same shape: the wash over words somebody commented on.
  * The chrome around a document stays neutral, and a mark inside the prose
- * is the standing exception to that — a highlight the reader has to be able
+ * is the standing exception to that — a highlight the user has to be able
  * to pick out from the text it sits on. Only the two washes derive from it,
  * both by mixing it with transparency.
  *

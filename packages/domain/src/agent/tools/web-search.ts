@@ -177,7 +177,7 @@ function readSource(item: unknown, index: number): SearchSource | null {
   const list = typeof snippets === "string" ? [snippets] : snippets;
   if (!Array.isArray(list)) return null;
 
-  // No address is unreadable in the sense that matters: what a reader does
+  // No address is unreadable in the sense that matters: what a user does
   // with a source is follow it, and a chip with nowhere to go is worse than
   // one page fewer.
   if (typeof url !== "string" || url === "") return null;
@@ -196,7 +196,7 @@ function readSource(item: unknown, index: number): SearchSource | null {
  * Name the publisher a page belongs to.
  *
  * A source row reading `vitest.dev` names a domain; one reading `Vitest` names
- * whoever wrote the page, which is what a reader weighs a claim by. The
+ * whoever wrote the page, which is what a user weighs a claim by. The
  * registrable name is the first label after any `www.`, so `www.vogue.co.uk`
  * is Vogue rather than Co or Uk.
  *
@@ -225,7 +225,7 @@ function publisherOf(url: string): string {
  * beside the two label lines. Those labels are what the answer attributes a
  * page by, and a page whose own text carries a `url:` line would otherwise
  * write a second one indistinguishable from the tool's -- cited back to the
- * reader under the address that page chose.
+ * user under the address that page chose.
  * @param source - The source, as read off the payload.
  * @returns The block.
  */
@@ -303,7 +303,7 @@ export function renderSearchForModel(answer: SearchAnswer): string {
  * every tool call of a step through one `Promise.all` and gives them all the
  * same `messages` (`dist/index.js:8171-8180`), so a sibling search's result
  * is never in what this one reads. Two searches in a step would take the
- * same numbers, and a number standing for two pages sends the reader to the
+ * same numbers, and a number standing for two pages sends the user to the
  * wrong one.
  *
  * The turn keeps the count and each call reserves its block from it. The

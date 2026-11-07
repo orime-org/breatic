@@ -31,7 +31,7 @@ export function costPerTurn(replayed: readonly ReplayedRow[]): TurnCost[] {
 
   // In turn order: the history is read oldest first. A turn paused at a
   // questionnaire has a reply for each segment, and each reply's count is what
-  // its own segment added, so the turn weighs all of them; the reader's
+  // its own segment added, so the turn weighs all of them; the user's
   // message is inside the first one's count.
   return [...byTurn.entries()].map(([turnIndex, rows]) => {
     if (!rows.some((one) => one.reply !== undefined)) {

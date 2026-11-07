@@ -23,15 +23,15 @@ interface Cell {
  * file exists to catch.
  */
 const REACHABLE: readonly Cell[] = [
-  { from: 'following', event: 'readerMovedUp', to: 'held' },
-  { from: 'travelling', event: 'readerMovedUp', to: 'held' },
-  { from: 'held', event: 'readerMovedUp', to: 'held' },
+  { from: 'following', event: 'userMovedUp', to: 'held' },
+  { from: 'travelling', event: 'userMovedUp', to: 'held' },
+  { from: 'held', event: 'userMovedUp', to: 'held' },
 
-  { from: 'travelling', event: 'readerMovedDownShort', to: 'travelling' },
-  { from: 'held', event: 'readerMovedDownShort', to: 'held' },
+  { from: 'travelling', event: 'userMovedDownShort', to: 'travelling' },
+  { from: 'held', event: 'userMovedDownShort', to: 'held' },
 
-  { from: 'travelling', event: 'readerMovedDownToEnd', to: 'following' },
-  { from: 'held', event: 'readerMovedDownToEnd', to: 'following' },
+  { from: 'travelling', event: 'userMovedDownToEnd', to: 'following' },
+  { from: 'held', event: 'userMovedDownToEnd', to: 'following' },
 
   { from: 'held', event: 'wayBackPressed', to: 'travelling' },
 
@@ -76,18 +76,18 @@ const REACHABLE: readonly Cell[] = [
  * The eight cells §4 marks impossible, each with what makes it so. The column
  * never asks the machine about them; the machine answers anyway, and what it
  * answers is "nothing changed", so a design that turns out to be wrong about
- * one of these leaves the reader where they are instead of somewhere new.
+ * one of these leaves the user where they are instead of somewhere new.
  */
 const UNREACHABLE: readonly (Cell & { readonly because: string })[] = [
   {
     from: 'following',
-    event: 'readerMovedDownShort',
+    event: 'userMovedDownShort',
     to: 'following',
     because: 'a following column sits at the end, and the browser raises no scroll event for a push past it',
   },
   {
     from: 'following',
-    event: 'readerMovedDownToEnd',
+    event: 'userMovedDownToEnd',
     to: 'following',
     because: 'same: there is no travel left below a column that is already at the end',
   },

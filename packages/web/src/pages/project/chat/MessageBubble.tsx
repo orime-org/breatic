@@ -100,7 +100,7 @@ export const MessageBubble = React.memo(function MessageBubble({
           // side of a conversation -- it is the panel talking -- so its words
           // sit directly on the surface, with nothing drawn around them.
           //
-          // The reader's own words keep theirs, held back from the far edge:
+          // The user's own words keep theirs, held back from the far edge:
           // that gap is what makes a message read as one side of an exchange.
           // `bg-accent` because it has to lift off the surface in both
           // themes, and it is the only neutral fill that does -- `bg-muted`
@@ -108,7 +108,7 @@ export const MessageBubble = React.memo(function MessageBubble({
           isUser ? 'max-w-[80%] items-end text-foreground' : 'w-full text-foreground',
         )}
       >
-        {/* What the reader attached, above their words and outside their
+        {/* What the user attached, above their words and outside their
             container: it is what the words are about, not part of them. */}
         {message.attachments ? (
           <div
@@ -127,10 +127,10 @@ export const MessageBubble = React.memo(function MessageBubble({
             ))}
           </div>
         ) : null}
-        {/* The reader's own words keep their container; the line under it is
+        {/* The user's own words keep their container; the line under it is
             outside that container, on the surface. */}
         {/* Held to the width the row gives it. `items-end` above leaves the
-          reader's bubble to take its content's width -- which for an address
+          user's bubble to take its content's width -- which for an address
           with nothing to break on is the whole of it -- and `overflow-wrap`
           does not enter into how wide an element wants to be, so without this
           the box is never short of room and the rule that would break the line
@@ -149,7 +149,7 @@ export const MessageBubble = React.memo(function MessageBubble({
           ) : null}
           {message.content || message.failureLines || message.streaming ? (
             <div data-testid='message-bubble-content'>
-              {/* What the reader typed means the characters they typed: markdown
+              {/* What the user typed means the characters they typed: markdown
                 is what the model writes in, not what the composer accepts. */}
               {/* `break-words` because `pre-wrap` breaks lines at spaces and a
                 pasted address has none: the whole of it is one unbreakable
@@ -204,7 +204,7 @@ export const MessageBubble = React.memo(function MessageBubble({
             : message.documentProposals.map((proposal) => (
               <DocumentProposalCard key={proposal.proposalId} proposal={proposal} />
             ))}
-          {/* What the turn asked the reader, after everything it offered: the
+          {/* What the turn asked the user, after everything it offered: the
             turn stopped there and waits on it (inner#1542). Drawn while the
             turn runs too: a waiting card exists only once the server named
             it, last in its segment, and an answered one stays above the
@@ -222,7 +222,7 @@ export const MessageBubble = React.memo(function MessageBubble({
               <SpaceRequestCard key={request.toolCallId} request={request} />
             ))}
           {/* A proposal stored in a shape this build can no longer place is
-            named where its card would be, so the reader knows to ask again
+            named where its card would be, so the user knows to ask again
             rather than meeting a button that cannot work (inner#1499). */}
           {running || message.hasExpiredProposal !== true ? null : (
             <div

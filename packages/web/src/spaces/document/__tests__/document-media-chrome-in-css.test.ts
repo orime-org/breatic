@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1127 A11: a reader who may not write sees a media block and plays it,
+ * inner#1127 A11: a user who may not write sees a media block and plays it,
  * and none of its controls. They hide on the body's own editability, which
  * ProseMirror writes as `contenteditable` on the surface: the controls are
  * drawn by a node view that is not rebuilt when that flips.
@@ -38,5 +38,13 @@ describe('the media controls in a body that is not editable (A11)', () => {
     );
 
     expect(hiding).toHaveLength(1);
+  });
+
+  // inner#1844: a viewer keeps the full-screen button over a picture or a video.
+  it('leave the row of icons a viewer may use', () => {
+    const hiding = chromeRules().filter((rule) => /\.doc-body\[contenteditable=['"]false['"]\]/.test(rule.selector));
+    expect(hiding.map((rule) => rule.selector)).toEqual([
+      '.doc-body[contenteditable=\'false\'] [data-media-chrome]:not([data-media-viewer])',
+    ]);
   });
 });

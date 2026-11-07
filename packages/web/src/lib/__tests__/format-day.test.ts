@@ -5,7 +5,7 @@
  * 一个时间戳变成给人看的那一天。
  *
  * 服务器一律以 UTC 记录，读的人分布在各个时区，所以这里唯一要钉的是「这一天
- * 是读者的那一天」，加上设计定死的形状。
+ * 是用户的那一天」，加上设计定死的形状。
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -15,7 +15,7 @@ import { formatLocalDay } from '@web/lib/format-day';
 const REAL_TZ = process.env['TZ'];
 
 /**
- * 换一个读者所在的时区。
+ * 换一个用户所在的时区。
  * @param tz - IANA 时区名。
  */
 function readingFrom(tz: string): void {
@@ -23,7 +23,7 @@ function readingFrom(tz: string): void {
 }
 
 afterEach(() => {
-  // 整个包跑在一个进程里（vitest.config.ts 的 singleFork），而 isolate 只重置
+  // 整个包跑在一个进程里（vitest.config.mts 的 singleFork），而 isolate 只重置
   // mock 和模块注册表、不碰 process.env。这台机器多半根本没设 TZ，直接写回
   // undefined 会存成字符串 "undefined"，此后每个测试文件都跑在 UTC 而不是本机
   // 时区上。
@@ -35,8 +35,8 @@ afterEach(() => {
 });
 
 describe('formatLocalDay', () => {
-  it('给出读者本地的那一天，不是 UTC 的那一天', () => {
-    // UTC 的午夜。东八区的读者这时是当天早上八点，纽约的读者还是前一天晚上。
+  it('给出用户本地的那一天，不是 UTC 的那一天', () => {
+    // UTC 的午夜。东八区的用户这时是当天早上八点，纽约的用户还是前一天晚上。
     const midnightUtc = '2026-08-19T00:00:00.000Z';
 
     readingFrom('Asia/Shanghai');

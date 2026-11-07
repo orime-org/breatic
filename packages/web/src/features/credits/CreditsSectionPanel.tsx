@@ -19,7 +19,7 @@ import { useCurrentUserStore } from '@web/stores/current-user';
 
 /** Which section to show. */
 interface CreditsSectionPanelProps {
-  /** The section the reader picked. */
+  /** The section the user picked. */
   section: CreditsSectionId;
 }
 
@@ -31,7 +31,7 @@ interface CreditsSectionPanelProps {
  * a single row's worth of totals that would otherwise be re-read on every
  * click of the index.
  * @param props - Which section to show.
- * @param props.section - The section the reader picked.
+ * @param props.section - The section the user picked.
  * @returns The section.
  */
 export function CreditsSectionPanel({

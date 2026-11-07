@@ -3,7 +3,7 @@
 
 /**
  * Posting a comment: `commentOn` for any caller that says where, and
- * `postComment` for the reader's own draft (#18, A1 · A2 · A21; inner#1509).
+ * `postComment` for the user's own draft (#18, A1 · A2 · A21; inner#1509).
  *
  * Two steps in this order, because the thread's id is what the mark carries:
  * create the thread, then mark the words. The library does not offer the
@@ -13,7 +13,7 @@
  * has no way to hand a range to (design §6.1).
  *
  * Writing it here is what makes every entry one operation: the bubble bar
- * opens the draft on the reader's selection and the block handle opens it on
+ * opens the draft on the user's selection and the block handle opens it on
  * `selectionOverBlockContent`, both posting through `postComment`, and an
  * Agent proposal landing calls `commentOn` with the range it aims at. From
  * `commentOn` on they are identical — which is what A2 asks for, a whole-block
@@ -23,7 +23,7 @@
  * the moment of posting. The plugin is the one thing that has
  * carried that range across every edit since the draft opened, and reading it
  * here closes a gap a caller cannot — a peer's deletion can arrive between
- * React rendering the draft card and the reader pressing post, and a range read
+ * React rendering the draft card and the user pressing post, and a range read
  * at render time would be stale by then. A gone range posts nothing and the
  * caller says why (A21).
  */
@@ -146,10 +146,10 @@ export async function commentOn(
 }
 
 /**
- * Creates a thread for what the reader wrote and marks the words it is about.
+ * Creates a thread for what the user wrote and marks the words it is about.
  * @param editor - The document editor, with the draft and comments
  *   extensions registered.
- * @param body - What the reader wrote.
+ * @param body - What the user wrote.
  * @returns The thread created, or null when there is no open draft or the
  *   text it was aimed at is gone — in which case nothing was created.
  * @throws {SpaceFullError} When the Space had no room; the toast said so.

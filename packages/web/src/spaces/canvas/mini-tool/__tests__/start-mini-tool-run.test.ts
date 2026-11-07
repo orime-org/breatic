@@ -420,7 +420,7 @@ describe('startMiniToolRun', () => {
     expectAllFailed({ key: 'canvas.miniTool.panel.sourceGone' });
   });
 
-  // inner#1302 §6.5: a reader who closed the panel and opened another keeps its selection.
+  // inner#1302 §6.5: a user who closed the panel and opened another keeps its selection.
   it('builds the nodes without selecting them once the panel was opened again', async () => {
     const run = press({ stillOpen: () => false });
     await startMiniToolRun(run);

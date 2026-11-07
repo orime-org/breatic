@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Reading the Spaces an Agent asked to look at, once the reader allowed it
+ * Reading the Spaces an Agent asked to look at, once the user allowed it
  * (inner#1552, design 4.4, DD 5.3).
  *
  * Each requested Space ends in one of five states and the Agent is told each

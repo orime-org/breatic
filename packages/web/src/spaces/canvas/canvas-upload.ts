@@ -72,7 +72,7 @@ export type FileRejection = 'empty' | 'tooLarge' | 'unsupportedType';
  * Derived from the same list the admission gate asks, aliases and all: the
  * picker and the gate answer the same question, so a format shown here and
  * refused there is an offer withdrawn the moment somebody takes it, and one the
- * gate takes but the picker omits is a file the reader cannot select. A family
+ * gate takes but the picker omits is a file the user cannot select. A family
  * wildcard does the first — `image/*` shows HEIC, GIF and AVIF, none of which a
  * model can be given.
  * @param modality - One media kind, or all supported media.
@@ -166,7 +166,7 @@ export interface FillNodeDeps {
    * row and is said on the node itself (inner#1303 §6.7).
    *
    * Every reason needs something only the caller can do — pick or clear the
-   * Retry stash, and say the remedy in the reader's own language — and what
+   * Retry stash, and say the remedy in the user's own language — and what
    * each one needs differs: a hashing refusal must not be stashed (retrying on
    * this page hits the same broken worker) and a full account must not be
    * either (nobody frees storage in the seconds a retry takes), while an
@@ -193,7 +193,7 @@ export interface FillNodeDeps {
   /** The space the node lives in, which rides the ticket and keys its mark. */
   spaceId: string;
   /**
-   * The upload mark the caller began on the node when the reader asked for
+   * The upload mark the caller began on the node when the user asked for
    * this fill (inner#1303 §6.7); this fill ends it.
    */
   markOp: string;

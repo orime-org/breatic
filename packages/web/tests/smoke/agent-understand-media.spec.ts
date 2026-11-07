@@ -9,7 +9,7 @@
  * video and audio are downloaded here and go up as base64. Unit tests pin the
  * request bodies; what they cannot pin is whether that address survives the
  * whole path — tool registration, the turn's tool set, the credential, the
- * live backend — and lands as a sentence a reader can read.
+ * live backend — and lands as a sentence a user can read.
  *
  * Each case starts its own conversation. A model that already has a
  * description of a puppy in front of it answers the next question from that
@@ -260,7 +260,7 @@ test('says what happens in a video the user pasted @needs-internet @needs-model'
   // naming it here would be asking the model to describe footage it was not
   // given — measured, a passing answer is "宁静的森林空地空镜头：阳光洒在长满
   // 草的小土丘和一棵大树（树根下有个洞穴）上".
-  // The film's name would carry a reader to "forest" on its own, so the
+  // The film's name would carry a user to "forest" on its own, so the
   // sentence is the weaker half here and the tool having run is the strong one.
   expect(toolLines).toContain('Looking at the media');
   expect(call?.state).toBe('output-available');
@@ -406,7 +406,7 @@ test('tells the user a video format it cannot watch is one to convert @needs-int
 
   // An .avi, served as video/x-msvideo — a real type from a real host, and not
   // one of the four the endpoint names. The refusal happens on our side before
-  // a byte travels, so what must reach the reader is that the format is the
+  // a byte travels, so what must reach the user is that the format is the
   // problem and converting is the move. The failing shape this replaces sent
   // the whole clip up and then repeated the endpoint's complaint, which reads
   // as the model having declined to watch it.
@@ -428,7 +428,7 @@ test('tells the user a video format it cannot watch is one to convert @needs-int
 
 test('tells the user an image format it cannot read is one to convert @needs-internet @needs-model', async () => {
 
-  // The other half of the format gate, and the one a reader hits by accident:
+  // The other half of the format gate, and the one a user hits by accident:
   // most encyclopedia diagrams are svg. Before the gate this went to the model
   // and came back as an upstream failure — "try again shortly", for an address
   // that answers the same way every time.

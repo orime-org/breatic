@@ -4,7 +4,7 @@
 /**
  * #113 acceptance A7: the row the handle menu's insert-below command makes.
  *
- * It has to land where the reader is pointing — under the pressed row and
+ * It has to land where the user is pointing — under the pressed row and
  * before anything indented under it — and carry that row's own quoting.
  */
 
@@ -17,10 +17,10 @@ import { buildDocumentEditor } from '@web/spaces/document/build-document-editor'
 import {
   insertBelow,
   insertRowForMenu,
-  mediaGapBelow,
-  mediaGapOnRow,
+  insertMediaBelow,
+  insertMediaOnRow,
 } from '@web/spaces/document/document-insert-row';
-import { gapBefore } from './textblocks';
+import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
@@ -88,7 +88,7 @@ describe('the row insert-below makes', () => {
 
     // `insertBlocks(…, 'after')` would put it below the whole subtree —
     // `insertBlocks.ts:41-42` advances by the container's `nodeSize`, which
-    // holds the children — landing it three rows from where the reader
+    // holds the children — landing it three rows from where the user
     // pointed.
     expect(shape(editor.document)).toEqual([
       ['parent', ['', 'first child', 'second child']],
@@ -195,58 +195,105 @@ describe('a table inserted below (inner#1126 A1)', () => {
   });
 });
 
-describe('the gap a media pick uploads into (inner#1127 A1)', () => {
-  it('makes the empty line under the pressed row at once, caret in it, and goes above that line', () => {
+/**
+ * A pending image block as a pick brings it in.
+ * @param uploadId - Its upload.
+ * @returns The block.
+ */
+function pendingImage(uploadId: string): unknown {
+  return { type: 'image', props: { url: '', uploadId, name: `${uploadId}.png` } };
+}
+
+/**
+ * The document as types, with each line's text, children nested.
+ * @param blocks - Blocks to describe.
+ * @returns One entry per block.
+ */
+function kinds(blocks: readonly unknown[]): unknown[] {
+  return (blocks as Seen[]).map((block) => {
+    const label = block.type === 'paragraph' ? (block.content ?? []).map((c) => c.text ?? '').join('') : block.type;
+    const kids = block.children ?? [];
+    return kids.length > 0 ? [label, kinds(kids)] : label;
+  });
+}
+
+describe('the media a pick brings in (inner#1351 + inner#1390 design §5.9)', () => {
+  it('lands under the pressed row with the empty line after it, quoted as that row, caret in the line', () => {
     const editor = open([
       { type: 'paragraph', props: { quoted: true }, content: 'pressed' },
       { type: 'paragraph', content: 'after' },
     ]);
 
-    const gap = mediaGapBelow(editor, editor.document[0] as never);
+    insertMediaBelow(editor, editor.document[0] as never, [pendingImage('u1'), pendingImage('u2')] as never);
 
     const blocks = editor.document as Seen[];
-    expect(shape(blocks)).toEqual(['pressed', '', 'after']);
-    expect(blocks[1]!.props?.['quoted']).toBe(true);
-    expect((editor.getTextCursorPosition().block as { id: string }).id).toBe(blocks[1]!.id);
-    expect(gap).toBe(gapBefore(editor.prosemirrorState.doc, blocks[1]!.id));
+    expect(kinds(blocks)).toEqual(['pressed', 'image', 'image', '', 'after']);
+    expect(blocks.slice(1, 4).map((b) => b.props?.['quoted'])).toEqual([true, true, true]);
+    expect((editor.getTextCursorPosition().block as { id: string }).id).toBe(blocks[3]!.id);
   });
 
-  it('makes that line before the pressed row\'s children, which is where the media goes', () => {
+  it('lands before the pressed row\'s children', () => {
     const editor = open([
-      {
-        type: 'paragraph',
-        content: 'parent',
-        children: [{ type: 'paragraph', content: 'child' }],
-      },
+      { type: 'paragraph', content: 'parent', children: [{ type: 'paragraph', content: 'child' }] },
     ]);
 
-    const gap = mediaGapBelow(editor, editor.document[0] as never);
+    insertMediaBelow(editor, editor.document[0] as never, [pendingImage('u1')] as never);
 
-    const kids = (editor.document as Seen[])[0]!.children!;
-    expect(shape(kids)).toEqual(['', 'child']);
-    expect(gap).toBe(gapBefore(editor.prosemirrorState.doc, kids[0]!.id));
+    expect(kinds(editor.document)).toEqual([['parent', ['image', '', 'child']]]);
   });
 
-  it('on an empty line goes above it and leaves the caret in it', () => {
+  it('with its empty line is one undo step', () => {
+    const doc = new Y.Doc();
+    const { manager, extension } = createDocumentUndo(doc);
+    const editor = buildDocumentEditor({ fragment: documentBodyFragment(doc), extensions: [extension] });
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    editor.mount(root);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [{ type: 'paragraph', content: 'pressed' }] as never);
+    manager.stopCapturing();
+
+    insertMediaBelow(editor, editor.document[0] as never, [pendingImage('u1')] as never);
+    manager.undo();
+
+    expect(kinds(editor.document)).toEqual(['pressed']);
+  });
+
+  it.each([
+    ['below a row', 0, insertMediaBelow],
+    ['on an empty line', 1, insertMediaOnRow],
+  ] as const)('%s is an undo step apart from typing just before it', (_where, row, insert) => {
+    const doc = new Y.Doc();
+    const { manager, extension } = createDocumentUndo(doc);
+    const editor = buildDocumentEditor({ fragment: documentBodyFragment(doc), extensions: [extension] });
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    editor.mount(root);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [{ type: 'paragraph', content: 'pressed' }, { type: 'paragraph' }] as never);
+    manager.clear();
+    editor.setTextCursorPosition((editor.document as Seen[])[0]!.id!, 'end');
+    editor.insertInlineContent(' typed');
+
+    insert(editor, (editor.document as Seen[])[row] as never, [pendingImage('u1')] as never);
+    manager.undo();
+
+    expect(kinds(editor.document)).toEqual(['pressed typed', '']);
+  });
+
+  it('on an empty line lands above it, quoted as that line, and leaves the caret in it', () => {
     const editor = open([
       { type: 'paragraph', content: 'above' },
       { type: 'paragraph', props: { quoted: true } },
     ]);
+    const line = (editor.document as Seen[])[1]!;
+
+    insertMediaOnRow(editor, line as never, [pendingImage('u1')] as never);
+
     const blocks = editor.document as Seen[];
-
-    const gap = mediaGapOnRow(editor, blocks[1] as never);
-
-    expect(shape(editor.document)).toEqual(['above', '']);
-    expect((editor.getTextCursorPosition().block as { id: string }).id).toBe(blocks[1]!.id);
-    expect(gap).toBe(gapBefore(editor.prosemirrorState.doc, blocks[1]!.id));
-  });
-
-  it('on an empty first line has nothing before it', () => {
-    const editor = open([{ type: 'paragraph' }]);
-
-    const gap = mediaGapOnRow(editor, editor.document[0] as never);
-
-    expect(gap).toBe(gapBefore(editor.prosemirrorState.doc, (editor.document as Seen[])[0]!.id));
+    expect(kinds(blocks)).toEqual(['above', 'image', '']);
+    expect(blocks[1]!.props?.['quoted']).toBe(true);
+    expect((editor.getTextCursorPosition().block as { id: string }).id).toBe(line.id);
   });
 });
 

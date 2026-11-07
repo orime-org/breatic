@@ -38,6 +38,7 @@ import type { Transaction } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 
 import { compositionEnd, type CompositionEnd } from '@web/lib/composition-end';
+import { holdsWholeCell } from '@web/spaces/document/document-cell-content-selection';
 import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selection';
 import { heldTables } from '@web/spaces/document/document-table-leave-selection';
 import { inLegacyCell } from '@web/spaces/document/document-table-legacy';
@@ -99,7 +100,7 @@ function handleQuotedEnter(editor: ListEditor): boolean {
     // Both of the reads below are about the block the selection OPENS in, and
     // both stay true once it runs past that block. The empty branch answers by
     // opening a block rather than replacing anything, so a selection reaching
-    // it would leave what the reader highlighted where it was.
+    // it would leave what the user highlighted where it was.
     const blockEmpty = tr.selection.empty && blockContent.node.childCount === 0;
     // Indented means nested under another block; a block at the top of a
     // table cell is at the top of that cell's own body (inner#1619).
@@ -224,7 +225,7 @@ function handleWholeDocumentEnter(editor: ListEditor): boolean {
 /**
  * Enter with one whole block selected.
  *
- * A reader reaches this by holding the platform's select-node modifier over a
+ * A user reaches this by holding the platform's select-node modifier over a
  * block, and what Enter gets them is a new block after that one — the block
  * they selected untouched, which is what every editor with a block handle
  * does.
@@ -334,14 +335,18 @@ export const documentEnterExtension = createExtension(() => {
         ) {
           return false;
         }
-        // A range reaching past an end of the body, or one taking a table
-        // whole (inner#1619 T14), goes as any range does; what is left is a
+        // A range reaching past an end of the body, one taking a table whole
+        // (inner#1619 T14), or one covering a cell's every block (which would
+        // otherwise take the cell out of its row), goes through its own
+        // replace; what is left is a
         // caret in text, which takes the ordinary Enter below, the quote of
         // the line it is on included. Left to the library, the split is placed
         // at the range's start, which can be the edge, outside any line
         // (#124, A6), or in the table it took away.
         const tookRange =
-          editor.prosemirrorState.selection instanceof BodyEdgeSelection || heldTables(editor.prosemirrorState.selection) !== null;
+          editor.prosemirrorState.selection instanceof BodyEdgeSelection ||
+          heldTables(editor.prosemirrorState.selection) !== null ||
+          holdsWholeCell(editor.prosemirrorState.selection);
         if (tookRange) {
           editor.transact((tr) => tr.deleteSelection());
         }

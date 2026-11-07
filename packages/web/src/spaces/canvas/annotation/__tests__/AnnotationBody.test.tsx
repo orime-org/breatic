@@ -26,7 +26,7 @@ describe('the six marks an annotation understands', () => {
 
   it('draws a link, and opens it away from the canvas', () => {
     // A canvas is a workspace with unsaved gestures in it. Following a link in
-    // place would take the reader off it, so the link opens elsewhere.
+    // place would take the user off it, so the link opens elsewhere.
     body('see [the brief](https://example.com/brief)');
     const link = screen.getByRole('link', { name: 'the brief' });
     expect(link).toHaveAttribute('href', 'https://example.com/brief');
@@ -68,7 +68,7 @@ describe('the six marks an annotation understands', () => {
 
 describe('what an annotation deliberately does not understand', () => {
   it('leaves a heading as the characters that were typed', () => {
-    // Not dropped and not promoted: the reader sees what the author typed, and
+    // Not dropped and not promoted: the user sees what the author typed, and
     // a 200px sticky never grows a page heading.
     const el = body('# not a heading');
     expect(el).toHaveTextContent('# not a heading');
@@ -106,7 +106,7 @@ describe('what an annotation deliberately does not understand', () => {
     // A checkbox is not one of the six marks, so the marker goes back as
     // written — the same answer this file already pins for a heading, a fence
     // and a quote. Without it remark-gfm eats `[x]` into the item and done and
-    // not-done reach the reader as the same two words.
+    // not-done reach the user as the same two words.
     const el = body('- [x] shipped\n- [ ] not shipped');
     expect(el).toHaveTextContent('[x] shipped');
     expect(el).toHaveTextContent('[ ] not shipped');

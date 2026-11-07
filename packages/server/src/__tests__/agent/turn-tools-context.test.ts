@@ -22,12 +22,16 @@ const tools = {
   read_conversation: {},
   read_node_history: {},
   list_project_activity: {},
+  save_memory: {},
+  delete_memory: {},
+  read_memory: {},
 };
 const records = { spaceName: () => undefined } as never;
+const memory = { read: async () => [] } as never;
 
 describe("turnToolsContext", () => {
   const openDocument = { spaceId: "d1", spaceName: "Storyboard", blocks: [] };
-  const context = turnToolsContext(tools, usage, { saveToStorage, studioId: "s1", openDocument, records });
+  const context = turnToolsContext(tools, usage, { saveToStorage, studioId: "s1", openDocument, records, memory });
 
   it("keeps the usage recorder on every tool", () => {
     for (const name of Object.keys(tools)) expect(context[name]).toMatchObject({ usage });
@@ -56,6 +60,12 @@ describe("turnToolsContext", () => {
     }
   });
 
+  it("hands the three memory tools the turn's memory (#1363)", () => {
+    for (const name of ["save_memory", "delete_memory", "read_memory"]) {
+      expect(context[name]).toEqual({ usage, memory });
+    }
+  });
+
   it("gives other tools nothing more", () => {
     expect(Object.keys(context.web_search ?? {})).toEqual(["usage"]);
   });
@@ -65,7 +75,7 @@ describe("openDocumentOf", () => {
   const blocks = [{ id: "b1", type: "paragraph", text: "x", lossy: false, partial: false }];
   const base = { id: "d1", name: "Storyboard", kind: "document" as const };
 
-  it("is the loaded document the reader has open, with its blocks", () => {
+  it("is the loaded document the user has open, with its blocks", () => {
     expect(
       openDocumentOf({ current_space: { ...base, state: "loaded", content: "<!-- b:1 -->\nx", total_chars: 14, blocks } }),
     ).toEqual({ spaceId: "d1", spaceName: "Storyboard", blocks });

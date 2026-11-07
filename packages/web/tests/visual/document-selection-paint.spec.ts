@@ -350,7 +350,7 @@ test('a selection a co-editor also holds looks the same with the panel open', as
     const panelOpen = await page.screenshot({ clip });
 
     // The band dims when the other window loses the focus, which would read as
-    // a change in this reader's own paint.
+    // a change in this user's own paint.
     expect(
       panelOpenBand,
       'the band a co-editor is drawn with changed between the two shots',

@@ -3,15 +3,16 @@
 
 import type * as Y from 'yjs';
 import type { QueryClient } from '@tanstack/react-query';
-import { newId, type ProjectRegisteredAsset, type TimelineEditCommand } from '@breatic/shared';
-import { applyTimelineEdit } from '@breatic/shared/space-content';
+import { newId, TIMELINE_MAIN_TRACK_ID, type ProjectRegisteredAsset } from '@breatic/shared';
+import type { TimelineEditCommand, TimelineEditPlacement, TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 
 import { timelineApi } from '@web/data/api/timeline';
 import { uploadMedia } from '@web/data/upload/media-upload';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
-import { estimateNodeBytes, reserveSpaceRoom, writeSpaceDoc, type SpaceRefusal } from '@web/data/yjs/space-write';
+import { parseTimelineFrame } from '@web/data/yjs/timeline-time';
 import { prepareTimelineMediaPlacement } from '@web/spaces/timeline/prepare-media-placement';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
+import { timelineAssetKey } from '@web/spaces/timeline/use-timeline-asset';
 
 /** The current material form and upload facts held by an open document. */
 export interface TimelineMediaDraftSnapshot {
@@ -21,28 +22,29 @@ export interface TimelineMediaDraftSnapshot {
   file: File | null;
   registeredAssetId: string | null;
   startFrame: string;
+  /** The captured target visual track, or 'new' for a track created with the clip. */
+  trackId: string;
   busy: boolean;
   progress: number | null;
   errorKey: string | null;
-  /** Why the Space's size refused the placement; shown when there is no `errorKey`. */
-  refusal: SpaceRefusal | null;
 }
 
 /** The Project resource context fixed for this document's material workflow. */
-interface TimelineMediaDraftInputs { projectId: string; spaceId: string; queryClient: QueryClient }
+interface TimelineMediaDraftInputs { projectId: string; spaceId: string; queryClient: QueryClient; edit: (command: TimelineEditCommand) => TimelineEditPlan }
 
 /** The one writer of material selection, upload and acceptance state. */
 export interface TimelineMediaDraft {
   getSnapshot: () => TimelineMediaDraftSnapshot;
   subscribe: (notify: () => void) => () => void;
-  open: (startFrame: number) => void;
+  open: (startFrame: number, trackId: string) => void;
   close: () => void;
   setCanWrite: (canWrite: boolean) => void;
   setMode: (mode: 'project' | 'local') => void;
   select: (asset: ProjectRegisteredAsset) => void;
   setFile: (file: File | null) => void;
   setStartFrame: (frame: string) => void;
-  confirm: () => Promise<void>;
+  setTrack: (trackId: string) => void;
+  confirm: (placement: TimelineEditPlacement) => Promise<void>;
   dispose: () => void;
 }
 
@@ -52,48 +54,7 @@ export interface TimelineMediaDraft {
  * @throws {never} Never.
  */
 function initialSnapshot(): TimelineMediaDraftSnapshot {
-  return { open: false, mode: 'project', selected: null, file: null, registeredAssetId: null, startFrame: '0', busy: false, progress: null, errorKey: null, refusal: null };
-}
-
-/**
- * What adding one video can grow the Timeline by: its source and clip records.
- * @param parameters - The two records as they are written.
- * @param parameters.source - The source record.
- * @param parameters.clip - The clip record.
- * @returns Bytes.
- * @throws {never} Never.
- */
-function placementBytes(parameters: { source: unknown; clip: unknown }): number {
-  return estimateNodeBytes(parameters.source) + estimateNodeBytes(parameters.clip);
-}
-
-/**
- * The estimate reserved before the asset is known: the records' shape with
- * the widest values a registered or decoded video gives them.
- * @param clipId - The new clip's id.
- * @param sourceId - The new source's id.
- * @returns Bytes.
- * @throws {never} Never.
- */
-function reservedPlacementBytes(clipId: string, sourceId: string): number {
-  const frames = Number.MAX_SAFE_INTEGER;
-  return placementBytes({
-    source: { id: sourceId, kind: 'video', assetId: sourceId, timebase: { num: frames, den: frames }, extentFrames: frames, durationSeconds: String(Number.MAX_VALUE), durationOrigin: 'registered' },
-    clip: {
-      id: clipId, kind: 'video', trackId: 'visual-1', sourceId, startFrame: frames, sourceInFrame: 0, durationFrames: frames,
-      rate: { num: 1, den: 1 }, gain: 1, mute: false, transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
-    },
-  });
-}
-
-/**
- * The records an `add_video` command writes.
- * @param command - The prepared command.
- * @returns Its estimate in bytes.
- * @throws {never} Never.
- */
-function commandBytes(command: TimelineEditCommand): number {
-  return command.operation === 'add_video' ? placementBytes(command.parameters) : 0;
+  return { open: false, mode: 'project', selected: null, file: null, registeredAssetId: null, startFrame: '0', trackId: TIMELINE_MAIN_TRACK_ID, busy: false, progress: null, errorKey: null };
 }
 
 /**
@@ -139,12 +100,11 @@ function decodeDuration(fileUrl: string, signal: AbortSignal): Promise<number> {
 /**
  * Bind material work to the existing document lifetime, including hidden views.
  * @param doc - The manager-owned Timeline content document.
- * @param name - Its canonical document name, whose size gates the write.
  * @param inputs - Its fixed Project and upload context.
  * @returns Its single observable material state and explicit actions.
  * @throws {never} Never.
  */
-function createTimelineMediaDraft(doc: Y.Doc, name: string, inputs: TimelineMediaDraftInputs): TimelineMediaDraft {
+function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs): TimelineMediaDraft {
   let snapshot = initialSnapshot();
   let canWrite = false;
   let disposed = false;
@@ -156,8 +116,7 @@ function createTimelineMediaDraft(doc: Y.Doc, name: string, inputs: TimelineMedi
    * @throws {never} Never.
    */
   const publish = (patch: Partial<TimelineMediaDraftSnapshot>): void => {
-    // A new error replaces a size refusal unless it is one.
-    snapshot = { ...snapshot, ...('errorKey' in patch && !('refusal' in patch) && { refusal: null }), ...patch };
+    snapshot = { ...snapshot, ...patch };
     listeners.forEach((notify) => notify());
   };
   /** Cancel this document's current automatic placement and release its operation. */
@@ -189,12 +148,13 @@ function createTimelineMediaDraft(doc: Y.Doc, name: string, inputs: TimelineMedi
     /**
      * Capture a new explicit material placement within this document.
      * @param startFrame - The fixed initial placement frame.
+     * @param trackId - The fixed initial target track.
      * @throws {never} Never.
      */
-    open(startFrame: number): void {
+    open(startFrame: number, trackId: string): void {
       if (disposed || !canWrite) return;
       cancel();
-      publish({ ...initialSnapshot(), open: true, startFrame: String(startFrame) });
+      publish({ ...initialSnapshot(), open: true, startFrame: String(startFrame), trackId });
     },
     close,
     /**
@@ -230,19 +190,24 @@ function createTimelineMediaDraft(doc: Y.Doc, name: string, inputs: TimelineMedi
      * @throws {never} Never.
      */
     setStartFrame(startFrame: string): void { if (!snapshot.busy) publish({ startFrame, errorKey: null }); },
-    /** Confirm the current fixed target and apply its registered video atomically. */
-    async confirm(): Promise<void> {
+    /**
+     * Change the next confirmed placement's target track.
+     * @param trackId - A visual track id, or 'new' for a new track.
+     * @throws {never} Never.
+     */
+    setTrack(trackId: string): void { if (!snapshot.busy) publish({ trackId, errorKey: null }); },
+    /**
+     * Confirm the current fixed target and apply its registered video atomically.
+     * @param placement - The editing user's magnet and linkage switches at confirmation.
+     * @returns Once the attempt settles.
+     */
+    async confirm(placement: TimelineEditPlacement): Promise<void> {
       if (disposed || !snapshot.open || active !== null) return;
       if (!canWrite) { publish({ errorKey: 'readonly' }); return; }
       const captured = snapshot;
-      const startFrame = Number(captured.startFrame);
-      if (captured.startFrame.trim() === '' || !Number.isSafeInteger(startFrame) || startFrame < 0) { publish({ errorKey: 'invalid_range' }); return; }
+      const startFrame = parseTimelineFrame(captured.startFrame);
+      if (!Number.isSafeInteger(startFrame)) { publish({ errorKey: 'invalid_range' }); return; }
       if ((captured.mode === 'project' && captured.selected === null) || (captured.mode === 'local' && captured.file === null)) { publish({ errorKey: 'source_unavailable' }); return; }
-      const clipId = newId();
-      const sourceId = newId();
-      // Room is held before the upload or the asset lookup, and released on every way out but a write.
-      const reserved = reserveSpaceRoom(name, reservedPlacementBytes(clipId, sourceId), { notify: false });
-      if (!reserved.ok) { publish({ errorKey: null, refusal: reserved }); return; }
       const operationId = newId();
       const operations = useSpaceOperationsStore.getState();
       let released = false;
@@ -252,7 +217,9 @@ function createTimelineMediaDraft(doc: Y.Doc, name: string, inputs: TimelineMedi
       const attempt = { controller, release, canApply: true };
       active = attempt;
       operations.register(inputs.spaceId, operationId);
-      publish({ busy: true, errorKey: null, refusal: null });
+      publish({ busy: true, errorKey: null });
+      const clipId = newId();
+      const sourceId = newId();
       let failure = 'source_unavailable';
       try {
         let assetId = captured.mode === 'project' ? captured.selected?.assetId : captured.registeredAssetId;
@@ -269,7 +236,7 @@ function createTimelineMediaDraft(doc: Y.Doc, name: string, inputs: TimelineMedi
         if (active !== attempt) return;
         if (assetId === null || assetId === undefined) { publish({ errorKey: 'source_unavailable' }); return; }
         failure = 'source_unavailable';
-        const asset = await inputs.queryClient.fetchQuery({ queryKey: ['timeline-asset', inputs.projectId, assetId], queryFn: ({ signal }) => timelineApi.resolveAsset(inputs.projectId, assetId, signal), staleTime: 0 });
+        const asset = await inputs.queryClient.fetchQuery({ queryKey: timelineAssetKey(inputs.projectId, assetId), queryFn: ({ signal }) => timelineApi.resolveAsset(inputs.projectId, assetId, signal), staleTime: 0 });
         if (active !== attempt) return;
         failure = 'metadata_unavailable';
         const decodedDurationSeconds = asset.durationSeconds === null ? await decodeDuration(asset.fileUrl, controller.signal) : undefined;
@@ -277,21 +244,15 @@ function createTimelineMediaDraft(doc: Y.Doc, name: string, inputs: TimelineMedi
         if (!attempt.canApply) { publish({ errorKey: 'permission_changed' }); return; }
         failure = 'target_missing';
         if (doc.isDestroyed) { publish({ errorKey: failure }); return; }
-        const prepared = prepareTimelineMediaPlacement(doc, { asset, trackId: 'visual-1', startFrame, clipId, sourceId, canWrite, ...(decodedDurationSeconds === undefined ? {} : { decodedDurationSeconds }) });
+        const target = captured.trackId === 'new' ? { trackId: TIMELINE_MAIN_TRACK_ID, newTrackId: newId() } : { trackId: captured.trackId };
+        const prepared = prepareTimelineMediaPlacement(doc, { asset, startFrame, clipId, sourceId, canWrite, placement, ...target, ...(decodedDurationSeconds === undefined ? {} : { decodedDurationSeconds }) });
         if (!prepared.ok) { publish({ errorKey: prepared.reason }); return; }
-        if (!canWrite) { publish({ errorKey: 'readonly' }); return; }
-        let applied = false;
-        const written = writeSpaceDoc(name, { kind: 'add', estimate: commandBytes(prepared.command), reservation: reserved.reservation, notify: false }, () => {
-          applied = applyTimelineEdit(doc, prepared.command);
-        });
-        if (!written.ok) { publish({ errorKey: null, refusal: written }); return; }
-        if (!applied) { publish({ errorKey: 'target_missing' }); return; }
+        const applied = inputs.edit(prepared.command);
+        if (!applied.ok) { publish({ errorKey: applied.reason }); return; }
         close();
       } catch {
         if (active === attempt && !controller.signal.aborted) publish({ errorKey: failure });
       } finally {
-        // No effect once the write carried it: the push that counts the write releases it.
-        reserved.reservation.release();
         release();
         if (active === attempt) { active = null; publish({ busy: false, progress: null }); }
       }
@@ -307,10 +268,7 @@ function createTimelineMediaDraft(doc: Y.Doc, name: string, inputs: TimelineMedi
   };
 }
 
-const cache = createDocScopedCache<TimelineMediaDraft, TimelineMediaDraftInputs & { name: string }>(
-  (doc, { name, ...inputs }) => createTimelineMediaDraft(doc, name, inputs),
-  (draft) => draft.dispose(),
-);
+const cache = createDocScopedCache<TimelineMediaDraft, TimelineMediaDraftInputs>(createTimelineMediaDraft, (draft) => draft.dispose());
 
 /**
  * Retrieve material state for the same document held by the existing Space tab.
@@ -321,5 +279,5 @@ const cache = createDocScopedCache<TimelineMediaDraft, TimelineMediaDraftInputs 
  * @throws {never} Never.
  */
 export function getTimelineMediaDraft(doc: Y.Doc, name: string, inputs: TimelineMediaDraftInputs): TimelineMediaDraft {
-  return cache.get(doc, name, { ...inputs, name });
+  return cache.get(doc, name, inputs);
 }

@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The document Space taking up the cards the reader pressed for it
+ * The document Space taking up the cards the user pressed for it
  * (inner#1509, design §5.4 step 3 · §5.7).
  *
  * The project page has opened this document; here every card waiting on it is
  * landed one after another in the order it was pressed, and how each ended is
  * reported back to the card. A locate press writes nothing: it shows where
  * the proposal points (inner#1646). A "View" press writes nothing either: it
- * shows where the change is, or, when the change is no longer in the document (the reader
+ * shows where the change is, or, when the change is no longer in the document (the user
  * undid it), tells the card the change is gone. Each change to the document
  * is counted, so a card reads again whether its change is still there.
  * Nothing is taken while there is no editor yet or

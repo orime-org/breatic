@@ -3,7 +3,7 @@
 
 /**
  * inner#1126 §5.0 and A6, A11: every command on a table acts on the cell
- * the menu was opened on, writes in place, and leaves the reader's caret where
+ * the menu was opened on, writes in place, and leaves the user's caret where
  * it was.
  */
 
@@ -56,7 +56,7 @@ function open(): Editor {
       rows: [{ cells: ['a1', 'b1', 'c1'] }, { cells: ['a2', 'b2', 'c2'] }],
     }),
   ] as never);
-  // The reader's caret, in the paragraph, after "rea".
+  // The user's caret, in the paragraph, after "rea".
   const view = editor.prosemirrorView;
   view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 6)));
   return editor;
@@ -102,11 +102,11 @@ function grid(editor: Editor): string[][] {
 }
 
 /**
- * Whether the reader's caret is still after "rea" in the paragraph.
+ * Whether the user's caret is still after "rea" in the paragraph.
  * @param editor - The editor.
  * @returns True when it is.
  */
-function readerKept(editor: Editor): boolean {
+function userCaretKept(editor: Editor): boolean {
   const { selection } = editor.prosemirrorState;
   return selection.empty && selection.$head.parent.textContent === 'reader' && selection.$head.parentOffset === 3;
 }
@@ -131,7 +131,7 @@ describe('rows and columns off the handles (A6)', () => {
     const editor = open();
     insertRow(editor, cellOf(editor, 'b1'), side);
     expect(grid(editor)).toEqual(expected);
-    expect(readerKept(editor)).toBe(true);
+    expect(userCaretKept(editor)).toBe(true);
   });
 
   it.each([
@@ -141,7 +141,7 @@ describe('rows and columns off the handles (A6)', () => {
     const editor = open();
     insertColumn(editor, cellOf(editor, 'b2'), side);
     expect(grid(editor)).toEqual(expected);
-    expect(readerKept(editor)).toBe(true);
+    expect(userCaretKept(editor)).toBe(true);
   });
 
   it('deletes the target row and the target column', () => {
@@ -150,7 +150,7 @@ describe('rows and columns off the handles (A6)', () => {
     expect(grid(editor)).toEqual([['a1', 'b1', 'c1']]);
     deleteColumnAt(editor, cellOf(editor, 'b1'));
     expect(grid(editor)).toEqual([['a1', 'c1']]);
-    expect(readerKept(editor)).toBe(true);
+    expect(userCaretKept(editor)).toBe(true);
   });
 
   it('deletes the whole table with its last row or its last column', () => {
@@ -174,7 +174,7 @@ describe('rows and columns off the handles (A6)', () => {
     toggleHeaderAt(editor, cellOf(editor, 'b1'), 'row');
     expect(grid(editor)).toEqual([['#a1', '#b1', '#c1'], ['a2', 'b2', 'c2']]);
     expect(headerOn(editor.prosemirrorState.doc, cellOf(editor, '#a1'.slice(1)), 'row')).toBe(true);
-    expect(readerKept(editor)).toBe(true);
+    expect(userCaretKept(editor)).toBe(true);
 
     toggleHeaderAt(editor, cellOf(editor, 'a1'), 'row');
     expect(grid(editor)).toEqual([['a1', 'b1', 'c1'], ['a2', 'b2', 'c2']]);
@@ -244,7 +244,7 @@ describe('cell attributes off the handles and the cell button (A6, A11)', () => 
       ['center', 'left', 'right'],
     ]);
     expect(attrs(editor, 'textAlignment').flat().every((value) => value === undefined)).toBe(true);
-    expect(readerKept(editor)).toBe(true);
+    expect(userCaretKept(editor)).toBe(true);
   });
 
   it('reads the alignment the blocks of a row share, and none where they differ', () => {

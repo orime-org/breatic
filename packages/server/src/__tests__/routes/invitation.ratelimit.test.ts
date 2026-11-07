@@ -16,7 +16,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 vi.mock("@breatic/domain", async () => {
   const { domainMock } = await import("../helpers/mock-core.js");
   return {
-    ...domainMock(),
+    ...(await domainMock()),
     studioAuthService: { assertStudioRole: vi.fn().mockResolvedValue(undefined) },
   };
 });

@@ -31,7 +31,7 @@ interface ProposalCardProps {
 /**
  * One press that puts a whole wired group on the canvas (#229).
  *
- * The card exists for the reader who has said what they want in the chat and
+ * The card exists for the user who has said what they want in the chat and
  * does not know the canvas: it says what would be built, which model it runs
  * on, and what is left for them afterwards -- all before they press. Pressing
  * posts the proposal to the canvas, which owns the viewport and decides where
@@ -56,7 +56,7 @@ export const ProposalCard = React.memo(function ProposalCard({
   const { data: catalog } = useQuery(modelCatalogQuery());
 
   const shape = React.useMemo(() => shapeOf(proposal), [proposal]);
-  // Where each generation's setup is found, in the reader's language. The
+  // Where each generation's setup is found, in the user's language. The
   // name in it is the one the canvas's right-click menu shows.
   const panelLines = React.useMemo(
     () => ({ prompt: t('chat.proposal.promptReady'), settings: t('chat.proposal.settingsReady') }),
@@ -180,7 +180,7 @@ export const ProposalCard = React.memo(function ProposalCard({
             <div key={`todo-${String(g)}`} data-testid='proposal-todo-group'>
               {/* Named wherever the proposal places more than one node: with
                   two on screen and one line under them, an unheaded line
-                  leaves the reader unable to tell which it is about. A
+                  leaves the user unable to tell which it is about. A
                   proposal of one node has nothing to tell it apart from. */}
               {proposal.nodes.length > 1 ? (
                 <div className='font-medium text-foreground'>
@@ -211,7 +211,7 @@ export const ProposalCard = React.memo(function ProposalCard({
 /**
  * One node's words, already written, drawn in full under its name.
  *
- * Read here rather than after placing: a reader who wants another version
+ * Read here rather than after placing: a user who wants another version
  * asks for one in the chat, with nothing of theirs on the canvas to undo. Not
  * truncated -- a note they cannot finish reading is one they cannot judge,
  * and the chat column scrolls.

@@ -4,7 +4,7 @@
 /**
  * Which asset a node's Download menu item hands over.
  *
- * The rule is what the reader sees (user 2026-09-18): a node showing content
+ * The rule is what the user sees (user 2026-09-18): a node showing content
  * can be downloaded, an empty frame cannot. A node shows no task state
  * (inner#888 §7.8), so what its tasks did changes nothing. It answers with the
  * address itself: the item's presence and its target then cannot disagree.

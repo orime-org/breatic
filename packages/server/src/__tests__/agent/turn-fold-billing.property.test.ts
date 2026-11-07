@@ -8,14 +8,14 @@
  * Credit deduction is a critical path, so the turn's shape is generated: any
  * run of tool steps, steps whose count leaves no room (a precheck fold
  * follows), calls the provider turns away as too long (an overflow fold and a
- * continuation follow), and folds the reader stops. Whatever the shape:
+ * continuation follow), and folds the user stops. Whatever the shape:
  *
  * - every call that reported usage is recorded once, and nothing else is;
  * - the turn is charged once, for exactly what those calls reported, so a
  *   rejected call costs nothing;
- * - every fold starts from a different watermark, so each has its own refKey
- *   (`consolidate:${conversationId}:${watermarkBefore}`) and none is refused
- *   as a duplicate;
+ * - every fold that moved the watermark is followed by one from a later
+ *   watermark, so no window is consolidated twice (each call's own charge key
+ *   is pinned in consolidation-attempts.property.test.ts);
  * - a turn nobody stopped, within its fold limit, ends with its answer.
  */
 
@@ -92,11 +92,11 @@ function reported(call: ScriptedCall): number | undefined {
 }
 
 describe("charging a turn that folds and continues", () => {
-  it("records and charges exactly the calls that reported usage, and gives every fold its own refKey", async () => {
+  it("records and charges exactly the calls that reported usage, and folds every window once", async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.array(stepArbitrary, { maxLength: 5 }),
-        fc.array(fc.constantFrom("written" as const, "written" as const, "written" as const, "aborted" as const), { minLength: 6, maxLength: 6 }),
+        fc.array(fc.constantFrom("written" as const, "written" as const, "failed" as const, "aborted" as const), { minLength: 6, maxLength: 6 }),
         async (steps, outcomes) => {
           resetWorld();
           world.window = 200_000;
@@ -123,12 +123,28 @@ describe("charging a turn that folds and continues", () => {
           const turnCharges = world.charges.filter((one) => one.key === "turn:c1:9");
           expect(turnCharges).toEqual(owed === 0 ? [] : [{ key: "turn:c1:9", amount: owed }]);
 
-          const keys = world.folds.map((fold) => `consolidate:c1:${String(fold.watermarkBefore)}`);
-          expect(new Set(keys).size).toBe(keys.length);
+          const starts = world.folds.map((fold) => fold.watermarkBefore);
+          expect(new Set(starts).size).toBe(starts.length);
 
-          const stopped = outcomes.slice(0, world.folds.length).includes("aborted");
+          // Each fold takes every turn after the watermark up to where it
+          // ends, so the written windows cover every turn under the watermark.
+          let mark = 0;
+          for (const [i, fold] of world.folds.entries()) {
+            const from = fold.watermarkBefore as number;
+            const to = fold.newWatermark as number;
+            expect(from).toBe(mark);
+            expect((fold.turns as Array<{ turnIndex: number }>).map((turn) => turn.turnIndex)).toEqual(
+              Array.from({ length: to - from }, (_, k) => from + k + 1),
+            );
+            if (outcomes[i] === "written") mark = to;
+          }
+
+          const ended = outcomes.slice(0, world.folds.length);
+          const stopped = ended.includes("aborted");
           const overflows = steps.filter((step) => step.kind === "overflow").length;
-          if (!stopped && overflows <= FOLD_LIMIT) {
+          // After a failed fold the turn folds no more, so an overflow ends it.
+          const unfoldable = ended.includes("failed") && overflows > 0;
+          if (!stopped && !unfoldable && overflows <= FOLD_LIMIT) {
             expect(world.prompts).toHaveLength(script.length);
             const parts = world.replies.at(-1)?.message.parts ?? [];
             expect(parts).toContainEqual({ type: "text", text: "done" });

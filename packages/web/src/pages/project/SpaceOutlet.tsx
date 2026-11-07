@@ -53,7 +53,7 @@ export function SpaceOutlet({
   // last element focused in this Space if it was still there on hide
   // (inner#1235 A19). React's focus events pass through portals, so a box in
   // a popover is recorded too.
-  // The focus does not scroll: the reader may have scrolled the element out of
+  // The focus does not scroll: the user may have scrolled the element out of
   // view before leaving, and comes back to the page where it was left.
   const lastFocused = React.useRef<HTMLElement | null>(null);
   const [focusReturn] = React.useState<FocusReturn>(() => ({

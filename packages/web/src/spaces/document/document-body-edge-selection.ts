@@ -524,14 +524,16 @@ function pageEdgeAt(doc: Node, pos: number): BodyEdge | null {
  * Shift+key the browser handles (Shift+Option+arrow, Shift+Home/End) extends
  * the browser's range from there, and `TextSelection.between` would pull that
  * end back into text.
- * @param view - The view.
+ * @param _view - The view.
  * @param $anchor - The browser's anchor.
  * @param $head - The browser's head.
  * @returns The selection, or null when the range is collapsed or neither end
  *   is an edge {@link pageEdgeAt} counts.
  */
-function readBackAtEdge(view: EditorView, $anchor: ResolvedPos, $head: ResolvedPos): Selection | null {
-  const { doc } = view.state;
+function readBackAtEdge(_view: EditorView, $anchor: ResolvedPos, $head: ResolvedPos): Selection | null {
+  // A drop asks with the positions of the document it is building, before
+  // the view holds it.
+  const doc = $anchor.doc;
   if ($anchor.pos === $head.pos) return null;
   const anchorEdge = pageEdgeAt(doc, $anchor.pos);
   const headEdge = pageEdgeAt(doc, $head.pos);
@@ -630,7 +632,7 @@ export function extensionEnds(selection: Selection, dir: 1 | -1): { anchor: numb
   return null;
 }
 
-/** Splits a line into what a reader sees as single characters. */
+/** Splits a line into what a user sees as single characters. */
 const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 
 /**
@@ -682,7 +684,7 @@ function lineFrom(view: EditorView, head: number, dir: 1 | -1): number | null {
 
 /**
  * Which end of a text selection a vertical Shift+arrow moves, as the page
- * moves it. A range the reader made with the mouse has no direction on macOS
+ * moves it. A range the user made with the mouse has no direction on macOS
  * (`Selection.direction` is `none`), and there Shift+Up moves its start and
  * Shift+Down its end, whichever end the drag began at (probe33, probe34); a
  * range with a direction moves its head.
@@ -759,7 +761,7 @@ function onKeyDown(view: EditorView, event: KeyboardEvent): boolean {
 }
 
 /**
- * The extension that lets the reader's selection reach past the first or last
+ * The extension that lets the user's selection reach past the first or last
  * block of the body.
  * @returns The extension, for the assembly to register.
  */

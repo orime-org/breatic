@@ -154,7 +154,7 @@ describe('Escape on a sticky with no box open', () => {
   it('reaches the canvas, which is what collapses the note', () => {
     // The sticky collapses when the note loses the selection, and Escape is
     // how the canvas clears it (§8.7.3). The reply box swallowed every Escape,
-    // draft or no draft, so a reader whose caret was in it could not collapse
+    // draft or no draft, so a user whose caret was in it could not collapse
     // the note from the keyboard at all — measured on a board, twice.
     mount(sticky());
     const box = screen.getByTestId('annotation-sticky-reply-input');
@@ -534,7 +534,7 @@ describe('a sticky on the canvas', () => {
     // Blanking a note is not deleting it, so the reducer keeps the box open
     // and writes nothing; the empty box with its Cancel beside it is the
     // account of that. Save stays pressable, per repo rule #1945: a disabled
-    // control says the reader did something wrong, and an empty box is not
+    // control says the user did something wrong, and an empty box is not
     // wrong.
     const user = userEvent.setup();
     mount(sticky());
@@ -610,7 +610,7 @@ describe('a sticky on the canvas', () => {
 
   it('takes Delete off the reply being rewritten and off no other', async () => {
     // Which reply the box belongs to is an id, not a kind: the notice would
-    // report the reader's own deletion back to them, and it can only say that
+    // report the user's own deletion back to them, and it can only say that
     // about the one entry they have open.
     const user = userEvent.setup();
     mount(
@@ -725,7 +725,7 @@ describe('a sticky on the canvas', () => {
     );
   });
 
-  it('takes the notice away when the reader dismisses it', async () => {
+  it('takes the notice away when the user dismisses it', async () => {
     const user = userEvent.setup();
     const { rerender } = mount(sticky());
     await user.type(
@@ -738,7 +738,7 @@ describe('a sticky on the canvas', () => {
     expect(screen.queryByTestId('annotation-sticky-drop-notice')).toBeNull();
   });
 
-  it('says when in the language the reader chose', () => {
+  it('says when in the language the user chose', () => {
     // The sticky used to carry its own formatter, which said "5m ago" in every
     // language (#2155). It reads the shared one now, so the switch reaches it.
     const posted = Date.now() - 5 * 60_000;
@@ -877,7 +877,7 @@ describe('one box at a time on a sticky', () => {
   it('keeps a half-typed reply when the focus leaves the row', async () => {
     // What ends a reply is the sticky closing, not the caret going somewhere
     // else (user 2026-09-15, §6.2's blur row): the sticky is a thing the
-    // reader opened and can shut, and pressing the note's own words to select
+    // user opened and can shut, and pressing the note's own words to select
     // one is not shutting it. Nothing is written until Post.
     const user = userEvent.setup();
     mount(sticky());
@@ -894,7 +894,7 @@ describe('one box at a time on a sticky', () => {
     // `typing` with no Cancel on screen (it draws only once something is
     // typed) and no way out — `offeredWhileBoxOpen` had taken Edit off the
     // body and every reply, collapsing and reopening kept the draft, and the
-    // reader was left with a note they could delete but not edit.
+    // user was left with a note they could delete but not edit.
     const user = userEvent.setup();
     mount(sticky());
     const box = screen.getByTestId('annotation-sticky-reply-input');
@@ -943,7 +943,7 @@ describe('one box at a time on a sticky', () => {
   it('writes nothing while an IME is composing, whichever control is pressed', async () => {
     // §6.2's one criterion: `isComposing` true means do not commit. It was on
     // the Enter key only, so the two buttons beside the box could commit the
-    // raw syllables a CJK reader had not picked a candidate for yet.
+    // raw syllables a CJK user had not picked a candidate for yet.
     const user = userEvent.setup();
     mount(sticky());
     const box = screen.getByTestId('annotation-sticky-reply-input');
@@ -971,7 +971,7 @@ describe('one box at a time on a sticky', () => {
     );
   });
 
-  it('drops it on Cancel, which is the reader saying so', async () => {
+  it('drops it on Cancel, which is the user saying so', async () => {
     const user = userEvent.setup();
     mount(sticky());
     const box = screen.getByTestId('annotation-sticky-reply-input');
@@ -1014,7 +1014,7 @@ describe('one box at a time on a sticky', () => {
 
   it('keeps the rewrite buttons out of the scroller that caps the words', async () => {
     // The scroller caps the WORDS. With Cancel and Save swept into it, a note
-    // long enough to fill the cap put both below the fold: the reader had to
+    // long enough to fill the cap put both below the fold: the user had to
     // scroll the box they were typing in to find the button that keeps it.
     const user = userEvent.setup();
     mount(sticky({ content: 'a long note. '.repeat(60) }));
@@ -1317,7 +1317,7 @@ describe('the replies scroller', () => {
   it('leaves the caret alone when a sticky comes back with its box open', async () => {
     // The draft outlives the node's DOM on purpose, so a sticky panned back
     // into view mounts with its box already open. Focusing on that mount takes
-    // the caret out of whatever the reader is typing in elsewhere on the
+    // the caret out of whatever the user is typing in elsewhere on the
     // board, and a reply box loses its words on blur -- measured with two
     // stickies: the caret landed in the returning note's edit box and half a
     // reply on the other sticky was gone.
@@ -1400,7 +1400,7 @@ describe('the replies scroller', () => {
 
   it('never lets the box that rewrites a reply scroll itself', async () => {
     // A reply has no scroller of its own — the thread it sits in is one, and
-    // nesting a second inside it would give the reader two nested scrollbars
+    // nesting a second inside it would give the user two nested scrollbars
     // for one column of words.
     const user = userEvent.setup();
     mount(

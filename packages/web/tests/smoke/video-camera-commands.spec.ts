@@ -5,7 +5,7 @@
  * Camera commands on MiniMax H3: the picker sits in the settings
  * row, keeps opposite directions and Static shot apart, previews each command
  * in a pane at the top, and writes the picks as one bracket at the
- * caret the reader left -- in the prompt, or in the shot box in the multi-shot
+ * caret the user left -- in the prompt, or in the shot box in the multi-shot
  * mode -- which the submit carries.
  *
  * The submit is stubbed: whether H3 acts on the commands was measured on real
@@ -243,12 +243,13 @@ test('picks camera commands and writes them at the caret, then sends them', asyn
   );
 });
 
-test('writes into the shot box last clicked into, and the shot line carries it', async () => {
+test('writes into the open shot, and the shot line carries it', async () => {
   const nodeId = await seedVideoNode(page);
   await openOn(page, nodeId, 'multi-shot', H3);
   await page.getByTestId('generate-storyboard-shot-1-editor').click();
   await page.keyboard.type('a paper boat');
-  await page.getByTestId('generate-storyboard-shot-2-editor').click();
+  await page.getByTestId('generate-storyboard-shot-2-toggle').click();
+  await expect(page.getByTestId('generate-storyboard-shot-2-editor').locator('.ProseMirror')).toBeFocused();
   await page.keyboard.type('the pond at dusk');
   await insert(page, 'Tilt up');
   await expect(page.getByTestId('generate-storyboard-shot-2-editor')).toHaveText('the pond at dusk [Tilt up]');

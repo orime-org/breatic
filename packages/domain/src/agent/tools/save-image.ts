@@ -7,14 +7,14 @@
  * A proposal carries only material in our storage, and a picture the model
  * found is on somebody else's server. Saving it is the model's call to make,
  * so it is a tool of its own; the proposal check only says when an address is
- * not ours yet. The storing itself needs the project, the reader and the
+ * not ours yet. The storing itself needs the project, the user and the
  * server's gates, so the server hands it in through the tool's context.
  */
 
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { FAILURE_LINES, type FailureLine } from "@breatic/shared";
-import { readerUrlSchema } from "@domain/asset/source-url.js";
+import { userUrlSchema } from "@domain/asset/source-url.js";
 import { isStop, stoppedByUser, toolFailed, turnedAway } from "@domain/agent/tools/failure.js";
 import { PROPOSE_CANVAS_ACTION } from "@domain/agent/tools/tool-names.js";
 
@@ -48,7 +48,7 @@ export class SaveRefused extends Error {
   }
 }
 
-/** How the server stores a link for this turn's project and reader. */
+/** How the server stores a link for this turn's project and user. */
 export type SaveToStorage = (url: string, signal?: AbortSignal) => Promise<SavedMaterial>;
 
 /** What this tool is handed in its context. */
@@ -61,10 +61,10 @@ const saveContextSchema: z.ZodType<SaveContext> = z.object({
 });
 
 const inputSchema = z.object({
-  url: readerUrlSchema.describe("The https address of the picture to save, as it was found."),
+  url: userUrlSchema.describe("The https address of the picture to save, as it was found."),
 });
 
-/** The reader's cause for each reason a link could not be saved. */
+/** The user's cause for each reason a link could not be saved. */
 const LINK_LINES: Readonly<Record<string, FailureLine>> = {
   source_unreachable: FAILURE_LINES.linkUnreachable,
   unsupported_type: FAILURE_LINES.unsupportedType,
@@ -73,7 +73,7 @@ const LINK_LINES: Readonly<Record<string, FailureLine>> = {
 };
 
 /**
- * The failure the model and the reader are told for one refusal.
+ * The failure the model and the user are told for one refusal.
  * @param refused - What the server refused.
  * @returns The error to throw from `execute`.
  * @throws {never} Never.

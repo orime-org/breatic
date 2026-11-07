@@ -13,7 +13,7 @@
  * without carrying the mark.
  *
  * So this walks the marks. `orphan` is not read: this answers where a thread's
- * marks are, which is a different question from whether a reader may press
+ * marks are, which is a different question from whether a user may press
  * them (`document-comment-hit.ts`). A settled thread still shows the words it
  * was about.
  *

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The chat panel tells the Agent about the reader's Spaces (inner#1413): the
+ * The chat panel tells the Agent about the user's Spaces (inner#1413): the
  * chip names the Space whose tab is active, pressing it turns that Space off
  * and on, and each message carries the project's Spaces with the open one
  * only while it is on.
@@ -76,7 +76,7 @@ beforeEach(() => {
   wire = stubChatWire();
   vi.mocked(chatApi.openChat).mockResolvedValue({
     conversations: [{ id: 'c1' }],
-    current: { conversation: { id: 'c1' }, messages: [], hasMore: false },
+    current: { conversation: { id: 'c1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
   } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
   vi.mocked(chatApi.streamConfig).mockResolvedValue({
     heartbeatIntervalMs: 5000,

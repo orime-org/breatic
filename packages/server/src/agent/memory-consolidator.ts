@@ -2,34 +2,28 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Memory consolidator — folds the oldest part of a conversation into memory.
+ * Memory consolidator — folds the oldest part of a conversation into memory
+ * entries (#1363).
  *
  * It runs when a turn's request did not fit: the provider's own count left no
  * room, or the provider turned the request away as too long (inner#1567).
  * The caller works out which turns to take, hands them over turn by turn as
  * the messages the model would have been sent, and reassembles once this
- * returns. A reassembly that fails after it ends the turn as failed; nothing
- * here decides whether the turn goes on.
+ * returns `written` or `superseded`.
  *
- * A fold that does not produce an answer gives its window up — three
- * failed calls, an answer that is not the JSON it asked for, a write that
- * cannot land. The watermark moves, nothing is written and the error is
- * logged. Holding the window instead would send the same input on the next
- * turn and every turn after it, since the history only grows and the call
- * asks for `temperature: 0` wherever the model takes it.
- *
- * The one failure that is not given up at once is the consolidation call
- * itself being turned away as too long: how many tokens the window is cannot
- * be known before it is sent, so the window is halved and sent again —
- * whole turns while there are several, then the one turn's text — at most
- * `consolidation_shrink_attempts` times, after which it is given up like any
- * other failure.
- *
- * The one ending that keeps the window is the reader leaving: they come back
- * to a conversation that folds it again, and the charge is already keyed so
- * the second attempt is not paid for twice.
+ * The consolidation model is fixed in config, whatever model the
+ * conversation is answered by. It is shown the turns, the entries it may
+ * change in full, the rest by title, and the progress note, and answers with
+ * operations on single entries and a new progress note. An answer that fails
+ * its checks is asked for again with what was wrong, up to
+ * `consolidation_answer_attempts` times. A fold that fails -- the answers
+ * never pass, one is cut off, the call or the write fails -- writes nothing
+ * and leaves the watermark where it was, so the next fold reads the same
+ * turns again; the turn goes on the way the caller decides. Every model call
+ * is charged once, under its own key.
  */
 
+import { randomUUID } from "node:crypto";
 import { parseCreditDecimal } from "@breatic/shared";
 
 import { stepCountIs } from "ai";
@@ -44,34 +38,44 @@ import {
   resolveProvider,
 } from "@breatic/domain";
 import type { UsageRecorder } from "@breatic/domain";
-import { getAgentConfig, logger } from "@breatic/core";
+import { getAgentConfig, logger, MEMORY_CONTENT_MAX_CHARS, MEMORY_TITLE_MAX_CHARS } from "@breatic/core";
 import { memoryService } from "@server/modules";
-import { readContextOverflow } from "@server/agent/context-overflow.js";
+import type { ConsolidationInput } from "@server/modules/memory/memory.service.js";
+import { readConsolidationAnswer } from "@server/agent/consolidation-answer.js";
 
 const CONSOLIDATION_PROMPT = `\
-You are a memory consolidator for an AI creative assistant. Your job is to analyze conversation messages and extract key information into a structured memory update.
+You are the memory consolidator for an AI creative assistant. The turns below are leaving the assistant's context. You are given them, the memory entries the assistant keeps about this user, and where the conversation has got to. Record what the turns add as changes to single entries.
 
-Current memory state:
-- Conversation memory: {conversation_memory}
-- Project context: {project_memory}
+Current entries (shown in full; you may update or delete these):
+{entries}
+
+Entries shown by title only (you may not change these; add an entry only for something they do not already cover):
+{titles}
+
+Progress so far:
+{progress}
 
 Messages to consolidate:
 {messages}
 
-Produce a JSON object with these fields:
+Answer with one JSON object and nothing else:
 {
-  "conversationUpdate": "Complete rewrite of conversation memory incorporating the new information. Be concise but preserve all important facts, decisions, and context. This replaces the entire conversation memory.",
-  "projectUpdate": "New project-level insights that carry across this member's conversations in this project (creative direction, style choices, asset details). Set to null if no project-relevant insights.",
-  "historyEntry": "One-line summary of what was discussed in these messages."
+  "progress": "Where the conversation has got to and what comes next, at most {progress_max} characters. Facts go into entries, not here.",
+  "operations": [
+    { "op": "add", "scope": "project or conversation", "title": "...", "content": "..." },
+    { "op": "update", "id": "id of an entry shown in full", "title": "...", "content": "..." },
+    { "op": "delete", "id": "id of an entry shown in full" }
+  ]
 }
 
 Rules:
-- conversationUpdate REWRITES the full memory — incorporate existing memory + new info
-- conversationUpdate MUST stay under {max_chars} characters; the cut keeps the start of what you write and drops the rest before the memory is ever read, so put what matters most at the beginning
-- projectUpdate only when there are genuine cross-conversation insights
-- Be concise — this text will be injected into future LLM context windows
-- Respond ONLY with the JSON object, no markdown or explanation
-- Respond in the same language as the messages`;
+- One fact per entry: a one-line title of at most {title_max} characters saying what it is about, and its content of at most {content_max} characters.
+- A "project" entry is read in every conversation of this user's in this Project; a "conversation" entry only in this conversation. Creative direction, characters, style choices, asset details and decisions about the work are "project".
+- When an entry on the same thing exists, update it; do not add a second one.
+- Delete an entry the user took back, or that the turns show is wrong.
+- An entry titled "Earlier project memory" or "Earlier conversation memory" is a block of memory carried over whole: split it into entries with add, then delete it.
+- At most {max_operations} operations. An empty list is right when the turns add nothing.
+- Write in the language of the conversation.`;
 
 /** One window of a conversation, and where it sits. */
 export interface ConsolidationWindow {
@@ -84,47 +88,28 @@ export interface ConsolidationWindow {
   /**
    * The window turn by turn, oldest first, as the model would have been sent
    * it, less the model's own working.
-   *
-   * Grouped by turn rather than flat because halving keeps whole turns, and a
-   * turn's boundary cannot be read off its messages: a segment resumed after a
-   * questionnaire puts a second user message inside one turn.
    */
   turns: ReadonlyArray<{ turnIndex: number; messages: readonly ModelMessage[] }>;
   /** Where the watermark stood before this window was taken. */
   watermarkBefore: number;
   /** The turn the window ends on. */
   newWatermark: number;
-  /** Raised when the reader stopped the turn or the client went away. */
+  /** Raised when the user stopped the turn or the client went away. */
   signal?: AbortSignal;
 }
 
 /** How one consolidation ended. */
 export type ConsolidationOutcome =
-  /** Both layers written, watermark moved. */
+  /** Entries, progress note and watermark written together. */
   | "written"
-  /** Nothing written; the watermark moved so the window is not read again. */
-  | "discarded"
-  /** Another request had already folded further; nothing written. */
+  /** Nothing written, the watermark where it was: the next fold reads the same turns. */
+  | "failed"
+  /** Another request had already folded from the same watermark; nothing written. */
   | "superseded"
-  /** The reader left; nothing written, and the watermark stays for next turn. */
+  /** The user left; nothing written, and the watermark stays for next turn. */
   | "aborted"
-  /**
-   * The watermark is where it was, and the window is still in the history.
-   *
-   * Told apart from `discarded` because the two say opposite things about the
-   * window. `discarded` is what a fold that produced no answer ends as, and
-   * the watermark moves. This is the narrower case where the fold never
-   * started — the database was briefly away while the memory it rewrites was
-   * being read — or where even the discard could not be recorded.
-   */
+  /** The fold never started: what it reads first could not be read. */
   | "untouched";
-
-/** What the consolidating model is asked to produce. */
-interface ConsolidationAnswer {
-  conversationUpdate: string;
-  projectUpdate: string | null;
-  historyEntry: string;
-}
 
 /**
  * One part of a message, as the prompt reads it: the words, a tool's name and
@@ -153,13 +138,11 @@ function partText(part: unknown): string | null {
 /**
  * Render the window the way the prompt reads it.
  * @param turns - The window, turn by turn.
- * @param maxChars - Cut the text to this many characters, saying how many
- *   were left out; absent, the whole text.
  * @returns One block of text, speaker by speaker.
  * @throws {never} Never.
  */
-function transcribe(turns: ConsolidationWindow["turns"], maxChars?: number): string {
-  const text = turns
+function transcribe(turns: ConsolidationWindow["turns"]): string {
+  return turns
     .flatMap((turn) => turn.messages)
     .map((message) => {
       const said =
@@ -169,23 +152,50 @@ function transcribe(turns: ConsolidationWindow["turns"], maxChars?: number): str
       return `[${message.role}]: ${said}`;
     })
     .join("\n\n");
-  if (maxChars === undefined || text.length <= maxChars) return text;
-  return `${text.slice(0, maxChars)}\n\n[${String(text.length - maxChars)} characters omitted]`;
 }
 
 /**
- * Read the model's answer.
- * @param text - What the model replied with.
- * @returns The parsed answer, or null when there is no JSON object in it.
+ * The prompt for one fold.
+ *
+ * One pass over the template, with a function for the replacement. Chained
+ * calls rescan what the previous one inserted, so memory holding the literal
+ * `{messages}` would take the transcript's place; and a string replacement
+ * reads `$&` and its siblings in the inserted text as patterns. A replacer
+ * function is handed the text and returns it as it is.
+ * @param input - What the fold is shown of memory.
+ * @param turns - The window.
+ * @returns The prompt.
+ * @throws {never} Never.
  */
-function readAnswer(text: string): ConsolidationAnswer | null {
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return null;
-  try {
-    return JSON.parse(jsonMatch[0]) as ConsolidationAnswer;
-  } catch {
-    return null;
-  }
+function promptFor(input: ConsolidationInput, turns: ConsolidationWindow["turns"]): string {
+  const config = getAgentConfig();
+  const values: Record<string, string> = {
+    entries:
+      input.full.length === 0
+        ? "(none)"
+        : input.full.map((e) => `### ${e.id} · ${e.scope} · ${e.title}\n${e.content}`).join("\n\n"),
+    titles: input.titlesOnly.length === 0 ? "(none)" : input.titlesOnly.map((e) => `- ${e.id} · ${e.title}`).join("\n"),
+    progress: input.progress || "(none yet)",
+    messages: transcribe(turns),
+    progress_max: String(config.memory_progress_max_chars),
+    title_max: String(MEMORY_TITLE_MAX_CHARS),
+    content_max: String(MEMORY_CONTENT_MAX_CHARS),
+    max_operations: String(config.consolidation_max_operations),
+  };
+  return CONSOLIDATION_PROMPT.replace(
+    /\{(entries|titles|progress|messages|progress_max|title_max|content_max|max_operations)\}/g,
+    (_whole, key: string) => values[key] ?? "",
+  );
+}
+
+/**
+ * What the model is told when its answer was refused.
+ * @param errors - Every problem found.
+ * @returns The message.
+ * @throws {never} Never.
+ */
+function refusal(errors: readonly string[]): string {
+  return `Your answer was not accepted:\n${errors.map((e) => `- ${e}`).join("\n")}\nAnswer again with the whole JSON object, corrected.`;
 }
 
 /** Who ran one consolidation, over which window, and what it cost. */
@@ -196,7 +206,7 @@ interface ConsolidationBill {
   conversationId: string;
   /** Whose studio pays, by way of the project. */
   projectId: string;
-  /** Where the watermark stood; half of the idempotency key. */
+  /** Where the watermark stood; part of the idempotency key. */
   watermarkBefore: number;
   /** The recorder the call was recorded on; what it settles to is charged. */
   usage: UsageRecorder;
@@ -205,21 +215,26 @@ interface ConsolidationBill {
 }
 
 /**
- * The key one window's consolidation is recorded and charged under. Two tabs
- * that took the same window derive the same key from the watermark they
- * started at, and the second charge is refused.
+ * The key one model call of a consolidation is recorded and charged under.
+ *
+ * Each attempt of each fold is its own call and is paid for once. A fold that
+ * failed leaves the watermark where it was, so another fold can start from
+ * the same one; the id each fold draws tells their calls apart. The same
+ * attempt of the same fold presented twice is refused the second charge.
  * @param conversationId - The conversation it folded.
  * @param watermarkBefore - Where the watermark stood.
+ * @param foldId - The id this fold drew when it started.
+ * @param attempt - Which answer this was, from 1.
  * @returns The key.
  */
-function consolidationKey(conversationId: string, watermarkBefore: number): string {
-  return `consolidate:${conversationId}:${watermarkBefore}`;
+function consolidationKey(conversationId: string, watermarkBefore: number, foldId: string, attempt: number): string {
+  return `consolidate:${conversationId}:${String(watermarkBefore)}:${foldId}:${String(attempt)}`;
 }
 
 /**
  * Charge the studio for one consolidation, and never fail over it.
  *
- * The tokens are spent by the time this is called and the reader is waiting
+ * The tokens are spent by the time this is called and the user is waiting
  * on a reply. Letting a charge take the turn down would fail an answer that
  * has nothing wrong with it, over bookkeeping nobody sees.
  * @param input - Who ran it, over which window, and what it cost.
@@ -277,47 +292,31 @@ async function bill(input: ConsolidationBill): Promise<void> {
 }
 
 /**
- * Fold one window of a conversation into memory.
+ * Fold one window of a conversation into memory entries.
  * @param window - The turns to fold and where they sit.
- * @returns How it ended. The caller reassembles when something changed --
- * `written`, `superseded` or `discarded` -- and leaves the request alone for
- * `aborted` and `untouched`, where the history it measured still stands.
+ * @returns How it ended. The caller reassembles for `written` and
+ *   `superseded`, where the watermark moved, and leaves the request alone for
+ *   the rest, where the history it measured still stands.
  */
-export async function consolidateWindow(
-  window: ConsolidationWindow,
-): Promise<ConsolidationOutcome> {
-  const {
-    userId,
-    conversationId,
-    projectId,
-    watermarkBefore,
-    signal,
-  } = window;
-  // What this attempt sends; a call turned away as too long halves it.
-  let turns = window.turns;
-  let newWatermark = window.newWatermark;
-  let maxChars: number | undefined;
+export async function consolidateWindow(window: ConsolidationWindow): Promise<ConsolidationOutcome> {
+  const { userId, conversationId, projectId, watermarkBefore, newWatermark, turns, signal } = window;
 
   // A model call with a bill on it and nobody left to read what it produces.
-  // The watermark stays where it is, so the next turn folds the same window.
   if (signal?.aborted) return "aborted";
 
   /** Which window this is, on every line written about it. */
-  const where = { userId, conversationId, projectId, watermarkBefore, newWatermark: window.newWatermark };
+  const where = { userId, conversationId, projectId, watermarkBefore, newWatermark };
 
   /**
-   * Whether the reader left, said so on the way out.
+   * Whether the user left, said so on the way out.
    *
-   * Asked of the signal rather than of the error's name — a name says what
-   * the provider called it, and one of the names the SDK treats as
-   * cancellation is a timeout, which is the opposite case. Recorded here
-   * because asking the signal answers who stopped the turn and not what went
-   * wrong in it: a write that deadlocked while the reader happened to close
-   * the tab leaves by this door too, and would otherwise leave no trace.
-   * @param err - What the failing step threw.
-   * @returns True when the reader had already gone.
+   * Asked of the signal rather than of the error's name: a name says what the
+   * provider called it, and one of the names the SDK treats as cancellation
+   * is a timeout, which is the opposite case.
+   * @param err - What the failing step threw, when something did.
+   * @returns True when the user had already gone.
    */
-  const readerLeft = (err: unknown): boolean => {
+  const userLeft = (err?: unknown): boolean => {
     if (signal?.aborted !== true) return false;
     logger.error({ err, ...where }, "memory_consolidation_aborted");
     return true;
@@ -326,194 +325,104 @@ export async function consolidateWindow(
   const config = getAgentConfig();
 
   // Everything the call is built from, gathered before a single token is
-  // spent. The database is the part that can be briefly away; `getModel`
-  // takes any string and defers to the provider, so a wrong model name and a
-  // missing key both surface later, from the call itself. A read that failed
-  // here costs this turn its fold and nothing else: the fold never started,
-  // so the window is still whole and the next turn folds it again.
-  let promptFor: () => string;
+  // spent. A read that fails here costs this turn its fold and nothing else.
+  let input: ConsolidationInput;
   let model: ReturnType<typeof getModel>;
   try {
-    // The same two layers a turn is given, through the same door. Read
-    // straight from the repository they would be the untruncated rows, so the
-    // "current memory state" the rewriting model is shown would be a longer
-    // text than any turn injects — and it is asked to rewrite what it sees.
-    const { conversationMemory, projectMemory } = await memoryService.buildContext(
-      userId,
-      conversationId,
-      projectId,
+    input = await memoryService.consolidationInput(
+      { userId, projectId, conversationId },
+      config.consolidation_entries_max_chars,
     );
-
-    // One pass over the template, with a function for the replacement. Chained
-    // calls rescan what the previous one inserted, so memory holding the
-    // literal `{messages}` would take the transcript's place; and a string
-    // replacement reads `$&` and its siblings in the inserted text as
-    // patterns, which anyone who pasted a regex into the conversation has.
-    // A replacer function is handed the text and returns it as it is.
-    promptFor = (): string => {
-      const values: Record<string, string> = {
-        conversation_memory: conversationMemory || "(empty)",
-        project_memory: projectMemory || "(empty)",
-        // The ceiling the answer will actually be read through: a longer answer
-        // is written, stored, paid for, and then cut where the ceiling falls.
-        max_chars: String(config.memory_conversation_max_size),
-        messages: transcribe(turns, maxChars),
-      };
-      return CONSOLIDATION_PROMPT.replace(
-        /\{(conversation_memory|project_memory|max_chars|messages)\}/g,
-        (_whole, key: string) => values[key] ?? "",
-      );
-    };
-
     model = getModel(config.consolidation_model);
   } catch (err) {
-    if (readerLeft(err)) return "aborted";
-    logger.error(
-      { err, ...where },
-      "memory_consolidation_untouched",
-    );
+    if (userLeft(err)) return "aborted";
+    logger.error({ err, ...where }, "memory_consolidation_untouched");
     return "untouched";
   }
 
-  // From here on the model is involved, so every ending below has a call
-  // behind it that has to be paid for and cannot be repeated for free.
-  // How many times the window was halved before the call ended, for the
-  // failure line below.
-  let shrinks = 0;
+  const rules = {
+    editable: new Set(input.full.map((e) => e.id)),
+    maxOperations: config.consolidation_max_operations,
+    progressMaxChars: config.memory_progress_max_chars,
+  };
+  const messages: ModelMessage[] = [{ role: "user", content: promptFor(input, turns) }];
+  let errors: string[] = [];
+  const foldId = randomUUID();
+
+  // From here on the model is involved, so every ending below has calls
+  // behind it that were paid for.
   try {
-    // One call, and the retrying happens inside it: `generateTextRetry` is
-    // handed `llm_max_retries`, so this is one original and two retries.
-    // Turned away as too long, it is sent again with half the window, up to
-    // `consolidation_shrink_attempts` times.
-    let result: Awaited<ReturnType<typeof generateTextRetry>>;
-    for (; ; shrinks += 1) {
-      try {
-        result = await generateTextRetry({
-          model,
-          messages: [{ role: "user" as const, content: promptFor() }],
-          stopWhen: stepCountIs(1),
-          // Folding a transcript into a summary has no reasoning step in it, and
-          // asks for a fixed temperature of 0. Which of the two each model takes,
-          // and how, is settled in the routing table: Claude, for one, accepts
-          // neither and is sent neither.
-          ...callOptionsFor(config.consolidation_model, { thinking: false, cache: false, temperature: 0 }),
-          // Conversation memory is rewritten whole by this call, so an answer
-          // with no ceiling is a segment with no ceiling in every later prompt.
-          maxOutputTokens: config.max_output_tokens,
-          ...(signal ? { abortSignal: signal } : {}),
-        });
-        break;
-      } catch (err) {
-        // A rejected call reports no usage and is not charged; only the
-        // call that comes back is.
-        if (readContextOverflow(err) === undefined || shrinks >= config.consolidation_shrink_attempts) throw err;
-        if (turns.length > 1) {
-          // The older half of the whole turns, and the watermark back to match.
-          turns = turns.slice(0, Math.floor(turns.length / 2));
-          newWatermark = turns.at(-1)?.turnIndex ?? newWatermark;
-        } else {
-          maxChars = Math.floor((maxChars ?? transcribe(turns).length) / 2);
-        }
-        logger.warn({ err, ...where, attempt: shrinks + 1, keptTurns: turns.length, maxChars }, "memory_consolidation_shrunk");
-      }
-    }
+    for (let attempt = 1; attempt <= config.consolidation_answer_attempts; attempt += 1) {
+      // One call, and transport retries happen inside it: `generateTextRetry`
+      // is handed `llm_max_retries`.
+      const result = await generateTextRetry({
+        model,
+        messages,
+        stopWhen: stepCountIs(1),
+        // Folding a transcript has no reasoning step in it, and asks for a
+        // fixed temperature of 0. Which of the two each model takes, and how,
+        // is settled in the routing table.
+        ...callOptionsFor(config.consolidation_model, { thinking: false, cache: false, temperature: 0 }),
+        maxOutputTokens: config.max_output_tokens,
+        ...(signal ? { abortSignal: signal } : {}),
+      });
 
-    // Billed the moment the call comes back, which is the moment the tokens
-    // are gone. What becomes of the answer after this has several endings,
-    // and the studio owes the same under every one of them. Two tabs that
-    // took the same window derive the same key from the watermark they
-    // started at, and the second charge is refused.
-    const usage = createUsageRecorder({
-      operationKey: consolidationKey(conversationId, watermarkBefore),
-      feature: "memory_consolidation",
-      actorUserId: userId,
-      projectId,
-      onMissingCost: (row) => logger.error({ row, ...where }, "agent_usage_cost_missing"),
-    });
-    usage.recordModelCall({
-      source: "model",
-      model: config.consolidation_model,
-      provider: resolveProvider(config.consolidation_model),
-      usage: result.usage,
-      providerMetadata: result.providerMetadata,
-      generationId: result.response.id,
-    });
-    await bill({
-      userId,
-      conversationId,
-      projectId,
-      watermarkBefore,
-      usage,
-      model: config.consolidation_model,
-    });
-
-    const answer = readAnswer(result.text.trim());
-    if (!answer) {
-      throw new Error(
-        `consolidation answer was not JSON: ${result.text.slice(0, 200)}`,
-      );
-    }
-
-    const outcome = await memoryService.commitConsolidation({
-      userId,
-      conversationId,
-      projectId,
-      data: {
-        conversationUpdate: answer.conversationUpdate,
-        ...(answer.projectUpdate ? { projectUpdate: answer.projectUpdate } : {}),
-        historyEntry: answer.historyEntry,
-      },
-      newWatermark,
-    });
-
-    // The call was made and paid for whichever ending it reached, so this
-    // line is written for both; the message says which. A `written` fold also
-    // took turns out of the history, and both facts are reconstructed from
-    // here when someone asks later where the money or the turns went.
-    logger.info(
-      {
-        userId,
-        conversationId,
+      // Billed the moment the call comes back, which is the moment the tokens
+      // are gone, whatever becomes of the answer.
+      const usage = createUsageRecorder({
+        operationKey: consolidationKey(conversationId, watermarkBefore, foldId, attempt),
+        feature: "memory_consolidation",
+        actorUserId: userId,
         projectId,
-        watermarkBefore,
-        newWatermark,
-        outcome,
-        tokensUsed: result.usage?.totalTokens ?? 0,
-      },
-      outcome === "written"
-        ? "memory_consolidation_written"
-        : "memory_consolidation_superseded",
-    );
-    return outcome;
-  } catch (err) {
-    // The reader leaving is the one ending here that keeps the window: they
-    // come back to a conversation that folds it again, and the charge is
-    // already keyed so the second attempt is not paid for twice.
-    if (readerLeft(err)) return "aborted";
+        onMissingCost: (row) => logger.error({ row, ...where }, "agent_usage_cost_missing"),
+      });
+      usage.recordModelCall({
+        source: "model",
+        model: config.consolidation_model,
+        provider: resolveProvider(config.consolidation_model),
+        usage: result.usage,
+        providerMetadata: result.providerMetadata,
+        generationId: result.response.id,
+      });
+      await bill({ userId, conversationId, projectId, watermarkBefore, usage, model: config.consolidation_model });
 
-    let lost: boolean;
-    try {
-      // The whole window passes, not the halved one: it is given up whole.
-      lost = await memoryService.discardConsolidation(conversationId, window.newWatermark);
-    } catch (discardErr) {
-      // The discard is itself a write, and whatever failed above is often the
-      // reason this fails too. Both errors go in the line: the one that lost
-      // the window and the one that could not record it.
-      logger.error(
-        { err, discardErr, ...where, shrinks },
-        "memory_consolidation_discard_failed",
-      );
-      return "untouched";
+      if (userLeft()) return "aborted";
+      // An answer cut off by the output limit is cut off again when asked
+      // the same way; the fold fails here.
+      if (result.finishReason === "length") {
+        throw new Error(`consolidation answer was cut off by the output limit at attempt ${String(attempt)}`);
+      }
+
+      const read = readConsolidationAnswer(result.text, rules);
+      if (read.ok) {
+        const outcome = await memoryService.commitConsolidation({
+          userId,
+          projectId,
+          conversationId,
+          shown: input.full,
+          watermarkBefore,
+          newWatermark,
+          progress: read.answer.progress,
+          operations: read.answer.operations,
+        });
+        // The call was made and paid for whichever ending it reached, so this
+        // line is written for both; the message says which.
+        logger.info(
+          { ...where, outcome, attempt, operations: read.answer.operations.length },
+          outcome === "written" ? "memory_consolidation_written" : "memory_consolidation_superseded",
+        );
+        return outcome;
+      }
+      errors = read.errors;
+      logger.warn({ ...where, attempt, errors }, "memory_consolidation_answer_refused");
+      messages.push({ role: "assistant", content: result.text }, { role: "user", content: refusal(errors) });
     }
-
-    // One line for both endings, with the field that tells them apart. The
-    // fold failed either way and that error is the only account of why;
-    // whether this turn's window went with it depends on whether anyone else
-    // had already folded it, and `windowLost` is that answer.
-    logger.error(
-      { err, ...where, windowLost: lost, shrinks },
-      "memory_consolidation_failed",
-    );
-    return lost ? "discarded" : "superseded";
+    throw new Error(`consolidation answer failed its checks ${String(config.consolidation_answer_attempts)} times: ${errors.join("; ")}`);
+  } catch (err) {
+    if (userLeft(err)) return "aborted";
+    // The watermark is where it was and nothing was written: the next fold
+    // reads these turns again.
+    logger.error({ err, ...where }, "memory_consolidation_failed");
+    return "failed";
   }
 }

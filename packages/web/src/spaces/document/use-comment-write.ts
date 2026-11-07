@@ -10,7 +10,7 @@
  * the time the press lands.
  *
  * Whether that happens is not ours to promise — a peer may do what they like
- * with their own document. Whether the reader is told is ours, and it is the
+ * with their own document. Whether the user is told is ours, and it is the
  * whole of what this does: a press that changes nothing and says nothing is
  * the one answer a card must never give.
  *
@@ -39,7 +39,7 @@ export function useCommentWrite(): CommentWrite {
         // The Space's size refused it and already said so (inner#1790).
         if (reason instanceof SpaceFullError) return undefined;
         toast.error(t('spaces.document.comment.writeFailed'));
-        // The reader is told what happened; this is for whoever has to work
+        // The user is told what happened; this is for whoever has to work
         // out why, and the reason is the store's own.
         console.error('a comment write was refused', reason);
         return undefined;

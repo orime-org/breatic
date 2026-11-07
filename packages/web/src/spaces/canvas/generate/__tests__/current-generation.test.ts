@@ -105,7 +105,7 @@ describe('what a node would run right now', () => {
     expect(now).toMatchObject({ mode: 'tts', model: 'speech', params: { voice_id: 'first' } });
   });
 
-  it('keeps the voice the reader picked', () => {
+  it('keeps the voice the user picked', () => {
     const now = currentGeneration(
       'audio',
       { handling: false, mode: 'tts', model: 'speech', paramsByModel: { speech: { voice_id: 'mine' } } },

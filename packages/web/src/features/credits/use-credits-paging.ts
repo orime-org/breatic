@@ -38,7 +38,7 @@ interface CreditsPagingResult<T> {
 }
 
 /**
- * Read a credits list one page at a time, fetching the next as the reader
+ * Read a credits list one page at a time, fetching the next as the user
  * nears the end of the overlay's panel.
  *
  * What is watched is the box around the rows, not the panel: the heading and
@@ -80,7 +80,7 @@ export function useCreditsPaging<T>({
     enabled: hasNextPage && !isFetchingNextPage,
     onReachEnd: loadMore,
     itemCount: rows.length,
-    // A page that did not arrive stops the watcher until the reader scrolls
+    // A page that did not arrive stops the watcher until the user scrolls
     // again. `isFetchNextPageError` is `isError` narrowed to a forward fetch,
     // which is the failure this watches for: rows are in hand and the page
     // after them did not come. A first page that failed leaves nothing to
@@ -92,7 +92,7 @@ export function useCreditsPaging<T>({
     rows,
     isPending: query.isPending,
     // Only when there is nothing to show. A page that failed after earlier
-    // ones arrived leaves those rows in the reader's hands, and replacing
+    // ones arrived leaves those rows in the user's hands, and replacing
     // them with a message loses more than the failure did.
     isError: query.isError && rows.length === 0,
     // The other half of that failure: rows are in hand and a further page did

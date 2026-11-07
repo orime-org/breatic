@@ -16,7 +16,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
+import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
 import * as Y from 'yjs';
 import {
   DOCUMENT_SCHEMA,
@@ -58,8 +59,8 @@ function publishDifferentSchema(): void {
 }
 
 /**
- * Mounts the outlet with a query client around it, the way the real app does
- * (`App.tsx` wraps everything in one).
+ * Mounts the outlet with a query client and the tooltip provider around it,
+ * the way the real app does (`App.tsx` wraps everything in both).
  *
  * Takes the element rather than its props, so every call site keeps writing
  * the props it means and this only owns the wrapper. A fresh client per mount
@@ -69,10 +70,10 @@ function publishDifferentSchema(): void {
  * @param connection - The Timeline tab's actual content-connection facts.
  * @returns The render result.
  */
-function renderOutlet(element: React.JSX.Element, connection?: SocketState): ReturnType<typeof render> {
+function renderOutlet(element: React.JSX.Element, connection?: SocketState): ReturnType<typeof renderWithTooltips> {
   const client = new QueryClient();
   queryClients.push(client);
-  return render(
+  return renderWithTooltips(
     <QueryClientProvider client={client}>
       {connection === undefined ? element : <SpaceConnectionContext.Provider value={connection}>{element}</SpaceConnectionContext.Provider>}
     </QueryClientProvider>,

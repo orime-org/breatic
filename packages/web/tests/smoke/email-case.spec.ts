@@ -17,7 +17,7 @@ test.use({ storageState: { cookies: [], origins: [] } });
 
 const PASSWORD = 'Sm0ke-Case-Pw!';
 
-/** A lower-case address nobody else holds, and the way a reader might type it. */
+/** A lower-case address nobody else holds, and the way a user might type it. */
 function freshAddress(): { stored: string; typed: string } {
   const stamp = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
   const stored = `email-case-${stamp}@example.test`;

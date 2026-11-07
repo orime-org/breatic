@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { fetchProjectCredits } from '@web/data/api/credits';
 import { useProjectCreditsRefresh } from '@web/pages/project/use-project-credits-refresh';
+import { useSpaceTasksRefresh } from '@web/pages/project/use-space-tasks-refresh';
 import * as React from 'react';
 import { useStore } from 'zustand';
 import { useLocation, useParams } from 'react-router-dom';
@@ -29,10 +30,12 @@ import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
 import { spaceRpcFailureNotice } from '@web/pages/project/space-rpc-failure';
 import { CollabSocketProvider } from '@web/data/yjs/collab-socket';
 import { evictSceneSession } from '@web/data/yjs/scene-session';
+import { evictModelImportController } from '@web/spaces/three-d/model-import-controller';
 import { docName } from '@web/data/yjs/manager';
 import { evictCanvasUndoManager } from '@web/data/yjs/canvas-space';
 import { useTranslation } from '@web/i18n/use-translation';
 import { evictDocumentEditor } from '@web/spaces/document/document-editor-cache';
+import { evictTimelineEditSession } from '@web/data/yjs/timeline-edit-session';
 import {
   useProjectMeta,
   type ProjectSpace,
@@ -344,8 +347,9 @@ function ProjectWorkspace({
   // read the project query, so that is refetched too.
   useRefreshOnReauth(provider, projectId, onAuthenticated);
   // The top bar's credits are read again whenever they may have moved: this
-  // reader's own spend returning, or anyone's generation here ending.
+  // user's own spend returning, or anyone's generation here ending.
   useProjectCreditsRefresh(projectId, provider);
+  useSpaceTasksRefresh(projectId, provider);
   // The whole tab bar, held here and nowhere else. Every cell of the
   // transition table is one action on this reducer, so the strip and the
   // active tab have a single writer.
@@ -381,7 +385,7 @@ function ProjectWorkspace({
   // until `ready`, because the strip is empty before the Spaces arrive and
   // storing that would erase what is being restored, and until `persist`,
   // which is false for a strip that changed because Spaces left rather than
-  // because the reader did something.
+  // because the user did something.
   React.useEffect(() => {
     if (!tabs.ready || !tabs.persist) return;
     writeOpenTabs(userId, projectId, tabs.openIds, tabs.activeId);
@@ -428,7 +432,7 @@ function ProjectWorkspace({
         throw err;
       }
       if (!res.ok) {
-        // The server's message is a developer string in English; the reader
+        // The server's message is a developer string in English; the user
         // gets a line in their own language for the codes they can act on.
         const notice = spaceRpcFailureNotice(req.type, res.error.code);
         if (notice.level === 'warning') {
@@ -519,9 +523,11 @@ function ProjectWorkspace({
     );
     previousOpenTabIdsRef.current = openTabIds;
     for (const id of departed) {
+      evictModelImportController(docName.threeDSpace(projectId, id));
       evictSceneSession(docName.threeDSpace(projectId, id));
       evictCanvasUndoManager(docName.canvasSpace(projectId, id));
       evictDocumentEditor(docName.documentSpace(projectId, id));
+      evictTimelineEditSession(docName.timelineSpace(projectId, id));
       canvasSessions.drop(id);
       canvasGraphs.drop(id);
       endSpaceKeptEditors(id);
@@ -705,7 +711,7 @@ function ProjectWorkspace({
         'project.space.error.create',
       );
     } catch (err) {
-      // callRpc has already told the reader, on every way it fails.
+      // callRpc has already told the user, on every way it fails.
       setSpaceOpInProgress(null);
       pendingCreateTokenRef.current = null;
       throw err;
@@ -869,7 +875,7 @@ function ProjectWorkspace({
             // The connection was refused, which this banner answers with
             // "sign in again": drop the stored account on this device (local
             // only, no server logout) so the sign-in page does not act for it.
-            // ProtectedRoute then sends the reader to /login with this address
+            // ProtectedRoute then sends the user to /login with this address
             // as `?next=`.
             onReLogin={clearCurrentUser}
           />

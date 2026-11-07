@@ -8,7 +8,7 @@ import { resolve } from "node:path";
 //
 // `pool: 'forks'` + `poolOptions.forks.singleFork: true` — every package
 // sets these two options for the process count under turbo, measured in
-// packages/web/vitest.config.ts. For a local run of a single file,
+// packages/web/vitest.config.mts. For a local run of a single file,
 // `pnpm build && pnpm --filter @breatic/worker exec vitest run <file>`
 // inherits this config but only loads the requested file. The build is not
 // optional: `--filter` skips turbo's dependency graph, so without it the run

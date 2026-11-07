@@ -13,6 +13,8 @@ import { captionDraftsFor } from '@web/spaces/document/document-caption-drafts';
 import { useTranslation } from '@web/i18n/use-translation';
 import { DocumentMediaBlock } from '@web/spaces/document/DocumentMediaBlock';
 import { mediaBarShown, setHoveredMedia, useDocumentBars } from '@web/spaces/document/document-bars';
+import { pendingUploadId } from '@web/spaces/document/document-media-types';
+import { DocumentPendingMediaBlock } from '@web/spaces/document/document-pending-uploads';
 import {
   mediaViewKey,
   mediaViewsOf,
@@ -64,20 +66,24 @@ export function DocumentMediaViews({ editor, readOnly = false, viewport = null }
     <>
       {views.map(([host, entry]) =>
         createPortal(
-          <DocumentMediaBlock
-            editor={editor}
-            blockId={entry.blockId}
-            readOnly={readOnly}
-            viewport={viewport}
-            type={entry.type}
-            props={entry.props}
-            selected={entry.selected}
-            hovered={bars.hoveredMedia === host}
-            toolbarShown={mediaBarShown(bars, host, entry.selected)}
-            host={host}
-            onHover={onHover}
-            actions={entry.actions}
-          />,
+          pendingUploadId(entry.props) !== null ? (
+            <DocumentPendingMediaBlock props={entry.props} actions={entry.actions} />
+          ) : (
+            <DocumentMediaBlock
+              editor={editor}
+              blockId={entry.blockId}
+              readOnly={readOnly}
+              viewport={viewport}
+              type={entry.type}
+              props={entry.props}
+              selected={entry.selected}
+              hovered={bars.hoveredMedia === host}
+              toolbarShown={mediaBarShown(bars, host, entry.selected)}
+              host={host}
+              onHover={onHover}
+              actions={entry.actions}
+            />
+          ),
           host,
           mediaViewKey(host),
         ),

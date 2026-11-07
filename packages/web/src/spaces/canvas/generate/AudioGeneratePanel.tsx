@@ -3,6 +3,7 @@
 
 import { ArrowUp, Star, X } from 'lucide-react';
 import * as React from 'react';
+import type * as Y from 'yjs';
 
 import type { GenerationTemplate, ModelEntry, Voice } from '@breatic/shared';
 
@@ -24,6 +25,7 @@ import {
 } from '@breatic/shared';
 import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { ModeToggle, type ModeOption } from '@web/spaces/canvas/generate/ModeToggle';
+import { PromptGroup, type PromptGroupItem } from '@web/spaces/canvas/generate/PromptGroup';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
 import { NO_REFERENCE_KINDS } from '@web/spaces/canvas/generate/reference-urls';
@@ -104,6 +106,16 @@ interface AudioGeneratePanelProps {
    * plain prompt. The lyrics box always carries its own.
    */
   promptLabel: string | undefined;
+  /** What the prompt box's row shows while it is closed and empty. */
+  promptPlaceholder: string;
+  /** Which box is open while both are there (#1201). */
+  expanded: 'prompt' | 'lyrics';
+  /** The user opened the other box. */
+  onExpand: (box: 'prompt' | 'lyrics') => void;
+  /** The prompt's words, for its row's first line while it is closed. */
+  promptFragment: Y.XmlFragment | null;
+  /** The lyrics' words, for their row's first line while they are closed. */
+  lyricsFragment: Y.XmlFragment | null;
   /** Pick a mode. */
   onToggleMode: (mode: string) => void;
   /** Pick a model. */
@@ -165,6 +177,11 @@ interface AudioGeneratePanelProps {
  * @param root0.promptSlot - The injected prompt editor, or null.
  * @param root0.lyricsSlot - The injected lyrics editor, or null.
  * @param root0.promptLabel - The name over the prompt box, if it has one.
+ * @param root0.promptPlaceholder - What the closed, empty prompt row shows.
+ * @param root0.expanded - Which box is open while both are there.
+ * @param root0.onExpand - Called with the box the user opened.
+ * @param root0.promptFragment - The prompt's words.
+ * @param root0.lyricsFragment - The lyrics' words.
  * @param root0.references - The derived reference rows.
  * @param root0.referencePicking - Whether the reference pick is running.
  * @param root0.slots - The slots the active mode collects.
@@ -205,6 +222,11 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   promptSlot,
   lyricsSlot,
   promptLabel,
+  promptPlaceholder,
+  expanded,
+  onExpand,
+  promptFragment,
+  lyricsFragment,
   references,
   referencePicking = false,
   slots,
@@ -251,6 +273,44 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
       onVoicePick,
       onVoiceLoadMore,
     ],
+  );
+
+  const lyricsLabel = t('canvas.generatePanel.musicLyricsLabel');
+  const lyricsPlaceholder = t('canvas.generatePanel.musicLyricsPlaceholder');
+  const boxes = React.useMemo((): PromptGroupItem[] => {
+    const style: PromptGroupItem = {
+      id: 'prompt',
+      name: promptLabel,
+      fragment: promptFragment,
+      placeholder: promptPlaceholder,
+      editor: promptSlot,
+      testId: 'generate-prompt-group-prompt',
+    };
+    if (lyricsSlot === null) return [style];
+    return [
+      style,
+      {
+        id: 'lyrics',
+        name: lyricsLabel,
+        fragment: lyricsFragment,
+        placeholder: lyricsPlaceholder,
+        editor: lyricsSlot,
+        testId: 'generate-prompt-group-lyrics',
+      },
+    ];
+  }, [
+    promptLabel,
+    promptFragment,
+    promptPlaceholder,
+    promptSlot,
+    lyricsSlot,
+    lyricsLabel,
+    lyricsFragment,
+    lyricsPlaceholder,
+  ]);
+  const onPick = React.useCallback(
+    (id: string) => onExpand(id === 'lyrics' ? 'lyrics' : 'prompt'),
+    [onExpand],
   );
 
   const exitButton = (
@@ -327,34 +387,24 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
           music mode's style brief — even under a model that takes no lyrics,
           so the name does not vanish with the second box.
 
-          Both wrappers are here whether or not there is a second box, and the
-          labels are holes rather than a second branch: React reconciles by
-          position, so a `promptSlot` sitting directly under the panel in one
-          branch and under a div in the other is a different element each time
-          and gets torn down — taking the editor's collaborative binding, its
-          caret and its undo stack with it on any switch that adds or removes
-          the lyrics box.
+          With both boxes there, one is open and the other is a row (#1201).
+          The group draws the style box in the same place whether or not the
+          lyrics box is there: React reconciles by position, and a box moved
+          to another parent is torn down with its collaborative binding, its
+          caret and its undo stack on any switch that adds or removes the
+          lyrics box.
 
           A label sits 6px above the box it names and 10px below the group
           before it, so the pairing is read off the spacing rather than off the
           order — the weight and the gap the video params popover already gives
           a control's name. */}
-      <div className='flex flex-col gap-2.5'>
-        <div className='flex flex-col gap-1.5'>
-          {promptLabel !== undefined && (
-            <span className='text-xs font-medium text-muted-foreground'>{promptLabel}</span>
-          )}
-          {promptSlot}
-        </div>
-        {lyricsSlot !== null && (
-          <div className='flex flex-col gap-1.5'>
-            <span className='text-xs font-medium text-muted-foreground'>
-              {t('canvas.generatePanel.musicLyricsLabel')}
-            </span>
-            {lyricsSlot}
-          </div>
-        )}
-      </div>
+      <PromptGroup
+        items={boxes}
+        value={expanded}
+        onValueChange={onPick}
+        className='gap-2.5'
+        nameClassName='text-xs font-medium text-muted-foreground'
+      />
 
       <div className='flex items-center gap-1.5'>
         <ModeToggle

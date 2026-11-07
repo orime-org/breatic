@@ -202,7 +202,7 @@ test('Snapshot writes a row the history panel hands back @needs-internet', async
   const rows = page.getByTestId('node-history-row');
   await expect(rows.first()).toBeVisible({ timeout: 20_000 });
   // The chip says what the row IS, and this one is neither generated nor
-  // uploaded — the reader asked for it to be kept.
+  // uploaded — the user asked for it to be kept.
   await expect(rows.first()).toContainText('Snapshot');
 });
 

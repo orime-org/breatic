@@ -7,7 +7,9 @@
  * `DocumentMediaViews`.
  *
  * Editing controls carry `[data-media-chrome]`, whose events belong to the
- * node view and whose visibility follows current edit permission. Playback
+ * node view and whose visibility follows current edit permission; the
+ * picture and video toolbar layer (`[data-media-viewer]`) stays for a viewer,
+ * holding full screen. Playback
  * controls and copyable caption drafts keep their own presentation lifetime.
  */
 
@@ -19,25 +21,19 @@ import {
   Maximize2,
   Trash2,
   Type,
-  X,
 } from 'lucide-react';
 import { autoUpdate, offset, shift, useFloating } from '@floating-ui/react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogTitle,
-} from '@web/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
 import { compositionEnd, keyBelongsToInputMethod } from '@web/lib/composition-end';
 import { usePressKeepsFocus } from '@web/lib/use-press-keeps-focus';
 import { cn } from '@web/lib/utils';
 import { BUBBLE_BAR_CLASS, BUBBLE_ICON_BUTTON_SIZE, PRESSED_CLASS } from '@web/spaces/document/document-tool-button';
-import { MediaPlayer } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
+import { useMediaFullscreen } from '@web/spaces/canvas/nodes/_shared/use-media-fullscreen';
+import { MediaPlayer, type MediaPlayerHandle } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 import { DocumentMediaImage } from '@web/spaces/document/DocumentMediaImage';
 import { Popover, PopoverTrigger, PopoverContent } from '@web/components/ui/popover';
 import { MediaControlsPortal, type VideoControlsTarget } from '@web/spaces/canvas/nodes/_shared/media-video-controls';
@@ -53,6 +49,8 @@ export interface MediaBlockProps {
   readonly url: string;
   readonly name: string;
   readonly caption: string;
+  /** The upload the block waits for; empty once its address is written (inner#1351). */
+  readonly uploadId: string;
   /** Image and video only. */
   readonly previewWidth?: number;
   /** Image and video only: the pixel size the server read off the stored file (its upright copy for a picture with an EXIF orientation). */
@@ -104,9 +102,9 @@ interface DocumentMediaBlockProps {
 /** The narrowest an image or a video can be dragged to. */
 const MIN_WIDTH: Readonly<Record<'image' | 'video', number>> = {
   image: 48,
-  // The player's play button, seek bar and full-screen button, the controls
-  // it keeps at its narrowest (`MediaPlayer`).
-  video: 128,
+  // The player's play button and seek bar, the controls it keeps at its
+  // narrowest (`MediaPlayer`).
+  video: 92,
 };
 
 /** The gap between the toolbar and the media's top edge, `pb-2` above it and `top-2` on it. */
@@ -123,6 +121,20 @@ export const MEDIA_CONTROLS = `${MEDIA_CHROME}, ${MEDIA_PLAYBACK}`;
 
 /** What the block shows: the picture or the player. */
 export const MEDIA_FRAME = '[data-media-frame]';
+
+/**
+ * A media block's caption, under the media.
+ * @param props - The caption.
+ * @param props.caption - Its words.
+ * @returns The line.
+ */
+export function MediaCaption({ caption }: { readonly caption: string }): React.JSX.Element {
+  return (
+    <div data-testid='doc-media-caption' className='mt-1.5 text-center text-sm text-muted-foreground'>
+      {caption}
+    </div>
+  );
+}
 
 /** The caption field, open while the caption is edited. */
 export const MEDIA_CAPTION_INPUT = '[data-testid="doc-media-caption-input"]';
@@ -275,8 +287,15 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   const actionFocused = React.useRef(false);
   const previousReadOnly = React.useRef(readOnly);
   const handoffAfterRoleChange = readOnly && !previousReadOnly.current && actionFocused.current;
-  const [fullscreen, setFullscreen] = React.useState(false);
   const fullscreenId = React.useId();
+  const player = React.useRef<MediaPlayerHandle>(null);
+  const { mediaWidth, mediaHeight } = props;
+  // The size the block stores; full screen reserves its box from it.
+  const storedSize = React.useMemo(
+    () => (mediaWidth !== undefined && mediaHeight !== undefined ? { width: mediaWidth, height: mediaHeight } : undefined),
+    [mediaWidth, mediaHeight],
+  );
+  const mediaSize = type === 'video' ? storedSize : undefined;
   const [narrower, setNarrower] = React.useState(false);
   // The width the media is laid out at, which the preview is judged against.
   const [shownWidth, setShownWidth] = React.useState<number | null>(null);
@@ -302,19 +321,41 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   // Where the keyboard was when the full-screen picture opened, to go back
   // to: the body, an element outside it, or nowhere. Read as it opens, while
   // whatever held the keyboard is still on the page.
+  // Opened from the narrow video's panel, it goes back to the body: the panel
+  // closes, and its button moves back inline where it is not shown.
   const fullscreenOpener = React.useRef<'body' | HTMLElement | null>(null);
+  const fullscreen = useMediaFullscreen({
+    name: props.name,
+    currentSrc: props.url,
+    player,
+    id: fullscreenId,
+    // The keyboard goes back where it was when the media opened. Back in the
+    // body it goes through the editor, which writes the kept selection to the
+    // page as the body takes the focus.
+    onCloseAutoFocus: (event) => {
+      event.preventDefault();
+      const opener = fullscreenOpener.current;
+      fullscreenOpener.current = null;
+      if (opener === 'body') actions.focusBody();
+      else if (opener?.isConnected === true) opener.focus();
+    },
+  });
+  const openFullscreenOn = fullscreen.open;
   const openFullscreen = React.useCallback((): void => {
+    if (type === 'audio') return;
     const held = document.activeElement;
     fullscreenOpener.current =
-      held === null || held === held.ownerDocument.body
-        ? null
-        : actions.bodyHolds(held)
-          ? 'body'
-          : held instanceof HTMLElement
-            ? held
-            : null;
-    setFullscreen(true);
-  }, [actions]);
+      panelShown
+        ? 'body'
+        : held === null || held === held.ownerDocument.body
+          ? null
+          : actions.bodyHolds(held)
+            ? 'body'
+            : held instanceof HTMLElement
+              ? held
+              : null;
+    openFullscreenOn({ kind: type, src: props.url, size: storedSize });
+  }, [actions, panelShown, props.url, storedSize, type, openFullscreenOn]);
   // Above the media, unless the scroller has no room there — then on the
   // media itself, along its top. Never under it: below the media sit its
   // caption and the next block, and a bar there reads as theirs.
@@ -472,7 +513,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
       const style = getComputedStyle(element);
       const button = parseFloat(style.getPropertyValue('--btn-inline'));
       const gap = parseFloat(style.getPropertyValue('--space-4'));
-      if (button > 0 && gap > 0) setTransportMinWidth(2 * button + 40 + 4 * gap);
+      if (button > 0 && gap > 0) setTransportMinWidth(button + 40 + 3 * gap);
     };
     measure();
     if (typeof ResizeObserver === 'undefined') return undefined;
@@ -485,20 +526,12 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   }, [sized]);
 
   const width = dragWidth ?? props.previewWidth;
-  const { mediaWidth, mediaHeight } = props;
   // Until it loads, a picture or video has no width of its own: the box holds
   // the one it will be shown at, its own pixel width capped by the row (A23).
   // A picture with no stored size fills the row only while it loads.
   const boxWidth = width ?? mediaWidth;
   const waiting = settledFor !== props.url;
   const fillsRow = type === 'image' && boxWidth === undefined && waiting;
-  const mediaSize = React.useMemo(
-    () =>
-      type === 'video' && mediaWidth !== undefined && mediaHeight !== undefined
-        ? { width: mediaWidth, height: mediaHeight }
-        : undefined,
-    [type, mediaWidth, mediaHeight],
-  );
   const alignment = props.textAlignment ?? 'center';
 
   /**
@@ -576,14 +609,16 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         onDoubleClick={openFullscreen}
       />
     ) : (
-      <MediaPlayer modality={type} src={props.url} size={mediaSize} videoControls={type === 'video' ? videoControls : undefined} />
+      <MediaPlayer ref={player} modality={type} src={props.url} size={mediaSize} videoControls={type === 'video' ? videoControls : undefined} />
     );
 
+  // A viewer's bar holds only full screen, which audio does not have.
+  const idle = readOnly && type === 'audio';
   const toolbar = (
     <div
       ref={holdToolbar}
       data-testid='doc-media-toolbar'
-      inert={readOnly}
+      inert={idle}
       // Rendered through a portal, so React counts entering it as leaving the
       // layer it sits in; it holds the hover itself.
       onPointerEnter={pointerOn}
@@ -599,9 +634,9 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
       }}
       data-side={side}
       data-shown={toolbarShown ? 'true' : undefined}
-      className={cn(floating && panelShown ? 'flex items-center gap-0.5 p-0.5' : BUBBLE_BAR_CLASS, (!toolbarShown || readOnly || (floating && !panelShown)) && 'invisible')}
+      className={cn(floating && panelShown ? 'flex items-center gap-0.5 p-0.5' : BUBBLE_BAR_CLASS, (!toolbarShown || idle || (floating && !panelShown)) && 'invisible')}
     >
-      {sized &&
+      {!readOnly && sized &&
             narrower &&
             ALIGNMENTS.map(({ value, Icon, labelKey }) => (
               <ToolButton
@@ -619,7 +654,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
                 <Icon />
               </ToolButton>
             ))}
-      <ToolButton
+      {!readOnly && <ToolButton
         tabbable={floating && panelShown}
         label={t('spaces.document.media.caption')}
         action='caption'
@@ -634,11 +669,11 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         }}
       >
         <Type />
-      </ToolButton>
-      {type === 'image' && (
+      </ToolButton>}
+      {type !== 'audio' && (
         <ToolButton
           tabbable={floating && panelShown}
-          label={t('spaces.document.media.fullscreen')}
+          label={t('common.mediaViewer.fullscreen')}
           action='fullscreen'
           testId='doc-media-fullscreen'
           onPress={() => {
@@ -649,7 +684,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
           <Maximize2 />
         </ToolButton>
       )}
-      <ToolButton
+      {!readOnly && <ToolButton
         tabbable={floating && panelShown}
         label={t('spaces.document.media.download')}
         action='download'
@@ -657,8 +692,8 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         onPress={actions.download}
       >
         <Download />
-      </ToolButton>
-      <ToolButton
+      </ToolButton>}
+      {!readOnly && <ToolButton
         tabbable={floating && panelShown}
         label={t('spaces.document.media.delete')}
         action='delete'
@@ -669,7 +704,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         onPress={() => { actions.focusBody(); mediaEvent(editor, { type: 'release', host }); actions.remove(); }}
       >
         <Trash2 />
-      </ToolButton>
+      </ToolButton>}
     </div>
   );
   const mediaFrame = (
@@ -714,7 +749,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
       data-testid='doc-media-row'
       // The full-screen picture is a layer this block opened: the body keeps
       // its selection while the focus is in it.
-      aria-controls={fullscreen ? fullscreenId : undefined}
+      aria-controls={fullscreen.isOpen ? fullscreenId : undefined}
       className={`flex w-full ${sized ? (JUSTIFY[alignment] ?? 'justify-center') : ''}`}
     >
       <div
@@ -736,18 +771,21 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         {/* Above the media, the gap between it and its bar is padding on this
             layer, not a margin, so a pointer crossing it stays inside the
             block and the bar stays up. It takes the pointer only while the bar is shown, so
-            the line above the media is clickable the rest of the time. */}
+            the line above the media is clickable the rest of the time. A
+            narrow video's bar is in its floating panel, and passes through
+            here on its way: it must not land under the pointer there. */}
         <div
           ref={holdLayer}
           data-media-chrome=''
+          data-media-viewer={type === 'audio' ? undefined : ''}
           onPointerEnter={pointerOn}
           onPointerLeave={pointerOff}
           style={inCell ? layerStyles : undefined}
           className={cn(
-            toolbarShown ? 'pointer-events-auto' : 'pointer-events-none',
+            toolbarShown && !floating ? 'pointer-events-auto' : 'pointer-events-none',
             inCell
               // Over the table's row and column handles (10), as the
-              // selection bubble bar is: both are summoned by the reader's
+              // selection bubble bar is: both are summoned by the user's
               // hand and go when it leaves.
               ? ['z-20', side === 'top' && 'pb-2']
               : ['absolute left-1/2 z-10 -translate-x-1/2', side === 'top' ? 'bottom-full pb-2' : 'top-2'],
@@ -803,12 +841,12 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
                 else mediaEvent(editor, { type: 'outside', host });
               }}
             >
-              {!readOnly && <div ref={setFloatingActions} data-media-chrome='' />}
+              <div ref={setFloatingActions} data-media-chrome='' />
               <div ref={setFloatingTransport} className='@container' />
             </PopoverContent>
           </Popover>
         ) : mediaFrame}
-        <MediaControlsPortal destination={floating && panelShown && !readOnly ? floatingActions : inlineActions} migrating={migratingActions} preserveFocus={bars.media.activity?.host === host}>{toolbar}</MediaControlsPortal>
+        <MediaControlsPortal destination={floating && panelShown ? floatingActions : inlineActions} migrating={migratingActions} preserveFocus={bars.media.activity?.host === host}>{toolbar}</MediaControlsPortal>
         {editingCaption ? (
           <input
             data-media-chrome={readOnly ? undefined : ''}
@@ -830,7 +868,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
               closedOnKey.current = true;
               const { value } = event.currentTarget;
               // The keyboard goes back to the body while the field still holds
-              // it: a focused field leaving the page reads as the reader
+              // it: a focused field leaving the page reads as the user
               // leaving the body, which lets go of the block.
               actions.focusBody();
               if (event.key === 'Enter') commitCaption(value);
@@ -838,58 +876,17 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
             }}
             onBlur={(event) => {
               // A key already closed it, or the window went to another app and
-              // the field is still the reader's to come back to.
+              // the field is still the user's to come back to.
               if (closedOnKey.current || !event.currentTarget.ownerDocument.hasFocus()) return;
               commitCaption(event.currentTarget.value);
             }}
           />
         ) : props.caption !== '' ? (
-          <div
-            data-testid='doc-media-caption'
-            className='mt-1.5 text-center text-sm text-muted-foreground'
-          >
-            {props.caption}
-          </div>
+          <MediaCaption caption={props.caption} />
         ) : null}
         {editingCaption && readOnly && <p className='text-xs text-muted-foreground'>{t('spaces.document.media.captionReadOnly')}</p>}
       </div>
-      {type === 'image' && (
-        <Dialog open={fullscreen} onOpenChange={setFullscreen}>
-          <DialogContent
-            id={fullscreenId}
-            aria-describedby={undefined}
-            // The keyboard goes back where it was when the picture opened.
-            // Back in the body it goes through the editor, which writes the
-            // kept selection to the page as the body takes the focus.
-            onCloseAutoFocus={(event) => {
-              event.preventDefault();
-              const opener = fullscreenOpener.current;
-              fullscreenOpener.current = null;
-              if (opener === 'body') actions.focusBody();
-              else if (opener?.isConnected === true) opener.focus();
-            }}
-            className='max-w-[min(96vw,1600px)] items-center border-0 bg-transparent shadow-none'
-          >
-            <DialogTitle className='sr-only'>{props.name}</DialogTitle>
-            <img
-              src={props.url}
-              alt=''
-              data-testid='doc-media-fullscreen-image'
-              className='max-h-[90vh] max-w-full object-contain'
-            />
-            <DialogClose asChild>
-              <Button
-                variant='chrome-ghost'
-                size='icon'
-                className='absolute right-2 top-2'
-                aria-label={t('spaces.document.media.close')}
-              >
-                <X />
-              </Button>
-            </DialogClose>
-          </DialogContent>
-        </Dialog>
-      )}
+      {fullscreen.layer}
     </div>
   );
 });

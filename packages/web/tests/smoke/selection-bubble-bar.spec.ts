@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The two things a reader gets done through the selection bubble bar.
+ * The two things a user gets done through the selection bubble bar.
  *
  * Pressing Bold then Italic really changes the document, and pressing a link
  * written through the panel really opens the address in another tab — each
@@ -78,7 +78,7 @@ test('link: pressing a link in the body opens it in a new tab', async ({ page })
   // (`prosemirror-view`'s `isNear`, `dx*dx + dy*dy < 100`), which selects a
   // word and never reaches the handler that opens the address — and the middle
   // of this link is one pixel from where `selectFirstParagraph` just pressed.
-  // A reader who takes half a second between the two never meets this; a test
+  // A user who takes half a second between the two never meets this; a test
   // that runs both in 143ms does.
   const [opened] = await Promise.all([
     page.context().waitForEvent('page', { timeout: 10_000 }),

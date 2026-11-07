@@ -59,6 +59,7 @@ describe("tools accept the cancellation signal", () => {
     // makes the author of a new tool stop here and read why the arity matters.
     expect(registeredTools().map(([name]) => name).sort()).toEqual([
       "ask_user",
+      "delete_memory",
       "get_canvas_capabilities",
       "get_generation_template",
       "get_product_guide",
@@ -68,9 +69,11 @@ describe("tools accept the cancellation signal", () => {
       "propose_canvas_action",
       "propose_document_edit",
       "read_conversation",
+      "read_memory",
       "read_node_history",
       "request_space_content",
       "save_image",
+      "save_memory",
       "search_conversations",
       "search_images",
       "understand_media",
@@ -78,9 +81,9 @@ describe("tools accept the cancellation signal", () => {
     ]);
   });
 
-  it("has two tools with nothing to run, the cards that wait for the reader", () => {
+  it("has two tools with nothing to run, the cards that wait for the user", () => {
     // ask_user and request_space_content have no `execute`: a call to either
-    // is answered by the reader in a later request, so there is no work in
+    // is answered by the user in a later request, so there is no work in
     // this turn to cancel.
     expect(registeredTools().filter(([, execute]) => execute === undefined).map(([name]) => name)).toEqual([
       "ask_user",

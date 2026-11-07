@@ -5,7 +5,9 @@
 // copying the message gives the attachments' names.
 
 import { describe, it, expect, vi } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
+
+import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
 import userEvent from '@testing-library/user-event';
 import { attachmentMarker } from '@breatic/shared';
 
@@ -22,7 +24,7 @@ const said: ChatMessage = {
 
 describe('a sent message with references', () => {
   it('shows a reference to one of its attachments as a block with the name', () => {
-    render(<MessageBubble message={said} />);
+    renderWithTooltips(<MessageBubble message={said} />);
 
     expect(screen.getByTestId('message-reference')).toHaveTextContent('cover.png');
     expect(screen.getByTestId('message-bubble-content')).not.toHaveTextContent(attachmentMarker('a1'));
@@ -31,7 +33,7 @@ describe('a sent message with references', () => {
   it('marks the block with its kind as an icon, and previews the attachment on hover', () => {
     vi.useFakeTimers();
     try {
-      render(<MessageBubble message={said} />);
+      renderWithTooltips(<MessageBubble message={said} />);
       const block = screen.getByTestId('message-reference');
 
       expect(block.querySelector('svg')).not.toBeNull();
@@ -47,7 +49,7 @@ describe('a sent message with references', () => {
   });
 
   it('leaves a marker for something it did not carry as the text it is', () => {
-    render(<MessageBubble message={said} />);
+    renderWithTooltips(<MessageBubble message={said} />);
 
     expect(screen.getAllByTestId('message-reference')).toHaveLength(1);
     expect(screen.getByTestId('message-bubble-content')).toHaveTextContent(attachmentMarker('gone'));
@@ -56,7 +58,7 @@ describe('a sent message with references', () => {
   it('copies with the names in place of the markers', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
-    render(<MessageBubble message={said} />);
+    renderWithTooltips(<MessageBubble message={said} />);
 
     await userEvent.click(screen.getByTestId('turn-copy'));
 
@@ -72,7 +74,7 @@ describe('a sent message with references', () => {
       content: `see ${attachmentMarker('c1')}`,
       attachments: [{ id: 'c1', type: 'canvas', name: '', data_snapshot: { nodes: [{}, {}, {}], edges: [] } }],
     };
-    render(<MessageBubble message={picked} />);
+    renderWithTooltips(<MessageBubble message={picked} />);
 
     await userEvent.click(screen.getByTestId('turn-copy'));
 

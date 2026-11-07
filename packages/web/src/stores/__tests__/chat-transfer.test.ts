@@ -11,7 +11,7 @@
  *
  * Fixture as in `heartbeat-watchdog.test.ts`: fake timers, `chatApi.streamConfig`
  * mocked, a fake `fetch` answering with an SSE stream the test pushes into,
- * and `watchChatMishaps` collecting what the reader is told. The transfer's
+ * and `watchChatMishaps` collecting what the user is told. The transfer's
  * four steps (ticket, parts, finish, ending) are stubbed to succeed after a
  * stretch of fake time, and each records the signal it was handed.
  *
@@ -490,7 +490,7 @@ describe('stopping a turn while its body uploads (H04-H06)', () => {
   it('H06 leaving the project stops the upload the same way', async () => {
     useConversationRuntime.setState({
       conversations: {
-        [CONVERSATION]: { projectId: PROJECT, messages: [], hasMore: false, oldestLoadedTurn: null, title: null },
+        [CONVERSATION]: { projectId: PROJECT, messages: [], hasMore: false, oldestLoadedTurn: null, title: null, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       },
     });
     await uploadIntoSecondPart();

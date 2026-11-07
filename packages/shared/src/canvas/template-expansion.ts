@@ -8,7 +8,7 @@
  * the panel's own expansion.
  */
 
-import { templateAnchor, type GenerationTemplate, type TemplateNodeKey } from "@shared/canvas/generation-templates.js";
+import { templateAnchor, templateNodeWords, type GenerationTemplate, type TemplateNodeKey } from "@shared/canvas/generation-templates.js";
 import { t } from "@shared/i18n/index.js";
 import {
   TEMPLATE_GUIDE_KEY,
@@ -326,6 +326,13 @@ export function matchTemplateInstance(skeleton: TemplateSkeleton, graph: Templat
       if (chosen !== undefined) give(input.key, fed, chosen);
     }
   }
+  // An input fed only into nodes this apply places new has nowhere to be
+  // wired yet but the anchor: it takes the first free node wired in there.
+  for (const input of skeleton.inputs) {
+    if (!input.feeds.every((fed) => keys.get(fed)?.kind === "missing")) continue;
+    const chosen = incoming(anchor).map((wire) => wire.from).find((from) => free(from, input));
+    if (chosen !== undefined) for (const fed of input.feeds) give(input.key, fed, chosen);
+  }
   const unassigned = skeleton.inputs.flatMap((input) =>
     fedNodes(input).flatMap(([fed]) => (inputs.get(input.key)?.has(fed) ? [] : [{ input: input.key, fed }])),
   );
@@ -368,7 +375,7 @@ export type TemplateMarkTarget = { input: string } | { node: TemplateNodeKey };
 
 /**
  * Every name a reference mark in one generate node's prompt binds to, in the
- * reader's language: each input feeding the node, and each template node
+ * user's language: each input feeding the node, and each template node
  * wired into its pool (an edge naming no into goes into the pool, as a
  * proposal edge without one does).
  * @param template - The template.
@@ -378,7 +385,7 @@ export type TemplateMarkTarget = { input: string } | { node: TemplateNodeKey };
  */
 export function templateMarkTargets(template: GenerationTemplate, key: TemplateNodeKey): Map<string, TemplateMarkTarget> {
   /**
-   * One of the template's strings in the reader's language.
+   * One of the template's strings in the user's language.
    * @param rest - The key under the template's locale entry.
    * @returns The string.
    */
@@ -395,7 +402,7 @@ export function templateMarkTargets(template: GenerationTemplate, key: TemplateN
 
 /**
  * The guide text node for a template with steps: the template's name, then
- * each step numbered, in the reader's language.
+ * each step numbered, in the user's language.
  * @param template - The template.
  * @param anchorIndex - The anchor's index in the proposal.
  * @returns The node, or undefined for a template without steps.
@@ -427,7 +434,7 @@ export function templateGuideNode(template: GenerationTemplate, anchorIndex: num
 export function expandTemplate(template: GenerationTemplate, input: TemplateExpansionInput): TemplateExpansionResult {
   const skeleton = templateSkeleton(template);
   /**
-   * One of the template's strings in the reader's language.
+   * One of the template's strings in the user's language.
    * @param rest - The key under the template's locale entry.
    * @returns The string.
    */
@@ -491,14 +498,16 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
     for (const fed of one.feeds) wire(inputAt.get(one.key)?.get(fed) as number, indexOf.get(fed) as number, "pool");
   }
 
-  // A mark names its target in the reader's language: an input feeding the
+  // A mark names its target in the user's language: an input feeding the
   // node, or a template node wired into its pool.
   /**
-   * A generate node's prompt, each reference mark bound by name and the notes of its new inputs on top.
+   * A generate node's words: its prompt, or its shots when it has them, each
+   * reference mark bound by name and the notes of its new inputs on top of
+   * the prompt or of the first shot.
    * @param key - The node's key.
-   * @returns The prompt.
+   * @returns The prompt or the shots.
    */
-  const promptOf = (key: TemplateNodeKey): PromptSegment[] => {
+  const wordsOf = (key: TemplateNodeKey): Pick<ProposalNode, "prompt" | "shots"> => {
     const targets = templateMarkTargets(template, key);
     const notes = skeleton.inputs
       .filter((one) => {
@@ -507,27 +516,35 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
         return fresh.has(one.key) || (given !== undefined && input.emptyNodes?.has(given) === true);
       })
       .map((one): PromptSegment => ({ slot: { kind: "note", label: text(`input.${one.key}.note`) } }));
-    const words = markedSegments(text(key === template.anchor ? "prompt" : `node.${key}.prompt`)).map((segment): PromptSegment => {
-      const target = segment.slot?.kind === "asset" ? targets.get(segment.slot.label) : undefined;
-      const index = target === undefined ? undefined : "input" in target ? inputAt.get(target.input)?.get(key) : indexOf.get(target.node);
-      return index === undefined ? segment : { ref: index };
-    });
-    return [...notes, ...words];
+    /**
+     * One locale string as segments, each reference mark bound by name.
+     * @param rest - The key under the template's locale entry.
+     * @returns The segments.
+     */
+    const bound = (rest: string): PromptSegment[] =>
+      markedSegments(text(rest)).map((segment): PromptSegment => {
+        const target = segment.slot?.kind === "asset" ? targets.get(segment.slot.label) : undefined;
+        const index = target === undefined ? undefined : "input" in target ? inputAt.get(target.input)?.get(key) : indexOf.get(target.node);
+        return index === undefined ? segment : { ref: index };
+      });
+    const words = templateNodeWords(template, key);
+    if ("prompt" in words) return { prompt: [...notes, ...bound(words.prompt)] };
+    return { shots: words.shots.map((shot, i) => ({ duration: shot.seconds, prompt: [...(i === 0 ? notes : []), ...bound(shot.key)] })) };
   };
 
   const anchorNode = templateAnchor(template);
   const rewritten = new Map<number, ProposalNode>(reusedSources);
   const anchorBase: ProposalNode = { role: "generate", type: anchorNode.type, name: text("name") };
-  rewritten.set(input.anchorAt, { ...templateNodeDefaults(template, undefined, anchorBase), prompt: promptOf(template.anchor) });
+  rewritten.set(input.anchorAt, { ...templateNodeDefaults(template, undefined, anchorBase), ...wordsOf(template.anchor) });
   for (const { index, key } of pending) {
-    const prompt = promptOf(key);
+    const words = wordsOf(key);
     if (index >= input.base) {
       const at = index - input.base;
-      appended[at] = { ...(appended[at] as ProposalNode), prompt };
+      appended[at] = { ...(appended[at] as ProposalNode), ...words };
     } else {
       const type = skeleton.nodes.get(key)?.type ?? anchorNode.type;
       const base: ProposalNode = { role: "generate", type, name: text(`node.${key}.name`) };
-      rewritten.set(index, { ...templateNodeDefaults(template, key, base), prompt });
+      rewritten.set(index, { ...templateNodeDefaults(template, key, base), ...words });
     }
   }
 

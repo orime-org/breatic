@@ -58,6 +58,9 @@ export type {
   StudioProjectPage,
   RecentItem,
   MemoryContext,
+  AgentMemoryEntity,
+  AgentModelChoice,
+  ChatConversation,
   NodeType,
   AttachRef,
   FocusImage,
@@ -122,6 +125,7 @@ export type {
   Space,
   ActivityNewControlEvent,
   CreditsChangedControlEvent,
+  SpaceTasksChangedControlEvent,
   ProjectConnectionsCloseEvent,
   SessionsRevokedEvent,
   ProjectConnectionsCloseReason,
@@ -157,6 +161,7 @@ export {
   CANVAS_NODES_KEY,
   activityNewChannel,
   creditsChangedChannel,
+  spaceTasksChangedChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
@@ -188,6 +193,7 @@ export {
   PROJECT_ACTIVITY_TYPES,
   ACTIVITY_NEW_SIGNAL,
   CREDITS_CHANGED_SIGNAL,
+  SPACE_TASKS_CHANGED_SIGNAL,
   AssetActivityPayloadSchema,
   GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
@@ -220,6 +226,7 @@ export type {
   ProjectActivityPage,
   ActivityNewSignal,
   CreditsChangedSignal,
+  SpaceTasksChangedSignal,
 } from "@shared/types/index.js";
 
 export {
@@ -325,6 +332,7 @@ export {
   chatEarlierMessagesQuerySchema,
   chatCreateConversationSchema,
   chatRenameConversationSchema,
+  chatSetModelSchema,
   CHAT_MESSAGE_MAX_CHARS,
   CONVERSATION_TITLE_MAX_CHARS,
   PROJECT_NAME_MAX_CHARS,
@@ -363,6 +371,7 @@ export type {
   ChatConversationsQueryInput,
   ChatCreateConversationInput,
   ChatRenameConversationInput,
+  ChatSetModelInput,
 } from "@shared/schemas/index.js";
 
 export {
@@ -373,6 +382,8 @@ export {
   getActiveLocale,
   getAvailableLocales,
   setLocaleMessages,
+  setEveryLocaleMessages,
+  EVERY_LOCALE_KEYS,
   setLocaleResolver,
   onLocaleChange,
   resetLocales,
@@ -429,8 +440,8 @@ export {
   TimelineTrackSchema,
   TimelineVideoSourceSchema,
   TimelineVideoClipSchema,
-  TimelineEditCommandSchema,
   TimelineDocumentV1Schema,
+  TIMELINE_MAIN_TRACK_ID,
 } from "@shared/timeline/schema.js";
 export type {
   TimelineRate,
@@ -438,14 +449,10 @@ export type {
   TimelineTrack,
   TimelineVideoSource,
   TimelineVideoClip,
-  TimelineEditCommand,
   TimelineDocumentV1,
 } from "@shared/timeline/schema.js";
-export { durationToFrames, timelineSourceSeconds, validateTimelineRange } from "@shared/timeline/time.js";
-export type { TimelineRangeValidation } from "@shared/timeline/time.js";
-
-export { resolveTimelineArrangement } from "@shared/timeline/arrangement.js";
-export type { TimelineArrangement, TimelineArrangementClip, TimelineArrangementReason, TimelinePlacement } from "@shared/timeline/arrangement.js";
+export { assertTimelineRate, durationToFrames, timelineDurationFraction } from "@shared/timeline/time.js";
+export type { TimelineFraction } from "@shared/timeline/time.js";
 export { MAX_TIMELINE_ASSET_PAGE_SIZE } from "@shared/timeline/api.js";
 export type { TimelineClientLimits } from "@shared/timeline/api.js";
 
@@ -624,7 +631,7 @@ export type { AskUserAnswer, AskUserInput, AskUserQuestion, AskUserResult } from
 export {
   carrying,
   FAILURE_LINES,
-  isReaderLine,
+  isUserLine,
   LEGACY_FAILURE_LINES,
   NEVER_RAN,
   NOTHING_SAID_WHY,
@@ -748,7 +755,7 @@ export {
 } from "@shared/upload/upload-status.js";
 export { uprightKeyFor, type UprightCopy } from "@shared/upload/upright.js";
 // Why a task failed, as a code rather than a sentence: the writer is a server
-// and the reader is whoever opens the list, in their own language.
+// and the user is whoever opens the list, in their own language.
 export {
   TASK_FAILURE_REASONS,
   encodeTaskFailure,
@@ -815,7 +822,7 @@ export {
   type LongMediaSourceReference,
 } from "@shared/media/long-media-job.js";
 // The media fields a result puts on a node, written the same way by collab
-// when a task settles and by the canvas when a reader restores one.
+// when a task settles and by the canvas when a user restores one.
 export {
   NODE_MEDIA_KEYS,
   writeNodeMedia,
@@ -826,6 +833,7 @@ export {
   TEMPLATE_GOALS,
   templateAnchor,
   templateGoalsFor,
+  templateNodeWords,
   templatesFor,
   type GenerationTemplate,
   type TemplateEdge,
@@ -833,7 +841,9 @@ export {
   type TemplateGoal,
   type TemplateInput,
   type TemplateNodeKey,
+  type TemplateNodeWords,
   type TemplateResourceNode,
+  type TemplateShot,
   type TemplateTriggers,
 } from "@shared/canvas/generation-templates.js";
 export {
@@ -1048,8 +1058,8 @@ export {
   type AttributionTouch,
 } from "@shared/analytics/attribution.js";
 
-export { SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, SceneObjectValuesSchema, SceneObjectSchema } from "@shared/scene.js";
-export type { SceneVector, SceneRotation, SceneModel, SceneObjectValues, SceneObject, SceneEditableField } from "@shared/scene.js";
+export { SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, SceneObjectValuesSchema, SceneObjectSchema, isSceneModelMediaType } from "@shared/scene.js";
+export type { SceneVector, SceneRotation, SceneModel, SceneObjectValues, SceneObject, SceneEditableField, SceneImportLimits, SceneControlsConfig } from "@shared/scene.js";
 export { SCENE_FORMAT_VERSION, getSceneRootMap, initializeSceneDocument } from "@shared/scene-version.js";
 
 export * from "@shared/credit-amount.js";

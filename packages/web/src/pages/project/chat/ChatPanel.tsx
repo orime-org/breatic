@@ -110,7 +110,7 @@ export function ChatPanel({
   // new onSubmit.
   const spaceSource = React.useRef({ activeSpace, spaces });
   spaceSource.current = { activeSpace, spaces };
-  /** The reader's Spaces as they stand; called at the press. */
+  /** The user's Spaces as they stand; called at the press. */
   const readSpaces = React.useCallback(
     (): ReadSpaces =>
       readSpaceContext({
@@ -201,7 +201,7 @@ export function ChatPanel({
     const showing = setTimeout(() => setSkeleton(true), SKELETON_AFTER_MS);
     return () => clearTimeout(showing);
   }, [ready, status]);
-  // Sending is something the reader does, and this is where they do it. The
+  // Sending is something the user does, and this is where they do it. The
   // message list needs to know it happened — it is the one thing that should
   // bring the column back to the bottom after they have scrolled up to read.
   const [sentCount, setSentCount] = React.useState(0);
@@ -255,7 +255,7 @@ export function ChatPanel({
   /**
    * Fetch the list afresh every time it is opened.
    *
-   * Where the reader had paged to, and what they saw, belong to the last time
+   * Where the user had paged to, and what they saw, belong to the last time
    * they opened it -- and another tab of theirs may have started, renamed or
    * deleted conversations since.
    */
@@ -315,6 +315,7 @@ export function ChatPanel({
       </QuestionnaireAnswerContext.Provider>
       <ChatComposer
         conversationId={currentId ?? null}
+        projectId={projectId}
         draft={draft}
         turnPhase={turnPhase}
         navigating={navigating}

@@ -18,7 +18,7 @@ import { callOptionsFor, getModel, resolveProvider, systemFor } from "@breatic/d
 import {
   buildAgentConfig,
   finalizeTurn,
-  AWAITS_READER,
+  AWAITS_USER,
   agentPictureOutputOf,
   expandAgentPictures,
   instructionsForAgentMemory,
@@ -27,10 +27,11 @@ import {
 } from "@breatic/domain";
 import type { AgentGenerationStep, AgentPicture, OpenDocument, PrepareAgentPictures, ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
-import { readerClockNote } from "@server/agent/reader-clock.js";
+import { userClockNote } from "@server/agent/user-clock.js";
 import { getAgentConfig, getStorageAdapter } from "@breatic/core";
 import { assetService, creditLotService, createUsageRecorder } from "@breatic/domain";
 import { saveToStorageFor } from "@server/agent/save-to-storage.js";
+import { agentMemoryFor } from "@server/agent/agent-memory.js";
 import { projectRecordsFor } from "@server/agent/project-records.js";
 import { openDocumentOf, turnToolsContext } from "@server/agent/turn-tools-context.js";
 import { buildTurnContext } from "@server/agent/turn-context.js";
@@ -44,7 +45,7 @@ import { toStoredParts } from "@server/modules/conversation/message-part-mapping
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
 import { foldIfTooLong } from "@server/agent/turn-fold.js";
 import { knownTokensAtStart, requestTokens } from "@server/agent/request-size.js";
-import type { Assembly, TurnIdentity } from "@server/agent/turn-fold.js";
+import type { Assembly, FoldResult, FoldTrigger, TurnIdentity } from "@server/agent/turn-fold.js";
 import { readContextOverflow, unrecognised400, type ContextOverflow } from "@server/agent/context-overflow.js";
 import { claimFirstMilestone, currentConsent, getContext, serverAnalyticsWanted, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
@@ -60,7 +61,7 @@ import type { CardResult, TurnedAwayCall } from "@server/agent/ask-result.js";
 import { picturePreparerFor, pictureSourcesForTurn } from "@server/agent/prepare-pictures.js";
 
 /**
- * What opened a segment of a turn: the reader's message, or the reader's
+ * What opened a segment of a turn: the user's message, or the user's
  * answer to a card the turn stopped at -- a questionnaire (inner#1542) or a
  * request to read Spaces (inner#1552).
  */
@@ -81,7 +82,7 @@ type Opening =
       output: unknown;
     };
 
-/** What a waiting card is settled with when the reader writes a message instead. */
+/** What a waiting card is settled with when the user writes a message instead. */
 const REPLIED_IN_CHAT: CardResult = { repliedInChat: true };
 
 /**
@@ -117,8 +118,9 @@ export class MainAgent {
    * @param signal - Raised when the user stops the turn or the client goes
    *   away. Absent means this caller has no way to stop the turn.
    * @param attached - What the user attached to the message, in order.
-   * @param timeZone - The zone the reader's browser reported, if any.
-   * @param space - The project's Spaces and the one the reader has open.
+   * @param timeZone - The zone the user's browser reported, if any.
+   * @param space - The project's Spaces and the one the user has open.
+   * @param modelId - The model the route resolved for this turn (#1363); the default when absent.
    * @returns The turn, as the SDK's own message chunks.
    */
   async chat(
@@ -127,8 +129,9 @@ export class MainAgent {
     attached: readonly ChatAttachedChip[] = [],
     timeZone?: string,
     space: ChatSpaceContext = {},
+    modelId?: string,
   ): Promise<ReadableStream<UIMessageChunk>> {
-    return this.runTurn(userMessage, attached, signal, timeZone, space);
+    return this.runTurn(userMessage, attached, signal, timeZone, space, modelId);
   }
 
   /**
@@ -136,8 +139,9 @@ export class MainAgent {
    * @param said - What the user typed
    * @param attached - What the user attached, stored beside the typed words
    * @param signal - Raised when the user stops the turn or the client leaves
-   * @param timeZone - The zone the reader's browser reported, if any
-   * @param space - The project's Spaces and the one the reader has open
+   * @param timeZone - The zone the user's browser reported, if any
+   * @param space - The project's Spaces and the one the user has open
+   * @param modelId - The model the route resolved for this turn
    * @returns The turn, as the SDK's own message chunks.
    */
   private async runTurn(
@@ -146,6 +150,7 @@ export class MainAgent {
     signal: AbortSignal | undefined,
     timeZone: string | undefined,
     space: ChatSpaceContext,
+    modelId: string | undefined,
   ): Promise<ReadableStream<UIMessageChunk>> {
     const { conversationId } = this.ctx;
 
@@ -156,9 +161,9 @@ export class MainAgent {
     // `chargeOnceForGeneration`.
     //
     // Every card still waiting is closed by this message, in the same
-    // transaction: its result says the reader wrote a message instead, and is
+    // transaction: its result says the user wrote a message instead, and is
     // kept beside the call in the row that asked, under that call's own tool.
-    const { turnIndex, closedAsks } = await messageRepo.addReaderMessage(
+    const { turnIndex, closedAsks } = await messageRepo.addUserMessage(
       conversationId,
       {
         role: "user",
@@ -183,27 +188,27 @@ export class MainAgent {
     // Everything slow happens inside the stream, not before it. The three
     // round trips for memory, the conversation and its history all used to
     // run before the stream was even opened -- so
-    // nothing of the turn could reach the reader until they were done, the
+    // nothing of the turn could reach the user until they were done, the
     // first word of the reply included, which is the one thing they were
     // waiting for.
     //
-    // The reader's clock opens this turn's message, on its own line, ahead of
+    // The user's clock opens this turn's message, on its own line, ahead of
     // any attached content, so it never sits under the "User message"
-    // heading. The system prompt does not carry it. The reader's Spaces
+    // heading. The system prompt does not carry it. The user's Spaces
     // follow it, read fresh with each message. Storage keeps the logical
     // message and picture facts; each request projects a copy under its
     // picture policy. Unchanged prefixes can reuse the provider's cache.
     const opening: Opening = {
       kind: "message",
-      clockNote: readerClockNote(new Date(), timeZone),
+      clockNote: userClockNote(new Date(), timeZone),
       turn: { ...space, chips: attached, message: said },
       closedAsks,
     };
-    return this.runStream(opening, turnIndex, title, openDocumentOf(space), signal);
+    return this.runStream(opening, turnIndex, title, openDocumentOf(space), signal, modelId);
   }
 
   /**
-   * Resume a turn that stopped at a card, once the reader's answer has been
+   * Resume a turn that stopped at a card, once the user's answer has been
    * taken: a questionnaire's (inner#1542) or a Space request's (inner#1552).
    *
    * The answer is already in the store -- the route settled it before calling
@@ -214,8 +219,9 @@ export class MainAgent {
    *   what the card draws; the model's copy of the result is in the store.
    * @param turnIndex - The turn that asked.
    * @param signal - Raised when the user stops the turn or the client goes away.
-   * @param timeZone - The zone the reader's browser reported, if any.
-   * @param space - The project's Spaces and the one the reader has open.
+   * @param timeZone - The zone the user's browser reported, if any.
+   * @param space - The project's Spaces and the one the user has open.
+   * @param modelId - The model the turn started on, as the route resolved it (#1363).
    * @returns The segment, as the SDK's own message chunks.
    */
   async answer(
@@ -225,15 +231,16 @@ export class MainAgent {
     signal?: AbortSignal,
     timeZone?: string,
     space: ChatSpaceContext = {},
+    modelId?: string,
   ): Promise<ReadableStream<UIMessageChunk>> {
     const opening: Opening = {
       kind: "answer",
-      clockNote: readerClockNote(new Date(), timeZone),
+      clockNote: userClockNote(new Date(), timeZone),
       space,
       toolCallId,
       output,
     };
-    return this.runStream(opening, turnIndex, null, openDocumentOf(space), signal);
+    return this.runStream(opening, turnIndex, null, openDocumentOf(space), signal, modelId);
   }
 
   /**
@@ -257,12 +264,12 @@ export class MainAgent {
    * Assembling what the model is asked happens inside `execute`, not before
    * the stream is built. Everything it takes -- the two memory reads,
    * the conversation and its history -- is time the
-   * reader spends in front of a screen where nothing has happened, and a
+   * user spends in front of a screen where nothing has happened, and a
    * stream that exists already has somewhere to put the name in the meantime.
-   * @param opening - What opened this segment: the reader's message (the
+   * @param opening - What opened this segment: the user's message (the
    *   clock, Spaces, attachments and typed words, laid out with each assembly,
    *   which knows whether the history already holds the open Space), or the
-   *   reader's answer to the card the turn stopped at.
+   *   user's answer to the card the turn stopped at.
    * @param turnIndex - The turn this run answers. A parameter and not a
    *   context field: it is known one line before the call, both the reply and
    *   the charge are filed under it, and neither has anything sensible to do
@@ -273,9 +280,10 @@ export class MainAgent {
    *   null), so this is sent on every turn and the client writes down the
    *   same name again -- which is what keeps the list and the header from
    *   showing a placeholder after the turn that named it.
-   * @param openDocument - The document the reader has open, which a document
+   * @param openDocument - The document the user has open, which a document
    *   proposal goes to, or null when none can be read.
    * @param signal - Raised when the user stops the turn or the client goes away.
+   * @param requestedModel - The model the route resolved for this turn (#1363).
    * @returns The turn's chunks, in the SDK's own protocol.
    */
   private runStream(
@@ -284,6 +292,7 @@ export class MainAgent {
     title: string | null,
     openDocument: OpenDocument | null,
     signal?: AbortSignal,
+    requestedModel?: string,
   ): ReadableStream<UIMessageChunk> {
     const { userId, conversationId, projectId } = this.ctx;
     const agentCfg = getAgentConfig();
@@ -302,7 +311,7 @@ export class MainAgent {
 
     // The card this segment stopped at, if it did, and the ones put in the
     // same step after it. Decided when the model's stream finishes: a tool in
-    // `AWAITS_READER` has no `execute`, so the SDK stops the step at it and never
+    // `AWAITS_USER` has no `execute`, so the SDK stops the step at it and never
     // consults `stopWhen` (`ai@7.0.68` `dist/index.js:10046-10053`).
     let awaitingCall: string | undefined;
     let turnedAwayCalls: TurnedAwayCall[] = [];
@@ -324,10 +333,10 @@ export class MainAgent {
       thoughtForMs += Date.now() - thinkingOpenedAt;
       thinkingOpenedAt = undefined;
     };
-    /** Whether the reader has been told how long the turn thought. */
+    /** Whether the user has been told how long the turn thought. */
     let thoughtSaid = false;
     /**
-     * Tell the reader how long the turn thought, once it is known to end
+     * Tell the user how long the turn thought, once it is known to end
      * here; said once a turn, by whichever ending gets there first.
      * @param writer - The stream the turn is written to.
      */
@@ -342,7 +351,7 @@ export class MainAgent {
     // each (#296); the turn is charged what those rows add up to. Model calls
     // are recorded as each one's response arrives, never from `result.usage`:
     // that getter calls `consumeStream()`, and on the exit that matters most --
-    // the reader leaving mid-loop -- reading it would drive the rest of the
+    // the user leaving mid-loop -- reading it would drive the rest of the
     // loop after everyone has gone.
     const usage = createUsageRecorder({
       // A segment resumed after a card is charged on its own: the
@@ -412,6 +421,10 @@ export class MainAgent {
     let reportedRequest: { hash: string; messages: number } | undefined;
     // Folds set off by the provider turning a call away, this turn.
     let overflowFolds = 0;
+    // A fold of this turn could not start or failed. The turn folds no more:
+    // its window and the consolidation model are the same, so a second try
+    // pays again for the same answer (design 6.4).
+    let foldFailed = false;
     // The turn ended because its request could not be made to fit.
     let tooLong = false;
 
@@ -422,7 +435,7 @@ export class MainAgent {
      * @param ended.exit - How the turn ended.
      * @param ended.stored - The reply's parts as they are stored, which say how
      *   the turn ended.
-     * @param ended.parts - The reply's parts, as the reader received them.
+     * @param ended.parts - The reply's parts, as the user received them.
      * @param ended.tools - The turn's tools.
      * @param ended.settled - How the turn's calls ended.
      * @returns The copy, or undefined when the model was never asked.
@@ -436,7 +449,7 @@ export class MainAgent {
       settled: SettledCalls;
     }): Promise<ReplyForModel | undefined> => {
       if (sent === undefined) return undefined;
-      // A partial step nothing carried on is rebuilt from what reached the reader.
+      // A partial step nothing carried on is rebuilt from what reached the user.
       const sentOn = lastStepUnsent ? steps.slice(0, -1) : steps;
       const collected = sentOn.flat();
       let unfinished: ModelMessage[] = [];
@@ -451,7 +464,7 @@ export class MainAgent {
       // A segment paused at a card has not ended: its answer is
       // appended to this copy and must follow the call it answers.
       const note = ended.exit === "blocked" ? undefined : endingNote(ended.stored);
-      // A resumed segment's own message is kept in its row, since no reader's
+      // A resumed segment's own message is kept in its row, since no user's
       // row holds it; its hash is of everything before that message, which is
       // what the next request will have sent ahead of this row.
       const own = opening.kind === "answer" ? sent.userKept.messages : [];
@@ -476,6 +489,9 @@ export class MainAgent {
       return {
         messages,
         prefixHash: prefixHash(sent.agentConfig, ahead),
+        // The model this turn started on, which a segment resumed by an
+        // answer to its card runs on too (#1363).
+        modelId: sent.agentConfig.modelId,
         steps: keptSteps,
         ...(pictureFacts.length === 0 ? {} : { pictures: pictureFacts }),
         countCoverage: {
@@ -500,8 +516,8 @@ export class MainAgent {
      * Read everything the model is given, and lay it out as it will be sent.
      *
      * Repeatable on purpose: a consolidation changes both halves of what this
-     * reads — the watermark shortens the history, the summary lands in memory
-     * — so the turn runs it again afterwards rather than editing the first
+     * reads — the watermark shortens the history, and the folded turns land in
+     * the memory entries and the progress note — so the turn runs it again afterwards rather than editing the first
      * result, which would leave the folded turns missing from both places.
      * @returns The request, and what it was built from.
      */
@@ -538,6 +554,7 @@ export class MainAgent {
       const firstAssembly = fixedAgentConfig === undefined;
       fixedAgentConfig ??= await buildAgentConfig({
         basePrompt: buildSystemPrompt(), memoryContext,
+        ...(requestedModel === undefined ? {} : { modelId: requestedModel }),
         ...(signal === undefined ? {} : { signal }),
         toolContext: {
           mediaUrlAllowed: (url) => storage.keyFromUrl(url) !== null || vouchedMedia.has(url),
@@ -602,7 +619,7 @@ export class MainAgent {
     };
 
     /**
-     * Who the folds of this turn are for, and how the reader hears of one.
+     * Who the folds of this turn are for, and how the user hears of one.
      * @param writer - The stream the turn is written to.
      * @returns The identity a fold is run under.
      */
@@ -621,12 +638,28 @@ export class MainAgent {
     });
 
     /**
+     * Fold when the request does not fit, unless a fold of this turn already
+     * failed: then a precheck sends as it stands, and an overflow ends as one
+     * whose fold moved nothing.
+     * @param writer - The stream the turn is written to.
+     * @param finished - This turn's finished steps, as they go back to the model.
+     * @param trigger - What set it off.
+     * @returns How it ended; see {@link FoldResult}.
+     */
+    const fold = async (writer: UIMessageStreamWriter, finished: readonly ModelMessage[], trigger: FoldTrigger): Promise<FoldResult> => {
+      if (foldFailed) return trigger.kind === "precheck" ? "none" : "untouched";
+      const result = await foldIfTooLong(sent!, finished, foldFor(writer), trigger);
+      if (result === "untouched") foldFailed = true;
+      return result;
+    };
+
+    /**
      * Keep this turn's message as it is about to go out, so later turns send
      * it again as it is. Losing the copy costs this turn nothing: later turns
      * render the message from its parts the way they always did, so the
      * cache stops matching from this message on and this turn's reply goes
      * back without its thinking. A resumed segment's own message is kept in
-     * its reply row instead: the reader's row of this turn holds the message
+     * its reply row instead: the user's row of this turn holds the message
      * that opened it.
      * @param assembly - What is about to be sent.
      * @throws {never} Never; a failed write is logged.
@@ -678,7 +711,7 @@ export class MainAgent {
      *
      * Before each call, the provider's last count is checked against the
      * window; past it, the oldest turns are folded first. A call the provider
-     * turns away as too long is not shown to the reader: the turn folds and a
+     * turns away as too long is not shown to the user: the turn folds and a
      * new stream carries on inside the same reply, with the finished steps as
      * they ran, so no tool runs twice.
      * @param writer - The stream the turn is written to.
@@ -690,7 +723,7 @@ export class MainAgent {
         logger.warn({ userId, conversationId, model: sent.agentConfig.modelId, window: sent.agentConfig.contextWindow }, "agent_context_window_fallback");
       }
       const knownAtStart = knownTokensAtStart(sent.replayed);
-      const opened = await foldIfTooLong(sent, [], foldFor(writer), { kind: "precheck", at: "start", known: knownAtStart });
+      const opened = await fold(writer, [], { kind: "precheck", at: "start", known: knownAtStart });
       signal?.throwIfAborted();
       // The last count the conversation has stands for the first call until
       // that call reports. A fold voids it, and one that could not run is not
@@ -726,7 +759,7 @@ export class MainAgent {
         if (turnedAway === undefined) return;
 
         overflowFolds += 1;
-        const folded = await foldIfTooLong(sent, stripThinking(steps.flat()), foldFor(writer), {
+        const folded = await fold(writer, stripThinking(steps.flat()), {
           kind: "overflow",
           overflow: turnedAway.overflow,
           known: lastCallTotal,
@@ -754,7 +787,7 @@ export class MainAgent {
     };
 
     /**
-     * Run one model stream of the turn and write it to the reader.
+     * Run one model stream of the turn and write it to the user.
      *
      * Everything goes out as it comes except the `finish` and the first error,
      * held until the stream ends. When that first error is a call the provider
@@ -786,7 +819,7 @@ export class MainAgent {
     ): Promise<{ error: unknown; overflow: ContextOverflow } | undefined> => {
       const { watch, studioId } = run;
       // Set from the stream's own error callback, which has run for every
-      // error chunk by the time the reader sees the stream end, and before the
+      // error chunk by the time the user sees the stream end, and before the
       // stream's end callback.
       const seen: { failed?: true; turnedAway?: { error: unknown; overflow: ContextOverflow } } = {};
       const result = streamTextRetry({
@@ -814,7 +847,7 @@ export class MainAgent {
           // until the next call reports, so two folds always have a call
           // between them.
           if (steps.length > 0) {
-            const folded = await foldIfTooLong(sent!, stripThinking(steps.flat()), foldFor(writer), {
+            const folded = await fold(writer, stripThinking(steps.flat()), {
               kind: "precheck",
               at: "step",
               known: lastCallTotal,
@@ -854,9 +887,9 @@ export class MainAgent {
         },
         tools: sent!.agentConfig.tools,
         // The paying tools record their calls on this turn's recorder, the
-        // save stores for this project and reader, the canvas proposal check
+        // save stores for this project and user, the canvas proposal check
         // reads material for this studio, and the document proposal checks
-        // against the document the reader has open, and the record tools read
+        // against the document the user has open, and the record tools read
         // this user's records in this project. Cast because the tool set arrives as
         // a plain record, whose context type the SDK reads as absent; each
         // tool's `contextSchema` is what checks this at run time, before its
@@ -874,6 +907,7 @@ export class MainAgent {
             turnIndex,
             spaces: (opening.kind === "message" ? opening.turn.spaces : opening.space.spaces) ?? [],
           }),
+          memory: agentMemoryFor({ userId, projectId, conversationId }),
         }) as never,
         // One ceiling for the whole turn, every stream of it together: a
         // stream that carries on after a fold has the steps already taken
@@ -958,9 +992,9 @@ export class MainAgent {
             howToolEnded.set(toolCall.toolCallId, ending);
             // The turn carries on and the model is told why; the error the
             // tool caught, and what caused it, are kept only in this log.
-            // A call turned away to steer the model, or one the reader
+            // A call turned away to steer the model, or one the user
             // stopped, is not a failure. A failure the tool described is one
-            // it saw coming, and the reader was told: a warning. A throw it
+            // it saw coming, and the user was told: a warning. A throw it
             // did not describe is a fault in our own code: an error.
             if (ending.kind === "tool_failed") {
               const details = {
@@ -1011,7 +1045,7 @@ export class MainAgent {
           seen.failed = true;
         },
         // Whether the model runs out of room is not ours to decide; whether
-        // the reader is told it happened is. Said on the wire rather than
+        // the user is told it happened is. Said on the wire rather than
         // only in storage, because this is the one signal the browser cannot
         // work out for itself -- the same reason a failed turn puts its own
         // mark on the reply as it happens. The SDK turns the frame into a
@@ -1027,19 +1061,19 @@ export class MainAgent {
           }
           // Said on the wire for the same reason as the one above: the SDK
           // turns the frame into a part of the reply, so the figure reaches
-          // the reader as the turn ends, ahead of an error the stream held.
+          // the user as the turn ends, ahead of an error the stream held.
           // A turn that never gets here is told after the stream, or at the
           // end of `execute`, or, when stopped, has the figure written into
           // its stored parts at the exit below.
           sayThoughtFor(writer);
           // The step stopped at a card when it holds a call to a tool that
-          // waits for the reader (`AWAITS_READER`) the schema took and nothing
+          // waits for the user (`AWAITS_USER`) the schema took and nothing
           // has answered. The first, whichever tool made it, is the card the
-          // reader is shown; any later one in the step is turned away. Said on the wire here, while the writer is still open, so
+          // user is shown; any later one in the step is turned away. Said on the wire here, while the writer is still open, so
           // the panel draws the card as waiting rather than as a call that
           // came to nothing -- the rule lives on this side only. Written last,
           // so it is the last part of the segment that asked: the browser
-          // splits the reply there once the reader answers and the turn
+          // splits the reply there once the user answers and the turn
           // resumes in the same message. A stream that met an error, in its
           // last step or one the SDK carried on past, is a failed turn, stored
           // with its calls as never run, so it names no card.
@@ -1047,7 +1081,7 @@ export class MainAgent {
             finishReason === "error" || seen.failed === true
               ? []
               : toolCalls
-                .filter((call) => AWAITS_READER.includes(call.toolName) && call.invalid !== true && !howToolEnded.has(call.toolCallId))
+                .filter((call) => AWAITS_USER.includes(call.toolName) && call.invalid !== true && !howToolEnded.has(call.toolCallId))
                 .map(({ toolCallId, toolName }) => ({ toolCallId, toolName }));
           if (asks[0] !== undefined) {
             awaitingCall = asks[0].toolCallId;
@@ -1058,7 +1092,7 @@ export class MainAgent {
       });
 
       // The one field the wire has for a failure, filled with the line a
-      // reader is shown. Left to its default the SDK writes one fixed English
+      // user is shown. Left to its default the SDK writes one fixed English
       // sentence here -- a default that exists so a server does not leak its
       // own error text, which a translation key does not do either. Without
       // this the panel has nothing to go on until the turn is stored and read
@@ -1191,7 +1225,7 @@ export class MainAgent {
         const leftHanging: ToolFailure = endingWithNothingRun(exit === "aborted");
         for (const [i, part] of replyParts.entries()) {
           if (part.type !== "tool" || part.status !== "pending") continue;
-          // The card the reader is shown waits for them; a second card in the
+          // The card the user is shown waits for them; a second card in the
           // same step was turned away. Neither is a call that came to nothing.
           if (exit === "blocked" && part.toolCallId === awaitingCall) {
             replyParts[i] = { ...part, status: "awaiting" };
@@ -1269,7 +1303,7 @@ export class MainAgent {
               if (outcome && parseCreditDecimal(outcome.shortfall) > 0n) {
                 // The pool ran out mid-turn, or its credits were reassigned
                 // while the model was answering. The reply is already with the
-                // reader, so what could not be charged goes to reconciliation.
+                // user, so what could not be charged goes to reconciliation.
                 logger.error(
                   {
                     userId,

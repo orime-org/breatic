@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Text inserted from a popover lands where the reader left the
+ * Text inserted from a popover lands where the user left the
  * caret, although opening the popover took focus away from the editor.
  */
 
@@ -17,13 +17,14 @@ import {
   type PromptEditorHandle,
 } from '@web/spaces/canvas/generate/PromptEditor';
 
-/** The slice of the TipTap editor these tests drive the way a reader would. */
+/** The slice of the TipTap editor these tests drive the way a user would. */
 interface DrivenEditor {
   commands: {
     insertContent: (s: string) => void;
     setTextSelection: (at: number) => void;
   };
   isFocused: boolean;
+  state: { selection: { from: number } };
 }
 
 /**
@@ -60,7 +61,7 @@ async function mount(text: string): Promise<{
 }
 
 /**
- * Puts the caret at a position the way a reader's click does. jsdom gives a
+ * Puts the caret at a position the way a user's click does. jsdom gives a
  * contenteditable no real focus, so the focus event the click would fire is
  * dispatched on the editor's element, where ProseMirror and TipTap listen.
  * @param editor - The live editor.
@@ -72,15 +73,15 @@ function placeCaret(editor: DrivenEditor, at: number): void {
 }
 
 describe('PromptEditorHandle.insertText', () => {
-  it('appends to the end of a prompt the reader never put a caret in', async () => {
+  it('appends to the end of a prompt the user never put a caret in', async () => {
     const { handle, editor, reported } = await mount('a red car');
-    // A selection the reader did not make, away from the end: the end still wins.
+    // A selection the user did not make, away from the end: the end still wins.
     act(() => editor.commands.setTextSelection(1));
     act(() => handle.current?.insertText('[Pan left]'));
     await waitFor(() => expect(reported()).toBe('a red car [Pan left]'));
   });
 
-  it('lands at the caret the reader left before focus moved to the popover', async () => {
+  it('lands at the caret the user left before focus moved to the popover', async () => {
     const { handle, editor, reported } = await mount('a red car');
     // Position 6 is after "a red" (the paragraph opens at 1).
     placeCaret(editor, 6);
@@ -140,5 +141,32 @@ describe('PromptEditorHandle.insertText', () => {
     const { handle, reported } = await mount('');
     act(() => handle.current?.insertText('[Static shot]'));
     await waitFor(() => expect(reported()).toBe('[Static shot]'));
+  });
+});
+
+describe('PromptEditorHandle.focus', () => {
+  it('puts the caret at the end of a prompt the user never put a caret in', async () => {
+    const { handle, editor } = await mount('a red car');
+    act(() => editor.commands.setTextSelection(1));
+    act(() => handle.current?.focus());
+    // "a red car" is 9 characters after the paragraph opens at 1.
+    await waitFor(() => expect(editor.state.selection.from).toBe(10));
+  });
+
+  it('keeps the end as where a later insert lands, once focused from code', async () => {
+    const { handle, editor, reported } = await mount('a red car');
+    act(() => editor.commands.setTextSelection(1));
+    act(() => handle.current?.focus());
+    await waitFor(() => expect(editor.state.selection.from).toBe(10));
+    act(() => handle.current?.insertText('[Pan left]'));
+    await waitFor(() => expect(reported()).toBe('a red car [Pan left]'));
+  });
+
+  it('goes back to the caret the user left', async () => {
+    const { handle, editor } = await mount('a red car');
+    placeCaret(editor, 6);
+    fireEvent.blur(document.querySelector('.ProseMirror') as HTMLElement);
+    act(() => handle.current?.focus());
+    await waitFor(() => expect(editor.state.selection.from).toBe(6));
   });
 });

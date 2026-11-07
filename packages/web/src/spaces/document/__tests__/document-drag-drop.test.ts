@@ -13,6 +13,7 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import { Slice } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 import * as Y from 'yjs';
 
@@ -65,21 +66,16 @@ function open(): Opened {
 }
 
 /**
- * The plugin's own drop handler, as ProseMirror would call it.
- * @param view - The view the plugin is registered in.
- * @returns The handler.
- * @throws {Error} When no registered plugin offers one.
+ * The body's drop handling, as ProseMirror asks it: every plugin's
+ * `handleDrop` in turn, until one answers.
+ * @param view - The view the plugins are registered in.
+ * @returns What asks them.
  */
 function dropHandlerOf(
   view: EditorView,
 ): (view: EditorView, event: DragEvent) => boolean {
-  for (const plugin of view.state.plugins) {
-    const handler = plugin.props.handleDrop;
-    if (handler !== undefined) {
-      return handler as unknown as (view: EditorView, event: DragEvent) => boolean;
-    }
-  }
-  throw new Error('no plugin offers handleDrop');
+  return (_view, event) =>
+    view.someProp('handleDrop', (handle) => handle(view, event, Slice.empty, false)) === true;
 }
 
 /**

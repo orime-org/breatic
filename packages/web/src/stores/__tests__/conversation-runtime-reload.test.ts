@@ -44,7 +44,7 @@ async function pageAfterUpdate(saved: unknown): Promise<{
  * @returns The answer.
  */
 function conversation(id: string): unknown {
-  return { conversation: { id }, messages: [], hasMore: false };
+  return { conversation: { id, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false };
 }
 
 beforeEach(() => {

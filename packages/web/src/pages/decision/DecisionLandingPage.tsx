@@ -48,7 +48,7 @@ import { AuthCardButton, AuthCardShell } from '@web/pages/auth/_shared/AuthCardS
  * `invalid` and `unreachable` are the two ways a read ends without a view, and
  * conflating them is the mistake this page exists to stop making: only a token
  * the server has never issued is a bad link. A 500 or a dropped connection
- * leaves a live, answerable request on the other end, so telling that reader
+ * leaves a live, answerable request on the other end, so telling that user
  * to re-copy the link sends them after a problem they do not have.
  */
 type Phase = 'loading' | 'ready' | 'invalid' | 'unreachable';

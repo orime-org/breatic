@@ -16,7 +16,7 @@
  *
  * The first is the sharpest: the library's `canDeleteThread` reads the role
  * alone, so the person who opened a thread cannot withdraw it. Its role is
- * `"comment" | "editor"`, which has no room for a reader who may look but not
+ * `"comment" | "editor"`, which has no room for a user who may look but not
  * write — and ours may (A17), so every write question has to ask the role too.
  *
  * The answers come from `annotationRights`, delivered with canvas annotations
@@ -130,7 +130,7 @@ describe('documentCommentAuth', () => {
     });
   });
 
-  describe('a reader the project query has not identified yet', () => {
+  describe('a user the project query has not identified yet', () => {
     const auth = documentCommentAuth(() => ({ role: 'editor', viewerId: undefined }));
 
     it('is not the author of a thread', () => {

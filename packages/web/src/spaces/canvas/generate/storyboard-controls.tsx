@@ -13,10 +13,12 @@
 
 import { Minus, Plus } from 'lucide-react';
 import * as React from 'react';
-import { addShot, stepShot } from '@breatic/shared';
+import { addShot, getLocale, stepShot } from '@breatic/shared';
+import type * as Y from 'yjs';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
+import { PromptGroup, type PromptGroupItem } from '@web/spaces/canvas/generate/PromptGroup';
 
 interface AddShotRowProps {
   /** The most shots the mode takes for this model. */
@@ -69,11 +71,19 @@ export const AddShotRow = React.memo(function AddShotRow({
 export interface ShotRow {
   readonly id: string;
   readonly duration: number;
+  /** Its words, whose first line its row shows while it is closed. */
+  readonly prompt: Y.XmlFragment;
 }
 
 interface ShotListProps<Shot extends ShotRow> {
   /** The shots, in order. */
   shots: readonly Shot[];
+  /** The id of the shot whose box is open. */
+  expanded: string;
+  /** The user opened another shot. */
+  onExpand: (shotId: string) => void;
+  /** What a closed shot with no words shows. */
+  placeholder: string;
   /** Move one second into or out of a shot. */
   onStep: (shotId: string, delta: 1 | -1) => void;
   /** Remove a shot. */
@@ -101,9 +111,41 @@ export function addBlockedKey(
 }
 
 /**
- * The multi-shot mode's cards, one per shot.
+ * The shot whose box is open after the list changes (#1201), found by id so
+ * shots added or moved in the same change never shift it: the open shot while
+ * it is there; when it was removed, the first shot still there after it in the
+ * old list, else the last one still there before it; else the first shot.
+ * @param seen - The shots before the change.
+ * @param shots - The shots now.
+ * @param opened - The id of the shot that was open, or null when none was.
+ * @returns The id of the shot to open, or null when there are no shots.
+ */
+export function nextOpenShot(
+  seen: readonly { readonly id: string }[],
+  shots: readonly { readonly id: string }[],
+  opened: string | null,
+): string | null {
+  const kept = new Set(shots.map((shot) => shot.id));
+  if (opened !== null && kept.has(opened)) return opened;
+  const at = seen.findIndex((shot) => shot.id === opened);
+  if (at >= 0) {
+    const after = seen.slice(at + 1).find((shot) => kept.has(shot.id));
+    const before = seen.slice(0, at).findLast((shot) => kept.has(shot.id));
+    const next = after ?? before;
+    if (next) return next.id;
+  }
+  return shots[0]?.id ?? null;
+}
+
+/**
+ * The multi-shot mode's cards, one per shot, one open at a time (#1201): a
+ * closed card is its title row with the first line of its words, and its
+ * seconds and remove button work while it is closed.
  * @param root0 - Component props.
  * @param root0.shots - The shots.
+ * @param root0.expanded - The open shot.
+ * @param root0.onExpand - Opens a shot.
+ * @param root0.placeholder - What an empty closed shot shows.
  * @param root0.onStep - Steps a shot's seconds.
  * @param root0.onRemove - Removes a shot.
  * @param root0.renderEditor - Draws a shot's prompt box.
@@ -111,69 +153,87 @@ export function addBlockedKey(
  */
 export function ShotList<Shot extends ShotRow>({
   shots,
+  expanded,
+  onExpand,
+  placeholder,
   onStep,
   onRemove,
   renderEditor,
 }: ShotListProps<Shot>): React.JSX.Element {
   const t = useTranslation();
-  const durations = shots.map((shot) => shot.duration);
-  return (
-    <div className='flex flex-col gap-2' data-testid='generate-storyboard-shots'>
-      {shots.map((shot, index) => (
-        <div
-          key={shot.id}
-          data-testid={`generate-storyboard-shot-${index + 1}`}
-          className='flex flex-col gap-1.5 rounded-overlay border border-border p-2'
-        >
-          <div className='flex items-center gap-2'>
-            <span className='min-w-16 text-xs font-medium text-foreground'>
-              {t('canvas.generatePanel.storyboard.shot', { n: index + 1 })}
-            </span>
-            <div className='flex items-center rounded-overlay border border-border'>
-              <Button
-                type='button'
-                variant='ghost'
-                size={null}
-                data-testid={`generate-storyboard-shot-${index + 1}-less`}
-                disabled={stepShot(durations, index, -1) === null}
-                onClick={() => onStep(shot.id, -1)}
-                className='flex h-6 w-6 items-center justify-center disabled:cursor-not-allowed disabled:opacity-50'
-              >
-                <Minus className='h-3.5 w-3.5' aria-hidden='true' />
-              </Button>
-              <span
-                data-testid={`generate-storyboard-shot-${index + 1}-seconds`}
-                className='min-w-10 text-center text-xs tabular-nums text-foreground'
-              >
-                {t('canvas.generatePanel.durationSeconds', { n: shot.duration })}
-              </span>
-              <Button
-                type='button'
-                variant='ghost'
-                size={null}
-                data-testid={`generate-storyboard-shot-${index + 1}-more`}
-                disabled={stepShot(durations, index, 1) === null}
-                onClick={() => onStep(shot.id, 1)}
-                className='flex h-6 w-6 items-center justify-center disabled:cursor-not-allowed disabled:opacity-50'
-              >
-                <Plus className='h-3.5 w-3.5' aria-hidden='true' />
-              </Button>
-            </div>
+  // `t` stays the same function across a language switch; the locale is what
+  // the names and labels below follow.
+  const locale = getLocale();
+  // Built once per shot list, so opening another shot leaves every box as it is.
+  const items = React.useMemo(() => {
+    const durations = shots.map((shot) => shot.duration);
+    return shots.map((shot, index): PromptGroupItem => ({
+      id: shot.id,
+      name: t('canvas.generatePanel.storyboard.shot', { n: index + 1 }),
+      fragment: shot.prompt,
+      placeholder,
+      editor: renderEditor(shot, index),
+      testId: `generate-storyboard-shot-${index + 1}`,
+      controls: (
+        <>
+          <div className='flex shrink-0 items-center rounded-overlay border border-border'>
             <Button
               type='button'
-              variant='chrome-ghost'
-              size='compact'
-              data-testid={`generate-storyboard-shot-${index + 1}-remove`}
-              disabled={shots.length <= 1}
-              onClick={() => onRemove(shot.id)}
-              className='ml-auto text-xs disabled:cursor-not-allowed disabled:opacity-50'
+              variant='ghost'
+              size={null}
+              data-testid={`generate-storyboard-shot-${index + 1}-less`}
+              disabled={stepShot(durations, index, -1) === null}
+              onClick={() => onStep(shot.id, -1)}
+              className='flex h-6 w-6 items-center justify-center disabled:cursor-not-allowed disabled:opacity-50'
             >
-              {t('canvas.generatePanel.storyboard.removeShot')}
+              <Minus className='h-3.5 w-3.5' aria-hidden='true' />
+            </Button>
+            <span
+              data-testid={`generate-storyboard-shot-${index + 1}-seconds`}
+              className='min-w-10 text-center text-xs tabular-nums text-foreground'
+            >
+              {t('canvas.generatePanel.durationSeconds', { n: shot.duration })}
+            </span>
+            <Button
+              type='button'
+              variant='ghost'
+              size={null}
+              data-testid={`generate-storyboard-shot-${index + 1}-more`}
+              disabled={stepShot(durations, index, 1) === null}
+              onClick={() => onStep(shot.id, 1)}
+              className='flex h-6 w-6 items-center justify-center disabled:cursor-not-allowed disabled:opacity-50'
+            >
+              <Plus className='h-3.5 w-3.5' aria-hidden='true' />
             </Button>
           </div>
-          {renderEditor(shot, index)}
-        </div>
-      ))}
+          <Button
+            type='button'
+            variant='chrome-ghost'
+            size='compact'
+            data-testid={`generate-storyboard-shot-${index + 1}-remove`}
+            disabled={shots.length <= 1}
+            onClick={() => onRemove(shot.id)}
+            className='ml-auto text-xs disabled:cursor-not-allowed disabled:opacity-50'
+          >
+            {t('canvas.generatePanel.storyboard.removeShot')}
+          </Button>
+        </>
+      ),
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-read the words when the locale changes
+  }, [shots, placeholder, renderEditor, onStep, onRemove, t, locale]);
+  return (
+    <div data-testid='generate-storyboard-shots'>
+      <PromptGroup
+        items={items}
+        value={expanded}
+        onValueChange={onExpand}
+        itemClassName='rounded-overlay border border-border p-2'
+        openItemClassName='border-active-border'
+        // As tall as the seconds buttons beside it, so its focus ring lines up with theirs.
+        triggerClassName='h-6'
+        nameClassName='min-w-16 text-xs font-medium text-foreground'
+      />
     </div>
   );
 }

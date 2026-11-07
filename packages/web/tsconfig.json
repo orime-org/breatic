@@ -33,9 +33,10 @@
     "vite.config.mts",
     "dev-ports.mts",
     "proxy-targets.mts",
+    "every-locale-messages.mts",
     "playwright.config.ts",
     "playwright.consent.config.ts",
-    "vitest.config.ts",
+    "vitest.config.mts",
     "vitest.setup.ts"
   ]
 }

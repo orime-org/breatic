@@ -3,7 +3,7 @@
 
 /**
  * #978 验收 A1 · A4 · A5 · A6 · A14: where an ordered list starts over, typed
- * the way a reader types it.
+ * the way a user types it.
  *
  * The jsdom cases build a document and read it. These build it by pressing
  * keys, which is the half those cannot reach: whether a chord makes the block
@@ -161,7 +161,7 @@ test('A4 — a bullet, a to-do, a plain heading and code each cut it', async () 
   await page.keyboard.press('Enter');
   await page.keyboard.press(`${MOD}+Alt+0`);
   // Three backticks and a space make a code block through the input rule,
-  // which is the route a reader takes. Typed with a delay because the rule
+  // which is the route a user takes. Typed with a delay because the rule
   // fires per character.
   await page.keyboard.type('``` ', { delay: 40 });
   await page.keyboard.type('const a = 1;');
@@ -198,7 +198,7 @@ test('A4 — a bullet, a to-do, a plain heading and code each cut it', async () 
 test('A5 — each section’s list starts over under its own heading', async () => {
   await openFreshDocument(page);
 
-  // A numbered heading is an ordered item the reader turned into a heading.
+  // A numbered heading is an ordered item the user turned into a heading.
   // The heading chord alone leaves the `numbered` prop off, so it takes both
   // rows in some order; this test takes the ordered one first.
   await orderedItem(page, 'first section');

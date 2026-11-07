@@ -377,6 +377,36 @@ export default [
         {
           exceptions: [
             {
+              file: 'src/data/yjs/timeline-document.ts',
+              function: 'removeTimelineClip',
+              reason: 'Temporary: written on main before the size cap; inner#1790 classifies it per the size-cap design (section 5.2) and removes this entry before the branch merges.',
+            },
+            {
+              file: 'src/data/yjs/timeline-document.ts',
+              function: 'applyTimelineEdit',
+              reason: 'Temporary: written on main before the size cap; inner#1790 classifies it per the size-cap design (section 5.2) and removes this entry before the branch merges.',
+            },
+            {
+              file: 'src/data/yjs/timeline-edit-session.ts',
+              function: 'repairAfterPop',
+              reason: 'Temporary: written on main before the size cap; inner#1790 classifies it per the size-cap design (section 5.2) and removes this entry before the branch merges.',
+            },
+            {
+              file: 'src/data/yjs/timeline-edit-session.ts',
+              function: 'createTimelineEditSession',
+              reason: 'Temporary: written on main before the size cap; inner#1790 classifies it per the size-cap design (section 5.2) and removes this entry before the branch merges.',
+            },
+            {
+              file: 'src/spaces/document/document-upload-controller.ts',
+              function: 'createUploadController',
+              reason: 'Temporary: written on main before the size cap; inner#1790 classifies it per the size-cap design (section 5.2) and removes this entry before the branch merges.',
+            },
+            {
+              file: 'src/spaces/timeline/TimelineSpace.tsx',
+              function: 'TimelineEditor',
+              reason: 'Temporary: written on main before the size cap; inner#1790 classifies it per the size-cap design (section 5.2) and removes this entry before the branch merges.',
+            },
+            {
               file: 'src/data/yjs/canvas-space.ts',
               function: 'writeSnapshotNodes',
               reason: 'Takes a Y.Doc and writes both scratch documents and real Spaces; the real caller checks in its runCanvasUndoBatch.',
@@ -606,6 +636,23 @@ export default [
     plugins: { breatic: breaticPlugin },
     rules: {
       'breatic/test-file-location': 'error',
+    },
+  },
+  {
+    // jsdom drives requestAnimationFrame from one setInterval it starts with
+    // the first pending frame. Faked without rAF, that interval lands on the
+    // fake clock, useRealTimers discards it, and no frame fires again in the
+    // rest of the single-fork process: a later file waiting on a frame times
+    // out, depending only on which files share its shard.
+    files: ['src/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'CallExpression[callee.property.name="useFakeTimers"] Property[key.name="toFake"] > ArrayExpression:has(Literal[value="setInterval"]):not(:has(Literal[value="requestAnimationFrame"]))',
+          message: 'Fake requestAnimationFrame and cancelAnimationFrame together with setInterval, or jsdom stops firing animation frames for every later test file in the process.',
+        },
+      ],
     },
   },
   {

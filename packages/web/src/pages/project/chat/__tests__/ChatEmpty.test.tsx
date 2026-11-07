@@ -75,7 +75,7 @@ describe('ChatEmpty', () => {
     expect(line.className).toContain('text-balance');
   });
 
-  it('marks the capability line with the reader language so it breaks between phrases', () => {
+  it('marks the capability line with the user language so it breaks between phrases', () => {
     render(<ChatEmpty />);
     const line = screen.getByText(/I can find material/);
     expect(line).toHaveAttribute('lang', 'en');

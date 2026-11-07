@@ -86,7 +86,7 @@ export function NewStudioDialog({
   };
 
   /**
-   * Put a refused create where the reader will look for it: a slug taken in
+   * Put a refused create where the user will look for it: a slug taken in
    * the meantime on the slug line while the dialog is open, anything else
    * under the form.
    * @param err - What the create threw.

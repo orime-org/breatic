@@ -165,6 +165,24 @@ describe('where a drop lands', () => {
 
     expect(landing).toBe(between);
   });
+
+  it.each([
+    ['above the first row', (_size: number): number => 0, 1],
+    ['below the last row', (size: number): number => size, -1],
+  ])('takes a position %s, outside the rows\' group, to the group\'s edge', (_where, at, edge) => {
+    const editor = open([
+      { type: 'paragraph', content: 'alpha' },
+      { type: 'paragraph', content: 'beta' },
+    ]);
+
+    const { landing, expected } = editor.transact((tr) => {
+      const size = tr.doc.content.size;
+      const row = rowById(tr.doc, (editor.document as { id: string }[])[0]!.id)!;
+      return { landing: landingFor(tr.doc, at(size), row.node), expected: edge > 0 ? edge : size + edge };
+    });
+
+    expect(landing).toBe(expected);
+  });
 });
 
 describe('what the move writes', () => {

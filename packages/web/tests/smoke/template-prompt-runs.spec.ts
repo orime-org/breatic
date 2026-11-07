@@ -1,22 +1,24 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Real runs of the character templates, for judging a prompt by the pictures it gets (inner#1846).
+ * Real runs of the generation templates, for judging a prompt by the pictures it gets (inner#1846, inner#1816).
  * Each run applies the template from the panel, fills the braces, checks that the editor shows the
  * prompt the locale file holds, presses Generate and saves the picture with its prompt. It spends
- * credits, so it carries @needs-model and the default smoke run leaves it out.
+ * credits, so it carries @needs-model and the default smoke run leaves it out; each generate node runs at
+ * its model's lowest resolution, keeping the template's duration and ratio.
  *
  * Environment: TEMPLATE_RUN_ONLY picks one template, TEMPLATE_RUN_REPEAT runs each that many times,
  * TEMPLATE_RUN_LABEL tags the files of one round, TEMPLATE_RUN_OUT is where they go (default
  * test-results/template-runs), TEMPLATE_RUN_IMAGE is the character picture (default the fixture),
  * TEMPLATE_RUN_LOCALE switches the interface language for the run. TEMPLATE_RUN_ASK instead sends that request to the
- * Agent with the picture attached and generates the node its proposal places.
+ * Agent with the picture attached (TEMPLATE_RUN_ASK_IMAGE names another fixture, empty for none) and generates the node
+ * its proposal places; TEMPLATE_RUN_ASK_ONLY stops once the turn is recorded.
  */
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { extname, join } from 'node:path';
-import { expect, type Page } from 'playwright/test';
-import { markedSegments } from '@breatic/shared';
+import { basename, extname, join } from 'node:path';
+import { expect, type Locator, type Page } from 'playwright/test';
+import { GENERATION_TEMPLATES, markedSegments } from '@breatic/shared';
 import { test } from '../helpers/slot';
 import { switchLanguage } from '../helpers/language';
 
@@ -28,7 +30,8 @@ import { startNewConversation } from '../helpers/conversation';
 import { seedNode, wire } from '../helpers/mini-tool';
 
 const OUT = process.env.TEMPLATE_RUN_OUT ?? join(__dirname, '../../test-results/template-runs');
-const CHARACTER = process.env.TEMPLATE_RUN_IMAGE ?? join(__dirname, '../fixtures/character.jpg');
+const FIXTURES = join(__dirname, '../fixtures');
+const CHARACTER = process.env.TEMPLATE_RUN_IMAGE ?? join(FIXTURES, 'character.jpg');
 const LABEL = process.env.TEMPLATE_RUN_LABEL ?? 'run';
 const REPEAT = Number(process.env.TEMPLATE_RUN_REPEAT ?? '1');
 const LOCALE = process.env.TEMPLATE_RUN_LOCALE;
@@ -112,22 +115,29 @@ async function openPanel(nodeId: string): Promise<void> {
   if (!box) throw new Error(`node ${nodeId} has no box`);
   await node.dispatchEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: box.x + box.width / 2, clientY: box.y + 8 });
   await page.getByTestId('node-menu-generate').click();
-  await expect(page.getByTestId('generate-prompt-editor')).toBeVisible({ timeout: 15_000 });
+  // A node in multi-shot mode shows its shots in place of the prompt.
+  await expect(page.getByTestId('generate-prompt-editor').or(page.getByTestId('generate-storyboard-shot-1-editor'))).toBeVisible({ timeout: 15_000 });
 }
 
-/** Pick a template from the open panel's character goal. */
+/** Pick a template from the open panel, under its own goal. */
 async function applyTemplate(id: string): Promise<void> {
+  const goal = GENERATION_TEMPLATES.find((template) => template.id === id)?.goal;
+  if (goal === undefined) throw new Error(`no template ${id}`);
   await page.getByTestId('generate-template-trigger').click();
-  const box = await page.getByTestId('generate-template-goal-character').boundingBox();
-  if (!box) throw new Error('no character goal row');
+  const box = await page.getByTestId(`generate-template-goal-${goal}`).boundingBox();
+  if (!box) throw new Error(`no ${goal} goal row`);
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 8 });
   await page.getByTestId(`generate-template-${id}`).click();
   await page.waitForTimeout(1500);
 }
 
-/** Replace each brace span in the open prompt, in order, the way a reader selects and types. */
-async function fillBraces(values: string[]): Promise<void> {
-  const editor = page.getByTestId('generate-prompt-editor');
+/**
+ * Replace each brace span in one editor of the open panel, in order, the way a user selects and types.
+ * @param values - What each brace span becomes.
+ * @param editorId - The editor's test id: the prompt, or one shot's.
+ */
+async function fillBraces(values: string[], editorId = 'generate-prompt-editor'): Promise<void> {
+  const editor = page.getByTestId(editorId);
   for (const value of values) {
     const found = await editor.evaluate((root) => {
       const ce = (root.matches('[contenteditable="true"]') ? root : root.querySelector('[contenteditable="true"]')) as HTMLElement | null;
@@ -156,11 +166,79 @@ async function fillBraces(values: string[]): Promise<void> {
   await expect(editor).not.toContainText('{');
 }
 
+/**
+ * Open one shot of the open multi-shot panel through its row, the way a user does, unless it is open already:
+ * only one shot is open at a time, and a folded shot takes no typing.
+ * @param n - The shot's number, from 1.
+ */
+async function openShot(n: number): Promise<void> {
+  const toggle = page.getByTestId(`generate-storyboard-shot-${String(n)}-toggle`);
+  if ((await toggle.getAttribute('aria-expanded')) === 'true') return;
+  await bringIntoView(toggle);
+  await toggle.click();
+  await expect(page.getByTestId(`generate-storyboard-shot-${String(n)}-editor`).locator('.ProseMirror')).toBeFocused();
+}
+
+/**
+ * Scroll the canvas up over an empty spot until a control of the open panel clears the viewport toolbar, the way
+ * a user does when a tall panel (five shots) runs off the bottom of the screen; a plain wheel pans the canvas.
+ * @param control - The control to reach.
+ */
+async function bringIntoView(control: Locator): Promise<void> {
+  /**
+   * How far the control still reaches past the top of the viewport toolbar.
+   * @returns The overlap in pixels; zero or less once it is clear.
+   */
+  const overlap = async (): Promise<number> => {
+    const box = await control.boundingBox();
+    const toolbar = await page.getByTestId('viewport-toolbar').boundingBox();
+    return box && toolbar ? box.y + box.height - toolbar.y + 8 : 0;
+  };
+  if ((await overlap()) <= 0) return;
+  const spot = await visibleSpace(page).evaluate((root) => {
+    const pane = root.querySelector('.react-flow__pane')?.getBoundingClientRect();
+    if (!pane) return null;
+    for (let y = pane.top + 20; y < pane.bottom - 20; y += 20) {
+      for (let x = pane.left + 80; x < pane.right - 80; x += 40) {
+        if (document.elementFromPoint(x, y)?.classList.contains('react-flow__pane')) return { x, y };
+      }
+    }
+    return null;
+  });
+  if (spot === null) throw new Error('no empty spot to scroll the canvas over');
+  await page.mouse.move(spot.x, spot.y);
+  // The canvas pans by a fraction of each wheel step, so it scrolls until the control is clear.
+  for (let step = 0; step < 10 && (await overlap()) > 0; step += 1) {
+    await page.mouse.wheel(0, (await overlap()) + 100);
+    await page.waitForTimeout(400);
+  }
+  expect(await overlap()).toBeLessThanOrEqual(0);
+}
+
+/**
+ * Pick the open panel's lowest resolution, the way a user does. A run judges a template's words against its
+ * duration and ratio, which it keeps; resolution changes neither, so the run pays for the cheapest tier.
+ */
+async function lowestResolution(): Promise<void> {
+  const trigger = page.getByTestId('generate-ratio-trigger');
+  if ((await trigger.count()) === 0) return;
+  await trigger.click();
+  const prefix = 'generate-resolution-option-';
+  const values = (await page.locator(`[data-testid^="${prefix}"]`).evaluateAll((all) => all.map((one) => one.getAttribute('data-testid') ?? '')))
+    .map((id) => id.slice(prefix.length));
+  const size = (value: string): number => Number.parseFloat(value) * (/k$/i.test(value) ? 1000 : 1);
+  const lowest = [...values].sort((a, b) => size(a) - size(b))[0];
+  if (lowest !== undefined) await page.getByTestId(`${prefix}${lowest}`).click();
+  await trigger.click();
+}
+
 /** Press Generate on the open panel and wait until the node holds a new result. */
 async function generate(nodeId: string, kind: 'image' | 'video'): Promise<string> {
   const before = (await graph()).nodes.find((n) => n.id === nodeId)?.data.content ?? '';
+  await lowestResolution();
   const button = page.getByTestId(kind === 'video' ? 'generate-video-execute' : 'generate-execute');
   await expect(button).toBeEnabled({ timeout: 20_000 });
+  await bringIntoView(button);
   await button.click();
   let content = '';
   let state = '';
@@ -182,9 +260,37 @@ async function generate(nodeId: string, kind: 'image' | 'video'): Promise<string
   return content;
 }
 
-/** The prompt text the open panel shows. */
-async function promptText(): Promise<string> {
-  return (await page.getByTestId('generate-prompt-editor').innerText()).trim();
+/**
+ * The text one editor of the open panel shows.
+ * @param editorId - The editor's test id: the prompt, or one shot's.
+ * @returns Its text.
+ */
+async function promptText(editorId = 'generate-prompt-editor'): Promise<string> {
+  return (await page.getByTestId(editorId).innerText()).trim();
+}
+
+/**
+ * Pick a node into one frame of the open video panel, the way a user does: the frame, then the
+ * part of the node still showing, since a tall result next to it can cover its centre.
+ * @param slot - The frame.
+ * @param nodeId - The node.
+ * @throws {Error} When no part of the node is showing.
+ */
+async function pickIntoFrame(slot: 'first-frame' | 'end-frame', nodeId: string): Promise<void> {
+  await page.getByTestId(`generate-video-tool-${slot}`).click();
+  const point = await visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`).evaluate((node) => {
+    const box = node.getBoundingClientRect();
+    for (let y = 0.1; y < 1; y += 0.1) {
+      for (let x = 0.1; x < 1; x += 0.1) {
+        const at = { x: box.left + box.width * x, y: box.top + box.height * y };
+        if (document.elementFromPoint(at.x, at.y)?.closest('.react-flow__node') === node) return at;
+      }
+    }
+    return null;
+  });
+  if (point === null) throw new Error(`no part of node ${nodeId} is showing`);
+  await page.mouse.click(point.x, point.y);
+  await expect(page.getByTestId(`generate-video-${slot}-thumbnail`)).toBeVisible({ timeout: 30_000 });
 }
 
 /**
@@ -212,11 +318,15 @@ async function keyed(key: string): Promise<string> {
   return node.id;
 }
 
-/** Drop the character picture onto the canvas and return its node once it holds the upload. */
-async function dropCharacter(): Promise<string> {
+/**
+ * Drop a picture onto the canvas and return its node once it holds the upload.
+ * @param file - The picture's path.
+ * @returns The node's id.
+ */
+async function dropPicture(file: string): Promise<string> {
   const before = new Set((await graph()).nodes.map((n) => n.id));
-  const ext = extname(CHARACTER).toLowerCase();
-  await dropFile(page, `character-${Date.now()}${ext}`, ext === '.png' ? 'image/png' : 'image/jpeg', readFileSync(CHARACTER));
+  const ext = extname(file).toLowerCase();
+  await dropFile(page, `picture-${Date.now()}${ext}`, ext === '.png' ? 'image/png' : 'image/jpeg', readFileSync(file));
   let id = '';
   await expect
     .poll(
@@ -259,22 +369,24 @@ test.afterEach(async () => {
 const INFO = 'Mika, bicycle courier, 25, cheerful, stubborn, curious, quick; racing the rain to deliver on time';
 
 const AGENT_ASK = process.env.TEMPLATE_RUN_ASK;
+const ASK_IMAGE = process.env.TEMPLATE_RUN_ASK_IMAGE === undefined ? CHARACTER : process.env.TEMPLATE_RUN_ASK_IMAGE === '' ? undefined : join(FIXTURES, process.env.TEMPLATE_RUN_ASK_IMAGE);
 
 if (AGENT_ASK !== undefined) test('agent @needs-model', async () => {
   test.setTimeout(1_800_000);
   const composer = page.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
   await startNewConversation(page);
-  await expect(page.getByTestId('chat-composer-attach')).toBeEnabled({ timeout: 20_000 });
-  await page.getByTestId('chat-composer-file-input').setInputFiles(CHARACTER);
-  await expect(page.getByTestId('chat-composer-chips')).toContainText('character', { timeout: 30_000 });
+  if (ASK_IMAGE !== undefined) {
+    await expect(page.getByTestId('chat-composer-attach')).toBeEnabled({ timeout: 20_000 });
+    await page.getByTestId('chat-composer-file-input').setInputFiles(ASK_IMAGE);
+    await expect(page.getByTestId('chat-composer-chips')).toContainText(basename(ASK_IMAGE, extname(ASK_IMAGE)), { timeout: 30_000 });
+  }
   await composer.fill(AGENT_ASK);
   const send = page.getByTestId('chat-composer-send');
   await expect(send).toBeEnabled({ timeout: 60_000 });
   await send.click();
   await expect(page.getByTestId('message-bubble')).toHaveCount(2, { timeout: 200_000 });
   await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 600_000 });
-  await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 30_000 });
   const turn = await page.evaluate(async () => {
     const list = await (await fetch('/api/v1/chat/conversations?limit=1', { credentials: 'include' })).json();
     const id = list?.data?.conversations?.[0]?.id as string;
@@ -282,6 +394,9 @@ if (AGENT_ASK !== undefined) test('agent @needs-model', async () => {
     return JSON.stringify((read?.data?.messages ?? []).filter((m: { role?: string }) => m.role === 'assistant').flatMap((m: { parts?: unknown[] }) => m.parts ?? []));
   });
   record({ template: 'agent', label: LABEL, ask: AGENT_ASK, parts: JSON.parse(turn) as unknown });
+  // Recorded first, so a turn that ends without a proposal still shows what it did.
+  await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 30_000 });
+  if (process.env.TEMPLATE_RUN_ASK_ONLY !== undefined) return;
   const before = new Set((await graph()).nodes.map((n) => n.id));
   await page.getByTestId('proposal-card').last().getByTestId('proposal-use').click();
   let target = '';
@@ -300,8 +415,25 @@ if (AGENT_ASK !== undefined) test('agent @needs-model', async () => {
 
 const FEATURES = 'short black bob, red hooded raincoat, grey hoodie, yellow sneakers';
 
-/** How each template is run: its anchor's node type, whether the character picture is wired in, the template nodes generated before the anchor, and what each one's braces are filled with, in order. */
-const RUNS: Record<string, { type: 'image' | 'video'; photo: boolean; first: string[]; fills: Record<string, string[]> }> = {
+/** How a template is run. */
+interface Run {
+  /** The anchor's node type. */
+  type: 'image' | 'video';
+  /** Whether a picture is wired in: the character picture, or `image` from the fixtures. */
+  photo: boolean;
+  image?: string;
+  /** The template nodes generated before the anchor. */
+  first: string[];
+  /** What each node's braces are filled with, in order; `anchor` for the anchor. */
+  fills: Record<string, string[]>;
+  /** What each of the anchor's shots' braces are filled with, in order. */
+  shots?: string[][];
+  /** The template nodes picked into the anchor's frames once generated. */
+  frames?: Partial<Record<'first-frame' | 'end-frame', string>>;
+}
+
+/** How each template is run. */
+const RUNS: Record<string, Run> = {
   'character-bible': { type: 'image', photo: true, first: [], fills: { anchor: [INFO, STYLE] } },
   'expression-sheet': { type: 'image', photo: true, first: [], fills: { anchor: [STYLE] } },
   'costume-sheet': { type: 'image', photo: true, first: [], fills: { anchor: ['the hands'] } },
@@ -340,6 +472,69 @@ const RUNS: Record<string, { type: 'image' | 'video'; photo: boolean; first: str
     },
   },
   'character-showcase-orbit': { type: 'video', photo: true, first: [], fills: { anchor: ['a rooftop with railings in front and city towers far away'] } },
+  'pet-selfie-vlog': { type: 'video', photo: true, image: 'pet.jpg', first: [], fills: { anchor: ['a sunny living room', 'jumps onto the sofa and sniffs the phone'] } },
+  'phone-vlog-realism': {
+    type: 'video',
+    photo: true,
+    first: [],
+    fills: { anchor: ['getting ready in the morning, then grabbing a coffee', 'tying her shoes by the door; ordering at a coffee counter; walking out with the cup'] },
+  },
+  'retro-found-footage': { type: 'video', photo: false, first: [], fills: { anchor: ['a backyard birthday party at dusk', 'the cake slides off the table'] } },
+  'time-freeze-rewind': { type: 'video', photo: true, first: [], fills: { anchor: ['a café terrace', 'a waiter trips and a tray of drinks flies into the air'] } },
+  'bullet-time-mishap': { type: 'video', photo: false, first: [], fills: { anchor: ['a cat knocks a full glass of milk off the kitchen table'] } },
+  'beat-sync-outfit-change': { type: 'video', photo: true, first: [], fills: { anchor: ['street wear, red carpet, astronaut, knight'] } },
+  'pov-continuous-shot': {
+    type: 'video',
+    photo: false,
+    first: [],
+    fills: { anchor: ['through a night market to a lantern-lit temple gate', 'passes steaming food stalls and squeezes past a crowd', 'the temple gate glowing with lanterns'] },
+  },
+  'carried-object-transition': {
+    type: 'video',
+    photo: true,
+    image: 'object.jpg',
+    first: ['scene-a', 'scene-b'],
+    fills: { 'scene-a': ['a sunny beach'], 'scene-b': ['a snowy mountain hut at night'], anchor: ['a hand tosses it up'] },
+    frames: { 'first-frame': 'scene-a', 'end-frame': 'scene-b' },
+  },
+  'fisheye-clone-pov': { type: 'image', photo: true, first: [], fills: { anchor: ['a basketball court'] } },
+  'flash-photo-dump-grid': { type: 'image', photo: true, first: [], fills: { anchor: ['a house party at night'] } },
+  'game-ui-livestream': {
+    type: 'video',
+    photo: true,
+    first: [],
+    fills: { anchor: ['a stylised 3D action game', 'a boss fight in a ruined castle', 'a winning move and a burst of light'] },
+  },
+  'travel-city-walk': {
+    type: 'video',
+    photo: true,
+    first: [],
+    fills: {
+      anchor: [
+        'Lisbon', 'climbing a steep tiled street', 'riding the yellow tram', 'buying a pastry at a bakery',
+        'crossing a square with a fountain', 'walking along the river',
+      ],
+    },
+  },
+  'twist-comedy-skit': {
+    type: 'video',
+    photo: true,
+    first: [],
+    fills: {
+      anchor: [
+        'the burglar was the dog all along', 'a fridge door stands open at midnight', 'a burglar is stealing food',
+        'the dog wipes its mouth and looks away',
+      ],
+    },
+  },
+  'vertical-15s-quick-tip': {
+    type: 'video',
+    photo: true,
+    image: 'object.jpg',
+    first: [],
+    fills: {},
+    shots: [['the mug spotless and shining inside, the coffee stain gone'], ['a spoon of baking soda into the wet mug'], ['scrubbing the stain and the rim with a damp sponge'], ['rinsing it under the tap'], []],
+  },
 };
 
 if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [process.env.TEMPLATE_RUN_ONLY] : Object.keys(RUNS)) for (let n = 1; n <= REPEAT; n += 1) {
@@ -348,7 +543,7 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
     const run = RUNS[id];
     if (run === undefined) throw new Error(`no run settings for ${id}`);
     // The picture is dropped first: dropped onto an empty node, it would upload into that node instead.
-    const photo = run.photo ? await dropCharacter() : undefined;
+    const photo = run.photo ? await dropPicture(run.image === undefined ? CHARACTER : join(FIXTURES, run.image)) : undefined;
     const anchor = crypto.randomUUID();
     await seedNode(page, { projectId, spaceId }, anchor, run.type, 600, { name: `${run.type}-run`, state: 'idle' });
     if (photo !== undefined) await wire(page, { projectId, spaceId }, photo, anchor);
@@ -366,9 +561,25 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
       await save(url, `${id}-${key}-${LABEL}-${n}.png`);
     }
     await openPanel(anchor);
-    await fillBraces(run.fills.anchor ?? []);
-    const prompt = await promptText();
-    assertDraftSent(`canvas.template.${id}.prompt`, prompt);
+    for (const [slot, key] of Object.entries(run.frames ?? {})) await pickIntoFrame(slot as 'first-frame' | 'end-frame', await keyed(key));
+    let prompt = '';
+    if (run.shots === undefined) {
+      await fillBraces(run.fills.anchor ?? []);
+      prompt = await promptText();
+      assertDraftSent(`canvas.template.${id}.prompt`, prompt);
+    } else {
+      const shown: string[] = [];
+      for (const [i, values] of run.shots.entries()) {
+        const editorId = `generate-storyboard-shot-${String(i + 1)}-editor`;
+        // Opened before it is read too: a folded shot's box is hidden, and its text then loses the line breaks.
+        await openShot(i + 1);
+        if (values.length > 0) await fillBraces(values, editorId);
+        const text = await promptText(editorId);
+        assertDraftSent(`canvas.template.${id}.shot.${String(i + 1)}`, text);
+        shown.push(text);
+      }
+      prompt = shown.join('\n');
+    }
     const url = await generate(anchor, run.type);
     expect(url).toMatch(/^https?:/);
     record({ template: id, label: LABEL, n, result: { prompt, url } });

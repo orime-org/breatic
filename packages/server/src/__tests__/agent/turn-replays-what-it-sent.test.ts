@@ -42,7 +42,7 @@ const modelSays = vi.hoisted(() => ({
 vi.mock("@server/agent/turn-context.js", () => ({
   // The running turn is not its own history, as the real read leaves it out.
   buildTurnContext: vi.fn(async (_u: string, _c: string, _p: string, runningTurn: number) => ({
-    memoryContext: { projectMemory: "", conversationMemory: "" },
+    memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
     history: modelSays.history.filter((row) => row.turnIndex < runningTurn),
     watermark: 0,
   })),
@@ -81,7 +81,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
-  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
+  addUserMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
   setUserForModel,
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
@@ -222,7 +222,7 @@ describe("a turn keeps its own message as it was sent", () => {
     expect(JSON.stringify(sent)).toContain(JSON.stringify(message?.content).slice(1, -1));
   });
 
-  it("answers the reader even when keeping that copy fails, and says so in the log", async () => {
+  it("answers the user even when keeping that copy fails, and says so in the log", async () => {
     setUserForModel.mockImplementation(async () => {
       throw new Error("database away");
     });
@@ -289,7 +289,7 @@ describe("a turn sends the open Space once while it stays the same", () => {
 
   /**
    * Run one turn with the Space open.
-   * @param current - The Space as the reader has it.
+   * @param current - The Space as the user has it.
    */
   async function runWithSpaceOpen(current: typeof open): Promise<void> {
     modelSays.parts = saying("the reply");

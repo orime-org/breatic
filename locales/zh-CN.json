@@ -177,6 +177,7 @@
       "references_too_many": "引用附件的次数太多。一条消息最多 {limit, number} 次，这条有 {actual, number} 次。",
       "ask_not_found": "这条会话里没有这张问题卡片。",
       "ask_already_answered": "这张问题卡片已经回答过了。",
+      "model_unavailable": "所选模型已不可用。",
       "answer_mismatch": "这些答案和卡片上的问题对不上。"
     },
     "mail": {
@@ -306,6 +307,11 @@
     }
   },
   "chat": {
+    "modelPicker": {
+      "label": "模型",
+      "listFailed": "模型列表没加载出来",
+      "saveFailed": "选模型没保存上，已恢复原来的选择"
+    },
     "composer": {
       "chipsAria": "已选 chips",
       "placeholder": "问点什么，或者把 Canvas 上的东西交给我…",
@@ -410,6 +416,9 @@
       "readingConversation": "正在读对话记录",
       "readingNodeHistory": "正在查节点的历史",
       "readingActivity": "正在查 Project 活动",
+      "savingMemory": "正在记下",
+      "deletingMemory": "正在删掉这条记忆",
+      "readingMemory": "正在查记忆",
       "running": "正在调用 {tool}",
       "step": {
         "webSearch": "搜索「{query}」",
@@ -426,6 +435,9 @@
         "readConversation": "读对话记录",
         "readNodeHistory": "查节点的历史",
         "readActivity": "查 Project 活动",
+        "saveMemory": "记下",
+        "deleteMemory": "删掉记忆",
+        "readMemory": "查记忆",
         "other": "调用 {tool}",
         "readTemplate": "读模板",
         "requestSpace": "请求查看 Space"
@@ -838,7 +850,6 @@
         "character_orientation": "朝向依据",
         "keep_original_sound": "保留原声",
         "motion_prompt": "动作描述",
-        "append_duration": "延长时长",
         "ambience": "环境音",
         "double_output": "生成两版",
         "light_azimuth": "光源方向",
@@ -1171,10 +1182,6 @@
         "separate": {
           "label": "人声分离"
         },
-        "extend": {
-          "label": "延长",
-          "prompt": "描述要接上的声音"
-        },
         "denoise": {
           "label": "降噪"
         },
@@ -1374,7 +1381,8 @@
       "unavailable": "当前不可用",
       "goal": {
         "character": "角色设定与一致性",
-        "comics-storyboards": "漫画与分镜"
+        "comics-storyboards": "漫画与分镜",
+        "social-hooks": "社媒钩子"
       },
       "storyboard-grid-25": {
         "name": "25 宫格时序图",
@@ -1475,6 +1483,161 @@
           "reference": {
             "name": "角色",
             "note": "先放入角色参考图，再生成"
+          }
+        }
+      },
+      "pet-selfie-vlog": {
+        "name": "宠物抢镜自拍 vlog",
+        "description": "自拍 vlog 被宠物抢镜，最后凑到镜头前",
+        "prompt": "一段竖屏手机自拍 vlog。视频里唯一的动物是 [📎 宠物]：恰好一只，品种、毛色和花纹、眼睛颜色和体型都跟照片一样，照片里的其他东西都不要。0–3 秒：手机举在一臂远，有人在{✏️ 地点，例如阳光充足的客厅}对着镜头开始说话，宠物已经从后面走进画面。3–7 秒：宠物{✏️ 它怎么抢镜，例如跳上沙发去闻手机}，耳朵、尾巴和爪子按这种动物真实的样子动。7–10 秒：宠物凑到镜头跟前，鼻子占满画面，画面变虚。全程是手持手机拍摄，轻微晃动，没有剪切。窗户进来的日光。声音：人惊讶的笑声和宠物自己的叫声，没有音乐。画面里不出现文字。",
+        "input": {
+          "pet": {
+            "name": "宠物",
+            "note": "先放入一张清楚的宠物照片，整只动物都在画面里，再生成"
+          }
+        }
+      },
+      "phone-vlog-realism": {
+        "name": "真实手机 vlog",
+        "description": "像真的用手机拍的日常 vlog",
+        "prompt": "一段看起来真的是用手机拍的竖屏 vlog，主角是 [📎 人物]：脸、发型、皮肤和身形都跟照片一样，皮肤上的毛孔和小瑕疵保留。{✏️ 在做什么，例如早上出门前收拾，然后去买咖啡}。0–3 秒：已经在做事，胸部以上，人拿着手机对着镜头说话。3–15 秒：{✏️ 这一天里另外两三个片段，每段约 4 秒}。手机拍摄的缺陷要出来：轻微手抖，对焦时不时来回找，镜头扫到窗户时曝光跳一下。没有防抖，没有美颜，没有调色。构图最远到胸部以上。普通室内光。声音：人的说话声、房间底噪和手拿手机的细小声响，没有音乐。画面里不出现文字。",
+        "input": {
+          "person": {
+            "name": "人物",
+            "note": "先放入一张清楚的正面人物照片，再生成"
+          }
+        }
+      },
+      "retro-found-footage": {
+        "name": "复古 DV 老录像",
+        "description": "2000 年代初家用 DV 录下的一个小事件",
+        "prompt": "2000 年代初家用 DV 摄像机录下的老录像：分辨率低，焦点偏软，有视频噪点，颜色轻微溢出，白平衡有点偏，手动推拉变焦。地点：{✏️ 在哪儿拍的，例如傍晚后院的生日派对}。0–3 秒：已经在录，拍的人边走边拿着摄像机。3–8 秒：{✏️ 发生的一个小事件，例如蛋糕从桌上掉下来}，拍的人有反应，镜头甩过去跟拍。8–10 秒：硬切黑。光源跟地点一致，只有一个。声音：摄像机自带话筒录的声音，人声发闷，有风噪，没有音乐。画面里不出现文字。",
+        "input": {}
+      },
+      "time-freeze-rewind": {
+        "name": "时间静止再倒流",
+        "description": "一切静止再倒回去，只有一个人不受影响",
+        "prompt": "[📎 人物] 是唯一不受时间影响的人：脸、发型和服装都跟照片一样。地点：{✏️ 一个热闹的地方，例如咖啡馆露台}。0–4 秒：一切正常，周围的人来来往往。4–8 秒：{✏️ 一次碰撞，例如服务员绊倒，一托盘饮料飞上半空}。8–12 秒：一切在半空中静止，水滴悬着不动，行人停在半步上；只有 [📎 人物] 还能动，四处张望。12–16 秒：镜头在同样的高度和距离上，慢慢绕着这个人和静止的场面转。16–20 秒：一切倒回到碰撞之前，[📎 人物] 留在原地不动。第一帧就已经在动。只有一个光源。声音：咖啡馆的环境声，静止的那一刻变成寂静，倒流时声音倒放。画面里不出现文字。",
+        "input": {
+          "person": {
+            "name": "人物",
+            "note": "先放入一张清楚的照片，拍的是不受影响的那个人，再生成"
+          }
+        }
+      },
+      "bullet-time-mishap": {
+        "name": "子弹时间出糗",
+        "description": "出糗的一瞬间冻住，镜头绕着转一圈",
+        "prompt": "{✏️ 谁出了什么糗，例如一只猫把满满一杯牛奶从餐桌上碰下去}。0–1 秒：已经在发生，糗事刚开始。1–6 秒：在最糟的那一刻时间完全停住，像一张定格的照片：主体、溅出来的东西和正在掉落的东西都纹丝不动地悬在半空，画面里什么都不动；只有镜头在动，在同样的高度和距离上绕着这个定格的瞬间转一整圈，先从侧面、再从背后、再从另一侧看，最后回到正面。6–8 秒：时间恢复，糗事做完。只有一个光源。声音：冻住时突然安静，镜头环绕时一声低沉的呼啸，最后是摔碎的声音。画面里不出现文字。",
+        "input": {}
+      },
+      "beat-sync-outfit-change": {
+        "name": "卡点转身换装",
+        "description": "每次卡点转身，服装和背景都换一套",
+        "prompt": "[📎 人物] 做转身换装挑战：每一套造型里，脸、发型和身形都跟照片一样。主题依次是：{✏️ 4 个主题，例如街头、红毯、宇航员、骑士}。0–3 秒：穿着第一个主题的服装、站在它的背景前，面对镜头，已经跟着节拍在动。3–6 秒、6–9 秒、9–12 秒：每个节拍转一圈，再面对镜头时服装和背景都换成下一个主题。镜头固定在胸口高度，全身在画面里。光线均匀，颜色跟着每个背景变。声音：一首节奏清楚的欢快音乐，每次转身有一声呼啸。画面里不出现文字。",
+        "input": {
+          "person": {
+            "name": "人物",
+            "note": "先放入一张清楚的人物全身照，再生成"
+          }
+        }
+      },
+      "pov-continuous-shot": {
+        "name": "第一人称一镜到底",
+        "description": "第一人称视角走一段，一个镜头拍到底",
+        "prompt": "第一人称视角，一镜到底，摄像机装在走路的人头上、眼睛的高度，他的手时不时进入画面。地点和目的地：{✏️ 从哪儿走到哪儿，例如穿过夜市走到挂满灯笼的寺庙门口}。0–3 秒：第一帧画面里已经满是这个地方，已经在往前走。3–9 秒：{✏️ 路上经过什么、做了什么}。9–12 秒：走到了，视线停在{✏️ 最后看到的东西}上。没有剪切，没有变焦；镜头只是走、转头和停下。光来自这个地方本身。声音：脚步声、呼吸声和这个地方的声音，没有音乐。画面里不出现文字。",
+        "input": {}
+      },
+      "carried-object-transition": {
+        "name": "物件带转场",
+        "description": "一个物件把画面从场景 A 带到场景 B",
+        "prompt": "(💡 先生成场景 A，再把它选进首帧)(💡 先生成场景 B，再把它选进尾帧)视频从首帧开始，到尾帧结束。两帧中间的物件是同一个物件，位置和大小相同；镜头全程跟着它。0–2 秒：在场景 A 里，{✏️ 物件怎么动，例如被一只手抛起来}。2–4 秒：物件从镜头前经过，在画面里越来越大，再离开时，它周围已经变成了场景 B。4–5 秒：停在尾帧上。一个连续镜头，没有剪切；转场靠物件完成。声音：物件移动的声音，环境声从场景 A 的换成场景 B 的。画面里不出现文字。",
+        "input": {
+          "object": {
+            "name": "物件",
+            "note": "先放入一张清楚的物件照片，再生成场景 A 和场景 B"
+          }
+        },
+        "node": {
+          "scene-a": {
+            "name": "场景 A",
+            "prompt": "以 [📎 物件] 作为物件参考：形状、颜色、材质和标记都一样，不重新设计。一张竖构图照片，拍的是{✏️ 场景 A，例如阳光下的海滩}，物件在画面正中央，宽度约占画面的四分之一，平视正面拍摄。地点本身的自然光。不出现文字。"
+          },
+          "scene-b": {
+            "name": "场景 B",
+            "prompt": "以 [📎 物件] 作为物件参考：形状、颜色、材质和标记都一样，不重新设计。一张竖构图照片，拍的是{✏️ 场景 B，例如夜里雪山上的小木屋}，物件在画面正中央，宽度约占画面的四分之一，平视正面拍摄，位置和大小跟场景 A 一样。地点本身的自然光。不出现文字。"
+          }
+        }
+      },
+      "fisheye-clone-pov": {
+        "name": "鱼眼分身",
+        "description": "0.5x 鱼眼俯拍，画面里摆满同一个人的分身",
+        "prompt": "一张用手机 0.5x 超广角镜头从上往下拍的照片，画面边缘有明显的鱼眼弯曲。地点：{✏️ 在哪儿，例如篮球场}。这个地方摆满了 [📎 主体] 的分身，大约 12 个，每个姿势不同、在做不同的事，近处的大且被镜头拉变形，远处的小。每个分身的脸、发型和服装都跟照片一样。日光。真实照片，不是插画。不出现文字。",
+        "input": {
+          "subject": {
+            "name": "主体",
+            "note": "先放入一张清楚的主体照片，再生成"
+          }
+        }
+      },
+      "flash-photo-dump-grid": {
+        "name": "闪光灯随拍合集",
+        "description": "同一个人的六张闪光灯随拍，排成 3×2",
+        "prompt": "一张图，由恰好 6 张照片组成，3 列 2 行，照片之间有细白缝。6 张拍的都是 [📎 人物]，照片只用来认出是谁：每张的脸、发型和皮肤都一样。每张都是小卡片机直闪拍的随拍：脸上是很亮的闪光，身后有硬阴影，略微过曝，有一点颗粒。六种不同的表情，每张一种：大笑、嘟嘴、惊讶、眨眼、严肃、正要打喷嚏。场合：{✏️ 在哪儿，例如晚上的家庭派对}。近景，胸部以上。不出现文字。",
+        "input": {
+          "person": {
+            "name": "人物",
+            "note": "先放入一张清楚的正面人物照片，再生成"
+          }
+        }
+      },
+      "game-ui-livestream": {
+        "name": "游戏直播风",
+        "description": "像游戏直播画面的一段游戏实况",
+        "prompt": "一段像游戏直播的游戏实况画面，玩家角色是 [📎 角色]：脸、发型和服装都跟照片一样，渲染成{✏️ 一种游戏画风，例如风格化的 3D 动作游戏}。画面上的界面只画成形状和颜色，没有能读的字母或数字：左上角一条血条，右上角一个圆形小地图，底部一排技能图标，一角有一个小的摄像头画框。0–4 秒：已经在战斗，镜头在角色身后。4–9 秒：{✏️ 游戏里发生什么，例如在城堡废墟里打首领}。9–12 秒：{✏️ 怎么结束，例如一记决胜招式，一阵强光}。游戏镜头跟着角色。声音：游戏音效和音乐，没有人声。画面里不出现文字。",
+        "input": {
+          "character": {
+            "name": "角色",
+            "note": "先放入一张清楚的角色照片，再生成"
+          }
+        }
+      },
+      "travel-city-walk": {
+        "name": "城市漫步旅行 vlog",
+        "description": "一个旅人一个场景一个场景地走过一座城",
+        "prompt": "一段竖屏旅行 vlog，[📎 旅人] 走过{✏️ 一座城市，例如里斯本}：每个场景里脸、发型和服装都跟照片一样。0–4 秒：{✏️ 场景 1，例如爬一条铺着瓷砖的陡街}。4–8 秒：{✏️ 场景 2}。8–12 秒：{✏️ 场景 3}。12–16 秒：{✏️ 场景 4}。16–20 秒：{✏️ 场景 5}。20–24 秒：黄金时刻，在一个观景台停下，眺望整座城市。每个场景一个运镜：先在身后跟拍，再到身侧，再到前面。自然光，太阳一个场景比一个场景低。声音：每个地方的街头声音、脚步声，结尾有轻音乐。画面里不出现文字。",
+        "input": {
+          "traveler": {
+            "name": "旅人",
+            "note": "先放入一张清楚的旅人全身照，再生成"
+          }
+        }
+      },
+      "twist-comedy-skit": {
+        "name": "反转搞笑短剧",
+        "description": "从一个看得见的笑点倒推、机位一本正经的短剧",
+        "prompt": "一段搞笑短剧，主角是 [📎 角色]，脸、发型和服装都跟照片一样，整段像严肃正剧一样一本正经地拍。笑点：{✏️ 结尾看到的反转，例如小偷原来一直是那只狗}。0–2 秒，钩子：{✏️ 一件已经在发生的怪事}。2–5 秒，铺垫：{✏️ 角色以为发生了什么}。5–7 秒，倒计时：紧张感上升，镜头慢慢推近。7–10 秒，反转：笑点在画面上揭开。10–13 秒，反应：角色僵住的面无表情的脸。13–15 秒，收尾：{✏️ 最后一个小梗}。镜头稳定，严肃的布光。声音：紧张的配乐在反转时戛然而止，之后一片寂静。画面里不出现文字。",
+        "input": {
+          "character": {
+            "name": "角色",
+            "note": "先放入一张清楚的角色照片，再生成"
+          }
+        }
+      },
+      "vertical-15s-quick-tip": {
+        "name": "15 秒小技巧",
+        "description": "先给结果，再讲三步，最后回到开头",
+        "shot": {
+          "1": "钩子，先给结局：[📎 主体] 已经做好了，{✏️ 做完是什么样，例如衬衫叠得方方正正}，近景，竖构图，镜头已经在缓缓推近。明亮均匀的光。画面里不出现文字。",
+          "2": "第一步：[📎 主体]，{✏️ 第一步做什么，例如衬衫背面朝上，两只袖子往背后折}，手部近景，镜头不动。光线和场景跟第一镜一样。画面里不出现文字。",
+          "3": "第二步：[📎 主体]，{✏️ 第二步做什么，例如两侧往中间折}，手部近景，镜头不动。光线和场景一样。画面里不出现文字。",
+          "4": "第三步：[📎 主体]，{✏️ 第三步做什么，例如下摆往上折到领口}，手部近景，镜头不动。光线和场景一样。画面里不出现文字。",
+          "5": "循环：[📎 主体] 停在跟第一镜完全一样的成品和构图上，视频首尾接上。画面里不出现文字。"
+        },
+        "input": {
+          "subject": {
+            "name": "主体",
+            "note": "先放入一张小技巧涉及的人或东西的照片，再生成"
           }
         }
       },
@@ -1706,6 +1869,11 @@
     },
     "runOnce": {
       "unknownResult": "无法确认刚才的操作是否完成，请查看结果。"
+    },
+    "mediaViewer": {
+      "fullscreen": "全屏查看",
+      "close": "关闭",
+      "loadFailed": "无法加载这个文件"
     }
   },
   "members": {
@@ -1941,24 +2109,39 @@
         "mergeCells": "合并单元格",
         "textHighlight": "背景（高亮文字）"
       },
+      "paste": {
+        "unsupportedInCell": "当前格式不支持粘贴"
+      },
       "media": {
         "image": "图片",
         "audio": "音频",
         "video": "视频",
         "uploading": "上传中",
         "uploadingPercent": "上传中 {percent}%",
-        "readOnly": "当前只读。",
         "retry": "重试",
         "remove": "移除",
         "caption": "说明",
         "captionPlaceholder": "添加说明",
-        "fullscreen": "全屏查看",
-        "close": "关闭",
         "download": "下载",
         "delete": "删除",
         "leftOut": "{count} 个图片、视频或音频没有粘贴进来，可以直接拖入或粘贴文件。",
         "captionReadOnly": "当前为只读，可复制这份草稿。",
-        "captionRetained": "媒体已移除，请在关闭 Space 前复制草稿。"
+        "captionRetained": "媒体已移除，请在关闭 Space 前复制草稿。",
+        "notFinished": "上传没有完成",
+        "pendingExport": "{name}（尚未上传完成）",
+        "uploadFailed": "上传失败",
+        "failure": {
+          "storageFull": "Studio 存储已满",
+          "rateLimited": "上传太频繁，请稍后重试",
+          "hashUnavailable": "无法校验文件，请刷新页面",
+          "unsupportedType": "格式不支持",
+          "tooLarge": "超过上传大小限制",
+          "empty": "文件是空的",
+          "unreachable": "这个地址打不开"
+        },
+        "readOnlyWaiting": "这个标签页现在只读，恢复可写后写入正文",
+        "notWrittenYet": "已上传，还没写进正文",
+        "notPasted": "{count} 项没有粘贴进来。"
       }
     },
     "readOnlyReconnect": "重新连接",
@@ -2004,7 +2187,7 @@
       "generate": "AI 生成",
       "annotationsLater": "批注（后续提供）",
       "controls": "操作说明",
-      "tasks": "生成任务",
+      "tasks": "任务",
       "minimap": "场景小地图",
       "generationDev": "3D 模型生成正在开发中",
       "prompt": "描述你想生成的 3D 模型",
@@ -2012,7 +2195,74 @@
       "chooseReference": "选择参考图",
       "submit": "生成",
       "helpBody": "点击对象选中；拖动空白处旋转视角；滚轮缩放。选中对象后，使用浮动菜单移动、旋转与缩放。",
-      "closePanel": "关闭"
+      "closePanel": "关闭",
+      "importModel": {
+        "title": "导入模型",
+        "description": "选择 GLB、glTF 或 ZIP；可同时选择模型的配套文件。",
+        "chooseFiles": "选择文件",
+        "chooseFolder": "选择文件夹",
+        "inputLimit": "最多 {size} MiB",
+        "dropFiles": "将模型和配套文件拖到这里",
+        "resourceHint": "GLB 可直接选择；glTF 请同时提供纹理与 bin 文件，或选择完整 ZIP。",
+        "readOnly": "当前为只读",
+        "readOnlyHint": "获得编辑权限后可以导入模型。",
+        "checking": "正在检查模型…",
+        "preview": "模型预览",
+        "previewFailed": "无法显示模型预览。",
+        "entry": "主文件",
+        "chooseEntry": "选择主文件",
+        "name": "模型名称",
+        "fileCount": "{count} 个文件",
+        "meshCount": "{count} 个网格",
+        "skinned": "含骨骼",
+        "checkingResources": "检查格式与配套资源",
+        "ready": "模型和配套资源已就绪",
+        "addResources": "补充配套文件",
+        "optionalExtensions": "以下可选扩展可能存在显示差异：",
+        "showFiles": "查看文件列表",
+        "hideFiles": "收起文件列表",
+        "hide": "收起",
+        "retry": "重试",
+        "confirm": "导入",
+        "errorMissing": "请补充缺失的配套文件。",
+        "errorEntry": "请选择要预览的主文件。",
+        "errorUnsupported": "当前不支持该模型格式或必需扩展。",
+        "errorEmpty": "模型中没有可显示的网格。",
+        "errorBudget": "模型超出导入限制。",
+        "errorInvalid": "无法读取模型或配套文件。",
+        "errorDuplicate": "存在相同路径的文件，请重新选择无冲突的文件集合。",
+        "errorUpload": "模型上传失败，请重试。",
+        "errorLoad": "模型加载失败，请重试。",
+        "limit": {
+          "input": "所选文件共 {actual} MiB，上限 {allowed} MiB。",
+          "files": "共 {actual} 个文件，上限 {allowed} 个。",
+          "expanded": "解压后 {actual} MiB，上限 {allowed} MiB。",
+          "entryJson": "模型描述文件 {actual} MiB，上限 {allowed} MiB。",
+          "artifact": "打包后 {actual} MiB，上限 {allowed} MiB。",
+          "textureEdge": "纹理边长 {actual} px，上限 {allowed} px。",
+          "textureBytes": "纹理内存 {actual} MiB，上限 {allowed} MiB。"
+        }
+      },
+      "taskList": {
+        "kind": "导入",
+        "you": "你",
+        "member": "一位成员",
+        "uploading": "正在上传 {percent}%",
+        "running": "上传中",
+        "runningFor": "上传中 · 已用 {minutes} 分钟",
+        "registering": "登记中",
+        "done": "已完成",
+        "failed": "失败",
+        "expired": "已超时",
+        "failedReason": "模型上传失败。",
+        "place": "放入场景",
+        "retry": "重试",
+        "remove": "移除",
+        "empty": "你导入的模型会显示在这里。",
+        "loadFailed": "任务加载失败。",
+        "removeFailed": "移除失败，请重试。",
+        "placeFailed": "模型未能放入场景。"
+      }
     },
     "size": {
       "warning": "这个 Space 已用 {used}，上限 {limit}。",
@@ -2513,6 +2763,7 @@
       "theme": "主题：{theme}"
     },
     "languageNotSaved": "语言未保存到账号",
+    "languageLoadFailed": "语言切换失败，请刷新页面后重试",
     "help": {
       "trigger": "帮助",
       "manual": "用户手册",
@@ -2562,7 +2813,8 @@
       "spaceLocked": "{actor} 锁定了 Space {spaceName}",
       "spaceUnlocked": "{actor} 解锁了 Space {spaceName}",
       "spaceRestored": "{actor} 恢复了 Space {spaceName}",
-      "spaceRenamed": "{actor} 把 Space {oldSpaceName} 改名为 {spaceName}"
+      "spaceRenamed": "{actor} 把 Space {oldSpaceName} 改名为 {spaceName}",
+      "assetUploadedModel": "{actor} 上传了模型 {name}"
     },
     "header": "Project 活动",
     "label": "Project 活动",
@@ -2905,22 +3157,29 @@
     "empty": "添加视频，开始编排 Timeline。",
     "video": "视频",
     "conflict": "冲突",
-    "conflictHelp": "片段重叠。请选择片段并调整开始帧。",
+    "conflictHelp": "冲突的片段不会播放，选择片段进行修改。",
+    "conflictList": "冲突",
+    "noConflicts": "没有冲突",
+    "conflictReason": {
+      "overlap": "与其他片段重叠",
+      "missing_track": "所在轨道已被移除",
+      "invalid_range": "超出视频范围",
+      "incompatible_track": "所在轨道类型不符",
+      "damaged": "该片段已无法读取",
+      "missing_source": "所用视频已丢失"
+    },
     "loadingMedia": "正在加载视频…",
     "mediaUnavailable": "此视频不可用。",
     "retry": "重试",
     "play": "播放",
     "pause": "暂停",
     "seek": "预览帧",
-    "framePosition": "第 {frame} 帧 / 共 {total} 帧",
     "tracks": "轨道",
     "addMedia": "添加素材",
-    "visualTrack": "画面 1",
     "selectClip": "选择片段以查看属性。",
     "clipFrames": "开始 {start} · 时长 {duration} 帧",
-    "editStart": "修改开始帧",
+    "sourceExtent": "视频共 {frames} 帧 · {fps, number} fps",
     "startFrame": "开始帧",
-    "apply": "应用",
     "cancel": "取消",
     "transport": {
       "paused": "已暂停",
@@ -2942,17 +3201,54 @@
       "fileEmpty": "选择本地视频文件。",
       "preparing": "正在准备视频…",
       "progress": "正在上传 {progress}%",
-      "confirm": "添加到 Timeline"
+      "confirm": "添加到 Timeline",
+      "insertAfter": "将插在 {name} 之后",
+      "insertFirst": "将插在主轨最前面"
     },
     "errors": {
+      "missing_source": "片段所用视频已丢失，请先删除该片段。",
+      "covers_missing_source": "此处有片段的视频已丢失，请先删除那个片段。",
       "readonly": "当前角色无法编辑。",
       "source_unavailable": "此视频不可用。请选择其他视频或重试。",
       "metadata_unavailable": "无法获取视频时长。请重试或选择其他视频。",
-      "invalid_range": "请输入有效的开始帧。",
-      "overlap": "此位置与其他片段重叠。请调整开始帧。",
+      "invalid_range": "请输入视频范围内的帧。",
       "target_missing": "目标已变化。请检查位置后重试。",
+      "clip_removed": "该片段已被其他成员移除。",
       "upload": "上传失败。可以使用已选文件重试。",
-      "permission_changed": "编辑权限已变化。请再次确认添加此视频。"
+      "permission_changed": "编辑权限已变化。请再次确认添加此视频。",
+      "track_missing": "目标轨道已被移除，请选择其他轨道。",
+      "id_taken": "该项已存在，请重试。",
+      "main_track": "主轨不能删除。",
+      "track_not_empty": "只能删除空轨道。"
+    },
+    "mainTrack": "主轨",
+    "track": "画面 {index}",
+    "edit": {
+      "undo": "撤销",
+      "redo": "重做",
+      "split": "分割",
+      "duplicate": "复制",
+      "delete": "删除",
+      "magnet": "主轨磁吸",
+      "magnetOn": "磁吸",
+      "magnetOff": "自由",
+      "snap": "自动吸附",
+      "linkage": "联动",
+      "zoom": "缩放",
+      "track": "轨道",
+      "inPoint": "入点",
+      "duration": "时长",
+      "newTrack": "新建画面轨",
+      "newTrackZone": "拖到这里新建轨道",
+      "trackRemoved": "轨道已移除",
+      "deleteTrack": "删除轨道",
+      "ghostInsert": "插入",
+      "ghostOverwrite": "覆盖下方片段",
+      "selectFirst": "请先选择一个片段。",
+      "magnetStartHint": "主轨磁吸已开启，拖动调整顺序。",
+      "splitOutside": "请把播放头移到选中片段内再分割。",
+      "lowestTrack": "该片段已在最下面的画面轨。",
+      "bumped": "{count, plural, other {# 个联动片段}}已移到上方轨道。"
     }
   }
 }

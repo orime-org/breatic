@@ -29,7 +29,7 @@ export const STORYBOARD_GRID_25: GenerationTemplate = {
       "plan the shots of my story in one picture",
     ],
     offerWhen: [
-      "the reader wants a video that tells a story in several beats and has not planned its shots yet",
+      "the user wants a video that tells a story in several beats and has not planned its shots yet",
     ],
   },
 };

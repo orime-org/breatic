@@ -15,6 +15,7 @@ import { useSocket } from '@web/data/yjs/use-socket';
 import { SceneConnectionLifetime } from '@web/data/yjs/scene-lifetime';
 import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
 import { CanvasActivityPublisher } from '@web/spaces/canvas/use-publish-activity';
+import { SceneUploadProgressPublisher } from '@web/spaces/three-d/scene-upload-progress';
 import { DocumentInterceptGuard } from '@web/spaces/document/DocumentInterceptGuard';
 
 interface OpenSpaceProps {
@@ -66,7 +67,7 @@ export function SpaceConnection({
  * The tab holds its document's connection from open to close, whichever tab is
  * on screen, so a background tab stays live. Its body mounts the first time
  * the tab is on screen and from then on is hidden rather than unmounted when
- * the reader switches away, so it comes back as it was left; closing the tab
+ * the user switches away, so it comes back as it was left; closing the tab
  * unmounts it. After collab refuses an update the document is rebuilt and
  * everything here mounts again on the new one.
  *
@@ -116,10 +117,12 @@ export const OpenSpace = React.memo(function OpenSpace({
       {type === 'document' ? (
         <DocumentInterceptGuard projectId={projectId} spaceId={spaceId} />
       ) : null}
-      {/* What this reader is waiting on in a canvas Space stays on the peers'
+      {/* What this user is waiting on in a canvas Space stays on the peers'
         screens while another tab is on screen, so it is published with the tab. */}
       {type === 'canvas' ? <CanvasActivityPublisher spaceId={spaceId} /> : null}
       {type === '3d' ? <SceneConnectionLifetime name={name} readOnly={readOnly} /> : null}
+      {/* A 3D Space's upload progress stays on the peers' screens while another tab is on screen. */}
+      {type === '3d' ? <SceneUploadProgressPublisher projectId={projectId} spaceId={spaceId} name={name} /> : null}
       {body}
     </SpaceConnection>
   );

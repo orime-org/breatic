@@ -187,7 +187,7 @@ describe('a slim entry', () => {
     expect(texts).toEqual([{ path: ['data', 'shots', 0, 'prompt'], text: 'one' }]);
   });
 
-  it('keeps the mode and model the reader picked when nothing would run', () => {
+  it('keeps the mode and model the user picked when nothing would run', () => {
     const { slim } = fitPartsOf(entryOf('image', { mode: 't2i', model: 'm1', prompts: { t2i: 'a boat' } }), undefined);
 
     expect(slim.data).toMatchObject({ mode: 't2i', model: 'm1', prompts: { t2i: 'a boat' } });

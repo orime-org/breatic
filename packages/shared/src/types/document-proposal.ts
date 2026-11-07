@@ -5,7 +5,7 @@
  * The shape of a proposed edit to a document Space (inner#1509).
  *
  * The tool answers with one; the card in the chat column draws it, and the
- * document lands it when the reader presses a button. Three readers, so the
+ * document lands it when the user presses a button. Three readers, so the
  * shape lives here; a proposal read back from storage is checked against it,
  * so one stored before the shape changed shows as out of date.
  */
@@ -16,7 +16,7 @@ import { z } from "zod";
  * A whole proposal. `blockId` is the block a comment or rewrite targets, and
  * the block an insert goes after (`null`: the end of the document). `original`
  * is that block's plain text when the proposal was made, which the landing
- * compares against to tell the reader the block has changed since.
+ * compares against to tell the user the block has changed since.
  */
 export const documentProposalSchema = z
   .object({

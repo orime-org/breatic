@@ -4,7 +4,7 @@
 /**
  * #113 A3: a viewer gets no block strip.
  *
- * Every command off the strip writes to the document, so a reader who is only
+ * Every command off the strip writes to the document, so a user who is only
  * allowed to read must not be able to reach it. The gate is one line —
  * `DocumentEditor.tsx` mounts `DocumentBlockControls` only when `readOnly` is
  * false — and a jsdom case already pins that line
@@ -184,7 +184,7 @@ test.beforeEach(async ({ browser }) => {
   await expect(editor).toBeVisible({ timeout: 15_000 });
   await editor.click();
   await owner.keyboard.type(ROW);
-  // A table under the row, pasted the way a reader pastes one (inner#1126 A18).
+  // A table under the row, pasted the way a user pastes one (inner#1126 A18).
   await owner.keyboard.press('Enter');
   await owner.evaluate(([selector, words]) => {
     const transfer = new DataTransfer();
@@ -226,7 +226,7 @@ test.beforeEach(async ({ browser }) => {
   // The owner's page asks for the roster when it loads and holds the answer,
   // so an acceptance that happened on another page is not on it yet. Measured
   // 2026-09-20: the whole run made one `GET /members`, before the invite went
-  // out, and the reading below found a roster of one. A reader in this spot
+  // out, and the reading below found a roster of one. A user in this spot
   // reloads; so does this.
   await owner.reload();
 
@@ -306,6 +306,14 @@ test('a viewer reads a table and gets none of its controls, nor can type in it',
  * The owner pastes a 240x120 picture into the case's Space and waits for it to land.
  */
 async function ownerPastesAPicture(): Promise<void> {
+  await ownerPastes();
+  await expect(owner.locator(`${EDITOR} [data-content-type="image"] img`)).toBeVisible({ timeout: 60_000 });
+}
+
+/**
+ * The owner pastes a 240x120 picture into the case's Space.
+ */
+async function ownerPastes(): Promise<void> {
   await openTheSpace(owner);
   await owner.locator(EDITOR).click();
   const png = await owner.evaluate(async () => {
@@ -330,10 +338,29 @@ async function ownerPastesAPicture(): Promise<void> {
     transfer.items.add(new File([bytes], 'shared.png', { type: 'image/png' }));
     element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
   }, png);
-  await expect(owner.locator(`${EDITOR} [data-content-type="image"] img`)).toBeVisible({ timeout: 60_000 });
 }
 
-test('a viewer sees a picture the owner added, and none of its controls (inner#1127 A11, A13)', async () => {
+test('a viewer sees the owner\'s upload as uploading, then as not finished once the owner leaves (inner#1351 A11)', async () => {
+  // The owner's upload never gets its ticket, so it is in flight until the page goes.
+  await owner.route('**/api/v1/assets/upload-ticket', () => new Promise<void>(() => undefined));
+  await ownerPastes();
+  await expect(owner.locator('[data-testid="doc-pending-media"]')).toHaveAttribute('data-status', 'uploading');
+
+  await openTheSpace(viewer);
+  const block = viewer.locator('[data-testid="doc-pending-media"]');
+  await expect(block).toHaveAttribute('data-status', 'peerUploading', { timeout: 20_000 });
+
+  await owner.close();
+  // The case's teardown works from an owner page.
+  owner = await ownerContext.newPage();
+  await owner.goto(projectUrl);
+
+  // The owner's claim goes with its page; y-protocols drops a silent one after 30 s.
+  await expect(block).toHaveAttribute('data-status', 'notFinished', { timeout: 40_000 });
+  await expect(viewer.getByTestId('doc-pending-remove')).toBeHidden();
+});
+
+test('a viewer sees a picture the owner added, with full screen and none of its editing controls (inner#1127 A11, A13)', async () => {
   await ownerPastesAPicture();
 
   await openTheSpace(viewer);
@@ -341,9 +368,14 @@ test('a viewer sees a picture the owner added, and none of its controls (inner#1
   await expect(img).toBeVisible({ timeout: 20_000 });
   await expect.poll(() => img.evaluate((element) => (element as HTMLImageElement).naturalWidth)).toBe(240);
 
+  // inner#1844: viewing full screen is not editing, so a viewer's row of icons holds it alone.
   await img.hover();
-  await viewer.waitForTimeout(500);
-  await expect(viewer.getByTestId('doc-media-toolbar')).toBeHidden();
+  const toolbar = viewer.getByTestId('doc-media-toolbar');
+  await expect(toolbar).toBeVisible();
+  const actions = await toolbar.getByRole('button').evaluateAll(
+    (buttons) => buttons.map((b) => b.getAttribute('data-action')),
+  );
+  expect(actions).toEqual(['fullscreen']);
   await expect(viewer.getByTestId('doc-media-resize-se')).toHaveCount(0);
 });
 
@@ -378,7 +410,7 @@ test('a viewer plays an audio the owner added, and files pasted or dropped do no
     element.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: make(), ...at }));
   });
   await viewer.waitForTimeout(1000);
-  await expect(viewer.locator('[data-testid="doc-upload-placeholder"]')).toHaveCount(0);
+  await expect(viewer.locator('[data-testid="doc-pending-media"]')).toHaveCount(0);
   await expect(viewer.locator(`${EDITOR} .bn-block-content`)).toHaveCount(before);
 });
 
@@ -442,7 +474,11 @@ test('a video caption draft survives a live role change and remote edits, deleti
   await viewer.keyboard.press('Enter');
   const readPanel = viewer.getByTestId('doc-media-video-panel');
   await expect(readPanel).toBeFocused();
-  await expect(readPanel.getByTestId('doc-media-toolbar')).toBeHidden();
+  // inner#1844: the panel's first row holds full screen alone for a viewer.
+  const readActions = await readPanel.getByTestId('doc-media-toolbar').getByRole('button').evaluateAll(
+    (buttons) => buttons.map((b) => b.getAttribute('data-action')),
+  );
+  expect(readActions).toEqual(['fullscreen']);
   await expect(readPanel.getByTestId('seek')).toBeVisible();
   await readPanel.getByTestId('play-toggle').click();
   await expect.poll(() => viewer.locator(`${EDITOR} video`).evaluate((element: HTMLVideoElement) => element.paused)).toBe(false);

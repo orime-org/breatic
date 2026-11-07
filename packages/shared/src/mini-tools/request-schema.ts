@@ -108,7 +108,7 @@ function slotsSchema(spec: MiniToolSpec): z.ZodType {
 }
 
 /**
- * The drawing field of one tool: what was uploaded from what the reader drew
+ * The drawing field of one tool: what was uploaded from what the user drew
  * — a mask tool's mask, a sketch tool's composite — required on a tool that
  * draws and absent everywhere else.
  * @param spec - The tool.
@@ -175,7 +175,7 @@ export interface MiniToolRequest {
   params: Record<string, unknown>;
   slots: Record<string, MiniToolRequestSlot | MiniToolRequestSlot[] | undefined>;
   /**
-   * What was uploaded from the reader's drawing, on a tool that draws: a mask
+   * What was uploaded from the user's drawing, on a tool that draws: a mask
    * tool's mask, or a sketch tool's composite.
    */
   drawing?: { mask: string } | { image: string } | undefined;

@@ -89,7 +89,7 @@ afterEach(() => {
 
 describe('W-90 storyboard writes are judged by kind', () => {
   it.each([
-    ['addStoryboardShot', (): void => addStoryboardShot(PID, SID, 'v1', 10, 6)],
+    ['addStoryboardShot', (): void => { addStoryboardShot(PID, SID, 'v1', 10, 6); }],
     ['setStoryboardShots', (): void => { setStoryboardShots(PID, SID, 'v1', [3, 3]); }],
   ] as const)('(a) %s is an add and is refused at full', (_name, call) => {
     storyboardAt(F_FULL);
