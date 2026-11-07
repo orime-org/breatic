@@ -36,3 +36,25 @@ describe('source selection gesture ownership', () => {
     expect(onRegion).toHaveBeenCalledTimes(0);
   });
 });
+
+// Execution design §10.3 overlay paragraph: a finished tracking draws the box that follows the object in the success
+// colour in place of the reader's selection; without one (outside the range, stale) the reader's selection is shown.
+describe('the tracked box', () => {
+  const selected = { box: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }, points: [] };
+
+  it('draws the tracked box in the success colour instead of the selection', () => {
+    const proposed: object = { trackedBox: { x: 0.5, y: 0.25, width: 0.25, height: 0.5 } };
+    render(<VideoToolNodeOverlay {...props} region={selected} {...proposed} />);
+    const box = screen.getByTestId('video-tool-tracked-box');
+    expect(box.className).toContain('border-status-success');
+    expect(box.style).toMatchObject({ left: '50%', top: '25%', width: '25%', height: '50%' });
+    expect(screen.queryByTestId('video-tool-region-box')).toBeNull();
+  });
+
+  it('shows the reader\'s selection when there is no tracked box', () => {
+    const proposed: object = { trackedBox: null };
+    render(<VideoToolNodeOverlay {...props} region={selected} {...proposed} />);
+    expect(screen.queryByTestId('video-tool-tracked-box')).toBeNull();
+    expect(screen.getByTestId('video-tool-region-box')).toBeInTheDocument();
+  });
+});
