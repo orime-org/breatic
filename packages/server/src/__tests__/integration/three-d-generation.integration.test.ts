@@ -655,6 +655,20 @@ describe("submitting a generation: admission", () => {
     expect(await rowById(answer.row_id)).toMatchObject({ origin: "agent", action: "generate" });
   });
 
+  it("hands the worker the image address and keeps the asset ids, which only the list and a retry read, out of the job", async () => {
+    const s = await seedProject();
+    const front = await seedAsset(s, "image", "front.png");
+    const jobs = await capturingJobs(async () => {
+      await admitted(s, { mode: "i23d", model: I23D, params: {}, image_asset_ids: [front.assetId], origin: "space" });
+    });
+
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]!.params).toMatchObject({ image: front.url });
+    expect(jobs[0]!.params).not.toHaveProperty("input_asset_ids");
+    const [task] = await taskRows(s);
+    expect(task!.params).toMatchObject({ input_asset_ids: [front.assetId] });
+  });
+
   it("stores the views' addresses and asset ids in front, left, back, right order for the multi-view entry", async () => {
     const s = await seedProject();
     const views = [

@@ -124,6 +124,16 @@ function jobParams(plan: SceneGenerationPlan, prompt: string | undefined, images
   };
 }
 
+/**
+ * The params the worker is handed: the task's own, less the views' asset ids.
+ * @param params - The params `tasks.params` keeps.
+ * @returns The same params without `input_asset_ids`.
+ */
+function withoutAssetIds(params: Record<string, unknown>): Record<string, unknown> {
+  const { input_asset_ids: _ids, ...sent } = params;
+  return sent;
+}
+
 /** A submission that passed its checks: the resolved run and its views. */
 export interface CheckedSubmission {
   plan: SceneGenerationPlan;
@@ -213,7 +223,9 @@ export async function startSceneGeneration(
         spaceId,
         taskType: "three_d",
         model: plan.entry.name,
-        params,
+        // The asset ids are the list's and a retry's to read off the task row;
+        // the worker validates what it is handed and drops a name it does not know.
+        params: withoutAssetIds(params),
         source: "task",
         // No node: the result lands on the Space's own row, which the worker settles.
         targetNodeIds: [],
