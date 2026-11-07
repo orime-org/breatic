@@ -183,6 +183,18 @@ describe('the range captured (§4.6, Plate captureTextRange)', () => {
     expect([captured.firstId, captured.lastId]).toEqual([ids[0], ids[3]]);
   });
 
+  it('takes a one-cell table whole for a selection from the end of the line above into it, as the screen shows', () => {
+    const editor = open([
+      { type: 'paragraph', content: 'Before' },
+      { type: 'docTable', children: [{ type: 'docTableRow', children: [{ type: 'docTableHeader', children: [{ type: 'paragraph', content: 'only' }] }] }] },
+      { type: 'paragraph', content: 'After' },
+    ]);
+    select(editor, at(editor, 'Before') + 'Before'.length, at(editor, 'only') + 'only'.length);
+    const captured = aiCapture(editor.prosemirrorState)!;
+    const table = topIds(editor)[1];
+    expect([captured.lastId, captured.insertId]).toEqual([table, table]);
+  });
+
   it('takes the whole table a selection runs into from outside', () => {
     const editor = open([{ type: 'paragraph', content: 'Before' }, tableBlock({ rows: [{ cells: ['a', 'b'] }, { cells: ['c', 'd'] }] })]);
     select(editor, at(editor, 'Before'), at(editor, 'c') + 1);

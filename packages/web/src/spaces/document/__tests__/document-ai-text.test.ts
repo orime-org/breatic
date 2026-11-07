@@ -772,6 +772,19 @@ describe('the answer as blocks (§5.3)', () => {
     expect((preview[0]!.content as Piece[]).map((c) => c.styles)).toEqual([{}, { bold: true }, {}]);
   });
 
+  it('writes a valid body when the range\'s first words are inline code and the answer has emphasis or a link', async () => {
+    for (const text of ['the **dependencies**', '[link](https://x.example/) tail', '*it* ~~st~~']) {
+      const h = await open('`npm install` installs the deps\n\nsecond two');
+      capture(h, rangeOf(h, 'installs'));
+      expect(replaceAiAnswer(h, read(h, text), WRITABLE).outcome).toBe('written');
+      expect(() => h.editor.prosemirrorState.doc.check()).not.toThrow();
+      const h2 = await open('`npm install` installs the deps\n\nsecond two');
+      capture(h2, { from: rangeOf(h2, 'installs').from, to: rangeOf(h2, 'two').to });
+      expect(insertAiAnswer(h2, insertBlock(h2)!, read(h2, text), WRITABLE).outcome).toBe('written');
+      expect(() => h2.editor.prosemirrorState.doc.check()).not.toThrow();
+    }
+  });
+
   it('unfolds a table answered inside a docTable cell, the outer table unchanged', async () => {
     const h = await open('| a | b |\n| --- | --- |\n| c | d |');
     replaceWith(h, rangeOf(h, 'c'), () => '| p | q |\n| --- | --- |\n| r | s |');
@@ -1033,7 +1046,11 @@ function shaped(parser: DocumentEditorHandle['editor'], list: readonly Shape[], 
     if (shape.kind === 'docTable') return parser.tryParseMarkdownToBlocks(`| ${w}a | ${w}b |\n| --- | --- |\n| ${w}c | ${w}d |`)[0];
     const children = shaped(parser, shape.children, next);
     if (shape.kind === 'image') return { type: 'image', props: { url: `${OURS}i.png` }, children };
-    return { type: shape.kind, content: w, children };
+    // First words of every kind 'single' carries: plain, emphasis, inline code, a link.
+    const lead = [{}, { bold: true }, { code: true }, null][next.n % 4];
+    if (shape.kind === 'codeBlock' || lead === undefined) return { type: shape.kind, content: w, children };
+    const first = lead === null ? { type: 'link', href: 'https://x.example/', content: 'lk' } : { type: 'text', text: 'lead ', styles: lead };
+    return { type: shape.kind, content: [first, { type: 'text', text: ` ${w}`, styles: {} }], children };
   });
 }
 
@@ -1105,6 +1122,7 @@ const ANSWERS = [
   '| a | b |\n| --- | --- |\n| c | d |',
   'X\n\n| a | b |\n| --- | --- |\n| c | d |',
   `X\n\n![i](${OURS}j.png)`,
+  'X **b** [l](https://x.example/) ~~s~~',
 ];
 
 /** An edit made while the dialog is open: a character typed or deleted, Enter, Backspace joining two blocks, a block deleted or moved. */
@@ -1188,6 +1206,7 @@ describe('replace and insert keep what is outside the range (§8 property)', () 
         if (inserting) {
           fc.pre(blockById(view.state.doc, captured!.insertId) !== null);
           expect(insertAiAnswer(h, captured!.insertId, answer, WRITABLE).outcome).toBe('written');
+          expect(() => view.state.doc.check()).not.toThrow();
           const after = readingOrder(h);
           const at = after.findIndex(([id]) => id === captured!.insertId);
           expect(after.slice(0, at + 1)).toEqual(before.slice(0, at + 1));
@@ -1223,6 +1242,7 @@ describe('replace and insert keep what is outside the range (§8 property)', () 
         const outside = before.filter(([id]) => !touched.has(id));
         const parentsBefore = parentsOf(h);
         expect(replaceAiAnswer(h, answer, WRITABLE).outcome).toBe('written');
+        expect(() => view.state.doc.check()).not.toThrow();
         const after = readingOrder(h);
         expect(idsUnique(h)).toBe(true);
         const kept = new Set(outside.map(([id]) => id));
@@ -1353,6 +1373,22 @@ describe('replace, words inside one line (§5.3, Plate openTextBlock)', () => {
     replaceAiAnswer(h, read(h, 'X\n\n```js\nq\n```'), WRITABLE);
     expect(flat(h).map(textOf)).toEqual(['X', 'q', ' zz', 'grandkid', 'Tail.']);
     expect([parentWords(h, ' zz'), parentWords(h, 'grandkid')]).toEqual(['q', ' zz']);
+  });
+
+  it('lands a list answered for words at a line\'s start as the preview shows it', async () => {
+    const h = await open('x y z end.\n\nAfter.');
+    capture(h, rangeOf(h, 'x y z'));
+    const answer = read(h, '- A\n- B');
+    expect((answer.preview as Seen[]).map((b) => b.type)).toEqual(['bulletListItem', 'bulletListItem']);
+    replaceAiAnswer(h, answer, WRITABLE);
+    expect(blocks(h).map((b) => [b.type, textOf(b)])).toEqual([['bulletListItem', 'A'], ['bulletListItem', 'B end.'], ['paragraph', 'After.']]);
+  });
+
+  it('lands a paragraph answered for words at a heading\'s start as a paragraph, the heading\'s words after it', async () => {
+    const h = await open('## x y z end\n\nAfter.');
+    capture(h, rangeOf(h, 'x y z'));
+    replaceAiAnswer(h, read(h, 'A\n\nB'), WRITABLE);
+    expect(blocks(h).map((b) => [b.type, textOf(b)])).toEqual([['heading', 'A'], ['paragraph', 'B end'], ['paragraph', 'After.']]);
   });
 
   it('lands an answer opening with a code block before a line whose words start the range, no empty block', async () => {

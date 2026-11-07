@@ -119,7 +119,8 @@ function isSpace(ch: string): boolean {
 
 /**
  * Escapes words for the request (§5.1): a backslash before the parser's
- * punctuation outside code, `&` and `<` as entities everywhere.
+ * punctuation outside code, `&` and `<` as entities everywhere, and in code
+ * backticks too.
  * @param text - The words.
  * @param code - Whether they are inline code, where a backslash is kept as written.
  * @returns The escaped words.
@@ -132,7 +133,8 @@ function escapeWords(text: string, code: boolean): string {
   // left after parsing is one the model wrote to escape punctuation.
   // A `|` is spelled as an entity too: a pipe table escapes its own, and a
   // second backslash before it would end the cell there.
-  return code ? entities : entities.replace(BACKSLASHED, (c) => (c === '\\' ? '&#92;' : c === '|' ? '&#124;' : `\\${c}`)).replace(/:\/\//g, '&#58;//');
+  // In code a backtick is spelled as an entity: a fence in the code is never taken for the model's own, and a span needs no longer fence.
+  return code ? entities.replace(/`/g, '&#96;') : entities.replace(BACKSLASHED, (c) => (c === '\\' ? '&#92;' : c === '|' ? '&#124;' : `\\${c}`)).replace(/:\/\//g, '&#58;//');
 }
 
 /** The styles Markdown writes around words, which cannot open or close at a space. */
@@ -221,9 +223,8 @@ function escapeContent(content: readonly Inline[]): Inline[] {
     at += text.length;
     const code = piece.styles?.['code'] === true;
     let escaped = keepSpaces(escapeWords(text, code), before, after);
-    // A backtick in code would need a longer fence than the exporter picks,
-    // and a pipe table puts a backslash before a `|` the way back reads as an escape.
-    if (code) escaped = escaped.replace(/[`|]/g, entity);
+    // A pipe table puts a backslash before a `|` in code, which the way back reads as an escape.
+    if (code) escaped = escaped.replace(/\|/g, entity);
     // A code span loses one space at each end when it has both, and emphasis
     // cannot open or close at a space: those spaces are spelled as entities.
     if (code && /^ [\s\S]* $/.test(escaped)) escaped = `&#32;${escaped.slice(1, -1)}&#32;`;
@@ -422,14 +423,14 @@ function undoOf(handle: Pick<DocumentEditorHandle, 'editor'>): UndoBoundary | nu
 }
 
 /**
- * A code block's words for the request: `&` and `<` as entities, and a line
- * break at either end as one, which the exporter would drop.
+ * A code block's words for the request: `&`, `<` and backticks as
+ * entities (`escapeWords`), and a line break at either end as one, which
+ * the exporter would drop.
  * @param text - The code.
  * @returns It, escaped.
  */
 function escapeCode(text: string): string {
-  // A backtick is spelled as an entity, so a fence in the code is never taken for the model's own.
-  return escapeWords(text, true).replace(/`/g, '&#96;').replace(/^\n/, '&#10;').replace(/\n$/, '&#10;');
+  return escapeWords(text, true).replace(/^\n/, '&#10;').replace(/\n$/, '&#10;');
 }
 
 /**
@@ -697,15 +698,33 @@ function firstStyles(block: Read): Record<string, unknown> {
 }
 
 /**
- * Inline content with some styles under its own.
+ * Inline content with some styles under its own, each only where the schema
+ * lets it stand with the marks a piece already has, a link included: code
+ * takes no other mark.
  * @param content - The content.
  * @param styles - The styles.
+ * @param schema - The body's schema.
+ * @param inLink - Whether the content is a link's words.
  * @returns It.
  */
-function styledUnder(content: readonly Inline[], styles: Record<string, unknown>): Inline[] {
+function styledUnder(content: readonly Inline[], styles: Record<string, unknown>, schema: Schema, inLink = false): Inline[] {
+  /**
+   * Whether two marks may stand on one piece of text.
+   * @param a - One mark's name.
+   * @param b - The other's.
+   * @returns True when neither excludes the other.
+   */
+  const together = (a: string, b: string): boolean => {
+    const [x, y] = [schema.marks[a], schema.marks[b]];
+    return x !== undefined && y !== undefined && !x.excludes(y) && !y.excludes(x);
+  };
   return content.map((piece) => {
-    if (piece.type === 'link') return { ...piece, content: styledUnder(piece.content ?? [], styles) };
-    return piece.type === 'text' ? { ...piece, styles: { ...styles, ...(piece.styles ?? {}) } } : piece;
+    if (piece.type === 'link') return { ...piece, content: styledUnder(piece.content ?? [], styles, schema, true) };
+    if (piece.type !== 'text') return piece;
+    const own = { ...(piece.styles ?? {}) };
+    const marks = [...Object.keys(own), ...(inLink ? ['link'] : [])];
+    const under = Object.fromEntries(Object.entries(styles).filter(([name]) => !(name in own) && marks.every((mark) => together(name, mark))));
+    return { ...piece, styles: { ...under, ...own } };
   });
 }
 
@@ -716,15 +735,16 @@ function styledUnder(content: readonly Inline[], styles: Record<string, unknown>
  * answer's own. Only between two blocks of words outside code.
  * @param blocks - The answer's blocks.
  * @param source - The range's first block.
+ * @param schema - The body's schema.
  * @returns The blocks.
  */
-function formatted(blocks: readonly Read[], source: Read | null): Read[] {
+function formatted(blocks: readonly Read[], source: Read | null, schema: Schema): Read[] {
   const [head, ...rest] = blocks;
   if (head === undefined || source === null || !holdsWords(source) || !holdsWords(head)) return [...blocks];
   // A list item's number is the landing's to decide.
   const { start: _start, ...props } = source.props ?? {};
   const own = hasListItems(blocks) ? {} : { type: source.type, props };
-  return [{ ...head, ...own, content: styledUnder(head.content as Inline[], firstStyles(source)) }, ...rest];
+  return [{ ...head, ...own, content: styledUnder(head.content as Inline[], firstStyles(source), schema) }, ...rest];
 }
 
 /**
@@ -766,7 +786,7 @@ export function aiAnswer(parser: ViewedEditor, state: EditorState, text: string,
     const content = flattened(blocks as Read[]);
     return { preview: content.length === 0 ? [] : [{ type: 'paragraph', props: {}, content, children: [] } as WrittenBlock], leftOut };
   }
-  const shaped = formatted(blocks as Read[], span === null ? null : sourceOf(doc, span));
+  const shaped = formatted(blocks as Read[], span === null ? null : sourceOf(doc, span), doc.type.schema);
   // One preview serves both writes, so it fits a cell when either lands in one.
   const inCell = blockInTableCell(doc, insertBlockId) || (cover !== null && cellDepthOf(doc.resolve(cover.from)) > 0);
   return { preview: inCell ? blocksInContext(shaped, doc, true) : shaped, leftOut };
@@ -814,9 +834,10 @@ function laidFlat(nodes: readonly ProseMirrorNode[], pos: number, depth: number)
 
 /**
  * Flat blocks built back into a tree the way Plate's indent reads: each
- * block hangs under the nearest block before it whose level is lower and
- * that can hold children (a table holds none), so blocks of one level stay
- * siblings. A block with no such block before it stands at the top.
+ * block hangs under the nearest block still open before it whose original
+ * level is lower, so blocks of one level stay siblings. A table holds no
+ * children and closes nothing open before it, so a deeper block after it
+ * stands beside it. A block with no such block before it stands at the top.
  * @param flat - The flat blocks.
  * @param schema - The body's schema.
  * @returns The top-level blocks.
@@ -830,10 +851,11 @@ function rebuilt(flat: readonly Flat[], schema: Schema): ProseMirrorNode[] {
   const top: Entry[] = [];
   const open: Entry[] = [];
   for (const item of flat) {
-    while (open.length > 0 && (open[open.length - 1]!.depth >= item.depth || open[open.length - 1]!.node.type.name !== 'blockContainer')) open.pop();
+    while (open.length > 0 && open[open.length - 1]!.depth >= item.depth) open.pop();
     const entry: Entry = { node: item.node, depth: item.depth, children: [] };
     (open[open.length - 1]?.children ?? top).push(entry);
-    open.push(entry);
+    // A table holds no children: what follows it deeper stands beside it.
+    if (item.node.type.name === 'blockContainer') open.push(entry);
   }
   /**
    * One entry with its children under it.
@@ -892,12 +914,12 @@ function wordsJoined(before: LineCut | null, after: LineCut | null, answer: read
   const joins = (cut: LineCut, block: ProseMirrorNode): boolean => cut.line.type.name !== CODE && holdsLine(block);
   const out = [...answer];
   const first = out[0]!;
-  if (before !== null && joins(before, first.node)) out[0] = ownBlock(before, before.words.append(first.node.firstChild!.content), before.container.attrs['id']);
+  if (before !== null && before.words.size > 0 && joins(before, first.node)) out[0] = ownBlock(before, before.words.append(first.node.firstChild!.content), before.container.attrs['id']);
   else if (before !== null && before.words.size > 0) out.unshift(ownBlock(before, before.words, before.container.attrs['id']));
   const firstKept = out[0] !== first;
   const last = out[out.length - 1]!;
   if (after === null) return out;
-  if (joins(after, answer[answer.length - 1]!.node)) {
+  if (after.words.size > 0 && joins(after, answer[answer.length - 1]!.node)) {
     const words = last.node.firstChild!;
     out[out.length - 1] = { ...last, node: last.node.copy(Fragment.from(words.copy(words.content.append(after.words)))) };
   } else if (after.words.size > 0) {

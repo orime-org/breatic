@@ -17,6 +17,8 @@ import { CellSelection } from '@tiptap/pm/tables';
 import { blockAround, containerAt, inlineLetter, inOneCell, ownContentEnd, type AiCapture } from '@web/spaces/document/document-ai-range';
 import { readTopBlocks } from '@web/spaces/document/document-blocks-read';
 import { letterBounds } from '@web/spaces/document/document-local-range';
+import { heldTables } from '@web/spaces/document/document-table-leave-selection';
+import { tableAround } from '@web/spaces/document/document-table-nodes';
 
 
 /** The blank line Markdown puts between two blocks. */
@@ -43,7 +45,7 @@ function lastCovered(doc: ProseMirrorNode, from: number, to: number): number {
   return last;
 }
 
-/** A block of words of the body, and where it starts. */
+/** A block container of the body, with or without words, and where it starts. */
 interface BlockAt {
   readonly pos: number;
   readonly node: ProseMirrorNode;
@@ -125,14 +127,16 @@ export function aiCapture(state: EditorState): AiCapture | null {
   }
   const $first = doc.resolve(order[first]!.pos + 1);
   const $last = doc.resolve(order[last]!.pos + 1);
-  const oneCell = inOneCell($first, $last);
+  // A table the editor shows taken whole (`heldTables`) is whole here too,
+  // even when a step lands both ends in one of its cells.
+  const oneCell = inOneCell($first, $last) && heldTables(selection) === null;
   const firstBlock = blockAround($first, oneCell)!;
   const lastBlock = blockAround($last, oneCell)!;
   const lastId = String(doc.nodeAt(lastBlock)!.attrs['id']);
   // Inside one block is inside one line of words: a legacy table's cells
   // are lines of one block, and a selection across them takes the table.
   const $start = doc.resolve(from);
-  if (first === last && $start.parent.isTextblock && $start.sameParent(doc.resolve(to))) {
+  if (first === last && $start.parent.isTextblock && $start.sameParent(doc.resolve(to)) && (oneCell || tableAround($start) === null)) {
     const letters = letterBounds(doc, { from, to }, inlineLetter);
     return letters === null ? null : { range: letters, firstId: null, lastId: null, insertId: lastId };
   }
