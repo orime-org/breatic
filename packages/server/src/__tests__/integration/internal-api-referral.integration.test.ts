@@ -112,6 +112,16 @@ describe("approving a promoter application", () => {
     expect(again.json).toMatchObject({ status: "refused", code: "not_pending" });
     const reject = await call(suite.baseUrl, `/internal/v1/promoter-applications/${applicationId}/reject`, { body: { reason: "late" }, idempotencyKey: key() });
     expect(reject.json).toMatchObject({ status: "refused", code: "not_pending" });
+
+    // A rejected application is no longer pending either (table 12.2).
+    const rejected = await applicant();
+    const rejectOnce = (): ReturnType<typeof call> =>
+      call(suite.baseUrl, `/internal/v1/promoter-applications/${rejected.applicationId}/reject`, { body: { reason: "no" }, idempotencyKey: key() });
+    expect((await rejectOnce()).json).toMatchObject({ status: "applied" });
+    expect((await approve(rejected.applicationId)).json).toMatchObject({ status: "refused", code: "not_pending" });
+    expect((await rejectOnce()).json).toMatchObject({ status: "refused", code: "not_pending" });
+    const codes = await suite.sql`select 1 from referral_codes where application_id = ${rejected.applicationId}`;
+    expect(codes).toHaveLength(0);
   });
 
   it("lets only one of two concurrent approvals apply", async () => {
@@ -183,6 +193,13 @@ describe("managing a referral code", () => {
     expect((await codeWrite(codeId, "enable")).json).toMatchObject({ status: "refused", code: "removed" });
     expect((await codeWrite(codeId, "disable")).json).toMatchObject({ status: "refused", code: "removed" });
     expect((await codeWrite(codeId, "remove")).json).toMatchObject({ status: "refused", code: "already_removed" });
+  });
+
+  it("removes an active code straight away", async () => {
+    const { codeId } = await approvedCode();
+    expect((await codeWrite(codeId, "remove")).json).toMatchObject({ status: "applied" });
+    const [row] = await suite.sql`select status, removed_at is not null as stamped from referral_codes where id = ${codeId}`;
+    expect(row).toEqual({ status: "removed", stamped: true });
   });
 
   it("answers 404 for a code that does not exist", async () => {
