@@ -196,25 +196,3 @@ models:
           base_price: 14000
           formula: '{"total_price": $min([$max([$ceil(get_duration(audio) / 60), 1]), 30]) * base_price}'
           discount_rate: 100
-  sfx-1.6-extend-audio:
-    upstreams:
-      - upstream: wavespeed
-        weight: 1
-        model_id: mirelo-ai/sfx-1.6/extend-audio
-        prompt_field: prompt
-        params:
-          ambience:
-            field: ambience
-          append_duration:
-            field: append_duration
-          audio:
-            field: audio
-          double_output:
-            field: double_output
-          num_samples:
-            field: num_samples
-        pricing:
-          kind: formula
-          base_price: 10000
-          formula: '{"total_price": base_price * append_duration * num_samples}'
-          discount_rate: 100
