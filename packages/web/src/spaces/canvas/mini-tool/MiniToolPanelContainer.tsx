@@ -152,7 +152,7 @@ export function MiniToolPanelContainer({
   const spec = miniToolById(draft.toolId);
   const node = nodes.find((n) => n.id === host);
   if (spec === undefined || node === undefined) return null;
-  if ((VIDEO_TOOL_IDS as readonly string[]).includes(spec.id)) return <VideoToolPanelContainer key={`${host}:${spec.id}`} nodeId={host} toolId={spec.id as VideoToolId} node={node} nodes={nodes} presentation={videoPresentation?.get(host)} presentations={videoPresentation} binding={videoBindings?.get(host)?.binding} overlayTarget={videoBindings?.get(host)?.overlayTarget} sourceBinding={videoBindings?.get(host)?.sourceBinding} costs={videoCosts?.get(host)} renderTimelineDecoder={renderVideoDecoder} onRunVideo={onRunVideo} />;
+  if ((VIDEO_TOOL_IDS as readonly string[]).includes(spec.id)) return <VideoToolPanelContainer key={`${host}:${spec.id}`} nodeId={host} toolId={spec.id as VideoToolId} node={node} nodes={nodes} presentation={videoPresentation?.get(host)} binding={videoBindings?.get(host)?.binding} overlayTarget={videoBindings?.get(host)?.overlayTarget} sourceBinding={videoBindings?.get(host)?.sourceBinding} costs={videoCosts?.get(host)} renderTimelineDecoder={renderVideoDecoder} onRunVideo={onRunVideo} />;
   return (
     <OpenMiniToolPanel
       key={`${host}:${spec.id}`}

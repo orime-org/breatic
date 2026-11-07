@@ -14,8 +14,8 @@
  * `preparePlannedVideoRun`, the panels and the Dialog stay real. The lip-sync panel is opened while the node's presentation is
  * still loading and becomes ready afterwards, as a node opened right after load does, so the reopen re-detection defect
  * (covered in `MiniToolPanelContainer.lip-sync-limits.test.tsx`) does not stand in front of this question. For transitions the
- * presentation facts of both clip nodes carry a ref, and the request's `presentation_ref` maps each clip input id to its
- * node's ref (D11-3).
+ * presentation read of each clip input carries a ref, and the request's `presentation_ref` maps each clip input id to its
+ * input's ref (D11-3).
  */
 
 import type * as React from 'react';
@@ -65,6 +65,8 @@ import { useCanvasStore } from '@web/stores/canvas';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 import { createVideoToolDraft } from '@web/spaces/canvas/mini-tool/video/video-tool-edit';
+import { videoPresentationQuery } from '@web/spaces/canvas/video-presentation/video-presentation-query';
+import { presentedBinding, presentedBundle, presentedResponse } from '@web/test-utils/video-presentation';
 
 const PROJECT = '32000000-0000-4000-8000-000000000001';
 const SPACE = '32000000-0000-4000-8000-000000000002';
@@ -94,7 +96,8 @@ function present(status: 'loading' | 'ready', nodes: readonly { id: string; url:
       const binding = { sourceKey: `registered-${id}`, sourceEpoch: 1, element, surface: element, container: document.createElement('div'), original: { width: MEDIA.width, height: MEDIA.height, duration: MEDIA.duration }, getSeekEpoch: () => 0, getPresentedFrame: () => null, seek: vi.fn(), play: vi.fn().mockResolvedValue(undefined), pause: vi.fn() };
       return [id, { binding, status: status === 'ready' ? 'ready' : 'loading', error: null, overlayTarget: null, sourceBinding: { assetId: '72000000-0000-4000-8000-000000000001', contentHash: 'a'.repeat(64), canonicalURL: url, kind: 'video', mediaInfo: MEDIA } }];
     })) as BindingModule.CanvasVideoBindings['bindings'],
-    presentations: new Map(nodes.map(({ id, url, letter }) => [id, { status, frameTable: status === 'ready' ? TABLE : null, presentedTime: 0, sourceURL: url, sourceEpoch: 1, seekEpoch: 0, presentationRef: { source: ref(letter) } }])),
+    // The real hook publishes presentation facts for the panel host only (the first node); other inputs are read per input.
+    presentations: new Map(nodes.slice(0, 1).map(({ id, url, letter }) => [id, { status, frameTable: status === 'ready' ? TABLE : null, presentedTime: 0, sourceURL: url, sourceEpoch: 1, seekEpoch: 0, presentationRef: { source: ref(letter) } }])),
     onVideoBinding: vi.fn(), onVideoFrame: vi.fn(),
   };
   vi.mocked(useCanvasVideoBindings).mockReturnValue(facts);
@@ -225,6 +228,10 @@ describe('Run sends the quoted body and creates the quoted output node (§97 D27
     commitVideoToolDraft(doc, HOST, 'video.transitions', draft);
     syncNodes();
     present('ready', [{ id: HOST, url: HOST_URL, letter: 'a' }, { id: PICKED_NODE, url: PICKED_URL, letter: 'b' }]);
+    // Each clip input's selected version comes from that input's own presentation read.
+    for (const [url, letter] of [[HOST_URL, 'a'], [PICKED_URL, 'b']] as const) {
+      clients[0]!.setQueryData(videoPresentationQuery({ projectId: PROJECT, canonicalURL: url, active: true }).queryKey, presentedResponse(presentedBinding(url), { presentation: presentedBundle(url, ref(letter)) }));
+    }
     act(() => canvasSessions.of(SPACE).getState().openMiniTool(HOST, 'video.transitions', { sourceContent: HOST_URL, params: {} }));
     render(tree());
     await waitFor(() => expect(posted('/mini-tools/quote').length).toBeGreaterThan(0));

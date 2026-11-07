@@ -35,6 +35,8 @@ import { ApiException } from '@web/data/api/types';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { toast } from '@web/lib/toast';
+import { videoPresentationQuery } from '@web/spaces/canvas/video-presentation/video-presentation-query';
+import { presentedBinding, presentedBundle, presentedResponse } from '@web/test-utils/video-presentation';
 
 const projectId = 'export-project'; const spaceId = 'export-space'; const nodeId = '10000000-0000-4000-8000-000000000001';
 const sourceURL = 'https://assets.example.test/canonical.webm';
@@ -48,7 +50,7 @@ const ready: VideoToolPresentation = { frameTable, status: 'ready', sourceURL, s
  * @param onRunVideo - The execution entry the panel and Export share.
  * @returns The open Dialog.
  */
-function openDialog(presentation: VideoToolPresentation | undefined, onRunVideo: () => Promise<unknown>): HTMLElement {
+function openDialog(presentation: VideoToolPresentation | undefined, onRunVideo: () => Promise<unknown>, client = new QueryClient({ defaultOptions: { queries: { retry: false } } })): HTMLElement {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   addNode(projectId, spaceId, { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { content: sourceURL, name: 'Source', locked: false, createdAt: 0, createdBy: 'test', attachments: [] } });
   // The two-clip timeline the design fixes: the current video first, the picked input video second.
@@ -57,7 +59,7 @@ function openDialog(presentation: VideoToolPresentation | undefined, onRunVideo:
   commitVideoToolDraft(doc, nodeId, 'video.transitions', { ...initial, inputs: [...initial.inputs, second], params: { clips: [...initial.params.clips, { clipId: '50000000-0000-4000-8000-000000000002', inputId: second.inputId, in: 0, out: 3, transition: { kind: 'cut', duration: 0 } }] } });
   canvasSessions.of(spaceId).getState().openMiniTool(nodeId, 'video.transitions', { sourceContent: sourceURL, params: {} });
   const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
-  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId='video.transitions' node={node} nodes={[node]} presentation={presentation} onRunVideo={onRunVideo} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
+  render(<QueryClientProvider client={client}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId='video.transitions' node={node} nodes={[node]} presentation={presentation} onRunVideo={onRunVideo} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
   act(() => screen.getByRole('button', { name: 'Edit timeline' }).click());
   return screen.getByTestId('video-timeline-dialog');
 }
@@ -103,5 +105,20 @@ describe('Export shares the panel Run availability (§97; canvas design §10 edi
     expect(onRunVideo).toHaveBeenCalledOnce();
     await waitFor(() => expect(toastMessages()).toContain(refusal.message));
     expect(screen.getByTestId('video-timeline-dialog')).toBeInTheDocument();
+  });
+  it('exports with each clip input\'s own selected version, read from that input\'s presentation', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    const SECOND_URL = 'https://assets.example.test/second.webm';
+    const refs: Record<string, { toolInputId: string; planSha256: string }> = { [sourceURL]: { toolInputId: '1'.repeat(64), planSha256: '2'.repeat(64) }, [SECOND_URL]: { toolInputId: '3'.repeat(64), planSha256: '4'.repeat(64) } };
+    for (const [url, ref] of Object.entries(refs)) {
+      client.setQueryData(videoPresentationQuery({ projectId, canonicalURL: url, active: true }).queryKey, presentedResponse(presentedBinding(url), { presentation: presentedBundle(url, ref) }));
+    }
+    const onRunVideo = vi.fn().mockResolvedValue({ kind: 'done', result: {} });
+    const dialog = openDialog({ ...ready, presentationRef: { source: refs[sourceURL]! } }, onRunVideo, client);
+    act(() => within(dialog).getByRole('button', { name: 'Export' }).click());
+    await waitFor(() => expect(onRunVideo).toHaveBeenCalledOnce());
+    const draft = onRunVideo.mock.calls[0]![2] as { inputs: { inputId: string; url: string }[] };
+    const plan = onRunVideo.mock.calls[0]![4] as { presentationRef: Record<string, unknown> } | undefined;
+    expect(plan?.presentationRef).toEqual(Object.fromEntries(draft.inputs.map((input) => [input.inputId, refs[input.url]])));
   });
 });

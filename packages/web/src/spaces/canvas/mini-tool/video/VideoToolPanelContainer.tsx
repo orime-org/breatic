@@ -9,7 +9,7 @@ import type { VideoToolPanelState } from '@web/spaces/canvas/video-presentation/
 import { useStore } from '@xyflow/react';
 import { useQueries, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { CANVAS_NODES_KEY, newId, type VideoPresentationSourceBinding } from '@breatic/shared';
-import { canonicalMiniToolValue, fingerprintMiniToolAnalysisInput, lipsyncTimeline, lipsyncUsedSourceRange, planVideoFrames, presentationFrameAt, presentationVideoEnd, type LipsyncFailureReason, projectMiniToolAnalysisInput, videoToolAnalysisRefs, videoToolSourceRefSchema, selectMiniToolAnalyses, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisRequest, type VideoPresentationTable, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
+import { canonicalMiniToolValue, fingerprintMiniToolAnalysisInput, lipsyncTimeline, lipsyncUsedSourceRange, planVideoFrames, presentationFrameAt, presentationVideoEnd, type LipsyncFailureReason, projectMiniToolAnalysisInput, videoToolAnalysisRefs, videoToolSourceRefSchema, selectMiniToolAnalyses, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisRequest, type MiniToolPresentationRef, type VideoPresentationTable, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
 import { Button } from '@web/components/ui/button';
 import { miniToolAnalysesApi, miniToolAnalysisQuery, latestMiniToolAnalysis } from '@web/data/api/mini-tool-analyses';
 import { docName, getDoc } from '@web/data/yjs/manager';
@@ -100,8 +100,6 @@ export interface VideoToolPanelContainerProps {
   nodes: readonly CanvasNodeView[];
   presentation?: VideoToolPresentation;
   onRunVideo?: (nodeId: string, toolId: VideoToolId, draft: VideoToolDraft, analyses: readonly MiniToolAnalysisRecord[], plan?: PlannedVideoPress) => Promise<unknown>;
-  /** Every node's presentation facts, so a transition names each clip's selected input. */
-  presentations?: ReadonlyMap<string, VideoToolPresentation>;
   /** The lip-sync models to choose from and the tracking range (config `executions.video.lip-sync`). */
   lipSync?: LipSyncChoices;
   /** Why this node's last lip-sync run failed. */
@@ -150,23 +148,38 @@ function lipSyncRangeBlock(draft: VideoToolDraftById['video.lip-sync'], table: V
 
 const NO_INPUTS: readonly VideoToolDraft['inputs'][number][] = [];
 
+type ToolInputRef = MiniToolPresentationRef['source'];
+
 /**
- * Each transition input's selected compact table (§97 D10-3, D13-1): every clip reads its frame rate off the table of the
- * version its own node presents, read the way the host's is.
+ * Each transition input's selected version (§97 D10-3, D11-3, D13-1): every clip reads its frame rate off the compact table
+ * of the version its own source presents, read the way the host's is, and the request names that version as the clip
+ * input's ref.
  * @param projectId - The Project.
  * @param inputs - The transitions draft's inputs, or none for another tool.
- * @returns The tables read so far, by input id.
+ * @returns The tables and refs read so far, by input id.
  * @throws {never} Never.
  */
-function useInputTables(projectId: string, inputs: readonly VideoToolDraft['inputs'][number][]): ReadonlyMap<string, VideoPresentationTable> {
+function useInputPresentations(projectId: string, inputs: readonly VideoToolDraft['inputs'][number][]): { tables: ReadonlyMap<string, VideoPresentationTable>; refs: ReadonlyMap<string, ToolInputRef> } {
   const urls = React.useMemo(() => [...new Set(inputs.map((input) => input.url))], [inputs]);
   const responses = useQueries({ queries: urls.map((url) => videoPresentationQuery({ projectId, canonicalURL: url, active: true })), combine: dataOf });
   const read = React.useMemo(() => urls.flatMap((url, at) => (responses[at] === undefined ? [] : [{ url, response: responses[at] }])), [urls, responses]);
   const tables = useQueries({ queries: read.map(({ response }) => sourceLedgerQuery({ projectId, response, active: true })), combine: dataOf });
   return React.useMemo(() => {
-    const byURL = new Map(read.flatMap(({ url }, at) => (tables[at] === undefined ? [] : [[url, tables[at]] as const])));
-    return new Map(inputs.flatMap((input) => { const table = byURL.get(input.url); return table === undefined ? [] : [[input.inputId, table] as const]; }));
+    const tableByURL = new Map(read.flatMap(({ url }, at) => (tables[at] === undefined ? [] : [[url, tables[at]] as const])));
+    const refByURL = new Map(read.flatMap(({ url, response }) => (response.presentation === null ? [] : [[url, { toolInputId: response.presentation.toolInputId, planSha256: response.presentation.planSha256 }] as const])));
+    return { tables: byInputId(inputs, tableByURL), refs: byInputId(inputs, refByURL) };
   }, [inputs, read, tables]);
+}
+
+/**
+ * Re-key values read per source URL by the input ids that play that URL.
+ * @param inputs - The draft's inputs.
+ * @param byURL - The values by source URL.
+ * @returns The values by input id, leaving out inputs with none.
+ * @throws {never} Never.
+ */
+function byInputId<T>(inputs: readonly VideoToolDraft['inputs'][number][], byURL: ReadonlyMap<string, T>): Map<string, T> {
+  return new Map(inputs.flatMap((input) => { const value = byURL.get(input.url); return value === undefined ? [] : [[input.inputId, value] as const]; }));
 }
 
 /**
@@ -257,18 +270,17 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
   const lipSyncFailure = props.lipSyncFailure ?? models.lipSyncFailure;
   const onRetryFailed = props.onRetryFailed ?? models.onRetryFailed;
   const [timelineOpen, setTimelineOpen] = React.useState(false);
-  const inputTables = useInputTables(projectId, toolId === 'video.transitions' && current !== null ? current.inputs : NO_INPUTS);
+  const { tables: inputTables, refs: inputRefs } = useInputPresentations(projectId, toolId === 'video.transitions' && current !== null ? current.inputs : NO_INPUTS);
   const [invalidFields, setInvalidFields] = React.useState<ReadonlySet<string>>(new Set());
   const refs = useAnalysisRefs(projectId, spaceId, nodeId);
   // The model and transitions footers show the server's quote of the planned request the Run sends (§97 D26-1, D27-1).
   const quoted = toolId === 'video.lip-sync' || toolId === 'video.transitions' || toolId === 'video.remove-bg';
-  const presentations = props.presentations;
   const quoteFacts = React.useMemo((): PlannedVideoFacts | null => {
     if (!quoted || current === null) return null;
     if (toolId !== 'video.transitions') return presentation?.presentationRef === undefined ? null : { projectId, spaceId, presentationRef: presentation.presentationRef, analysisRefs: refs };
-    const byInput = current.inputs.map((input) => [input.inputId, input.sourceNodeId === undefined ? undefined : presentations?.get(input.sourceNodeId)?.presentationRef?.source] as const);
+    const byInput = current.inputs.map((input) => [input.inputId, inputRefs.get(input.inputId)] as const);
     return byInput.some(([, ref]) => ref === undefined) ? null : { projectId, spaceId, presentationRef: Object.fromEntries(byInput), analysisRefs: refs } as PlannedVideoFacts;
-  }, [quoted, current, toolId, presentation?.presentationRef, presentations, projectId, spaceId, refs]);
+  }, [quoted, current, toolId, presentation?.presentationRef, inputRefs, projectId, spaceId, refs]);
   const quote = usePlannedVideoQuote(toolId, quoted ? current : null, quoteFacts);
   const queryClient = useQueryClient();
   const analysisReadings = useQueries({ queries: refs.filter((reference) => reference.toolId === toolId && reference.draftId === current?.draftId).map((reference) => ({ ...miniToolAnalysisQuery(reference.analysisRunId), refetchOnMount: 'always' as const })), combine: analysisRecords });
