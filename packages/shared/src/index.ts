@@ -404,8 +404,8 @@ export {
 export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
 
 export { COLLAB_DOCUMENT_TOO_LARGE_REASON, COLLAB_REAUTH_REASONS, isReauthCloseReason } from "@shared/collab-close-reasons.js";
-export { DOC_SIZE_EVENT_BYTES, DocSizeStatusSchema, SPACE_DELETE_MIN_BYTES } from "@shared/doc-size.js";
-export type { DocSizeStatus } from "@shared/doc-size.js";
+export { DOC_SIZE_EVENT_BYTES, DocSizeStatusSchema, updateShape } from "@shared/doc-size.js";
+export type { DocSizeStatus, UpdateShape } from "@shared/doc-size.js";
 export { READ_ONLY_COLLAB_TOKEN } from "@shared/collab-read-only-token.js";
 export { COLLAB_CHUNK_ACK, COLLAB_FRAME_MAX_BYTES, collabChunkHeaderSchema, sendInChunks } from "@shared/collab-frame-chunks.js";
 
