@@ -311,6 +311,63 @@ describe('DocumentOutline', () => {
       expect(opened.handle.editor.prosemirrorState.selection.toJSON()).toEqual(before);
       expect(opened.handle.editor.prosemirrorView!.dom.contains(document.activeElement)).toBe(false);
     });
+
+    /**
+     * Lays out "One" above the reading line and "Two" and "Three" below it, so
+     * the reading rule picks "One", or "Three" at the bottom; `scrollTo` moves
+     * the viewport as a browser would.
+     * @param scrollHeight - The body's scroll height; 1000 leaves only 200px of scroll.
+     * @returns The body's viewport.
+     */
+    function layOutForPin(scrollHeight: number): HTMLElement {
+      layOut();
+      const viewport = bodyViewport();
+      Object.defineProperty(viewport, 'scrollHeight', { configurable: true, value: scrollHeight });
+      scrollTo.mockImplementation(({ top }: { top: number }) => {
+        viewport.scrollTop = Math.min(top, scrollHeight - 800);
+      });
+      const lineOf = (text: string): Element =>
+        document.querySelector(`.bn-block-outer[data-id="${idOf(opened.handle, text)}"] > .bn-block > .bn-block-content`)!;
+      placeAt(lineOf('One'), 40);
+      placeAt(lineOf('Three'), 800);
+      return viewport;
+    }
+
+    /**
+     * Scrolls the body and runs the frame the highlight is computed in.
+     * @param viewport - The body's viewport.
+     * @returns Once the frame has run.
+     */
+    async function scrolled(viewport: HTMLElement): Promise<void> {
+      fireEvent.scroll(viewport);
+      await act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+    }
+
+    const itemOf = (text: string): Element => row(text).closest('[data-outline-item]')!;
+
+    it('keeps the clicked heading near the end of the document until the user scrolls', async () => {
+      renderWith([h('a', 1, 'One'), { type: 'paragraph', content: 'words' }, h('b', 2, 'Two'), h('c', 2, 'Three')]);
+      const viewport = layOutForPin(1000);
+
+      fireEvent.click(row('Two'));
+      expect(scrollTo).toHaveBeenCalledWith({ top: 200, behavior: 'instant' });
+      await scrolled(viewport);
+      expect(itemOf('Two')).toHaveClass('bg-accent-strong');
+
+      viewport.scrollTop = 150;
+      await scrolled(viewport);
+      expect(itemOf('One')).toHaveClass('bg-accent-strong');
+    });
+
+    it('follows the reading line after a jump that reached its landing', async () => {
+      renderWith([h('a', 1, 'One'), { type: 'paragraph', content: 'words' }, h('b', 2, 'Two'), h('c', 2, 'Three')]);
+      const viewport = layOutForPin(5000);
+
+      fireEvent.click(row('Two'));
+      expect(itemOf('Two')).toHaveClass('bg-accent-strong');
+      await scrolled(viewport);
+      expect(itemOf('One')).toHaveClass('bg-accent-strong');
+    });
   });
 
   describe('A9 — the heading being read', () => {
