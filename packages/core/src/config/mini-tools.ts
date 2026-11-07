@@ -45,12 +45,13 @@ const containerExecutionSchema = z.strictObject({
 // Model input preparation for background removal encodes on standard-4 (design §5.3, §5.4).
 const preparationDefaults = { container_class: "MiniToolContainerStd4" as const, precheck_seconds: 300 };
 const removeBackgroundDefaults = { model: "bria-fibo-video-background-remover", preparation: preparationDefaults };
+const preparationSchema = z.strictObject({
+  container_class: z.literal("MiniToolContainerStd4").default(preparationDefaults.container_class),
+  precheck_seconds: z.number().positive().default(preparationDefaults.precheck_seconds),
+});
 const removeBackgroundSchema = z.strictObject({
   model: z.string().min(1),
-  preparation: z.strictObject({
-    container_class: z.literal("MiniToolContainerStd4").default(preparationDefaults.container_class),
-    precheck_seconds: z.number().positive().default(preparationDefaults.precheck_seconds),
-  }).default(preparationDefaults),
+  preparation: preparationSchema.default(preparationDefaults),
 });
 
 // Lip-sync (execution design §9.3): the selectable single-person models, the tracking model's duration range and the run
@@ -152,6 +153,23 @@ const analysisConfigSchema = z.strictObject({
   precheck_seconds: z.number().positive(),
 });
 
+// Erase (execution design §10.4, §10.6): the masked Bria eraser, its frame-for-frame grid ceiling, its measured duration
+// bounds and asynchronous rejection field, and the composite matte in source pixels. No default, as lip-sync.
+const eraseSchema = containerExecutionSchema.extend({
+  model: z.strictObject({
+    name: z.string().min(1), min_seconds: z.number().positive(), max_seconds: z.number().positive(), max_grid_fps: z.number().positive(),
+    async_rejection: z.strictObject({ path: z.string().min(1), equals: z.json() }),
+  }).refine((model) => model.max_seconds > model.min_seconds),
+  matte: z.strictObject({ dilate: z.number().int().nonnegative(), feather: z.number().int().nonnegative() }),
+});
+// Expand (execution design §10.5, §10.6): VACE's window length, overlap and frame rate, and the source limits.
+const expandSchema = containerExecutionSchema.extend({
+  model: z.strictObject({ name: z.string().min(1), max_window_seconds: z.number().positive(), overlap_seconds: z.number().positive(), model_fps: z.number().int().positive() })
+    .refine((model) => model.max_window_seconds > model.overlap_seconds),
+  max_duration_seconds: z.number().positive(),
+  max_target_side: z.number().int().positive(),
+});
+
 const sourceLedgerDefaults = {
   max_bytes: 16_777_216,
   probe_stdout_bytes: 67_108_864,
@@ -192,6 +210,8 @@ export const miniToolsConfigSchema = z
       "video.extract-frames": containerExecutionSchema.default(executionDefaults),
       "video.split": containerExecutionSchema.default(executionDefaults),
       "video.lip-sync": lipSyncSchema.optional(),
+      "video.erase": eraseSchema.optional(),
+      "video.expand": expandSchema.optional(),
       // Transitions encode on one class and render their overlap windows on the GL image's class (frames-split §5.4).
       "video.transitions": z.strictObject({ container_class: z.string().min(1), window_container_class: z.string().min(1), precheck_seconds: z.number().positive(),
         max_outputs: z.number().int().positive() }).optional(),
@@ -241,7 +261,8 @@ export const miniToolsConfigSchema = z
     analyses: z.strictObject({
       people: analysisConfigSchema,
       scene_cuts: analysisConfigSchema,
-      tracked_mask: analysisConfigSchema,
+      // Tracking prepares its forward and reversed clips on standard-4 (execution design §10.3).
+      tracked_mask: analysisConfigSchema.extend({ preparation: preparationSchema }),
     }),
     // The audio cut band draws from the peaks file beside the source; while that
     // file is missing it decodes the source in the browser only under both of
@@ -263,7 +284,7 @@ export const miniToolsConfigSchema = z
     if (transitions !== undefined && !(transitions.window_container_class in config.classes)) {
       ctx.addIssue({ code: "custom", path: ["executions", "video.transitions", "window_container_class"], message: "Execution names an undeclared container class" });
     }
-    for (const tool of ["video.extract-frames", "video.split", "video.lip-sync", "video.transitions"] as const) {
+    for (const tool of ["video.extract-frames", "video.split", "video.lip-sync", "video.transitions", "video.erase", "video.expand"] as const) {
       const execution = config.executions[tool];
       if (execution !== undefined && !(execution.container_class in config.classes)) {
         ctx.addIssue({ code: "custom", path: ["executions", tool, "container_class"], message: "Execution names an undeclared container class" });

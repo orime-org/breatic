@@ -59,6 +59,9 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
   "bria/eraser": [{ input: {}, usd: 0.04 }],
   "bria/fibo-edit/genfill": [{ input: {}, usd: 0.04 }],
   "bria/fibo/video-background-remover": [{ input: { video: "v", background_color: "Transparent", output_container_and_codec: "webm_vp9", preserve_audio: true }, durations: { video: [5.055] }, usd: 0.3 }],
+  // inner#1306 execution design §10.4, §10.5: the measured quotes of the masked eraser and VACE.
+  "bria/video-eraser/mask": [{ input: { video: "v", mask_video: "m", copy_audio: false }, durations: { video: [2.5] }, usd: 0.15 }, { input: { video: "v", mask_video: "m", copy_audio: false }, durations: { video: [7] }, usd: 0.25 }],
+  "wavespeed-ai/wan-2.1-14b-vace": [{ input: { prompt: "p", duration: 5, size: "832*480" }, usd: 0.3 }, { input: { prompt: "p", duration: 10, size: "832*480" }, usd: 0.45 }],
   "bria/remove-background": [{ input: {}, usd: 0.018 }],
   "bytedance/avatar-omni-human-1.5": [{ input: { audio: "a" }, durations: { audio: [10] }, usd: 1.6 }],
   "bytedance/dreamactor-v2": [{ input: { video: "v" }, durations: { video: [10] }, usd: 0.5 }],
@@ -231,7 +234,7 @@ function wavespeedEndpoints(): Map<string, FullProviderEndpoint> {
 describe("WaveSpeed pricing contracts in the catalog", () => {
   const endpoints = wavespeedEndpoints();
 
-  it("covers exactly the 67 endpoints of the finalized catalog", () => {
+  it("covers exactly the 69 endpoints of the finalized catalog", () => {
     expect([...endpoints.keys()].sort()).toEqual(Object.keys(CASES).sort());
   });
 

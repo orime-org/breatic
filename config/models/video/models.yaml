@@ -143,6 +143,114 @@ models:
           base_price: 50000
           formula: '{"total_price": $min([$ceil(get_duration(video)), 60]) * base_price}'
           discount_rate: 100
+  # Video erase (inner#1306): the masked eraser, 0.05 USD a second rounded up and capped at its 5 s input.
+  - name: "bria-video-eraser-mask"
+    display_name: "Bria Video Eraser"
+    mode: "edit"
+    takes_prompt: false
+    tier: "internal"
+    description: "Erases a masked object across a clip"
+    guide: "Remove the object a white mask video marks from a short video and fill in the background."
+    generation_time: 600
+    icon: "bria"
+    params:
+      video:
+        description: "Source clip"
+        default: null
+        accepts: "video"
+        fill: "tool"
+        max_total_duration: 5
+      mask_video:
+        description: "White marks what to erase"
+        default: null
+        accepts: "video"
+        fill: "tool"
+      copy_audio:
+        description: "Copy the clip's audio"
+        default: false
+        values: [false]
+        fill: "tool"
+    providers:
+      - name: "wavespeed"
+        model_id: "bria/video-eraser/mask"
+        priority: 1
+        pricing:
+          base_price: 50000
+          formula: '{"total_price": $min([$ceil(get_duration(video)), 5]) * base_price}'
+          discount_rate: 100
+  # Video expand (inner#1306): VACE inpainting on 832x480 windows, 0.30 USD for 5 s and 0.45 USD for 6-10 s.
+  - name: "wan-2.1-14b-vace"
+    display_name: "Wan 2.1 14B VACE"
+    mode: "edit"
+    takes_prompt: true
+    tier: "internal"
+    description: "Fills a masked area of a clip"
+    guide: "Generate what a mask video marks around a clip, continuing its content and motion."
+    generation_time: 600
+    icon: "wan"
+    params:
+      video:
+        description: "Window clip"
+        default: null
+        accepts: "video"
+        fill: "tool"
+      mask_video:
+        description: "White marks what to fill"
+        default: null
+        accepts: "video"
+        fill: "tool"
+      image:
+        description: "First frame to continue from"
+        default: null
+        accepts: "image"
+        fill: "tool"
+      task:
+        description: "Inpainting"
+        default: "inpainting"
+        values: ["inpainting"]
+        fill: "tool"
+      duration:
+        description: "Window length in seconds"
+        default: 5
+        values: [5, 10]
+        fill: "tool"
+      size:
+        description: "Standard frame"
+        default: "832*480"
+        values: ["832*480", "480*832"]
+        fill: "tool"
+      num_inference_steps:
+        description: "Inference steps"
+        default: 30
+        values: [30]
+        fill: "tool"
+      guidance_scale:
+        description: "Guidance scale"
+        default: 5
+        values: [5]
+        fill: "tool"
+      flow_shift:
+        description: "Flow shift"
+        default: 16
+        values: [16]
+        fill: "tool"
+      context_scale:
+        description: "Context scale"
+        default: 1
+        values: [1]
+        fill: "tool"
+      seed:
+        description: "Seed frozen at admission"
+        default: null
+        fill: "tool"
+    providers:
+      - name: "wavespeed"
+        model_id: "wavespeed-ai/wan-2.1-14b-vace"
+        priority: 1
+        pricing:
+          base_price: 300000
+          formula: '{"total_price": base_price * (duration > 5 ? 1.5 : 1)}'
+          discount_rate: 100
 
   - name: "gemini-omni-1.1-flash-text-to-video"
     display_name: "Gemini Omni 1.1 Flash"

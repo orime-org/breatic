@@ -51,6 +51,57 @@ models:
           base_price: 50000
           formula: '{"total_price": $min([$ceil(get_duration(video)), 60]) * base_price}'
           discount_rate: 100
+  bria-video-eraser-mask:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: bria/video-eraser/mask
+        params:
+          video:
+            field: video
+          mask_video:
+            field: mask_video
+          copy_audio:
+            field: copy_audio
+        pricing:
+          kind: formula
+          base_price: 50000
+          formula: '{"total_price": $min([$ceil(get_duration(video)), 5]) * base_price}'
+          discount_rate: 100
+  wan-2.1-14b-vace:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: wavespeed-ai/wan-2.1-14b-vace
+        prompt_field: prompt
+        params:
+          video:
+            field: video
+          mask_video:
+            field: mask_video
+          image:
+            field: image
+          task:
+            field: task
+          duration:
+            field: duration
+          size:
+            field: size
+          num_inference_steps:
+            field: num_inference_steps
+          guidance_scale:
+            field: guidance_scale
+          flow_shift:
+            field: flow_shift
+          context_scale:
+            field: context_scale
+          seed:
+            field: seed
+        pricing:
+          kind: formula
+          base_price: 300000
+          formula: '{"total_price": base_price * (duration > 5 ? 1.5 : 1)}'
+          discount_rate: 100
   gemini-omni-1.1-flash-text-to-video:
     upstreams:
       - upstream: wavespeed

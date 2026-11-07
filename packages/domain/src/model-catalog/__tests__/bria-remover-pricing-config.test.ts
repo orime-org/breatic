@@ -68,10 +68,10 @@ describe("real Bria video removal catalog declarations", () => {
     const video = getCanvasCapabilities().find((node) => node.nodeType === "video");
     expect(video?.modes.map((mode) => mode.mode)).toEqual([...VIDEO_GENERATION_MODES]);
   });
-  it("C11 adds exactly one video model while retaining every other modality count", () => {
+  it("C11 keeps every modality count of the finalized catalog", () => {
     const counts = Object.fromEntries(MODALITIES.map((modality) => [modality, getFullModelConfig(modality).models.length]));
-    expect(counts).toEqual({ image: 19, video: 31, audio: 11, tts: 7, three_d: 4 });
-    expect(MODALITIES.reduce((sum, modality) => sum + getFullModelConfig(modality).models.length, 0)).toBe(72);
+    expect(counts).toEqual({ image: 19, video: 33, audio: 11, tts: 7, three_d: 4 });
+    expect(MODALITIES.reduce((sum, modality) => sum + getFullModelConfig(modality).models.length, 0)).toBe(74);
   });
 });
 
