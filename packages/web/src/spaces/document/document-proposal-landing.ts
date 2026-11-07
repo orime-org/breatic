@@ -246,20 +246,19 @@ function withinBodyLevels(blocks: readonly WrittenBlock[]): WrittenBlock[] {
  * Markdown read into the blocks a write puts into the body: outside media
  * left out the way a paste leaves them out, headings brought within the
  * body's levels. Only new payload data; target checks wait for the
- * synchronous commit. An Agent proposal and an AI dialog result are both
- * written through this (inner#1860).
+ * synchronous commit.
  * @param markdown - What is about to be written.
  * @returns Its filtered blocks and omitted media count.
  * @throws {Error} If Markdown parsing fails.
  */
-export async function prepareWrittenBlocks(markdown: string): Promise<{ blocks: WrittenBlock[]; leftOut: number }> {
+async function prepareWrittenBlocks(markdown: string): Promise<{ blocks: WrittenBlock[]; leftOut: number }> {
   const parsed = await markdownBlocks(markdown);
   return keepWritable(parsed.map((b) => b.block as WrittenBlock), await ourMediaPrefixReady());
 }
 
 /**
  * What of some parsed blocks may be written into the body: our own media
- * only, nested no deeper than the body allows.
+ * only, headings within the body's levels.
  * @param blocks - The parsed blocks.
  * @param ourPrefix - Where our own media live, or null when not known.
  * @returns The blocks kept, and how many outside media were left out.

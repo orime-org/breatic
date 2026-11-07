@@ -569,6 +569,46 @@ describe('the escape pair (§5.1)', () => {
     expect(legacyCells(h)).toEqual([['2. Methods', '# Total a *b* c']]);
   });
 
+  it('echoes a code block whose code holds a fence unchanged', async () => {
+    const h = await openBlocks([{ type: 'codeBlock', props: { language: 'markdown' }, content: '```js\nconst a = 1;\n```' }, { type: 'paragraph', content: 'Next.' }]);
+    replaceWith(h, contentOf(h, blocks(h)[0]!.id), (sent) => sent);
+    replaceWith(h, { from: contentOf(h, blocks(h)[0]!.id).from, to: rangeOf(h, 'Next.').to }, (sent) => sent);
+    expect(blocks(h).map((b) => [b.type, textOf(b)])).toEqual([['codeBlock', '```js\nconst a = 1;\n```'], ['paragraph', 'Next.']]);
+  });
+
+  it('echoes inline code holding a backslash and a pipe in a pipe-table cell unchanged', async () => {
+    const h = await open('Before\n\n| h | k |\n| --- | --- |\n| p | q |\n\nAfter');
+    const cell = blocks(h)[1]!.children[1]!.children[0]!;
+    h.editor.updateBlock(cell.children[0]!.id, { content: [{ type: 'text', text: 'a\\|b', styles: { code: true } }] } as never);
+    const before = cellContents(h);
+    replaceWith(h, { from: rangeOf(h, 'Before').from, to: rangeOf(h, 'After').to }, (sent) => sent);
+    expect(cellContents(h)).toEqual(before);
+    expect(docCells(blocks(h)[1]!)).toEqual([['h', 'k'], ['a\\|b', 'q']]);
+  });
+
+  it('echoes any code in a code block and in a pipe-table cell unchanged', async () => {
+    const code = fc.string({ unit: fc.constantFrom('a', ' ', '\n', '`', '```', '\\', '|', '&', '<', '#', '*', '~~~'), minLength: 1, maxLength: 12 });
+    await fc.assert(
+      fc.asyncProperty(code, fc.boolean(), async (words, inBlock) => {
+        fc.pre(/\S/.test(words));
+        const h = await open('Before\n\n| h | k |\n| --- | --- |\n| p | q |\n\nAfter');
+        if (inBlock) {
+          h.editor.insertBlocks([{ type: 'codeBlock', content: words }] as never, blocks(h)[0]!.id, 'after');
+        } else {
+          const cell = blocks(h)[1]!.children[1]!.children[0]!;
+          fc.pre(!words.includes('\n'));
+          h.editor.updateBlock(cell.children[0]!.id, { content: [{ type: 'text', text: words, styles: { code: true } }] } as never);
+        }
+        const before = readingOrder(h).map(([, type, text]) => [type, text]);
+        replaceWith(h, { from: rangeOf(h, 'Before').from, to: rangeOf(h, 'After').to }, (sent) => sent);
+        expect(readingOrder(h).map(([, type, text]) => [type, text])).toEqual(before);
+        _resetDocumentEditorCacheForTests();
+        document.body.innerHTML = '';
+      }),
+      { numRuns: 120 },
+    );
+  });
+
   it('echoes any words in a paragraph unchanged', async () => {
     await fc.assert(
       fc.asyncProperty(fc.string({ unit: fc.constantFrom(...TRICKY), minLength: 1, maxLength: 24 }), async (words) => {
@@ -758,7 +798,7 @@ describe('the answer as blocks (§5.3)', () => {
     capture(h, rangeOf(h, 'two'));
     const answer = read(h, '![i](https://elsewhere.example/x.png)');
     expect(answer).toEqual({ preview: [], leftOut: 1 });
-    expect(replaceAiAnswer(h, answer, WRITABLE)).toEqual({ outcome: 'mediaOnly', leftOut: 1 });
+    expect(replaceAiAnswer(h, answer, WRITABLE)).toEqual({ outcome: 'nothingWritten', leftOut: 1 });
     expect(legacyCells(h)).toEqual([['one two', 'y']]);
   });
 
@@ -768,8 +808,8 @@ describe('the answer as blocks (§5.3)', () => {
     capture(h, rangeOf(h, 'two'));
     const answer = read(h, '| a | b |\n| --- | --- |\n| c | d |');
     const count = flat(h).length;
-    expect(replaceAiAnswer(h, answer, WRITABLE)).toEqual({ outcome: 'mediaOnly', leftOut: 0 });
-    expect(insertAiAnswer(h, insertBlock(h)!, answer, WRITABLE)).toEqual({ outcome: 'mediaOnly', leftOut: 0 });
+    expect(replaceAiAnswer(h, answer, WRITABLE)).toEqual({ outcome: 'nothingWritten', leftOut: 0 });
+    expect(insertAiAnswer(h, insertBlock(h)!, answer, WRITABLE)).toEqual({ outcome: 'nothingWritten', leftOut: 0 });
     expect([legacyCells(h), flat(h).length]).toEqual([[['one two', 'y']], count]);
   });
 
@@ -913,6 +953,19 @@ describe('replace, whole blocks (§5.3, Plate wholeTextBlocks)', () => {
     expect([parentWords(h, 'g'), parentWords(h, 'k2')]).toEqual(['Y', 'Y']);
   });
 
+  it('keeps blocks that were siblings as siblings after one of them is lifted', async () => {
+    const h = await open('- one\n  - two\n    - three\n    - four\n- end');
+    replaceWith(h, { from: rangeOf(h, 'one').from, to: rangeOf(h, 'two').to }, () => '- New');
+    expect(flat(h).map(textOf)).toEqual(['New', 'three', 'four', 'end']);
+    expect([parentWords(h, 'three'), parentWords(h, 'four')]).toEqual(['New', 'New']);
+  });
+
+  it('keeps an uncle after a lifted grandchild at its own level', async () => {
+    const h = await open('- alpha\n  - kid\n    - grand\n      - g3\n    - s2\n  - s1');
+    replaceWith(h, { from: rangeOf(h, 'alpha').from, to: rangeOf(h, 'grand').to }, () => 'X');
+    expect([parentWords(h, 'g3'), parentWords(h, 's2'), parentWords(h, 's1')]).toEqual(['X', 'X', 'X']);
+  });
+
   it('leaves no copy of the covered blocks when the answer is only a code block', async () => {
     const h = await open('- p\n  - k\n  - k2\n\nAfter');
     const covered = flat(h).slice(0, 2).map((b) => b.id);
@@ -1021,6 +1074,23 @@ function readingOrderOf(list: readonly Seen[]): Array<[string, string]> {
 function inTable($pos: { depth: number; node: (depth: number) => { type: { name: string } } }): boolean {
   for (let depth = 1; depth <= $pos.depth; depth += 1) if ($pos.node(depth).type.name === 'docTable') return true;
   return false;
+}
+
+/**
+ * Each block's parent, tables read as one block.
+ * @param handle - The document.
+ * @returns Block id to parent id; the top level as an empty string.
+ */
+function parentsOf(handle: DocumentEditorHandle): Map<string, string> {
+  const out = new Map<string, string>();
+  const walk = (list: Seen[], parent: string): void => {
+    for (const b of list) {
+      out.set(b.id, parent);
+      if (b.type !== 'docTable') walk(b.children, b.id);
+    }
+  };
+  walk(blocks(handle), '');
+  return out;
 }
 
 /** Answers of every shape at their edges: words, code, a nested list, a table, an image. */
@@ -1151,12 +1221,20 @@ describe('replace and insert keep what is outside the range (§8 property)', () 
         const firstBlock = $from.parent.isTextblock ? containerAt(doc, range!.from)! : range!.from;
         if (!isWhole) whole.delete(String(doc.nodeAt(firstBlock)!.attrs['id']));
         const outside = before.filter(([id]) => !touched.has(id));
+        const parentsBefore = parentsOf(h);
         expect(replaceAiAnswer(h, answer, WRITABLE).outcome).toBe('written');
         const after = readingOrder(h);
         expect(idsUnique(h)).toBe(true);
         const kept = new Set(outside.map(([id]) => id));
         expect(after.filter(([id]) => kept.has(id))).toEqual(outside);
         expect(after.some(([id]) => whole.has(id))).toBe(false);
+        // Blocks that were siblings and both stay are siblings still.
+        const parentsAfter = parentsOf(h);
+        for (const [a] of outside) {
+          for (const [b] of outside) {
+            if (a < b && parentsBefore.get(a) === parentsBefore.get(b)) expect([a, parentsAfter.get(a)]).toEqual([a, parentsAfter.get(b)]);
+          }
+        }
         expect(flat(h).filter((x) => Array.isArray(x.content) && textOf(x) === '' && !emptyBefore.has(x.id))).toEqual([]);
         // Whole blocks: what took their place is the preview, block for block
         // (inside a cell the table is what reads as one block here).

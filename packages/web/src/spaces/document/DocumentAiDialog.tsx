@@ -212,7 +212,7 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
    * @param result - The write's outcome.
    */
   const told = React.useCallback((result: AiWriteResult): void => {
-    if (result.outcome === 'written' || result.outcome === 'mediaOnly') {
+    if (result.outcome === 'written' || result.outcome === 'nothingWritten') {
       const leftOut = result.leftOut ?? 0;
       if (leftOut > 0) toast.warning(t('chat.documentProposal.mediaLeftOut', { count: leftOut }));
       viewOf(editor)?.focus();

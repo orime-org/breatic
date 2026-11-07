@@ -14,10 +14,9 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { EditorState } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 
-import { blockAround, BN_BLOCK, containerAt, inlineLetter, inOneCell, ownContentEnd, type AiCapture } from '@web/spaces/document/document-ai-range';
+import { blockAround, containerAt, inlineLetter, inOneCell, ownContentEnd, type AiCapture } from '@web/spaces/document/document-ai-range';
 import { readTopBlocks } from '@web/spaces/document/document-blocks-read';
 import { letterBounds } from '@web/spaces/document/document-local-range';
-import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 
 /** The blank line Markdown puts between two blocks. */
@@ -44,21 +43,23 @@ function lastCovered(doc: ProseMirrorNode, from: number, to: number): number {
   return last;
 }
 
-/** A block of the body, a container or a table, and where it starts. */
+/** A block of words of the body, and where it starts. */
 interface BlockAt {
   readonly pos: number;
   readonly node: ProseMirrorNode;
 }
 
 /**
- * The body's blocks in reading order, a table before the blocks of its cells.
+ * The body's blocks in reading order, as Plate counts them: the containers,
+ * the blocks inside table cells included; a table, its rows and its cells
+ * are not blocks of their own.
  * @param doc - The body.
  * @returns The blocks.
  */
 function blocksInOrder(doc: ProseMirrorNode): BlockAt[] {
   const out: BlockAt[] = [];
   doc.descendants((node, pos) => {
-    if (node.type.isInGroup(BN_BLOCK)) out.push({ pos, node });
+    if (node.type.name === 'blockContainer') out.push({ pos, node });
     return true;
   });
   return out;
@@ -114,13 +115,12 @@ export function aiCapture(state: EditorState): AiCapture | null {
   if (first < 0 || last < first) return null;
   let from = selection.from;
   let to = selection.to;
-  // A table's words are its cells': a step goes past it into them.
   if (first !== last && $to.parent.isTextblock && to === wordEdges(doc, order[last]!).start) {
-    do last -= 1; while (last > first && order[last]!.node.type.name === DOC_TABLE);
+    last -= 1;
     to = wordEdges(doc, order[last]!).end;
   }
   if (first !== last && $from.parent.isTextblock && from === wordEdges(doc, order[first]!).end) {
-    do first += 1; while (first < last && order[first]!.node.type.name === DOC_TABLE);
+    first += 1;
     from = wordEdges(doc, order[first]!).start;
   }
   const $first = doc.resolve(order[first]!.pos + 1);

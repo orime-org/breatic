@@ -40,7 +40,7 @@ import { blockInTableCell, cellDepthOf, DOC_TABLE } from '@web/spaces/document/d
 /** How a write ended. */
 export type AiWriteResult =
   | { readonly outcome: 'written'; readonly leftOut?: number }
-  | { readonly outcome: 'mediaOnly'; readonly leftOut: number }
+  | { readonly outcome: 'nothingWritten'; readonly leftOut: number }
   | { readonly outcome: 'readOnly' | 'failed' | 'targetGone' };
 
 /** An answer read into blocks. */
@@ -182,8 +182,8 @@ function exportable(content: readonly Inline[]): Inline[] {
     if (last !== undefined) {
       const left = edgeEmphasis(last, 'end');
       const right = edgeEmphasis(piece, 'start');
-      // Two links side by side are closed and reopened one after the other, emphasis and all.
-      if (left !== '' && right !== '' && (left !== right || last.type !== piece.type || piece.type === 'link')) out.push(RUN_BREAK_PIECE);
+      // A link's edges are closed and reopened on their own, so a link next to emphasis is always kept apart.
+      if (left !== '' && right !== '' && (left !== right || last.type === 'link' || piece.type === 'link')) out.push(RUN_BREAK_PIECE);
     }
     out.push(piece);
   }
@@ -221,8 +221,9 @@ function escapeContent(content: readonly Inline[]): Inline[] {
     at += text.length;
     const code = piece.styles?.['code'] === true;
     let escaped = keepSpaces(escapeWords(text, code), before, after);
-    // A backtick in code would need a longer fence than the exporter picks.
-    if (code) escaped = escaped.replace(/`/g, '&#96;');
+    // A backtick in code would need a longer fence than the exporter picks,
+    // and a pipe table puts a backslash before a `|` the way back reads as an escape.
+    if (code) escaped = escaped.replace(/[`|]/g, entity);
     // A code span loses one space at each end when it has both, and emphasis
     // cannot open or close at a space: those spaces are spelled as entities.
     if (code && /^ [\s\S]* $/.test(escaped)) escaped = `&#32;${escaped.slice(1, -1)}&#32;`;
@@ -427,7 +428,8 @@ function undoOf(handle: Pick<DocumentEditorHandle, 'editor'>): UndoBoundary | nu
  * @returns It, escaped.
  */
 function escapeCode(text: string): string {
-  return escapeWords(text, true).replace(/^\n/, '&#10;').replace(/\n$/, '&#10;');
+  // A backtick is spelled as an entity, so a fence in the code is never taken for the model's own.
+  return escapeWords(text, true).replace(/`/g, '&#96;').replace(/^\n/, '&#10;').replace(/\n$/, '&#10;');
 }
 
 /**
@@ -509,8 +511,6 @@ function escapedFor(blocks: readonly BlockLike[], into: 'markdown' | 'html'): Bl
 
 /** The words a range leaves of a line at one of its ends, with the line's block to keep them in. */
 interface LineCut {
-  /** Where the line's block starts. */
-  readonly at: number;
   readonly container: ProseMirrorNode;
   readonly line: ProseMirrorNode;
   /** The words outside the range. */
@@ -567,7 +567,7 @@ function endOf(doc: ProseMirrorNode, pos: number, side: 'start' | 'end'): { bloc
   if (line === null) return { block, cut: null };
   const at = offset ?? line.content.size;
   const words = side === 'start' ? line.content.cut(0, at) : line.content.cut(at);
-  return { block, cut: { at: block, container, line, words } };
+  return { block, cut: { container, line, words } };
 }
 
 /**
@@ -813,11 +813,10 @@ function laidFlat(nodes: readonly ProseMirrorNode[], pos: number, depth: number)
 }
 
 /**
- * Flat blocks built back into a tree: a block one level deeper than the
- * one before it is that block's child. A block can be at most one level
- * deeper than the one before it, and a table holds no children; a block
- * deeper than that is lifted to the deepest level it fits (a jump in a
- * Plate list's indent has no tree to show it in).
+ * Flat blocks built back into a tree the way Plate's indent reads: each
+ * block hangs under the nearest block before it whose level is lower and
+ * that can hold children (a table holds none), so blocks of one level stay
+ * siblings. A block with no such block before it stands at the top.
  * @param flat - The flat blocks.
  * @param schema - The body's schema.
  * @returns The top-level blocks.
@@ -831,11 +830,8 @@ function rebuilt(flat: readonly Flat[], schema: Schema): ProseMirrorNode[] {
   const top: Entry[] = [];
   const open: Entry[] = [];
   for (const item of flat) {
-    const before = open[open.length - 1];
-    const deepest = before === undefined ? 0 : before.depth + (before.node.type.name === 'blockContainer' ? 1 : 0);
-    const depth = Math.min(item.depth, deepest);
-    while (open.length > 0 && open[open.length - 1]!.depth >= depth) open.pop();
-    const entry: Entry = { node: item.node, depth, children: [] };
+    while (open.length > 0 && (open[open.length - 1]!.depth >= item.depth || open[open.length - 1]!.node.type.name !== 'blockContainer')) open.pop();
+    const entry: Entry = { node: item.node, depth: item.depth, children: [] };
     (open[open.length - 1]?.children ?? top).push(entry);
     open.push(entry);
   }
@@ -870,9 +866,10 @@ function holdsLine(node: ProseMirrorNode): boolean {
  * @param after - The words after the range; null at a block without words.
  * @param answer - The answer, laid flat.
  * @param afterLevel - The level of the line the words after stand in, below the first line's.
+ * @param oneLine - Whether the words before and after stand in one line.
  * @returns The blocks that take the lines' place, laid flat.
  */
-function wordsJoined(before: LineCut | null, after: LineCut | null, answer: readonly Flat[], afterLevel: number): Flat[] {
+function wordsJoined(before: LineCut | null, after: LineCut | null, answer: readonly Flat[], afterLevel: number, oneLine: boolean): Flat[] {
   /**
    * A line's own kind of block holding some words.
    * @param cut - The line.
@@ -904,7 +901,7 @@ function wordsJoined(before: LineCut | null, after: LineCut | null, answer: read
     const words = last.node.firstChild!;
     out[out.length - 1] = { ...last, node: last.node.copy(Fragment.from(words.copy(words.content.append(after.words)))) };
   } else if (after.words.size > 0) {
-    out.push(ownBlock(after, after.words, firstKept && before?.at === after.at ? null : after.container.attrs['id'], afterLevel));
+    out.push(ownBlock(after, after.words, firstKept && oneLine ? null : after.container.attrs['id'], afterLevel));
   }
   return out;
 }
@@ -945,8 +942,8 @@ function writeOver(tr: Transaction, span: Span, preview: readonly WrittenBlock[]
   const start = stretch.findIndex((item) => item.pos >= span.first);
   const level = stretch[start]!.depth;
   // The words left of the last line stay at that line's own level.
-  const afterLevel = span.kind === 'words' && span.after !== null ? stretch.find((item) => item.pos === span.after!.at)!.depth - level : 0;
-  const middle = span.kind === 'blocks' ? answer : wordsJoined(span.before, span.after, answer, afterLevel);
+  const afterLevel = span.kind === 'words' && span.after !== null ? stretch.find((item) => item.pos === span.last)!.depth - level : 0;
+  const middle = span.kind === 'blocks' ? answer : wordsJoined(span.before, span.after, answer, afterLevel, span.first === span.last);
   tr.replaceWith(from, to, rebuilt([
     ...stretch.slice(0, start),
     ...middle.map((item) => ({ ...item, depth: item.depth + level })),
@@ -979,7 +976,7 @@ export function replaceAiAnswer(
   if (refusal !== null) return { outcome: refusal };
   const cover = aiCoverIn(handle.editor.prosemirrorState);
   if (cover === null) return { outcome: 'targetGone' };
-  if (answer.preview.length === 0) return { outcome: 'mediaOnly', leftOut: answer.leftOut };
+  if (answer.preview.length === 0) return { outcome: 'nothingWritten', leftOut: answer.leftOut };
   const { editor } = handle;
   asOneUndoStep(undoOf(handle), () => {
     editor.transact((tr) => {
@@ -1008,7 +1005,7 @@ export function insertAiAnswer(
   const doc = handle.editor.prosemirrorState.doc;
   if (blockById(doc, blockId) === null) return { outcome: 'targetGone' };
   const blocks = answer.preview.map((b) => withoutIds(b as Read));
-  if (blocks.length === 0) return { outcome: 'mediaOnly', leftOut: answer.leftOut };
+  if (blocks.length === 0) return { outcome: 'nothingWritten', leftOut: answer.leftOut };
   asOneUndoStep(undoOf(handle), () => {
     handle.editor.insertBlocks(blocks as never, blockId, 'after');
   });
