@@ -593,7 +593,7 @@ function AiPanel({
             className='w-[var(--btn-compact)] px-0 text-muted-foreground'
             onClick={close}
           >
-            <X className='h-4 w-4' />
+            <X className='h-3.5 w-3.5' />
           </Button>
         </div>
         {session.state === 'composing' ? (

@@ -48,6 +48,9 @@ const CLOSE_GRACE_MS = 120;
  */
 const MENU_SIDE_OFFSET = 4 + 5;
 
+/** A level opened to the right is pulled up by its own padding and border, so its first row stands level with the row that opened it (as `DropdownMenuSubContent` does). */
+const SUB_ALIGN_OFFSET = -5;
+
 /**
  * The panel a menu is drawn on.
  *
@@ -248,6 +251,7 @@ export function DocumentBubbleMenu({
         align={align}
         side={side}
         sideOffset={MENU_SIDE_OFFSET}
+        alignOffset={side === 'right' ? SUB_ALIGN_OFFSET : 0}
         onPointerEnter={enter}
         onPointerLeave={zoned ? undefined : leave}
         // The focus stays in the body, on both ways.

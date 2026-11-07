@@ -633,6 +633,7 @@ export const AiSlot = React.memo(function AiSlot({
     <SlotShell
       id={id}
       label={t('spaces.document.commands.ai')}
+      align='end'
       face={(
         <>
           <Sparkles className='h-4 w-4' />
