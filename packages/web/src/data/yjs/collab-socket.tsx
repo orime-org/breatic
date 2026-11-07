@@ -16,7 +16,7 @@ import { reportCollabFailure } from '@web/data/yjs/collab-failure-report';
 import { destroyDoc } from '@web/data/yjs/manager';
 import { bindDocSync, type DocSyncBinding } from '@web/data/yjs/doc-sync-binding';
 import {
-  clearAllDocSizes, clearDocSize, docSizeSynced, isSpaceContentDoc, receiveDocSizePayload, startDocResync,
+  clearAllDocSizes, clearDocSize, docSizeSynced, isSpaceContentDoc, readDocSize, receiveDocSizePayload, startDocResync,
 } from '@web/data/yjs/doc-size';
 import { toast } from '@web/lib/toast';
 
@@ -451,17 +451,14 @@ export function acquireDocProvider(
     sync: null,
   };
   const parsed = parseDocName(name);
-  if (parsed?.kind === 'canvas' || parsed?.kind === 'document' || parsed?.kind === 'timeline') {
-    // Timeline takes receipts for its size reservations only; the
-    // leave-project prompt covers canvas and document (inner#1790).
-    entry.sync = bindDocSync(name, doc, provider, () => notifyProjectSync(parsed.projectId), {
-      reportsUnsynced: parsed.kind !== 'timeline',
-    });
+  if (parsed?.kind === 'canvas' || parsed?.kind === 'document') {
+    entry.sync = bindDocSync(name, doc, provider, () => notifyProjectSync(parsed.projectId));
   }
   if (isSpaceContentDoc(name)) {
+    // Every Space document hears its size from collab (inner#1790).
     provider.on('stateless', (data: { payload: string }) => {
       if (docEntries.get(name) !== entry) return;
-      receiveDocSizePayload(name, data.payload, entry.sync?.versions().confirmedVersion ?? Number.POSITIVE_INFINITY);
+      receiveDocSizePayload(name, data.payload);
     });
   }
   docEntries.set(name, entry);
@@ -526,17 +523,10 @@ function resetDocument(name: string): void {
   // collab would queue it and apply it to the fresh connection.
   entry.provider.configuration.websocketProvider.configuration.providerMap.delete(name);
   destroyDocEntry(name, entry);
+  // A refusal while the document is already being rebuilt was told once.
+  const told = readDocSize(name).phase === 'resyncing';
   startDocResync(name);
-  toast.warning(t('spaces.size.resync'));
-}
-
-/**
- * The local and confirmed versions of a document that takes receipts.
- * @param name - Canonical document name.
- * @returns The versions, or null when the document takes none.
- */
-export function readDocVersions(name: string): { localVersion: number; confirmedVersion: number } | null {
-  return docEntries.get(name)?.sync?.versions() ?? null;
+  if (!told) toast.warning(t('spaces.sizeCap.resync'));
 }
 
 /**

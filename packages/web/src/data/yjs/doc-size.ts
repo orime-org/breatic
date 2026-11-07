@@ -8,9 +8,7 @@
  * deployment sets no limit (`limit` 0); then every write goes through. After
  * collab refuses an update the document is rebuilt and stays `resyncing`
  * until the new provider has synced, when it takes the latest push it has
- * received. Reservations hold room for writes whose size is known before they
- * land: each one is released once a push arrives after collab confirmed the
- * write that carried it, since that push already counts the write.
+ * received. The phase is collab's; web never estimates a size.
  */
 
 import * as React from 'react';
@@ -30,20 +28,6 @@ export interface DocSizeState {
   bytes: number | null;
   limit: number | null;
   ceiling: number | null;
-  room: number | null;
-  overwriteRoom: number | null;
-}
-
-/** Room held for a write, released by `release()` or by the push that counts the write. */
-export interface SpaceReservation {
-  release: () => void;
-}
-
-/** One reservation as the document keeps it. */
-interface HeldReservation extends SpaceReservation {
-  bytes: number;
-  /** The document's local version after the write that carried it. */
-  version: number | undefined;
 }
 
 /** One document's size facts. */
@@ -53,12 +37,11 @@ interface SizeEntry {
   /** The latest push received, which a rebuild takes once synced. */
   latest: DocSizeStatus | null;
   resyncing: boolean;
-  reservations: Set<HeldReservation>;
   snapshot: DocSizeState;
 }
 
 const UNKNOWN: DocSizeState = Object.freeze({
-  phase: 'unknown', shownPhase: 'unknown', overCeiling: false, bytes: null, limit: null, ceiling: null, room: null, overwriteRoom: null,
+  phase: 'unknown', shownPhase: 'unknown', overCeiling: false, bytes: null, limit: null, ceiling: null,
 });
 
 const entries = new Map<string, SizeEntry>();
@@ -83,18 +66,15 @@ export function isSpaceContentDoc(name: string): boolean {
  */
 function describe(entry: SizeEntry): DocSizeState {
   const push = entry.shown;
-  const known = push !== null && push.limit > 0;
-  const shownPhase = known ? push.phase : 'unknown';
-  if (push === null) return entry.resyncing ? { ...UNKNOWN, phase: 'resyncing' } : UNKNOWN;
+  // No push yet, or a deployment with no limit: everything goes through.
+  if (push === null || push.limit === 0) return entry.resyncing ? { ...UNKNOWN, phase: 'resyncing' } : UNKNOWN;
   return {
-    phase: entry.resyncing ? 'resyncing' : shownPhase,
-    shownPhase,
-    overCeiling: known && push.bytes > push.ceiling,
+    phase: entry.resyncing ? 'resyncing' : push.phase,
+    shownPhase: push.phase,
+    overCeiling: push.bytes >= push.ceiling,
     bytes: push.bytes,
     limit: push.limit,
     ceiling: push.ceiling,
-    room: push.room,
-    overwriteRoom: push.overwriteRoom,
   };
 }
 
@@ -116,7 +96,7 @@ function changed(name: string, entry: SizeEntry): void {
 function entryOf(name: string): SizeEntry {
   let entry = entries.get(name);
   if (!entry) {
-    entry = { shown: null, latest: null, resyncing: false, reservations: new Set(), snapshot: UNKNOWN };
+    entry = { shown: null, latest: null, resyncing: false, snapshot: UNKNOWN };
     entries.set(name, entry);
   }
   return entry;
@@ -154,14 +134,24 @@ export function useDocSize(name: string): DocSizeState {
 }
 
 /**
+ * Take a `doc:size` push, the only writer of a document's size.
+ * @param name - Canonical document name.
+ * @param status - The push.
+ */
+export function setDocSize(name: string, status: DocSizeStatus): void {
+  if (!isSpaceContentDoc(name)) return;
+  const entry = entryOf(name);
+  entry.latest = status;
+  if (!entry.resyncing) entry.shown = status;
+  changed(name, entry);
+}
+
+/**
  * Take one stateless payload; anything but a valid `doc:size` push is ignored.
  * @param name - Canonical document name.
  * @param payload - The serialized message.
- * @param confirmedVersion - The document's confirmed local version, which
- *   releases the reservations of the writes it covers.
  */
-export function receiveDocSizePayload(name: string, payload: string, confirmedVersion: number): void {
-  if (!isSpaceContentDoc(name)) return;
+export function receiveDocSizePayload(name: string, payload: string): void {
   let value: unknown;
   try {
     value = JSON.parse(payload);
@@ -170,17 +160,7 @@ export function receiveDocSizePayload(name: string, payload: string, confirmedVe
     return;
   }
   const parsed = DocSizeStatusSchema.safeParse(value);
-  if (!parsed.success) return;
-  const push = parsed.data;
-  const entry = entryOf(name);
-  entry.latest = push;
-  if (!entry.resyncing) entry.shown = push;
-  for (const reservation of entry.reservations) {
-    if (push.limit === 0 || (reservation.version !== undefined && reservation.version <= confirmedVersion)) {
-      entry.reservations.delete(reservation);
-    }
-  }
-  changed(name, entry);
+  if (parsed.success) setDocSize(name, parsed.data);
 }
 
 /**
@@ -196,14 +176,13 @@ export function docSizeSynced(name: string): void {
 }
 
 /**
- * Collab refused an update: drop the document's reservations and hold every
- * write until the rebuilt document has synced.
+ * Collab refused an update: hold every write until the rebuilt document has
+ * synced.
  * @param name - Canonical document name.
  */
 export function startDocResync(name: string): void {
   const entry = entryOf(name);
   entry.resyncing = true;
-  entry.reservations.clear();
   changed(name, entry);
   generations.set(name, (generations.get(name) ?? 0) + 1);
   generationListeners.get(name)?.forEach((listener) => listener());
@@ -256,95 +235,4 @@ export function useDocGeneration(name: string): number {
   }, [name]);
   const read = React.useCallback((): number => readDocGeneration(name), [name]);
   return React.useSyncExternalStore(subscribe, read);
-}
-
-/**
- * Room left for new writes: the pushed room less what reservations hold.
- * @param name - Canonical document name.
- * @returns Bytes, at least 0; null while the size is unknown.
- */
-export function availableRoom(name: string): number | null {
-  const entry = entries.get(name);
-  const state = readDocSize(name);
-  if (!entry || state.room === null || state.shownPhase === 'unknown') return null;
-  let held = 0;
-  for (const reservation of entry.reservations) held += reservation.bytes;
-  return Math.max(0, state.room - held);
-}
-
-/**
- * A reservation that holds nothing, for a document whose size is unknown.
- * @returns The handle.
- */
-export function freeReservation(): SpaceReservation {
-  return { release: (): void => undefined };
-}
-
-/**
- * Hold room for a write that lands later.
- * @param name - Canonical document name.
- * @param bytes - Bytes to hold.
- * @returns The reservation.
- */
-export function holdRoom(name: string, bytes: number): SpaceReservation {
-  const entry = entryOf(name);
-  const held: HeldReservation = {
-    bytes,
-    version: undefined,
-    release: (): void => {
-      if (held.version !== undefined || !entry.reservations.has(held)) return;
-      entry.reservations.delete(held);
-      changed(name, entry);
-    },
-  };
-  entry.reservations.add(held);
-  changed(name, entry);
-  return held;
-}
-
-/**
- * The bytes a reservation still holds for a write, or null when it holds
- * nothing any more (released, used by a write, or dropped by a rebuild).
- * @param name - Canonical document name.
- * @param reservation - The handle a caller passed.
- * @returns Its bytes, or null.
- */
-export function heldBytes(name: string, reservation: SpaceReservation | undefined): number | null {
-  const entry = entries.get(name);
-  if (!entry || reservation === undefined || !entry.reservations.has(reservation as HeldReservation)) return null;
-  const held = reservation as HeldReservation;
-  return held.version === undefined ? held.bytes : null;
-}
-
-/**
- * Tie room to a write: the reservation it carried, grown to the write's
- * estimate, or a new one for the estimate. With `version` null the write has
- * not landed yet; no push releases the room until the returned callback
- * gives the version the write landed at.
- * @param name - Canonical document name.
- * @param bytes - The write's estimate.
- * @param version - The document's local version after the write, or null.
- * @param reservation - The reservation the write carried, if it still held room.
- * @returns Sets the version once the write has landed.
- */
-export function bindWrite(
-  name: string,
-  bytes: number,
-  version: number | null,
-  reservation: SpaceReservation | undefined,
-): (landed: number) => void {
-  const entry = entryOf(name);
-  let held = reservation !== undefined && heldBytes(name, reservation) !== null ? (reservation as HeldReservation) : undefined;
-  if (held) {
-    held.bytes = Math.max(held.bytes, bytes);
-  } else {
-    held = { bytes, version: undefined, release: (): void => undefined };
-    entry.reservations.add(held);
-  }
-  const bound = held;
-  bound.version = version ?? Number.POSITIVE_INFINITY;
-  changed(name, entry);
-  return (landed: number): void => {
-    bound.version = landed;
-  };
 }

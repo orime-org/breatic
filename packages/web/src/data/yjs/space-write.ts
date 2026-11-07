@@ -2,192 +2,102 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The one entry through which web writes a Space document (inner#1790).
+ * The one entry through which web writes a Space document (inner#1790,
+ * design 5.2).
  *
- * A write states what it does to the document's size: `add` grows it,
- * `overwrite` replaces existing values, `delete` removes content. Adds stop at
- * the full line and at the room left; overwrites stop once the room kept
- * below the hard ceiling is used up; deletes always go through. Everything
- * goes through while the size is unknown, and nothing while a refused document
- * is being rebuilt. Neither function throws for a full Space: callers read the
- * result.
+ * A write states what it produces in Yjs, never how big it is: `add` writes
+ * new content, `edit` changes fields of existing content, `compound` is a
+ * deletion whose implementation also rewrites other content, `delete` removes
+ * part of existing content, and `remove` drops whole Y types or whole Map
+ * entries. A full Space takes only `delete` and `remove`, matching collab's
+ * pure-delete step; past the hard ceiling only `remove`, matching the
+ * whole-type step. Everything goes through while the size is unknown and
+ * nothing while a refused document is being rebuilt.
  */
 
-import type { Slice } from '@tiptap/pm/model';
-import * as encoding from 'lib0/encoding';
-import * as Y from 'yjs';
-
-import { formatBytes, parseDocName, t } from '@breatic/shared';
-import { readDocVersions } from '@web/data/yjs/collab-socket';
-import { getDoc, hasDoc } from '@web/data/yjs/manager';
-import {
-  availableRoom, bindWrite, freeReservation, heldBytes, holdRoom, readDocSize, type SpaceReservation,
-} from '@web/data/yjs/doc-size';
+import { t } from '@breatic/shared';
+import { readDocSize } from '@web/data/yjs/doc-size';
 import { toast } from '@web/lib/toast';
 
-export type { SpaceReservation } from '@web/data/yjs/doc-size';
+/** What a write produces in Yjs. */
+export type SpaceWriteKind = 'add' | 'edit' | 'compound' | 'delete' | 'remove';
 
-/** Bytes counted for each node a write creates, over its own content. */
-const NODE_BYTES = 64;
+/** Why a write was refused. */
+export type SpaceRefusalReason = 'full' | 'over_ceiling' | 'resyncing';
 
-/**
- * UTF-8 bytes of a string.
- * @param text - The string.
- * @returns Its encoded length.
- */
-export function utf8Bytes(text: string): number {
-  return new TextEncoder().encode(text).byteLength;
-}
-
-/**
- * The bytes yjs stores a map value or a node attribute in: `ContentAny`,
- * written with lib0's `writeAny`. No value counts 0, and so does a shared
- * type, which is not stored that way.
- * @param value - The value.
- * @returns Bytes.
- */
-export function encodedValueBytes(value: unknown): number {
-  if (value === undefined || value instanceof Y.AbstractType) return 0;
-  const encoder = encoding.createEncoder();
-  encoding.writeAny(encoder, value as Parameters<typeof encoding.writeAny>[1]);
-  return encoding.length(encoder);
-}
-
-/**
- * How a write that replaces values is judged (inner#1790): yjs deletes a
- * value as it writes the one replacing it, so values no larger than the ones
- * they replace are an overwrite, which collab admits up to the hard ceiling;
- * larger ones are an add of the difference and the new item.
- * @param current - Bytes of the values replaced, by {@link encodedValueBytes}.
- * @param next - Bytes of the values written.
- * @returns The options for `writeSpaceDoc`.
- */
-export function replacementJudgement(current: number, next: number): SpaceWriteOptions {
-  return next <= current ? { kind: 'overwrite' } : { kind: 'add', estimate: next - current + NODE_BYTES };
-}
-
-/**
- * What adding one canvas node can grow its document by. Multi-line text in
- * it (a text node's content, a prompt) is written one block per line.
- * @param node - The node's fields as they are written.
- * @returns Bytes.
- */
-export function estimateNodeBytes(node: unknown): number {
-  const json = JSON.stringify(node) ?? '';
-  return utf8Bytes(json) + NODE_BYTES * json.split('\\n').length;
-}
-
-/**
- * What writing plain text into a body can grow its document by: one block
- * per line, each with its own structure.
- * @param text - The text.
- * @returns Bytes.
- */
-export function estimateTextBodyBytes(text: string): number {
-  return utf8Bytes(text) + NODE_BYTES * text.split('\n').length;
-}
-
-/**
- * What inserting a ProseMirror slice can grow its document by: its text, a
- * fixed count per node, and the attributes and marks it carries.
- * @param slice - The slice.
- * @returns Bytes.
- */
-export function estimateSliceBytes(slice: Slice): number {
-  let bytes = 0;
-  slice.content.descendants((node) => {
-    bytes += NODE_BYTES + utf8Bytes(JSON.stringify(node.attrs));
-    if (node.isText) bytes += utf8Bytes(node.text ?? '');
-    for (const mark of node.marks) bytes += utf8Bytes(JSON.stringify(mark.toJSON()));
-    return true;
-  });
-  return bytes;
-}
-
-/** What a write does to the document's size. */
-export type SpaceWriteKind = 'add' | 'overwrite' | 'delete';
-
-/** Why a write or reservation was refused. */
-export type SpaceRefusal = { ok: false; reason: 'full' } | { ok: false; reason: 'no_room'; room: number };
+/** A refused write. */
+export type SpaceRefusal = { ok: false; reason: SpaceRefusalReason };
 
 /** The outcome of `writeSpaceDoc`. */
 export type SpaceWriteResult = { ok: true } | SpaceRefusal;
 
-/** The outcome of `reserveSpaceRoom`. */
-export type SpaceReserveResult = { ok: true; reservation: SpaceReservation } | SpaceRefusal;
-
 /** How a write is judged. */
 export interface SpaceWriteOptions {
   kind: SpaceWriteKind;
-  /** Bytes an add can grow the document by. */
-  estimate?: number;
-  /** Room reserved for this write before it was requested from the server. */
-  reservation?: SpaceReservation;
   /** Show the refusal toast; false for entries that report the outcome themselves. */
   notify?: boolean;
-  /**
-   * The Yjs write happens after this call returns (a ProseMirror sync plugin
-   * applies an allowed transaction on its next view update); the room is
-   * tied to the document's next local update.
-   */
-  landsLater?: boolean;
 }
 
 /**
- * The sentence for a refused write.
+ * Why a write of this kind is refused right now.
  * @param name - Canonical document name.
- * @param kind - The refused kind.
- * @param refusal - The refusal.
- * @returns The sentence.
+ * @param kind - The kind.
+ * @returns The reason, or null when the write may run.
  */
-export function spaceRefusalMessage(name: string, kind: Exclude<SpaceWriteKind, 'delete'>, refusal: SpaceRefusal): string {
-  if (refusal.reason === 'no_room') return t('spaces.size.noRoom', { room: formatBytes(refusal.room) });
-  const spaceKind = parseDocName(name)?.kind;
-  if (spaceKind === 'timeline') return t('spaces.size.timelineFull');
-  if (spaceKind === '3d') return t('spaces.size.threeDFull');
-  return t(kind === 'add' ? 'spaces.size.addBlocked' : 'spaces.size.overwriteBlocked');
+function refusalOf(name: string, kind: SpaceWriteKind): SpaceRefusalReason | null {
+  const state = readDocSize(name);
+  if (state.phase === 'resyncing') return 'resyncing';
+  if (state.phase !== 'full') return null;
+  if (state.overCeiling) return kind === 'remove' ? null : 'over_ceiling';
+  return kind === 'delete' || kind === 'remove' ? null : 'full';
 }
 
 /**
- * The sentence for an Agent proposal the Space had no room for.
- * @param refusal - The refusal.
- * @returns The sentence.
+ * The sentence for a refused write; none while a refused document is being
+ * rebuilt, whose own sentence was shown once.
+ * @param kind - The refused kind.
+ * @param reason - Why.
+ * @returns The sentence, or null.
  */
-export function proposalRefusalMessage(refusal: SpaceRefusal): string {
-  return refusal.reason === 'no_room'
-    ? t('spaces.size.proposalNoRoom', { room: formatBytes(refusal.room) })
-    : t('spaces.size.proposalFull');
+export function spaceRefusalMessage(kind: SpaceWriteKind, reason: SpaceRefusalReason): string | null {
+  if (reason === 'resyncing') return null;
+  if (reason === 'over_ceiling') return t('spaces.sizeCap.over');
+  return t(kind === 'compound' ? 'spaces.sizeCap.compound' : 'spaces.sizeCap.add');
 }
 
 /**
- * Refuse, with the toast unless the caller reports it or the document is
- * being rebuilt (its own toast was shown once).
- * @param name - Canonical document name.
+ * Refuse, with the toast unless the caller reports it.
  * @param kind - The refused kind.
- * @param refusal - The refusal.
+ * @param reason - Why.
  * @param notify - Whether to toast.
  * @returns The refusal.
  */
-function refuse<R extends SpaceRefusal>(name: string, kind: Exclude<SpaceWriteKind, 'delete'>, refusal: R, notify: boolean): R {
-  if (notify && readDocSize(name).phase !== 'resyncing') toast.warning(spaceRefusalMessage(name, kind, refusal));
-  return refusal;
+function refuse(kind: SpaceWriteKind, reason: SpaceRefusalReason, notify: boolean): SpaceRefusal {
+  const message = notify ? spaceRefusalMessage(kind, reason) : null;
+  if (message !== null) toast.warning(message);
+  return { ok: false, reason };
 }
 
 /**
- * Hold room for a write that is requested from the server before it lands.
+ * Whether new content may be added now: a request whose result is written
+ * into the Space asks this before it goes to the server.
  * @param name - Canonical document name.
- * @param estimateBytes - Bytes the write can add.
+ * @returns False while the Space is full or being rebuilt.
+ */
+export function canAdd(name: string): boolean {
+  return refusalOf(name, 'add') === null;
+}
+
+/**
+ * {@link canAdd}, with the toast the state calls for when it is false.
+ * @param name - Canonical document name.
  * @param options - Options.
  * @param options.notify - Show the refusal toast (default true).
- * @returns The reservation, or why there is no room.
+ * @returns Whether the request may go, or why not.
  */
-export function reserveSpaceRoom(name: string, estimateBytes: number, { notify = true }: { notify?: boolean } = {}): SpaceReserveResult {
-  const state = readDocSize(name);
-  if (state.phase === 'full' || state.phase === 'resyncing') return refuse(name, 'add', { ok: false, reason: 'full' }, notify);
-  const room = availableRoom(name);
-  if (room === null) return { ok: true, reservation: freeReservation() };
-  if (estimateBytes > room) return refuse(name, 'add', { ok: false, reason: 'no_room', room }, notify);
-  return { ok: true, reservation: holdRoom(name, estimateBytes) };
+export function checkAdd(name: string, { notify = true }: { notify?: boolean } = {}): SpaceWriteResult {
+  const reason = refusalOf(name, 'add');
+  return reason === null ? { ok: true } : refuse('add', reason, notify);
 }
 
 /** Space documents with an allowed write running, by depth. */
@@ -210,103 +120,38 @@ function run(name: string, write: () => void): void {
   }
 }
 
-const KIND_RANK: Record<SpaceWriteKind, number> = { delete: 0, overwrite: 1, add: 2 };
+const KIND_RANK: Record<SpaceWriteKind, number> = { remove: 0, delete: 1, compound: 2, edit: 3, add: 4 };
 
 /**
- * How several writes made as one are judged: the strongest kind
- * (`add` > `overwrite` > `delete`) and the adds' estimates summed.
- * @param writes - Each write's options; null entries are skipped.
- * @returns The options for the writes together.
+ * The kind several writes made as one are judged by: the strongest
+ * (`add` > `edit` > `compound` > `delete` > `remove`).
+ * @param kinds - Each write's kind.
+ * @returns The strongest kind; `remove` for none.
  */
-export function strongestWrite(...writes: ReadonlyArray<SpaceWriteOptions | null>): SpaceWriteOptions {
-  let kind: SpaceWriteKind = 'delete';
-  let estimate = 0;
-  for (const write of writes) {
-    if (!write) continue;
-    if (KIND_RANK[write.kind] > KIND_RANK[kind]) kind = write.kind;
-    if (write.kind === 'add') estimate += write.estimate ?? 0;
-  }
-  return kind === 'add' ? { kind, estimate } : { kind };
+export function strongestKind(...kinds: ReadonlyArray<SpaceWriteKind>): SpaceWriteKind {
+  let strongest: SpaceWriteKind = 'remove';
+  for (const kind of kinds) if (KIND_RANK[kind] > KIND_RANK[strongest]) strongest = kind;
+  return strongest;
 }
 
 /**
  * Write a Space document if its size allows the write.
  * @param name - Canonical document name.
- * @param options - What the write does and what it carries.
+ * @param options - What the write produces.
  * @param write - The write; runs only when allowed.
  * @returns Whether it ran, or why not.
  * @throws {Error} Whatever `write` throws.
  */
 export function writeSpaceDoc(name: string, options: SpaceWriteOptions, write: () => void): SpaceWriteResult {
   // A write inside an allowed one is part of it: the outer write stated the
-  // strongest kind and the whole estimate.
+  // strongest kind.
   if ((openWrites.get(name) ?? 0) > 0) {
     write();
     return { ok: true };
   }
-  const { kind, estimate, reservation, notify = true, landsLater = false } = options;
-  const state = readDocSize(name);
-  if (state.phase === 'resyncing') return kind === 'delete' ? { ok: false, reason: 'full' } : refuse(name, kind, { ok: false, reason: 'full' }, notify);
-  if (state.phase === 'unknown' || kind === 'delete') {
-    run(name, write);
-    return { ok: true };
-  }
-  if (kind === 'overwrite') {
-    if (state.overwriteRoom === 0) return refuse(name, kind, { ok: false, reason: 'full' }, notify);
-    run(name, write);
-    return { ok: true };
-  }
-  if (state.phase === 'full') return refuse(name, kind, { ok: false, reason: 'full' }, notify);
-  const held = heldBytes(name, reservation);
-  const room = availableRoom(name) ?? 0;
-  if (estimate !== undefined && estimate - (held ?? 0) > room) return refuse(name, kind, { ok: false, reason: 'no_room', room }, notify);
+  const { kind, notify = true } = options;
+  const reason = refusalOf(name, kind);
+  if (reason !== null) return refuse(kind, reason, notify);
   run(name, write);
-  if (estimate !== undefined || held !== null) {
-    const carried = held !== null ? reservation : undefined;
-    if (landsLater) bindOnNextLocalUpdate(name, bindWrite(name, estimate ?? 0, null, carried));
-    else bindWrite(name, estimate ?? 0, readDocVersions(name)?.localVersion ?? 0, carried);
-  }
   return { ok: true };
-}
-
-/**
- * Give a pending write its version at the document's next local update, or
- * the current version if none happens before the next microtask (the
- * allowed transaction changed nothing in Yjs).
- * @param name - Canonical document name.
- * @param setVersion - Sets the version the write landed at.
- */
-function bindOnNextLocalUpdate(name: string, setVersion: (landed: number) => void): void {
-  /**
-   * The document's local version now.
-   * @returns The version, 0 for a document that takes no receipts.
-   */
-  const current = (): number => readDocVersions(name)?.localVersion ?? 0;
-  if (!hasDoc(name)) {
-    setVersion(current());
-    return;
-  }
-  const doc = getDoc(name);
-  let done = false;
-  /**
-   * Bind at the first local update; the sync binding counted it already.
-   * @param _update - The update.
-   * @param _origin - Its origin.
-   * @param _doc - The document.
-   * @param transaction - The transaction.
-   * @param transaction.local - Whether this client made it.
-   */
-  const onUpdate = (_update: Uint8Array, _origin: unknown, _doc: unknown, transaction: { local: boolean }): void => {
-    if (done || !transaction.local) return;
-    done = true;
-    doc.off('update', onUpdate);
-    setVersion(current());
-  };
-  doc.on('update', onUpdate);
-  queueMicrotask(() => {
-    if (done) return;
-    done = true;
-    doc.off('update', onUpdate);
-    setVersion(current());
-  });
 }

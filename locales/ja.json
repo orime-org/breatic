@@ -2264,22 +2264,18 @@
         "placeFailed": "モデルをシーンに配置できませんでした。"
       }
     },
-    "size": {
-      "warning": "この Space は上限 {limit} のうち {used} を使用しています。",
-      "fullNotice": "この Space はいっぱいです（{used} / {limit}）。追加するには一部の内容を削除してください。",
-      "addBlocked": "この Space はいっぱいです。追加するには一部の内容を削除してください。",
-      "overwriteBlocked": "この Space はいっぱいです。内容を削除するまで移動や変更はできません。",
-      "noRoom": "収まりません。この Space の残りは {room} です。",
-      "overCeilingDelete": "この Space は上限を超えています。ノード全体または段落全体を削除してください。",
-      "timelineFull": "この Space はいっぱいで、これ以上追加できません。",
-      "threeDFull": "この Space はいっぱいで、これ以上編集できません。",
+    "sizeCap": {
+      "noticeWarning": "この Space は {used} を使用しています。{limit} を超えると、これ以上内容を追加できません。",
+      "noticeFull": "この Space はいっぱいです（{used} / {limit}）。上限を下回るまでは内容の削除だけができます。",
+      "noticeOver": "この Space は上限を超えています（{used} / {limit}）。ノード全体または段落全体の削除だけができます。",
+      "add": "この Space はいっぱいです。編集を続けるには一部の内容を削除してください。",
+      "compound": "この Space はいっぱいです。この削除はほかの内容も変更するため、今は実行できません。",
+      "over": "この Space は上限を超えています。ノード全体または段落全体を削除してください。",
       "resync": "直前の変更はこの Space のサイズ上限を超えたため、保存されませんでした。",
-      "proposalFull": "この Space はいっぱいのため、提案は配置されませんでした。",
-      "proposalNoRoom": "収まりません。この Space の残りは {room} のため、提案は配置されませんでした。",
-      "uploadFailed": "アップロードに失敗しました",
-      "spaceFullReason": "この Space はいっぱいです。",
-      "textNoRoom": "テキストは追加されませんでした。収まりません。この Space の残りは {room} です。",
-      "textFull": "テキストは追加されませんでした。この Space はいっぱいです。"
+      "proposal": "この Space はいっぱいのため、提案は配置されませんでした。",
+      "reason": "この Space はいっぱいです。",
+      "text": "テキストは追加されませんでした。この Space はいっぱいです。",
+      "wait": "この Space はいっぱいです。一部の内容を削除すると完了します。"
     }
   },
   "menu": {

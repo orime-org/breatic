@@ -12,15 +12,7 @@ import { createDocSyncState, transitionDocSync, type DocSyncEvent } from '@web/d
 /** The observations retained by one provider registry entry. */
 export interface DocSyncBinding {
   hasUnsyncedEdits: () => boolean;
-  /** A snapshot of the local and confirmed versions. */
-  versions: () => { localVersion: number; confirmedVersion: number };
   dispose: () => void;
-}
-
-/** How a binding takes part in the leave-project prompt. */
-export interface DocSyncOptions {
-  /** Whether unconfirmed edits count toward the leave-project prompt (default true). */
-  reportsUnsynced?: boolean;
 }
 
 /**
@@ -29,18 +21,10 @@ export interface DocSyncOptions {
  * @param doc - Document owned by the provider entry.
  * @param provider - Provider whose original owner controls attachment.
  * @param changed - Publishes changes to the derived unsynced fact.
- * @param options - How the binding takes part in the leave-project prompt.
- * @param options.reportsUnsynced - Whether unconfirmed edits count toward the prompt.
  * @returns The entry-owned read and cleanup handles.
  * @throws {never} Registration itself does not throw.
  */
-export function bindDocSync(
-  name: string,
-  doc: Y.Doc,
-  provider: HocuspocusProvider,
-  changed: () => void,
-  { reportsUnsynced = true }: DocSyncOptions = {},
-): DocSyncBinding {
+export function bindDocSync(name: string, doc: Y.Doc, provider: HocuspocusProvider, changed: () => void): DocSyncBinding {
   let state = createDocSyncState();
   let active = true;
 
@@ -49,17 +33,8 @@ export function bindDocSync(
    * @returns Whether local edits await a matching receipt.
    * @throws {never} Never.
    */
-  function awaitsReceipt(): boolean {
-    return state.localVersion > state.confirmedVersion;
-  }
-
-  /**
-   * The unsynced fact the leave-project prompt reads.
-   * @returns Whether local edits await a receipt and count toward the prompt.
-   * @throws {never} Never.
-   */
   function hasUnsyncedEdits(): boolean {
-    return reportsUnsynced && awaitsReceipt();
+    return state.localVersion > state.confirmedVersion;
   }
 
   /**
@@ -79,7 +54,7 @@ export function bindDocSync(
    * @throws {Error} Propagates provider send failures after invalidating the request.
    */
   function sendConfirmation(): void {
-    if (!active || !state.handshakeComplete || state.pending !== null || !awaitsReceipt()) return;
+    if (!active || !state.handshakeComplete || state.pending !== null || !hasUnsyncedEdits()) return;
     if (!provider.isAttached || !provider.isAuthenticated || provider.authorizedScope !== 'read-write') return;
     if (provider.configuration.websocketProvider.webSocket?.readyState !== WebSocket.OPEN) return;
     const request: SyncConfirmRequest = { type: 'sync:confirm', id: newId() };
@@ -172,7 +147,6 @@ export function bindDocSync(
 
   return {
     hasUnsyncedEdits,
-    versions: () => ({ localVersion: state.localVersion, confirmedVersion: state.confirmedVersion }),
     dispose: (): void => {
       active = false;
       state = transitionDocSync(state, { type: 'invalidate' });

@@ -2264,22 +2264,18 @@
         "placeFailed": "模型未能放入場景。"
       }
     },
-    "size": {
-      "warning": "這個 Space 已用 {used}，上限 {limit}。",
-      "fullNotice": "這個 Space 已滿（{used} / {limit}），刪除一些內容後才能繼續新增。",
-      "addBlocked": "這個 Space 已滿，刪除一些內容後才能繼續新增。",
-      "overwriteBlocked": "這個 Space 已滿，暫時不能再移動或修改，刪除一些內容後可繼續。",
-      "noRoom": "放不下：這個 Space 只剩 {room}。",
-      "overCeilingDelete": "這個 Space 已超出上限，請刪除整個節點或整段內容。",
-      "timelineFull": "這個 Space 已滿，無法繼續新增。",
-      "threeDFull": "這個 Space 已滿，無法繼續編輯。",
+    "sizeCap": {
+      "noticeWarning": "這個 Space 已用 {used}，超過 {limit} 後將不能再新增內容。",
+      "noticeFull": "這個 Space 已滿（{used} / {limit}），只能刪除內容，降到上限以下後才能繼續編輯。",
+      "noticeOver": "這個 Space 已超出上限（{used} / {limit}），只能刪除整個節點或整段內容。",
+      "add": "這個 Space 已滿，刪除一些內容後才能繼續編輯。",
+      "compound": "這個 Space 已滿，這項刪除還要改動其他內容，暫時不能執行。",
+      "over": "這個 Space 已超出上限，請刪除整個節點或整段內容。",
       "resync": "你剛才的變更超出了這個 Space 的大小上限，沒有儲存。",
-      "proposalFull": "這個 Space 已滿，提案沒有放進去。",
-      "proposalNoRoom": "放不下：這個 Space 只剩 {room}，提案沒有放進去。",
-      "uploadFailed": "上傳失敗",
-      "spaceFullReason": "這個 Space 已滿。",
-      "textNoRoom": "文字沒有寫入：放不下，這個 Space 只剩 {room}。",
-      "textFull": "文字沒有寫入：這個 Space 已滿。"
+      "proposal": "這個 Space 已滿，提案沒有放進去。",
+      "reason": "這個 Space 已滿。",
+      "text": "文字沒有寫入：這個 Space 已滿。",
+      "wait": "這個 Space 已滿，刪除一些內容後會自動完成。"
     }
   },
   "menu": {
