@@ -41,6 +41,11 @@ const OPEN: AccountReferral = {
  */
 function setup(view: AccountReferral): void {
   api.get.mockResolvedValue(view);
+  mount();
+}
+
+/** Renders the section over whatever the read is set to answer. */
+function mount(): void {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
@@ -79,6 +84,30 @@ afterEach(() => {
 });
 
 describe('the promoter program section (inner#1868 table 12.11)', () => {
+  it('shows a skeleton on the first read', () => {
+    api.get.mockReturnValue(new Promise(() => {}));
+    mount();
+    expect(screen.getByTestId('promoter-loading')).toBeInTheDocument();
+  });
+
+  it('shows a failed first read with a retry that reads again', async () => {
+    api.get
+      .mockRejectedValueOnce(new ApiException({ status: 500, message: 'down', fromServer: true }))
+      .mockResolvedValueOnce({ ...OPEN, program: { open: false, termsVersion: '' } });
+    const user = userEvent.setup();
+    mount();
+    await user.click(await screen.findByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText('Promoter applications are not open yet.')).toBeInTheDocument();
+  });
+
+  it('draws nothing while payments are off', async () => {
+    api.get.mockRejectedValue(new ApiException({ status: 404, message: 'off', fromServer: true }));
+    mount();
+    await waitFor(() => expect(screen.queryByTestId('promoter-loading')).toBeNull());
+    expect(screen.queryByText('Promoter program')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
   it('says applications are not open yet', async () => {
     setup({ ...OPEN, program: { open: false, termsVersion: '' } });
     expect(await screen.findByText('Promoter applications are not open yet.')).toBeInTheDocument();
@@ -157,6 +186,34 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
     expect(viewport!.contains(screen.getByRole('heading', { name: 'Apply to become a promoter' }))).toBe(false);
   });
 
+  it('names every missing field instead of sending', async () => {
+    const user = userEvent.setup();
+    setup(OPEN);
+    await user.click(await screen.findByRole('button', { name: 'Apply to become a promoter' }));
+    await user.click(screen.getByRole('button', { name: 'Submit application' }));
+    expect(screen.getByText('Choose a country or region.')).toBeInTheDocument();
+    expect(screen.getByText('Add at least one channel.')).toBeInTheDocument();
+    expect(screen.getByText('Describe how you will promote.')).toBeInTheDocument();
+    expect(screen.getByText('Agree to the promoter terms to apply.')).toBeInTheDocument();
+    expect(api.apply).not.toHaveBeenCalled();
+  });
+
+  it('locks the form while the application is being sent, so what is sent is what shows', async () => {
+    api.apply.mockReturnValue(new Promise(() => {}));
+    const user = userEvent.setup();
+    setup(OPEN);
+    await user.click(await screen.findByRole('button', { name: 'Apply to become a promoter' }));
+    await fillForm(user);
+    await user.click(screen.getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: 'Submit application' }));
+    await waitFor(() => expect(api.apply).toHaveBeenCalled());
+    expect(screen.getByRole('checkbox')).toBeDisabled();
+    expect(screen.getByLabelText('Country or region')).toBeDisabled();
+    expect(screen.getByLabelText('How you will promote')).toBeDisabled();
+    for (const input of screen.getAllByRole('textbox').filter((el) => el.tagName === 'INPUT')) expect(input).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add another' })).toBeDisabled();
+  });
+
   it('asks for agreement to the terms before sending', async () => {
     const user = userEvent.setup();
     setup(OPEN);
@@ -218,6 +275,19 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
     await user.click(screen.getByRole('button', { name: 'Submit application' }));
     await waitFor(() => expect(api.apply).toHaveBeenCalledTimes(2));
     expect(api.apply.mock.calls[1]![0]).toMatchObject({ termsVersion: '2026-12-01' });
+  });
+
+  it.each(['program_closed', 'already_promoter'])('closes, toasts and reads the section again on %s', async (reason) => {
+    api.apply.mockRejectedValue(refusal409(reason));
+    const user = userEvent.setup();
+    setup(OPEN);
+    await user.click(await screen.findByRole('button', { name: 'Apply to become a promoter' }));
+    await fillForm(user);
+    await user.click(screen.getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: 'Submit application' }));
+    await waitFor(() => expect(toasts.error).toHaveBeenCalledWith(`refused ${reason}`));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(api.get.mock.calls.length).toBeGreaterThan(1);
   });
 
   it('closes, toasts and reads the section again when an application is already under review', async () => {

@@ -126,6 +126,16 @@ describe('the referral code section (inner#1868 tables 12.9, 12.10)', () => {
     expect(invalidate).toHaveBeenCalledWith(expect.objectContaining({ queryKey: membershipQueryKey('u1') }));
   });
 
+  it('locks the field while the code is being sent', async () => {
+    api.get.mockResolvedValue(CAN_BIND);
+    api.bind.mockReturnValue(new Promise(() => {}));
+    const user = userEvent.setup();
+    setup();
+    await user.type(await screen.findByLabelText('Referral code'), 'ALICE');
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(screen.getByLabelText('Referral code')).toHaveAttribute('readonly'));
+  });
+
   it('asks for a code instead of sending an empty one', async () => {
     api.get.mockResolvedValue(CAN_BIND);
     const user = userEvent.setup();
