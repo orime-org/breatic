@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
 import { createPresentedFrameClock } from '../presented-frame-clock';
 
@@ -44,6 +44,43 @@ describe('actual presented-frame identity', () => {
     clock.commit(0.2, 1);
     expect(clock.getFrame()).toBeNull();
   });
+  // Chromium calls a paused seek's one frame back while `seeking` is still true, before `seeked` (the inner#1306 probe
+  // `seeking-in-rvfc-probe.spec.ts`); no later frame comes while paused.
+  it('makes a paused seek frame current at seeked when it was called back while still seeking', () => {
+    const element = document.createElement('video');
+    let seeking = false;
+    Object.defineProperty(element, 'seeking', { configurable: true, get: () => seeking });
+    const late = vi.fn();
+    const clock = createPresentedFrameClock(element, element, 'canonical-a', 4, late);
+    seeking = true;
+    element.dispatchEvent(new Event('seeking'));
+    expect(clock.commit(1, clock.getSeekEpoch())).toBeNull();
+    expect(clock.getFrame()).toBeNull();
+    seeking = false;
+    element.dispatchEvent(new Event('seeked'));
+    const current = { sourceKey: 'canonical-a', sourceEpoch: 4, seekEpoch: 1, mediaTime: 1, surface: element };
+    expect(clock.getFrame()).toEqual(current);
+    expect(late).toHaveBeenCalledExactlyOnceWith(current);
+    clock.dispose();
+  });
+
+  it('drops a frame held during a seek that another seek replaced before seeked', () => {
+    const element = document.createElement('video');
+    let seeking = false;
+    Object.defineProperty(element, 'seeking', { configurable: true, get: () => seeking });
+    const late = vi.fn();
+    const clock = createPresentedFrameClock(element, element, 'canonical-a', 4, late);
+    seeking = true;
+    element.dispatchEvent(new Event('seeking'));
+    clock.commit(1, clock.getSeekEpoch());
+    element.dispatchEvent(new Event('seeking'));
+    seeking = false;
+    element.dispatchEvent(new Event('seeked'));
+    expect(clock.getFrame()).toBeNull();
+    expect(late).not.toHaveBeenCalled();
+    clock.dispose();
+  });
+
   it('accepts only the latest seek epoch across rapid seeks', () => {
     fc.assert(fc.property(fc.array(fc.double({ min: 0, max: 7200, noNaN: true }), { minLength: 3, maxLength: 20 }), (times) => {
       const element = document.createElement('video');

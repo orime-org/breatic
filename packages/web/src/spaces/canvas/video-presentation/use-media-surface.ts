@@ -90,7 +90,7 @@ export function useMediaSurface({ host, container, source, active, createRendere
           clock?.dispose();
           binding?.element.pause();
           element.pause();
-          clock = createPresentedFrameClock(element, surface, sourceKey, epoch);
+          clock = createPresentedFrameClock(element, surface, sourceKey, epoch, (frame) => { if (live && !terminal) onPresentedFrameRef.current?.(frame); });
           const frameClock = clock;
           binding = {
             sourceKey, sourceEpoch: epoch, element, surface, container: container?.current ?? host.current!, original,
