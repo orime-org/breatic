@@ -68,6 +68,7 @@ const plannedClaims = {
 const plannedContainerClasses = {
   "video.extract-frames": "MiniToolContainerStd4",
   "video.split": "MiniToolContainerStd4",
+  "video.lip-sync": "MiniToolContainerStd4",
   // Transitions encode and stitch on standard-4; their window chunks run on the GL class (frames-split §5.4 dispatch row).
   "video.transitions": "MiniToolContainerStd4",
 } as const;

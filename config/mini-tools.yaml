@@ -29,6 +29,26 @@ executions:
     precheck_seconds: 300
     max_outputs: 8
     max_outputs_per_job: 8
+  # Lip-sync (inner#1306): each model's schema_fingerprint is the sha256 of its live model_run request_schema
+  # serialized with sorted keys; a changed fingerprint means the provider changed the request contract. Both
+  # models completed a one-frame clip, so the floor is one frame at 25 fps; the ceilings are the catalog's.
+  video.lip-sync:
+    container_class: "MiniToolContainerStd4"
+    precheck_seconds: 300
+    max_outputs: 1
+    models:
+      - name: "sync-lipsync-3"
+        schema_fingerprint: "b8ce4750db984012285fd6086a514fb109ffd91f804863bf6d4cb7f0d0f73981"
+        min_duration_seconds: 0.04
+        max_duration_seconds: 300
+        crop_size: 512
+        accepts_sync_mode: false
+    tracking:
+      model: "sam3-video-rle"
+      min_duration_seconds: 0.04
+      max_duration_seconds: 600
+    max_people: 2
+    max_dialogues: 8
   # Encode chunks and the stitch run on standard-4; the overlap window renders on the GL image at the same size.
   video.transitions:
     container_class: "MiniToolContainerStd4"
