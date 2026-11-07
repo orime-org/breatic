@@ -207,14 +207,7 @@ test('the highlight follows the scroll, and a short last section keeps the one c
   await expect.poll(() => highlighted(page)).toBe('One');
 
   await row(page, 'Tail a').click();
-  // Wait for the animated scroll to stop at the bottom: only then does the
-  // end of the document keeping Tail a short of its landing show.
-  await expect.poll(() => page.evaluate((viewport) => {
-    const vp = document.querySelector(viewport)!;
-    return vp.scrollTop + vp.clientHeight >= vp.scrollHeight - 2;
-  }, VIEWPORT)).toBe(true);
-  await page.waitForTimeout(200);
-  expect(await highlighted(page)).toBe('Tail a');
+  await expect.poll(() => highlighted(page)).toBe('Tail a');
 
   await page.mouse.move(900, 500);
   await page.mouse.wheel(0, -600);

@@ -252,9 +252,7 @@ export const DocumentOutline = React.memo(function DocumentOutline({
   // A jump holds the highlight on the heading clicked until the smooth scroll
   // stops at its target; it keeps holding past that only when the end of the
   // document stopped it short of the landing, until the user scrolls away.
-  // `gap` is how far the scroll still is from the target: a smooth scroll only
-  // ever closes it, so a gap that grows means something else took the scroll.
-  const jumping = React.useRef<{ id: string; target: number; keep: boolean; arrived: boolean; gap: number } | null>(null);
+  const jumping = React.useRef<{ id: string; target: number; keep: boolean; arrived: boolean } | null>(null);
   React.useEffect(() => {
     if (viewport === null) return undefined;
     const ids = [...ancestors.keys()];
@@ -285,39 +283,23 @@ export const DocumentOutline = React.memo(function DocumentOutline({
     const schedule = (): void => {
       if (frame === 0) frame = requestAnimationFrame(compute);
     };
-    /**
-     * A jump arrives once the scroll reaches its target and lets go once the
-     * scroll leaves it; before arriving, a scroll that moves away from the
-     * target is someone else's, and ends the jump.
-     */
+    /** A jump arrives once the scroll reaches its target, and lets go once the user scrolls away from there. */
     const onScroll = (): void => {
       const jump = jumping.current;
       if (jump !== null) {
-        const gap = Math.abs(viewport.scrollTop - jump.target);
-        if (jump.arrived) {
-          if (gap > 1) jumping.current = null;
-        } else if (gap <= 1) {
+        const there = Math.abs(viewport.scrollTop - jump.target) <= 1;
+        if (!jump.arrived && there) {
           jump.arrived = true;
           if (!jump.keep) jumping.current = null;
-        } else if (gap > jump.gap + 1) {
+        } else if (jump.arrived && !there) {
           jumping.current = null;
-        } else {
-          jump.gap = gap;
         }
       }
       schedule();
     };
-    /** The user taking the scroll over in the middle of a jump, on the body or its scrollbar, ends it. */
+    /** The user taking the scroll over in the middle of a jump ends it. */
     const onTakeOver = (): void => {
       if (jumping.current !== null && !jumping.current.arrived) {
-        jumping.current = null;
-        schedule();
-      }
-    };
-    /** A scroll that stopped short of the target (the document shrank, the Space was hidden) ends the jump. */
-    const onScrollEnd = (): void => {
-      const jump = jumping.current;
-      if (jump !== null && !jump.arrived && Math.abs(viewport.scrollTop - jump.target) > 1) {
         jumping.current = null;
         schedule();
       }
@@ -328,18 +310,14 @@ export const DocumentOutline = React.memo(function DocumentOutline({
     sizes.observe(viewport);
     const content = viewport.querySelector('.doc-body-editor');
     if (content !== null) sizes.observe(content);
-    // The scroll area's root holds the viewport and its scrollbar.
-    const area = viewport.parentElement ?? viewport;
     viewport.addEventListener('scroll', onScroll, { passive: true });
-    viewport.addEventListener('scrollend', onScrollEnd);
-    area.addEventListener('wheel', onTakeOver, { passive: true });
-    area.addEventListener('pointerdown', onTakeOver);
+    viewport.addEventListener('wheel', onTakeOver, { passive: true });
+    viewport.addEventListener('pointerdown', onTakeOver);
     compute();
     return () => {
       viewport.removeEventListener('scroll', onScroll);
-      viewport.removeEventListener('scrollend', onScrollEnd);
-      area.removeEventListener('wheel', onTakeOver);
-      area.removeEventListener('pointerdown', onTakeOver);
+      viewport.removeEventListener('wheel', onTakeOver);
+      viewport.removeEventListener('pointerdown', onTakeOver);
       sizes.disconnect();
       if (frame !== 0) cancelAnimationFrame(frame);
     };
@@ -372,10 +350,9 @@ export const DocumentOutline = React.memo(function DocumentOutline({
     const target = Math.max(0, Math.min(viewport.scrollHeight - viewport.clientHeight, want));
     // The same smooth scroll an Agent landing uses (`DocumentEditor.tsx`).
     viewport.scrollTo({ top: target, behavior: 'smooth' });
-    const gap = Math.abs(viewport.scrollTop - target);
-    const arrived = gap <= 1;
+    const arrived = Math.abs(viewport.scrollTop - target) <= 1;
     const keep = target < want;
-    jumping.current = arrived && !keep ? null : { id, target, keep, arrived, gap };
+    jumping.current = arrived && !keep ? null : { id, target, keep, arrived };
     setReading(id);
     if (!readOnly) {
       editor.setTextCursorPosition(id, 'start');
