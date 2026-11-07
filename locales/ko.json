@@ -2072,7 +2072,7 @@
       "outline": {
         "show": "개요 표시",
         "hide": "개요 숨기기",
-        "empty": "추가한 제목이 여기에 표시됩니다"
+        "empty": "아직 제목이 없습니다"
       },
       "docMenu": {
         "label": "Document 전체 명령",

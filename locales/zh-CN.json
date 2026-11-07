@@ -2072,7 +2072,7 @@
       "outline": {
         "show": "显示大纲",
         "hide": "隐藏大纲",
-        "empty": "添加的标题会显示在这里"
+        "empty": "还没有标题"
       },
       "docMenu": {
         "label": "整个 Document 的命令",

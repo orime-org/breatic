@@ -2072,7 +2072,7 @@
       "outline": {
         "show": "Show outline",
         "hide": "Hide outline",
-        "empty": "Headings you add will appear here"
+        "empty": "No headings yet"
       },
       "docMenu": {
         "label": "Whole-document commands",

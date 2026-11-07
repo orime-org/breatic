@@ -589,10 +589,10 @@ describe('DocumentOutline', () => {
   });
 
   describe('A12 — a document with no headings', () => {
-    it('says where headings will appear', () => {
+    it('says there are no headings yet, which holds for a viewer too', () => {
       renderWith([{ type: 'paragraph', content: 'words only' }]);
 
-      expect(within(screen.getByTestId('doc-outline')).getByText('Headings you add will appear here')).toBeInTheDocument();
+      expect(within(screen.getByTestId('doc-outline')).getByText('No headings yet')).toBeInTheDocument();
     });
   });
 

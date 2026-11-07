@@ -2072,7 +2072,7 @@
       "outline": {
         "show": "顯示大綱",
         "hide": "隱藏大綱",
-        "empty": "新增的標題會顯示在這裡"
+        "empty": "還沒有標題"
       },
       "docMenu": {
         "label": "整個 Document 的命令",

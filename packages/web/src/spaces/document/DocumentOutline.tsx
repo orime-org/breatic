@@ -398,7 +398,7 @@ export const DocumentOutline = React.memo(function DocumentOutline({
         </div>
         {open && (
           <ScrollArea viewportRef={setList} className='min-h-0 flex-1' data-testid='doc-outline'>
-            <div className='px-1.5 pb-4'>
+            <div className='flex flex-col gap-0.5 px-1.5 pb-4'>
               {rows.length === 0 ? (
                 <p className='px-4 py-7 text-center text-sm leading-relaxed text-balance text-muted-foreground'>{t('spaces.document.outline.empty')}</p>
               ) : (

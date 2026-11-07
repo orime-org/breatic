@@ -238,6 +238,13 @@ test('rows draw the demo\'s states: small corners, the one being read darker, an
   }, OUTLINE);
   expect(look.radius).toBe('6px');
   expect(look.other).toBe(look.secondary);
+  // Two filled rows side by side, the one being read and a hovered one, keep a
+  // gap between their fills, as every menu and list in the product does.
+  const gaps = await page.evaluate((outline) => {
+    const items = [...document.querySelectorAll(`${outline} [data-outline-item]`)].map((i) => i.getBoundingClientRect());
+    return items.slice(1).map((r, n) => Math.round(r.top - items[n]!.bottom));
+  }, OUTLINE);
+  for (const gap of gaps) expect(gap).toBe(2);
   // The row eases into its new colour over the button's transition.
   await expect.poll(() => row(page, 'Two').evaluate((el) => getComputedStyle(el).color)).toBe(look.foreground);
 
