@@ -42,7 +42,9 @@ describe("lip-sync failure reason (§97 D11-5; execution design §9.4)", () => {
     ["only the run expiring", reason([], { step: "expired", category: "timeout" }), true],
     ["a person with no face", reason([person("no_face", "faces"), person("timeout", "gen", "person-2", 2)]), false],
     ["a rejected model", reason([person("model_rejected")]), false],
-    ["a stopped person", reason([person("failed"), person("stopped", "gen", "person-2", 2)]), false],
+    // Execution design §10.5: modelRunRetryable ignores stopped items, so they follow what stopped them.
+    ["a stopped person beside a failed one", reason([person("failed"), person("stopped", "gen", "person-2", 2)]), true],
+    ["a stopped person beside a person with no face", reason([person("no_face", "faces"), person("stopped", "gen", "person-2", 2)]), false],
   ] as const)("LF03 %s is retryable: %s", (_name, value, retryable) => {
     expect(api.lipsyncFailureRetryable(value)).toBe(retryable);
   });
