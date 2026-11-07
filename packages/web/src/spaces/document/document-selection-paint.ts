@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * A block with no text inside the reader's selection is drawn as selected
+ * A block with no text inside the user's selection is drawn as selected
  * (#124).
  *
  * The browser paints a selection over text only, so a divider or a fallback
@@ -13,15 +13,15 @@
  *
  * WHICH SELECTIONS. A range that is not empty (a drag, Shift with an arrow,
  * select-all) paints every no-text block wholly inside it. A node selection
- * paints only a divider: the reader makes one by clicking it or walking onto
+ * paints only a divider: the user makes one by clicking it or walking onto
  * it with the arrows, and the 2026-09-18 rule that the machinery's own node
  * selections are not drawn (`index.css`, "A node-selected block is not drawn") stays for every other block. A
- * media block the reader selects draws itself (see `NODE_SELECTED`). An edge
+ * media block the user selects draws itself (see `NODE_SELECTED`). An edge
  * takeover (`BodyEdgeSelection`) has its text drawn here too, and the native
  * selection hidden: during a pull the page selection is still the browser's
  * own, not the takeover's (inner#1350 A8).
  *
- * WHEN. Only while the reader can see a selection at all. In an editable body
+ * WHEN. Only while the user can see a selection at all. In an editable body
  * that is while it holds the focus. A read-only body never takes the focus —
  * it has no tabindex (`@tiptap/core` `extensions/tabindex.ts`) — yet the
  * browser still paints the words a viewer drags across, so there it is while
@@ -82,7 +82,7 @@ export const MEDIA_IN_SELECTION_CLASS = 'doc-media-in-selection';
 const NO_TEXT = new Set<string>([DIVIDER, UNSUPPORTED_BLOCK, ...MEDIA_BLOCK_TYPES]);
 
 /**
- * The node selections painted here. A media block the reader selected draws
+ * The node selections painted here. A media block the user selected draws
  * its own frame, with its corner knobs and its toolbar, off its own selected
  * state (`DocumentMediaBlock`), so all of it comes and goes together.
  */
@@ -186,7 +186,7 @@ export const documentSelectionPaintExtension = createExtension(({ editor }) => {
   };
 
   /**
-   * Whether the reader can see a selection in this body right now.
+   * Whether the user can see a selection in this body right now.
    * @param view - The view.
    * @returns True while the band belongs on screen.
    */

@@ -4,8 +4,8 @@
 /**
  * How the bubble bar's AI menu reaches the AI output dialog (inner#1860): the
  * dialog (`DocumentAiDialog.tsx`) wraps the editor's chrome and provides a
- * launcher here, and the menu's rows call it. Apart from the dialog so the
- * menu does not import the dialog, which imports the bar.
+ * launcher here, and the menu's rows call it. Apart from the dialog, so the
+ * menu's rows reach the launcher without importing the dialog's module.
  */
 
 import * as React from 'react';

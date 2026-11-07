@@ -122,7 +122,7 @@ function isSpace(ch: string): boolean {
  * punctuation outside code, `&` and `<` as entities everywhere, and in code
  * backticks too.
  * @param text - The words.
- * @param code - Whether they are inline code, where a backslash is kept as written.
+ * @param code - Whether they are code (inline code or a code block's), where a backslash is kept as written.
  * @returns The escaped words.
  */
 function escapeWords(text: string, code: boolean): string {
@@ -276,8 +276,8 @@ function decoded(text: string): string {
       const code = name[1] === 'x' || name[1] === 'X' ? Number.parseInt(name.slice(2), 16) : Number(name.slice(1));
       return Number.isInteger(code) && code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole;
     }
-    // Every `<` was spelled as an entity before parsing, so the words hold no
-    // markup and the browser's own decoder can read the named reference.
+    // `whole` is one `&name;` reference and holds no markup, so the browser's
+    // own decoder can read it.
     const decoder = document.createElement('textarea');
     decoder.innerHTML = whole;
     return decoder.value;

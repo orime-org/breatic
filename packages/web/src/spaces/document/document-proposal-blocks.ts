@@ -1,7 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-/** New Agent output normalized before its surviving roots receive trace IDs. */
+/**
+ * New output (an Agent proposal or an AI dialog answer) converted for where it
+ * lands; a proposal's surviving roots then receive trace IDs.
+ */
 
 import { blockToNode, nodeToBlock } from '@blocknote/core';
 import { Fragment, type Node as ProseMirrorNode } from '@tiptap/pm/model';

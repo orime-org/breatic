@@ -94,9 +94,9 @@ interface DocumentBubbleMenuProps {
   /**
    * Which end of the trigger the panel lines up with; the start by default.
    *
-   * The colour panel is wide enough that opening from the start put a third
-   * of it out past the bar's own right edge, while every menu of rows stayed
-   * inside. Lining the wide one up by its end keeps both within the bar.
+   * Two panels line up by their end: the colour panel, wide enough that
+   * opening from the start put a third of it out past the bar's own right
+   * edge, and the AI menu, the bar's last slot. Both then stay within the bar.
    */
   align?: 'start' | 'end';
   /**

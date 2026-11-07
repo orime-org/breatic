@@ -293,8 +293,8 @@ export function asOneUndoStep(undoManager: UndoBoundary | null, write: () => voi
  * Why a write may not commit now, read from the lifecycle and the connection.
  * @param admission - The current lifecycle and connection permission.
  * @param editor - The body's editor.
- * @returns `failed` while the connection is gone or has not said whether it
- *   may write, `readOnly` when it may not, or null when the write may commit.
+ * @returns `failed` while the lifecycle no longer admits the write or the
+ *   connection has not said whether it may write, `readOnly` when it may not, or null when the write may commit.
  */
 export function writeRefusal(admission: ProposalAdmission, editor: Landable['editor']): 'failed' | 'readOnly' | null {
   if (!admission.available || admission.writeAccess === 'unknown') return 'failed';

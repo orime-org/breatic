@@ -40,7 +40,7 @@ const TRANSLATE_TARGET_NAMES: Record<TextToolLanguage, string> = {
 /**
  * Build the user message from tool params.
  *
- * For operation tools: includes full document + marked selection.
+ * For operation tools: the document around the selection, then the selection itself.
  * For generation tools: includes instructions + tool-specific params.
  * @param tool - Tool name selecting the prompt shape (e.g. "translate", "character", "script").
  * @param params - Raw tool params such as `document`, `selection`, `instructions`, and tool-specific extras.
