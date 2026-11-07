@@ -73,6 +73,15 @@ export function deriveDisplayName(u: {
  * cookie automatically (axios `withCredentials: true`).
  */
 /** No email backend: the account exists and is signed in. */
+/** What became of the referral code a sign-up carried (inner#1868): bound, or not used. */
+export type SignupReferralOutcome = 'applied' | 'not_applied';
+
+/** The referral code a sign-up carries, and whether it came from a share link. */
+export interface SignupReferralFields {
+  referralCode?: string;
+  referralSource?: 'signup_link' | 'signup_typed';
+}
+
 interface RegisterCreated {
   status: 'created';
   user: AuthUser;
@@ -98,15 +107,23 @@ type RegisterResponse = RegisterCreated | SignupCodeSent;
 export interface AuthOptions {
   /** An email sign-up proves the address with a code; recovery goes by email. */
   emailVerification: boolean;
+  /** The referral code field exists; only while this deployment takes payments. */
+  referralEnabled: boolean;
 }
 
 interface LoginResponse {
   user: AuthUser;
 }
 
+/** A finished sign-up's answer, saying when the referral code it carried was not used. */
+interface SignupVerifiedResponse extends LoginResponse {
+  referral?: SignupReferralOutcome;
+}
+
 /** A Google sign-in's answer: `created` when it made the account (inner#1442 §4.9). */
 interface GoogleLoginResponse extends LoginResponse {
   created: boolean;
+  referral?: SignupReferralOutcome;
 }
 
 /**
@@ -137,14 +154,14 @@ export const authApi = {
   options() {
     return apiGet<AuthOptions>('/auth/options');
   },
-  register(body: { email: string; password: string; attribution?: Attribution | null }) {
+  register(body: { email: string; password: string; attribution?: Attribution | null } & SignupReferralFields) {
     return apiPost<RegisterResponse>('/auth/register', body);
   },
   resendSignupCode() {
     return apiPost<SignupCodeSent>('/auth/register/resend');
   },
   verifySignupCode(body: { code: string; attribution?: Attribution | null }) {
-    return apiPost<LoginResponse>('/auth/register/verify', body);
+    return apiPost<SignupVerifiedResponse>('/auth/register/verify', body);
   },
   setupStudio(body: { slug: string }) {
     return apiPost<SetupStudioResponse>('/auth/setup-studio', body);
@@ -152,7 +169,7 @@ export const authApi = {
   login(body: { email: string; password: string }) {
     return apiPost<LoginResponse>('/auth/login', body);
   },
-  google(body: { credential: string; attribution?: Attribution | null }) {
+  google(body: { credential: string; attribution?: Attribution | null } & SignupReferralFields) {
     return apiPost<GoogleLoginResponse>('/auth/google', body);
   },
   me() {
