@@ -83,7 +83,7 @@ import {
   insertAiAnswer,
   replaceAiAnswer,
   type AiWriteResult,
-} from '@web/spaces/document/document-ai-units';
+} from '@web/spaces/document/document-ai-text';
 import { viewOf, type ViewedEditor } from '@web/spaces/document/document-editor-view';
 import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
 import { blockById, type ProposalAdmission } from '@web/spaces/document/document-proposal-landing';

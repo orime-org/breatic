@@ -24,7 +24,7 @@ import {
   insertAiAnswer,
   replaceAiAnswer,
   type AiAnswer,
-} from '@web/spaces/document/document-ai-units';
+} from '@web/spaces/document/document-ai-text';
 import {
   _resetDocumentEditorCacheForTests,
   adoptDocumentEditor,

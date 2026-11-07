@@ -6,7 +6,7 @@
  * design §4.6, §5.2, §5.4): the range it opens on (`aiCapture`), the block a
  * result is inserted under, and the context Markdown sent with the
  * selection, cut to the budget around it. What is sent for the range is
- * `aiRequest` in `document-ai-units.ts`.
+ * `aiRequest` in `document-ai-text.ts`.
  */
 
 import type { BlockNoteEditor } from '@blocknote/core';
