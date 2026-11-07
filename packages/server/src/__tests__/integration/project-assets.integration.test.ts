@@ -221,6 +221,22 @@ describe("Project registered media HTTP reads", () => {
     });
   });
 
+  it("gives web the web animation dialog bounds and preview timings from config/timeline.yaml (inner#1711 design §8, §10)", async () => {
+    const fixture = await seedFixture();
+    const [, , limitsPath] = readPaths(fixture.projectId, randomUUID());
+    const config = getTimelineConfig();
+    const limits = await readData<Record<string, unknown>>(limitsPath!, fixture.cookie);
+    expect(limits["webAnimation"]).toEqual({
+      promptMaxLength: config.web_animation.prompt_max_length,
+      durationSeconds: { min: config.web_animation.duration_seconds.min, max: config.web_animation.duration_seconds.max },
+      aspects: Object.keys(config.web_animation.viewports),
+      playerLoadTimeoutMs: config.web_animation.player_load_timeout_ms,
+      sourceRefreshIntervalMs: config.web_animation.source_refresh_interval_ms,
+    });
+    // The tracked yaml offers the dialog's three aspects in this order; the creation input accepts exactly these.
+    expect(limits["webAnimation"]).toMatchObject({ aspects: ["16:9", "9:16", "1:1"] });
+  });
+
   it("returns 403 consistently to an authenticated nonmember across all three endpoints", async () => {
     const fixture = await seedFixture();
     const asset = await seedAsset(fixture);
