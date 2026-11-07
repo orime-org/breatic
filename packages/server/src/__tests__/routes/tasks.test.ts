@@ -512,10 +512,14 @@ describe("Tasks routes", () => {
     });
   });
 
-  // The reader's language is known at one end only — the browser — and the
+  // The user's language is known at one end only — the browser — and the
   // sentence it decides is written at the other, by the model. This route
   // carries it between them without reading it.
-  it("carries the reader's locale through to the job", async () => {
+  it.each([
+    ["a page of this release", { user_locale: "ja", reader_locale: "ja" }],
+    ["a page from before #1378", { reader_locale: "ja" }],
+    ["a request naming only the new field", { user_locale: "ja" }],
+  ])("carries the user's locale through to the job under both names, from %s", async (_from, locale) => {
     const app = createApp();
     await app.request("/api/v1/canvas/understand", {
       method: "POST",
@@ -526,14 +530,16 @@ describe("Tasks routes", () => {
         source_type: "image",
         source_url: "https://cdn/x.png",
         node_ids: [READ_INTO],
-        reader_locale: "ja",
+        ...locale,
       }),
     });
 
+    // Both names until the follow-up to #1378: a worker of the previous
+    // release still running during the deploy reads only reader_locale.
     expect(mockQueueAdd).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
-        params: expect.objectContaining({ reader_locale: "ja" }),
+        params: expect.objectContaining({ user_locale: "ja", reader_locale: "ja" }),
       }),
       expect.anything(),
     );
@@ -722,6 +728,7 @@ describe("Tasks routes", () => {
       source_url: "https://cdn/x.m4a",
       node_ids: [READ_INTO],
       keep_fillers: false,
+      user_locale: "zh-TW",
       reader_locale: "zh-TW",
     };
 
@@ -755,6 +762,7 @@ describe("Tasks routes", () => {
           params: expect.objectContaining({
             reading: "transcribe",
             keep_fillers: false,
+            user_locale: "zh-TW",
             reader_locale: "zh-TW",
             source_type: "audio",
           }),

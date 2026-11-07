@@ -342,8 +342,8 @@ describe("running one understand task", () => {
   // node in the language they set. Nothing about the media says which that
   // is, so the run is told — and the telling has to reach the model, because
   // the model is what decides the language of the answer.
-  it("asks in the language the reader set", async () => {
-    await runUnderstand({ ...PARAMS, reader_locale: "zh-CN" }, recorder(), DEADLINE_AT);
+  it("asks in the language the user set", async () => {
+    await runUnderstand({ ...PARAMS, user_locale: "zh-CN" }, recorder(), DEADLINE_AT);
 
     expect(vi.mocked(understandMediaAt)).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -352,12 +352,26 @@ describe("running one understand task", () => {
     );
   });
 
+  // A job queued before #1378 was deployed carries only the old name, and it
+  // has to ask word for word what it asked then: a long reading's digest
+  // covers the question, and a different one no longer matches the record
+  // the run already opened.
+  it("asks the same question for a job queued before #1378 as for one queued after it", async () => {
+    await runUnderstand({ ...PARAMS, reader_locale: "ja" }, recorder(), DEADLINE_AT);
+    await runUnderstand({ ...PARAMS, user_locale: "ja", reader_locale: "ja" }, recorder(), DEADLINE_AT);
+    await runUnderstand({ ...PARAMS, user_locale: "ja" }, recorder(), DEADLINE_AT);
+
+    const asked = vi.mocked(understandMediaAt).mock.calls.map((call) => call[0].question);
+    expect(asked[0]).toContain("Japanese");
+    expect(new Set(asked).size).toBe(1);
+  });
+
   // A run that named no locale, and one that named something this build does
   // not know, both reach the model the same way: asking for nothing in
   // particular, which is what every run did before the locale travelled.
   it("asks for no language in particular when none was named", async () => {
     await runUnderstand(PARAMS, recorder(), DEADLINE_AT);
-    await runUnderstand({ ...PARAMS, reader_locale: "xx-YY" }, recorder(), DEADLINE_AT);
+    await runUnderstand({ ...PARAMS, user_locale: "xx-YY" }, recorder(), DEADLINE_AT);
 
     for (const call of vi.mocked(understandMediaAt).mock.calls) {
       expect(call[0].question).toBe("Describe this image.");
@@ -372,7 +386,7 @@ describe("running one understand task", () => {
       {
         ...PARAMS,
         prompt: "How many people are in this?",
-        reader_locale: "ja",
+        user_locale: "ja",
       },
       recorder(),
       DEADLINE_AT,
@@ -400,7 +414,7 @@ describe("running one transcription", () => {
     source_url: "https://assets.invalid/audio/a.m4a",
     reading: "transcribe",
     keep_fillers: true,
-    reader_locale: "zh-CN",
+    user_locale: "zh-TW",
   };
 
   /**
@@ -424,7 +438,7 @@ describe("running one transcription", () => {
 
     const [args] = vi.mocked(understandMediaAt).mock.calls[0] ?? [];
     expect(args?.question).toContain("Transcribe the speech in this audio.");
-    expect(args?.question).toContain("Simplified Chinese");
+    expect(args?.question).toContain("Traditional Chinese");
     expect(args?.question).toContain("Keep filler words");
     expect(args?.question).not.toMatch(/Answer in/);
     expect(args?.maxOutputTokens).toBe(65_536);

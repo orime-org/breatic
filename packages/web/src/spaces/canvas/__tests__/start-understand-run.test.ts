@@ -165,14 +165,16 @@ describe('one press of Understand', () => {
     expect(toast.warning).not.toHaveBeenCalled();
   });
 
-  // The answer becomes this node's body, and the reader opens it in the
+  // The answer becomes this node's body, and the user opens it in the
   // language they set. Only this end knows which that is, so it travels with
   // the request; the model, four processes away, is what writes the sentence.
-  it('sends the language the reader set', async () => {
+  // Under both names until the follow-up to #1378: during a deploy this page
+  // can reach a server of the previous release, which reads only the old one.
+  it('sends the language the user set', async () => {
     await startUnderstandRun(RUN);
 
     expect(vi.mocked(canvasApi.understand)).toHaveBeenCalledWith(
-      expect.objectContaining({ reader_locale: 'zh-CN' }),
+      expect.objectContaining({ user_locale: 'zh-CN', reader_locale: 'zh-CN' }),
       expect.any(String),
     );
   });
@@ -418,6 +420,7 @@ describe('one press of Transcribe', () => {
         source_url: AUDIO.url,
         source_mime_type: 'audio/mp4',
         keep_fillers: false,
+        user_locale: 'zh-CN',
         reader_locale: 'zh-CN',
       }),
       expect.any(String),

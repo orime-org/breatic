@@ -322,7 +322,7 @@ describe("a message that goes out and comes back", () => {
         failure: {
           kind: "tool_failed",
           forModel: "读不到",
-          readerKey: "chat.tool.failure.generic",
+          userKey: "chat.tool.failure.generic",
         },
       },
       { type: "interrupted" },
@@ -339,7 +339,7 @@ describe("a message that goes out and comes back", () => {
     expect(back[3]).toMatchObject({
       toolCallId: "call-2",
       status: "error",
-      failure: { kind: "tool_failed", readerKey: "chat.tool.failure.ourFault" },
+      failure: { kind: "tool_failed", userKey: "chat.tool.failure.ourFault" },
     });
     expect(back[4]).toEqual(original[4]);
   });
@@ -359,7 +359,7 @@ describe("a message that goes out and comes back", () => {
         failure: {
           kind: "tool_failed",
           forModel: "Fetching https://example.com failed: the site answered HTTP 404.",
-          readerKey: "chat.tool.failure.upstream",
+          userKey: "chat.tool.failure.upstream",
         },
       },
     ]);
@@ -387,7 +387,7 @@ describe("a message that goes out and comes back", () => {
         failure: {
           kind: "user_aborted",
           forModel: "The user stopped this turn while the tool was still running.",
-          readerKey: "chat.tool.unfinished",
+          userKey: "chat.tool.unfinished",
         },
       },
     ]);
@@ -505,10 +505,38 @@ describe("a call that never ran (inner#1620)", () => {
         toolName: "web_search",
         input: { query: "q" },
         status: "error",
-        failure: { kind: "tool_failed", forModel: NOTHING_OF_IT_RAN, readerKey: LEGACY_FAILURE_LINES.generic },
+        failure: { kind: "tool_failed", forModel: NOTHING_OF_IT_RAN, userKey: LEGACY_FAILURE_LINES.generic },
       },
     ]);
     expect(part).toMatchObject({ state: "output-error", errorText: NEVER_RAN, failureKind: "never_ran" });
+  });
+});
+
+describe("a failure stored under the pre-#1378 name", () => {
+  it.each([
+    ["tool_failed", "chat.tool.failure.upstream"],
+    ["tool_failed", LEGACY_FAILURE_LINES.generic],
+    ["user_aborted", "chat.tool.unfinished"],
+  ])("reads a %s row keyed readerKey the same as one keyed userKey (%s)", (kind, key) => {
+    /**
+     * One stored failed call whose line sits under the given field name.
+     * @param field - The name the row stored the line under.
+     * @returns The part as the browser receives it.
+     */
+    const read = (field: "readerKey" | "userKey"): unknown =>
+      toUiParts([
+        {
+          type: "tool",
+          toolCallId: "tc-old",
+          toolName: "web_search",
+          input: { query: "q" },
+          status: "error",
+          failure: { kind, forModel: "the site answered 503", [field]: key },
+        } as unknown as MessagePart,
+      ])[0];
+
+    expect(read("readerKey")).toEqual(read("userKey"));
+    expect(read("readerKey")).toMatchObject({ errorText: key, failureKind: kind });
   });
 });
 
