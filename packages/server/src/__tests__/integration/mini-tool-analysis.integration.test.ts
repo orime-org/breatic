@@ -9,10 +9,11 @@ import { z } from "zod";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import { getMiniToolsConfig, getNodeTaskConfig, getRedis, getStorageAdapter, initCore, loadLocales, sessionCookieName, setSession } from "@breatic/core";
 import type * as shared from "@breatic/shared";
+import { t as sharedT } from "@breatic/shared";
 import { miniToolAnalysisRequestSchema, miniToolAnalysisService, taskRepo, taskService } from "@breatic/domain";
 import { fingerprintMiniToolAnalysisInput, miniToolAnalysisRecordSchema, miniToolConsumptionKey, projectMiniToolAnalysisInput, type MiniToolAnalysisKind, type MiniToolAnalysisRecord } from "@breatic/shared/mini-tools";
 import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "./studio-credit-fixtures.js";
-import { ledgerKeys, presentedSource, type PresentedSource } from "./presentation-fixtures.js";
+import { ledgerKeys, presentedSource, REMOVAL_ENCODING, REMOVAL_PLAN, type PresentedSource } from "./presentation-fixtures.js";
 
 // S6e E4-2 (inner#1306 §90; design §7.11 分析受理): the request names its tool input; admission reads the selected
 // version from ingest (faked here) and the stored ledger objects (served by URL), as the fresh execution admission does.
@@ -137,9 +138,11 @@ async function member(projectId: string, role: "editor" | "viewer"): Promise<{ i
 
 /**
  * Builds a project, three roles, spendable credits and a registered video.
+ * @param options - Whether the video presents with transparency.
+ * @param options.transparent - A source whose presentation fills with transparency.
  * @returns The fixture with immutable registration facts.
  */
-async function seed(): Promise<AnalysisFixture> {
+async function seed(options: { transparent?: boolean } = {}): Promise<AnalysisFixture> {
   const fixture = await seedStudioFixture(sql, "analysis");
   await sql`INSERT INTO project_members (project_id, user_id, role) VALUES (${fixture.projectId}, ${fixture.userId}, 'owner')`;
   await seedDesignatedLot(sql, fixture, 1000);
@@ -156,7 +159,8 @@ async function seed(): Promise<AnalysisFixture> {
       'upload', ${fixture.userId}, 960, 540, 5.055) RETURNING id
   `;
   // The selected version of this source and its ready ledger, as ingest answers and storage serves them.
-  const presentation = await presentedSource(sourceHash, key, publicUrl);
+  const presentation = await presentedSource(sourceHash, key, publicUrl, options.transparent
+    ? { plan: { ...REMOVAL_PLAN, policy: { ...REMOVAL_PLAN.policy, emptyFill: "transparent" } }, encoding: REMOVAL_ENCODING } : undefined);
   outside.snapshots.set(key, presentation.snapshot);
   for (const [url, body] of presentation.bodies) outside.bodies.set(url, body);
   return {
@@ -697,5 +701,74 @@ describe("analysis tool input and pins (inner#1306 §90 E4-2; design §7.11 分�
     const l = ledgerKeys(fixture.sourceKey, body.presentationRef.source.toolInputId);
     const queued = await sql<{ storage_key: string; kind: string }[]>`SELECT storage_key,kind FROM storage_reclaim_queue WHERE storage_key IN (${l.full},${l.table}) ORDER BY storage_key`;
     expect([...queued]).toEqual([l.full, l.table].sort().map((storage_key) => ({ storage_key, kind: "derived" })));
+  });
+});
+
+// Execution design §10.2, §10.4 and §10.8: tracking an erase selection is checked again at admission, each refusal with its
+// reason and no effect, and it is quoted per tracking clip.
+describe("tracked mask admission checks (execution design §10.2–§10.4)", () => {
+  /**
+   * A tracked mask request over a range with an anchor.
+   * @param fixture - The registered source.
+   * @param range - The range in seconds.
+   * @param range.start - Its start.
+   * @param range.end - Its end.
+   * @param anchorFrame - The anchor's presentation frame on the 200 fps fixture.
+   * @returns The request.
+   */
+  function tracked(fixture: AnalysisFixture, range: { start: number; end: number }, anchorFrame: number): AnalysisRequest {
+    const body = requestFor(fixture, "tracked_mask");
+    return { ...body, params: { ...body.params, range, anchor: { frameIndex: anchorFrame, pts: anchorFrame / 200 } } };
+  }
+
+  /**
+   * Require a 400 refusal with its message and no durable effect.
+   * @param fixture - The fixture.
+   * @param body - The request.
+   * @param key - The message key.
+   * @param params - Its ICU values.
+   * @returns Nothing.
+   */
+  async function refused(fixture: AnalysisFixture, body: AnalysisRequest, key: string, params?: Record<string, number>): Promise<void> {
+    const response = await post(body, fixture.ownerCookie);
+    const json = await response.json() as { error?: { message?: string } };
+    expect({ status: response.status, message: json.error?.message }).toEqual({ status: 400, message: sharedT(key, params) });
+    expect(await counts(body.analysisRunId)).toEqual({ tasks: 0, rows: 0, holds: 0 });
+  }
+
+  /**
+   * The credits an accepted analysis holds.
+   * @param runId - The analysis.
+   * @returns The held amount.
+   */
+  async function held(runId: string): Promise<number> {
+    const [row] = await sql<{ amount: string }[]>`SELECT amount FROM credit_holds WHERE reference_id=${runId}`;
+    return Number(row?.amount);
+  }
+
+  it("TQ01 refuses an anchor outside the range", async () => {
+    const fixture = await seed();
+    await refused(fixture, tracked(fixture, { start: 1, end: 3 }, 700), "server.mini_tool.anchorOutsideRange");
+  });
+
+  it("TQ02 refuses a range whose model grid lasts longer than 5 s or under 1 s", async () => {
+    const fixture = await seed();
+    await refused(fixture, tracked(fixture, { start: 0, end: 5.055 }, 0), "server.mini_tool.eraseRange", { min: 1, max: 5 });
+    await refused(fixture, tracked(fixture, { start: 0, end: 0.9 }, 0), "server.mini_tool.eraseRange", { min: 1, max: 5 });
+  });
+
+  it("TQ03 refuses a transparent source", async () => {
+    const fixture = await seed({ transparent: true });
+    await refused(fixture, tracked(fixture, { start: 1, end: 3 }, 200), "server.mini_tool.transparentSource");
+  });
+
+  it("TQ04 quotes an anchor inside the range as two clips, each at the tracker's own floor", async () => {
+    const fixture = await seed();
+    const first = tracked(fixture, { start: 0, end: 5 }, 0);
+    const middle = tracked(fixture, { start: 0, end: 5 }, 500);
+    await accepted(await post(first, fixture.ownerCookie));
+    await accepted(await post(middle, fixture.ownerCookie));
+    // One 5 s clip against two 2.5 s clips, each priced at least the tracker's 3 s floor, plus a second preparation.
+    expect(await held(middle.analysisRunId)).toBeGreaterThan(await held(first.analysisRunId));
   });
 });

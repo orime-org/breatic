@@ -9,7 +9,7 @@ import {
   type MiniToolPlanTarget, type TaskEntity, type TaskStatusType, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from "@breatic/shared";
 import {
-  anchorInTrackingRange, batchVideoRunOutputs, canonicalMiniToolValue, fingerprintMiniToolAnalysisInput, gridSecondsAllowed, miniToolById, modelGrid, planModelWindows, projectMiniToolAnalysisInput, videoExpandLayout, type ModelGrid, type ModelWindow, type VideoExpandLayout, miniToolPlannedRequestSchema, presentationCoveringFrame, presentationFrameAt, trackingClips, lipsyncFailureReasonSchema, lipsyncFailureRetryable, estimateAudioEncodeSeconds, estimateVideoJobSeconds, lipsyncMonotonicSegments, planLipsyncCompositeChunks, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
+  batchVideoRunOutputs, presentationFramesIn, canonicalMiniToolValue, fingerprintMiniToolAnalysisInput, miniToolById, planModelWindows, projectMiniToolAnalysisInput, videoExpandLayout, type ModelGrid, type ModelWindow, type VideoExpandLayout, miniToolPlannedRequestSchema, presentationCoveringFrame, presentationFrameAt, trackingClips, lipsyncFailureReasonSchema, lipsyncFailureRetryable, estimateAudioEncodeSeconds, estimateVideoJobSeconds, lipsyncMonotonicSegments, planLipsyncCompositeChunks, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
   plannedStageJobs, planVideoFrames, planVideoSplit, type FrameWindow, type FramesExecutionLayout, type MiniToolExecutionRequest, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type MiniToolPresentationRef, type MiniToolSourceBinding, type MiniToolStageJobs,
   type LipsyncExecutionLayout, type LipsyncTimeline, type TransitionExecutionLayout, type TransitionOutputProfile, planTransitionChunks, planVideoTimeline, transitionOutputProfile, type VideoEncodeChunk, type VideoEncoderRates, type VideoExecutionDialogue, type VideoJobWork, type VideoPresentationTable,
 } from "@breatic/shared/mini-tools";
@@ -17,6 +17,7 @@ import { prepareVideoRemoveBackground, type PreparedVideoRemoveBackground } from
 import { resolveSource } from "@domain/mini-tool/analysis.service.js";
 import { lipSyncDialogues, lipSyncModel, lipSyncPeople, lipsyncPersonStepKeys, lipsyncSharedStepKeys, lipsyncStepKey, lipSyncTimeline, type LipSyncGenerator, type LipSyncPerson } from "@domain/mini-tool/lipsync-admission.js";
 import { eraseTracking, expandBox, type EraseTracking, type ExpandBox } from "@domain/mini-tool/erase-expand-admission.js";
+import { assertOpaqueSource, eraseRangeGrid, trackingClipSeconds } from "@domain/mini-tool/tracking-range.js";
 import { selectedToolInput } from "@domain/mini-tool/selected-tool-input.js";
 import { executionPlanFromTask } from "@domain/mini-tool/execution-plan.service.js";
 import { recordFromPlan } from "@domain/mini-tool/execution.service.js";
@@ -264,28 +265,6 @@ function spanWork(ledger: VideoPresentationLedger, first: number, count: number)
 }
 
 /**
- * The presentation frame indices whose windows start inside a range, from the compact table.
- * @param table - The compact table.
- * @param range - The range in seconds.
- * @param range.start - Its start.
- * @param range.end - Its end.
- * @returns The first index and the count.
- * @throws {never} Never.
- */
-function framesIn(table: VideoPresentationTable, range: { start: number; end: number }): { first: number; count: number } {
-  let index = 0;
-  let first = -1;
-  let count = 0;
-  for (const run of table.runs) {
-    for (let k = 0; k < run.count; k += 1, index += 1) {
-      const time = (run.start + k * run.step) / table.timescale;
-      if (time >= range.start && time < range.end) { if (first < 0) first = index; count += 1; }
-    }
-  }
-  return { first: Math.max(first, 0), count };
-}
-
-/**
  * The exact §5.4 job layout of a run: each output's work from the full ledger's encode facts, stable batches within the
  * per-job cap and the chunk share, chunk windows for an output that alone exceeds the share, then one stitch for it.
  * @param outputs - The verified outputs.
@@ -300,7 +279,7 @@ function runLayout(outputs: MiniToolPlannedRequest["outputs"][number][], table: 
   config: MiniToolsConfig, tool: "video.extract-frames" | "video.split"): { layout: FramesExecutionLayout; works: number[] } {
   const rates = encoderRates(config);
   const flags = videoPresentationKeyframeFlags(ledger);
-  const spans = outputs.map(({ recipe }) => ("frameIndex" in recipe ? { first: recipe.frameIndex, count: 1 } : "range" in recipe ? framesIn(table, recipe.range) : { first: 0, count: 1 }));
+  const spans = outputs.map(({ recipe }) => ("frameIndex" in recipe ? { first: recipe.frameIndex, count: 1 } : "range" in recipe ? presentationFramesIn(table, recipe.range) : { first: 0, count: 1 }));
   const works = spans.map(({ first, count }) => estimateVideoJobSeconds(spanWork(ledger, first, count), rates) - rates.startSeconds);
   const share = shareSeconds(config);
   const { batches, oversized } = batchVideoRunOutputs(works, { maxOutputsPerJob: config.executions[tool].max_outputs_per_job, shareSeconds: share, fixedSeconds: rates.startSeconds });
@@ -356,7 +335,7 @@ function lipSyncLayout(ledger: VideoPresentationLedger, table: VideoPresentation
   timing: { timeline: LipsyncTimeline; usedRange: { start: 0; end: number }; persons: number; cropSize: number }, config: MiniToolsConfig): { layout: LipsyncExecutionLayout; seconds: number } {
   const rates = encoderRates(config);
   const share = shareSeconds(config);
-  const used = framesIn(table, timing.usedRange).count;
+  const used = presentationFramesIn(table, timing.usedRange).count;
   const flags = videoPresentationKeyframeFlags(ledger).slice(0, used);
   const prepareWork = estimateVideoJobSeconds(spanWork(ledger, 0, used), rates) - rates.startSeconds;
   const preparation = rates.startSeconds + prepareWork <= share ? [{ start: 0, end: used }]
@@ -461,17 +440,8 @@ async function prepareLipSync(request: Extract<MiniToolPlannedRequest, { tool: "
   // over its encoded length, and a clip other than the preparation itself is prepared, and each person's tracks joined.
   const clips = trackingClips({ start: 0, end: layout.preparation.at(-1)!.end }, persons[0]!.anchor.frameIndex);
   const clipList = [clips.forward, clips.reverse].filter((clip) => clip !== null);
-  /**
-   * A clip's encoded length in seconds.
-   * @param clip - The clip's presentation frames.
-   * @param clip.start - Its first frame.
-   * @param clip.end - The frame after its last.
-   * @returns The seconds.
-   * @throws {RangeError} When a frame lies outside the table.
-   */
-  const clipSeconds = (clip: { start: number; end: number }): number => presentationFrameAt(table, clip.end - 1).displayEnd - presentationFrameAt(table, clip.start).pts;
   let tracking = 0;
-  for (const clip of clipList) tracking += await estimateTaskCredits(settings.tracking.model, { params: {}, durations: { video: [clipSeconds(clip)] }, sources: ["video"] });
+  for (const seconds of trackingClipSeconds(table, clips)) tracking += await estimateTaskCredits(settings.tracking.model, { params: {}, durations: { video: [seconds] }, sources: ["video"] });
   const rates = encoderRates(config);
   const prepared = clipList.filter((clip) => !(clip === clips.forward && clip.start === 0));
   const seconds = layoutWork + prepared.reduce((total, clip) => total + estimateVideoJobSeconds(spanWork(ledger, clip.start, clip.end - clip.start), rates), 0)
@@ -539,7 +509,7 @@ async function modelRunSource(request: Extract<MiniToolPlannedRequest, { tool: "
   const limits = { maxBytes: config.presentation.source_ledger.max_bytes };
   const table = await readVideoPresentationCompact(receipt, limits, { deadlineAt });
   const ledger = await readVideoPresentationLedger(receipt, limits, { deadlineAt });
-  if (ledger.plan.policy.emptyFill === "transparent") throw new AppError(400, t("server.mini_tool.transparentSource"));
+  assertOpaqueSource(ledger);
   return { binding, sourceKey, versionId, receipt, table, ledger };
 }
 
@@ -574,19 +544,12 @@ async function prepareErase(request: Extract<MiniToolPlannedRequest, { tool: "vi
   if (settings === undefined) throw new AppError(400, t("server.mini_tool.unavailable"));
   const { binding, sourceKey, versionId, receipt, table, ledger } = await modelRunSource(request, config);
   const { params } = request.draft;
-  if (!anchorInTrackingRange(params.range, params.anchor)) throw new AppError(400, t("server.mini_tool.anchorOutsideRange"));
+  const { first, count, grid } = eraseRangeGrid(table, params.range, params.anchor, settings.model);
   // The current selection projected exactly as the analysis admission projected it (analysis.service.ts), so a matching
   // fingerprint means the tracking was made for this selection.
   const current = await fingerprintMiniToolAnalysisInput(projectMiniToolAnalysisInput({ kind: "tracked_mask", source: { canonicalURL: binding.canonicalURL },
     profile: config.analyses.tracked_mask.profile, params: { ...params, trackingPrompt: extractPromptText(params.trackingPrompt) } }));
   const tracking = await eraseTracking(request, request.project_id, current);
-  const { first, count } = framesIn(table, params.range);
-  const grid = modelGrid(Array.from({ length: count }, (_unused, at) => {
-    const frame = presentationFrameAt(table, first + at);
-    return { start: frame.pts, end: frame.displayEnd };
-  }), settings.model.max_grid_fps);
-  const { min_seconds: min, max_seconds: max } = settings.model;
-  if (count === 0 || !gridSecondsAllowed(grid, { minSeconds: min, maxSeconds: max })) throw new AppError(400, t("server.mini_tool.eraseRange", { min, max }));
   const modelCredits = await estimateTaskCredits(settings.model.name, { params: {}, durations: { video: [grid.frameCount / grid.rate] }, sources: ["video"] });
   const rates = encoderRates(config);
   const pixels = ledger.plan.display.width * ledger.plan.display.height;
@@ -635,7 +598,7 @@ async function prepareExpand(request: Extract<MiniToolPlannedRequest, { tool: "v
   if (layout.overSide) throw new AppError(400, t("server.mini_tool.expandTooLarge", { max: settings.max_target_side }));
   const box = expandBox(layout, display);
   const prompt = extractPromptText(request.draft.params.prompt).trim() || (miniToolById("video.expand")?.prompt?.defaultText ?? "");
-  const count = framesIn(table, { start: 0, end: Number.POSITIVE_INFINITY }).count;
+  const count = presentationFramesIn(table, { start: 0, end: Number.POSITIVE_INFINITY }).count;
   const windows = planModelWindows(Array.from({ length: count }, (_unused, at) => {
     const frame = presentationFrameAt(table, at);
     return { start: frame.pts, end: frame.displayEnd };

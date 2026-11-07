@@ -18,9 +18,9 @@ type Execution = miniToolAnalysisService.MiniToolAnalysisExecution;
 /** A stored task-owned descriptor retains its actual position and original endpoint. */
 type Step = Awaited<ReturnType<typeof upstreamStepRepo.listSteps>>[number];
 /** Each analysis recipe names its original output index and output modality. */
-interface AnalysisOutput { outputIndex: number; modality: "text" | "image"; recipe: MiniToolPlanRecipe }
+export interface AnalysisOutput { outputIndex: number; modality: "text" | "image"; recipe: MiniToolPlanRecipe }
 /** The original step supplies cached JSON while its job supplies live canonical rows. */
-interface AnalysisJob { step: Step; job: RegisteredMiniToolPlanJob }
+export interface AnalysisJob { step: Step; job: RegisteredMiniToolPlanJob }
 /** The scene cuts placed on the presentation, cached in the step so a replay after D needs neither JSON nor ledger. */
 interface ScenePlacement { placed: { frameIndex: number; pts: number }[]; clock: { frameCount: number; timescale: number } }
 const SCENE_PLACEMENT = "miniToolScenePlacement";
@@ -32,11 +32,14 @@ const SCENE_PLACEMENT = "miniToolScenePlacement";
  * @param position - The stable step and container chunk position.
  * @param outputs - The complete ordered recipes for this chunk, built only when the step has no stored request.
  * @param initial - The first job's frozen runtime policy for subsequent chunks.
+ * @param inputs - The job's inputs, built only when the step has no stored request; the source when absent.
  * @returns The original owning step and registered terminal job.
+ * @throws {ContainerJobFailed} When the job failed for good.
  * @throws {Error} When preparation, persistence, progress or registration fails.
  */
-async function advanceAnalysisJob(
+export async function advanceAnalysisJob(
   execution: Execution, deadlineAt: number, position: number, outputs: () => Promise<readonly AnalysisOutput[]>, initial?: MiniToolPlanJobRequest,
+  inputs?: () => Promise<MiniToolPlanJobRequest["inputs"]>,
 ): Promise<AnalysisJob> {
   const { context, record, params } = execution;
   const steps = await upstreamStepRepo.listSteps(context.taskId);
@@ -67,7 +70,7 @@ async function advanceAnalysisJob(
     if (grants.length !== planned.length) throw new Error("Analysis outputs require their complete upload grants");
     request = miniToolPlanJobRequestSchema.parse({
       schemaVersion: 2, jobId: `task:${context.taskId}/chunk:${position}`, containerClass, deadlineAt, limits,
-      inputs: [{ inputId: record.binding.assetId, storageKey: params.sourceKey }],
+      inputs: inputs === undefined ? [{ inputId: record.binding.assetId, storageKey: params.sourceKey }] : await inputs(),
       outputs: planned.map((output, index) => ({ ...grants[index], outputIndex: output.outputIndex, recipe: output.recipe })),
     });
   }
@@ -112,7 +115,7 @@ async function analysisJson(analysis: AnalysisJob, outputIndex: number): Promise
  * @throws {UpstreamTaskFailed} With `source_ledger_invalid` when the bytes fail the receipt.
  * @throws {Error} When the read fails in transport or the deadline passed.
  */
-async function frozenLedger(execution: Execution, deadlineAt: number): Promise<VideoPresentationLedger> {
+export async function frozenLedger(execution: Execution, deadlineAt: number): Promise<VideoPresentationLedger> {
   const { ledgerReceipts, presentationRef } = execution.params.analysis;
   try {
     return await readJobLedger(ledgerReceipts.source, deadlineAt);

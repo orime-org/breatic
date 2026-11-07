@@ -80,3 +80,25 @@ export function presentationVideoEnd(table: VideoPresentationTable): number {
   return runEnd(table.runs.at(-1)!) / table.timescale;
 }
 
+/**
+ * The presentation frames whose windows start inside a time range: the first index and the count (the first is 0 when
+ * none does).
+ * @param table - The compact table.
+ * @param range - The range in seconds.
+ * @param range.start - Its start.
+ * @param range.end - Its end.
+ * @returns The first index and the count.
+ * @throws {never} Never.
+ */
+export function presentationFramesIn(table: VideoPresentationTable, range: { start: number; end: number }): { first: number; count: number } {
+  let index = 0;
+  let first = -1;
+  let count = 0;
+  for (const run of table.runs) {
+    for (let k = 0; k < run.count; k += 1, index += 1) {
+      const time = (run.start + k * run.step) / table.timescale;
+      if (time >= range.start && time < range.end) { if (first < 0) first = index; count += 1; }
+    }
+  }
+  return { first: Math.max(first, 0), count };
+}

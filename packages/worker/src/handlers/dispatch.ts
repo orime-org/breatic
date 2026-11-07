@@ -22,6 +22,7 @@ import { runContainerJob } from "@worker/handlers/container/run-container-job.js
 import { runMiniToolAnalysisTask } from "@worker/handlers/mini-tool/run-analysis-task.js";
 import { runMiniToolExecutionTask } from "@worker/handlers/mini-tool/run-execution-task.js";
 import { runMiniToolContainerAnalysis } from "@worker/handlers/mini-tool/run-container-analysis.js";
+import { runMiniToolTrackedMaskAnalysis } from "@worker/handlers/mini-tool/run-tracked-mask.js";
 import { runMiniToolDeliveryJob } from "@worker/handlers/mini-tool/delivery-worker.js";
 import { MINI_TOOL_DELIVERY_JOB, MINI_TOOL_DELIVERY_DISCOVERY_JOB, type MiniToolDeliveryWake, type MiniToolDeliveryDiscovery } from "@breatic/core";
 import { assertBeforeDeadline, DeadlinePassed } from "@breatic/shared";
@@ -324,7 +325,9 @@ export async function runTask(
   const analyticsConsent = "analyticsConsent" in job.data ? job.data.analyticsConsent : undefined;
   return await runWithConsent(analyticsConsent ?? NO_CONSENT, () => {
     if (job.name === MINI_TOOL_ANALYSIS_JOB) {
-      return runMiniToolAnalysisTask(job as Job<MiniToolAnalysisJob>, token, runMiniToolContainerAnalysis);
+      // A tracked mask runs its own steps (execution design §10.3); people and scene cuts are container analyses.
+      return runMiniToolAnalysisTask(job as Job<MiniToolAnalysisJob>, token, (execution, deadlineAt) => execution.record.kind === "tracked_mask"
+        ? runMiniToolTrackedMaskAnalysis(execution, deadlineAt) : runMiniToolContainerAnalysis(execution, deadlineAt));
     }
     if ("executionKind" in job.data) {
       if (job.name !== "execute-mini-tool" || job.data.executionKind !== "planned" || job.data.source !== "mini_tool") {

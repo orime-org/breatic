@@ -20,7 +20,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import * as core from "@breatic/core";
 import type * as sharedModule from "@breatic/shared";
-import { miniToolAnalysisService, miniToolFrozenAnalysisSchema } from "@breatic/domain";
+import { miniToolAnalysisService, miniToolFrozenAnalysisSchema, presentationPinService } from "@breatic/domain";
 import { fingerprintMiniToolAnalysisInput, miniToolAnalysisRecordSchema, projectMiniToolAnalysisInput } from "@breatic/shared/mini-tools";
 import type * as wavespeedModule from "@worker/providers/wavespeed.js";
 import { StillRunning } from "@worker/providers/still-running.js";
@@ -109,7 +109,7 @@ beforeEach(() => {
 afterAll(async () => { await pg.end(); core.initCore(process.env); vi.unstubAllGlobals(); });
 
 /**
- * An accepted tracked mask analysis of [1, 3) s anchored at 1.5 s, with an empty tracking prompt.
+ * An accepted tracked mask analysis of [1, 3) s anchored at 1.5 s, with an empty tracking prompt and its analysis pin.
  * @returns The fixture.
  * @throws {Error} On fixture failure.
  */
@@ -134,6 +134,9 @@ async function seed(): Promise<Fixture> {
   await pg`INSERT INTO tasks (id,user_id,project_id,space_id,task_type,mode,source,status,params,result,created_at)
     VALUES (${taskId},${target.userId},${target.projectId},${spaceId},'mini_tool_analysis','append','mini_tool','pending',
       ${pg.json({ analysis, requestFingerprint: randomBytes(32).toString("hex"), sourceKey, credits: 0 })},${pg.json({ analysis: record })},${ACCEPTED_AT}::text::timestamptz)`;
+  // The analysis pin the analysis admission writes; the clips and RLEs are appended to it (§10.3).
+  const toolInputId = presented.presentationRef.source.toolInputId;
+  await presentationPinService.acquire({ holderKind: "analysis", holderId: taskId, toolInputId, objectKeys: presentationPinService.ledgerObjectKeys(sourceKey, toolInputId) });
   return { ...target, taskId };
 }
 

@@ -963,9 +963,11 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.miniTool.videoUI.point"))} under ${quoted(t("canvas.miniTool.videoUI.selection"))} and mark ` +
       "the target on the video itself. Set the range with " +
       `${quoted(t("canvas.miniTool.videoUI.rangeStart"))} and ${quoted(t("canvas.miniTool.videoUI.rangeEnd"))}, then ` +
-      `${quoted(t("canvas.miniTool.videoUI.trackObject"))} tracks that selection. The tracking result and the ` +
-      "description of what should replace it are separate settings. Video expansion uses the frame around the " +
-      "fixed source, with the same ratio buttons and exposed-background dragging as picture expansion.",
+      `${quoted(t("canvas.miniTool.videoUI.trackObject"))} tracks that selection. Erase takes a range of 1–5 s, and ` +
+      "the frame the selection was marked on must lie inside the range. Video expansion uses the frame around the " +
+      "fixed source, with the same ratio buttons and exposed-background dragging as picture expansion; it takes videos " +
+      "up to 180 s, and the expanded video's long side can be at most 4096 px. Neither erase nor expansion works on a " +
+      "video with transparency, such as a background removal result.",
     `In ${quoted(t("canvas.miniTool.video.lip-sync.label"))}, ${quoted(t("canvas.miniTool.videoUI.dialoguePairs"))} ` +
       `has one compact row per dialogue: ${quoted(t("canvas.miniTool.videoUI.targetPerson"))} on the left, ` +
       `${quoted(t("canvas.miniTool.videoUI.dialogueAudio"))} in the middle and ` +

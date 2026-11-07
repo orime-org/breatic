@@ -11,6 +11,7 @@ import { isTerminalAttempt, verifyJobLockOwnership } from "@worker/handlers/disp
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { verdictStands } from "@worker/handlers/understand-failure.js";
 import { finishMiniToolAnalysisAndNotify } from "@worker/handlers/mini-tool/analysis-completion.js";
+import { TrackedMaskFailed } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 
 /** The original analysis computation is selected after loading its SQL identity. */
@@ -49,12 +50,20 @@ export async function runMiniToolAnalysisTask(
           await job.moveToDelayed(thrown.resumeAt, token);
           throw new DelayedError();
         }
-        const error = thrown instanceof DeadlinePassed || failureOutcome(deadlineAt) === "expired" ? new DeadlinePassed() : thrown;
-        if (!isTerminalAttempt(job) && !verdictStands(error)) throw error;
-        logger.error({ err: thrown, ctx }, "mini_tool_analysis_computation_failed");
-        const code = error instanceof DeadlinePassed ? "expired" : "analysis_failed";
-        completion = { kind: "error", error: { code, message: error instanceof Error ? error.message : String(error) }, consumptionSet: "uncertain" };
-        marker = { failed: true, reason: code };
+        if (thrown instanceof TrackedMaskFailed) {
+          // A tracking step failed for good: its code and step are the stored error, with no other attempt (§10.3).
+          logger.error({ err: thrown, ctx }, "mini_tool_analysis_computation_failed");
+          completion = { kind: "error", error: { ...thrown.failure }, consumptionSet: "uncertain" };
+          marker = { failed: true, reason: thrown.failure.code };
+        } else {
+          const error = thrown instanceof DeadlinePassed || failureOutcome(deadlineAt) === "expired" ? new DeadlinePassed() : thrown;
+          if (!isTerminalAttempt(job) && !verdictStands(error)) throw error;
+          logger.error({ err: thrown, ctx }, "mini_tool_analysis_computation_failed");
+          // A tracking analysis names a passed deadline by its panel code (§10.3 code table).
+          const code = error instanceof DeadlinePassed ? (record.kind === "tracked_mask" ? "timeout" : "expired") : "analysis_failed";
+          completion = { kind: "error", error: { code, message: error instanceof Error ? error.message : String(error) }, consumptionSet: "uncertain" };
+          marker = { failed: true, reason: code };
+        }
       }
       // Normal executors persist every call intent before IO. Their existing
       // unresolved-attempt predicate distinguishes known identities from an
