@@ -1786,6 +1786,18 @@
       "notice": "继续即表示你同意{terms}，并已阅读{privacy}。",
       "termsLink": "使用条款",
       "privacyLink": "隐私政策"
+    },
+    "referral": {
+      "label": "推广码",
+      "optional": "选填",
+      "placeholder": "没有可以不填",
+      "notApplied": "推广码已失效，没有使用。可以在会员面板补填。",
+      "existingAccount": "这个账号已存在，推广码没有使用。还没开过会员的话，可以在会员面板补填。",
+      "carried": "用 Google 新注册时会使用推广码 {code}",
+      "carriedInvalid": "推广码 {code} 已失效",
+      "remove": "不使用这个推广码",
+      "haveCode": "有推广码？",
+      "googleOnly": "用 Google 新注册时使用"
     }
   },
   "roleTag": {

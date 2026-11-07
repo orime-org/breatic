@@ -1786,6 +1786,18 @@
       "notice": "続行すると、{terms}に同意し、{privacy}を確認したものとみなされます。",
       "termsLink": "利用規約",
       "privacyLink": "プライバシーポリシー"
+    },
+    "referral": {
+      "label": "紹介コード",
+      "optional": "任意",
+      "placeholder": "お持ちでなければ空欄のまま",
+      "notApplied": "紹介コードは無効になっていたため使用されませんでした。メンバーシップパネルで登録できます。",
+      "existingAccount": "このアカウントは既に存在するため、紹介コードは使用されませんでした。まだメンバーシップに加入していなければ、メンバーシップパネルで登録できます。",
+      "carried": "Google で新規登録すると紹介コード {code} が使われます",
+      "carriedInvalid": "紹介コード {code} は無効です",
+      "remove": "このコードを使わない",
+      "haveCode": "紹介コードをお持ちですか？",
+      "googleOnly": "Google で新規登録するときに使われます"
     }
   },
   "roleTag": {

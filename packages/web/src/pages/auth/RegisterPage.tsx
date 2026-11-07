@@ -7,7 +7,7 @@ import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { normalizeEmail } from '@breatic/shared';
 import type { SignupInvitationPreview } from '@breatic/shared';
 
-import { authApi, type AuthUser, type SignupCodeSent } from '@web/data/api/auth';
+import { authApi, type AuthUser, type SignupCodeSent, type SignupReferralOutcome } from '@web/data/api/auth';
 import { toCurrentUser, useCurrentUserStore } from '@web/stores/current-user';
 import { ApiException } from '@web/data/api/types';
 import { attributionBody, failureCode, reportConversion, trackEvent } from '@web/data/analytics';
@@ -22,6 +22,22 @@ import { FieldError } from '@web/components/FieldError';
 import { SignupCodeStep } from '@web/pages/auth/SignupCodeStep';
 import { looksLikeEmail } from '@web/lib/looks-like-email';
 import { safeNextPath } from '@web/lib/safe-next-path';
+import { toast } from '@web/lib/toast';
+import { Skeleton } from '@web/components/ui/skeleton';
+import { useSignupReferral } from '@web/features/referral/use-signup-referral';
+import { GoogleSignIn } from '@web/pages/auth/GoogleSignIn';
+import { changeLocale } from '@web/i18n/locale-bootstrap';
+
+declare const __GOOGLE_CLIENT_ID__: string;
+
+/**
+ * Whether the server refused a sign-up for its referral code.
+ * @param err - What the request threw.
+ * @returns True for the referral field's refusal.
+ */
+function referralRefused(err: unknown): err is ApiException {
+  return err instanceof ApiException && err.status === 422 && err.reason === 'invalid_code';
+}
 
 /**
  * Email + password registration — step one of the two-step sign-up.
@@ -52,6 +68,7 @@ export default function RegisterPage(): React.JSX.Element {
   const slugPath = carriesNext ? `/choose-slug?next=${encodeURIComponent(next)}` : '/choose-slug';
   const loginPath = carriesNext ? `/login?next=${encodeURIComponent(next)}` : '/login';
   const setUser = useCurrentUserStore((s) => s.setUser);
+  const referral = useSignupReferral();
 
   const invitation = useQuery({
     queryKey: ['auth', 'invitation', inviteToken],
@@ -125,11 +142,12 @@ export default function RegisterPage(): React.JSX.Element {
   const register = React.useCallback(
     async (trimmedEmail: string): Promise<SignupCodeSent | null> => {
       try {
-        const answer = await authApi.register({ email: trimmedEmail, password, ...attributionBody() });
+        const answer = await authApi.register({ email: trimmedEmail, password, ...attributionBody(), ...referral.body() });
         if (answer.status === 'code_sent') {
           setCodeSent(answer);
           return answer;
         }
+        referral.used();
         // Step one creates the account with no personal studio yet — the
         // store mirrors that null so the onboarding gate is consistent
         // even before the recovery dialog is dismissed.
@@ -143,11 +161,12 @@ export default function RegisterPage(): React.JSX.Element {
       } catch (err) {
         setCodeSent(null);
         trackEvent('signup_failed', { method: 'email', success: false, error_code: failureCode(err) });
-        setFormError(err instanceof ApiException ? err.message : t('auth.register.failed'));
+        if (referralRefused(err)) referral.refused(err.message);
+        else setFormError(err instanceof ApiException ? err.message : t('auth.register.failed'));
         return null;
       }
     },
-    [password, setUser, navigate, slugPath, t],
+    [password, setUser, navigate, slugPath, t, referral],
   );
 
   const restart = React.useCallback(
@@ -156,12 +175,43 @@ export default function RegisterPage(): React.JSX.Element {
   );
 
   const handleVerified = React.useCallback(
-    (user: AuthUser): void => {
+    (user: AuthUser, outcome?: SignupReferralOutcome): void => {
       setUser(toCurrentUser(user));
       reportConversion('signup', `signup:${user.id}`);
+      referral.used();
+      // Before navigating: the Toaster sits outside the router and keeps it (inner#1868 §10).
+      if (outcome === 'not_applied') toast.warning(t('auth.referral.notApplied'));
       navigate(slugPath, { replace: true });
     },
-    [setUser, navigate, slugPath],
+    [setUser, navigate, slugPath, referral, t],
+  );
+
+  /**
+   * Exchange a Google credential, carrying the referral code to a new account.
+   * @param credential - The ID token from Google's SDK.
+   */
+  const handleGoogleCredential = React.useCallback(
+    async (credential: string): Promise<void> => {
+      if (submitting) return;
+      setSubmitting(true);
+      setFormError(null);
+      trackEvent('signup_started', { method: 'google' });
+      try {
+        const answer = await authApi.google({ credential, ...attributionBody(), ...referral.body() });
+        setUser(toCurrentUser(answer.user));
+        if (answer.created) reportConversion('signup', `signup:${answer.user.id}`);
+        referral.used();
+        if (answer.referral === 'not_applied') toast.warning(t('auth.referral.existingAccount'));
+        void changeLocale(answer.user.locale);
+        navigate(answer.created ? slugPath : next, { replace: true });
+      } catch (err) {
+        if (referralRefused(err)) referral.refused(err.message);
+        else setFormError(err instanceof ApiException ? err.message : t('auth.register.failed'));
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [submitting, referral, setUser, t, navigate, slugPath, next],
   );
 
   const handleChangeEmail = React.useCallback((): void => {
@@ -278,15 +328,47 @@ export default function RegisterPage(): React.JSX.Element {
             )}
           </div>
 
+          {referral.field === 'loading' ? (
+            <div className='flex flex-col gap-1' data-testid='register-referral-loading'>
+              <Skeleton className='h-4 w-24' />
+              <Skeleton className='h-9 w-full' />
+            </div>
+          ) : referral.field === 'shown' ? (
+            <div className='flex flex-col gap-1'>
+              <div className='flex items-baseline justify-between'>
+                <Label htmlFor='register-referral'>{t('auth.referral.label')}</Label>
+                <span className='text-xs text-muted-foreground'>{t('auth.referral.optional')}</span>
+              </div>
+              <Input
+                id='register-referral'
+                autoComplete='off'
+                value={referral.value}
+                placeholder={t('auth.referral.placeholder')}
+                onChange={(e) => referral.change(e.target.value)}
+                readOnly={submitting}
+                aria-invalid={!!referral.error || undefined}
+                aria-describedby={referral.error ? 'register-referral-error' : undefined}
+              />
+              {referral.error ? <FieldError id='register-referral-error'>{referral.error}</FieldError> : null}
+            </div>
+          ) : null}
+
           {formError ? (
             <FieldError role='alert' className='mt-1'>{formError}</FieldError>
           ) : null}
 
-          <Button type='submit' size='form' loading={submitting} className='mt-2'>
+          <Button type='submit' size='form' loading={submitting} disabled={referral.field === 'loading'} className='mt-2'>
             {submitting
               ? t('auth.register.creating')
               : t('auth.register.create')}
           </Button>
+          {typeof __GOOGLE_CLIENT_ID__ === 'string' && __GOOGLE_CLIENT_ID__ !== '' ? (
+            <GoogleSignIn
+              clientId={__GOOGLE_CLIENT_ID__}
+              busy={submitting || referral.field === 'loading'}
+              onCredential={handleGoogleCredential}
+            />
+          ) : null}
         </form>
       </AuthCardShell>
     </>

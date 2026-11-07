@@ -1786,6 +1786,18 @@
       "notice": "계속하면 {terms}에 동의하고 {privacy}을 확인한 것으로 간주됩니다.",
       "termsLink": "이용약관",
       "privacyLink": "개인정보 처리방침"
+    },
+    "referral": {
+      "label": "추천 코드",
+      "optional": "선택",
+      "placeholder": "없으면 비워 두세요",
+      "notApplied": "추천 코드가 더 이상 유효하지 않아 사용되지 않았습니다. 멤버십 패널에서 등록할 수 있습니다.",
+      "existingAccount": "이미 있는 계정이라 추천 코드가 사용되지 않았습니다. 아직 멤버십에 가입하지 않았다면 멤버십 패널에서 등록할 수 있습니다.",
+      "carried": "Google로 새로 가입하면 추천 코드 {code}가 사용됩니다",
+      "carriedInvalid": "추천 코드 {code}는 유효하지 않습니다",
+      "remove": "이 코드 사용 안 함",
+      "haveCode": "추천 코드가 있나요?",
+      "googleOnly": "Google로 새로 가입할 때 사용됩니다"
     }
   },
   "roleTag": {

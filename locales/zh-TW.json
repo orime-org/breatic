@@ -1786,6 +1786,18 @@
       "notice": "繼續即表示你同意{terms}，並已閱讀{privacy}。",
       "termsLink": "使用條款",
       "privacyLink": "隱私政策"
+    },
+    "referral": {
+      "label": "推廣碼",
+      "optional": "選填",
+      "placeholder": "沒有可以不填",
+      "notApplied": "推廣碼已失效，沒有使用。可以在會員面板補填。",
+      "existingAccount": "這個帳號已存在，推廣碼沒有使用。還沒開過會員的話，可以在會員面板補填。",
+      "carried": "用 Google 新註冊時會使用推廣碼 {code}",
+      "carriedInvalid": "推廣碼 {code} 已失效",
+      "remove": "不使用這個推廣碼",
+      "haveCode": "有推廣碼？",
+      "googleOnly": "用 Google 新註冊時使用"
     }
   },
   "roleTag": {

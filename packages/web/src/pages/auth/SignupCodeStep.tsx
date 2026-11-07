@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 
-import { authApi, type AuthUser, type SignupCodeSent } from '@web/data/api/auth';
+import { authApi, type AuthUser, type SignupCodeSent, type SignupReferralOutcome } from '@web/data/api/auth';
 import { attributionBody } from '@web/data/analytics';
 import { ApiException } from '@web/data/api/types';
 import { Button } from '@web/components/ui/button';
@@ -29,7 +29,7 @@ interface SignupCodeStepProps {
    */
   restart: () => Promise<SignupCodeSent | null>;
   /** The account exists and is signed in. */
-  onVerified: (user: AuthUser) => void;
+  onVerified: (user: AuthUser, referral?: SignupReferralOutcome) => void;
   /** Back to the form, keeping what was typed. */
   onChangeEmail: () => void;
 }
@@ -76,7 +76,7 @@ function messageOf(err: unknown, fallback: string): string {
  * @param root0.email - the address the code went to
  * @param root0.sent - the code-sent answer when the step opened
  * @param root0.restart - start the sign-up again after it expired
- * @param root0.onVerified - called with the new account
+ * @param root0.onVerified - called with the new account, and what became of its referral code
  * @param root0.onChangeEmail - go back to the form
  * @returns the code step.
  */
@@ -140,8 +140,8 @@ export function SignupCodeStep({
       setError(null);
       setInfo(null);
       try {
-        const { user } = await authApi.verifySignupCode({ code: value, ...attributionBody() });
-        onVerified(user);
+        const { user, referral } = await authApi.verifySignupCode({ code: value, ...attributionBody() });
+        onVerified(user, referral);
       } catch (err) {
         if (err instanceof ApiException && err.status === HTTP_EXPIRED) {
           await startOver();

@@ -1786,6 +1786,18 @@
       "notice": "By continuing, you agree to our {terms} and acknowledge our {privacy}.",
       "termsLink": "Terms of Service",
       "privacyLink": "Privacy Policy"
+    },
+    "referral": {
+      "label": "Referral code",
+      "optional": "Optional",
+      "placeholder": "Leave empty if you have none",
+      "notApplied": "The referral code is no longer valid and was not used. You can add a code in the membership panel.",
+      "existingAccount": "This account already exists, so the referral code was not used. If you have not had a membership yet, you can add it in the membership panel.",
+      "carried": "A new account made with Google will use referral code {code}",
+      "carriedInvalid": "Referral code {code} is no longer valid",
+      "remove": "Don't use this code",
+      "haveCode": "Have a referral code?",
+      "googleOnly": "Used when signing up with Google"
     }
   },
   "roleTag": {
