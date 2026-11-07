@@ -106,9 +106,9 @@ describe('DocumentEditor', () => {
     // body turns this red. Two things do NOT: the bubble bar, which only
     // renders while a selection exists, and anything portalled out.
     //
-    // The shell holds one row, and the row is where the columns go: the
-    // heading outline (inner#1149), the body and, once the user opens it,
-    // the comment panel (#18, A18).
+    // The shell holds one row, and the row holds the heading outline
+    // (inner#1149) and the scroller; the body and, once the user opens it,
+    // the comment panel (#18, A18) sit side by side inside the scroller.
     const { container } = render(<DocumentEditor handle={handle} />);
     const shell = [...container.firstElementChild!.children];
     expect(shell).toHaveLength(1);

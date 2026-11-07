@@ -4,11 +4,10 @@
 /**
  * The class that names the body's scroll container.
  *
- * One definition because two different kinds of code depend on it: the
- * stylesheet paints the scrollbar through it, and `SelectionBubbleBar` walks
- * up from the scroller to find the viewport it portals itself into. Left as a
- * literal in those places, renaming it while restyling the scrollbar would put
- * the bar at the end of the body.
+ * One definition because the stylesheet and the tests both reach the body
+ * through it: `index.css` stretches the wrapper around the body to fill the
+ * scroller (`:has(.doc-body-editor)`), and tests find the body's viewport by
+ * it, apart from the heading outline's own scroller beside it.
  */
 export const BODY_SCROLLER_CLASS = 'doc-body-scroller';
 
