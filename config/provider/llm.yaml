@@ -85,17 +85,17 @@ gemini_inline_max_bytes: 20000000
 gemini_file_poll_ms: 5000
 openrouter_prices:
   deepseek/deepseek-v4-pro:
-    input_cache_miss_per_mtok: 0.648672
-    output_per_mtok: 1.297344
+    input_cache_miss_per_mtok: 0.8281
+    output_per_mtok: 1.6562
   deepseek/deepseek-v4.1-flash-1017:
-    input_cache_miss_per_mtok: 0.15
-    output_per_mtok: 0.6
+    input_cache_miss_per_mtok: 0.006
+    output_per_mtok: 0.5
   anthropic/claude-opus-5.5:
     input_cache_miss_per_mtok: 4
     output_per_mtok: 20
   google/gemini-2.5-flash:
-    input_cache_miss_per_mtok: 0.3
-    output_per_mtok: 2.5
+    input_cache_miss_per_mtok: 0.15
+    output_per_mtok: 1.25
   google/gemini-3.8-flash:
-    input_cache_miss_per_mtok: 0.825
-    output_per_mtok: 4.125
+    input_cache_miss_per_mtok: 0.375
+    output_per_mtok: 1.875

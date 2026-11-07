@@ -672,6 +672,19 @@ describe("cheapest mode for LLM calls", () => {
     expect(await cheapestOn({ input_cache_miss_per_mtok: direct.input_cache_miss_per_mtok / 2, output_per_mtok: direct.output_per_mtok })).toBe("openrouter");
   });
 
+  it("asks OpenRouter to try its endpoints cheapest first, the endpoint its unit price is taken from", async () => {
+    const direct = llmConfig(fakes).llm!.prices!["deepseek/deepseek-v4-pro"]!;
+    expect(await cheapestOn({ input_cache_miss_per_mtok: direct.input_cache_miss_per_mtok / 2, output_per_mtok: direct.output_per_mtok })).toBe("openrouter");
+    expect(posted(fakes.openrouter)[0]?.provider).toEqual({ sort: "price" });
+  });
+
+  it("leaves OpenRouter's own endpoint choice to it outside cheapest mode", async () => {
+    const provider = createProvider({ config: llmConfig(fakes), keyOf: (name) => ({ OPENROUTER_API_KEY: "or" })[name], llmMaxRetries: 0, cleanText: (t) => t });
+    const prepared = provider.llm.prepare("deepseek/deepseek-v4-pro", { thinking: false, cache: false });
+    await generateText({ model: prepared.model, prompt: "hi", ...prepared.options });
+    expect(posted(fakes.openrouter)[0]).not.toHaveProperty("provider");
+  });
+
   it("serves the direct upstream first when OpenRouter's unit price is higher", async () => {
     const direct = llmConfig(fakes).llm!.prices!["deepseek/deepseek-v4-pro"]!;
     expect(await cheapestOn({ input_cache_miss_per_mtok: direct.input_cache_miss_per_mtok, output_per_mtok: direct.output_per_mtok * 2 })).toBe("deepseek");

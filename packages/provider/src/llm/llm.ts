@@ -198,14 +198,17 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    * @param plan - The plan.
    * @param modelId - Our model id.
    * @param wants - What the call asks for.
+   * @param chosen - The caller's mode.
    * @returns The merged provider options.
    */
-  const providerOptionsFor = (plan: RoutePlan, modelId: string, wants: CallWants): Record<string, VendorOptions> => {
+  const providerOptionsFor = (plan: RoutePlan, modelId: string, wants: CallWants, chosen: Route): Record<string, VendorOptions> => {
     const merged: Record<string, VendorOptions> = {};
     for (const { upstream } of plan.order) {
       const vendor = vendorOf(kindOf(upstream));
-      // The OpenRouter backend pin is understand's alone, never a prepared call's.
-      merged[vendor.sdkName] = optionsFor(vendor, modelId, wants);
+      // The OpenRouter backend pin is understand's alone, never a prepared call's. A cheapest call is ranked by
+      // OpenRouter's cheapest endpoint (openrouter_prices), so it asks OpenRouter to try that endpoint first.
+      const cheapest: VendorOptions = chosen.mode === "cheapest" && kindOf(upstream) === "openrouter" ? { provider: { sort: "price" } } : {};
+      merged[vendor.sdkName] = { ...optionsFor(vendor, modelId, wants), ...cheapest };
     }
     return merged;
   };
@@ -371,7 +374,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       return {
         model,
         // provider retries and switches itself; an AI SDK retry around it would resend what it gave up on.
-        options: { providerOptions: providerOptionsFor(plan, modelId, wants), maxRetries: 0, ...temperature },
+        options: { providerOptions: providerOptionsFor(plan, modelId, wants, chosen), maxRetries: 0, ...temperature },
         system(parts: SystemParts): SystemModelMessage[] {
           const marks: Record<string, VendorOptions> = {};
           for (const { upstream } of plan.order) {

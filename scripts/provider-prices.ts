@@ -31,8 +31,9 @@
  * SandBase's model list).
  * OpenRouter: after the media upstreams, writes `openrouter_prices` in
  * `config/provider/llm.yaml`, OpenRouter's token prices for every model with a
- * direct price there, from OpenRouter's public model list (no key), so a
- * cheapest LLM call ranks OpenRouter beside the direct upstream. Last it regenerates
+ * direct price there: the cheapest endpoint OpenRouter lists for the model
+ * (its public endpoints list, no key), the one a cheapest LLM call is served by,
+ * so such a call ranks OpenRouter beside the direct upstream. Last it regenerates
  * `config/provider/upstream-field-names.json`: the upstream field names no
  * catalog param shares, which non-provider code must not spell.
  *
@@ -388,15 +389,22 @@ async function syncSandBase(upstream: string, list: typeof bindings): Promise<vo
 /**
  * Write OpenRouter's token prices into `openrouter_prices` of `config/provider/llm.yaml`, for every model
  * of its `prices` and in their order, keeping the file's comments; a model given no price is a problem.
- * OpenRouter's id for a model is `vendor_ids[model].openrouter` when set, else ours.
- * @throws {Error} When OpenRouter's model list does not answer 2xx.
+ * OpenRouter's id for a model is `vendor_ids[model].openrouter` when set, else ours; its price is its cheapest endpoint's.
+ * @throws {Error} When OpenRouter's endpoints list answers other than 2xx or 404.
  */
 async function syncOpenRouterPrices(): Promise<void> {
   const doc = parseDocument(readFileSync(LLM, "utf8"));
   const llm = doc.toJS() as { prices?: Record<string, unknown>; vendor_ids?: Record<string, Record<string, string>> };
   const ids = new Map(Object.keys(llm.prices ?? {}).map((model) => [model, llm.vendor_ids?.[model]?.openrouter ?? model]));
-  const listed = at(await json(OPENROUTER_MODELS), "data") as { id: string; pricing?: { prompt?: unknown; completion?: unknown } }[];
-  const { prices, problems: unpriced } = openRouterPrices(listed, ids);
+  const endpoints = new Map<string, { pricing?: { prompt?: unknown; completion?: unknown } }[]>();
+  for (const id of new Set(ids.values())) {
+    const res = await fetch(`${OPENROUTER_MODELS}/${id}/endpoints`, { signal: AbortSignal.timeout(60_000) });
+    // A model OpenRouter does not list answers 404; openRouterPrices names it.
+    if (res.status === 404) continue;
+    if (!res.ok) throw new Error(`GET ${OPENROUTER_MODELS}/${id}/endpoints answered ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    endpoints.set(id, at(await res.json(), "data", "endpoints") as { pricing?: { prompt?: unknown; completion?: unknown } }[]);
+  }
+  const { prices, problems: unpriced } = openRouterPrices(endpoints, ids);
   problems.push(...unpriced);
   doc.set("openrouter_prices", doc.createNode(prices));
   const text = yamlText(doc, { lineWidth: 0 });

@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * How `scripts/provider-prices.ts` reads OpenRouter's token prices from its model list
- * (`GET https://openrouter.ai/api/v1/models`) into `openrouter_prices` in `config/provider/llm.yaml`,
- * so a cheapest LLM call ranks OpenRouter beside the direct upstream (inner#1743).
+ * How `scripts/provider-prices.ts` reads OpenRouter's token prices into `openrouter_prices` in
+ * `config/provider/llm.yaml`, so a cheapest LLM call ranks OpenRouter beside the direct upstream
+ * (inner#1743). A cheapest call asks OpenRouter to try its endpoints cheapest first (`provider.sort`
+ * "price"), so the price written is that of the cheapest endpoint OpenRouter lists for the model
+ * (`GET https://openrouter.ai/api/v1/models/{author}/{slug}/endpoints`).
  */
 
 /**
@@ -20,30 +22,31 @@ function perMtok(perToken) {
 }
 
 /**
- * Our models' OpenRouter token prices, from OpenRouter's model list.
- * @param {readonly { id: string; pricing?: { prompt?: unknown; completion?: unknown } }[]} listed - The `data` array of OpenRouter's model list.
+ * Our models' OpenRouter token prices: per model, its cheapest endpoint with a fixed price, by input then output.
+ * @param {ReadonlyMap<string, readonly { pricing?: { prompt?: unknown; completion?: unknown } }[]>} endpoints - The endpoints OpenRouter lists, by OpenRouter's model id; a model it does not list is absent.
  * @param {ReadonlyMap<string, string>} ids - Our model id to the id OpenRouter lists it under.
  * @returns {{ prices: Record<string, { input_cache_miss_per_mtok: number; output_per_mtok: number }>; problems: string[] }} The prices by our model id, and a problem for each model given no price.
  */
-export function openRouterPrices(listed, ids) {
-  const byId = new Map(listed.map((m) => [m.id, m]));
+export function openRouterPrices(endpoints, ids) {
   /** @type {Record<string, { input_cache_miss_per_mtok: number; output_per_mtok: number }>} */
   const prices = {};
   /** @type {string[]} */
   const problems = [];
   for (const [ours, theirs] of ids) {
-    const model = byId.get(theirs);
-    if (model === undefined) {
-      problems.push(`${ours}: OpenRouter lists no model ${theirs}`);
+    const listed = endpoints.get(theirs) ?? [];
+    if (listed.length === 0) {
+      problems.push(`${ours}: OpenRouter lists no endpoint of ${theirs}`);
       continue;
     }
-    const input = perMtok(model.pricing?.prompt);
-    const output = perMtok(model.pricing?.completion);
-    if (input === undefined || output === undefined) {
-      problems.push(`${ours}: OpenRouter states no fixed token price for ${theirs} (prompt ${JSON.stringify(model.pricing?.prompt)}, completion ${JSON.stringify(model.pricing?.completion)})`);
+    const fixed = listed
+      .map((e) => ({ input: perMtok(e.pricing?.prompt), output: perMtok(e.pricing?.completion) }))
+      .filter((p) => p.input !== undefined && p.output !== undefined)
+      .sort((a, b) => a.input - b.input || a.output - b.output);
+    if (fixed.length === 0) {
+      problems.push(`${ours}: none of the ${listed.length} endpoints of ${theirs} states a fixed token price`);
       continue;
     }
-    prices[ours] = { input_cache_miss_per_mtok: input, output_per_mtok: output };
+    prices[ours] = { input_cache_miss_per_mtok: fixed[0].input, output_per_mtok: fixed[0].output };
   }
   return { prices, problems };
 }
