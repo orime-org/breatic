@@ -90,10 +90,16 @@ export type MiniToolPlanRecipe =
   | ({ kind: "chunk_encode"; profile?: MiniToolPlanTransitionProfile } & MiniToolPlanWindowRecipe)
   | MiniToolPlanStitch
   | MiniToolPlanTransitionStitch
-  | ({ kind: "prepare_model_input"; audio: MiniToolPlanAudio | null } & MiniToolPlanWindowRecipe)
+  // `order` plays the window backwards for a reversed tracking clip; `grid` times the frames for the erase model (§10.2, §10.4).
+  | ({ kind: "prepare_model_input"; audio: MiniToolPlanAudio | null; order?: "forward" | "reverse"; grid?: MiniToolPlanModelGrid } & MiniToolPlanWindowRecipe)
   | MiniToolPlanTransitionWindow
   | MiniToolPlanEraseComposite
   | MiniToolPlanExpandComposite
+  | MiniToolPlanRleJoin
+  | MiniToolPlanBriaMask
+  | MiniToolPlanModelWindow
+  | MiniToolPlanModelWindowMask
+  | MiniToolPlanFrameAt
   | MiniToolPlanLipsyncFaces
   | MiniToolPlanLipsyncClip
   | MiniToolPlanLipsyncStem
@@ -132,8 +138,35 @@ export interface MiniToolPlanTransitionWindow {
   transition: "fade" | "wipeLeft" | "wipeRight";
   profile: MiniToolPlanTransitionProfile;
 }
-/** An erase composite chunk: the model's result composited over the source within `range` (§97 D15-8). */
-export type MiniToolPlanEraseComposite = { kind: "model_composite"; mode: "erase"; result: string; range: MiniToolPlanInterval } & MiniToolPlanWindowRecipe;
+/** The erase model's frame grid (execution design §10.4): frame for frame at `rate`, or resampled on a `rate` grid. */
+export interface MiniToolPlanModelGrid { mode: "frames" | "resample"; rate: number; frameCount: number }
+/** A range of presentation frame ordinals by its first frame and count. */
+export interface MiniToolPlanFrameRange { startFrame: number; frameCount: number }
+/**
+ * An erase composite chunk (execution design §10.4 composite row): each range frame shows its grid slot's result frame through
+ * the RLE mask, dilated and feathered in source pixels; `table` places the chunk's first frame in the range.
+ */
+export type MiniToolPlanEraseComposite = {
+  kind: "model_composite"; mode: "erase"; result: string; rle: string; table: VideoPresentationTable; range: MiniToolPlanFrameRange;
+  grid: MiniToolPlanModelGrid; matte: { dilate: number; feather: number };
+} & MiniToolPlanWindowRecipe;
+/** The forward and reversed tracking clips' RLE joined over the range (execution design §10.2). */
+export interface MiniToolPlanRleJoin { kind: "rle_join"; inputs: { inputId: string; order: "forward" | "reverse"; frameCount: number }[]; width: number; height: number }
+/** The erase model's mask video: one lossless full-range frame per grid slot, white where its RLE frame has foreground (§10.4). */
+export interface MiniToolPlanBriaMask {
+  kind: "bria_mask"; inputId: string; table: VideoPresentationTable; range: MiniToolPlanFrameRange; grid: MiniToolPlanModelGrid; target: { width: number; height: number };
+}
+/** The expand model's frame grid for one window: `frameCount` frames at `fps` from the span's start (§10.5). */
+export interface MiniToolPlanWindowGrid { fps: number; frameCount: number }
+/** One expand window's model input (§10.5): each grid slot's covering frame scaled into `sourceRoi` over `fill`, lossless. */
+export type MiniToolPlanModelWindow = {
+  kind: "model_window"; grid: MiniToolPlanWindowGrid; frame: { width: number; height: number }; sourceRoi: MiniToolPlanPixelRect;
+  fill: [number, number, number]; span: MiniToolPlanInterval;
+} & MiniToolPlanWindowRecipe;
+/** One expand window's mask: black inside `sourceRoi`, white elsewhere, lossless full range (§10.5). */
+export interface MiniToolPlanModelWindowMask { kind: "model_window_mask"; grid: MiniToolPlanWindowGrid; frame: { width: number; height: number }; sourceRoi: MiniToolPlanPixelRect; span: MiniToolPlanInterval }
+/** The PNG of a video's frame closest to `time`, the earlier on a tie (§10.5 condition step). */
+export interface MiniToolPlanFrameAt { kind: "frame_at"; inputId: string; time: MiniToolPlanExact; target: { width: number; height: number } }
 /** An expand composite chunk: the background windows and how much of each is overlap and consumed (§97 D15-8, execution design §8.1). */
 export type MiniToolPlanExpandComposite = {
   kind: "model_composite"; mode: "expand";
@@ -168,7 +201,9 @@ export function miniToolPlanRecipeInputs(recipe: MiniToolPlanRecipe): string[] {
     case "stitch": return [...("clips" in recipe ? recipe.clips.map((clip) => clip.inputId) : [recipe.inputId, ...(recipe.audio !== null && "kind" in recipe.audio ? recipe.audio.inputs : [])]),
       ...recipe.chunks.map((chunk) => chunk.inputId)];
     case "transition_window": return recipe.clips.map((clip) => clip.inputId);
-    case "model_composite": return [recipe.inputId, ...(recipe.mode === "erase" ? [recipe.result] : recipe.backgrounds.map((background) => background.inputId))];
+    case "model_composite": return [recipe.inputId, ...(recipe.mode === "erase" ? [recipe.result, recipe.rle] : recipe.backgrounds.map((background) => background.inputId))];
+    case "rle_join": return recipe.inputs.map((input) => input.inputId);
+    case "model_window_mask": return [];
     case "lipsync_faces": return [recipe.inputId, recipe.track];
     case "lipsync_clip": return [recipe.inputId, recipe.faces, recipe.track];
     case "lipsync_stem": return recipe.rows.map((row) => row.inputId);

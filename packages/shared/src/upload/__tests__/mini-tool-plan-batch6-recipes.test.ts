@@ -18,7 +18,7 @@
  * - The transition `stitch`: `{ kind, chunks, clips: [two { inputId, audio }], crossfade: { startFrame, frameCount } | null,
  *   profile }`; `audio` is the existing audio entry, null for a clip without audio (silence over its span); `crossfade` is
  *   null for a Cut.
- * - `model_composite`, by `mode`: erase `{ ...windowRecipe, result, range }`; expand `{ ...windowRecipe, backgrounds:
+ * - `model_composite`, by `mode`: erase `{ ...windowRecipe, result, rle, table, range, grid, matte }` (execution design §10.4); expand `{ ...windowRecipe, backgrounds:
  *   [{ inputId, window }], ledger: [{ overlap, consumed }] }`, one ledger row per background, whose own `window` is that
  *   window's presentation interval (§8.1: per-window interval, overlap, consumed interval inside the window).
  */
@@ -36,6 +36,7 @@ const CHUNK = "20000000-0000-4000-8000-0000000000c0";
 const RESULT = "20000000-0000-4000-8000-0000000000e0";
 const BACKGROUNDS = ["20000000-0000-4000-8000-0000000000b0", "20000000-0000-4000-8000-0000000000b1"];
 const UNBOUND = "20000000-0000-4000-8000-0000000000ff";
+const RLE = "20000000-0000-4000-8000-0000000000d0";
 const LIMITS = { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 };
 /** The source entry of presented frame `n` of a 25 fps clip. @returns It. */
 const entryAt = (n: number, count = 1): Recipe => ({ kind: "source", decodeStart: r(n, 25), clipStart: r(n, 25), displayStart: r(n, 25), displayEnd: r(n + count, 25), rate: r(1) });
@@ -58,7 +59,9 @@ const transitionStitch = (): Recipe => ({
   clips: stitchClips(), crossfade: { startFrame: 75, frameCount: 15 }, profile: OPAQUE,
 });
 const windowShape = { inputId: SOURCE_A, window: { start: 0, end: 50 }, timescale: 25, entries: [entryAt(0, 50)], target: TARGET };
-const erase = (): Recipe => ({ kind: "model_composite", mode: "erase", ...windowShape, result: RESULT, range: { start: r(1, 2), end: r(3, 2) } });
+const erase = (): Recipe => ({ kind: "model_composite", mode: "erase", ...windowShape, result: RESULT, rle: RLE,
+  table: { schemaVersion: 1, timescale: 25, runs: [{ start: 0, count: 50, step: 1, duration: 1 }] }, range: { startFrame: 13, frameCount: 25 },
+  grid: { mode: "frames", rate: 25, frameCount: 25 }, matte: { dilate: 4, feather: 4 } });
 const expand = (): Recipe => ({
   kind: "model_composite", mode: "expand", ...windowShape,
   backgrounds: [{ inputId: BACKGROUNDS[0], window: { start: r(0), end: r(5, 4) } }, { inputId: BACKGROUNDS[1], window: { start: r(1), end: r(2) } }],
@@ -220,7 +223,9 @@ describe("model_composite (§97 D15-8; frames-split §7.17, execution design §8
   it.each([
     ["an unknown mode", erase, { mode: "inpaint" }],
     ["erase without its result", erase, { result: undefined }],
-    ["erase with an empty range", erase, { range: { start: r(1), end: r(1) } }],
+    ["erase with an empty range", erase, { range: { startFrame: 13, frameCount: 0 } }],
+    ["erase without its mask", erase, { rle: undefined }],
+    ["erase without its grid", erase, { grid: undefined }],
     ["erase with expand's backgrounds", erase, { backgrounds: expand().backgrounds }],
     ["expand with erase's result", expand, { result: RESULT }],
     ["expand without backgrounds", expand, { backgrounds: [], ledger: [] }],
@@ -235,8 +240,8 @@ describe("model_composite (§97 D15-8; frames-split §7.17, execution design §8
   });
 
   it("BM03 a job binds the source and every model result; an unbound result or background is refused", () => {
-    expect(miniToolPlanJobRequestSchema.safeParse(job(erase(), [SOURCE_A, RESULT])).success).toBe(true);
-    expect(miniToolPlanJobRequestSchema.safeParse(job(erase(), [SOURCE_A])).success).toBe(false);
+    expect(miniToolPlanJobRequestSchema.safeParse(job(erase(), [SOURCE_A, RESULT, RLE])).success).toBe(true);
+    expect(miniToolPlanJobRequestSchema.safeParse(job(erase(), [SOURCE_A, RESULT])).success).toBe(false);
     expect(miniToolPlanJobRequestSchema.safeParse(job(expand(), [SOURCE_A, ...BACKGROUNDS])).success).toBe(true);
     expect(miniToolPlanJobRequestSchema.safeParse(job(expand(), [SOURCE_A, BACKGROUNDS[0]!, UNBOUND])).success).toBe(false);
   });

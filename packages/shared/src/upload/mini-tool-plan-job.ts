@@ -110,6 +110,10 @@ const lipsyncTimeline = z.strictObject({ duration: positiveSeconds, videoDuratio
 const cropSize = z.number().int().positive();
 const windowRef = z.strictObject({ startFrame: index, frameCount: z.number().int().positive() });
 const windowClip = z.strictObject({ inputId, entries, colorMatrix: z.string().min(1), toneMap: z.enum(["none", "sdr-bt709"]) });
+// The erase model's grid and an expand window's grid (execution design §10.4, §10.5).
+const modelGrid = z.strictObject({ mode: z.enum(["frames", "resample"]), rate: z.number().finite().positive(), frameCount: z.number().int().positive() });
+const windowGrid = z.strictObject({ fps: z.number().int().positive(), frameCount: z.number().int().positive() });
+const frameSize = z.strictObject({ width: side, height: side });
 
 /** Output and diagnostic byte ceilings frozen from the task's runtime configuration. */
 export const miniToolPlanLimitsSchema = z.strictObject({
@@ -156,7 +160,13 @@ const recipeUnion = z.discriminatedUnion("kind", [
     if (recipe.chunks.some((chunk) => sources.includes(chunk.inputId))) ctx.addIssue({ code: "custom", path: ["chunks"], message: "A chunk is never a source input" });
   }),
   // A model's input over its presentation window (§5.3), written as an intermediate object.
-  z.strictObject({ kind: z.literal("prepare_model_input"), ...windowRecipe, audio: audio.nullable() }),
+  z.strictObject({ kind: z.literal("prepare_model_input"), ...windowRecipe, audio: audio.nullable(), order: z.enum(["forward", "reverse"]).optional(), grid: modelGrid.optional() }),
+  // The tracking join, the erase mask and the expand window steps (execution design §10.2, §10.4, §10.5).
+  z.strictObject({ kind: z.literal("rle_join"), inputs: z.array(z.strictObject({ inputId, order: z.enum(["forward", "reverse"]), frameCount: z.number().int().positive() })).min(1).max(2), width: side, height: side }),
+  z.strictObject({ kind: z.literal("bria_mask"), inputId, table: presentationTableSchema, range: windowRef, grid: modelGrid, target: frameSize }),
+  z.strictObject({ kind: z.literal("model_window"), ...windowRecipe, grid: windowGrid, frame: frameSize, sourceRoi: pixelRect, fill: z.tuple([z.number().int().min(0).max(255), z.number().int().min(0).max(255), z.number().int().min(0).max(255)]), span: interval }),
+  z.strictObject({ kind: z.literal("model_window_mask"), grid: windowGrid, frame: frameSize, sourceRoi: pixelRect, span: interval }),
+  z.strictObject({ kind: z.literal("frame_at"), inputId, time, target: frameSize }),
   // One chunk of a transition's overlap window (§97 D15-6): both clips' entries, the chunk's frames inside the window.
   z.strictObject({
     kind: z.literal("transition_window"),
@@ -168,18 +178,20 @@ const recipeUnion = z.discriminatedUnion("kind", [
   // The erase or expand composite over a presentation window (§97 D15-8, execution design §8.1); one object holds both modes.
   z.strictObject({
     kind: z.literal("model_composite"), mode: z.enum(["erase", "expand"]), ...windowRecipe,
-    result: inputId.optional(), range: interval.optional(),
+    result: inputId.optional(), rle: inputId.optional(), table: presentationTableSchema.optional(), range: windowRef.optional(), grid: modelGrid.optional(),
+    matte: z.strictObject({ dilate: z.number().int().nonnegative(), feather: z.number().int().nonnegative() }).optional(),
     backgrounds: z.array(z.strictObject({ inputId, window: interval, crop: pixelRect.optional() })).optional(),
     ledger: z.array(z.strictObject({ overlap: time, consumed: interval })).optional(),
   }).superRefine((recipe, ctx) => {
     if (recipe.mode === "erase") {
-      if (recipe.result === undefined || recipe.range === undefined || recipe.backgrounds !== undefined || recipe.ledger !== undefined) {
-        ctx.addIssue({ code: "custom", message: "An erase composite names its result and range only" });
+      if ([recipe.result, recipe.rle, recipe.table, recipe.range, recipe.grid, recipe.matte].some((value) => value === undefined) || recipe.backgrounds !== undefined || recipe.ledger !== undefined) {
+        ctx.addIssue({ code: "custom", message: "An erase composite names its result, mask, range, grid and matte only" });
       }
       return;
     }
     const { backgrounds, ledger } = recipe;
-    if (backgrounds === undefined || ledger === undefined || recipe.result !== undefined || recipe.range !== undefined || backgrounds.length === 0 || ledger.length !== backgrounds.length) {
+    const eraseKeys = [recipe.result, recipe.rle, recipe.table, recipe.range, recipe.grid, recipe.matte].some((value) => value !== undefined);
+    if (backgrounds === undefined || ledger === undefined || eraseKeys || backgrounds.length === 0 || ledger.length !== backgrounds.length) {
       ctx.addIssue({ code: "custom", message: "An expand composite names one ledger row per background window" });
       return;
     }
@@ -220,7 +232,8 @@ export const miniToolPlanJobRequestSchema = z.strictObject({
   containerClass: z.string().min(1).max(100),
   deadlineAt: z.number().int().positive(),
   limits: miniToolPlanLimitsSchema,
-  inputs: z.array(z.strictObject({ inputId, storageKey })).min(1),
+  // A generated mask (model_window_mask) reads no input, so a job may bind none.
+  inputs: z.array(z.strictObject({ inputId, storageKey })),
   outputs: z.array(z.strictObject({
     outputIndex: index,
     storageKey,

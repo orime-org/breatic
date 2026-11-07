@@ -45,7 +45,7 @@ export type ContainerOp = (typeof CONTAINER_OPS)[number];
  * step finding no tracked person, or no face inside the track, over the used
  * range (execution design §9.4); everything else the tool broke on is `tool_failed`.
  */
-export const CONTAINER_FAILURES = ["tool_failed", "no_audio_track", "internal", "empty_foreground", "no_face"] as const;
+export const CONTAINER_FAILURES = ["tool_failed", "no_audio_track", "internal", "empty_foreground", "no_face", "tracking_output_mismatch", "model_output_mismatch"] as const;
 
 /** One of {@link CONTAINER_FAILURES}. */
 export type ContainerFailure = (typeof CONTAINER_FAILURES)[number];
