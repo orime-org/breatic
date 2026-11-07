@@ -40,7 +40,7 @@ export function useAccountReferral(): UseQueryResult<AccountReferral | null> {
 }
 
 /**
- * The Chinese "N 折" figure for a percent off: 20 → 8, 15 → 8.5.
+ * The Chinese "N zhe" figure for a percent off: 20 gives 8, 15 gives 8.5.
  * @param percent - The percent off.
  * @returns The figure without a trailing ".0".
  */

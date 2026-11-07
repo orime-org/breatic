@@ -3,7 +3,7 @@
 -- per referred account, and the idempotent record of every back-office write.
 CREATE TABLE promoter_applications (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  user_id uuid NOT NULL,
   status text NOT NULL,
   country char(2) NOT NULL,
   channels jsonb NOT NULL,
@@ -17,6 +17,7 @@ CREATE TABLE promoter_applications (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,
+  CONSTRAINT promoter_applications_user_fk FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT,
   CONSTRAINT promoter_applications_status_check CHECK (status IN ('pending', 'approved', 'rejected')),
   CONSTRAINT promoter_applications_country_check CHECK (country ~ '^[A-Z]{2}$'),
   CONSTRAINT promoter_applications_channels_check CHECK (
@@ -43,12 +44,14 @@ CREATE INDEX promoter_applications_page ON promoter_applications (created_at DES
 CREATE TABLE referral_codes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   code varchar(20) NOT NULL UNIQUE,
-  promoter_id uuid NOT NULL UNIQUE REFERENCES users(id) ON DELETE RESTRICT,
-  application_id uuid NOT NULL UNIQUE REFERENCES promoter_applications(id) ON DELETE RESTRICT,
+  promoter_id uuid NOT NULL UNIQUE,
+  application_id uuid NOT NULL UNIQUE,
   status text NOT NULL DEFAULT 'active',
   removed_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT referral_codes_promoter_fk FOREIGN KEY (promoter_id) REFERENCES users(id) ON DELETE RESTRICT,
+  CONSTRAINT referral_codes_application_fk FOREIGN KEY (application_id) REFERENCES promoter_applications(id) ON DELETE RESTRICT,
   CONSTRAINT referral_codes_code_check CHECK (code ~ '^[A-Z0-9][A-Z0-9-]{2,18}[A-Z0-9]$'),
   CONSTRAINT referral_codes_status_check CHECK (status IN ('active', 'disabled', 'removed')),
   CONSTRAINT referral_codes_removed_check CHECK ((status = 'removed') = (removed_at IS NOT NULL))
@@ -58,10 +61,12 @@ CREATE INDEX referral_codes_page ON referral_codes (created_at DESC, id DESC);
 --> statement-breakpoint
 CREATE TABLE referral_bindings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL UNIQUE REFERENCES users(id) ON DELETE RESTRICT,
-  referral_code_id uuid NOT NULL REFERENCES referral_codes(id) ON DELETE RESTRICT,
+  user_id uuid NOT NULL UNIQUE,
+  referral_code_id uuid NOT NULL,
   source text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT referral_bindings_user_fk FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT,
+  CONSTRAINT referral_bindings_code_fk FOREIGN KEY (referral_code_id) REFERENCES referral_codes(id) ON DELETE RESTRICT,
   CONSTRAINT referral_bindings_source_check CHECK (source IN ('signup_link', 'signup_typed', 'later'))
 );
 --> statement-breakpoint
