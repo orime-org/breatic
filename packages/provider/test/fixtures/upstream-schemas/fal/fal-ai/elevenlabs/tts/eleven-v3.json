@@ -1,26 +1,29 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/elevenlabs/tts/eleven-v3",
   "fields": {
-    "stability": [
-      {
-        "type": "number",
-        "minimum": 0,
-        "maximum": 1,
-        "default": 0.5
-      }
-    ],
     "timestamps": [
       {
         "type": "boolean",
         "default": false
       }
     ],
-    "language_code": [
+    "apply_text_normalization": [
       {
-        "type": "string"
-      },
+        "type": "string",
+        "enum": [
+          "auto",
+          "on",
+          "off"
+        ],
+        "default": "auto"
+      }
+    ],
+    "stability": [
       {
-        "type": "null"
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.5
       }
     ],
     "text": [
@@ -36,15 +39,12 @@
         "default": "Rachel"
       }
     ],
-    "apply_text_normalization": [
+    "language_code": [
       {
-        "type": "string",
-        "enum": [
-          "auto",
-          "on",
-          "off"
-        ],
-        "default": "auto"
+        "type": "string"
+      },
+      {
+        "type": "null"
       }
     ]
   },
@@ -52,9 +52,35 @@
     "text"
   ],
   "outputs": {
+    "timestamps": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "any"
+              }
+            ]
+          },
+          "required": []
+        }
+      },
+      {
+        "type": "null"
+      }
+    ],
     "audio.url": [
       {
         "type": "string"
+      }
+    ],
+    "audio.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
       }
     ],
     "audio.file_size": [
@@ -73,38 +99,12 @@
         "type": "null"
       }
     ],
-    "audio.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
     "audio": [
       {
         "type": "object",
         "required": [
           "url"
         ]
-      }
-    ],
-    "timestamps": [
-      {
-        "type": "array",
-        "items": {
-          "fields": {
-            "": [
-              {
-                "type": "any"
-              }
-            ]
-          },
-          "required": []
-        }
-      },
-      {
-        "type": "null"
       }
     ]
   }

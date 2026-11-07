@@ -1,26 +1,15 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/hunyuan-video-foley",
   "fields": {
+    "text_prompt": [
+      {
+        "type": "string"
+      }
+    ],
     "enable_safety_checker": [
       {
         "type": "boolean",
         "default": true
-      }
-    ],
-    "seed": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "num_inference_steps": [
-      {
-        "type": "integer",
-        "minimum": 10,
-        "maximum": 100,
-        "default": 50
       }
     ],
     "negative_prompt": [
@@ -29,9 +18,12 @@
         "default": "noisy, harsh"
       }
     ],
-    "text_prompt": [
+    "num_inference_steps": [
       {
-        "type": "string"
+        "type": "integer",
+        "minimum": 10,
+        "maximum": 100,
+        "default": 50
       }
     ],
     "guidance_scale": [
@@ -45,6 +37,14 @@
     "video_url": [
       {
         "type": "string"
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
       }
     ]
   },

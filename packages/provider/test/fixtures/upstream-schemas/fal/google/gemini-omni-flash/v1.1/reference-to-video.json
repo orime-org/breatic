@@ -7,28 +7,26 @@
         "maxLength": 20000
       }
     ],
-    "duration": [
-      {
-        "type": "integer",
-        "minimum": 3,
-        "maximum": 10,
-        "default": 8
-      }
-    ],
-    "aspect_ratio": [
-      {
-        "type": "string",
-        "enum": [
-          "16:9",
-          "9:16"
-        ],
-        "default": "16:9"
-      }
-    ],
     "image_urls": [
       {
         "type": "array",
         "maxItems": 10,
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "reference_video_urls": [
+      {
+        "type": "array",
+        "maxItems": 3,
         "items": {
           "fields": {
             "": [
@@ -53,20 +51,22 @@
         "default": "720p"
       }
     ],
-    "reference_video_urls": [
+    "aspect_ratio": [
       {
-        "type": "array",
-        "maxItems": 3,
-        "items": {
-          "fields": {
-            "": [
-              {
-                "type": "string"
-              }
-            ]
-          },
-          "required": []
-        }
+        "type": "string",
+        "enum": [
+          "16:9",
+          "9:16"
+        ],
+        "default": "16:9"
+      }
+    ],
+    "duration": [
+      {
+        "type": "integer",
+        "minimum": 3,
+        "maximum": 10,
+        "default": 8
       }
     ]
   },
@@ -74,14 +74,9 @@
     "prompt"
   ],
   "outputs": {
-    "video.url": [
+    "video.file_name": [
       {
         "type": "string"
-      }
-    ],
-    "video.file_size": [
-      {
-        "type": "integer"
       },
       {
         "type": "null"
@@ -95,9 +90,14 @@
         "type": "null"
       }
     ],
-    "video.file_name": [
+    "video.url": [
       {
         "type": "string"
+      }
+    ],
+    "video.file_size": [
+      {
+        "type": "integer"
       },
       {
         "type": "null"

@@ -1,10 +1,13 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/kling-video/v3/4k/text-to-video",
   "fields": {
-    "generate_audio": [
+    "prompt": [
       {
-        "type": "boolean",
-        "default": true
+        "type": "string",
+        "maxLength": 2500
+      },
+      {
+        "type": "null"
       }
     ],
     "negative_prompt": [
@@ -12,20 +15,6 @@
         "type": "string",
         "maxLength": 2500,
         "default": "blur, distort, and low quality"
-      }
-    ],
-    "enable_safety_checker": [
-      {
-        "type": "boolean",
-        "default": true
-      }
-    ],
-    "cfg_scale": [
-      {
-        "type": "number",
-        "minimum": 0,
-        "maximum": 1,
-        "default": 0.5
       }
     ],
     "multi_prompt": [
@@ -79,26 +68,6 @@
         "type": "null"
       }
     ],
-    "aspect_ratio": [
-      {
-        "type": "string",
-        "enum": [
-          "16:9",
-          "9:16",
-          "1:1"
-        ],
-        "default": "16:9"
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string",
-        "maxLength": 2500
-      },
-      {
-        "type": "null"
-      }
-    ],
     "duration": [
       {
         "type": "string",
@@ -120,6 +89,31 @@
         "default": "5"
       }
     ],
+    "cfg_scale": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.5
+      }
+    ],
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "16:9",
+          "9:16",
+          "1:1"
+        ],
+        "default": "16:9"
+      }
+    ],
+    "generate_audio": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
     "shot_type": [
       {
         "type": "string",
@@ -128,6 +122,12 @@
           "intelligent"
         ],
         "default": "customize"
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
       }
     ]
   },

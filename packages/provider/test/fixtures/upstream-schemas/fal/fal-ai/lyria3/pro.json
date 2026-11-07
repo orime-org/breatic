@@ -1,23 +1,17 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/lyria3/pro",
   "fields": {
-    "prompt": [
-      {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 5000
-      }
-    ],
     "negative_prompt": [
       {
         "type": "string",
         "default": ""
       }
     ],
-    "enable_safety_checker": [
+    "prompt": [
       {
-        "type": "boolean",
-        "default": true
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 5000
       }
     ],
     "image_url": [
@@ -27,13 +21,19 @@
       {
         "type": "null"
       }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
     ]
   },
   "required": [
     "prompt"
   ],
   "outputs": {
-    "audio.content_type": [
+    "lyrics": [
       {
         "type": "string"
       },
@@ -54,6 +54,14 @@
         "type": "null"
       }
     ],
+    "audio.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
     "audio.file_name": [
       {
         "type": "string"
@@ -68,14 +76,6 @@
         "required": [
           "url"
         ]
-      }
-    ],
-    "lyrics": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
       }
     ]
   }

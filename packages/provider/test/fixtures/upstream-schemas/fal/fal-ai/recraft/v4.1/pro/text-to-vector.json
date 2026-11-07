@@ -7,14 +7,39 @@
         "default": true
       }
     ],
-    "prompt": [
+    "background_color.g": [
       {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 10000
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 0
       }
     ],
-    "image_size.height": [
+    "background_color.r": [
+      {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 0
+      }
+    ],
+    "background_color.b": [
+      {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 0
+      }
+    ],
+    "background_color": [
+      {
+        "type": "object"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "image_size.width": [
       {
         "type": "integer",
         "exclusiveMinimum": 0,
@@ -22,7 +47,7 @@
         "default": 512
       }
     ],
-    "image_size.width": [
+    "image_size.height": [
       {
         "type": "integer",
         "exclusiveMinimum": 0,
@@ -48,36 +73,11 @@
         "default": "square_hd"
       }
     ],
-    "background_color.r": [
+    "prompt": [
       {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 255,
-        "default": 0
-      }
-    ],
-    "background_color.g": [
-      {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 255,
-        "default": 0
-      }
-    ],
-    "background_color.b": [
-      {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 255,
-        "default": 0
-      }
-    ],
-    "background_color": [
-      {
-        "type": "object"
-      },
-      {
-        "type": "null"
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 10000
       }
     ],
     "colors": [
@@ -86,7 +86,7 @@
         "default": [],
         "items": {
           "fields": {
-            "r": [
+            "g": [
               {
                 "type": "integer",
                 "minimum": 0,
@@ -94,7 +94,7 @@
                 "default": 0
               }
             ],
-            "g": [
+            "r": [
               {
                 "type": "integer",
                 "minimum": 0,

@@ -7,12 +7,24 @@
         "maxLength": 20000
       }
     ],
-    "duration": [
+    "end_image_url": [
       {
-        "type": "integer",
-        "minimum": 3,
-        "maximum": 10,
-        "default": 8
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "360p",
+          "720p",
+          "1080p",
+          "4k"
+        ],
+        "default": "720p"
       }
     ],
     "aspect_ratio": [
@@ -30,24 +42,12 @@
         "type": "string"
       }
     ],
-    "resolution": [
+    "duration": [
       {
-        "type": "string",
-        "enum": [
-          "360p",
-          "720p",
-          "1080p",
-          "4k"
-        ],
-        "default": "720p"
-      }
-    ],
-    "end_image_url": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
+        "type": "integer",
+        "minimum": 3,
+        "maximum": 10,
+        "default": 8
       }
     ]
   },
@@ -56,14 +56,9 @@
     "image_url"
   ],
   "outputs": {
-    "video.url": [
+    "video.file_name": [
       {
         "type": "string"
-      }
-    ],
-    "video.file_size": [
-      {
-        "type": "integer"
       },
       {
         "type": "null"
@@ -77,9 +72,14 @@
         "type": "null"
       }
     ],
-    "video.file_name": [
+    "video.url": [
       {
         "type": "string"
+      }
+    ],
+    "video.file_size": [
+      {
+        "type": "integer"
       },
       {
         "type": "null"

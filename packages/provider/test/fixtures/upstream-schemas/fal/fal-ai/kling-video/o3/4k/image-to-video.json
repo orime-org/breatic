@@ -1,12 +1,6 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/kling-video/o3/4k/image-to-video",
   "fields": {
-    "generate_audio": [
-      {
-        "type": "boolean",
-        "default": false
-      }
-    ],
     "prompt": [
       {
         "type": "string",
@@ -16,15 +10,25 @@
         "type": "null"
       }
     ],
-    "image_url": [
+    "duration": [
       {
-        "type": "string"
-      }
-    ],
-    "enable_safety_checker": [
-      {
-        "type": "boolean",
-        "default": true
+        "type": "string",
+        "enum": [
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9",
+          "10",
+          "11",
+          "12",
+          "13",
+          "14",
+          "15"
+        ],
+        "default": "5"
       }
     ],
     "multi_prompt": [
@@ -86,25 +90,9 @@
         "type": "null"
       }
     ],
-    "duration": [
+    "image_url": [
       {
-        "type": "string",
-        "enum": [
-          "3",
-          "4",
-          "5",
-          "6",
-          "7",
-          "8",
-          "9",
-          "10",
-          "11",
-          "12",
-          "13",
-          "14",
-          "15"
-        ],
-        "default": "5"
+        "type": "string"
       }
     ],
     "shot_type": [
@@ -115,6 +103,18 @@
           "intelligent"
         ],
         "default": "customize"
+      }
+    ],
+    "generate_audio": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
       }
     ]
   },

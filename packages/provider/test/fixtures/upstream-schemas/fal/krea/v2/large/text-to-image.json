@@ -1,48 +1,6 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=krea/v2/large/text-to-image",
   "fields": {
-    "prompt": [
-      {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 5000
-      }
-    ],
-    "image_style_references": [
-      {
-        "type": "array",
-        "maxItems": 10,
-        "default": [],
-        "items": {
-          "fields": {
-            "strength": [
-              {
-                "type": "number",
-                "minimum": -2,
-                "maximum": 2,
-                "default": 1
-              }
-            ],
-            "image_url": [
-              {
-                "type": "string"
-              }
-            ],
-            "": [
-              {
-                "type": "object",
-                "required": [
-                  "image_url"
-                ]
-              }
-            ]
-          },
-          "required": [
-            "image_url"
-          ]
-        }
-      }
-    ],
     "aspect_ratio": [
       {
         "type": "string",
@@ -59,12 +17,6 @@
         "default": "1:1"
       }
     ],
-    "enable_safety_checker": [
-      {
-        "type": "boolean",
-        "default": true
-      }
-    ],
     "creativity": [
       {
         "type": "string",
@@ -75,14 +27,6 @@
           "high"
         ],
         "default": "medium"
-      }
-    ],
-    "seed": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
       }
     ],
     "styles": [
@@ -120,6 +64,21 @@
         }
       }
     ],
+    "seed": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 5000
+      }
+    ],
     "moodboards": [
       {
         "type": "array",
@@ -154,41 +113,61 @@
           ]
         }
       }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "image_style_references": [
+      {
+        "type": "array",
+        "maxItems": 10,
+        "default": [],
+        "items": {
+          "fields": {
+            "strength": [
+              {
+                "type": "number",
+                "minimum": -2,
+                "maximum": 2,
+                "default": 1
+              }
+            ],
+            "image_url": [
+              {
+                "type": "string"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "image_url"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "image_url"
+          ]
+        }
+      }
     ]
   },
   "required": [
     "prompt"
   ],
   "outputs": {
-    "seed": [
-      {
-        "type": "integer"
-      }
-    ],
     "images": [
       {
         "type": "array",
         "items": {
           "fields": {
-            "file_name": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "url": [
               {
                 "type": "string"
-              }
-            ],
-            "file_size": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
               }
             ],
             "height": [
@@ -207,7 +186,23 @@
                 "type": "null"
               }
             ],
+            "file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "file_name": [
               {
                 "type": "string"
               },
@@ -228,6 +223,11 @@
             "url"
           ]
         }
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
       }
     ]
   }

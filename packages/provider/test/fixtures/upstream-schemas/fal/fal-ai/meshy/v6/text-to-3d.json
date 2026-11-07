@@ -1,53 +1,16 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/meshy/v6/text-to-3d",
   "fields": {
-    "target_polycount": [
-      {
-        "type": "integer",
-        "minimum": 100,
-        "maximum": 300000,
-        "default": 30000
-      }
-    ],
-    "should_remesh": [
-      {
-        "type": "boolean",
-        "default": true
-      }
-    ],
-    "rigging_height_meters": [
-      {
-        "type": "number",
-        "exclusiveMinimum": 0,
-        "default": 1.7
-      }
-    ],
-    "pose_mode": [
-      {
-        "type": "string",
-        "enum": [
-          "a-pose",
-          "t-pose",
-          ""
-        ],
-        "default": ""
-      }
-    ],
-    "enable_rigging": [
+    "is_a_t_pose": [
       {
         "type": "boolean",
         "default": false
       }
     ],
-    "model_type": [
+    "animation_action_id": [
       {
-        "type": "string",
-        "enum": [
-          "standard",
-          "smart-topology",
-          "smart-topology-t2"
-        ],
-        "default": "standard"
+        "type": "integer",
+        "default": 92
       }
     ],
     "topology": [
@@ -70,21 +33,44 @@
         "default": "full"
       }
     ],
-    "seed": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "enable_pbr": [
+    "enable_animation": [
       {
         "type": "boolean",
         "default": false
       }
     ],
-    "enable_animation": [
+    "pose_mode": [
+      {
+        "type": "string",
+        "enum": [
+          "a-pose",
+          "t-pose",
+          ""
+        ],
+        "default": ""
+      }
+    ],
+    "target_polycount": [
+      {
+        "type": "integer",
+        "minimum": 100,
+        "maximum": 300000,
+        "default": 30000
+      }
+    ],
+    "should_remesh": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "enable_rigging": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "enable_prompt_expansion": [
       {
         "type": "boolean",
         "default": false
@@ -93,16 +79,53 @@
     "texture_prompt": [
       {
         "type": "string",
-        "maxLength": 600
+        "maxLength": 800
       },
       {
         "type": "null"
       }
     ],
-    "prompt": [
+    "texture_image_url": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "texture_model": [
       {
         "type": "string",
-        "maxLength": 600
+        "enum": [
+          "meshy-n1"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_type": [
+      {
+        "type": "string",
+        "enum": [
+          "standard"
+        ],
+        "default": "standard"
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "rigging_height_meters": [
+      {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "default": 1.7
       }
     ],
     "symmetry_mode": [
@@ -116,22 +139,16 @@
         "default": "auto"
       }
     ],
-    "enable_prompt_expansion": [
+    "enable_pbr": [
       {
         "type": "boolean",
         "default": false
       }
     ],
-    "is_a_t_pose": [
+    "prompt": [
       {
-        "type": "boolean",
-        "default": false
-      }
-    ],
-    "animation_action_id": [
-      {
-        "type": "integer",
-        "default": 92
+        "type": "string",
+        "maxLength": 600
       }
     ],
     "enable_safety_checker": [
@@ -139,155 +156,20 @@
         "type": "boolean",
         "default": true
       }
-    ],
-    "texture_image_url": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
     ]
   },
   "required": [
     "prompt"
   ],
   "outputs": {
-    "model_glb.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_glb.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_glb.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_glb.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_glb": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string"
-      }
-    ],
     "texture_urls": [
       {
         "type": "array",
         "items": {
           "fields": {
-            "normal.url": [
+            "base_color.file_name": [
               {
                 "type": "string"
-              }
-            ],
-            "normal.file_size": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "normal.content_type": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "normal.file_name": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "normal": [
-              {
-                "type": "object",
-                "required": [
-                  "url"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "metallic.url": [
-              {
-                "type": "string"
-              }
-            ],
-            "metallic.file_size": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "metallic.content_type": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "metallic.file_name": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "metallic": [
-              {
-                "type": "object",
-                "required": [
-                  "url"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "base_color.url": [
-              {
-                "type": "string"
-              }
-            ],
-            "base_color.file_size": [
-              {
-                "type": "integer"
               },
               {
                 "type": "null"
@@ -301,12 +183,17 @@
                 "type": "null"
               }
             ],
-            "base_color.file_name": [
+            "base_color.file_size": [
               {
-                "type": "string"
+                "type": "integer"
               },
               {
                 "type": "null"
+              }
+            ],
+            "base_color.url": [
+              {
+                "type": "string"
               }
             ],
             "base_color": [
@@ -317,14 +204,9 @@
                 ]
               }
             ],
-            "roughness.url": [
+            "roughness.file_name": [
               {
                 "type": "string"
-              }
-            ],
-            "roughness.file_size": [
-              {
-                "type": "integer"
               },
               {
                 "type": "null"
@@ -338,7 +220,31 @@
                 "type": "null"
               }
             ],
-            "roughness.file_name": [
+            "roughness.file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "roughness.url": [
+              {
+                "type": "string"
+              }
+            ],
+            "roughness": [
+              {
+                "type": "object",
+                "required": [
+                  "url"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "metallic.file_name": [
               {
                 "type": "string"
               },
@@ -346,7 +252,68 @@
                 "type": "null"
               }
             ],
-            "roughness": [
+            "metallic.content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "metallic.file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "metallic.url": [
+              {
+                "type": "string"
+              }
+            ],
+            "metallic": [
+              {
+                "type": "object",
+                "required": [
+                  "url"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "normal.file_name": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "normal.content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "normal.file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "normal.url": [
+              {
+                "type": "string"
+              }
+            ],
+            "normal": [
               {
                 "type": "object",
                 "required": [
@@ -372,267 +339,9 @@
         }
       }
     ],
-    "rig_task_id": [
+    "rigged_character_glb.file_name": [
       {
         "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.blend.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_urls.blend.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.blend.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.blend.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.blend": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.fbx.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_urls.fbx.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.fbx.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.fbx.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.fbx": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.stl.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_urls.stl.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.stl.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.stl.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.stl": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.glb.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_urls.glb.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.glb.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.glb.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.glb": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.obj.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_urls.obj.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.obj.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.obj.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.obj": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.usdz.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_urls.usdz.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.usdz.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.usdz.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.usdz": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls": [
-      {
-        "type": "object"
-      }
-    ],
-    "rigged_character_glb.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "rigged_character_glb.file_size": [
-      {
-        "type": "integer"
       },
       {
         "type": "null"
@@ -646,12 +355,17 @@
         "type": "null"
       }
     ],
-    "rigged_character_glb.file_name": [
+    "rigged_character_glb.file_size": [
       {
-        "type": "string"
+        "type": "integer"
       },
       {
         "type": "null"
+      }
+    ],
+    "rigged_character_glb.url": [
+      {
+        "type": "string"
       }
     ],
     "rigged_character_glb": [
@@ -665,12 +379,23 @@
         "type": "null"
       }
     ],
-    "basic_animations.running_glb.url": [
+    "animation_fbx.file_name": [
       {
         "type": "string"
+      },
+      {
+        "type": "null"
       }
     ],
-    "basic_animations.running_glb.file_size": [
+    "animation_fbx.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "animation_fbx.file_size": [
       {
         "type": "integer"
       },
@@ -678,23 +403,12 @@
         "type": "null"
       }
     ],
-    "basic_animations.running_glb.content_type": [
+    "animation_fbx.url": [
       {
         "type": "string"
-      },
-      {
-        "type": "null"
       }
     ],
-    "basic_animations.running_glb.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "basic_animations.running_glb": [
+    "animation_fbx": [
       {
         "type": "object",
         "required": [
@@ -705,12 +419,23 @@
         "type": "null"
       }
     ],
-    "basic_animations.running_fbx.url": [
+    "model_glb.file_name": [
       {
         "type": "string"
+      },
+      {
+        "type": "null"
       }
     ],
-    "basic_animations.running_fbx.file_size": [
+    "model_glb.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_glb.file_size": [
       {
         "type": "integer"
       },
@@ -718,39 +443,44 @@
         "type": "null"
       }
     ],
-    "basic_animations.running_fbx.content_type": [
+    "model_glb.url": [
       {
         "type": "string"
-      },
-      {
-        "type": "null"
       }
     ],
-    "basic_animations.running_fbx.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "basic_animations.running_fbx": [
+    "model_glb": [
       {
         "type": "object",
         "required": [
           "url"
         ]
+      }
+    ],
+    "rig_task_id": [
+      {
+        "type": "string"
       },
       {
         "type": "null"
       }
     ],
-    "basic_animations.walking_glb.url": [
+    "thumbnail.file_name": [
       {
         "type": "string"
+      },
+      {
+        "type": "null"
       }
     ],
-    "basic_animations.walking_glb.file_size": [
+    "thumbnail.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "thumbnail.file_size": [
       {
         "type": "integer"
       },
@@ -758,89 +488,17 @@
         "type": "null"
       }
     ],
-    "basic_animations.walking_glb.content_type": [
+    "thumbnail.url": [
       {
         "type": "string"
-      },
-      {
-        "type": "null"
       }
     ],
-    "basic_animations.walking_glb.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "basic_animations.walking_glb": [
+    "thumbnail": [
       {
         "type": "object",
         "required": [
           "url"
         ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "basic_animations.running_armature_glb.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "basic_animations.running_armature_glb.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "basic_animations.running_armature_glb.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "basic_animations.running_armature_glb.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "basic_animations.running_armature_glb": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "basic_animations.walking_fbx.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "basic_animations.walking_fbx.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "basic_animations.walking_fbx.content_type": [
-      {
-        "type": "string"
       },
       {
         "type": "null"
@@ -854,23 +512,15 @@
         "type": "null"
       }
     ],
-    "basic_animations.walking_fbx": [
+    "basic_animations.walking_fbx.content_type": [
       {
-        "type": "object",
-        "required": [
-          "url"
-        ]
+        "type": "string"
       },
       {
         "type": "null"
       }
     ],
-    "basic_animations.walking_armature_glb.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "basic_animations.walking_armature_glb.file_size": [
+    "basic_animations.walking_fbx.file_size": [
       {
         "type": "integer"
       },
@@ -878,9 +528,17 @@
         "type": "null"
       }
     ],
-    "basic_animations.walking_armature_glb.content_type": [
+    "basic_animations.walking_fbx.url": [
       {
         "type": "string"
+      }
+    ],
+    "basic_animations.walking_fbx": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
       },
       {
         "type": "null"
@@ -894,7 +552,188 @@
         "type": "null"
       }
     ],
+    "basic_animations.walking_armature_glb.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.walking_armature_glb.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.walking_armature_glb.url": [
+      {
+        "type": "string"
+      }
+    ],
     "basic_animations.walking_armature_glb": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.walking_glb.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.walking_glb.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.walking_glb.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.walking_glb.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "basic_animations.walking_glb": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.running_fbx.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.running_fbx.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.running_fbx.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.running_fbx.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "basic_animations.running_fbx": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.running_glb.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.running_glb.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.running_glb.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.running_glb.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "basic_animations.running_glb": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.running_armature_glb.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.running_armature_glb.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.running_armature_glb.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.running_armature_glb.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "basic_animations.running_armature_glb": [
       {
         "type": "object",
         "required": [
@@ -913,110 +752,262 @@
         "type": "null"
       }
     ],
+    "actual_prompt": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.blend.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.blend.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.blend.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.blend.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls.blend": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.glb.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.glb.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.glb.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.glb.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls.glb": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.fbx.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.fbx.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.fbx.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.fbx.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls.fbx": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.obj.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.obj.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.obj.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.obj.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls.obj": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.usdz.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.usdz.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.usdz.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.usdz.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls.usdz": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.stl.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.stl.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.stl.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.stl.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls.stl": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls": [
+      {
+        "type": "object"
+      }
+    ],
     "seed": [
       {
         "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "thumbnail.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "thumbnail.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "thumbnail.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "thumbnail.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "thumbnail": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "animation_fbx.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "animation_fbx.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "animation_fbx.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "animation_fbx.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "animation_fbx": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "rigged_character_fbx.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "rigged_character_fbx.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "rigged_character_fbx.content_type": [
-      {
-        "type": "string"
       },
       {
         "type": "null"
@@ -1030,6 +1021,27 @@
         "type": "null"
       }
     ],
+    "rigged_character_fbx.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "rigged_character_fbx.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "rigged_character_fbx.url": [
+      {
+        "type": "string"
+      }
+    ],
     "rigged_character_fbx": [
       {
         "type": "object",
@@ -1041,14 +1053,14 @@
         "type": "null"
       }
     ],
-    "animation_glb.url": [
+    "prompt": [
       {
         "type": "string"
       }
     ],
-    "animation_glb.file_size": [
+    "animation_glb.file_name": [
       {
-        "type": "integer"
+        "type": "string"
       },
       {
         "type": "null"
@@ -1062,12 +1074,17 @@
         "type": "null"
       }
     ],
-    "animation_glb.file_name": [
+    "animation_glb.file_size": [
       {
-        "type": "string"
+        "type": "integer"
       },
       {
         "type": "null"
+      }
+    ],
+    "animation_glb.url": [
+      {
+        "type": "string"
       }
     ],
     "animation_glb": [
@@ -1076,14 +1093,6 @@
         "required": [
           "url"
         ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "actual_prompt": [
-      {
-        "type": "string"
       },
       {
         "type": "null"

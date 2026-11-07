@@ -1,6 +1,23 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=openai/gpt-image-2.5/sunburst/text-to-image",
   "fields": {
+    "output_compression": [
+      {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 100
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 32000
+      }
+    ],
     "num_images": [
       {
         "type": "integer",
@@ -9,11 +26,10 @@
         "default": 1
       }
     ],
-    "prompt": [
+    "sync_mode": [
       {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 32000
+        "type": "boolean",
+        "default": false
       }
     ],
     "quality": [
@@ -30,10 +46,15 @@
         "default": "high"
       }
     ],
-    "enable_safety_checker": [
+    "output_format": [
       {
-        "type": "boolean",
-        "default": true
+        "type": "string",
+        "enum": [
+          "jpeg",
+          "png",
+          "webp"
+        ],
+        "default": "png"
       }
     ],
     "background": [
@@ -47,31 +68,10 @@
         "default": "auto"
       }
     ],
-    "output_format": [
-      {
-        "type": "string",
-        "enum": [
-          "jpeg",
-          "png",
-          "webp"
-        ],
-        "default": "png"
-      }
-    ],
-    "sync_mode": [
+    "enable_safety_checker": [
       {
         "type": "boolean",
-        "default": false
-      }
-    ],
-    "output_compression": [
-      {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 100
-      },
-      {
-        "type": "null"
+        "default": true
       }
     ],
     "image_size.height": [
@@ -119,14 +119,9 @@
         "type": "array",
         "items": {
           "fields": {
-            "url": [
+            "height": [
               {
-                "type": "string"
-              }
-            ],
-            "file_name": [
-              {
-                "type": "string"
+                "type": "integer"
               },
               {
                 "type": "null"
@@ -140,7 +135,7 @@
                 "type": "null"
               }
             ],
-            "height": [
+            "width": [
               {
                 "type": "integer"
               },
@@ -156,12 +151,17 @@
                 "type": "null"
               }
             ],
-            "width": [
+            "file_name": [
               {
-                "type": "integer"
+                "type": "string"
               },
               {
                 "type": "null"
+              }
+            ],
+            "url": [
+              {
+                "type": "string"
               }
             ],
             "": [

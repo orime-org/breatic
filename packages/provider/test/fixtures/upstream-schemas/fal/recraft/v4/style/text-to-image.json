@@ -1,6 +1,12 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=recraft/v4/style/text-to-image",
   "fields": {
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
     "style_id": [
       {
         "type": "string"
@@ -9,47 +15,19 @@
         "type": "null"
       }
     ],
-    "colors": [
+    "style_match": [
       {
-        "type": "array",
-        "default": [],
-        "items": {
-          "fields": {
-            "r": [
-              {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 255,
-                "default": 0
-              }
-            ],
-            "g": [
-              {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 255,
-                "default": 0
-              }
-            ],
-            "b": [
-              {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 255,
-                "default": 0
-              }
-            ],
-            "": [
-              {
-                "type": "object"
-              }
-            ]
-          },
-          "required": []
-        }
+        "type": "string",
+        "enum": [
+          "precise",
+          "flexible"
+        ]
+      },
+      {
+        "type": "null"
       }
     ],
-    "image_size.height": [
+    "image_size.width": [
       {
         "type": "integer",
         "exclusiveMinimum": 0,
@@ -57,7 +35,7 @@
         "default": 512
       }
     ],
-    "image_size.width": [
+    "image_size.height": [
       {
         "type": "integer",
         "exclusiveMinimum": 0,
@@ -83,49 +61,44 @@
         "default": "square_hd"
       }
     ],
-    "background_color.r": [
+    "colors": [
       {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 255,
-        "default": 0
-      }
-    ],
-    "background_color.g": [
-      {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 255,
-        "default": 0
-      }
-    ],
-    "background_color.b": [
-      {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 255,
-        "default": 0
-      }
-    ],
-    "background_color": [
-      {
-        "type": "object"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 10000
-      }
-    ],
-    "enable_safety_checker": [
-      {
-        "type": "boolean",
-        "default": true
+        "type": "array",
+        "default": [],
+        "items": {
+          "fields": {
+            "g": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255,
+                "default": 0
+              }
+            ],
+            "r": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255,
+                "default": 0
+              }
+            ],
+            "b": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255,
+                "default": 0
+              }
+            ],
+            "": [
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "required": []
+        }
       }
     ],
     "image_urls": [
@@ -148,13 +121,40 @@
         "type": "null"
       }
     ],
-    "style_match": [
+    "prompt": [
       {
         "type": "string",
-        "enum": [
-          "precise",
-          "flexible"
-        ]
+        "minLength": 1,
+        "maxLength": 10000
+      }
+    ],
+    "background_color.g": [
+      {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 0
+      }
+    ],
+    "background_color.r": [
+      {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 0
+      }
+    ],
+    "background_color.b": [
+      {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 0
+      }
+    ],
+    "background_color": [
+      {
+        "type": "object"
       },
       {
         "type": "null"

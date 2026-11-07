@@ -1,12 +1,151 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/gemini-3.1-flash-tts",
   "fields": {
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "wav",
+          "mp3",
+          "ogg_opus"
+        ],
+        "default": "mp3"
+      }
+    ],
+    "voice": [
+      {
+        "type": "string",
+        "enum": [
+          "Achernar",
+          "Achird",
+          "Algenib",
+          "Algieba",
+          "Alnilam",
+          "Aoede",
+          "Autonoe",
+          "Callirrhoe",
+          "Charon",
+          "Despina",
+          "Enceladus",
+          "Erinome",
+          "Fenrir",
+          "Gacrux",
+          "Iapetus",
+          "Kore",
+          "Laomedeia",
+          "Leda",
+          "Orus",
+          "Pulcherrima",
+          "Puck",
+          "Rasalgethi",
+          "Sadachbia",
+          "Sadaltager",
+          "Schedar",
+          "Sulafat",
+          "Umbriel",
+          "Vindemiatrix",
+          "Zephyr",
+          "Zubenelgenubi"
+        ],
+        "default": "Kore"
+      }
+    ],
     "temperature": [
       {
         "type": "number",
         "minimum": 0,
         "maximum": 2,
         "default": 1
+      }
+    ],
+    "speakers": [
+      {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 10,
+        "items": {
+          "fields": {
+            "voice": [
+              {
+                "type": "string",
+                "enum": [
+                  "Achernar",
+                  "Achird",
+                  "Algenib",
+                  "Algieba",
+                  "Alnilam",
+                  "Aoede",
+                  "Autonoe",
+                  "Callirrhoe",
+                  "Charon",
+                  "Despina",
+                  "Enceladus",
+                  "Erinome",
+                  "Fenrir",
+                  "Gacrux",
+                  "Iapetus",
+                  "Kore",
+                  "Laomedeia",
+                  "Leda",
+                  "Orus",
+                  "Pulcherrima",
+                  "Puck",
+                  "Rasalgethi",
+                  "Sadachbia",
+                  "Sadaltager",
+                  "Schedar",
+                  "Sulafat",
+                  "Umbriel",
+                  "Vindemiatrix",
+                  "Zephyr",
+                  "Zubenelgenubi"
+                ]
+              }
+            ],
+            "speaker_id": [
+              {
+                "type": "string",
+                "pattern": "^\\w+$"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "voice",
+                  "speaker_id"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "voice",
+            "speaker_id"
+          ]
+        }
+      },
+      {
+        "type": "array",
+        "minItems": 0,
+        "maxItems": 0
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "style_instructions": [
+      {
+        "type": "string",
+        "maxLength": 4000
+      },
+      {
+        "type": "null"
       }
     ],
     "language_code": [
@@ -106,144 +245,11 @@
         "type": "null"
       }
     ],
-    "style_instructions": [
-      {
-        "type": "string",
-        "maxLength": 4000
-      },
-      {
-        "type": "null"
-      }
-    ],
     "prompt": [
       {
         "type": "string",
         "minLength": 1,
         "maxLength": 50000
-      }
-    ],
-    "output_format": [
-      {
-        "type": "string",
-        "enum": [
-          "wav",
-          "mp3",
-          "ogg_opus"
-        ],
-        "default": "mp3"
-      }
-    ],
-    "speakers": [
-      {
-        "type": "array",
-        "minItems": 2,
-        "maxItems": 10,
-        "items": {
-          "fields": {
-            "speaker_id": [
-              {
-                "type": "string",
-                "pattern": "^\\w+$"
-              }
-            ],
-            "voice": [
-              {
-                "type": "string",
-                "enum": [
-                  "Achernar",
-                  "Achird",
-                  "Algenib",
-                  "Algieba",
-                  "Alnilam",
-                  "Aoede",
-                  "Autonoe",
-                  "Callirrhoe",
-                  "Charon",
-                  "Despina",
-                  "Enceladus",
-                  "Erinome",
-                  "Fenrir",
-                  "Gacrux",
-                  "Iapetus",
-                  "Kore",
-                  "Laomedeia",
-                  "Leda",
-                  "Orus",
-                  "Pulcherrima",
-                  "Puck",
-                  "Rasalgethi",
-                  "Sadachbia",
-                  "Sadaltager",
-                  "Schedar",
-                  "Sulafat",
-                  "Umbriel",
-                  "Vindemiatrix",
-                  "Zephyr",
-                  "Zubenelgenubi"
-                ]
-              }
-            ],
-            "": [
-              {
-                "type": "object",
-                "required": [
-                  "voice",
-                  "speaker_id"
-                ]
-              }
-            ]
-          },
-          "required": [
-            "voice",
-            "speaker_id"
-          ]
-        }
-      },
-      {
-        "type": "array",
-        "minItems": 0,
-        "maxItems": 0
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "voice": [
-      {
-        "type": "string",
-        "enum": [
-          "Achernar",
-          "Achird",
-          "Algenib",
-          "Algieba",
-          "Alnilam",
-          "Aoede",
-          "Autonoe",
-          "Callirrhoe",
-          "Charon",
-          "Despina",
-          "Enceladus",
-          "Erinome",
-          "Fenrir",
-          "Gacrux",
-          "Iapetus",
-          "Kore",
-          "Laomedeia",
-          "Leda",
-          "Orus",
-          "Pulcherrima",
-          "Puck",
-          "Rasalgethi",
-          "Sadachbia",
-          "Sadaltager",
-          "Schedar",
-          "Sulafat",
-          "Umbriel",
-          "Vindemiatrix",
-          "Zephyr",
-          "Zubenelgenubi"
-        ],
-        "default": "Kore"
       }
     ]
   },
@@ -251,17 +257,20 @@
     "prompt"
   ],
   "outputs": {
+    "audio.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
     "audio.file_size": [
       {
         "type": "integer"
       },
       {
         "type": "null"
-      }
-    ],
-    "audio.url": [
-      {
-        "type": "string"
       }
     ],
     "audio.file_name": [
@@ -272,12 +281,9 @@
         "type": "null"
       }
     ],
-    "audio.content_type": [
+    "audio.url": [
       {
         "type": "string"
-      },
-      {
-        "type": "null"
       }
     ],
     "audio": [
