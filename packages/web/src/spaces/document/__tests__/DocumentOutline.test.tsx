@@ -498,6 +498,23 @@ describe('DocumentOutline', () => {
     });
   });
 
+  describe('A5 — numbers on a highlighted row', () => {
+    it('draws the number of the row being read, and of a hovered row, in the secondary colour', () => {
+      renderWith([
+        { type: 'heading', props: { level: 1, numbered: true }, content: 'One' },
+        { type: 'heading', props: { level: 1, numbered: true }, content: 'Two' },
+      ]);
+      const numbered = (text: string): HTMLElement =>
+        screen.getAllByTestId('doc-outline-row').find((r) => r.lastElementChild?.textContent === text)!;
+      fireEvent.click(numbered('Two'));
+
+      const numberOf = (text: string): Element => numbered(text).querySelector('.tabular-nums')!;
+      expect(numberOf('Two')).toHaveClass('text-foreground-secondary');
+      expect(numberOf('Two')).not.toHaveClass('text-muted-foreground');
+      expect(numberOf('One')).toHaveClass('text-muted-foreground', 'group-hover:text-foreground-secondary');
+    });
+  });
+
   describe('A10 — folding', () => {
     it('hides the headings under a folded one, and the arrow does not jump', () => {
       renderWith([h('a', 1, 'One'), h('b', 2, 'Under'), h('c', 3, 'Deeper'), h('d', 1, 'Two')]);

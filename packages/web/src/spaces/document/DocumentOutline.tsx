@@ -28,6 +28,9 @@ const READING_LINE = LANDING + 8;
 /** How far each level of the tree is indented. */
 const INDENT = 12;
 
+/** The fold arrow's column, a 24px target at the start of every row. */
+const FOLD_WIDTH = 24;
+
 /** The column open beside the body, and the outline floating over it. */
 const OPEN_WIDTH: React.CSSProperties = { width: OUTLINE_WIDTH };
 
@@ -148,25 +151,15 @@ const OutlineRow = React.memo(function OutlineRow({
     const el = label.current;
     setTip(open && el !== null && el.scrollWidth > el.clientWidth);
   }, []);
+  const jump = React.useCallback(() => onJump(entry.id), [onJump, entry.id]);
+  const fold = React.useCallback(() => onFold(entry.id), [onFold, entry.id]);
+  const jumpStyle = React.useMemo(() => ({ paddingLeft: depth * INDENT + FOLD_WIDTH }), [depth]);
+  const foldStyle = React.useMemo(() => ({ left: depth * INDENT, width: FOLD_WIDTH }), [depth]);
   return (
     <div
       data-outline-item=''
-      className={cn('group flex h-7 items-center rounded-md hover:bg-accent', active && 'bg-accent-strong hover:bg-accent-strong')}
-      style={{ paddingLeft: depth * INDENT }}
+      className={cn('group relative flex h-7 items-center rounded-chrome hover:bg-accent', active && 'bg-accent-strong hover:bg-accent-strong')}
     >
-      {entry.children.length > 0 ? (
-        <Button
-          variant={null}
-          size={null}
-          data-testid='doc-outline-fold'
-          className='flex size-4 flex-none items-center justify-center text-muted-foreground [&_svg]:size-3.5'
-          onClick={() => onFold(entry.id)}
-        >
-          {folded ? <ChevronRight /> : <ChevronDown />}
-        </Button>
-      ) : (
-        <span className='size-4 flex-none' />
-      )}
       <Tooltip open={tip} onOpenChange={openTip}>
         <TooltipTrigger asChild>
           <Button
@@ -174,17 +167,39 @@ const OutlineRow = React.memo(function OutlineRow({
             size={null}
             data-testid='doc-outline-row'
             data-outline-id={entry.id}
-            // `Button` centres and sets a medium weight on everything it draws;
-            // a row reads from its left edge, and only the one being read is medium.
-            className={cn('flex h-full min-w-0 flex-1 items-center justify-start gap-1.5 pl-1 pr-2 text-left text-sm', active ? 'font-medium' : 'font-normal')}
-            onClick={() => onJump(entry.id)}
+            // The whole row jumps, its indent included; the arrow sits over its
+            // own column at the start. `Button` centres and sets a medium weight
+            // on everything it draws; a row's words start after that column, and
+            // only the one being read is medium and in the full foreground colour.
+            className={cn(
+              'flex h-full w-full min-w-0 items-center justify-start gap-1.5 pr-2 text-left text-sm',
+              active ? 'font-medium text-foreground' : 'font-normal text-foreground-secondary',
+            )}
+            style={jumpStyle}
+            onClick={jump}
           >
-            {entry.number !== null && <span className='flex-none tabular-nums text-muted-foreground'>{entry.number}</span>}
+            {entry.number !== null && (
+              <span className={cn('flex-none tabular-nums', active ? 'text-foreground-secondary' : 'text-muted-foreground group-hover:text-foreground-secondary')}>
+                {entry.number}
+              </span>
+            )}
             <span ref={label} className='min-w-0 truncate'>{entry.text}</span>
           </Button>
         </TooltipTrigger>
         <TooltipContent side='right'>{entry.text}</TooltipContent>
       </Tooltip>
+      {entry.children.length > 0 && (
+        <Button
+          variant={null}
+          size={null}
+          data-testid='doc-outline-fold'
+          className='absolute inset-y-0 flex items-center justify-center text-muted-foreground hover-enabled:text-foreground [&_svg]:size-3.5'
+          style={foldStyle}
+          onClick={fold}
+        >
+          {folded ? <ChevronRight /> : <ChevronDown />}
+        </Button>
+      )}
     </div>
   );
 });
@@ -385,7 +400,7 @@ export const DocumentOutline = React.memo(function DocumentOutline({
           <ScrollArea viewportRef={setList} className='min-h-0 flex-1' data-testid='doc-outline'>
             <div className='px-1.5 pb-4'>
               {rows.length === 0 ? (
-                <p className='px-4 py-7 text-center text-sm text-muted-foreground'>{t('spaces.document.outline.empty')}</p>
+                <p className='px-4 py-7 text-center text-sm leading-relaxed text-balance text-muted-foreground'>{t('spaces.document.outline.empty')}</p>
               ) : (
                 rows.map((row) => (
                   <OutlineRow

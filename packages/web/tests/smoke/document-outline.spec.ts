@@ -182,19 +182,84 @@ test('a jump leaves each level of heading 16px under the top and the caret at it
   await expect(row(page, 'ZOne one')).toBeVisible();
 });
 
-test('a row reads from its left edge, indented by level, and only the one being read is medium weight', async () => {
+test('a row reads from after its arrow column, indented by level, and only the one being read is medium weight', async () => {
   await openWith(page, DOCUMENT);
   await row(page, 'Two').click();
   const rows = await page.evaluate((outline) => [...document.querySelectorAll(`${outline} [data-testid="doc-outline-row"]`)].map((r) => {
     const words = r.lastElementChild!.getBoundingClientRect();
-    return { text: r.textContent, gap: Math.round(words.left - r.getBoundingClientRect().left), left: Math.round(words.left), weight: getComputedStyle(r).fontWeight };
+    const item = r.closest('[data-outline-item]')!.getBoundingClientRect();
+    return { text: r.textContent, gap: Math.round(words.left - item.left), weight: getComputedStyle(r).fontWeight };
   }), OUTLINE);
   const of = (text: string): (typeof rows)[number] => rows.find((r) => r.text === text)!;
-  for (const r of rows) expect(r.gap).toBeLessThanOrEqual(8);
-  expect(of('One one').left - of('One').left).toBe(12);
-  expect(of('One one one').left - of('One one').left).toBe(12);
+  expect(of('One').gap).toBe(24);
+  expect(of('One one').gap).toBe(24 + 12);
+  expect(of('One one one').gap).toBe(24 + 24);
   expect(of('Two').weight).toBe('500');
   expect(of('One').weight).toBe('400');
+});
+
+test('a whole row jumps, its indent included, and its arrow is a 24px target of its own', async () => {
+  await openWith(page, DOCUMENT);
+  await page.evaluate((viewport) => document.querySelector(viewport)!.scrollTo({ top: 0, behavior: 'instant' }), VIEWPORT);
+  const item = (await row(page, 'One one one').locator('xpath=ancestor::*[@data-outline-item][1]').boundingBox())!;
+  await page.mouse.click(item.x + 4, item.y + item.height / 2);
+  expect(Math.abs(await lineBelowTop(page, 'One one one') - 16)).toBeLessThanOrEqual(2);
+  await twoFrames(page);
+  expect(await highlighted(page)).toBe('One one one');
+
+  const fold = page.locator(`${OUTLINE} [data-outline-item]`).first().getByTestId('doc-outline-fold');
+  const box = (await fold.boundingBox())!;
+  expect(box.width).toBeGreaterThanOrEqual(24);
+  expect(box.height).toBeGreaterThanOrEqual(24);
+  await page.mouse.click(box.x + 2, box.y + box.height / 2);
+  await expect.poll(() => page.evaluate((outline) => [...document.querySelectorAll(`${outline} [data-testid="doc-outline-row"]`)].map((r) => r.textContent), OUTLINE))
+    .toEqual(['One', 'Two', 'Two one', 'Two one one', 'Tail a', 'Tail b']);
+});
+
+test('rows draw the demo\'s states: small corners, the one being read darker, an arrow that darkens on hover', async () => {
+  await openWith(page, DOCUMENT);
+  await row(page, 'Two').click();
+  const look = await page.evaluate((outline) => {
+    const token = (name: string): string => {
+      const probe = document.createElement('span');
+      probe.style.color = `var(${name})`;
+      document.body.append(probe);
+      const value = getComputedStyle(probe).color;
+      probe.remove();
+      return value;
+    };
+    const rowOf = (text: string): Element => [...document.querySelectorAll(`${outline} [data-testid="doc-outline-row"]`)].find((r) => r.textContent === text)!;
+    return {
+      radius: getComputedStyle(rowOf('Two').closest('[data-outline-item]')!).borderRadius,
+      other: getComputedStyle(rowOf('One')).color,
+      foreground: token('--color-foreground'),
+      secondary: token('--color-foreground-secondary'),
+    };
+  }, OUTLINE);
+  expect(look.radius).toBe('6px');
+  expect(look.other).toBe(look.secondary);
+  // The row eases into its new colour over the button's transition.
+  await expect.poll(() => row(page, 'Two').evaluate((el) => getComputedStyle(el).color)).toBe(look.foreground);
+
+  const fold = page.locator(`${OUTLINE} [data-outline-item]`).first().getByTestId('doc-outline-fold');
+  const before = await fold.evaluate((el) => getComputedStyle(el).color);
+  await fold.hover();
+  await expect.poll(() => fold.evaluate((el) => getComputedStyle(el).color)).toBe(look.foreground);
+  expect(before).not.toBe(look.foreground);
+});
+
+test('the empty outline spaces its two lines like the comment panel\'s empty state', async () => {
+  await openSmokeProject(page);
+  createdSpaceIds.push(await createSpace(page, 'document', `outline-${Date.now()}`));
+  await expect(page.locator(EDITOR)).toBeVisible({ timeout: 15_000 });
+  const empty = page.locator(`${VISIBLE_SPACE} [data-testid="doc-outline"] p`);
+  await expect(empty).toBeVisible();
+  const { lineHeight, fontSize, relaxed } = await empty.evaluate((el) => ({
+    lineHeight: parseFloat(getComputedStyle(el).lineHeight),
+    fontSize: parseFloat(getComputedStyle(el).fontSize),
+    relaxed: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--leading-relaxed')),
+  }));
+  expect(lineHeight / fontSize).toBeCloseTo(relaxed, 2);
 });
 
 test('the highlight follows the scroll, and a short last section keeps the one clicked', async () => {
