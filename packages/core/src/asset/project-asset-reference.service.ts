@@ -281,7 +281,7 @@ export async function getTimelineLimits(projectId: string, userId: string): Prom
     assets: { pageSize: config.assets.page_size, pageMax: config.assets.page_max },
     webAnimation: {
       promptMaxLength: config.web_animation.prompt_max_length,
-      durationSeconds: { min: config.web_animation.duration_seconds.min, max: config.web_animation.duration_seconds.max },
+      durationSeconds: { ...config.web_animation.duration_seconds },
       aspects: Object.keys(config.web_animation.viewports),
       playerLoadTimeoutMs: config.web_animation.player_load_timeout_ms,
       sourceRefreshIntervalMs: config.web_animation.source_refresh_interval_ms,

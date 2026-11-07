@@ -15,7 +15,8 @@ const viewport = z.object({ width: positiveInt, height: positiveInt });
 const webAnimationSchema = z.object({
   /** Longest prompt the creation dialog accepts, in characters after `extractPromptText`. */
   prompt_max_length: positiveInt.default(4000),
-  duration_seconds: z.object({ min: positiveInt.default(1), max: positiveInt.default(60) }).prefault({}),
+  /** The accepted range, and the duration the creation dialog opens at. */
+  duration_seconds: z.object({ min: positiveInt.default(1), max: positiveInt.default(60), default: positiveInt.default(4) }).prefault({}),
   /** The source viewport of each aspect the dialog offers. */
   viewports: z.object({
     "16:9": viewport.default({ width: 1920, height: 1080 }),
@@ -48,6 +49,10 @@ const webAnimationSchema = z.object({
 }).superRefine((config, ctx) => {
   if (config.duration_seconds.min > config.duration_seconds.max) {
     ctx.addIssue({ code: "custom", path: ["duration_seconds", "min"], message: "duration_seconds.min exceeds max" });
+  }
+  const { min, max, default: initial } = config.duration_seconds;
+  if (initial < min || initial > max) {
+    ctx.addIssue({ code: "custom", path: ["duration_seconds", "default"], message: "duration_seconds.default lies outside min..max" });
   }
 });
 

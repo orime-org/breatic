@@ -15,6 +15,8 @@ web_animation:
   duration_seconds:
     min: 1
     max: 60
+    # Where the creation dialog opens; lies within min..max.
+    default: 4
   viewports:
     "16:9": { width: 1920, height: 1080 }
     "9:16": { width: 1080, height: 1920 }

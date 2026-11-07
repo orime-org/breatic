@@ -10,7 +10,8 @@ export interface TimelineClientLimits {
   assets: { pageSize: number; pageMax: number };
   webAnimation: {
     promptMaxLength: number;
-    durationSeconds: { min: number; max: number };
+    /** The accepted range in seconds, and the duration the creation dialog opens at. */
+    durationSeconds: { min: number; max: number; default: number };
     /** The aspects the creation dialog offers, in the configured order. */
     aspects: string[];
     playerLoadTimeoutMs: number;

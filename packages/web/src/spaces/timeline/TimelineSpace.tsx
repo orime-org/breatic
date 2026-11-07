@@ -386,7 +386,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     const aspect = aspectOf(webLimits?.aspects[0]);
     if (readOnly || webLimits === undefined || aspect === null) return;
     if (draft.status === 'closed') setRetryDialog(input !== undefined);
-    dispatchDraft({ type: 'open', input: input ?? { prompt: '', engine: 'deepseek', aspect, durationSeconds: webLimits.durationSeconds.min, addAtPlayhead: true } });
+    dispatchDraft({ type: 'open', input: input ?? { prompt: '', engine: 'deepseek', aspect, durationSeconds: webLimits.durationSeconds.default, addAtPlayhead: true } });
   }, [readOnly, webLimits, draft.status]);
   const openBlankCreate = React.useCallback((): void => openCreate(), [openCreate]);
   const editDraft = React.useCallback((patch: Partial<CreationDraftInput>): void => dispatchDraft({ type: 'edit', patch }), []);
