@@ -13,9 +13,10 @@
  * and neither says which row the drag came from — the payload is HTML. The
  * handle tells this extension at dragstart instead, through `rowIsFlying`.
  *
- * A TEXT DRAG IS NOT THIS. When the reader drags a selected word,
- * `view.dragging` is ProseMirror's own and no row was picked up, so this
- * declines and ProseMirror's own handling runs as it always did (A19).
+ * A TEXT DRAG IS NOT A ROW. When the reader drags a selection,
+ * `view.dragging` is ProseMirror's own and no row was picked up: the drop is
+ * put as its paste at the drop point (`dropAsPaste`), and a drag its paste
+ * would put nothing of changes nothing (A19).
  */
 
 import { createExtension } from '@blocknote/core';
@@ -26,6 +27,7 @@ import {
   type ReaderPlace,
 } from '@web/spaces/document/document-drag-selection';
 import { moveRowTo } from '@web/spaces/document/document-drag-move';
+import { dropAsPaste } from '@web/spaces/document/document-drop-as-paste';
 
 /** What the drag in flight picked up, if it picked up a row at all. */
 interface RowInFlight {
@@ -71,10 +73,11 @@ export function rowInFlight(): boolean {
 }
 
 /**
- * The extension that writes a dropped row from the document, not the payload.
+ * The extension that writes a dropped row from the document, not the payload,
+ * and puts any other drag within the body as its paste at the drop point.
  * @returns The extension, for the assembly to register.
  */
-export const documentDragDropExtension = createExtension(() => ({
+export const documentDragDropExtension = createExtension(({ editor }) => ({
   key: 'document-drag-drop',
   prosemirrorPlugins: [
     new Plugin({
@@ -93,11 +96,13 @@ export const documentDragDropExtension = createExtension(() => ({
          * leaves the document as it is.
          * @param view - The view the drop happened in.
          * @param event - The drop.
+         * @param slice - The dragged content, as ProseMirror hands it over.
+         * @param moved - Whether the drop moves it, read from the keys at the drop.
          * @returns True when this handled the drop.
          */
-        handleDrop: (view, event) => {
+        handleDrop: (view, event, slice, moved) => {
           const row = flying;
-          if (row === undefined) return false;
+          if (row === undefined) return dropAsPaste(editor, view, event, slice, moved);
           // The browser fires `dragend` after `drop`, so the flag is cleared
           // here as well: a drop that this declines must not leave the next
           // text drag looking like a row drag.

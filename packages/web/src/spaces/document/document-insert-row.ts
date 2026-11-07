@@ -16,14 +16,14 @@
 import type { BlockTypeId } from '@web/spaces/document/document-block-ticks';
 import { runBlockType } from '@web/spaces/document/document-block-run';
 import { DIVIDER } from '@web/spaces/document/document-divider';
-import { rowById } from '@web/spaces/document/document-row-by-id';
+import { quotedAs, type BlockSpec } from '@web/spaces/document/document-file-input';
 import {
   type HandleEditor,
   type PressedBlock,
 } from '@web/spaces/document/document-handle-commands';
 import { QUOTED } from '@web/spaces/document/document-list-block';
+import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
 import { DOC_TABLE, DOC_TABLE_CELL, DOC_TABLE_ROW } from '@web/spaces/document/document-table-nodes';
-import type { UploadGap } from '@web/spaces/document/document-upload-slots';
 
 /** How many rows and columns a new table has. */
 export interface TableSize {
@@ -33,14 +33,6 @@ export interface TableSize {
 
 /** One entry of the insert menu: a block type, the divider, or a table of a size. */
 export type InsertChoice = BlockTypeId | typeof DIVIDER | { readonly table: TableSize };
-
-/** A block for `insertBlocks` / `updateBlock`, as far as this module builds one. */
-interface BlockSpec {
-  readonly type: string;
-  readonly props?: Readonly<Record<string, unknown>>;
-  readonly content?: unknown;
-  readonly children?: readonly BlockSpec[];
-}
 
 /**
  * An empty table of a size.
@@ -96,10 +88,7 @@ export function insertRowForMenu(
   // row goes under the table, as under any block without children.
   const firstChild = row.type === DOC_TABLE ? undefined : row.children?.[0];
   const made = editor.insertBlocks(
-    [...lead, { type: 'paragraph' }].map((block) => ({
-      ...block,
-      props: { ...block.props, [QUOTED]: quoted },
-    })) as never,
+    quotedAs([...lead, { type: 'paragraph' }], quoted) as never,
     firstChild?.id ?? row.id,
     firstChild === undefined ? 'after' : 'before',
   ) as { id: string }[];
@@ -139,50 +128,40 @@ export function insertBelow(
 }
 
 /**
- * The gap the insert-below submenu's media entries upload into
- * (inner#1127 A1).
- *
- * The row a divider or a table gets under it is made here, at the pick, with
- * the caret in it; the files go above that row. The upload finishing later
- * then only adds blocks — it moves no caret and makes no row, so the reader
- * typing elsewhere meanwhile is left where they are, and a batch of files
- * lands with nothing between them.
+ * The insert-below submenu's media entries: the blocks the chosen files
+ * become go under the pressed row, with the empty line the menu makes under
+ * them and the caret in that line, in one insert that is an undo step of its
+ * own — one undo takes both away (inner#1351 + inner#1390 design §5.9).
  * @param editor - The editor to write to.
  * @param row - The block the menu was opened on.
- * @returns The gap.
+ * @param blocks - The pending media blocks.
  * @throws {Error} `Block with ID … not found`, from BlockNote's
  *   `insertBlocks`, when the pressed block is no longer in the document.
  */
-export function mediaGapBelow(editor: HandleEditor, row: PressedBlock): UploadGap {
-  return gapAbove(editor, insertRowForMenu(editor, row));
+export function insertMediaBelow(editor: HandleEditor, row: PressedBlock, blocks: readonly BlockSpec[]): void {
+  editor.transact((tr) => {
+    markOwnUndoStep(tr);
+    insertRowForMenu(editor, row, blocks);
+  });
 }
 
 /**
- * The gap the plus menu's media entries upload into: above the empty line it
- * was opened on, which keeps the caret (inner#1127 A1).
+ * The plus menu's media entries: the blocks go above the empty line it was
+ * opened on, quoted as that line, and the caret stays in it; the insert is an
+ * undo step of its own.
  * @param editor - The editor to write to.
  * @param row - The empty paragraph the plus is on.
- * @returns The gap.
+ * @param blocks - The pending media blocks.
  * @throws {Error} `Block with ID … not found`, from BlockNote, when the row is
  *   no longer in the document.
  */
-export function mediaGapOnRow(editor: HandleEditor, row: PressedBlock): UploadGap {
-  const gap = gapAbove(editor, row.id);
-  editor.setTextCursorPosition(row.id, 'start');
-  return gap;
-}
-
-/**
- * The gap just above a block.
- * @param editor - The editor.
- * @param id - The block the gap is above.
- * @returns The gap.
- * @throws {Error} When the document no longer holds the block.
- */
-function gapAbove(editor: HandleEditor, id: string): UploadGap {
-  const row = rowById(editor.prosemirrorState.doc, id);
-  if (row === undefined) throw new Error(`Block with ID ${id} not found`);
-  return row.from;
+export function insertMediaOnRow(editor: HandleEditor, row: PressedBlock, blocks: readonly BlockSpec[]): void {
+  const quoted = row.props?.[QUOTED] === true;
+  editor.transact((tr) => {
+    markOwnUndoStep(tr);
+    editor.insertBlocks(quotedAs(blocks, quoted) as never, row.id, 'before');
+    editor.setTextCursorPosition(row.id, 'start');
+  });
 }
 
 /**

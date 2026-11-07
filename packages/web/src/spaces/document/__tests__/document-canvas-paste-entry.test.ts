@@ -1,0 +1,280 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+/**
+ * Pasting a canvas clipboard into the body (inner#1351 + inner#1390 design
+ * §5.1, §5.2; A1, A2, A3, A4, A6, A7): what lands where, in one undo step,
+ * and which uploads start.
+ */
+
+import { tableBlock } from './table-fixtures';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import type * as Y from 'yjs';
+import { TextSelection } from '@tiptap/pm/state';
+import { CellSelection } from '@tiptap/pm/tables';
+
+import { serializeClipboard, type ClipboardNode, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
+
+import { caretIn, firstCell, open as openBody, pasteFormats, unmountAll, type Editor } from './paste-harness';
+
+const OURS = 'https://cdn.example/2026-10-14/a.png';
+
+afterEach(unmountAll);
+
+/** What the body hands an upload to. */
+interface Sink {
+  start: ReturnType<typeof vi.fn>;
+  notPasted: ReturnType<typeof vi.fn>;
+}
+
+/**
+ * Opens a body holding these blocks with the caret at the end of the first
+ * text block of the block at `at`: the line, or a table's first cell.
+ * @param blocks - The document.
+ * @param at - Which top-level block holds the caret.
+ * @returns The editor, its undo manager, and the sink.
+ */
+function open(blocks: unknown[], at: number): { editor: Editor; manager: Y.UndoManager; sink: Sink } {
+  const sink: Sink = { start: vi.fn(), notPasted: vi.fn() };
+  const { editor, manager } = openBody(blocks, { onCanvasPaste: sink });
+  caretIn(editor, at);
+  return { editor, manager, sink };
+}
+
+/**
+ * Pastes clipboard data the way a reader's paste delivers it.
+ * @param editor - The editor.
+ * @param text - The clipboard's plain text.
+ */
+function paste(editor: Editor, text: string): void {
+  pasteFormats(editor, { 'text/plain': text });
+}
+
+/**
+ * A canvas clipboard of these nodes.
+ * @param nodes - The nodes.
+ * @returns Its text.
+ */
+function clipboard(...nodes: ClipboardNode[]): string {
+  return serializeClipboard({ version: 2, picked: nodes.map((n) => n.id), nodes, edges: [] } as ClipboardPayload);
+}
+
+/**
+ * A text body snapshot.
+ * @param lines - Its lines.
+ * @returns The snapshot.
+ */
+function body(...lines: string[]): unknown {
+  return { $y: 'xml', children: lines.map((line) => ({ el: 'paragraph', attrs: {}, children: [{ text: [{ insert: line }] }] })) };
+}
+
+/**
+ * The top-level blocks as short labels.
+ * @param editor - The editor.
+ * @returns `type:text` for text blocks, `type[uploadId|caption]` for media.
+ */
+function shape(editor: Editor): string[] {
+  return (editor.document as { type: string; props: Record<string, unknown>; content?: { text?: string }[] }[]).map((b) =>
+    b.type === 'image' || b.type === 'video' || b.type === 'audio'
+      ? `${b.type}[${b.props['uploadId'] === '' ? 'none' : 'id'}|${String(b.props['caption'])}|${String(b.props['url'])}]`
+      : `${b.type === 'docTable' ? 'table' : b.type}:${Array.isArray(b.content) ? b.content.map((c) => c.text ?? '').join('') : ''}`,
+  );
+}
+
+/**
+ * Reads the text of each ordinary block in new-table cells.
+ * @param editor - The editor.
+ * @returns Block texts for every cell, in row order.
+ */
+function cellTextRows(editor: Editor): string[][] {
+  const cells: string[][] = [];
+  editor.prosemirrorView.state.doc.descendants((node) => {
+    if (node.type.name !== 'docTableCell' && node.type.name !== 'docTableHeader') return true;
+    const texts: string[] = [];
+    node.forEach((block) => texts.push(block.textContent));
+    cells.push(texts);
+    return false;
+  });
+  return cells;
+}
+
+describe('text only', () => {
+  it('goes in at the caret, character for character, with nothing read as markdown', () => {
+    const { editor, sink } = open([{ type: 'paragraph', content: 'lead ' }], 0);
+    paste(editor, clipboard({ id: 't', type: 'text', position: { x: 0, y: 0 }, data: { body: body('_x_', '# y') } }));
+    expect(shape(editor)).toEqual(['paragraph:lead _x_', 'paragraph:# y']);
+    expect(sink.start).not.toHaveBeenCalled();
+  });
+});
+
+describe('text only, as an undo step', () => {
+  it('typing just before it stays when the paste is undone', () => {
+    const { editor, manager } = open([{ type: 'paragraph', content: 'lead' }], 0);
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.insertText(' typed'));
+    paste(editor, clipboard({ id: 't', type: 'text', position: { x: 0, y: 0 }, data: { body: body('one', 'two') } }));
+    manager.undo();
+    expect(shape(editor)).toEqual(['paragraph:lead typed']);
+  });
+});
+
+describe('text only, in a table cell', () => {
+  it('goes into the cell', () => {
+    const { editor } = open(
+      [tableBlock({ rows: [{ cells: ['cell '] }] })],
+      0,
+    );
+    paste(editor, clipboard({ id: 't', type: 'text', position: { x: 0, y: 0 }, data: { body: body('_x_') } }));
+    expect(firstCell(editor, 0)).toBe('cell _x_');
+    expect(editor.document).toHaveLength(1);
+  });
+
+  it('every line goes into the cell, as a plain text paste of the same lines does', () => {
+    const { editor } = open(
+      [tableBlock({ rows: [{ cells: ['cell '] }] }), { type: 'paragraph', content: 'after' }],
+      0,
+    );
+    paste(editor, clipboard({ id: 't', type: 'text', position: { x: 0, y: 0 }, data: { body: body('one', 'two') } }));
+    expect(cellTextRows(editor)[0]).toEqual(['cell one', 'two']);
+    expect(shape(editor)).toEqual(['table:', 'paragraph:after']);
+  });
+
+  it('with several cells selected, fills every one and leaves the caret in the first cell', () => {
+    const { editor } = open(
+      [tableBlock({ rows: [{ cells: ['c1', 'c2'] }] }), { type: 'paragraph', content: 'after' }],
+      1,
+    );
+    const view = editor.prosemirrorView;
+    const cells: number[] = [];
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'docTableCell') cells.push(pos);
+      return true;
+    });
+    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0]!, cells[1]!)));
+    view.focus();
+    paste(editor, clipboard({ id: 't', type: 'text', position: { x: 0, y: 0 }, data: { body: body('_one_', 'two') } }));
+    expect(cellTextRows(editor)).toEqual([['_one_', 'two'], ['_one_', 'two']]);
+    expect(view.state.selection).toBeInstanceOf(TextSelection);
+    expect(view.state.selection.empty).toBe(true);
+    expect(view.state.selection.$head.parent.textContent).toBe('two');
+    expect(view.state.selection.$head.node(-2).type.name).toBe('docTableCell');
+  });
+});
+
+describe('text only, at the caret', () => {
+  it('an address alone, over selected words, replaces them as words', () => {
+    const { editor } = open([{ type: 'paragraph', content: 'say hello there' }], 0);
+    const view = editor.prosemirrorView;
+    let at = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (at < 0 && node.isText) at = pos + node.text!.indexOf('hello');
+      return at < 0;
+    });
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at, at + 5)));
+    paste(editor, clipboard({ id: 't', type: 'text', position: { x: 0, y: 0 }, data: { body: body('https://example.com') } }));
+    expect((editor.document as { content?: unknown }[])[0]!.content).toEqual([{ type: 'text', text: 'say https://example.com there', styles: {} }]);
+  });
+
+  it.each(['bulletListItem', 'heading', 'checkListItem'])('on an empty %s, the first line takes its type and the last fills it', (type) => {
+    const { editor } = open([{ type: 'paragraph', content: 'lead' }, { type }, { type: 'paragraph', content: 'tail' }], 1);
+    paste(editor, clipboard({ id: 't', type: 'text', position: { x: 0, y: 0 }, data: { body: body('one', 'two') } }));
+    expect(shape(editor)).toEqual(['paragraph:lead', `${type}:one`, `${type}:two`, 'paragraph:tail']);
+  });
+});
+
+describe('text only, in a code block', () => {
+  it('every line goes into the code block, joined by newlines', () => {
+    const { editor } = open([{ type: 'codeBlock', content: 'x = 1' }, { type: 'paragraph', content: 'after' }], 0);
+    paste(editor, clipboard({ id: 't', type: 'text', position: { x: 0, y: 0 }, data: { body: body('one', '', '_two_') } }));
+    expect(shape(editor)).toEqual(['codeBlock:x = 1one\n\n_two_', 'paragraph:after']);
+  });
+});
+
+describe('with media', () => {
+  it('lands at the caret as text and pending blocks in reading order, and starts each upload', () => {
+    const { editor, sink } = open([{ type: 'paragraph', content: 'lead' }], 0);
+    paste(
+      editor,
+      clipboard(
+        { id: 't', type: 'text', position: { x: 0, y: 0 }, height: 100, data: { body: body('Words') } },
+        { id: 'i', type: 'image', position: { x: 0, y: 200 }, data: { name: 'Hero', content: OURS } },
+      ),
+    );
+    // At the end of a line, the leading words join it (§5.4.3).
+    expect(shape(editor)).toEqual(['paragraph:leadWords', 'image[id|Hero|]', 'paragraph:']);
+    const image = (editor.document as { type: string; props: Record<string, unknown> }[])[1]!;
+    expect(sink.start).toHaveBeenCalledExactlyOnceWith(image.props['uploadId'], { kind: 'ours', url: OURS });
+  });
+
+  it('is one undo step', () => {
+    const { editor, manager } = open([{ type: 'paragraph', content: 'lead' }], 0);
+    paste(
+      editor,
+      clipboard(
+        { id: 't', type: 'text', position: { x: 0, y: 0 }, height: 100, data: { body: body('Words') } },
+        { id: 'i', type: 'image', position: { x: 0, y: 200 }, data: { name: 'Hero', content: OURS } },
+      ),
+    );
+    manager.undo();
+    expect(shape(editor)).toEqual(['paragraph:lead']);
+  });
+
+  it('carries the node\'s pixel size, so the picture keeps its shape while it loads', () => {
+    const { editor } = open([{ type: 'paragraph', content: 'lead' }], 0);
+    paste(
+      editor,
+      clipboard({ id: 'i', type: 'image', position: { x: 0, y: 0 }, data: { name: 'Hero', content: OURS, mediaWidth: 320, mediaHeight: 180 } }),
+    );
+    const image = (editor.document as { type: string; props: Record<string, unknown> }[])[1]!;
+    expect([image.props['mediaWidth'], image.props['mediaHeight']]).toEqual([320, 180]);
+  });
+
+  it('aimed at an empty line, lands above it and leaves it with the caret', () => {
+    const { editor } = open([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph', content: '' }], 1);
+    paste(editor, clipboard({ id: 'i', type: 'image', position: { x: 0, y: 0 }, data: { name: 'Hero', content: OURS } }));
+    expect(shape(editor)).toEqual(['paragraph:lead', 'image[id|Hero|]', 'paragraph:']);
+  });
+
+  it('an Agent picture starts an upload from its address', () => {
+    const { editor, sink } = open([{ type: 'paragraph', content: 'lead' }], 0);
+    paste(
+      editor,
+      clipboard({ id: 'x', type: 'image', position: { x: 0, y: 0 }, data: { name: 'Found', content: 'https://imgs.example/x.jpg' }, external: true }),
+    );
+    expect(sink.start).toHaveBeenCalledWith(expect.any(String), { kind: 'address', url: 'https://imgs.example/x.jpg' });
+  });
+
+  it('in a table cell, the media land inside that cell', () => {
+    const { editor } = open(
+      [
+        tableBlock({ rows: [{ cells: ['cell'] }] }),
+        { type: 'paragraph', content: 'after' },
+      ],
+      0,
+    );
+    paste(editor, clipboard({ id: 'i', type: 'image', position: { x: 0, y: 0 }, data: { name: 'Hero', content: OURS } }));
+    expect(shape(editor)).toEqual(['table:', 'paragraph:after']);
+    expect(cellTextRows(editor)[0]).toEqual(['cell', '', '']);
+    const media: { name: unknown; caption: unknown; uploadId: unknown }[] = [];
+    editor.prosemirrorView.state.doc.descendants((node) => {
+      if (node.type.name === 'image') media.push({ name: node.attrs['name'], caption: node.attrs['caption'], uploadId: node.attrs['uploadId'] });
+      return true;
+    });
+    expect(media).toEqual([{ name: 'Hero', caption: 'Hero', uploadId: expect.any(String) }]);
+  });
+});
+
+describe('what could not be pasted', () => {
+  it('is counted and told, and what could be pasted lands', () => {
+    const { editor, sink } = open([{ type: 'paragraph', content: 'lead' }], 0);
+    paste(
+      editor,
+      clipboard(
+        { id: 'p', type: 'image', position: { x: 0, y: 0 }, data: { name: 'Pending' } },
+        { id: 'i', type: 'image', position: { x: 0, y: 300 }, data: { name: 'Hero', content: OURS } },
+      ),
+    );
+    expect(shape(editor)).toEqual(['paragraph:lead', 'image[id|Hero|]', 'paragraph:']);
+    expect(sink.notPasted).toHaveBeenCalledExactlyOnceWith(1);
+  });
+});

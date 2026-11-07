@@ -20,7 +20,7 @@ import { MINI_TOOLS } from "@breatic/shared/mini-tools";
 
 import { CANVAS_TOOLS, TOOL_MAP } from "@domain/agent/tools/index.js";
 import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
-import { CREATABLE, productGuide, renderProductGuide } from "@domain/agent/tools/product-guide.js";
+import { CREATABLE, documentPasteRules, productGuide, renderProductGuide } from "@domain/agent/tools/product-guide.js";
 
 /**
  * One section of the guide, as the model reads it.
@@ -972,6 +972,32 @@ describe("mini-tools and the task rows", () => {
     expect(generating).toContain(`"${t("canvas.task.action.finish")}"`);
     expect(generating).toContain(`"${t("canvas.task.action.view")}"`);
     expect(generating).toMatch(/opens the node's history at that result/i);
+  });
+});
+
+/**
+ * The paste rules the web examples show, each id with the guide's sentence
+ * written beside it, read from the example file's source.
+ * @returns Each id and its sentence, in the file's order.
+ */
+function pasteExamples(): { id: string; sentence: string }[] {
+  const file = webSource("spaces/document/__tests__/document-paste-guide.test.ts");
+  return [...file.matchAll(/id: '([^']+)',\s*sentence: '((?:[^'\\]|\\.)*)'/g)].map(([, id, sentence]) => ({
+    id: id!,
+    sentence: sentence!.replace(/\\(.)/g, "$1"),
+  }));
+}
+
+describe("where pasted content lands in the document", () => {
+  it("states each rule exactly as its web example writes it beside the paste that shows it", () => {
+    const examples = pasteExamples();
+    expect(examples.length).toBeGreaterThan(0);
+    expect(runWithLocale("en", () => documentPasteRules())).toEqual(examples);
+  });
+
+  it("puts every rule in the document section", () => {
+    const document = section("Document spaces");
+    for (const { sentence } of runWithLocale("en", () => documentPasteRules())) expect(document).toContain(sentence);
   });
 });
 

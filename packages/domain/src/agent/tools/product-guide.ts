@@ -50,6 +50,53 @@ function quoted(message: string): string {
 }
 
 /**
+ * Where pasted content lands in the document, one sentence per rule. Each id
+ * has a paste beside the same sentence in the web examples
+ * (`packages/web/src/spaces/document/__tests__/document-paste-guide.test.ts`),
+ * which the guide test holds to these sentences word for word.
+ * @returns Each rule's id and sentence, in the order the guide states them.
+ */
+export function documentPasteRules(): { id: string; sentence: string }[] {
+  return [
+    { id: "document.paste.splitsLine", sentence: "Content splits a line at the caret;" },
+    {
+      id: "document.paste.emptyLine",
+      sentence:
+        "on an empty line, content ending in a picture, video or audio lands above it and leaves the line for the " +
+        "caret, and content ending in words takes the line.",
+    },
+    {
+      id: "document.paste.canvas",
+      sentence:
+        "Nodes copied on the canvas and a picture copied in this chat paste the same way: each text node's lines " +
+        "become paragraphs with their original words, and each picture, video or audio carries the node's name as " +
+        "its caption, in reading order from the canvas.",
+    },
+    {
+      id: "document.paste.cellBlocks",
+      sentence: "Inside a table cell, ordinary content keeps its block types and media stay in the cell.",
+    },
+    {
+      id: "document.paste.cellTable",
+      sentence: "A single pasted table fills cells once from the target cell, growing the table when needed;",
+    },
+    {
+      id: "document.paste.cellRefused",
+      sentence:
+        "a table mixed with other content, or more than one table, is refused with " +
+        `${quoted(t("spaces.document.paste.unsupportedInCell"))}.`,
+    },
+    { id: "document.paste.cellSelection", sentence: "A cell selection receives a copy of ordinary content in each cell." },
+    {
+      id: "document.paste.codeBlock",
+      sentence:
+        "In a code block, plain text is inserted verbatim; web text goes into the code and its media beside the " +
+        "code block, while canvas content carrying media lands together beside it.",
+    },
+  ];
+}
+
+/**
  * The name a node type goes by in the create menus, quoted.
  * @param type - A creatable node type.
  * @returns Its menu label, quoted.
@@ -1440,7 +1487,7 @@ export function renderProductGuide(): string {
       "empty. Clicking a to-do's box ticks or unticks it. Clicking a link opens it in a new tab. Selected words " +
       "can be dragged elsewhere. Pasting Markdown turns it into headings, lists and so on (inside a code block it " +
       "stays plain text); a table copied from a spreadsheet, a web page or Markdown arrives as a table, its cells " +
-      "keeping their headings, lists and other blocks, with pictures from other sites left out; pasted with the " +
+      "keeping their headings, lists and other blocks; pasted with the " +
       "caret in a cell, it fills the cells from that one instead. Pasting an image, video or audio file uploads it (see below); any other " +
       "file is refused with a message.",
     "- Selecting text shows a bar, left to right: an icon of the current block type with a small arrow, an " +
@@ -1517,12 +1564,19 @@ export function renderProductGuide(): string {
       "the list or to-do of the one above, Cmd+Alt+0 makes it plain text, and if it kept the quote, Cmd+Shift+B " +
       "takes the quote off.",
     "- Images, videos and audio can also be dragged into the document from the computer, landing where the " +
-      "line shows, or pasted, landing under the caret's line (above it when that line is empty). Each file shows a dashed box with its name and how " +
-      "far its upload has got, which only the person uploading sees; when it is done the box becomes the picture, " +
-      "video or audio for everyone. A file that cannot be uploaded turns the box red with the reason, with " +
+      "drop marker shows (a line between blocks, or a caret in the words of a table cell outside a code " +
+      `block), or pasted at the caret, replacing the selection. ${documentPasteRules().map((rule) => rule.sentence).join(" ")} ` +
+      "Pictures, videos and audio inside copied web pages or Markdown come in with the text, and dragging " +
+      "a web page's content in does the same. Each picture, video or audio that still has to be fetched " +
+      "or uploaded first shows as a dashed box with a spinner and, for a file, its name and how far its upload has got; " +
+      "everyone working on the document sees the box, and it becomes the picture, video or audio for everyone " +
+      "when the upload is done. One Cmd+Z takes the whole paste or drop away, boxes included, and redo brings " +
+      "it back without uploading again. An upload that fails turns the box red with the reason, with " +
       `${quoted(t("spaces.document.media.retry"))} when trying again can help, and ` +
-      `${quoted(t("spaces.document.media.remove"))}. Pictures, videos or audio inside copied web pages or ` +
-      "Markdown are not pasted with the text; drop or paste the files themselves. Hovering a picture, video or " +
+      `${quoted(t("spaces.document.media.remove"))}. If the person uploading closes the page before it is ` +
+      `done, the box says ${quoted(t("spaces.document.media.notFinished"))} and anyone who can edit can ` +
+      `${quoted(t("spaces.document.media.remove"))} it. What cannot be pasted (a canvas node with nothing in ` +
+      "it yet, an address the page cannot fetch) is left out, and a message says how many. Hovering a picture, video or " +
       "audio, or clicking it, shows a row of icons above it: left, centre and right alignment (only when the " +
       "picture or video is narrower than the page; audio is always as wide as the page), " +
       `${quoted(t("spaces.document.media.caption"))} (a T), which opens a line under it for a caption, ` +

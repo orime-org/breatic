@@ -38,6 +38,7 @@ import type { Transaction } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 
 import { compositionEnd, type CompositionEnd } from '@web/lib/composition-end';
+import { holdsWholeCell } from '@web/spaces/document/document-cell-content-selection';
 import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selection';
 import { heldTables } from '@web/spaces/document/document-table-leave-selection';
 import { inLegacyCell } from '@web/spaces/document/document-table-legacy';
@@ -334,14 +335,18 @@ export const documentEnterExtension = createExtension(() => {
         ) {
           return false;
         }
-        // A range reaching past an end of the body, or one taking a table
-        // whole (inner#1619 T14), goes as any range does; what is left is a
+        // A range reaching past an end of the body, one taking a table whole
+        // (inner#1619 T14), or one covering a cell's every block (which would
+        // otherwise take the cell out of its row), goes through its own
+        // replace; what is left is a
         // caret in text, which takes the ordinary Enter below, the quote of
         // the line it is on included. Left to the library, the split is placed
         // at the range's start, which can be the edge, outside any line
         // (#124, A6), or in the table it took away.
         const tookRange =
-          editor.prosemirrorState.selection instanceof BodyEdgeSelection || heldTables(editor.prosemirrorState.selection) !== null;
+          editor.prosemirrorState.selection instanceof BodyEdgeSelection ||
+          heldTables(editor.prosemirrorState.selection) !== null ||
+          holdsWholeCell(editor.prosemirrorState.selection);
         if (tookRange) {
           editor.transact((tr) => tr.deleteSelection());
         }

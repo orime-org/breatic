@@ -39,6 +39,7 @@ const SHARED_MESSAGE: Readonly<Record<Exclude<PictureFailure, keyof PictureMessa
   unsupportedType: 'studio.container.imageError.unsupported_type',
   hash: 'studio.container.imageError.hash_unavailable',
   rateLimited: 'studio.container.imageError.rate_limited',
+  tooLarge: 'server.error.upload_too_large',
 };
 
 /** The caller's own sentences: the two failures that name the picture. */

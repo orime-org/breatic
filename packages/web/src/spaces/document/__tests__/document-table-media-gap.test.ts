@@ -12,7 +12,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { blockGapAt } from '@web/spaces/document/document-upload-slots';
+import { gapAtDrop } from '@web/spaces/document/document-file-input';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -63,7 +63,7 @@ describe('the gap files land in, in a table cell', () => {
     const doc = editor.prosemirrorState.doc;
     const empty = cellBlocks(editor).get('')!;
 
-    const gap = blockGapAt(doc, empty);
+    const gap = gapAtDrop(doc, empty);
 
     expect(gap).toBe(empty);
     expect(doc.resolve(gap).parent.type.name).toBe('docTableCell');
@@ -74,7 +74,7 @@ describe('the gap files land in, in a table cell', () => {
     const doc = editor.prosemirrorState.doc;
     const a = cellBlocks(editor).get('a')!;
 
-    const gap = blockGapAt(doc, a + 3);
+    const gap = gapAtDrop(doc, a + 3);
 
     expect(gap).toBe(a + doc.nodeAt(a)!.nodeSize);
     expect(doc.resolve(gap).parent.type.name).toBe('docTableCell');

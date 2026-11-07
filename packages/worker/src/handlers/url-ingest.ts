@@ -5,8 +5,8 @@
  * Fetching an address somebody handed the backend (task #207, design §7.6).
  *
  * The route did everything that can be decided without moving bytes: it
- * checked who was asking, opened the grant, opened the task row on the node,
- * and queued this. What is left is one long call to the ingest Worker and the
+ * checked who was asking, opened the grant, opened the task row on the node
+ * when it named one, and queued this. What is left is one long call to the ingest Worker and the
  * two ways it can end.
  *
  * It has its own queue rather than a branch inside `runTask`, because that one
@@ -42,12 +42,12 @@ export interface UrlIngestJobData {
   url: string;
   /** Who submitted it. */
   userId: string;
-  /** The project the node lives in. */
+  /** The project the result lands in. */
   projectId: string;
-  /** The space the node lives on. */
+  /** The space the result lands on. */
   spaceId: string;
-  /** The node the result goes to. */
-  nodeId: string;
+  /** The node the result goes to; absent for a document body's block. */
+  nodeId?: string;
 }
 
 /**

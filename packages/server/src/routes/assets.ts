@@ -6,6 +6,7 @@
  *
  *   1. GET  /assets/upload-config  → the knobs the browser sizes its work by
  *   2. POST /assets/upload-ticket  → a signed ticket, or an instant dedup hit
+ *      (POST /assets/ingest-url hands over an address instead of bytes)
  *   3. (the browser sends its parts to the ingest Worker, not to us)
  *   4. POST /assets/uploads/{id}/complete → we finish it and register what landed
  *
@@ -53,6 +54,8 @@ import {
 } from "@server/modules/asset/upload-ticket.service.js";
 import { getRequestBodyMaxBytes } from "@server/config/limits.js";
 import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
+import { readerUrlSchema } from "@breatic/domain";
+import { startUrlIngest } from "@server/modules/asset/url-ingest.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor, rateLimitForAll } from "@server/middleware/rate-limit.js";
@@ -350,6 +353,38 @@ function ticketBody(outcome: Exclude<TicketOutcome, { kind: "refused" }>): Recor
         taskId: outcome.taskId,
       };
 }
+
+/** An address with no node behind it: a document body's pending block. */
+const ingestUrlSchema = z.object({
+  url: readerUrlSchema,
+  project_id: z.string().uuid(),
+  space_id: z.string().uuid(),
+});
+
+/**
+ * `POST /assets/ingest-url` — fetch an address into storage with no node
+ * behind it (inner#1351 + inner#1390). The canvas lane's gates and job; the
+ * browser asks `GET /assets/upload-status` how it ended, under the key this
+ * answers.
+ */
+assets.post(
+  "/ingest-url",
+  requireAuth,
+  // One window with the canvas lane: both start fetches through our Worker.
+  rateLimitFor("ingest-url", "user"),
+  validate("json", ingestUrlSchema),
+  async (c) => {
+    const user = c.get("user");
+    const body = c.req.valid("json");
+    const { key } = await startUrlIngest({
+      url: body.url,
+      projectId: body.project_id,
+      spaceId: body.space_id,
+      userId: user.id,
+    });
+    return c.json({ data: { storage_key: key } }, 201);
+  },
+);
 
 /**
  * `POST /assets/upload-ticket` — opens the upload the browser sends its parts

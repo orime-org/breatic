@@ -57,15 +57,15 @@
 
 import type * as Y from 'yjs';
 import type { BlockNoteEditor } from '@blocknote/core';
+import type { HocuspocusProvider } from '@hocuspocus/provider';
 
 import { documentBodyFragment, t } from '@breatic/shared';
 
 import { assetsApi } from '@web/data/api/assets';
-import { uploadMedia } from '@web/data/upload/media-upload';
 import { toast } from '@web/lib/toast';
-import { useSpaceOperationsStore } from '@web/stores/space-operations';
 
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
+import { docName } from '@web/data/yjs/manager';
 import type { ResolveCollaboratorName } from '@web/features/collab-editor/caret-render';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import type { DocumentCommentAuthInput } from '@web/spaces/document/document-comment-auth';
@@ -82,12 +82,11 @@ import {
 } from '@web/spaces/document/document-undo-blocknote';
 import { marksStayOnTextExtension } from '@web/spaces/document/document-marks-on-text';
 import { documentFallbackExtension } from '@web/spaces/document/document-unsupported-blocknote';
-import { documentUploadsExtension, holdGap } from '@web/spaces/document/document-upload-slots';
-import {
-  createDocumentUploader,
-  type DocumentUploader,
-} from '@web/spaces/document/document-uploads';
-import type { FilesArrival } from '@web/spaces/document/document-file-input';
+import { createFileUploads, type FileUploads } from '@web/spaces/document/document-uploads';
+import { insertAtGapTr, type FilesArrival } from '@web/spaces/document/document-file-input';
+import { putBlocks, selectPlaced } from '@web/spaces/document/document-put';
+import { openPageBodyUploads } from '@web/spaces/document/document-page-uploads';
+import type { PendingUploadsStore } from '@web/spaces/document/document-pending-uploads';
 import { captionDraftsFor, type CaptionDrafts } from '@web/spaces/document/document-caption-drafts';
 
 /** The editor plus what is handed out alongside it. */
@@ -124,10 +123,17 @@ export interface DocumentEditorHandle {
    */
   onClearDocumentRequest: (listener: () => void) => () => void;
   /**
-   * What takes files into this body (inner#1127), or null for an editor built
-   * with nowhere to upload them to.
+   * What admits files into this body (inner#1127, inner#1351), or null for an
+   * editor built with nowhere to upload them to.
    */
-  uploader: DocumentUploader | null;
+  files: FileUploads | null;
+  /**
+   * What the body's pending media blocks read (inner#1351 + inner#1390), or
+   * null for an editor built with nowhere to upload to.
+   */
+  pending: PendingUploadsStore | null;
+  /** Closes the body's link to the page's uploads; run when it is evicted. */
+  closeUploads: () => void;
 }
 
 /** Where a body's uploads land. */
@@ -171,37 +177,11 @@ export interface DocumentEditorInputs {
    * no files: a drop or a paste of one does nothing.
    */
   uploadTarget?: DocumentUploadTarget;
-}
-
-/**
- * The uploader for a body whose uploads land in this project and Space.
- * @param target - Where they land.
- * @param undoManager - The body's undo manager.
- * @returns The uploader.
- */
-function uploaderFor(target: DocumentUploadTarget, undoManager: Y.UndoManager): DocumentUploader {
-  const operations = useSpaceOperationsStore.getState();
-  return createDocumentUploader({
-    maxUploadBytes: () =>
-      assetsApi
-        .fetchUploadConfig()
-        .then((cfg) => cfg.maxUploadBytes)
-        // The ticket endpoint refuses an oversize file itself; a cap that
-        // could not be read only skips the early refusal.
-        .catch(() => Infinity),
-    upload: (file, onProgress) =>
-      uploadMedia(file, { projectId: target.projectId, spaceId: target.spaceId }, onProgress),
-    register: (id) => {
-      operations.register(target.spaceId, id);
-    },
-    unregister: (id) => {
-      operations.unregister(target.spaceId, id);
-    },
-    refuse: (key, params) => {
-      toast.warning(t(key, params));
-    },
-    undo: undoManager,
-  });
+  /**
+   * This page's connection to the body, which says whether the page may write
+   * a finished upload's address into it. Left out, it is taken as writable.
+   */
+  provider?: HocuspocusProvider;
 }
 
 /**
@@ -218,23 +198,43 @@ function createDocumentEditor(
     createDocumentUndo(doc);
   const clearListeners = new Set<() => void>();
   const target = inputs.uploadTarget;
-  const uploader = target === undefined ? null : uploaderFor(target, undoManager);
-  if (uploader !== null) {
+  const uploads =
+    target === undefined
+      ? null
+      : openPageBodyUploads(target, doc, docName.documentSpace(target.projectId, target.spaceId), inputs.provider);
+  const files: FileUploads | null =
+    uploads === null
+      ? null
+      : createFileUploads({
+        // The ticket route refuses an oversize file itself; a cap not read
+        // yet only skips the early refusal.
+        maxUploadBytes: () => assetsApi.cachedUploadConfig()?.maxUploadBytes ?? Infinity,
+        refuse: (key, params) => {
+          toast.warning(t(key, params));
+        },
+        start: uploads.start,
+      });
+  if (uploads !== null) {
     // Fetched now so a paste can tell our media from outside links the moment
-    // it lands (inner#1127 A18). A fetch that fails leaves every pasted
-    // medium out until a later fetch lands, which an upload also makes.
+    // it lands. Until it lands, every pasted medium with an address becomes
+    // pending, and its upload sorts ours from outside (design §5.4).
     void assetsApi.fetchUploadConfig().catch(() => undefined);
   }
 
   const editor = buildDocumentEditor({
     fragment: documentBodyFragment(doc),
     comments: { doc, readWho: inputs.readWho },
-    ...(uploader !== null && {
+    ...(files !== null && {
       onFiles: (arrival: FilesArrival) => {
         const view = viewOf(editor);
-        if (view !== null) {
-          void uploader.start(view, arrival.files, holdGap(view, arrival.gap), arrival.aimed);
-        }
+        const prepared = view === null ? null : files.prepare(arrival.files);
+        if (view === null || prepared === null) return;
+        if ('at' in arrival) {
+          const placed = putBlocks(editor, prepared.blocks, arrival.at);
+          if (placed !== null) selectPlaced(view, placed);
+        } else if ('gap' in arrival) view.dispatch(insertAtGapTr(view.state, arrival.gap, prepared.blocks));
+        else putBlocks(editor, prepared.blocks);
+        prepared.start();
       },
     }),
     media: {
@@ -242,7 +242,16 @@ function createDocumentEditor(
       onLeftOut: (count) => {
         toast.warning(t('spaces.document.media.leftOut', { count }));
       },
+      ...(uploads !== null && { start: uploads.start }),
     },
+    ...(uploads !== null && {
+      onCanvasPaste: {
+        start: uploads.start,
+        notPasted: (count: number) => {
+          toast.warning(t('spaces.document.media.notPasted', { count }));
+        },
+      },
+    }),
     extensions: [
       // The awareness is withheld from BlockNote's own collaboration wiring and
       // handed to this plugin instead; `build-document-editor` carries why.
@@ -262,7 +271,6 @@ function createDocumentEditor(
       marksStayOnTextExtension(),
       documentPlaceholderExtension(),
       documentLocaleRedrawExtension(),
-      documentUploadsExtension(),
     ],
   });
 
@@ -276,7 +284,11 @@ function createDocumentEditor(
     undoManager,
     captionDrafts: captionDraftsFor(editor),
     surface,
-    uploader,
+    files,
+    pending: uploads?.pending ?? null,
+    closeUploads: () => {
+      uploads?.detach();
+    },
     onClearDocumentRequest: (listener) => {
       clearListeners.add(listener);
       return () => {
@@ -289,6 +301,7 @@ function createDocumentEditor(
 const cache = createDocScopedCache<DocumentEditorHandle, DocumentEditorInputs>(
   createDocumentEditor,
   (handle) => {
+    handle.closeUploads();
     handle.captionDrafts.dispose();
     handle.editor.unmount();
     handle.surface.remove();

@@ -12,26 +12,24 @@
  * placeholder cells until a command on the table evens it.
  *
  * Here every rowspan is cut to the rows below it and every row is filled at
- * its end to the widest row, the shape the reader saw on the page.
- *
- * The same hook turns the tables a selection takes whole into empty lines
- * before a paste whose ends stand in code blocks (inner#1619 T14).
+ * its end to the widest row, the shape the reader saw on the page; a table
+ * holding no cell at all goes, since ProseMirror builds no table from it. The
+ * paste and the drop both do it while the HTML is made ready to read
+ * (`document-paste-read.ts`).
  */
 
-import type { BlockNoteEditorOptions } from '@blocknote/core';
-
-import { heldTables, swapHeldTables } from '@web/spaces/document/document-table-leave-selection';
-
-/** BlockNote's paste hook, as this editor's options take it. */
-type PasteHandler = NonNullable<BlockNoteEditorOptions<never, never, never>['pasteHandler']>;
-
 /**
- * Evens one table's grid, in place.
+ * Evens one table's grid, in place; a table holding no cell has no grid and
+ * goes, since no table can be built from it.
  * @param table - The table.
  * @returns Whether anything changed.
  */
 function evenTable(table: HTMLTableElement): boolean {
   const rows = Array.from(table.rows);
+  if (rows.every((row) => row.cells.length === 0)) {
+    table.remove();
+    return true;
+  }
   const taken: Set<number>[] = rows.map(() => new Set());
   let changed = false;
   rows.forEach((row, r) => {
@@ -61,50 +59,25 @@ function evenTable(table: HTMLTableElement): boolean {
 }
 
 /**
- * Evens every table in a piece of pasted HTML.
- * @param html - The HTML.
- * @returns The same HTML when every table is already even, the evened HTML otherwise.
+ * Evens every table under a root, in place.
+ * @param root - Where the tables are.
+ * @returns Whether anything changed.
  */
-export function evenPastedTables(html: string): string {
-  if (!/<table/i.test(html)) return html;
-  const doc = new DOMParser().parseFromString(html, 'text/html');
+export function evenTables(root: Element): boolean {
   let changed = false;
-  for (const table of Array.from(doc.querySelectorAll('table'))) {
+  for (const table of Array.from(root.querySelectorAll('table'))) {
     if (evenTable(table)) changed = true;
   }
-  return changed ? doc.body.innerHTML : html;
+  return changed;
 }
 
 /**
- * BlockNote's own paste, given the clipboard's HTML with its tables evened.
- * The clipboard is the event's, and BlockNote's handler reads it from there.
- *
- * BlockNote pastes plain text when both ends of the selection stand in code
- * blocks. A selection taking a table whole whose end in it stands on a code
- * block in a cell would paste that way although the body, with an empty line
- * in the table's place, pastes as usual: its tables turn into those empty
- * lines first (inner#1619 T14).
- * @param context - What BlockNote hands the paste hook.
- * @param context.event - The paste.
- * @param context.editor - The editor pasted into.
- * @param context.defaultPasteHandler - BlockNote's own paste.
- * @returns Whether the paste was handled.
+ * Evens the tables in HTML before a reader parses their blocks.
+ * @param html - The pasted HTML.
+ * @returns The evened HTML, unchanged when its tables were already even.
  */
-export const documentPasteHandler: PasteHandler = ({ event, editor, defaultPasteHandler }) => {
-  const view = editor.prosemirrorView;
-  const { $from, $to } = view.state.selection;
-  if (heldTables(view.state.selection) !== null && $from.parent.type.spec.code && $to.parent.type.spec.code) swapHeldTables(view);
-  const data = event.clipboardData;
-  const html = data?.getData('text/html') ?? '';
-  const even = evenPastedTables(html);
-  if (data !== null && even !== html) {
-    const evened: Pick<DataTransfer, 'types' | 'files' | 'items' | 'getData'> = {
-      types: data.types,
-      files: data.files,
-      items: data.items,
-      getData: (format: string): string => (format === 'text/html' ? even : data.getData(format)),
-    };
-    Object.defineProperty(event, 'clipboardData', { value: evened });
-  }
-  return defaultPasteHandler();
-};
+export function evenPastedTables(html: string): string {
+  if (!/<table\b/i.test(html)) return html;
+  const body = new DOMParser().parseFromString(html, 'text/html').body;
+  return evenTables(body) ? body.innerHTML : html;
+}

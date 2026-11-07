@@ -32,14 +32,14 @@ import { useCurrentUserStore } from '@web/stores/current-user';
 const socketAwareness = new Awareness(new Y.Doc());
 vi.mock('@web/data/yjs/use-socket', () => ({
   useSocket: (): {
-    provider: { awareness: unknown };
+    provider: { awareness: unknown; on: () => void; off: () => void };
     synced: boolean;
     hasEverSynced: boolean;
     status: string;
     writeAccess: string;
     authFailedReason: string | null;
   } => ({
-    provider: { awareness: socketAwareness },
+    provider: { awareness: socketAwareness, on: () => {}, off: () => {} },
     synced: true,
     hasEverSynced: true,
     status: 'connected',

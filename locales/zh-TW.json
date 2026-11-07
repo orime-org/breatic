@@ -2114,13 +2114,15 @@
         "mergeCells": "合併儲存格",
         "textHighlight": "背景（醒目提示文字）"
       },
+      "paste": {
+        "unsupportedInCell": "目前格式不支援貼上"
+      },
       "media": {
         "image": "圖片",
         "audio": "音訊",
         "video": "影片",
         "uploading": "上傳中",
         "uploadingPercent": "上傳中 {percent}%",
-        "readOnly": "目前唯讀。",
         "retry": "重試",
         "remove": "移除",
         "caption": "說明",
@@ -2129,7 +2131,22 @@
         "delete": "刪除",
         "leftOut": "{count} 個圖片、影片或音訊沒有貼上，可以直接拖入或貼上檔案。",
         "captionReadOnly": "目前為唯讀，可複製這份草稿。",
-        "captionRetained": "媒體已移除，請在關閉 Space 前複製草稿。"
+        "captionRetained": "媒體已移除，請在關閉 Space 前複製草稿。",
+        "notFinished": "上傳沒有完成",
+        "pendingExport": "{name}（尚未上傳完成）",
+        "uploadFailed": "上傳失敗",
+        "failure": {
+          "storageFull": "Studio 儲存空間已滿",
+          "rateLimited": "上傳太頻繁，請稍後再試",
+          "hashUnavailable": "無法驗證檔案，請重新整理頁面",
+          "unsupportedType": "格式不支援",
+          "tooLarge": "超過上傳大小限制",
+          "empty": "檔案是空的",
+          "unreachable": "這個網址打不開"
+        },
+        "readOnlyWaiting": "這個分頁現在唯讀，恢復可寫後寫入正文",
+        "notWrittenYet": "已上傳，還沒寫進正文",
+        "notPasted": "{count} 項沒有貼上。"
       }
     },
     "readOnlyReconnect": "重新連線",

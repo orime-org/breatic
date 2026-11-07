@@ -2114,13 +2114,15 @@
         "mergeCells": "合并单元格",
         "textHighlight": "背景（高亮文字）"
       },
+      "paste": {
+        "unsupportedInCell": "当前格式不支持粘贴"
+      },
       "media": {
         "image": "图片",
         "audio": "音频",
         "video": "视频",
         "uploading": "上传中",
         "uploadingPercent": "上传中 {percent}%",
-        "readOnly": "当前只读。",
         "retry": "重试",
         "remove": "移除",
         "caption": "说明",
@@ -2129,7 +2131,22 @@
         "delete": "删除",
         "leftOut": "{count} 个图片、视频或音频没有粘贴进来，可以直接拖入或粘贴文件。",
         "captionReadOnly": "当前为只读，可复制这份草稿。",
-        "captionRetained": "媒体已移除，请在关闭 Space 前复制草稿。"
+        "captionRetained": "媒体已移除，请在关闭 Space 前复制草稿。",
+        "notFinished": "上传没有完成",
+        "pendingExport": "{name}（尚未上传完成）",
+        "uploadFailed": "上传失败",
+        "failure": {
+          "storageFull": "Studio 存储已满",
+          "rateLimited": "上传太频繁，请稍后重试",
+          "hashUnavailable": "无法校验文件，请刷新页面",
+          "unsupportedType": "格式不支持",
+          "tooLarge": "超过上传大小限制",
+          "empty": "文件是空的",
+          "unreachable": "这个地址打不开"
+        },
+        "readOnlyWaiting": "这个标签页现在只读，恢复可写后写入正文",
+        "notWrittenYet": "已上传，还没写进正文",
+        "notPasted": "{count} 项没有粘贴进来。"
       }
     },
     "readOnlyReconnect": "重新连接",

@@ -35,7 +35,7 @@ import {
   _resetDocumentEditorCacheForTests,
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
-import type { DocumentUploader } from '@web/spaces/document/document-uploads';
+import type { FileUploads } from '@web/spaces/document/document-uploads';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
@@ -87,17 +87,13 @@ describe('DocumentEditor', () => {
   it('keeps the editor in the body when the reader turns read-only while it is open', () => {
     // A role change or an archive refetches the project with the Space open
     // (`use-refresh-on-reauth.ts`), so `readOnly` flips on a mounted body.
-    const uploader: DocumentUploader = {
-      start: () => Promise.resolve(),
-      retry: () => undefined,
-      remove: () => undefined,
-    } as unknown as DocumentUploader;
+    const files: FileUploads = { prepare: () => null };
     const { container, rerender } = render(
-      <DocumentEditor handle={handle} uploader={uploader} />,
+      <DocumentEditor handle={handle} files={files} />,
     );
     expect(container.contains(handle.surface)).toBe(true);
 
-    rerender(<DocumentEditor handle={handle} uploader={uploader} readOnly />);
+    rerender(<DocumentEditor handle={handle} files={files} readOnly />);
 
     expect(container.contains(handle.surface)).toBe(true);
   });
@@ -267,14 +263,14 @@ describe('DocumentEditor', () => {
   });
 
   it('brings a landed block into view once, not again each time its Space is shown (inner#1509)', async () => {
-    const uploader = { start: () => Promise.resolve(), retry: () => undefined, remove: () => undefined } as unknown as DocumentUploader;
+    const files: FileUploads = { prepare: () => null };
     const scrollTo = vi.fn();
     const original = HTMLElement.prototype.scrollTo;
     HTMLElement.prototype.scrollTo = scrollTo as typeof HTMLElement.prototype.scrollTo;
     try {
       const at = (mode: 'visible' | 'hidden', landed: ProposalLocation | null): React.JSX.Element => (
         <React.Activity mode={mode}>
-          <DocumentEditor handle={handle} uploader={uploader} landed={landed} />
+          <DocumentEditor handle={handle} files={files} landed={landed} />
         </React.Activity>
       );
       const { rerender } = render(at('visible', null));
@@ -440,9 +436,9 @@ describe('DocumentEditor', () => {
   });
 
   it('opens the panel on a comment an Agent proposal landed, the way a comment the reader wrote is shown (inner#1509)', async () => {
-    const uploader = { start: () => Promise.resolve(), retry: () => undefined, remove: () => undefined } as unknown as DocumentUploader;
+    const files: FileUploads = { prepare: () => null };
     const { editor } = handle;
-    const { rerender } = render(<DocumentEditor handle={handle} uploader={uploader} />);
+    const { rerender } = render(<DocumentEditor handle={handle} files={files} />);
     editor.replaceBlocks(editor.document, await editor.tryParseMarkdownToBlocks('The hero arrives.'));
     const block = editor.document[0] as { id: string };
     const proposal = {
@@ -466,7 +462,7 @@ describe('DocumentEditor', () => {
     if (landed === null) throw new Error('The fixture has no landing.');
     const location = publication(landed, proposal);
     act(() => requestCommentLocation(editor, location));
-    rerender(<DocumentEditor handle={handle} uploader={uploader} landed={location} />);
+    rerender(<DocumentEditor handle={handle} files={files} landed={location} />);
 
     await waitFor(() => expect(screen.getByTestId('doc-comment-rail')).toBeInTheDocument());
     expect(selectedThreadsIn(editor.prosemirrorState)).toEqual([landed?.how === 'comment' ? landed.threadId : '']);

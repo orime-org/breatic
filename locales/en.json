@@ -2114,13 +2114,15 @@
         "mergeCells": "Merge cells",
         "textHighlight": "Highlight"
       },
+      "paste": {
+        "unsupportedInCell": "This format cannot be pasted here"
+      },
       "media": {
         "image": "Image",
         "audio": "Audio",
         "video": "Video",
         "uploading": "Uploading",
         "uploadingPercent": "Uploading {percent}%",
-        "readOnly": "Read-only now.",
         "retry": "Retry",
         "remove": "Remove",
         "caption": "Caption",
@@ -2129,7 +2131,22 @@
         "delete": "Delete",
         "leftOut": "{count, plural, one {# image, video or audio was not pasted.} other {# images, videos or audio were not pasted.}} Drop or paste the files instead.",
         "captionReadOnly": "Read-only. You can copy this draft.",
-        "captionRetained": "Media removed. Copy this draft before closing the Space."
+        "captionRetained": "Media removed. Copy this draft before closing the Space.",
+        "notFinished": "Upload not finished",
+        "pendingExport": "{name} (upload not finished)",
+        "uploadFailed": "Upload failed",
+        "failure": {
+          "storageFull": "Studio storage is full",
+          "rateLimited": "Uploading too often, try again later",
+          "hashUnavailable": "Couldn’t verify the file, reload the page",
+          "unsupportedType": "Format not supported",
+          "tooLarge": "Exceeds the upload size limit",
+          "empty": "The file is empty",
+          "unreachable": "The address won’t open"
+        },
+        "readOnlyWaiting": "This tab is read-only now; it is added once the tab can edit again",
+        "notWrittenYet": "Uploaded, not added yet",
+        "notPasted": "{count, plural, one {# item was not pasted.} other {# items were not pasted.}}"
       }
     },
     "readOnlyReconnect": "Reconnect",
