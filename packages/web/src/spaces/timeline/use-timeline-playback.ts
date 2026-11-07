@@ -6,8 +6,13 @@ import type { TimelineDocumentV1, TimelineVideoClip, TimelineVideoSource } from 
 import { nextTimelinePlaybackBoundary } from '@web/data/yjs/timeline-layers';
 import { timelineSourceSeconds } from '@web/data/yjs/timeline-time';
 import { resolveTimelineMediaTransport, timelineFrameAt, type TimelineMediaTransport } from '@web/spaces/timeline/media-transport';
+import { createWebAnimationHost, type TimelineWebLayer, type WebInstanceState } from '@web/spaces/timeline/web-animation-host';
 
-/** The current document projection and its authorized preview resource. */
+export type { TimelineWebLayer, WebInstanceState };
+
+const NO_WEB_LAYERS: readonly TimelineWebLayer[] = [];
+
+/** The current document projection, its authorized preview resource and the visible web-animation instances. */
 export interface TimelinePlaybackInput {
   document: TimelineDocumentV1;
   readyClipIds: ReadonlySet<string>;
@@ -18,6 +23,10 @@ export interface TimelinePlaybackInput {
   media: HTMLVideoElement | null;
   enabled: boolean;
   resourceState: 'loading' | 'ready' | 'failed';
+  /** The visible web-animation instances, bottom-up; an unchanged set keeps its identity. */
+  webLayers?: readonly TimelineWebLayer[];
+  /** How long a web-animation page may take to say its bridge is ready. */
+  webLoadTimeoutMs?: number;
 }
 
 /** Local preview controls, owned by the current Timeline view. */
@@ -27,17 +36,23 @@ export interface TimelinePlayback {
   toggle: () => void;
   seek: (frame: number) => void;
   retry: () => void;
+  /** Each visible web-animation instance's state, by instance key. */
+  webStates: ReadonlyMap<string, WebInstanceState>;
+  /** Load a failed web-animation instance again. */
+  retryWeb: (key: string) => void;
 }
 
 /** A single observation of the user's intent and current native transport. */
 interface PlaybackState { intent: 'play' | 'pause'; state: TimelineMediaTransport }
 
 /** User controls for the currently attached media lifecycle. */
-type PlaybackActions = Pick<TimelinePlayback, 'toggle' | 'seek' | 'retry'>;
+type PlaybackActions = Pick<TimelinePlayback, 'toggle' | 'seek' | 'retry' | 'retryWeb'>;
 
 /**
- * Drive the preview against the integer-frame document clock.
- * @param input - The current frame, placement and native media element.
+ * Drive the preview against the integer-frame document clock. The current frame is ready when the visible video has
+ * seeked to it and every visible web-animation instance that has not failed has answered it (inner#1711 design
+ * §7.2); play waits, with the video paused and the clock frozen, until it is.
+ * @param input - The current frame, placement, native media element and visible web-animation instances.
  * @returns The local transport state and user controls.
  * @throws {never} Never.
  */
@@ -48,6 +63,23 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
   const [snapshot, setSnapshot] = React.useState(state.current);
   const actions = React.useRef<PlaybackActions | null>(null);
   const { clip, source, media, enabled, resourceState } = input;
+  const webLayers = input.webLayers ?? NO_WEB_LAYERS;
+  // The confirmed integer frame, shared with the web-animation host.
+  const position = React.useRef(input.frame);
+  // The current effect's readiness check, run when a web-animation instance changes state.
+  const evaluateNow = React.useRef<(() => void) | null>(null);
+  // Set when play stopped at a boundary; the render that shows the boundary frame continues from it.
+  const atBoundary = React.useRef(false);
+  const [webStates, setWebStates] = React.useState<ReadonlyMap<string, WebInstanceState>>(() => new Map());
+  const [host] = React.useState(() => createWebAnimationHost({
+    frame: () => position.current,
+    timelineFps: () => latest.current.document.settings.fps,
+    loadTimeoutMs: () => latest.current.webLoadTimeoutMs,
+    onChange: () => {
+      setWebStates(host.states());
+      evaluateNow.current?.();
+    },
+  }));
 
   React.useEffect(() => {
     let active = true;
@@ -55,7 +87,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
     let pendingPlay = false;
     let frameHandle: number | null = null;
     let anchor: { frame: number; at: number } | null = null;
-    let position = latest.current.frame;
+    position.current = latest.current.frame;
     let targetSeconds = 0;
     let awaitingSeek = clip !== null;
     let seekAssigned = false;
@@ -89,7 +121,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
      * @throws {never} Never.
      */
     function showFrame(frame: number): void {
-      position = frame;
+      position.current = frame;
       if (latest.current.frame !== frame) latest.current.onFrame(frame);
     }
 
@@ -151,7 +183,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       const end = sequenceEnd();
       const fps = latest.current.document.settings.fps;
       // Playback stops where the shown clip changes; edges hidden under a higher track do not count.
-      const boundary = nextTimelinePlaybackBoundary(latest.current.document, latest.current.readyClipIds, position, end);
+      const boundary = nextTimelinePlaybackBoundary(latest.current.document, latest.current.readyClipIds, position.current, end);
       const next = Math.min(boundary, timelineFrameAt(anchor, now, fps, end));
       if (next >= end) {
         showFrame(Math.max(0, end - 1));
@@ -163,9 +195,12 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       }
       showFrame(next);
       if (next >= boundary) {
+        // What is visible changes here; the render that shows this frame checks the new layers and goes on.
         anchor = null;
+        atBoundary.current = true;
         return;
       }
+      host.sendFrame();
       schedule();
     }
 
@@ -228,22 +263,36 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
         return;
       }
       const terminalHold = media !== null && clip !== null && source !== null && media.ended
-        && !awaitingSeek && position === clip.startFrame + clip.durationFrames - 1
+        && !awaitingSeek && position.current === clip.startFrame + clip.durationFrames - 1
         && media.currentTime >= Number(source.durationSeconds);
-      const next = clip === null || terminalHold ? 'playing' : resolveTimelineMediaTransport({
-        intent: 'play', generationMatches: true, targetReady: !awaitingSeek && resourceState === 'ready',
+      const webReady = host.ready();
+      const next = clip === null || terminalHold ? (webReady ? 'playing' : 'waiting') : resolveTimelineMediaTransport({
+        intent: 'play', generationMatches: true, targetReady: !awaitingSeek && resourceState === 'ready' && webReady,
         paused: media?.paused ?? true, seeking: media?.seeking ?? true,
         ended: media?.ended ?? false, error: false, readyState: media?.readyState ?? 0,
       });
       if (next === 'playing') {
-        if (anchor === null) anchor = { frame: position, at: performance.now() };
+        if (anchor === null) anchor = { frame: position.current, at: performance.now() };
         publish('play', 'playing');
         schedule();
-      } else {
-        if (state.current.state === 'playing') freezeMedia();
-        publish('play', 'waiting');
-        if (media !== null && !awaitingSeek && media.readyState >= 3 && media.paused && !media.ended && resourceState === 'ready') requestPlay();
+        return;
       }
+      if (state.current.state === 'playing') {
+        freezeMedia();
+        // The video went on while a web instance was not ready; it is placed back on the frozen frame.
+        if (!webReady && clip !== null && source !== null && position.current >= clip.startFrame && position.current < clip.startFrame + clip.durationFrames) {
+          targetSeconds = timelineSourceSeconds(clip, source, latest.current.document.settings.fps, position.current);
+          awaitingSeek = true;
+          seekAssigned = false;
+        }
+      }
+      publish('play', 'waiting');
+      if (!webReady) {
+        if (pendingPlay) { request += 1; pendingPlay = false; }
+        if (media !== null && !media.paused) media.pause();
+        return;
+      }
+      if (media !== null && !awaitingSeek && media.readyState >= 3 && media.paused && !media.ended && resourceState === 'ready') requestPlay();
     }
 
     /**
@@ -259,8 +308,9 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       anchor = null;
       sequenceEnded = false;
       showFrame(Math.max(0, Math.min(Math.max(0, sequenceEnd() - 1), frame)));
-      if (clip !== null && source !== null && position >= clip.startFrame && position < clip.startFrame + clip.durationFrames) {
-        targetSeconds = timelineSourceSeconds(clip, source, latest.current.document.settings.fps, position);
+      repositionWeb();
+      if (clip !== null && source !== null && position.current >= clip.startFrame && position.current < clip.startFrame + clip.durationFrames) {
+        targetSeconds = timelineSourceSeconds(clip, source, latest.current.document.settings.fps, position.current);
         awaitingSeek = true;
         seekAssigned = false;
         evaluate();
@@ -285,11 +335,33 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
         cancelFrame();
         anchor = null;
         publish('pause', 'paused');
+        repositionWeb();
       } else {
         if (sequenceEnded) seek(0);
+        else repositionWeb();
         publish('play', 'waiting');
         evaluate();
       }
+    }
+
+    /**
+     * Send every web-animation instance the current frame under a new sequence.
+     * @throws {never} Never.
+     */
+    function repositionWeb(): void {
+      host.reposition();
+      setWebStates(host.states());
+    }
+
+    /**
+     * Load a failed web-animation instance again.
+     * @param key - The instance key.
+     * @throws {never} Never.
+     */
+    function retryWeb(key: string): void {
+      host.retry(key);
+      setWebStates(host.states());
+      evaluate();
     }
 
     /**
@@ -306,7 +378,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
           return;
         }
       }
-      seek(position);
+      seek(position.current);
       publish('play', 'waiting');
       evaluate();
     }
@@ -324,29 +396,60 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
     }
 
     if (clip !== null && source !== null) {
-      targetSeconds = timelineSourceSeconds(clip, source, latest.current.document.settings.fps, position);
+      targetSeconds = timelineSourceSeconds(clip, source, latest.current.document.settings.fps, position.current);
       configureMedia();
     }
     const events = ['loadedmetadata', 'loadeddata', 'canplay', 'playing', 'play', 'pause', 'waiting', 'stalled', 'seeked', 'seeking', 'timeupdate', 'ended', 'error'];
     for (const event of events) media?.addEventListener(event, evaluate);
-    actions.current = { toggle, seek, retry };
+    actions.current = { toggle, seek, retry, retryWeb };
+    evaluateNow.current = evaluate;
     evaluate();
     return () => {
       active = false;
+      evaluateNow.current = null;
       request += 1;
       cancelFrame();
       for (const event of events) media?.removeEventListener(event, evaluate);
       media?.pause();
       actions.current = null;
     };
-  }, [clip, source, media, enabled, resourceState]);
+  }, [clip, source, media, enabled, resourceState, host]);
 
   React.useEffect(() => () => {
     state.current = { intent: 'pause', state: 'paused' };
   }, []);
 
+  // The bridge's replies arrive on the window; only the iframe of an attached instance is listened to.
+  React.useEffect(() => {
+    /**
+     * Hand a window message to the host.
+     * @param event - The message.
+     * @throws {never} Never.
+     */
+    const receive = (event: MessageEvent): void => { host.receive(event); };
+    window.addEventListener('message', receive);
+    return () => {
+      window.removeEventListener('message', receive);
+      // A hidden Space tab runs no effects; showing it again attaches every instance afresh with a new hello.
+      host.dispose();
+    };
+  }, [host]);
+
+  React.useEffect(() => {
+    host.sync(webLayers);
+    setWebStates(host.states());
+    evaluateNow.current?.();
+  }, [host, webLayers]);
+
+  React.useEffect(() => {
+    if (!atBoundary.current) return;
+    atBoundary.current = false;
+    evaluateNow.current?.();
+  }, [input.frame]);
+
   const toggle = React.useCallback((): void => actions.current?.toggle(), []);
   const seek = React.useCallback((frame: number): void => actions.current?.seek(frame), []);
   const retry = React.useCallback((): void => actions.current?.retry(), []);
-  return { ...snapshot, toggle, seek, retry };
+  const retryWeb = React.useCallback((key: string): void => actions.current?.retryWeb(key), []);
+  return { ...snapshot, toggle, seek, retry, webStates, retryWeb };
 }
