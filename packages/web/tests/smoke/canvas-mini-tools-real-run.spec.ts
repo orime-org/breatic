@@ -318,10 +318,6 @@ const RUNS: Run[] = [
   { label: 'motion transfer', tool: 'video.motion', source: 'driving.mp4', slots: { character: 'portrait.jpg' }, prompt: 'A man dancing', outputs: 1 },
   { label: 'animate', tool: 'video.animate', source: 'driving.mp4', slots: { character: 'portrait.jpg' }, prompt: 'A man in a plain room', outputs: 1 },
   { label: 'separate vocals', tool: 'audio.separate', source: 'song.mp3', outputs: 2 },
-  {
-    label: 'extend audio', tool: 'audio.extend', source: 'speech.mp3', prompt: 'Soft room tone',
-    keys: [{ slider: 'generate-param-append_duration-slider', key: 'Home', times: 1 }], outputs: 1,
-  },
   { label: 'crop video', tool: 'video.crop', source: 'short720.mp4', outputs: 1 },
   { label: 'speed', tool: 'video.speed', source: 'short720.mp4', outputs: 1 },
   { label: 'cut', tool: 'video.cut', source: 'short720.mp4', outputs: 1 },
