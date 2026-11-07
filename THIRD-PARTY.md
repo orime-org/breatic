@@ -126,6 +126,16 @@ container). The OFL's one prohibition, selling the fonts on their own, is not
 something Breatic does, and none of the three copyright lines declares a
 Reserved Font Name.
 
+`@hyperframes/player` 0.8.186 declares `@hyperframes/core` as a dependency
+although its published file imports nothing from it; the only mention is the
+CDN address of a runtime fallback our pages never reach, because every package
+inlines the runtime. The `pnpm.overrides` entry
+`"@hyperframes/player@0.8.186>@hyperframes/core": "-"` in the root
+`package.json` keeps that tree out of the install.
+Delete the entry once the player stops declaring `@hyperframes/core`. The
+web-animation image takes the runtime file from the `@hyperframes/core` tarball
+with `npm pack`, which installs none of its dependencies.
+
 ## Packages in our container images
 
 The `breatic` image carries the production `node_modules` of `server`, `worker`
@@ -266,10 +276,6 @@ it.
 
 ## Reported as production, not distributed
 
-`@hyperframes/player`, a dependency of `packages/web`, declares
-`@hyperframes/core` and through it a tree of authoring tools; the player's
-published file imports none of them, so none reaches the bundle.
-
 `@sentry/cloudflare`, a dependency of `packages/ingest`, names `wrangler` as an
 optional peer, and the workspace resolves that peer to the `wrangler` the
 package already has as a devDependency. `pnpm licenses list --prod` follows the
@@ -288,11 +294,6 @@ deployed Worker: wrangler bundles only what `packages/ingest/src` imports.
 | `@img/sharp-libvips-linux-x64` | `1.3.1` | `packages/ingest` → `@sentry/cloudflare` → `wrangler` (peer) → `miniflare` → `sharp`; one per platform, and each machine installs its own | **LGPL-3.0-or-later**; the libvips binary sharp loads during local Worker emulation | https://github.com/lovell/sharp-libvips |
 | `@img/sharp-libvips-linuxmusl-arm64` | `1.3.1` | `packages/ingest` → `@sentry/cloudflare` → `wrangler` (peer) → `miniflare` → `sharp`; one per platform, and each machine installs its own | **LGPL-3.0-or-later**; the libvips binary sharp loads during local Worker emulation | https://github.com/lovell/sharp-libvips |
 | `@img/sharp-libvips-linuxmusl-x64` | `1.3.1` | `packages/ingest` → `@sentry/cloudflare` → `wrangler` (peer) → `miniflare` → `sharp`; one per platform, and each machine installs its own | **LGPL-3.0-or-later**; the libvips binary sharp loads during local Worker emulation | https://github.com/lovell/sharp-libvips |
-| `@hyperframes/core` | `0.8.186` | `packages/web` → `@hyperframes/player`, which declares it although its published `dist` imports nothing; only the player's own file reaches the bundle | Reported as **Unknown**, because its `package.json` names no licence; the tarball's `LICENSE` is **Apache-2.0** | https://github.com/heygen-com/hyperframes |
-| `@hyperframes/lint` | `0.8.186` | `packages/web` → `@hyperframes/player` → `@hyperframes/core` | Reported as **Unknown**, because its `package.json` names no licence; the tarball's `LICENSE` is **Apache-2.0** | https://github.com/heygen-com/hyperframes |
-| `@hyperframes/parsers` | `0.8.186` | `packages/web` → `@hyperframes/player` → `@hyperframes/core` | Reported as **Unknown**, because its `package.json` names no licence; the tarball's `LICENSE` is **Apache-2.0** | https://github.com/heygen-com/hyperframes |
-| `@hyperframes/studio-server` | `0.8.186` | `packages/web` → `@hyperframes/player` → `@hyperframes/core` | Reported as **Unknown**, because its `package.json` names no licence; the tarball's `LICENSE` is **Apache-2.0** | https://github.com/heygen-com/hyperframes |
-| `expand-template` | `2.0.3` | `packages/web` → `@hyperframes/player` → `@hyperframes/core` → `linkedom` → `canvas` (peer) → `prebuild-install` | **MIT OR WTFPL**, at the recipient's option. **Our election: MIT** | https://github.com/ralphtheninja/expand-template |
 | `@speed-highlight/core` | `1.2.24` | `packages/ingest` → `@sentry/cloudflare` → `wrangler` (peer) → `miniflare` → `youch` | **CC0-1.0**, a dedication to the public domain, which asks nothing of us | https://github.com/speed-highlight/core |
 
 ## Build and development tools
