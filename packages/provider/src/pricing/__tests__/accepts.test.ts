@@ -443,3 +443,91 @@ describe("an upstream's own input limits (rejects)", () => {
     expect(bad).toThrow(/m.*fal.*\$length\(/);
   });
 });
+
+describe("a model vendor's own input limits (model-level rejects)", () => {
+  const SOURCE = "https://vendor.example/docs/limits";
+
+  /**
+   * A provider whose one model states two vendor limits in our param names; WaveSpeed sends `audio` as `audio`, fal
+   * as `audio_url`, and fal names an audio reference `Audio {n}` in the prompt while WaveSpeed keeps the neutral one.
+   * @param rejects - The model's limits.
+   * @returns The provider.
+   */
+  const vendorBound = (rejects: { when: string; reason: string; source?: string }[] = [
+    { when: "$length(prompt) > 10", reason: "Vendor prompt: up to 10 characters", source: SOURCE },
+    { when: "get_duration(audio) > 10", reason: "Vendor audio: up to 10 seconds", source: SOURCE },
+  ]): ReturnType<typeof createProvider> => createProvider({
+    config: {
+      upstreams: {
+        wavespeed: { kind: "wavespeed", base_url: "https://w.example", key_env: "WAVESPEED_API_KEY" },
+        fal: { kind: "fal", base_url: "https://f.example", billing_url: "https://f.example/v1", key_env: "FAL_KEY" },
+      },
+      media: {
+        models: {
+          m: {
+            rejects: rejects as { when: string; reason: string; source: string }[],
+            upstreams: [
+              { upstream: "wavespeed", weight: 1, model_id: "m", prompt_field: "prompt", params: { audio: { field: "audio" } }, pricing: pricing(300) },
+              { upstream: "fal", weight: 2, model_id: "m", prompt_field: "text", output_field: "video", params: { audio: { field: "audio_url" } }, mentions: { audio: "Audio {n}" }, pricing: pricing(100) },
+            ],
+          },
+        },
+      },
+    },
+    keyOf: () => "k",
+    llmMaxRetries: 0,
+    cleanText: (t) => t,
+  });
+  const audioRun = (seconds: number): EstimateInput => ({ params: { audio: "https://a/x.mp3" }, prompt: "hi", durations: { audio: [seconds] }, placeholders: [], durationsMissing: [] });
+
+  it("refuses a run past a vendor limit on every upstream with the vendor's words, read in our param names", async () => {
+    const p = vendorBound();
+    for (const upstream of ["wavespeed", "fal"]) expect(await rejectedInput(p.pricingRules("m"), upstream, audioRun(11))).toEqual({ reason: "Vendor audio: up to 10 seconds" });
+  });
+
+  it("takes the nearest run the vendor allows", async () => {
+    const p = vendorBound();
+    for (const upstream of ["wavespeed", "fal"]) expect(await rejectedInput(p.pricingRules("m"), upstream, audioRun(10))).toBeUndefined();
+  });
+
+  it("reads the prompt as each upstream is sent it, its references written that upstream's way", async () => {
+    const p = vendorBound();
+    // fal is sent "Audio 1" (7 characters); WaveSpeed has no template and is sent the 15-character neutral reference.
+    const input = { ...audioRun(5), prompt: "<<ref:audio:1>>" };
+    expect(await rejectedInput(p.pricingRules("m"), "fal", input)).toBeUndefined();
+    expect(await rejectedInput(p.pricingRules("m"), "wavespeed", input)).toEqual({ reason: "Vendor prompt: up to 10 characters" });
+  });
+
+  it("fails the plan naming the vendor's words for each upstream, sending nothing", async () => {
+    const runner = createMediaRunner(vendorBound(), { mediaLimits: { maxMediaBytes: 1_000 }, pollIntervalMs: 0 });
+    const planned = await runner.plan("m", { prompt: "hi", params: { audio: "https://a/x.mp3" } }, { mode: "default" }, { idempotencyKey: "t1", sourceKeys: {}, clones: [], durations: { audio: [11] } });
+    expect(planned.state).toBe("failed");
+    const reason = (planned as { reason: NoUpstreamAvailable }).reason;
+    expect(reason).toBeInstanceOf(NoUpstreamAvailable);
+    expect(reason.reasons).toEqual([
+      { upstream: "wavespeed", kind: "unsupported_input", reason: "Vendor audio: up to 10 seconds" },
+      { upstream: "fal", kind: "unsupported_input", reason: "Vendor audio: up to 10 seconds" },
+    ]);
+  });
+
+  it("carries the limits to the browser, which refuses the run alike and estimates nothing", async () => {
+    const p = vendorBound();
+    const browser = parsePricingRules(JSON.parse(JSON.stringify(p.pricingRules("m"))));
+    expect(await rejectedInput(browser, "fal", audioRun(11))).toEqual({ reason: "Vendor audio: up to 10 seconds" });
+    expect(await estimateCost(browser, p.availability("m"), audioRun(11), { mode: "cheapest" })).toBeNull();
+  });
+
+  it("keeps every upstream out, with the evaluator's words, when a vendor limit cannot be checked on the run", async () => {
+    const p = vendorBound([{ when: "$contains(tag, /x/)", reason: "Vendor tag pattern", source: SOURCE }]);
+    const input = { ...audioRun(5), params: { tag: 5 } };
+    for (const upstream of ["wavespeed", "fal"]) expect(await rejectedInput(p.pricingRules("m"), upstream, input)).toEqual({ reason: "Vendor tag pattern", evaluationError: expect.any(String) });
+  });
+
+  it.each([
+    [{ when: "$length(prompt) > 10", reason: "Vendor prompt" }, /m.*source/],
+    [{ when: "$length(prompt) > 10", reason: "Vendor prompt", source: "the vendor docs" }, /m.*source/],
+    [{ when: "$length(", reason: "Vendor prompt", source: SOURCE }, /m.*\$length\(/],
+  ])("refuses a configuration whose model-level limit %j is not a sourced JSONata condition", (reject, words) => {
+    expect(() => vendorBound([reject])).toThrow(words);
+  });
+});

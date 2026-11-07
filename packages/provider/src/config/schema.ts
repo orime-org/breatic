@@ -5,7 +5,7 @@ import { z } from "zod";
 import { hasUnderstandAdapter } from "@provider/llm/understand/dispatch.js";
 import { hasLlmAdapter } from "@provider/llm/vendors.js";
 import { mediaAdapter } from "@provider/media/adapters.js";
-import { pricingRuleSchema, rejectSchema } from "@provider/pricing/estimate.js";
+import { pricingRuleSchema, rejectSchema, vendorRejectSchema, type Reject } from "@provider/pricing/estimate.js";
 import { formulaProblem } from "@provider/pricing/evaluate.js";
 import type { Candidate } from "@provider/routing/route.js";
 
@@ -167,7 +167,13 @@ const routingSchema = z.strictObject({
 
 const inputSchema = z.strictObject({
   upstreams: z.record(z.string(), upstreamSchema),
-  media: z.strictObject({ models: z.record(z.string(), z.strictObject({ upstreams: z.array(bindingSchema) })) }),
+  media: z.strictObject({
+    models: z.record(z.string(), z.strictObject({
+      /** The model vendor's own input limits, in our param names, each with the vendor page that states it; no upstream takes a run past them. */
+      rejects: z.array(vendorRejectSchema).optional(),
+      upstreams: z.array(bindingSchema),
+    })),
+  }),
   /** `config/provider/llm.yaml`. */
   llm: llmSchema.optional(),
   /** `config/provider/routing.yaml`; absent when the deployment ships none. */
@@ -189,6 +195,8 @@ export type LlmRoute = z.infer<typeof llmRouteSchema>;
 export interface ProviderConfig {
   upstreams: Record<string, UpstreamDecl>;
   models: Record<string, MediaBinding[]>;
+  /** The model vendor's input limits, by model; a model without any is absent. */
+  rejects: Record<string, Reject[]>;
   /** The LLM routing file, every field filled. */
   llm: Required<z.infer<typeof llmSchema>>;
 }
@@ -341,7 +349,13 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
     if (decl.kind === "fal" && decl.billing_url === undefined) problems.push(`upstream "${name}": a fal upstream needs billing_url, the platform API its costs are read from`);
   }
   const models: Record<string, MediaBinding[]> = {};
-  for (const [model, { upstreams }] of Object.entries(raw.media.models)) {
+  const rejects: Record<string, Reject[]> = {};
+  for (const [model, { rejects: vendor, upstreams }] of Object.entries(raw.media.models)) {
+    for (const { when } of vendor ?? []) {
+      const problem = formulaProblem(when);
+      if (problem !== undefined) problems.push(`${model}: the vendor's limit "${when}" is not JSONata: ${problem}`);
+    }
+    if (vendor !== undefined && vendor.length > 0) rejects[model] = vendor.map(({ when, reason }) => ({ when, reason }));
     const bindings = overridden(model, upstreams, raw.routing?.models?.[model]?.weights, problems);
     checkList(model, bindings, raw.upstreams, problems);
     const sentByWaveSpeed = new Set(bindings.filter((b) => raw.upstreams[b.upstream]?.kind === "wavespeed").flatMap((b) => Object.keys(b.params ?? {})));
@@ -418,7 +432,7 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
   checkRoutes(llm.routes, raw.routing?.llm, hasLlmAdapter, "route", "LLM");
   checkRoutes(llm.understand_routes, raw.routing?.understand, hasUnderstandAdapter, "understand route", "understand");
   if (problems.length > 0) throw new ProviderConfigError(problems);
-  return { upstreams: raw.upstreams, models, llm };
+  return { upstreams: raw.upstreams, models, rejects, llm };
 }
 
 /**

@@ -16,6 +16,13 @@ test("replaces the WaveSpeed binding in place and keeps every other upstream's",
   assert.deepEqual(mergeMediaModels(existing, generated, {}), { "m": { upstreams: [ws("new/id", price(5)), fal] } });
 });
 
+test("keeps a model's own entries beside its upstreams, such as the vendor's limits", () => {
+  const rejects = [{ when: "$length(prompt) > 10", reason: "Vendor prompt: up to 10 characters", source: "https://vendor.example/limits" }];
+  const existing = { "m": { rejects, upstreams: [ws("old/id", price(1)), fal] } };
+  const generated = { "m": { upstreams: [ws("new/id", price(5))] } };
+  assert.deepEqual(mergeMediaModels(existing, generated, {}), { "m": { rejects, upstreams: [ws("new/id", price(5)), fal] } });
+});
+
 test("adds a model the existing file lacks and keeps one the catalog no longer generates", () => {
   const existing = { "kept": { upstreams: [fal] } };
   const generated = { "added": { upstreams: [ws("a/id", price(3))] } };

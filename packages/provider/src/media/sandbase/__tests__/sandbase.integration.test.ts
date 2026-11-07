@@ -485,6 +485,23 @@ describe("SandBase refusals", () => {
     expect(failed.reason).toBeInstanceOf(NoUpstreamAvailable);
   });
 
+  it("moves to the next upstream when SandBase says the account's plan does not cover the model", async () => {
+    const { run } = runner();
+    // Measured on a free SandBase account (kling-v3-pro-motion, 2026-11-06).
+    sb.answer(() => ({ status: 403, body: { error: "This model is not available to free users." } }));
+    ws.answer(() => accepted("w4"));
+    const moved = expectState(await sent(run), "send");
+    expect(moved.warnings[0]?.detail.failure).toBe("insufficient_balance");
+  });
+
+  it("stays on SandBase on any other 403", async () => {
+    const { run } = runner();
+    sb.answer(() => ({ status: 403, body: { error: "forbidden" } }));
+    ws.answer(() => accepted("w5"));
+    expectState(await sent(run), "failed");
+    expect(submits(ws.seen)).toHaveLength(0);
+  });
+
   it("moves to the next upstream when SandBase has no such model", async () => {
     const { run } = runner();
     sb.answer(() => ({ status: 404, body: { error: "model not found: bfl/flux-2/flash" } }));

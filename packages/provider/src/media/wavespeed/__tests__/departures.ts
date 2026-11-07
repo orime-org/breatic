@@ -43,24 +43,51 @@ export const REFUSED: Readonly<Record<string, Readonly<Record<string, readonly u
   "sfx-1.6-text-to-audio": { loop: [true], double_output: [true] },
 };
 
+/** A run as the predicates below read it: our params and the known clip lengths. */
+type Run = { params: Readonly<Record<string, unknown>>; durations?: Readonly<Record<string, readonly number[]>> };
+
 /**
- * Clip lengths outside a limit WaveSpeed states for a model, by model: its bindings keep such runs out (`rejects`).
- * Today's code estimated them on WaveSpeed although WaveSpeed refuses them.
+ * Whether a run's shots add up to other than its duration.
+ * @param run - The run.
+ * @returns True when they do.
  */
-export const OUTSIDE_STATED: Readonly<Record<string, (durations: Readonly<Record<string, readonly number[]>>) => boolean>> = {
-  // "Each video must be no longer than 3 seconds."
-  "gemini-omni-1.1-flash-reference-to-video": (d) => (d.videos ?? []).some((s) => s > 3),
-  // Mureka's upload: reference [30,30] seconds, melody [5,60] seconds.
-  "mureka-v9.5-generate-song": (d) => (d.song ?? []).some((s) => s < 30) || (d.melody ?? []).some((s) => s < 5),
+const shotsOffTotal = (run: Run): boolean => {
+  const shots = run.params.multi_prompt;
+  return Array.isArray(shots) && shots.reduce((sum: number, shot: { duration: number }) => sum + shot.duration, 0) !== run.params.duration;
 };
 
 /**
- * Whether a run holds a value WaveSpeed cannot serve for this model, or a clip length outside a limit it states.
+ * Runs outside a limit the model's vendor states, by model, in the vendor's words: the model's own `rejects` refuse
+ * them on every upstream. Today's code estimated them on WaveSpeed.
+ */
+export const OUTSIDE_VENDOR: Readonly<Record<string, (run: Run) => boolean>> = {
+  // Google: "Video references support a maximum of 3 clips, up to 3 seconds each."
+  "gemini-omni-1.1-flash-reference-to-video": (r) => (r.durations?.videos ?? []).some((s) => s > 3),
+  // Mureka's upload: reference "[30,30] seconds", melody "[5,60] seconds".
+  "mureka-v9.5-generate-song": (r) => (r.durations?.song ?? []).some((s) => s < 30) || (r.durations?.melody ?? []).some((s) => s < 5),
+  // Kling: "sum of all shot durations must equal the total video duration".
+  "kling-v3.0-4k-text-to-video": shotsOffTotal,
+  "kling-video-o3-4k-image-to-video": shotsOffTotal,
+  // MiniMax: "Audio duration: at least 10 seconds, no longer than 5 minutes".
+  "minimax-voice-clone": (r) => (r.durations?.audio ?? []).some((s) => s < 10 || s > 300),
+};
+
+/**
+ * Whether a run holds a value WaveSpeed cannot serve for this model.
  * @param model - The model.
- * @param input - The run's params and known clip lengths.
+ * @param input - The run's params.
  * @returns True when WaveSpeed refuses the run.
  */
-export function holdsRefused(model: string, input: { params: Readonly<Record<string, unknown>>; durations?: Readonly<Record<string, readonly number[]>> }): boolean {
-  return Object.entries(REFUSED[model] ?? {}).some(([param, values]) => values.includes(input.params[param]))
-    || OUTSIDE_STATED[model]?.(input.durations ?? {}) === true;
+export function holdsRefused(model: string, input: Run): boolean {
+  return Object.entries(REFUSED[model] ?? {}).some(([param, values]) => values.includes(input.params[param]));
+}
+
+/**
+ * Whether a run is outside a limit the model's vendor states.
+ * @param model - The model.
+ * @param input - The run's params and known clip lengths.
+ * @returns True when no upstream may take it.
+ */
+export function outsideVendor(model: string, input: Run): boolean {
+  return OUTSIDE_VENDOR[model]?.(input) === true;
 }

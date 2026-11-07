@@ -136,6 +136,8 @@ export interface Availability {
 /** A model's pricing on each of its upstreams; opaque to the caller, sent to the browser with the model list. */
 export interface PricingRules {
   readonly model: string;
+  /** The model vendor's own input limits, read in our param names, which no upstream takes a run past. */
+  readonly rejects?: readonly Reject[];
   readonly upstreams: readonly unknown[];
 }
 
@@ -160,6 +162,15 @@ export type PricingRule = z.infer<typeof pricingRuleSchema>;
  * and the upstream's own words for the limit. A run it holds for cannot go there.
  */
 export const rejectSchema = z.strictObject({ when: z.string().min(1), reason: z.string().min(1) });
+
+/** One input limit: the condition a run breaks it on, and the words for it. */
+export type Reject = z.infer<typeof rejectSchema>;
+
+/**
+ * One input limit of the model's vendor, as configured: a condition over our param names (the prompt as `prompt`) and
+ * the vendor's words, with the page that states it.
+ */
+export const vendorRejectSchema = rejectSchema.extend({ source: z.url() });
 
 /**
  * Why an upstream cannot take a run: one of our param values it does not take, one of its own limits, or a
@@ -207,7 +218,7 @@ const upstreamPricingSchema = z.looseObject({
 export type UpstreamPricing = z.infer<typeof upstreamPricingSchema>;
 
 /** A model's pricing rules as the browser reads them back. */
-const pricingRulesSchema = z.looseObject({ model: z.string(), upstreams: z.array(upstreamPricingSchema) });
+const pricingRulesSchema = z.looseObject({ model: z.string(), rejects: z.array(rejectSchema).optional(), upstreams: z.array(upstreamPricingSchema) });
 
 const SAMPLE_TEXT = "x".repeat(1000);
 
@@ -376,10 +387,8 @@ function ruleOf(rules: PricingRules, upstream: string): UpstreamPricing | undefi
  */
 export function parsePricingRules(raw: unknown): PricingRules {
   const parsed = pricingRulesSchema.safeParse(raw);
-  // A failed zod parse always carries an issue; the fallback text is for the type.
-  /* v8 ignore next -- @preserve */
-  if (!parsed.success) throw new Error(`Not a model's pricing rules: ${parsed.error.issues[0]?.message ?? "unknown"}`);
-  return { model: parsed.data.model, upstreams: parsed.data.upstreams };
+  if (!parsed.success) throw new Error(`Not a model's pricing rules: ${z.prettifyError(parsed.error)}`);
+  return { model: parsed.data.model, ...(parsed.data.rejects === undefined ? {} : { rejects: parsed.data.rejects }), upstreams: parsed.data.upstreams };
 }
 
 /**
@@ -388,21 +397,24 @@ export function parsePricingRules(raw: unknown): PricingRules {
  * estimate leave it out alike.
  * @param rule - The upstream's pricing entry.
  * @param input - The prepared run.
+ * @param vendor - The model vendor's limits, read in our param names.
  * @returns Why it cannot take the run, or what it would charge.
  */
-async function assessed(rule: UpstreamPricing, input: EstimateInput): Promise<{ rejected: RejectedInput } | { estimate: Estimate }> {
+async function assessed(rule: UpstreamPricing, input: EstimateInput, vendor: readonly Reject[]): Promise<{ rejected: RejectedInput } | { estimate: Estimate }> {
   const allowed = [...Object.entries(rule.limits ?? {}), ...Object.entries(rule.voices ?? {})];
   for (const [param, values] of allowed) {
     const value = input.params[param];
     if (!isPresent(value)) continue;
     if (!values.some((v) => String(v) === String(value))) return { rejected: { param, value } };
   }
+  const written = input.prompt === "" ? "" : mentionsWritten(rule.mentions, input.prompt);
+  const ours = upstreamRun({ ...rule, fields: {} }, input);
+  if (written !== "") ours.fields.prompt = written;
   const run = upstreamRun(rule, input);
-  const { fields, durations } = run;
-  if (rule.prompt_field !== undefined && input.prompt !== "") fields[rule.prompt_field] = mentionsWritten(rule.mentions, input.prompt);
-  for (const { when, reason } of rule.rejects ?? []) {
+  if (rule.prompt_field !== undefined && written !== "") run.fields[rule.prompt_field] = written;
+  for (const [{ when, reason }, read] of [...vendor.map((r) => [r, ours] as const), ...(rule.rejects ?? []).map((r) => [r, run] as const)]) {
     try {
-      if (await holds(when, fields, durations)) return { rejected: { reason } };
+      if (await holds(when, read.fields, read.durations)) return { rejected: { reason } };
     } catch (error) {
       return { rejected: { reason, evaluationError: evaluationMessage(error) } };
     }
@@ -429,7 +441,7 @@ export async function rejectedInput(rules: PricingRules, upstream: string, input
 /**
  * One upstream's whole answer on a run, worked out once: why it cannot take the run, or what it would charge (as each
  * estimate reads it). It cannot take the run for a value outside its limits, a voice it does not have, the first of
- * its own conditions (`rejects`) that holds, or a check that cannot be made on this run (one of those conditions fails
+ * the model vendor's conditions (read in our param names) or of its own (`rejects`) that holds, or a check that cannot be made on this run (one of those conditions fails
  * to evaluate, or its price cannot be computed), which keeps this upstream out with the evaluator's message and leaves
  * every other upstream to its own rules. A param the run leaves out or empty is always taken, and is not there for a
  * condition to read; neither is an empty prompt. The prompt is read as the upstream is sent it, each reference written its way.
@@ -441,7 +453,7 @@ export async function rejectedInput(rules: PricingRules, upstream: string, input
  */
 export async function assess(rules: PricingRules, upstream: string, input: EstimateInput): Promise<{ rejected: RejectedInput } | { estimate: Estimate } | undefined> {
   const rule = ruleOf(rules, upstream);
-  return rule === undefined ? undefined : assessed(rule, input);
+  return rule === undefined ? undefined : assessed(rule, input, rules.rejects ?? []);
 }
 
 /**

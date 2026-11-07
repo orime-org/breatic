@@ -371,67 +371,83 @@ describe("the limits a reseller states beyond its schema", () => {
     expect(wrong).toEqual([]);
   });
 
-  // Each row: model, upstream, a run the upstream's own words refuse, the nearest run it takes, and words of the reason.
+  // Each row: model, upstream, a run the upstream's own words refuse beyond the model vendor's, the nearest run it takes, and words of the reason.
   const STATED: [string, string, Partial<EstimateInput>, Partial<EstimateInput>, string][] = [
     ["mureka-v9.5-generate-song", "wavespeed", { prompt: "x".repeat(1025), params: { lyrics: "la" } }, { prompt: "x".repeat(1024), params: { lyrics: "la" } }, "1024"],
-    ["mureka-v9.5-generate-song", "wavespeed", { prompt: "a song", params: { lyrics: "x".repeat(5001) } }, { prompt: "a song", params: { lyrics: "x".repeat(5000) } }, "5000"],
-    ["mureka-v9.5-generate-song", "wavespeed", { prompt: "a song", params: { lyrics: "la", song: URL_A }, durations: { song: [20] } }, { prompt: "a song", params: { lyrics: "la", song: URL_A }, durations: { song: [30] } }, "30"],
-    ["mureka-v9.5-generate-song", "fal", { prompt: "a song", params: { lyrics: "la", song: URL_A }, durations: { song: [20] } }, { prompt: "a song", params: { lyrics: "la", song: URL_A }, durations: { song: [30] } }, "30"],
-    ["mureka-v9.5-generate-song", "wavespeed", { prompt: "a song", params: { lyrics: "la", melody: URL_A }, durations: { melody: [3] } }, { prompt: "a song", params: { lyrics: "la", melody: URL_A }, durations: { melody: [10] } }, "[5,60]"],
-    ["mureka-v9.5-generate-bgm", "wavespeed", { prompt: "x".repeat(1025) }, { prompt: "x".repeat(1024) }, "1024"],
-    ["hunyuan3d-v3", "wavespeed", { prompt: "x".repeat(1025) }, { prompt: "x".repeat(1024) }, "1024"],
     ["krea-v2-large-text-to-image", "wavespeed", { prompt: "x".repeat(5001) }, { prompt: "x".repeat(5000) }, "5000"],
-    ["elevenlabs-voice-changer", "fal", { params: { audio: URL_A, voice_id: "Aria" }, durations: { audio: [301] } }, { params: { audio: URL_A, voice_id: "Aria" }, durations: { audio: [300] } }, "5 minutes"],
-    ["dreamactor-v2", "sandbase", { params: { image: URL_A, video: URL_A }, durations: { video: [31] } }, { params: { image: URL_A, video: URL_A }, durations: { video: [30] } }, "30 seconds"],
-    ["minimax-voice-clone", "fal", { prompt: "hi", params: { audio: URL_A }, durations: { audio: [9] } }, { prompt: "hi", params: { audio: URL_A }, durations: { audio: [10] } }, "10 seconds"],
-    ["minimax-voice-clone", "sandbase", { prompt: "hi", params: { audio: URL_A }, durations: { audio: [9] } }, { prompt: "hi", params: { audio: URL_A }, durations: { audio: [10] } }, "10 seconds"],
-    ["minimax-voice-clone", "fal", { prompt: "hi", params: { audio: URL_A }, durations: { audio: [301] } }, { prompt: "hi", params: { audio: URL_A }, durations: { audio: [300] } }, "5 minutes"],
-    ["minimax-voice-clone", "sandbase", { prompt: "hi", params: { audio: URL_A }, durations: { audio: [301] } }, { prompt: "hi", params: { audio: URL_A }, durations: { audio: [300] } }, "5 minutes"],
-    ["seedance-2.5-text-to-video", "wavespeed", { prompt: "a fox", params: { duration: 5, audios: [URL_A] }, durations: { audios: [31] } }, { prompt: "a fox", params: { duration: 5, audios: [URL_A] }, durations: { audios: [30] } }, "30 seconds"],
-    ["seedance-2.5-text-to-video", "wavespeed", { prompt: "a fox", params: { duration: 5, videos: [URL_A] }, durations: { videos: [31] } }, { prompt: "a fox", params: { duration: 5, videos: [URL_A] }, durations: { videos: [30] } }, "30 seconds"],
-    ["minimax-h3-reference-to-video", "wavespeed", { prompt: "a fox", params: { audios: [URL_A] } }, { prompt: "a fox", params: { audios: [URL_A], images: [URL_A] } }, "alone"],
-    ["dreamactor-v2", "wavespeed", { params: { image: URL_A, video: URL_A }, durations: { video: [31] } }, { params: { image: URL_A, video: URL_A }, durations: { video: [30] } }, "30 seconds"],
-    ["gemini-omni-1.1-flash-reference-to-video", "wavespeed", { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [4] } }, { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [3] } }, "3 seconds"],
-    ["wan-3.0-reference-to-video", "wavespeed", { prompt: "a fox", params: { duration: 20, videos: [URL_A] }, durations: { videos: [12] } }, { prompt: "a fox", params: { duration: 15, videos: [URL_A] }, durations: { videos: [12] } }, "30 seconds"],
-    ["wan-3.0-reference-to-video", "fal", { prompt: "a fox", params: { duration: 20, videos: [URL_A] }, durations: { videos: [12] } }, { prompt: "a fox", params: { duration: 18, videos: [URL_A] }, durations: { videos: [12] } }, "30 seconds"],
-    ["wan-3.0-reference-to-video", "wavespeed", { prompt: "a fox", params: { duration: 5, videos: [URL_A, URL_A] }, durations: { videos: [8, 8] } }, { prompt: "a fox", params: { duration: 5, videos: [URL_A, URL_A] }, durations: { videos: [8, 7] } }, "15 seconds"],
-    ["wan-3.0-reference-to-video", "wavespeed", { prompt: "a fox", params: { duration: 5, videos: [URL_A] }, durations: { videos: [0.5] } }, { prompt: "a fox", params: { duration: 5, videos: [URL_A] }, durations: { videos: [1] } }, "1-15 seconds"],
-    ["wan-3.0-reference-to-video", "wavespeed", { prompt: "a fox", params: { duration: 5, images: [URL_A], audios: [URL_A] }, durations: { audios: [16] } }, { prompt: "a fox", params: { duration: 5, images: [URL_A], audios: [URL_A] }, durations: { audios: [15] } }, "15 seconds"],
-    ["kling-v3-pro-motion", "fal", { prompt: "dance", params: { image: URL_A, video: URL_A }, durations: { video: [2] } }, { prompt: "dance", params: { image: URL_A, video: URL_A }, durations: { video: [3] } }, "3"],
-    ["kling-v3-pro-motion", "sandbase", { prompt: "dance", params: { image: URL_A, video: URL_A }, durations: { video: [2.9] } }, { prompt: "dance", params: { image: URL_A, video: URL_A }, durations: { video: [3] } }, "3"],
+    ["elevenlabs-voice-changer", "wavespeed", { params: { audio: URL_A, voice_id: "Aria" }, durations: { audio: [301] } }, { params: { audio: URL_A, voice_id: "Aria" }, durations: { audio: [300] } }, "5 minutes"],
+    ["minimax-h3-reference-to-video", "wavespeed", { prompt: "a fox", params: { duration: 5, audios: [URL_A] }, durations: { audios: [5] } }, { prompt: "a fox", params: { duration: 5, audios: [URL_A], images: [URL_A] }, durations: { audios: [5] } }, "alone"],
     ["infinitetalk-video-to-video", "wavespeed", { prompt: "talk", params: { audio: URL_A, video: URL_A }, durations: { audio: [601] } }, { prompt: "talk", params: { audio: URL_A, video: URL_A }, durations: { audio: [600] } }, "10 minutes"],
-    ["sync-react-1", "wavespeed", { params: { audio: URL_A, video: URL_A }, durations: { audio: [16], video: [5] } }, { params: { audio: URL_A, video: URL_A }, durations: { audio: [15], video: [5] } }, "15"],
-    ["sync-react-1", "wavespeed", { params: { audio: URL_A, video: URL_A }, durations: { audio: [5], video: [16] } }, { params: { audio: URL_A, video: URL_A }, durations: { audio: [5], video: [15] } }, "15"],
     ["seedvr2-video", "wavespeed", { params: { video: URL_A }, durations: { video: [601] } }, { params: { video: URL_A }, durations: { video: [600] } }, "10 minutes"],
     ["rife-interpolation", "wavespeed", { params: { video: URL_A }, durations: { video: [601] } }, { params: { video: URL_A }, durations: { video: [600] } }, "10 minutes"],
-    ...(["sandbase", "wavespeed"] as const).flatMap((upstream): [string, string, Partial<EstimateInput>, Partial<EstimateInput>, string][] => [
-      ["gpt-image-2.5-sunburst-text-to-image", upstream, { prompt: "x".repeat(32001) }, { prompt: "x".repeat(32000) }, "32000"],
-      ["gpt-image-2.5-sunburst-edit", upstream, { prompt: "x".repeat(32001), params: { images: [URL_A] } }, { prompt: "x".repeat(32000), params: { images: [URL_A] } }, "32000"],
-      ["minimax-h3-reference-to-video", upstream, { prompt: "a fox", params: { images: [URL_A], audios: [URL_A] }, durations: { audios: [1.5] } }, { prompt: "a fox", params: { images: [URL_A], audios: [URL_A] }, durations: { audios: [2] } }, "2"],
-      ["minimax-h3-reference-to-video", upstream, { prompt: "a fox", params: { images: [URL_A], audios: [URL_A, URL_A] }, durations: { audios: [8, 8] } }, { prompt: "a fox", params: { images: [URL_A], audios: [URL_A, URL_A] }, durations: { audios: [8, 7] } }, "15 seconds"],
-    ]),
-    ["gemini-omni-1.1-flash-reference-to-video", "fal", { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [3.5] } }, { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [3] } }, "3 seconds"],
-    ["wan-3.0-reference-to-video", "fal", { prompt: "a fox", params: { duration: 5, videos: [URL_A] }, durations: { videos: [0.5] } }, { prompt: "a fox", params: { duration: 5, videos: [URL_A] }, durations: { videos: [1] } }, "1-15 seconds"],
-    ["minimax-voice-clone", "wavespeed", { prompt: "hi", params: { audio: URL_A }, durations: { audio: [301] } }, { prompt: "hi", params: { audio: URL_A }, durations: { audio: [300] } }, "5 minutes"],
+    ["ltx-2.3-lipsync", "wavespeed", { params: { audio: URL_A, image: URL_A }, durations: { audio: [21] } }, { params: { audio: URL_A, image: URL_A }, durations: { audio: [20] } }, "5-20 seconds"],
+    ["ltx-2.3-lipsync", "wavespeed", { params: { audio: URL_A, image: URL_A }, durations: { audio: [4] } }, { params: { audio: URL_A, image: URL_A }, durations: { audio: [5] } }, "5-20 seconds"],
+    ["wan-3.0-video-edit", "wavespeed", { prompt: "edit", params: { video: URL_A, duration: 16 }, durations: { video: [5] } }, { prompt: "edit", params: { video: URL_A, duration: 15 }, durations: { video: [5] } }, "2-15"],
+    ["wan-3.0-reference-to-video", "fal", { prompt: "a fox", params: { duration: 1, videos: [URL_A] }, durations: { videos: [5] } }, { prompt: "a fox", params: { duration: 2, videos: [URL_A] }, durations: { videos: [5] } }, "minimum 2"],
   ];
-
-  // WaveSpeed's own words say it normalizes or trims these, so it takes them.
-  it.each([
-    ["minimax-h3-reference-to-video", { prompt: "a fox", params: { videos: [URL_A, URL_A] }, durations: { videos: [8, 8] } }],
-    ["minimax-h3-reference-to-video", { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [1.5] } }],
-    ["elevenlabs-voice-changer", { params: { audio: URL_A }, durations: { audio: [400] } }],
-  ] as [string, Partial<EstimateInput>][])("takes a %s run on WaveSpeed that it normalizes or trims", async (model, input) => {
-    expect(await refused(model, "wavespeed", input)).toBeUndefined();
-  });
 
   it.each(STATED)("keeps a %s run off %s where its own words refuse it, and takes the nearest run it allows", async (model, upstream, refusedRun, takenRun, words) => {
     expect(await refused(model, upstream, refusedRun)).toEqual({ reason: expect.stringContaining(words) });
     expect(await refused(model, upstream, takenRun)).toBeUndefined();
   });
 
+  // Each row: model, a run its vendor's own words refuse, the nearest run the vendor takes, and words of the reason.
+  const VENDOR: [string, Partial<EstimateInput>, Partial<EstimateInput>, string][] = [
+    ["mureka-v9.5-generate-song", { prompt: "a song", params: { lyrics: "x".repeat(5001) } }, { prompt: "a song", params: { lyrics: "x".repeat(5000) } }, "5000"],
+    ["mureka-v9.5-generate-song", { prompt: "a song", params: { lyrics: "la", song: URL_A }, durations: { song: [20] } }, { prompt: "a song", params: { lyrics: "la", song: URL_A }, durations: { song: [30] } }, "[30,30]"],
+    ["mureka-v9.5-generate-song", { prompt: "a song", params: { lyrics: "la", vocal: URL_A }, durations: { vocal: [14] } }, { prompt: "a song", params: { lyrics: "la", vocal: URL_A }, durations: { vocal: [15] } }, "[15,30]"],
+    ["mureka-v9.5-generate-bgm", { prompt: "x".repeat(1025) }, { prompt: "x".repeat(1024) }, "1024"],
+    ["hunyuan3d-v3", { prompt: "x".repeat(1025) }, { prompt: "x".repeat(1024) }, "1024"],
+    ["elevenlabs-voice-changer", { params: { audio: URL_A, voice_id: "Aria" }, durations: { audio: [601] } }, { params: { audio: URL_A, voice_id: "Aria" }, durations: { audio: [600] } }, "10 minutes"],
+    ["dreamactor-v2", { params: { image: URL_A, video: URL_A }, durations: { video: [31] } }, { params: { image: URL_A, video: URL_A }, durations: { video: [30] } }, "30 seconds"],
+    ["minimax-voice-clone", { prompt: "hi", params: { audio: URL_A }, durations: { audio: [9] } }, { prompt: "hi", params: { audio: URL_A }, durations: { audio: [10] } }, "10 seconds"],
+    ["minimax-voice-clone", { prompt: "hi", params: { audio: URL_A }, durations: { audio: [301] } }, { prompt: "hi", params: { audio: URL_A }, durations: { audio: [300] } }, "5 minutes"],
+    ["seedance-2.5-text-to-video", { prompt: "a fox", params: { duration: 5, audios: [URL_A, URL_A] }, durations: { audios: [16, 15] } }, { prompt: "a fox", params: { duration: 5, audios: [URL_A, URL_A] }, durations: { audios: [15, 15] } }, "30 seconds"],
+    ["seedance-2.5-text-to-video", { prompt: "a fox", params: { duration: 5, videos: [URL_A, URL_A] }, durations: { videos: [16, 15] } }, { prompt: "a fox", params: { duration: 5, videos: [URL_A, URL_A] }, durations: { videos: [15, 15] } }, "30 seconds"],
+    ["seedance-2.5-text-to-video", { prompt: "a fox", params: { duration: 31 } }, { prompt: "a fox", params: { duration: 30 } }, "[4, 30]"],
+    ["gemini-omni-1.1-flash-reference-to-video", { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [3.5] } }, { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [3] } }, "3 seconds"],
+    ["wan-3.0-reference-to-video", { prompt: "a fox", params: { duration: 20, videos: [URL_A] }, durations: { videos: [12] } }, { prompt: "a fox", params: { duration: 18, videos: [URL_A] }, durations: { videos: [12] } }, "30 seconds"],
+    ["wan-3.0-reference-to-video", { prompt: "a fox", params: { duration: 5, videos: [URL_A, URL_A] }, durations: { videos: [8, 8] } }, { prompt: "a fox", params: { duration: 5, videos: [URL_A, URL_A] }, durations: { videos: [8, 7] } }, "15 seconds"],
+    ["wan-3.0-reference-to-video", { prompt: "a fox", params: { duration: 5, videos: [URL_A] }, durations: { videos: [0.5] } }, { prompt: "a fox", params: { duration: 5, videos: [URL_A] }, durations: { videos: [1] } }, "[1, 15]"],
+    ["wan-3.0-reference-to-video", { prompt: "a fox", params: { duration: 5, images: [URL_A], audios: [URL_A] }, durations: { audios: [16] } }, { prompt: "a fox", params: { duration: 5, images: [URL_A], audios: [URL_A] }, durations: { audios: [15] } }, "15 seconds"],
+    ["kling-v3-pro-motion", { prompt: "dance", params: { image: URL_A, video: URL_A }, durations: { video: [2.9] } }, { prompt: "dance", params: { image: URL_A, video: URL_A }, durations: { video: [3] } }, "3 seconds"],
+    ["kling-v3.0-4k-text-to-video", { prompt: "x".repeat(3073), params: { duration: 5 } }, { prompt: "x".repeat(3072), params: { duration: 5 } }, "3072"],
+    ["kling-video-o3-4k-image-to-video", { prompt: "x".repeat(3073), params: { duration: 5, image: URL_A } }, { prompt: "x".repeat(3072), params: { duration: 5, image: URL_A } }, "3072"],
+    ["recraft-v4.1-pro-text-to-vector", { prompt: "x".repeat(10001) }, { prompt: "x".repeat(10000) }, "10,000"],
+    ["sync-react-1", { params: { audio: URL_A, video: URL_A }, durations: { audio: [16], video: [5] } }, { params: { audio: URL_A, video: URL_A }, durations: { audio: [15], video: [5] } }, "15 seconds"],
+    ["sync-react-1", { params: { audio: URL_A, video: URL_A }, durations: { audio: [5], video: [16] } }, { params: { audio: URL_A, video: URL_A }, durations: { audio: [5], video: [15] } }, "15 seconds"],
+    ["gpt-image-2.5-sunburst-text-to-image", { prompt: "x".repeat(32001) }, { prompt: "x".repeat(32000) }, "32000"],
+    ["gpt-image-2.5-sunburst-edit", { prompt: "x".repeat(32001), params: { images: [URL_A] } }, { prompt: "x".repeat(32000), params: { images: [URL_A] } }, "32000"],
+    ["minimax-h3-reference-to-video", { prompt: "a fox", params: { duration: 5, images: [URL_A], audios: [URL_A] }, durations: { audios: [1.5] } }, { prompt: "a fox", params: { duration: 5, images: [URL_A], audios: [URL_A] }, durations: { audios: [2] } }, "[2, 15]"],
+    ["minimax-h3-reference-to-video", { prompt: "a fox", params: { duration: 5, images: [URL_A], audios: [URL_A, URL_A] }, durations: { audios: [8, 8] } }, { prompt: "a fox", params: { duration: 5, images: [URL_A], audios: [URL_A, URL_A] }, durations: { audios: [8, 7] } }, "15 s"],
+    ["minimax-h3-reference-to-video", { prompt: "a fox", params: { duration: 5, videos: [URL_A, URL_A] }, durations: { videos: [8, 8] } }, { prompt: "a fox", params: { duration: 5, videos: [URL_A, URL_A] }, durations: { videos: [8, 7] } }, "15 s"],
+    ["minimax-speech-2.8-hd", { prompt: "x".repeat(10001), params: { voice_id: "Wise_Woman" } }, { prompt: "x".repeat(10000), params: { voice_id: "Wise_Woman" } }, "10,000"],
+  ];
+
+  it.each(VENDOR)("keeps a %s run its vendor's words refuse off every upstream, and lets the nearest run the vendor takes through", async (model, refusedRun, takenRun, words) => {
+    const upstreams = (config.media.models[model]?.upstreams ?? []).map((b) => b.upstream);
+    expect(upstreams.length).toBeGreaterThan(0);
+    for (const upstream of upstreams) {
+      // An upstream that cannot take one of the run's values at all refuses it before any limit is read.
+      const refusal = await refused(model, upstream, refusedRun);
+      expect(refusal, upstream).toBeDefined();
+      if (refusal !== undefined && "reason" in refusal) expect(refusal.reason, upstream).toContain(words);
+      const taken = await refused(model, upstream, takenRun);
+      expect(taken !== undefined && "reason" in taken ? taken.reason : "", upstream).not.toContain(words);
+    }
+  });
+
   // Mirelo's /v3/models states max_prompt_chars 5000, and WaveSpeed refused 5001 characters (probed 2026-11-06).
   it.each(["sfx-1.6-text-to-audio", "sfx-1.6-extend-audio"])("caps a %s prompt at Mirelo's 5000 characters on every upstream", (model) => {
     expect(catalog().models.find((m) => m.name === model)?.max_input_chars).toBe(5000);
+  });
+
+  // fal doubles the output itself ("concatenate the loop with itself for a 2x-length output") and does not say which
+  // seconds it bills, so a doubled run is priced at twice the appended seconds until a funded run shows (inner#1859).
+  it.each([[false, 1], [true, 2]])("prices a fal SFX 1.6 extend run with double_output %s at %s times the appended seconds", async (double, times) => {
+    const input = run({ prompt: "rain", params: { audio: URL_A, append_duration: 10, num_samples: 1, ambience: true, double_output: double }, durations: { audio: [5] } });
+    const estimate = await estimateCost(provider.pricingRules("sfx-1.6-extend-audio"), provider.availability("sfx-1.6-extend-audio"), input, { mode: "upstream", upstream: "fal" });
+    expect(estimate?.usd).toBeCloseTo(0.01 * 10 * times, 6);
   });
 
   // fal: "rounded to whole seconds, then up to full minutes".

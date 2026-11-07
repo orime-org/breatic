@@ -117,7 +117,7 @@ export const openRouterUnderstand: UnderstandAdapter = {
 
   read(body) {
     const parsed = completionSchema.safeParse(body);
-    if (!parsed.success) return { unreadable: `OpenRouter's answer has an unexpected shape: ${parsed.error.issues[0]?.message ?? "unknown"}` };
+    if (!parsed.success) return { unreadable: `OpenRouter's answer has an unexpected shape: ${z.prettifyError(parsed.error)}` };
     const completion = parsed.data;
     // An error may sit at the top of the body or on the choice; words written before it are a stop.
     if (completion.error !== undefined && completion.error !== null) return { error: completion.error };

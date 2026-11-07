@@ -110,7 +110,7 @@ function fileOf(answered: Answered, wrapped: boolean): GeminiFile {
   const body = answered.body;
   const file = wrapped ? (typeof body === "object" && body !== null ? (body as { file?: unknown }).file : undefined) : body;
   const parsed = fileSchema.safeParse(file);
-  if (!parsed.success) throw new UnreadableAnswer(`Google's Files API answered no file it can read: ${parsed.error.issues[0]?.message ?? "unknown"}`);
+  if (!parsed.success) throw new UnreadableAnswer(`Google's Files API answered no file it can read: ${z.prettifyError(parsed.error)}`);
   return parsed.data;
 }
 
@@ -233,7 +233,7 @@ export const googleUnderstand: UnderstandAdapter = {
 
   read(body) {
     const generated = generatedSchema.safeParse(body);
-    if (!generated.success) return { unreadable: `Google's answer has an unexpected shape: ${generated.error.issues[0]?.message ?? "unknown"}` };
+    if (!generated.success) return { unreadable: `Google's answer has an unexpected shape: ${z.prettifyError(generated.error)}` };
     const candidate = generated.data.candidates?.[0];
     if (candidate === undefined) {
       const blockReason = generated.data.promptFeedback?.blockReason;

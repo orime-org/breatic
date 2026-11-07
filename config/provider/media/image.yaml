@@ -14,6 +14,10 @@
 
 models:
   gpt-image-2.5-sunburst-text-to-image:
+    rejects:
+      - when: $length(prompt) > 32000
+        reason: 'OpenAI GPT Image prompt: "The maximum length is 32000 characters"'
+        source: https://developers.openai.com/api/reference/resources/images/methods/generate.md
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -26,9 +30,6 @@ models:
             field: quality
           resolution:
             field: resolution
-        rejects:
-          - when: $length(prompt) > 32000
-            reason: "OpenAI GPT Image prompt: maximum length is 32000 characters"
         pricing:
           kind: formula
           base_price: 24000
@@ -53,9 +54,6 @@ models:
             values:
               - 1k
             equivalent: fal square_hd 1024x1024 equals WaveSpeed 1k at 1:1 (measured 1024x1024; 4:3 is 1184x880)
-        rejects:
-          - when: $length(prompt) > 32000
-            reason: fal prompt maxLength 32000
         pricing:
           kind: formula
           base_price: 1000000
@@ -75,8 +73,6 @@ models:
         fixed:
           mode: async
         rejects:
-          - when: $length(prompt) > 32000
-            reason: "OpenAI GPT Image prompt: maximum length is 32000 characters"
           - when: $length(prompt) < 3
             reason: SandBase prompt minLength 3
         pricing:
@@ -434,6 +430,10 @@ models:
           formula: '{"total_price": (resolution = "0.5k" ? 45000 : (resolution = "2k" ? 101000 : (resolution = "4k" ? 151000 : 67000)))}'
           discount_rate: 100
   recraft-v4.1-pro-text-to-vector:
+    rejects:
+      - when: $length(prompt) > 10000
+        reason: "Recraft prompt: V4.1 including all Pro and Vector variants, max 10,000 characters"
+        source: https://www.recraft.ai/docs/api-reference/appendix.md
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -461,9 +461,6 @@ models:
               9:16: portrait_16_9
               4:3: landscape_4_3
               3:4: portrait_4_3
-        rejects:
-          - when: $length(prompt) > 10000
-            reason: fal prompt maxLength 10000
         pricing:
           kind: formula
           base_price: 300000
@@ -549,6 +546,10 @@ models:
           formula: ""
           discount_rate: 100
   recraft-v4-style-text-to-image:
+    rejects:
+      - when: $length(prompt) > 10000
+        reason: "Recraft prompt: V4 Styles max 10,000 characters"
+        source: https://www.recraft.ai/docs/api-reference/appendix.md
     upstreams:
       - upstream: fal
         weight: 2
@@ -568,15 +569,16 @@ models:
             field: style_match
           style_images:
             field: image_urls
-        rejects:
-          - when: $length(prompt) > 10000
-            reason: fal prompt maxLength 10000
         pricing:
           kind: formula
           base_price: 35000
           formula: '{"total_price": base_price + 5000}'
           discount_rate: 100
   gpt-image-2.5-sunburst-edit:
+    rejects:
+      - when: $length(prompt) > 32000
+        reason: "OpenAI GPT Image edit prompt: maxLength 32000"
+        source: https://developers.openai.com/api/reference/resources/images/methods/edit.md
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -596,9 +598,6 @@ models:
           style_images: "*"
         mentions:
           images: image {n}
-        rejects:
-          - when: $length(prompt) > 32000
-            reason: "OpenAI GPT Image prompt: maximum length is 32000 characters"
         pricing:
           kind: formula
           base_price: 39000
@@ -628,9 +627,6 @@ models:
           style_images: "*"
         mentions:
           images: image {n}
-        rejects:
-          - when: $length(prompt) > 32000
-            reason: fal prompt maxLength 32000
         pricing:
           kind: formula
           base_price: 1000000
@@ -657,8 +653,6 @@ models:
         fixed:
           mode: async
         rejects:
-          - when: $length(prompt) > 32000
-            reason: "OpenAI GPT Image prompt: maximum length is 32000 characters"
           - when: $length(prompt) < 3
             reason: SandBase prompt minLength 3
         pricing:
@@ -769,6 +763,13 @@ models:
           formula: ""
           discount_rate: 100
   pro-upscaler:
+    rejects:
+      - when: creativity < -10 or creativity > 10
+        reason: 'Clarity Pro creativity: "value between -10 and 10"'
+        source: https://clarityai.co/api
+      - when: target_megapixels > 64
+        reason: 'Clarity Pro output: "Max output 64 MP (roughly 8k)"'
+        source: https://clarityai.co/api
     upstreams:
       - upstream: wavespeed
         weight: 1

@@ -79,6 +79,13 @@ models:
           formula: '{"total_price": base_price * duration * (resolution = "360p" ? 0.3 : resolution = "1080p" ? 1.5 : resolution = "4k" ? 3 : 1)}'
           discount_rate: 100
   wan-3.0-text-to-video:
+    rejects:
+      - when: $length(prompt) > 20000
+        reason: "Alibaba Wan3.0 prompt: maximum of 20,000 characters (content beyond it is truncated)"
+        source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
+      - when: duration < 2 or duration > 30 or duration != $floor(duration)
+        reason: "Alibaba Wan3.0 duration: without video input, an integer in the range [2, 30]"
+        source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -118,15 +125,28 @@ models:
           shots: "*"
         fixed:
           enable_prompt_expansion: false
-        rejects:
-          - when: $length(prompt) > 20000
-            reason: fal prompt maxLength 20000
         pricing:
           kind: formula
           base_price: 50000
           formula: '{"total_price": base_price * duration * (resolution = "1080p" ? 4 : resolution = "720p" ? 2 : 1)}'
           discount_rate: 100
   seedance-2.5-text-to-video:
+    rejects:
+      - when: get_duration(videos) > 30
+        reason: "Seedance 2.5 reference videos: up to 10 reference videos with a total duration of no more than 30 seconds"
+        source: https://docs.byteplus.com/en/docs/ModelArk/1520757
+      - when: get_duration(videos, min=2, max=1000000, total=1000000) > get_duration(videos)
+        reason: "Seedance 2.5 reference videos: Non-video-editing tasks: each video must be 2-30 seconds long"
+        source: https://docs.byteplus.com/en/docs/ModelArk/1520757
+      - when: get_duration(audios) > 30
+        reason: "Seedance 2.5 reference audio: up to 10 clips, total duration no more than 30 seconds"
+        source: https://docs.byteplus.com/en/docs/ModelArk/1520757
+      - when: get_duration(audios, min=2, max=1000000, total=1000000) > get_duration(audios)
+        reason: "Seedance 2.5 reference audio: each audio clip must be 2-30 seconds long"
+        source: https://docs.byteplus.com/en/docs/ModelArk/1520757
+      - when: duration < 4 or duration > 30 or duration != $floor(duration)
+        reason: "Seedance 2.5 duration: integer, supports [4, 30] or -1"
+        source: https://docs.byteplus.com/en/docs/ModelArk/1520757
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -154,11 +174,6 @@ models:
           audios: "@audio{n}"
           images: "@image{n}"
           videos: "@video{n}"
-        rejects:
-          - when: get_duration(reference_audios) > 30
-            reason: "WaveSpeed reference_audios: total length must not exceed 30 seconds"
-          - when: get_duration(reference_videos) > 30
-            reason: "WaveSpeed reference_videos: total length must not exceed 30 seconds"
         pricing:
           kind: formula
           base_price: 900000
@@ -234,6 +249,10 @@ models:
           formula: '{"total_price": base_price * duration * (resolution = "1080p" ? 2.5 : resolution = "480p" ? 0.5 : 1)}'
           discount_rate: 100
   minimax-h3-text-to-video:
+    rejects:
+      - when: $length(prompt) > 7000
+        reason: "MiniMax H3 content text: maximum of 7000 characters per text"
+        source: https://platform.minimax.io/docs/api-reference/video-generation-v2-create
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -248,9 +267,6 @@ models:
             field: resolution
         drops:
           shots: "*"
-        rejects:
-          - when: $length(prompt) > 7000
-            reason: WaveSpeed prompt maxLength 7000
         pricing:
           kind: formula
           base_price: 700000
@@ -274,15 +290,22 @@ models:
           shots: "*"
         fixed:
           mode: async
-        rejects:
-          - when: $length(prompt) > 7000
-            reason: SandBase prompt maxLength 7000
         pricing:
           kind: formula
           base_price: 130000
           formula: '{"total_price": duration * (resolution = "768p" ? 60000 : base_price)}'
           discount_rate: 100
   kling-v3.0-4k-text-to-video:
+    rejects:
+      - when: $length(prompt) > 3072
+        reason: "Kling prompt: Maximum length: 3072 characters"
+        source: https://kling.ai/document-api/api/video/3-0-omni/text-to-video.md
+      - when: $exists(multi_prompt) and $sum(multi_prompt.duration) != duration
+        reason: "Kling shots: sum of all shot durations must equal the total video duration"
+        source: https://kling.ai/document-api/api/video/3-0-omni/text-to-video.md
+      - when: $max(multi_prompt.$length(prompt)) > 512
+        reason: "Kling shots: shot prompt (max 512 characters)"
+        source: https://kling.ai/document-api/api/video/3-0-omni/text-to-video.md
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -434,6 +457,10 @@ models:
           formula: '{"total_price": base_price * duration * (resolution = "360p" ? 0.3 : resolution = "1080p" ? 1.5 : resolution = "4k" ? 3 : 1)}'
           discount_rate: 100
   minimax-h3-image-to-video:
+    rejects:
+      - when: $length(prompt) > 7000
+        reason: "MiniMax H3 content text: maximum of 7000 characters per text"
+        source: https://platform.minimax.io/docs/api-reference/video-generation-v2-create
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -450,9 +477,6 @@ models:
             field: resolution
         drops:
           shots: "*"
-        rejects:
-          - when: $length(prompt) > 7000
-            reason: WaveSpeed prompt maxLength 7000
         pricing:
           kind: formula
           base_price: 700000
@@ -478,15 +502,19 @@ models:
           shots: "*"
         fixed:
           mode: async
-        rejects:
-          - when: $length(prompt) > 7000
-            reason: SandBase prompt maxLength 7000
         pricing:
           kind: formula
           base_price: 130000
           formula: '{"total_price": duration * (resolution = "768p" ? 60000 : base_price)}'
           discount_rate: 100
   wan-3.0-image-to-video:
+    rejects:
+      - when: $length(prompt) > 20000
+        reason: "Alibaba Wan3.0 prompt: maximum of 20,000 characters (content beyond it is truncated)"
+        source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
+      - when: duration < 2 or duration > 30 or duration != $floor(duration)
+        reason: "Alibaba Wan3.0 duration: without video input, an integer in the range [2, 30]"
+        source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -536,15 +564,16 @@ models:
           shots: "*"
         fixed:
           enable_prompt_expansion: false
-        rejects:
-          - when: $length(prompt) > 20000
-            reason: fal prompt maxLength 20000
         pricing:
           kind: formula
           base_price: 50000
           formula: '{"total_price": base_price * duration * (resolution = "1080p" ? 4 : resolution = "720p" ? 2 : 1)}'
           discount_rate: 100
   seedance-2.5-image-to-video:
+    rejects:
+      - when: duration < 4 or duration > 30 or duration != $floor(duration)
+        reason: "Seedance 2.5 duration: integer, [4, 30] or -1"
+        source: https://docs.byteplus.com/en/docs/ModelArk/1520757
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -630,6 +659,16 @@ models:
           formula: '{"total_price": base_price * duration * (resolution = "1080p" ? 2.5 : resolution = "480p" ? 0.5 : 1)}'
           discount_rate: 100
   kling-video-o3-4k-image-to-video:
+    rejects:
+      - when: $length(prompt) > 3072
+        reason: "Kling Omni prompt: should not exceed 3072 characters"
+        source: https://kling.ai/document-api/api/video/3-0-omni/video-omni.md
+      - when: $exists(multi_prompt) and $sum(multi_prompt.duration) != duration
+        reason: "Kling Omni shots: sum of all shot durations must equal the total video duration"
+        source: https://kling.ai/document-api/api/video/3-0-omni/video-omni.md
+      - when: $max(multi_prompt.$length(prompt)) > 512
+        reason: "Kling Omni shots: shot prompt (max 512 characters)"
+        source: https://kling.ai/document-api/api/video/3-0-omni/video-omni.md
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -771,6 +810,10 @@ models:
           formula: '{"total_price": $max([3, $min([$ceil(get_duration(video)), 120])]) / 5 * base_price * (resolution = "720p" ? 2 : 1)}'
           discount_rate: 100
   dreamactor-v2:
+    rejects:
+      - when: get_duration(video) > 30
+        reason: "DreamActor M2.0 video: Duration: maximum 30 seconds"
+        source: https://docs.byteplus.com/en/docs/byteplus-vision/dreamactor-m2-0-api-document
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -780,9 +823,6 @@ models:
             field: image
           video:
             field: video
-        rejects:
-          - when: get_duration(video) > 30
-            reason: "WaveSpeed video: Max 30 seconds"
         pricing:
           kind: formula
           base_price: 50000
@@ -797,9 +837,6 @@ models:
             field: image_url
           video:
             field: video_url
-        rejects:
-          - when: get_duration(video_url) > 30
-            reason: "fal video_url: Max duration: 30 seconds"
         pricing:
           kind: formula
           base_price: 50000
@@ -815,15 +852,28 @@ models:
             field: video
         fixed:
           mode: async
-        rejects:
-          - when: get_duration(video) > 30
-            reason: SandBase forwards to fal, whose video has Max duration 30 seconds
         pricing:
           kind: formula
           base_price: 50000
           formula: '{"total_price": get_duration(video) * base_price}'
           discount_rate: 100
   minimax-h3-reference-to-video:
+    rejects:
+      - when: $length(prompt) > 7000
+        reason: "MiniMax H3 content text: maximum of 7000 characters per text"
+        source: https://platform.minimax.io/docs/api-reference/video-generation-v2-create
+      - when: get_duration(videos) > 15
+        reason: "MiniMax H3 video_url (reference): per-clip duration [2, 15] s; total <= 15 s"
+        source: https://platform.minimax.io/docs/api-reference/video-generation-v2-create
+      - when: get_duration(videos, min=2, max=1000000, total=1000000) > get_duration(videos)
+        reason: "MiniMax H3 video_url (reference): per-clip duration [2, 15] s"
+        source: https://platform.minimax.io/docs/api-reference/video-generation-v2-create
+      - when: get_duration(audios) > 15
+        reason: "MiniMax H3 audio_url (reference): per-clip duration [2, 15] s; total <= 15 s"
+        source: https://platform.minimax.io/docs/api-reference/video-generation-v2-create
+      - when: get_duration(audios, min=2, max=1000000, total=1000000) > get_duration(audios)
+        reason: "MiniMax H3 audio_url (reference): per-clip duration [2, 15] s"
+        source: https://platform.minimax.io/docs/api-reference/video-generation-v2-create
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -850,14 +900,8 @@ models:
           images: <Picture {n}>
           videos: <Video {n}>
         rejects:
-          - when: $length(prompt) > 7000
-            reason: WaveSpeed prompt maxLength 7000
           - when: $exists(reference_audios) and $not($exists(reference_images) or $exists(reference_videos))
             reason: "WaveSpeed reference_audios: Audio cannot be provided alone"
-          - when: get_duration(reference_audios) > 15
-            reason: "MiniMax H3 reference_audios: total length up to 15 seconds"
-          - when: get_duration(reference_audios, min=2, max=1000000, total=1000000) > get_duration(reference_audios)
-            reason: "MiniMax H3 reference_audios: 2-15 seconds each"
         pricing:
           kind: formula
           base_price: 700000
@@ -893,24 +937,18 @@ models:
         fixed:
           mode: async
         rejects:
-          - when: $length(prompt) > 7000
-            reason: SandBase prompt maxLength 7000
           - when: $exists(audios) and $not($exists(images) or $exists(videos))
             reason: "SandBase audios: Audio requires at least one reference image or video"
-          - when: get_duration(videos) > 15
-            reason: "SandBase videos: combined duration must not exceed 15 seconds"
-          - when: get_duration(videos, min=2, max=1000000, total=1000000) > get_duration(videos)
-            reason: "SandBase videos: Each clip must be 2–15 seconds"
-          - when: get_duration(audios) > 15
-            reason: "MiniMax H3 audios: total length up to 15 seconds"
-          - when: get_duration(audios, min=2, max=1000000, total=1000000) > get_duration(audios)
-            reason: "MiniMax H3 audios: 2-15 seconds each"
         pricing:
           kind: formula
           base_price: 130000
-          formula: '{"total_price": ((duration ? duration : 5) + get_duration(videos)) * (resolution = "768p" ? 60000 : base_price) + ($count(images) > 5 ? 40000 * ($count(images) - 5) : 0)}'
+          formula: '{"total_price": (duration + get_duration(videos)) * (resolution = "768p" ? 60000 : base_price) + ($count(images) > 5 ? 40000 * ($count(images) - 5) : 0)}'
           discount_rate: 100
   gemini-omni-1.1-flash-reference-to-video:
+    rejects:
+      - when: get_duration(videos) > get_duration(videos, min=0, max=3, total=1000000)
+        reason: "Google Gemini Omni reference videos: up to 3 seconds each"
+        source: https://web.archive.org/web/20261023092214/https://ai.google.dev/gemini-api/docs/omni?hl=en
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -933,9 +971,6 @@ models:
         mentions:
           images: <IMAGE_REF_{i}>
           videos: <VIDEO_REF_{i}>
-        rejects:
-          - when: get_duration(reference_videos) > get_duration(reference_videos, min=0, max=3, total=1000000)
-            reason: "WaveSpeed reference_videos: Each video must be no longer than 3 seconds"
         pricing:
           kind: formula
           base_price: 100000
@@ -966,8 +1001,6 @@ models:
         rejects:
           - when: $length(prompt) > 20000
             reason: fal prompt maxLength 20000
-          - when: get_duration(reference_video_urls) > get_duration(reference_video_urls, min=0, max=3, total=1000000)
-            reason: "Google Gemini Omni reference videos: up to 3 seconds each"
         pricing:
           kind: formula
           base_price: 30000
@@ -999,14 +1032,34 @@ models:
         rejects:
           - when: $length(prompt) > 20000
             reason: SandBase prompt maxLength 20000
-          - when: get_duration(videos) > get_duration(videos, min=0, max=3, total=1000000)
-            reason: "SandBase videos: Each video must be at most three seconds long"
         pricing:
           kind: formula
           base_price: 100000
           formula: '{"total_price": base_price * (duration ? duration : 8) * (resolution = "360p" ? 0.3 : resolution = "1080p" ? 1.5 : resolution = "4k" ? 3 : 1)}'
           discount_rate: 100
   wan-3.0-reference-to-video:
+    rejects:
+      - when: $length(prompt) > 20000
+        reason: "Alibaba Wan3.0 prompt: maximum of 20,000 characters (content beyond it is truncated)"
+        source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
+      - when: duration != $floor(duration) or ($not($exists(videos)) and duration < 2)
+        reason: "Alibaba Wan3.0 duration: an integer; without video input, in the range [2, 30]"
+        source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
+      - when: "(duration ? duration : 5) + get_duration(videos) > 30"
+        reason: "Alibaba Wan3.0 duration: with video input, the total input video duration + output video duration must not exceed 30 seconds"
+        source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
+      - when: get_duration(videos) > 15
+        reason: "Alibaba Wan3.0 reference_video: total duration of no more than 15 seconds"
+        source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
+      - when: get_duration(videos, min=1, max=1000000, total=1000000) > get_duration(videos)
+        reason: "Alibaba Wan3.0 reference_video: duration [1, 15] seconds per clip"
+        source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
+      - when: get_duration(audios) > 15
+        reason: "Alibaba Wan3.0 reference_audio: total duration of no more than 15 seconds"
+        source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
+      - when: get_duration(audios, min=1, max=1000000, total=1000000) > get_duration(audios)
+        reason: "Alibaba Wan3.0 reference_audio: duration [1, 15] seconds per clip"
+        source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -1034,15 +1087,6 @@ models:
           audios: Audio {n}
           images: Image {n}
           videos: Video {n}
-        rejects:
-          - when: "(duration ? duration : 5) + get_duration(reference_videos) > 30"
-            reason: "WaveSpeed duration: the total input video duration plus the generated output duration must not exceed 30 seconds"
-          - when: get_duration(reference_videos) > 15
-            reason: "WaveSpeed reference_videos: Total input video duration must not exceed 15 seconds"
-          - when: get_duration(reference_videos, min=1, max=1000000, total=1000000) > get_duration(reference_videos)
-            reason: "WaveSpeed reference_videos: 1-15 seconds each"
-          - when: get_duration(reference_audios) > 15
-            reason: "WaveSpeed reference_audios: Total input audio duration must not exceed 15 seconds"
         pricing:
           kind: formula
           base_price: 500000
@@ -1078,22 +1122,21 @@ models:
         fixed:
           enable_prompt_expansion: false
         rejects:
-          - when: $length(prompt) > 20000
-            reason: fal prompt maxLength 20000
-          - when: get_duration(reference_audio_urls) > 15
-            reason: "fal reference_audio_urls: Up to 5 reference audio URLs totaling at most 15 seconds"
-          - when: get_duration(reference_video_urls) > 15
-            reason: "fal reference_video_urls: Up to 5 reference video URLs totaling at most 15 seconds"
-          - when: "(duration ? duration : 5) + get_duration(reference_video_urls) > 30"
-            reason: "fal reference_video_urls: Alibaba's Wan 3.0 rule, reference video length plus output length must stay within 30 seconds"
-          - when: get_duration(reference_video_urls, min=1, max=1000000, total=1000000) > get_duration(reference_video_urls)
-            reason: "Alibaba Wan 3.0 reference videos: 1-15 seconds each"
+          - when: duration < 2
+            reason: "fal duration: minimum 2"
         pricing:
           kind: formula
           base_price: 50000
           formula: '{"total_price": base_price * (resolution = "1080p" ? 4 : resolution = "720p" ? 2 : 1) * ($min([duration, 30]) + $min([get_duration(reference_video_urls), 15]))}'
           discount_rate: 100
   happyhorse-1.1-reference-to-video:
+    rejects:
+      - when: $length(prompt) > 5000 or $length($replace(prompt, /[^\u3400-\u4DBF\u4E00-\u9FFF]/, "")) > 2500
+        reason: "Alibaba HappyHorse prompt: limited to 5,000 non-Chinese characters or 2,500 Chinese characters (content beyond it is truncated)"
+        source: https://www.alibabacloud.com/help/en/model-studio/happyhorse-reference-to-video-api-reference
+      - when: duration < 3 or duration > 15 or duration != $floor(duration)
+        reason: "Alibaba HappyHorse duration: an integer from 3 to 15"
+        source: https://www.alibabacloud.com/help/en/model-studio/happyhorse-reference-to-video-api-reference
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -1174,6 +1217,10 @@ models:
           formula: '{"total_price": base_price * (duration ? duration : 5) * (resolution = "1080p" ? 18 / 14 : 1)}'
           discount_rate: 100
   flux-3-start-end-to-video:
+    rejects:
+      - when: duration < 5 or duration > 20 or $floor(duration) != duration
+        reason: "BFL FLUX 3 i2v duration: any whole second from 5 to 20"
+        source: https://docs.bfl.ml/api-reference/utility/generate-a-video-with-flux-3.md
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -1222,6 +1269,13 @@ models:
           formula: '{"total_price": base_price * duration * (resolution = "1080p" ? 290 / 85 : 2)}'
           discount_rate: 100
   seedance-2.5-video-extend:
+    rejects:
+      - when: get_duration(video, min=2, max=1000000, total=1000000) > get_duration(video)
+        reason: "Seedance 2.5 reference video: Non-video-editing tasks: each video must be 2-30 seconds long"
+        source: https://docs.byteplus.com/en/docs/ModelArk/1520757
+      - when: duration < 4 or duration > 30 or duration != $floor(duration)
+        reason: "Seedance 2.5 duration: [4, 30] or -1, integer"
+        source: https://docs.byteplus.com/en/docs/ModelArk/seedance-2-5
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -1242,6 +1296,25 @@ models:
           formula: '{"total_price": 110000 * (resolution = "4k" ? 10 : resolution = "1080p" ? 5 : resolution = "720p" ? 2 : 1) * ($max([2, $min([$ceil(get_duration(video, min=2, max=30, total=30)), 30])]) + (duration ? duration : 5))}'
           discount_rate: 90
   wan-3.0-video-edit:
+    rejects:
+      - when: get_duration(video) > 15
+        reason: "Alibaba Wan3.0 reference_video: duration [1, 15] seconds per clip, total no more than 15 seconds"
+        source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
+      - when: get_duration(video, min=1, max=1000000, total=1000000) > get_duration(video)
+        reason: "Alibaba Wan3.0 reference_video: duration [1, 15] seconds per clip"
+        source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
+      - when: duration != $floor(duration)
+        reason: "Alibaba Wan3.0 duration: an integer"
+        source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
+      - when: "(duration ? duration : 5) + get_duration(video) > 30"
+        reason: "Alibaba Wan3.0 duration: with video input, the total input video duration + output video duration must not exceed 30 seconds"
+        source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
+      - when: get_duration(reference_audios) > 15
+        reason: "Alibaba Wan3.0 reference_audio: total duration of no more than 15 seconds"
+        source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
+      - when: get_duration(reference_audios, min=1, max=1000000, total=1000000) > get_duration(reference_audios)
+        reason: "Alibaba Wan3.0 reference_audio: duration [1, 15] seconds per clip"
+        source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -1262,12 +1335,25 @@ models:
             field: generate_audio
           resolution:
             field: resolution
+        rejects:
+          - when: duration < 2 or duration > 15
+            reason: "WaveSpeed duration: Range: 2-15"
         pricing:
           kind: formula
           base_price: 500000
           formula: '{"total_price": ($source := $min([$ceil(get_duration(video, min=1, max=15, total=15)), 15]); $output := $min([duration ? duration : $max([2, $source]), 15]); base_price * (resolution = "1080p" ? 2 : (resolution = "480p" ? 0.5 : 1)) * ($source + $output) / 5)}'
           discount_rate: 100
   kling-v3-pro-motion:
+    rejects:
+      - when: $length(prompt) > 2500
+        reason: "Kling motion control prompt: content not exceeding 2500 characters"
+        source: https://kling.ai/document-api/api/video/3-0-omni/motion-control.md
+      - when: 'get_duration(video) > (character_orientation = "image" ? 10 : 30)'
+        reason: "Kling motion control video: up to 30 s for orientation 'video', up to 10 s for 'image'"
+        source: https://kling.ai/document-api/api/video/3-0-omni/motion-control.md
+      - when: get_duration(video, min=3, max=1000000, total=1000000) > get_duration(video)
+        reason: "Kling motion control video: The minimum video duration is 3 seconds"
+        source: https://kling.ai/document-api/api/video/3-0-omni/motion-control.md
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -1306,13 +1392,6 @@ models:
         drops:
           negative_prompt:
             - ""
-        rejects:
-          - when: $length(prompt) > 2500
-            reason: fal prompt maxLength 2500
-          - when: 'get_duration(video_url) > (character_orientation = "image" ? 10 : 30)'
-            reason: "fal video_url: Duration limit depends on character_orientation: 10s max for 'image', 30s max for 'video'"
-          - when: get_duration(video_url, min=3, max=1000000, total=1000000) > get_duration(video_url)
-            reason: "fal video_url: Min duration: 3.0s"
         pricing:
           kind: formula
           base_price: 168000
@@ -1336,19 +1415,16 @@ models:
             - ""
         fixed:
           mode: async
-        rejects:
-          - when: $length(prompt) > 2500
-            reason: SandBase prompt maxLength 2500
-          - when: 'get_duration(video) > (character_orientation = "image" ? 10 : 30)'
-            reason: "SandBase video: Duration limit depends on character_orientation: 10s max for 'image', 30s max for 'video'"
-          - when: get_duration(video, min=3, max=1000000, total=1000000) > get_duration(video)
-            reason: "SandBase video: Kling's own minimum is 3 seconds (SandBase mirrors Kling's schema)"
         pricing:
           kind: formula
           base_price: 168000
           formula: '{"total_price": base_price * get_duration(video)}'
           discount_rate: 100
   omnihuman-1.5:
+    rejects:
+      - when: get_duration(audio) >= 60
+        reason: "OmniHuman 1.5 audio: the duration must be less than 60 seconds"
+        source: https://docs.byteplus.com/en/docs/byteplus-vision/omnihuman-video_generation
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -1374,9 +1450,6 @@ models:
             field: image_url
         fixed:
           resolution: 720p
-        rejects:
-          - when: get_duration(audio_url) >= 60
-            reason: "fal audio_url: Audio must be under 30s long for 1080p generation and under 60s long for 720p generation (resolution fixed at 720p)"
         pricing:
           kind: formula
           base_price: 160000
@@ -1394,9 +1467,6 @@ models:
           prompt: ""
           mode: async
           resolution: 720p
-        rejects:
-          - when: get_duration(audio) >= 60
-            reason: "SandBase audio: Audio must be under 60s long for 720p generation (resolution fixed at 720p)"
         pricing:
           kind: formula
           base_price: 160000
@@ -1508,6 +1578,13 @@ models:
           formula: '{"total_price": ($left := $ceil(get_duration(left_audio)); $right := $ceil(get_duration(right_audio)); $seconds := (order = "meanwhile" ? $max([$left, $right]) : $left + $right); $max([3, $min([$seconds, 600])]) / 5 * base_price * (resolution = "720p" ? 2 : 1))}'
           discount_rate: 100
   sync-react-1:
+    rejects:
+      - when: get_duration(audio) > 15
+        reason: "Sync react-1: supports inputs up to 15 seconds in duration"
+        source: https://sync.so/docs/models/react.md
+      - when: get_duration(video) > 15
+        reason: "Sync react-1: supports inputs up to 15 seconds in duration"
+        source: https://sync.so/docs/models/react.md
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -1521,11 +1598,6 @@ models:
             field: model_mode
           video:
             field: video
-        rejects:
-          - when: get_duration(audio) > 15
-            reason: "WaveSpeed: Keep both audio and video inputs within the supported 15-second limit"
-          - when: get_duration(video) > 15
-            reason: "WaveSpeed: Keep both audio and video inputs within the supported 15-second limit"
         pricing:
           kind: formula
           base_price: 835000
@@ -1546,11 +1618,6 @@ models:
             field: video_url
         fixed:
           lipsync_mode: loop
-        rejects:
-          - when: get_duration(audio_url) > 15
-            reason: "fal audio_url: Must be 15 seconds or shorter"
-          - when: get_duration(video_url) > 15
-            reason: "fal video_url: Must be 15 seconds or shorter"
         pricing:
           kind: formula
           base_price: 10000000
@@ -1569,6 +1636,11 @@ models:
             field: image
           resolution:
             field: resolution
+        rejects:
+          - when: get_duration(audio) > 20
+            reason: "WaveSpeed audio: Audio duration must be between 5-20 seconds"
+          - when: get_duration(audio, min=5, max=1000000, total=1000000) > get_duration(audio)
+            reason: "WaveSpeed audio: Audio duration must be between 5-20 seconds"
         pricing:
           kind: formula
           base_price: 100000

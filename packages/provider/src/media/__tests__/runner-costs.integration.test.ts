@@ -323,6 +323,26 @@ describe("a billing read is a side request", () => {
     expect(done.costs).toEqual([lookupOf("p1")]);
   }, 60_000);
 
+  it("hands back a finished run of two predictions within one side-request limit while its billing endpoint hangs", async () => {
+    a.answer(({ method, path }) => {
+      if (path === "/billings/search") return "hang";
+      if (method === "POST") return path === "/minimax/voice-clone" ? accepted("p-voice") : accepted("p-speak");
+      return path.includes("p-voice") ? result("p-voice", "completed", []) : result("p-speak", "completed", ["https://out.example/s.mp3"]);
+    });
+    const r = runner();
+    let answer: MediaAnswer = await r.plan("voice-clone", speech, DEFAULT, options);
+    let lastCallMs = 0;
+    for (let turn = 0; turn < 6 && (answer.state === "send" || answer.state === "running"); turn++) {
+      const started = Date.now();
+      const bounds = { deadlineAt: started + 600_000 };
+      answer = answer.state === "send" ? await r.send(stored(answer.ticket), bounds) : await r.poll(stored(answer.ticket), bounds);
+      lastCallMs = Date.now() - started;
+    }
+    const done = expectState(answer, "done");
+    expect(lastCallMs).toBeLessThan(SIDE_REQUEST_MS + 5_000);
+    expect(done.costs).toEqual([lookupOf("p-voice"), lookupOf("p-speak")]);
+  }, 90_000);
+
   it("stops a billing read at the call's own deadline when that comes sooner, its cost pending", async () => {
     a.answer(({ method, path }) => (path === "/billings/search" ? "hang" : method === "POST" ? accepted("p1") : result("p1", "completed", ["https://out.example/v.mp4"])));
     const r = runner();

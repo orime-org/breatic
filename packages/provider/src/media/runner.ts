@@ -476,7 +476,13 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     prompt: ticket.input.prompt,
     binding: bindingOf(ticket),
     customVoiceId: customVoiceId(ticket),
-    voiceId: carried(ticket).voiceId,
+    voice: () => {
+      const { voiceId } = carried(ticket);
+      // A speak step is planned only after a voice step, whose output or cached clone carries the voice id.
+      /* v8 ignore next -- @preserve */
+      if (voiceId === undefined) throw new Error("No cloned voice to speak with");
+      return voiceId;
+    },
     description: step.description,
     itemIndex: step.itemIndex,
     param: step.param,
@@ -605,7 +611,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
   /**
    * Finish a run whose steps are all done: its outputs and what each prediction cost.
    * @param ticket - The ticket.
-   * @param bounds - The call's deadline and signal; each billing read is a side request within them (`sideBounds`).
+   * @param bounds - The call's deadline and signal; the billing reads share one side request's bounds within them (`sideBounds`).
    * @param extra - Clones and warnings to carry.
    * @returns The done answer, or failed when the run produced no output.
    */
@@ -615,10 +621,11 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     const costs = [...ticket.costs];
     const warnings = [...(extra.warnings ?? [])];
     const up = reach(ticket.upstream);
+    // Outside the cap, as the worker read it: a run that finished must not queue behind new submits. The reads share
+    // one side request's bounds, so a hung billing endpoint holds the outputs for SIDE_REQUEST_MS at most.
+    const side = sideBounds(bounds);
     for (const prediction of done.predictions) {
-      // Outside the cap, as the worker read it: a run that finished must not queue behind new submits. Each read is a
-      // side request, so a hung billing endpoint holds the outputs for SIDE_REQUEST_MS at most.
-      const read = await adapterFor(ticket.upstream).billed(up, prediction, sideBounds(bounds), false);
+      const read = await adapterFor(ticket.upstream).billed(up, prediction, side, false);
       costs.push(read.cost);
       warnings.push(...read.warnings);
     }

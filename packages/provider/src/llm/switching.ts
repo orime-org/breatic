@@ -225,7 +225,13 @@ export class SwitchingModel implements ModelV4 {
   private async attempt<T>(run: (candidate: Candidate) => Promise<T>, signal: AbortSignal | undefined): Promise<{ value: T; servedBy: Candidate }> {
     const pinned = this.pinned;
     if (pinned !== undefined) {
-      for (let retries = 0; ; retries++) {
+      /**
+       * One try on the pinned upstream, and the retries after it.
+       * @param retries - The retries made so far.
+       * @returns What it answered.
+       * @throws {unknown} What the last try threw.
+       */
+      const onPinned = async (retries: number): Promise<{ value: T; servedBy: Candidate }> => {
         try {
           return { value: await run(pinned), servedBy: pinned };
         } catch (error) {
@@ -235,8 +241,10 @@ export class SwitchingModel implements ModelV4 {
           const passing = failure?.kind === "not_sent" || (failure?.kind === "http_status" && passingStatus(failure.status, "llm_before_content"));
           if (!passing || retries >= this.setup.maxRetries) throw error;
           if ((await pauseBeforeRetry(error, retries + 1, signal)) === "switch") throw error;
+          return onPinned(retries + 1);
         }
-      }
+      };
+      return onPinned(0);
     }
     const served = await tryInOrder(this.setup.plan, {
       phase: "llm_before_content",
@@ -318,15 +326,14 @@ export class SwitchingModel implements ModelV4 {
        */
       const run = async (): Promise<GenerateResult> => this.setup.modelFor(c).doGenerate(options);
       const tracks = this.setup.tracksGenerations(c.upstream);
-      // The last answer's status, and a copy of its body when a 2xx may name a generation; any
-      // other copy is cancelled at once, so no body is held twice.
+      // The answer's status, and a copy of its body when a 2xx may name a generation; any other copy
+      // is cancelled at once. The SDK fetches once per call (its own retries are off).
       let last: { status: number; copy: Response | undefined } | undefined;
       /**
-       * Keep what the call needs of one answer the SDK fetched.
+       * Keep what the call needs of the answer the SDK fetched.
        * @param copy - A copy of the answer.
        */
       const keep = (copy: Response): void => {
-        void last?.copy?.body?.cancel().catch(() => undefined);
         const needed = tracks && isSuccess(copy.status);
         if (!needed) void copy.body?.cancel().catch(() => undefined);
         last = { status: copy.status, copy: needed ? copy : undefined };
@@ -368,15 +375,20 @@ export class SwitchingModel implements ModelV4 {
       const opened: { missing?: string } = { missing: this.missing(c.upstream, `${c.upstream} opened a stream that did not finish`) };
       const reader = result.stream.getReader();
       const held: StreamPart[] = [];
-      for (;;) {
-        let read: ReadableStreamReadResult<StreamPart>;
+      /**
+       * The stream's next part, the stream cancelled when reading it fails.
+       * @returns The read.
+       * @throws {unknown} What the read threw.
+       */
+      const next = async (): Promise<ReadableStreamReadResult<StreamPart>> => {
         try {
-          read = await reader.read();
+          return await reader.read();
         } catch (error) {
           await reader.cancel().catch(() => undefined);
           throw error;
         }
-        if (read.done) break;
+      };
+      for (let read = await next(); !read.done; read = await next()) {
         // Registered as soon as it is read: a call stopped before its content is still billed.
         const part = read.value;
         this.named(c.upstream, idOf(part), opened);

@@ -304,6 +304,22 @@ describe("understand through Gemini's Files API steps", () => {
     expect((error as UpstreamRequestRejected).message).toBe("API key not valid. Please pass a valid API key.");
   });
 
+  it("ends as interrupted, with no cost, when an upload step gets no answer", async () => {
+    const provider = throughFiles(filesRoute((r) => (r.path === "/upload-session/1" ? "reset" : undefined)));
+    const error = await provider.llm.understand(question()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UnderstandInterrupted);
+    expect((error as UnderstandInterrupted).costs).toEqual([]);
+    expect(generated()).toBe(0);
+  });
+
+  it("ends as interrupted, with no cost, when an upload answer is cut part way", async () => {
+    const provider = throughFiles(filesRoute((r) => (r.path === "/upload-session/1" ? { status: 200, raw: "{\"file\":", contentType: "application/json", cut: true } : undefined)));
+    const error = await provider.llm.understand(question()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UnderstandInterrupted);
+    expect((error as UnderstandInterrupted).costs).toEqual([]);
+    expect(generated()).toBe(0);
+  });
+
   it("ends as interrupted, with no cost, when an upload answer's body never finishes", async () => {
     const provider = throughFiles(filesRoute((r) => (r.path === "/upload-session/1" ? { status: 200, raw: "{\"file\":", contentType: "application/json", hold: true } : undefined)));
     const error = await provider.llm.understand(question(1_000)).catch((e: unknown) => e);
@@ -317,6 +333,8 @@ describe("understand through Gemini's Files API steps", () => {
       r.path === "/upload-session/1" ? { status: 200, raw: "<html>proxy</html>", contentType: "text/html" } : undefined],
     ["the file's state answers null", (r: { method: string; path: string }): Reply | undefined =>
       r.path === "/upload-session/1" ? { status: 200, body: { file: { name: "files/abc", state: "PROCESSING" } } } : r.method === "GET" ? { status: 200, raw: "null", contentType: "application/json" } : undefined],
+    ["the uploaded file has no state", (r: { method: string; path: string }): Reply | undefined =>
+      r.path === "/upload-session/1" ? { status: 200, body: { file: { name: "files/abc" } } } : undefined],
   ])("rejects without a status or a cost when %s", async (_name, special) => {
     const error = await throughFiles(filesRoute(special)).llm.understand(question()).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(UpstreamRequestRejected);
@@ -332,6 +350,11 @@ describe("understand video types", () => {
     await llmProvider(fakes, keys).llm.understand({ ...question(), media: [mov] });
     const parts = (posted(fakes.google)[0] as { contents: { parts: Record<string, unknown>[] }[] }).contents[0]!.parts;
     expect(parts).toContainEqual({ inlineData: { mimeType: "video/mov", data: Buffer.from(mov.bytes).toString("base64") } });
+  });
+
+  it("names no OpenRouter backend for a model it pins none for", async () => {
+    await llmProvider(fakes, keys, { understandOpenRouterFirst: true }).llm.understand({ ...question(), model: "google/gemini-2.5-flash" });
+    expect(posted(fakes.openrouter)[0]).not.toHaveProperty("provider");
   });
 
   it("sends a QuickTime video to OpenRouter as video/mov", async () => {

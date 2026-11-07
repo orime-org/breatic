@@ -133,7 +133,7 @@ function sampleStep(binding: MediaBinding, param: string | undefined): StepConte
     prompt: SAMPLE_TEXT,
     binding,
     customVoiceId: "voice-sample",
-    voiceId: "voice-sample",
+    voice: () => "voice-sample",
     description: SAMPLE_TEXT,
     itemIndex: 0,
     param,
@@ -257,20 +257,35 @@ const SAME_EFFECT: Readonly<Record<string, string>> = {
   "fal fal-ai/nano-banana-2/edit aspect_ratio": "fal's auto and WaveSpeed's none both take the input image's ratio (WaveSpeed: 'If not specified, it is determined automatically from the input image')",
 };
 
-/**
- * Text limits the model's own vendor states below the bound a reseller's schema gives, keyed
- * `upstream endpoint field`: the binding's reject sits at the vendor's limit.
- */
-const VENDOR_TEXT_LIMITS: Readonly<Record<string, number>> = {
-  // OpenAI's image API reference: "The maximum length is 32000 characters"; SandBase's schema says 50000.
-  "sandbase openai/gpt-image-2.5-sunburst prompt": 32_000,
-  "sandbase openai/gpt-image-2.5-sunburst/edit prompt": 32_000,
-};
-
 const config = shipped();
 const models = new Map(catalog().models.map((m) => [m.name, m.params as Record<string, CatalogParam>]));
 const cases = Object.entries(config.media.models).flatMap(([model, { upstreams }]) => upstreams.map((binding) => ({ model, binding })));
 const provider = createProvider({ config, keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
+/**
+ * The longest text the model's vendor takes in one of our params (`prompt` for the prompt), from its limits.
+ * @param model - Our model.
+ * @param param - Our param name.
+ * @returns The length, or undefined when the vendor states none.
+ */
+function vendorLength(model: string, param: string): number | undefined {
+  const bounds = (config.media.models[model]?.rejects ?? []).flatMap(({ when }) => {
+    const match = /^\$length\((\w+)\)\s*>\s*(\d+)$/.exec(when.trim());
+    return match?.[1] === param ? [Number(match[2])] : [];
+  });
+  return bounds.length === 0 ? undefined : Math.min(...bounds);
+}
+
+/**
+ * A binding's condition read in our param names: each upstream field it writes a param or the prompt to, renamed.
+ * @param binding - The binding.
+ * @param when - One of its conditions.
+ * @returns The condition over our names, spaces dropped.
+ */
+function inOurNames(binding: MediaBinding, when: string): string {
+  const ours = new Map([...Object.entries(binding.params ?? {}).map(([param, bound]) => [bound.field, param] as const), ...(binding.prompt_field === undefined ? [] : [[binding.prompt_field, "prompt"] as const])]);
+  return when.replace(/\b[a-z_][a-z0-9_]*\b/g, (name) => ours.get(name) ?? name).replace(/\s+/g, "");
+}
+
 /** The longest prompt each catalog model takes, where it states one. */
 const promptLimits = new Map(catalog().models.flatMap((m) => (m.max_input_chars === undefined ? [] : [[m.name, m.max_input_chars] as const])));
 
@@ -332,6 +347,8 @@ interface TextField {
   inList: boolean;
   leaves: Leaf[];
   ours?: number;
+  /** Our param it carries (`prompt` for the prompt), whose vendor limit applies to it; absent for a list's sub-field. */
+  param?: string;
 }
 
 /**
@@ -358,7 +375,7 @@ function textFields(model: string, binding: MediaBinding, snapshot: SchemaSnapsh
   const out: TextField[] = [];
   const prompt = binding.prompt_field;
   if (prompt !== undefined) {
-    if (ownBody(binding, SAMPLE_TEXT)[prompt] === SAMPLE_TEXT) out.push({ where: prompt, named: prompt, inList: false, leaves: snapshot.fields[prompt] ?? [], ours: promptLimits.get(model) });
+    if (ownBody(binding, SAMPLE_TEXT)[prompt] === SAMPLE_TEXT) out.push({ where: prompt, named: prompt, inList: false, leaves: snapshot.fields[prompt] ?? [], ours: promptLimits.get(model), param: "prompt" });
     const kind = config.upstreams[binding.upstream]?.kind;
     for (const step of binding.extra_steps ?? []) {
       const codec = kind === undefined ? undefined : adapterOf(kind).steps[step.kind];
@@ -366,14 +383,14 @@ function textFields(model: string, binding: MediaBinding, snapshot: SchemaSnapsh
       if (codec === undefined || stepSnapshot === undefined) continue;
       const body = codec.body({ ...sampleStep(binding, step.for_param), description: SAMPLE_WORD });
       for (const path of pathsOf(body).filter((p) => at(body, p) === SAMPLE_TEXT)) {
-        out.push({ where: `${step.kind}:${step.endpoint} ${path}`, named: prompt, inList: false, leaves: stepSnapshot.fields[path] ?? [], ours: promptLimits.get(model) });
+        out.push({ where: `${step.kind}:${step.endpoint} ${path}`, named: prompt, inList: false, leaves: stepSnapshot.fields[path] ?? [], ours: promptLimits.get(model), param: "prompt" });
       }
     }
   }
   for (const [name, param] of Object.entries(models.get(model) ?? {})) {
     const bound = binding.params?.[name];
     if (bound === undefined) continue;
-    if (param.type === "text") out.push({ where: bound.field, named: bound.field, inList: false, leaves: snapshot.fields[bound.field] ?? [], ours: param.max_chars });
+    if (param.type === "text") out.push({ where: bound.field, named: bound.field, inList: false, leaves: snapshot.fields[bound.field] ?? [], ours: param.max_chars, param: name });
     if (param.type !== "items") continue;
     const items = (snapshot.fields[bound.field] ?? []).find((leaf) => leaf.type === "array")?.items;
     for (const [sub, spec] of Object.entries(param.fields ?? {})) {
@@ -739,29 +756,38 @@ describe.each(cases)("$model on $binding.upstream", ({ model, binding }) => {
     expect(await rejectedInput(provider.pricingRules(model), binding.upstream, run), missing.join(", ")).toBeDefined();
   });
 
-  it("states as a reject each length bound and pattern of a text field it writes that our catalog lets a run break", () => {
+  it("states as a reject each length bound and pattern of a text field it writes that our catalog and the model's vendor let a run break", () => {
     const unstated: string[] = [];
-    for (const { where, named, inList, leaves, ours } of textFields(model, binding, snapshot)) {
+    for (const { where, named, inList, leaves, ours, param } of textFields(model, binding, snapshot)) {
       const text = leaves.find((leaf) => leaf.type === "string");
       if (text === undefined) continue;
       const length = inList ? `\\b${escaped(named)}\\b.*\\$length\\(` : `\\$length\\(\\s*${escaped(named)}\\s*\\)`;
-      const max = VENDOR_TEXT_LIMITS[`${binding.upstream} ${binding.model_id} ${named}`] ?? text.maxLength;
-      if (max !== undefined && (ours === undefined || ours > max) && !rejectMatches(binding, new RegExp(`${length}[^<>]*>\\s*${max}\\b`))) unstated.push(`${where} maxLength ${max}`);
+      const max = text.maxLength;
+      const allowed = Math.min(ours ?? Infinity, param === undefined ? Infinity : vendorLength(model, param) ?? Infinity);
+      if (max !== undefined && allowed > max && !rejectMatches(binding, new RegExp(`${length}[^<>]*>\\s*${max}\\b`))) unstated.push(`${where} maxLength ${max}`);
       if (text.minLength !== undefined && text.minLength > 1 && !rejectMatches(binding, new RegExp(`${length}[^<>]*<\\s*${text.minLength}\\b`))) unstated.push(`${where} minLength ${text.minLength}`);
       if (text.pattern !== undefined && !rejectMatches(binding, new RegExp(`\\b${escaped(named)}\\b`))) unstated.push(`${where} pattern ${text.pattern}`);
     }
     expect(unstated, unstated.join("\n")).toEqual([]);
   });
 
-  it("states each length reject of a field at the bound its upstream's schema gives, or the model vendor's tighter one", () => {
+  it("states each length reject of a field at the bound its upstream's schema gives, only where the model's vendor takes longer text", () => {
     const stale: string[] = [];
     for (const { when } of binding.rejects ?? []) {
       const match = /^\$length\((\w+)\)\s*>\s*(\d+)$/.exec(when.trim());
       if (match === null) continue;
-      const bound = VENDOR_TEXT_LIMITS[`${binding.upstream} ${binding.model_id} ${match[1]!}`] ?? (snapshot.fields[match[1]!] ?? []).find((leaf) => leaf.type === "string")?.maxLength;
+      const bound = (snapshot.fields[match[1]!] ?? []).find((leaf) => leaf.type === "string")?.maxLength;
       if (bound !== undefined && bound !== Number(match[2])) stale.push(`${when}: the bound is ${bound}`);
+      const vendor = vendorLength(model, inOurNames(binding, match[1]!));
+      if (vendor !== undefined && vendor <= Number(match[2])) stale.push(`${when}: the model's vendor already refuses past ${vendor}`);
     }
     expect(stale, stale.join("\n")).toEqual([]);
+  });
+
+  it("repeats no limit of the model's vendor", () => {
+    const vendor = new Set((config.media.models[model]?.rejects ?? []).map((r) => r.when.replace(/\s+/g, "")));
+    const repeated = (binding.rejects ?? []).filter((r) => vendor.has(inOurNames(binding, r.when))).map((r) => r.when);
+    expect(repeated, repeated.join("\n")).toEqual([]);
   });
 
   it("leaves no field it does not send at a default other than WaveSpeed's, or than another reseller's where WaveSpeed has none", () => {

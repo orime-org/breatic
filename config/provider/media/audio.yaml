@@ -14,6 +14,25 @@
 
 models:
   mureka-v9.5-generate-song:
+    rejects:
+      - when: $exists(lyrics) and $length(prompt) > 1024
+        reason: "Mureka song/generate prompt: maximum 1024 characters"
+        source: https://platform.mureka.ai/docs/api/operations/post-v1-song-generate.html
+      - when: $length(prompt) > 2000
+        reason: "Mureka song/easy-generate prompt: maximum 2000 characters"
+        source: https://platform.mureka.ai/docs/assets/chunks/theme.M7F0Joug.js
+      - when: $length(lyrics) > 5000
+        reason: "Mureka song/generate lyrics: maximum 5000 characters"
+        source: https://platform.mureka.ai/docs/api/operations/post-v1-song-generate.html
+      - when: get_duration(song, min=30, max=1000000, total=1000000) > get_duration(song)
+        reason: "Mureka files/upload reference: supported audio duration range is [30,30] seconds"
+        source: https://platform.mureka.ai/docs/api/operations/post-v1-files-upload.html
+      - when: get_duration(melody, min=5, max=1000000, total=1000000) > get_duration(melody)
+        reason: "Mureka files/upload melody: supported audio duration range is [5,60] seconds"
+        source: https://platform.mureka.ai/docs/api/operations/post-v1-files-upload.html
+      - when: get_duration(vocal, min=15, max=1000000, total=1000000) > get_duration(vocal)
+        reason: "Mureka song/vocal-clone file: supported vocal duration range is [15,30] seconds"
+        source: https://platform.mureka.ai/docs/assets/chunks/theme.M7F0Joug.js
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -59,12 +78,6 @@ models:
         rejects:
           - when: $length(prompt) > 1024
             reason: "WaveSpeed prompt: Official limit: up to 1024 characters"
-          - when: $length(lyrics) > 5000
-            reason: "WaveSpeed lyrics: Maximum length: 5000 characters"
-          - when: get_duration(reference_id, min=30, max=1000000, total=1000000) > get_duration(reference_id)
-            reason: "Mureka files/upload reference: supported duration range is [30,30] seconds"
-          - when: get_duration(melody_id, min=5, max=1000000, total=1000000) > get_duration(melody_id)
-            reason: "Mureka files/upload melody: supported duration range is [5,60] seconds"
         pricing:
           kind: formula
           base_price: 225000
@@ -113,36 +126,27 @@ models:
               formula: ""
               discount_rate: 100
         rejects:
-          - when: $length(prompt) > 2000
-            reason: fal prompt maxLength 2000
           - when: $exists(melody_id) and ($exists(prompt) or $exists(reference_id) or $exists(vocal_id))
             reason: "fal melody_id: This cannot be combined with prompt, reference_id, or vocal_id"
           - when: $not($exists(prompt) or $exists(lyrics))
             reason: "fal prompt: Required when lyrics is omitted"
-          - when: $exists(lyrics) and $length(prompt) > 1024
-            reason: "fal prompt: With lyrics, it acts as a music-style control and supports up to 1,024 characters"
-          - when: $length(lyrics) > 5000
-            reason: fal lyrics maxLength 5000
           - when: get_duration(vocal_id) > 30 or get_duration(vocal_id, min=15, max=1000000, total=1000000) > get_duration(vocal_id)
             reason: "fal mureka/api/voice/clone audio_url: a vocal sample between 15 and 30 seconds"
-          - when: get_duration(reference_id, min=30, max=1000000, total=1000000) > get_duration(reference_id)
-            reason: "Mureka files/upload reference: supported duration range is [30,30] seconds"
-          - when: get_duration(melody_id, min=5, max=1000000, total=1000000) > get_duration(melody_id)
-            reason: "Mureka files/upload melody: supported duration range is [5,60] seconds"
         pricing:
           kind: formula
           base_price: 5000
           formula: '{"total_price": base_price * (lyrics ? 30 : 100)}'
           discount_rate: 100
   mureka-v9.5-generate-bgm:
+    rejects:
+      - when: $length(prompt) > 1024
+        reason: "Mureka instrumental/generate prompt: maximum 1024 characters"
+        source: https://platform.mureka.ai/docs/api/operations/post-v1-instrumental-generate.html
     upstreams:
       - upstream: wavespeed
         weight: 1
         model_id: mureka-ai/mureka-v9.5/generate-bgm
         prompt_field: prompt
-        rejects:
-          - when: $length(prompt) > 1024
-            reason: "WaveSpeed prompt: Official limit: up to 1024 characters"
         pricing:
           kind: formula
           base_price: 225000
@@ -153,9 +157,6 @@ models:
         model_id: mureka/v9.5/generate/instrumental
         prompt_field: prompt
         output_field: audio
-        rejects:
-          - when: $length(prompt) > 1024
-            reason: fal prompt maxLength 1024
         pricing:
           kind: formula
           base_price: 5000
@@ -192,6 +193,19 @@ models:
           formula: ""
           discount_rate: 100
   minimax-music-cover:
+    rejects:
+      - when: $length(prompt) < 10
+        reason: "MiniMax music-cover prompt: Required, 10-300 characters"
+        source: https://platform.minimax.io/docs/api-reference/music-generation
+      - when: $length(prompt) > 300
+        reason: "MiniMax music-cover prompt: Required, 10-300 characters"
+        source: https://platform.minimax.io/docs/api-reference/music-generation
+      - when: get_duration(audio, min=6, max=1000000, total=1000000) > get_duration(audio)
+        reason: "MiniMax music-cover audio_url: Duration 6 seconds to 6 minutes"
+        source: https://platform.minimax.io/docs/api-reference/music-generation
+      - when: get_duration(audio) > 360
+        reason: "MiniMax music-cover audio_url: Duration 6 seconds to 6 minutes"
+        source: https://platform.minimax.io/docs/api-reference/music-generation
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -206,6 +220,13 @@ models:
           formula: ""
           discount_rate: 100
   sonilo-video-to-music:
+    rejects:
+      - when: get_duration(video) > 360
+        reason: "Sonilo video-to-music video: Max duration: 6 minutes"
+        source: https://platform.sonilo.com/docs/api/video-to-music
+      - when: $length(prompt) > 2000
+        reason: "Sonilo video-to-music prompt: maxLength 2000"
+        source: https://sonilo.com/openapi.json
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -220,6 +241,22 @@ models:
           formula: '{"total_price": base_price * $max([10, $min([$ceil(get_duration(video)), 360])])}'
           discount_rate: 100
   sfx-1.6-text-to-audio:
+    rejects:
+      - when: duration < 0.1
+        reason: "Mirelo sfx-1.6 text-to-sfx duration_ms: 100-60000"
+        source: https://mirelo.ai/api-docs.md
+      - when: loop != true and duration > 60
+        reason: "Mirelo sfx-1.6 text-to-sfx duration_ms: at most 60000 without loop"
+        source: https://mirelo.ai/api-docs.md
+      - when: loop = true and duration < 1
+        reason: "Mirelo sfx-1.6 text-to-sfx duration_ms: 1000-600000 with controls.loop"
+        source: https://mirelo.ai/api-docs.md
+      - when: loop = true and duration > 600
+        reason: "Mirelo sfx-1.6 text-to-sfx duration_ms: at most 600000 with controls.loop"
+        source: https://mirelo.ai/api-docs.md
+      - when: $length(prompt) > 5000
+        reason: Mirelo sfx-1.6 max_prompt_chars 5000; too long a prompt is rejected rather than truncated
+        source: https://api.mirelo.ai/v3/openapi.json
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -260,8 +297,6 @@ models:
         fixed:
           upload_audio_format: mp3
         rejects:
-          - when: ambience = true and duration < 1
-            reason: "fal duration: The minimum is 0.1s for ordinary sound effects and 1s when ambience=true"
           - when: $length(text_prompt) < 4
             reason: fal text_prompt minLength 4
         pricing:
@@ -270,6 +305,10 @@ models:
           formula: '{"total_price": base_price * duration * num_samples}'
           discount_rate: 100
   sonilo-sfx-v1:
+    rejects:
+      - when: $length(prompt) > 2000
+        reason: "Sonilo text-to-sfx prompt: maxLength 2000"
+        source: https://sonilo.com/openapi.json
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -327,6 +366,13 @@ models:
           formula: '{"total_price": $min([$ceil(get_duration(audio)), 600]) * base_price}'
           discount_rate: 100
   veed-clean-audio:
+    rejects:
+      - when: get_duration(audio) > 1800
+        reason: "VEED Clean Audio audio_url: up to 30 minutes and 512 MB"
+        source: https://api.veed.io/openapi.yaml
+      - when: strength < 0 or strength > 1
+        reason: "VEED Clean Audio strength: minimum 0, maximum 1"
+        source: https://api.veed.io/openapi.yaml
     upstreams:
       - upstream: fal
         weight: 2
@@ -347,6 +393,19 @@ models:
           formula: '{"total_price": $min([$max([$ceil($round(get_duration(audio_url)) / 60), 1]), 30]) * base_price}'
           discount_rate: 100
   sfx-1.6-extend-audio:
+    rejects:
+      - when: get_duration(audio, min=3, max=1000000, total=1000000) > get_duration(audio)
+        reason: "Mirelo extend: your source must be at least 3 seconds long"
+        source: https://api.mirelo.ai/v3/openapi.json
+      - when: append_duration < 1
+        reason: "Mirelo sfx-1.6 extend append_duration_ms: min 1000"
+        source: https://mirelo.ai/api-docs.md
+      - when: append_duration > 57
+        reason: "Mirelo sfx-1.6 extend append_duration_ms: max 57000"
+        source: https://mirelo.ai/api-docs.md
+      - when: $length(prompt) > 5000
+        reason: Mirelo sfx-1.6 max_prompt_chars 5000
+        source: https://mirelo.ai/api-docs.md
     upstreams:
       - upstream: fal
         weight: 2
@@ -367,14 +426,12 @@ models:
         rejects:
           - when: get_duration(audio_url) > 59
             reason: "fal audio_url: The prefix duration must be 3–59 seconds"
-          - when: get_duration(audio_url, min=3, max=1000000, total=1000000) > get_duration(audio_url)
-            reason: "fal audio_url: The prefix duration must be 3–59 seconds"
           - when: get_duration(audio_url) + append_duration > 60
             reason: "fal audio_url: the total output (prefix + append_duration) is capped at 60 seconds"
         pricing:
           kind: formula
           base_price: 10000
-          formula: '{"total_price": base_price * append_duration * num_samples}'
+          formula: '{"total_price": base_price * append_duration * num_samples * (double_output ? 2 : 1)}'
           discount_rate: 100
         fixed:
           upload_audio_format: mp3

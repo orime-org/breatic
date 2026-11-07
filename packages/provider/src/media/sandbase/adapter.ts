@@ -186,14 +186,19 @@ async function billed(reach: Reach, predictionId: string, bounds: RequestBounds,
 /** SandBase's answer for a model it does not serve (a 404). */
 const NO_MODEL = /^model not found/;
 
+/** SandBase's answer for a model the account's plan does not cover (a 403, measured on a free account 2026-11-06). */
+const NOT_ON_PLAN = "This model is not available to free users.";
+
 /**
  * What a refused submit says, read SandBase's way.
  * @param error - The refusal.
- * @returns `insufficient_balance` for a 402, `model_not_found` for an unknown model, otherwise nothing.
+ * @returns `insufficient_balance` for a 402 or a model the account's plan leaves out, `model_not_found` for an unknown
+ *   model, otherwise nothing.
  */
 function refusal(error: HttpStatus): Refusal {
   if (error.status === 402) return "insufficient_balance";
   const read = errorSchema.safeParse(parsed(error.body));
+  if (error.status === 403 && read.success && read.data.error === NOT_ON_PLAN) return "insufficient_balance";
   if (error.status === 404 && read.success && NO_MODEL.test(read.data.error)) return "model_not_found";
   return undefined;
 }
@@ -208,12 +213,7 @@ export const sandbaseAdapter: MediaAdapter = {
   steps: {
     voice: resellerVoiceClone,
     speak: {
-      body: (context) => {
-        // A speak step runs only after the voice step's output or a cached clone gave it a voice id.
-        /* v8 ignore next -- @preserve */
-        if (context.voiceId === undefined) throw new Error("No cloned voice to speak with");
-        return { text: context.prompt, voice_id: context.voiceId };
-      },
+      body: (context) => ({ text: context.prompt, voice_id: context.voice() }),
       output: (outputs) => ({ urls: [outputField(outputs, "url")] }),
     },
   },

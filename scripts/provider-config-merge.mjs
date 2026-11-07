@@ -22,7 +22,8 @@ function isObject(value) {
 /**
  * Merge the generated WaveSpeed bindings into the existing media models: each
  * model's WaveSpeed binding is replaced in place (or added first), every other
- * binding and every model the catalog no longer generates are kept. A generated
+ * binding, the model's own entries (its vendor's `rejects`) and every model the
+ * catalog no longer generates are kept. A generated
  * binding without `pricing` keeps the existing WaveSpeed binding's, else takes
  * the model's placeholder.
  * @param {Record<string, { upstreams: Record<string, unknown>[] }> | undefined} existing - The models in the file now.
@@ -44,7 +45,7 @@ export function mergeMediaModels(existing, generated, placeholders) {
       return { ...binding, pricing };
     });
     const others = kept.filter((b) => b.upstream !== OWNED);
-    out[model] = { upstreams: at < 0 ? [...own, ...others] : [...kept.slice(0, at), ...own, ...kept.slice(at + 1)] };
+    out[model] = { ...out[model], upstreams: at < 0 ? [...own, ...others] : [...kept.slice(0, at), ...own, ...kept.slice(at + 1)] };
   }
   return out;
 }

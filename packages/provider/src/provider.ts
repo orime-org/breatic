@@ -84,7 +84,11 @@ export function createProvider(options: ProviderOptions): Provider {
    * @param model - Our model id.
    * @returns The rules.
    */
-  const pricingRules = (model: string): PricingRules => ({ model, upstreams: (config.models[model] ?? []).map(pricingOf) });
+  const pricingRules = (model: string): PricingRules => ({
+    model,
+    ...(config.rejects[model] === undefined ? {} : { rejects: config.rejects[model] }),
+    upstreams: (config.models[model] ?? []).map(pricingOf),
+  });
   return {
     config,
     keyOf: options.keyOf,
@@ -202,8 +206,7 @@ async function lookupCost(config: ProviderConfig, options: ProviderOptions, look
     }
     return { state: "known", usd: cost, tokens, source: "billing" };
   } catch (error) {
-    // fetchJson throws only Error instances; the String branch is for the type.
-    /* v8 ignore next -- @preserve */
-    return unanswered(error instanceof Error ? error.message : String(error));
+    // fetchJson throws only Error instances.
+    return unanswered((error as Error).message);
   }
 }

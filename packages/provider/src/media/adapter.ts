@@ -80,8 +80,11 @@ export interface StepContext {
   binding: MediaBinding;
   /** The voice id a clone step registers, unique per run. */
   customVoiceId: string;
-  /** The cloned voice a speak step speaks with. */
-  voiceId: string | undefined;
+  /**
+   * The cloned voice a speak step speaks with.
+   * @throws {Error} When the run has no cloned voice.
+   */
+  voice(): string;
   /** For an element step: what its describe step wrote. */
   description: string | undefined;
   itemIndex: number | null;
