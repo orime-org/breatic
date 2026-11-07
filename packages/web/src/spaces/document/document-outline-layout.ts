@@ -1,16 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
+import { BODY_GUTTER_END, COMMENT_PANEL_WIDTH, OUTLINE_WIDTH } from '@web/spaces/document/document-columns';
 import { BODY_GUTTER_START } from '@web/spaces/document/document-strip-alignment';
-
-/** The open outline's width when it takes its own column. */
-export const OUTLINE_WIDTH = 240;
-
-/** The body's right gutter, where the whole-document entry stands (`--doc-body-gutter`). */
-const BODY_GUTTER_END = 56;
-
-/** The comment panel's width (`w-72`). */
-const COMMENT_PANEL_WIDTH = 288;
 
 /**
  * The narrowest body text the outline leaves when it takes its own column:

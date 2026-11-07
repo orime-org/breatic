@@ -79,6 +79,10 @@ import {
 import { useCommentWrite } from '@web/spaces/document/use-comment-write';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { domElementOf } from '@web/spaces/document/document-editor-view';
+import { COMMENT_PANEL_WIDTH } from '@web/spaces/document/document-columns';
+
+/** The panel's width, shared with the heading outline's layout check. */
+const PANEL_WIDTH: React.CSSProperties = { width: COMMENT_PANEL_WIDTH };
 
 interface DocumentCommentRailProps {
   /** The editor whose threads this draws. */
@@ -673,7 +677,8 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     <aside
       ref={aside}
       data-testid='doc-comment-rail'
-      className='flex w-72 flex-none flex-col border-l border-border'
+      className='flex flex-none flex-col border-l border-border'
+      style={PANEL_WIDTH}
     >
       {/* Held at the top while the column scrolls past under it: the panel
           shares the body's scroller, so without this the title and the way

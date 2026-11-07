@@ -11,6 +11,7 @@ import {
 import { DocumentBlockControls } from '@web/spaces/document/DocumentBlockControls';
 import { DocumentMenuEntry } from '@web/spaces/document/DocumentMenuEntry';
 import { DocumentOutline } from '@web/spaces/document/DocumentOutline';
+import { BODY_ROW_VARS } from '@web/spaces/document/document-columns';
 import { SelectionBubbleBar } from '@web/spaces/document/SelectionBubbleBar';
 import {
   DOCUMENT_COMMENT_DRAFT_RANGE,
@@ -373,7 +374,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           wheel anywhere in here moves both sides together. The heading outline
           stands left of it, outside the scroller, so it stays put while the
           body scrolls (inner#1149). */}
-      <div className={`${BODY_ROW_CLASS} flex min-h-0 flex-1`}>
+      <div className={`${BODY_ROW_CLASS} flex min-h-0 flex-1`} style={BODY_ROW_VARS}>
         <DocumentOutline editor={handle.editor} viewport={viewport} readOnly={readOnly} commentsOpen={railOpen} />
         <ScrollArea
           viewportRef={setViewport}

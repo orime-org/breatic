@@ -3,7 +3,6 @@
 
 import * as React from 'react';
 import { ChevronDown, ChevronRight, TableOfContents } from 'lucide-react';
-import { TextSelection } from '@tiptap/pm/state';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
@@ -14,6 +13,7 @@ import { useDocumentViewStore } from '@web/stores';
 import type { ShowableEditor } from '@web/spaces/document/document-editor-cache';
 import { viewOf } from '@web/spaces/document/document-editor-view';
 import { readOutline, type OutlineEntry } from '@web/spaces/document/document-outline';
+import { BODY_GUTTER_END, OUTLINE_WIDTH } from '@web/spaces/document/document-columns';
 import { outlineLayout } from '@web/spaces/document/document-outline-layout';
 import { useCachedSnapshot } from '@web/spaces/document/use-editor-snapshot';
 
@@ -27,6 +27,12 @@ const READING_LINE = LANDING + 8;
 
 /** How far each level of the tree is indented. */
 const INDENT = 12;
+
+/** The column open beside the body, and the outline floating over it. */
+const OPEN_WIDTH: React.CSSProperties = { width: OUTLINE_WIDTH };
+
+/** The column with only the icon: the same width as the body's right gutter. */
+const SHUT_WIDTH: React.CSSProperties = { width: BODY_GUTTER_END };
 
 interface DocumentOutlineProps {
   editor: Editor;
@@ -99,25 +105,6 @@ function lineage(entries: readonly OutlineEntry[], above: readonly string[] = []
 function headingLine(viewport: HTMLElement, id: string): HTMLElement | null {
   const block = viewport.querySelector<HTMLElement>(`.bn-block-outer[data-id="${CSS.escape(id)}"]`);
   return block?.querySelector<HTMLElement>(':scope > .bn-block > .bn-block-content') ?? block ?? null;
-}
-
-/**
- * Where a block's first character sits in the document.
- * @param editor - The editor.
- * @param id - The block id.
- * @returns The position inside its content, or null when it is gone.
- */
-function startOf(editor: Editor, id: string): number | null {
-  let at: number | null = null;
-  editor.prosemirrorState.doc.descendants((node, pos) => {
-    if (at !== null) return false;
-    if (node.type.name === 'blockContainer' && node.attrs['id'] === id) {
-      at = pos + 2;
-      return false;
-    }
-    return true;
-  });
-  return at;
 }
 
 /**
@@ -232,14 +219,16 @@ export const DocumentOutline = React.memo(function DocumentOutline({
   const floating = outlineLayout({ spaceWidth, commentsOpen }) === 'floating';
 
   // Floating, a jump tucks the outline away so the heading and the caret
-  // show; the remembered setting stays as it was, and tiling drops the tuck.
+  // show; the remembered setting stays as it was. A tuck means something only
+  // while the outline floats and is shown: tiling, or the setting turned off
+  // from another document, drops it.
   const [tucked, setTucked] = React.useState(false);
-  if (tucked && !floating) setTucked(false);
-  const open = visible && !(floating && tucked);
+  if (tucked && !(floating && visible)) setTucked(false);
+  const open = visible && !tucked;
   const onToggle = React.useCallback(() => {
-    if (floating && tucked && visible) setTucked(false);
+    if (tucked) setTucked(false);
     else toggleOutline();
-  }, [floating, tucked, visible, toggleOutline]);
+  }, [tucked, toggleOutline]);
 
   const subscribe = React.useCallback((onChange: () => void) => editor.onChange(onChange) ?? (() => undefined), [editor]);
   const read = React.useCallback(() => readOutline(editor.prosemirrorState.doc), [editor]);
@@ -254,9 +243,10 @@ export const DocumentOutline = React.memo(function DocumentOutline({
     });
   }, []);
   const ancestors = React.useMemo(() => new Map(lineage(outline)), [outline]);
-  // A folded heading that was deleted leaves the set.
-  const liveFolded = React.useMemo(() => new Set([...folded].filter((id) => ancestors.has(id))), [folded, ancestors]);
-  const rows = React.useMemo(() => rowsOf(outline, liveFolded), [outline, liveFolded]);
+  // A folded heading that was deleted leaves the set, so undoing the deletion
+  // brings it back unfolded (design §6.6).
+  if ([...folded].some((id) => !ancestors.has(id))) setFolded(new Set([...folded].filter((id) => ancestors.has(id))));
+  const rows = React.useMemo(() => rowsOf(outline, folded), [outline, folded]);
 
   const [reading, setReading] = React.useState<string | null>(null);
   const pinned = React.useRef<{ id: string; at: number } | null>(null);
@@ -299,7 +289,7 @@ export const DocumentOutline = React.memo(function DocumentOutline({
     // text without changing the viewport's size, so the content is watched too.
     const sizes = new ResizeObserver(schedule);
     sizes.observe(viewport);
-    const content = viewport.querySelector('[data-testid="document-editor-content"]');
+    const content = viewport.querySelector('.doc-body-editor');
     if (content !== null) sizes.observe(content);
     viewport.addEventListener('scroll', onScroll, { passive: true });
     compute();
@@ -342,12 +332,8 @@ export const DocumentOutline = React.memo(function DocumentOutline({
     pinned.current = target < want ? { id, at: viewport.scrollTop } : null;
     setReading(id);
     if (!readOnly) {
-      const view = viewOf(editor);
-      const at = startOf(editor, id);
-      if (view !== null && at !== null) {
-        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at)));
-        view.dom.focus({ preventScroll: true });
-      }
+      editor.setTextCursorPosition(id, 'start');
+      viewOf(editor)?.dom.focus({ preventScroll: true });
     }
     if (floating) setTucked(true);
   }, [viewport, readOnly, editor, floating]);
@@ -358,7 +344,8 @@ export const DocumentOutline = React.memo(function DocumentOutline({
       ref={column}
       data-testid='doc-outline-column'
       data-layout={floating ? 'floating' : 'tiled'}
-      className={cn('relative flex min-h-0 flex-none flex-col', open && !floating ? 'w-60' : 'w-[var(--doc-body-gutter)]')}
+      className='relative flex min-h-0 flex-none flex-col'
+      style={open && !floating ? OPEN_WIDTH : SHUT_WIDTH}
     >
       {/* One element tree for both layouts, only its classes change, so the
           list and its folds survive the switch. Floating, it sits over the
@@ -367,8 +354,9 @@ export const DocumentOutline = React.memo(function DocumentOutline({
         data-testid={over ? 'doc-outline-float' : undefined}
         className={cn(
           'flex min-h-0 flex-col',
-          over ? 'absolute inset-y-0 left-0 z-30 w-60 bg-background/70 shadow-md backdrop-blur-sm' : 'flex-1',
+          over ? 'absolute inset-y-0 left-0 z-30 bg-background/70 shadow-md backdrop-blur-sm' : 'flex-1',
         )}
+        style={over ? OPEN_WIDTH : undefined}
       >
         <div className='flex flex-none pb-2 pl-[var(--doc-entry-inset)] pt-5'>
           <Tooltip>
@@ -399,7 +387,7 @@ export const DocumentOutline = React.memo(function DocumentOutline({
                     key={row.entry.id}
                     row={row}
                     active={row.entry.id === shownReading}
-                    folded={liveFolded.has(row.entry.id)}
+                    folded={folded.has(row.entry.id)}
                     onFold={onFold}
                     onJump={onJump}
                   />

@@ -14,8 +14,7 @@ export const BODY_SCROLLER_CLASS = 'doc-body-scroller';
 
 /**
  * The class on the row that holds the scroller and the heading outline beside
- * it. The stylesheet hangs the whole-document entry's layout variables on it
- * (`--doc-entry-*`, `--doc-body-gutter`), which the outline's icon and its
- * shut column read as well.
+ * it, where the whole-document entry's layout variables are set
+ * (`BODY_ROW_VARS`, `document-columns.ts`).
  */
 export const BODY_ROW_CLASS = 'doc-body-row';

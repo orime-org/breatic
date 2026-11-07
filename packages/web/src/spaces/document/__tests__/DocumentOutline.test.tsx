@@ -309,6 +309,29 @@ describe('DocumentOutline', () => {
 
       expect(scrollTo).toHaveBeenCalledWith({ top: 700 - 100 - 16, behavior: 'instant' });
       expect(opened.handle.editor.prosemirrorState.selection.toJSON()).toEqual(before);
+      expect(opened.handle.editor.prosemirrorView!.dom.contains(document.activeElement)).toBe(false);
+    });
+  });
+
+  describe('A9 — the heading being read', () => {
+    it('is shown by its nearest visible ancestor once a fold hides it', async () => {
+      renderWith([h('a', 1, 'One'), h('b', 2, 'Under'), h('c', 1, 'Two')]);
+      const viewport = bodyViewport();
+      placeAt(viewport, 100);
+      Object.defineProperty(viewport, 'scrollHeight', { configurable: true, value: 5000 });
+      Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 800 });
+      const lineOf = (text: string): Element =>
+        document.querySelector(`.bn-block-outer[data-id="${idOf(opened.handle, text)}"] > .bn-block > .bn-block-content`)!;
+      placeAt(lineOf('One'), 40);
+      placeAt(lineOf('Under'), 110);
+      placeAt(lineOf('Two'), 600);
+      fireEvent.scroll(viewport);
+      const itemOf = (text: string): Element => row(text).closest('[data-outline-item]')!;
+      await waitFor(() => expect(itemOf('Under')).toHaveClass('bg-accent-strong'));
+
+      fireEvent.click(within(itemOf('One') as HTMLElement).getByTestId('doc-outline-fold'));
+
+      expect(itemOf('One')).toHaveClass('bg-accent-strong');
     });
   });
 
@@ -320,6 +343,21 @@ describe('DocumentOutline', () => {
 
       expect(rowTexts()).toEqual(['One', 'Two']);
       expect(scrollTo).not.toHaveBeenCalled();
+    });
+
+    it('lets go of a folded heading once it is deleted, so undoing brings it back unfolded', async () => {
+      renderWith([h('a', 1, 'One'), h('b', 2, 'Under'), h('d', 1, 'Two')]);
+      // Past the undo manager's 500ms capture, so the undo below takes back
+      // the deletion alone and leaves the document that was filled in.
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      fireEvent.click(within(row('One').closest('[data-outline-item]') as HTMLElement).getByTestId('doc-outline-fold'));
+      expect(rowTexts()).toEqual(['One', 'Two']);
+
+      act(() => opened.handle.editor.removeBlocks([idOf(opened.handle, 'One')]));
+      expect(rowTexts()).toEqual(['Under', 'Two']);
+      act(() => opened.handle.editor.undo());
+
+      expect(rowTexts()).toEqual(['One', 'Under', 'Two']);
     });
 
     it('keeps a fold when the Space narrows past the point where the outline floats', () => {
@@ -402,6 +440,19 @@ describe('DocumentOutline', () => {
       resizeTo(1440);
       expect(screen.getByTestId('doc-outline-column')).toHaveAttribute('data-layout', 'tiled');
       expect(rowTexts()).toEqual(['One', 'Two']);
+    });
+
+    it('opens with one click after another document shut the outline while this one was tucked', () => {
+      renderWith([h('a', 1, 'One'), h('b', 2, 'Two')]);
+      resizeTo(639);
+      fireEvent.click(row('Two'));
+      expect(rowTexts()).toEqual([]);
+
+      act(() => useDocumentViewStore.getState().setOutlineVisible(false));
+      fireEvent.click(screen.getByTestId('doc-outline-toggle'));
+
+      expect(rowTexts()).toEqual(['One', 'Two']);
+      expect(useDocumentViewStore.getState().outlineVisible).toBe(true);
     });
 
     it('keeps a tiled jump from tucking the outline away', () => {
