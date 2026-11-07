@@ -2962,7 +2962,20 @@
       "enterpriseScale": "Capacity by agreement",
       "enterpriseGovernance": "SSO, audit, IP indemnity"
     },
-    "noCreditsIncluded": "Membership includes no generation credits. Credits are bought separately."
+    "noCreditsIncluded": "Membership includes no generation credits. Credits are bought separately.",
+    "referral": {
+      "heading": "Referral code",
+      "intro": "Add a referral code before your first membership to get {percent}% off the first period. It can't be changed afterwards.",
+      "placeholder": "Enter a referral code",
+      "add": "Add",
+      "required": "Enter a referral code.",
+      "bound": "Referral code {code}",
+      "boundDiscount": "{percent}% off your first membership period, applied at checkout.",
+      "badge": "{percent}% off first period",
+      "added": "Added. Choose a membership to get {percent}% off the first period.",
+      "loadFailed": "Couldn't load referral information.",
+      "retry": "Retry"
+    }
   },
   "credits": {
     "panelTitle": "Credits",

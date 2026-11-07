@@ -2962,7 +2962,20 @@
       "enterpriseScale": "容量按協議約定",
       "enterpriseGovernance": "SSO、稽核、智慧財產保障"
     },
-    "noCreditsIncluded": "會員不含生成點數，點數單獨購買。"
+    "noCreditsIncluded": "會員不含生成點數，點數單獨購買。",
+    "referral": {
+      "heading": "推廣碼",
+      "intro": "有推廣碼的話，在第一次開會員前填上，首期會員 {zhe} 折。綁定後不能修改。",
+      "placeholder": "輸入推廣碼",
+      "add": "綁定",
+      "required": "請輸入推廣碼。",
+      "bound": "已綁定推廣碼 {code}",
+      "boundDiscount": "首期會員 {zhe} 折，結帳時自動生效。",
+      "badge": "首期 {zhe} 折",
+      "added": "已綁定，重新選擇會員即享首期 {zhe} 折。",
+      "loadFailed": "沒有讀到推廣資訊。",
+      "retry": "重試"
+    }
   },
   "credits": {
     "panelTitle": "點數",

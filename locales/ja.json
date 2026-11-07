@@ -2962,7 +2962,20 @@
       "enterpriseScale": "容量は個別契約",
       "enterpriseGovernance": "SSO・監査・知的財産補償"
     },
-    "noCreditsIncluded": "メンバーシップに生成クレジットは含まれません。クレジットは別途購入します。"
+    "noCreditsIncluded": "メンバーシップに生成クレジットは含まれません。クレジットは別途購入します。",
+    "referral": {
+      "heading": "紹介コード",
+      "intro": "初めてメンバーシップに加入する前に紹介コードを登録すると、最初の期間が {percent}% 割引になります。登録後は変更できません。",
+      "placeholder": "紹介コードを入力",
+      "add": "登録",
+      "required": "紹介コードを入力してください。",
+      "bound": "紹介コード {code}",
+      "boundDiscount": "最初のメンバーシップ期間が {percent}% 割引になり、お支払い時に自動で適用されます。",
+      "badge": "初回 {percent}% 割引",
+      "added": "登録しました。メンバーシップを選ぶと最初の期間が {percent}% 割引になります。",
+      "loadFailed": "紹介情報を読み込めませんでした。",
+      "retry": "再試行"
+    }
   },
   "credits": {
     "panelTitle": "クレジット",

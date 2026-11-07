@@ -24,6 +24,8 @@ import { SALES_EMAIL } from '@web/features/membership/pricing';
 import { SubscriptionLines } from '@web/features/membership/SubscriptionLines';
 import { useSubscriptionActions } from '@web/features/membership/use-subscription-actions';
 import { TierCards } from '@web/features/membership/TierCards';
+import { SectionHeading } from '@web/features/membership/SectionHeading';
+import { ReferralCodeSection } from '@web/features/referral/ReferralCodeSection';
 import { TierComparison, TierComparisonSkeleton } from '@web/features/membership/TierComparison';
 import { useTranslation } from '@web/i18n/use-translation';
 
@@ -31,24 +33,6 @@ import { useTranslation } from '@web/i18n/use-translation';
 interface MembershipContentProps {
   /** The whole answer behind the panel. */
   membership: AccountMembership;
-}
-
-/**
- * A muted section heading, matching the settings tab's own.
- * @param props - The heading's text.
- * @param props.children - The heading's text.
- * @returns The heading.
- */
-function SectionHeading({
-  children,
-}: {
-  children: React.ReactNode;
-}): React.JSX.Element {
-  return (
-    <h3 className='text-xs font-bold uppercase tracking-[0.04em] text-muted-foreground'>
-      {children}
-    </h3>
-  );
 }
 
 /**
@@ -302,6 +286,8 @@ export function MembershipContent({
               </>
             )}
           </section>
+
+          <ReferralCodeSection />
 
           {onPriceList ? (
             <section className='flex flex-col gap-4'>
