@@ -47,7 +47,7 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { parse, parseDocument, type Document } from "yaml";
-import type { ProviderConfigInput } from "../packages/provider/src/config/schema.js";
+import { OPENROUTER_QUANTIZATIONS, type ProviderConfigInput } from "../packages/provider/src/config/schema.js";
 import { snapshotOf, type SchemaSnapshot } from "../packages/provider/src/config/upstream-schema.js";
 import { buildBody } from "../packages/provider/src/media/body.js";
 import { assess } from "../packages/provider/src/pricing/estimate.js";
@@ -394,17 +394,17 @@ async function syncSandBase(upstream: string, list: typeof bindings): Promise<vo
  */
 async function syncOpenRouterPrices(): Promise<void> {
   const doc = parseDocument(readFileSync(LLM, "utf8"));
-  const llm = doc.toJS() as { prices?: Record<string, unknown>; vendor_ids?: Record<string, Record<string, string>> };
+  const llm = doc.toJS() as { prices?: Record<string, unknown>; vendor_ids?: Record<string, Record<string, string>>; openrouter_quantizations?: string[] };
   const ids = new Map(Object.keys(llm.prices ?? {}).map((model) => [model, llm.vendor_ids?.[model]?.openrouter ?? model]));
-  const endpoints = new Map<string, { pricing?: { prompt?: unknown; completion?: unknown } }[]>();
+  const endpoints = new Map<string, { quantization?: unknown; pricing?: { prompt?: unknown; completion?: unknown } }[]>();
   for (const id of new Set(ids.values())) {
     const res = await fetch(`${OPENROUTER_MODELS}/${id}/endpoints`, { signal: AbortSignal.timeout(60_000) });
     // A model OpenRouter does not list answers 404; openRouterPrices names it.
     if (res.status === 404) continue;
     if (!res.ok) throw new Error(`GET ${OPENROUTER_MODELS}/${id}/endpoints answered ${res.status}: ${(await res.text()).slice(0, 300)}`);
-    endpoints.set(id, at(await res.json(), "data", "endpoints") as { pricing?: { prompt?: unknown; completion?: unknown } }[]);
+    endpoints.set(id, at(await res.json(), "data", "endpoints") as { quantization?: unknown; pricing?: { prompt?: unknown; completion?: unknown } }[]);
   }
-  const { prices, problems: unpriced } = openRouterPrices(endpoints, ids);
+  const { prices, problems: unpriced } = openRouterPrices(endpoints, ids, llm.openrouter_quantizations ?? OPENROUTER_QUANTIZATIONS);
   problems.push(...unpriced);
   doc.set("openrouter_prices", doc.createNode(prices));
   const text = yamlText(doc, { lineWidth: 0 });

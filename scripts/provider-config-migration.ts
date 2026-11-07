@@ -414,7 +414,8 @@ openrouter_backends pins the backend OpenRouter routes a model to. prices are
 the direct token prices, in USD per million tokens, for upstreams that report
 no cost of their own. openrouter_prices are OpenRouter's token prices for the
 same models, as pnpm provider:prices writes them, so a cheapest call can rank
-OpenRouter beside the direct upstream.
+OpenRouter beside the direct upstream; both read only the endpoints of the
+quantizations openrouter_quantizations lists.
 gemini_inline_max_bytes is the request size past which media goes to Gemini
 through its Files API rather than inline; gemini_file_poll_ms is how often an
 uploaded file is asked about until it is ready.

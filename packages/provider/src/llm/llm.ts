@@ -206,8 +206,10 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     for (const { upstream } of plan.order) {
       const vendor = vendorOf(kindOf(upstream));
       // The OpenRouter backend pin is understand's alone, never a prepared call's. A cheapest call is ranked by
-      // OpenRouter's cheapest endpoint (openrouter_prices), so it asks OpenRouter to try that endpoint first.
-      const cheapest: VendorOptions = chosen.mode === "cheapest" && kindOf(upstream) === "openrouter" ? { provider: { sort: "price" } } : {};
+      // OpenRouter's cheapest endpoint of the quantizations it takes (openrouter_prices), so it asks for that one first.
+      const cheapest: VendorOptions = chosen.mode === "cheapest" && kindOf(upstream) === "openrouter"
+        ? { provider: { sort: "price", quantizations: config.llm.openrouter_quantizations } }
+        : {};
       merged[vendor.sdkName] = { ...optionsFor(vendor, modelId, wants), ...cheapest };
     }
     return merged;

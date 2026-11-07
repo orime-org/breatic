@@ -139,6 +139,9 @@ const llmPriceSchema = z.strictObject({
 
 /** Gemini's inline request limit by default: the video-understanding page's 20 MB, the stricter of its two docs. */
 const GEMINI_INLINE_MAX_BYTES = 20_000_000;
+
+/** OpenRouter's quantization levels of 8 bits and more, and `unknown` (an official endpoint names none): 4- and 6-bit endpoints serve a coarser model. */
+export const OPENROUTER_QUANTIZATIONS: readonly string[] = ["int8", "fp8", "mxfp8", "fp16", "bf16", "fp32", "unknown"];
 /** How often an uploaded Gemini file is asked about by default, in ms. */
 const GEMINI_FILE_POLL_MS = 5_000;
 
@@ -149,8 +152,10 @@ const llmSchema = z.strictObject({
   openrouter_backends: z.record(z.string(), z.strictObject({ only: z.array(z.string()), allow_fallbacks: z.boolean() })).optional(),
   /** Direct token prices in USD per million tokens, by our model id. */
   prices: z.record(z.string(), llmPriceSchema).optional(),
-  /** OpenRouter's token prices in USD per million tokens, by our model id, as `pnpm provider:prices` writes them from OpenRouter's model list. */
+  /** OpenRouter's token prices in USD per million tokens, by our model id: its cheapest endpoint at a quantization `openrouter_quantizations` lists, as `pnpm provider:prices` writes them. */
   openrouter_prices: z.record(z.string(), llmPriceSchema).optional(),
+  /** The quantizations a cheapest call takes on OpenRouter (its `provider.quantizations`). */
+  openrouter_quantizations: z.array(z.string().min(1)).min(1).default([...OPENROUTER_QUANTIZATIONS]),
   /** The request size past which Gemini takes media through its Files API, in bytes. */
   gemini_inline_max_bytes: z.number().int().positive().default(GEMINI_INLINE_MAX_BYTES),
   /** How often an uploaded Gemini file's state is asked about, in ms. */
@@ -404,6 +409,7 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
     openrouter_backends: raw.llm?.openrouter_backends ?? {},
     prices: raw.llm?.prices ?? {},
     openrouter_prices: raw.llm?.openrouter_prices ?? {},
+    openrouter_quantizations: raw.llm?.openrouter_quantizations ?? [...OPENROUTER_QUANTIZATIONS],
     gemini_inline_max_bytes: raw.llm?.gemini_inline_max_bytes ?? GEMINI_INLINE_MAX_BYTES,
     gemini_file_poll_ms: raw.llm?.gemini_file_poll_ms ?? GEMINI_FILE_POLL_MS,
   };

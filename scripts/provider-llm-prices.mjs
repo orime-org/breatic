@@ -5,7 +5,8 @@
  * How `scripts/provider-prices.ts` reads OpenRouter's token prices into `openrouter_prices` in
  * `config/provider/llm.yaml`, so a cheapest LLM call ranks OpenRouter beside the direct upstream
  * (inner#1743). A cheapest call asks OpenRouter to try its endpoints cheapest first (`provider.sort`
- * "price"), so the price written is that of the cheapest endpoint OpenRouter lists for the model
+ * "price", within the quantizations `openrouter_quantizations` lists), so the price written is that of
+ * the cheapest such endpoint OpenRouter lists for the model
  * (`GET https://openrouter.ai/api/v1/models/{author}/{slug}/endpoints`).
  */
 
@@ -22,12 +23,14 @@ function perMtok(perToken) {
 }
 
 /**
- * Our models' OpenRouter token prices: per model, its cheapest endpoint with a fixed price, by input then output.
- * @param {ReadonlyMap<string, readonly { pricing?: { prompt?: unknown; completion?: unknown } }[]>} endpoints - The endpoints OpenRouter lists, by OpenRouter's model id; a model it does not list is absent.
+ * Our models' OpenRouter token prices: per model, its cheapest endpoint with a fixed price and a quantization a
+ * cheapest call takes, by input then output.
+ * @param {ReadonlyMap<string, readonly { quantization?: unknown; pricing?: { prompt?: unknown; completion?: unknown } }[]>} endpoints - The endpoints OpenRouter lists, by OpenRouter's model id; a model it does not list is absent.
  * @param {ReadonlyMap<string, string>} ids - Our model id to the id OpenRouter lists it under.
+ * @param {readonly string[]} quantizations - The quantizations a cheapest call takes; an endpoint naming none is `unknown`.
  * @returns {{ prices: Record<string, { input_cache_miss_per_mtok: number; output_per_mtok: number }>; problems: string[] }} The prices by our model id, and a problem for each model given no price.
  */
-export function openRouterPrices(endpoints, ids) {
+export function openRouterPrices(endpoints, ids, quantizations) {
   /** @type {Record<string, { input_cache_miss_per_mtok: number; output_per_mtok: number }>} */
   const prices = {};
   /** @type {string[]} */
@@ -39,11 +42,12 @@ export function openRouterPrices(endpoints, ids) {
       continue;
     }
     const fixed = listed
+      .filter((e) => quantizations.includes(typeof e.quantization === "string" ? e.quantization : "unknown"))
       .map((e) => ({ input: perMtok(e.pricing?.prompt), output: perMtok(e.pricing?.completion) }))
       .filter((p) => p.input !== undefined && p.output !== undefined)
       .sort((a, b) => a.input - b.input || a.output - b.output);
     if (fixed.length === 0) {
-      problems.push(`${ours}: none of the ${listed.length} endpoints of ${theirs} states a fixed token price`);
+      problems.push(`${ours}: none of the ${listed.length} endpoints of ${theirs} states a fixed token price at a quantization a cheapest call takes`);
       continue;
     }
     prices[ours] = { input_cache_miss_per_mtok: fixed[0].input, output_per_mtok: fixed[0].output };
