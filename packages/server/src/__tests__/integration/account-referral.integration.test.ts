@@ -107,6 +107,20 @@ describe("bindLater", () => {
     expect(stripe.checkout.sessions.expire).toHaveBeenCalledWith("cs_sub", {}, expect.objectContaining({ maxNetworkRetries: 0 }));
   });
 
+  it("leaves a discounted membership checkout open: it was made after the binding", async () => {
+    const { code } = await promoter();
+    const userId = await account(`cus_${randomUUID().slice(0, 8)}`);
+    stripe.checkout.sessions.list.mockResolvedValue({
+      data: [
+        { id: "cs_discounted", mode: "subscription", discounts: [{ coupon: "referral-first-period-20", promotion_code: null }] },
+        { id: "cs_full", mode: "subscription", discounts: [] },
+        { id: "cs_pack", mode: "payment", discounts: [] },
+      ],
+    });
+    expect(await bindLater(userId, code)).toEqual({ ok: true });
+    expect(stripe.checkout.sessions.expire.mock.calls.map((c) => c[0])).toEqual(["cs_full"]);
+  });
+
   it("keeps the binding when expiring the checkouts fails", async () => {
     const { code } = await promoter();
     const userId = await account(`cus_${randomUUID().slice(0, 8)}`);

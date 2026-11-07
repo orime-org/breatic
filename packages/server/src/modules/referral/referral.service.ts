@@ -88,7 +88,7 @@ export async function readAccountReferral(userId: string, termsVersion: string):
 }
 
 /**
- * Expires the account's open membership checkouts, so none of them charges full price after a backfill.
+ * Expires the account's open full-price membership checkouts, so none of them charges full price after a backfill.
  * @param userId - The account.
  * @returns Nothing; a failure is logged and the binding stands.
  */
@@ -100,7 +100,9 @@ async function expireOpenMembershipCheckouts(userId: string): Promise<void> {
     const stripe = getStripeClient();
     const open = await stripe.checkout.sessions.list({ customer, status: "open", limit: 100 }, call);
     for (const session of open.data) {
-      if (session.mode === "subscription") await stripe.checkout.sessions.expire(session.id, {}, call);
+      // A page with the coupon was made after the binding, so it already charges the discounted price.
+      const fullPrice = session.mode === "subscription" && !session.discounts?.length;
+      if (fullPrice) await stripe.checkout.sessions.expire(session.id, {}, call);
     }
   } catch (err) {
     logger.error({ err, userId }, "referral_backfill_checkout_expire_failed");
