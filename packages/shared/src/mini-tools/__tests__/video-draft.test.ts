@@ -45,7 +45,7 @@ const source = { nodeId: hostId, canonicalURL: "https://media.example.test/sourc
 const anchor = { frameIndex: 3, pts: 0.12 };
 const params: Record<VideoToolId, ObjectValue> = {
   "video.expand": { frame: { x: 0, y: 0, width: 1, height: 1 }, ratio: "free", prompt: "" },
-  "video.erase": { range: { start: 0, end: 5 }, anchor, region: { box: null, points: [] }, trackingPrompt: "", erasePrompt: "" },
+  "video.erase": { range: { start: 0, end: 5 }, anchor, region: { box: null, points: [] }, trackingPrompt: "" },
   "video.lip-sync": { anchor, dialogues: [{ dialogueId, personId: null, analysisRunId: null, audioInputId: null, startTime: 0 }], syncMode: "cut_off" },
   "video.remove-bg": {},
   "video.extract-frames": { mode: "current", currentTime: 0.12 },
@@ -77,6 +77,12 @@ function refFor(toolId: VideoToolId, kind: AnalysisRef["kind"]): AnalysisRef {
 describe("persistent video tool draft contract", () => {
   it("exports the schema, reader and reference entry points", () => {
     expect(["videoToolDraftSchema", "readVideoToolDraft", "videoToolAnalysisRefSchema", "videoToolDraftAssetUrls", "videoToolAnalysisRefs"].filter((key) => !(key in miniTools))).toEqual([]);
+  });
+
+  // Execution design §10.4: Bria takes no prompt, so the erase draft keeps only the tracking prompt.
+  it("refuses an erase draft that still carries an erase prompt", () => {
+    const value = draftFor("video.erase");
+    expect(api.videoToolDraftSchema("video.erase").safeParse({ ...value, params: { ...value.params, erasePrompt: "" } }).success).toBe(false);
   });
 
   describe.each(toolIds)("%s scalar draft", (toolId) => {
