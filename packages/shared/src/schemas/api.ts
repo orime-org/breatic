@@ -50,10 +50,20 @@ export const emailSchema = z.string().transform(normalizeEmail).pipe(z.email().m
  */
 const attributionField = z.unknown().optional();
 
+/**
+ * A referral code a sign-up carries (inner#1868): from a share link, or typed.
+ * Blank means none; the server parses the code itself.
+ */
+export const signupReferralFields = {
+  referralCode: z.string().max(40).optional(),
+  referralSource: z.enum(["signup_link", "signup_typed"]).optional(),
+};
+
 export const registerSchema = z.object({
   email: emailSchema,
   password: z.string().min(8),
   attribution: attributionField,
+  ...signupReferralFields,
 });
 export type RegisterInput = z.infer<typeof registerSchema>;
 
@@ -180,6 +190,7 @@ export type LoginInput = z.infer<typeof loginSchema>;
 
 export const googleAuthSchema = z.object({
   credential: z.string().min(1),
+  ...signupReferralFields,
 });
 export type GoogleAuthInput = z.infer<typeof googleAuthSchema>;
 

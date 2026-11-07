@@ -298,6 +298,7 @@ export {
   normalizeEmail,
   emailSchema,
   registerSchema,
+  signupReferralFields,
   signupVerifySchema,
   SIGNUP_CODE_REGEX,
   setupStudioSchema,
