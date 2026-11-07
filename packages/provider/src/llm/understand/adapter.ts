@@ -38,6 +38,8 @@ export interface UnderstandCall {
   maxOutputTokens: number;
   /** OpenRouter's backend pin for the model, when it has one. */
   backend?: { only: string[]; allow_fallbacks: boolean };
+  /** For a cheapest call through OpenRouter: try its endpoints cheapest first, within these quantizations. */
+  cheapest?: { sort: "price"; quantizations: readonly string[] };
   deadlineAt: number;
   signal: AbortSignal;
   /** The size past which Gemini takes media through its Files API, in bytes. */

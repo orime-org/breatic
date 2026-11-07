@@ -477,14 +477,15 @@ describe("judge (JEV)", () => {
     fakes.openrouter.release();
   });
 
-  it("cleans the state and the questions with the caller's text cleaning", async () => {
+  it("cleans the state and the questions with the caller's text cleaning, inside lists too", async () => {
     fakes.openrouter.answer(() => ({ status: 200, body: {} }));
     await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }, { cleanText: (t) => t.replaceAll("HIDDEN", "") }).llm.judge({
       ...request,
-      state: { note: "fineHIDDEN" },
+      state: { note: "fineHIDDEN", steps: ["oneHIDDEN", { name: "twoHIDDEN" }, 3] },
       questions: { "okHIDDEN": { text: "whyHIDDEN" } },
     });
     expect(JSON.stringify(posted(fakes.openrouter)[0])).not.toContain("HIDDEN");
+    expect(posted(fakes.openrouter)[0]?.state).toEqual({ note: "fine", steps: ["one", { name: "two" }, 3] });
   });
 
   it("throws NoAnswer when the connection drops after the request arrived", async () => {

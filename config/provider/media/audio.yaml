@@ -131,8 +131,8 @@ models:
         rejects:
           - when: $not($exists(prompt) or $exists(lyrics))
             reason: "fal prompt: Required when lyrics is omitted"
-          - when: get_duration(vocal_id) > 30 or get_duration(vocal_id, min=15, max=1000000, total=1000000) > get_duration(vocal_id)
-            reason: "fal mureka/api/voice/clone audio_url: a vocal sample between 15 and 30 seconds"
+          - when: get_duration(vocal_id) > 30
+            reason: "fal mureka/api/voice/clone audio: up to 30 seconds (Mureka trims past 30)"
         pricing:
           kind: formula
           base_price: 5000

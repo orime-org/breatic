@@ -286,6 +286,27 @@ function inOurNames(binding: MediaBinding, when: string): string {
   return when.replace(/\b[a-z_][a-z0-9_]*\b/g, (name) => ours.get(name) ?? name).replace(/\s+/g, "");
 }
 
+/**
+ * A condition's top-level ` or ` operands, so a vendor limit joined to a reseller's own is seen on its own.
+ * @param when - The condition.
+ * @returns Each operand outside any brackets.
+ */
+function disjuncts(when: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < when.length; i++) {
+    const c = when[i];
+    if (c === "(" || c === "[") depth++;
+    else if (c === ")" || c === "]") depth--;
+    else if (depth === 0 && when.startsWith(" or ", i)) {
+      parts.push(when.slice(start, i));
+      start = i + 4;
+    }
+  }
+  return [...parts, when.slice(start)];
+}
+
 /** The longest prompt each catalog model takes, where it states one. */
 const promptLimits = new Map(catalog().models.flatMap((m) => (m.max_input_chars === undefined ? [] : [[m.name, m.max_input_chars] as const])));
 
@@ -786,7 +807,7 @@ describe.each(cases)("$model on $binding.upstream", ({ model, binding }) => {
 
   it("repeats no limit of the model's vendor", () => {
     const vendor = new Set((config.media.models[model]?.rejects ?? []).map((r) => r.when.replace(/\s+/g, "")));
-    const repeated = (binding.rejects ?? []).filter((r) => vendor.has(inOurNames(binding, r.when))).map((r) => r.when);
+    const repeated = (binding.rejects ?? []).filter((r) => disjuncts(r.when).some((part) => vendor.has(inOurNames(binding, part)))).map((r) => r.when);
     expect(repeated, repeated.join("\n")).toEqual([]);
   });
 

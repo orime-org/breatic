@@ -114,6 +114,20 @@ describe("parseProviderConfig", () => {
     expect(problems.join("\n")).toContain("reused");
   });
 
+  it.each([
+    ["no voice call of its own", {}, "after"],
+    ["a speak step before its voice call", { reused_by: "audio" }, "before"],
+  ])("refuses a binding that speaks with %s, naming model and upstream", (_label, extra, at) => {
+    const step = { kind: "speak", endpoint: "minimax/speech", at };
+    const problems = problemsOf(input([bind("wavespeed", 1, { ...extra, extra_steps: [step] as unknown as MediaBinding["extra_steps"] })]));
+    expect(problems).toEqual([expect.stringMatching(/seedance.*"wavespeed".*speak/)]);
+  });
+
+  it("loads a binding that speaks after its own voice call", () => {
+    const step = { kind: "speak", endpoint: "minimax/speech", at: "after" };
+    expect(problemsOf(input([bind("wavespeed", 1, { reused_by: "audio", extra_steps: [step] as unknown as MediaBinding["extra_steps"] })]))).toEqual([]);
+  });
+
   it.each(["falai", "openrouter", "toString"])("refuses a media binding on an upstream of kind %s, which no media adapter speaks to", (kind) => {
     const raw: ProviderConfigInput = {
       upstreams: { ...upstreams, typo: { kind, base_url: "https://x.example", key_env: "TYPO_KEY" } },

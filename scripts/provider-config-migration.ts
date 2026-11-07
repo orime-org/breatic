@@ -130,9 +130,6 @@ const WAVESPEED: Readonly<Record<string, {
   "krea-v2-large-text-to-image": { rejects: [{ when: "$length(prompt) > 5000", reason: "WaveSpeed prompt: Supports 1-5000 characters" }] },
   "gemini-omni-1.1-flash-reference-to-video": { mentions: { images: "<IMAGE_REF_{i}>", videos: "<VIDEO_REF_{i}>" } },
   "infinitetalk-video-to-video": { rejects: [{ when: "get_duration(audio) > 600", reason: "WaveSpeed audio: Max clip length per job: 10 minutes" }] },
-  "elevenlabs-voice-changer": {
-    rejects: [{ when: "get_duration(audio) > 300", reason: "WaveSpeed audio: Maximum audio duration is 5 minutes per job; longer audio is automatically trimmed to the first 5 minutes" }],
-  },
   "ltx-2.3-lipsync": {
     rejects: [
       { when: "get_duration(audio) > 20", reason: "WaveSpeed audio: Audio duration must be between 5-20 seconds" },

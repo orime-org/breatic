@@ -148,10 +148,12 @@ const RATE_LIMIT_RETRIES = 6;
  * One upstream answer as JSON; a 429 is asked again after the upstream's Retry-After, or a doubling wait.
  * @param url - The address.
  * @param init - The request.
- * @returns The answer.
- * @throws {Error} When the upstream does not answer 2xx.
+ * @param options - How to read the answer.
+ * @param options.absentOn404 - Whether a 404 means "not listed" and gives undefined rather than an error.
+ * @returns The answer; undefined on a 404 when `absentOn404` is set.
+ * @throws {Error} When the upstream does not answer 2xx (or 404 with `absentOn404`).
  */
-async function json(url: string, init: RequestInit = {}): Promise<unknown> {
+async function json(url: string, init: RequestInit = {}, { absentOn404 = false }: { absentOn404?: boolean } = {}): Promise<unknown> {
   for (let attempt = 0; ; attempt += 1) {
     const res = await fetch(url, { ...init, signal: AbortSignal.timeout(60_000) });
     const text = await res.text();
@@ -159,6 +161,7 @@ async function json(url: string, init: RequestInit = {}): Promise<unknown> {
       await sleep((Number(res.headers.get("retry-after")) || 2 ** attempt * 2) * 1000);
       continue;
     }
+    if (res.status === 404 && absentOn404) return undefined;
     if (!res.ok) throw new Error(`${init.method ?? "GET"} ${url} answered ${res.status}: ${text.slice(0, 300)}`);
     return JSON.parse(text) as unknown;
   }
@@ -389,22 +392,28 @@ async function syncSandBase(upstream: string, list: typeof bindings): Promise<vo
 /**
  * Write OpenRouter's token prices into `openrouter_prices` of `config/provider/llm.yaml`, for every model
  * of its `prices` and in their order, keeping the file's comments; a model given no price is a problem.
- * OpenRouter's id for a model is `vendor_ids[model].openrouter` when set, else ours; its price is its cheapest endpoint's.
+ * OpenRouter's id for a model is `vendor_ids[model].openrouter` when set, else ours; its price is its cheapest
+ * standard-tier endpoint's, among its `openrouter_backends` pin's providers when it is pinned.
  * @throws {Error} When OpenRouter's endpoints list answers other than 2xx or 404.
  */
 async function syncOpenRouterPrices(): Promise<void> {
   const doc = parseDocument(readFileSync(LLM, "utf8"));
-  const llm = doc.toJS() as { prices?: Record<string, unknown>; vendor_ids?: Record<string, Record<string, string>>; openrouter_quantizations?: string[] };
+  const llm = doc.toJS() as {
+    prices?: Record<string, unknown>;
+    vendor_ids?: Record<string, Record<string, string>>;
+    openrouter_quantizations?: string[];
+    openrouter_backends?: Record<string, { only?: string[] }>;
+  };
   const ids = new Map(Object.keys(llm.prices ?? {}).map((model) => [model, llm.vendor_ids?.[model]?.openrouter ?? model]));
-  const endpoints = new Map<string, { quantization?: unknown; pricing?: { prompt?: unknown; completion?: unknown } }[]>();
+  const pins = new Map(Object.entries(llm.openrouter_backends ?? {}).flatMap(([model, { only }]) => (only === undefined ? [] : [[model, only] as const])));
+  type Endpoint = { tag?: unknown; service_tier?: unknown; quantization?: unknown; pricing?: { prompt?: unknown; completion?: unknown } };
+  const endpoints = new Map<string, Endpoint[]>();
   for (const id of new Set(ids.values())) {
-    const res = await fetch(`${OPENROUTER_MODELS}/${id}/endpoints`, { signal: AbortSignal.timeout(60_000) });
     // A model OpenRouter does not list answers 404; openRouterPrices names it.
-    if (res.status === 404) continue;
-    if (!res.ok) throw new Error(`GET ${OPENROUTER_MODELS}/${id}/endpoints answered ${res.status}: ${(await res.text()).slice(0, 300)}`);
-    endpoints.set(id, at(await res.json(), "data", "endpoints") as { quantization?: unknown; pricing?: { prompt?: unknown; completion?: unknown } }[]);
+    const answer = await json(`${OPENROUTER_MODELS}/${id}/endpoints`, {}, { absentOn404: true });
+    if (answer !== undefined) endpoints.set(id, at(answer, "data", "endpoints") as Endpoint[]);
   }
-  const { prices, problems: unpriced } = openRouterPrices(endpoints, ids, llm.openrouter_quantizations ?? OPENROUTER_QUANTIZATIONS);
+  const { prices, problems: unpriced } = openRouterPrices(endpoints, ids, llm.openrouter_quantizations ?? OPENROUTER_QUANTIZATIONS, pins);
   problems.push(...unpriced);
   doc.set("openrouter_prices", doc.createNode(prices));
   const text = yamlText(doc, { lineWidth: 0 });

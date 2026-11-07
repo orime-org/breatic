@@ -187,6 +187,6 @@ describe("extra steps against the upstream's adapter", () => {
     const step = (kind: string): Record<string, unknown> => ({ extra_steps: [{ kind, endpoint: "e", at: "before", for_param: "p" }] });
     expect(loadProblems([bind("fal", 2, step("element"))])).toEqual([expect.stringMatching(/m.*fal.*element/)]);
     expect(loadProblems([bind("sandbase", 3, step("upload_reference"))])).toEqual([expect.stringMatching(/m.*sandbase.*upload_reference/)]);
-    expect(loadProblems([bind("fal", 2, step("upload_reference")), bind("wavespeed", 1, step("element")), bind("sandbase", 3, step("speak"))])).toEqual([]);
+    expect(loadProblems([bind("fal", 2, step("upload_reference")), bind("wavespeed", 1, step("element")), bind("sandbase", 3, { reused_by: "p", extra_steps: [{ kind: "speak", endpoint: "e", at: "after" }] })])).toEqual([]);
   });
 });

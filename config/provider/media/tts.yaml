@@ -168,7 +168,7 @@ models:
           - when: $length(prompt) > 50000
             reason: SandBase prompt maxLength 50000
           - when: $exists(speakers[$not($word(speaker))])
-            reason: SandBase speakers[].speaker_id pattern ^\w+$ (Unicode word characters)
+            reason: "SandBase speakers[].speaker_id: Must be alphanumeric with no whitespace (measured: it takes Chinese letters and refuses a middle dot)"
         pricing:
           kind: formula
           base_price: 50000
@@ -1433,9 +1433,9 @@ models:
           discount_rate: 100
   elevenlabs-voice-changer:
     rejects:
-      - when: get_duration(audio) > 600
-        reason: "ElevenLabs Voice Changer (Multilingual v2): up to 10 minutes of audio"
-        source: https://elevenlabs.io/docs/help-center/product/core-capabilities/text-to-speech/whats-the-maximum-amount-of-characters-and-text-i-can-generate.md
+      - when: get_duration(audio) > 300
+        reason: "ElevenLabs Voice Changer: maximum input length is 300 seconds or 5 minutes of audio, the same across all subscriptions"
+        source: https://elevenlabs.io/docs/help-center/product/core-capabilities/voice-changer/what-is-the-max-input-length-when-using-voice-changer.md
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -1445,9 +1445,6 @@ models:
             field: audio
           voice_id:
             field: voice_id
-        rejects:
-          - when: get_duration(audio) > 300
-            reason: "WaveSpeed audio: Maximum audio duration is 5 minutes per job; longer audio is automatically trimmed to the first 5 minutes"
         pricing:
           kind: formula
           base_price: 4000

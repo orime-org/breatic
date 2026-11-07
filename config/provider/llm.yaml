@@ -94,8 +94,8 @@ openrouter_quantizations:
   - unknown
 openrouter_prices:
   deepseek/deepseek-v4-pro:
-    input_cache_miss_per_mtok: 0.809274
-    output_per_mtok: 1.618548
+    input_cache_miss_per_mtok: 0.788916
+    output_per_mtok: 1.577832
   deepseek/deepseek-v4.1-flash-1017:
     input_cache_miss_per_mtok: 0.022
     output_per_mtok: 0.4
@@ -103,8 +103,8 @@ openrouter_prices:
     input_cache_miss_per_mtok: 4
     output_per_mtok: 20
   google/gemini-2.5-flash:
-    input_cache_miss_per_mtok: 0.15
-    output_per_mtok: 1.25
+    input_cache_miss_per_mtok: 0.3
+    output_per_mtok: 2.5
   google/gemini-3.8-flash:
-    input_cache_miss_per_mtok: 0.375
-    output_per_mtok: 1.875
+    input_cache_miss_per_mtok: 0.75
+    output_per_mtok: 3.75

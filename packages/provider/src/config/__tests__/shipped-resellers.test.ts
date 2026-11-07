@@ -102,6 +102,10 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
 
 const config = shipped();
 const models = config.media.models;
+const catalogModels = new Map(catalog().models.map((m) => [m.name, m]));
+
+/** What a condition names besides params: JSONata's operators and literals, `get_duration` and its keyword args. */
+const CONDITION_WORDS = new Set(["and", "or", "not", "in", "true", "false", "null", "get_duration", "min", "max", "total"]);
 
 /** A sample source url. */
 const URL_A = "https://a/x.mp4";
@@ -373,9 +377,8 @@ describe("the limits a reseller states beyond its schema", () => {
 
   // Each row: model, upstream, a run the upstream's own words refuse beyond the model vendor's, the nearest run it takes, and words of the reason.
   const STATED: [string, string, Partial<EstimateInput>, Partial<EstimateInput>, string][] = [
-    ["mureka-v9.5-generate-song", "wavespeed", { prompt: "x".repeat(1025), params: { lyrics: "la" } }, { prompt: "x".repeat(1024), params: { lyrics: "la" } }, "1024"],
+    ["mureka-v9.5-generate-song", "wavespeed", { prompt: "x".repeat(1025) }, { prompt: "x".repeat(1024) }, "WaveSpeed prompt"],
     ["krea-v2-large-text-to-image", "wavespeed", { prompt: "x".repeat(5001) }, { prompt: "x".repeat(5000) }, "5000"],
-    ["elevenlabs-voice-changer", "wavespeed", { params: { audio: URL_A, voice_id: "Aria" }, durations: { audio: [301] } }, { params: { audio: URL_A, voice_id: "Aria" }, durations: { audio: [300] } }, "5 minutes"],
     ["minimax-h3-reference-to-video", "wavespeed", { prompt: "a fox", params: { duration: 5, audios: [URL_A] }, durations: { audios: [5] } }, { prompt: "a fox", params: { duration: 5, audios: [URL_A], images: [URL_A] }, durations: { audios: [5] } }, "alone"],
     ["infinitetalk-video-to-video", "wavespeed", { prompt: "talk", params: { audio: URL_A, video: URL_A }, durations: { audio: [601] } }, { prompt: "talk", params: { audio: URL_A, video: URL_A }, durations: { audio: [600] } }, "10 minutes"],
     ["seedvr2-video", "wavespeed", { params: { video: URL_A }, durations: { video: [601] } }, { params: { video: URL_A }, durations: { video: [600] } }, "10 minutes"],
@@ -387,8 +390,10 @@ describe("the limits a reseller states beyond its schema", () => {
   ];
 
   it.each(STATED)("keeps a %s run off %s where its own words refuse it, and takes the nearest run it allows", async (model, upstream, refusedRun, takenRun, words) => {
-    expect(await refused(model, upstream, refusedRun)).toEqual({ reason: expect.stringContaining(words) });
-    expect(await refused(model, upstream, takenRun)).toBeUndefined();
+    // Without the model vendor's limits, so the refusal can only be the binding's own.
+    const own = { ...provider.pricingRules(model), rejects: [] };
+    expect(await rejectedInput(own, upstream, run(refusedRun))).toEqual({ reason: expect.stringContaining(words) });
+    expect(await rejectedInput(own, upstream, run(takenRun))).toBeUndefined();
   });
 
   // Each row: model, a run its vendor's own words refuse, the nearest run the vendor takes, and words of the reason.
@@ -400,7 +405,7 @@ describe("the limits a reseller states beyond its schema", () => {
     ["mureka-v9.5-generate-song", { prompt: "a song", params: { lyrics: "la", melody: URL_A }, durations: { melody: [10] } }, { params: { lyrics: "la", melody: URL_A }, durations: { melody: [10] } }, "combination"],
     ["mureka-v9.5-generate-bgm", { prompt: "x".repeat(1025) }, { prompt: "x".repeat(1024) }, "1024"],
     ["hunyuan3d-v3", { prompt: "x".repeat(1025) }, { prompt: "x".repeat(1024) }, "1024"],
-    ["elevenlabs-voice-changer", { params: { audio: URL_A, voice_id: "Aria" }, durations: { audio: [601] } }, { params: { audio: URL_A, voice_id: "Aria" }, durations: { audio: [600] } }, "10 minutes"],
+    ["elevenlabs-voice-changer", { params: { audio: URL_A, voice_id: "Aria" }, durations: { audio: [301] } }, { params: { audio: URL_A, voice_id: "Aria" }, durations: { audio: [300] } }, "300 seconds"],
     ["dreamactor-v2", { params: { image: URL_A, video: URL_A }, durations: { video: [31] } }, { params: { image: URL_A, video: URL_A }, durations: { video: [30] } }, "30 seconds"],
     ["minimax-voice-clone", { prompt: "hi", params: { audio: URL_A }, durations: { audio: [9] } }, { prompt: "hi", params: { audio: URL_A }, durations: { audio: [10] } }, "10 seconds"],
     ["minimax-voice-clone", { prompt: "hi", params: { audio: URL_A }, durations: { audio: [301] } }, { prompt: "hi", params: { audio: URL_A }, durations: { audio: [300] } }, "5 minutes"],
@@ -419,24 +424,171 @@ describe("the limits a reseller states beyond its schema", () => {
     ["sync-react-1", { params: { audio: URL_A, video: URL_A }, durations: { audio: [16], video: [5] } }, { params: { audio: URL_A, video: URL_A }, durations: { audio: [15], video: [5] } }, "15 seconds"],
     ["sync-react-1", { params: { audio: URL_A, video: URL_A }, durations: { audio: [5], video: [16] } }, { params: { audio: URL_A, video: URL_A }, durations: { audio: [5], video: [15] } }, "15 seconds"],
     ["gpt-image-2.5-sunburst-text-to-image", { prompt: "x".repeat(32001) }, { prompt: "x".repeat(32000) }, "32000"],
-    ["gpt-image-2.5-sunburst-edit", { prompt: "x".repeat(32001), params: { images: [URL_A] } }, { prompt: "x".repeat(32000), params: { images: [URL_A] } }, "32000"],
+    ["gpt-image-2.5-sunburst-edit", { prompt: "x".repeat(32001), params: { images: [URL_A], aspect_ratio: "1:1" } }, { prompt: "x".repeat(32000), params: { images: [URL_A], aspect_ratio: "1:1" } }, "32000"],
     ["minimax-h3-reference-to-video", { prompt: "a fox", params: { duration: 5, images: [URL_A], audios: [URL_A] }, durations: { audios: [1.5] } }, { prompt: "a fox", params: { duration: 5, images: [URL_A], audios: [URL_A] }, durations: { audios: [2] } }, "[2, 15]"],
     ["minimax-h3-reference-to-video", { prompt: "a fox", params: { duration: 5, images: [URL_A], audios: [URL_A, URL_A] }, durations: { audios: [8, 8] } }, { prompt: "a fox", params: { duration: 5, images: [URL_A], audios: [URL_A, URL_A] }, durations: { audios: [8, 7] } }, "15 s"],
     ["minimax-h3-reference-to-video", { prompt: "a fox", params: { duration: 5, videos: [URL_A, URL_A] }, durations: { videos: [8, 8] } }, { prompt: "a fox", params: { duration: 5, videos: [URL_A, URL_A] }, durations: { videos: [8, 7] } }, "15 s"],
     ["minimax-speech-2.8-hd", { prompt: "x".repeat(10001), params: { voice_id: "Wise_Woman" } }, { prompt: "x".repeat(10000), params: { voice_id: "Wise_Woman" } }, "10,000"],
+    ["mureka-v9.5-generate-song", { prompt: "x".repeat(1025), params: { lyrics: "la" } }, { prompt: "x".repeat(1024), params: { lyrics: "la" } }, "maximum 1024"],
+    ["mureka-v9.5-generate-song", { prompt: "x".repeat(2001) }, { prompt: "x".repeat(2000) }, "maximum 2000"],
+    ["mureka-v9.5-generate-song", { params: { lyrics: "la", melody: URL_A }, durations: { melody: [4] } }, { params: { lyrics: "la", melody: URL_A }, durations: { melody: [5] } }, "[5,60]"],
+    ["minimax-music-cover", { prompt: "x".repeat(9), params: { audio: URL_A }, durations: { audio: [30] } }, { prompt: "x".repeat(10), params: { audio: URL_A }, durations: { audio: [30] } }, "10-300 characters"],
+    ["minimax-music-cover", { prompt: "x".repeat(301), params: { audio: URL_A }, durations: { audio: [30] } }, { prompt: "x".repeat(300), params: { audio: URL_A }, durations: { audio: [30] } }, "10-300 characters"],
+    ["minimax-music-cover", { prompt: "a jazz cover", params: { audio: URL_A }, durations: { audio: [5.9] } }, { prompt: "a jazz cover", params: { audio: URL_A }, durations: { audio: [6] } }, "6 seconds to 6 minutes"],
+    ["minimax-music-cover", { prompt: "a jazz cover", params: { audio: URL_A }, durations: { audio: [361] } }, { prompt: "a jazz cover", params: { audio: URL_A }, durations: { audio: [360] } }, "6 seconds to 6 minutes"],
+    ["sonilo-video-to-music", { params: { video: URL_A }, durations: { video: [361] } }, { params: { video: URL_A }, durations: { video: [360] } }, "6 minutes"],
+    ["sonilo-video-to-music", { prompt: "x".repeat(2001), params: { video: URL_A }, durations: { video: [10] } }, { prompt: "x".repeat(2000), params: { video: URL_A }, durations: { video: [10] } }, "maxLength 2000"],
+    ["sfx-1.6-text-to-audio", { prompt: "rain", params: { duration: 0.09 } }, { prompt: "rain", params: { duration: 0.1 } }, "100-60000"],
+    ["sfx-1.6-text-to-audio", { prompt: "rain", params: { duration: 61 } }, { prompt: "rain", params: { duration: 60 } }, "without loop"],
+    ["sfx-1.6-text-to-audio", { prompt: "rain", params: { loop: true, duration: 0.9 } }, { prompt: "rain", params: { loop: true, duration: 1 } }, "1000-600000"],
+    ["sfx-1.6-text-to-audio", { prompt: "rain", params: { loop: true, duration: 601 } }, { prompt: "rain", params: { loop: true, duration: 600 } }, "at most 600000"],
+    ["sfx-1.6-text-to-audio", { prompt: "x".repeat(5001) }, { prompt: "x".repeat(5000) }, "5000"],
+    ["sonilo-sfx-v1", { prompt: "x".repeat(2001) }, { prompt: "x".repeat(2000) }, "maxLength 2000"],
+    ["veed-clean-audio", { params: { audio: URL_A }, durations: { audio: [1801] } }, { params: { audio: URL_A }, durations: { audio: [1800] } }, "30 minutes"],
+    ["veed-clean-audio", { params: { audio: URL_A, strength: 1.05 }, durations: { audio: [60] } }, { params: { audio: URL_A, strength: 1 }, durations: { audio: [60] } }, "maximum 1"],
+    ["sfx-1.6-extend-audio", { prompt: "rain", params: { audio: URL_A }, durations: { audio: [2.9] } }, { prompt: "rain", params: { audio: URL_A }, durations: { audio: [3] } }, "at least 3 seconds"],
+    ["sfx-1.6-extend-audio", { prompt: "rain", params: { audio: URL_A, append_duration: 0.9 }, durations: { audio: [5] } }, { prompt: "rain", params: { audio: URL_A, append_duration: 1 }, durations: { audio: [5] } }, "min 1000"],
+    ["sfx-1.6-extend-audio", { prompt: "rain", params: { audio: URL_A, append_duration: 58 }, durations: { audio: [5] } }, { prompt: "rain", params: { audio: URL_A, append_duration: 57 }, durations: { audio: [5] } }, "max 57000"],
+    ["sfx-1.6-extend-audio", { prompt: "x".repeat(5001), params: { audio: URL_A }, durations: { audio: [5] } }, { prompt: "x".repeat(5000), params: { audio: URL_A }, durations: { audio: [5] } }, "5000"],
+    ["recraft-v4-style-text-to-image", { prompt: "x".repeat(10001) }, { prompt: "x".repeat(10000) }, "10,000"],
+    ["pro-upscaler", { params: { image: URL_A, creativity: 11 } }, { params: { image: URL_A, creativity: 10 } }, "between -10 and 10"],
+    ["pro-upscaler", { params: { image: URL_A, creativity: -11 } }, { params: { image: URL_A, creativity: -10 } }, "between -10 and 10"],
+    ["pro-upscaler", { params: { image: URL_A, target_megapixels: 65 } }, { params: { image: URL_A, target_megapixels: 64 } }, "64 MP"],
+    ["meshy6-t23d", { prompt: "x".repeat(801) }, { prompt: "x".repeat(800) }, "800 characters"],
+    ["meshy6-t23d", { prompt: "a fox", params: { target_polycount: 300001 } }, { prompt: "a fox", params: { target_polycount: 300000 } }, "100 to 300000"],
+    ["meshy6-t23d", { prompt: "a fox", params: { target_polycount: 99 } }, { prompt: "a fox", params: { target_polycount: 100 } }, "100 to 300000"],
+    ["meshy6-t23d", { prompt: "a fox", params: { target_polycount: 1000.5 } }, { prompt: "a fox", params: { target_polycount: 1000 } }, "integer"],
+    ["hunyuan3d-v3", { prompt: "a fox", params: { face_count: 1500001 } }, { prompt: "a fox", params: { face_count: 1500000 } }, "[3000, 1500000]"],
+    ["hunyuan3d-v3", { prompt: "a fox", params: { face_count: 2999 } }, { prompt: "a fox", params: { face_count: 3000 } }, "[3000, 1500000]"],
+    ["hunyuan3d-v3", { prompt: "a fox", params: { face_count: 3000.5 } }, { prompt: "a fox", params: { face_count: 3000 } }, "Integer"],
+    ["hunyuan3d-v3-i23d", { params: { image: URL_A, face_count: 1500001 } }, { params: { image: URL_A, face_count: 1500000 } }, "[3000, 1500000]"],
+    ["hunyuan3d-v3-i23d", { params: { image: URL_A, face_count: 3000.5 } }, { params: { image: URL_A, face_count: 3000 } }, "Integer"],
+    ["realtime-tts-2", { prompt: "hi", params: { speed: 1.55 } }, { prompt: "hi", params: { speed: 1.5 } }, "[0.5, 1.5]"],
+    ["realtime-tts-2", { prompt: "hi", params: { speed: 0.45 } }, { prompt: "hi", params: { speed: 0.5 } }, "[0.5, 1.5]"],
+    ["minimax-speech-2.8-hd", { prompt: "hi", params: { voice_id: "Wise_Woman", speed: 2.05 } }, { prompt: "hi", params: { voice_id: "Wise_Woman", speed: 2 } }, "[0.5, 2]"],
+    ["minimax-speech-2.8-hd", { prompt: "hi", params: { voice_id: "Wise_Woman", volume: 10.1 } }, { prompt: "hi", params: { voice_id: "Wise_Woman", volume: 10 } }, "(0, 10]"],
+    ["minimax-speech-2.8-hd", { prompt: "hi", params: { voice_id: "Wise_Woman", volume: 0 } }, { prompt: "hi", params: { voice_id: "Wise_Woman", volume: 0.1 } }, "(0, 10]"],
+    ["elevenlabs-v3", { prompt: "x".repeat(5001), params: { voice_id: "Adam" } }, { prompt: "x".repeat(5000), params: { voice_id: "Adam" } }, "5,000"],
+    ["wan-3.0-text-to-video", { prompt: "x".repeat(20001) }, { prompt: "x".repeat(20000) }, "20,000"],
+    ["wan-3.0-text-to-video", { prompt: "a fox", params: { duration: 31 } }, { prompt: "a fox", params: { duration: 30 } }, "[2, 30]"],
+    ["wan-3.0-text-to-video", { prompt: "a fox", params: { duration: 1 } }, { prompt: "a fox", params: { duration: 2 } }, "[2, 30]"],
+    ["wan-3.0-text-to-video", { prompt: "a fox", params: { duration: 5.5 } }, { prompt: "a fox", params: { duration: 5 } }, "an integer"],
+    ["seedance-2.5-text-to-video", { prompt: "a fox", params: { duration: 5, videos: [URL_A] }, durations: { videos: [1.9] } }, { prompt: "a fox", params: { duration: 5, videos: [URL_A] }, durations: { videos: [2] } }, "2-30 seconds"],
+    ["seedance-2.5-text-to-video", { prompt: "a fox", params: { duration: 5, audios: [URL_A] }, durations: { audios: [1.9] } }, { prompt: "a fox", params: { duration: 5, audios: [URL_A] }, durations: { audios: [2] } }, "2-30 seconds"],
+    ["seedance-2.5-text-to-video", { prompt: "a fox", params: { duration: 3 } }, { prompt: "a fox", params: { duration: 4 } }, "[4, 30]"],
+    ["seedance-2.5-text-to-video", { prompt: "a fox", params: { duration: 5.5 } }, { prompt: "a fox", params: { duration: 5 } }, "[4, 30]"],
+    ["minimax-h3-text-to-video", { prompt: "x".repeat(7001) }, { prompt: "x".repeat(7000) }, "7000"],
+    ["kling-v3.0-4k-text-to-video", { prompt: "a fox", params: { duration: 10, multi_prompt: [{ prompt: "a", duration: 5 }, { prompt: "b", duration: 4 }] } }, { prompt: "a fox", params: { duration: 10, multi_prompt: [{ prompt: "a", duration: 5 }, { prompt: "b", duration: 5 }] } }, "equal the total"],
+    ["kling-v3.0-4k-text-to-video", { prompt: "a fox", params: { duration: 5, multi_prompt: [{ prompt: "x".repeat(513), duration: 5 }] } }, { prompt: "a fox", params: { duration: 5, multi_prompt: [{ prompt: "x".repeat(512), duration: 5 }] } }, "max 512"],
+    ["minimax-h3-image-to-video", { prompt: "x".repeat(7001), params: { image: URL_A } }, { prompt: "x".repeat(7000), params: { image: URL_A } }, "7000"],
+    ["wan-3.0-image-to-video", { prompt: "x".repeat(20001), params: { image: URL_A } }, { prompt: "x".repeat(20000), params: { image: URL_A } }, "20,000"],
+    ["wan-3.0-image-to-video", { prompt: "a fox", params: { image: URL_A, duration: 31 } }, { prompt: "a fox", params: { image: URL_A, duration: 30 } }, "[2, 30]"],
+    ["seedance-2.5-image-to-video", { prompt: "a fox", params: { image: URL_A, duration: 31 } }, { prompt: "a fox", params: { image: URL_A, duration: 30 } }, "[4, 30]"],
+    ["kling-video-o3-4k-image-to-video", { prompt: "a fox", params: { image: URL_A, duration: 10, multi_prompt: [{ prompt: "a", duration: 5 }, { prompt: "b", duration: 4 }] } }, { prompt: "a fox", params: { image: URL_A, duration: 10, multi_prompt: [{ prompt: "a", duration: 5 }, { prompt: "b", duration: 5 }] } }, "equal the total"],
+    ["kling-video-o3-4k-image-to-video", { prompt: "a fox", params: { image: URL_A, duration: 5, multi_prompt: [{ prompt: "x".repeat(513), duration: 5 }] } }, { prompt: "a fox", params: { image: URL_A, duration: 5, multi_prompt: [{ prompt: "x".repeat(512), duration: 5 }] } }, "max 512"],
+    ["minimax-h3-reference-to-video", { prompt: "x".repeat(7001), params: { images: [URL_A] } }, { prompt: "x".repeat(7000), params: { images: [URL_A] } }, "7000"],
+    ["minimax-h3-reference-to-video", { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [1.9] } }, { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [2] } }, "[2, 15] s"],
+    ["wan-3.0-reference-to-video", { prompt: "x".repeat(20001), params: { images: [URL_A] } }, { prompt: "x".repeat(20000), params: { images: [URL_A] } }, "20,000"],
+    ["wan-3.0-reference-to-video", { prompt: "a fox", params: { images: [URL_A], duration: 5.5 } }, { prompt: "a fox", params: { images: [URL_A], duration: 5 } }, "an integer"],
+    ["wan-3.0-reference-to-video", { prompt: "a fox", params: { images: [URL_A], audios: [URL_A] }, durations: { audios: [0.9] } }, { prompt: "a fox", params: { images: [URL_A], audios: [URL_A] }, durations: { audios: [1] } }, "[1, 15]"],
+    ["happyhorse-1.1-reference-to-video", { prompt: "x".repeat(5001), params: { images: [URL_A] } }, { prompt: "x".repeat(5000), params: { images: [URL_A] } }, "5,000"],
+    ["happyhorse-1.1-reference-to-video", { prompt: "狐".repeat(2501), params: { images: [URL_A] } }, { prompt: "狐".repeat(2500), params: { images: [URL_A] } }, "2,500"],
+    ["happyhorse-1.1-reference-to-video", { prompt: "a fox", params: { images: [URL_A], duration: 16 } }, { prompt: "a fox", params: { images: [URL_A], duration: 15 } }, "3 to 15"],
+    ["happyhorse-1.1-reference-to-video", { prompt: "a fox", params: { images: [URL_A], duration: 2 } }, { prompt: "a fox", params: { images: [URL_A], duration: 3 } }, "3 to 15"],
+    ["flux-3-start-end-to-video", { prompt: "a fox", params: { image: URL_A, duration: 21 } }, { prompt: "a fox", params: { image: URL_A, duration: 20 } }, "5 to 20"],
+    ["flux-3-start-end-to-video", { prompt: "a fox", params: { image: URL_A, duration: 4 } }, { prompt: "a fox", params: { image: URL_A, duration: 5 } }, "5 to 20"],
+    ["seedance-2.5-video-extend", { prompt: "go on", params: { video: URL_A }, durations: { video: [1.9] } }, { prompt: "go on", params: { video: URL_A }, durations: { video: [2] } }, "2-30 seconds"],
+    ["seedance-2.5-video-extend", { prompt: "go on", params: { video: URL_A, duration: 31 }, durations: { video: [5] } }, { prompt: "go on", params: { video: URL_A, duration: 30 }, durations: { video: [5] } }, "[4, 30]"],
+    ["wan-3.0-video-edit", { prompt: "edit", params: { video: URL_A }, durations: { video: [15.5] } }, { prompt: "edit", params: { video: URL_A }, durations: { video: [15] } }, "total no more than 15 seconds"],
+    ["wan-3.0-video-edit", { prompt: "edit", params: { video: URL_A }, durations: { video: [0.9] } }, { prompt: "edit", params: { video: URL_A }, durations: { video: [1] } }, "[1, 15] seconds per clip"],
+    ["wan-3.0-video-edit", { prompt: "edit", params: { video: URL_A, duration: 5.5 }, durations: { video: [5] } }, { prompt: "edit", params: { video: URL_A, duration: 5 }, durations: { video: [5] } }, "an integer"],
+    ["wan-3.0-video-edit", { prompt: "edit", params: { video: URL_A, duration: 16 }, durations: { video: [15] } }, { prompt: "edit", params: { video: URL_A, duration: 15 }, durations: { video: [15] } }, "must not exceed 30 seconds"],
+    ["wan-3.0-video-edit", { prompt: "edit", params: { video: URL_A, reference_audios: [URL_A] }, durations: { video: [5], reference_audios: [15.5] } }, { prompt: "edit", params: { video: URL_A, reference_audios: [URL_A] }, durations: { video: [5], reference_audios: [15] } }, "no more than 15 seconds"],
+    ["wan-3.0-video-edit", { prompt: "edit", params: { video: URL_A, reference_audios: [URL_A] }, durations: { video: [5], reference_audios: [0.9] } }, { prompt: "edit", params: { video: URL_A, reference_audios: [URL_A] }, durations: { video: [5], reference_audios: [1] } }, "[1, 15] seconds per clip"],
+    ["kling-v3-pro-motion", { prompt: "x".repeat(2501), params: { image: URL_A, video: URL_A }, durations: { video: [5] } }, { prompt: "x".repeat(2500), params: { image: URL_A, video: URL_A }, durations: { video: [5] } }, "2500 characters"],
+    ["kling-v3-pro-motion", { prompt: "dance", params: { image: URL_A, video: URL_A, character_orientation: "image" }, durations: { video: [10.5] } }, { prompt: "dance", params: { image: URL_A, video: URL_A, character_orientation: "image" }, durations: { video: [10] } }, "up to 10 s"],
+    ["kling-v3-pro-motion", { prompt: "dance", params: { image: URL_A, video: URL_A }, durations: { video: [30.5] } }, { prompt: "dance", params: { image: URL_A, video: URL_A }, durations: { video: [30] } }, "up to 30 s"],
+    ["omnihuman-1.5", { params: { image: URL_A, audio: URL_A }, durations: { audio: [60] } }, { params: { image: URL_A, audio: URL_A }, durations: { audio: [59.9] } }, "less than 60 seconds"],
   ];
 
-  it.each(VENDOR)("keeps a %s run its vendor's words refuse off every upstream, and lets the nearest run the vendor takes through", async (model, refusedRun, takenRun, words) => {
+  // Each entry: a model on an upstream that cannot take a row's param at all, so it refuses the row's runs before any
+  // limit is read, keyed "<model> on <upstream>: <param>", with why.
+  const SKIPS: Readonly<Record<string, string>> = {
+    "seedance-2.5-text-to-video on fal: audios": "fal's text-to-video endpoint takes no reference audio",
+    "seedance-2.5-text-to-video on fal: videos": "fal's text-to-video endpoint takes no reference video",
+    "seedance-2.5-text-to-video on sandbase: audios": "SandBase's text-to-video endpoint takes no reference audio",
+    "seedance-2.5-text-to-video on sandbase: videos": "SandBase's text-to-video endpoint takes no reference video",
+    "sfx-1.6-text-to-audio on wavespeed: loop": "WaveSpeed offers no loop control",
+    "kling-video-o3-4k-image-to-video on sandbase: multi_prompt": "SandBase serves the model only as a single shot",
+  };
+
+  /**
+   * A row's run as the application sends it: every param the catalog gives a default at that default, then the row's.
+   * @param model - The model.
+   * @param input - The row's run.
+   * @returns The run.
+   */
+  const withDefaults = (model: string, input: Partial<EstimateInput>): Partial<EstimateInput> => {
+    const params = (catalogModels.get(model)?.params ?? {}) as Record<string, { default?: unknown }>;
+    const defaults = Object.fromEntries(Object.entries(params).flatMap(([name, p]) => (p.default === undefined || p.default === null ? [] : [[name, p.default] as const])));
+    return { ...input, params: { ...defaults, ...input.params } };
+  };
+
+  it.each(VENDOR)("keeps a %s run its vendor's words refuse off every upstream, and lets the nearest run the vendor takes through", async (model, refusedRow, takenRow, words) => {
     const upstreams = (config.media.models[model]?.upstreams ?? []).map((b) => b.upstream);
     expect(upstreams.length).toBeGreaterThan(0);
     for (const upstream of upstreams) {
-      // An upstream that cannot take one of the run's values at all refuses it before any limit is read.
-      const refusal = await refused(model, upstream, refusedRun);
+      const refusal = await refused(model, upstream, withDefaults(model, refusedRow));
       expect(refusal, upstream).toBeDefined();
-      if (refusal !== undefined && "reason" in refusal) expect(refusal.reason, upstream).toContain(words);
-      const taken = await refused(model, upstream, takenRun);
-      expect(taken !== undefined && "reason" in taken ? taken.reason : "", upstream).not.toContain(words);
+      if (refusal !== undefined && "param" in refusal) {
+        expect(SKIPS[`${model} on ${upstream}: ${refusal.param}`], `${upstream} refuses ${refusal.param}`).toBeDefined();
+        continue;
+      }
+      expect(refusal, upstream).toEqual({ reason: expect.stringContaining(words) });
+      // The nearest run the vendor takes: taken, or refused only by a value limit or a reject of the binding itself.
+      const taken = await refused(model, upstream, withDefaults(model, takenRow));
+      const own = (bindingOf(model, upstream)?.rejects ?? []).map((r) => r.reason);
+      expect(taken === undefined || "param" in taken || (taken.evaluationError === undefined && own.includes(taken.reason)), `${upstream}: ${JSON.stringify(taken)}`).toBe(true);
     }
+  });
+
+  it("reads in every vendor limit only the model's own params, their item fields and the prompt", () => {
+    const strangers: string[] = [];
+    for (const [model, { rejects }] of Object.entries(models)) {
+      const params = (catalogModels.get(model)?.params ?? {}) as Record<string, { fields?: Record<string, unknown> }>;
+      const ours = new Set(["prompt", ...Object.keys(params), ...Object.values(params).flatMap((p) => Object.keys(p.fields ?? {}))]);
+      for (const { when } of rejects ?? []) {
+        const names = when.replace(/"[^"]*"|\/(?:[^/\\]|\\.)*\//g, "").match(/(?<![$\w.])[A-Za-z_]\w*/g) ?? [];
+        strangers.push(...names.filter((name) => !CONDITION_WORDS.has(name) && !ours.has(name)).map((name) => `${model}: "${name}" in ${when}`));
+      }
+    }
+    expect(strangers, strangers.join("\n")).toEqual([]);
+  });
+
+  it("exercises every vendor limit: a VENDOR row's run is refused on the model's first upstream that takes its values with exactly its reason", async () => {
+    const untested: string[] = [];
+    for (const [model, { rejects, upstreams }] of Object.entries(models)) {
+      const order = [...upstreams].sort((a, b) => a.weight - b.weight).map((b) => b.upstream);
+      const rules = provider.pricingRules(model);
+      const rows = VENDOR.filter(([m]) => m === model).map(([, refusedRow]) => run(withDefaults(model, refusedRow)));
+      for (const reject of rejects ?? []) {
+        // The limit alone, on a binding stripped of its own checks, tells which of two limits sharing a reason holds.
+        const alone = { ...rules, rejects: [{ when: reject.when, reason: reject.reason }], upstreams: (rules.upstreams as Record<string, unknown>[]).map((u) => ({ ...u, rejects: [], limits: {}, voices: {} })) };
+        let hit = false;
+        for (const input of rows) {
+          // The first upstream that takes the row's values (SKIPS lists those that do not).
+          let [upstream, ...rest] = order;
+          let whole = await rejectedInput(rules, upstream!, input);
+          while (whole !== undefined && "param" in whole && rest.length > 0) {
+            [upstream, ...rest] = rest;
+            whole = await rejectedInput(rules, upstream!, input);
+          }
+          if (JSON.stringify(whole) === JSON.stringify({ reason: reject.reason }) && JSON.stringify(await rejectedInput(alone, upstream!, input)) === JSON.stringify({ reason: reject.reason })) hit = true;
+        }
+        if (!hit) untested.push(`${model}: ${reject.when}`);
+      }
+    }
+    expect(untested, untested.join("\n")).toEqual([]);
   });
 
   // Mirelo's /v3/models states max_prompt_chars 5000, and WaveSpeed refused 5001 characters (probed 2026-11-06).
@@ -464,7 +616,8 @@ describe("the limits a reseller states beyond its schema", () => {
   it("keeps a Mureka vocal sample outside 15 to 30 seconds off fal's voice clone", async () => {
     const song = (seconds: number): Partial<EstimateInput> => ({ prompt: "a calm song", params: { vocal: "https://a/v.mp3" }, durations: { vocal: [seconds] } });
     expect(await refused("mureka-v9.5-generate-song", "fal", song(20))).toBeUndefined();
-    for (const seconds of [10, 40]) expect(await refused("mureka-v9.5-generate-song", "fal", song(seconds)), `${seconds} s`).toEqual({ reason: expect.stringContaining("15") });
+    expect(await refused("mureka-v9.5-generate-song", "fal", song(10))).toEqual({ reason: expect.stringContaining("[15,30]") });
+    expect(await refused("mureka-v9.5-generate-song", "fal", song(40))).toEqual({ reason: "fal mureka/api/voice/clone audio: up to 30 seconds (Mureka trims past 30)" });
   });
 
   describe.each(["fal", "sandbase"])("Gemini speaker ids on %s", (upstream) => {

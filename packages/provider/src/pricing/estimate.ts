@@ -291,14 +291,13 @@ function fieldNamer(rule: UpstreamPricing): (param: string) => string {
 }
 
 /**
- * A run in an upstream's field names, as its formulas and conditions read it: the params it is sent (a param
- * left out or empty is not) under its fields and clip lengths under the same fields; the prompt is the caller's to place.
- * @param rule - The upstream's pricing entry.
+ * A run in some field names, as formulas and conditions read it: the params it is sent (a param left out or empty
+ * is not) under their fields and clip lengths under the same fields; the prompt is the caller's to place.
  * @param input - The prepared run.
+ * @param fieldOf - The field each of our params goes under (an upstream's `fieldNamer`); our own names when left out.
  * @returns The fields and the clip lengths.
  */
-function upstreamRun(rule: UpstreamPricing, input: EstimateInput): { fields: Record<string, unknown>; durations: Record<string, readonly number[]> } {
-  const fieldOf = fieldNamer(rule);
+function upstreamRun(input: EstimateInput, fieldOf: (param: string) => string = (param) => param): { fields: Record<string, unknown>; durations: Record<string, readonly number[]> } {
   const fields: Record<string, unknown> = {};
   for (const [param, value] of Object.entries(input.params)) if (isPresent(value)) fields[fieldOf(param)] = value;
   const durations: Record<string, readonly number[]> = {};
@@ -370,6 +369,23 @@ async function estimateOn(rule: UpstreamPricing, input: EstimateInput, { fields,
 }
 
 /**
+ * The first of some conditions that holds on a run.
+ * @param rejects - The conditions, in order.
+ * @param read - The run in the names they read.
+ * @returns Its reason, or its reason and the evaluator's message when it cannot be evaluated; undefined when none holds.
+ */
+async function firstHeld(rejects: readonly Reject[], read: ReturnType<typeof upstreamRun>): Promise<RejectedInput | undefined> {
+  for (const { when, reason } of rejects) {
+    try {
+      if (await holds(when, read.fields, read.durations)) return { reason };
+    } catch (error) {
+      return { reason, evaluationError: evaluationMessage(error) };
+    }
+  }
+  return undefined;
+}
+
+/**
  * The rules of each upstream, by name.
  * @param rules - A model's pricing rules.
  * @param upstream - The upstream.
@@ -408,17 +424,17 @@ async function assessed(rule: UpstreamPricing, input: EstimateInput, vendor: rea
     if (!values.some((v) => String(v) === String(value))) return { rejected: { param, value } };
   }
   const written = input.prompt === "" ? "" : mentionsWritten(rule.mentions, input.prompt);
-  const ours = upstreamRun({ ...rule, fields: {} }, input);
-  if (written !== "") ours.fields.prompt = written;
-  const run = upstreamRun(rule, input);
-  if (rule.prompt_field !== undefined && written !== "") run.fields[rule.prompt_field] = written;
-  for (const [{ when, reason }, read] of [...vendor.map((r) => [r, ours] as const), ...(rule.rejects ?? []).map((r) => [r, run] as const)]) {
-    try {
-      if (await holds(when, read.fields, read.durations)) return { rejected: { reason } };
-    } catch (error) {
-      return { rejected: { reason, evaluationError: evaluationMessage(error) } };
-    }
+  // The vendor's limits read our names, the upstream's own its fields; the vendor's are checked first.
+  let hit: RejectedInput | undefined;
+  if (vendor.length > 0) {
+    const ours = upstreamRun(input);
+    if (written !== "") ours.fields.prompt = written;
+    hit = await firstHeld(vendor, ours);
   }
+  const run = upstreamRun(input, fieldNamer(rule));
+  if (rule.prompt_field !== undefined && written !== "") run.fields[rule.prompt_field] = written;
+  hit ??= await firstHeld(rule.rejects ?? [], run);
+  if (hit !== undefined) return { rejected: hit };
   try {
     return { estimate: await estimateOn(rule, input, run) };
   } catch (error) {

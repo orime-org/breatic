@@ -494,3 +494,32 @@ describe("a refused understand answer whose body cannot be read is still its sta
   });
 });
 
+describe("understand in cheapest mode", () => {
+  /**
+   * A provider that prices OpenRouter below Google for both understand models.
+   * @returns The provider.
+   */
+  const cheaperOnOpenRouter = (): Provider => {
+    const config = llmConfig(fakes);
+    const cheap = { input_cache_miss_per_mtok: 0.1, output_per_mtok: 1 };
+    config.llm!.openrouter_prices = { "google/gemini-3.8-flash": cheap, "google/gemini-2.5-flash": cheap };
+    return createProvider({ config, keyOf: (name) => (keys as Record<string, string>)[name], llmMaxRetries: 0, cleanText: (t) => t });
+  };
+  const quantizations = ["int8", "fp8", "mxfp8", "fp16", "bf16", "fp32", "unknown"];
+
+  it("asks OpenRouter for the pinned backend's cheapest endpoint at a quantization a cheapest call takes", async () => {
+    const answer = await cheaperOnOpenRouter().llm.understand(question(), { mode: "cheapest" });
+    expect(answer.upstream).toBe("openrouter");
+    expect(posted(fakes.openrouter)[0]?.provider).toEqual({ only: ["google-vertex"], allow_fallbacks: false, sort: "price", quantizations });
+  });
+
+  it("asks OpenRouter for the cheapest endpoint of an unpinned model", async () => {
+    await cheaperOnOpenRouter().llm.understand({ ...question(), model: "google/gemini-2.5-flash" }, { mode: "cheapest" });
+    expect(posted(fakes.openrouter)[0]?.provider).toEqual({ sort: "price", quantizations });
+  });
+
+  it("sends only the backend pin in default mode", async () => {
+    await llmProvider(fakes, keys, { understandOpenRouterFirst: true }).llm.understand(question());
+    expect(posted(fakes.openrouter)[0]?.provider).toEqual({ only: ["google-vertex"], allow_fallbacks: false });
+  });
+});

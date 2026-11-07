@@ -478,7 +478,8 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     customVoiceId: customVoiceId(ticket),
     voice: () => {
       const { voiceId } = carried(ticket);
-      // A speak step is planned only after a voice step, whose output or cached clone carries the voice id.
+      // The configuration load refuses a speak step that does not follow the binding's own voice call, whose output
+      // or cached clone carries the voice id.
       /* v8 ignore next -- @preserve */
       if (voiceId === undefined) throw new Error("No cloned voice to speak with");
       return voiceId;

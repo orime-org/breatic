@@ -7,7 +7,10 @@
  * (inner#1743). A cheapest call asks OpenRouter to try its endpoints cheapest first (`provider.sort`
  * "price", within the quantizations `openrouter_quantizations` lists), so the price written is that of
  * the cheapest such endpoint OpenRouter lists for the model
- * (`GET https://openrouter.ai/api/v1/models/{author}/{slug}/endpoints`).
+ * (`GET https://openrouter.ai/api/v1/models/{author}/{slug}/endpoints`). A service-tier endpoint (flex,
+ * priority, fast) is reached only through `:floor`, `:nitro` or `service_tier`, never by `sort: "price"`
+ * (OpenRouter's provider-selection docs), so it is not ranked; a model pinned to providers
+ * (`openrouter_backends[model].only`) is ranked only over their endpoints, the ones its call can reach.
  */
 
 /**
@@ -23,14 +26,26 @@ function perMtok(perToken) {
 }
 
 /**
- * Our models' OpenRouter token prices: per model, its cheapest endpoint with a fixed price and a quantization a
- * cheapest call takes, by input then output.
- * @param {ReadonlyMap<string, readonly { quantization?: unknown; pricing?: { prompt?: unknown; completion?: unknown } }[]>} endpoints - The endpoints OpenRouter lists, by OpenRouter's model id; a model it does not list is absent.
+ * Whether an endpoint is served by one of the providers a model is pinned to: its tag is the provider or
+ * begins with `provider/`.
+ * @param {unknown} tag - The endpoint's tag.
+ * @param {readonly string[] | undefined} only - The providers the model is pinned to; undefined when it is not.
+ * @returns {boolean} True when the endpoint can serve the model's call.
+ */
+function pinnedTo(tag, only) {
+  return only === undefined || (typeof tag === "string" && only.some((p) => tag === p || tag.startsWith(`${p}/`)));
+}
+
+/**
+ * Our models' OpenRouter token prices: per model, its cheapest standard-tier endpoint with a fixed price, a
+ * quantization a cheapest call takes and, for a pinned model, a pinned provider, by input then output.
+ * @param {ReadonlyMap<string, readonly { tag?: unknown; service_tier?: unknown; quantization?: unknown; pricing?: { prompt?: unknown; completion?: unknown } }[]>} endpoints - The endpoints OpenRouter lists, by OpenRouter's model id; a model it does not list is absent.
  * @param {ReadonlyMap<string, string>} ids - Our model id to the id OpenRouter lists it under.
  * @param {readonly string[]} quantizations - The quantizations a cheapest call takes; an endpoint naming none is `unknown`.
+ * @param {ReadonlyMap<string, readonly string[]>} [pins] - Our model id to the providers `openrouter_backends` pins it to.
  * @returns {{ prices: Record<string, { input_cache_miss_per_mtok: number; output_per_mtok: number }>; problems: string[] }} The prices by our model id, and a problem for each model given no price.
  */
-export function openRouterPrices(endpoints, ids, quantizations) {
+export function openRouterPrices(endpoints, ids, quantizations, pins = new Map()) {
   /** @type {Record<string, { input_cache_miss_per_mtok: number; output_per_mtok: number }>} */
   const prices = {};
   /** @type {string[]} */
@@ -42,12 +57,13 @@ export function openRouterPrices(endpoints, ids, quantizations) {
       continue;
     }
     const fixed = listed
+      .filter((e) => e.service_tier == null && pinnedTo(e.tag, pins.get(ours)))
       .filter((e) => quantizations.includes(typeof e.quantization === "string" ? e.quantization : "unknown"))
       .map((e) => ({ input: perMtok(e.pricing?.prompt), output: perMtok(e.pricing?.completion) }))
       .filter((p) => p.input !== undefined && p.output !== undefined)
       .sort((a, b) => a.input - b.input || a.output - b.output);
     if (fixed.length === 0) {
-      problems.push(`${ours}: none of the ${listed.length} endpoints of ${theirs} states a fixed token price at a quantization a cheapest call takes`);
+      problems.push(`${ours}: none of the ${listed.length} endpoints of ${theirs} states a fixed token price at the standard tier, a quantization a cheapest call takes and a provider it is pinned to`);
       continue;
     }
     prices[ours] = { input_cache_miss_per_mtok: fixed[0].input, output_per_mtok: fixed[0].output };

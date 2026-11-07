@@ -61,7 +61,6 @@ async function waitForCatalog(pending: Promise<void>, signal?: AbortSignal): Pro
     void pending.then(resolve, reject).finally(() => {
       signal.removeEventListener("abort", stop);
     });
-    if (signal.aborted) stop();
   });
 }
 
@@ -430,6 +429,8 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
                 media: request.media,
                 maxOutputTokens: request.maxOutputTokens,
                 ...(vendorOf(decl.kind).gateway && pin !== undefined ? { backend: pin } : {}),
+                // Ranked at OpenRouter's cheapest endpoint (openrouter_prices), so it asks for that one first, as a prepared call does.
+                ...(chosen.mode === "cheapest" && decl.kind === "openrouter" ? { cheapest: { sort: "price", quantizations: config.llm.openrouter_quantizations } } : {}),
                 deadlineAt: request.deadlineAt,
                 signal,
                 inlineMaxBytes: config.llm.gemini_inline_max_bytes,
@@ -530,8 +531,6 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
         refreshing ??= refreshCatalog(policy).finally(() => {
           refreshing = undefined;
         });
-        await waitForCatalog(refreshing, signal);
-      } else if (refreshing !== undefined) {
         await waitForCatalog(refreshing, signal);
       }
       signal?.throwIfAborted();
