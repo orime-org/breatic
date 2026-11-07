@@ -155,6 +155,17 @@ describe("startCheckout — referral first-period discount (inner#1868)", () => 
     expect(call.subscription_data.metadata.userId).toBe(USER);
   });
 
+  it("bills the subscription in flexible mode, so an upgrade in the first period credits what was paid", async () => {
+    // Sandbox, 2026-11-07: a Pro month paid at 1599 of 1999 and upgraded halfway
+    // credited -800 ("Unused time on PRO Monthly (with 20.0% off)") in flexible mode.
+    situationIs("none");
+    firstPeriodDiscount.mockResolvedValue({ code: "ALICE", percent: 20 });
+    ensureFirstPeriodCoupon.mockResolvedValue("referral-first-period-20");
+    await start();
+    const call = stripe.checkout.sessions.create.mock.calls[0]?.[0];
+    expect(call.subscription_data.billing_mode).toEqual({ type: "flexible" });
+  });
+
   it("sends no discount and no code when the account does not qualify", async () => {
     situationIs("none");
     await start();
@@ -311,6 +322,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
         customer: "cus_1",
         line_items: [{ price: "price_team_month", quantity: 1 }],
         subscription_data: {
+          billing_mode: { type: "flexible" },
           // The subscribing browser's consent rides along (inner#1442 §4.4.5).
           metadata: {
             userId: USER,

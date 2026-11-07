@@ -289,6 +289,10 @@ export async function startCheckout(input: {
       // metadata and `client_reference_id` stop at the Session. The subscribing
       // browser's consent and ad click ride here for the same reason (inner#1442 §4.4.5).
       subscription_data: {
+        // Flexible billing credits the unused time of a plan at the price last
+        // billed, discount included, so upgrading within a referred first
+        // period credits what was paid (inner#1868 §6, sandbox 2026-11-07).
+        billing_mode: { type: "flexible" },
         metadata: {
           userId: input.userId,
           ...toStripeMetadata(snapshot),
