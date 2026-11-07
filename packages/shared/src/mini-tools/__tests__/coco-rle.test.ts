@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { describe, expect, it } from "vitest";
-import * as api from "../coco-rle";
+import * as api from "../coco-rle.js";
 
 // Byte fixtures were produced by the unmodified official COCO C reference.
 const golden = [
@@ -14,6 +14,7 @@ const golden = [
   { height: 1, width: 40, counts: "0d01]Oa0", expected: [...Array<number>(20).fill(0), 255, 0, ...Array<number>(18).fill(255)] },
 ];
 
+// Execution design §10.3: the decoder lives in shared so the browser overlay and the containers read RLE the same way.
 describe("COCO compressed RLE to VOID gray8 mask", () => {
   it("exports the mask decoder", () => {
     expect(["decodeCocoRleMask"].filter((name) => !(name in api))).toEqual([]);
