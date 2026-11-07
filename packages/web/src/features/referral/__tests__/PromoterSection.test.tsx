@@ -184,6 +184,22 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
     expect(toasts.success).toHaveBeenCalled();
   });
 
+  it('sends the application again with the same key after a throttle, and files it', async () => {
+    api.apply
+      .mockRejectedValueOnce(new ApiException({ status: 429, message: 'slow down', fromServer: true, retryAfterSeconds: 0 }))
+      .mockResolvedValueOnce({ ...OPEN, promoter: { state: 'pending', submittedAt: '2026-11-07T10:00:00.000Z' } });
+    const user = userEvent.setup();
+    setup(OPEN);
+    await user.click(await screen.findByRole('button', { name: 'Apply to become a promoter' }));
+    await fillForm(user);
+    await user.click(screen.getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: 'Submit application' }));
+    await waitFor(() => expect(toasts.success).toHaveBeenCalled());
+    expect(api.apply).toHaveBeenCalledTimes(2);
+    expect(api.apply.mock.calls[1]![1]).toBe(api.apply.mock.calls[0]![1]);
+    expect(toasts.error).not.toHaveBeenCalled();
+  });
+
   it('unticks the terms and says they changed when the version moved on', async () => {
     api.apply.mockRejectedValueOnce(refusal409('terms_changed', { termsVersion: '2026-12-01' }));
     const user = userEvent.setup();

@@ -170,6 +170,22 @@ describe('the referral code section (inner#1868 tables 12.9, 12.10)', () => {
     expect(screen.getByLabelText('Referral code')).toHaveValue('ALICE');
   });
 
+  it('sends the press again with the same key after a throttle, and binds', async () => {
+    // A throttled press has no answer yet, so it keeps waiting rather than failing (packages/web/AGENTS.md#waiting-buttons-show-loading).
+    api.get.mockResolvedValue(CAN_BIND);
+    api.bind
+      .mockRejectedValueOnce(new ApiException({ status: 429, message: 'slow down', fromServer: true, retryAfterSeconds: 0 }))
+      .mockResolvedValueOnce(BOUND);
+    const user = userEvent.setup();
+    setup();
+    await user.type(await screen.findByLabelText('Referral code'), 'ALICE');
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(toasts.success).toHaveBeenCalled());
+    expect(api.bind).toHaveBeenCalledTimes(2);
+    expect(api.bind.mock.calls[1]![1]).toBe(api.bind.mock.calls[0]![1]);
+    expect(toasts.error).not.toHaveBeenCalled();
+  });
+
   it('draws nothing once the first period has been paid', async () => {
     api.get.mockResolvedValue({ ...BOUND, binding: { code: 'ALICE', discountPending: false } });
     setup();
