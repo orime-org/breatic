@@ -13,6 +13,7 @@ import {
   pgTable,
   uuid,
   varchar,
+  char,
   text,
   boolean,
   doublePrecision,
@@ -1164,6 +1165,57 @@ export const creditGrantOperations = pgTable("credit_grant_operations", {
   requestedBy: uuid("requested_by").notNull(),
   requestBody: jsonb("request_body").$type<CreditGrantWrite>().notNull(),
   result: jsonb("result").$type<CreditGrantResult>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** One promoter application; partial unique indexes and CHECKs live in 0116 (inner#1868). */
+export const promoterApplications = pgTable("promoter_applications", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  status: text("status").$type<"pending" | "approved" | "rejected">().notNull(),
+  country: char("country", { length: 2 }).notNull(),
+  channels: jsonb("channels").$type<string[]>().notNull(),
+  plan: text("plan").notNull(),
+  termsVersion: varchar("terms_version", { length: 32 }).notNull(),
+  termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }).notNull(),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  decidedBy: varchar("decided_by", { length: 64 }),
+  decisionReason: text("decision_reason"),
+  applicantNote: text("applicant_note"),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  ...timestamps,
+});
+
+/** An approved promoter's code; stored upper-case, never deleted because bindings point at it. */
+export const referralCodes = pgTable("referral_codes", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  code: varchar("code", { length: 20 }).notNull().unique(),
+  promoterId: uuid("promoter_id").notNull().unique().references(() => users.id, { onDelete: "restrict" }),
+  applicationId: uuid("application_id").notNull().unique().references(() => promoterApplications.id, { onDelete: "restrict" }),
+  status: text("status").$type<"active" | "disabled" | "removed">().default("active").notNull(),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
+  ...timestamps,
+});
+
+/** The one code an account carries, written once and kept for commission. */
+export const referralBindings = pgTable("referral_bindings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().unique().references(() => users.id, { onDelete: "restrict" }),
+  referralCodeId: uuid("referral_code_id").notNull().references(() => referralCodes.id, { onDelete: "restrict" }),
+  source: text("source").$type<"signup_link" | "signup_typed" | "later">().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Every back-office referral write under its idempotency key, with its original answer. */
+export const referralOperations = pgTable("referral_operations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  key: text("key").notNull().unique(),
+  kind: text("kind").$type<"approve" | "reject" | "disable" | "enable" | "remove">().notNull(),
+  targetId: uuid("target_id").notNull(),
+  requestHash: varchar("request_hash", { length: 64 }).notNull(),
+  requestedBy: varchar("requested_by", { length: 64 }).notNull(),
+  requestBody: jsonb("request_body").$type<Record<string, unknown>>().notNull(),
+  result: jsonb("result").$type<{ status: "applied" | "refused" } & Record<string, unknown>>().notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
