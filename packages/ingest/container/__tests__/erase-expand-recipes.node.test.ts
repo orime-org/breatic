@@ -432,6 +432,20 @@ describe('prepare_model_input order and grid (execution design §10.2, §10.4)',
     expect((await packets(file)).map(packet => Number(packet.pts_time))).toEqual(Array.from({ length: 10 }, (_unused, k) => k / 25));
   });
 
+  it('PG04 a reversed clip in two chunks, the later chunk stitched first, plays the whole window backwards', async () => {
+    const source = join(dir, 'greys25.mp4');
+    const reversed = async (window: { start: number; end: number }, start: Exact, end: Exact): Promise<string> =>
+      produce({ [SOURCE]: source }, { kind: 'prepare_model_input', inputId: SOURCE, window, timescale: 25, entries: [span(start, end)], target: TARGET, audio: null, order: 'reverse' });
+    const [late, early] = [await reversed({ start: 5, end: 10 }, r(1, 5), r(2, 5)), await reversed({ start: 0, end: 5 }, r(0), r(1, 5))];
+    const [LATE, EARLY] = ['10000000-0000-4000-8000-0000000000d1', '10000000-0000-4000-8000-0000000000d0'];
+    const file = await produce({ [SOURCE]: source, [LATE]: late, [EARLY]: early },
+      { kind: 'stitch', inputId: SOURCE, target: TARGET, chunks: [{ inputId: LATE, duration: r(1, 5) }, { inputId: EARLY, duration: r(1, 5) }], audio: null });
+    const [original, joined] = [await lumaMeans(source), await lumaMeans(file)];
+    expect(joined).toHaveLength(10);
+    joined.forEach((value, k) => expect(Math.abs(value - original[9 - k]!), `frame ${k}`).toBeLessThan(3));
+    (await packets(file)).forEach((packet, k) => expect(Number(packet.pts_time)).toBeCloseTo(k / 25, 3));
+  });
+
   it.each([
     ['a 29.97 fps source on a 1 ms clock', 'greys2997.mp4', 15, null],
     ['a jittery VFR source', 'vfr.mp4', 8, VFR_END],

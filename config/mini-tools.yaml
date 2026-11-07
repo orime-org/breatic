@@ -101,6 +101,9 @@ encoding:
   max_parallel_chunks: 8
   # A failed chunk attempt is retried this many times before the presentation fails.
   chunk_retries: 3
+  # Decoded frames one job holds to play a tracking clip backwards; a longer reversed clip is reversed in chunks
+  # stitched latest first. 2 GiB is a sixth of standard-4's 12 GiB.
+  reverse_buffer_bytes: 2147483648
   encoder:
     container_class: "MiniToolContainerStd4"
     start_seconds: 3

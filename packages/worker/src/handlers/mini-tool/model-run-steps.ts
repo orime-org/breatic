@@ -15,14 +15,14 @@ import {
 } from "@breatic/domain";
 import {
   DeadlinePassed, HttpRetryError, miniToolPlanJobRequestSchema, readMiniToolPlanJobReport, videoPresentationWorkKeyFor, type MiniToolPlanExact, type MiniToolPlanJobRequest,
-  type MiniToolPlanRecipe, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
+  type MiniToolPlanRecipe, type MiniToolPlanTarget, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from "@breatic/shared";
 import type { ExpandFailureReason, MiniToolExecutionRegistered } from "@breatic/shared/mini-tools";
 import { advanceMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { appendStep } from "@worker/handlers/mini-tool/prepare-model-input.js";
 import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { registered } from "@worker/handlers/mini-tool/run-video-tool.js";
-import { FullLedgerInvalid, readJobLedger } from "@worker/handlers/video-presentation-recipes.js";
+import { chunkInputId, FullLedgerInvalid, readJobLedger, windowDuration, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
 import { HttpStatusError, UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 import { runPrediction } from "@worker/providers/wavespeed.js";
@@ -506,4 +506,56 @@ export async function eachSubmitted<T>(steps: readonly (() => Promise<T>)[]): Pr
   }
   if (waiting !== null) throw waiting;
   return values;
+}
+
+/** A tracking clip to prepare: its presentation frames, its order and the step key of its prepared video. */
+export interface ClipStep {
+  stepKey: string;
+  clip: { start: number; end: number };
+  order: "forward" | "reverse";
+  ledger: VideoPresentationLedger;
+  target: MiniToolPlanTarget;
+  /** The failed line of a job that failed for good. */
+  failed: (reason: string) => StepEnded;
+}
+
+/**
+ * Prepare a tracking clip (execution design §10.2): one `prepare_model_input` job, or, for a reversed clip whose decoded
+ * frames pass `encoding.reverse_buffer_bytes`, one reversed job per chunk of at most that many frames and a stitch that
+ * joins them latest chunk first, so the k-th chunk of the reversed clip is the (n − 1 − k)-th of the forward one.
+ * @param run - The run.
+ * @param planned - The clip.
+ * @param deadlineAt - The task deadline.
+ * @returns The prepared video, or the failure.
+ * @throws {StillRunning} While a job runs.
+ * @throws {Error} When persistence or the job boundary fails.
+ */
+export async function advanceClip(run: ModelStepRun, planned: ClipStep, deadlineAt: number): Promise<StepEnded> {
+  const { ledger, target, clip, order } = planned;
+  const source = "00000000-0000-4000-8000-000000000001";
+  /**
+   * The job preparing one window of the clip.
+   * @param window - The window.
+   * @param window.start - Its first frame.
+   * @param window.end - The frame after its last.
+   * @param stepKey - Its step key.
+   * @returns The step.
+   * @throws {never} Never.
+   */
+  const prepare = (window: { start: number; end: number }, stepKey: string): ContainerStep => ({ stepKey, contentType: "video/mp4", failed: planned.failed,
+    build: () => Promise.resolve({ recipe: { kind: "prepare_model_input", inputId: source, window, timescale: ledger.plan.presentation.timescale,
+      entries: windowEntries(ledger, window), target, audio: null, order }, inputs: [{ inputId: source, storageKey: run.sourceKey }] }) });
+  // The reverse filter holds every decoded frame of its window, 8-bit 4:2:0 at the target size.
+  const most = Math.max(1, Math.floor(getMiniToolsConfig().encoding.reverse_buffer_bytes / (target.width * target.height * 1.5)));
+  if (order === "forward" || clip.end - clip.start <= most) return advanceContainer(run, prepare(clip, planned.stepKey), deadlineAt);
+  const windows: { start: number; end: number }[] = [];
+  for (let start = clip.start; start < clip.end; start += most) windows.push({ start, end: Math.min(clip.end, start + most) });
+  // A chunk's key is the clip's with its index, so no chunk is found again as the whole clip.
+  const chunks = await advanceChunks(run, windows.map((window, k) => prepare(window, `${planned.stepKey}.c${k}`)), deadlineAt);
+  if (!("keys" in chunks)) return chunks;
+  const latestFirst = windows.map((window, k) => ({ window, key: chunks.keys[k]! })).reverse();
+  return advanceContainer(run, { stepKey: planned.stepKey, contentType: "video/mp4", failed: planned.failed,
+    build: () => Promise.resolve({ recipe: { kind: "stitch", inputId: source, target, audio: null,
+      chunks: latestFirst.map((chunk, at) => ({ inputId: chunkInputId(at), duration: windowDuration(ledger, chunk.window) })) },
+    inputs: [{ inputId: source, storageKey: run.sourceKey }, ...latestFirst.map((chunk, at) => ({ inputId: chunkInputId(at), storageKey: chunk.key }))] }) }, deadlineAt);
 }

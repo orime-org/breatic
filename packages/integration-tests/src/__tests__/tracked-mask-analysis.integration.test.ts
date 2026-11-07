@@ -196,6 +196,22 @@ describe("the tracked mask analysis executor (execution design §10.2, §10.3)",
     expect(asset?.storage_key).toBe(joins[0]!.outputs[0]!.storageKey);
   });
 
+  it("TA03 a reversed clip past the reverse buffer is reversed in chunks stitched latest first, and that stitch is tracked", async () => {
+    // 40 frames of 960x540 at 8-bit 4:2:0 fit the buffer, so the 101-frame reversed clip [200, 301) takes three chunks.
+    const settings = outside.config() as core.MiniToolsConfig;
+    outside.config.mockImplementation(() => ({ ...settings, encoding: { ...settings.encoding, reverse_buffer_bytes: 960 * 540 * 1.5 * 40 } }));
+    await drive(await seed());
+    const reversed = submitted.filter((job) => job.outputs[0]!.recipe.kind === "prepare_model_input" && job.outputs[0]!.recipe.order === "reverse");
+    expect(reversed.map((job) => job.outputs[0]!.recipe.window)).toEqual([{ start: 200, end: 240 }, { start: 240, end: 280 }, { start: 280, end: 301 }]);
+    const stitches = submitted.filter((job) => job.outputs[0]!.recipe.kind === "stitch");
+    expect(stitches).toHaveLength(1);
+    const recipe = stitches[0]!.outputs[0]!.recipe as { chunks: { inputId: string }[]; audio: unknown };
+    expect(recipe.audio).toBeNull();
+    expect(recipe.chunks.map((chunk) => bound(stitches[0]!, chunk.inputId))).toEqual([...reversed].reverse().map((job) => job.outputs[0]!.storageKey));
+    const tracks = outside.runPrediction.mock.calls.filter((call) => call[1] === TRACKER).map((call) => (call[2] as { video: string }).video);
+    expect(tracks).toContain(publicUrl(stitches[0]!.outputs[0]!.storageKey));
+  });
+
   it("TA02 a join with no foreground ends the analysis with empty_foreground at join", async () => {
     const f = await seed();
     scripted.set("rle_join", { schemaVersion: 2, state: "failed", reason: "empty_foreground", outputs: [], usage: { wallMs: 1000, cpuUsec: 2000000 } });

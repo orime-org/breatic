@@ -28,7 +28,7 @@ import { miniToolPlanJobRequestSchema, type MiniToolPlanExact, type MiniToolPlan
 import { presentationFrameCount, trackingClips, type MiniToolExecutionRegistered, type TrackingClips } from "@breatic/shared/mini-tools";
 import { lipsyncFacesFailureLine, lipsyncStepCategory, lipsyncTrackJoinFailureLine } from "@worker/handlers/mini-tool/lipsync-steps.js";
 import {
-  advanceContainer, advanceGenerate, catalogModel, exactSeconds, providerModel, runsOf, storedRequest, type ContainerStep, type ModelStepRun, type StepEnded,
+  advanceClip, advanceContainer, advanceGenerate, catalogModel, exactSeconds, providerModel, runsOf, storedRequest, type ContainerStep, type ModelStepRun, type StepEnded,
 } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { appendStep, prepareModelInput, preparedRequest, type PreparingRun } from "@worker/handlers/mini-tool/prepare-model-input.js";
 import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
@@ -233,12 +233,9 @@ async function clipVideo(execution: LipSync, order: "forward" | "reverse", deadl
   if (clip === null) throw new Error(`The lip-sync run tracks no ${order} clip`);
   const prepared = await preparedOf(execution);
   if (order === "forward" && clip.start === 0) return { key: prepared.outputs[0]!.storageKey };
-  return personContainer(execution, sharedKeyOf(execution, order === "forward" ? "prepare:fwd" : "prepare:rev"), "video/mp4", async () => {
-    const ledger = await ledgerOf(execution, deadlineAt);
-    const { target } = prepared.outputs[0]!.recipe as { target: MiniToolPlanTarget };
-    return { recipe: { kind: "prepare_model_input", inputId: SOURCE, window: clip, timescale: ledger.plan.presentation.timescale, entries: windowEntries(ledger, clip),
-      target: { ...target, format: undefined }, audio: null, order }, inputs: [{ inputId: SOURCE, storageKey: execution.sourceKey }] };
-  }, () => ({ failed: "failed", step: "prepare" }), deadlineAt);
+  const { target } = prepared.outputs[0]!.recipe as { target: MiniToolPlanTarget };
+  return await advanceClip(stepRun(execution), { stepKey: sharedKeyOf(execution, order === "forward" ? "prepare:fwd" : "prepare:rev"), clip, order,
+    ledger: await ledgerOf(execution, deadlineAt), target: { ...target, format: undefined }, failed: () => ({ failed: "failed", step: "prepare" }) }, deadlineAt) as Ended;
 }
 
 /**

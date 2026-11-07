@@ -234,7 +234,7 @@ function directionOfClip(url: string): string {
  * @returns The person, or null for a shared job.
  */
 function personOfJob(job: Job): Person | null {
-  for (const person of PEOPLE) for (const kind of ["track_join", "faces", "clip", "stem"]) if (job.jobId.includes(lipsyncStepKey(PLAN, person, kind as "faces"))) return person;
+  for (const person of PEOPLE) for (const kind of ["track_join", "faces", "clip", "stem"]) if (job.jobId.includes(lipsyncStepKey(PLAN, person, kind))) return person;
   return null;
 }
 

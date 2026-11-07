@@ -18,17 +18,16 @@ import {
 } from "@breatic/shared/mini-tools";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
 import {
-  advanceContainer, advanceGenerate, catalogModel, eachSubmitted, modelStepCategory, providerModel, storedRequest, TrackedMaskFailed, trackedMaskFailure, type ModelStepRun,
+  advanceClip, advanceGenerate, catalogModel, eachSubmitted, modelStepCategory, providerModel, storedRequest, TrackedMaskFailed, trackedMaskFailure, type ModelStepRun,
 } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { advanceAnalysisJob, frozenLedger } from "@worker/handlers/mini-tool/run-container-analysis.js";
-import { modelInputTarget, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
+import { modelInputTarget } from "@worker/handlers/video-presentation-recipes.js";
 import { upstreamBody } from "@worker/providers/upstream-body.js";
 
 type Execution = miniToolAnalysisService.MiniToolAnalysisExecution;
 type TrackedMaskResult = Extract<MiniToolAnalysisResult, { kind: "tracked_mask" }>;
 
-/** The input ids the recipes bind their objects under, fixed so a rebuilt request is the same request. */
-const SOURCE = "00000000-0000-4000-8000-000000000001";
+/** The input ids the join binds the tracks under, fixed so a rebuilt request is the same request. */
 const TRACKS = { forward: "00000000-0000-4000-8002-000000000000", reverse: "00000000-0000-4000-8007-000000000000" } as const;
 const trackOutputs = z.tuple([z.object({ rle_url: z.url() })]);
 
@@ -68,9 +67,7 @@ export async function runMiniToolTrackedMaskAnalysis(execution: Execution, deadl
     ...(clips.reverse === null ? [] : [{ order: "reverse" as const, clip: clips.reverse, suffix: "rev", itemIndex: 1 }])];
 
   const prepared = await eachSubmitted(sides.map((side) => async (): Promise<string> => {
-    const ended = await advanceContainer(run, { stepKey: keyOf(`prepare:${side.suffix}`), contentType: "video/mp4", failed: (reason) => ({ failed: reason }),
-      build: () => Promise.resolve({ recipe: { kind: "prepare_model_input", inputId: SOURCE, window: side.clip, timescale: table.timescale,
-        entries: windowEntries(ledger, side.clip), target, audio: null, order: side.order }, inputs: [{ inputId: SOURCE, storageKey: params.sourceKey }] }) }, deadlineAt);
+    const ended = await advanceClip(run, { stepKey: keyOf(`prepare:${side.suffix}`), clip: side.clip, order: side.order, ledger, target, failed: (reason) => ({ failed: reason }) }, deadlineAt);
     if (!("key" in ended)) throw new TrackedMaskFailed(trackedMaskFailure("prepare", { reason: ended.failed }));
     return ended.key;
   }));

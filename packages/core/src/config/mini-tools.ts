@@ -88,12 +88,15 @@ const encoderDefaults = {
   face_detect_pixels_per_second: 13_000_000,
 };
 const pixelRate = z.number().positive().finite();
-const encodingDefaults = { chunk_share: 0.5, max_parallel_chunks: 8, chunk_retries: 3, encoder: encoderDefaults };
+const encodingDefaults = { chunk_share: 0.5, max_parallel_chunks: 8, chunk_retries: 3, reverse_buffer_bytes: 2_147_483_648, encoder: encoderDefaults };
 const encodingSchema = z.strictObject({
   chunk_share: z.number().positive().max(1).default(encodingDefaults.chunk_share),
   max_parallel_chunks: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(encodingDefaults.max_parallel_chunks),
   // Retries after a chunk attempt fails; a chunk runs at most chunk_retries + 1 attempts (design §7.1.1).
   chunk_retries: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).default(encodingDefaults.chunk_retries),
+  // The decoded frames one job may hold to play a clip backwards; a longer reversed tracking clip is reversed in chunks
+  // (execution design §10.2).
+  reverse_buffer_bytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(encodingDefaults.reverse_buffer_bytes),
   encoder: z.strictObject({
     container_class: z.literal("MiniToolContainerStd4").default(encoderDefaults.container_class),
     start_seconds: z.number().nonnegative().finite().default(encoderDefaults.start_seconds),
