@@ -15,14 +15,15 @@ beside the bundle at `/third-party-licences.txt`.
 
 ## Programs in our container images
 
-We publish three images. One of them, the media container, carries FFmpeg and
-vips:
+We publish four images. One of them, the media container, carries FFmpeg and
+vips; the web-animation container carries Chromium and the DeepSeek Harness:
 
 | Image | Built from | Base | Carries FFmpeg |
 |---|---|---|---|
 | `ghcr.io/<owner>/breatic` | [Dockerfile](./Dockerfile) | `node:24-bookworm-slim` | no |
 | the media container | [packages/ingest/Dockerfile](./packages/ingest/Dockerfile) | `alpine:3.23` | yes |
 | `ghcr.io/<owner>/breatic-web` | [Dockerfile.web](./Dockerfile.web) | `nginx:1.27-alpine` | no — it serves the built front-end and nothing else |
+| the web-animation container | [packages/ingest/web-animation.Dockerfile](./packages/ingest/web-animation.Dockerfile) | `node:24-bookworm-slim` | no — see [Web animation](#web-animation) |
 
 Breatic invokes the `ffmpeg` executable as a separate process and does not link
 against its libraries. The program and Breatic are separate works that happen to
@@ -105,6 +106,24 @@ runs `sox` as a separate program, piping the decoded sound through it, and
 loads none of its libraries. The image carries the licence texts and a
 `SOURCE` file at `/usr/share/sox-source/`, written from the installed package
 while the image is built, as the FFmpeg one above is.
+
+### Web animation
+
+The web-animation container and the ingest Worker carry these for web-animation
+execution (inner#1711):
+
+| Component | Version | Licence | How it ships | Source |
+|---|---|---|---|---|
+| Chromium | Debian bookworm's `chromium` package; the image's `/usr/share/chromium-source/SOURCE` records the exact version | **BSD-3-Clause** and the licences of the components it bundles, listed in the image at `/usr/share/doc/chromium/copyright` | A separate program the runner starts to check a package; none of its libraries is loaded into our process | `https://snapshot.debian.org/package/chromium/` at the recorded version |
+| `@deepseek-ai/dsh` (DeepSeek Harness) and its `node_modules` | `0.2.2-rc.1`, installed with `--ignore-scripts` | **MIT**; within its closure, besides MIT, Apache-2.0, BSD and ISC: `argparse` (**Python-2.0**), `fast-sha256` (**Unlicense**), `lru-cache` (**BlueOak-1.0.0**), `tslib` (**0BSD**), `type-fest` (**MIT OR CC0-1.0**). `@deepseek-ai/libreoffice-kit*` (MPL-2.0) and sharp's native `@img/*` packages (libvips is LGPL-3.0) are removed while the image is built | A separate program the runner starts; our service imports none of it | https://github.com/deepseek-ai/deepseek-harness |
+| `@hyperframes/core` runtime (`dist/hyperframe.runtime.iife.js`) | `0.8.186` | **Apache-2.0**, per the tarball's `LICENSE`, copied to `/app/runtime/LICENSE` in the image | Inlined into every web-animation package, which is served to browsers | https://github.com/heygen-com/hyperframes |
+| `@fontsource-variable/noto-sans-sc`, `@fontsource-variable/noto-serif-sc`, `@fontsource-variable/inter` | `5.3.1`, `5.3.1`, `5.3.0` | **OFL-1.1** | Their `wght-normal` woff2 files are served as the ingest Worker's static assets and carried by the image; each package's licence text travels beside the files as `<package>-OFL.txt` | https://github.com/notofonts/noto-cjk, https://github.com/rsms/inter |
+
+The runner bundles nothing but Node and our own code
+(`breatic/media-container-own-code-only` holds it to that, as for the media
+container). The OFL's one prohibition, selling the fonts on their own, is not
+something Breatic does, and none of the three copyright lines declares a
+Reserved Font Name.
 
 ## Packages in our container images
 
