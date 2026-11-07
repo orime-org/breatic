@@ -40,7 +40,7 @@ import {
   useProjectMeta,
   type ProjectSpace,
 } from '@web/data/yjs/project-meta';
-import { useCanvasStore, useCurrentUserStore, useUIStore } from '@web/stores';
+import { useCanvasStore, useCurrentUserStore, useDocumentViewStore, useUIStore } from '@web/stores';
 import { resetProjectUiStores } from '@web/stores/reset-project-ui';
 import {
   endAllKeptEditors,
@@ -209,8 +209,8 @@ export default function ProjectPage(): React.JSX.Element {
 
 /**
  * Load this account's stored interface preferences into the stores before the
- * workspace renders: whether the Agent panel is open in this project, and the
- * canvas minimap and snap. Both stores outlive a project page and start from
+ * workspace renders: whether the Agent panel is open in this project, the
+ * canvas minimap and snap, and the document heading outline. The stores outlive a project page and start from
  * fixed defaults, so without this the first frame shows whatever the previous
  * page or the defaults left, and the Agent column mounts before being hidden.
  *
@@ -226,6 +226,7 @@ function useRestoredPreferences(userId: string | undefined, projectId: string): 
   React.useLayoutEffect(() => {
     useUIStore.getState().restoreAgentPanel(userId, projectId);
     useCanvasStore.getState().restoreViewPreferences(userId);
+    useDocumentViewStore.getState().restore(userId);
     setRestoredFor(key);
   }, [key, userId, projectId]);
   return restoredFor === key;
