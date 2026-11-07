@@ -225,6 +225,22 @@ describe("what the prompt says the model's job is", () => {
     expect(wording()).not.toMatch(/settles everything that would change the result/);
   });
 
+  // Asked only "what style is this?" with an image, the Agent answered and
+  // then kept going for over a thousand characters: an unasked tie-in to the
+  // user's project, a review of their earlier choices and a next step it
+  // picked for them, reasoning that a collaborator connects everything to the
+  // project (breatic#1361).
+  it("answers what was asked and adds nothing unasked unless the next step would go wrong", () => {
+    const bullet =
+      "- Answer what the user asked, first, and stop there: a question gets its answer at the length it needs, a request to make something gets the work. " +
+      "Add something they did not ask about only when, without it, their next step would go wrong, and say it in one sentence. " +
+      "Do not review their earlier choices, decide for them or plan their next step unless they ask.";
+    expect(wording()).toContain(bullet);
+    const at = wording().indexOf(bullet);
+    expect(at).toBeGreaterThan(wording().indexOf("- Before you make something, check what the user's words leave open."));
+    expect(at).toBeLessThan(wording().indexOf("Answer with the result, not with reasons it might fail."));
+  });
+
   it("asks for the result, not the reasons it might fail", () => {
     expect(wording()).toMatch(/Answer with the result, not with reasons it might fail/);
   });
