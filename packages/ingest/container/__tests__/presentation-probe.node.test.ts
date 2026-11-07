@@ -540,4 +540,12 @@ describe('failures (design §10.6 失败分类)', () => {
   it('PF01 a source over the frozen byte cap answers source_over_cap', async () => {
     expect(await probed('cfr.mp4', { limits: { ...LIMITS, maxSourceBytes: 1024 } })).toEqual({ kind: 'failed', code: 'source_over_cap' });
   });
+  it('PF03 a source ffprobe cannot open (an MP4 header and noise: moov atom not found) is the source\'s failure, probe_invalid', async () => {
+    const path = join(dir, 'unreadable.mp4');
+    const header = Buffer.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 2, 0, 0x69, 0x73, 0x6f, 0x6d, 0x69, 0x73, 0x6f, 0x32]);
+    await writeFile(path, Buffer.concat([header, createHash('sha256').update('noise').digest(), Buffer.alloc(4096, 0x5a)]));
+    files.set('unreadable.mp4', path);
+    expect(await probed('unreadable.mp4')).toEqual({ kind: 'failed', code: 'probe_invalid' });
+  });
 });
+

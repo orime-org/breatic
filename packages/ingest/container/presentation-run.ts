@@ -25,7 +25,7 @@ import { objectUrlOn } from '@ingest/object-url.js';
 import { videoPresentationWorkKeyFor, videoSourceLedgerKeyFor } from '@shared/upload/video-presentation-keys.js';
 import { classifyVideoAlpha } from '@ingest/video-alpha-classification.js';
 import { download } from '@ingest/container/mini-tool-run.js';
-import { runPlanCommand } from '@ingest/container/plan-command.js';
+import { PlanCommandExit, runPlanCommand } from '@ingest/container/plan-command.js';
 import { inspectIsoBmffFile } from '@ingest/container/iso-bmff-metadata.js';
 import { exactPresentationTime, planEditListPresentation } from '@ingest/container/iso-bmff-presentation.js';
 import { parsePhysicalVideoPackets, resolveVideoColorMatrix, videoDisplayGeometry, videoPacketProbeArgs, type PhysicalVideoPacket } from '@ingest/container/physical-video-probe.js';
@@ -270,7 +270,9 @@ function workDepth(bitDepth: number): VideoJobWork['bitDepth'] {
  */
 async function plan(body: PresentationProbeRequest, input: string, directory: string, signal: AbortSignal): Promise<PresentationProbeAnswer> {
   const options = { signal, stdoutBytes: body.limits.probeStdoutBytes, stderrTailBytes: body.limits.stderrTailBytes };
-  const raw = json(await runPlanCommand('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file', '-show_streams', '-show_format', '-of', 'json', input], options));
+  // ffprobe exiting non-zero on a complete local download means it cannot read the source, a property of the bytes.
+  const raw = json(await runPlanCommand('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file', '-show_streams', '-show_format', '-of', 'json', input], options)
+    .catch((cause: unknown) => { throw cause instanceof PlanCommandExit ? new ProbeFailure('probe_invalid') : cause; }));
   if (!Array.isArray(raw.streams)) throw new ProbeFailure('probe_invalid');
   const streams = raw.streams.map(record);
   const videos = streams.filter((stream) => stream.codec_type === 'video' && (typeof stream.disposition !== 'object' || stream.disposition === null || record(stream.disposition).attached_pic !== 1));

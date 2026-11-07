@@ -3,6 +3,17 @@
 
 import { spawn } from "node:child_process";
 
+/** A plan program that ran to its end and exited with a non-zero code; a signal is not an exit. */
+export class PlanCommandExit extends Error {
+  /**
+   * Name the exit.
+   * @param program - The program.
+   * @param exitCode - Its exit code.
+   * @param stderr - Its stderr tail.
+   */
+  constructor(readonly program: string, readonly exitCode: number, stderr: string) { super(`${program} exited ${exitCode}: ${stderr}`); this.name = 'PlanCommandExit'; }
+}
+
 /** The frozen per-attempt process IO bounds and original lifetime. */
 export interface PlanCommandOptions { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: number }
 /**
@@ -11,7 +22,8 @@ export interface PlanCommandOptions { signal: AbortSignal; stdoutBytes: number; 
  * @param args - Its owned argument vector.
  * @param options - The original lifetime and frozen IO limits.
  * @returns Its complete bounded stdout, including valid empty output.
- * @throws {Error} When spawn, IO bounds or the program's exit fail.
+ * @throws {PlanCommandExit} When the program exits with a non-zero code.
+ * @throws {Error} When spawn or IO bounds fail, or a signal ends the program.
  * @throws {DOMException} When the original job lifetime is cancelled.
  */
 export async function runPlanCommand(program: string, args: readonly string[], options: PlanCommandOptions): Promise<Buffer> {
@@ -59,7 +71,9 @@ export async function runPlanCommand(program: string, args: readonly string[], o
     if (options.signal.aborted) onAbort();
     await new Promise<void>((resolve) => {
       child.once("close", (code, signal) => {
-        if (code !== 0 && firstFailure === undefined) firstFailure = new Error(`${program} exited ${code ?? signal}: ${stderr.toString("utf8")}`);
+        if (code !== 0 && firstFailure === undefined) {
+          firstFailure = code === null ? new Error(`${program} exited ${signal}: ${stderr.toString("utf8")}`) : new PlanCommandExit(program, code, stderr.toString("utf8"));
+        }
         resolve();
       });
     });
