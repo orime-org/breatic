@@ -78,7 +78,7 @@ export async function openTimeline(page: Page, spaceId: string): Promise<void> {
  * @throws {Error} When the visible track cannot be read.
  */
 export async function timelineClipIds(page: Page): Promise<string[]> {
-  return visibleSpace(page).locator('[data-testid^="timeline-clip-"]').evaluateAll((clips) =>
+  return visibleSpace(page).locator('[data-testid^="timeline-clip-"][data-track-id]').evaluateAll((clips) =>
     clips.map((clip) => clip.getAttribute('data-testid')!.replace('timeline-clip-', '')),
   );
 }
@@ -96,25 +96,43 @@ export async function selectTimelineClip(page: Page, clipId: string): Promise<vo
 }
 
 /**
- * Assert the selected placement's integer-frame position using the actual properties text.
+ * Read a properties field whether it is an editable input or read-only text.
+ * @throws {Error} When the field is absent.
+ */
+async function propertyValue(page: Page, testId: string): Promise<string> {
+  return visibleSpace(page).getByTestId(testId).evaluate((element) => element instanceof HTMLInputElement ? element.value : element.textContent ?? '');
+}
+
+/**
+ * Assert the selected placement's integer-frame position using the actual properties fields.
  * @throws {Error} When the displayed position differs from the expected placement.
  */
 export async function expectTimelineStart(page: Page, clipId: string, start: number, duration: number): Promise<void> {
   await selectTimelineClip(page, clipId);
-  await expect(visibleSpace(page).getByText(`Start ${start} · Duration ${duration} frames`, { exact: true }).last()).toBeVisible();
+  await expect.poll(() => propertyValue(page, 'timeline-clip-start')).toBe(String(start));
+  await expect.poll(() => propertyValue(page, 'timeline-clip-duration')).toBe(String(duration));
 }
 
 /**
- * Move a placement through the native start-frame form and wait for the accepted position.
+ * Move a placement through its properties: optionally to another track by its visible name
+ * ('New visual track' creates one), then to a start frame typed into the start field.
  * @throws {Error} When the real edit is refused or does not reach the properties view.
  */
-export async function moveTimelineClip(page: Page, clipId: string, start: number, duration: number): Promise<void> {
+export async function moveTimelineClip(page: Page, clipId: string, start: number, duration: number, track?: string): Promise<void> {
   const outlet = visibleSpace(page);
   await selectTimelineClip(page, clipId);
-  await outlet.getByTestId('timeline-edit-start').click();
-  await outlet.getByTestId('timeline-start-frame').fill(String(start));
-  await outlet.getByTestId('timeline-apply-start').click();
-  await expect(outlet.getByTestId('timeline-apply-start')).toHaveCount(0);
+  if (track !== undefined) {
+    await outlet.getByTestId('timeline-clip-track').click();
+    await page.getByRole('option', { name: track, exact: true }).click();
+    await expect(page.getByRole('listbox')).toHaveCount(0);
+    if (track === 'New visual track') await expect(outlet.getByTestId('timeline-clip-track')).not.toHaveText(/Main track/);
+    else await expect(outlet.getByTestId('timeline-clip-track')).toHaveText(track);
+  }
+  const field = outlet.getByTestId('timeline-clip-start');
+  if (await propertyValue(page, 'timeline-clip-start') !== String(start)) {
+    await field.fill(String(start));
+    await field.press('Enter');
+  }
   await expectTimelineStart(page, clipId, start, duration);
 }
 
@@ -208,11 +226,11 @@ export async function uploadTimelineVideo(page: Page, projectId: string, fixture
   expect(asset.kind).toBe('video');
   expect(asset.assetId).toMatch(/^[0-9a-f-]{36}$/);
   await expect(dialog).toHaveCount(0, { timeout: 60_000 });
-  await expect(outlet.locator('[data-testid^="timeline-clip-"]')).toHaveCount(1);
+  await expect(outlet.locator('[data-testid^="timeline-clip-"][data-track-id]')).toHaveCount(1);
   const [clipId] = await timelineClipIds(page);
   await selectTimelineClip(page, clipId);
-  const properties = await outlet.getByText(/^Start 0 · Duration \d+ frames$/).innerText();
-  const durationFrames = Number(/Duration (\d+) frames/.exec(properties)?.[1]);
+  await expect(outlet.getByTestId('timeline-clip-start')).toHaveText('0');
+  const durationFrames = Number(await outlet.getByTestId('timeline-clip-duration').inputValue());
   expect(Number.isSafeInteger(durationFrames)).toBe(true);
   expect(durationFrames).toBeGreaterThan(0);
   await expectTimelineVideoReady(page, asset.fileUrl);
@@ -248,7 +266,7 @@ export async function addProjectTimelineVideo(page: Page, assetId: string): Prom
   await expect(choice).toHaveAttribute('aria-pressed', 'true');
   await dialog.getByTestId('timeline-confirm-material').click();
   await expect(dialog).toHaveCount(0);
-  await expect(visibleSpace(page).locator('[data-testid^="timeline-clip-"]')).toHaveCount(before.length + 1);
+  await expect(visibleSpace(page).locator('[data-testid^="timeline-clip-"][data-track-id]')).toHaveCount(before.length + 1);
   const added = (await timelineClipIds(page)).filter((id) => !before.includes(id));
   expect(added).toHaveLength(1);
   return added[0];

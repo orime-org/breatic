@@ -62,7 +62,7 @@ export default function AuthBootstrap({
         if (cancelled) return;
         if (useCurrentUserStore.getState().user === null) {
           setUser(toCurrentUser(u));
-          changeLocale(u.locale);
+          void changeLocale(u.locale);
         }
       })
       .catch(() => {

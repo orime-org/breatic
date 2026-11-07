@@ -100,7 +100,7 @@ async function seedProject(): Promise<{ userId: string; projectId: string }> {
  * @returns The created conversation.
  */
 async function seedConversation(userId: string, projectId: string) {
-  const conv = await conversationRepo.createConversation(userId);
+  const conv = await conversationRepo.createConversation(userId, "deepseek/deepseek-v4.1-flash-1017");
   await conversationRepo.setProjectId(conv.id, projectId);
   return { ...conv, projectId };
 }
@@ -512,7 +512,7 @@ describe("the memory chain still sees the same messages", () => {
     });
     const before = await conversationRepo.getConversation(conv.id);
 
-    await conversationRepo.advanceConsolidatedTurn(conv.id, 1);
+    await conversationRepo.advanceConsolidatedTurn(conv.id, 0, 1);
 
     const after = await conversationRepo.getConversation(conv.id);
     expect(after!.updatedAt.getTime()).toBe(before!.updatedAt.getTime());

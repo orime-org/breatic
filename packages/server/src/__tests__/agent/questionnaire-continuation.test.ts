@@ -36,7 +36,7 @@ vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async (_u: string, _c: string, _p: string, before: number) => {
     modelSays.runningTurn = before;
     return {
-      memoryContext: { projectMemory: "", conversationMemory: "" },
+      memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
       history: modelSays.history.filter((row) => row.turnIndex < before),
       watermark: 0,
     };

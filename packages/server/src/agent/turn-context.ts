@@ -17,7 +17,7 @@ import type { ReplayRow } from "@server/agent/history-replay.js";
 
 /** Everything a turn reads before its first token. */
 export interface TurnContext {
-  /** Both memory layers, loaded once for this turn. */
+  /** The memory entries and this conversation's progress note, loaded once for this turn. */
   memoryContext: MemoryContext;
   /** What has been said since the watermark, as stored. */
   history: ReplayRow[];

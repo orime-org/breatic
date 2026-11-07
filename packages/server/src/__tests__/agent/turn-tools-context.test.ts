@@ -22,12 +22,16 @@ const tools = {
   read_conversation: {},
   read_node_history: {},
   list_project_activity: {},
+  save_memory: {},
+  delete_memory: {},
+  read_memory: {},
 };
 const records = { spaceName: () => undefined } as never;
+const memory = { read: async () => [] } as never;
 
 describe("turnToolsContext", () => {
   const openDocument = { spaceId: "d1", spaceName: "Storyboard", blocks: [] };
-  const context = turnToolsContext(tools, usage, { saveToStorage, studioId: "s1", openDocument, records });
+  const context = turnToolsContext(tools, usage, { saveToStorage, studioId: "s1", openDocument, records, memory });
 
   it("keeps the usage recorder on every tool", () => {
     for (const name of Object.keys(tools)) expect(context[name]).toMatchObject({ usage });
@@ -53,6 +57,12 @@ describe("turnToolsContext", () => {
   it("hands the four record tools the turn's records", () => {
     for (const name of ["search_conversations", "read_conversation", "read_node_history", "list_project_activity"]) {
       expect(context[name]).toEqual({ usage, records });
+    }
+  });
+
+  it("hands the three memory tools the turn's memory (#1363)", () => {
+    for (const name of ["save_memory", "delete_memory", "read_memory"]) {
+      expect(context[name]).toEqual({ usage, memory });
     }
   });
 

@@ -11,6 +11,7 @@ import { makeAskUserTool, type AskUserContext } from "@domain/agent/tools/ask-us
 import { makeRequestSpaceContentTool, type RequestSpaceContentContext } from "@domain/agent/tools/request-space-content.js";
 import { makeSaveImageTool } from "@domain/agent/tools/save-image.js";
 import { recordTools, makeReadNodeHistoryTool } from "@domain/agent/tools/record-tools.js";
+import { memoryTools } from "@domain/agent/tools/memory-tools.js";
 import type { ToolPictureContext } from "@domain/agent/prepare-agent-pictures.js";
 import {
   ASK_USER,
@@ -26,6 +27,10 @@ import {
   READ_CONVERSATION,
   READ_NODE_HISTORY,
   RECORD_TOOL_NAMES,
+  MEMORY_TOOL_NAMES,
+  SAVE_MEMORY,
+  DELETE_MEMORY,
+  READ_MEMORY,
   SAVE_IMAGE,
   UNDERSTAND_MEDIA,
   SEARCH_CONVERSATIONS,
@@ -103,6 +108,11 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   [READ_CONVERSATION]: () => recordTools[READ_CONVERSATION],
   [READ_NODE_HISTORY]: (context = NO_TOOL_CONTEXT) => makeReadNodeHistoryTool(context),
   [LIST_PROJECT_ACTIVITY]: () => recordTools[LIST_PROJECT_ACTIVITY],
+  // The Agent's own memory, through the turn's execution context. Stateless,
+  // so one object serves every turn.
+  [SAVE_MEMORY]: () => memoryTools[SAVE_MEMORY],
+  [DELETE_MEMORY]: () => memoryTools[DELETE_MEMORY],
+  [READ_MEMORY]: () => memoryTools[READ_MEMORY],
 } as const;
 
 /**
@@ -121,6 +131,9 @@ export const BASELINE_TOOLS: readonly string[] = [
   // The user's own records: about the project, not the Space in front of
   // them, so offered whatever is open.
   ...RECORD_TOOL_NAMES,
+  // The Agent's own memory: about the user and the Project, offered on every
+  // turn.
+  ...MEMORY_TOOL_NAMES,
 ];
 
 /**
@@ -154,6 +167,7 @@ export {
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
   RECORD_TOOL_NAMES,
+  MEMORY_TOOL_NAMES,
   SAVE_IMAGE,
   UNDERSTAND_MEDIA,
 } from "@domain/agent/tools/tool-names.js";

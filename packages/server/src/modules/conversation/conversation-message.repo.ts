@@ -350,6 +350,30 @@ export async function answerWaitingAsk(
 }
 
 /**
+ * The model the turn that made this call started on, as its reply records it
+ * (#1363).
+ * @param id - Conversation UUID.
+ * @param toolCallId - A call the reply made.
+ * @returns The model id, or undefined when no reply holds the call or its record predates the picker.
+ */
+export async function getReplyModelId(id: string, toolCallId: string): Promise<string | undefined> {
+  const [row] = await db
+    .select({ forModel: conversationMessages.forModel })
+    .from(conversationMessages)
+    .where(
+      and(
+        eq(conversationMessages.conversationId, id),
+        eq(conversationMessages.role, "assistant"),
+        isNull(conversationMessages.deletedAt),
+        sql`${conversationMessages.parts} @> ${JSON.stringify([{ toolCallId }])}::jsonb`,
+      ),
+    )
+    .limit(1);
+  const modelId = (row?.forModel as { modelId?: unknown } | null | undefined)?.modelId;
+  return typeof modelId === "string" ? modelId : undefined;
+}
+
+/**
  * Keep what a turn's user message was sent to the model as.
  *
  * Written after the message itself: the message is stored first to number

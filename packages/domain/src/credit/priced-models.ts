@@ -21,13 +21,13 @@ export interface PriceCheckSources {
 }
 
 /**
- * The models the agent's own paths run on: the chat default and memory
- * consolidation.
+ * The models the agent's own paths run on: every model the reader can pick
+ * for chat, and memory consolidation.
  * @returns Each model id once.
  */
 export function agentModelIds(): string[] {
   const config = getAgentConfig();
-  return [...new Set([config.default_model, config.consolidation_model])];
+  return [...new Set([...config.chat_models.map((m) => m.id), config.consolidation_model])];
 }
 
 /**

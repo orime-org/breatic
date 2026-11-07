@@ -41,7 +41,7 @@ const RESOURCE_BASE = "https://resource.test.invalid";
 vi.mock("@breatic/domain", async () => {
   const { domainMock } = await import("../helpers/mock-core.js");
   return {
-    ...domainMock(),
+    ...(await domainMock()),
     voiceSampleUrl: vi.fn((key: string) => `${RESOURCE_BASE}/${key}`),
   };
 });

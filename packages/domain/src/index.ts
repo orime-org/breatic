@@ -123,6 +123,7 @@ export {
   SAVE_IMAGE,
   UNDERSTAND_MEDIA,
   RECORD_TOOL_NAMES,
+  MEMORY_TOOL_NAMES,
 } from "@domain/agent/tools/index.js";
 export type { OpenDocument } from "@domain/agent/tools/propose-document-edit.js";
 export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
@@ -141,6 +142,15 @@ export type {
   NodeRecords,
   ActivityPage,
 } from "@domain/agent/tools/project-records.js";
+export { MemoryRefused, countCharacters, memoryContent, memoryTitle } from "@domain/agent/memory-entries.js";
+export type {
+  AgentMemory,
+  MemoryEntry,
+  MemoryOrigin,
+  MemoryRefusalKind,
+  MemoryScope,
+  MemorySearchPage,
+} from "@domain/agent/memory-entries.js";
 export { buildAgentConfig, instructionsForAgentMemory } from "@domain/agent/agent-config.js";
 export {
   createAgentPicturePreparer,

@@ -76,7 +76,7 @@ beforeEach(() => {
   wire = stubChatWire();
   vi.mocked(chatApi.openChat).mockResolvedValue({
     conversations: [{ id: 'c1' }],
-    current: { conversation: { id: 'c1' }, messages: [], hasMore: false },
+    current: { conversation: { id: 'c1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
   } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
   vi.mocked(chatApi.streamConfig).mockResolvedValue({
     heartbeatIntervalMs: 5000,

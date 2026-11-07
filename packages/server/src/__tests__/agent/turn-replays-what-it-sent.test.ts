@@ -42,7 +42,7 @@ const modelSays = vi.hoisted(() => ({
 vi.mock("@server/agent/turn-context.js", () => ({
   // The running turn is not its own history, as the real read leaves it out.
   buildTurnContext: vi.fn(async (_u: string, _c: string, _p: string, runningTurn: number) => ({
-    memoryContext: { projectMemory: "", conversationMemory: "" },
+    memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
     history: modelSays.history.filter((row) => row.turnIndex < runningTurn),
     watermark: 0,
   })),

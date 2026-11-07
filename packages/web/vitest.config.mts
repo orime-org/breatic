@@ -1,5 +1,8 @@
 import { defineConfig } from 'vitest/config';
 import path from 'path';
+import { everyLocaleMessages } from './every-locale-messages.mjs';
+
+const LOCALES_DIR = path.resolve(__dirname, '../../locales');
 
 export default defineConfig({
   test: {
@@ -56,8 +59,12 @@ export default defineConfig({
       // Mirror vite.config.mts so vitest can resolve `@locales/*.json`
       // imports from src/i18n/locale-bootstrap.ts (and any test that
       // transitively imports it, e.g. via TopBar → LangSwitcher).
-      '@locales': path.resolve(__dirname, '../../locales'),
+      '@locales': LOCALES_DIR,
     },
+  },
+  // Same define as vite.config.mts, so tests run the code the build ships.
+  define: {
+    '__EVERY_LOCALE_MESSAGES__': JSON.stringify(everyLocaleMessages(LOCALES_DIR)),
   },
   esbuild: {
     jsx: 'automatic',

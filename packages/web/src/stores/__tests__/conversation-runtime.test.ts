@@ -71,7 +71,7 @@ function openChatAnswers({ hasMore = false }: { hasMore?: boolean } = {}): void 
   vi.mocked(chatApi.openChat).mockResolvedValue({
     conversations: [{ id: 'c-1' }],
     current: {
-      conversation: { id: 'c-1' },
+      conversation: { id: 'c-1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       messages: [
         {
           id: 'm1',
@@ -163,7 +163,7 @@ describe('pressing send twice while the conversation is still being opened', () 
     const second = conversationRuntime.conversationForSending('p-1');
     openIt({
       conversations: [{ id: 'c-1' }],
-      current: { conversation: { id: 'c-1' }, messages: [], hasMore: false },
+      current: { conversation: { id: 'c-1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
     } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
 
     // 开出两条,第二次按下就会落进一条读者从没看见过的会话里。
@@ -306,7 +306,7 @@ describe('loading what came before', () => {
    */
   async function theConversationIsReadAgainFrom(firstTurnIndex: number): Promise<void> {
     vi.mocked(chatApi.readConversation).mockResolvedValue({
-      conversation: { id: 'c-1' },
+      conversation: { id: 'c-1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       messages: [
         {
           id: `m${firstTurnIndex}`,
@@ -322,7 +322,7 @@ describe('loading what came before', () => {
     vi.mocked(chatApi.readConversation).mockImplementationOnce(
       async () =>
         ({
-          conversation: { id: 'c-2' },
+          conversation: { id: 'c-2', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
           messages: [],
           hasMore: false,
         }) as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>,
@@ -522,7 +522,7 @@ describe('an answer that arrives after the reader has left', () => {
     conversationRuntime.leaveProject('p-1');
     answer({
       conversations: [{ id: 'c-1' }],
-      current: { conversation: { id: 'c-1' }, messages: [], hasMore: false },
+      current: { conversation: { id: 'c-1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
     } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
     await opened;
 
@@ -564,7 +564,7 @@ describe('a request left over from a previous visit to the project', () => {
     return {
       conversations: [{ id: 'c-1' }],
       current: {
-        conversation: { id: 'c-1' },
+        conversation: { id: 'c-1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
         messages: texts.map((text, i) => ({
           id: `srv-${text}`,
           role: 'user',
@@ -735,7 +735,7 @@ describe('the next page of the conversation list not arriving (inner#1530)', () 
   it('says so in a toast, and keeps the mark that holds the end-of-list watcher back', async () => {
     vi.mocked(chatApi.openChat).mockResolvedValue({
       conversations: [{ id: 'c-1', updatedAt: '2026-08-13T00:00:00Z' }],
-      current: { conversation: { id: 'c-1' }, messages: [], hasMore: false },
+      current: { conversation: { id: 'c-1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
       hasMoreConversations: true,
     } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
     await conversationRuntime.ensureLoaded('p-1');

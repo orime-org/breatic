@@ -2,7 +2,7 @@
 
 breatic monorepo 的完整工程参考,合三份文档于一处:**Backend** 架构(9 package + 3 服务)、**Frontend**(`packages/web`)、以及全栈**函数定义编码规范**。行为 mandate(DD / TDD / 红线 / 判定题)在仓库根 [`AGENTS.md`](../AGENTS.md#rule-files);本文写"怎么做的细节"(技术栈 / 包依赖 / 数据流 / 命名 / 节点模型 / token / 函数注释格式),mandate 指向这里。
 
-- [Backend](#backend) — 技术栈 / 8 package / 3 服务 / 画布协作 / 两层记忆 / Worker / Mini-Tool / 生成模板 / Agent tools / 配置 / 日志
+- [Backend](#backend) — 技术栈 / 8 package / 3 服务 / 画布协作 / 记忆条目 / Worker / Mini-Tool / 生成模板 / Agent tools / 配置 / 日志
 - [Frontend](#frontend) — `packages/web` 技术栈 / 7 层 layered / 节点模型 / 命名规范 / 路由 / 源码布局
 - [Coding standards (function definition format)](#coding-standards-function-definition-format) — 函数注释 / 显式返回类型 / 异常类型格式 + CI 强制
 
@@ -35,7 +35,7 @@ Frontend stack: see [Tech stack (frontend)](#tech-stack-frontend).
 
 ```
 packages/
-├── shared/   # 浏览器安全的 Zod schema、类型、常量和共享协议；space-content 子路径承载 Timeline Yjs 操作与 Space 媒体引用提取
+├── shared/   # 浏览器安全的 Zod schema、类型、常量和共享协议；space-content 子路径承载 Timeline 文档初始化与读取、Space 媒体引用提取
 ├── core/     # 后端共享内核 barrel (@breatic/core) — 纯地基,零 AIGC 业务
 │              auth/(共享鉴权内核:projectMembers.repo + projectAuth.service〔loadProjectRole〕,collab+server 共用) ·
 │              db/(schema.ts 66 表) · i18n/(node 适配器 loadLocales/runWithLocale) · activity/(project-activities.repo) · asset/(asset.repo〔资产账本与 Project 素材关系的唯一 SQL owner〕/project-asset-reference.service〔登记媒体解析、关联与授权读取〕/project-media-backfill〔历史来源分页协调〕) · project/(projects.repo / project-edits.repo) · infra/(redis〔含 pub/sub〕/queue/storage/session-store/control-events/rate-limiter〔多道额度一次判定的 Lua 滑窗〕/client-identity〔server 限流和 collab 连接准入共用的来源判定:回环豁免、取 nginx 的 x-real-ip、IPv6 归并到 /64〕/event-stream〔任务事件总线的 Redis Streams 发布〕/member-change-listener〔`project_members` 触发器通知的 LISTEN〕/connectivity-check〔启动时的 PG/Redis 连通检查〕/health-server〔`/healthz`〕/graceful-shutdown〔先放监听端口再整体限时收尾〕/logger/mailer〔`sendMail`〕/request-context〔AsyncLocalStorage 请求上下文〕/retry〔BullMQ 重试策略〕/idle-socket-dispatcher〔任务链上 Node `fetch` 的 undici dispatcher〕/errors〔跨 library/application 边界的类型化错误〕) · config/ · app-errors
@@ -161,14 +161,14 @@ The shared `SyncConfirmRequestSchema` and `SyncConfirmedResponseSchema` define t
 - **Hocuspocus 钩子顺序**(`@hocuspocus/server` 的 `ClientConnection.ts`,接线在 `packages/collab/src/hocuspocus.ts`):`onUpgrade`(可选的 `infra/connection-gate.ts` 先判来源与连接计数，必经的 `infra/upgrade-session-gate.ts` 再查当前会话；两者处理原始 socket)→ `onConnect`(先于文档鉴权，`context.user` 仍为 `undefined`，可执行不依赖用户身份的检查)→ `onAuthenticate`(从凭证解出用户;只读要改入参 `connectionConfig.readOnly`,返回值里的 `readOnly` 不生效)→ 文档首次载入时 `onLoadDocument` → `afterLoadDocument`(在建 `Connection` 对象**之前**;同一文档按文档串行,在这里 await 同文档的 `openDirectConnection` 会死锁;库不替它 catch,抛出去客户端收到 permission-denied 而服务端无日志)→ 建 `Connection` 对象 → `connected` → … → `onDisconnect`。**`onDisconnect` 只对建好了 `Connection` 对象的连接触发**:鉴权被拒或载入失败的连接到不了那一步,所以每连接的外部资源(席位、计数、映射)在 `connected` 登记、在 `onDisconnect` 注销,不在 `onConnect` / `onAuthenticate` 登记
 - 节点结构 + 字段归属 + 状态机详细规范跟 `@breatic/shared/types/canvas-node.ts` 类型定义保持一致
 
-### Two-layer memory + history replayed as sent
+### Memory entries + history replayed as sent
 
-| Layer | Scope | Table |
+| 部分 | 存在哪 | 每轮怎么给模型 |
 |---|---|---|
-| Project | 一个成员在一个 project 里一行,键是 `(user_id, project_id)` | `project_memories` |
-| Conversation | 当前对话摘要 | `conversation_memories` |
+| 记忆条目 | `agent_memories`,一条一行:`conversation_id` 为空是整个 Project 的,有值只属于那个会话 | 系统提示的 `Memory Entries` 索引:两种条目按 `updated_at` 合并,取最新的 `memory_index_max_entries`(200)条,每条一行 id 和标题,其余一行计数;迁移来的整块(`origin = 'migration'`)在归纳拆开之前给全文 |
+| 进展概要 | `conversation_memories.content`,一个会话一行 | `Conversation So Far` 一段,非空时出现,上限 `memory_progress_max_chars`(2000)字 |
 
-两层都限于用户自己:项目记忆按成员分行,一个成员归纳出来的东西不会进另一个成员的提示词。
+条目都限于用户自己:一个成员的条目不会进另一个成员的提示词。标题 120 字、内容 4000 字,按码点数(`countCharacters`)。Agent 用 `save_memory` / `delete_memory` / `read_memory` 直接读写条目,不经过归纳、不花积分;什么时候用写在系统提示的 `## Memory` 规程里。删会话时它的会话条目一起软删,Project 条目不动。
 
 **每一轮装载给模型的量由下面几道闸各管一段**,全部在 `config/agent.yaml`:
 
@@ -177,12 +177,13 @@ The shared `SyncConfirmRequestSchema` and `SyncConfirmedResponseSchema` define t
 | 输入 | `user_message_max_chars` | 15,000 | 一条用户消息进得来多长(浏览器同一道闸在 10,000 字先拦一次,后端这道是真判据) |
 | 输出 | `max_output_tokens` | 16,384 | **一次模型调用**答得出多长 —— 一轮可以调很多次(上限 `max_tool_iterations`),每次各受它约束;撞上它这一轮标 `truncated` |
 | 归纳线 | min(`fold_trigger_tokens`, 主模型窗口 − `max_output_tokens`) | `fold_trigger_tokens` 750,000;窗口取 OpenRouter 各端点 `context_length` 最小值,拿不到用 `context_window_fallback_tokens`(1,000,000) | provider 报回的上一次调用输入 + 输出到了这条线,发下一次调用之前先归纳;provider 报上下文超限,也归纳 |
-| 归纳后 | `memory_keep_tokens` | 300,000(必须低于 `fold_trigger_tokens`,否则归纳完下一次调用又到线) | 归纳取到剩余落在 min(它, 窗口 − `max_output_tokens`) − 记忆预留以下(token) |
+| 归纳后 | `memory_keep_tokens` | 300,000(必须低于 `fold_trigger_tokens`,否则归纳完下一次调用又到线) | 归纳取到剩余落在 min(它, 窗口 − `max_output_tokens`) − 记忆预留以下(token);记忆预留(`memoryReserveTokens`)= 2 ×(索引条数上限 ×(每行开销 + 标题上限)+ 进展上限),按一个字符一个 token 算 |
 
 
-- **Turn 机制**:每条消息带 `turnIndex`(`role=user` 时递增)。**请求原样发,只有 provider 说放不下才归纳**(`turn-fold.ts`):每次调用主模型之前(回合开头、回合中途每一步,从问卷处接着跑的那一段也一样),已知 token 数 ≥ min(`fold_trigger_tokens`, 窗口 − `max_output_tokens`) 就先归纳。已知 token 数只信 provider 报的:回合中途是这一回合上一次调用的输入 + 输出;回合开头是最新一条回复行的 `endTokens`,且它标着 `endTokensFrom: "provider"`、它记的「最后一次请求」前缀哈希(`lastRequest`)跟这次重放出的同一段前缀一致;没有已知数就不检查,归纳之后已知数作废到下一次调用报回为止。调用被 provider 以上下文超限拒绝(`context-overflow.ts`,识别清单搬自 OpenCode,先拆 `RetryError`,只认 400)时不转给前端:归纳后用重组的消息加这一回合已完成各步(去掉思考)另开一个流接在同一条回复后面,步数合计不超过 `max_tool_iterations`;一回合超限归纳最多 `overflow_folds_per_turn`(2)次,能拿的全拿走也放不下或没有可拿的整轮,以 `failed` 零件带 `reason: "too_long"` 结束(不发 error 帧);超限归纳 `untouched` 或任何归纳之后重组失败,以普通 `failed` 结束。归纳规划(`planConsolidation`)只有一条规则:从这一回合之前最老的整轮起至少拿一轮,剩下 > 目标线就接着拿;目标线 = min(`memory_keep_tokens`, 窗口 − `max_output_tokens`) − 记忆预留(`memoryReserveTokens`,两个记忆上限之和的两倍);拿多少用 `costPerTurn`(有效覆盖的行用 provider 数,其余按字符)。归纳调用自己超限时归纳器砍半重发(先按整轮,只剩一轮时整段文字),最多 `consolidation_shrink_attempts`(6)次,用完走现有的丢弃。**回复要说清它答的是哪一轮**(`MessageInput` 分两支,assistant 那支必填 `turnIndex`):存储层去读表里的最大回合号,只在「提问之后什么都没发生过」时才等于正确答案 —— 两个标签页各发一句、或者一轮比下一个提问慢,那条回复就落到别人的问题下面,而它真正答的那一轮读起来像从没被回答过
+- **Turn 机制**:每条消息带 `turnIndex`(`role=user` 时递增)。**请求原样发,只有 provider 说放不下才归纳**(`turn-fold.ts`):每次调用主模型之前(回合开头、回合中途每一步,从问卷处接着跑的那一段也一样),已知 token 数 ≥ min(`fold_trigger_tokens`, 窗口 − `max_output_tokens`) 就先归纳。已知 token 数只信 provider 报的:回合中途是这一回合上一次调用的输入 + 输出;回合开头是最新一条回复行的 `endTokens`,且它标着 `endTokensFrom: "provider"`、它记的「最后一次请求」前缀哈希(`lastRequest`)跟这次重放出的同一段前缀一致;没有已知数就不检查,归纳之后已知数作废到下一次调用报回为止。调用被 provider 以上下文超限拒绝(`context-overflow.ts`,识别清单搬自 OpenCode,先拆 `RetryError`,只认 400)时不转给前端:归纳后用重组的消息加这一回合已完成各步(去掉思考)另开一个流接在同一条回复后面,步数合计不超过 `max_tool_iterations`;一回合超限归纳最多 `overflow_folds_per_turn`(2)次,能拿的全拿走也放不下或没有可拿的整轮,以 `failed` 零件带 `reason: "too_long"` 结束(不发 error 帧);超限归纳 `untouched` 或任何归纳之后重组失败,以普通 `failed` 结束。归纳规划(`planConsolidation`)只有一条规则:从这一回合之前最老的整轮起至少拿一轮,剩下 > 目标线就接着拿;目标线 = min(`memory_keep_tokens`, 窗口 − `max_output_tokens`) − 记忆预留(见上表);拿多少用 `costPerTurn`(有效覆盖的行用 provider 数,其余按字符)。**归纳把拿走的轮次写成对单条条目的增、改、删和一份新的进展概要**(`memory-consolidator.ts`,模型固定为 `consolidation_model`,不跟随用户选的主模型):它看到这些轮次、可以改的条目全文(迁移整块排最前,其余新到旧,到 `consolidation_entries_max_chars` 为止)、其余条目的标题和进展概要;答复先过 zod 结构校验再查语义(改删的 id 必须在给了全文的条目里、同一 id 不出现两次、最多 `consolidation_max_operations` 条),不合格把错误写清追加进去再问,最多 `consolidation_answer_attempts`(3)次。**水位 `last_consolidated_turn` 只在归纳写入成功时前进**:条目、进展和水位在一个事务里写,水位照 CAS(仍是读到的值才推进,否则 `superseded`),改删照乐观并发(条目未删、标题、内容和范围都仍等于归纳读到的才生效,任一条对不上整个事务回滚)。答复一直不合格、被截断、调用被拒为过长、写入失败,都是失败:什么都不写,水位不动,下次折叠重读同一段。一轮里有一次折叠没开始或失败,这一轮就不再折叠(`main-agent.ts` 的 `foldFailed`):发送前的折叠失败照常发出请求;被拒为过长后的折叠失败,或已有折叠失败后又被拒为过长,这一轮报错结束;下一轮照常折叠。每次归纳调用按自己的键扣一次:`consolidate:<会话>:<归纳前水位>:<折叠 id>:<尝试序号>`,折叠 id 每次折叠随机生成。**回复要说清它答的是哪一轮**(`MessageInput` 分两支,assistant 那支必填 `turnIndex`):存储层去读表里的最大回合号,只在「提问之后什么都没发生过」时才等于正确答案 —— 两个标签页各发一句、或者一轮比下一个提问慢,那条回复就落到别人的问题下面,而它真正答的那一轮读起来像从没被回答过
 - **历史回放**：`conversation_messages.for_model` 保留模型消息的逻辑事实；文字、工具调用及其结果按已存内容重放，图片按本次能力、张数和字节预算投影。`history-replay.ts` 先确定图片，再逐行或逐步骤检查实际生成前缀及自身内容，决定思考是否保留；计量覆盖见 [Agent picture requests](#agent-picture-requests)。没有 `for_model` 的旧行从零件渲染，不隐式导入外链图片。中断时尚未被后续请求带出的步骤由 `reply-for-model.ts` 的 `inProgressStep` 重建并清除思考；以 provider 报错结束的最后一步，只有 SDK 发起下一请求后才算已送出。打开的 Space 与最新完整快照的 Space id、哈希相同时，只发未变化说明。归纳按整轮取，历史必须保留 `turnIndex`，水位线才能表示正确边界。
-- **消息存储**:`conversation_messages` 表,**一条消息一行**;`parts` JSONB 装这条消息内部的各个零件(`text` / `reasoning` / `tool` / `interrupted` / `failed` / `truncated`)。**一次工具调用连同它的结果是一个零件**,靠 `status` 说它停在哪儿 —— 调用和结果是同一件发生过的事,拆成两个零件就要再按 id 配对回去;线上那一侧 SDK 的部件名是 `tool-<工具名>`,跟存储这边不是同一套名字。**成功的工具零件另存一份这一轮交给模型的结果**(`forModel`,只收 `text` / `json`,不发给前端):落库前由 `packages/server/src/agent/stored-model-output.ts` 的 `withModelOutputs` 按 SDK 自己的规则算出;回放只在这一行没有可用的 `for_model`、要从零件渲染时才读它。没有这一份的旧行,字符串结果原样交回,结构化结果换成一句「这条结果已经拿不到,需要就再调一次」—— 回灌从不拿当前的工具代码去读旧版本写下的结构化答复,工具答复以后加减字段,存下的会话照常能聊。顺序即 `(turn_index, seq)`,唯一索引 `conversation_messages_turn_seq_key` 建在 `(conversation_id, turn_index, seq)` 上兜底(同一会话内一个槽位只能有一条消息)。**`role=user` 的消息**在事务内锁会话父行后取最大回合号加一(它是计费幂等键的一半,不能撞车也不能倒退),同一回合内的 assistant / tool 沿用该回合号、靠 `seq` 往后排。FK 是 `restrict`,数据库不级联,删会话时由 service 层把消息一起软删。原始消息不删除,归纳只生成摘要
+- **选模型**:`config/agent.yaml` 的 `chat_models` 是用户在聊天面板里能选的模型(按显示顺序),`default_model` 是没选过时的默认,必须在清单里。每个会话记自己的模型(`conversations.agent_model`),用户上次选的记在 `users.agent_model`,新会话从它开始;会话显示和使用的模型按会话列 → 用户列 → `default_model` 取,不在清单里的跳过。会话列在建会话时写入用户上次的选择(没有就是 `default_model`),之后改它的是选择(`PUT /chat/conversations/:id/model`,会话列和用户列在一个事务里写);一条消息带着页面上显示的模型(`model`)并用它回答这一轮,只在会话列为空或存的模型已不在清单里时写回,而且只在列仍是这条消息读到的值时生效,所以保存途中发出的消息不会盖掉刚保存的选择。请求带的模型不在清单里答 422。问卷答复续跑的那一段用这一轮开始时的模型,它已下架时按上面的顺序取,不拒绝。
+- **消息存储**:`conversation_messages` 表,**一条消息一行**;`parts` JSONB 装这条消息内部的各个零件(`text` / `reasoning` / `tool` / `interrupted` / `failed` / `truncated`)。**一次工具调用连同它的结果是一个零件**,靠 `status` 说它停在哪儿 —— 调用和结果是同一件发生过的事,拆成两个零件就要再按 id 配对回去;线上那一侧 SDK 的部件名是 `tool-<工具名>`,跟存储这边不是同一套名字。**成功的工具零件另存一份这一轮交给模型的结果**(`forModel`,只收 `text` / `json`,不发给前端):落库前由 `packages/server/src/agent/stored-model-output.ts` 的 `withModelOutputs` 按 SDK 自己的规则算出;回放只在这一行没有可用的 `for_model`、要从零件渲染时才读它。没有这一份的旧行,字符串结果原样交回,结构化结果换成一句「这条结果已经拿不到,需要就再调一次」—— 回灌从不拿当前的工具代码去读旧版本写下的结构化答复,工具答复以后加减字段,存下的会话照常能聊。顺序即 `(turn_index, seq)`,唯一索引 `conversation_messages_turn_seq_key` 建在 `(conversation_id, turn_index, seq)` 上兜底(同一会话内一个槽位只能有一条消息)。**`role=user` 的消息**在事务内锁会话父行后取最大回合号加一(它是计费幂等键的一半,不能撞车也不能倒退),同一回合内的 assistant / tool 沿用该回合号、靠 `seq` 往后排。FK 是 `restrict`,数据库不级联,删会话时由 service 层把消息一起软删。原始消息不删除,归纳只写记忆条目和进展概要
 
 ### Agent picture requests
 
@@ -302,9 +303,9 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 Agent 里没有选模板的控件:用户说出 `asks` 那类话时它提这个模板,看到 `offerWhen` 写的情形时主动提。**提示词里留着的标记不检查、不拦生成**:用户不改也照常发出去。
 
-### Agent tools (17)
+### Agent tools
 
-**一个工具的用途、时机和用法只写在它自己的 `description` 和字段的 `.describe()` 里**(MANDATORY)。系统提示词(`packages/server/src/agent/context.ts`)只放对所有工具都成立的规则 —— 调用工具而不是把调用写出来、读报错并照它说的做、拿不到的要说出来。工具可以从注册表里拆掉,说明跟着它一起走;规定在 `packages/domain/AGENTS.md#tool-guidance-lives-in-the-tool-definition`,守卫是 `packages/server/src/__tests__/agent/system-prompt.test.ts`(遍历 `TOOL_MAP`,提示词里出现任何一个工具名即红)和 `packages/domain/src/agent/tools/__tests__/tools-say-their-own-use.test.ts`。
+**产品能力类工具的用途、时机和用法只写在它自己的 `description` 和字段的 `.describe()` 里**(MANDATORY)。整份系统提示词(`packages/server/src/agent/context.ts` 的模板加 `packages/domain/src/agent/instructions.ts` 拼的记忆部分)放对所有工具都成立的规则 —— 调用工具而不是把调用写出来、读报错并照它说的做、拿不到的要说出来 —— 以及 `## Memory` 记忆规程:`save_memory`、`delete_memory`、`read_memory` 什么时候用,离开上下文的轮次用 `read_conversation` 读。三个记忆工具的定义只写参数和返回;其余工具(含 `search_conversations`、`read_conversation`)的用法写在自己的定义里。每条说明只有一处:产品工具可以从注册表里拆掉,说明跟着它一起走。规定在 `packages/domain/AGENTS.md#tool-guidance-lives-in-the-tool-definition` 和 `packages/server/AGENTS.md#the-system-prompt-names-no-product-tool`,守卫是 `packages/server/src/__tests__/agent/system-prompt.test.ts`(遍历 `TOOL_MAP`,整份提示词里出现三个记忆工具和两个记录工具之外的任何一个工具名即红)和 `packages/domain/src/agent/tools/__tests__/tools-say-their-own-use.test.ts`。
 
 `web_search` —— 打 Brave 的 LLM context 端点,回来的是每个来源页面正文的**摘录**(同一页可能给好几段、彼此不相连),既不是整页正文,也不是结果列表里那一行摘要。模型用 `count` 说想要几个来源,搜索回多少是多少。
 
@@ -418,7 +419,7 @@ Agent 与画布的单文件超限音频或视频共用长媒体路径。Node dom
 | `.env` | 运行时配置(从 `.env.dev` 或 `.env.docker` 复制) |
 | `.env.dev` | 本地开发模板(localhost URLs) |
 | `.env.docker` | Docker 部署模板(容器名 URLs) |
-| `config/agent.yaml` | Agent 模型、归纳模型、loop 次数、闸与归纳(输入 15,000 字 / 输出 16,384 token / 归纳后留 500,000 token / 窗口回退值 1,000,000 token / 每回合超限归纳 2 次 / 归纳调用砍半 6 次)、提示词缓存时长(`prompt_cache_ttl` 1h)|
+| `config/agent.yaml` | Agent 模型、归纳模型、loop 次数、闸与归纳(输入 15,000 字 / 输出 16,384 token / 归纳后留 300,000 token / 窗口回退值 1,000,000 token / 每回合超限归纳 2 次 / 归纳答复最多问 3 次)、可选的聊天模型(`chat_models`)和默认模型、记忆上限(索引 200 条 / 进展 2,000 字 / 一次归纳给全文 60,000 字 / 一次最多 50 条操作)、提示词缓存时长(`prompt_cache_ttl` 1h)|
 | `config/text-tools.yaml` | Text mini-tool 模型 |
 | `config/understand.yaml` | 画布理解与转写共用的素材大小、并发上限,以及各自的输出 token 上限 |
 | `config/worker.yaml` | Worker 并发(按队列:`tasks`、`upload-finish`、`url-ingest`、`media-read` 50,`audio-peaks` 2,其余 5)、重试、问结果的间隔 |
@@ -532,7 +533,7 @@ pnpm test / typecheck / lint
 | 音频 / 视频 | 原生 `<audio>` / `<video>` + 自建统一 `MediaPlayer`(装饰波形,零第三方播放器库);剪切面板的音频波形带子用 wavesurfer.js(BSD-3-Clause)只画不播 |
 | 3D | Three.js r173 with native OrbitControls and TransformControls; models load through its GLTFLoader with DRACOLoader, KTX2Loader and MeshoptDecoder, ZIP packages through its bundled fflate, and declared texture sizes through image-dimensions; the decoder licences are in `packages/web/public/model-import-third-party-licences.txt` |
 | 数据请求 | Axios + @microsoft/fetch-event-source(SSE)+ React Query |
-| i18n | `intl-messageformat`(ICU)经 shared 的 `t()` + `useTranslation` hook(en / zh-CN / zh-TW / ja / ko);8 产品名词 + 角色名走「不翻译表」全语言英文,见 [web 的规则](../packages/web/AGENTS.md#product-terms-are-never-translated)。**每条文案必须活在命名空间里**——`locales/*.json` 顶层只许放命名空间对象,不许直接放文案(共用的进 `common`,其余进各功能自己的命名空间);**调用点同样如此**,`t('cancel')` 这种无点 id 一律当场报错。两侧都由 repo-lint 的 `i18n-keys-namespaced` CI 强制。理由是死键守卫 `i18n-no-dead-keys` 靠「在源码里找这个 key 的点分全名」判断有没有人用,**无点的 id 没有形状可找**:放宽成裸词匹配会让 `cancel` / `loading` 这类普通英文词满仓命中(`z.enum(["confirm","cancel"])` / `phase === 'loading'`)、守卫等于作废。**调用点那一半也在**,少了它源码写了无点 id 三个守卫全都不响——catalog 装不下它、死键守卫方向相反碰不到它、缺失文案守卫的形状认不出它,于是用户屏幕上直接显示 `cancel` 这串字。**判在形状上、不绕道查 catalog**:查不到虽然也能得出「错了」,但报错信息会指向 catalog(读的人会去 catalog 里加一条,而那条加不进去),而且那条推导依赖「catalog 里绝不会有无点 id」这个由另一个守卫维持的前提,那个守卫一改这里就静默失效。**「key 长什么样」在 `repo-lint/src/message-keys.ts` 一处定义**:`KEY_SEGMENT` 给段的形状(**允许数字开头** —— `canvas.nodePlaceholder.3d` 五个 catalog 都有却没有任何守卫看得见它),`spelledOutKeys()` 给「怎么在源码里找出一个文案调用、取出括号里的 id」,命名空间守卫和缺失文案守卫共用它、各自套自己的规则。**反方向的守卫是 `i18n-no-missing-keys`**:死键守卫问「catalog 里的文案有没有人读」,它问「源码点名的文案 catalog 答不答得上来」——两个方向都会坏,`t("server.error.notFound")` 这类拼错的 id 由它接住(catalog 里写的是 `not_found`)。它只认「整个参数就是写全的 id」这一种写法,拼接和变量传参一律看不见,边界写在它自己的 docstring 里。**那个边界之外的一类由测试守**:有些函数把文案键当**返回值**交给调用方、自己不调 `t()`(会话列表和活动面板各有一份 `relativeTime`,活动面板还有 `entryMessage`),这种键永远不出现在 `t("字面量")` 里、三个守卫全看不见 —— `chat.relative.isoDate` 就是这么带着「五个 catalog 都没有」发出去的。补法是 `packages/web/src/test-utils/i18n-keys.ts` 的 `expectEveryLocaleRenders`:走遍每条分支,**逐本 catalog 问两个问题** —— 键在不在(直接问 catalog,**不经过 `t()`**,因为 `resolveMessage` 找不到当前语言就回退 en、一本目录缺键会渲染成英文而看不出来),以及带参数的能不能渲染出来(经过 `t()`,因为占位符被改名会从组件渲染里抛出去)。catalog 列表来自 `test-utils/locale-catalogs.ts`,`vitest.setup.ts` 循环它注册 —— 此前那里手写四门语言漏了 `ko`,于是任何在韩文下渲染的测试都拿英文回退、绿得没有意义 |
+| i18n | `intl-messageformat`(ICU)经 shared 的 `t()` + `useTranslation` hook(en / zh-CN / zh-TW / ja / ko);**web 只下载英文和读者当前那一种语言的文案**:en 静态打进入口,作为缺键时的回退;zh-CN / zh-TW / ja / ko 各是一个 `locale-<code>` 分块(`locale-bootstrap.ts`),启动时等当前语言那一份下载完再渲染,切到没下载过的语言时再下载;`tInEveryLocale` 要在每种语言里读的键(`EVERY_LOCALE_KEYS`)由构建期常量 `__EVERY_LOCALE_MESSAGES__` 带上五种写法;`verify-chunks.mjs` 检查英文在入口、其余语言不在入口,预算按入口加最大的一份语言算。8 产品名词 + 角色名走「不翻译表」全语言英文,见 [web 的规则](../packages/web/AGENTS.md#product-terms-are-never-translated)。**每条文案必须活在命名空间里**——`locales/*.json` 顶层只许放命名空间对象,不许直接放文案(共用的进 `common`,其余进各功能自己的命名空间);**调用点同样如此**,`t('cancel')` 这种无点 id 一律当场报错。两侧都由 repo-lint 的 `i18n-keys-namespaced` CI 强制。理由是死键守卫 `i18n-no-dead-keys` 靠「在源码里找这个 key 的点分全名」判断有没有人用,**无点的 id 没有形状可找**:放宽成裸词匹配会让 `cancel` / `loading` 这类普通英文词满仓命中(`z.enum(["confirm","cancel"])` / `phase === 'loading'`)、守卫等于作废。**调用点那一半也在**,少了它源码写了无点 id 三个守卫全都不响——catalog 装不下它、死键守卫方向相反碰不到它、缺失文案守卫的形状认不出它,于是用户屏幕上直接显示 `cancel` 这串字。**判在形状上、不绕道查 catalog**:查不到虽然也能得出「错了」,但报错信息会指向 catalog(读的人会去 catalog 里加一条,而那条加不进去),而且那条推导依赖「catalog 里绝不会有无点 id」这个由另一个守卫维持的前提,那个守卫一改这里就静默失效。**「key 长什么样」在 `repo-lint/src/message-keys.ts` 一处定义**:`KEY_SEGMENT` 给段的形状(**允许数字开头** —— `canvas.nodePlaceholder.3d` 五个 catalog 都有却没有任何守卫看得见它),`spelledOutKeys()` 给「怎么在源码里找出一个文案调用、取出括号里的 id」,命名空间守卫和缺失文案守卫共用它、各自套自己的规则。**反方向的守卫是 `i18n-no-missing-keys`**:死键守卫问「catalog 里的文案有没有人读」,它问「源码点名的文案 catalog 答不答得上来」——两个方向都会坏,`t("server.error.notFound")` 这类拼错的 id 由它接住(catalog 里写的是 `not_found`)。它只认「整个参数就是写全的 id」这一种写法,拼接和变量传参一律看不见,边界写在它自己的 docstring 里。**那个边界之外的一类由测试守**:有些函数把文案键当**返回值**交给调用方、自己不调 `t()`(会话列表和活动面板各有一份 `relativeTime`,活动面板还有 `entryMessage`),这种键永远不出现在 `t("字面量")` 里、三个守卫全看不见 —— `chat.relative.isoDate` 就是这么带着「五个 catalog 都没有」发出去的。补法是 `packages/web/src/test-utils/i18n-keys.ts` 的 `expectEveryLocaleRenders`:走遍每条分支,**逐本 catalog 问两个问题** —— 键在不在(直接问 catalog,**不经过 `t()`**,因为 `resolveMessage` 找不到当前语言就回退 en、一本目录缺键会渲染成英文而看不出来),以及带参数的能不能渲染出来(经过 `t()`,因为占位符被改名会从组件渲染里抛出去)。catalog 列表来自 `test-utils/locale-catalogs.ts`,`vitest.setup.ts` 循环它注册 —— 此前那里手写四门语言漏了 `ko`,于是任何在韩文下渲染的测试都拿英文回退、绿得没有意义 |
 | 路由 | React Router 7 |
 | 测试 | Vitest + Playwright + @testing-library + fast-check |
 | 监控 | Sentry(`@sentry/react` 11;见 [Error monitoring](#error-monitoring)) |
@@ -780,7 +781,7 @@ lib/        工具(cn / format / 存储键 / toast)+ 不 import 上层的 hook
 
 ### Timeline Space
 
-Timeline 在现有 Project 标签中创建、打开和关闭,使用 `SpaceConnectionContext` 持有的内容 `Y.Doc`。服务端种下 `TimelineDocumentV1`;首次同步后,前端从同一份文档投影轨道、片段和固定素材身份。整数帧和有理数 fps、半开区间、编排校验与编辑事务定义在 `@breatic/shared` 的 `timeline/`。当前编辑界面提供单画面轨上的视频添加、开始帧调整和重叠冲突定位。
+Timeline 在现有 Project 标签中创建、打开和关闭,使用 `SpaceConnectionContext` 持有的内容 `Y.Doc`。服务端种下 `TimelineDocumentV1`;首次同步后,前端从同一份文档投影轨道、片段和固定素材身份。文档格式 schema、整数帧和有理数 fps、`initializeTimelineDocument` 和读取函数（`readTimelineContent`、`readTimelineDocument`、`readTimelineSource`）定义在 `@breatic/shared` 的 `timeline/`；半开区间、编辑命令、规划、写入、编排校验和个人撤销会话在 web 的 `data/yjs/timeline-*.ts`。编辑界面支持多条画面轨上的视频添加、移动、换轨、裁剪、分割、复制、删除、冲突定位和个人撤销。
 
 素材入口使用现有 Dialog、ScrollArea 和上传链:Project 视频目录及单素材读取先核当前 Project 成员权限,再返回 `project_asset_refs` 关联的规范资产;本地文件经 ingest 登记后进入相同的片段准备流程。每次添加产生独立 clip id,保存 asset id 和源区间。Project 素材关系独立记录在业务数据库,片段通过固定源引用该登记身份。上传 File、进度和对话框草稿由已有 `createDocScopedCache` 按实际文档在内存持有,文档释放时销毁。协作文档保存已接受的片段和固定素材身份。
 

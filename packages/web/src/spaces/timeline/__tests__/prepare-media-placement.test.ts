@@ -4,15 +4,17 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import * as Y from 'yjs';
-import { durationToFrames, TimelineEditCommandSchema } from '@breatic/shared';
-import { applyTimelineEdit, initializeTimelineDocument, readTimelineDocument } from '@breatic/shared/space-content';
+import { durationToFrames } from '@breatic/shared';
+import { TimelineEditCommandSchema } from '@web/data/yjs/timeline-edit';
+import { initializeTimelineDocument } from '@breatic/shared/space-content';
+import { applyTimelineEdit, readTimelineDocument } from '@web/data/yjs/timeline-document';
 import type {
   ProjectRegisteredAsset,
-  TimelineEditCommand,
   TimelineSettings,
   TimelineTrack,
   TimelineVideoClip,
 } from '@breatic/shared';
+import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 
 import { prepareTimelineMediaPlacement } from '@web/spaces/timeline/prepare-media-placement';
 
@@ -37,6 +39,8 @@ const ASSET: ProjectRegisteredAsset = {
   mimeType: 'video/mp4',
   sizeBytes: 8192,
 };
+const OFF: TimelineEditPlacement = { magnet: false, linkage: false };
+const ON: TimelineEditPlacement = { magnet: true, linkage: true };
 const docs: Y.Doc[] = [];
 
 /**
@@ -61,7 +65,7 @@ function seededDoc(settings: TimelineSettings = SETTINGS): Y.Doc {
 function placementInput(overrides: Partial<PlacementInput> = {}): PlacementInput {
   return {
     asset: { ...ASSET }, trackId: 'visual-1', startFrame: 72,
-    clipId: CLIP_ID, sourceId: SOURCE_ID, canWrite: true,
+    clipId: CLIP_ID, sourceId: SOURCE_ID, canWrite: true, placement: OFF,
     ...overrides,
   };
 }
@@ -81,16 +85,18 @@ function prepareUnchanged(doc: Y.Doc, input: PlacementInput): PlacementResult {
   expect(Y.encodeStateAsUpdate(doc)).toEqual(beforeBytes);
   expect(readTimelineDocument(doc)).toEqual(beforeState);
   expect(input).toEqual(beforeInput);
-  return result;
+  // Compare only the command or refusal; a success may carry more (for example the planned preview).
+  return result.ok ? { ok: true, command: result.command } : { ok: false, reason: result.reason };
 }
 
 /**
  * Construct the independently specified default command for a two-second asset.
  * @param overrides - Placement fields changed by the test fixture.
+ * @param placement - The editing user's switches carried by the command.
  * @returns The complete native add command with no playback URL in its source.
  * @throws {never} Never.
  */
-function expectedCommand(overrides: Partial<TimelineVideoClip> = {}): Extract<TimelineEditCommand, { operation: 'add_video' }> {
+function expectedCommand(overrides: Partial<TimelineVideoClip> = {}, placement: TimelineEditPlacement = OFF): Extract<TimelineEditCommand, { operation: 'add_video' }> {
   return {
     operation: 'add_video',
     parameters: {
@@ -106,6 +112,7 @@ function expectedCommand(overrides: Partial<TimelineVideoClip> = {}): Extract<Ti
         ...overrides,
       },
     },
+    placement,
   };
 }
 
@@ -125,7 +132,7 @@ function occupy(doc: Y.Doc, startFrame: number): Extract<TimelineEditCommand, { 
       clip: { ...base.parameters.clip, id: OTHER_CLIP_ID, sourceId: OTHER_SOURCE_ID, startFrame },
     },
   };
-  expect(applyTimelineEdit(doc, command)).toBe(true);
+  expect(applyTimelineEdit(doc, command, 'setup').ok).toBe(true);
   expect(readTimelineDocument(doc).clips[OTHER_CLIP_ID]).toEqual(command.parameters.clip);
   expect(readTimelineDocument(doc).sources[OTHER_SOURCE_ID]).toEqual(command.parameters.source);
   return command;
@@ -150,6 +157,22 @@ afterEach(() => {
   for (const doc of docs.splice(0)) doc.destroy();
 });
 
+/**
+ * Prepare a placement the applied edit refuses, then apply it (inner#1708 P5, R5).
+ * @param doc - The collaborative document.
+ * @param input - The captured draft.
+ * @param reason - The refusal the applied edit reports.
+ * @throws {Error} When preparation refuses it or the applied edit writes or reports otherwise.
+ */
+function refusedOnApply(doc: Y.Doc, input: PlacementInput, reason: string): void {
+  const result = prepareUnchanged(doc, input);
+  expect(result.ok, 'preparation only builds the command').toBe(true);
+  if (!result.ok) return;
+  const before = Y.encodeStateAsUpdate(doc);
+  expect(applyTimelineEdit(doc, result.command, 'local')).toEqual({ ok: false, reason });
+  expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+}
+
 describe('prepareTimelineMediaPlacement', () => {
   it('prepares the complete default command without writing until native apply', () => {
     const doc = seededDoc();
@@ -163,7 +186,7 @@ describe('prepareTimelineMediaPlacement', () => {
     });
     if (!result.ok) throw new Error('Expected a prepared native command');
     expect(TimelineEditCommandSchema.parse(result.command)).toEqual(command);
-    expect(applyTimelineEdit(doc, result.command)).toBe(true);
+    expect(applyTimelineEdit(doc, result.command, 'local').ok).toBe(true);
     expect(readTimelineDocument(doc)).toEqual({
       schemaVersion: 1, settings: SETTINGS,
       tracks: { 'visual-1': { id: 'visual-1', kind: 'visual', order: 0 } },
@@ -245,12 +268,20 @@ describe('prepareTimelineMediaPlacement', () => {
     },
   );
 
-  it.each([-1, 0.5, Number.MAX_SAFE_INTEGER + 1, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER])(
-    'refuses an invalid or overflowing placement at frame %s',
+  it.each([-1, 0.5, Number.MAX_SAFE_INTEGER + 1, Number.NaN, Number.POSITIVE_INFINITY])(
+    'builds a command at frame %s and leaves its refusal to the applied edit (inner#1708 R5)',
     (startFrame) => {
-      expect(prepareUnchanged(seededDoc(), placementInput({ startFrame }))).toEqual({ ok: false, reason: 'invalid_range' });
+      refusedOnApply(seededDoc(), placementInput({ startFrame }), 'invalid_range');
     },
   );
+
+  it.each(['', 'x'.repeat(65)])('builds a command for the malformed track id %j and leaves its refusal to the applied edit (inner#1708 R5)', (trackId) => {
+    refusedOnApply(seededDoc(), placementInput({ trackId }), 'invalid_range');
+  });
+
+  it('leaves a placement whose end overflows safe frames to the planner', () => {
+    refusedOnApply(seededDoc(), placementInput({ startFrame: Number.MAX_SAFE_INTEGER }), 'invalid_range');
+  });
 
   it('allows a clip whose exclusive end is exactly the largest safe frame', () => {
     const startFrame = Number.MAX_SAFE_INTEGER - 48;
@@ -261,39 +292,83 @@ describe('prepareTimelineMediaPlacement', () => {
     expect(prepareUnchanged(seededDoc(), placementInput({ asset: { ...ASSET, durationSeconds: Number.MAX_VALUE } }))).toEqual({ ok: false, reason: 'invalid_range' });
   });
 
-  it('does not recreate a missing target track', () => {
+  it('reports a missing target track without recreating it', () => {
     const doc = seededDoc();
     doc.getMap('tracks').delete('visual-1');
-    expect(prepareUnchanged(doc, placementInput())).toEqual({ ok: false, reason: 'target_missing' });
+    refusedOnApply(doc, placementInput(), 'track_missing');
     expect(readTimelineDocument(doc).tracks).toEqual({});
+  });
+
+  it('reports a sub track a peer removed after the draft captured it', () => {
+    const doc = seededDoc();
+    addTrack(doc, { id: 'visual-2', kind: 'visual', order: 1 });
+    const draft = placementInput({ trackId: 'visual-2' });
+    doc.getMap('tracks').delete('visual-2');
+    refusedOnApply(doc, draft, 'track_missing');
   });
 
   it('refuses an audio track rather than choosing a different visual track', () => {
     const doc = seededDoc();
     addTrack(doc, { id: 'audio-1', kind: 'audio', order: 1 });
-    expect(prepareUnchanged(doc, placementInput({ trackId: 'audio-1' }))).toEqual({ ok: false, reason: 'target_missing' });
+    refusedOnApply(doc, placementInput({ trackId: 'audio-1' }), 'track_missing');
   });
 
   it('never overwrites an existing clip with a reused clip identity', () => {
     const doc = seededDoc();
     const existing = occupy(doc, 0);
-    expect(prepareUnchanged(doc, placementInput({ clipId: OTHER_CLIP_ID }))).toEqual({ ok: false, reason: 'target_missing' });
+    refusedOnApply(doc, placementInput({ clipId: OTHER_CLIP_ID }), 'id_taken');
     expect(readTimelineDocument(doc).clips).toEqual({ [OTHER_CLIP_ID]: existing.parameters.clip });
   });
 
-  it.each([
-    { startFrame: 0, overlap: false },
-    { startFrame: 1, overlap: true },
-    { startFrame: 47, overlap: true },
-    { startFrame: 48, overlap: true },
-    { startFrame: 95, overlap: true },
-    { startFrame: 96, overlap: false },
-  ])('uses half-open intervals at frame $startFrame with overlap=$overlap', ({ startFrame, overlap }) => {
+  it('carries the editing user\'s placement switches in the command', () => {
+    expect(prepareUnchanged(seededDoc(), placementInput({ placement: ON }))).toEqual({ ok: true, command: expectedCommand({}, ON) });
+  });
+
+  it('places onto a new visual track when the draft asks for one', () => {
     const doc = seededDoc();
-    occupy(doc, 48);
-    expect(prepareUnchanged(doc, placementInput({ startFrame }))).toEqual(overlap
-      ? { ok: false, reason: 'overlap' }
-      : { ok: true, command: expectedCommand({ startFrame }) });
+    const base = expectedCommand();
+    const result = prepareUnchanged(doc, placementInput({ newTrackId: 'track-new' }));
+    expect(result).toEqual({ ok: true, command: { ...base, parameters: { ...base.parameters, newTrackId: 'track-new' } } });
+    if (!result.ok) throw new Error('Expected a prepared command');
+    expect(applyTimelineEdit(doc, result.command, 'local').ok).toBe(true);
+    expect(readTimelineDocument(doc).tracks['track-new']).toEqual({ id: 'track-new', kind: 'visual', order: 1 });
+    expect(readTimelineDocument(doc).clips[CLIP_ID]?.trackId).toBe('track-new');
+  });
+
+  it('refuses a new track id that is already taken', () => {
+    const doc = seededDoc();
+    addTrack(doc, { id: 'visual-2', kind: 'visual', order: 1 });
+    refusedOnApply(doc, placementInput({ newTrackId: 'visual-2' }), 'id_taken');
+  });
+
+  it.each([0, 1, 47, 48, 95, 96])('accepts a sub-track placement at frame %s over an existing clip as an overwrite', (startFrame) => {
+    const doc = seededDoc();
+    addTrack(doc, { id: 'visual-2', kind: 'visual', order: 1 });
+    const base = occupy(doc, 0);
+    expect(applyTimelineEdit(doc, { operation: 'move', parameters: { clipId: OTHER_CLIP_ID, startFrame: 48, trackId: 'visual-2' }, placement: OFF }, 'setup').ok).toBe(true);
+    const result = prepareUnchanged(doc, placementInput({ trackId: 'visual-2', startFrame }));
+    expect(result).toEqual({ ok: true, command: expectedCommand({ trackId: 'visual-2', startFrame }) });
+    if (!result.ok) throw new Error('Expected a prepared command');
+    expect(applyTimelineEdit(doc, result.command, 'local').ok).toBe(true);
+    const after = readTimelineDocument(doc);
+    expect(after.clips[CLIP_ID]).toMatchObject({ trackId: 'visual-2', startFrame, durationFrames: 48 });
+    // The covered clip's source stays only while a clip still references it (inner#1708 L2).
+    const stillReferenced = Object.values(after.clips).some((item) => item.sourceId === OTHER_SOURCE_ID);
+    expect(after.sources[OTHER_SOURCE_ID] ?? null).toEqual(stillReferenced ? base.parameters.source : null);
+    const covered = Object.values(after.clips).filter((item) => item.trackId === 'visual-2' && item.id !== CLIP_ID)
+      .filter((item) => item.startFrame < startFrame + 48 && startFrame < item.startFrame + item.durationFrames);
+    expect(covered).toEqual([]);
+  });
+
+  it('inserts onto the magnetic main track instead of refusing an overlap', () => {
+    const doc = seededDoc();
+    occupy(doc, 0);
+    const result = prepareUnchanged(doc, placementInput({ startFrame: 12, placement: ON }));
+    expect(result).toEqual({ ok: true, command: expectedCommand({ startFrame: 12 }, ON) });
+    if (!result.ok) throw new Error('Expected a prepared command');
+    expect(applyTimelineEdit(doc, result.command, 'local').ok).toBe(true);
+    const main = Object.values(readTimelineDocument(doc).clips).sort((a, b) => a.startFrame - b.startFrame);
+    expect(main.map((item) => [item.id, item.startFrame])).toEqual([[CLIP_ID, 0], [OTHER_CLIP_ID, 48]]);
   });
 
   it('allows simultaneous video placements on different visual tracks', () => {
@@ -305,47 +380,38 @@ describe('prepareTimelineMediaPlacement', () => {
     });
   });
 
-  it.each([{ movedStart: 120, overlap: false }, { movedStart: 96, overlap: true }])(
-    'keeps the original upload draft target after another clip moves to $movedStart',
-    ({ movedStart, overlap }) => {
-      const doc = seededDoc();
-      const draft = placementInput({ asset: null, startFrame: 72 });
-      occupy(doc, 0);
-      const moved = applyTimelineEdit(doc, {
-        operation: 'set_start',
-        parameters: { clipId: OTHER_CLIP_ID, startFrame: movedStart },
-      });
-      expect(moved).toBe(true);
-      const completedUpload = { ...draft, asset: { ...ASSET } };
-      expect(prepareUnchanged(doc, completedUpload)).toEqual(overlap
-        ? { ok: false, reason: 'overlap' }
-        : { ok: true, command: expectedCommand({ startFrame: 72 }) });
-      expect(completedUpload.trackId).toBe('visual-1');
-      expect(completedUpload.startFrame).toBe(72);
-      expect(readTimelineDocument(doc).clips[OTHER_CLIP_ID]?.startFrame).toBe(movedStart);
-    },
-  );
+  it.each([120, 96])('keeps the original upload draft target after another clip moves to %s', (movedStart) => {
+    const doc = seededDoc();
+    addTrack(doc, { id: 'visual-2', kind: 'visual', order: 1 });
+    const draft = placementInput({ asset: null, trackId: 'visual-2', startFrame: 72 });
+    occupy(doc, 0);
+    expect(applyTimelineEdit(doc, { operation: 'move', parameters: { clipId: OTHER_CLIP_ID, startFrame: movedStart, trackId: 'visual-2' }, placement: OFF }, 'peer').ok).toBe(true);
+    const completedUpload = { ...draft, asset: { ...ASSET } };
+    expect(prepareUnchanged(doc, completedUpload)).toEqual({ ok: true, command: expectedCommand({ trackId: 'visual-2', startFrame: 72 }) });
+    expect(completedUpload.trackId).toBe('visual-2');
+    expect(completedUpload.startFrame).toBe(72);
+    expect(readTimelineDocument(doc).clips[OTHER_CLIP_ID]?.startFrame).toBe(movedStart);
+  });
 
-  it('preserves integer-frame targets and existing layouts across generated neighboring placements', () => {
+  it('preserves integer-frame targets and every still-referenced source across generated sub-track placements', () => {
     fc.assert(fc.property(
       fc.integer({ min: 0, max: 1_000_000 }),
       fc.integer({ min: -48, max: 48 }),
       (baseFrame, offset) => {
         const doc = seededDoc();
+        addTrack(doc, { id: 'visual-2', kind: 'visual', order: 1 });
         const occupiedStart = baseFrame + 48;
-        const existing = occupy(doc, occupiedStart);
+        const existing = occupy(doc, 0);
+        expect(applyTimelineEdit(doc, { operation: 'move', parameters: { clipId: OTHER_CLIP_ID, startFrame: occupiedStart, trackId: 'visual-2' }, placement: OFF }, 'setup').ok).toBe(true);
         const startFrame = occupiedStart + offset;
-        const result = prepareUnchanged(doc, placementInput({ startFrame }));
-        if (Math.abs(offset) < 48) {
-          expect(result).toEqual({ ok: false, reason: 'overlap' });
-        } else {
-          expect(result).toEqual({ ok: true, command: expectedCommand({ startFrame }) });
-          if (!result.ok) throw new Error('Expected an adjacent placement');
-          expect(applyTimelineEdit(doc, result.command)).toBe(true);
-          expect(readTimelineDocument(doc).clips[CLIP_ID]).toEqual(expectedCommand({ startFrame }).parameters.clip);
-        }
-        expect(readTimelineDocument(doc).clips[OTHER_CLIP_ID]).toEqual(existing.parameters.clip);
-        expect(readTimelineDocument(doc).sources[OTHER_SOURCE_ID]).toEqual(existing.parameters.source);
+        const result = prepareUnchanged(doc, placementInput({ trackId: 'visual-2', startFrame }));
+        expect(result).toEqual({ ok: true, command: expectedCommand({ trackId: 'visual-2', startFrame }) });
+        if (!result.ok) throw new Error('Expected a prepared placement');
+        expect(applyTimelineEdit(doc, result.command, 'local').ok).toBe(true);
+        expect(readTimelineDocument(doc).clips[CLIP_ID]).toEqual(expectedCommand({ trackId: 'visual-2', startFrame }).parameters.clip);
+        const after = readTimelineDocument(doc);
+        const stillReferenced = Object.values(after.clips).some((item) => item.sourceId === OTHER_SOURCE_ID);
+        expect(after.sources[OTHER_SOURCE_ID] ?? null).toEqual(stillReferenced ? existing.parameters.source : null);
       },
     ));
   });

@@ -4,7 +4,7 @@
 import { getLocale, t, type Locale } from '@breatic/shared';
 
 import { usersApi } from '@web/data/api/users';
-import { changeLocale } from '@web/i18n/locale-bootstrap';
+import { changeLocale, type LocaleSwitch } from '@web/i18n/locale-bootstrap';
 import { toast } from '@web/lib/toast';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useCurrentUserStore } from '@web/stores/current-user';
@@ -45,24 +45,28 @@ export function langFor(code: Locale): SupportedLang {
 
 export interface UseLocaleSwitch {
   locale: Locale;
-  setLocale: (code: Locale) => void;
+  setLocale: (code: Locale) => Promise<LocaleSwitch>;
   langs: SupportedLang[];
 }
 
 /**
  * Switch the interface language and, when someone is signed in, record it on
- * the account. The interface switches at once and the choice is kept on this
- * device; the account write runs behind it, and when it fails the reader is
- * told the choice was not saved to the account. A visitor on a sign-in page
- * has no account to write to, so their choice stays on the device only.
+ * the account. The interface switches once the language's strings are on the
+ * page (at once when they already are) and the choice is kept on this device;
+ * only then does the account write run, behind it, and when it fails the
+ * reader is told the choice was not saved to the account. A visitor on a
+ * sign-in page has no account to write to, so their choice stays on the
+ * device only.
  * @param code - The locale the reader picked.
+ * @returns How the switch ended, as `changeLocale` reports it.
  */
-function switchLocale(code: Locale): void {
-  changeLocale(code);
-  if (useCurrentUserStore.getState().user === null) return;
+async function switchLocale(code: Locale): Promise<LocaleSwitch> {
+  const result = await changeLocale(code);
+  if (result !== 'switched' || useCurrentUserStore.getState().user === null) return result;
   usersApi.setLocale(code).catch(() => {
     toast.error(t('chrome.languageNotSaved'));
   });
+  return result;
 }
 
 /**

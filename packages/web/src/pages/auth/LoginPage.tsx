@@ -85,7 +85,7 @@ export default function LoginPage(): React.JSX.Element {
       if (!mounted.current) return;
       setUser(toCurrentUser(user));
       if (created) reportConversion('signup', `signup:${user.id}`);
-      changeLocale(user.locale);
+      void changeLocale(user.locale);
       navigate(next, { replace: true });
     } catch (err) {
       if (mounted.current) setFormError(err instanceof ApiException ? err.message : t('auth.login.failed'));
@@ -129,7 +129,7 @@ export default function LoginPage(): React.JSX.Element {
       const { user } = await authApi.login({ email: trimmedEmail, password });
       if (!mounted.current) return;
       setUser(toCurrentUser(user));
-      changeLocale(user.locale);
+      void changeLocale(user.locale);
       navigate(next, { replace: true });
     } catch (err) {
       const message =

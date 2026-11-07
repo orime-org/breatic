@@ -66,10 +66,11 @@ describe("the user memory layer", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("leaves the context builder asking for the three ids its two layers are keyed by", () => {
-    // Every one of them is half of a key: conversation memory is keyed by the
-    // conversation, project memory by the member and the project together.
-    // An optional one is a layer that silently comes back empty, and the
+  it("leaves the context builder asking for the three ids its memory is keyed by", () => {
+    // Every one of them is half of a key: the member's entries are keyed by
+    // the member with the Project or with this conversation, and the progress
+    // note by the conversation.
+    // An optional one is a read that silently comes back empty, and the
     // caller gets no complaint from anywhere.
     //
     // Read off the source because optionality is a type-level mark: it is
@@ -89,14 +90,14 @@ describe("the user memory layer", () => {
     expect(signature).not.toContain("Scenario");
   });
 
-  it("leaves the context builder describing the two layers it has", () => {
+  it("leaves the context builder describing the memory it has", () => {
     const service = readFileSync(
       join(PACKAGES, "server", "src", "modules", "memory", "memory.service.ts"),
       "utf8",
     );
     const docstring = service.slice(0, service.indexOf("export async function buildContext"));
 
-    expect(docstring).toContain("project + conversation memory");
+    expect(docstring).toContain("memory entries and each conversation's");
     expect(docstring).not.toContain("user +");
   });
 });

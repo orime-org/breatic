@@ -72,6 +72,18 @@ describe('a failed step in a reply', () => {
     expect(view.failureLines).toEqual([{ step: { key }, reason: 'chat.tool.failure.notMember', count: 1 }]);
   });
 
+  it.each([
+    ['save_memory', 'chat.tool.step.saveMemory'],
+    ['delete_memory', 'chat.tool.step.deleteMemory'],
+    ['read_memory', 'chat.tool.step.readMemory'],
+  ])('names the step of %s that could not reach the memory', (tool, key) => {
+    const view = toChatMessage(
+      reply([{ type: `tool-${tool}`, toolCallId: 'm1', state: 'output-error', input: {}, errorText: FAILURE_LINES.busy }]),
+    );
+
+    expect(view.failureLines).toEqual([{ step: { key }, reason: FAILURE_LINES.busy, count: 1 }]);
+  });
+
   it('names the step of get_generation_template that could not read the template', () => {
     const view = toChatMessage(
       reply([{ type: 'tool-get_generation_template', toolCallId: 'g1', state: 'output-error', input: { id: 'costume-sheet' }, errorText: FAILURE_LINES.busy }]),

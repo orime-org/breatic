@@ -177,6 +177,7 @@
       "references_too_many": "添付の参照が多すぎます。1 件のメッセージにつき最大 {limit, number} 回までです。このメッセージには {actual, number} 回あります。",
       "ask_not_found": "この会話にこの質問カードはありません。",
       "ask_already_answered": "この質問カードにはすでに回答済みです。",
+      "model_unavailable": "選択したモデルは利用できなくなりました。",
       "answer_mismatch": "これらの回答はカードの質問と合いません。"
     },
     "mail": {
@@ -306,6 +307,11 @@
     }
   },
   "chat": {
+    "modelPicker": {
+      "label": "モデル",
+      "listFailed": "モデル一覧を読み込めませんでした",
+      "saveFailed": "モデルの選択を保存できませんでした"
+    },
     "composer": {
       "chipsAria": "選択された chips",
       "placeholder": "質問するか、Canvas 上のものを渡してください…",
@@ -410,6 +416,9 @@
       "readingConversation": "会話を確認中",
       "readingNodeHistory": "ノードの履歴を確認中",
       "readingActivity": "Project アクティビティを確認中",
+      "savingMemory": "メモリに保存中",
+      "deletingMemory": "メモリから削除中",
+      "readingMemory": "メモリを確認中",
       "running": "{tool} を実行中",
       "step": {
         "webSearch": "「{query}」の検索",
@@ -426,6 +435,9 @@
         "readConversation": "会話の確認",
         "readNodeHistory": "ノードの履歴の確認",
         "readActivity": "Project アクティビティの確認",
+        "saveMemory": "メモリへの保存",
+        "deleteMemory": "メモリからの削除",
+        "readMemory": "メモリの確認",
         "other": "{tool} の実行",
         "readTemplate": "テンプレートの確認",
         "requestSpace": "Space の閲覧依頼"
@@ -2739,6 +2751,7 @@
       "theme": "テーマ：{theme}"
     },
     "languageNotSaved": "言語をアカウントに保存できませんでした",
+    "languageLoadFailed": "言語を切り替えられませんでした。ページを再読み込みしてもう一度お試しください。",
     "help": {
       "trigger": "ヘルプ",
       "manual": "ユーザーマニュアル",
@@ -3132,22 +3145,29 @@
     "empty": "動画を追加して Timeline の編集を始めましょう。",
     "video": "動画",
     "conflict": "競合",
-    "conflictHelp": "クリップが重複しています。クリップを選択して開始フレームを変更してください。",
+    "conflictHelp": "競合しているクリップは再生されません。クリップを選択して修正してください。",
+    "conflictList": "競合",
+    "noConflicts": "競合はありません",
+    "conflictReason": {
+      "overlap": "他のクリップと重複しています",
+      "missing_track": "トラックが削除されました",
+      "invalid_range": "動画の範囲外です",
+      "incompatible_track": "種類の異なるトラックにあります",
+      "damaged": "このクリップは読み込めなくなりました",
+      "missing_source": "動画が見つかりません"
+    },
     "loadingMedia": "動画を読み込み中…",
     "mediaUnavailable": "この動画を利用できません。",
     "retry": "再試行",
     "play": "再生",
     "pause": "一時停止",
     "seek": "プレビューフレーム",
-    "framePosition": "フレーム {frame} / {total}",
     "tracks": "トラック",
     "addMedia": "素材を追加",
-    "visualTrack": "映像 1",
     "selectClip": "クリップを選択してプロパティを表示します。",
     "clipFrames": "開始 {start} · 長さ {duration} フレーム",
-    "editStart": "開始フレームを変更",
+    "sourceExtent": "動画 {frames} フレーム · {fps, number} fps",
     "startFrame": "開始フレーム",
-    "apply": "適用",
     "cancel": "キャンセル",
     "transport": {
       "paused": "一時停止中",
@@ -3169,17 +3189,54 @@
       "fileEmpty": "ローカルの動画ファイルを選択してください。",
       "preparing": "動画を準備中…",
       "progress": "アップロード中 {progress}%",
-      "confirm": "Timeline に追加"
+      "confirm": "Timeline に追加",
+      "insertAfter": "{name} の後に挿入",
+      "insertFirst": "メイントラックの先頭に挿入"
     },
     "errors": {
+      "missing_source": "クリップの動画が見つかりません。先にクリップを削除してください。",
+      "covers_missing_source": "この位置にあるクリップの動画が見つかりません。先にそのクリップを削除してください。",
       "readonly": "現在の役割では編集できません。",
       "source_unavailable": "この動画を利用できません。再試行するか別の動画を選択してください。",
       "metadata_unavailable": "動画の長さを取得できません。再試行するか別の動画を選択してください。",
-      "invalid_range": "有効な開始フレームを入力してください。",
-      "overlap": "この位置は別のクリップと重複しています。開始フレームを変更してください。",
+      "invalid_range": "動画の範囲内のフレームを入力してください。",
       "target_missing": "追加先が変更されました。位置を確認して再試行してください。",
+      "clip_removed": "このクリップは他のメンバーによって削除されました。",
       "upload": "アップロードに失敗しました。選択したファイルで再試行できます。",
-      "permission_changed": "編集権限が変更されました。動画の追加をもう一度確認してください。"
+      "permission_changed": "編集権限が変更されました。動画の追加をもう一度確認してください。",
+      "track_missing": "対象のトラックは削除されました。別のトラックを選択してください。",
+      "id_taken": "この項目はすでに存在します。もう一度お試しください。",
+      "main_track": "メイントラックは削除できません。",
+      "track_not_empty": "空のトラックのみ削除できます。"
+    },
+    "mainTrack": "メイントラック",
+    "track": "映像 {index}",
+    "edit": {
+      "undo": "元に戻す",
+      "redo": "やり直す",
+      "split": "分割",
+      "duplicate": "複製",
+      "delete": "削除",
+      "magnet": "メイントラックのマグネット",
+      "magnetOn": "マグネット",
+      "magnetOff": "フリー",
+      "snap": "自動スナップ",
+      "linkage": "連動",
+      "zoom": "ズーム",
+      "track": "トラック",
+      "inPoint": "イン点",
+      "duration": "長さ",
+      "newTrack": "新しい映像トラック",
+      "newTrackZone": "ここにドロップして新しいトラックを作成",
+      "trackRemoved": "トラックは削除されました",
+      "deleteTrack": "トラックを削除",
+      "ghostInsert": "挿入",
+      "ghostOverwrite": "下のクリップを上書き",
+      "selectFirst": "先にクリップを選択してください。",
+      "magnetStartHint": "メイントラックのマグネットがオンです。ドラッグで順序を変更します。",
+      "splitOutside": "分割するには再生ヘッドを選択中のクリップ内に移動してください。",
+      "lowestTrack": "このクリップはすでに一番下の映像トラックにあります。",
+      "bumped": "連動クリップ {count, plural, other {# 件}}を上のトラックに移動しました。"
     }
   }
 }

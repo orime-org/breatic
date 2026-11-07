@@ -92,6 +92,7 @@ describe('resetProjectUiStores (#1771)', () => {
           messages: [],
           hasMore: false,
           oldestLoadedTurn: 1,
+          agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' },
           title: null,
         },
       },

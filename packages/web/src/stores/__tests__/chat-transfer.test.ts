@@ -490,7 +490,7 @@ describe('stopping a turn while its body uploads (H04-H06)', () => {
   it('H06 leaving the project stops the upload the same way', async () => {
     useConversationRuntime.setState({
       conversations: {
-        [CONVERSATION]: { projectId: PROJECT, messages: [], hasMore: false, oldestLoadedTurn: null, title: null },
+        [CONVERSATION]: { projectId: PROJECT, messages: [], hasMore: false, oldestLoadedTurn: null, title: null, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       },
     });
     await uploadIntoSecondPart();

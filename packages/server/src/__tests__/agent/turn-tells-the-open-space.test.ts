@@ -24,7 +24,7 @@ const modelSays = vi.hoisted(() => ({
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { projectMemory: "", conversationMemory: "" },
+    memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
     history: modelSays.history,
   })),
 }));

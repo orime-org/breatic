@@ -35,6 +35,7 @@ import { docName } from '@web/data/yjs/manager';
 import { evictCanvasUndoManager } from '@web/data/yjs/canvas-space';
 import { useTranslation } from '@web/i18n/use-translation';
 import { evictDocumentEditor } from '@web/spaces/document/document-editor-cache';
+import { evictTimelineEditSession } from '@web/data/yjs/timeline-edit-session';
 import {
   useProjectMeta,
   type ProjectSpace,
@@ -526,6 +527,7 @@ function ProjectWorkspace({
       evictSceneSession(docName.threeDSpace(projectId, id));
       evictCanvasUndoManager(docName.canvasSpace(projectId, id));
       evictDocumentEditor(docName.documentSpace(projectId, id));
+      evictTimelineEditSession(docName.timelineSpace(projectId, id));
       canvasSessions.drop(id);
       canvasGraphs.drop(id);
       endSpaceKeptEditors(id);

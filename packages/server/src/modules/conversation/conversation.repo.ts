@@ -21,6 +21,7 @@ import {
 } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { cascadeDeleteMessages } from "@server/modules/conversation/conversation-message.repo.js";
+import { softDeleteConversationEntries } from "@server/modules/memory/memory.repo.js";
 import { CONVERSATION_TITLE_MAX_CHARS } from "@breatic/shared";
 import type { ConversationEntity } from "@breatic/shared";
 
@@ -47,6 +48,7 @@ function toEntity(row: typeof conversations.$inferSelect): ConversationEntity {
     title: row.title,
     projectId: row.projectId,
     lastConsolidatedTurn: row.lastConsolidatedTurn,
+    agentModel: row.agentModel,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     deletedAt: row.deletedAt,
@@ -60,16 +62,49 @@ function toEntity(row: typeof conversations.$inferSelect): ConversationEntity {
  * is not given one here, because a placeholder stored in the column would be
  * indistinguishable from a title someone chose.
  * @param userId - Owner of the new conversation (conversations are user-scoped)
+ * @param agentModel - The model it starts on (#1363): the owner's last pick, or the default.
  * @param tx - Optional transaction handle, so opening chat can create the
  *   conversation and stamp its project as one unit under the locks it holds
  * @returns The newly created conversation entity
  */
 export async function createConversation(
   userId: string,
+  agentModel: string,
   tx?: DbTx,
 ): Promise<ConversationEntity> {
-  const rows = await (tx ?? db).insert(conversations).values({ userId }).returning();
+  const rows = await (tx ?? db).insert(conversations).values({ userId, agentModel }).returning();
   return toEntity(rows[0]!);
+}
+
+/**
+ * Record the model a live conversation is answered by (#1363).
+ *
+ * `updated_at` is left where it is: it orders the list as "last used", and
+ * picking a model is not using the conversation.
+ * @param id - Conversation UUID.
+ * @param agentModel - The model.
+ * @param options - How the write is made.
+ * @param options.tx - The transaction to run inside, when the caller has one.
+ * @param options.ifStill - What the caller read, when the write applies only
+ *   while the conversation still holds it, so a pick saved since then stands.
+ * @param options.ifStill.agentModel - The model the caller read.
+ */
+export async function setAgentModel(
+  id: string,
+  agentModel: string,
+  options: { tx?: DbTx; ifStill?: { agentModel: string | null } } = {},
+): Promise<void> {
+  const { tx, ifStill } = options;
+  await (tx ?? db)
+    .update(conversations)
+    .set({ agentModel, updatedAt: sql`${conversations.updatedAt}` })
+    .where(
+      and(
+        eq(conversations.id, id),
+        isNull(conversations.deletedAt),
+        ifStill === undefined ? undefined : sql`${conversations.agentModel} IS NOT DISTINCT FROM ${ifStill.agentModel}`,
+      ),
+    );
 }
 
 /**
@@ -401,6 +436,10 @@ export async function cascadeDeleteConversations(
       ),
     );
 
+  // The conversation's own memory entries go with it; the member's Project
+  // entries written from it stay, since they belong to the Project.
+  await softDeleteConversationEntries(tx, ids, now);
+
   await tx
     .update(conversations)
     .set({ deletedAt: now, updatedAt: now })
@@ -512,11 +551,12 @@ export async function setProjectId(
 /**
  * Move the consolidation watermark forward, and say whether it moved.
  *
- * The comparison is the concurrency control. Two tabs on one conversation
- * compute different windows — the later turn's history is longer, so its
- * boundary can sit further along — and the narrower one must not overwrite
- * memory that already covers more. Refusing to move backwards is what makes
- * "everything under the watermark is in memory" hold without a lock.
+ * The comparison is the concurrency control. A fold reads the entries and
+ * the watermark, and writes its operations against what it read; two tabs on
+ * one conversation each fold from the same watermark. Moving only from the
+ * watermark the fold read means the second one writes nothing, so the same
+ * turns are never folded into entries twice, and never backwards. It is what
+ * makes "everything under the watermark is in memory" hold without a lock.
  *
  * `updated_at` is left where it is, and that is load-bearing. It orders the
  * list and decides which conversation an open lands on, and what it means
@@ -524,12 +564,14 @@ export async function setProjectId(
  * never asked for and cannot see. Touching it would lift a conversation they
  * have not opened in weeks to the top of their list.
  * @param id - Conversation UUID to update.
+ * @param from - The watermark the caller read.
  * @param turn - The watermark to move to.
  * @param tx - The transaction to run inside, when the caller has one.
- * @returns True when this call moved it; false when it was already further along.
+ * @returns True when this call moved it; false when it was no longer where the caller read it.
  */
 export async function advanceConsolidatedTurn(
   id: string,
+  from: number,
   turn: number,
   tx?: DbTx,
 ): Promise<boolean> {
@@ -540,6 +582,7 @@ export async function advanceConsolidatedTurn(
       and(
         eq(conversations.id, id),
         isNull(conversations.deletedAt),
+        eq(conversations.lastConsolidatedTurn, from),
         lt(conversations.lastConsolidatedTurn, turn),
       ),
     )

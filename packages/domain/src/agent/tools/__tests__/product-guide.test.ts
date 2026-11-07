@@ -133,8 +133,10 @@ describe("the guide as a tool", () => {
     // The guide has a Mini-tools section; a description that leaves them out
     // let "scale this picture up" go unlooked-up (#1366).
     expect(said).toMatch(/mini-tools/i);
-    expect(said).toMatch(/cannot see/i);
     expect(said).toMatch(/icon/i);
+    // The open Space comes with each message and the tools read the rest, so
+    // the description says nothing of what the model can or cannot see.
+    expect(said).not.toMatch(/\b(can|cannot|can't) see\b/i);
   });
 });
 
@@ -755,6 +757,18 @@ describe("the guide's source", () => {
 });
 
 describe("what the guide says about each surface", () => {
+  it("names a missing video among the Timeline conflict reasons (inner#1708 M3)", () => {
+    expect(t("timeline.conflictReason.missing_source")).toBe("Its video is missing");
+    expect(section("Timeline spaces")).toContain(`"${t("timeline.conflictReason.missing_source")}"`);
+  });
+
+  it("says how the Timeline adds a top track, cancels a drag and snaps (inner#1708 G1)", () => {
+    const timeline = section("Timeline spaces");
+    expect(timeline).toMatch(/Alt\+Up on the top visual track adds a new visual track/);
+    expect(timeline).toMatch(/Esc cancels a drag without changing anything/);
+    expect(timeline).toMatch(/other clip edges, the playhead and frame 0/);
+  });
+
   it("reads the message and attachment limits off their sources", () => {
     const chat = section("The chat panel");
     expect(chat).toContain(`up to ${CHAT_MESSAGE_MAX_CHARS.toLocaleString("en")} characters`);

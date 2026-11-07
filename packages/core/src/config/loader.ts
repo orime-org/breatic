@@ -26,26 +26,41 @@ import { MONOREPO_ROOT } from "@core/config/env.js";
  */
 const MEMORY_RESERVE_FACTOR = 2;
 
+/** How long one memory entry's title may be, in characters (#1363). */
+export const MEMORY_TITLE_MAX_CHARS = 120;
+
+/** How long one memory entry's content may be, in characters (#1363). */
+export const MEMORY_CONTENT_MAX_CHARS = 4000;
+
+/** What an index line adds besides its title: the full id and a separator. */
+const INDEX_LINE_OVERHEAD_CHARS = 36 + 3;
+
 /**
  * How much room a fold may add to the request it is shortening.
  *
  * What a fold measured carries the memory as it stood; what goes out
- * carries what the fold just wrote. A pass has to stop this far short of the
+ * carries what the fold just wrote: at most a full index and a progress note
+ * at its ceiling. A migrated block was already in what was measured, and a
+ * fold only splits or removes it. A pass has to stop this far short of the
  * keep line to leave room for it.
- * @param ceilings - An object carrying the two memory ceilings, in code points.
- * @param ceilings.memory_conversation_max_size - The conversation ceiling.
- * @param ceilings.memory_project_max_size - The project ceiling.
+ * @param ceilings - The memory ceilings.
+ * @param ceilings.memory_index_max_entries - How many index lines a prompt carries.
+ * @param ceilings.memory_progress_max_chars - The progress note's ceiling.
  * @returns The reserve, in tokens at a code unit each.
  */
 export function memoryReserveTokens(ceilings: {
-  memory_conversation_max_size: number;
-  memory_project_max_size: number;
+  memory_index_max_entries: number;
+  memory_progress_max_chars: number;
 }): number {
-  return (
-    MEMORY_RESERVE_FACTOR *
-    (ceilings.memory_conversation_max_size + ceilings.memory_project_max_size)
-  );
+  const index = ceilings.memory_index_max_entries * (INDEX_LINE_OVERHEAD_CHARS + MEMORY_TITLE_MAX_CHARS);
+  return MEMORY_RESERVE_FACTOR * (index + ceilings.memory_progress_max_chars);
 }
+
+/** One model the reader can pick in the chat panel. */
+const chatModelSchema = z.object({
+  id: z.string().regex(/[^/]$/),
+  name: z.string().trim().min(1),
+});
 
 const agentConfigSchema = z.object({
   max_tool_iterations: z.number().int().positive().default(40),
@@ -56,6 +71,21 @@ const agentConfigSchema = z.object({
   // an empty id too once that key is set, because a direct route strips the
   // prefix it matched.
   default_model: z.string().regex(/[^/]$/).default("deepseek/deepseek-v4.1-flash-1017"),
+  /**
+   * The models the reader can pick in the chat panel, in the order shown
+   * (#1363). A conversation with no pick of its own is answered by
+   * `default_model`, which must be one of them. Names are English and shown
+   * as written.
+   */
+  chat_models: z
+    .array(chatModelSchema)
+    .min(1)
+    .refine((models) => new Set(models.map((m) => m.id)).size === models.length, "a model is listed twice")
+    .default([
+      { id: "deepseek/deepseek-v4.1-flash-1017", name: "DeepSeek V4.1 Flash" },
+      { id: "anthropic/claude-sonnet-5.5", name: "Claude Sonnet 5.5" },
+      { id: "anthropic/claude-opus-5.5", name: "Claude Opus 5.5" },
+    ]),
   consolidation_model: z.string().regex(/[^/]$/).default("deepseek/deepseek-v4.1-flash-1017"),
   /**
    * How long a cached prompt prefix lives, for the providers that cache only
@@ -104,14 +134,23 @@ const agentConfigSchema = z.object({
    * would start killing turns that were doing fine.
    */
   sse_heartbeat_interval_ms: z.number().int().positive().default(5000),
-  memory_project_max_size: z.number().int().positive().default(8192),
   /**
-   * How much of a conversation's own memory reaches the system prompt.
-   *
-   * Consolidation rewrites this layer whole every time it runs, so it is the
-   * one segment that grows from its own output.
+   * How many memory entries the system prompt lists, newest first (#1363).
+   * The rest are counted in one line and found through `read_memory`.
    */
-  memory_conversation_max_size: z.number().int().positive().default(8192),
+  memory_index_max_entries: z.number().int().positive().default(200),
+  /** How long a conversation's progress note may be, in characters (#1363). */
+  memory_progress_max_chars: z.number().int().positive().default(2000),
+  /**
+   * How many characters of entries a consolidation is shown in full, newest
+   * first after the migrated ones; the rest it sees by id and title only and
+   * cannot change (#1363).
+   */
+  consolidation_entries_max_chars: z.number().int().positive().default(60000),
+  /** How many times one consolidation asks for an answer that passes its checks (#1363). */
+  consolidation_answer_attempts: z.number().int().positive().default(3),
+  /** How many entry operations one consolidation answer may carry (#1363). */
+  consolidation_max_operations: z.number().int().positive().default(50),
   /**
    * The ceiling on one model call's answer, in tokens.
    *
@@ -201,12 +240,6 @@ const agentConfigSchema = z.object({
    * Past it the turn ends as too long rather than paying for another fold.
    */
   overflow_folds_per_turn: z.number().int().min(0).default(2),
-  /**
-   * How many times one fold halves what it hands the consolidation model
-   * after that call is turned away as too long; past it the window is
-   * discarded the way a failed fold is.
-   */
-  consolidation_shrink_attempts: z.number().int().min(0).default(6),
   /**
    * How much page text one `web_search` call asks the service for, in tokens.
    *
@@ -366,6 +399,17 @@ const agentConfigSchema = z.object({
   /** How long the words of one tool call's input, or of its result, may be in characters when a message is read back; a search matches a tool's input cut to the same length, never its result. A questionnaire (an ask_user call that did not fail) is written and matched whole, its answers included. */
   records_tool_text_max_chars: z.number().int().min(10).default(600),
 }).superRefine((config, ctx) => {
+  // A conversation nobody picked a model for is answered by the default, and
+  // the picker shows the model that answers it: one it does not list would
+  // be a name the reader can neither see nor pick back.
+  if (!config.chat_models.some((m) => m.id === config.default_model)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["default_model"],
+      message: `default_model (${config.default_model}) must be one of chat_models`,
+    });
+  }
+
   // The pass runs to the keep line less the room the fold may add: it
   // measures a payload carrying the memory as it stood, and the request that
   // goes out carries what the fold wrote. Let the two ceilings reach that
@@ -378,8 +422,8 @@ const agentConfigSchema = z.object({
   if (reserved >= config.memory_keep_tokens) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      path: ["memory_conversation_max_size"],
-      message: `the reserve held back for a fold, twice memory_conversation_max_size + memory_project_max_size (${reserved}), must be below memory_keep_tokens (${config.memory_keep_tokens})`,
+      path: ["memory_index_max_entries"],
+      message: `the reserve held back for a fold for the memory index and the progress note (${reserved}) must be below memory_keep_tokens (${config.memory_keep_tokens})`,
     });
   }
 
