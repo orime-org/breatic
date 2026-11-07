@@ -13,7 +13,7 @@ export const COUNTRY_CODES: readonly string[] = (
 ).split(' ');
 
 /**
- * The countries with their names in the reader's language, sorted by name.
+ * The countries with their names in the user's language, sorted by name.
  * @param locale - The interface language.
  * @returns Code and display name of each.
  */
