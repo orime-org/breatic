@@ -129,3 +129,17 @@ export async function listCodes(input: {
     .orderBy(desc(referralCodes.createdAt), desc(referralCodes.id))
     .limit(input.limit);
 }
+
+/**
+ * Reads the code a promoter was issued.
+ * @param promoterId - The promoter.
+ * @returns The code and its status, or null when the account is not a promoter.
+ */
+export async function findCodeOfPromoter(promoterId: string): Promise<{ code: string; status: ReferralCodeStatus } | null> {
+  const rows = await db
+    .select({ code: referralCodes.code, status: referralCodes.status })
+    .from(referralCodes)
+    .where(eq(referralCodes.promoterId, promoterId))
+    .limit(1);
+  return rows[0] ?? null;
+}
