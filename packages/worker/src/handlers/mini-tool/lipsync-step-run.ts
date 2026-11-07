@@ -450,11 +450,12 @@ async function personStep(execution: LipSync, kind: "track" | "faces" | "clip" |
           const { target } = request.outputs[0]!.recipe as { target: MiniToolPlanTarget };
           const rect = target.displayRect ?? { x: 0, y: 0, width: target.width, height: target.height };
           const box = person.anchorFaceBox;
-          // Our param names become the endpoint's in one place (providers/upstream-body.ts), from the model yaml.
+          // Our param names become the endpoint's in one place (providers/upstream-body.ts), from the model yaml. The endpoint
+          // requires a text prompt; the box selects the person, so the prompt names only the class.
           return upstreamBody(catalogEntry(execution.tracking.model), { video: storage.publicUrl(request.outputs[0]!.storageKey), apply_mask: false, box_prompts: [{
             frame_index: person.anchor.frameIndex, object_id: 1,
             x_min: Math.round(rect.x + box.x * rect.width), y_min: Math.round(rect.y + box.y * rect.height),
-            x_max: Math.round(rect.x + (box.x + box.width) * rect.width), y_max: Math.round(rect.y + (box.y + box.height) * rect.height) }] }, "") as Record<string, MiniToolStepJson>;
+            x_max: Math.round(rect.x + (box.x + box.width) * rect.width), y_max: Math.round(rect.y + (box.y + box.height) * rect.height) }] }, "person") as Record<string, MiniToolStepJson>;
         } }, userId, deadlineAt);
     case "faces":
       return personContainer(execution, keys.faces, "application/json", async () => {

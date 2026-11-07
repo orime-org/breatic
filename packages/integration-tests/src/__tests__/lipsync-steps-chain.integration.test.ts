@@ -578,7 +578,7 @@ describe("lip-sync request bodies follow the model yaml's upstream names (§97 D
     outside.rename = true;
     const f = await seed(); await drive(f);
     const track = outside.runPrediction.mock.calls.find((call) => call[1] === TRACKER)![2] as Record<string, unknown>;
-    expect(Object.keys(track).sort()).toEqual(["boxes", "mask_preview", "source_video"]);
+    expect(Object.keys(track).sort()).toEqual(["boxes", "mask_preview", "prompt", "source_video"]);
     expect(track.mask_preview).toBe(false);
     expect((track.boxes as Record<string, unknown>[])[0]).toMatchObject({ frame_index: 12, object_id: 1 });
     const gen = outside.runPrediction.mock.calls.find((call) => call[1] === GENERATOR)![2] as Record<string, unknown>;

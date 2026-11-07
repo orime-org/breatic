@@ -18,8 +18,9 @@
  * can be `model_rejected`) and a retryable status is `timeout` (§9.4 category table, `lipsyncStepCategory`).
  *
  * §97 D21-3: the frozen run carries the split-like `container` (policy plus `startSeconds`, `encode`, `chunkRetries`),
- * `layout` `{ preparation, persons, composite }` and `stageJobs`. §97 D21-4: the body is exactly `video`, one box prompt in
- * prepared-video pixels at the anchor's `frame_index` with `object_id` 1, and `apply_mask` false. §97 D21-5: a failed step
+ * `layout` `{ preparation, persons, composite }` and `stageJobs`. §97 D21-4: the body is exactly `video`, the text prompt
+ * `person` (the endpoint's request schema requires one), one box prompt in prepared-video pixels at the anchor's
+ * `frame_index` with `object_id` 1, and `apply_mask` false. §97 D21-5: a failed step
  * names its step.
  */
 import { randomUUID } from "node:crypto";
@@ -152,9 +153,9 @@ describe("the lip-sync track step (§97; execution design §9.1, §9.3; DD §7.2
       expect(body.video).toBe(publicUrl(key));
       const prompts = body.box_prompts as Record<string, unknown>[];
       expect(prompts).toHaveLength(1);
-      // §97 D21-4: one person per request, so object_id 1; the RLE is used, not the preview, so apply_mask false; no text or point prompt.
+      // §97 D21-4: one person per request, so object_id 1; the RLE is used, not the preview, so apply_mask false; the box picks the person, so the text prompt only names the class and there is no point prompt.
       expect(prompts[0]).toEqual({ frame_index: 12, object_id: 1, ...PIXEL_BOXES["person-1"] });
-      expect(body).toEqual({ video: publicUrl(key), box_prompts: prompts, apply_mask: false });
+      expect(body).toEqual({ video: publicUrl(key), prompt: "person", box_prompts: prompts, apply_mask: false });
       // beginMiniToolStepAttempt came first: one unresolved attempt holding exactly this body.
       const [step] = await trackSteps(f);
       const state = miniToolStepStateSchema.parse(step!.output.miniToolStep);
