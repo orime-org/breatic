@@ -10,6 +10,7 @@
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
+import { withoutNul } from "@server/utils/without-nul.js";
 import { t } from "@breatic/shared";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -30,8 +31,8 @@ referral.use(requirePayments);
 const bindingBody = z.object({ code: z.string().min(1).max(40) });
 const applicationBody = z.object({
   country: z.string().regex(/^[A-Z]{2}$/),
-  channels: z.array(z.string().trim().min(1).max(200)).min(1).max(10),
-  plan: z.string().trim().min(1).max(2000),
+  channels: z.array(withoutNul(z.string().trim().min(1).max(200))).min(1).max(10),
+  plan: withoutNul(z.string().trim().min(1).max(2000)),
   termsVersion: z.string().min(1).max(32),
 });
 

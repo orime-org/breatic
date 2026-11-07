@@ -163,6 +163,8 @@ describe("POST /account/referral/applications", () => {
     { ...FORM, plan: "" },
     { ...FORM, plan: "x".repeat(2001) },
     { ...FORM, termsVersion: "" },
+    { ...FORM, channels: ["a\u0000b"] },
+    { ...FORM, plan: "a\u0000b" },
   ])("refuses a malformed form", async (body) => {
     expect((await send("POST", "/applications", body)).status).toBe(422);
     expect(application.submitApplication).not.toHaveBeenCalled();
