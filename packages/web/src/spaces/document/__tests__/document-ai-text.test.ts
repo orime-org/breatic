@@ -772,7 +772,7 @@ describe('the answer as blocks (§5.3)', () => {
     expect((preview[0]!.content as Piece[]).map((c) => c.styles)).toEqual([{}, { bold: true }, {}]);
   });
 
-  it('writes a valid body when the range\'s first words are inline code and the answer has emphasis or a link', async () => {
+  it('writes a valid body when the first block\'s first words are inline code and the answer has emphasis or a link', async () => {
     for (const text of ['the **dependencies**', '[link](https://x.example/) tail', '*it* ~~st~~']) {
       const h = await open('`npm install` installs the deps\n\nsecond two');
       capture(h, rangeOf(h, 'installs'));

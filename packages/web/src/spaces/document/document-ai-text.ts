@@ -533,16 +533,16 @@ type Span =
       readonly to: number;
       readonly first: number;
       readonly last: number;
-      /** The words before the range; null when it starts at the edge of a block without words. */
+      /** The words before the range; null when none are left. */
       readonly before: LineCut | null;
-      /** The words after the range; null when it ends at the edge of a block without words. */
+      /** The words after the range; null when none are left. */
       readonly after: LineCut | null;
     };
 
 /**
  * One end of a range against the block it is in: the block, and the line of
- * words it cuts with the words left outside; no line at the edge of a block
- * without words.
+ * words it cuts with the words left outside; no cut when no words are left
+ * there, a block without words included.
  * @param doc - The body.
  * @param pos - The end.
  * @param side - Which end.
@@ -568,16 +568,7 @@ function endOf(doc: ProseMirrorNode, pos: number, side: 'start' | 'end'): { bloc
   if (line === null) return { block, cut: null };
   const at = offset ?? line.content.size;
   const words = side === 'start' ? line.content.cut(0, at) : line.content.cut(at);
-  return { block, cut: { container, line, words } };
-}
-
-/**
- * Whether a range's end leaves no words of its line outside it.
- * @param cut - The line it cuts; null at a block without words.
- * @returns True when nothing is left.
- */
-function noWordsLeft(cut: LineCut | null): boolean {
-  return cut === null || cut.words.size === 0;
+  return { block, cut: words.size === 0 ? null : { container, line, words } };
 }
 
 /**
@@ -598,7 +589,7 @@ function spanOf(doc: ProseMirrorNode, cover: LocalRange): Span {
   }
   const start = endOf(doc, from, 'start');
   const end = endOf(doc, to, 'end');
-  if (noWordsLeft(start.cut) && noWordsLeft(end.cut)) return { kind: 'blocks', from, to, first: start.block, last: end.block };
+  if (start.cut === null && end.cut === null) return { kind: 'blocks', from, to, first: start.block, last: end.block };
   return { kind: 'words', from, to, first: start.block, last: end.block, before: start.cut, after: end.cut };
 }
 
@@ -723,7 +714,8 @@ function styledUnder(content: readonly Inline[], styles: Record<string, unknown>
     if (piece.type !== 'text') return piece;
     const own = { ...(piece.styles ?? {}) };
     const marks = [...Object.keys(own), ...(inLink ? ['link'] : [])];
-    const under = Object.fromEntries(Object.entries(styles).filter(([name]) => !(name in own) && marks.every((mark) => together(name, mark))));
+    // Every formatting mark excludes itself, so a style the piece has already is filtered out too.
+    const under = Object.fromEntries(Object.entries(styles).filter(([name]) => marks.every((mark) => together(name, mark))));
     return { ...piece, styles: { ...under, ...own } };
   });
 }
@@ -834,10 +826,11 @@ function laidFlat(nodes: readonly ProseMirrorNode[], pos: number, depth: number)
 
 /**
  * Flat blocks built back into a tree the way Plate's indent reads: each
- * block hangs under the nearest block still open before it whose original
- * level is lower, so blocks of one level stay siblings. A table holds no
- * children and closes nothing open before it, so a deeper block after it
- * stands beside it. A block with no such block before it stands at the top.
+ * block first closes the open blocks at its original level or deeper, then
+ * hangs under the nearest one still open, so blocks of one level stay
+ * siblings. A table holds no children, so it is never left open and a
+ * deeper block after it stands beside it. A block with nothing open before
+ * it stands at the top.
  * @param flat - The flat blocks.
  * @param schema - The body's schema.
  * @returns The top-level blocks.
@@ -884,8 +877,8 @@ function holdsLine(node: ProseMirrorNode): boolean {
  * of words, and its last the words after; otherwise the words left on that
  * side stay a block of their line's own kind, and none is left when there
  * are no words.
- * @param before - The words before the range; null at a block without words.
- * @param after - The words after the range; null at a block without words.
+ * @param before - The words before the range; null when none are left.
+ * @param after - The words after the range; null when none are left.
  * @param answer - The answer, laid flat.
  * @param afterLevel - The level of the line the words after stand in, below the first line's.
  * @param oneLine - Whether the words before and after stand in one line.
@@ -914,15 +907,15 @@ function wordsJoined(before: LineCut | null, after: LineCut | null, answer: read
   const joins = (cut: LineCut, block: ProseMirrorNode): boolean => cut.line.type.name !== CODE && holdsLine(block);
   const out = [...answer];
   const first = out[0]!;
-  if (before !== null && before.words.size > 0 && joins(before, first.node)) out[0] = ownBlock(before, before.words.append(first.node.firstChild!.content), before.container.attrs['id']);
-  else if (before !== null && before.words.size > 0) out.unshift(ownBlock(before, before.words, before.container.attrs['id']));
+  if (before !== null && joins(before, first.node)) out[0] = ownBlock(before, before.words.append(first.node.firstChild!.content), before.container.attrs['id']);
+  else if (before !== null) out.unshift(ownBlock(before, before.words, before.container.attrs['id']));
   const firstKept = out[0] !== first;
   const last = out[out.length - 1]!;
   if (after === null) return out;
-  if (after.words.size > 0 && joins(after, answer[answer.length - 1]!.node)) {
+  if (joins(after, answer[answer.length - 1]!.node)) {
     const words = last.node.firstChild!;
     out[out.length - 1] = { ...last, node: last.node.copy(Fragment.from(words.copy(words.content.append(after.words)))) };
-  } else if (after.words.size > 0) {
+  } else {
     out.push(ownBlock(after, after.words, firstKept && oneLine ? null : after.container.attrs['id'], afterLevel));
   }
   return out;
