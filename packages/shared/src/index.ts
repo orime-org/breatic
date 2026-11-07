@@ -301,7 +301,6 @@ export {
   googleAuthSchema,
   REFERRAL_CODE_INPUT_MAX,
   SIGNUP_REFERRAL_SOURCES,
-  signupReferralFields,
   signupVerifySchema,
   SIGNUP_CODE_REGEX,
   setupStudioSchema,

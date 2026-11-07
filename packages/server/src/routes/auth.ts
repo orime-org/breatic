@@ -326,7 +326,6 @@ auth.post(
   },
 );
 
-
 /**
  * `POST /auth/google` - authenticate with a Google ID token.
  *
