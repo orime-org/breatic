@@ -349,7 +349,7 @@ describe("POST /timeline/executions", () => {
 
   it("freezes the prompt as extractPromptText leaves it", async () => {
     const fx = await seedProject();
-    const raw = "<p>A <b>red</b> square<!-- hidden --></p>​";
+    const raw = "<p>A <b>red</b> square<!-- hidden --></p>\u200b";
     expect(extractPromptText(raw)).not.toBe(raw);
     const row = await accepted(fx, { prompt: raw });
     expect(row.input).toMatchObject({ prompt: extractPromptText(raw) });
@@ -365,7 +365,7 @@ describe("POST /timeline/executions", () => {
     expect(again.status, await again.clone().text()).toBe(200);
     expect(((await again.json()) as { data: TimelineExecution }).data).toEqual(original);
     expect(await holdsOf(fx.studioId)).toEqual([{ reference_id: original.id, status: "held", amount: RESERVE() }]);
-    const [{ count }] = await sql<{ count: number }[]>`
+    const [{ count } = { count: -1 }] = await sql<{ count: number }[]>`
       SELECT count(*)::int AS count FROM timeline_executions WHERE project_id = ${fx.projectId} AND action_id = ${String(body.actionId)}
     `;
     expect(count).toBe(1);
@@ -388,7 +388,7 @@ describe("POST /timeline/executions", () => {
     expect((await accept(fx.viewer.cookie, viewerBody)).status).toBe(403);
     await expectNotFound(await accept(outsider.cookie, createBody(fx)));
     expect(await holdsOf(fx.studioId)).toEqual([]);
-    const [{ count }] = await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM timeline_executions WHERE project_id = ${fx.projectId}`;
+    const [{ count } = { count: -1 }] = await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM timeline_executions WHERE project_id = ${fx.projectId}`;
     expect(count).toBe(0);
   });
 
@@ -398,7 +398,7 @@ describe("POST /timeline/executions", () => {
     expect(res.status).toBe(402);
     expect(((await res.json()) as { error: { message: string } }).error.message).toBe(t("server.credit.none"));
     expect(await holdsOf(fx.studioId)).toEqual([]);
-    const [{ count }] = await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM timeline_executions WHERE project_id = ${fx.projectId}`;
+    const [{ count } = { count: -1 }] = await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM timeline_executions WHERE project_id = ${fx.projectId}`;
     expect(count).toBe(0);
   });
 
@@ -421,7 +421,7 @@ describe("POST /timeline/executions", () => {
     }
     const holds = await holdsOf(fx.studioId);
     expect(holds.map((hold) => hold.status)).toEqual(["released"]);
-    const [{ count }] = await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM timeline_executions WHERE project_id = ${fx.projectId}`;
+    const [{ count } = { count: -1 }] = await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM timeline_executions WHERE project_id = ${fx.projectId}`;
     expect(count).toBe(0);
   });
 
