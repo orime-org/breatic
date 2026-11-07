@@ -17,7 +17,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { aiContextOf, aiInsertBlockId } from '@web/spaces/document/document-ai-launch';
+import { aiCapture, aiContextOf, aiInsertBlockId } from '@web/spaces/document/document-ai-launch';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -99,6 +99,76 @@ function blockHolding(editor: Editor, words: string): string {
 function topIds(editor: Editor): string[] {
   return (editor.document as Array<{ id: string }>).map((block) => block.id);
 }
+
+describe('the range captured (§4.6, Plate captureTextRange)', () => {
+  it('keeps a selection inside one block as it is', () => {
+    const editor = open([{ type: 'paragraph', content: 'Intro: x y z end.' }]);
+    select(editor, at(editor, 'x y z'), at(editor, 'x y z') + 5);
+    expect(aiCapture(editor.prosemirrorState)).toEqual({
+      range: { from: at(editor, 'x y z'), to: at(editor, 'x y z') + 5 },
+      firstId: null,
+      lastId: null,
+    });
+  });
+
+  it('widens a selection across blocks to the whole blocks it touches', () => {
+    const editor = open([
+      { type: 'paragraph', content: 'Before.' },
+      { type: 'heading', content: 'Head line' },
+      { type: 'paragraph', content: 'Body text' },
+      { type: 'paragraph', content: 'After.' },
+    ]);
+    select(editor, at(editor, 'line'), at(editor, 'Body') + 4);
+    const captured = aiCapture(editor.prosemirrorState)!;
+    expect([captured.firstId, captured.lastId]).toEqual([blockHolding(editor, 'Head'), blockHolding(editor, 'Body')]);
+    expect(editor.prosemirrorState.doc.textBetween(captured.range.from, captured.range.to, '|')).toBe('Head line|Body text');
+  });
+
+  it('leaves out the block a selection ends at the start of', () => {
+    const editor = open([
+      { type: 'paragraph', content: 'One' },
+      { type: 'paragraph', content: 'Two' },
+    ]);
+    select(editor, at(editor, 'One') + 1, at(editor, 'Two'));
+    const captured = aiCapture(editor.prosemirrorState)!;
+    expect([captured.firstId, captured.lastId]).toEqual([null, null]);
+    expect(editor.prosemirrorState.doc.textBetween(captured.range.from, captured.range.to)).toBe('ne');
+  });
+
+  it('leaves out the block a selection starts at the end of', () => {
+    const editor = open([
+      { type: 'paragraph', content: 'One' },
+      { type: 'paragraph', content: 'Two' },
+      { type: 'paragraph', content: 'Three' },
+    ]);
+    select(editor, at(editor, 'One') + 3, at(editor, 'Three') + 2);
+    const captured = aiCapture(editor.prosemirrorState)!;
+    expect([captured.firstId, captured.lastId]).toEqual([blockHolding(editor, 'Two'), blockHolding(editor, 'Three')]);
+  });
+
+  it('takes the whole table a selection runs into from outside', () => {
+    const editor = open([{ type: 'paragraph', content: 'Before' }, tableBlock({ rows: [{ cells: ['a', 'b'] }, { cells: ['c', 'd'] }] })]);
+    select(editor, at(editor, 'Before'), at(editor, 'c') + 1);
+    const captured = aiCapture(editor.prosemirrorState)!;
+    expect([captured.firstId, captured.lastId]).toEqual([blockHolding(editor, 'Before'), topIds(editor)[1]]);
+  });
+
+  it('widens to the whole blocks of one docTable cell when the selection crosses blocks inside it', () => {
+    const editor = open([tableBlock({ rows: [{ cells: ['a', 'b'] }, { cells: ['c', 'd'] }] })]);
+    const cellBlock = blockHolding(editor, 'c');
+    editor.insertBlocks([{ type: 'paragraph', content: 'c two' }] as never, cellBlock, 'after');
+    select(editor, at(editor, 'c') + 0, at(editor, 'c two') + 3);
+    const captured = aiCapture(editor.prosemirrorState)!;
+    expect([captured.firstId, captured.lastId]).toEqual([cellBlock, blockHolding(editor, 'c two')]);
+  });
+
+  it('captures nothing for a selection without words', () => {
+    const editor = open([{ type: 'image', props: { url: 'https://assets.example/a.png' } }, { type: 'paragraph', content: '' }]);
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, view.state.doc.content.size - 1)));
+    expect(aiCapture(editor.prosemirrorState)).toBeNull();
+  });
+});
 
 describe('the insert block (§5.4)', () => {
   it('is the block the selection ends in', () => {

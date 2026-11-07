@@ -589,20 +589,3 @@ describe('the invariants of §6.2, over any sequence of events', () => {
     );
   });
 });
-
-describe('an answer in the wrong format (design §6.2 E3)', () => {
-  it('fails with the format toast when done brings an answer no sent unit is recognised in', () => {
-    const streaming = sessionIn('streaming');
-    const step = run([{ type: 'delta', seq: streaming.seq, text: '<u id="9">x</u>' }, { type: 'done', seq: streaming.seq, formatFailed: true }], streaming);
-    expect(sessionOf(step).state).toBe('failed');
-    expect(sessionOf(step).result).toBe('');
-    expect(step.effects).toEqual([{ kind: 'toastFormat' }]);
-  });
-
-  it('finishes as done when the answer is in the format', () => {
-    const streaming = sessionIn('streaming');
-    const step = run([{ type: 'delta', seq: streaming.seq, text: '<u id="1">x</u>' }, { type: 'done', seq: streaming.seq, formatFailed: false }], streaming);
-    expect(sessionOf(step).state).toBe('done');
-    expect(step.effects).toEqual([]);
-  });
-});

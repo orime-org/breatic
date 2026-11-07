@@ -192,24 +192,6 @@ describe('while the result streams in', () => {
     expect(dialog.querySelector('[data-testid="chat-waiting-dot"]')).toBeNull();
   });
 
-  it('keeps the waiting dot while only an opening tag has come, then shows the unit\'s words as they come', async () => {
-    const { call } = await polishing();
-    const dialog = screen.getByTestId('doc-ai-dialog');
-
-    await streams(call, ['<u id="1">']);
-    // Let the reveal and the preview's throttled parse settle on the tag.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 300));
-    });
-    expect(dialog.querySelectorAll('[data-testid="chat-waiting-dot"]')).toHaveLength(1);
-
-    await streams(call, ['Hi there']);
-    await waitFor(() => {
-      expect(previewText()).toContain('Hi there');
-    });
-    expect(dialog.querySelector('[data-testid="chat-waiting-dot"]')).toBeNull();
-  });
-
   it('shows no waiting dot once the run has ended without words', async () => {
     const { call } = await polishing();
 
@@ -547,7 +529,7 @@ describe('closing', () => {
       expect(calls).toHaveLength(2);
     });
     expect(call.signal?.aborted).toBe(true);
-    expect(calls[1]!.body).toMatchObject({ tool: 'expand', selection: '<u id="1" kind="paragraph">world</u>' });
+    expect(calls[1]!.body).toMatchObject({ tool: 'expand', selection: 'world' });
     expect(screen.getAllByTestId('doc-ai-dialog')).toHaveLength(1);
   });
 });
@@ -694,7 +676,7 @@ describe('the custom instruction', () => {
     await waitFor(() => {
       expect(calls).toHaveLength(1);
     });
-    expect(calls[0]!.body).toEqual({ tool: 'custom', project_id: 'project-1', selection: '<u id="1" kind="paragraph">hello</u>', document: 'hello world', instructions: 'Make it rhyme' });
+    expect(calls[0]!.body).toEqual({ tool: 'custom', project_id: 'project-1', selection: 'hello', document: 'hello world', instructions: 'Make it rhyme' });
     expect(screen.getByTestId('doc-ai-title').textContent).toBe(title);
     expect(title).not.toContain('spaces.document');
     const line = screen.getByTestId('doc-ai-instruction');
@@ -844,7 +826,7 @@ describe('the preview', () => {
       expect(calls).toHaveLength(1);
     });
 
-    await streams(calls[0]!, ['<u id="1">**Bold** words</u>\n<u id="2">item one</u>'], true);
+    await streams(calls[0]!, ['**Bold** words\n\n- item one'], true);
 
     const preview = screen.getByTestId('doc-ai-preview');
     await waitFor(() => {
@@ -856,44 +838,13 @@ describe('the preview', () => {
     expect(preview.textContent).toContain('item one');
   });
 
-  it('follows the body once the answer is in: a selected block indented under another shows nested', async () => {
-    const editor = await selected('<p>hello</p><p>world</p>', 0, 10);
-    await press('refine');
-    await waitFor(() => {
-      expect(calls).toHaveLength(1);
-    });
-    await streams(calls[0]!, ['<u id="1">HELLO</u>\n<u id="2">WORLD</u>'], true);
-    const preview = screen.getByTestId('doc-ai-preview');
-    /**
-     * Whether the preview draws WORLD inside HELLO's block.
-     * @returns True when it does.
-     */
-    const nested = (): boolean => {
-      const world = [...preview.querySelectorAll('.bn-block-content')].find((el) => el.textContent === 'WORLD');
-      return world?.closest('.bn-block-group')?.parentElement?.closest('.bn-block-group') != null;
-    };
-    await waitFor(() => {
-      expect(previewText()).toContain('WORLD');
-    });
-    expect(nested()).toBe(false);
-
-    act(() => {
-      editor.setTextCursorPosition((editor.document as unknown as Array<{ id: string }>)[1]!.id);
-      editor.nestBlock();
-    });
-
-    await waitFor(() => {
-      expect(nested()).toBe(true);
-    });
-  });
-
   it('reads the answer again for body changes once it is in, never for a caret that only moves', async () => {
     const editor = await selected('<p>hello</p><p>world</p>', 0, 10);
     await press('refine');
     await waitFor(() => {
       expect(calls).toHaveLength(1);
     });
-    await streams(calls[0]!, ['<u id="1">HELLO</u>\n<u id="2">WORLD</u>'], true);
+    await streams(calls[0]!, ['HELLO\n\nWORLD'], true);
     await waitFor(() => {
       expect(previewText()).toContain('WORLD');
     });
@@ -933,16 +884,18 @@ describe('the preview', () => {
 });
 
 describe('what a command sends (design §5.2)', () => {
-  it('sends the selection as tagged units', async () => {
-    await selected('<p>one</p><p>two</p>', 0, 6);
+  it('sends the whole blocks of a selection across blocks as Markdown, and shows them selected', async () => {
+    const editor = await selected('<p>one</p><p>two</p>', 1, 5);
     await press('refine');
     await waitFor(() => {
       expect(calls).toHaveLength(1);
     });
-    expect(calls[0]!.body).toMatchObject({ selection: '<u id="1" kind="paragraph">one</u>\n<u id="2" kind="paragraph">two</u>' });
+    expect(calls[0]!.body).toMatchObject({ selection: 'one\n\ntwo' });
+    const { selection, doc } = editor.prosemirrorState;
+    expect(doc.textBetween(selection.from, selection.to, '|')).toBe('one|two');
   });
 
-  it('starts nothing over budget measured on the tagged units, and says so without numbers', async () => {
+  it('starts nothing over budget measured on the Markdown sent, and says so without numbers', async () => {
     config.mockResolvedValue({ selectionMaxChars: 20, contextMaxChars: 20000, revealCharsPerSecond: 1_000_000 });
     await selected('<p>hello world</p>', 0, 5);
     const menu = await hoverOpenSlot('doc-bubble-ai');
@@ -955,22 +908,6 @@ describe('what a command sends (design §5.2)', () => {
     expect(calls).toHaveLength(0);
     expect(screen.queryByTestId('doc-ai-dialog')).toBeNull();
     expect(String(toastError.mock.calls[0]![0])).not.toMatch(/\d/);
-    expect(String(toastError.mock.calls[0]![0])).not.toContain('spaces.document');
-  });
-});
-
-describe('an answer in the wrong format (design §6.2 E3)', () => {
-  it('fails with one toast and leaves close and retry when several units were sent and the answer has no tags', async () => {
-    await selected('<p>one</p><p>two</p>', 0, 6);
-    await press('refine');
-    await waitFor(() => {
-      expect(calls).toHaveLength(1);
-    });
-    await streams(calls[0]!, ['ONE TWO'], true);
-    await waitFor(() => {
-      expect(toastError).toHaveBeenCalledTimes(1);
-    });
-    expect(shownButtons()).toEqual(['doc-ai-close', 'doc-ai-retry']);
     expect(String(toastError.mock.calls[0]![0])).not.toContain('spaces.document');
   });
 });

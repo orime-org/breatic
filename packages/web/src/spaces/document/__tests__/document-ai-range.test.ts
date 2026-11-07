@@ -25,7 +25,8 @@ import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { aiRangeIn, aiUnitRangesIn, DOCUMENT_AI_RANGE } from '@web/spaces/document/document-ai-range';
+import { aiCoverIn, aiRangeIn, DOCUMENT_AI_RANGE } from '@web/spaces/document/document-ai-range';
+import { EMPTY_LINE_CLASS, MEDIA_IN_SELECTION_CLASS } from '@web/spaces/document/document-selection-paint';
 import {
   DOCUMENT_COMMENT_DRAFT_RANGE,
   draftRangeIn,
@@ -113,6 +114,25 @@ function rangeOf(editor: Pick<Editor, 'prosemirrorState'>, words: string): { fro
 }
 
 /**
+ * Opens the range on a stretch inside one block, as the dialog does.
+ * @param range - The stretch.
+ * @returns The command.
+ */
+function at(range: { from: number; to: number }): { range: { from: number; to: number }; firstId: null; lastId: null } {
+  return { range, firstId: null, lastId: null };
+}
+
+/**
+ * What replace would cover now, as a list.
+ * @param editor - The editor.
+ * @returns The one range, or none.
+ */
+function coverList(editor: Pick<Editor, 'prosemirrorState'>): { from: number; to: number }[] {
+  const cover = aiCoverIn(editor.prosemirrorState);
+  return cover === null ? [] : [cover];
+}
+
+/**
  * The words the AI range covers now.
  * @param editor - The editor.
  * @returns The words, or the range's kind when it covers none.
@@ -121,7 +141,7 @@ function aiWords(editor: Pick<Editor, 'prosemirrorState'>): string {
   const range = aiRangeIn(editor.prosemirrorState);
   if (range === null) return 'none';
   if (range.kind === 'gone') return 'gone';
-  return aiUnitRangesIn(editor.prosemirrorState).flat().map(({ from, to }) => editor.prosemirrorState.doc.textBetween(from, to)).join('|');
+  return coverList(editor).map(({ from, to }) => editor.prosemirrorState.doc.textBetween(from, to)).join('|');
 }
 
 describe('the AI dialog\'s range', () => {
@@ -134,7 +154,7 @@ describe('the AI dialog\'s range', () => {
   it('holds the words it was opened on and follows them through the user\'s edits', async () => {
     const handle = await openHandle('The quick brown fox.');
     const view = handle.editor.prosemirrorView!;
-    view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, [rangeOf(handle.editor, 'quick brown')]));
+    view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, at(rangeOf(handle.editor, 'quick brown'))));
 
     expect(aiWords(handle.editor)).toBe('quick brown');
 
@@ -148,7 +168,7 @@ describe('the AI dialog\'s range', () => {
     const handle = await openHandle('The quick brown fox.');
     const view = handle.editor.prosemirrorView!;
     const target = rangeOf(handle.editor, 'quick brown');
-    view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, [target]));
+    view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, at(target)));
 
     view.dispatch(view.state.tr.delete(target.from, target.to));
 
@@ -159,7 +179,7 @@ describe('the AI dialog\'s range', () => {
     const handle = await openHandle('The quick brown fox.');
     const view = handle.editor.prosemirrorView!;
     const target = rangeOf(handle.editor, 'quick brown');
-    view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, [target]));
+    view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, at(target)));
     handle.undoManager.stopCapturing();
     view.dispatch(view.state.tr.delete(target.from, target.to));
     handle.undoManager.stopCapturing();
@@ -173,7 +193,7 @@ describe('the AI dialog\'s range', () => {
   it('closes', async () => {
     const handle = await openHandle('The quick brown fox.');
     const view = handle.editor.prosemirrorView!;
-    view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, [rangeOf(handle.editor, 'quick')]));
+    view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, at(rangeOf(handle.editor, 'quick'))));
 
     view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, null));
 
@@ -190,7 +210,7 @@ describe('the AI dialog\'s range', () => {
     a.replaceBlocks(a.document, [{ type: 'paragraph', content: 'The quick brown fox.' }] as never);
     sync(docA, docB);
     const viewA = a.prosemirrorView!;
-    viewA.dispatch(viewA.state.tr.setMeta(DOCUMENT_AI_RANGE, [rangeOf(a, 'quick brown')]));
+    viewA.dispatch(viewA.state.tr.setMeta(DOCUMENT_AI_RANGE, at(rangeOf(a, 'quick brown'))));
 
     const viewB = b.prosemirrorView!;
     viewB.dispatch(viewB.state.tr.insertText('Look: ', rangeOf(b, 'The').from));
@@ -245,7 +265,7 @@ describe('the AI range under any mix of edits (property)', () => {
     sync(docA, docB);
     undo.manager.clear();
     const viewA = a.prosemirrorView!;
-    viewA.dispatch(viewA.state.tr.setMeta(DOCUMENT_AI_RANGE, [rangeOf(a, 'ABCDEF')]));
+    viewA.dispatch(viewA.state.tr.setMeta(DOCUMENT_AI_RANGE, at(rangeOf(a, 'ABCDEF'))));
 
     let wasGone = false;
     let peerTouched = false;
@@ -270,7 +290,7 @@ describe('the AI range under any mix of edits (property)', () => {
         // the same words): after it, only gone staying gone is held to.
         const held = aiRangeIn(a.prosemirrorState);
         const reach = { from: at, to: end };
-        if (step.by === 'collaborator' && held?.kind === 'present' && aiUnitRangesIn(a.prosemirrorState).flat().some(({ from, to }) => reach.to >= from && reach.from <= to)) peerTouched = true;
+        if (step.by === 'collaborator' && held?.kind === 'present' && coverList(a).some(({ from, to }) => reach.to >= from && reach.from <= to)) peerTouched = true;
         if (step.kind !== 'delete' || tr.docChanged) {
           if (step.by === 'user') undo.manager.stopCapturing();
           view.dispatch(tr);
@@ -297,7 +317,7 @@ describe('the AI range under any mix of edits (property)', () => {
     fc.assert(holdsItsLetters, { numRuns: 40 });
   });
 
-  it.each([-1009072999, -1635687800])('holds to its letters under the edits of seed %i, words typed among them never kept', (seed) => {
+  it.each([-1009072999, -1635687800])('holds to its letters under the edits of seed %i', (seed) => {
     fc.assert(holdsItsLetters, { numRuns: 40, seed });
   });
 
@@ -345,7 +365,7 @@ describe('the AI range beside an unposted comment', () => {
     const handle = await openHandle('The quick brown fox jumps.');
     const view = handle.editor.prosemirrorView!;
     view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, [rangeOf(handle.editor, 'fox')]));
-    view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, [rangeOf(handle.editor, 'quick')]));
+    view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, at(rangeOf(handle.editor, 'quick'))));
 
     expect(aiWords(handle.editor)).toBe('quick');
     const draft = draftRangeIn(handle.editor.prosemirrorState);
@@ -357,7 +377,7 @@ describe('the AI range beside an unposted comment', () => {
     const view = handle.editor.prosemirrorView!;
     view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, [rangeOf(handle.editor, 'fox')]));
     const quick = rangeOf(handle.editor, 'quick');
-    view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, [quick]));
+    view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, at(quick)));
 
     view.dispatch(view.state.tr.delete(quick.from, quick.to));
 
@@ -369,13 +389,42 @@ describe('the AI range beside an unposted comment', () => {
     const handle = await openHandle('The quick brown fox jumps.');
     const view = handle.editor.prosemirrorView!;
     view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, [rangeOf(handle.editor, 'fox')]));
-    view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, [rangeOf(handle.editor, 'quick')]));
+    view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, at(rangeOf(handle.editor, 'quick'))));
 
     view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, null));
     expect(draftRangeIn(handle.editor.prosemirrorState)).not.toBeNull();
 
-    view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, [rangeOf(handle.editor, 'quick')]));
+    view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, at(rangeOf(handle.editor, 'quick'))));
     view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, null));
     expect(aiWords(handle.editor)).toBe('quick');
+  });
+});
+
+describe('the range painted while the dialog holds the focus (§5.3)', () => {
+  it('paints an image and an empty line at its edges, and an image inside, as selected', async () => {
+    const handle = await openHandle('x');
+    handle.editor.replaceBlocks(handle.editor.document, [
+      { type: 'paragraph', content: 'Before.' },
+      { type: 'image', props: { url: 'https://assets.example/a.png' } },
+      { type: 'paragraph', content: 'Middle.' },
+      { type: 'image', props: { url: 'https://assets.example/b.png' } },
+      { type: 'paragraph', content: 'More.' },
+      { type: 'paragraph' },
+      { type: 'paragraph', content: 'After.' },
+    ] as never);
+    const ids = (handle.editor.document as Array<{ id: string }>).map((b) => b.id);
+    const view = handle.editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, {
+      range: { from: rangeOf(handle.editor, 'Middle.').from, to: rangeOf(handle.editor, 'More.').to },
+      firstId: ids[1]!,
+      lastId: ids[5]!,
+    }));
+    view.dom.blur();
+
+    const painted = (id: string, cls: string): boolean =>
+      view.dom.querySelector(`[data-id="${id}"] .${cls}, [data-id="${id}"].${cls}`) !== null
+      || [...view.dom.querySelectorAll(`.${cls}`)].some((el) => el.closest(`[data-id="${id}"]`) !== null);
+    expect([painted(ids[1]!, MEDIA_IN_SELECTION_CLASS), painted(ids[3]!, MEDIA_IN_SELECTION_CLASS), painted(ids[5]!, EMPTY_LINE_CLASS)]).toEqual([true, true, true]);
+    expect(painted(ids[0]!, MEDIA_IN_SELECTION_CLASS) || painted(ids[6]!, EMPTY_LINE_CLASS)).toBe(false);
   });
 });
