@@ -115,6 +115,17 @@ async function lineBelowTop(p: Page, text: string): Promise<number> {
 }
 
 /**
+ * Whether a heading's line has come to rest 16±2px under the top of the body.
+ * @param p - The page.
+ * @param text - The heading's words.
+ * @returns True once it sits there.
+ */
+async function landed(p: Page, text: string): Promise<boolean> {
+  const at = await lineBelowTop(p, text);
+  return at >= 14 && at <= 18;
+}
+
+/**
  * The width of the body's text column.
  * @param p - The page.
  * @returns Its width in px.
@@ -164,8 +175,8 @@ test('a jump leaves each level of heading 16px under the top and the caret at it
   await openWith(page, DOCUMENT);
   for (const title of ['One one one', 'Two', 'One one']) {
     await row(page, title).click();
-    await expect.poll(() => lineBelowTop(page, title)).toBeGreaterThanOrEqual(14);
-    expect(await lineBelowTop(page, title)).toBeLessThanOrEqual(18);
+    // The scroll is animated: wait for it to come to rest at the landing.
+    await expect.poll(() => landed(page, title)).toBe(true);
     expect(await highlighted(page)).toBe(title);
   }
   await page.keyboard.type('Z');
@@ -289,7 +300,7 @@ test('a narrow Space floats the outline over the body, above the block handles, 
   expect(await page.evaluate(({ px, py }) => document.elementFromPoint(px, py)?.closest('[data-testid="doc-outline-row"]')?.textContent ?? null, { px: x, py: y })).toBe('Two');
 
   await page.mouse.click(x, y);
-  await expect.poll(() => lineBelowTop(page, 'Two')).toBeLessThanOrEqual(18);
+  await expect.poll(() => landed(page, 'Two')).toBe(true);
   await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(page.locator(OUTLINE)).toHaveCount(0);
   const heading = await page.evaluate((editor) => {

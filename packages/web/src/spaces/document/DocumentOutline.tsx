@@ -249,7 +249,10 @@ export const DocumentOutline = React.memo(function DocumentOutline({
   const rows = React.useMemo(() => rowsOf(outline, folded), [outline, folded]);
 
   const [reading, setReading] = React.useState<string | null>(null);
-  const pinned = React.useRef<{ id: string; at: number } | null>(null);
+  // A jump holds the highlight on the heading clicked until the smooth scroll
+  // stops at its target; it keeps holding past that only when the end of the
+  // document stopped it short of the landing, until the user scrolls away.
+  const jumping = React.useRef<{ id: string; target: number; keep: boolean; arrived: boolean } | null>(null);
   React.useEffect(() => {
     if (viewport === null) return undefined;
     const ids = [...ancestors.keys()];
@@ -260,8 +263,8 @@ export const DocumentOutline = React.memo(function DocumentOutline({
      */
     const compute = (): void => {
       frame = 0;
-      if (pinned.current !== null) {
-        setReading(pinned.current.id);
+      if (jumping.current !== null) {
+        setReading(jumping.current.id);
         return;
       }
       const top = viewport.getBoundingClientRect().top;
@@ -280,10 +283,26 @@ export const DocumentOutline = React.memo(function DocumentOutline({
     const schedule = (): void => {
       if (frame === 0) frame = requestAnimationFrame(compute);
     };
-    /** A scroll the reader makes releases a pinned jump. */
+    /** A jump arrives once the scroll reaches its target, and lets go once the user scrolls away from there. */
     const onScroll = (): void => {
-      if (pinned.current !== null && Math.abs(pinned.current.at - viewport.scrollTop) > 1) pinned.current = null;
+      const jump = jumping.current;
+      if (jump !== null) {
+        const there = Math.abs(viewport.scrollTop - jump.target) <= 1;
+        if (!jump.arrived && there) {
+          jump.arrived = true;
+          if (!jump.keep) jumping.current = null;
+        } else if (jump.arrived && !there) {
+          jumping.current = null;
+        }
+      }
       schedule();
+    };
+    /** The user taking the scroll over in the middle of a jump ends it. */
+    const onTakeOver = (): void => {
+      if (jumping.current !== null && !jumping.current.arrived) {
+        jumping.current = null;
+        schedule();
+      }
     };
     // The comment panel sits in the same scroller: opening it rewraps the
     // text without changing the viewport's size, so the content is watched too.
@@ -292,9 +311,13 @@ export const DocumentOutline = React.memo(function DocumentOutline({
     const content = viewport.querySelector('.doc-body-editor');
     if (content !== null) sizes.observe(content);
     viewport.addEventListener('scroll', onScroll, { passive: true });
+    viewport.addEventListener('wheel', onTakeOver, { passive: true });
+    viewport.addEventListener('pointerdown', onTakeOver);
     compute();
     return () => {
       viewport.removeEventListener('scroll', onScroll);
+      viewport.removeEventListener('wheel', onTakeOver);
+      viewport.removeEventListener('pointerdown', onTakeOver);
       sizes.disconnect();
       if (frame !== 0) cancelAnimationFrame(frame);
     };
@@ -325,11 +348,11 @@ export const DocumentOutline = React.memo(function DocumentOutline({
     if (line === null) return;
     const want = viewport.scrollTop + line.getBoundingClientRect().top - viewport.getBoundingClientRect().top - LANDING;
     const target = Math.max(0, Math.min(viewport.scrollHeight - viewport.clientHeight, want));
-    viewport.scrollTo({ top: target, behavior: 'instant' });
-    // Read back after the call: the end of the document can stop the scroll
-    // short of the landing, and then the clicked heading holds the highlight
-    // until the reader scrolls.
-    pinned.current = target < want ? { id, at: viewport.scrollTop } : null;
+    // The same smooth scroll an Agent landing uses (`DocumentEditor.tsx`).
+    viewport.scrollTo({ top: target, behavior: 'smooth' });
+    const arrived = Math.abs(viewport.scrollTop - target) <= 1;
+    const keep = target < want;
+    jumping.current = arrived && !keep ? null : { id, target, keep, arrived };
     setReading(id);
     if (!readOnly) {
       editor.setTextCursorPosition(id, 'start');

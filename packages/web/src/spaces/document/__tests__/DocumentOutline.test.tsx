@@ -279,13 +279,13 @@ describe('DocumentOutline', () => {
       placeAt(block.querySelector(':scope > .bn-block > .bn-block-content')!, 700);
     }
 
-    it('scrolls at once so the heading’s line lands 16px under the top of the body', () => {
+    it('scrolls smoothly so the heading’s line lands 16px under the top of the body', () => {
       renderWith([h('a', 1, 'One'), { type: 'paragraph', content: 'words' }, h('b', 2, 'Two')]);
       layOut();
 
       fireEvent.click(row('Two'));
 
-      expect(scrollTo).toHaveBeenCalledWith({ top: 700 - 100 - 16, behavior: 'instant' });
+      expect(scrollTo).toHaveBeenCalledWith({ top: 700 - 100 - 16, behavior: 'smooth' });
     });
 
     it('puts an editor’s caret at the start of the heading', () => {
@@ -307,7 +307,7 @@ describe('DocumentOutline', () => {
 
       fireEvent.click(row('Two'));
 
-      expect(scrollTo).toHaveBeenCalledWith({ top: 700 - 100 - 16, behavior: 'instant' });
+      expect(scrollTo).toHaveBeenCalledWith({ top: 700 - 100 - 16, behavior: 'smooth' });
       expect(opened.handle.editor.prosemirrorState.selection.toJSON()).toEqual(before);
       expect(opened.handle.editor.prosemirrorView!.dom.contains(document.activeElement)).toBe(false);
     });
@@ -332,6 +332,71 @@ describe('DocumentOutline', () => {
       fireEvent.click(within(itemOf('One') as HTMLElement).getByTestId('doc-outline-fold'));
 
       expect(itemOf('One')).toHaveClass('bg-accent-strong');
+    });
+  });
+
+  describe('A9 — the highlight during a jump', () => {
+    /**
+     * Lays the body out as a long page: each heading's line sits at a fixed
+     * offset in the document and moves up as the viewport scrolls.
+     * @param offsets - Each heading's words and its line's offset.
+     * @returns The viewport, with a writable scroll position.
+     */
+    function scrollablePage(offsets: readonly [string, number][]): HTMLElement {
+      const viewport = bodyViewport();
+      let top = 0;
+      Object.defineProperty(viewport, 'scrollTop', { configurable: true, get: () => top, set: (v: number) => { top = v; } });
+      Object.defineProperty(viewport, 'scrollHeight', { configurable: true, value: 5000 });
+      Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 800 });
+      placeAt(viewport, 100);
+      for (const [text, offset] of offsets) {
+        const line = document.querySelector(`.bn-block-outer[data-id="${idOf(opened.handle, text)}"] > .bn-block > .bn-block-content`)!;
+        Object.defineProperty(line, 'getBoundingClientRect', { configurable: true, value: () => new DOMRect(0, 100 + offset - top, 600, 30) });
+      }
+      return viewport;
+    }
+
+    /**
+     * Scrolls the viewport to a position, as a frame of the animation would.
+     * @param viewport - The viewport.
+     * @param top - The new scroll position.
+     */
+    function scrollTo(viewport: HTMLElement, top: number): void {
+      viewport.scrollTop = top;
+      fireEvent.scroll(viewport);
+    }
+
+    const itemOf = (text: string): Element => row(text).closest('[data-outline-item]')!;
+
+    it('stays on the heading clicked while the body scrolls past others, then follows the reading line', async () => {
+      renderWith([h('a', 1, 'One'), h('m', 1, 'Mid'), h('b', 1, 'Two')]);
+      const viewport = scrollablePage([['One', -50], ['Mid', 300], ['Two', 700]]);
+      fireEvent.click(row('Two'));
+      expect(itemOf('Two')).toHaveClass('bg-accent-strong');
+
+      // Half way: the reading line has reached Mid, and Two keeps the highlight.
+      scrollTo(viewport, 300);
+      // A frame for the recompute the scroll asked for, flushed into the DOM.
+      await act(async () => {
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      });
+      expect(itemOf('Two')).toHaveClass('bg-accent-strong');
+
+      // Arrived: the landing was reachable, so the rule takes over again.
+      scrollTo(viewport, 700 - 16);
+      scrollTo(viewport, 0);
+      await waitFor(() => expect(itemOf('One')).toHaveClass('bg-accent-strong'));
+    });
+
+    it('lets go of the clicked heading as soon as the user turns the wheel during the jump', async () => {
+      renderWith([h('a', 1, 'One'), h('m', 1, 'Mid'), h('b', 1, 'Two')]);
+      const viewport = scrollablePage([['One', -50], ['Mid', 300], ['Two', 700]]);
+      fireEvent.click(row('Two'));
+
+      fireEvent.wheel(viewport);
+      scrollTo(viewport, 300);
+
+      await waitFor(() => expect(itemOf('Mid')).toHaveClass('bg-accent-strong'));
     });
   });
 
