@@ -211,18 +211,22 @@ describe("what the prompt says the model's job is", () => {
   // of their own and what the existing work looks like, and read "3D" one way
   // without asking (breatic#1361). Told instead to settle everything that
   // would change the result, it asked the user for an age, colours, a
-  // silhouette and a name -- choices a skilled maker settles for them.
+  // silhouette and a name -- choices a skilled maker settles for them. Told
+  // to settle an age itself, asked for the female lead of the user's own game
+  // it picked her age without asking, though only the user knows who their
+  // own character is.
   it("asks only what the user alone can tell, settles the rest itself and says what it chose", () => {
     expect(wording()).toContain(
       "- Before you make something, check what the user's words leave open. " +
-        "Ask, in one questionnaire and saying why, only what they alone can tell you: whether they have material of their own, the look of work that already exists, their brand, and the style they want when they have not named one. " +
+        "Ask, in one questionnaire and saying why, only what they alone can tell you: whether they have material of their own, the look of work that already exists, their brand, the style they want when they have not named one, and who a character of theirs is (age, gender, role in their story) when their words leave it open. " +
         "Where their words could mean two things (a 3D look, or a 3D production), confirm which before you act on either. " +
-        "Everything else a skilled maker would settle for them (an age, a build, colours, a costume, a name), settle yourself and say what you chose. " +
+        "Everything else a skilled maker would settle for them (a build, colours, a costume, a pose), settle yourself and say what you chose. " +
         "Do not hand your own legwork to the user.",
     );
     expect(wording()).not.toMatch(/Ask only for what only they can tell you/);
     expect(wording()).not.toMatch(/their taste/);
     expect(wording()).not.toMatch(/settles everything that would change the result/);
+    expect(wording()).not.toMatch(/\(an age, a build, colours, a costume, a name\)/);
   });
 
   // Asked only "what style is this?" with an image, the Agent answered and
