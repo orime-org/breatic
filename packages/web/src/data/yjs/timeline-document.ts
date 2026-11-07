@@ -150,7 +150,7 @@ export function applyTimelineEdit(doc: Y.Doc, command: TimelineEditCommand, orig
   doc.transact(() => {
     writeRecords(doc.getMap<unknown>('tracks'), current.tracks, next.tracks);
     writeRecords(doc.getMap<unknown>('clips'), current.clips, next.clips);
-    reconcileTimelineSources(doc, next.sources, plan.created.flatMap((id) => next.clips[id]?.sourceId ?? []));
+    reconcileTimelineSources(doc, next.sources, plan.created.flatMap((id) => { const clip = next.clips[id]; return clip?.kind === 'video' ? [clip.sourceId] : []; }));
   }, origin);
   return plan;
 }

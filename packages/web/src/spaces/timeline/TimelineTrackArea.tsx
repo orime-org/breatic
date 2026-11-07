@@ -4,7 +4,8 @@
 import * as React from 'react';
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragMoveEvent, type DragStartEvent } from '@dnd-kit/core';
 import { Film, Trash2 } from 'lucide-react';
-import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineVideoClip } from '@breatic/shared';
+import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineClip as TimelineClipRecord, type TimelineDocumentV1 } from '@breatic/shared';
+import { timelineClipSource } from '@web/data/yjs/timeline-arrangement';
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 import { orderedTimelineClips, orderedTimelineTracks } from '@web/data/yjs/timeline-order';
 
@@ -56,7 +57,7 @@ interface Gesture { mode: TimelineGestureMode; clipId: string; preview: Timeline
 /** One clip on its track row. */
 interface ClipProps {
   projectId: string;
-  clip: TimelineVideoClip;
+  clip: TimelineClipRecord;
   assetId: string;
   selected: boolean;
   conflict: boolean;
@@ -297,7 +298,7 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
               {!isMain && !readOnly && clips.length === 0 && <DeleteTrackButton trackId={track.id} placement={placement} onCommit={onCommit} />}
             </div>
             <div data-testid={`timeline-lane-${track.id}`} className='relative flex-1' onPointerDown={clearOnBlank}>
-              {clips.map((clip) => <TimelineClip key={clip.id} projectId={projectId} clip={clip} assetId={document.sources[clip.sourceId]?.assetId ?? ''}
+              {clips.map((clip) => <TimelineClip key={clip.id} projectId={projectId} clip={clip} assetId={timelineClipSource(document.sources, clip)?.assetId ?? ''}
                 selected={selectedId === clip.id} conflict={!readyIds.has(clip.id)} dragging={gesture?.clipId === clip.id && preview !== null}
                 readOnly={readOnly} pixelsPerFrame={pixelsPerFrame} fps={document.settings.fps} onSelect={onSelect} />)}
               {showGhost && preview !== null && <>

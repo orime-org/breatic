@@ -20,7 +20,7 @@ import type { TimelineEditCommand } from '@web/data/yjs/timeline-edit';
 import { _resetForTests, destroyDoc, docName, getDoc } from '@web/data/yjs/manager';
 import { evictTimelineEditSession, getTimelineEditSession, type TimelineEditSession } from '@web/data/yjs/timeline-edit-session';
 import {
-  MAIN, OFF, ON, SHORT_SOURCE, SOURCE, cid, clip, connect, seededDoc, starts, timeline, track,
+  MAIN, OFF, ON, SHORT_SOURCE, SOURCE, cid, clip, connect, seededDoc, sourceIdOf, starts, timeline, track,
 } from '@web/data/yjs/__tests__/timeline-document-fixtures';
 
 const A = cid(1);
@@ -585,8 +585,8 @@ describe('Timeline edit session undoes and redoes sources with their clips (inne
     const document = readTimelineDocument(doc);
     for (const id of present) expect(document.clips[id], `clip ${id}`).toMatchObject({ id, kind: 'video' });
     for (const id of absent) expect(document.clips[id], `clip ${id}`).toBe(undefined);
-    for (const item of Object.values(document.clips)) expect(document.sources[item.sourceId], `source of ${item.id}`).toBeDefined();
-    if (present.some((id) => document.clips[id]?.sourceId === S.id)) expect(document.sources[S.id]).toEqual(S);
+    for (const item of Object.values(document.clips)) expect(document.sources[sourceIdOf(item) ?? ''], `source of ${item.id}`).toBeDefined();
+    if (present.some((id) => sourceIdOf(document.clips[id]) === S.id)) expect(document.sources[S.id]).toEqual(S);
   }
 
   /**
@@ -830,7 +830,7 @@ describe('Timeline edit sessions heal dangling sources (inner#1708 H1, H2, H4, H
         if (typeof sourceId === 'string') expect(sources.has(sourceId), `clip ${id} names a missing source`).toBe(true);
       }
       for (const id of present) {
-        expect(readTimelineDocument(doc).clips[id]?.sourceId, `clip ${id}`).toBe(value.id);
+        expect(sourceIdOf(readTimelineDocument(doc).clips[id]), `clip ${id}`).toBe(value.id);
         expect(sources.get(value.id)).toEqual(value);
       }
     }
@@ -1298,7 +1298,7 @@ describe('Timeline edit session around peer-written record shapes (inner#1708 Q1
       peer.getMap('sources').set(SOURCE.id, SOURCE);
     }, 'peer');
     await flush();
-    expect(readTimelineDocument(mine).clips[T]?.sourceId).toBe(SOURCE.id);
+    expect(sourceIdOf(readTimelineDocument(mine).clips[T])).toBe(SOURCE.id);
     peer.transact(() => peer.getMap('sources').delete(SOURCE.id), 'peer');
     await flush();
     await flush();

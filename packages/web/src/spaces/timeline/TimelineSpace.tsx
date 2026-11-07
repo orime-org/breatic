@@ -5,8 +5,8 @@ import * as React from 'react';
 import type * as Y from 'yjs';
 import { ArrowRightToLine, Copy, Film, Link2, Magnet, Pause, Play, Plus, Redo2, Scissors, Trash2, Undo2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineVideoClip } from '@breatic/shared';
-import { resolveTimelineArrangement, type TimelineArrangementReason } from '@web/data/yjs/timeline-arrangement';
+import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineClip, type TimelineDocumentV1 } from '@breatic/shared';
+import { resolveTimelineArrangement, timelineClipSource, type TimelineArrangementReason } from '@web/data/yjs/timeline-arrangement';
 import { removeTimelineClip } from '@web/data/yjs/timeline-document';
 import type { TimelineEditCommand, TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 import { activeTimelineClipAt } from '@web/data/yjs/timeline-layers';
@@ -47,7 +47,7 @@ interface TimelineEditorProps extends SpaceBodyProps { doc: Y.Doc; document: Tim
 /** One conflicting placement listed with its frames. */
 interface TimelineConflictRowProps {
   projectId: string;
-  clip: TimelineVideoClip;
+  clip: TimelineClip;
   assetId: string;
   track: string;
   reason: TimelineArrangementReason['code'] | null;
@@ -201,7 +201,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const reasons = React.useMemo(() => new Map(arrangement.conflicts.map((placement) => [placement.clipId, placement.reasons[0]?.code ?? null])), [arrangement.conflicts]);
   const selectedId = history.selectedClipId;
   const selected = selectedId === null ? undefined : document.clips[selectedId];
-  const selectedAssetId = selected === undefined ? '' : document.sources[selected.sourceId]?.assetId ?? '';
+  const selectedAssetId = selected === undefined ? '' : timelineClipSource(document.sources, selected)?.assetId ?? '';
   const selectedResource = useTimelineAsset(projectId, selectedAssetId);
   const active = activeTimelineClipAt(document, readyIds, frame);
   const source = active === null ? null : document.sources[active.sourceId] ?? null;
@@ -230,7 +230,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const commitCommand = React.useCallback((command: TimelineEditCommand): void => { commit(command); }, [commit]);
   const vanished = React.useCallback((): void => { toast.warning(t('timeline.errors.clip_removed')); }, [t]);
 
-  const needSelection = React.useCallback((): TimelineVideoClip | null => {
+  const needSelection = React.useCallback((): TimelineClip | null => {
     if (selected === undefined) { toast.warning(t('timeline.edit.selectFirst')); return null; }
     return selected;
   }, [selected, t]);
@@ -459,7 +459,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
             <h3 className='text-sm font-semibold'>{t('timeline.conflictList')}</h3>
             {hasConflicts ? <>
               <p className='text-muted-foreground'>{t('timeline.conflictHelp')}</p>
-              {clips.filter((clip) => !readyIds.has(clip.id)).map((clip) => <TimelineConflictRow key={clip.id} projectId={projectId} clip={clip} assetId={document.sources[clip.sourceId]?.assetId ?? ''} track={labels.nameOf(clip.trackId) ?? t('timeline.edit.trackRemoved')} reason={reasons.get(clip.id) ?? null} selected={selectedId === clip.id} onLocate={locateClip} />)}
+              {clips.filter((clip) => !readyIds.has(clip.id)).map((clip) => <TimelineConflictRow key={clip.id} projectId={projectId} clip={clip} assetId={timelineClipSource(document.sources, clip)?.assetId ?? ''} track={labels.nameOf(clip.trackId) ?? t('timeline.edit.trackRemoved')} reason={reasons.get(clip.id) ?? null} selected={selectedId === clip.id} onLocate={locateClip} />)}
               {damagedClipIds.map((clipId) => <TimelineDamagedRow key={clipId} clipId={clipId} readOnly={readOnly} onDelete={removeDamaged} />)}
             </> : <p className='text-muted-foreground'>{t('timeline.noConflicts')}</p>}
           </section>

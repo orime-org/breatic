@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1 } from '@breatic/shared';
+import { timelineClipSource } from '@web/data/yjs/timeline-arrangement';
 import { timelineInsertionIndex, type TimelineEditCommand, type TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 import { orderedTimelineClips } from '@web/data/yjs/timeline-order';
 import { timelineHeadRoom, timelineSourceRoom, timelineTrimHead } from '@web/data/yjs/timeline-time';
@@ -78,7 +79,7 @@ export function previewTimelineGesture(
     return snapTimelineEdges(edges, targets, options.pixelsPerFrame, TIMELINE_SNAP_PX);
   }
   const base = { clipId, trackId: clip.trackId, startFrame: clip.startFrame, sourceInFrame: clip.sourceInFrame, durationFrames: clip.durationFrames, snapFrame: null };
-  const source = document.sources[clip.sourceId];
+  const source = timelineClipSource(document.sources, clip);
   const fps = document.settings.fps;
   const packed = options.magnet === true;
 

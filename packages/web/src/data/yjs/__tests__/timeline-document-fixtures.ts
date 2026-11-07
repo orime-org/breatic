@@ -13,7 +13,7 @@
 import * as Y from 'yjs';
 import { TimelineDocumentV1Schema } from '@breatic/shared';
 import type {
-  TimelineDocumentV1, TimelineRate, TimelineTrack, TimelineVideoClip, TimelineVideoSource,
+  TimelineClip, TimelineDocumentV1, TimelineRate, TimelineTrack, TimelineVideoClip, TimelineVideoSource,
 } from '@breatic/shared';
 import { initializeTimelineDocument } from '@breatic/shared/space-content';
 
@@ -107,6 +107,16 @@ export function clip(
 }
 
 /**
+ * The source id of a video clip; the fixtures here build only video clips.
+ * @param item - The clip, if any.
+ * @returns Its source id, or undefined for no clip or another kind.
+ * @throws {never} Never.
+ */
+export function sourceIdOf(item: TimelineClip | undefined): string | undefined {
+  return item?.kind === 'video' ? item.sourceId : undefined;
+}
+
+/**
  * A visual track.
  * @param id - The track id.
  * @param order - Its stacking order.
@@ -128,7 +138,7 @@ export const MAIN_AND_V2 = [track(MAIN, 0), track(V2, 1)];
  * @throws {Error} When the fixture itself is invalid.
  */
 export function timeline(
-  clips: readonly TimelineVideoClip[],
+  clips: readonly TimelineClip[],
   tracks: readonly TimelineTrack[] = MAIN_AND_V2,
   sources: readonly TimelineVideoSource[] = [SOURCE],
 ): TimelineDocumentV1 {
@@ -138,6 +148,7 @@ export function timeline(
     tracks: Object.fromEntries(tracks.map((item) => [item.id, item])),
     clips: Object.fromEntries(clips.map((item) => [item.id, item])),
     sources: Object.fromEntries(sources.map((item) => [item.id, item])),
+    operationReceipts: {},
   });
 }
 
@@ -162,7 +173,7 @@ export function starts(document: TimelineDocumentV1, trackId: string): Array<[st
  * @returns Frames outside `[0, extentFrames)`.
  * @throws {never} Never.
  */
-export function referenceOverflow(item: TimelineVideoClip, source: TimelineVideoSource): number {
+export function referenceOverflow(item: TimelineClip, source: TimelineVideoSource): number {
   const inside = Math.min(item.sourceInFrame + item.durationFrames, source.extentFrames) - Math.max(item.sourceInFrame, 0);
   return item.durationFrames - Math.max(0, inside);
 }
@@ -175,7 +186,7 @@ export function referenceOverflow(item: TimelineVideoClip, source: TimelineVideo
  */
 export function totalOverflow(document: TimelineDocumentV1): number {
   return Object.values(document.clips).reduce((sum, item) => {
-    const source = document.sources[item.sourceId];
+    const source = document.sources[sourceIdOf(item) ?? ''];
     return source === undefined ? sum : sum + referenceOverflow(item, source);
   }, 0);
 }

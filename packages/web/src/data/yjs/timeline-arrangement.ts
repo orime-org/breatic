@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import type { TimelineDocumentV1, TimelineVideoClip, TimelineVideoSource } from '@breatic/shared';
+import type { TimelineClip, TimelineDocumentV1, TimelineVideoSource } from '@breatic/shared';
 
 import { compareTimelineIds } from '@web/data/yjs/timeline-order';
 import { timelineClipIntervalValid, validateTimelineRange } from '@web/data/yjs/timeline-time';
@@ -21,8 +21,21 @@ export interface TimelinePlacement { clipId: string; status: 'ready' | 'conflict
 export interface TimelineArrangement { placements: TimelinePlacement[]; conflicts: TimelinePlacement[]; readyClipIds: string[]; hasConflicts: boolean }
 
 /**
+ * The registered video a clip shows. A web-animation clip has none in `sources`, so every reader treats it as a clip
+ * whose source is missing.
+ * @param sources - The document's sources.
+ * @param clip - The placement.
+ * @returns Its source, or undefined when it has none.
+ * @throws {never} Never.
+ */
+export function timelineClipSource(sources: Record<string, TimelineVideoSource>, clip: TimelineClip): TimelineVideoSource | undefined {
+  return clip.kind === 'video' ? sources[clip.sourceId] : undefined;
+}
+
+/**
  * Diagnose the complete merged layout without moving or removing clips.
- * @param document - The current document; a clip outside its source is invalid_range, one whose source is gone is missing_source.
+ * @param document - The current document; a clip outside its source is invalid_range, one whose source is gone is missing_source,
+ *   as is a web-animation clip, whose content is not a registered video.
  * @returns Stable readiness and conflict classifications.
  * @throws {never} Never.
  */
@@ -35,7 +48,7 @@ export function resolveTimelineArrangement(document: TimelineDocumentV1): Timeli
     const track = tracks.get(clip.trackId);
     if (!track) reasons.push({ code: 'missing_track', ...detail });
     else if (track.kind !== 'visual') reasons.push({ code: 'incompatible_track', ...detail });
-    const source = document.sources[clip.sourceId];
+    const source = timelineClipSource(document.sources, clip);
     if (source === undefined) reasons.push({ code: 'missing_source', ...detail });
     if (!timelineClipIntervalValid(clip) || outsideSource(clip, source, document)) reasons.push({ code: 'invalid_range', ...detail });
     return { clip, endFrame, reasons };
@@ -74,7 +87,7 @@ export function resolveTimelineArrangement(document: TimelineDocumentV1): Timeli
  * @returns True only when the source is present and the range is invalid for it.
  * @throws {never} Never.
  */
-function outsideSource(clip: TimelineVideoClip, source: TimelineVideoSource | undefined, document: TimelineDocumentV1): boolean {
+function outsideSource(clip: TimelineClip, source: TimelineVideoSource | undefined, document: TimelineDocumentV1): boolean {
   return source !== undefined && !validateTimelineRange(clip, source, document.settings.fps);
 }
 

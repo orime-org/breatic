@@ -4,9 +4,10 @@
 import { z } from 'zod';
 import {
   TIMELINE_MAIN_TRACK_ID, TimelineVideoClipSchema, TimelineVideoSourceSchema,
-  type TimelineDocumentV1, type TimelineTrack, type TimelineVideoClip, type TimelineVideoSource,
+  type TimelineClip, type TimelineDocumentV1, type TimelineTrack, type TimelineVideoSource,
 } from '@breatic/shared';
 
+import { timelineClipSource } from '@web/data/yjs/timeline-arrangement';
 import { compareTimelineIds, orderedTimelineClips, orderedTimelineTracks } from '@web/data/yjs/timeline-order';
 import { timelineClipIntervalValid, timelineSourceOffset, timelineSourceOverflow } from '@web/data/yjs/timeline-time';
 
@@ -72,7 +73,7 @@ const RANGE_FIELDS = ['trackId', 'startFrame', 'sourceInFrame', 'durationFrames'
  * @returns Its end frame.
  * @throws {never} Never.
  */
-function endOf(clip: TimelineVideoClip): number {
+function endOf(clip: TimelineClip): number {
   return clip.startFrame + clip.durationFrames;
 }
 
@@ -83,7 +84,7 @@ function endOf(clip: TimelineVideoClip): number {
  * @returns The insertion index.
  * @throws {never} Never.
  */
-export function timelineInsertionIndex(sequence: readonly TimelineVideoClip[], frame: number): number {
+export function timelineInsertionIndex(sequence: readonly TimelineClip[], frame: number): number {
   return sequence.filter((clip) => clip.startFrame * 2 + clip.durationFrames <= frame * 2).length;
 }
 
@@ -93,7 +94,7 @@ export function timelineInsertionIndex(sequence: readonly TimelineVideoClip[], f
  * @param sequence - The order to pack.
  * @throws {never} Never.
  */
-function pack(clips: Record<string, TimelineVideoClip>, sequence: readonly TimelineVideoClip[]): void {
+function pack(clips: Record<string, TimelineClip>, sequence: readonly TimelineClip[]): void {
   let at = 0;
   for (const item of sequence) {
     const current = clips[item.id];
@@ -120,8 +121,8 @@ function pack(clips: Record<string, TimelineVideoClip>, sequence: readonly Timel
  * @throws {Refused} When a cut does not land on a whole source frame.
  */
 function overwrite(
-  clips: Record<string, TimelineVideoClip>, trackId: string, range: { start: number; end: number }, keepId: string,
-  effects: { newId: () => string; offset: (clip: TimelineVideoClip, frames: number) => number; casualties: Set<string>; origins: Map<string, string>; created: string[] },
+  clips: Record<string, TimelineClip>, trackId: string, range: { start: number; end: number }, keepId: string,
+  effects: { newId: () => string; offset: (clip: TimelineClip, frames: number) => number; casualties: Set<string>; origins: Map<string, string>; created: string[] },
 ): void {
   const { start, end } = range;
   for (const clip of orderedTimelineClips(clips, trackId)) {
@@ -190,7 +191,7 @@ export function planTimelineEdit(current: TimelineDocumentV1, command: TimelineE
 function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, newId: () => string): Extract<TimelineEditPlan, { ok: true }> {
   const { magnet, linkage } = command.placement;
   const tracks: Record<string, TimelineTrack> = { ...current.tracks };
-  const clips: Record<string, TimelineVideoClip> = { ...current.clips };
+  const clips: Record<string, TimelineClip> = { ...current.clips };
   const sources: Record<string, TimelineVideoSource> = { ...current.sources };
   const created: string[] = [];
   /**
@@ -243,8 +244,10 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
     targetTrackId = command.parameters.trackId;
   }
   if (places && tracks[targetTrackId]?.kind !== 'visual') throw new Refused('track_missing');
-  const subjectSource = command.operation === 'add_video' ? command.parameters.clip.sourceId : original?.sourceId ?? '';
-  if (command.operation !== 'delete' && sources[subjectSource] === undefined) throw new Refused(original === undefined ? 'source_unavailable' : 'missing_source');
+  const subjectSource = command.operation === 'add_video'
+    ? sources[command.parameters.clip.sourceId]
+    : original === undefined ? undefined : timelineClipSource(sources, original);
+  if (command.operation !== 'delete' && subjectSource === undefined) throw new Refused(original === undefined ? 'source_unavailable' : 'missing_source');
 
   const attached = linkage ? attachments(current) : new Map<string, string>();
   const fps = current.settings.fps;
@@ -255,8 +258,8 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
    * @returns The source offset.
    * @throws {Refused} When the source is missing or the cut does not land on a whole source frame.
    */
-  const offset = (clip: TimelineVideoClip, frames: number): number => {
-    const source = sources[clip.sourceId];
+  const offset = (clip: TimelineClip, frames: number): number => {
+    const source = timelineClipSource(sources, clip);
     if (source === undefined) throw new Refused('covers_missing_source');
     const value = timelineSourceOffset(clip, source, fps, frames);
     if (value === null) throw new Refused('invalid_range');
@@ -280,7 +283,7 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
     deletedByUser.add(original.id);
     if (original.trackId === TIMELINE_MAIN_TRACK_ID && magnet) pack(clips, orderedTimelineClips(clips, TIMELINE_MAIN_TRACK_ID));
   } else {
-    let subject: TimelineVideoClip;
+    let subject: TimelineClip;
     if (command.operation === 'add_video') {
       subject = { ...command.parameters.clip, trackId: targetTrackId };
       created.push(subject.id);
@@ -341,7 +344,7 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
 
   // A shifted clip that lands on another clip keeps its time and moves to the first free visual track above.
   const bumped: string[] = [];
-  const shiftedInOrder = shifted.map((id) => clips[id]).filter((clip): clip is TimelineVideoClip => clip !== undefined)
+  const shiftedInOrder = shifted.map((id) => clips[id]).filter((clip): clip is TimelineClip => clip !== undefined)
     .sort((a, b) => a.startFrame - b.startFrame || compareTimelineIds(a.id, b.id));
   for (const moved of shiftedInOrder) {
     /**
@@ -373,15 +376,15 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
   for (const clip of Object.values(clips)) {
     const was = current.clips[clip.id];
     if (was !== undefined && RANGE_FIELDS.every((field) => was[field] === clip[field])) continue;
-    if (was !== undefined && sources[was.sourceId] === undefined && was.sourceInFrame === clip.sourceInFrame
+    if (was !== undefined && timelineClipSource(sources, was) === undefined && was.sourceInFrame === clip.sourceInFrame
       && clip.durationFrames <= was.durationFrames) {
       if (!timelineClipIntervalValid(clip)) throw new Refused('invalid_range');
       continue;
     }
-    const source = sources[clip.sourceId];
+    const source = timelineClipSource(sources, clip);
     if (source === undefined || !timelineClipIntervalValid(clip)) throw new Refused('invalid_range');
     const from = was ?? current.clips[effects.origins.get(clip.id) ?? ''];
-    const fromSource = from === undefined ? undefined : current.sources[from.sourceId];
+    const fromSource = from === undefined ? undefined : timelineClipSource(current.sources, from);
     const allowed = clip.id === explicitId || from === undefined || fromSource === undefined ? 0 : timelineSourceOverflow(from, fromSource, fps);
     if (timelineSourceOverflow(clip, source, fps) > allowed) throw new Refused('invalid_range');
   }

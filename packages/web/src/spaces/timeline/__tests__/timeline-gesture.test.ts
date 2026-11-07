@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import {
   TimelineDocumentV1Schema,
-  type TimelineDocumentV1, type TimelineVideoClip, type TimelineVideoSource,
+  type TimelineClip, type TimelineDocumentV1, type TimelineVideoClip, type TimelineVideoSource,
 } from '@breatic/shared';
 import { planTimelineEdit, timelineInsertionIndex } from '@web/data/yjs/timeline-edit';
 import { orderedTimelineClips } from '@web/data/yjs/timeline-order';
@@ -266,7 +266,7 @@ describe('gestures on the magnetic main track (inner#1708 C3, C4)', () => {
    * @returns The preview and the planned clip.
    * @throws {Error} When no preview, command or accepted plan results.
    */
-  function roundTrip(document: TimelineDocumentV1, clipId: string, mode: TimelineGestureMode, delta: number, hover: string | 'new' | null): { preview: NonNullable<ReturnType<typeof previewTimelineGesture>>; planned: TimelineVideoClip; next: TimelineDocumentV1 } {
+  function roundTrip(document: TimelineDocumentV1, clipId: string, mode: TimelineGestureMode, delta: number, hover: string | 'new' | null): { preview: NonNullable<ReturnType<typeof previewTimelineGesture>>; planned: TimelineClip; next: TimelineDocumentV1 } {
     const preview = previewTimelineGesture(document, clipId, mode, delta, hover, MAGNET);
     if (preview === null) throw new Error('Expected a preview');
     const command = timelineGestureCommand(document, preview, mode, ON, newTrack);

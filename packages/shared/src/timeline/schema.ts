@@ -39,6 +39,21 @@ export interface TimelineVideoClip {
   transform: { x: number; y: number; scaleX: number; scaleY: number; rotation: number };
 }
 
+/** Which execution result a web-animation copy shows: a succeeded source version, an in-progress execution, or both. */
+export interface TimelineWebAnimationContentBinding { baseSourceResultId: string | null; operationId: string | null }
+
+/** One independent placement of a web-animation execution result; its content lives outside the document. */
+export interface TimelineWebAnimationClip extends Omit<TimelineVideoClip, "kind" | "sourceId"> {
+  kind: "web-animation";
+  contentBinding: TimelineWebAnimationContentBinding;
+}
+
+/** Any placement on a track, discriminated by `kind`. */
+export type TimelineClip = TimelineVideoClip | TimelineWebAnimationClip;
+
+/** The record that an accepted action has landed in this document, keyed by its action id. */
+export interface TimelineOperationReceipt { executionId: string; inputHash: string; landedAt: string }
+
 /** The seeded bottom visual track; it is magnetic when the editing user turns magnet on. */
 export const TIMELINE_MAIN_TRACK_ID = "visual-1";
 
@@ -47,8 +62,9 @@ export interface TimelineDocumentV1 {
   schemaVersion: 1;
   settings: TimelineSettings;
   tracks: Record<string, TimelineTrack>;
-  clips: Record<string, TimelineVideoClip>;
+  clips: Record<string, TimelineClip>;
   sources: Record<string, TimelineVideoSource>;
+  operationReceipts: Record<string, TimelineOperationReceipt>;
 }
 
 const safeFrame = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
@@ -79,12 +95,9 @@ export const TimelineVideoSourceSchema = z.object({
   ctx.addIssue({ code: "custom", path: ["durationSeconds"], message: "Invalid conformed video extent" });
 });
 
-/** A strict placement shape; merged-layout relationships are resolved separately. */
-export const TimelineVideoClipSchema = z.object({
+const placementFields = {
   id: identity,
   trackId: z.string().min(1).max(64),
-  kind: z.literal("video"),
-  sourceId: identity,
   startFrame: safeFrame,
   sourceInFrame: safeFrame,
   durationFrames: positiveInteger,
@@ -97,6 +110,27 @@ export const TimelineVideoClipSchema = z.object({
     scaleY: z.number().finite().refine((value) => value !== 0),
     rotation: z.number().finite(),
   }).strict(),
+};
+
+/** A strict placement shape; merged-layout relationships are resolved separately. */
+export const TimelineVideoClipSchema = z.object({ ...placementFields, kind: z.literal("video"), sourceId: identity }).strict();
+
+/** A web-animation copy; its binding names a source version, an execution, or both. */
+export const TimelineWebAnimationClipSchema = z.object({
+  ...placementFields,
+  kind: z.literal("web-animation"),
+  contentBinding: z.object({ baseSourceResultId: identity.nullable(), operationId: identity.nullable() }).strict()
+    .refine((binding) => binding.baseSourceResultId !== null || binding.operationId !== null, { message: "Unbound web-animation clip" }),
+}).strict();
+
+/** Every clip kind, discriminated by `kind`. */
+export const TimelineClipSchema = z.discriminatedUnion("kind", [TimelineVideoClipSchema, TimelineWebAnimationClipSchema]);
+
+/** One landed action's receipt. */
+export const TimelineOperationReceiptSchema = z.object({
+  executionId: identity,
+  inputHash: z.string().min(1).max(256),
+  landedAt: z.iso.datetime(),
 }).strict();
 
 /** Our complete versioned DTO, independent of a presentation library. */
@@ -104,6 +138,7 @@ export const TimelineDocumentV1Schema: z.ZodType<TimelineDocumentV1> = z.object(
   schemaVersion: z.literal(1),
   settings: TimelineSettingsSchema,
   tracks: z.record(z.string(), TimelineTrackSchema),
-  clips: z.record(z.string(), TimelineVideoClipSchema),
+  clips: z.record(z.string(), TimelineClipSchema),
   sources: z.record(z.string(), TimelineVideoSourceSchema),
+  operationReceipts: z.record(z.string(), TimelineOperationReceiptSchema),
 }).strict();

@@ -438,6 +438,9 @@ export {
   TimelineTrackSchema,
   TimelineVideoSourceSchema,
   TimelineVideoClipSchema,
+  TimelineWebAnimationClipSchema,
+  TimelineClipSchema,
+  TimelineOperationReceiptSchema,
   TimelineDocumentV1Schema,
   TIMELINE_MAIN_TRACK_ID,
 } from "@shared/timeline/schema.js";
@@ -447,8 +450,14 @@ export type {
   TimelineTrack,
   TimelineVideoSource,
   TimelineVideoClip,
+  TimelineWebAnimationClip,
+  TimelineWebAnimationContentBinding,
+  TimelineClip,
+  TimelineOperationReceipt,
   TimelineDocumentV1,
 } from "@shared/timeline/schema.js";
+// The web-animation contracts are exported from `@breatic/shared/space-content` only: their schemas are built at
+// module load from the Timeline schemas, which share a bundle chunk with Yjs, and the main entry is in every page.
 export { assertTimelineRate, durationToFrames, timelineDurationFraction } from "@shared/timeline/time.js";
 export type { TimelineFraction } from "@shared/timeline/time.js";
 export { MAX_TIMELINE_ASSET_PAGE_SIZE } from "@shared/timeline/api.js";

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
-import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineVideoClip } from '@breatic/shared';
-import type { TimelineArrangementReason } from '@web/data/yjs/timeline-arrangement';
+import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineClip, type TimelineDocumentV1 } from '@breatic/shared';
+import { timelineClipSource, type TimelineArrangementReason } from '@web/data/yjs/timeline-arrangement';
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 import { parseTimelineFrame, timelineClipIntervalValid, timelineSourceOverflow } from '@web/data/yjs/timeline-time';
 
@@ -19,7 +19,7 @@ import type { TimelineTrackLabels } from '@web/spaces/timeline/timeline-track-la
 interface TimelineClipPropertiesProps {
   spaceId: string;
   document: TimelineDocumentV1;
-  clip: TimelineVideoClip;
+  clip: TimelineClip;
   name: string;
   conflict: boolean;
   reason?: TimelineArrangementReason['code'] | null;
@@ -34,7 +34,7 @@ type Field = 'start' | 'in' | 'duration';
 const LABEL = 'text-xs text-muted-foreground';
 
 /** The clip property each field edits. */
-const FRAME_OF = { start: 'startFrame', in: 'sourceInFrame', duration: 'durationFrames' } as const satisfies Record<Field, keyof TimelineVideoClip>;
+const FRAME_OF = { start: 'startFrame', in: 'sourceInFrame', duration: 'durationFrames' } as const satisfies Record<Field, keyof TimelineClip>;
 
 /** One field's text, the stored value it was started from, and whether it was judged out of range. */
 interface FieldDraft { stored: string; value: string; error: boolean }
@@ -51,7 +51,7 @@ type Drafts = Record<Field, FieldDraft>;
  * @returns The same drafts when nothing restarts, else new ones.
  * @throws {never} Never.
  */
-function syncDrafts(drafts: Drafts | null, clip: TimelineVideoClip, editable: Readonly<Record<Field, boolean>>): Drafts {
+function syncDrafts(drafts: Drafts | null, clip: TimelineClip, editable: Readonly<Record<Field, boolean>>): Drafts {
   let changed = false;
   const next = {} as Drafts;
   for (const field of Object.keys(FRAME_OF) as Field[]) {
@@ -89,7 +89,7 @@ export function TimelineClipProperties({ spaceId, document, clip, name, conflict
   const [drafts, setDrafts] = React.useState(() => syncDrafts(null, clip, editable));
   const current = syncDrafts(drafts, clip, editable);
   if (current !== drafts) setDrafts(current);
-  const source = document.sources[clip.sourceId];
+  const source = timelineClipSource(document.sources, clip);
   const fps = document.settings.fps;
   const trackName = labels.nameOf(clip.trackId);
 

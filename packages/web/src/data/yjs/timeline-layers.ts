@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import type { TimelineDocumentV1, TimelineVideoClip } from '@breatic/shared';
+import type { TimelineClip, TimelineDocumentV1, TimelineVideoClip } from '@breatic/shared';
 
 import { timelineTrackRank } from '@web/data/yjs/timeline-order';
 
@@ -14,7 +14,7 @@ import { timelineTrackRank } from '@web/data/yjs/timeline-order';
  * @returns Whether the candidate shows instead.
  * @throws {never} Never.
  */
-function outranks(clip: TimelineVideoClip, at: number, shown: TimelineVideoClip | null, shownRank: number): boolean {
+function outranks(clip: TimelineClip, at: number, shown: TimelineClip | null, shownRank: number): boolean {
   return shown === null || at > shownRank || (at === shownRank && clip.id < shown.id);
 }
 
@@ -32,7 +32,8 @@ export function activeTimelineClipAt(document: TimelineDocumentV1, readyClipIds:
   let shownRank = -1;
   for (const clip of Object.values(document.clips)) {
     const at = rank.get(clip.trackId);
-    if (at === undefined || !readyClipIds.has(clip.id) || frame < clip.startFrame || frame >= clip.startFrame + clip.durationFrames) continue;
+    // A web-animation clip has no registered video, so the arrangement never resolves it as ready.
+    if (clip.kind !== 'video' || at === undefined || !readyClipIds.has(clip.id) || frame < clip.startFrame || frame >= clip.startFrame + clip.durationFrames) continue;
     if (outranks(clip, at, shown, shownRank)) {
       shown = clip;
       shownRank = at;
