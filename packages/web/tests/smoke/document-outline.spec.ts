@@ -123,6 +123,43 @@ async function textWidth(p: Page): Promise<number> {
   return p.evaluate(() => Math.round(document.querySelector('[data-space-outlet]:not([style*="display: none"]) [data-testid="document-editor-content"]')!.getBoundingClientRect().width));
 }
 
+/**
+ * The visible Space's width; the Agent column takes 320px and a 1px handle left of it.
+ * @param p - The page.
+ * @returns Its width in px.
+ */
+async function spaceWidth(p: Page): Promise<number> {
+  return p.evaluate((space) => Math.round(document.querySelector(space)!.getBoundingClientRect().width), VISIBLE_SPACE);
+}
+
+/**
+ * Whether any account in this browser has stored the outline as shut.
+ * @param p - The page.
+ * @returns True when one has.
+ */
+async function storedShut(p: Page): Promise<boolean> {
+  return p.evaluate(() => {
+    const record = JSON.parse(window.localStorage.getItem('breatic.userPreferences') ?? '{}') as Record<string, { documentOutlineVisible?: boolean }>;
+    return Object.values(record).some((entry) => entry.documentOutlineVisible === false);
+  });
+}
+
+/**
+ * The heading the reading line has reached, worked out from the page itself.
+ * @param p - The page.
+ * @returns Its words.
+ */
+async function headingAtReadingLine(p: Page): Promise<string | null> {
+  return p.evaluate(({ editor, viewport }) => {
+    const top = document.querySelector(viewport)!.getBoundingClientRect().top;
+    let current: string | null = null;
+    for (const h of document.querySelectorAll(`${editor} .bn-block-content[data-content-type="heading"]`)) {
+      if (h.getBoundingClientRect().top <= top + 24) current = h.textContent;
+    }
+    return current;
+  }, { editor: EDITOR, viewport: VIEWPORT });
+}
+
 test('a jump leaves each level of heading 16px under the top and the caret at its start', async () => {
   await openWith(page, DOCUMENT);
   for (const title of ['One one one', 'Two', 'One one']) {
@@ -172,6 +209,17 @@ test('the highlight follows the scroll, and a short last section keeps the one c
   await expect.poll(() => highlighted(page)).toBe('Tail b');
 });
 
+test('the highlight stays right when the comment panel opens and rewraps the text', async () => {
+  await openWith(page, DOCUMENT);
+  await page.evaluate((viewport) => document.querySelector(viewport)!.scrollTo({ top: 2600, behavior: 'instant' }), VIEWPORT);
+  await expect.poll(() => highlighted(page)).toBe(await headingAtReadingLine(page));
+  await page.locator(`${VISIBLE_SPACE} [data-testid="doc-doc-menu-trigger"]`).click();
+  await page.getByTestId('doc-doc-menu-comments').click();
+  await expect(page.getByTestId('doc-comment-rail')).toBeVisible();
+  const expected = await headingAtReadingLine(page);
+  await expect.poll(() => highlighted(page)).toBe(expected);
+});
+
 test('a heading cut short shows its whole text on hover', async () => {
   await openWith(page, DOCUMENT);
   await row(page, 'A heading long enough').hover();
@@ -202,6 +250,8 @@ test('the outline stays put while the body scrolls and scrolls on its own when l
 
 test('shutting the outline keeps the text at 768px in a wide Space and widens it in a narrower one', async () => {
   await openWith(page, DOCUMENT);
+  // The Agent column open at 320px: 1680 leaves the Space 1359px, past the 1136px that keeps 768.
+  expect(await spaceWidth(page)).toBe(1359);
   const toggle = page.locator(`${VISIBLE_SPACE} [data-testid="doc-outline-toggle"]`);
   expect(await textWidth(page)).toBe(768);
   await toggle.click();
@@ -219,8 +269,16 @@ test('shutting the outline keeps the text at 768px in a wide Space and widens it
 test('a narrow Space floats the outline over the body, above the block handles, and tucks it after a jump', async () => {
   await openWith(page, DOCUMENT);
   await page.setViewportSize({ width: 960, height: 950 });
+  // The Agent column open at 320px leaves the Space 639px: too narrow to tile.
+  await expect.poll(() => spaceWidth(page)).toBe(639);
   const column = page.locator(`${VISIBLE_SPACE} [data-testid="doc-outline-column"]`);
   await expect(column).toHaveAttribute('data-layout', 'floating');
+  // Floating, the text keeps the width it has with the outline shut.
+  const floatingWidth = await textWidth(page);
+  const toggle = page.locator(`${VISIBLE_SPACE} [data-testid="doc-outline-toggle"]`);
+  await toggle.click();
+  expect(await textWidth(page)).toBe(floatingWidth);
+  await toggle.click();
 
   // Over the outline near the body's edge, where the body's block handles are drawn.
   const target = row(page, 'Two');
@@ -246,4 +304,6 @@ test('a narrow Space floats the outline over the body, above the block handles, 
 
   await page.setViewportSize({ width: 1680, height: 950 });
   await expect(column).toHaveAttribute('data-layout', 'tiled');
+  await expect(row(page, 'Two')).toBeVisible();
+  expect(await storedShut(page)).toBe(false);
 });
