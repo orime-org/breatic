@@ -212,6 +212,9 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
     expect(screen.getByLabelText('How you will promote')).toBeDisabled();
     for (const input of screen.getAllByRole('textbox').filter((el) => el.tagName === 'INPUT')) expect(input).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Add another' })).toBeDisabled();
+    // Radix Select opens on pointerdown, which a disabled fieldset does not stop.
+    await user.click(screen.getByLabelText('Country or region'));
+    expect(screen.queryByRole('listbox')).toBeNull();
   });
 
   it('asks for agreement to the terms before sending', async () => {

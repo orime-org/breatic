@@ -116,7 +116,7 @@ export function PromoterApplyDialog({
             <DialogBody className='gap-4'>
               <div className='flex flex-col gap-1.5'>
                 <Label htmlFor='promoter-country'>{t('membership.promoter.country')}</Label>
-                <Select value={country} onValueChange={(v) => { setCountry(v); setErrors((e) => ({ ...e, country: undefined })); }}>
+                <Select disabled={pressing} value={country} onValueChange={(v) => { setCountry(v); setErrors((e) => ({ ...e, country: undefined })); }}>
                   <SelectTrigger id='promoter-country' aria-label={t('membership.promoter.country')} aria-invalid={!!errors.country || undefined}>
                     <SelectValue placeholder={t('membership.promoter.countryPlaceholder')} />
                   </SelectTrigger>
