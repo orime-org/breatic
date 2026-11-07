@@ -2,46 +2,30 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Turning the cap off with a restart (inner#1790, test spec C-151): a tab whose
- * document was `full` under the I configuration reconnects to an instance
- * started with `max_document_bytes: 0`, is told `limit = 0`, and can add again.
+ * The cap switched off (inner#1790, second version; design 2 and 4.3, spec
+ * answer Q9): an instance started with `max_document_bytes: 0` and the rest
+ * of configuration S keeps no size record, tells every Space connection
+ * `{ type: "doc:size", bytes: 0, limit: 0, ceiling: 0, phase: "normal" }`,
+ * and never refuses a write, even on a document stored past the S ceiling.
  *
- * Configuration is read once per process (C-21), so the second instance is
- * built from a fresh module graph after the configuration changes, the way a
- * restarted collab would read it. `Server` and `createLogger` are wrapped, not
- * replaced, as in `document-size-limit.integration.test.ts`.
+ * `createLogger` is wrapped, not replaced, to read the refusal lines.
  */
 
-import { randomUUID } from "node:crypto";
-import { afterAll, describe, expect, inject, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import * as Y from "yjs";
 import type * as CoreModuleShape from "@breatic/core";
 import type * as ConfigModuleShape from "@collab/config.js";
 import * as core from "@breatic/core";
-import { COLLAB_DOCUMENT_TOO_LARGE_REASON, spaceContentDocName } from "@breatic/shared";
 import { createCollabServer } from "@collab/hocuspocus.js";
-import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
+import * as size from "@collab/services/document-size.js";
 
 import { seedCollabActivity } from "./helpers/account-activity-fixture.js";
-import { fill } from "./helpers/document-size-fixtures.js";
-import { openDoc, openSocket } from "./helpers/document-size-live.js";
-import type { SizeSocket } from "./helpers/document-size-live.js";
+import { S, fill } from "./helpers/document-size-fixtures.js";
+import { canvasOf, openDoc, openSocket, pushWhere, refusalsOf, seed, settle, startInstance, stopInstance } from "./helpers/document-size-live.js";
+import type { Instance, SizeSocket } from "./helpers/document-size-live.js";
 
 const { state } = vi.hoisted(() => ({
-  state: {
-    // Spec 10.2 I configuration.
-    config: {
-      max_document_bytes: 262_144,
-      document_size_warn_ratio: 0.8,
-      document_size_full_margin_bytes: 6554,
-      document_size_delete_headroom_bytes: 6554,
-      document_size_overwrite_reserve_bytes: 1638,
-      document_size_measure_interval_ms: 2000,
-      document_size_trials_per_user_per_minute: 6,
-      document_size_trial_budget_ms_per_second: 200,
-    },
-    logs: [] as Array<{ level: "warn" | "error"; args: unknown[] }>,
-  },
+  state: { logs: [] as Array<{ level: "warn" | "error"; args: unknown[] }> },
 }));
 
 vi.mock("@breatic/core", async (importOriginal) => {
@@ -65,80 +49,49 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 
+// Configuration S with the limit off.
 vi.mock("@collab/config.js", async (importOriginal) => {
   const real = await importOriginal<typeof ConfigModuleShape>();
-  return { ...real, getCollabConfig: () => ({ ...real.getCollabConfig(), ...state.config }) };
+  const { S_CONFIG } = await import("./helpers/document-size-fixtures.js");
+  return { ...real, getCollabConfig: () => ({ ...real.getCollabConfig(), ...S_CONFIG, max_document_bytes: 0 }) };
 });
-
-type Instance = Awaited<ReturnType<typeof createCollabServer>>;
 
 core.initCore(process.env);
 core.loadLocales();
 const sockets: SizeSocket[] = [];
-const running: Instance[] = [];
+let active: Instance;
 
-/**
- * Stop an instance the way shutdown does.
- * @param instance - The instance.
- */
-async function stop(instance: Instance): Promise<void> {
-  instance.stopUpgradeSessions();
-  instance.storeLoop.stop();
-  await instance.seatHandover.stop();
-  await instance.server.destroy();
-}
+beforeAll(async () => {
+  active = await startInstance(createCollabServer, inject("REDIS_COLLAB_URL"));
+});
 
 afterAll(async () => {
   for (const socket of sockets) socket.close();
-  for (const instance of running) await stop(instance);
+  if (active) await stopInstance(active);
 });
 
-describe("max_document_bytes changed to 0 and collab restarted", () => {
-  it("C-151 a full tab reconnects, is told limit 0, and adds 40 KiB", async () => {
+describe("max_document_bytes 0", () => {
+  it("Q9 a document past the S ceiling is told limit 0 with zero bytes and ceiling, keeps no record, and takes a 40 KiB add", async () => {
     const fixture = await seedCollabActivity();
-    const name = spaceContentDocName(fixture.projectId, fixture.spaceIds.canvas, "canvas");
+    const name = canvasOf(fixture);
     const src = new Y.Doc();
-    fill(src, 255_590 + 1000);
-    await yjsRepo.upsertDocData(name, Y.encodeStateAsUpdate(src));
-
-    const first = await createCollabServer({ port: 0, collabRedisUrl: inject("REDIS_COLLAB_URL"), redisKeyPrefix: `size-off-${randomUUID()}`, shutdownDeadline: () => undefined });
-    await first.server.listen();
-    const socket = await openSocket(first.server.address.port, fixture.cookie);
+    expect(fill(src, 300_000)).toBeGreaterThanOrEqual(S.CEIL);
+    await seed(name, src);
+    const socket = await openSocket(active.server.address.port, fixture.cookie);
     sockets.push(socket);
     const tab = await openDoc(socket, name);
     await tab.sync();
-    // Hocuspocus answers the handshake before it runs `connected`, so the
-    // push can land after the sync completes.
-    await vi.waitFor(() => expect(tab.sizePushes().length).toBeGreaterThan(0), { timeout: 10_000 });
-    expect(tab.sizePushes().at(-1)?.phase).toBe("full");
-    await stop(first);
+    await pushWhere(tab, () => true, "connected push");
+    expect(tab.sizePushes()).toEqual([{ type: "doc:size", bytes: 0, limit: 0, ceiling: 0, phase: "normal" }]);
 
-    state.config = { ...state.config, max_document_bytes: 0 };
-    vi.resetModules();
-    const coreNext = (await import("@breatic/core"));
-    coreNext.initCore(process.env);
-    coreNext.loadLocales();
-    const { createCollabServer: createNext } = (await import("@collab/hocuspocus.js"));
-    const sizeNext = await import("@collab/services/document-size.js");
-    const next = await createNext({ port: 0, collabRedisUrl: inject("REDIS_COLLAB_URL"), redisKeyPrefix: `size-off-${randomUUID()}`, shutdownDeadline: () => undefined });
-    running.push(next);
-    await next.server.listen();
-
-    const socketNext = await openSocket(next.server.address.port, fixture.cookie);
-    sockets.push(socketNext);
-    const back = await openDoc(socketNext, name, { doc: tab.doc });
-    await back.sync();
-    await vi.waitFor(() => expect(back.sizePushes().length).toBeGreaterThan(0), { timeout: 10_000 });
-    expect(back.sizePushes()).toEqual([
-      { type: "doc:size", bytes: 0, limit: 0, ceiling: 0, room: 0, overwriteRoom: 0, phase: "normal" },
-    ]);
-    back.edit((d) => {
+    tab.edit((d) => {
       const t = d.getText("t");
       t.insert(t.length, "z".repeat(40 * 1024));
     });
-    await back.confirm();
-    expect(back.closeReasons()).not.toContain(COLLAB_DOCUMENT_TOO_LARGE_REASON);
-    expect(next.hocuspocus.documents.get(name)?.getText("t").toString().endsWith("z".repeat(40 * 1024))).toBe(true);
-    expect(sizeNext.readDocSizeRecord(name)).toBeUndefined();
+    expect(await settle(tab)).toEqual([]);
+    expect(active.hocuspocus.documents.get(name)?.getText("t").toString().endsWith("z".repeat(40 * 1024))).toBe(true);
+    expect(size.readDocSizeRecord(name)).toBeUndefined();
+    expect(refusalsOf(state.logs, name)).toEqual([]);
+    expect(tab.sizePushes()).toHaveLength(1);
   });
 });

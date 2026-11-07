@@ -2,21 +2,15 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Space size cap (inner#1790), spec W-62 and the mini-tool half of W-63: the
- * result nodes, edges and group a Run writes before its request go through
- * the size gateway as one add, and a refusal builds nothing and sends nothing.
+ * Space size cap v2 (inner#1790 v2 web spec RQ-14 and the mini-tool half of
+ * RQ-15): the result nodes, edges and group a Run writes before its request
+ * are one `add`; a refusal builds nothing and sends nothing.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { CANVAS_NODES_KEY, type CanvasNodeFields } from '@breatic/shared';
 import { miniToolById, type MiniToolSnapshot, type MiniToolSpec } from '@breatic/shared/mini-tools';
-import type * as ProviderModule from '@hocuspocus/provider';
-
-vi.mock('@hocuspocus/provider', async (importOriginal) => {
-  const { providerMockModule } = await import('@web/data/yjs/__tests__/helpers/size-gate-provider-mock');
-  return providerMockModule(await importOriginal<typeof ProviderModule>());
-});
 vi.mock('@web/data/yjs/collab-failure-report', () => ({ reportCollabFailure: vi.fn() }));
 vi.mock('@web/lib/toast', () => ({
   toast: { warning: vi.fn(), error: vi.fn(), success: vi.fn(), info: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },
@@ -27,21 +21,20 @@ const api = vi.hoisted(() => ({ run: vi.fn() }));
 vi.mock('@web/data/api/mini-tools', () => ({ miniToolsApi: api }));
 
 import { toast } from '@web/lib/toast';
-import { _resetCollabSocketForTests } from '@web/data/yjs/collab-socket';
 import { addNode, readEdges, _resetCanvasUndoCacheForTests } from '@web/data/yjs/canvas-space';
-import { docName, _resetForTests } from '@web/data/yjs/manager';
+import { clearAllDocSizes } from '@web/data/yjs/doc-size';
+import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { startMiniToolRun, type MiniToolRun } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 import { useUploadMarksStore } from '@web/stores/upload-marks';
-import { sizeGateProviders } from '@web/data/yjs/__tests__/helpers/size-gate-provider-mock';
-import { openSizedDoc, pushSize } from '@web/data/yjs/__tests__/helpers/size-gate-harness';
 import {
-  COPY_EN,
-  F_FULL,
-  F_NORMAL,
-  F_WARNING_TIGHT,
-  type DocSizePush,
-} from '@web/data/yjs/__tests__/helpers/doc-size-fixtures';
+  SIZE_COPY_EN,
+  captureWriteAsync,
+  enterSize,
+  expectKindShape,
+  expectSizeToast,
+  type SizeCode,
+} from '@web/data/yjs/__tests__/helpers/size-v2-harness';
 
 const PID = '11111111-1111-4111-8111-111111111111';
 const SID = '22222222-2222-4222-8222-222222222222';
@@ -60,21 +53,21 @@ function tool(id: string): MiniToolSpec {
 }
 
 /**
- * Seeds the source node, then delivers one push.
+ * Seeds the source node, then puts the Space in one size state.
  * @param type - The source node's modality.
- * @param push - The size push.
+ * @param code - The size state.
  * @returns The canvas document.
  * @throws {Error} When seeding fails.
  */
-function boardAt(type: 'image' | 'audio', push: DocSizePush): Y.Doc {
-  const { doc, provider } = openSizedDoc(NAME);
+function boardAt(type: 'image' | 'audio', code: SizeCode): Y.Doc {
+  const doc = getDoc(NAME);
   addNode(PID, SID, {
     id: 'src',
     type,
     position: { x: 0, y: 0 },
     data: { name: 'SRC', createdAt: 1, createdBy: 'u1', locked: false, attachments: [] },
   } as CanvasNodeFields);
-  pushSize(provider, push);
+  enterSize(NAME, code);
   vi.mocked(toast.warning).mockClear();
   return doc;
 }
@@ -141,22 +134,25 @@ function nodeIds(doc: Y.Doc): string[] {
 }
 
 beforeEach(() => {
-  sizeGateProviders.length = 0;
   useUploadMarksStore.setState({ marks: {} });
   api.run.mockResolvedValue({ task_id: 't', status: 'pending' });
 });
 
 afterEach(() => {
   resetRunOnceForTests();
-  _resetCollabSocketForTests();
+  clearAllDocSizes();
   _resetForTests();
   _resetCanvasUndoCacheForTests();
   vi.clearAllMocks();
 });
 
-describe('W-62 a mini-tool builds nothing and sends nothing once the Space is full', () => {
-  it('writes no result node, edge or group, opens no mark and runs nothing', async () => {
-    const doc = boardAt('image', F_FULL);
+describe('RQ-14 a mini-tool builds nothing and sends nothing when the Space cannot take an add', () => {
+  it.each([
+    ['F', SIZE_COPY_EN.T_ADD],
+    ['O', SIZE_COPY_EN.T_OVER],
+    ['Z', null],
+  ] as const)('RQ-14 [%s] a browser tool writes no result node, edge or group, opens no mark and exports nothing', async (code, sentence) => {
+    const doc = boardAt('image', code);
     const before = Y.encodeStateAsUpdate(doc);
     const run = gridPress();
     const outcome = await startMiniToolRun(run);
@@ -169,15 +165,11 @@ describe('W-62 a mini-tool builds nothing and sends nothing once the Space is fu
     expect(run.fillUploads).not.toHaveBeenCalled();
     expect(api.run).not.toHaveBeenCalled();
     expect(run.onBuilt).not.toHaveBeenCalled();
-    expect(toast.warning).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(COPY_EN.T_ADD_BLOCKED);
-    expect(toast.error).not.toHaveBeenCalled();
+    expectSizeToast(sentence);
   });
-});
 
-describe('W-63 a mini-tool when the room is short, and when it is plenty', () => {
-  it('sends nothing when the results do not fit in one byte', async () => {
-    const doc = boardAt('audio', F_WARNING_TIGHT);
+  it('RQ-14 [F] a server tool writes no result node and runs nothing', async () => {
+    const doc = boardAt('audio', 'F');
     const before = Y.encodeStateAsUpdate(doc);
     const run = separatePress();
     const outcome = await startMiniToolRun(run);
@@ -186,19 +178,20 @@ describe('W-63 a mini-tool when the room is short, and when it is plenty', () =>
     expect(nodeIds(doc)).toEqual(['src']);
     expect(api.run).not.toHaveBeenCalled();
     expect(run.onBuilt).not.toHaveBeenCalled();
-    expect(toast.warning).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(COPY_EN.T_NO_ROOM('1 B'));
-    expect(toast.error).not.toHaveBeenCalled();
+    expectSizeToast(SIZE_COPY_EN.T_ADD);
   });
+});
 
-  it('builds the results and their edges and sends their ids', async () => {
-    const doc = boardAt('audio', F_NORMAL);
-    await startMiniToolRun(separatePress());
+describe('RQ-15 a mini-tool near full writes its results once, then asks once', () => {
+  it('RQ-15 [W] builds the results and their edges as one add and sends their ids', async () => {
+    const doc = boardAt('audio', 'W');
+    const captured = await captureWriteAsync(doc, () => startMiniToolRun(separatePress()));
+    expectKindShape('add', captured);
     const built = nodeIds(doc).filter((id) => id !== 'src');
     expect(built).toHaveLength(2);
     expect(readEdges(doc).map((edge) => edge.id).sort()).toEqual(built.map((id) => `src->${id}`).sort());
     expect(api.run).toHaveBeenCalledTimes(1);
     expect([...(api.run.mock.calls[0][0] as { node_ids: string[] }).node_ids].sort()).toEqual(built);
-    expect(toast.warning).not.toHaveBeenCalled();
+    expectSizeToast(null);
   });
 });

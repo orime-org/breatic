@@ -113,7 +113,9 @@ import { bodyToPlainText, writePlainTextIntoBody } from '@breatic/shared/canvas/
 import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
 import type { TypedNodeView } from '@web/data/yjs/node-view';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
-import { clearDocSize, readDocSize, receiveDocSizePayload } from '@web/data/yjs/doc-size';
+import { clearDocSize } from '@web/data/yjs/doc-size';
+import { toast as sizeToast } from '@web/lib/toast';
+import { P_FULL, P_OVER, SIZE_COPY_EN, pushSize } from '@web/data/yjs/__tests__/helpers/size-v2-harness';
 import * as downloadLib from '@web/lib/download';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { installLayout, relayout } from '@web/spaces/canvas/crop/__tests__/crop-harness';
@@ -3854,18 +3856,21 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     }
   });
 
-  // The crop's upload is a request to the server before the Yjs write, so its
-  // room is held first: a full Space uploads nothing (inner#1790).
-  it('uploads no crop while the Space is full', async () => {
+  // RQ-06 (inner#1790 v2): the crop's upload is a request to the server before
+  // the Yjs write, so `canAdd` is asked first: a full Space uploads nothing
+  // and says why with the toast its state calls for (spec answer Q4).
+  it.each([
+    ['F', P_FULL, SIZE_COPY_EN.T_ADD],
+    ['O', P_OVER, SIZE_COPY_EN.T_OVER],
+  ] as const)('RQ-06 uploads no crop while the Space is full [%s]', async (_code, sizePush, sentence) => {
     const name = docName.canvasSpace('p', 's');
-    receiveDocSizePayload(name, JSON.stringify({
-      type: 'doc:size', bytes: 10223616, limit: 10485760, ceiling: 10747904, room: 0, overwriteRoom: 458752, phase: 'full',
-    }), 0);
+    pushSize(name, sizePush);
+    const warning = vi.spyOn(sizeToast, 'warning');
     const restore = await confirmVideoCrop();
     try {
-      expect(readDocSize(name).phase).toBe('full');
       expect(mockRunFocusCrop).not.toHaveBeenCalled();
       expect(screen.getByTestId('focus-crop-layer')).toBeInTheDocument();
+      expect(warning.mock.calls.map(([message]) => message)).toEqual([sentence]);
     } finally {
       clearDocSize(name);
       restore();

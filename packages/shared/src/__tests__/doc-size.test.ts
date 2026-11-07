@@ -3,100 +3,75 @@
 
 /**
  * The `doc:size` push contract between collab and web, and the constants both
- * ends share (inner#1790, spec C-01 to C-06, C-08, C-09).
+ * ends share (inner#1790 v2 spec S-01 to S-06).
  */
 
 import { describe, expect, it } from "vitest";
 import * as barrel from "@shared/index.js";
-import { DOC_SIZE_EVENT_BYTES, DocSizeStatusSchema, SPACE_DELETE_MIN_BYTES } from "@shared/doc-size.js";
-import { COLLAB_DOCUMENT_TOO_LARGE_REASON } from "@shared/collab-close-reasons.js";
+import { DOC_SIZE_EVENT_BYTES, DocSizeStatusSchema } from "@shared/doc-size.js";
+import {
+  COLLAB_DOCUMENT_TOO_LARGE_REASON,
+  COLLAB_REAUTH_REASONS,
+  isReauthCloseReason,
+} from "@shared/collab-close-reasons.js";
 
-/** The first valid push of C-01, the base the other cases vary. */
-const BASE = {
-  type: "doc:size",
-  bytes: 0,
-  limit: 10485760,
-  ceiling: 10747904,
-  room: 10223616,
-  overwriteRoom: 10682368,
-  phase: "normal",
-} as const;
-
-const NUMBER_FIELDS = ["bytes", "limit", "ceiling", "room", "overwriteRoom"] as const;
-const ALL_KEYS = ["type", "bytes", "limit", "ceiling", "room", "overwriteRoom", "phase"] as const;
+const BASE = { type: "doc:size", bytes: 0, limit: 0, ceiling: 0, phase: "normal" } as const;
 
 describe("DocSizeStatusSchema", () => {
-  it("C-01 accepts zero, a push over the ceiling and the largest safe integer, unchanged", () => {
+  it("S-01 accepts a push with no limit, a full push at the ceiling and a warning push, unchanged", () => {
     const inputs = [
       BASE,
-      { ...BASE, bytes: 10747905, room: 0, overwriteRoom: 0, phase: "full" },
-      { ...BASE, bytes: Number.MAX_SAFE_INTEGER },
+      { type: "doc:size", bytes: 10747904, limit: 10485760, ceiling: 10747904, phase: "full" },
+      { type: "doc:size", bytes: 9437184, limit: 10485760, ceiling: 10747904, phase: "warning" },
     ];
-    for (const input of inputs) {
-      const result = DocSizeStatusSchema.safeParse(input);
-      expect(result.success).toBe(true);
-      expect(result.data).toEqual(input);
+    for (const input of inputs) expect(DocSizeStatusSchema.parse(input)).toEqual(input);
+  });
+
+  it("S-02 refuses a bad value in any field or a missing field", () => {
+    const bad: Record<string, unknown>[] = [
+      { ...BASE, bytes: -1 },
+      { ...BASE, limit: 1.5 },
+      { ...BASE, ceiling: "10" },
+      { ...BASE, phase: "over_ceiling" },
+      { ...BASE, phase: "resyncing" },
+      { ...BASE, type: "doc:sizes" },
+    ];
+    const withoutCeiling: Record<string, unknown> = { ...BASE };
+    delete withoutCeiling.ceiling;
+    const withoutPhase: Record<string, unknown> = { ...BASE };
+    delete withoutPhase.phase;
+    for (const input of [...bad, withoutCeiling, withoutPhase]) {
+      expect(DocSizeStatusSchema.safeParse(input).success, JSON.stringify(input)).toBe(false);
     }
   });
 
-  it("C-02 refuses a negative, fractional, string or NaN value in every numeric field", () => {
-    for (const field of NUMBER_FIELDS) {
-      for (const bad of [-1, 0.5, "5", Number.NaN]) {
-        const result = DocSizeStatusSchema.safeParse({ ...BASE, [field]: bad });
-        expect(result.success, `${field} = ${String(bad)}`).toBe(false);
-        expect(result.error?.issues[0]?.path, `${field} = ${String(bad)}`).toEqual([field]);
-      }
-    }
-  });
-
-  it("C-03 refuses a push missing any one of its seven keys", () => {
-    for (const key of ALL_KEYS) {
-      const input: Record<string, unknown> = { ...BASE };
-      delete input[key];
-      const result = DocSizeStatusSchema.safeParse(input);
-      expect(result.success, key).toBe(false);
-      expect(result.error?.issues[0]?.path, key).toEqual([key]);
-    }
-  });
-
-  it("C-04 knows only the server phases and the doc:size type", () => {
-    for (const phase of ["normal", "warning", "full"]) {
-      expect(DocSizeStatusSchema.safeParse({ ...BASE, phase }).success, phase).toBe(true);
-    }
-    // `unknown` and `resyncing` are web-only states; collab never sends them.
-    for (const phase of ["unknown", "resyncing", "", "FULL"]) {
-      expect(DocSizeStatusSchema.safeParse({ ...BASE, phase }).success, phase).toBe(false);
-    }
-    for (const type of ["doc:sized", "sync:confirmed"]) {
-      expect(DocSizeStatusSchema.safeParse({ ...BASE, type }).success, type).toBe(false);
-    }
-  });
-
-  it("C-05 accepts the no-limit shape and does not force its other values to zero", () => {
-    const unlimited = { type: "doc:size", bytes: 0, limit: 0, ceiling: 0, room: 0, overwriteRoom: 0, phase: "normal" };
-    expect(DocSizeStatusSchema.safeParse(unlimited).success).toBe(true);
-    expect(DocSizeStatusSchema.safeParse({ ...unlimited, bytes: 5, ceiling: 7 }).success).toBe(true);
-  });
-
-  it("C-09 accepts a push carrying an extra key, so a newer server does not break an older client", () => {
-    expect(DocSizeStatusSchema.safeParse({ ...BASE, extra: 1 }).success).toBe(true);
+  it("S-04 drops the v1 room fields a stale sender still adds", () => {
+    const parsed = DocSizeStatusSchema.parse({ type: "doc:size", bytes: 5, limit: 10, ceiling: 12, phase: "normal", room: 3, overwriteRoom: 1 });
+    expect(Object.keys(parsed).sort()).toEqual(["bytes", "ceiling", "limit", "phase", "type"]);
   });
 });
 
-describe("shared size constants", () => {
-  it("C-06 derives the delete minimum from the per-event constant", () => {
-    expect(SPACE_DELETE_MIN_BYTES).toBe(2 * DOC_SIZE_EVENT_BYTES + 16);
-    expect(Number.isInteger(SPACE_DELETE_MIN_BYTES)).toBe(true);
-    expect(Number.isInteger(DOC_SIZE_EVENT_BYTES)).toBe(true);
-    expect(DOC_SIZE_EVENT_BYTES).toBeGreaterThan(0);
+describe("shared size constants and close reason", () => {
+  it("S-03 counts 32 bytes for each split endpoint and beyond-clock range", () => {
+    expect(DOC_SIZE_EVENT_BYTES).toBe(32);
   });
-});
 
-describe("the shared main entry", () => {
-  it("C-08 re-exports the size contract and the close reason from src/index.ts", () => {
-    expect(barrel.DocSizeStatusSchema).toBe(DocSizeStatusSchema);
-    expect(barrel.SPACE_DELETE_MIN_BYTES).toBe(SPACE_DELETE_MIN_BYTES);
-    expect(barrel.COLLAB_DOCUMENT_TOO_LARGE_REASON).toBe(COLLAB_DOCUMENT_TOO_LARGE_REASON);
-    expect(barrel.DOC_SIZE_EVENT_BYTES).toBe(DOC_SIZE_EVENT_BYTES);
+  it("S-05 the size refusal is its own close reason, outside the re-authentication set", () => {
+    expect(COLLAB_DOCUMENT_TOO_LARGE_REASON).toBe("Document size limit reached");
+    expect(Object.values(COLLAB_REAUTH_REASONS)).not.toContain(COLLAB_DOCUMENT_TOO_LARGE_REASON);
+    expect(isReauthCloseReason(COLLAB_DOCUMENT_TOO_LARGE_REASON)).toBe(false);
+  });
+
+  it("S-06 the package entry exports the v2 contract and no longer the v1 delete minimum", () => {
+    expect(barrel.DocSizeStatusSchema).toBeDefined();
+    expect(barrel.DOC_SIZE_EVENT_BYTES).toBe(32);
+    expect(typeof barrel.updateShape).toBe("function");
+    expect(barrel.COLLAB_DOCUMENT_TOO_LARGE_REASON).toBe("Document size limit reached");
+    expect("SPACE_DELETE_MIN_BYTES" in barrel).toBe(false);
+  });
+
+  it("S-07 the built entry other packages load exports updateShape", async () => {
+    const dist = (await import("../../dist/index.js")) as Record<string, unknown>;
+    expect(typeof dist.updateShape).toBe("function");
   });
 });

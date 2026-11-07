@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Space size cap (inner#1790), spec W-56 and W-57: a drag release and a Group
- * resize write in one `runCanvasUndoBatch` of kind `overwrite`. When the
- * overwrite room is gone the write is refused and the render buffer goes back
- * to what Yjs holds (answer A3), since an unchanged document never re-syncs it.
+ * Space size cap v2 (inner#1790 v2 web test spec E-11): a drag release, a
+ * join and a Group resize write in one `runCanvasUndoBatch` of kind `edit`.
+ * Full or over the ceiling, the write is refused and the render buffer goes
+ * back to what Yjs holds (lint/smoke spec answer Q-10), since an unchanged
+ * document never re-syncs it.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,7 +14,6 @@ import { act, cleanup, render } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as Y from 'yjs';
 import type * as React from 'react';
-import type * as ProviderModule from '@hocuspocus/provider';
 
 // The real ReactFlow, with the props the canvas hands it kept so the test can
 // report a drag the way xyflow does; jsdom cannot run d3-drag.
@@ -43,10 +43,6 @@ vi.mock('@web/spaces/canvas/nodes/GroupResizer', () => ({
     return null;
   },
 }));
-vi.mock('@hocuspocus/provider', async (importOriginal) => {
-  const { providerMockModule } = await import('@web/data/yjs/__tests__/helpers/size-gate-provider-mock');
-  return providerMockModule(await importOriginal<typeof ProviderModule>());
-});
 vi.mock('@web/data/yjs/collab-failure-report', () => ({ reportCollabFailure: vi.fn() }));
 vi.mock('@web/lib/toast', () => ({
   toast: { warning: vi.fn(), error: vi.fn(), success: vi.fn(), info: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },
@@ -81,16 +77,15 @@ import { CANVAS_NODES_KEY, type CanvasNodeFields } from '@breatic/shared';
 import type { Node, NodeChange, OnNodeDrag } from '@xyflow/react';
 import { toast } from '@web/lib/toast';
 import { _resetCollabSocketForTests } from '@web/data/yjs/collab-socket';
-import { docName, _resetForTests } from '@web/data/yjs/manager';
+import { clearAllDocSizes } from '@web/data/yjs/doc-size';
+import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { addNode, createGroup, readNodes, _resetCanvasUndoCacheForTests } from '@web/data/yjs/canvas-space';
 import { createGroupNode } from '@web/spaces/canvas/node-factory';
 import { GROUP_PADDING } from '@web/spaces/canvas/group-geometry';
 import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
 import { useCanvasStore, useUIStore } from '@web/stores';
 import { canvasGraphs } from '@web/stores/canvas-graph';
-import { sizeGateProviders } from '@web/data/yjs/__tests__/helpers/size-gate-provider-mock';
-import { openSizedDoc, pushSize } from '@web/data/yjs/__tests__/helpers/size-gate-harness';
-import { COPY_EN, F_FULL, F_FULL_NEAR, type DocSizePush } from '@web/data/yjs/__tests__/helpers/doc-size-fixtures';
+import { SIZE_COPY_EN, enterSize, type SizeCode } from '@web/data/yjs/__tests__/helpers/size-v2-harness';
 
 const PID = 'p';
 const SID = 's';
@@ -122,16 +117,16 @@ function seedGroup(): void {
 }
 
 /**
- * Delivers one push and mounts the real canvas on what the document holds.
- * @param push - The size push.
+ * Enters one size state and mounts the real canvas on what the document holds.
+ * @param code - The size state.
  * @param seed - Writes the board, before any push.
  * @returns The canvas document.
  * @throws {Error} When mounting fails.
  */
-function mountAt(push: DocSizePush, seed: () => void): Y.Doc {
-  const { doc, provider } = openSizedDoc(NAME);
+function mountAt(code: SizeCode, seed: () => void): Y.Doc {
+  const doc = getDoc(NAME);
   seed();
-  pushSize(provider, push);
+  enterSize(NAME, code);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
@@ -221,7 +216,6 @@ function selectGroup(): void {
 }
 
 beforeEach(() => {
-  sizeGateProviders.length = 0;
   flow.props = null;
   flow.resizer = null;
   useUIStore.setState({ activeRegion: 'space' });
@@ -233,39 +227,55 @@ afterEach(() => {
   _resetCollabSocketForTests();
   _resetForTests();
   _resetCanvasUndoCacheForTests();
+  clearAllDocSizes();
   vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 
-describe('W-56 a drag release is an overwrite batch', () => {
-  it('lands the node where it was let go at full while overwrite room is left', () => {
-    const doc = mountAt(F_FULL, () => seedImage('t1', 100, 100));
+const REFUSED = [
+  ['F', SIZE_COPY_EN.T_ADD],
+  ['O', SIZE_COPY_EN.T_OVER],
+] as const;
+
+describe('E-11 a drag release is an edit batch', () => {
+  it('E-11 lands the node where it was let go in the warning band [W]', () => {
+    const doc = mountAt('W', () => seedImage('t1', 100, 100));
     dragTo('t1', { x: 400, y: 300 });
     expect(stored(doc, 't1').position).toEqual({ x: 400, y: 300 });
     expect(toast.warning).not.toHaveBeenCalled();
   });
 
-  it('refuses the move once the overwrite room is gone and puts the node back where Yjs has it', () => {
-    const doc = mountAt(F_FULL_NEAR, () => seedImage('t1', 100, 100));
+  it.each(REFUSED)('E-11 refuses the move and puts the node back where Yjs has it [%s]', (code, sentence) => {
+    const doc = mountAt(code, () => seedImage('t1', 100, 100));
     const before = Y.encodeStateAsUpdate(doc);
     dragTo('t1', { x: 400, y: 300 });
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
     expect(stored(doc, 't1').position).toEqual({ x: 100, y: 100 });
     expect(toast.warning).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(COPY_EN.T_OVERWRITE_BLOCKED);
+    expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(sentence);
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(buffered('t1').position).toEqual({ x: 100, y: 100 });
+  });
+
+  it('E-11 refuses the move without a toast while the document is rebuilt, and puts the node back [Z]', () => {
+    const doc = mountAt('Z', () => seedImage('t1', 100, 100));
+    const before = Y.encodeStateAsUpdate(doc);
+    dragTo('t1', { x: 400, y: 300 });
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    expect(toast.warning).not.toHaveBeenCalled();
     expect(buffered('t1').position).toEqual({ x: 100, y: 100 });
   });
 });
 
-describe('W-57 a Group resize and a join are overwrite batches', () => {
+describe('E-11 a Group resize and a join are edit batches', () => {
   /** Seeds g1 with member m1 and a loose node t1 to the right of it. */
   const seed = (): void => {
     seedGroup();
     seedImage('t1', 700, 100);
   };
 
-  it('refuses the resize once the overwrite room is gone and puts the Group back', () => {
-    const doc = mountAt(F_FULL_NEAR, seed);
+  it.each(REFUSED)('E-11 refuses the resize and puts the Group back [%s]', (code, sentence) => {
+    const doc = mountAt(code, seed);
     selectGroup();
     const before = Y.encodeStateAsUpdate(doc);
     resizeGroupTo({ x: 100, y: 100, width: 640, height: 480 });
@@ -273,24 +283,24 @@ describe('W-57 a Group resize and a join are overwrite batches', () => {
     expect(stored(doc, 'g1')).toMatchObject({ position: { x: 100, y: 100 }, width: 400, height: 300 });
     expect(stored(doc, 'm1').parentId).toBe('g1');
     expect(toast.warning).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(COPY_EN.T_OVERWRITE_BLOCKED);
+    expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(sentence);
     expect(buffered('g1')).toMatchObject({ position: { x: 100, y: 100 }, width: 400, height: 300 });
   });
 
-  it('refuses a join once the overwrite room is gone and puts the node back with its old parent', () => {
-    const doc = mountAt(F_FULL_NEAR, seed);
+  it.each(REFUSED)('E-11 refuses a join and puts the node back with its old parent [%s]', (code, sentence) => {
+    const doc = mountAt(code, seed);
     const before = Y.encodeStateAsUpdate(doc);
     dragTo('t1', { x: 250, y: 200 });
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
     expect(stored(doc, 't1')).toMatchObject({ position: { x: 700, y: 100 }, parentId: undefined });
     expect(toast.warning).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(COPY_EN.T_OVERWRITE_BLOCKED);
+    expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(sentence);
     expect(buffered('t1').position).toEqual({ x: 700, y: 100 });
     expect(buffered('t1').parentId).toBeUndefined();
   });
 
-  it('resizes and joins at full while overwrite room is left', () => {
-    const doc = mountAt(F_FULL, seed);
+  it('E-11 resizes and joins in the warning band [W]', () => {
+    const doc = mountAt('W', seed);
     selectGroup();
     resizeGroupTo({ x: 100, y: 100, width: 640, height: 480 });
     expect(stored(doc, 'g1')).toMatchObject({ width: 640, height: 480 });

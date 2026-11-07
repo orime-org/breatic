@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { estimateNodeBytes } from '@web/data/yjs/space-write';
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -29,8 +28,6 @@ const editReply = vi.fn();
 const removeReply = vi.fn();
 const deleteNode = vi.fn();
 const batchOptions = vi.fn();
-const EDIT_JUDGED = { kind: 'overwrite' } as const;
-const annotationEditWrite = vi.fn(() => EDIT_JUDGED);
 
 vi.mock('@web/data/yjs/canvas-space', () => ({
   addReply: (...a: unknown[]) => addReply(...a),
@@ -38,7 +35,8 @@ vi.mock('@web/data/yjs/canvas-space', () => ({
   editReply: (...a: unknown[]) => editReply(...a),
   removeReply: (...a: unknown[]) => removeReply(...a),
   // The sticky judges each write as one batch for the size cap (inner#1790).
-  annotationEditWrite: (...a: unknown[]) => annotationEditWrite(...(a as [])),
+  // v1 asked this for an edit's judgement; kept so a sticky still on v1 runs.
+  annotationEditWrite: () => ({ kind: 'overwrite' }),
   runCanvasUndoBatch: (_p: string, _s: string, options: unknown, write: () => void) => {
     batchOptions(options);
     write();
@@ -488,15 +486,18 @@ describe('a sticky on the canvas', () => {
     );
   });
 
-  it('judges a body rewrite by what it adds over the body it replaces', async () => {
+  // A sticky's words are text the user writes, so a rewrite is an add like a
+  // new reply (inner#1790 v2 spec E-08); no estimate is made.
+  it('E-08 judges a body rewrite as an add, with no estimate', async () => {
     const user = userEvent.setup();
     mount(sticky({ content: 'a cooler shot here' }));
     await user.click(screen.getByTestId('annotation-sticky-body-menu'));
     await user.click(screen.getByTestId('annotation-sticky-body-edit'));
     fireEvent.change(screen.getByTestId('annotation-sticky-body-input'), { target: { value: 'short' } });
     await user.click(screen.getByTestId('annotation-sticky-body-save'));
-    expect(annotationEditWrite).toHaveBeenCalledWith('p1', 's1', 'n1', null, 'short', expect.any(Number));
-    expect(batchOptions).toHaveBeenCalledWith(EDIT_JUDGED);
+    expect(batchOptions).toHaveBeenCalledTimes(1);
+    expect(batchOptions.mock.calls[0][0]).toMatchObject({ kind: 'add' });
+    expect(batchOptions.mock.calls[0][0]).not.toHaveProperty('estimate');
   });
 
   it('writes nothing when a rewrite is cancelled', async () => {
@@ -1330,7 +1331,7 @@ describe('the replies scroller', () => {
     expect(screen.getByTestId('annotation-sticky-body-input')).not.toHaveFocus();
   });
 
-  it('writes a rewritten reply back to that reply, not over the body', async () => {
+  it('E-08 writes a rewritten reply back to that reply, not over the body', async () => {
     const user = userEvent.setup();
     mount(
       sticky({
@@ -1354,18 +1355,21 @@ describe('the replies scroller', () => {
       expect.any(Number),
     );
     expect(editAnnotationBody).not.toHaveBeenCalled();
-    expect(annotationEditWrite).toHaveBeenCalledWith('p1', 's1', 'n1', 'r1', 'one, reworded', expect.any(Number));
-    expect(batchOptions).toHaveBeenCalledWith(EDIT_JUDGED);
+    // E-08: a reply rewrite is an add, with no estimate.
+    expect(batchOptions).toHaveBeenCalledTimes(1);
+    expect(batchOptions.mock.calls[0][0]).toMatchObject({ kind: 'add' });
+    expect(batchOptions.mock.calls[0][0]).not.toHaveProperty('estimate');
   });
 
-  it('judges a new reply as an add of its whole text', () => {
+  it('E-08 judges a new reply as an add, with no estimate', () => {
     mount(sticky());
     const box = screen.getByTestId('annotation-sticky-reply-input');
     fireEvent.focus(box);
     fireEvent.change(box, { target: { value: 'agreed, slower' } });
     fireEvent.keyDown(box, { key: 'Enter' });
-    expect(batchOptions).toHaveBeenCalledWith({ kind: 'add', estimate: estimateNodeBytes('agreed, slower') });
-    expect(annotationEditWrite).not.toHaveBeenCalled();
+    expect(batchOptions).toHaveBeenCalledTimes(1);
+    expect(batchOptions.mock.calls[0][0]).toMatchObject({ kind: 'add' });
+    expect(batchOptions.mock.calls[0][0]).not.toHaveProperty('estimate');
   });
 
   it('asks the canvas to remove the sticky, rather than writing it away', async () => {

@@ -2,57 +2,80 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Space document size cap (inner#1790), test spec section 14: W-132, W-133.
+ * Space document size cap, second design (inner#1790), web test spec N-09 to
+ * N-11: the size-cap sentences in the five catalogs.
  *
- * The spec fixes the sentences, not the locale keys or the placeholder names
- * the implementation chooses for them. So each sentence's key is found by
- * matching the English template against the expected English sentence, with
- * every placeholder left open; the same key must then render the expected
- * Simplified Chinese sentence, and exist, carrying the same placeholders, in
- * the other three catalogs.
+ * The spec fixes the sentences, not the key names (answer Q1: the keys are
+ * renamed for the second design and the first design's keys are deleted). So
+ * each sentence's key is found by matching the English template, with
+ * `{used}` and `{limit}` left as placeholders, against the English catalog;
+ * the same key must render the Simplified Chinese sentence word for word, and
+ * exist in ja, ko and zh-TW with the same placeholders and the word `Space`.
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { t } from '@breatic/shared';
+import { formatBytes, t } from '@breatic/shared';
 
 import { changeLocale } from '@web/i18n/locale-bootstrap';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
-import { COPY_EN, COPY_ZH_CN } from '@web/data/yjs/__tests__/helpers/doc-size-fixtures';
+import {
+  COPY_V2_EN,
+  COPY_V2_ZH_CN,
+  P_FULL,
+  P_OVER,
+  P_WARNING,
+  type DocSizePushV2,
+} from '@web/data/yjs/__tests__/helpers/size-v2-fixtures';
 
-/** The values the spec renders every sentence with (W-132). */
-const VALUES = { u: '9 MiB', l: '10 MiB', r: '768 KiB' } as const;
+type Code = keyof typeof COPY_V2_EN;
 
-type Code = keyof typeof COPY_EN;
-
-/** Which spec values each sentence takes, in the order its English wording shows them. */
-const ARGS: Record<Code, ReadonlyArray<keyof typeof VALUES>> = {
-  T_WARNING: ['u', 'l'],
-  T_FULL_NOTICE: ['u', 'l'],
-  T_ADD_BLOCKED: [],
-  T_OVERWRITE_BLOCKED: [],
-  T_NO_ROOM: ['r'],
-  T_OVER_CEILING_DELETE: [],
-  T_TIMELINE_FULL: [],
-  T_3D_FULL: [],
-  T_RESYNC: [],
-  T_PROPOSAL_FULL: [],
-  T_PROPOSAL_NO_ROOM: ['r'],
-  T_UPLOAD_FAILED: [],
-  T_SPACE_FULL_REASON: [],
-  T_TEXT_NO_ROOM: ['r'],
-  T_TEXT_FULL: [],
+/** The push whose figures each sentence with figures is rendered with (N-09). */
+const FIGURES: Partial<Record<Code, DocSizePushV2>> = {
+  N_WARNING: P_WARNING,
+  N_FULL: P_FULL,
+  N_OVER: P_OVER,
 };
 
-const CODES = Object.keys(ARGS) as Code[];
+const CODES = Object.keys(COPY_V2_EN) as Code[];
+
+/** The first design's keys, which Q1 deletes from every catalog. */
+const V1_KEYS = [
+  'warning', 'fullNotice', 'addBlocked', 'overwriteBlocked', 'noRoom', 'overCeilingDelete', 'timelineFull',
+  'threeDFull', 'resync', 'proposalFull', 'proposalNoRoom', 'spaceFullReason', 'textNoRoom', 'textFull',
+].map((key) => `spaces.size.${key}`);
+
+/** First-design sentences whose wording the second design replaced (en, zh-CN). */
+const V1_SENTENCES = [
+  'This Space is using {used} of its {limit}.',
+  'This Space is full ({used} of {limit}). Delete some content to add more.',
+  'This Space is full. Delete some content to add more.',
+  'This Space is full. Moving or changing things is paused until you delete some content.',
+  'This doesn\'t fit — the Space has {room} left.',
+  'This Space is full and cannot take more.',
+  'This Space is full and can no longer be edited.',
+  '这个 Space 已用 {used}，上限 {limit}。',
+  '这个 Space 已满，删除一些内容后才能继续添加。',
+  '这个 Space 已满，暂时不能再移动或修改，删除一些内容后可继续。',
+];
 
 /**
- * Calls a copy literal (a string or a function of its values) with the given arguments.
- * @param literal - The literal from the fixtures.
- * @param args - The arguments, in the literal's own order.
+ * A sentence as its template reads: `{used}` and `{limit}` for the figures.
+ * @param literal - The copy literal.
+ * @returns The template text.
+ */
+function template(literal: string | ((u: string, l: string) => string)): string {
+  return typeof literal === 'string' ? literal : literal('{used}', '{limit}');
+}
+
+/**
+ * A sentence with its figures filled in.
+ * @param literal - The copy literal.
+ * @param figures - The push the figures come from, if it has any.
  * @returns The sentence.
  */
-function render(literal: string | ((...a: string[]) => string), args: readonly string[]): string {
-  return typeof literal === 'string' ? literal : literal(...args);
+function rendered(literal: string | ((u: string, l: string) => string), figures: DocSizePushV2 | undefined): string {
+  if (typeof literal === 'string') return literal;
+  return literal(formatBytes(figures!.bytes), formatBytes(figures!.limit));
 }
 
 /**
@@ -78,80 +101,91 @@ function placeholders(message: string): string[] {
   return [...message.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
 }
 
-const SENTINEL = '\u0000';
-
 /**
- * The English catalog keys whose template is this sentence, with the
- * placeholder each spec value took.
+ * The English keys whose message is this sentence's template.
  * @param code - The sentence.
- * @returns Each matching key and the placeholder name for each spec value.
+ * @returns The keys.
  */
-function keysFor(code: Code): Array<{ key: string; names: string[] }> {
-  const args = ARGS[code];
-  const marked = render(COPY_EN[code], args.map((_, i) => `${SENTINEL}${String(i)}${SENTINEL}`));
-  const escaped = marked.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(`^${escaped.replace(new RegExp(`${SENTINEL}\\d+${SENTINEL}`, 'g'), '\\{(\\w+)\\}')}$`);
+function keysFor(code: Code): string[] {
+  const wanted = template(COPY_V2_EN[code]);
   const [, en] = LOCALE_CATALOGS[0];
-  return leaves(en).flatMap(([key, template]) => {
-    const match = pattern.exec(template);
-    return match === null ? [] : [{ key, names: match.slice(1) }];
-  });
+  return leaves(en).filter(([, message]) => message === wanted).map(([key]) => key);
 }
 
 /**
- * The parameters a key is rendered with: each placeholder gets its spec value.
+ * The ICU parameters a sentence is rendered with.
  * @param code - The sentence.
- * @param names - The placeholder name each spec value took.
- * @returns The ICU parameters.
+ * @returns The parameters.
  */
-function paramsFor(code: Code, names: readonly string[]): Record<string, string> {
-  return Object.fromEntries(ARGS[code].map((arg, i) => [names[i], VALUES[arg]]));
+function paramsFor(code: Code): Record<string, string> {
+  const figures = FIGURES[code];
+  return figures === undefined ? {} : { used: formatBytes(figures.bytes), limit: formatBytes(figures.limit) };
 }
 
 afterEach(() => {
   changeLocale('en');
 });
 
-describe('W-132 the size-cap sentences in en and zh-CN', () => {
-  it.each(CODES)('%s has an English key whose message is the spec sentence', (code) => {
+describe('N-09 every size-cap sentence in en and zh-CN', () => {
+  it.each(CODES)('N-09 %s has an English key whose message is the spec sentence', (code) => {
     expect(keysFor(code).length).toBeGreaterThan(0);
   });
 
-  it.each(CODES)('%s renders the spec sentence in en and in zh-CN on the same key', (code) => {
-    const found = keysFor(code);
-    expect(found.length).toBeGreaterThan(0);
-    const args = ARGS[code].map((arg) => VALUES[arg]);
-    for (const { key, names } of found) {
-      const params = paramsFor(code, names);
+  it.each(CODES)('N-09 %s renders the spec sentence in en and in zh-CN on the same key', (code) => {
+    const keys = keysFor(code);
+    expect(keys.length).toBeGreaterThan(0);
+    const figures = FIGURES[code];
+    for (const key of keys) {
       changeLocale('en');
-      expect(t(key, params)).toBe(render(COPY_EN[code], args));
+      expect(t(key, paramsFor(code))).toBe(rendered(COPY_V2_EN[code], figures));
       changeLocale('zh-CN');
-      const zh = t(key, params);
-      expect(zh).toBe(render(COPY_ZH_CN[code], args));
-      // The product noun stays English inside the Chinese sentence.
-      if (code !== 'T_UPLOAD_FAILED') expect(zh).toContain('Space');
+      expect(t(key, paramsFor(code))).toBe(rendered(COPY_V2_ZH_CN[code], figures));
     }
   });
 });
 
-describe('W-133 the other catalogs carry every size-cap key', () => {
+describe('N-10 ja, ko and zh-TW carry every size-cap key', () => {
   const others = LOCALE_CATALOGS.filter(([tag]) => tag === 'ja' || tag === 'ko' || tag === 'zh-TW');
 
-  it.each(CODES)('%s exists in ja, ko and zh-TW with the English placeholders and the word Space', (code) => {
-    const found = keysFor(code);
-    expect(found.length).toBeGreaterThan(0);
+  it.each(CODES)('N-10 %s exists, non-empty, with the English placeholders and the word Space', (code) => {
+    const keys = keysFor(code);
+    expect(keys.length).toBeGreaterThan(0);
     const [, en] = LOCALE_CATALOGS[0];
-    for (const { key, names } of found) {
+    for (const key of keys) {
       const english = readPath(en, key) as string;
       for (const [tag, catalog] of others) {
         const message = readPath(catalog, key);
         expect(typeof message, `${tag} ${key}`).toBe('string');
         expect((message as string).trim(), `${tag} ${key}`).not.toBe('');
         expect(placeholders(message as string), `${tag} ${key}`).toEqual(placeholders(english));
-        if (code !== 'T_UPLOAD_FAILED') expect(message as string, `${tag} ${key}`).toContain('Space');
+        expect(message as string, `${tag} ${key}`).toContain('Space');
         changeLocale(tag);
-        expect(() => t(key, paramsFor(code, names)), `${tag} ${key}`).not.toThrow();
+        expect(() => t(key, paramsFor(code)), `${tag} ${key}`).not.toThrow();
       }
+    }
+  });
+
+  it('N-10 the sentences with figures carry {used} and {limit}', () => {
+    for (const code of ['N_WARNING', 'N_FULL', 'N_OVER'] as const) {
+      expect(keysFor(code).length, code).toBeGreaterThan(0);
+      for (const key of keysFor(code)) {
+        for (const [tag, catalog] of LOCALE_CATALOGS) {
+          expect(placeholders(readPath(catalog, key) as string), `${tag} ${key}`).toEqual(['limit', 'used']);
+        }
+      }
+    }
+  });
+});
+
+describe('N-11 the first design\'s copy is gone', () => {
+  it.each(LOCALE_CATALOGS)('N-11 %s has none of the first design\'s size keys', (_tag, catalog) => {
+    for (const key of V1_KEYS) expect(readPath(catalog, key), key).toBeUndefined();
+  });
+
+  it('N-11 no catalog message is one of the first design\'s replaced sentences', () => {
+    for (const [tag, catalog] of LOCALE_CATALOGS) {
+      const messages = new Set(leaves(catalog).map(([, message]) => message));
+      for (const sentence of V1_SENTENCES) expect(messages.has(sentence), `${tag}: ${sentence}`).toBe(false);
     }
   });
 });

@@ -29,7 +29,7 @@ vi.mock('@hocuspocus/provider', async (importOriginal) =>
 
 import { spaceContentDocName } from '@breatic/shared';
 import {
-  confirmLatest, confirmRequests, flush, handshake, resetProviderSpies, type ProviderSpy,
+  confirmRequests, flush, handshake, resetProviderSpies, type ProviderSpy,
 } from '@web/data/yjs/__tests__/helpers/doc-size-driver';
 import {
   acquireDocProvider, hasProjectUnsyncedEdits, useProjectUnsyncedEdits, _resetCollabSocketForTests,
@@ -78,8 +78,8 @@ afterEach(() => {
   _resetForTests();
 });
 
-describe('timeline receipts stay out of the leave prompt (W-125)', () => {
-  it('W-125 an unconfirmed timeline edit is confirmed but never blocks leaving; a canvas edit still does', async () => {
+describe('timeline takes no receipts (design 6, inner#1790)', () => {
+  it('design 6: an edit of a timeline document sends no sync:confirm and never blocks leaving; a canvas edit still does', async () => {
     const timeline = content('timeline', TIMELINE_SID);
     const canvas = content('canvas', CANVAS_SID);
     await handshake(timeline.name, timeline.provider);
@@ -88,15 +88,14 @@ describe('timeline receipts stay out of the leave prompt (W-125)', () => {
 
     act(() => { getDoc(timeline.name).getMap('clips').set('c1', 1); });
     await flush();
+    expect(confirmRequests(timeline.provider)).toHaveLength(0);
     expect(hasProjectUnsyncedEdits(PID)).toBe(false);
     expect(result.current).toBe(false);
     expect(blocked()).toBe(false);
-    expect(confirmRequests(timeline.provider)).toHaveLength(1);
-    await confirmLatest(timeline.provider);
-    expect(hasProjectUnsyncedEdits(PID)).toBe(false);
 
     act(() => { getDoc(canvas.name).getMap('nodesMap').set('n1', 1); });
     await flush();
+    expect(confirmRequests(canvas.provider)).toHaveLength(1);
     expect(hasProjectUnsyncedEdits(PID)).toBe(true);
     expect(result.current).toBe(true);
     expect(blocked()).toBe(true);

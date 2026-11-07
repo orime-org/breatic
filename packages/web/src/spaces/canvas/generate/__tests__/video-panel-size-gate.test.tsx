@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Space size cap (inner#1790), spec W-58 to W-60: the video panel's three
- * undo batches (model switch with re-split, mode switch into the shots,
- * param edit with re-split) are each one add through the size gateway.
+ * Space size cap v2 (inner#1790 v2 web spec E-10, SB-01, SB-02, RQ-16): the
+ * video panel's undo batches (model switch with re-split, mode switch into
+ * the shots, param edit with re-split) are refused at `full` with the add
+ * toast, since both `edit` and `add` are; and Generate on the existing node
+ * sends no task when the Space cannot take an add.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,13 +15,9 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlow } from '@xyflow/react';
 import type { ModelCatalog, ModelEntry } from '@breatic/shared';
-import type * as ProviderModule from '@hocuspocus/provider';
 import type { ReactNode } from 'react';
+import * as Y from 'yjs';
 
-vi.mock('@hocuspocus/provider', async (importOriginal) => {
-  const { providerMockModule } = await import('@web/data/yjs/__tests__/helpers/size-gate-provider-mock');
-  return providerMockModule(await importOriginal<typeof ProviderModule>());
-});
 vi.mock('@web/data/yjs/collab-failure-report', () => ({ reportCollabFailure: vi.fn() }));
 vi.mock('@web/lib/toast', () => ({
   toast: { warning: vi.fn(), error: vi.fn(), success: vi.fn(), info: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },
@@ -43,17 +41,22 @@ vi.mock('@web/data/yjs/use-socket', () => ({
 
 import { toast } from '@web/lib/toast';
 import { modelsApi } from '@web/data/api';
-import { _resetCollabSocketForTests } from '@web/data/yjs/collab-socket';
-import { addNode, nodeDataMap, _resetCanvasUndoCacheForTests } from '@web/data/yjs/canvas-space';
+import { canvasApi } from '@web/data/api/canvas';
+import { clearAllDocSizes } from '@web/data/yjs/doc-size';
+import { addNode, getPromptFragment, nodeDataMap, _resetCanvasUndoCacheForTests } from '@web/data/yjs/canvas-space';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { enterStoryboardShots, readShots } from '@web/data/yjs/node-storyboard';
 import type { VideoNodeView } from '@web/data/yjs/node-view';
 import { CanvasContext, type CanvasContextValue } from '@web/spaces/canvas/canvas-context';
 import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
 import { canvasSessions } from '@web/stores/canvas-session';
-import { sizeGateProviders } from '@web/data/yjs/__tests__/helpers/size-gate-provider-mock';
-import { openSizedDoc, pushSize } from '@web/data/yjs/__tests__/helpers/size-gate-harness';
-import { COPY_EN, F_FULL, F_WARNING, type DocSizePush } from '@web/data/yjs/__tests__/helpers/doc-size-fixtures';
+import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
+import {
+  SIZE_COPY_EN,
+  enterSize,
+  expectSizeToast,
+  type SizeCode,
+} from '@web/data/yjs/__tests__/helpers/size-v2-harness';
 
 const NAME = docName.canvasSpace('p', 's');
 
@@ -129,15 +132,15 @@ function shotSeconds(): number[] | undefined {
 
 /**
  * Seeds v1 on Kling in a mode (with two shots when in multi_shot), opens its
- * panel, then delivers the push.
+ * panel, then puts the Space in one size state.
  * @param mode - The mode v1 stores.
- * @param push - The size push.
+ * @param code - The size state.
  * @param params - Kling's stored params.
+ * @param prompt - Words typed into the mode's prompt box, when given.
  * @throws {Error} When the panel does not open.
  */
-async function openAt(mode: 't2v' | 'multi_shot', push: DocSizePush, params: Record<string, unknown> = {}): Promise<void> {
+async function openAt(mode: 't2v' | 'multi_shot', code: SizeCode, params: Record<string, unknown> = {}, prompt?: string): Promise<void> {
   vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
-  const { provider } = openSizedDoc(NAME);
   const data = { mode, model: 'kling-v3', modelByMode: { [mode]: 'kling-v3' }, paramsByModel: { 'kling-v3': params } };
   addNode('p', 's', {
     id: 'v1',
@@ -146,6 +149,11 @@ async function openAt(mode: 't2v' | 'multi_shot', push: DocSizePush, params: Rec
     data: { name: 'V', createdAt: 1, createdBy: 'u1', locked: false, attachments: [], ...data },
   } as Parameters<typeof addNode>[2]);
   if (mode === 'multi_shot') enterStoryboardShots('p', 's', 'v1', 5);
+  if (prompt !== undefined) {
+    const paragraph = new Y.XmlElement('paragraph');
+    paragraph.insert(0, [new Y.XmlText(prompt)]);
+    getPromptFragment('p', 's', 'v1', mode)!.insert(0, [paragraph]);
+  }
   const canvas: CanvasContextValue = { projectId: 'p', spaceId: 's', readOnly: false, myRole: 'editor', caretProvider: null };
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -167,7 +175,7 @@ async function openAt(mode: 't2v' | 'multi_shot', push: DocSizePush, params: Rec
     canvasSessions.of('s').getState().openGeneratePanel('v1', 'video');
   });
   await screen.findByTestId('generate-video-execute');
-  pushSize(provider, push);
+  enterSize(NAME, code);
   vi.mocked(toast.warning).mockClear();
 }
 
@@ -177,26 +185,26 @@ async function openAt(mode: 't2v' | 'multi_shot', push: DocSizePush, params: Rec
  */
 async function expectAddBlockedOnce(): Promise<void> {
   await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
-  expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(COPY_EN.T_ADD_BLOCKED);
-  expect(toast.error).not.toHaveBeenCalled();
+  expectSizeToast(SIZE_COPY_EN.T_ADD);
 }
 
 beforeEach(() => {
-  sizeGateProviders.length = 0;
+  vi.spyOn(canvasApi, 'createTask').mockResolvedValue({ id: 't1' } as Awaited<ReturnType<typeof canvasApi.createTask>>);
   canvasSessions.of('s').setState({ panelHostId: null, panelKind: null, pickSession: null });
 });
 
 afterEach(() => {
-  _resetCollabSocketForTests();
+  resetRunOnceForTests();
+  clearAllDocSizes();
   _resetForTests();
   _resetCanvasUndoCacheForTests();
   vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 
-describe('W-58 switching the model and re-splitting the shots is one add', () => {
-  it('keeps the model, the params and the shots once the Space is full', async () => {
-    await openAt('multi_shot', F_FULL);
+describe('E-10 switching the model and re-splitting the shots is one batch', () => {
+  it('E-10 [F] keeps the model, the params and the shots', async () => {
+    await openAt('multi_shot', 'F');
     const before = stored();
     fireEvent.click(screen.getByTestId('generate-model-trigger'));
     await userEvent.click(await screen.findByTestId('generate-model-option-wan-3'));
@@ -206,8 +214,8 @@ describe('W-58 switching the model and re-splitting the shots is one add', () =>
     expect(shotSeconds()).toEqual([2, 3]);
   });
 
-  it('switches and re-splits while the Space is only near full', async () => {
-    await openAt('multi_shot', F_WARNING);
+  it('E-10 [W] switches and re-splits', async () => {
+    await openAt('multi_shot', 'W');
     fireEvent.click(screen.getByTestId('generate-model-trigger'));
     await userEvent.click(await screen.findByTestId('generate-model-option-wan-3'));
     await waitFor(() => expect(shotSeconds()).toEqual([4, 6]));
@@ -216,9 +224,9 @@ describe('W-58 switching the model and re-splitting the shots is one add', () =>
   });
 });
 
-describe('W-59 switching into the shots is one add', () => {
-  it('keeps the mode and lays out no shot once the Space is full', async () => {
-    await openAt('t2v', F_FULL);
+describe('SB-01 switching into the shots is one add batch', () => {
+  it('SB-01 [F] keeps the mode and lays out no shot', async () => {
+    await openAt('t2v', 'F');
     fireEvent.click(screen.getByTestId('generate-video-mode-trigger'));
     await userEvent.click(await screen.findByTestId('generate-video-mode-multi-shot'));
     await expectAddBlockedOnce();
@@ -226,18 +234,8 @@ describe('W-59 switching into the shots is one add', () => {
     expect(readShots('p', 's', 'v1')).toHaveLength(0);
   });
 
-  it('counts the shots it lays out: room for the switch alone is not enough', async () => {
-    // The switch's fields fit in 150 bytes; the two new shots do not.
-    await openAt('t2v', { ...F_WARNING, room: 150 });
-    fireEvent.click(screen.getByTestId('generate-video-mode-trigger'));
-    await userEvent.click(await screen.findByTestId('generate-video-mode-multi-shot'));
-    await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
-    expect(stored().mode).toBe('t2v');
-    expect(readShots('p', 's', 'v1')).toHaveLength(0);
-  });
-
-  it('enters the mode with shots while the Space is only near full', async () => {
-    await openAt('t2v', F_WARNING);
+  it('SB-01 [W] enters the mode with shots', async () => {
+    await openAt('t2v', 'W');
     fireEvent.click(screen.getByTestId('generate-video-mode-trigger'));
     await userEvent.click(await screen.findByTestId('generate-video-mode-multi-shot'));
     await waitFor(() => expect(stored().mode).toBe('multi_shot'));
@@ -246,9 +244,9 @@ describe('W-59 switching into the shots is one add', () => {
   });
 });
 
-describe('W-60 editing the total and re-splitting the shots is one add', () => {
-  it('keeps the params and the shots once the Space is full', async () => {
-    await openAt('multi_shot', F_FULL);
+describe('SB-02 editing the total and re-splitting the shots is one batch', () => {
+  it('SB-02 [F] keeps the params and the shots', async () => {
+    await openAt('multi_shot', 'F');
     const before = stored().paramsByModel;
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     fireEvent.click(await screen.findByTestId('generate-video-duration-option-10'));
@@ -257,19 +255,50 @@ describe('W-60 editing the total and re-splitting the shots is one add', () => {
     expect(shotSeconds()).toEqual([2, 3]);
   });
 
-  it('writes a total no longer than the stored one at full, as an overwrite', async () => {
-    await openAt('multi_shot', F_FULL, { duration: 10 });
+  it('SB-02 [F] refuses a shorter total too: an edit is refused at full', async () => {
+    await openAt('multi_shot', 'F', { duration: 10 });
+    const before = stored().paramsByModel;
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     fireEvent.click(await screen.findByTestId('generate-video-duration-option-5'));
-    await waitFor(() => expect((stored().paramsByModel as Record<string, Record<string, unknown>>)['kling-v3']?.duration).toBe(5));
-    expect(toast.warning).not.toHaveBeenCalled();
+    await expectAddBlockedOnce();
+    expect(stored().paramsByModel).toEqual(before);
   });
 
-  it('writes the new total while the Space is only near full', async () => {
-    await openAt('multi_shot', F_WARNING);
+  it('SB-02 [W] writes the new total', async () => {
+    await openAt('multi_shot', 'W');
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     fireEvent.click(await screen.findByTestId('generate-video-duration-option-10'));
     await waitFor(() => expect((stored().paramsByModel as Record<string, Record<string, unknown>>)['kling-v3']?.duration).toBe(10));
     expect(toast.warning).not.toHaveBeenCalled();
+  });
+});
+
+describe('RQ-16 Generate on an existing video node sends no task when the Space cannot take an add', () => {
+  it.each([
+    ['F', SIZE_COPY_EN.T_ADD],
+    ['O', SIZE_COPY_EN.T_OVER],
+    ['Z', null],
+  ] as const)('RQ-16 [%s] video: createTask is not called and the node is unchanged', async (code, sentence) => {
+    await openAt('t2v', code, {}, 'a drone shot over a canyon');
+    const doc = getDoc(NAME);
+    const before = Y.encodeStateAsUpdate(doc);
+    const execute = screen.getByTestId('generate-video-execute');
+    await waitFor(() => expect(execute).not.toBeDisabled());
+    fireEvent.click(execute);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(canvasApi.createTask).not.toHaveBeenCalled();
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    expectSizeToast(sentence);
+  });
+
+  it('RQ-16 [W] video: Generate sends the task once (control)', async () => {
+    await openAt('t2v', 'W', {}, 'a drone shot over a canyon');
+    const execute = screen.getByTestId('generate-video-execute');
+    await waitFor(() => expect(execute).not.toBeDisabled());
+    fireEvent.click(execute);
+    await waitFor(() => expect(canvasApi.createTask).toHaveBeenCalledTimes(1));
+    expectSizeToast(null);
   });
 });

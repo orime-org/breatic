@@ -2,26 +2,24 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Reading a Space document's size as collab pushed it, and filling the
- * document towards its cap (inner#1790).
+ * Reading a Space document's size as collab pushed it, and filling a canvas
+ * Space towards its cap (inner#1790).
  *
  * The cases built on this never hard-code the cap: every target is derived
- * from what the Space's own `doc:size` push says (`readLines`), so they pass
- * under the default `max_document_bytes` and under any smaller one.
+ * from what the Space's own `doc:size` push says, so they run under the
+ * default `max_document_bytes` with no configuration.
  *
  * The fill goes straight through the live `Y.Doc` (`getDoc(name).transact`),
  * not through `writeSpaceDoc`: it stands for content that was already in the
  * document, which the size gate under test never judged. It carries no
- * origin, so no undo manager tracks it. On a canvas it goes into unknown keys
- * of one filler node's data (`smokeFill0`, `smokeFill1`, …), so deleting that
- * node takes all of it away; elsewhere it goes into a root map
- * `doc.getMap('smoke-fill')`, which nothing on screen can delete.
+ * origin, so no undo manager tracks it. It goes into unknown keys of one
+ * filler node's data (`smokeFill0`, `smokeFill1`, …), so deleting that node
+ * takes all of it away.
  */
 import { expect, type Page } from 'playwright/test';
 
 import { CANVAS_SPACE, YJS_MANAGER, liveModuleUrl } from './live-module';
 import type * as CanvasModule from '../../src/data/yjs/canvas-space';
-import type * as CollabSocketModule from '../../src/data/yjs/collab-socket';
 import type * as DocSizeModule from '../../src/data/yjs/doc-size';
 import type * as ManagerModule from '../../src/data/yjs/manager';
 import type { DocSizeState } from '../../src/data/yjs/doc-size';
@@ -31,48 +29,18 @@ export type { DocSizeState } from '../../src/data/yjs/doc-size';
 /** The module holding every document's size, as the page loaded it. */
 export const DOC_SIZE = 'data/yjs/doc-size.ts';
 
-/** The one entry web writes Space documents through. */
-export const SPACE_WRITE = 'data/yjs/space-write.ts';
-
-/** The collab registry, which knows a document's receipts. */
-export const COLLAB_SOCKET = 'data/yjs/collab-socket.tsx';
-
 export const KiB = 1024;
 
+export const MiB = 1024 * KiB;
+
 /** The largest string one fill transaction writes. */
-const CHUNK_BYTES = 512 * KiB;
+const MAX_CHUNK_BYTES = MiB;
 
-/** How long a fill waits for the push that counts it (the spec's polling cap). */
-const PUSH_WAIT_MS = 15_000;
+/** The fill stops once the push says less than this is left below the limit. */
+export const FILL_STOP_BYTES = 32 * KiB;
 
-/**
- * How long a reached target is left before it is trusted. Longer than
- * `document_size_measure_interval_ms` (2 s): a push right after a write
- * carries collab's upper bound, and the exact re-measure that follows within
- * that interval may come in lower.
- */
-const SETTLE_MS = 2_500;
-
-/** How many fills `fillTo` lets land short of its target before it gives up. */
-const MAX_SHORT_FILLS = 3;
-
-/** Where a fill goes: one canvas node's data, or the root `smoke-fill` map. */
-export type FillTarget = { node: string } | 'smoke-fill';
-
-/** The key every fill container is given first, for `pushPastLimit` to delete. */
-const MARK_KEY = 'smokeMark';
-
-/** The quantities a Space's lines are derived from, read in `normal`. */
-export interface SizeLines {
-  limit: number;
-  ceiling: number;
-  /** `limit − bytes − room`: how far below the limit the full line sits. */
-  margin: number;
-  /** `limit − margin`: from here the Space is `full`. */
-  fullLine: number;
-  /** `ceiling − bytes − overwriteRoom`: room kept below the ceiling for overwrites. */
-  reserve: number;
-}
+/** How long a fill waits for the push that counts it. */
+const PUSH_WAIT_MS = 5_000;
 
 /**
  * A document's size, as the page's own copy of `doc-size.ts` holds it.
@@ -88,203 +56,91 @@ export async function readSize(page: Page, docName: string): Promise<DocSizeStat
   }, [at, docName] as const);
 }
 
-/**
- * The room left for new writes right now: the pushed room less what
- * reservations hold.
- * @param page - A page with the Space open.
- * @param docName - The Space's content document name.
- * @returns Bytes, or null while the size is unknown.
- */
-export async function availableRoom(page: Page, docName: string): Promise<number | null> {
-  const at = await liveModuleUrl(page, DOC_SIZE);
-  return page.evaluate(async ([url, name]) => {
-    const sizes = (await import(/* @vite-ignore */ url)) as typeof DocSizeModule;
-    return sizes.availableRoom(name);
-  }, [at, docName] as const);
+/** A size whose push carried numbers (anything but `unknown`). */
+export interface KnownSize {
+  phase: DocSizeState['phase'];
+  overCeiling: boolean;
+  bytes: number;
+  limit: number;
+  ceiling: number;
 }
 
 /**
- * Wait for a push that shows the Space `normal` with room for adds and
- * overwrites, and derive its lines from it.
- * @param page - A page with the Space open.
- * @param docName - The Space's content document name.
- * @returns The lines.
- * @throws {Error} When no such push arrives in time.
+ * The numbers of a size the page has a push for.
+ * @param size - What `readSize` returned.
+ * @returns The same size with its numbers present.
+ * @throws {Error} When no push with numbers is in effect.
  */
-export async function readLines(page: Page, docName: string): Promise<SizeLines> {
-  await expect
-    .poll(async () => {
-      const s = await readSize(page, docName);
-      return s.phase === 'normal' && (s.limit ?? 0) > 0 && (s.room ?? 0) > 0 && (s.overwriteRoom ?? 0) > 0;
-    }, { timeout: PUSH_WAIT_MS, message: 'the Space never reported a normal size with room left' })
-    .toBe(true);
-  const s = await readSize(page, docName);
-  const limit = s.limit ?? 0;
-  const ceiling = s.ceiling ?? 0;
-  const bytes = s.bytes ?? 0;
-  const margin = limit - bytes - (s.room ?? 0);
-  return { limit, ceiling, margin, fullLine: limit - margin, reserve: ceiling - bytes - (s.overwriteRoom ?? 0) };
+export function knownSize(size: DocSizeState): KnownSize {
+  const { bytes, limit, ceiling } = size;
+  if (bytes === null || limit === null || ceiling === null) throw new Error(`no size pushed yet (phase ${size.phase})`);
+  return { phase: size.phase, overCeiling: size.overCeiling, bytes, limit, ceiling };
 }
 
 /**
- * Write strings into the fill container, one transaction each, straight into
- * the live document.
+ * Write one string into a fresh fill key of the filler node, in one
+ * transaction straight into the live document.
  * @param page - A page with the Space open.
  * @param docName - The Space's content document name.
- * @param where - The fill container.
- * @param sizes - Length of each string to add, one transaction per entry.
- * @param deleteMark - Also delete the container's mark key, in the first transaction.
+ * @param node - The filler node.
+ * @param length - The string's length (ASCII, so its bytes).
  */
-async function writeFill(
-  page: Page,
-  docName: string,
-  where: FillTarget,
-  sizes: readonly number[],
-  deleteMark: boolean,
-): Promise<void> {
+async function writeFill(page: Page, docName: string, node: string, length: number): Promise<void> {
   const managerAt = await liveModuleUrl(page, YJS_MANAGER);
-  const canvasAt = where === 'smoke-fill' ? null : await liveModuleUrl(page, CANVAS_SPACE);
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
   await page.evaluate(
-    async ([mUrl, cUrl, name, target, lengths, mark, markKey]) => {
+    async ([mUrl, cUrl, name, id, size]) => {
       const manager = (await import(/* @vite-ignore */ mUrl)) as typeof ManagerModule;
+      const canvas = (await import(/* @vite-ignore */ cUrl)) as typeof CanvasModule;
       if (!manager.hasDoc(name)) throw new Error(`${name} is not open in this page`);
       const doc = manager.getDoc(name);
-      let map;
-      if (target === 'smoke-fill') {
-        map = doc.getMap<unknown>('smoke-fill');
-      } else {
-        const canvas = (await import(/* @vite-ignore */ cUrl as string)) as typeof CanvasModule;
-        map = canvas.nodeDataMap(doc, target.node);
-        if (map === null) throw new Error(`no node ${target.node} to fill`);
-      }
-      const fill = map;
+      const fill = canvas.nodeDataMap(doc, id);
+      if (fill === null) throw new Error(`no node ${id} to fill`);
       let next = 0;
       while (fill.has(`smokeFill${String(next)}`)) next += 1;
-      lengths.forEach((length, i) => {
-        doc.transact(() => {
-          if (!fill.has(markKey)) fill.set(markKey, 'x');
-          else if (mark && i === 0) fill.delete(markKey);
-          fill.set(`smokeFill${String(next + i)}`, 'f'.repeat(length));
-        });
+      doc.transact(() => {
+        fill.set(`smokeFill${String(next)}`, 'f'.repeat(size));
       });
     },
-    [managerAt, canvasAt, docName, where, sizes, deleteMark, MARK_KEY] as const,
+    [managerAt, canvasAt, docName, node, length] as const,
   );
 }
 
+/** What a fill below the limit went through. */
+export interface FillResult {
+  /** A push said `warning` at some point on the way. */
+  sawWarning: boolean;
+  /** The size once the fill stopped. */
+  last: DocSizeState;
+}
+
 /**
- * Fill a Space's document until collab pushes a size of at least
- * `targetBytes`, and that size holds after the exact re-measure.
- * @param page - A page with the Space open, holding the filler node when `where` names one.
+ * Fill a canvas Space's document to just below its limit (spec 2.2
+ * `fillToBelowLimit`): each write is a quarter of what the push says is left
+ * (at most 1 MiB), so the fill itself never crosses the limit; it waits for
+ * the push that counts each write and stops once less than
+ * {@link FILL_STOP_BYTES} is left.
+ * @param page - A page with the Space open, holding the filler node.
  * @param docName - The Space's content document name.
- * @param targetBytes - The size to reach; at most the limit, or collab refuses the fill.
- * @param where - The fill container.
- * @returns The size once it holds.
- * @throws {Error} When the target is past the limit, or a push never counts the fill.
+ * @param node - The filler node, whose data takes the fill.
+ * @returns Whether a push said `warning` on the way, and the size at the end.
+ * @throws {Error} When the size is unknown, or a push never counts a write.
  */
-export async function fillTo(
-  page: Page,
-  docName: string,
-  targetBytes: number,
-  where: FillTarget,
-): Promise<DocSizeState> {
-  let shortFills = 0;
+export async function fillToBelowLimit(page: Page, docName: string, node: string): Promise<FillResult> {
+  let sawWarning = false;
   for (;;) {
     const now = await readSize(page, docName);
-    if (now.bytes === null || now.limit === null) throw new Error(`${docName} has no size yet`);
-    if (targetBytes > now.limit) throw new Error(`a fill to ${String(targetBytes)} is past the limit ${String(now.limit)}`);
-    if (now.bytes >= targetBytes) {
-      await page.waitForTimeout(SETTLE_MS);
-      const settled = await readSize(page, docName);
-      if ((settled.bytes ?? 0) >= targetBytes) return settled;
-      continue;
-    }
-    const sizes: number[] = [];
-    for (let left = targetBytes - now.bytes; left > 0; left -= CHUNK_BYTES) sizes.push(Math.min(CHUNK_BYTES, left));
-    await writeFill(page, docName, where, sizes, false);
-    // `now.bytes` may be an upper bound above the exact size, so the fill can
-    // land a little short: once the exact re-measure is in, the loop writes
-    // the rest, a few times at most.
-    const reached = await expect
-      .poll(async () => (await readSize(page, docName)).bytes ?? 0, { timeout: PUSH_WAIT_MS })
-      .toBeGreaterThanOrEqual(targetBytes)
-      .then(() => true, () => false);
-    if (reached) continue;
-    shortFills += 1;
-    if (shortFills > MAX_SHORT_FILLS) throw new Error(`the fill of ${docName} never reached ${String(targetBytes)} bytes`);
-    await page.waitForTimeout(SETTLE_MS);
+    if (now.phase === 'warning') sawWarning = true;
+    if (now.limit === null || now.bytes === null || now.limit <= 0) throw new Error(`${docName} has no size limit pushed (phase ${now.phase})`);
+    const counted = now.bytes;
+    const left = now.limit - counted;
+    if (left < FILL_STOP_BYTES) return { sawWarning, last: now };
+    await writeFill(page, docName, node, Math.min(MAX_CHUNK_BYTES, Math.floor(left / 4)));
+    await expect
+      .poll(async () => (await readSize(page, docName)).bytes, {
+        timeout: PUSH_WAIT_MS,
+        message: `no push counted the fill of ${docName} (was ${String(counted)} bytes)`,
+      })
+      .not.toBe(counted);
   }
-}
-
-/**
- * Take a document past its limit in one update that also deletes existing
- * content (the fill container's mark key), which collab admits up to the hard
- * ceiling.
- * @param page - A page with the Space open, after a `fillTo` into the same container.
- * @param docName - The Space's content document name.
- * @param targetBytes - The size to land on, inside `(limit, ceiling]`.
- * @param where - The fill container `fillTo` wrote.
- * @returns The size once it holds.
- * @throws {Error} When the target is outside `(limit, ceiling]`, or no push shows the document past the limit.
- */
-export async function pushPastLimit(
-  page: Page,
-  docName: string,
-  targetBytes: number,
-  where: FillTarget,
-): Promise<DocSizeState> {
-  const now = await readSize(page, docName);
-  const { bytes, limit, ceiling } = now;
-  if (bytes === null || limit === null || ceiling === null) throw new Error(`${docName} has no size yet`);
-  if (targetBytes <= limit || targetBytes > ceiling) {
-    throw new Error(`${String(targetBytes)} is not inside (${String(limit)}, ${String(ceiling)}]`);
-  }
-  await writeFill(page, docName, where, [targetBytes - bytes], true);
-  await expect
-    .poll(async () => (await readSize(page, docName)).bytes ?? 0, {
-      timeout: PUSH_WAIT_MS,
-      message: `${docName} never went past its limit`,
-    })
-    .toBeGreaterThan(limit);
-  await page.waitForTimeout(SETTLE_MS);
-  return readSize(page, docName);
-}
-
-/**
- * The live document's state vector, as text: it changes with every struct
- * the document gains, so equal readings mean nothing was written between them.
- * @param page - A page with the Space open.
- * @param docName - The Space's content document name.
- * @returns Each client's next clock, sorted by client.
- */
-export async function stateVector(page: Page, docName: string): Promise<string> {
-  const managerAt = await liveModuleUrl(page, YJS_MANAGER);
-  return page.evaluate(async ([url, name]) => {
-    const manager = (await import(/* @vite-ignore */ url)) as typeof ManagerModule;
-    if (!manager.hasDoc(name)) throw new Error(`${name} is not open in this page`);
-    // What `Y.encodeStateVector` encodes, read without a second copy of yjs.
-    const clients = manager.getDoc(name).store.clients;
-    const vector = [...clients.entries()].map(([client, structs]) => {
-      const last = structs[structs.length - 1];
-      return [client, last === undefined ? 0 : last.id.clock + last.length] as const;
-    });
-    return JSON.stringify(vector.sort((a, b) => a[0] - b[0]));
-  }, [managerAt, docName] as const);
-}
-
-/**
- * Wait until collab has confirmed every local write of a document.
- * @param page - A page with the Space open.
- * @param docName - The Space's content document name.
- * @throws {Error} When the receipts never catch up.
- */
-export async function docSynced(page: Page, docName: string): Promise<void> {
-  const at = await liveModuleUrl(page, COLLAB_SOCKET);
-  await expect
-    .poll(() => page.evaluate(async ([url, name]) => {
-      const socket = (await import(/* @vite-ignore */ url)) as typeof CollabSocketModule;
-      const versions = socket.readDocVersions(name);
-      return versions !== null && versions.confirmedVersion >= versions.localVersion;
-    }, [at, docName] as const), { timeout: PUSH_WAIT_MS, message: `${docName} never got its receipts` })
-    .toBe(true);
 }

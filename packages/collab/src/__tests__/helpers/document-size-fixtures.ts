@@ -2,65 +2,83 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Document builders and reference measurements for the document size cap
- * tests (inner#1790). Every builder here follows the test spec's construction
- * table (section 0.3) and the probe it names, so a case that cites a shape
- * gets the same bytes the spec's truth values were measured on.
+ * Document and update builders for the document size cap tests (inner#1790,
+ * second version). Each builder follows the construction table of the v2
+ * collab test spec (section 0.3) so a case citing a shape gets the bytes the
+ * spec's measured values came from.
  *
- * `refMeasure` is the test-side recomputation of `measure` (spec 0.2): the
- * encoded state plus `C` per stored pending struct (Skip excluded) and `2C` per
- * stored pending delete range. Assertions compare production records against
- * it, never against a number the production module produced.
+ * Nothing here computes a judgement the production code makes: `cost` is the
+ * design 4.1 formula over the production `updateShape` result, and `enc` is
+ * the encoded size the design names as the exact measure.
  */
 
-import { DOC_SIZE_EVENT_BYTES } from "@breatic/shared";
+import { DOC_SIZE_EVENT_BYTES, updateShape } from "@breatic/shared";
 import * as decoding from "lib0/decoding";
 import * as encoding from "lib0/encoding";
 import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
 
-/** The spec's `C`, read from the shared contract rather than written down. */
+/** The spec's `C`, read from the shared contract. */
 export const C: number = DOC_SIZE_EVENT_BYTES;
 
-/** The client id `fill` writes with unless told otherwise. */
-export const FILL_CLIENT = 0xf00000aa;
+/** Spec 0.2 configuration D (the repository defaults). */
+export const D_CONFIG = Object.freeze({
+  max_document_bytes: 10_485_760,
+  document_size_warn_ratio: 0.9,
+  document_size_delete_headroom_bytes: 262_144,
+  document_size_max_delete_splits: 1024,
+  document_size_measure_interval_ms: 2000,
+});
+
+/** Spec 0.2 configuration S (scaled down for integration and large documents). */
+export const S_CONFIG = Object.freeze({
+  max_document_bytes: 262_144,
+  document_size_warn_ratio: 0.9,
+  document_size_delete_headroom_bytes: 32_768,
+  document_size_max_delete_splits: 1024,
+  document_size_measure_interval_ms: 2000,
+});
+
+/** Derived lines of configuration D. */
+export const D = Object.freeze({ L: 10_485_760, W: 9_437_184, CEIL: 10_747_904 });
+
+/** Derived lines of configuration S; an integer `current` at or above `W` is a warning. */
+export const S = Object.freeze({ L: 262_144, W: 235_930, CEIL: 294_912, MESSAGE: 327_680 });
+
+/** Spec 0.2 document names. */
+export const NAMES = Object.freeze({
+  CV: "project-p1/canvas-s1",
+  DOC: "project-p1/document-s2",
+  TD: "project-p1/3d-s3",
+  TL: "project-p1/timeline-s4",
+  META: "project-p1/meta",
+  ODD: "scratch-doc",
+});
 
 /**
- * Count the non-Skip structs and the delete ranges a document holds as pending.
- * @param doc - The document whose store is read.
- * @returns Pending struct count `p` and pending delete range count `q`.
- */
-export function pendingCounts(doc: Y.Doc): { p: number; q: number } {
-  let p = 0;
-  let q = 0;
-  const structs = doc.store.pendingStructs;
-  if (structs) {
-    p = Y.decodeUpdateV2(structs.update).structs.filter((s) => s.constructor.name !== "Skip").length;
-  }
-  const ds = doc.store.pendingDs;
-  if (ds) {
-    Y.decodeUpdateV2(ds).ds.clients.forEach((ranges) => {
-      q += ranges.length;
-    });
-  }
-  return { p, q };
-}
-
-/**
- * The spec's `ref.measure`: encoded state plus the pending surcharge.
- * @param doc - The document to measure.
+ * Spec 0.2 `enc`: the encoded size of a document's full state.
+ * @param doc - The document.
  * @returns Bytes.
  */
-export function refMeasure(doc: Y.Doc): number {
-  const { p, q } = pendingCounts(doc);
-  return Y.encodeStateAsUpdate(doc).byteLength + C * p + 2 * C * q;
+export function enc(doc: Y.Doc): number {
+  return Y.encodeStateAsUpdate(doc).byteLength;
 }
 
 /**
- * A fresh document holding everything `doc` holds, pending content included,
- * the way collab stores and reloads it.
+ * Design 4.1 cost of an update against a document as it is now.
+ * @param update - The V1 update.
+ * @param doc - The server document before the update.
+ * @returns Bytes counted against the record.
+ */
+export function cost(update: Uint8Array, doc: Y.Doc): number {
+  const s = updateShape(update, doc.store);
+  return s.structBytes + C * (s.splitEndpoints + s.beyondClockRanges);
+}
+
+/**
+ * A fresh document holding everything `doc` holds, pending content included.
  * @param doc - The source document.
- * @returns The reloaded copy.
+ * @returns The copy.
  */
 export function reload(doc: Y.Doc): Y.Doc {
   const copy = new Y.Doc();
@@ -69,53 +87,315 @@ export function reload(doc: Y.Doc): Y.Doc {
 }
 
 /**
- * Apply an update to a reloaded copy and measure the result, leaving `doc` as it is.
- * @param doc - The server document before the update.
- * @param update - The V1 update.
- * @returns The reference measure of the copy after applying.
+ * Run one transaction on a client and return the update it emitted.
+ * @param client - The client document.
+ * @param edit - The edit, run inside one transaction.
+ * @returns The V1 update of that transaction.
+ * @throws {Error} When the edit changed nothing.
  */
-export function refMeasureAfter(doc: Y.Doc, update: Uint8Array): number {
-  const copy = reload(doc);
-  Y.applyUpdate(copy, update);
-  const bytes = refMeasure(copy);
-  copy.destroy();
-  return bytes;
+export function capture(client: Y.Doc, edit: () => void): Uint8Array {
+  let update: Uint8Array | undefined;
+  const listener = (u: Uint8Array): void => {
+    update = update ? Y.mergeUpdates([update, u]) : u;
+  };
+  client.on("update", listener);
+  client.transact(edit);
+  client.off("update", listener);
+  if (!update) throw new Error("the edit emitted no update");
+  return update;
 }
 
 /**
- * The state vector `doc` would have after applying `update`.
- * @param doc - The server document.
- * @param update - The V1 update.
- * @returns The encoded state vector.
+ * A client fully synced with `doc`.
+ * @param doc - The document to copy.
+ * @param clientID - The client id the copy writes under.
+ * @returns The client document.
  */
-export function stateVectorAfter(doc: Y.Doc, update: Uint8Array): Uint8Array {
-  const copy = reload(doc);
-  Y.applyUpdate(copy, update);
-  const sv = Y.encodeStateVector(copy);
-  copy.destroy();
-  return sv;
+export function syncedClient(doc: Y.Doc, clientID: number): Y.Doc {
+  const client = new Y.Doc();
+  client.clientID = clientID;
+  Y.applyUpdate(client, Y.encodeStateAsUpdate(doc));
+  return client;
+}
+
+/** The handles of the spec 0.3 `nodeDoc` client. */
+export interface NodeDoc {
+  /** The server copy, synced once the fixture is built; later client edits do not reach it. */
+  server: Y.Doc;
+  /** The writing client, `clientID = 7`. */
+  client: Y.Doc;
+  /** `nodes`, the root map. */
+  nodes: Y.Map<Y.Map<unknown>>;
+  /** `nodes.n1`. */
+  n1: Y.Map<unknown>;
+  /** `n1.data`. */
+  data: Y.Map<unknown>;
+  /** `n1.data.focus`. */
+  focus: Y.Array<string>;
+  /** `n1.body`. */
+  body: Y.XmlFragment;
+  /** The paragraph inside `body`. */
+  paragraph: Y.XmlElement;
+  /** The text inside the paragraph, `"hello world"` inserted at once. */
+  text: Y.XmlText;
 }
 
 /**
- * Spec 0.3 `fill`: append `'x'` to `getText('t')` until the reference measure
- * sits just under `target`.
- * @param doc - The document to grow.
+ * Spec 0.3 `nodeDoc()`: client 7 builds node `n1` with a data map, an XML
+ * body and a three-item array, renames it twice, and syncs to a server copy.
+ * The sync stops there: edits made afterwards are captured by the case and
+ * reach the server only the way the case sends them.
+ * @returns The handles.
+ */
+export function nodeDoc(): NodeDoc {
+  const server = new Y.Doc();
+  const client = new Y.Doc();
+  client.clientID = 7;
+  const sync = (u: Uint8Array): void => Y.applyUpdate(server, u);
+  client.on("update", sync);
+  const nodes = client.getMap<Y.Map<unknown>>("nodes");
+  const n1 = new Y.Map<unknown>();
+  const data = new Y.Map<unknown>();
+  const focus = new Y.Array<string>();
+  const body = new Y.XmlFragment();
+  const paragraph = new Y.XmlElement("paragraph");
+  const text = new Y.XmlText();
+  client.transact(() => {
+    nodes.set("n1", n1);
+    n1.set("data", data);
+    data.set("locked", true);
+    data.set("color", "red");
+    n1.set("body", body);
+    text.insert(0, "hello world");
+    paragraph.insert(0, [text]);
+    body.insert(0, [paragraph]);
+    data.set("focus", focus);
+  });
+  focus.push(["a"]);
+  focus.push(["b"]);
+  focus.push(["c"]);
+  n1.set("name", "x1");
+  n1.set("name", "x2");
+  client.off("update", sync);
+  return { server, client, nodes, n1, data, focus, body, paragraph, text };
+}
+
+/**
+ * Spec 0.3 `alt2000()`: client 11 inserts 2000 characters into `getText("t")` at once.
+ * @returns The synced server copy, the client and the text.
+ */
+export function alt2000(): { server: Y.Doc; client: Y.Doc; t: Y.Text } {
+  const server = new Y.Doc();
+  const client = new Y.Doc();
+  client.clientID = 11;
+  const t = client.getText("t");
+  t.insert(0, "x".repeat(2000));
+  Y.applyUpdate(server, Y.encodeStateAsUpdate(client));
+  return { server, client, t };
+}
+
+/**
+ * A pure-delete update written by hand: no structs, the given ranges.
+ * @param ranges - `[client, clock, len]` triples, grouped by client in order.
+ * @returns The V1 update.
+ */
+export function deleteOnly(ranges: ReadonlyArray<readonly [number, number, number]>): Uint8Array {
+  const byClient = new Map<number, Array<readonly [number, number]>>();
+  for (const [client, clock, len] of ranges) {
+    const list = byClient.get(client) ?? [];
+    list.push([clock, len]);
+    byClient.set(client, list);
+  }
+  const e = new Y.UpdateEncoderV1();
+  encoding.writeVarUint(e.restEncoder, 0);
+  encoding.writeVarUint(e.restEncoder, byClient.size);
+  byClient.forEach((list, client) => {
+    encoding.writeVarUint(e.restEncoder, client);
+    encoding.writeVarUint(e.restEncoder, list.length);
+    for (const [clock, len] of list) {
+      e.writeDsClock(clock);
+      e.writeDsLen(len);
+    }
+  });
+  return e.toUint8Array();
+}
+
+/**
+ * Spec 0.3 `beyondDs(client, clock, len)`.
+ * @param client - The client the range names.
+ * @param clock - The range start.
+ * @param len - The range length.
+ * @returns The V1 update.
+ */
+export function beyondDs(client: number, clock: number, len: number): Uint8Array {
+  return deleteOnly([[client, clock, len]]);
+}
+
+/**
+ * Spec 0.2 `dsBytes`: the delete set of an update written out on its own.
+ * @param update - The V1 update.
+ * @returns Bytes.
+ */
+export function dsBytes(update: Uint8Array): number {
+  const ds = Y.decodeUpdate(update).ds;
+  const e = new Y.UpdateEncoderV1();
+  encoding.writeVarUint(e.restEncoder, ds.clients.size);
+  ds.clients.forEach((items, client) => {
+    encoding.writeVarUint(e.restEncoder, client);
+    encoding.writeVarUint(e.restEncoder, items.length);
+    for (const it of items) {
+      e.writeDsClock(it.clock);
+      e.writeDsLen(it.len);
+    }
+  });
+  return e.toUint8Array().byteLength;
+}
+
+/** A source document whose later structs depend on clocks it withholds. */
+export interface PendingSource {
+  /** The update starting after the withheld clocks (it pends on any server lacking them). */
+  update: Uint8Array;
+  /** The source's full update from the empty state, withheld clocks included. */
+  full: Uint8Array;
+}
+
+/**
+ * Spec 0.3 `pendingStructs(client, n)`: five single `"a"` inserts are
+ * withheld, then `n` `"z"` are inserted at the front of `getText("junk")`.
+ * @param client - The source client id.
+ * @param n - How many characters follow the withheld ones.
+ * @returns The pending update and the source's full update.
+ */
+export function pendingSource(client: number, n: number): PendingSource {
+  const e = new Y.Doc();
+  e.clientID = client;
+  const t = e.getText("junk");
+  for (let i = 0; i < 5; i++) t.insert(0, "a");
+  const sv = Y.encodeStateVector(e);
+  t.insert(0, "z".repeat(n));
+  const out = { update: Y.encodeStateAsUpdate(e, sv), full: Y.encodeStateAsUpdate(e) };
+  e.destroy();
+  return out;
+}
+
+/**
+ * Spec 0.3 `pendingStructs(client, n)` as the update alone.
+ * @param client - The source client id.
+ * @param n - How many characters follow the withheld ones.
+ * @returns The V1 update missing clocks 0-4.
+ */
+export function pendingStructs(client: number, n: number): Uint8Array {
+  return pendingSource(client, n).update;
+}
+
+/**
+ * Spec 0.3 `fillLegacy`: the full update of the `pendingStructs(500, 2000)`
+ * source, supplying the clocks a `legacyDoc` lacks.
+ * @returns The V1 update.
+ */
+export function fillLegacy(): Uint8Array {
+  return pendingSource(500, 2000).full;
+}
+
+/**
+ * Spec 0.3 `legacyDoc()`: a server document already holding pending content,
+ * loaded without a connection origin (pending structs 2024 bytes, pending
+ * delete set 22 bytes).
+ * @returns The document.
+ */
+export function legacyDoc(): Y.Doc {
+  const doc = new Y.Doc();
+  doc.getText("body").insert(0, "hello world");
+  Y.applyUpdate(doc, pendingStructs(500, 2000));
+  Y.applyUpdate(doc, deleteOnly([[4242, 100, 1], [4242, 102, 1], [4242, 104, 1]]));
+  return doc;
+}
+
+/**
+ * Spec P-08 `chunk(id, n).tail`: client `id` inserts `"abc"`, then `n`
+ * characters; the part after the first three clocks.
+ * @param id - The client id.
+ * @param n - How many characters follow `"abc"`.
+ * @returns The tail update (pends on clocks 0-2) and the head that supplies them.
+ */
+export function chunk(id: number, n: number): { tail: Uint8Array; full: Uint8Array } {
+  const e = new Y.Doc();
+  e.clientID = id;
+  const t = e.getText("junk");
+  t.insert(0, "abc");
+  const sv = Y.encodeStateVector(e);
+  t.insert(0, "q".repeat(n));
+  const out = { tail: Y.encodeStateAsUpdate(e, sv), full: Y.encodeStateAsUpdate(e) };
+  e.destroy();
+  return out;
+}
+
+/**
+ * Spec 0.3 `mass(N)`: `N` canvas nodes with nine data keys each, edited in
+ * four interleaved rounds (`dadv-v2/mass-delete-cost.cjs`).
+ * @param n - How many nodes.
+ * @returns The synced server copy and the client.
+ */
+export function mass(n: number): { server: Y.Doc; client: Y.Doc; nodes: Y.Map<Y.Map<unknown>> } {
+  const client = new Y.Doc();
+  const nodes = client.getMap<Y.Map<unknown>>("nodes");
+  client.transact(() => {
+    for (let i = 0; i < n; i++) {
+      const node = new Y.Map<unknown>();
+      node.set("id", `n${i}`);
+      node.set("type", "image");
+      node.set("position", { x: i, y: 0 });
+      const data = new Y.Map<unknown>();
+      node.set("data", data);
+      for (const k of ["name", "model", "mode", "params", "content", "coverUrl", "mediaWidth", "mediaHeight", "taskCounts"]) data.set(k, `${k}${i}`);
+      nodes.set(`n${i}`, node);
+    }
+  });
+  for (let round = 0; round < 4; round++) {
+    for (let i = 0; i < n; i++) {
+      const node = nodes.get(`n${i}`);
+      if (!node) continue;
+      node.set("position", { x: i, y: round });
+      const data = node.get("data") as Y.Map<unknown>;
+      data.set("params", { seed: round, i });
+      data.set("name", `node ${i} r${round}`);
+    }
+  }
+  const server = new Y.Doc();
+  Y.applyUpdate(server, Y.encodeStateAsUpdate(client));
+  return { server, client, nodes };
+}
+
+/** The client id `fill` writes with. */
+export const FILL_CLIENT = 0xf00001;
+
+/**
+ * Spec 0.3 `fill(doc, target)`: add `f<i>` nodes whose `name` holds 10 000
+ * `"x"` until the next would pass `target`, then one sized to land just under it.
+ * @param doc - The document to grow (its client id is set to `FILL_CLIENT`).
  * @param target - The size aimed for.
- * @param client - The client id the text is written under.
- * @returns The measured size afterwards (cases assert against this, not `target`).
+ * @returns The measured size afterwards; cases assert on this, not on `target`.
  */
-export function fill(doc: Y.Doc, target: number, client = FILL_CLIENT): number {
-  doc.clientID = client;
-  const text = doc.getText("t");
-  while (refMeasure(doc) + 65_600 <= target) text.insert(text.length, "x".repeat(65_536));
-  const rest = target - refMeasure(doc) - 16;
-  if (rest > 0) text.insert(text.length, "x".repeat(rest));
-  return refMeasure(doc);
+export function fill(doc: Y.Doc, target: number): number {
+  doc.clientID = FILL_CLIENT;
+  const nodes = doc.getMap<Y.Map<unknown>>("nodes");
+  let i = 0;
+  while (enc(doc) + 10_100 <= target) {
+    const node = new Y.Map<unknown>();
+    nodes.set(`f${i++}`, node);
+    node.set("name", "x".repeat(10_000));
+  }
+  const rest = target - enc(doc) - 40;
+  if (rest > 0) {
+    const node = new Y.Map<unknown>();
+    nodes.set(`f${i}`, node);
+    node.set("name", "x".repeat(rest));
+  }
+  return enc(doc);
 }
 
 /**
- * Spec 0.3 `handshakeStep2`: the SyncStep2 payload an honest client answers
- * the server's SyncStep1 with.
+ * The SyncStep2 payload an honest client answers the server's SyncStep1 with.
  * @param server - The server document (its state vector goes out).
  * @param client - The client document answering.
  * @returns The SyncStep2 update bytes.
@@ -131,378 +411,10 @@ export function handshakeStep2(server: Y.Doc, client: Y.Doc): Uint8Array {
 }
 
 /**
- * A client fully synced with `doc`.
- * @param doc - The document to copy.
- * @param clientId - The client id the copy writes under, when it matters.
- * @returns The client document.
+ * A SyncStep1 payload: the state vector of `doc`.
+ * @param doc - The document whose state vector is sent.
+ * @returns The payload bytes.
  */
-export function syncedClient(doc: Y.Doc, clientId?: number): Y.Doc {
-  const client = new Y.Doc();
-  if (clientId !== undefined) client.clientID = clientId;
-  Y.applyUpdate(client, Y.encodeStateAsUpdate(doc));
-  return client;
-}
-
-/**
- * Run one transaction on a client and return the update it emitted, as a live
- * client would send it.
- * @param client - The client document.
- * @param edit - The edit, run inside one transaction.
- * @returns The V1 update of that transaction.
- * @throws {Error} When the edit changed nothing.
- */
-export function capture(client: Y.Doc, edit: (doc: Y.Doc) => void): Uint8Array {
-  let update: Uint8Array | undefined;
-  const listener = (u: Uint8Array): void => {
-    update = update ? Y.mergeUpdates([update, u]) : u;
-  };
-  client.on("update", listener);
-  client.transact(() => edit(client));
-  client.off("update", listener);
-  if (!update) throw new Error("the edit emitted no update");
-  return update;
-}
-
-/**
- * One edit by a fresh client synced with `doc`.
- * @param doc - The server document.
- * @param edit - The edit, run in one transaction.
- * @param clientId - Optional client id.
- * @returns The V1 update.
- */
-export function editUpdate(doc: Y.Doc, edit: (client: Y.Doc) => void, clientId?: number): Uint8Array {
-  const client = syncedClient(doc, clientId);
-  const update = capture(client, edit);
-  client.destroy();
-  return update;
-}
-
-/**
- * A fresh client appends `n` copies of `ch` at the end of `getText('t')`.
- * @param doc - The server document.
- * @param n - How many characters.
- * @param ch - Which character.
- * @returns The V1 update.
- */
-export function appendUpdate(doc: Y.Doc, n: number, ch = "y"): Uint8Array {
-  return editUpdate(doc, (c) => {
-    const t = c.getText("t");
-    t.insert(t.length, ch.repeat(n));
-  });
-}
-
-/**
- * A V1 update with no structs and the given delete ranges, written by hand so
- * the ranges can lie anywhere (spec G9, `pend-growth.cjs`, `preload-pend.cjs`).
- * @param ranges - `[client, clock, length]` triples; one client may repeat.
- * @returns The V1 update.
- */
-export function pureDeleteUpdate(ranges: ReadonlyArray<readonly [number, number, number]>): Uint8Array {
-  const byClient = new Map<number, Array<readonly [number, number]>>();
-  for (const [client, clock, len] of ranges) {
-    const list = byClient.get(client) ?? [];
-    list.push([clock, len]);
-    byClient.set(client, list);
-  }
-  const enc = new Y.UpdateEncoderV1();
-  encoding.writeVarUint(enc.restEncoder, 0);
-  encoding.writeVarUint(enc.restEncoder, byClient.size);
-  for (const [client, list] of byClient) {
-    encoding.writeVarUint(enc.restEncoder, client);
-    encoding.writeVarUint(enc.restEncoder, list.length);
-    for (const [clock, len] of list) {
-      enc.writeDsClock(clock);
-      enc.writeDsLen(len);
-    }
-  }
-  return enc.toUint8Array();
-}
-
-/**
- * Spec G9 as C-80 and C-82 use it: a pure delete of client 9999 `[0, 10)`,
- * a client no server here has seen.
- * @returns The V1 update.
- */
-export function g9Update(): Uint8Array {
-  return pureDeleteUpdate([[9999, 0, 10]]);
-}
-
-/**
- * C-46 (a), `pend-growth.cjs`: no structs, `n` one-clock ranges of client
- * 4242 starting at clock 1 000 000, all beyond any clock a server holds.
- * @param n - Range count (the probe's default 200 000 is about 800 KB).
- * @returns The V1 update.
- */
-export function pendGrowthUpdate(n = 200_000): Uint8Array {
-  const ranges: Array<readonly [number, number, number]> = [];
-  for (let i = 0; i < n; i++) ranges.push([4242, 1_000_000 + 2 * i, 1]);
-  return pureDeleteUpdate(ranges);
-}
-
-/**
- * C-46 (g), `preload-pend.cjs`: client 4242 `[1 000 000, 2 000 000)`.
- * @returns The V1 update the probe sent as a SyncStep2 payload.
- */
-export function preloadPendUpdate(): Uint8Array {
-  return pureDeleteUpdate([[4242, 1_000_000, 1_000_000]]);
-}
-
-/**
- * C-46 (c), `cycle.cjs`: clients 21 and 22 each insert 3000 `'Q'` whose origin
- * is the other's new struct.
- * @returns The V1 update.
- */
-export function cycleUpdate(): Uint8Array {
-  const enc = new Y.UpdateEncoderV1();
-  encoding.writeVarUint(enc.restEncoder, 2);
-  for (const [me, other] of [[22, 21], [21, 22]] as const) {
-    encoding.writeVarUint(enc.restEncoder, 1);
-    enc.writeClient(me);
-    encoding.writeVarUint(enc.restEncoder, 0);
-    enc.writeInfo(0x80 | 4);
-    enc.writeLeftID(Y.createID(other, 0));
-    enc.writeString("Q".repeat(3000));
-  }
-  encoding.writeVarUint(enc.restEncoder, 0);
-  return enc.toUint8Array();
-}
-
-/**
- * C-30: client 1 wrote `'hello'` into `getText('t')`.
- * @returns The document.
- */
-export function helloDoc(): Y.Doc {
-  const d = new Y.Doc();
-  d.clientID = 1;
-  d.getText("t").insert(0, "hello");
-  return d;
-}
-
-/**
- * C-32, `stored-pending-loop.cjs` mode ds: `'existing content;'` plus a stored
- * pending delete range of client 4242 `[100, 105)`, reloaded.
- * @returns The reloaded document, which holds `pendingDs`.
- */
-export function storedPendingDsDoc(): Y.Doc {
-  const d = new Y.Doc();
-  d.clientID = 11;
-  d.getText("t").insert(0, "existing content;");
-  Y.applyUpdate(d, pureDeleteUpdate([[4242, 100, 5]]));
-  return reload(d);
-}
-
-/**
- * `stored-pending-loop.cjs` mode structs: X:5-9 stored while X:0-4 never arrived.
- * @returns The reloaded document, which holds `pendingStructs`.
- */
-export function storedPendingStructsDoc(): Y.Doc {
-  const a = new Y.Doc();
-  a.clientID = 11;
-  a.getText("t").insert(0, "existing content");
-  const b = syncedClient(a, 22);
-  b.getText("t").insert(3, "XXXXX");
-  const sv1 = Y.encodeStateVector(b);
-  b.getText("t").insert(8, "YYYYY");
-  const u2 = Y.encodeStateAsUpdate(b, sv1);
-  const server = reload(a);
-  Y.applyUpdate(server, u2);
-  return reload(server);
-}
-
-/**
- * Spec S1 (`wouldpend-def.cjs`): author X's `'abc'` was lost, `'def'` reached
- * the server as stored pending structs; offline the author deleted one char
- * and typed one.
- * @returns The reloaded server and the author's reconnect SyncStep2 payload.
- */
-export function s1Scenario(): { server: Y.Doc; reconnect: Uint8Array } {
-  const x = new Y.Doc();
-  x.clientID = 777;
-  const t = x.getText("t");
-  t.insert(0, "abc");
-  const sv1 = Y.encodeStateVector(x);
-  t.insert(3, "def");
-  const srv0 = new Y.Doc();
-  Y.applyUpdate(srv0, Y.encodeStateAsUpdate(x, sv1));
-  const server = reload(srv0);
-  t.delete(4, 1);
-  t.insert(5, "g");
-  return { server, reconnect: Y.encodeStateAsUpdate(x, Y.encodeStateVector(server)) };
-}
-
-/**
- * `stored-pending-integrate.cjs`: `m.x` is a `Y.Array` with `k` sparse-clock
- * children (client 2), a stored pending overwrite of `m.x` by client 3 at
- * clock 1, and the 16-byte gap filler (client 3 clock 0) that integrates it.
- * @param k - Child count.
- * @returns The reloaded server (holding `pendingStructs`) and the gap filler.
- */
-export function storedPendingIntegrateScenario(k = 2000): { server: Y.Doc; filler: Uint8Array } {
-  const big = 2 ** 40;
-  const d = new Y.Doc();
-  d.clientID = 1;
-  const arr = new Y.Array<number>();
-  d.getMap("m").set("x", arr);
-  arr.push([0]);
-  d.getArray("g").push([0]);
-  const typeItem = d.getMap("m")._map.get("x");
-  const anchor = arr._start;
-  const ganchor = d.getArray("g")._start;
-  if (!typeItem || !anchor || !ganchor) throw new Error("fixture items missing");
-  const enc = new Y.UpdateEncoderV1();
-  encoding.writeVarUint(enc.restEncoder, 1);
-  encoding.writeVarUint(enc.restEncoder, 1 + 2 * k);
-  enc.writeClient(2);
-  encoding.writeVarUint(enc.restEncoder, 0);
-  new Y.GC(Y.createID(2, 0), big).write(enc, 0);
-  for (let i = 0; i < k; i++) {
-    new Y.Item(Y.createID(2, big + 2 * i), null, anchor.id, null, null, null, null, new Y.ContentBinary(new Uint8Array(0))).write(enc, 0);
-    new Y.Item(Y.createID(2, big + 2 * i + 1), null, ganchor.id, null, null, null, null, new Y.ContentBinary(new Uint8Array(0))).write(enc, 0);
-  }
-  encoding.writeVarUint(enc.restEncoder, 0);
-  Y.applyUpdate(d, enc.toUint8Array());
-  const e2 = new Y.UpdateEncoderV1();
-  encoding.writeVarUint(e2.restEncoder, 1);
-  encoding.writeVarUint(e2.restEncoder, 1);
-  e2.writeClient(3);
-  encoding.writeVarUint(e2.restEncoder, 1);
-  new Y.Item(Y.createID(3, 1), null, typeItem.lastId, null, null, null, null, new Y.ContentAny([1])).write(e2, 0);
-  encoding.writeVarUint(e2.restEncoder, 0);
-  Y.applyUpdate(d, e2.toUint8Array());
-  const server = reload(d);
-  let last = server.getArray("g")._start;
-  while (last?.right) last = last.right;
-  if (!last) throw new Error("fixture array empty");
-  const e3 = new Y.UpdateEncoderV1();
-  encoding.writeVarUint(e3.restEncoder, 1);
-  encoding.writeVarUint(e3.restEncoder, 1);
-  e3.writeClient(3);
-  encoding.writeVarUint(e3.restEncoder, 0);
-  new Y.Item(Y.createID(3, 0), null, last.lastId, null, null, null, null, new Y.ContentAny([7])).write(e3, 0);
-  encoding.writeVarUint(e3.restEncoder, 0);
-  return { server, filler: e3.toUint8Array() };
-}
-
-/**
- * `node-delete-bound.cjs` `build`: `k` canvas nodes under `nodes`, each moved three times.
- * @param kind - `'image'` or `'text'` (text nodes carry a body).
- * @param k - Node count.
- * @param into - The document to build into.
- * @returns `into`.
- */
-export function buildNodes(kind: "image" | "text", k: number, into: Y.Doc = new Y.Doc()): Y.Doc {
-  into.clientID = FILL_CLIENT;
-  const nodes = into.getMap<Y.Map<unknown>>("nodes");
-  for (let i = 0; i < k; i++) {
-    into.transact(() => {
-      const n = new Y.Map<unknown>();
-      nodes.set(`node-${i}`, n);
-      n.set("type", kind);
-      n.set("x", i * 10.5);
-      n.set("y", i * 3.25);
-      n.set("w", 320);
-      n.set("h", 240);
-      n.set("name", `Image ${i}`);
-      n.set("url", `https://cdn.example.com/assets/${"f".repeat(64)}.png`);
-      const data = new Y.Map<unknown>();
-      n.set("data", data);
-      data.set("status", "done");
-      data.set("model", "model-x");
-      if (kind === "text") {
-        const body = new Y.Text();
-        n.set("body", body);
-        body.insert(0, "lorem ipsum ".repeat(40));
-      }
-    });
-  }
-  for (let r = 0; r < 3; r++) {
-    for (let i = 0; i < k; i++) into.transact(() => nodes.get(`node-${i}`)?.set("x", r + i));
-  }
-  return into;
-}
-
-/**
- * Spec `imageNodes(k)`.
- * @param k - Node count.
- * @returns The document.
- */
-export function imageNodes(k: number): Y.Doc {
-  return buildNodes("image", k);
-}
-
-/**
- * Spec `canvasDoc(n, del)` (`reconnect-bound-canvas.mjs`).
- * @param n - Node count.
- * @param del - Share of nodes deleted, by `(i * 7919 mod n) / n < del`.
- * @returns The document.
- */
-export function canvasDoc(n: number, del: number): Y.Doc {
-  const d = new Y.Doc();
-  const nodes = d.getMap<Y.Map<unknown>>("nodes");
-  for (let i = 0; i < n; i++) {
-    const node = new Y.Map<unknown>();
-    nodes.set(`n${i}`, node);
-    node.set("x", i);
-    node.set("y", i);
-    const body = new Y.Text();
-    node.set("body", body);
-    body.insert(0, `text of node ${i}`);
-    for (let k = 0; k < 5; k++) node.set("x", i + k);
-  }
-  for (let i = 0; i < n; i++) if (((i * 7919) % n) / n < del) nodes.delete(`n${i}`);
-  return d;
-}
-
-/**
- * Spec `fragText(k)` (`reconnect-offline-bound.mjs`): fragmented text in `getText('t')`.
- * @param k - Insert count.
- * @param into - The document to build into.
- * @returns `into`.
- */
-export function fragText(k: number, into: Y.Doc = new Y.Doc()): Y.Doc {
-  const t = into.getText("t");
-  for (let i = 0; i < k; i++) {
-    const pos = (i * 7919) % (t.length + 1);
-    t.insert(pos, "w");
-    if (i % 8 === 7) t.delete(pos, 1);
-  }
-  return into;
-}
-
-/**
- * Count the structs and delete ranges of a V1 update.
- * @param update - The update.
- * @returns Struct count (Skip excluded) and delete range count.
- */
-export function updateShape(update: Uint8Array): { structs: number; ranges: number } {
-  const decoded = Y.decodeUpdate(update);
-  let ranges = 0;
-  decoded.ds.clients.forEach((list) => {
-    ranges += list.length;
-  });
-  return { structs: decoded.structs.filter((s) => s.constructor.name !== "Skip").length, ranges };
-}
-
-/**
- * Spec C-112 bound for a non-connection update reaching `onChange`.
- * @param update - The V1 update.
- * @returns `(structs > 0 ? byteLength + C * structs : 0) + 3C * ranges`.
- */
-export function onChangeBound(update: Uint8Array): number {
-  const { structs, ranges } = updateShape(update);
-  return (structs > 0 ? update.byteLength + C * structs : 0) + 3 * C * ranges;
-}
-
-/**
- * Whether two encoded state vectors are equal.
- * @param a - One.
- * @param b - The other.
- * @returns Equal.
- */
-export function sameStateVector(a: Uint8Array, b: Uint8Array): boolean {
-  const ma = Y.decodeStateVector(a);
-  const mb = Y.decodeStateVector(b);
-  if (ma.size !== mb.size) return false;
-  for (const [client, clock] of ma) if (mb.get(client) !== clock) return false;
-  return true;
+export function step1Payload(doc: Y.Doc): Uint8Array {
+  return Y.encodeStateVector(doc);
 }

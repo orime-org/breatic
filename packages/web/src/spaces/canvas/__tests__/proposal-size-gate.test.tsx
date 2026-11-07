@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Space size cap (inner#1790), spec section 7, templates and Agent canvas
- * proposals: `placeProposalAt` writes the whole flow as one `add` batch, a
- * picked template says a refusal in a toast, and an Agent proposal reports it
- * through the card's existing outcome toast.
+ * Space size cap v2 (inner#1790 v2 web spec RQ-03, RQ-04): templates and Agent
+ * canvas proposals are refused before anything is fetched, and write the
+ * whole flow as one `add` batch. A picked template says a refusal in the add
+ * toast; an Agent proposal is told once, through the card's outcome toast,
+ * and its result's reason follows the state (Q4).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -14,14 +15,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as Y from 'yjs';
 import type * as React from 'react';
 import { CANVAS_NODES_KEY, type CanvasProposal } from '@breatic/shared';
-import type * as ProviderModule from '@hocuspocus/provider';
 
 import type { ExistingNode } from '@web/spaces/canvas/use-node-creation';
 
-vi.mock('@hocuspocus/provider', async (importOriginal) => {
-  const { providerMockModule } = await import('@web/data/yjs/__tests__/helpers/size-gate-provider-mock');
-  return providerMockModule(await importOriginal<typeof ProviderModule>());
-});
 vi.mock('@web/data/yjs/collab-failure-report', () => ({ reportCollabFailure: vi.fn() }));
 vi.mock('@web/lib/toast', () => ({
   toast: { warning: vi.fn(), error: vi.fn(), success: vi.fn(), info: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },
@@ -63,13 +59,11 @@ vi.mock('@web/spaces/canvas/generate/AudioGeneratePanelContainer', () => ({ Audi
 
 import { toast } from '@web/lib/toast';
 import { modelsApi } from '@web/data/api';
+import { canvasApi } from '@web/data/api/canvas';
 import * as canvasSpace from '@web/data/yjs/canvas-space';
-import * as storyboard from '@web/data/yjs/node-storyboard';
 import { readShots } from '@web/data/yjs/node-storyboard';
-import { writeProposalPrompt } from '@web/spaces/canvas/generate/proposal-prompt';
-import { _resetCollabSocketForTests } from '@web/data/yjs/collab-socket';
-import { docName, _resetForTests } from '@web/data/yjs/manager';
-import { reserveSpaceRoom } from '@web/data/yjs/space-write';
+import { clearAllDocSizes } from '@web/data/yjs/doc-size';
+import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { ProposalCard } from '@web/pages/project/chat/ProposalCard';
@@ -78,16 +72,12 @@ import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 import { mockSpace } from '@web/spaces/canvas/__tests__/focus-harness';
 import { useCanvasStore } from '@web/stores';
 import { useCurrentUserStore } from '@web/stores/current-user';
-import { sizeGateProviders } from '@web/data/yjs/__tests__/helpers/size-gate-provider-mock';
-import { openSizedDoc, pushSize } from '@web/data/yjs/__tests__/helpers/size-gate-harness';
 import {
-  COPY_EN,
-  F_FULL,
-  F_NORMAL,
-  F_WARNING,
-  F_WARNING_TIGHT,
-  type DocSizePush,
-} from '@web/data/yjs/__tests__/helpers/doc-size-fixtures';
+  SIZE_COPY_EN,
+  enterSize,
+  expectSizeToast,
+  type SizeCode,
+} from '@web/data/yjs/__tests__/helpers/size-v2-harness';
 
 const PID = 'p-prop';
 const SID = 's-prop';
@@ -95,17 +85,16 @@ const NAME = docName.canvasSpace(PID, SID);
 
 /**
  * The proposal every case lands: a written text node whose words go into a
- * song's lyrics box, the song with its own prompt, and a multi-shot clip with
- * two shots. Lyrics exist only on audio and shots only on video, so the two
- * generation roles the spec names sit on two nodes.
- * @param songPrompt - The song's prompt text.
+ * song's lyrics box, the song with its own prompt, a multi-shot clip with two
+ * shots, and a template source picture whose hosted resource is fetched into
+ * storage after the write.
  * @returns The proposal.
  */
-function proposalOf(songPrompt = 'gentle pop'): CanvasProposal {
+function proposalOf(): CanvasProposal {
   return {
     nodes: [
       { role: 'written', type: 'text', name: 'Verse', prompt: [{ text: 'la la' }] },
-      { role: 'generate', type: 'audio', name: 'Song', mode: 't2m', model: 'some-model', takesPrompt: true, params: {}, prompt: [{ text: songPrompt }] },
+      { role: 'generate', type: 'audio', name: 'Song', mode: 't2m', model: 'some-model', takesPrompt: true, params: {}, prompt: [{ text: 'gentle pop' }] },
       {
         role: 'generate', type: 'video', name: 'Clip', mode: 'multi_shot', model: 'some-model', takesPrompt: true, params: {},
         shots: [
@@ -113,6 +102,7 @@ function proposalOf(songPrompt = 'gentle pop'): CanvasProposal {
           { prompt: [{ text: 'second shot' }], duration: 3 },
         ],
       },
+      { role: 'source', type: 'image', name: 'Ref', resource: 'templates/ref.png' },
     ],
     edges: [{ fromIndex: 0, toIndex: 1, into: 'lyrics' }],
     rationale: 'A song and a clip',
@@ -121,20 +111,19 @@ function proposalOf(songPrompt = 'gentle pop'): CanvasProposal {
 }
 
 /**
- * Opens the Space and delivers one push.
- * @param push - The size push.
+ * Opens the Space in one size state.
+ * @param code - The size state.
  * @returns The canvas document.
  */
-function openAt(push: DocSizePush): Y.Doc {
-  const { doc, provider } = openSizedDoc(NAME);
-  pushSize(provider, push);
+function openAt(code: SizeCode): Y.Doc {
+  const doc = getDoc(NAME);
+  enterSize(NAME, code);
   return doc;
 }
 
 /**
  * Mounts the canvas, optionally beside the card that posts `proposal`.
  * @param proposal - A proposal whose card is mounted too.
- * @returns Nothing.
  */
 function mount(proposal?: CanvasProposal): void {
   vi.mocked(canvasSpace.useCanvasSpace).mockReturnValue(mockSpace([], true));
@@ -164,7 +153,6 @@ function idNamed(name: string): string {
 
 /**
  * Presses the card's button and waits for the canvas to take the intent.
- * @returns Nothing.
  */
 async function pressUse(): Promise<void> {
   await waitFor(() => expect(useCanvasStore.getState().canvasListening).toBe(true));
@@ -173,122 +161,93 @@ async function pressUse(): Promise<void> {
 }
 
 beforeEach(() => {
-  sizeGateProviders.length = 0;
   panels.placeTemplate = null;
   useCurrentUserStore.getState().setUser({ id: 'u-9', name: 'Ada', email: 'ada@example.com', personalStudio: null, membershipTier: 'base' });
   useCanvasStore.setState({ pendingNodeCreate: null, proposalOutcome: null });
   vi.spyOn(modelsApi, 'list').mockResolvedValue({ image: [], video: [], audio: [], tts: [], three_d: [], total: 0, credit_multiplier: 1 });
+  vi.spyOn(canvasApi, 'ingestUrl').mockResolvedValue(undefined as never);
 });
 
 afterEach(() => {
-  _resetCollabSocketForTests();
+  clearAllDocSizes();
   _resetForTests();
   canvasSpace._resetCanvasUndoCacheForTests();
   vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 
-describe('W-70 a template picked in a full Space is refused with a toast', () => {
-  it('placeProposalAt reports full and writes nothing', () => {
-    const doc = openAt(F_FULL);
-    const before = Y.encodeStateAsUpdate(doc);
-    const { result } = renderHook(() => useNodeCreation(PID, SID));
-    const placed: unknown = result.current.placeProposalAt(proposalOf(), { x: 0, y: 0 }, [], new Map(), [0, 1, 2]);
-    expect(placed).toEqual({ ok: false, reason: 'full' });
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-  });
-
-  it('placeTemplate warns once, does not frame anything and does not throw', () => {
-    const doc = openAt(F_FULL);
+describe('RQ-03 a template picked in a Space that cannot take an add', () => {
+  it.each([
+    ['F', SIZE_COPY_EN.T_ADD],
+    ['O', SIZE_COPY_EN.T_OVER],
+    ['Z', null],
+  ] as const)('RQ-03 [%s] placeTemplate writes nothing, fetches no resource, frames nothing and does not throw', (code, sentence) => {
+    const doc = openAt(code);
     mount();
     expect(panels.placeTemplate).toBeTypeOf('function');
     vi.mocked(toast.warning).mockClear();
     const before = Y.encodeStateAsUpdate(doc);
     const frame = vi.spyOn(window, 'requestAnimationFrame');
-    expect(() => panels.placeTemplate!(proposalOf(), new Map(), [0, 1, 2])).not.toThrow();
+    expect(() => panels.placeTemplate!(proposalOf(), new Map(), [0, 1, 2, 3])).not.toThrow();
     // `showPlaced` schedules its framing frame synchronously; none means it was not called.
     expect(frame).not.toHaveBeenCalled();
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
     expect(doc.getMap(CANVAS_NODES_KEY).size).toBe(0);
-    expect(toast.warning).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(COPY_EN.T_ADD_BLOCKED);
-    expect(toast.error).not.toHaveBeenCalled();
-  });
-});
-
-describe('W-71 a template larger than the room left is refused', () => {
-  it('placeProposalAt reports no_room with the room left and writes nothing', () => {
-    const doc = openAt(F_WARNING_TIGHT);
-    const before = Y.encodeStateAsUpdate(doc);
-    const { result } = renderHook(() => useNodeCreation(PID, SID));
-    const placed: unknown = result.current.placeProposalAt(proposalOf(), { x: 0, y: 0 }, [], new Map(), [0, 1, 2]);
-    expect(placed).toEqual({ ok: false, reason: 'no_room', room: 1 });
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    expect(canvasApi.ingestUrl).not.toHaveBeenCalled();
+    expectSizeToast(sentence);
   });
 
-  it('placeTemplate names the room left and does not frame anything', () => {
-    const doc = openAt(F_WARNING_TIGHT);
+  it('RQ-03 [W] a template with room lands and fetches its resource once (control)', () => {
+    const doc = openAt('W');
     mount();
     vi.mocked(toast.warning).mockClear();
-    const before = Y.encodeStateAsUpdate(doc);
-    const frame = vi.spyOn(window, 'requestAnimationFrame');
-    panels.placeTemplate!(proposalOf(), new Map(), [0, 1, 2]);
-    expect(frame).not.toHaveBeenCalled();
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-    expect(toast.warning).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(COPY_EN.T_NO_ROOM('1 B'));
+    panels.placeTemplate!(proposalOf(), new Map(), [0, 1, 2, 3]);
+    expect(doc.getMap(CANVAS_NODES_KEY).size).toBeGreaterThan(0);
+    expect(canvasApi.ingestUrl).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(canvasApi.ingestUrl).mock.calls[0][0]).toMatchObject({ template_resource: 'templates/ref.png', node_id: idNamed('Ref') });
+    expectSizeToast(null);
   });
 });
 
-describe('W-72 an Agent proposal in a full Space', () => {
-  it('is reported through the card as one warning and leaves the card ready', async () => {
-    const doc = openAt(F_FULL);
+describe('RQ-04 an Agent canvas proposal in a Space that cannot take an add', () => {
+  it.each([
+    ['F', 'full'],
+    ['O', 'over_ceiling'],
+    ['Z', 'resyncing'],
+  ] as const)('RQ-04 [%s] placeProposalAt without notify returns the refusal, writes nothing and shows no toast', (code, reason) => {
+    const doc = openAt(code);
+    const before = Y.encodeStateAsUpdate(doc);
+    const { result } = renderHook(() => useNodeCreation(PID, SID));
+    vi.mocked(toast.warning).mockClear();
+    const placed: unknown = result.current.placeProposalAt(proposalOf(), { x: 0, y: 0 }, [], new Map(), [0, 1, 2, 3], false);
+    expect(placed).toEqual({ ok: false, reason });
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    expect(canvasApi.ingestUrl).not.toHaveBeenCalled();
+    expectSizeToast(null);
+  });
+
+  it.each([
+    ['F', SIZE_COPY_EN.T_PROPOSAL],
+    ['O', SIZE_COPY_EN.T_PROPOSAL],
+  ] as const)('RQ-04 [%s] the card says the proposal was not placed, once, and stays ready', async (code, sentence) => {
+    const doc = openAt(code);
     const proposal = proposalOf();
     mount(proposal);
     vi.mocked(toast.warning).mockClear();
     const before = Y.encodeStateAsUpdate(doc);
     await pressUse();
     await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
-    expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(COPY_EN.T_PROPOSAL_FULL);
-    expect(toast.error).not.toHaveBeenCalled();
+    expectSizeToast(sentence);
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-    expect(screen.getByTestId('proposal-card')).not.toHaveTextContent(COPY_EN.T_PROPOSAL_FULL);
+    expect(canvasApi.ingestUrl).not.toHaveBeenCalled();
     expect(screen.getByTestId<HTMLButtonElement>('proposal-use').disabled).toBe(false);
     expect(useCanvasStore.getState().proposalOutcome).toBeNull();
   });
 });
 
-describe('W-73 an Agent proposal larger than the room left', () => {
-  it('names the room left through the card', async () => {
-    const doc = openAt(F_WARNING_TIGHT);
-    mount(proposalOf());
-    vi.mocked(toast.warning).mockClear();
-    const before = Y.encodeStateAsUpdate(doc);
-    await pressUse();
-    await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
-    expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(COPY_EN.T_PROPOSAL_NO_ROOM('1 B'));
-    expect(toast.error).not.toHaveBeenCalled();
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-  });
-
-  it('counts room another operation holds as taken', async () => {
-    const doc = openAt(F_WARNING);
-    const held = reserveSpaceRoom(NAME, 500000, { notify: false });
-    expect(held.ok).toBe(true);
-    // Its prompt alone is more than the 286432 bytes left beside the reservation.
-    mount(proposalOf('x'.repeat(300000)));
-    vi.mocked(toast.warning).mockClear();
-    const before = Y.encodeStateAsUpdate(doc);
-    await pressUse();
-    await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
-    expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(COPY_EN.T_PROPOSAL_NO_ROOM('279.7 KiB'));
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-  });
-});
-
-describe('W-74 prompts, lyrics and shots land with the batch', () => {
-  it('writes every fragment without a separate check', async () => {
-    openAt(F_WARNING);
+describe('RQ-04 prompts, lyrics and shots land with the batch when there is room', () => {
+  it('RQ-04 [W] writes every fragment without a separate check', async () => {
+    openAt('W');
     mount();
     vi.mocked(toast.warning).mockClear();
     act(() => useCanvasStore.getState().requestNodeCreate({ proposal: proposalOf() }));
@@ -304,13 +263,13 @@ describe('W-74 prompts, lyrics and shots land with the batch', () => {
     expect(bodyToPlainText(shots![0]!.prompt)).toBe('first shot');
     expect(bodyToPlainText(shots![1]!.prompt)).toBe('second shot');
     expect(canvasSpace.readTextBodies(PID, SID, [verse]).get(verse)).toBe('la la');
-    expect(toast.warning).not.toHaveBeenCalled();
+    expectSizeToast(null);
   });
 });
 
-describe('W-75 a write that throws part way still rolls back', () => {
+describe('a write that throws part way still rolls back', () => {
   it('reports failed, leaves nothing and no undo step, and says nothing about size', async () => {
-    const doc = openAt(F_NORMAL);
+    const doc = openAt('U');
     mount();
     vi.mocked(toast.warning).mockClear();
     const undo = canvasSpace.getCanvasUndoManager(doc, NAME);
@@ -332,32 +291,5 @@ describe('W-75 a write that throws part way still rolls back', () => {
     expect(canvasSpace.readCanvasGraph(PID, SID)).toEqual({ nodes: [], edges: [] });
     expect(undo.undoStack.length).toBe(stack);
     expect(toast.warning).not.toHaveBeenCalled();
-  });
-});
-
-describe('a rollback that brings back more than the room left', () => {
-  it('still takes the whole placement back', () => {
-    const { doc, provider } = openSizedDoc(NAME);
-    canvasSpace.addNode(PID, SID, {
-      id: 'g', type: 'video', position: { x: 0, y: 0 },
-      data: { name: 'Clip', createdAt: 1, createdBy: 'u1', locked: false, state: 'idle', attachments: [], mode: 'multi_shot', model: 'some-model' },
-    } as never);
-    const prompt = canvasSpace.getPromptFragment(PID, SID, 'g', 'multi_shot')!;
-    doc.transact(() => writeProposalPrompt(prompt, [{ text: 'x'.repeat(3000) }]));
-    pushSize(provider, { ...F_WARNING, room: 1500 });
-    vi.spyOn(storyboard, 'setStoryboardShots').mockImplementation(() => {
-      throw new Error('write failed');
-    });
-    const reuse: CanvasProposal = {
-      nodes: [{
-        role: 'generate', type: 'video', name: 'Clip', mode: 'multi_shot', model: 'some-model', takesPrompt: true, params: {},
-        prompt: [{ text: 'short' }], shots: [{ prompt: [{ text: 's' }], duration: 2 }],
-      }],
-      edges: [],
-      rationale: 'r',
-    };
-    const { result } = renderHook(() => useNodeCreation(PID, SID));
-    expect(() => result.current.placeProposalAt(reuse, { x: 0, y: 0 }, [], new Map<number, ExistingNode>([[0, { nodeId: 'g', mention: { sourceNodeId: 'g', label: 'Clip', kind: 'video' } }]]), [0])).toThrow('write failed');
-    expect(bodyToPlainText(canvasSpace.getPromptFragment(PID, SID, 'g', 'multi_shot')!)).toBe('x'.repeat(3000));
   });
 });

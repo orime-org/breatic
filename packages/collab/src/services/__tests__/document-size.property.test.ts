@@ -2,33 +2,38 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Property tests of the document size cap (inner#1790, design 4.1, 4.2 and 8;
- * test spec section 4: INV-1 to INV-10, generators G1-G24, C-60 to C-66).
+ * Property tests of the document size cap, second version (inner#1790,
+ * design 4.1, 4.2 and 8; v2 collab test spec section 11: PR-01 to PR-06).
  *
- * Yjs collaboration is a critical path, so the analysis is held to yjs on a
- * full replica for every generated case: `Δ` against `growthBound` (INV-1,
- * INV-2), `wouldPend` against `ref.truth` both ways (INV-3), the precheck
- * against `ref.truth` (INV-4) and `integratesStored` against
- * `ref.storedReduced` (INV-5). C-65 and C-66 drive the production hooks
- * `createCollabServer` registers (`Server` replaced by a stand-in that records
- * its configuration), never a second copy of the hook logic.
+ * The object under test is the production `beforeSync` that
+ * `createCollabServer` hands to the Hocuspocus `Server` (its constructor is
+ * replaced by one that records the configuration), driven on a real
+ * Hocuspocus `Document` loaded through the production `afterLoadDocument`.
+ * An admitted update is applied the way Hocuspocus applies it, with the
+ * connection origin, so the production transaction listeners run as well.
+ * The record is put in the phase a run needs with `recordExact` under the
+ * repository defaults (configuration D); fake timers keep the measure from
+ * firing until a case asks for it.
  *
- * Every property runs with a fixed seed; the run counts are the spec's.
+ * Every judgement below is made on the test side, never by the production
+ * `updateShape`: PR-01 decodes the update, PR-02 compares the live items of
+ * the server document before and after the apply, PR-03 counts split
+ * endpoints on the server's struct store by the design 4.1 definition.
+ *
+ * Every property runs with a fixed seed.
  */
 
 import type * as HocuspocusServerModule from "@hocuspocus/server";
 import type * as CoreModule from "@breatic/core";
 import type * as ConfigModule from "@collab/config.js";
-import type * as SizeModuleNs from "@collab/services/document-size.js";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import fc from "fast-check";
+import * as decoding from "lib0/decoding";
 import * as Y from "yjs";
 
 const h = vi.hoisted(() => ({
   serverSpy: vi.fn(),
   logs: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-  checkRateLimit: vi.fn(async () => ({ allowed: true })),
-  cfg: {},
 }));
 
 vi.mock("@hocuspocus/extension-redis", () => ({ Redis: class {} }));
@@ -51,14 +56,16 @@ vi.mock("@breatic/core", async (importOriginal) => ({
   getCollabRedis: vi.fn(() => ({ on: vi.fn() })),
   sendMail: vi.fn(async () => ({ status: "skipped", reason: "backend_disabled" })),
   getProjectConcurrentEditorLimit: vi.fn(async () => 100),
-  checkRateLimit: h.checkRateLimit,
+  checkRateLimit: vi.fn(async () => ({ allowed: true })),
   accountActivityRepo: { recordActivity: vi.fn(async () => undefined) },
 }));
 
-// Spec 0.2: the configuration reaches production through getCollabConfig.
+// Spec 0.2 configuration D reaches production through getCollabConfig.
 vi.mock("@collab/config.js", async (importOriginal) => {
   const real = await importOriginal<typeof ConfigModule>();
-  return { ...real, getCollabConfig: () => Object.freeze({ ...real.getCollabConfig(), ...h.cfg }) };
+  const { D_CONFIG } = await import("@collab/__tests__/helpers/document-size-fixtures.js");
+  const cfg = Object.freeze({ ...real.getCollabConfig(), ...D_CONFIG });
+  return { ...real, getCollabConfig: () => cfg };
 });
 
 vi.mock("@collab/services/persistence.js", () => ({
@@ -71,555 +78,655 @@ vi.mock("@collab/services/connection-registry.js", () => ({
 
 vi.mock("@collab/services/legacy-table-conversion.js", () => ({ convertStoredTablesOnLoad: vi.fn(async () => 0) }));
 
+// The activity half of `beforeSync` writes to Postgres; it is not what these properties measure.
+vi.mock("@collab/hooks/account-activity.js", () => ({
+  createActivityHook: () => async (): Promise<void> => undefined,
+}));
+
+import { Document } from "@hocuspocus/server";
 import { COLLAB_DOCUMENT_TOO_LARGE_REASON } from "@breatic/shared";
-import {
-  GENERATORS,
-  S,
-  capture,
-  deleteOnly,
-  S_CONFIG,
-  type GeneratorId,
-  type Sample,
-  fill,
-  pendingIntervals,
-  pendingUnitsNotIn,
-  refMeasure,
-  reload,
-  replicaOutcome,
-  syncedClient,
-} from "./helpers/doc-size-ref.js";
+import { createCollabServer } from "@collab/hocuspocus.js";
+import * as size from "@collab/services/document-size.js";
+import { D, D_CONFIG, beyondDs, capture, enc, syncedClient } from "@collab/__tests__/helpers/document-size-fixtures.js";
+import { SYNC, authFrame } from "@collab/__tests__/helpers/live-hocuspocus.js";
 
-type SizeModule = typeof SizeModuleNs;
-type DocumentClass = typeof HocuspocusServerModule.Document;
-type HocusDocument = InstanceType<DocumentClass>;
+const SEED = 1790;
+const SPLITS = D_CONFIG.document_size_max_delete_splits;
 
-/** The production hooks C-65 and C-66 drive. */
+/** The production hooks the properties drive. */
 interface Hooks {
   beforeSync: (payload: unknown) => Promise<void>;
+  afterHandleMessage: (payload: unknown) => Promise<void>;
   afterLoadDocument: (payload: unknown) => Promise<void>;
-  onChange: (payload: unknown) => Promise<void>;
+  afterUnloadDocument: (payload: unknown) => Promise<void>;
+  receiveFrame: (peer: FakePeer, message: unknown) => Uint8Array | undefined;
+  onPeerClose: (peer: FakePeer, event: unknown) => void;
 }
 
-/** A connection stand-in (spec 0.3). */
+/** A crossws peer as the production frame hooks see it. */
+interface FakePeer {
+  remoteAddress: string;
+  _hocuspocus: { socketId: string };
+  close: ReturnType<typeof vi.fn>;
+  send: ReturnType<typeof vi.fn>;
+}
+
+/** A writable connection stand-in (spec 0.4). */
 interface FakeConnection {
   socketId: string;
   readOnly: boolean;
   context: { user: { id: string } };
+  close: ReturnType<typeof vi.fn>;
   sendStateless: ReturnType<typeof vi.fn>;
-  send: ReturnType<typeof vi.fn>;
 }
 
-/** What one boot of the server under a configuration hands the tests. */
-interface Booted {
-  hooks: Hooks;
-  size: SizeModule;
-  Document: DocumentClass;
+/** The v2 record as `readDocSizeRecord` returns it (spec Q14). */
+interface SizeRecord {
+  exact: number;
+  current: number;
+  phase: string;
+  heldSum: number;
 }
 
-const SEED = 1790;
-const NAME = "project-p1/canvas-s1";
+/** Where a run puts the record before its sequence. */
+type Band = "normal" | "warning" | "full" | "over";
 
-/**
- * Load the production modules afresh under a configuration and capture the
- * hooks `createCollabServer` registers.
- * @param cfg - Values that override `config/collab.yaml`.
- * @returns The hooks, the size module and the Document class of that load.
- */
-async function boot(cfg: Record<string, unknown>): Promise<Booted> {
-  h.cfg = cfg;
-  vi.resetModules();
+/** The shape of a generated document: `nodeDoc`-like nodes plus root text. */
+interface DocShape {
+  nodes: number;
+  textLen: number;
+}
+
+/** One generated operation (spec section 11 generators). */
+type Op =
+  | { kind: "insert"; target: number; at: number; len: number }
+  | { kind: "alternate"; xml: boolean; pick: number; at: number; count: number }
+  | { kind: "repeatDelete"; pick: number }
+  | { kind: "beyondClock"; client: number; offset: number; len: number }
+  | { kind: "deleteTypeWithChildren"; what: number; pick: number }
+  | { kind: "deleteMapEntry"; pick: number };
+
+/** What one step saw: the record before it, the update, and the outcome. */
+interface Step {
+  current: number;
+  update: Uint8Array;
+  admitted: boolean;
+}
+
+/** One run's server document, client and connection. */
+interface Run {
+  name: string;
+  doc: Document;
+  client: Y.Doc;
+  peer: FakePeer;
+  conn: FakeConnection;
+  nextClientId: number;
+  deletes: Uint8Array[];
+}
+
+let hooks: Hooks;
+let seq = 0;
+
+beforeAll(async () => {
   h.serverSpy.mockClear();
-  const { createCollabServer } = await import("@collab/hocuspocus.js");
-  const size = await import("@collab/services/document-size.js");
-  const { Document } = await import("@hocuspocus/server");
   const started = await createCollabServer({ collabRedisUrl: "redis://localhost:6379/3", port: 1234, redisKeyPrefix: "test", shutdownDeadline: () => undefined });
   await started.storeLoop.stop();
   started.stopUpgradeSessions();
   started.seatHandover.stop();
-  return { hooks: h.serverSpy.mock.calls.at(-1)?.[0] as Hooks, size, Document };
-}
+  hooks = h.serverSpy.mock.calls.at(-1)?.[0] as Hooks;
+});
 
-/**
- * A writable connection of user `u1` on socket `s1`.
- * @returns The connection.
- */
-function connection(): FakeConnection {
-  return { socketId: "s1", readOnly: false, context: { user: { id: "u1" } }, sendStateless: vi.fn(), send: vi.fn() };
-}
-
-/**
- * Load a document through the production `afterLoadDocument`.
- * @param b - The booted server.
- * @param state - The stored state.
- * @returns The loaded document.
- */
-async function load(b: Booted, state: Uint8Array): Promise<HocusDocument> {
-  const document = new b.Document(NAME);
-  Y.applyUpdate(document, state);
-  await b.hooks.afterLoadDocument({ documentName: NAME, document, context: {}, instance: { documents: new Map() }, requestHeaders: new Headers(), requestParameters: new URLSearchParams(), socketId: "" });
-  return document;
-}
-
-/**
- * Apply an update the way Hocuspocus does and hand every resulting document
- * update to the production `onChange` with its transaction origin.
- * @param b - The booted server.
- * @param document - The document.
- * @param update - The update.
- * @param origin - The transaction origin.
- */
-async function applyWithOnChange(b: Booted, document: HocusDocument, update: Uint8Array, origin: unknown): Promise<void> {
-  const events: Array<[Uint8Array, unknown]> = [];
-  const h2 = (u: Uint8Array, o: unknown): void => {
-    events.push([u, o]);
-  };
-  document.on("update", h2);
-  try {
-    Y.applyUpdate(document, update, origin);
-  } finally {
-    document.off("update", h2);
-  }
-  for (const [u, o] of events) {
-    await b.hooks.onChange({ documentName: NAME, document, update: u, transactionOrigin: o, context: {}, instance: {}, clientsCount: 1, requestHeaders: new Headers(), requestParameters: new URLSearchParams(), socketId: "" });
-  }
-}
-
-/**
- * Offer a client update to the production `beforeSync`.
- * @param b - The booted server.
- * @param document - The document.
- * @param conn - The connection.
- * @param update - The update (sent as a sync Update, type 2).
- * @returns Whether it was admitted.
- * @throws {Error} When the hook throws for any reason other than the size refusal.
- */
-async function offer(b: Booted, document: HocusDocument, conn: FakeConnection, update: Uint8Array): Promise<boolean> {
-  try {
-    await b.hooks.beforeSync({ documentName: NAME, document, connection: conn, context: conn.context, type: 2, payload: update, clientsCount: 1 });
-    return true;
-  } catch (err) {
-    if ((err as { reason?: unknown }).reason !== COLLAB_DOCUMENT_TOO_LARGE_REASON) throw err;
-    return false;
-  }
-}
-
-/**
- * INV-6: the record's upper bound is at least the real size.
- * @param b - The booted server.
- * @param document - The document.
- */
-function expectUpperCovers(b: Booted, document: HocusDocument): void {
-  const record = b.size.readDocSizeRecord(NAME);
-  expect(record).toBeDefined();
-  expect(record!.upper).toBeGreaterThanOrEqual(refMeasure(document));
-}
-
-/** Which invariants each generator is checked against (spec 4.2, 4.3). */
-const TABLE: Array<[GeneratorId, number[], number]> = [
-  ["G1", [1, 2, 3], 300],
-  ["G2", [1, 2, 3], 300],
-  ["G3", [1, 2, 3], 300],
-  ["G4", [1, 2, 3], 300],
-  ["G5", [1, 2, 3], 300],
-  ["G6", [1, 2, 3], 300],
-  ["G7", [1, 2, 3], 300],
-  ["G8", [1, 2, 3], 300],
-  ["G9", [3, 4], 300],
-  ["G10", [3, 4], 300],
-  ["G11", [1, 2, 3, 5], 300],
-  ["G12", [1, 2, 3], 300],
-  ["G13", [1, 2, 3], 300],
-  ["G14", [1, 2, 3, 5], 300],
-  ["G15", [3, 5], 300],
-  ["G16", [3, 5], 300],
-  ["G17", [3, 4], 300],
-  ["G18", [3, 4], 300],
-  ["G19", [3, 4], 300],
-  ["G20", [3, 5], 300],
-  ["G21", [3, 5], 300],
-  ["G22", [1, 2, 3, 4, 5], 3000],
-  ["G23", [1, 2, 3], 300],
-  ["G24", [1, 2, 3], 300],
-];
-
-/** Truth values seen by INV-3 across all generators (C-62 degeneracy guard). */
-const truthSeen = { yes: 0, no: 0 };
-
-let size: SizeModule;
-
-beforeAll(async () => {
-  size = (await boot({ ...S_CONFIG })).size;
+beforeEach(() => {
+  vi.useFakeTimers();
+  h.logs.error.mockClear();
+  h.logs.warn.mockClear();
 });
 
 afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("C-60 to C-64: analyze against yjs on a full replica", () => {
-  it.each(TABLE)("%s holds INV-%j", (g, invs, numRuns) => {
-    fc.assert(
-      fc.property(GENERATORS[g], (s) => {
-        const o = replicaOutcome(s.d, s.u);
-        const truth = o.added > 0;
-        if (g === "G9") expect(truth).toBe(true);
-        if (g === "G11") expect(truth).toBe(false);
-        const a = size.analyze(s.u, s.d);
-        // Every generated update is one yjs or a client could write.
-        expect(a.malformed).toBe(false);
-        if (invs.includes(3)) {
-          // INV-3 (C-62): wouldPend iff the replica gains pending units.
-          expect(a.wouldPend).toBe(truth);
-          if (truth) truthSeen.yes++;
-          else truthSeen.no++;
-        }
-        if (!a.wouldPend && !a.integratesStored) {
-          // INV-1 (C-60) and INV-2 (C-61).
-          if (invs.includes(1)) expect(o.delta).toBeLessThanOrEqual(a.growthBound);
-          if (invs.includes(2)) expect(o.delta).toBeLessThanOrEqual(Math.max(0, a.growthBound - a.freedBytes));
-        }
-        // INV-4 (C-63): a precheck miss means yjs cannot pend.
-        if (invs.includes(4) && !size.precheckMayPend(s.u, s.d.store)) expect(truth).toBe(false);
-        // INV-5 (C-64), for updates that do not pend: an update that pends is
-        // refused at step 2 whatever integratesStored says, and C-82 needs both
-        // flags true on one update (design 4.1 defines it without wouldPend).
-        if (invs.includes(5) && !truth) expect(a.integratesStored).toBe(o.removed > 0);
-      }),
-      { seed: SEED, numRuns },
-    );
-  }, 600_000);
-
-  it("C-62 the generators produce at least 50 pending and 50 non-pending samples", () => {
-    expect(truthSeen.yes).toBeGreaterThanOrEqual(50);
-    expect(truthSeen.no).toBeGreaterThanOrEqual(50);
-  });
-
-  it("C-63 a precheck miss never pends, over 3000 mixed samples with at least 100 carrying Skip", () => {
-    let withSkip = 0;
-    const arb = fc.oneof(
-      { arbitrary: GENERATORS.G19, weight: 3 },
-      { arbitrary: GENERATORS.G22, weight: 1 },
-      { arbitrary: GENERATORS.G9, weight: 1 },
-      { arbitrary: GENERATORS.G10, weight: 1 },
-      { arbitrary: GENERATORS.G17, weight: 1 },
-      { arbitrary: GENERATORS.G18, weight: 1 },
-    );
-    fc.assert(
-      fc.property(arb, (s) => {
-        if (Y.decodeUpdate(s.u).structs.some((st) => st instanceof Y.Skip)) withSkip++;
-        if (!size.precheckMayPend(s.u, s.d.store)) expect(replicaOutcome(s.d, s.u).added).toBe(0);
-      }),
-      { seed: SEED, numRuns: 3000 },
-    );
-    expect(withSkip).toBeGreaterThanOrEqual(100);
-  }, 600_000);
+const shapeArb: fc.Arbitrary<DocShape> = fc.record({
+  nodes: fc.integer({ min: 1, max: 4 }),
+  textLen: fc.oneof(fc.integer({ min: 0, max: 60 }), fc.integer({ min: 1000, max: 2600 })),
 });
+
+const opArb: fc.Arbitrary<Op> = fc.oneof(
+  fc.record({ kind: fc.constant("insert" as const), target: fc.integer({ min: 0, max: 4 }), at: fc.nat(5000), len: fc.integer({ min: 1, max: 60 }) }),
+  fc.record({ kind: fc.constant("alternate" as const), xml: fc.boolean(), pick: fc.nat(10), at: fc.nat(5000), count: fc.oneof(fc.integer({ min: 1, max: 20 }), fc.integer({ min: 400, max: 1100 })) }),
+  fc.record({ kind: fc.constant("repeatDelete" as const), pick: fc.nat(50) }),
+  fc.record({ kind: fc.constant("beyondClock" as const), client: fc.nat(20), offset: fc.integer({ min: -2, max: 10 }), len: fc.integer({ min: 1, max: 5 }) }),
+  fc.record({ kind: fc.constant("deleteTypeWithChildren" as const), what: fc.integer({ min: 0, max: 2 }), pick: fc.nat(10) }),
+  fc.record({ kind: fc.constant("deleteMapEntry" as const), pick: fc.nat(20) }),
+);
+
+const bandArb: fc.Arbitrary<Band> = fc.constantFrom("normal", "warning", "full", "over");
 
 /**
- * Run the C-65 loop: reload every round, offer pure deletes until one is
- * refused, stop after a round without progress.
- * @param b - The booted server.
- * @param stored0 - The starting stored state.
- * @param nextDelete - Builds the next pure delete from the round's client
- *   view, or null when there is nothing left to delete; `undo` rolls back
- *   its position after a refusal.
- * @returns The final real size.
+ * Build the writing client of a run: `nodeDoc`-shaped nodes `n0..` plus root text `t`.
+ * @param shape - How many nodes and how much text.
+ * @returns The client document (client id 7).
  */
-async function ratchet(
-  b: Booted,
-  stored0: Uint8Array,
-  nextDelete: (view: Y.Doc) => { update: Uint8Array; undo: () => void } | null,
-): Promise<number> {
-  let stored = stored0;
-  let document: HocusDocument | undefined;
-  for (let round = 0; round < 100_000; round++) {
-    b.size.forget(NAME);
-    document = await load(b, stored);
-    expectUpperCovers(b, document);
-    const view = reload(document);
-    const conn = connection();
-    let progressed = false;
-    for (;;) {
-      const next = nextDelete(view);
-      if (!next) break;
-      if (!(await offer(b, document, conn, next.update))) {
-        next.undo();
-        break;
-      }
-      await applyWithOnChange(b, document, next.update, { source: "connection", connection: conn });
-      expectUpperCovers(b, document);
-      progressed = true;
-    }
-    stored = Y.encodeStateAsUpdate(document);
-    if (!progressed) break;
+function buildClient(shape: DocShape): Y.Doc {
+  const client = new Y.Doc();
+  client.clientID = 7;
+  const nodes = client.getMap<Y.Map<unknown>>("nodes");
+  for (let i = 0; i < shape.nodes; i++) {
+    const n = new Y.Map<unknown>();
+    const data = new Y.Map<unknown>();
+    const focus = new Y.Array<string>();
+    const body = new Y.XmlFragment();
+    const paragraph = new Y.XmlElement("paragraph");
+    const text = new Y.XmlText();
+    client.transact(() => {
+      nodes.set(`n${i}`, n);
+      n.set("data", data);
+      data.set("locked", true);
+      data.set("color", "red");
+      n.set("body", body);
+      text.insert(0, "hello world");
+      paragraph.insert(0, [text]);
+      body.insert(0, [paragraph]);
+      data.set("focus", focus);
+    });
+    focus.push(["a"]);
+    focus.push(["b"]);
+    focus.push(["c"]);
+    n.set("name", "x1");
+    n.set("name", "x2");
   }
-  b.size.forget(NAME);
-  return refMeasure(document!);
+  if (shape.textLen > 0) client.getText("t").insert(0, "x".repeat(shape.textLen));
+  return client;
 }
 
-describe("C-65 only-delete loops end at most at max(ceiling, initial size)", () => {
-  it("(a) ratchet-factor: alternate single chars, BATCH per update", async () => {
-    const L = 102_400;
-    const H = L / 40;
-    const b = await boot({ ...S_CONFIG, max_document_bytes: L, document_size_full_margin_bytes: H, document_size_delete_headroom_bytes: H, document_size_overwrite_reserve_bytes: 640 });
-    const start = new Y.Doc();
-    const initial = fill(start, L - 1);
-    const stored0 = Y.encodeStateAsUpdate(start);
-    // Spec 0.4: with no injected duration the clock stands still and a trial costs 0.
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date", "performance"] });
-    await fc.assert(
-      fc.asyncProperty(fc.integer({ min: 1, max: 50 }), async (batch) => {
-        let pos = 1;
-        const final = await ratchet(b, stored0, (view) => {
-          const t = view.getText("t");
-          let n = 0;
-          const update = capture(view, () => {
-            while (n < batch && pos < t.length) {
-              t.delete(pos, 1);
-              pos += 1;
-              n++;
-            }
-          });
-          if (n === 0) return null;
-          const count = n;
-          return { update, undo: () => { pos -= count; } };
-        });
-        expect(final).toBeLessThanOrEqual(Math.max(L + H, initial));
-      }),
-      { seed: SEED, numRuns: 5 },
-    );
-  }, 600_000);
+/**
+ * The v2 record of a document, which must exist.
+ * @param name - Document name.
+ * @returns The record.
+ * @throws {Error} When the document has no record.
+ */
+function record(name: string): SizeRecord {
+  const rec = size.readDocSizeRecord(name) as SizeRecord | undefined;
+  if (rec === undefined) throw new Error(`no size record for ${name}`);
+  return rec;
+}
 
-  it("(b) delete-ratchet: 20 single-clock ranges per update on the author's text", async () => {
-    const L = 262_144;
-    const H = Math.round((L * 262_144) / 10_485_760);
-    const A = 0x7fff1234;
-    const b = await boot({ ...S_CONFIG, max_document_bytes: L, document_size_full_margin_bytes: H, document_size_delete_headroom_bytes: H, document_size_overwrite_reserve_bytes: 1638 });
-    const author = new Y.Doc();
-    author.clientID = A;
-    author.getText("t").insert(0, "a".repeat(L - 40));
-    const initial = refMeasure(author);
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date", "performance"] });
-    let next = 1;
-    const final = await ratchet(b, Y.encodeStateAsUpdate(author), () => {
-      const batch: Array<[number, number]> = [];
-      for (let i = 0; i < 20 && next < L - 40; i++, next += 2) batch.push([next, 1]);
-      if (batch.length === 0) return null;
-      const n = batch.length;
-      return { update: deleteOnly([[A, batch]]), undo: () => { next -= 2 * n; } };
-    });
-    expect(final).toBeLessThanOrEqual(Math.max(L + H, initial));
-  }, 600_000);
-});
+/**
+ * A fresh writable connection of user `u1` on a socket.
+ * @param socketId - The socket.
+ * @returns The connection.
+ */
+function connection(socketId: string): FakeConnection {
+  return { socketId, readOnly: false, context: { user: { id: "u1" } }, close: vi.fn(), sendStateless: vi.fn() };
+}
 
-describe("C-66 model test: admitted updates, system writes and recomputes keep upper above the real size", () => {
-  it("holds INV-6 to INV-9 over 500 sequences of 30 steps", async () => {
-    const b = await boot({ ...S_CONFIG });
-    // A fixed pool of updates from every generator (spec: E2 draws from G1-G24, E3 from G1, G4, G24).
-    const pool: Sample[] = [];
-    for (const g of Object.keys(GENERATORS) as GeneratorId[]) pool.push(...fc.sample(GENERATORS[g], { numRuns: 4, seed: SEED }));
-    const systemPool = pool.filter((s) => s.g === "G1" || s.g === "G4" || s.g === "G24");
-    const starts: Uint8Array[] = [
-      Y.encodeStateAsUpdate(pool.find((s) => s.g === "G22")!.d),
-      Y.encodeStateAsUpdate(pool.find((s) => s.g === "G5")!.d),
-      ...[S.FULL_AT - 5000, S.L - 1000, S.L + 5000, S.CEIL + 5000].map((target) => {
-        const d = new Y.Doc();
-        fill(d, target);
-        return Y.encodeStateAsUpdate(d);
-      }),
-    ];
+/**
+ * Load a run's document through the production `afterLoadDocument` and put
+ * its record in a band.
+ * @param shape - The generated document.
+ * @param band - Where `current` starts.
+ * @param offset - How far into the band `current` starts.
+ * @returns The run.
+ */
+async function open(shape: DocShape, band: Band, offset: number): Promise<Run> {
+  seq += 1;
+  const name = `project-p1/canvas-pr${seq}`;
+  const client = buildClient(shape);
+  const doc = new Document(name, undefined, { flushDelay: false });
+  Y.applyUpdate(doc, Y.encodeStateAsUpdate(client));
+  await hooks.afterLoadDocument({
+    documentName: name,
+    document: doc,
+    context: {},
+    instance: { documents: new Map([[name, doc]]) },
+    requestHeaders: new Headers(),
+    requestParameters: new URLSearchParams(),
+    socketId: "",
+  });
+  const start = {
+    normal: enc(doc),
+    warning: D.W + (offset % (D.L - D.W)),
+    full: D.L + (offset % (D.CEIL - D.L)),
+    over: D.CEIL + offset,
+  }[band];
+  size.recordExact(name, start);
+  expect(record(name).current, "recordExact sets current").toBe(start);
+  const socketId = `sp${seq}`;
+  return {
+    name,
+    doc,
+    client,
+    peer: { remoteAddress: "10.0.0.1", _hocuspocus: { socketId }, close: vi.fn(), send: vi.fn() },
+    conn: connection(socketId),
+    nextClientId: 100,
+    deletes: [],
+  };
+}
 
-    /**
-     * An edit by a synced client of the current document, of the G1, G4 or
-     * G24 kind, so that admitted and system paths see updates that apply.
-     * @param document - The document.
-     * @param pick - Drives the choice.
-     * @param client - The client id.
-     * @returns The update.
-     */
-    const localEdit = (document: Y.Doc, pick: number, client: number): Uint8Array => {
-      const c = syncedClient(document, client);
-      const t = c.getText("t");
-      const nodes = c.getMap("nodes");
-      const ups: Uint8Array[] = [];
-      c.on("update", (u: Uint8Array) => ups.push(u));
-      c.transact(() => {
-        const kind = pick % 3;
-        if (kind === 2 && nodes.size > 0) {
-          const keys = [...nodes.keys()];
-          for (let i = 0; i < 1 + (pick % 20) && keys.length > 0; i++) nodes.delete(keys.splice(pick % keys.length, 1)[0]!);
-        } else if (kind === 1 && t.length > 2) {
-          for (let i = 0; i < 1 + (pick % 50) && 2 * i + 1 < t.length; i++) t.delete(1 + i, 1);
-        } else t.insert(pick % (t.length + 1), "y".repeat(1 + (pick % 30_000)));
-      });
-      return ups.length === 0 ? new Uint8Array([0, 0]) : Y.mergeUpdates(ups);
-    };
+/**
+ * Unload a run's document and forget its socket.
+ * @param run - The run.
+ */
+async function close(run: Run): Promise<void> {
+  await hooks.afterUnloadDocument({ documentName: run.name });
+  hooks.onPeerClose(run.peer, {});
+  run.doc.destroy();
+  run.client.destroy();
+  const failed = h.logs.error.mock.calls.filter((call) => call[1] === "document_size_gate_failed");
+  expect(failed, "no unexpected exception in the size judgement").toEqual([]);
+}
 
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date", "performance"] });
-    const step = fc.record({ event: fc.integer({ min: 0, max: 2 }), pick: fc.nat(), fromPool: fc.boolean(), nullOrigin: fc.boolean() });
-    await fc.assert(
-      fc.asyncProperty(fc.nat({ max: starts.length - 1 }), fc.array(step, { minLength: 30, maxLength: 30 }), async (startIx, steps) => {
-        b.size.forget(NAME);
-        const document = await load(b, starts[startIx]!);
-        expectUpperCovers(b, document);
-        const conn = connection();
-        for (const [i, s] of steps.entries()) {
-          if (s.event === 0) {
-            // E2: a client update judged by beforeSync, applied only when admitted.
-            const u = s.fromPool ? pool[s.pick % pool.length]!.u : localEdit(document, s.pick, 0x55aa0000 + i);
-            const pre = refMeasure(document);
-            const encodedBefore = Y.encodeStateAsUpdate(document);
-            const svBefore = Y.encodeStateVector(document);
-            const pendingBefore = pendingIntervals(document);
-            const deletesLive = b.size.analyze(u, document).deletesLive;
-            let changed = false;
-            const watch = (): void => {
-              changed = true;
-            };
-            document.on("update", watch);
-            const admitted = await offer(b, document, conn, u);
-            document.off("update", watch);
-            expect(changed).toBe(false);
-            if (admitted) {
-              await applyWithOnChange(b, document, u, { source: "connection", connection: conn });
-              const after = refMeasure(document);
-              // INV-7.
-              expect(after <= S.L || after <= pre || (deletesLive && after <= S.CEIL)).toBe(true);
-              // INV-8.
-              expect(pendingUnitsNotIn(pendingIntervals(document), pendingBefore)).toBe(0);
-            } else {
-              // INV-9, first three parts. Compared as bytes: deep equality
-              // walks a megabyte array element by element, seconds per step.
-              expect(Buffer.from(Y.encodeStateAsUpdate(document)).equals(encodedBefore)).toBe(true);
-              expect(Buffer.from(Y.encodeStateVector(document)).equals(svBefore)).toBe(true);
-              expect(pendingUnitsNotIn(pendingIntervals(document), pendingBefore)).toBe(0);
-              expect(pendingUnitsNotIn(pendingBefore, pendingIntervals(document))).toBe(0);
-            }
-          } else if (s.event === 1) {
-            // E3: a system write (Redis fan-out or a null-origin transaction) seen through onChange.
-            const u = s.fromPool && systemPool.length > 0 ? systemPool[s.pick % systemPool.length]!.u : localEdit(document, s.pick, 0x66bb0000 + i);
-            await applyWithOnChange(b, document, u, s.nullOrigin ? null : { source: "redis" });
-          } else {
-            // E4: past the measure interval.
-            await vi.advanceTimersByTimeAsync(2001);
-          }
-          // INV-6.
-          expectUpperCovers(b, document);
-        }
-        b.size.forget(NAME);
-      }),
-      { seed: SEED, numRuns: 500 },
-    );
-  }, 600_000);
-});
+/**
+ * The live text of a run's client, root text or a node's paragraph text.
+ * @param client - The client.
+ * @param xml - Whether to take a node's XmlText.
+ * @param pick - Which node.
+ * @returns The text, or undefined when there is none.
+ */
+function textOf(client: Y.Doc, xml: boolean, pick: number): Y.Text | undefined {
+  if (!xml) return client.getText("t");
+  const xmlTexts = nodeList(client)
+    .map((n) => n.get("body"))
+    .filter((b): b is Y.XmlFragment => b instanceof Y.XmlFragment && b.length > 0)
+    .map((b) => (b.get(0) as Y.XmlElement).get(0))
+    .filter((t): t is Y.XmlText => t instanceof Y.XmlText);
+  return xmlTexts.length ? xmlTexts[pick % xmlTexts.length] : undefined;
+}
 
-describe("C-67 trial token bucket", () => {
-  // The bucket reads time through the global performance.now(); fake timers
-  // fake it (user decision). A trial's duration is injected on top: the
-  // bucket reads the clock once when the trial starts and once when it ends
-  // (spec 0.4), both after checkRateLimit (step 5 order, answer Q9), so the
-  // second read after checkRateLimit returns start + d.
-  it("INV-13 and the step 5 order over 1000 random arrival and duration sequences", async () => {
-    const request = fc.record({ gap: fc.integer({ min: 0, max: 3000 }), d: fc.integer({ min: 1, max: 2000 }) });
-    // One server per R: every boot of the module graph keeps about 10 MB, so
-    // 1000 boots run the worker out of memory. A run starts the bucket full
-    // the way a fresh boot does: one fake clock and one spy on it for the
-    // whole test (a restored spy no longer follows the fake clock, and
-    // vi.clearAllTimers() sets the clock back), and every run moves the
-    // spied clock 10^9 ms on, more than the deepest balance of 20 trials of
-    // 2000 ms needs to refill at R = 1, without firing the servers' timers.
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date", "performance"] });
-    const fakeNow = performance.now.bind(performance);
-    let extra = 0;
-    let armed: number | null = null;
-    let readsSinceArm = 0;
-    const nowSpy = vi.spyOn(performance, "now").mockImplementation(() => {
-      if (armed !== null && ++readsSinceArm === 2) {
-        extra += armed;
-        armed = null;
+/**
+ * The node maps of a client, in key order.
+ * @param client - The client.
+ * @returns The nodes.
+ */
+function nodeList(client: Y.Doc): Array<Y.Map<unknown>> {
+  const nodes = client.getMap<Y.Map<unknown>>("nodes");
+  return [...nodes.keys()].sort().map((k) => nodes.get(k)).filter((n): n is Y.Map<unknown> => n instanceof Y.Map);
+}
+
+/**
+ * The `data` maps of a client's nodes.
+ * @param client - The client.
+ * @returns The data maps.
+ */
+function dataMaps(client: Y.Doc): Array<Y.Map<unknown>> {
+  return nodeList(client).map((n) => n.get("data")).filter((d): d is Y.Map<unknown> => d instanceof Y.Map);
+}
+
+/**
+ * Turn an operation into an update against the run's client and server.
+ * @param run - The run.
+ * @param op - The operation.
+ * @returns The V1 update, or undefined when the operation has no target.
+ */
+function produce(run: Run, op: Op): Uint8Array | undefined {
+  const c = run.client;
+  switch (op.kind) {
+    case "insert": {
+      const data = dataMaps(c);
+      if (op.target === 1 && data.length) {
+        return capture(c, () => data[op.at % data.length]!.set(`k${op.at}`, "v".repeat(op.len)));
       }
-      return fakeNow() + extra;
-    });
-    let duration = 0;
-    let calls = 0;
-    h.checkRateLimit.mockImplementation(async () => {
-      calls++;
-      armed = duration;
-      readsSinceArm = 0;
-      return { allowed: true };
-    });
-    const servers = new Map<number, Booted>();
-    try {
-      await fc.assert(
-        fc.asyncProperty(fc.constantFrom(1, 200, 1000), fc.array(request, { minLength: 1, maxLength: 20 }), async (R, requests) => {
-          extra += 1e9;
-          armed = null;
-          let b = servers.get(R);
-          if (!b) {
-            b = await boot({ ...S_CONFIG, document_size_trial_budget_ms_per_second: R });
-            servers.set(R, b);
-          }
-          const t0 = performance.now();
-          const base = new Y.Doc();
-          base.clientID = 1;
-          base.getText("t").insert(0, "hello");
-          const document = await load(b, Y.encodeStateAsUpdate(base));
-          const c = syncedClient(document, 2);
-          // C-85 (b) shape: an append that needs a trial once upper sits at the ceiling.
-          const u = capture(c, () => c.getText("t").insert(5, "y".repeat(100)));
-          const conn = connection();
-          // The model of design 4.2: full at start, R per second up to R, a
-          // trial charged its duration when it ends.
-          let balance: number = R;
-          let at = t0;
-          const refill = (t: number): void => {
-            balance = Math.min(R, balance + ((t - at) * R) / 1000);
-            at = t;
-          };
-          let allowedMs = 0;
-          let dMax = 0;
-          for (const r of requests) {
-            vi.advanceTimersByTime(r.gap);
-            b.size.recordExact(NAME, S.CEIL);
-            const t = performance.now();
-            refill(t);
-            duration = r.d;
-            const callsBefore = calls;
-            h.logs.warn.mockClear();
-            const admitted = await offer(b, document, conn, u);
-            if (balance < -1e-6) {
-              expect(admitted).toBe(false);
-              expect(calls).toBe(callsBefore);
-              expect(h.logs.warn).toHaveBeenCalledTimes(1);
-              expect(h.logs.warn.mock.calls[0]?.[0]).toMatchObject({ step: "budget_process" });
-              expect(h.logs.warn.mock.calls[0]?.[1]).toBe("document_size_limit_refused");
-            } else if (balance > 1e-6) {
-              expect(calls).toBe(callsBefore + 1);
-              expect(admitted).toBe(true);
-              refill(t + r.d);
-              balance -= r.d;
-              allowedMs += r.d;
-              dMax = Math.max(dMax, r.d);
-            } else {
-              // Within float noise of 0; the outcome is read off the run.
-              if (calls > callsBefore) {
-                refill(t + r.d);
-                balance -= r.d;
-                allowedMs += r.d;
-                dMax = Math.max(dMax, r.d);
-              }
-            }
-            armed = null;
-          }
-          const T = (performance.now() - t0) / 1000;
-          expect(allowedMs).toBeLessThanOrEqual(R * (T + 1) + dMax);
-          b.size.forget(NAME);
-        }),
-        { seed: SEED, numRuns: 1000 },
-      );
-    } finally {
-      nowSpy.mockRestore();
-      h.checkRateLimit.mockImplementation(async () => ({ allowed: true }));
-      vi.useRealTimers();
+      const focus = data.map((d) => d.get("focus")).filter((f): f is Y.Array<string> => f instanceof Y.Array);
+      if (op.target === 2 && focus.length) {
+        const f = focus[op.at % focus.length]!;
+        return capture(c, () => f.insert(op.at % (f.length + 1), Array.from({ length: Math.min(op.len, 8) }, () => "q")));
+      }
+      const xml = textOf(c, true, op.at);
+      if (op.target === 3 && xml) return capture(c, () => xml.insert(op.at % (xml.length + 1), "y".repeat(op.len)));
+      if (op.target === 4) {
+        return capture(c, () => {
+          const n = new Y.Map<unknown>();
+          c.getMap<Y.Map<unknown>>("nodes").set(`m${op.at}-${run.nextClientId}`, n);
+          n.set("name", "z".repeat(op.len));
+        });
+      }
+      const t = c.getText("t");
+      return capture(c, () => t.insert(op.at % (t.length + 1), "y".repeat(op.len)));
     }
-  }, 600_000);
+    case "alternate": {
+      const t = textOf(c, op.xml, op.pick);
+      if (!t || t.length < 2) return undefined;
+      const start = op.at % t.length;
+      const at: number[] = [];
+      for (let i = start; i < t.length && at.length < op.count; i += 2) at.push(i);
+      const u = capture(c, () => {
+        for (const i of at.reverse()) t.delete(i, 1);
+      });
+      run.deletes.push(u);
+      return u;
+    }
+    case "repeatDelete":
+      return run.deletes.length ? run.deletes[op.pick % run.deletes.length] : undefined;
+    case "beyondClock": {
+      const known = [...run.doc.store.clients.keys()];
+      const client = op.client % 2 === 0 && known.length ? known[op.client % known.length]! : 4242 + op.client;
+      const clock = Math.max(0, Y.getState(run.doc.store, client) + op.offset);
+      const u = beyondDs(client, clock, op.len);
+      run.deletes.push(u);
+      return u;
+    }
+    case "deleteTypeWithChildren": {
+      const nodes = nodeList(c);
+      if (!nodes.length) return undefined;
+      const n = nodes[op.pick % nodes.length]!;
+      let u: Uint8Array | undefined;
+      if (op.what === 0) {
+        const key = [...c.getMap("nodes").keys()].sort()[op.pick % nodes.length]!;
+        u = capture(c, () => c.getMap("nodes").delete(key));
+      } else if (op.what === 1) {
+        const body = n.get("body");
+        if (!(body instanceof Y.XmlFragment) || body.length === 0) return undefined;
+        u = capture(c, () => body.delete(0, 1));
+      } else {
+        if (!(n.get("data") instanceof Y.Map)) return undefined;
+        u = capture(c, () => n.delete("data"));
+      }
+      run.deletes.push(u);
+      return u;
+    }
+    case "deleteMapEntry": {
+      const entries: Array<[Y.Map<unknown>, string]> = [];
+      for (const d of dataMaps(c)) {
+        d.forEach((value, key) => {
+          if (!(value instanceof Y.AbstractType)) entries.push([d, key]);
+        });
+      }
+      if (!entries.length) return undefined;
+      const [d, key] = entries[op.pick % entries.length]!;
+      const u = capture(c, () => d.delete(key));
+      run.deletes.push(u);
+      return u;
+    }
+  }
+}
+
+/**
+ * Offer one update to the production `beforeSync`; apply it with the
+ * connection origin when admitted, then run the production
+ * `afterHandleMessage` as Hocuspocus does. After any refusal (in `beforeSync` or by
+ * the production transaction listener closing the connection) the refusal
+ * mark is cleared with an Auth frame through the production `receiveFrame`,
+ * a new connection object stands for the reconnect, and the client reloads
+ * from the server under a new client id.
+ * @param run - The run.
+ * @param update - The update.
+ * @param apply - Whether to apply an admitted update (false leaves it held).
+ * @returns What the step saw.
+ * @throws {Error} When `beforeSync` throws anything but the size refusal.
+ */
+async function offer(run: Run, update: Uint8Array, apply = true): Promise<Step> {
+  const current = record(run.name).current;
+  const conn = run.conn;
+  let admitted = true;
+  try {
+    await hooks.beforeSync({ documentName: run.name, document: run.doc, connection: conn, context: conn.context, type: SYNC.update, payload: update, clientsCount: 1 });
+  } catch (err) {
+    if ((err as { reason?: unknown }).reason !== COLLAB_DOCUMENT_TOO_LARGE_REASON) throw err;
+    admitted = false;
+  }
+  if (admitted && apply) Y.applyUpdate(run.doc, update, { source: "connection", connection: conn });
+  // Hocuspocus runs this after every message it handled; the held one is still in flight.
+  if (apply) await hooks.afterHandleMessage({ documentName: run.name, document: run.doc, connection: conn, context: conn.context });
+  if (!admitted || conn.close.mock.calls.length > 0) {
+    const auth = authFrame(run.name, "__cookie_auth__");
+    hooks.receiveFrame(run.peer, { rawData: Buffer.from(auth), uint8Array: () => auth, text: () => Buffer.from(auth).toString() });
+    run.conn = connection(conn.socketId);
+    run.client.destroy();
+    run.client = syncedClient(run.doc, run.nextClientId++);
+  }
+  return { current, update, admitted };
+}
+
+/**
+ * PR-01's independent judgement: the update carries no structs.
+ * @param update - The V1 update.
+ * @returns Whether it is a pure delete.
+ */
+function isPureDelete(update: Uint8Array): boolean {
+  return decoding.readVarUint(decoding.createDecoder(update)) === 0 && Y.decodeUpdate(update).structs.length === 0;
+}
+
+/**
+ * Whether a clock falls strictly inside a live item of a client's structs
+ * (after its first clock), by binary search over the server's struct array.
+ * @param structs - The client's structs, sorted by clock.
+ * @param clock - The clock.
+ * @returns Whether a live item holds the clock past its start.
+ */
+function insideLiveItem(structs: ReadonlyArray<Y.Item | Y.GC>, clock: number): boolean {
+  let lo = 0;
+  let hi = structs.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const s = structs[mid]!;
+    if (clock < s.id.clock) hi = mid - 1;
+    else if (clock >= s.id.clock + s.length) lo = mid + 1;
+    else return s instanceof Y.Item && !s.deleted && clock > s.id.clock;
+  }
+  return false;
+}
+
+/**
+ * PR-03's independent count: delete-range endpoints that fall inside a live
+ * item of the server store (design 4.1 `splitEndpoints`).
+ * @param update - The V1 update.
+ * @param doc - The server document before the update.
+ * @returns The endpoint count.
+ */
+function testSideSplits(update: Uint8Array, doc: Y.Doc): number {
+  let n = 0;
+  Y.decodeUpdate(update).ds.clients.forEach((ranges, client) => {
+    const structs = doc.store.clients.get(client);
+    if (!structs) return;
+    for (const r of ranges) {
+      if (insideLiveItem(structs, r.clock)) n++;
+      if (insideLiveItem(structs, r.clock + r.len)) n++;
+    }
+  });
+  return n;
+}
+
+/** A live item of the server store as it was before an update. */
+interface LiveItem {
+  length: number;
+  isType: boolean;
+  mapEntry: boolean;
+}
+
+/** The server store before an update, as PR-02 compares it. */
+interface StoreSnapshot {
+  live: Map<Y.Item, LiveItem>;
+  counts: Map<number, number>;
+  pendingDs: number;
+}
+
+/**
+ * Snapshot the live items, struct counts and pending delete set of a document.
+ * @param doc - The server document.
+ * @returns The snapshot.
+ */
+function snapshot(doc: Y.Doc): StoreSnapshot {
+  const live = new Map<Y.Item, LiveItem>();
+  const counts = new Map<number, number>();
+  doc.store.clients.forEach((structs, client) => {
+    counts.set(client, structs.length);
+    for (const s of structs) {
+      if (s instanceof Y.Item && !s.deleted) {
+        live.set(s, { length: s.length, isType: s.content instanceof Y.ContentType, mapEntry: s.parentSub !== null });
+      }
+    }
+  });
+  return { live, counts, pendingDs: doc.store.pendingDs?.byteLength ?? 0 };
+}
+
+/**
+ * PR-02's independent judgement after the update was applied to the
+ * snapshotted document: every item it turned from live to deleted is a Y
+ * type, a Map entry, or under a type item it deleted too; no item was split;
+ * no client gained structs; the pending delete set did not grow.
+ * @param before - The snapshot taken before the apply.
+ * @param doc - The same document after the apply.
+ * @returns The violations, empty when the update deleted whole types or entries only.
+ */
+function wholeTypesViolations(before: StoreSnapshot, doc: Y.Doc): string[] {
+  const out: string[] = [];
+  const deleted = new Set<Y.Item>();
+  for (const [item, was] of before.live) {
+    if (item.length < was.length) out.push(`split ${item.id.client}:${item.id.clock}`);
+    if (item.deleted) deleted.add(item);
+  }
+  for (const item of deleted) {
+    const was = before.live.get(item)!;
+    if (was.isType || was.mapEntry) continue;
+    let ancestor = (item.parent as Y.AbstractType<unknown> | null)?._item ?? null;
+    let covered = false;
+    while (ancestor !== null && !covered) {
+      covered = deleted.has(ancestor);
+      ancestor = (ancestor.parent as Y.AbstractType<unknown> | null)?._item ?? null;
+    }
+    if (!covered) out.push(`partial delete ${item.id.client}:${item.id.clock}`);
+  }
+  doc.store.clients.forEach((structs, client) => {
+    if (structs.length > (before.counts.get(client) ?? 0)) out.push(`client ${client} gained structs`);
+  });
+  if ((doc.store.pendingDs?.byteLength ?? 0) > before.pendingDs) out.push("pendingDs grew");
+  return out;
+}
+
+const runArb = fc.record({
+  shape: shapeArb,
+  band: bandArb,
+  offset: fc.nat(200_000),
+  ops: fc.array(opArb, { minLength: 1, maxLength: 14 }),
+});
+
+describe("document size cap properties (v2)", () => {
+  it("PR-01 while current is in [limit, ceiling), every admitted update is a pure delete", async () => {
+    let judged = 0;
+    await fc.assert(
+      fc.asyncProperty(runArb, async ({ shape, offset, ops }) => {
+        const run = await open(shape, "full", offset);
+        for (const op of ops) {
+          const u = produce(run, op);
+          if (!u) continue;
+          const step = await offer(run, u);
+          if (step.admitted && step.current >= D.L && step.current < D.CEIL) {
+            judged++;
+            expect(isPureDelete(u), `admitted ${op.kind} at current ${step.current}`).toBe(true);
+          }
+        }
+        await close(run);
+      }),
+      { numRuns: 60, seed: SEED },
+    );
+    expect(judged, "admitted updates judged in the full band").toBeGreaterThan(0);
+  });
+
+  it("PR-02 while current is at or past the ceiling, every admitted update deletes whole types or Map entries only", async () => {
+    let judged = 0;
+    await fc.assert(
+      fc.asyncProperty(runArb, async ({ shape, offset, ops }) => {
+        const run = await open(shape, "over", offset);
+        for (const op of ops) {
+          const u = produce(run, op);
+          if (!u) continue;
+          const current = record(run.name).current;
+          const before = current >= D.CEIL ? snapshot(run.doc) : undefined;
+          const step = await offer(run, u);
+          if (step.admitted && before) {
+            judged++;
+            expect(wholeTypesViolations(before, run.doc), `admitted ${op.kind} at current ${current}`).toEqual([]);
+          }
+        }
+        await close(run);
+      }),
+      { numRuns: 60, seed: SEED + 1 },
+    );
+    expect(judged, "admitted updates judged past the ceiling").toBeGreaterThan(0);
+  });
+
+  it("PR-03 in any phase, every admitted update has at most document_size_max_delete_splits split endpoints", async () => {
+    let judged = 0;
+    let over = 0;
+    await fc.assert(
+      fc.asyncProperty(runArb, async ({ shape, band, offset, ops }) => {
+        const run = await open(shape, band, offset);
+        for (const op of ops) {
+          const u = produce(run, op);
+          if (!u) continue;
+          const splits = testSideSplits(u, run.doc);
+          if (splits > SPLITS) over++;
+          const step = await offer(run, u);
+          if (step.admitted) {
+            judged++;
+            expect(splits, `admitted ${op.kind} in ${band}`).toBeLessThanOrEqual(SPLITS);
+          }
+        }
+        await close(run);
+      }),
+      { numRuns: 60, seed: SEED + 2 },
+    );
+    expect(judged).toBeGreaterThan(0);
+    expect(over, "generated updates past the split limit").toBeGreaterThan(0);
+  });
+
+  it("PR-04 in any phase, a document without pending content has none after the admitted updates are applied", async () => {
+    await fc.assert(
+      fc.asyncProperty(runArb, async ({ shape, band, offset, ops }) => {
+        const run = await open(shape, band, offset);
+        expect(run.doc.store.pendingStructs).toBeNull();
+        expect(run.doc.store.pendingDs).toBeNull();
+        for (const op of ops) {
+          const u = produce(run, op);
+          if (u) await offer(run, u);
+        }
+        expect(run.doc.store.pendingStructs, "pendingStructs after the sequence").toBeNull();
+        expect(run.doc.store.pendingDs, "pendingDs after the sequence").toBeNull();
+        await close(run);
+      }),
+      { numRuns: 60, seed: SEED + 3 },
+    );
+  });
+
+  it("PR-05 the same construction sent 100 and 1000 times leaves the same size, at the limit and past the ceiling", async () => {
+    const constructionArb = opArb.filter((op) => op.kind !== "repeatDelete");
+    await fc.assert(
+      fc.asyncProperty(shapeArb, constructionArb, fc.constantFrom<Band>("full", "over"), async (shape, op, band) => {
+        const run = await open(shape, band, 0);
+        const u = produce(run, op);
+        fc.pre(u !== undefined);
+        let at100 = -1;
+        for (let i = 1; i <= 1000; i++) {
+          await offer(run, u);
+          if (i === 100) at100 = enc(run.doc);
+        }
+        expect(enc(run.doc), `${op.kind} in ${band}: size after 1000 against after 100`).toBe(at100);
+        await close(run);
+      }),
+      { numRuns: 12, seed: SEED + 4 },
+    );
+  });
+
+  it("PR-06 after any sequence and one measurement, current equals measure(document) plus the held sum", async () => {
+    await fc.assert(
+      fc.asyncProperty(runArb, opArb, async ({ shape, band, offset, ops }, last) => {
+        const run = await open(shape, band, offset);
+        for (const op of ops) {
+          const u = produce(run, op);
+          if (u) await offer(run, u);
+        }
+        // One more update admitted but not yet applied stays held across the measurement.
+        const pending = produce(run, last);
+        if (pending) await offer(run, pending, false);
+        size.scheduleMeasure(run.name);
+        vi.advanceTimersByTime(D_CONFIG.document_size_measure_interval_ms + 1);
+        const rec = record(run.name);
+        expect(size.measure(run.doc)).toBe(enc(run.doc));
+        expect(rec.current).toBe(size.measure(run.doc) + rec.heldSum);
+        expect(rec.exact).toBe(size.measure(run.doc));
+        await close(run);
+      }),
+      { numRuns: 40, seed: SEED + 5 },
+    );
+  });
 });

@@ -2,25 +2,38 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * A raw WebSocket client for the document size cap integration suites
- * (inner#1790), speaking the frames `@hocuspocus/provider` speaks.
+ * Live-instance helpers for the document size cap integration suites
+ * (inner#1790, second version, v2 collab test spec section 13).
  *
- * The provider itself is a web dependency and is not declared by collab, so
- * this client plays its part frame by frame: Auth, SyncStep1, answering the
- * server's SyncStep1 with a SyncStep2 (which is what sets the inbound filter's
+ * The client is a raw WebSocket speaking the frames `@hocuspocus/provider`
+ * speaks: the provider is a web dependency collab does not declare, so this
+ * plays its part frame by frame: Auth, SyncStep1, answering the server's
+ * SyncStep1 with a SyncStep2 (which is what sets the inbound filter's
  * handshake mark), Updates for local edits, and `sync:confirm`. Every server
  * frame is decoded and kept, CLOSE frames with their reason, so a case can
  * assert "refused with the size reason" or "never refused".
  *
  * One `SizeSocket` carries any number of document keys, as one browser tab
- * does; `open` on the same socket after a refusal is the reset of design 5.3.
+ * does; `openDoc` on the same socket after a refusal is the new Auth a
+ * rebuilt provider sends (design 4.4).
+ *
+ * The rest are the instance chores every suite repeats: start and stop a
+ * production instance, seed and read back the stored row, add project
+ * members, and read the refusal log lines.
  */
 
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
+import * as core from "@breatic/core";
+import { COLLAB_DOCUMENT_TOO_LARGE_REASON, spaceContentDocName } from "@breatic/shared";
+import type { createCollabServer } from "@collab/hocuspocus.js";
+import { storeDocumentNow } from "@collab/services/persistence.js";
+import { armTimedStore, releaseTimedStoreArm } from "@collab/services/store-tracker.js";
+import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 import * as decoding from "lib0/decoding";
 import WebSocket from "ws";
 import * as Y from "yjs";
 
+import type { ActivityCollabFixture } from "./account-activity-fixture.js";
 import { authFrame, statelessFrame, SYNC, syncFrame, waitFor, WIRE } from "./live-hocuspocus.js";
 
 /** One decoded server → client frame. */
@@ -234,4 +247,177 @@ export async function openDoc(
     },
   };
   return client;
+}
+
+/** A running production instance. */
+export type Instance = Awaited<ReturnType<typeof createCollabServer>>;
+
+/**
+ * Start a production instance listening on loopback.
+ * @param create - The `createCollabServer` to use (a fresh module graph has its own).
+ * @param redisUrl - The collab Redis URL.
+ * @param redisKeyPrefix - Key prefix; instances sharing one see each other's updates.
+ * @returns The instance.
+ */
+export async function startInstance(create: typeof createCollabServer, redisUrl: string, redisKeyPrefix: string = `document-size-${randomUUID()}`): Promise<Instance> {
+  const instance = await create({ port: 0, collabRedisUrl: redisUrl, redisKeyPrefix, shutdownDeadline: () => undefined });
+  await instance.server.listen();
+  return instance;
+}
+
+/**
+ * Stop an instance the way shutdown does.
+ * @param instance - The instance.
+ */
+export async function stopInstance(instance: Instance): Promise<void> {
+  instance.stopUpgradeSessions();
+  instance.storeLoop.stop();
+  await instance.seatHandover.stop();
+  await instance.server.destroy();
+}
+
+/**
+ * Store content as the document's row before anyone opens it.
+ * @param name - Document name.
+ * @param src - Content.
+ */
+export async function seed(name: string, src: Y.Doc): Promise<void> {
+  await yjsRepo.upsertDocData(name, Y.encodeStateAsUpdate(src));
+}
+
+/**
+ * Store the instance's copy now and read the row back.
+ * @param instance - The instance holding the document.
+ * @param name - Document name.
+ * @returns A document built from the stored bytes.
+ * @throws {Error} When no row is stored.
+ */
+export async function persisted(instance: Instance, name: string): Promise<Y.Doc> {
+  // Persistence writes only a store the timed loop or the unload gate armed.
+  const arm = armTimedStore(name);
+  try {
+    await storeDocumentNow(instance.hocuspocus, name);
+  } finally {
+    releaseTimedStoreArm(name, arm);
+  }
+  const data = await yjsRepo.fetchDocData(name);
+  if (!data) throw new Error(`no stored row for ${name}`);
+  const doc = new Y.Doc();
+  Y.applyUpdate(doc, data);
+  return doc;
+}
+
+/**
+ * The canvas document of a fixture (spec `CV`).
+ * @param fixture - The fixture.
+ * @returns Its name.
+ */
+export function canvasOf(fixture: ActivityCollabFixture): string {
+  return spaceContentDocName(fixture.projectId, fixture.spaceIds.canvas, "canvas");
+}
+
+/**
+ * The document-Space document of a fixture (spec `DOC`).
+ * @param fixture - The fixture.
+ * @returns Its name.
+ */
+export function documentOf(fixture: ActivityCollabFixture): string {
+  return spaceContentDocName(fixture.projectId, fixture.spaceIds.document, "document");
+}
+
+/**
+ * Add another member of the fixture's Project, with a session of its own.
+ * @param fixture - The owner's fixture.
+ * @param role - Project role.
+ * @returns The member's fixture.
+ */
+export async function member(fixture: ActivityCollabFixture, role: "editor" | "viewer"): Promise<ActivityCollabFixture> {
+  const [user] = await core.rawPg<{ id: string }[]>`INSERT INTO users(email,email_verified) VALUES(${`size-${role}-${randomUUID()}@example.test`},true) RETURNING id`;
+  await core.rawPg`INSERT INTO studio_members(studio_id,user_id,role) SELECT studio_id,${user!.id},'guest' FROM projects WHERE id=${fixture.projectId}`;
+  await core.rawPg`INSERT INTO project_members(project_id,user_id,role) VALUES(${fixture.projectId},${user!.id},${role})`;
+  const token = randomBytes(24).toString("hex");
+  await core.setSession(core.getRedis(), token, user!.id);
+  return { ...fixture, userId: user!.id, cookie: `${core.sessionCookieName()}=${token}` };
+}
+
+/** One captured `warn` / `error` logger call. */
+export interface LogLine {
+  /** Logger method. */
+  level: "warn" | "error";
+  /** Its arguments. */
+  args: unknown[];
+}
+
+/**
+ * The fields of the refusal log lines (`document_size_limit_refused`) for a document.
+ * @param logs - Captured lines.
+ * @param name - Document name.
+ * @returns The first argument of each line, oldest first.
+ */
+export function refusalsOf(logs: readonly LogLine[], name: string): Array<Record<string, unknown>> {
+  return logs
+    .filter((l) => l.level === "warn" && l.args[1] === "document_size_limit_refused")
+    .map((l) => l.args[0] as Record<string, unknown>)
+    .filter((f) => f.documentName === name);
+}
+
+/**
+ * Wait for a client's document connection to be closed for size.
+ * @param client - The client.
+ * @param timeoutMs - How long to wait.
+ */
+export async function refusedFor(client: SizeDocClient, timeoutMs = 10_000): Promise<void> {
+  await waitFor(() => client.closeReasons().includes(COLLAB_DOCUMENT_TOO_LARGE_REASON), `size refusal of ${client.key}`, timeoutMs);
+}
+
+/** The keys of a v2 `doc:size` push (design 3), sorted. */
+export const V2_PUSH_KEYS: readonly string[] = ["bytes", "ceiling", "limit", "phase", "type"];
+
+/**
+ * The keys of a push, sorted, for comparing against {@link V2_PUSH_KEYS}.
+ * @param push - A parsed `doc:size` message.
+ * @returns Its keys.
+ */
+export function pushKeys(push: Record<string, unknown>): string[] {
+  return Object.keys(push).sort();
+}
+
+/**
+ * Wait until a client has received a `doc:size` push matching `predicate`
+ * at or after index `from` of its pushes.
+ * @param client - The client.
+ * @param predicate - Condition on one push.
+ * @param label - Shown on timeout.
+ * @param from - Index into `sizePushes()` to start from.
+ * @param timeoutMs - How long to wait (spec Q16: 5 s for the design's 2 s).
+ * @returns The first matching push.
+ */
+export async function pushWhere(
+  client: SizeDocClient,
+  predicate: (push: Record<string, unknown>) => boolean,
+  label: string,
+  from = 0,
+  timeoutMs = 5000,
+): Promise<Record<string, unknown>> {
+  let found: Record<string, unknown> | undefined;
+  await waitFor(() => {
+    found = client.sizePushes().slice(from).find(predicate);
+    return found !== undefined;
+  }, `${label} (${client.key})`, timeoutMs);
+  return found!;
+}
+
+/**
+ * Ask for `sync:confirmed` and wait for it or for a CLOSE of the document,
+ * whichever comes first, so a case expecting admission fails on the close
+ * reason rather than on a confirmation timeout.
+ * @param client - The client.
+ * @param timeoutMs - How long to wait.
+ * @returns The CLOSE reasons received since the document was opened.
+ */
+export async function settle(client: SizeDocClient, timeoutMs = 10_000): Promise<string[]> {
+  const id = randomUUID();
+  client.socket.send(statelessFrame(client.key, JSON.stringify({ type: "sync:confirm", id })));
+  await waitFor(() => client.closeReasons().length > 0 || client.frames().some((f) => f.stateless !== undefined && f.stateless.includes(id)), `confirmation or close of ${client.key}`, timeoutMs);
+  return client.closeReasons();
 }

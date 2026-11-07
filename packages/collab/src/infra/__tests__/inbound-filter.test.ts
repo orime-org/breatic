@@ -3,13 +3,15 @@
 
 /**
  * The inbound frame filter that sits after chunk reassembly (inner#1790,
- * design 4.4, spec section 9: C-120 to C-126, C-130, C-132, C-133).
+ * design 4.4, v2 collab test spec section 9: F-01 to F-09; F-07 through the
+ * production peer hooks lives in `src/__tests__/inbound-filter-hooks.test.ts`).
  *
  * Per `(socketId, documentName)` it keeps a handshake mark (a SyncStep2 frame
  * of that document passed) and a refusal mark (`beforeSync` refused). Frames
  * are judged from their own bytes only. "Passes" means `filter` returns the
  * input bytes unchanged; "dropped" means it returns undefined. No case may
- * close the socket.
+ * close the socket. `isRefused` is the query `beforeSync` step 0 reads the
+ * refusal mark through (spec Q3).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -156,7 +158,7 @@ function inState(socketId: string, state: State, name = D): FakePeer {
 const STATES: State[] = ["W", "H", "R"];
 
 describe("inbound filter", () => {
-  it("C-120 passes Auth in every state and puts the document back to waiting for the handshake", () => {
+  it("F-03 passes Auth in every state and puts the document back to waiting for the handshake", () => {
     for (const state of STATES) {
       const p = inState(`s-${state}`, state);
       passes(p, frames.auth(D), `${state}: auth`);
@@ -165,7 +167,7 @@ describe("inbound filter", () => {
     }
   });
 
-  it("C-121 drops every frame of a refused document, whatever its type", () => {
+  it("F-04 drops every frame of a refused document, whatever its type, until the next Auth", () => {
     for (const from of ["W", "H"] as const) {
       const p = inState(`s-${from}`, from);
       mod.markRefused(`s-${from}`, D);
@@ -178,10 +180,12 @@ describe("inbound filter", () => {
       drops(p, frames.stateless(D), `${from}→R: stateless`);
       drops(p, frames.close(D), `${from}→R: close`);
       drops(p, frames.queryAwareness(D), `${from}→R: query awareness`);
+      passes(p, frames.auth(D), `${from}→R: auth`);
+      passes(p, frames.step2(D), `${from}→R: step2 after auth`);
     }
   });
 
-  it("C-122 passes SyncStep2 under either outer type and lets the Updates after it through", () => {
+  it("F-02 passes SyncStep2 under either outer type and lets the Updates after it through", () => {
     const a = peer("s1");
     passes(a, frames.step2(D, WIRE.sync), "W: step2 outer 0");
     passes(a, frames.update(D, WIRE.sync), "update after step2 outer 0");
@@ -192,7 +196,7 @@ describe("inbound filter", () => {
     passes(h, frames.step2(D), "H: step2 again");
   });
 
-  it("C-123 drops an Update that arrives before the handshake SyncStep2, without closing", () => {
+  it("F-01 drops an Update that arrives before the handshake SyncStep2, without closing", () => {
     drops(peer("s1"), frames.update(D, WIRE.sync), "W: update outer 0");
     drops(peer("s2"), frames.update(D, WIRE.syncReply), "W: update outer 4");
     const c = peer("s3");
@@ -200,7 +204,7 @@ describe("inbound filter", () => {
     drops(c, frames.update(D), "update after auth, before step2");
   });
 
-  it("C-124 passes every Update after the handshake under either outer type", () => {
+  it("F-02 passes every Update after the handshake under either outer type", () => {
     const p = inState("s1", "H");
     for (let i = 0; i < 3; i++) {
       passes(p, frames.update(D, WIRE.sync), `H: update outer 0 #${i}`);
@@ -208,7 +212,7 @@ describe("inbound filter", () => {
     }
   });
 
-  it("C-125 passes SyncStep1, awareness, stateless, CLOSE and QueryAwareness while waiting or handshaken", () => {
+  it("F-05 passes SyncStep1, awareness, stateless, CLOSE and QueryAwareness while waiting or handshaken", () => {
     for (const state of ["W", "H"] as const) {
       const p = inState(`s-${state}`, state);
       passes(p, frames.step1(D), `${state}: step1`);
@@ -219,7 +223,7 @@ describe("inbound filter", () => {
     }
   });
 
-  it("C-126 keeps marks per socket and per document", () => {
+  it("F-06 keeps marks per socket and per document", () => {
     const s1 = inState("s1", "R");
     passes(s1, frames.auth(E), "s1: auth E");
     passes(s1, frames.step2(E), "s1: step2 E");
@@ -229,7 +233,7 @@ describe("inbound filter", () => {
     drops(s1, frames.update(D), "s1: update D (D refused on s1)");
   });
 
-  it("C-130 decides from the frame alone, reading nothing but the socket id", () => {
+  it("F-01 decides from the frame alone, reading nothing but the socket id and closing nothing", () => {
     const touched = new Set<PropertyKey>();
     const close = vi.fn();
     const hocuspocus = new Proxy({ socketId: "s1" }, {
@@ -249,7 +253,7 @@ describe("inbound filter", () => {
     expect(close).not.toHaveBeenCalled();
   });
 
-  it("C-132 passes frames it cannot decode unchanged and leaves the marks as they were", () => {
+  it("F-09 passes frames it cannot decode unchanged and leaves the marks as they were", () => {
     const docOnly = encoding.createEncoder();
     encoding.writeVarString(docOnly, D);
     const syncNoSub = bare(D, WIRE.sync);
@@ -274,7 +278,7 @@ describe("inbound filter", () => {
     }
   });
 
-  it("C-133 keys the marks by the name before the first \\0, as Hocuspocus does", () => {
+  it("F-08 keys the marks by the name before the first \\0, as Hocuspocus does", () => {
     const sess1 = `${D}\0sess-1`;
     const sess2 = `${D}\0sess-2`;
     const D2 = `${D}x`;
@@ -306,5 +310,40 @@ describe("inbound filter", () => {
     const q = peer("s2");
     passes(q, frames.step2(D), "(d) step2 D on s2");
     drops(q, frames.update(D2), "(d) update D2 on s2, never handshaken");
+  });
+
+  it("F-04 isRefused is true once markRefused ran and false again after an Auth frame of that document", () => {
+    const p = inState("s1", "H");
+    expect(mod.isRefused("s1", D), "handshaken, never refused").toBe(false);
+    mod.markRefused("s1", D);
+    expect(mod.isRefused("s1", D), "after markRefused").toBe(true);
+    drops(p, frames.update(D), "update while refused");
+    expect(mod.isRefused("s1", D), "a dropped frame keeps the mark").toBe(true);
+    passes(p, frames.auth(D), "auth");
+    expect(mod.isRefused("s1", D), "after auth").toBe(false);
+    expect(mod.isRefused("s-never", D), "a socket the filter never saw").toBe(false);
+  });
+
+  it("F-06 isRefused answers per (socket, document): another document or another socket is not refused", () => {
+    inState("s1", "R");
+    inState("s2", "H");
+    inState("s1-e", "H", E);
+    expect(mod.isRefused("s1", D)).toBe(true);
+    expect(mod.isRefused("s1", E), "same socket, another document").toBe(false);
+    expect(mod.isRefused("s2", D), "same document, another socket").toBe(false);
+    mod.markRefused("s3", E);
+    expect(mod.isRefused("s3", E), "refused without any frame seen").toBe(true);
+    expect(mod.isRefused("s3", D)).toBe(false);
+  });
+
+  it("F-07 forgetSocket clears the socket's refusal: isRefused turns false and the document waits for a handshake", () => {
+    const p = inState("s1", "R");
+    inState("s2", "R");
+    mod.forgetSocket(p);
+    expect(mod.isRefused("s1", D), "forgotten socket").toBe(false);
+    expect(mod.isRefused("s2", D), "another socket keeps its mark").toBe(true);
+    drops(p, frames.update(D), "update with no mark left (waiting)");
+    passes(p, frames.step2(D), "step2 once the refusal is gone");
+    passes(p, frames.update(D), "update after the new handshake");
   });
 });

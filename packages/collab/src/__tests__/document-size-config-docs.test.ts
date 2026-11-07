@@ -19,15 +19,12 @@ import { parse } from "yaml";
 
 const YAML_PATH = resolve(import.meta.dirname, "../../../../config/collab.yaml");
 
-/** The seven new keys and the defaults the design fixes for them. */
+/** The second version's four document_size_* keys and the defaults the design fixes for them. */
 const DEFAULTS: ReadonlyArray<readonly [string, number]> = [
-  ["document_size_warn_ratio", 0.8],
-  ["document_size_full_margin_bytes", 262144],
+  ["document_size_warn_ratio", 0.9],
   ["document_size_delete_headroom_bytes", 262144],
-  ["document_size_overwrite_reserve_bytes", 65536],
+  ["document_size_max_delete_splits", 1024],
   ["document_size_measure_interval_ms", 2000],
-  ["document_size_trials_per_user_per_minute", 6],
-  ["document_size_trial_budget_ms_per_second", 200],
 ];
 
 /**

@@ -2,24 +2,24 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The document size cap as the production hooks enforce it (inner#1790):
- * `beforeSync` steps 1-6 and the refusal (test spec section 6), the trial
- * budget (section 7) and the lifecycle hooks (section 8). A refusal's mark
- * for the inbound filter is observed the way section 6 asks, by the next
- * Update frame being dropped; the filter's own cases live with section 9.
+ * The document size cap as the production `beforeSync` enforces it
+ * (inner#1790, second version): steps 0-5 of design 4.2 (v2 collab test spec
+ * section 5), the bounds of design 4.2 (section 10), the refusal log fields
+ * (section 12), the inbound filter seeing a `beforeSync` refusal (F-10), an
+ * unexpected exception in the size judgement (Q8) and a record that failed
+ * to be created (Q17). Pending-content and lifecycle cases live in
+ * `document-size-pending-hooks.test.ts`.
  *
- * The hooks are the ones `createCollabServer` hands to the Hocuspocus
- * `Server` (spec 0.4): its constructor is replaced by one that records the
+ * Every hook is the one `createCollabServer` hands to the Hocuspocus `Server`
+ * (spec 0.4): the constructor is replaced by one that records the
  * configuration, and each case calls the recorded functions with a real
  * Hocuspocus `Document` carrying fake connections. Nothing re-implements a
- * hook. `checkRateLimit` is a spy; the process token bucket reads global
- * `performance.now()`, which vitest fake timers control, fixed unless a case
- * injects a trial duration. Each case boots a fresh module graph, so size records and the
- * token bucket start empty and full.
+ * hook. Each case boots a fresh module graph, so size records and inbound
+ * filter marks start empty. Timers and `Date` are faked and never advanced,
+ * so no scheduled measurement corrects a `current` a case has set.
  */
 
 import { EventEmitter } from "node:events";
-import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
 import { Document } from "@hocuspocus/server";
@@ -27,69 +27,55 @@ import type * as HocuspocusServerModule from "@hocuspocus/server";
 import type * as CoreModuleShape from "@breatic/core";
 import type * as ConfigModuleShape from "@collab/config.js";
 import type * as SizeModuleShape from "@collab/services/document-size.js";
-import { COLLAB_DOCUMENT_TOO_LARGE_REASON } from "@breatic/shared";
+import type * as FilterModuleShape from "@collab/infra/inbound-filter.js";
+import { COLLAB_DOCUMENT_TOO_LARGE_REASON, updateShape } from "@breatic/shared";
 
 import {
   C,
-  appendUpdate,
+  D,
+  NAMES,
+  alt2000,
+  beyondDs,
   capture,
-  cycleUpdate,
-  editUpdate,
-  fill,
-  fragText,
-  g9Update,
+  cost,
+  enc,
   handshakeStep2,
-  helloDoc,
-  imageNodes,
-  canvasDoc,
-  onChangeBound,
-  pendGrowthUpdate,
-  preloadPendUpdate,
-  pureDeleteUpdate,
-  refMeasure,
-  refMeasureAfter,
-  reload,
-  s1Scenario,
-  sameStateVector,
-  stateVectorAfter,
-  storedPendingDsDoc,
-  storedPendingIntegrateScenario,
+  nodeDoc,
+  pendingStructs,
+  step1Payload,
   syncedClient,
-  updateShape,
+  type NodeDoc,
 } from "./helpers/document-size-fixtures.js";
 import { authFrame, SYNC, syncFrame, WIRE } from "./helpers/live-hocuspocus.js";
-import { craft } from "../services/__tests__/helpers/doc-size-ref.js";
 
-const { serverSpy, logger, rateLimit, rateRedis, collabRedis, overrides, trial, activity, analysis, failure, S_CONFIG } = vi.hoisted(() => ({
-  // Spec 0.2 S configuration.
-  S_CONFIG: {
-    max_document_bytes: 1_048_576,
-    document_size_warn_ratio: 0.8,
-    document_size_full_margin_bytes: 26_214,
-    document_size_delete_headroom_bytes: 26_214,
-    document_size_overwrite_reserve_bytes: 6_554,
-    document_size_measure_interval_ms: 2000,
-    document_size_trials_per_user_per_minute: 6,
-    document_size_trial_budget_ms_per_second: 200,
-  },
-  serverSpy: vi.fn(),
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-  rateLimit: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-  rateRedis: { on: vi.fn(), name: "db0-rate-limit-redis" },
-  collabRedis: { on: vi.fn(), publish: vi.fn(async () => 1), set: vi.fn(async () => null) },
-  overrides: { current: {} },
-  // A trial duration to inject: armed when step 5 calls `checkRateLimit`,
-  // spent on the copy's transaction that brings it to the post-update state.
-  trial: { armed: false, pending: undefined as undefined | { ms: number; sv: Uint8Array } },
-  // What the account activity half of `beforeSync` waits on, standing in for
-  // its Postgres write; undefined lets it finish at once.
-  activity: { hold: undefined as undefined | Promise<void> },
-  // How long the next skeleton built inside `analyze` takes on the faked
-  // clock: spent on the first transaction of a plain Y.Doc while armed.
-  analysis: { ms: 0 },
-  // Throw from the next transaction of a plain Y.Doc (a skeleton or a trial copy).
-  failure: { armed: false },
-}));
+const { serverSpy, logger, rateLimit, rateRedis, collabRedis, overrides, activity, refusalSteps } = vi.hoisted(() => {
+  // Every refusal step logged by any case of this file (G-22).
+  const steps: unknown[] = [];
+  return {
+    serverSpy: vi.fn(),
+    refusalSteps: steps,
+    logger: {
+      info: vi.fn(),
+      warn: vi.fn((fields: unknown, message?: unknown): void => {
+        if (message === "document_size_limit_refused") steps.push((fields as { step?: unknown }).step);
+      }),
+      error: vi.fn(),
+      debug: vi.fn(),
+    },
+    // Never reset: G-22 asserts no case of this file reached it.
+    rateLimit: vi.fn(async (): Promise<unknown> => ({ allowed: true })),
+    rateRedis: { on: vi.fn(), name: "db0-rate-limit-redis" },
+    collabRedis: { on: vi.fn(), publish: vi.fn(async () => 1), set: vi.fn(async () => null) },
+    overrides: { current: {} },
+    // The account activity half of `beforeSync`: a spy that may hang on
+    // `hold`, and `onCall` to read the size record at the moment it runs.
+    activity: {
+      spy: vi.fn<(data: unknown) => Promise<void>>(),
+      hold: undefined as undefined | Promise<void>,
+      onCall: undefined as undefined | (() => void),
+    },
+  };
+});
 
 vi.mock("@hocuspocus/server", async (importOriginal) => ({
   ...(await importOriginal<typeof HocuspocusServerModule>()),
@@ -118,11 +104,13 @@ vi.mock("@breatic/core", async (importOriginal) => ({
   checkRateLimit: rateLimit,
 }));
 
+// Spec 0.2 configuration D, plus a case's overrides.
 vi.mock("@collab/config.js", async (importOriginal) => {
   const real = await importOriginal<typeof ConfigModuleShape>();
+  const { D_CONFIG } = await import("./helpers/document-size-fixtures.js");
   return {
     ...real,
-    getCollabConfig: () => ({ ...real.getCollabConfig(), ...S_CONFIG, ...overrides.current }),
+    getCollabConfig: () => ({ ...real.getCollabConfig(), ...D_CONFIG, ...overrides.current }),
   };
 });
 
@@ -145,37 +133,37 @@ vi.mock("@collab/services/connection-registry.js", () => ({
   })),
 }));
 
-// The account activity half of `beforeSync` writes to Postgres; it is not
-// what these cases measure.
 vi.mock("@collab/hooks/account-activity.js", () => ({
-  createActivityHook: () => vi.fn(async () => {
-    await activity.hold;
-  }),
+  createActivityHook: () => (data: unknown) => activity.spy(data),
 }));
 
-const L = 1_048_576;
-const CEIL = 1_074_790;
-const FULL_AT = 1_022_362;
-const RESERVE = 6_554;
-const NAME = "project-p1/canvas-s1";
+const { CV, DOC, META, ODD } = NAMES;
+const L = D.L;
+const CEIL = D.CEIL;
+const REFUSED = "document_size_limit_refused";
 
 type SizeModule = typeof SizeModuleShape;
+type FilterModule = typeof FilterModuleShape;
+
+/** A refusal step of design 4.2 and Q8. */
+type Step = "after_refusal" | "splits" | "pending" | "full" | "over_ceiling" | "error";
+
+/** The v2 size record as `readDocSizeRecord` reports it. */
+interface SizeRecord {
+  exact: number;
+  current: number;
+  phase: "normal" | "warning" | "full";
+  heldSum: number;
+}
 
 /** The production hooks a case drives. */
 interface Hooks {
   beforeSync: (payload: unknown) => Promise<void>;
-  afterHandleMessage: (payload: unknown) => Promise<void>;
   afterLoadDocument: (payload: unknown) => Promise<void>;
-  connected: (payload: unknown) => Promise<void>;
-  onChange: (payload: unknown) => Promise<void>;
-  onStateless: (payload: unknown) => Promise<void>;
-  afterUnloadDocument: (payload: unknown) => Promise<void>;
   receiveFrame: (peer: unknown, message: unknown) => Uint8Array | undefined;
-  onPeerClose: (peer: unknown, event: unknown) => void;
-  onPeerError: (peer: unknown, error: unknown) => void;
 }
 
-/** A fake Hocuspocus connection (spec 0.3). */
+/** A fake Hocuspocus connection (spec 0.4). */
 interface FakeConnection {
   socketId: string;
   readOnly: boolean;
@@ -192,21 +180,29 @@ interface FakeConnection {
 interface World {
   hooks: Hooks;
   size: SizeModule;
+  filter: FilterModule;
+}
+
+/** A crossws peer stand-in. */
+interface Peer {
+  _hocuspocus: { socketId: string };
+  close: ReturnType<typeof vi.fn>;
+  send: ReturnType<typeof vi.fn>;
 }
 
 let w: World;
-const peers = new Map<string, { _hocuspocus: { socketId: string }; close: ReturnType<typeof vi.fn>; send: ReturnType<typeof vi.fn> }>();
-let emitSpy: { mockRestore: () => void } | undefined;
+const peers = new Map<string, Peer>();
 
 /**
  * Boot a fresh `createCollabServer` and take the hooks it registered.
- * @param config - Configuration over the S configuration.
- * @returns The hooks and the size module of the same module graph.
+ * @param config - Configuration over configuration D.
+ * @returns The hooks and the size and filter modules of the same module graph.
  */
 async function boot(config: Record<string, unknown> = {}): Promise<World> {
   overrides.current = config;
   vi.resetModules();
   const size = await import("@collab/services/document-size.js");
+  const filter = await import("@collab/infra/inbound-filter.js");
   const { createCollabServer } = await import("@collab/hocuspocus.js");
   serverSpy.mockClear();
   await createCollabServer({
@@ -219,99 +215,58 @@ async function boot(config: Record<string, unknown> = {}): Promise<World> {
   logger.info.mockClear();
   logger.warn.mockClear();
   logger.error.mockClear();
-  w = { hooks, size };
+  w = { hooks, size, filter };
   return w;
 }
 
 /**
- * Load a document the way Hocuspocus does: a `Document` with the stored state,
- * then the production `afterLoadDocument`.
+ * Load a document the way Hocuspocus does: a `Document` with the stored
+ * state, then the production `afterLoadDocument`.
  * @param name - Document name.
  * @param src - Stored content, if any.
+ * @param opts - Load options.
+ * @param opts.failMeasure - Make encoding the document throw while the hook runs (Q17).
  * @returns The loaded document.
  */
-async function load(name: string, src?: Y.Doc): Promise<Document> {
+async function load(name: string, src?: Y.Doc, opts: { failMeasure?: boolean } = {}): Promise<Document> {
   const doc = new Document(name, undefined, { flushDelay: false });
   if (src) Y.applyUpdate(doc, Y.encodeStateAsUpdate(src));
-  await w.hooks.afterLoadDocument({
-    documentName: name,
-    document: doc,
-    instance: { documents: new Map([[name, doc]]) },
-    context: {},
-    requestHeaders: new Headers(),
-    requestParameters: new URLSearchParams(),
-    socketId: "",
-  });
+  const store = doc.store as unknown as Record<string, unknown>;
+  const saved = store.pendingStructs;
+  if (opts.failMeasure) {
+    // `encodeStateAsUpdate` reads the pending structs, so measuring throws.
+    Object.defineProperty(store, "pendingStructs", {
+      configurable: true,
+      get(): never {
+        throw new Error("injected measure failure");
+      },
+    });
+  }
+  try {
+    await w.hooks.afterLoadDocument({
+      documentName: name,
+      document: doc,
+      instance: { documents: new Map([[name, doc]]) },
+      context: {},
+      requestHeaders: new Headers(),
+      requestParameters: new URLSearchParams(),
+      socketId: "",
+    });
+  } finally {
+    if (opts.failMeasure) {
+      delete store.pendingStructs;
+      store.pendingStructs = saved;
+    }
+  }
   return doc;
 }
 
 /**
- * A fake connection attached to the document's connection set.
- * @param doc - The document.
- * @param opts - Socket, user and read-only flag.
- * @param opts.socketId - Socket id.
- * @param opts.userId - User id.
- * @param opts.readOnly - Read-only flag.
- * @param opts.attach - Whether to register it on the document.
- * @returns The connection.
- */
-function conn(
-  doc: Document,
-  opts: { socketId?: string; userId?: string; readOnly?: boolean; attach?: boolean } = {},
-): FakeConnection {
-  const connection: FakeConnection = {
-    socketId: opts.socketId ?? "s1",
-    readOnly: opts.readOnly ?? false,
-    context: { user: { id: opts.userId ?? "u1", role: "editor" }, seatCap: null, arrivedAtMs: 0 },
-    sendStateless: vi.fn(),
-    send: vi.fn(),
-    close: vi.fn(),
-    messageAddress: doc.name,
-    document: doc,
-    webSocket: Object.assign(new EventEmitter(), { send: vi.fn() }),
-  };
-  if (opts.attach !== false) doc.addConnection(connection as unknown as Parameters<Document["addConnection"]>[0]);
-  return connection;
-}
-
-/**
- * Call the production `beforeSync` with Hocuspocus's payload shape.
- * @param doc - The document.
- * @param c - The connection.
- * @param type - Sync sub-type (0 SyncStep1, 1 SyncStep2, 2 Update).
- * @param payload - The payload Hocuspocus peeks.
- * @returns The hook's promise.
- */
-function beforeSync(doc: Document, c: FakeConnection, type: number, payload: Uint8Array): Promise<void> {
-  return w.hooks.beforeSync({
-    clientsCount: doc.getConnectionsCount(),
-    context: c.context,
-    document: doc,
-    documentName: doc.name,
-    connection: c,
-    type,
-    payload,
-  });
-}
-
-/**
- * Expect `beforeSync` to let the message through, then apply it as Hocuspocus would.
- * @param doc - The document.
- * @param c - The connection.
- * @param type - Sync sub-type.
- * @param payload - The update.
- */
-async function admit(doc: Document, c: FakeConnection, type: number, payload: Uint8Array): Promise<void> {
-  await expect(beforeSync(doc, c, type, payload)).resolves.toBeUndefined();
-  if (type !== SYNC.step1) Y.applyUpdate(doc, payload, { source: "connection", connection: c });
-}
-
-/**
- * The crossws peer stand-in for a socket.
+ * The peer object of a socket, the same one for the same socket.
  * @param socketId - Socket id.
- * @returns The same peer object for the same socket.
+ * @returns The peer.
  */
-function peerOf(socketId: string): { _hocuspocus: { socketId: string }; close: ReturnType<typeof vi.fn>; send: ReturnType<typeof vi.fn> } {
+function peerOf(socketId: string): Peer {
   let peer = peers.get(socketId);
   if (!peer) {
     peer = { _hocuspocus: { socketId }, close: vi.fn(), send: vi.fn() };
@@ -335,60 +290,207 @@ function frame(socketId: string, bytes: Uint8Array): Uint8Array | undefined {
 }
 
 /**
- * Bring `(socketId, key)` to the handshaken state through production frames.
+ * Authenticate a document on a socket and pass its handshake SyncStep2
+ * through production frames: clears a refusal mark, sets the handshake mark.
  * @param socketId - Socket id.
- * @param key - Message key (document name, optionally with a `\0` suffix).
+ * @param name - Document name.
  */
-function handshake(socketId: string, key: string): void {
-  frame(socketId, authFrame(key, "token"));
-  frame(socketId, syncFrame(key, WIRE.sync, SYNC.step2, new Uint8Array([0, 0])));
-}
-
-/** What a refusal must look like (spec section 6 opening, 0.5.1). */
-interface Refusal {
-  step: "malformed" | "pending" | "budget_user" | "budget_process" | "trial";
-  after?: number;
+function handshake(socketId: string, name: string): void {
+  frame(socketId, authFrame(name, "token"));
+  frame(socketId, syncFrame(name, WIRE.sync, SYNC.step2, new Uint8Array([0, 0])));
 }
 
 /**
- * Expect `beforeSync` to refuse, with the error, log line, unchanged upper
- * bound and refusal mark the spec requires.
+ * Whether production `receiveFrame` hands the next Update frame of a document on.
+ * @param socketId - Socket id.
+ * @param name - Document name.
+ * @returns True when the frame passes.
+ */
+function updateFramePasses(socketId: string, name: string): boolean {
+  return frame(socketId, syncFrame(name, WIRE.sync, SYNC.update, new Uint8Array([0, 0]))) !== undefined;
+}
+
+/**
+ * A fake connection attached to the document, handshaken through the filter.
+ * @param doc - The document.
+ * @param opts - Connection options.
+ * @param opts.socketId - Socket id (default `"s1"`).
+ * @param opts.userId - User id (default `"u1"`).
+ * @param opts.readOnly - Read-only flag.
+ * @param opts.handshake - Whether to handshake the document on the socket first (default true).
+ * @returns The connection.
+ */
+function conn(
+  doc: Document,
+  opts: { socketId?: string; userId?: string; readOnly?: boolean; handshake?: boolean } = {},
+): FakeConnection {
+  const connection: FakeConnection = {
+    socketId: opts.socketId ?? "s1",
+    readOnly: opts.readOnly ?? false,
+    context: { user: { id: opts.userId ?? "u1", role: "editor" }, seatCap: null, arrivedAtMs: 0 },
+    sendStateless: vi.fn(),
+    send: vi.fn(),
+    close: vi.fn(),
+    messageAddress: doc.name,
+    document: doc,
+    webSocket: Object.assign(new EventEmitter(), { send: vi.fn() }),
+  };
+  doc.addConnection(connection as unknown as Parameters<Document["addConnection"]>[0]);
+  if (opts.handshake !== false) handshake(connection.socketId, doc.name);
+  return connection;
+}
+
+/**
+ * Call the production `beforeSync` with the payload shape of spec 0.4.
+ * @param doc - The document.
+ * @param c - The connection.
+ * @param type - Sync sub-type (0 SyncStep1, 1 SyncStep2, 2 Update).
+ * @param payload - The update or state vector.
+ * @returns The hook's promise.
+ */
+function beforeSync(doc: Document, c: FakeConnection, type: number, payload: Uint8Array): Promise<void> {
+  return w.hooks.beforeSync({
+    clientsCount: doc.getConnectionsCount(),
+    context: c.context,
+    document: doc,
+    documentName: doc.name,
+    connection: c,
+    type,
+    payload,
+  });
+}
+
+/**
+ * Apply an update the way Hocuspocus does for a connection.
+ * @param doc - The document.
+ * @param c - The connection.
+ * @param update - The update.
+ */
+function apply(doc: Document, c: FakeConnection, update: Uint8Array): void {
+  Y.applyUpdate(doc, update, { source: "connection", connection: c });
+}
+
+/**
+ * A fake connection where production expects a Hocuspocus `Connection`.
+ * @param c - The fake connection.
+ * @returns The same object, typed for the production signature.
+ */
+function asConnection(c: FakeConnection): never {
+  return c as never;
+}
+
+/**
+ * The v2 size record of a document, failing when there is none or it lacks a v2 field.
+ * @param name - Document name.
+ * @returns The record.
+ * @throws {Error} When the document has no record or the record has no `current` / `heldSum`.
+ */
+function rec(name: string): SizeRecord {
+  const record = w.size.readDocSizeRecord(name) as unknown as Partial<SizeRecord> | undefined;
+  if (!record) throw new Error(`no size record for ${name}`);
+  if (typeof record.current !== "number" || typeof record.heldSum !== "number") {
+    throw new Error(`size record of ${name} has no v2 current / heldSum: ${JSON.stringify(record)}`);
+  }
+  return record as SizeRecord;
+}
+
+/**
+ * Set a document's `current` through the record's exact size (held is 0 at setup).
+ * @param name - Document name.
+ * @param bytes - The value.
+ */
+function setCur(name: string, bytes: number): void {
+  w.size.recordExact(name, bytes);
+}
+
+/**
+ * The refusal log lines so far.
+ * @returns `[fields, message]` pairs.
+ */
+function refusalLogs(): unknown[][] {
+  return logger.warn.mock.calls.filter((call) => call[1] === REFUSED);
+}
+
+/**
+ * Expect production `beforeSync` to admit the message (spec section 5
+ * "accepted"): no throw, `current` and `heldSum` grow by the design 4.1 cost,
+ * the activity spy runs once, nothing is refused.
  * @param doc - The document.
  * @param c - The connection.
  * @param type - Sync sub-type.
  * @param payload - The update.
- * @param expected - Step and `after` of the log line.
+ * @returns The cost that was added.
+ */
+async function accepts(doc: Document, c: FakeConnection, type: number, payload: Uint8Array): Promise<number> {
+  const k = cost(payload, doc);
+  const before = rec(doc.name);
+  activity.spy.mockClear();
+  logger.warn.mockClear();
+  await expect(beforeSync(doc, c, type, payload)).resolves.toBeUndefined();
+  const after = rec(doc.name);
+  expect(after.current).toBe(before.current + k);
+  expect(after.heldSum).toBe(before.heldSum + k);
+  expect(activity.spy).toHaveBeenCalledTimes(1);
+  expect(refusalLogs()).toEqual([]);
+  expect(w.filter.isRefused(c.socketId, doc.name)).toBe(false);
+  return k;
+}
+
+/**
+ * Expect production `beforeSync` to refuse the message (spec section 5
+ * "refused"): the error carries the size reason, the socket and document are
+ * marked (the next Update frame is dropped), one refusal log with the
+ * design 4.2 fields, no activity, the record unchanged.
+ * @param doc - The document.
+ * @param c - The connection.
+ * @param type - Sync sub-type.
+ * @param payload - The update.
+ * @param step - The expected refusal step.
  * @returns The thrown error.
  */
-async function refuse(doc: Document, c: FakeConnection, type: number, payload: Uint8Array, expected: Refusal): Promise<unknown> {
-  handshake(c.socketId, doc.name);
-  const upperBefore = w.size.readDocSizeRecord(doc.name)?.upper;
+async function refuses(doc: Document, c: FakeConnection, type: number, payload: Uint8Array, step: Step): Promise<unknown> {
+  const before = rec(doc.name);
+  activity.spy.mockClear();
   logger.warn.mockClear();
   const err = await beforeSync(doc, c, type, payload).then(
     () => undefined,
     (e: unknown) => e,
   );
-  // C-98: an Error carrying only the reason.
   expect(err).toBeInstanceOf(Error);
   expect((err as { reason?: unknown }).reason).toBe(COLLAB_DOCUMENT_TOO_LARGE_REASON);
-  expect((err as { code?: unknown }).code).toBeUndefined();
-  expect(logger.warn).toHaveBeenCalledTimes(1);
-  expect(logger.warn).toHaveBeenCalledWith(
-    {
-      documentName: doc.name,
-      userId: c.context.user.id,
-      upper: upperBefore,
-      after: expected.after,
-      limit: L,
-      ceiling: CEIL,
-      step: expected.step,
-    },
-    "document_size_limit_refused",
-  );
-  expect(w.size.readDocSizeRecord(doc.name)?.upper).toBe(upperBefore);
-  // The refusal marked (socket, document): the next Update frame is dropped.
-  expect(frame(c.socketId, syncFrame(doc.name, WIRE.sync, SYNC.update, new Uint8Array([0, 0])))).toBeUndefined();
+  expect(refusalLogs()).toEqual([
+    [{ documentName: doc.name, userId: c.context.user.id, current: before.current, limit: L, ceiling: CEIL, step }, REFUSED],
+  ]);
+  expect(activity.spy).not.toHaveBeenCalled();
+  expect(rec(doc.name)).toEqual(before);
+  expect(w.filter.isRefused(c.socketId, doc.name)).toBe(true);
+  expect(updateFramePasses(c.socketId, doc.name)).toBe(false);
   return err;
+}
+
+/**
+ * Expect production `beforeSync` not to check the message (design 4.2 step 1):
+ * no throw, no refusal log, the record (if any) unchanged.
+ * @param doc - The document.
+ * @param c - The connection.
+ * @param type - Sync sub-type.
+ * @param payload - The payload.
+ */
+async function notChecked(doc: Document, c: FakeConnection, type: number, payload: Uint8Array): Promise<void> {
+  const before = w.size.readDocSizeRecord(doc.name);
+  logger.warn.mockClear();
+  await expect(beforeSync(doc, c, type, payload)).resolves.toBeUndefined();
+  expect(refusalLogs()).toEqual([]);
+  expect(w.size.readDocSizeRecord(doc.name)).toEqual(before);
+}
+
+/**
+ * Re-authenticate a refused connection's document (clears the refusal mark).
+ * @param c - The connection.
+ * @param name - Document name.
+ */
+function reauth(c: FakeConnection, name: string): void {
+  handshake(c.socketId, name);
 }
 
 /**
@@ -402,1231 +504,677 @@ function pushes(c: FakeConnection): Array<Record<string, unknown>> {
     .filter((m) => m.type === "doc:size");
 }
 
-/**
- * The push section 5 defines for an upper bound under the S configuration.
- * @param upper - The upper bound.
- * @param phase - The phase.
- * @returns The expected `doc:size` message.
- */
-function expectedPush(upper: number, phase: "normal" | "warning" | "full"): Record<string, unknown> {
-  return {
-    type: "doc:size",
-    bytes: upper,
-    limit: L,
-    ceiling: CEIL,
-    room: Math.max(0, FULL_AT - upper),
-    overwriteRoom: Math.max(0, CEIL - upper - RESERVE),
-    phase,
-  };
+/** The fixture documents most cases share. */
+interface Combo {
+  /** The `nodeDoc()` handles (client 7). */
+  nd: NodeDoc;
+  /** The `alt2000()` client (client 11) and its text. */
+  alt: { client: Y.Doc; t: Y.Text };
+  /** The stored content: both fixtures' server copies merged. */
+  src: Y.Doc;
 }
 
 /**
- * The record's upper bound, failing when there is none.
- * @param name - Document name.
- * @returns `upper`.
+ * `nodeDoc()` and `alt2000()` in one stored document, so updates captured on
+ * either client are judged against the structs they were made on.
+ * @returns The handles.
  */
-function upperOf(name: string): number {
-  const record = w.size.readDocSizeRecord(name);
-  if (!record) throw new Error(`no size record for ${name}`);
-  return record.upper;
+function combo(): Combo {
+  const nd = nodeDoc();
+  const alt = alt2000();
+  const src = new Y.Doc();
+  Y.applyUpdate(src, Y.encodeStateAsUpdate(nd.server));
+  Y.applyUpdate(src, Y.encodeStateAsUpdate(alt.server));
+  return { nd, alt, src };
 }
 
 /**
- * Inject how long the next trial takes on the faked clock.
- * @param ms - Trial duration.
- * @param doc - The document the trial copies.
- * @param update - The update the trial applies.
+ * An insert-only update from a fresh client synced with the document.
+ * @param doc - The document.
+ * @param clientID - The new client's id.
+ * @param chars - How many characters to insert.
+ * @returns The update.
  */
-function injectTrialDuration(ms: number, doc: Y.Doc, update: Uint8Array): void {
-  trial.pending = { ms, sv: stateVectorAfter(doc, update) };
+function insertOnly(doc: Y.Doc, clientID: number, chars = 3): Uint8Array {
+  const client = syncedClient(doc, clientID);
+  return capture(client, () => client.getText(`ins${clientID}`).insert(0, "i".repeat(chars)));
 }
 
 /**
- * Raise the upper bound to the limit, so an append without deletes has to
- * reach step 5 (C-85 (b) shape).
+ * Spec SH-12 on a fresh client: a new node `n2` with `name: "abc"`.
+ * @param doc - The document.
+ * @param clientID - The new client's id.
+ * @returns The update.
  */
-function needTrial(): void {
-  w.size.recordExact(NAME, L);
+function sh12(doc: Y.Doc, clientID: number): Uint8Array {
+  const client = syncedClient(doc, clientID);
+  return capture(client, () => {
+    const n2 = new Y.Map<unknown>();
+    client.getMap<Y.Map<unknown>>("nodes").set("n2", n2);
+    n2.set("name", "abc");
+  });
 }
 
-/** `checkRateLimit` allowing, the spec's default. */
-const allowed = async (): Promise<unknown> => {
-  trial.armed = trial.pending !== undefined;
-  return { allowed: true };
-};
+/**
+ * Spec SH-11 on a fresh client: delete `data.color` and rename `n1` in one transaction.
+ * @param doc - The document.
+ * @param clientID - The new client's id.
+ * @returns The update.
+ */
+function sh11(doc: Y.Doc, clientID: number): Uint8Array {
+  const client = syncedClient(doc, clientID);
+  return capture(client, () => {
+    const n1 = client.getMap<Y.Map<unknown>>("nodes").get("n1") as Y.Map<unknown>;
+    (n1.get("data") as Y.Map<unknown>).delete("color");
+    n1.set("name", "x3");
+  });
+}
+
+/**
+ * Spec SH-05 / SH-06: delete the characters at the given original indices of
+ * the `alt2000` text in one transaction.
+ * @param t - The client's text.
+ * @param indices - Original indices, any order.
+ * @returns The update.
+ */
+function deleteAt(t: Y.Text, indices: number[]): Uint8Array {
+  const doc = t.doc as Y.Doc;
+  return capture(doc, () => {
+    for (const i of [...indices].sort((a, b) => b - a)) t.delete(i, 1);
+  });
+}
+
+/**
+ * Odd indices 1, 3, ..., 1999 (SH-05, 1999 split endpoints).
+ * @returns The indices.
+ */
+function oddIndices(): number[] {
+  return Array.from({ length: 1000 }, (_, k) => 2 * k + 1);
+}
+
+/**
+ * Even indices 2, 4, ..., 1024 (SH-06, 1024 split endpoints).
+ * @returns The indices.
+ */
+function evenIndices(): number[] {
+  return Array.from({ length: 512 }, (_, k) => 2 * k + 2);
+}
+
+/**
+ * A promise with its resolver.
+ * @returns The promise and `resolve`.
+ */
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve = (): void => undefined;
+  const promise = new Promise<void>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
+/**
+ * Let pending microtasks run.
+ */
+async function flush(): Promise<void> {
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+}
 
 beforeEach(() => {
   vi.useFakeTimers({
-    toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date", "performance"],
+    toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "setImmediate", "clearImmediate", "Date"],
     now: 0,
   });
   peers.clear();
-  trial.armed = false;
-  trial.pending = undefined;
   activity.hold = undefined;
-  analysis.ms = 0;
-  failure.armed = false;
-  rateLimit.mockReset().mockImplementation(allowed);
-  const proto = Y.Doc.prototype as unknown as { emit: (name: string, args: unknown[]) => void };
-  const realEmit = proto.emit;
-  emitSpy = vi.spyOn(proto, "emit").mockImplementation(function (this: Y.Doc, name: string, args: unknown[]): void {
-    if (failure.armed && name === "afterTransaction" && !(this instanceof Document)) {
-      failure.armed = false;
-      throw new Error("injected gate failure");
-    }
-    if (analysis.ms > 0 && name === "afterTransaction" && !(this instanceof Document)) {
-      const ms = analysis.ms;
-      analysis.ms = 0;
-      vi.advanceTimersByTime(ms);
-    }
-    const pending = trial.pending;
-    if (
-      trial.armed &&
-      pending &&
-      name === "afterTransaction" &&
-      !(this instanceof Document) &&
-      sameStateVector(Y.encodeStateVector(this), pending.sv)
-    ) {
-      trial.armed = false;
-      trial.pending = undefined;
-      vi.advanceTimersByTime(pending.ms);
-    }
-    realEmit.call(this, name, args);
+  activity.onCall = undefined;
+  activity.spy.mockReset().mockImplementation(async () => {
+    activity.onCall?.();
+    await activity.hold;
   });
 });
 
 afterEach(() => {
-  emitSpy?.mockRestore();
   vi.useRealTimers();
 });
 
 describe("beforeSync step 1: not checked", () => {
-  it("C-80 (a) lets a meta document's update through without a trial", async () => {
-    await boot();
-    const doc = await load("project-p1/meta");
-    const c = conn(doc);
-    await expect(beforeSync(doc, c, SYNC.update, g9Update())).resolves.toBeUndefined();
-    expect(rateLimit).not.toHaveBeenCalled();
-    expect(w.size.readDocSizeRecord("project-p1/meta")).toBeUndefined();
-    expect(logger.warn).not.toHaveBeenCalled();
-  });
+  it("G-01 checks nothing on a meta document, an unparseable name, or a canvas when max_document_bytes is 0", async () => {
+    const { alt } = combo();
+    const splits = deleteAt(alt.t, oddIndices());
+    const garbage = new Uint8Array([1]);
 
-  it("C-80 (b) lets everything through when max_document_bytes is 0", async () => {
+    await boot();
+    for (const name of [ODD, META]) {
+      const doc = await load(name);
+      const c = conn(doc);
+      // Either would be refused (step 2) or fail to decode if it were checked.
+      await notChecked(doc, c, SYNC.update, splits);
+      await notChecked(doc, c, SYNC.update, garbage);
+      expect(w.size.readDocSizeRecord(name)).toBeUndefined();
+    }
+
     await boot({ max_document_bytes: 0 });
-    const doc = await load(NAME, helloDoc());
+    const doc = await load(CV, alt2000().server);
     const c = conn(doc);
-    await expect(beforeSync(doc, c, SYNC.update, g9Update())).resolves.toBeUndefined();
-    expect(rateLimit).not.toHaveBeenCalled();
-    expect(w.size.readDocSizeRecord(NAME)).toBeUndefined();
-    expect(logger.warn).not.toHaveBeenCalled();
+    await notChecked(doc, c, SYNC.update, splits);
+    await notChecked(doc, c, SYNC.update, garbage);
+    expect(w.size.readDocSizeRecord(CV)).toBeUndefined();
+    expect(logger.error).not.toHaveBeenCalled();
   });
 
-  it("C-80 (c) never refuses a read-only connection, so a viewer is not disconnected", async () => {
+  it("G-02 checks nothing from a read-only connection over the hard ceiling", async () => {
     await boot();
-    const doc = await load(NAME, helloDoc());
-    w.size.recordExact(NAME, CEIL + 1);
+    const { nd, src } = combo();
+    const doc = await load(CV, src);
+    setCur(CV, CEIL);
     const viewer = conn(doc, { readOnly: true });
-    await expect(beforeSync(doc, viewer, SYNC.update, g9Update())).resolves.toBeUndefined();
-    await expect(beforeSync(doc, viewer, SYNC.update, appendUpdate(doc, 20 * 1024))).resolves.toBeUndefined();
-    expect(rateLimit).not.toHaveBeenCalled();
-    expect(upperOf(NAME)).toBe(CEIL + 1);
-    expect(logger.warn).not.toHaveBeenCalled();
+    const before = rec(CV);
+    await notChecked(doc, viewer, SYNC.update, sh12(doc, 51));
+    await notChecked(doc, viewer, SYNC.step2, handshakeStep2(doc, nd.client));
+    expect(rec(CV)).toEqual(before);
+    expect(w.filter.isRefused("s1", CV)).toBe(false);
   });
 
-  it("C-80 (d) does not check a SyncStep1", async () => {
+  it("G-03 checks no SyncStep1 over the hard ceiling", async () => {
     await boot();
-    const doc = await load(NAME, helloDoc());
-    w.size.recordExact(NAME, CEIL + 1);
+    const { src } = combo();
+    const doc = await load(CV, src);
+    setCur(CV, CEIL);
     const c = conn(doc);
-    await expect(beforeSync(doc, c, SYNC.step1, Y.encodeStateVector(imageNodes(3)))).resolves.toBeUndefined();
-    expect(rateLimit).not.toHaveBeenCalled();
-    expect(upperOf(NAME)).toBe(CEIL + 1);
-    expect(logger.warn).not.toHaveBeenCalled();
+    const before = rec(CV);
+    await notChecked(doc, c, SYNC.step1, step1Payload(doc));
+    expect(rec(CV)).toEqual(before);
+    expect(w.filter.isRefused("s1", CV)).toBe(false);
   });
 });
 
-describe("beforeSync step 2: updates that would add pending content (C-98 for 'pending')", () => {
-  it("C-81 refuses them far below the limit, handshake SyncStep2 included", async () => {
+describe("beforeSync step 3: below the limit", () => {
+  it("G-04 admits a large insert at warning, adds its cost, turns full and pushes it to every connection", async () => {
     await boot();
-    const doc = await load(NAME, helloDoc());
-    w.size.recordExact(NAME, 1000);
-    const c = conn(doc);
-    await refuse(doc, c, SYNC.update, pendGrowthUpdate(), { step: "pending" });
-    await refuse(doc, c, SYNC.step2, preloadPendUpdate(), { step: "pending" });
-    await refuse(doc, c, SYNC.update, cycleUpdate(), { step: "pending" });
-    expect(rateLimit).not.toHaveBeenCalled();
-    expect(upperOf(NAME)).toBe(1000);
-  });
-
-  it("C-82 refuses on wouldPend before integratesStored is considered", async () => {
-    await boot();
-    const { server, reconnect } = s1Scenario();
-    const doc = await load(NAME, server);
-    const update = Y.mergeUpdates([reconnect, g9Update()]);
-    const analysis = w.size.analyze(update, doc);
-    expect(analysis.wouldPend).toBe(true);
-    expect(analysis.integratesStored).toBe(true);
-    await refuse(doc, conn(doc), SYNC.update, update, { step: "pending" });
-    expect(rateLimit).not.toHaveBeenCalled();
-  });
-});
-
-describe("beforeSync step 3: growthBound 0", () => {
-  it("C-83 admits zero-growth messages on a document over the hard ceiling without a trial", async () => {
-    await boot();
-    const src = new Y.Doc();
-    fill(src, CEIL + 10_000);
-    // An earlier delete of [0, 5), whose bytes a later message repeats.
-    const earlierDelete = capture(src, (d) => d.getText("t").delete(0, 5));
-    // 200 separate deleted ranges, so a synced client's handshake carries them.
-    for (let i = 0; i < 200; i++) src.getText("t").delete(i + 1, 1);
-    const doc = await load(NAME, src);
-    expect(upperOf(NAME)).toBeGreaterThan(CEIL);
-    const c = conn(doc);
-    const before = upperOf(NAME);
-
-    await admit(doc, c, SYNC.step2, new Uint8Array([0, 0]));
-    expect(upperOf(NAME)).toBe(before);
-    await admit(doc, c, SYNC.update, earlierDelete);
-    expect(upperOf(NAME)).toBe(before);
-    await admit(doc, c, SYNC.step2, handshakeStep2(doc, syncedClient(doc)));
-    expect(upperOf(NAME)).toBe(before);
-    expect(rateLimit).not.toHaveBeenCalled();
-  });
-
-  it("C-84 sends an update that integrates stored pending content to the trial, not to the upper bound", async () => {
-    await boot();
-    const { server, filler } = storedPendingIntegrateScenario(2000);
-    const doc = await load(NAME, server);
-    expect(doc.store.pendingStructs).not.toBeNull();
-    w.size.recordExact(NAME, 20_000);
-    const expected = refMeasureAfter(doc, filler);
-    await admit(doc, conn(doc), SYNC.update, filler);
-    expect(rateLimit).toHaveBeenCalledTimes(1);
-    const record = w.size.readDocSizeRecord(NAME);
-    expect(record?.upper).toBe(expected);
-    expect(record?.exact).toBe(expected);
-  });
-});
-
-describe("beforeSync step 4: admitted on the upper bound", () => {
-  it("C-85 (a), C-88 admits at upper + growthBound = limit and adds growthBound", async () => {
-    await boot();
-    const doc = await load(NAME, helloDoc());
-    const update = appendUpdate(doc, 100);
-    const g = w.size.analyze(update, doc).growthBound;
-    w.size.recordExact(NAME, L - g);
-    await admit(doc, conn(doc), SYNC.update, update);
-    expect(rateLimit).not.toHaveBeenCalled();
-    expect(upperOf(NAME)).toBe(L);
-    expect(upperOf(NAME) - (L - g)).toBe(g);
-  });
-
-  it("C-85 (b), C-100 sends upper + growthBound = limit + 1 to the trial, keyed per document and user", async () => {
-    await boot();
-    const doc = await load(NAME, helloDoc());
-    const update = appendUpdate(doc, 100);
-    const g = w.size.analyze(update, doc).growthBound;
-    w.size.recordExact(NAME, L - g + 1);
-    const expected = refMeasureAfter(doc, update);
-    await admit(doc, conn(doc), SYNC.update, update);
-    expect(rateLimit).toHaveBeenCalledTimes(1);
-    expect(rateLimit).toHaveBeenCalledWith(rateRedis, [
-      { key: "collab-doc-size-trial:project-p1/canvas-s1:u1", max: 6, windowSeconds: 60 },
-    ]);
-    const record = w.size.readDocSizeRecord(NAME);
-    expect(record?.upper).toBe(expected);
-    expect(record?.exact).toBe(expected);
-    expect(expected).toBeLessThan(L);
-  });
-
-  it("C-86 (a), C-88 admits a live delete with additions up to the ceiling and adds max(0, g - freed)", async () => {
-    await boot();
-    const doc = await load(NAME, helloDoc());
-    const update = editUpdate(doc, (c) => {
-      const t = c.getText("t");
-      t.delete(0, 1);
-      t.insert(t.length, "y".repeat(100));
-    });
-    const analysis = w.size.analyze(update, doc);
-    expect(analysis.deletesLive).toBe(true);
-    const g = analysis.growthBound;
-    const f = analysis.freedBytes;
-    w.size.recordExact(NAME, CEIL - g);
-    await admit(doc, conn(doc), SYNC.update, update);
-    expect(rateLimit).not.toHaveBeenCalled();
-    expect(upperOf(NAME)).toBe(CEIL - g + Math.max(0, g - f));
-    expect(upperOf(NAME) - (CEIL - g)).toBe(Math.max(0, g - f));
-  });
-
-  it("C-86 (b) sends upper + growthBound = ceiling + 1 to the trial, which admits it", async () => {
-    await boot();
-    const doc = await load(NAME, helloDoc());
-    const update = editUpdate(doc, (c) => {
-      const t = c.getText("t");
-      t.delete(0, 1);
-      t.insert(t.length, "y".repeat(100));
-    });
-    const g = w.size.analyze(update, doc).growthBound;
-    w.size.recordExact(NAME, CEIL - g + 1);
-    await admit(doc, conn(doc), SYNC.update, update);
-    expect(rateLimit).toHaveBeenCalledTimes(1);
-  });
-
-  it("C-87 admits 20 node deletes on a document over the ceiling without a trial or a larger bound", async () => {
-    await boot();
-    const src = imageNodes(200);
-    fill(src, CEIL + 2000);
-    const doc = await load(NAME, src);
-    expect(refMeasure(doc)).toBeGreaterThan(CEIL + 1000);
-    const c = conn(doc);
-    const client = syncedClient(doc);
-    for (let i = 0; i < 20; i++) {
-      const update = capture(client, (d) => d.getMap("nodes").delete(`node-${i}`));
-      const before = upperOf(NAME);
-      await admit(doc, c, SYNC.update, update);
-      expect(upperOf(NAME)).toBeLessThanOrEqual(before);
-    }
-    expect(rateLimit).not.toHaveBeenCalled();
-  });
-});
-
-describe("beforeSync step 5: trial budget (C-98 for 'budget_user' and 'budget_process')", () => {
-  it("C-89 refuses when the per-user count is spent, without building a copy", async () => {
-    await boot();
-    rateLimit.mockImplementation(async () => ({ allowed: false, retryAfterSeconds: 30 }));
-    const doc = await load(NAME, helloDoc());
-    const update = appendUpdate(doc, 100);
-    const g = w.size.analyze(update, doc).growthBound;
-    w.size.recordExact(NAME, L - g + 1);
-    const c = conn(doc);
-    c.sendStateless.mockClear();
-    await refuse(doc, c, SYNC.update, update, { step: "budget_user" });
-    expect(rateLimit).toHaveBeenCalledTimes(1);
-    expect(upperOf(NAME)).toBe(L - g + 1);
-    expect(pushes(c)).toEqual([]);
-  });
-
-  it("C-90 refuses on a negative token bucket without asking checkRateLimit, and admits again at exactly 0", async () => {
-    await boot();
-    const doc = await load(NAME, helloDoc());
-    const c = conn(doc);
-
-    needTrial();
-    const first = appendUpdate(doc, 100);
-    injectTrialDuration(1500, doc, first);
-    await admit(doc, c, SYNC.update, first);
-    expect(trial.pending).toBeUndefined();
-    expect(Date.now()).toBe(1500);
-    expect(rateLimit).toHaveBeenCalledTimes(1);
-
-    // t = 1500: balance min(200, 200 + 300) - 1500 = -1300.
-    needTrial();
-    await refuse(doc, c, SYNC.update, appendUpdate(doc, 100), { step: "budget_process" });
-    expect(rateLimit).toHaveBeenCalledTimes(1);
-
-    // t = 8000: -1300 + 6.5 * 200 = 0, not below 0.
-    vi.advanceTimersByTime(6500);
-    needTrial();
-    await admit(doc, c, SYNC.update, appendUpdate(doc, 100));
-    expect(rateLimit).toHaveBeenCalledTimes(2);
-  });
-
-  it("C-90 refuses at t = 7999, where the balance is -0.2", async () => {
-    await boot();
-    const doc = await load(NAME, helloDoc());
-    const c = conn(doc);
-    needTrial();
-    const first = appendUpdate(doc, 100);
-    injectTrialDuration(1500, doc, first);
-    await admit(doc, c, SYNC.update, first);
-    expect(trial.pending).toBeUndefined();
-
-    vi.advanceTimersByTime(6499);
-    needTrial();
-    await refuse(doc, c, SYNC.update, appendUpdate(doc, 100), { step: "budget_process" });
-    expect(rateLimit).toHaveBeenCalledTimes(1);
-  });
-
-  it("C-104 treats a failing checkRateLimit as allowed and logs it, but still obeys the token bucket", async () => {
-    await boot();
-    const down = new Error("redis down");
-    rateLimit.mockImplementation(async () => {
-      trial.armed = trial.pending !== undefined;
-      throw down;
-    });
-    const doc = await load(NAME, helloDoc());
-    const c = conn(doc);
-    needTrial();
-    const first = appendUpdate(doc, 100);
-    injectTrialDuration(1000, doc, first);
-    await admit(doc, c, SYNC.update, first);
-    expect(trial.pending).toBeUndefined();
-    expect(logger.error).toHaveBeenCalledTimes(1);
-    expect(logger.error).toHaveBeenCalledWith(
-      { err: down, ctx: { documentName: "project-p1/canvas-s1", userId: "u1" } },
-      "doc_size_trial_budget_unavailable",
-    );
-
-    // Balance min(200, 200 + 200) - 1000 = -800.
-    needTrial();
-    await refuse(doc, c, SYNC.update, appendUpdate(doc, 100), { step: "budget_process" });
-    expect(rateLimit).toHaveBeenCalledTimes(1);
-    expect(logger.error).toHaveBeenCalledTimes(1);
-  });
-
-  it("C-105 the token bucket starts full, refills R per second up to one second's worth, and may go negative", async () => {
-    // The bucket reads global performance.now(), faked here, so a trial's
-    // duration moves the clock and refill accrues during it, as C-90's
-    // min(200, 200 + 300) - 1500 does. Spec C-105's checkpoints on that clock:
-    // 200 -> 150 -> 110 -> 70 after three back-to-back 50 ms trials, then a
-    // 300 ms trial ends at t = 450 with min(200, 70 + 60) - 300 = -170.
-    await boot();
-    const doc = await load(NAME, helloDoc());
-    const c = conn(doc);
-
-    /**
-     * Admit one append that has to be tried, the trial taking `ms`.
-     * @param ms - Injected trial duration; 0 leaves the clock where it is.
-     */
-    const tried = async (ms: number): Promise<void> => {
-      needTrial();
-      const update = appendUpdate(doc, 100);
-      if (ms > 0) injectTrialDuration(ms, doc, update);
-      await admit(doc, c, SYNC.update, update);
-      expect(trial.pending).toBeUndefined();
-    };
-    /** Refuse one append on the token bucket. */
-    const refusedOnBucket = async (): Promise<void> => {
-      needTrial();
-      await refuse(doc, c, SYNC.update, appendUpdate(doc, 100), { step: "budget_process" });
-    };
-
-    for (let i = 0; i < 3; i++) await tried(50);
-    expect(Date.now()).toBe(150);
-    // Balance 70, not negative: a 300 ms trial still runs.
-    await tried(300);
-    expect(Date.now()).toBe(450);
-    expect(rateLimit).toHaveBeenCalledTimes(4);
-
-    // t = 1000: -170 + 110 = -60.
-    vi.advanceTimersByTime(550);
-    await refusedOnBucket();
-    // t = 1299: -0.2.
-    vi.advanceTimersByTime(299);
-    await refusedOnBucket();
-    expect(rateLimit).toHaveBeenCalledTimes(4);
-    // t = 1300: exactly 0, allowed.
-    vi.advanceTimersByTime(1);
-    await tried(0);
-    expect(rateLimit).toHaveBeenCalledTimes(5);
-
-    // 100 s later the balance is capped at 200 (not 0 + 20 000): a 201 ms
-    // trial leaves -1, so the next request at the same moment is refused.
-    vi.advanceTimersByTime(100_000);
-    await tried(201);
-    await refusedOnBucket();
-    expect(rateLimit).toHaveBeenCalledTimes(6);
-  });
-
-  it("C-106 (a) checks the bucket first: at -1 it refuses without calling checkRateLimit", async () => {
-    await boot();
-    const doc = await load(NAME, helloDoc());
-    const c = conn(doc);
-    needTrial();
-    const drain = appendUpdate(doc, 100);
-    injectTrialDuration(201, doc, drain);
-    await admit(doc, c, SYNC.update, drain);
-    expect(trial.pending).toBeUndefined();
-    rateLimit.mockClear().mockImplementation(async () => ({ allowed: false, retryAfterSeconds: 30 }));
-    needTrial();
-    await refuse(doc, c, SYNC.update, appendUpdate(doc, 100), { step: "budget_process" });
-    expect(rateLimit).not.toHaveBeenCalled();
-  });
-
-  it("C-106 (b) at exactly 0 it asks checkRateLimit, which refuses", async () => {
-    await boot();
-    const doc = await load(NAME, helloDoc());
-    const c = conn(doc);
-    needTrial();
-    const drain = appendUpdate(doc, 100);
-    injectTrialDuration(200, doc, drain);
-    await admit(doc, c, SYNC.update, drain);
-    expect(trial.pending).toBeUndefined();
-    rateLimit.mockClear().mockImplementation(async () => ({ allowed: false, retryAfterSeconds: 30 }));
-    needTrial();
-    await refuse(doc, c, SYNC.update, appendUpdate(doc, 100), { step: "budget_user" });
-    expect(rateLimit).toHaveBeenCalledTimes(1);
-  });
-
-  it("C-106 (c) at exactly 0 with checkRateLimit allowing, it goes on to the trial", async () => {
-    await boot();
-    const doc = await load(NAME, helloDoc());
-    const c = conn(doc);
-    needTrial();
-    const drain = appendUpdate(doc, 100);
-    injectTrialDuration(200, doc, drain);
-    await admit(doc, c, SYNC.update, drain);
-    expect(trial.pending).toBeUndefined();
-    rateLimit.mockClear().mockImplementation(allowed);
-    needTrial();
-    const update = appendUpdate(doc, 100);
-    const expected = refMeasureAfter(doc, update);
-    await admit(doc, c, SYNC.update, update);
-    expect(rateLimit).toHaveBeenCalledTimes(1);
-    expect(w.size.readDocSizeRecord(NAME)?.exact).toBe(expected);
-  });
-});
-
-describe("beforeSync step 6: the trial on a copy (C-98 for 'trial')", () => {
-  it("C-91 admits when the copy is within the limit and records the exact size", async () => {
-    await boot();
-    const doc = await load(NAME, helloDoc());
-    const c = conn(doc);
-    w.size.recordExact(NAME, CEIL - 100);
-    const update = appendUpdate(doc, 1000);
-    const after = refMeasureAfter(doc, update);
-    c.sendStateless.mockClear();
-    await admit(doc, c, SYNC.update, update);
-    expect(rateLimit).toHaveBeenCalledTimes(1);
-    const record = w.size.readDocSizeRecord(NAME);
-    expect(record).toEqual({ exact: after, upper: after, phase: "normal" });
-    expect(pushes(c)).toEqual([expectedPush(after, "normal")]);
-  });
-
-  it("C-92 admits an update that does not grow a document over the ceiling", async () => {
-    await boot();
-    const src = new Y.Doc();
-    fill(src, CEIL + 1000);
-    src.getMap("m").set("big", "y".repeat(5000));
-    const doc = await load(NAME, src);
-    const update = editUpdate(doc, (c) => c.getMap("m").set("big", "z"));
-    expect(w.size.analyze(update, doc).deletesLive).toBe(false);
-    const pre = refMeasure(doc);
-    const after = refMeasureAfter(doc, update);
-    expect(after).toBeLessThan(pre);
-    await admit(doc, conn(doc), SYNC.update, update);
-    expect(rateLimit).toHaveBeenCalledTimes(1);
-    expect(upperOf(NAME)).toBe(after);
-  });
-
-  it("C-93 (a) admits additions that delete an existing character, up to the ceiling", async () => {
-    await boot();
-    const src = new Y.Doc();
-    fill(src, L - 1000);
-    const doc = await load(NAME, src);
-    w.size.recordExact(NAME, CEIL - 10);
-    const update = editUpdate(doc, (c) => {
-      const t = c.getText("t");
-      t.insert(t.length, "y".repeat(20_480));
-      t.delete(0, 1);
-    });
-    const after = refMeasureAfter(doc, update);
-    expect(after).toBeGreaterThan(L);
-    expect(after).toBeLessThanOrEqual(CEIL);
-    await admit(doc, conn(doc), SYNC.update, update);
-    expect(rateLimit).toHaveBeenCalledTimes(1);
-    expect(w.size.readDocSizeRecord(NAME)).toEqual({ exact: after, upper: after, phase: "full" });
-  });
-
-  it("C-93 (b) admits additions that delete the update's own last character, up to the ceiling", async () => {
-    await boot();
-    const src = new Y.Doc();
-    fill(src, L - 1000);
-    const doc = await load(NAME, src);
-    w.size.recordExact(NAME, CEIL - 10);
-    const update = editUpdate(doc, (c) => {
-      const t = c.getText("t");
-      t.insert(t.length, "y".repeat(20_480));
-      t.delete(t.length - 1, 1);
-    });
-    const after = refMeasureAfter(doc, update);
-    expect(after).toBeGreaterThan(L);
-    expect(after).toBeLessThanOrEqual(CEIL);
-    await admit(doc, conn(doc), SYNC.update, update);
-    expect(rateLimit).toHaveBeenCalledTimes(1);
-    expect(w.size.readDocSizeRecord(NAME)).toEqual({ exact: after, upper: after, phase: "full" });
-  });
-
-  it("C-94 refuses growth past the limit without a delete, and past the ceiling with one", async () => {
-    await boot();
-    const src = new Y.Doc();
-    fill(src, L - 1000);
-    const doc = await load(NAME, src);
-    w.size.recordExact(NAME, CEIL - 10);
-    const c = conn(doc);
-
-    const appendOnly = appendUpdate(doc, 20_480);
-    const afterA = refMeasureAfter(doc, appendOnly);
-    expect(afterA).toBeGreaterThan(L);
-    await refuse(doc, c, SYNC.update, appendOnly, { step: "trial", after: afterA });
-
-    const pastCeiling = editUpdate(doc, (d) => {
-      const t = d.getText("t");
-      t.insert(t.length, "y".repeat(30_720));
-      t.delete(0, 1);
-    });
-    const afterB = refMeasureAfter(doc, pastCeiling);
-    expect(afterB).toBeGreaterThan(CEIL);
-    await refuse(doc, c, SYNC.update, pastCeiling, { step: "trial", after: afterB });
-
-    expect(rateLimit).toHaveBeenCalledTimes(2);
-    expect(upperOf(NAME)).toBe(CEIL - 10);
-  });
-
-  it("C-95 refuses deleting one character inside a long entry when over the ceiling", async () => {
-    await boot();
-    const src = new Y.Doc();
-    fill(src, CEIL + 1000);
-    const doc = await load(NAME, src);
-    const update = editUpdate(doc, (c) => {
-      const t = c.getText("t");
-      t.delete(Math.floor(t.length / 2), 1);
-    });
-    const pre = refMeasure(doc);
-    const after = refMeasureAfter(doc, update);
-    expect(after).toBeGreaterThan(pre);
-    expect(after).toBeGreaterThan(CEIL);
-    await refuse(doc, conn(doc), SYNC.update, update, { step: "trial", after });
-    expect(rateLimit).toHaveBeenCalledTimes(1);
-  });
-
-  it("C-96 admits deleting half of a fragmented text marked over the ceiling", async () => {
-    await boot();
-    const doc = await load(NAME, reload(fragText(20_000)));
-    w.size.recordExact(NAME, CEIL + 1);
-    const before = refMeasure(doc);
-    const update = editUpdate(doc, (c) => {
-      const t = c.getText("t");
-      t.delete(0, Math.floor(t.length / 2));
-    });
-    await admit(doc, conn(doc), SYNC.update, update);
-    expect(refMeasure(doc)).toBeLessThan(before);
-    expect(upperOf(NAME)).toBeGreaterThanOrEqual(refMeasure(doc));
-  });
-});
-
-describe("beforeSync: three editors opening or reconnecting at once", () => {
-  it("C-97 (a)(b) admits empty and no-edit handshakes over the limit and over the ceiling without a trial", async () => {
-    await boot();
-    const overLimit = new Y.Doc();
-    fill(overLimit, L + 5000);
-    const overCeiling = new Y.Doc();
-    fill(overCeiling, CEIL + 5000);
-    for (const [name, src] of [["project-p1/canvas-s1", overLimit], ["project-p1/canvas-s2", overCeiling]] as const) {
-      const doc = await load(name, src);
-      const before = upperOf(name);
-      const editors = ["u1", "u2", "u3"].map((userId, i) => conn(doc, { userId, socketId: `s${i + 1}` }));
-      const handshakes = editors.map(() => handshakeStep2(doc, syncedClient(doc)));
-      for (const editor of editors) await admit(doc, editor, SYNC.step2, new Uint8Array([0, 0]));
-      for (const [i, editor] of editors.entries()) await admit(doc, editor, SYNC.step2, handshakes[i]!);
-      expect(upperOf(name)).toBe(before);
-    }
-    expect(rateLimit).not.toHaveBeenCalled();
-  });
-
-  it("C-97 (c) admits reconnects carrying one offline move and one character on a full canvas without a trial", async () => {
-    await boot();
-    const src = canvasDoc(2000, 0.5);
-    fill(src, FULL_AT + 100);
-    const doc = await load(NAME, src);
-    expect(w.size.readDocSizeRecord(NAME)?.phase).toBe("full");
-    const editors = ["u1", "u2", "u3"].map((userId, i) => conn(doc, { userId, socketId: `s${i + 1}` }));
-    const handshakes = editors.map((_, i) => {
-      const client = syncedClient(doc);
-      const live = [...client.getMap<Y.Map<unknown>>("nodes").keys()][i];
-      if (live === undefined) throw new Error("no live node");
-      client.getMap<Y.Map<unknown>>("nodes").get(live)?.set("x", 999);
-      client.getText("t").insert(5, "k");
-      return handshakeStep2(doc, client);
-    });
-    for (const [i, editor] of editors.entries()) await admit(doc, editor, SYNC.step2, handshakes[i]!);
-    expect(rateLimit).not.toHaveBeenCalled();
-  });
-});
-
-describe("beforeSync: phase changes push", () => {
-  it("C-99 pushes warning and then full to every connection as admitted updates cross the lines", async () => {
-    await boot();
-    const doc = await load(NAME, helloDoc());
-    const a = conn(doc, { socketId: "s1" });
+    const { src } = combo();
+    const doc = await load(CV, src);
+    setCur(CV, L - 1);
+    expect(rec(CV).phase).toBe("warning");
+    const a = conn(doc);
     const b = conn(doc, { socketId: "s2", userId: "u2" });
-
-    w.size.recordExact(NAME, 838_000);
+    const big = insertOnly(doc, 41, 50_000);
+    const s = updateShape(big, doc.store);
     a.sendStateless.mockClear();
     b.sendStateless.mockClear();
-    const toWarning = appendUpdate(doc, 1000);
-    expect(w.size.analyze(toWarning, doc).growthBound).toBeGreaterThan(861);
-    await admit(doc, a, SYNC.update, toWarning);
-    expect(pushes(a).map((p) => p.phase)).toEqual(["warning"]);
-    expect(pushes(b).map((p) => p.phase)).toEqual(["warning"]);
 
-    w.size.recordExact(NAME, 1_022_000);
-    a.sendStateless.mockClear();
-    b.sendStateless.mockClear();
-    const toFull = appendUpdate(doc, 1000);
-    expect(w.size.analyze(toFull, doc).growthBound).toBeGreaterThan(362);
-    await admit(doc, a, SYNC.update, toFull);
-    expect(pushes(a).map((p) => p.phase)).toEqual(["full"]);
-    expect(pushes(b).map((p) => p.phase)).toEqual(["full"]);
+    const k = await accepts(doc, a, SYNC.update, big);
+
+    expect(k).toBe(s.structBytes);
+    expect(rec(CV).current).toBe(L - 1 + s.structBytes);
+    expect(rec(CV).phase).toBe("full");
+    const expected = { type: "doc:size", bytes: L - 1 + s.structBytes, limit: L, ceiling: CEIL, phase: "full" };
+    expect(pushes(a)).toEqual([expected]);
+    expect(pushes(b)).toEqual([expected]);
   });
 });
 
-describe("beforeSync: an admitted update still on its way when the size is measured", () => {
-  /**
-   * A document whose one node carries most of its size, loaded with its
-   * measure interval already over, so the next recompute is due at once.
-   * @returns The document, a client synced with it and a connection.
-   */
-  async function loadedNode(): Promise<{ doc: Document; client: Y.Doc; c: FakeConnection }> {
+describe("beforeSync step 4: between the limit and the hard ceiling", () => {
+  it("G-05 admits pure deletes at the limit; split deletes add structBytes + 64", async () => {
     await boot();
-    const src = new Y.Doc();
-    const node = new Y.Map<unknown>();
-    src.getMap<Y.Map<unknown>>("nodes").set("f", node);
-    node.set("blob", "x".repeat(200_000));
-    const doc = await load(NAME, src);
-    vi.advanceTimersByTime(3000);
-    return { doc, client: syncedClient(doc), c: conn(doc) };
-  }
-
-  /**
-   * Let `beforeSync` admit an update, run the due recompute while the
-   * activity step still holds it back, then apply it as Hocuspocus does.
-   * @param doc - The document.
-   * @param c - The connection.
-   * @param update - The update.
-   * @returns The upper bound right after the update landed.
-   */
-  async function admitAcrossRecompute(doc: Document, c: FakeConnection, update: Uint8Array): Promise<number> {
-    let release = (): void => undefined;
-    activity.hold = new Promise<void>((resolve) => { release = resolve; });
-    const sync = beforeSync(doc, c, SYNC.update, update);
-    // The gate has returned and the activity write is in flight.
-    await vi.advanceTimersByTimeAsync(0);
-    release();
-    await expect(sync).resolves.toBeUndefined();
-    Y.applyUpdate(doc, update, { source: "connection", connection: c });
-    return upperOf(NAME);
-  }
-
-  it("keeps the bound of an addition measured before it landed", async () => {
-    const { doc, client, c } = await loadedNode();
-    const update = capture(client, (d) => d.getText("t").insert(0, "y".repeat(50_000)));
-    expect(await admitAcrossRecompute(doc, c, update)).toBeGreaterThanOrEqual(refMeasure(doc));
-  });
-
-  it("measures a delete again once it has landed, and pushes the smaller size", async () => {
-    const { doc, client, c } = await loadedNode();
-    const update = capture(client, (d) => d.getMap("nodes").delete("f"));
-    await admitAcrossRecompute(doc, c, update);
-    vi.advanceTimersByTime(2000);
-    const exact = refMeasure(doc);
-    expect(exact).toBeLessThan(1000);
-    expect(upperOf(NAME)).toBe(exact);
-    expect(pushes(c).at(-1)).toEqual(expectedPush(exact, "normal"));
-  });
-
-  /**
-   * Call the production `afterHandleMessage`, which Hocuspocus runs after
-   * every message whether or not it was applied.
-   * @param doc - The document.
-   * @param c - The connection the message came on.
-   * @returns The hook's promise.
-   */
-  function afterHandleMessage(doc: Document, c: FakeConnection): Promise<void> {
-    return w.hooks.afterHandleMessage({ documentName: doc.name, document: doc, connection: c, context: c.context, socketId: c.socketId });
-  }
-
-  it("forgets an admitted update that the activity step refused", async () => {
-    const { doc, client, c } = await loadedNode();
-    const update = capture(client, (d) => d.getText("t").insert(0, "y".repeat(50_000)));
-    activity.hold = Promise.reject(new Error("activity write failed"));
-    await expect(beforeSync(doc, c, SYNC.update, update)).rejects.toThrow("activity write failed");
-    await afterHandleMessage(doc, c);
-    w.size.recordExact(NAME, refMeasure(doc));
-    expect(upperOf(NAME)).toBe(refMeasure(doc));
-  });
-
-  it("forgets an admitted update Hocuspocus skipped because the connection turned read-only", async () => {
-    const { doc, client, c } = await loadedNode();
-    const update = capture(client, (d) => d.getText("t").insert(0, "y".repeat(50_000)));
-    await expect(beforeSync(doc, c, SYNC.update, update)).resolves.toBeUndefined();
-    // Demoted while the activity step awaited: Hocuspocus does not apply it.
-    c.readOnly = true;
-    await afterHandleMessage(doc, c);
-    w.size.recordExact(NAME, refMeasure(doc));
-    expect(upperOf(NAME)).toBe(refMeasure(doc));
-  });
-
-  it("measures again when an update the trial admitted is never applied", async () => {
-    const { doc, client, c } = await loadedNode();
-    w.size.recordExact(NAME, L);
-    const update = capture(client, (d) => d.getText("t").insert(0, "y".repeat(50_000)));
-    await expect(beforeSync(doc, c, SYNC.update, update)).resolves.toBeUndefined();
-    expect(rateLimit).toHaveBeenCalledTimes(1);
-    expect(upperOf(NAME)).toBe(refMeasureAfter(doc, update));
-    c.readOnly = true;
-    await afterHandleMessage(doc, c);
-    vi.advanceTimersByTime(2000);
-    expect(upperOf(NAME)).toBe(refMeasure(doc));
-  });
-
-  it("forgets an admitted update whose sync sub-type Hocuspocus does not know", async () => {
-    const { doc, client, c } = await loadedNode();
-    const update = capture(client, (d) => d.getText("t").insert(0, "y".repeat(50_000)));
-    await expect(beforeSync(doc, c, 3, update)).resolves.toBeUndefined();
-    await afterHandleMessage(doc, c);
-    w.size.recordExact(NAME, refMeasure(doc));
-    expect(upperOf(NAME)).toBe(refMeasure(doc));
-  });
-});
-
-describe("beforeSync: admitted updates of other connections still on their way", () => {
-  /**
-   * A document just under the limit, two writers synced with it.
-   * @returns The document, its measure and two connections.
-   */
-  async function nearLimit(): Promise<{ doc: Document; a: FakeConnection; b: FakeConnection }> {
-    await boot();
-    const src = new Y.Doc();
-    fill(src, L - 30_000);
-    const doc = await load(NAME, src);
-    return { doc, a: conn(doc, { socketId: "sa", userId: "ua" }), b: conn(doc, { socketId: "sb", userId: "ub" }) };
-  }
-
-  it("refuses a trial whose copy fits only because another admitted update has not landed", async () => {
-    const { doc, a, b } = await nearLimit();
-    const first = appendUpdate(doc, 20_000);
-    const second = appendUpdate(doc, 20_000, "z");
-    // The first one fits under the upper bound and waits for its activity write.
-    await expect(beforeSync(doc, a, SYNC.update, first)).resolves.toBeUndefined();
-    expect(rateLimit).not.toHaveBeenCalled();
-    expect(refMeasureAfter(doc, second)).toBeLessThanOrEqual(L);
-    await refuse(doc, b, SYNC.update, second, { step: "trial", after: refMeasureAfter(doc, second) });
-  });
-
-  it("refuses the second of two concurrent trials that fit the limit only one at a time", async () => {
-    const { doc, a, b } = await nearLimit();
-    w.size.recordExact(NAME, L);
-    const first = appendUpdate(doc, 20_000);
-    const second = appendUpdate(doc, 20_000, "z");
-    handshake(b.socketId, doc.name);
-    const results = await Promise.allSettled([beforeSync(doc, a, SYNC.update, first), beforeSync(doc, b, SYNC.update, second)]);
-    expect(results[0].status).toBe("fulfilled");
-    expect(results[1].status).toBe("rejected");
-    expect(((results[1] as PromiseRejectedResult).reason as { reason?: unknown }).reason).toBe(COLLAB_DOCUMENT_TOO_LARGE_REASON);
-  });
-});
-
-describe("beforeSync: the token bucket under concurrent messages", () => {
-  it("refuses a trial whose bucket check ran before another trial spent the balance", async () => {
-    await boot();
-    const doc = await load(NAME, helloDoc());
-    const a = conn(doc, { socketId: "sa", userId: "ua" });
-    const b = conn(doc, { socketId: "sb", userId: "ub" });
-    needTrial();
-    const first = appendUpdate(doc, 100);
-    const second = appendUpdate(doc, 100, "z");
-    injectTrialDuration(1500, doc, first);
-    handshake(b.socketId, doc.name);
-    logger.warn.mockClear();
-    const results = await Promise.allSettled([beforeSync(doc, a, SYNC.update, first), beforeSync(doc, b, SYNC.update, second)]);
-    expect(results[0].status).toBe("fulfilled");
-    expect(results[1].status).toBe("rejected");
-    expect(logger.warn).toHaveBeenCalledTimes(1);
-    expect((logger.warn.mock.calls[0]?.[0] as { step?: unknown }).step).toBe("budget_process");
-  });
-
-  it("charges the skeleton built for an update reaching stored pending content", async () => {
-    await boot();
-    const { server, filler } = storedPendingIntegrateScenario(2000);
-    const doc = await load(NAME, server);
-    const a = w.size.analyze(filler, doc);
-    expect(a.skeletonBuilt).toBe(false);
-    expect(a.integratesStored).toBe(true);
-    analysis.ms = 1500;
-    // Balance min(200, 200) - 1500 = -1300 before the trial's own check.
-    await refuse(doc, conn(doc), SYNC.update, filler, { step: "budget_process" });
-    expect(rateLimit).not.toHaveBeenCalled();
-  });
-
-  it("charges the time a skeleton took to the token bucket", async () => {
-    await boot();
-    const doc = await load(NAME, helloDoc());
+    const { nd, src } = combo();
+    const doc = await load(CV, src);
+    setCur(CV, L);
     const c = conn(doc);
-    // Two offline writers: the second one's origin is the first one's new text.
-    const one = syncedClient(doc, 101);
-    const typed = capture(one, (d) => d.getText("t").insert(0, "ab"));
-    const two = syncedClient(doc, 102);
-    Y.applyUpdate(two, typed);
-    const update = Y.mergeUpdates([typed, capture(two, (d) => d.getText("t").insert(2, "c"))]);
-    const a = w.size.analyze(update, doc);
-    expect(a.skeletonBuilt).toBe(true);
-    expect(a.wouldPend).toBe(false);
-    analysis.ms = 1500;
-    await admit(doc, c, SYNC.update, update);
-    expect(rateLimit).not.toHaveBeenCalled();
-    // Balance min(200, 200) - 1500 = -1300.
-    needTrial();
-    await refuse(doc, c, SYNC.update, appendUpdate(doc, 100), { step: "budget_process" });
+
+    const sh02 = capture(nd.client, () => nd.data.delete("locked"));
+    expect(await accepts(doc, c, SYNC.update, sh02)).toBe(0);
+    apply(doc, c, sh02);
+
+    for (const u of [
+      capture(nd.client, () => nd.text.delete(2, 3)), // SH-03
+      capture(nd.client, () => nd.focus.delete(1, 1)), // SH-04
+    ]) {
+      const s = updateShape(u, doc.store);
+      expect(await accepts(doc, c, SYNC.update, u)).toBe(s.structBytes + 2 * C);
+      apply(doc, c, u);
+    }
   });
 
-  it("logs an unexpected failure with its context and lets it close the connection", async () => {
+  it("G-06 refuses a move, a delete carrying structs and an insert at the limit with step full", async () => {
     await boot();
-    const doc = await load(NAME, helloDoc());
+    const { nd, src } = combo();
+    const doc = await load(CV, src);
+    setCur(CV, L);
     const c = conn(doc);
-    needTrial();
-    handshake(c.socketId, doc.name);
-    const update = appendUpdate(doc, 100);
-    failure.armed = true;
-    const err = await beforeSync(doc, c, SYNC.update, update).then(() => undefined, (e: unknown) => e);
-    expect(err).toBeInstanceOf(Error);
-    expect((err as { reason?: unknown }).reason).toBeUndefined();
+    const move = capture(nd.client, () => nd.n1.set("position", { x: 1, y: 2 }));
+    await refuses(doc, c, SYNC.update, move, "full");
+    reauth(c, CV);
+    await refuses(doc, c, SYNC.update, sh11(doc, 52), "full");
+    reauth(c, CV);
+    await refuses(doc, c, SYNC.update, sh12(doc, 53), "full");
+  });
+
+  it("G-07 admits a split delete one byte under the hard ceiling (still step 4)", async () => {
+    await boot();
+    const { nd, src } = combo();
+    const doc = await load(CV, src);
+    setCur(CV, CEIL - 1);
+    const c = conn(doc);
+    await accepts(doc, c, SYNC.update, capture(nd.client, () => nd.text.delete(2, 3)));
+  });
+});
+
+describe("beforeSync step 5: at or over the hard ceiling", () => {
+  it("G-08 admits deleting a whole node, a Map entry and a handshake delete set", async () => {
+    await boot();
+    const { nd, src } = combo();
+    const doc = await load(CV, src);
+    setCur(CV, CEIL);
+    const c = conn(doc);
+
+    const sh02 = capture(nd.client, () => nd.data.delete("locked"));
+    await accepts(doc, c, SYNC.update, sh02);
+    apply(doc, c, sh02);
+    const sh01 = capture(nd.client, () => nd.nodes.delete("n1"));
+    await accepts(doc, c, SYNC.update, sh01);
+    apply(doc, c, sh01);
+    // SH-10: server and client agree; the client's SyncStep2 holds only the delete set.
+    await accepts(doc, c, SYNC.step2, handshakeStep2(doc, nd.client));
+    expect(rec(CV).current).toBeGreaterThanOrEqual(CEIL);
+  });
+
+  it("G-09 refuses six kinds of update at the hard ceiling with step over_ceiling", async () => {
+    await boot();
+    const { nd, alt, src } = combo();
+    const doc = await load(CV, src);
+    setCur(CV, CEIL);
+    const c = conn(doc);
+    const updates = [
+      capture(nd.client, () => nd.text.delete(2, 3)), // SH-03
+      capture(nd.client, () => nd.focus.delete(1, 1)), // SH-04
+      capture(alt.client, () => alt.t.delete(0, 2000)), // SH-07
+      beyondDs(4242, 100, 1), // SH-08
+      sh11(doc, 54), // SH-11
+      sh12(doc, 55), // insert only
+    ];
+    for (const u of updates) {
+      await refuses(doc, c, SYNC.update, u, "over_ceiling");
+      reauth(c, CV);
+    }
+  });
+});
+
+describe("beforeSync step 2: split endpoints", () => {
+  it("G-10 refuses 1999 split endpoints while normal with step splits", async () => {
+    await boot();
+    const { alt, src } = combo();
+    const doc = await load(CV, src);
+    setCur(CV, 1000);
+    const c = conn(doc);
+    await refuses(doc, c, SYNC.update, deleteAt(alt.t, oddIndices()), "splits");
+  });
+
+  it("G-11 admits 1024 split endpoints and refuses 1025", async () => {
+    await boot();
+    const { alt, src } = combo();
+    const doc = await load(CV, src);
+    setCur(CV, 1000);
+    const c = conn(doc);
+    const at1024 = deleteAt(alt.t, evenIndices());
+    expect(updateShape(at1024, doc.store).splitEndpoints).toBe(1024);
+    await accepts(doc, c, SYNC.update, at1024);
+    // A second alt2000 client with the same structs, so both updates are judged on the same store.
+    const fresh = alt2000();
+    const at1025 = deleteAt(fresh.t, [0, ...evenIndices()]);
+    expect(updateShape(at1025, doc.store).splitEndpoints).toBe(1025);
+    await refuses(doc, c, SYNC.update, at1025, "splits");
+  });
+
+  it("G-12 refuses too many split endpoints with step splits before steps 4 and 5", async () => {
+    await boot();
+    const { alt, src } = combo();
+    const doc = await load(CV, src);
+    const c = conn(doc);
+    const splits = deleteAt(alt.t, oddIndices());
+    setCur(CV, L);
+    await refuses(doc, c, SYNC.update, splits, "splits");
+    reauth(c, CV);
+    setCur(CV, CEIL);
+    await refuses(doc, c, SYNC.update, splits, "splits");
+  });
+});
+
+describe("beforeSync: handshakes and concurrent writers", () => {
+  it("G-13 admits a handshake SyncStep2 holding only a delete set at the limit and at the hard ceiling, adding its struct part", async () => {
+    await boot();
+    const nd = nodeDoc();
+    Y.applyUpdate(nd.server, capture(nd.client, () => nd.nodes.delete("n1")));
+    const doc = await load(CV, nd.server);
+    const c = conn(doc);
+    const step2 = handshakeStep2(doc, nd.client);
+    const s = updateShape(step2, doc.store);
+    for (const at of [L, CEIL]) {
+      setCur(CV, at);
+      const before = rec(CV).current;
+      expect(await accepts(doc, c, SYNC.step2, step2)).toBe(s.structBytes);
+      expect(rec(CV).current).toBe(before + s.structBytes);
+    }
+  });
+
+  it("G-14 B-02 judges a second connection on the sum after the first, while the first's activity write hangs", async () => {
+    await boot();
+    const { src } = combo();
+    const doc = await load(CV, src);
+    setCur(CV, 10_485_000);
+    const a = conn(doc);
+    const b = conn(doc, { socketId: "s2", userId: "u2" });
+    const uA = insertOnly(doc, 61, 2000);
+    const uB = insertOnly(doc, 62, 10);
+    const kA = cost(uA, doc);
+    expect(updateShape(uA, doc.store).structBytes).toBeGreaterThan(760);
+    const hold = deferred();
+    activity.hold = hold.promise;
+
+    const pA = beforeSync(doc, a, SYNC.update, uA);
+    await flush();
+    expect(activity.spy).toHaveBeenCalledTimes(1);
+    expect(rec(CV).current).toBe(10_485_000 + kA);
+    expect(rec(CV).current).toBeGreaterThanOrEqual(L);
+    // B-02: past the limit by at most one message.
+    expect(rec(CV).current - L).toBeLessThanOrEqual(uA.byteLength);
+
+    await refuses(doc, b, SYNC.update, uB, "full");
+    expect(w.filter.isRefused("s1", CV)).toBe(false);
+
+    hold.resolve();
+    await expect(pA).resolves.toBeUndefined();
+  });
+
+  it("G-15 runs the size judgement before the activity write: none on a refusal, once after an admit", async () => {
+    await boot();
+    const { nd, src } = combo();
+    const doc = await load(CV, src);
+    setCur(CV, L);
+    const c = conn(doc);
+    await refuses(doc, c, SYNC.update, capture(nd.client, () => nd.n1.set("position", { x: 1, y: 2 })), "full");
+    reauth(c, CV);
+
+    const sh03 = capture(nd.client, () => nd.text.delete(2, 3));
+    const k = cost(sh03, doc);
+    const heldBefore = rec(CV).heldSum;
+    let heldAtActivity: number | undefined;
+    activity.onCall = () => {
+      heldAtActivity = rec(CV).heldSum;
+    };
+    await accepts(doc, c, SYNC.update, sh03);
+    expect(heldAtActivity).toBe(heldBefore + k);
+  });
+
+  it("G-16 LG-04 Q8 treats an unexpected exception in the size judgement as a refusal with step error", async () => {
+    await boot();
+    const { src } = combo();
+    const doc = await load(CV, src);
+    setCur(CV, 1000);
+    const c = conn(doc);
+    await refuses(doc, c, SYNC.update, new Uint8Array([1]), "error");
+    expect(logger.error).toHaveBeenCalledTimes(1);
     expect(logger.error).toHaveBeenCalledWith(
-      expect.objectContaining({ err, ctx: { documentName: doc.name, userId: c.context.user.id } }),
+      { err: expect.any(Error), ctx: { documentName: CV, userId: "u1" } },
       "document_size_gate_failed",
     );
-  });
-
-  it("refuses an update listing one client in two groups before any bound or trial", async () => {
-    await boot();
-    const doc = await load(NAME, helloDoc());
-    const writer = syncedClient(doc, 50);
-    const structs = Y.decodeUpdate(capture(writer, (d) => d.getText("t").insert(5, "x".repeat(20)))).structs as Y.Item[];
-    const junk = new Y.Item(Y.createID(50, 10_000_000), null, structs[0]!.origin, null, null, null, null, new Y.ContentString("z"));
-    const twice = craft([{ client: 50, clock: 10_000_000, structs: [junk] }, { client: 50, clock: 0, structs }]);
-    await refuse(doc, conn(doc), SYNC.update, twice, { step: "malformed" });
-    expect(rateLimit).not.toHaveBeenCalled();
+    expect(rec(CV).current).toBe(1000);
   });
 });
 
-describe("lifecycle hooks", () => {
-  it("C-110 afterLoadDocument records the exact size, stored pending delete ranges included", async () => {
+describe("beforeSync step 0: after a refusal", () => {
+  it("G-17 refuses SyncStep1, SyncStep2 and Update on a refused socket and document with step after_refusal", async () => {
     await boot();
-    const doc = await load(NAME, storedPendingDsDoc());
-    expect(doc.store.pendingDs).not.toBeNull();
-    const expected = Y.encodeStateAsUpdate(doc).byteLength + 2 * C;
-    expect(w.size.measure(doc)).toBe(expected);
-    expect(w.size.readDocSizeRecord(NAME)).toMatchObject({ exact: expected, upper: expected });
+    const nd = nodeDoc();
+    Y.applyUpdate(nd.server, capture(nd.client, () => nd.nodes.delete("n1")));
+    const doc = await load(CV, nd.server);
+    setCur(CV, 1000);
+    const c = conn(doc);
+    w.filter.markRefused("s1", CV);
+    const before = rec(CV);
+    await refuses(doc, c, SYNC.step1, step1Payload(doc), "after_refusal");
+    await refuses(doc, c, SYNC.step2, handshakeStep2(doc, nd.client), "after_refusal");
+    await refuses(doc, c, SYNC.update, sh12(doc, 71), "after_refusal");
+    expect(rec(CV)).toEqual(before);
   });
 
-  it("C-111 (a)(b)(f) connected pushes the current size to that connection only, read-only included", async () => {
+  it("G-18 step 0 reads only the (socket, document) pair", async () => {
     await boot();
-    const doc = await load(NAME, helloDoc());
-    const existing = conn(doc, { socketId: "s0" });
-    const instance = { documents: new Map([[NAME, doc]]) };
-    const cases = [
-      [1_030_000, "full", false],
-      [900_000, "warning", false],
-      [500_000, "normal", false],
-      [1_030_000, "full", true],
-    ] as const;
-    for (const [i, [bytes, phase, readOnly]] of cases.entries()) {
-      w.size.recordExact(NAME, bytes);
-      existing.sendStateless.mockClear();
-      const arriving = conn(doc, { socketId: `s${i + 1}`, readOnly });
-      await w.hooks.connected({
-        documentName: NAME,
-        socketId: arriving.socketId,
-        context: arriving.context,
-        instance,
-        connection: arriving,
-        connectionConfig: { readOnly },
-        requestHeaders: new Headers(),
-        requestParameters: new URLSearchParams(),
-      });
-      expect(pushes(arriving)).toEqual([expectedPush(bytes, phase)]);
-      expect(pushes(existing)).toEqual([]);
-    }
+    const cvDoc = await load(CV, combo().src);
+    const docDoc = await load(DOC);
+    setCur(CV, 1000);
+    setCur(DOC, 1000);
+    const sameSocketOtherDoc = conn(docDoc);
+    const otherSocketSameDoc = conn(cvDoc, { socketId: "s2", userId: "u2" });
+    w.filter.markRefused("s1", CV);
+    await accepts(docDoc, sameSocketOtherDoc, SYNC.update, insertOnly(docDoc, 72));
+    await accepts(cvDoc, otherSocketSameDoc, SYNC.update, insertOnly(cvDoc, 73));
   });
 
-  it("C-111 (c) connected pushes limit 0 to every Space type when the cap is off", async () => {
-    await boot({ max_document_bytes: 0 });
-    for (const name of ["project-p1/canvas-s1", "project-p1/document-s2", "project-p1/timeline-s3", "project-p1/3d-s4"]) {
-      const doc = new Document(name, undefined, { flushDelay: false });
-      const arriving = conn(doc);
-      await w.hooks.connected({
-        documentName: name,
-        socketId: arriving.socketId,
-        context: arriving.context,
-        instance: { documents: new Map([[name, doc]]) },
-        connection: arriving,
-        connectionConfig: { readOnly: false },
-        requestHeaders: new Headers(),
-        requestParameters: new URLSearchParams(),
-      });
-      expect(pushes(arriving)).toEqual([
-        { type: "doc:size", bytes: 0, limit: 0, ceiling: 0, room: 0, overwriteRoom: 0, phase: "normal" },
-      ]);
-    }
+  it("G-19 does not refuse at step 0 once an Auth frame cleared the mark", async () => {
+    await boot();
+    const doc = await load(CV, combo().src);
+    setCur(CV, 1000);
+    const c = conn(doc);
+    w.filter.markRefused("s1", CV);
+    expect(frame("s1", authFrame(CV, "token"))).toBeDefined();
+    await accepts(doc, c, SYNC.update, insertOnly(doc, 74));
+  });
+});
+
+describe("beforeSync: admit and the record", () => {
+  it("G-20 records the admitted cost on the connection, so release returns heldSum to its value before", async () => {
+    await boot();
+    const { nd, src } = combo();
+    const doc = await load(CV, src);
+    setCur(CV, 1000);
+    const c = conn(doc);
+    const heldBefore = rec(CV).heldSum;
+    const k = await accepts(doc, c, SYNC.update, capture(nd.client, () => nd.text.delete(2, 3)));
+    expect(k).toBe(2 * C);
+    w.size.release(CV, asConnection(c));
+    expect(rec(CV).heldSum).toBe(heldBefore);
   });
 
-  it("C-111 (d)(e) connected pushes nothing on meta, nor to a duplicate closed with 4403", async () => {
+  it("G-21 has no malformed step: one client in two struct groups is judged by steps 2-3, and the pending it leaves is refused at 2a", async () => {
     await boot();
-    const meta = await load("project-p1/meta");
-    const metaConn = conn(meta);
-    await w.hooks.connected({
-      documentName: "project-p1/meta",
-      socketId: metaConn.socketId,
-      context: metaConn.context,
-      instance: { documents: new Map([["project-p1/meta", meta]]) },
-      connection: metaConn,
-      connectionConfig: { readOnly: true },
-      requestHeaders: new Headers(),
-      requestParameters: new URLSearchParams(),
+    const doc = await load(CV, combo().src);
+    setCur(CV, 1000);
+    const c = conn(doc);
+    // Client 31: "abc" (clocks 0-2) and "def" (clocks 3-5) written as two
+    // groups of the same client. yjs keeps the second group only, which then
+    // waits for clocks 0-2 (measured: 23 bytes of pending structs).
+    const writer = new Y.Doc();
+    writer.clientID = 31;
+    const t = writer.getText("t31");
+    t.insert(0, "abc");
+    const head = Y.encodeStateAsUpdate(writer);
+    const sv = Y.encodeStateVector(writer);
+    t.insert(3, "def");
+    const tail = Y.encodeStateAsUpdate(writer, sv);
+    const twoGroups = new Uint8Array([2, ...head.slice(1, -1), ...tail.slice(1, -1), 0]);
+    expect(Y.decodeUpdate(twoGroups).structs.length).toBe(2);
+
+    const k = await accepts(doc, c, SYNC.update, twoGroups);
+    const current = rec(CV).current;
+    logger.warn.mockClear();
+    apply(doc, c, twoGroups);
+
+    expect(refusalLogs()).toEqual([
+      [{ documentName: CV, userId: "u1", current, limit: L, ceiling: CEIL, step: "pending" }, REFUSED],
+    ]);
+    expect(c.close).toHaveBeenCalledWith({ reason: COLLAB_DOCUMENT_TOO_LARGE_REASON });
+    expect(doc.store.pendingStructs).toBeNull();
+    expect(rec(CV).current).toBe(1000 + k);
+  });
+});
+
+describe("design 4.2 bounds", () => {
+  it("B-01 a write below the limit adds structBytes + 32 per split endpoint, at most one message + 32 x 1024", async () => {
+    await boot();
+    const { alt, src } = combo();
+    const doc = await load(CV, src);
+    setCur(CV, L - 1);
+    const c = conn(doc);
+    const t = alt.t;
+    const u = capture(alt.client, () => {
+      for (const i of evenIndices().sort((a, b) => b - a)) t.delete(i, 1);
+      t.insert(t.length, "y".repeat(300_000));
     });
-    expect(pushes(metaConn)).toEqual([]);
-
-    const doc = await load(NAME, helloDoc());
-    const instance = { documents: new Map([[NAME, doc]]) };
-    const first = conn(doc, { socketId: "s9" });
-    const duplicate = conn(doc, { socketId: "s9" });
-    for (const c of [first, duplicate]) {
-      await w.hooks.connected({
-        documentName: NAME,
-        socketId: "s9",
-        context: c.context,
-        instance,
-        connection: c,
-        connectionConfig: { readOnly: false },
-        requestHeaders: new Headers(),
-        requestParameters: new URLSearchParams(),
-      });
-    }
-    expect(duplicate.close).toHaveBeenCalledWith({ code: 4403, reason: "duplicate-document-on-socket" });
-    expect(pushes(duplicate)).toEqual([]);
+    const s = updateShape(u, doc.store);
+    expect(s.splitEndpoints).toBe(1024);
+    expect(s.beyondClockRanges).toBe(0);
+    const k = await accepts(doc, c, SYNC.update, u);
+    expect(k).toBe(s.structBytes + C * 1024);
+    expect(k).toBeLessThanOrEqual(u.byteLength + C * 1024);
   });
 
-  it("C-112 onChange counts only non-connection updates, by structs and delete ranges", async () => {
+  it("B-03 between the limit and the hard ceiling every one-character delete adds 64 until the ceiling, then the next is over_ceiling", async () => {
     await boot();
-    const src = new Y.Doc();
-    src.clientID = 1;
-    src.getText("t").insert(0, "abcdefghijklmnop");
-    const doc = await load(NAME, src);
-    w.size.recordExact(NAME, 500_000);
+    const { alt, src } = combo();
+    const doc = await load(CV, src);
+    // 300 deletes of 64 bytes each land exactly on the ceiling.
+    const start = CEIL - 300 * 2 * C;
+    expect(start).toBeGreaterThanOrEqual(L);
+    setCur(CV, start);
+    const c = conn(doc);
+    // Original index 2k sits at index k + 1 once the k - 1 before it are gone.
+    const deletes = Array.from({ length: 301 }, (_, i) => capture(alt.client, () => alt.t.delete(i + 2, 1)));
+    for (const u of deletes.slice(0, 300)) {
+      expect(await accepts(doc, c, SYNC.update, u)).toBe(2 * C);
+    }
+    expect(rec(CV).current).toBe(CEIL);
+    await refuses(doc, c, SYNC.update, deletes[300] as Uint8Array, "over_ceiling");
+  });
 
-    /**
-     * Two inserts and three deletes of existing text in one transaction.
-     * @returns The update.
-     */
-    const twoStructsThreeRanges = (): Uint8Array => editUpdate(doc, (c) => {
-      const t = c.getText("t");
-      const n = t.length;
-      t.delete(n - 1, 1);
-      t.delete(n - 4, 1);
-      t.delete(n - 7, 1);
-      t.insert(1, "X");
-      t.insert(4, "Y");
-    });
-    /**
-     * Call onChange after applying the update with that origin.
-     * @param update - The update.
-     * @param origin - The transaction origin.
-     */
-    const change = async (update: Uint8Array, origin: unknown): Promise<void> => {
-      Y.applyUpdate(doc, update, origin);
-      await w.hooks.onChange({
-        instance: { documents: new Map([[NAME, doc]]) },
-        clientsCount: 0,
-        document: doc,
-        documentName: NAME,
-        requestHeaders: new Headers(),
-        requestParameters: new URLSearchParams(),
-        socketId: "",
-        update,
-        transactionOrigin: origin,
-        connection: undefined,
-        context: {},
-      });
+  it("B-04 over the hard ceiling the same whole-node delete is admitted 1000 times and the size stops changing after the first", async () => {
+    await boot();
+    const { nd, src } = combo();
+    const doc = await load(CV, src);
+    setCur(CV, CEIL);
+    const c = conn(doc);
+    const sh01 = capture(nd.client, () => nd.nodes.delete("n1"));
+    let afterSecond = 0;
+    for (let i = 1; i <= 1000; i++) {
+      await accepts(doc, c, SYNC.update, sh01);
+      apply(doc, c, sh01);
+      if (i === 2) afterSecond = enc(doc);
+    }
+    expect(enc(doc)).toBe(afterSecond);
+    expect(rec(CV).current).toBeGreaterThanOrEqual(CEIL);
+  });
+});
+
+describe("refusal log fields", () => {
+  it("LG-01 LG-03 logs one line per refusal with exactly the design 4.2 fields and each step's value", async () => {
+    await boot();
+    const { nd, alt, src } = combo();
+    const doc = await load(CV, src);
+    const c = conn(doc);
+    const fields = ["ceiling", "current", "documentName", "limit", "step", "userId"];
+    const lastLog = (): Record<string, unknown> => {
+      const logs = refusalLogs();
+      expect(logs).toHaveLength(1);
+      return logs[0]?.[0] as Record<string, unknown>;
     };
 
-    const a = twoStructsThreeRanges();
-    expect(updateShape(a)).toEqual({ structs: 2, ranges: 3 });
-    let before = upperOf(NAME);
-    await change(a, { source: "redis" });
-    expect(upperOf(NAME) - before).toBe(a.byteLength + 2 * C + 9 * C);
+    setCur(CV, 1000);
+    w.filter.markRefused("s1", CV);
+    await refuses(doc, c, SYNC.update, sh12(doc, 81), "after_refusal");
+    expect(Object.keys(lastLog()).sort()).toEqual(fields);
+    reauth(c, CV);
 
-    const b = editUpdate(doc, (c) => {
-      const t = c.getText("t");
-      t.delete(t.length - 1, 1);
-      t.delete(t.length - 3, 1);
-      t.delete(t.length - 5, 1);
-      t.delete(0, 1);
-    });
-    expect(updateShape(b)).toEqual({ structs: 0, ranges: 4 });
-    before = upperOf(NAME);
-    await change(b, { source: "local" });
-    expect(upperOf(NAME) - before).toBe(12 * C);
+    await refuses(doc, c, SYNC.update, deleteAt(alt.t, oddIndices()), "splits");
+    expect(Object.keys(lastLog()).sort()).toEqual(fields);
+    reauth(c, CV);
 
-    before = upperOf(NAME);
-    await change(new Uint8Array([0, 0]), null);
-    expect(upperOf(NAME)).toBe(before);
+    const pend = pendingStructs(777, 2000);
+    await accepts(doc, c, SYNC.update, pend);
+    logger.warn.mockClear();
+    apply(doc, c, pend);
+    expect(lastLog()).toMatchObject({ step: "pending" });
+    expect(Object.keys(lastLog()).sort()).toEqual(fields);
+    reauth(c, CV);
 
-    const c1 = conn(doc);
-    before = upperOf(NAME);
-    await change(appendUpdate(doc, 50), { source: "connection", connection: c1 });
-    expect(upperOf(NAME)).toBe(before);
+    setCur(CV, L);
+    await refuses(doc, c, SYNC.update, capture(nd.client, () => nd.n1.set("position", { x: 1, y: 2 })), "full");
+    expect(Object.keys(lastLog()).sort()).toEqual(fields);
+    reauth(c, CV);
 
-    // Spec C-112 starts at 1 074 000, which a ~400-byte bound cannot carry
-    // past CEIL; 100 bytes under the ceiling keeps what it checks.
-    w.size.recordExact(NAME, CEIL - 100);
-    const e = twoStructsThreeRanges();
-    expect(updateShape(e)).toEqual({ structs: 2, ranges: 3 });
-    await change(e, { source: "redis" });
-    expect(upperOf(NAME)).toBe(CEIL - 100 + e.byteLength + 11 * C);
-    expect(upperOf(NAME)).toBeGreaterThan(CEIL);
-    expect(w.size.readDocSizeRecord(NAME)?.phase).toBe("full");
+    setCur(CV, CEIL);
+    await refuses(doc, c, SYNC.update, capture(nd.client, () => nd.text.delete(2, 3)), "over_ceiling");
+    expect(Object.keys(lastLog()).sort()).toEqual(fields);
   });
 
-  it("C-113 onChange counts a null-origin formatting cleanup without throwing", async () => {
+  it("LG-02 logs a step 2a refusal with the fields of design 4.2 and the user of the transaction's connection", async () => {
     await boot();
-    // A pure delete of a bold word inside a nested XmlText: the collab
-    // document then removes the orphaned format markers in a transaction of
-    // its own, whose origin is null. (A delete made through the editor
-    // cleans the markers itself in yjs 13.6.33, so it is sent as a pure delete.)
-    const client = new Y.Doc();
-    client.clientID = 5;
-    const p = new Y.XmlElement("paragraph");
-    client.getXmlFragment("doc").insert(0, [p]);
-    const xt = new Y.XmlText();
-    p.insert(0, [xt]);
-    xt.insert(0, "a bold c");
-    xt.format(2, 4, { bold: true });
-    let word: Y.Item | null = xt._start;
-    while (word && !(word.content instanceof Y.ContentString && word.content.str === "bold")) word = word.right;
-    if (!word) throw new Error("bold word not found");
-    const doc = await load(NAME, client);
-    const nullOrigin: Uint8Array[] = [];
-    doc.on("update", (u: Uint8Array, origin: unknown) => {
-      if (origin === null) nullOrigin.push(u);
-    });
-    Y.applyUpdate(doc, pureDeleteUpdate([[word.id.client, word.id.clock, word.length]]), { source: "connection" });
-    expect(nullOrigin).toHaveLength(1);
-    const cleanup = nullOrigin[0]!;
-    const before = upperOf(NAME);
-    await expect(
-      w.hooks.onChange({
-        instance: { documents: new Map([[NAME, doc]]) },
-        clientsCount: 0,
-        document: doc,
-        documentName: NAME,
-        requestHeaders: new Headers(),
-        requestParameters: new URLSearchParams(),
-        socketId: "",
-        update: cleanup,
-        transactionOrigin: null,
-        connection: undefined,
-        context: {},
-      }),
-    ).resolves.toBeUndefined();
-    expect(upperOf(NAME)).toBe(before + onChangeBound(cleanup));
+    const doc = await load(CV, combo().src);
+    setCur(CV, 1000);
+    const c = conn(doc, { userId: "u7" });
+    const pend = pendingStructs(777, 2000);
+    const k = await accepts(doc, c, SYNC.update, pend);
+    logger.warn.mockClear();
+    apply(doc, c, pend);
+    expect(refusalLogs()).toEqual([
+      [{ documentName: CV, userId: "u7", current: 1000 + k, limit: L, ceiling: CEIL, step: "pending" }, REFUSED],
+    ]);
   });
+});
 
-  it("C-114 (a) onChange builds no record for meta, nor when the cap is off", async () => {
+describe("the inbound filter after a beforeSync refusal", () => {
+  it("F-10 (gate side) drops the socket's next Update and SyncStep2 frames of the document once beforeSync refused", async () => {
     await boot();
-    const meta = await load("project-p1/meta");
-    await expect(
-      w.hooks.onChange({ document: meta, documentName: "project-p1/meta", update: g9Update(), transactionOrigin: { source: "redis" }, context: {} }),
-    ).resolves.toBeUndefined();
-    expect(w.size.readDocSizeRecord("project-p1/meta")).toBeUndefined();
+    const { nd, src } = combo();
+    const doc = await load(CV, src);
+    setCur(CV, L);
+    const c = conn(doc, { handshake: false });
+    const move = capture(nd.client, () => nd.n1.set("position", { x: 1, y: 2 }));
+    expect(frame("s1", authFrame(CV, "token"))).toBeDefined();
+    expect(frame("s1", syncFrame(CV, WIRE.sync, SYNC.step2, new Uint8Array([0, 0])))).toBeDefined();
+    expect(frame("s1", syncFrame(CV, WIRE.sync, SYNC.update, move))).toBeDefined();
 
-    await boot({ max_document_bytes: 0 });
-    const doc = await load(NAME, helloDoc());
-    await expect(
-      w.hooks.onChange({ document: doc, documentName: NAME, update: g9Update(), transactionOrigin: { source: "redis" }, context: {} }),
-    ).resolves.toBeUndefined();
-    expect(w.size.readDocSizeRecord(NAME)).toBeUndefined();
+    const err = await beforeSync(doc, c, SYNC.update, move).then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+    expect((err as { reason?: unknown } | undefined)?.reason).toBe(COLLAB_DOCUMENT_TOO_LARGE_REASON);
+
+    expect(frame("s1", syncFrame(CV, WIRE.sync, SYNC.update, move))).toBeUndefined();
+    expect(frame("s1", syncFrame(CV, WIRE.sync, SYNC.step2, new Uint8Array([0, 0])))).toBeUndefined();
   });
+});
 
-  it("C-114 (b) onChange no longer logs the old full-encode warning", async () => {
+describe("a size record that failed to be created", () => {
+  it("Q17 logs an error, leaves the document without a record and checks none of its writes", async () => {
     await boot();
-    const src = new Y.Doc();
-    fill(src, L + 5000);
-    const doc = await load(NAME, src);
-    const update = appendUpdate(doc, 10);
-    Y.applyUpdate(doc, update, { source: "redis" });
-    await w.hooks.onChange({ document: doc, documentName: NAME, update, transactionOrigin: { source: "redis" }, context: {} });
-    expect(logger.warn).not.toHaveBeenCalledWith(expect.anything(), "Document exceeds max size limit");
+    const { alt, src } = combo();
+    const doc = await load(CV, src, { failMeasure: true });
+    expect(logger.error).toHaveBeenCalledTimes(1);
+    expect(logger.error.mock.calls[0]?.[0]).toMatchObject({ err: expect.any(Error) });
+    expect(w.size.readDocSizeRecord(CV)).toBeUndefined();
+    const c = conn(doc);
+    activity.spy.mockClear();
+    // Refused at step 2 if it were checked.
+    await notChecked(doc, c, SYNC.update, deleteAt(alt.t, oddIndices()));
+    expect(activity.spy).toHaveBeenCalledTimes(1);
+    expect(w.size.readDocSizeRecord(CV)).toBeUndefined();
   });
+});
 
-  /**
-   * Call the production onStateless with a sync confirmation request.
-   * @param doc - The document.
-   * @param c - The connection.
-   * @param payload - The raw stateless payload.
-   * @returns The hook's promise.
-   */
-  function stateless(doc: Document, c: FakeConnection, payload: string): Promise<void> {
-    return w.hooks.onStateless({ connection: c, documentName: doc.name, document: doc, payload });
-  }
-
-  it("C-115 (a)(b) onStateless confirms and then pushes the size, on canvas, document and timeline in every phase", async () => {
+describe("first-version steps are gone", () => {
+  it("G-22 logs no malformed, budget or trial step and never asks checkRateLimit", async () => {
+    // Refusal-prone inputs of its own, so the case holds when run alone.
     await boot();
-    for (const name of ["project-p1/canvas-s1", "project-p1/document-s2", "project-p1/timeline-s3"]) {
-      const doc = await load(name, helloDoc());
-      for (const [bytes, phase] of [[500_000, "normal"], [900_000, "warning"], [1_030_000, "full"]] as const) {
-        for (const readOnly of [false, true]) {
-          w.size.recordExact(name, bytes);
-          const c = conn(doc, { readOnly, socketId: `s-${phase}-${readOnly}` });
-          const id = randomUUID();
-          await stateless(doc, c, JSON.stringify({ type: "sync:confirm", id }));
-          const sent = c.sendStateless.mock.calls.map((call) => JSON.parse(call[0] as string) as Record<string, unknown>);
-          expect(sent).toHaveLength(2);
-          expect(sent[0]).toEqual({ type: "sync:confirmed", id, ok: !readOnly });
-          expect(sent[1]).toMatchObject({ type: "doc:size", bytes, phase });
-        }
-      }
+    const { nd, src } = combo();
+    const doc = await load(CV, src);
+    const c = conn(doc);
+    setCur(CV, L);
+    await refuses(doc, c, SYNC.update, sh12(doc, 91), "full");
+    reauth(c, CV);
+    await refuses(doc, c, SYNC.update, capture(nd.client, () => nd.n1.set("position", { x: 1, y: 2 })), "full");
+
+    for (const old of ["malformed", "budget_user", "budget_process", "trial"]) {
+      expect(refusalSteps).not.toContain(old);
     }
-  });
-
-  it("C-115 (c)(e)(f)(g) onStateless sends nothing more on 3d, to a detached connection, for bad JSON, or after a failed reply", async () => {
-    await boot();
-    const threeD = await load("project-p1/3d-s4", helloDoc());
-    const c3 = conn(threeD);
-    await stateless(threeD, c3, JSON.stringify({ type: "sync:confirm", id: randomUUID() }));
-    expect(c3.sendStateless).not.toHaveBeenCalled();
-
-    const doc = await load(NAME, helloDoc());
-    const detached = conn(doc, { attach: false });
-    await stateless(doc, detached, JSON.stringify({ type: "sync:confirm", id: randomUUID() }));
-    expect(detached.sendStateless).not.toHaveBeenCalled();
-
-    const c = conn(doc);
-    logger.error.mockClear();
-    await stateless(doc, c, "{");
-    expect(c.sendStateless).not.toHaveBeenCalled();
-    expect(logger.error).toHaveBeenCalledTimes(1);
-
-    const failing = conn(doc, { socketId: "s2" });
-    failing.sendStateless.mockImplementationOnce(() => {
-      throw new Error("socket gone");
-    });
-    logger.error.mockClear();
-    await expect(stateless(doc, failing, JSON.stringify({ type: "sync:confirm", id: randomUUID() }))).resolves.toBeUndefined();
-    expect(failing.sendStateless).toHaveBeenCalledTimes(1);
-    expect(logger.error).toHaveBeenCalledTimes(1);
-    expect(logger.error).toHaveBeenCalledWith(expect.anything(), "Sync confirmation failed");
-  });
-
-  it("C-115 (d) onStateless confirms a timeline but pushes no size when the cap is off", async () => {
-    await boot({ max_document_bytes: 0 });
-    const doc = await load("project-p1/timeline-s3", helloDoc());
-    const c = conn(doc);
-    const id = randomUUID();
-    await stateless(doc, c, JSON.stringify({ type: "sync:confirm", id }));
-    const sent = c.sendStateless.mock.calls.map((call) => JSON.parse(call[0] as string) as Record<string, unknown>);
-    expect(sent).toEqual([{ type: "sync:confirmed", id, ok: true }]);
-  });
-
-  it("C-116 afterUnloadDocument forgets the record, and a reload measures the new content", async () => {
-    await boot();
-    const first = await load(NAME, helloDoc());
-    expect(w.size.readDocSizeRecord(NAME)).toBeDefined();
-    first.destroy();
-    await w.hooks.afterUnloadDocument({ instance: { documents: new Map() }, documentName: NAME });
-    expect(w.size.readDocSizeRecord(NAME)).toBeUndefined();
-    const other = imageNodes(5);
-    const second = await load(NAME, other);
-    expect(w.size.readDocSizeRecord(NAME)?.exact).toBe(refMeasure(second));
+    expect(rateLimit).not.toHaveBeenCalled();
   });
 });

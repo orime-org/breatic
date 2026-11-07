@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Space size cap (inner#1790), spec section 8 (W-87–W-89): a dropped non-media
- * file builds an empty text node in an `add` batch, then writes the extracted
- * words through `setNodeExtractedText`, whose refusal is said on the node's own
- * upload mark rather than in a toast.
+ * Space size cap v2 (inner#1790 v2 web test spec RQ-20, RQ-21): a dropped
+ * non-media file builds an empty text node in an `add` batch, then writes the
+ * extracted words through `setNodeExtractedText` (`notify: false`), whose
+ * refusal is said on the node's own upload mark rather than in a toast.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,12 +13,7 @@ import { act, cleanup, render, screen, waitFor, within } from '@testing-library/
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as Y from 'yjs';
 import type * as React from 'react';
-import type * as ProviderModule from '@hocuspocus/provider';
 
-vi.mock('@hocuspocus/provider', async (importOriginal) => {
-  const { providerMockModule } = await import('@web/data/yjs/__tests__/helpers/size-gate-provider-mock');
-  return providerMockModule(await importOriginal<typeof ProviderModule>());
-});
 vi.mock('@web/data/yjs/collab-failure-report', () => ({ reportCollabFailure: vi.fn() }));
 vi.mock('@web/lib/toast', () => ({
   toast: { warning: vi.fn(), error: vi.fn(), success: vi.fn(), info: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },
@@ -58,41 +53,41 @@ vi.mock('@web/data/yjs/canvas-space', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/yjs/canvas-space')>()),
 }));
 
-import { CANVAS_NODES_KEY, formatBytes, setLocale, t } from '@breatic/shared';
+import { CANVAS_NODES_KEY, setLocale, t } from '@breatic/shared';
 import { toast } from '@web/lib/toast';
 import { assetsApi } from '@web/data/api';
 import { extractText } from '@web/spaces/canvas/text-extract';
 import { fillNodeFromFile } from '@web/spaces/canvas/canvas-upload';
 import { _resetCollabSocketForTests } from '@web/data/yjs/collab-socket';
-import { docName, _resetForTests } from '@web/data/yjs/manager';
+import { clearAllDocSizes } from '@web/data/yjs/doc-size';
+import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import * as canvasSpace from '@web/data/yjs/canvas-space';
 import { readNodes, readTextBodies, _resetCanvasUndoCacheForTests } from '@web/data/yjs/canvas-space';
 import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
 import { useUIStore } from '@web/stores';
 import { useUploadMarksStore, type UploadMarkMessage } from '@web/stores/upload-marks';
-import { sizeGateProviders } from '@web/data/yjs/__tests__/helpers/size-gate-provider-mock';
-import { openSizedDoc, probe, pushSize } from '@web/data/yjs/__tests__/helpers/size-gate-harness';
 import {
-  COPY_EN,
-  COPY_ZH_CN,
-  F_FULL,
-  F_WARNING,
-  type DocSizePush,
-} from '@web/data/yjs/__tests__/helpers/doc-size-fixtures';
+  SIZE_COPY_EN,
+  SIZE_COPY_ZH_CN,
+  P_FULL,
+  enterSize,
+  pushSize,
+  type SizeCode,
+} from '@web/data/yjs/__tests__/helpers/size-v2-harness';
 
 const PID = 'p';
 const SID = 's';
 const NAME = docName.canvasSpace(PID, SID);
 
 /**
- * Opens the canvas document, delivers one push and mounts the real canvas on it.
- * @param push - The size push.
+ * Opens the canvas document, enters one size state and mounts the real canvas on it.
+ * @param code - The size state.
  * @returns The canvas document.
  * @throws {Error} When mounting fails.
  */
-function mountAt(push: DocSizePush): Y.Doc {
-  const { doc, provider } = openSizedDoc(NAME);
-  pushSize(provider, push);
+function mountAt(code: SizeCode): Y.Doc {
+  const doc = getDoc(NAME);
+  enterSize(NAME, code);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
@@ -128,21 +123,6 @@ function deferExtract(): (text: string) => void {
 }
 
 /**
- * The largest byte count that fits right now, found by probing.
- * @returns The available room.
- */
-function availableRoom(): number {
-  let lo = 0;
-  let hi = F_WARNING.room;
-  while (lo < hi) {
-    const mid = Math.ceil((lo + hi) / 2);
-    if (probe(NAME, mid)) lo = mid;
-    else hi = mid - 1;
-  }
-  return lo;
-}
-
-/**
  * How a mark message reads on screen, the way the node renders it.
  * @param message - The mark's message.
  * @returns The sentence.
@@ -152,7 +132,6 @@ function rendered(message: UploadMarkMessage): string {
 }
 
 beforeEach(() => {
-  sizeGateProviders.length = 0;
   useUIStore.setState({ activeRegion: 'space' });
   useUploadMarksStore.setState({ marks: {} });
   vi.spyOn(assetsApi, 'fetchUploadConfig').mockResolvedValue({
@@ -171,61 +150,67 @@ afterEach(() => {
   _resetCollabSocketForTests();
   _resetForTests();
   _resetCanvasUndoCacheForTests();
+  clearAllDocSizes();
   vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 
-describe('W-87 a full Space refuses the whole drop', () => {
-  it('builds no node, warns once, reads nothing and leaves no upload mark', async () => {
+describe('RQ-20 a full Space refuses the whole drop', () => {
+  it.each([
+    ['F', SIZE_COPY_EN.T_ADD],
+    ['O', SIZE_COPY_EN.T_OVER],
+  ] as const)('RQ-20 builds no node, warns once, reads nothing and leaves no upload mark [%s]', async (code, sentence) => {
     deferExtract();
-    const doc = mountAt(F_FULL);
+    const ticket = vi.spyOn(assetsApi, 'requestUploadTicket');
+    const doc = mountAt(code);
     const before = Y.encodeStateAsUpdate(doc);
     dropText('notes.txt');
     await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
-    expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(COPY_EN.T_ADD_BLOCKED);
+    expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(sentence);
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
     expect(doc.getMap(CANVAS_NODES_KEY).size).toBe(0);
     expect(extractText).not.toHaveBeenCalled();
+    expect(ticket).not.toHaveBeenCalled();
     expect(useUploadMarksStore.getState().marks[SID] ?? {}).toEqual({});
+    expect(toast.error).not.toHaveBeenCalled();
   });
 });
 
-describe('W-88 extracted words that do not fit fail on the node', () => {
+describe('RQ-21 the Space fills up between the node and its words', () => {
   it.each([
-    ['en', COPY_EN.T_TEXT_NO_ROOM],
-    ['zh-CN', COPY_ZH_CN.T_TEXT_NO_ROOM],
-  ] as const)('keeps the empty node and says why on it (%s)', async (locale, sentence) => {
+    ['en', SIZE_COPY_EN.T_TEXT],
+    ['zh-CN', SIZE_COPY_ZH_CN.T_TEXT],
+  ] as const)('RQ-21 keeps the empty node and says on its upload mark that the Space is full (%s)', async (locale, sentence) => {
     setLocale(locale);
     const write = vi.spyOn(canvasSpace, 'setNodeExtractedText');
     const settle = deferExtract();
-    const doc = mountAt(F_WARNING);
+    const doc = mountAt('W');
     dropText('big.txt');
     await waitFor(() => expect(readNodes(doc).filter((n) => n.type === 'text')).toHaveLength(1));
     const id = readNodes(doc).find((n) => n.type === 'text')!.id;
-    const room = availableRoom();
+    pushSize(NAME, P_FULL);
     await act(async () => {
-      settle('a'.repeat(800000));
+      settle('line one\nline two');
       await Promise.resolve();
     });
     await waitFor(() => expect(useUploadMarksStore.getState().markOf(SID, id)?.state).toBe('failed'));
+    expect(readNodes(doc).map((n) => n.id)).toEqual([id]);
     expect(readTextBodies(PID, SID, [id]).get(id)).toBe('');
     expect(write).toHaveBeenCalledTimes(1);
-    expect(write.mock.results[0].value).toEqual({ ok: false, reason: 'no_room', room });
+    expect(write.mock.results[0].value).toEqual({ ok: false, reason: 'full' });
     const mark = useUploadMarksStore.getState().markOf(SID, id);
     if (mark?.state !== 'failed') throw new Error('the node has no failure mark');
-    expect(mark.message).toMatchObject({ params: { room: formatBytes(room) } });
-    expect(rendered(mark.message)).toBe(sentence(formatBytes(room)));
+    expect(rendered(mark.message)).toBe(sentence);
     const node = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${id}"]`)!;
-    expect(within(node).getByTestId('node-upload-error')).toHaveTextContent(sentence(formatBytes(room)));
+    expect(within(node).getByTestId('node-upload-error')).toHaveTextContent(sentence);
     expect(screen.queryByText(t('canvas.upload.extractionFailed', { filename: 'big.txt' }))).toBeNull();
     expect(toast.warning).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
   });
-});
 
-describe('W-89 extracted words that fit are written', () => {
-  it('fills the node body and clears the mark without a toast', async () => {
+  it('RQ-21 fills the node body and clears the mark without a toast while the Space stays below full [W]', async () => {
     const settle = deferExtract();
-    const doc = mountAt(F_WARNING);
+    const doc = mountAt('W');
     dropText('small.txt');
     await waitFor(() => expect(readNodes(doc).filter((n) => n.type === 'text')).toHaveLength(1));
     const id = readNodes(doc).find((n) => n.type === 'text')!.id;
@@ -239,7 +224,7 @@ describe('W-89 extracted words that fit are written', () => {
   });
 });
 
-describe('W-89 fillNodeFromFile ends the mark by what setContent answered', () => {
+describe('RQ-21 fillNodeFromFile ends the mark by what setContent answered', () => {
   /**
    * Fills an existing text node through the double-click / Upload path.
    * @param answer - What the content write answers.
@@ -262,21 +247,14 @@ describe('W-89 fillNodeFromFile ends the mark by what setContent answered', () =
     return useUploadMarksStore.getState().markOf('s1', 'n1');
   }
 
-  it('fails the mark with the no-room sentence', async () => {
-    const mark = await fillWith({ ok: false, reason: 'no_room', room: 1 });
-    if (mark?.state !== 'failed') throw new Error(`expected a failed mark, got ${JSON.stringify(mark)}`);
-    expect(rendered(mark.message)).toBe(COPY_EN.T_TEXT_NO_ROOM('1 B'));
-    expect(toast.warning).not.toHaveBeenCalled();
-  });
-
-  it('fails the mark with the full sentence', async () => {
+  it('RQ-21 fails the mark with the full sentence', async () => {
     const mark = await fillWith({ ok: false, reason: 'full' });
     if (mark?.state !== 'failed') throw new Error(`expected a failed mark, got ${JSON.stringify(mark)}`);
-    expect(rendered(mark.message)).toBe(COPY_EN.T_TEXT_FULL);
+    expect(rendered(mark.message)).toBe(SIZE_COPY_EN.T_TEXT);
     expect(toast.warning).not.toHaveBeenCalled();
   });
 
-  it('answers the mark when the write went through', async () => {
+  it('RQ-21 answers the mark when the write went through', async () => {
     expect(await fillWith({ ok: true })).toBeUndefined();
     expect(toast.warning).not.toHaveBeenCalled();
   });
