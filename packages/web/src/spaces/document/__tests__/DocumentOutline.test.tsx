@@ -340,13 +340,14 @@ describe('DocumentOutline', () => {
      * Lays the body out as a long page: each heading's line sits at a fixed
      * offset in the document and moves up as the viewport scrolls.
      * @param offsets - Each heading's words and its line's offset.
+     * @param height - The page's scroll height.
      * @returns The viewport, with a writable scroll position.
      */
-    function scrollablePage(offsets: readonly [string, number][]): HTMLElement {
+    function scrollablePage(offsets: readonly [string, number][], height = 5000): HTMLElement {
       const viewport = bodyViewport();
       let top = 0;
       Object.defineProperty(viewport, 'scrollTop', { configurable: true, get: () => top, set: (v: number) => { top = v; } });
-      Object.defineProperty(viewport, 'scrollHeight', { configurable: true, value: 5000 });
+      Object.defineProperty(viewport, 'scrollHeight', { configurable: true, value: height });
       Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 800 });
       placeAt(viewport, 100);
       for (const [text, offset] of offsets) {
@@ -385,6 +386,58 @@ describe('DocumentOutline', () => {
       // Arrived: the landing was reachable, so the rule takes over again.
       scrollTo(viewport, 700 - 16);
       scrollTo(viewport, 0);
+      await waitFor(() => expect(itemOf('One')).toHaveClass('bg-accent-strong'));
+    });
+
+    it('lets go of the clicked heading once the scroll moves away from its target mid-jump', async () => {
+      renderWith([h('a', 1, 'One'), h('m', 1, 'Mid'), h('b', 1, 'Two')]);
+      const viewport = scrollablePage([['One', -50], ['Mid', 300], ['Two', 700]]);
+      fireEvent.click(row('Two'));
+
+      // Toward the target and then back, as a scrollbar drag or a key would take it.
+      scrollTo(viewport, 300);
+      scrollTo(viewport, 200);
+
+      await waitFor(() => expect(itemOf('One')).toHaveClass('bg-accent-strong'));
+    });
+
+    it('lets go of the clicked heading once the scroll stops short of its target', async () => {
+      renderWith([h('a', 1, 'One'), h('m', 1, 'Mid'), h('b', 1, 'Two')]);
+      const viewport = scrollablePage([['One', -50], ['Mid', 300], ['Two', 700]]);
+      fireEvent.click(row('Two'));
+
+      scrollTo(viewport, 300);
+      fireEvent(viewport, new Event('scrollend'));
+
+      await waitFor(() => expect(itemOf('Mid')).toHaveClass('bg-accent-strong'));
+    });
+
+    it('lets go of the clicked heading once the user presses on the scrollbar during the jump', async () => {
+      renderWith([h('a', 1, 'One'), h('m', 1, 'Mid'), h('b', 1, 'Two')]);
+      const viewport = scrollablePage([['One', -50], ['Mid', 300], ['Two', 700]]);
+      fireEvent.click(row('Two'));
+
+      // The scrollbar is the viewport's sibling, under the scroll area's root.
+      fireEvent.pointerDown(viewport.parentElement!);
+      scrollTo(viewport, 300);
+
+      await waitFor(() => expect(itemOf('Mid')).toHaveClass('bg-accent-strong'));
+    });
+
+    it('keeps the clicked heading once the end of the document stops the jump short, until the user scrolls away', async () => {
+      renderWith([h('a', 1, 'One'), h('t', 2, 'Tail a'), h('u', 2, 'Tail b')]);
+      // 1000 high in an 800 viewport: the scroll stops at 200, short of Tail a's landing at 684.
+      const viewport = scrollablePage([['One', -50], ['Tail a', 700], ['Tail b', 750]], 1000);
+      fireEvent.click(row('Tail a'));
+
+      scrollTo(viewport, 200);
+      await act(async () => {
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      });
+      // At the bottom the rule would mark Tail b, the lowest heading in view.
+      expect(itemOf('Tail a')).toHaveClass('bg-accent-strong');
+
+      scrollTo(viewport, 150);
       await waitFor(() => expect(itemOf('One')).toHaveClass('bg-accent-strong'));
     });
 
