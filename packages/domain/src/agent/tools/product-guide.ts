@@ -1390,12 +1390,35 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.threeD.importModel.confirm"))} starts the upload: the dialog waits and cannot be closed while the upload is being prepared, ` +
       `then closes and the ${quoted(t("spaces.threeD.tasks"))} panel opens on the new row. You can start another import at once. ` +
       "While a file is still being sent, closing this Space's tab is held back and leaving the page asks first. " +
-      `The sparkle icon opens ${quoted(t("spaces.threeD.generate"))}, a dialog displaying ` +
-      `${quoted(t("spaces.threeD.generationDev"))}. It has a disabled ${quoted(t("spaces.threeD.prompt"))} field, ` +
-      `a disabled ${quoted(t("spaces.threeD.chooseReference"))} button under ${quoted(t("spaces.threeD.reference"))}, ` +
-      `and a disabled ${quoted(t("spaces.threeD.submit"))} button; ` +
-      `${quoted(t("common.cancel"))} and its X close it. The dimmed speech-bubble entry shows ${quoted(t("spaces.threeD.annotationsLater"))} on hover. ` +
+      `The sparkle icon below it, ${quoted(t("spaces.threeD.generate"))}, opens the generation dialog described below. ` +
+      `The dimmed speech-bubble entry shows ${quoted(t("spaces.threeD.annotationsLater"))} on hover. ` +
       `The keyboard icon at the bottom of the left rail opens ${quoted(t("spaces.threeD.controls"))}, which says ${quoted(t("spaces.threeD.helpBody"))}`,
+    `The ${quoted(t("spaces.threeD.generate"))} dialog makes a 3D model; the 3D Space only generates 3D models, and pictures are generated on a Canvas. ` +
+      `Opened from the rail it starts empty and says ${quoted(t("spaces.threeD.generateDialog.descriptionBlank"))} ` +
+      `On top, under ${quoted(t("spaces.threeD.generateDialog.common"))}, are the model's settings both modes share: switches, option rows and number boxes. ` +
+      "A setting another choice holds is locked; clicking it shows why in a short message, such as " +
+      `${quoted(t("spaces.threeD.force.pbr_needs_texture"))} ${quoted(t("spaces.threeD.force.parts_geometry_only"))} or ${quoted(t("spaces.threeD.force.fast_uses_v35"))} ` +
+      "A value a setting does not accept shows the rule it breaks under that setting. " +
+      "The middle part holds the mode's own content and its own settings. " +
+      `For Text to 3D that is the ${quoted(t("spaces.threeD.generateDialog.prompt"))} box with a character count. ` +
+      `For Image to 3D it is ${quoted(t("spaces.threeD.generateDialog.views"))}: four view slots, ${quoted(t("spaces.threeD.generateDialog.view.front"))}, ` +
+      `${quoted(t("spaces.threeD.generateDialog.view.left"))}, ${quoted(t("spaces.threeD.generateDialog.view.back"))} and ${quoted(t("spaces.threeD.generateDialog.view.right"))}, ` +
+      `with ${quoted(t("spaces.threeD.generateDialog.view.front"))} marked ${quoted(t("spaces.threeD.generateDialog.required"))} and the line ` +
+      `${quoted(t("spaces.threeD.generateDialog.viewsHint"))} The slot to fill next has a plus button whose menu offers ` +
+      `${quoted(t("spaces.threeD.generateDialog.upload"))} (a picture from the computer) and ${quoted(t("spaces.threeD.generateDialog.pickProject"))}; ` +
+      `a slot after it shows a dash whose tooltip says ${quoted(t("spaces.threeD.generateDialog.fillEarlier"))}. ` +
+      "A filled slot shows its picture with a small button at its top right, whose menu offers the same two plus " +
+      `${quoted(t("spaces.threeD.generateDialog.removeView"))}; removing a view moves the later ones forward. ` +
+      `An upload shows a progress bar in its slot; one that fails empties the slot, which says ${quoted(t("spaces.threeD.generateDialog.uploadFailed"))}. ` +
+      `${quoted(t("spaces.threeD.generateDialog.pickProject"))} opens ${quoted(t("spaces.threeD.picker.title"))} with two tabs: ` +
+      `${quoted(t("spaces.threeD.picker.project"))} lists this Project's pictures, and ${quoted(t("spaces.threeD.picker.more"))} reads the next page; ` +
+      `${quoted(t("spaces.threeD.picker.local"))} takes ${quoted(t("spaces.threeD.picker.formats"))} through ${quoted(t("spaces.threeD.picker.chooseFile"))}, which uploads into the slot. ` +
+      "Clicking a picture or choosing a file closes it and fills the slot. " +
+      "The bottom row has the mode switch at the left, Text to 3D or Image to 3D, named in English on every screen; at the right, a star with the credit " +
+      "estimate and the round button with an upward arrow, which generates. That button is unavailable while a view is uploading, a setting is not accepted, " +
+      "the prompt is empty (Text to 3D) or no view is filled (Image to 3D). While the generation is being submitted the dialog cannot be closed. " +
+      `On the answer it closes and the ${quoted(t("spaces.threeD.tasks"))} panel opens on the new row; a generation that could not start gets its row too, with the reason and Retry. ` +
+      "A refusal, such as too few credits, keeps the dialog open with everything in it and says why in a short message.",
     `The floating bar at the bottom right orders ${quoted(t("spaces.threeD.undo"))}, ${quoted(t("spaces.threeD.redo"))}, ` +
       `${quoted(t("spaces.threeD.properties"))}, ${quoted(t("spaces.threeD.objects"))}, ${quoted(t("spaces.threeD.tasks"))} and ` +
       `${quoted(t("spaces.threeD.minimap"))}. The three panel buttons keep their ordinary appearance while open. ` +
@@ -1403,15 +1426,39 @@ export function renderProductGuide(): string {
       `An X with the ${quoted(t("spaces.threeD.closePanel"))} tooltip also closes the panel. Its content scrolls above the minimap. ` +
       "Opening a header menu while the panel is open keeps keyboard focus in that new menu. " +
       "The minimap button toggles the scene's top view; clicking that map navigates your personal viewing camera.",
-    `The ${quoted(t("spaces.threeD.tasks"))} panel lists every member's model imports in this Space, newest first, the same for everyone. ` +
-      `Each row shows the model's name, ${quoted(t("spaces.threeD.taskList.kind"))}, who started it (${quoted(t("spaces.threeD.taskList.you"))} for you, ${quoted(t("spaces.threeD.taskList.member"))} when the name is unknown) and its state: ` +
+    `The ${quoted(t("spaces.threeD.tasks"))} panel lists every member's model imports and generations in this Space, newest first, the same for everyone. ` +
+      `Its header has ${quoted(t("spaces.threeD.taskList.filter"))}, whose menu offers ${quoted(t("spaces.threeD.taskList.filterRunning"))}; ` +
+      `${quoted(t("spaces.threeD.taskList.filterKind"))}: ${quoted(t("spaces.threeD.taskList.filterAll"))}, ${quoted(t("spaces.threeD.taskList.kind"))} or ${quoted(t("spaces.threeD.taskList.kindGeneration"))}; ` +
+      `${quoted(t("spaces.threeD.taskList.filterStarter"))}: ${quoted(t("spaces.threeD.taskList.filterEveryone"))} or ${quoted(t("spaces.threeD.taskList.filterMe"))}; and ` +
+      `${quoted(t("spaces.threeD.taskList.filterOrigin"))}: ${quoted(t("spaces.threeD.taskList.filterAll"))}, ${quoted(t("spaces.threeD.taskList.originSpace"))} or ${quoted(t("spaces.threeD.taskList.originAgent"))}. ` +
+      "The button shows how many filters are on; filters change only your own screen. " +
+      `An import row shows the model's name, ${quoted(t("spaces.threeD.taskList.kind"))}, who started it (${quoted(t("spaces.threeD.taskList.you"))} for you, ${quoted(t("spaces.threeD.taskList.member"))} when the name is unknown) and its state: ` +
       `${quoted(t("spaces.threeD.taskList.running"))} with a percentage while the uploader's page is sending it, ${quoted(t("spaces.threeD.taskList.registering"))}, ` +
       `${quoted(t("spaces.threeD.taskList.done"))}, ${quoted(t("spaces.threeD.taskList.failed"))} or ${quoted(t("spaces.threeD.taskList.expired"))} after two hours without an end. ` +
       `Resting the pointer on a cut-off name shows it whole. A finished row has ${quoted(t("spaces.threeD.taskList.place"))}: each press puts one copy on the ground at the centre of your view and selects it, ` +
       "and the panel stays open for the next one; a row that timed out but whose model arrived later has it too. " +
       `A failed row, and a timed-out one with no model, has ${quoted(t("spaces.threeD.taskList.remove"))}; the page that uploaded a failed row also has ` +
-      `${quoted(t("spaces.threeD.taskList.retry"))} when sending the same file again could succeed, until that page is reloaded. A row holding a model cannot be removed. A Viewer sees the list without buttons. ` +
+      `${quoted(t("spaces.threeD.taskList.retry"))} when sending the same file again could succeed, until that page is reloaded. ` +
+      `A generation row shows its name, ${quoted(t("spaces.threeD.taskList.kindGeneration"))}, the prompt's start or the input pictures as thumbnails (resting the pointer on one previews it), ` +
+      `then the model · who started it · ${quoted(t("spaces.threeD.taskList.originSpace"))} or ${quoted(t("spaces.threeD.taskList.originAgent"))} (with a robot icon), and its state: ` +
+      `${quoted(t("spaces.threeD.taskList.generating"))}, with the minutes after the first, ${quoted(t("spaces.threeD.taskList.done"))}, ` +
+      `${quoted(t("spaces.threeD.taskList.failed"))} with its reason, or ${quoted(t("spaces.threeD.taskList.expired"))}; one whose model arrived after it timed out shows ${quoted(t("spaces.threeD.taskList.done"))}. ` +
+      `A generation row with a model has ${quoted(t("spaces.threeD.taskList.place"))} as well. ` +
+      `A failed generation, and a timed-out one with no model, has ${quoted(t("spaces.threeD.taskList.remove"))} and, for the member who started it while they can edit, ` +
+      `${quoted(t("spaces.threeD.taskList.retry"))}: it opens the generation dialog filled with that task's prompt or pictures and settings, saying ` +
+      `${quoted(t("spaces.threeD.generateDialog.descriptionRetry"))} On a timed-out row Retry first checks the task: if it is still running it says ` +
+      `${quoted(t("spaces.threeD.taskList.stillRunning"))} and if its model has arrived it says ${quoted(t("spaces.threeD.taskList.hasResult"))} ` +
+      `Any row whose model is in the scene has ${quoted(t("spaces.threeD.taskList.locate"))}, which selects every object placed from it and keeps the panel open. ` +
+      `A row holding a model cannot be removed. A Viewer sees the list with no button but ${quoted(t("spaces.threeD.taskList.locate"))}. ` +
       `When there are none it says ${quoted(t("spaces.threeD.taskList.empty"))} The project activity records each import whose file was uploaded, under the model's name; importing a model this studio already has adds no activity entry.`,
+    `A 3D generation you propose appears in this chat as a card headed ${quoted(t("chat.sceneProposal.title"))}: your short reason, the mode (Text to 3D or Image to 3D, in English), ` +
+      `the model, the estimated credits, the prompt or the input pictures, the main settings, and ${quoted(t("chat.sceneProposal.open"))}. ` +
+      "The card belongs to no particular Space: pressing it opens the generation dialog in the 3D Space in front, filled with the proposal and saying " +
+      `${quoted(t("spaces.threeD.generateDialog.descriptionAgent"))} The card itself generates nothing; the reader checks the dialog and presses its round button. ` +
+      `With no 3D Space in front it shows ${quoted(t("chat.sceneProposal.needScene"))} and opens nothing. ` +
+      `While that Space is already submitting a generation, the card, like a generation row's Retry, shows ${quoted(t("spaces.threeD.proposalBusy"))} and changes nothing. ` +
+      "The 3D Space only generates 3D models; images are generated on the Canvas. To start from a new picture, generate it on a Canvas first, " +
+      `then choose it in an Image to 3D view slot with ${quoted(t("spaces.threeD.generateDialog.pickProject"))}.`,
     `The ${quoted(t("spaces.threeD.objects"))} panel lists scene objects; when empty it says ${quoted(t("spaces.threeD.empty"))} ` +
       "Click an object in the list or viewport to select it; Shift-click adds it to or removes it from the selection. " +
       "Click empty space to clear the selection. Selected objects have outlines; the list also marks selected rows and locked objects.",
@@ -1752,7 +1799,7 @@ export const productGuide: Tool<z.infer<typeof inputSchema>, string> = tool({
     "on a canvas making, filling and connecting nodes, node menus, tasks, notes, moving around, the generation " +
     "panel and what is in it, the mini-tools on a picture, video or sound node, source slots, focus crops, " +
     "mentions, groups, placing a proposal card; 3D Space " +
-    "objects, transforms, locks, personal view and collaboration; writing in a " +
+    "objects, model generation and its proposal card, transforms, locks, personal view and collaboration; writing in a " +
     "document; and what the screen shows when something goes wrong. Read it before telling the reader how to do something here. " +
     "Describe only what it says. Name a control with words on it by the quoted name it gives, " +
     "which is what the reader's screen shows; describe an icon-only control the way it describes it.",
