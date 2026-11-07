@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Batch-6 container recipes on real media: the erase/expand `model_composite`, the GL `transition_window` and the transition
+ * Batch-6 container recipes on real media: the expand `model_composite` (erase is in erase-expand-recipes.node.test.ts), the GL `transition_window` and the transition
  * `stitch` (inner#1306 test plan §97 D15, D16; frames-split design §7.17 rows `model_composite`, `transition_window`,
  * `stitch`, `chunk_encode`, the 转场输出档 row and the `segment` row's output profile; §5.4 切块, 块的时间, 拼接 rows and its
  * last paragraph; execution design §8, §8.1; transitions render DD of 2026-11-05).
@@ -13,8 +13,6 @@
  * fixture is generated here with FFmpeg and every assertion is a fact FFmpeg reads back.
  *
  * Readings this file makes of the recipes (recorded for review):
- * - erase: `result` is the model's output for `range` on its own clock from 0 (the model input is prepared over the range,
- *   §5.3), so presentation time t inside `range` shows the result's frame at t - range.start.
  * - expand: each background object is already in the target geometry, on its own clock from 0 at its window's start
  *   (§8.1 "按其实际PTS映射回本窗"); the frozen source position is `target.displayRect`, as a chunk places the picture there
  *   (§3.5); inside an overlap the two backgrounds are blended by presentation time (§8.1 "重叠区域按presentation时间混合").
@@ -92,7 +90,6 @@ const SDR = { colorMatrix: 'bt709', toneMap: 'none' };
 const HDR = { colorMatrix: 'bt2020nc', toneMap: 'sdr-bt709' };
 const PROFILE = { width: 64, height: 36, fps: r(25), timeBase: r(1, 25), pixFmt: 'yuv420p', color: { matrix: 'bt709', range: 'tv', primaries: 'bt709', transfer: 'bt709' }, codec: 'h264', encode: { crf: 18, preset: 'medium' }, alpha: false };
 const SOURCE = '10000000-0000-4000-8000-000000000001';
-const RESULT = '10000000-0000-4000-8000-0000000000e0';
 const BACKGROUNDS = ['10000000-0000-4000-8000-0000000000b0', '10000000-0000-4000-8000-0000000000b1'];
 const CLIP_A = '10000000-0000-4000-8000-0000000000a1';
 const CLIP_B = '10000000-0000-4000-8000-0000000000a2';
@@ -102,8 +99,6 @@ const CHUNKS = ['10000000-0000-4000-8000-0000000000c0', '10000000-0000-4000-8000
 const WINDOW = { startFrame: 30, frameCount: 10 };
 // Each clip's whole audio, ALAC at 48 kHz with one edit from media time 0 (as presentation-recipes CC02 writes it).
 const CLIP_AUDIO = { start: r(0), end: r(8, 5), origin: r(0), spans: [{ sourceStart: r(0), sourceEnd: r(8, 5), presentationStart: r(0), rate: r(1) }] };
-// greys-tone.mp4's AAC audio as the probe's plan records it: one edit skipping the AAC priming (presentation-recipes CFR_AUDIO).
-const TONE_AUDIO = { start: r(0), end: r(2), origin: r(0), spans: [{ sourceStart: r(256, 11025), sourceEnd: r(22306, 11025), presentationStart: r(0), rate: r(1) }] };
 
 let dir: string;
 let served = new Map<string, string>();
@@ -383,12 +378,6 @@ beforeAll(async () => {
   const h264 = ['-c:v', 'libx264', '-bf', '0', '-pix_fmt', 'yuv420p', ...tagged];
   // Ten frames at 25 fps, each a different grey (stored luma 16 + 20n), keyframes at frames 0 and 5.
   await make('greys.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=0.4,format=yuv420p,geq=lum='16+20*N':cb=128:cr=128", ...h264, '-g', '5', '-video_track_timescale', '25']);
-  // The erase result: four frames of another colour (luma 200 + 10n, a blue-red chroma), on its own clock from 0.
-  await make('erase-result.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=0.16,format=yuv420p,geq=lum='200+10*N':cb=90:cr=170", ...h264, '-g', '4', '-video_track_timescale', '25']);
-  // 2 s of greys (luma 16 + 4n) with cfr.mp4's 44.1 kHz AAC tone, keyframe every 10 frames; and a 10-frame result for it.
-  await make('greys-tone.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=2,format=yuv420p,geq=lum='16+4*N':cb=128:cr=128", '-f', 'lavfi', '-i', 'sine=f=1000:r=44100:d=2',
-    ...h264, '-g', '10', '-video_track_timescale', '25', '-c:a', 'aac', '-shortest']);
-  await make('erase-result-long.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=0.4,format=yuv420p,geq=lum=230:cb=90:cr=170", ...h264, '-g', '10', '-video_track_timescale', '25']);
   // Expand backgrounds in the 128x72 target geometry at 50 fps (twice the source rate, so a frame-index mapping shows):
   // window 0 is 16 frames of luma 40 + 8n, window 1 is 12 frames of luma 150 + 6n.
   await make('bg0.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=128x72:r=50:d=0.32,format=yuv420p,geq=lum='40+8*N':cb=128:cr=128", ...h264, '-g', '16', '-video_track_timescale', '50']);
@@ -433,42 +422,7 @@ beforeEach(() => {
 });
 
 describe('model_composite (§7.17 model_composite and segment rows; execution design §8, §8.1)', () => {
-  // The erase range is presentation [3/25, 7/25): frames 3 to 6 are the result's frames 0 to 3.
-  const ERASE_RANGE = { start: r(3, 25), end: r(7, 25) };
-
-  /**
-   * An erase composite over the greys source.
-   * @param window - Its presentation ordinals.
-   * @param entries - Its spans.
-   * @returns The recipe.
-   */
-  function erase(window: { start: number; end: number }, entries: Recipe[]): Recipe {
-    return { kind: 'model_composite', mode: 'erase', inputId: SOURCE, window, timescale: 25, entries, target: TARGET, result: RESULT, range: ERASE_RANGE };
-  }
-
-  it('MC01 erase: inside the range the result\'s pixels, outside it the source, opening with a keyframe on its own clock (H.264 per the segment row)', async () => {
-    const [file] = await produce({ [SOURCE]: join(dir, 'greys.mp4'), [RESULT]: join(dir, 'erase-result.mp4') }, [erase({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))])]);
-    const video = (await probe(file!)).streams.find(stream => stream.codec_type === 'video')!;
-    expect([video.codec_name, video.pix_fmt, video.width, video.height]).toEqual(['h264', 'yuv420p', 64, 36]);
-    expectBt709(video);
-    const list = await packets(file!);
-    expect(list.map(packet => Number(packet.pts_time))).toEqual(Array.from({ length: 10 }, (_unused, n) => n / 25));
-    expect(list[0]!.flags).toContain('K');
-    const [source, result, composed] = [await lumaMeans(join(dir, 'greys.mp4')), await lumaMeans(join(dir, 'erase-result.mp4')), await lumaMeans(file!)];
-    const expected = source.map((mean, n) => (n >= 3 && n < 7 ? result[n - 3]! : mean));
-    composed.forEach((mean, n) => expect(Math.abs(mean - expected[n]!), `frame ${n}`).toBeLessThan(4));
-  });
-
-  it('MC02 erase in a later chunk: the range is placed by presentation time, so the chunk\'s first frames are the result\'s frames 2 and 3', async () => {
-    const [file] = await produce({ [SOURCE]: join(dir, 'greys.mp4'), [RESULT]: join(dir, 'erase-result.mp4') }, [erase({ start: 5, end: 10 }, [span(r(1, 5), r(1, 5), r(1, 5), r(2, 5))])]);
-    const list = await packets(file!);
-    expect(list.map(packet => Number(packet.pts_time))).toEqual([0, 0.04, 0.08, 0.12, 0.16]);
-    expect(list[0]!.flags).toContain('K');
-    const [source, result, composed] = [await lumaMeans(join(dir, 'greys.mp4')), await lumaMeans(join(dir, 'erase-result.mp4')), await lumaMeans(file!)];
-    const expected = [result[2]!, result[3]!, source[7]!, source[8]!, source[9]!];
-    composed.forEach((mean, n) => expect(Math.abs(mean - expected[n]!), `frame ${n}`).toBeLessThan(4));
-  });
-
+  // The erase shape (mask, grid and matte) is pinned in erase-expand-recipes.node.test.ts EC01–EC07.
   it('MC03 expand: each background mapped back by PTS, the source over it at the frozen position, the overlap blended by presentation time', async () => {
     const displayRect = { x: 16, y: 20, width: 64, height: 36 };
     // Window 0 covers presentation [0, 8/25), window 1 [4/25, 2/5): an overlap of frames 4 to 7; consumed [0, 6/25) and [6/25, 2/5).
@@ -533,21 +487,6 @@ describe('model_composite (§7.17 model_composite and segment rows; execution de
     }
   });
 
-  it('MC04 a stitch over a model_composite chunk re-attaches the source audio over the interval (§7.17 model_composite row: stitch 合入原片音轨)', async () => {
-    const recipe = { kind: 'model_composite', mode: 'erase', inputId: SOURCE, window: { start: 0, end: 50 }, timescale: 25, entries: [span(r(0), r(0), r(0), r(2))], target: TARGET,
-      result: RESULT, range: { start: r(2, 5), end: r(4, 5) } };
-    const [chunk] = await produce({ [SOURCE]: join(dir, 'greys-tone.mp4'), [RESULT]: join(dir, 'erase-result-long.mp4') }, [recipe]);
-    const [file] = await produce({ [SOURCE]: join(dir, 'greys-tone.mp4'), [CHUNKS[0]!]: chunk! },
-      [{ kind: 'stitch', inputId: SOURCE, target: TARGET, chunks: [{ inputId: CHUNKS[0], duration: r(2) }], audio: TONE_AUDIO }]);
-    const { streams } = await probe(file!);
-    expect(streams.map(stream => stream.codec_type).sort()).toEqual(['audio', 'video']);
-    const audio = streams.find(stream => stream.codec_type === 'audio')!;
-    expect([audio.codec_name, audio.sample_rate]).toEqual(['aac', '48000']);
-    expect(Math.abs(Number(audio.duration) - 2)).toBeLessThanOrEqual(1024 / 48000);
-    expect(await packets(file!)).toHaveLength(50);
-    const composed = await lumaMeans(file!);
-    for (let n = 10; n < 20; n += 1) expect(Math.abs(composed[n]! - 230), `frame ${n}`).toBeLessThan(4);
-  });
 });
 
 describe('transition_window (§7.17 transition_window and 转场输出档 rows; §5.4 切块, 拼接 and last paragraph) — MiniToolContainerGl only', () => {
