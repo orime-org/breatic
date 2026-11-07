@@ -76,7 +76,6 @@ export type MiniToolIcon =
   | "Crosshair"
   | "Sun"
   | "SplitSquareVertical"
-  | "Timer"
   | "Highlighter"
   | "Expand"
   | "Grid3x3"

@@ -160,11 +160,6 @@ audio:
       description: >
         Generate sound effects or ambient audio from a text description.
         Short-form audio clips for Foley, UI sounds, or environmental audio.
-    extend:
-      label: Music Extension
-      description: >
-        Continue an existing audio track with a seamless tail in the same
-        style.
     separate:
       label: Audio Separation
       description: >

@@ -850,7 +850,6 @@
         "character_orientation": "朝向依据",
         "keep_original_sound": "保留原声",
         "motion_prompt": "动作描述",
-        "append_duration": "延长时长",
         "ambience": "环境音",
         "double_output": "生成两版",
         "light_azimuth": "光源方向",
@@ -1182,10 +1181,6 @@
       "audio": {
         "separate": {
           "label": "人声分离"
-        },
-        "extend": {
-          "label": "延长",
-          "prompt": "描述要接上的声音"
         },
         "denoise": {
           "label": "降噪"
