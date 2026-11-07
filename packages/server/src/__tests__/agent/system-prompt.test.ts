@@ -199,9 +199,11 @@ describe("what the prompt says the model's job is", () => {
     expect(wording()).toMatch(/which node, which menu row, which button, what value, and what they will see when it worked/);
   });
 
-  it("asks to carry the work through and name where Breatic falls short, with the nearest result", () => {
+  it("asks to carry the work through, judge Breatic by what the reader will see, and name where it falls short, with the nearest result", () => {
     expect(wording()).toMatch(/Carry it through to the result they want/);
-    expect(wording()).toMatch(/Where Breatic falls short of what they asked, say so plainly and give the nearest result it can give/);
+    expect(wording()).toMatch(/Judge what Breatic can do by what the reader will see, not by how a studio would make it/);
+    expect(wording()).toMatch(/Where Breatic falls short of the result they asked for, say so plainly and give the nearest result it can give/);
+    expect(wording()).not.toMatch(/falls short of what they asked/);
   });
 
   it("asks only for what only the reader can tell, and why", () => {

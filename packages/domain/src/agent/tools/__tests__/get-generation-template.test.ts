@@ -101,6 +101,22 @@ describe("get_generation_template", () => {
     expect(said).toContain("{ id } in template on the anchor, { id, key } on each other node");
   });
 
+  it("says to fill every tweak segment, from the reader's words or the agent's own choice, and never to leave one for the reader (breatic#1361)", async () => {
+    const said = await read("character-design-from-text");
+    expect(said).toContain("fill every tweak segment with words, from what the reader said or, where they left it open, your own choice.");
+    expect(said).not.toContain("keep it for them");
+  });
+
+  it("asks for a character described in words alone, choosing a style the reader did not name and saying which and where to change it (breatic#1361)", async () => {
+    const said = await read("character-design-from-text");
+    expect(said).toContain("from the reader's description as one full-body picture");
+    expect(said).not.toContain("the reader's description and style");
+    expect(said).toContain(TEMPLATE_CRAFT.character);
+    expect(TEMPLATE_CRAFT.character).toContain(
+      "When the reader names no style, choose one that fits what they asked for and say in your reply which one you chose and where to change it.",
+    );
+  });
+
   it("adds the craft that fits the template: video craft for a video, character craft for a character goal", async () => {
     const scene = await read("single-view-refs-scene");
     expect(scene).toContain(TEMPLATE_CRAFT.all);
