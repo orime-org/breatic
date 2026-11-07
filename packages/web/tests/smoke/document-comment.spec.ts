@@ -1200,7 +1200,9 @@ test.describe('the panel, read across from the body', () => {
     const before = (await header.boundingBox())!;
     const card = (await page.getByTestId('doc-comment-card').boundingBox())!;
 
-    await page.mouse.move(400, 500);
+    // Over the text: left of it stands the heading outline, a scroller of its own.
+    const text = (await page.locator(EDITOR).boundingBox())!;
+    await page.mouse.move(text.x + text.width / 2, 500);
     await page.mouse.wheel(0, 300);
     await page.waitForTimeout(400);
 
@@ -1231,7 +1233,9 @@ test.describe('the panel, read across from the body', () => {
     await page.waitForTimeout(400);
     const before = await page.getByTestId('doc-comment-card').boundingBox();
 
-    await page.mouse.move(400, 500);
+    // Over the text: left of it stands the heading outline, a scroller of its own.
+    const text = (await page.locator(EDITOR).boundingBox())!;
+    await page.mouse.move(text.x + text.width / 2, 500);
     await page.mouse.wheel(0, 300);
     await page.waitForTimeout(400);
 
