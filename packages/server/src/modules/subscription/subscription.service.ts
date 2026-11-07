@@ -65,13 +65,13 @@ import { ensureFirstPeriodCoupon } from "@server/modules/referral/referral-coupo
 import { firstPeriodDiscount } from "@server/modules/referral/referral.service.js";
 import { sendMembershipEndedMail } from "@server/modules/subscription/settle-tier.js";
 
-/** Where a checkout ends up, and whether it needs paying. */
 /** A Stripe answer as stored, and what its first invoice charged before tax when that was the invoice read. */
 export interface StoredAnswer {
   write: SubscriptionWrite;
   firstInvoiceAmountCents: number | null;
 }
 
+/** Where a checkout ends up, and whether it needs paying. */
 export interface CheckoutStart {
   /** Stripe's hosted checkout page. */
   readonly url: string;
@@ -265,42 +265,59 @@ export async function startCheckout(input: {
 
   const customerId = await ensureCustomer(input.userId);
   const snapshot = await takeCheckoutSnapshot(input.userId);
-  // A referred account that never paid gets its code's first-period coupon;
-  // the code on the subscription is for reference only (inner#1868 §6).
+  /**
+   * Opens the hosted page, with the first-period coupon when the account has a code's discount.
+   * @param referral - The discount, or null for full price.
+   * @returns The session Stripe made.
+   */
+  const open = async (referral: Awaited<ReturnType<typeof firstPeriodDiscount>>): Promise<Stripe.Checkout.Session> => {
+    // The code on the subscription is for reference only (inner#1868 §6).
+    const discounts = referral ? [{ coupon: await ensureFirstPeriodCoupon(referral.percent) }] : undefined;
+    return getStripeClient().checkout.sessions.create({
+      mode: "subscription",
+      customer: customerId,
+      // No expires_at: Stripe's default lifetime of 24 hours is the most it
+      // accepts, and the last re-send of this press (inner#1490) arrives before
+      // it runs out.
+      line_items: [
+        {
+          price: getSubscriptionPlan(input.tier, input.period).stripePriceId,
+          quantity: 1,
+        },
+      ],
+      // Reaches the subscription object, which is what events carry. Top-level
+      // metadata and `client_reference_id` stop at the Session. The subscribing
+      // browser's consent and ad click ride here for the same reason (inner#1442 §4.4.5).
+      subscription_data: {
+        metadata: {
+          userId: input.userId,
+          ...toStripeMetadata(snapshot),
+          ...(referral ? { referralCode: referral.code } : {}),
+        },
+      },
+      ...(discounts ? { discounts } : {}),
+      client_reference_id: input.userId,
+      // The subscription keeps this, so renewals and upgrade invoices are taxed
+      // too. Checkout taxes on the address stored on the customer, which starts
+      // with none and may be stale for a returning buyer; writing the billing
+      // address typed here back to it is what makes the tax follow that address.
+      automatic_tax: { enabled: true },
+      customer_update: { address: "auto" },
+      ...returnUrls(input.returnUrl),
+    });
+  };
+
+  // A referred account that never paid gets its code's first-period coupon.
   const referral = await firstPeriodDiscount(input.userId);
-  const discounts = referral ? [{ coupon: await ensureFirstPeriodCoupon(referral.percent) }] : undefined;
-  const session = await getStripeClient().checkout.sessions.create({
-    mode: "subscription",
-    customer: customerId,
-    // No expires_at: Stripe's default lifetime of 24 hours is the most it
-    // accepts, and the last re-send of this press (inner#1490) arrives before
-    // it runs out.
-    line_items: [
-      {
-        price: getSubscriptionPlan(input.tier, input.period).stripePriceId,
-        quantity: 1,
-      },
-    ],
-    // Reaches the subscription object, which is what events carry. Top-level
-    // metadata and `client_reference_id` stop at the Session. The subscribing
-    // browser's consent and ad click ride here for the same reason (inner#1442 §4.4.5).
-    subscription_data: {
-      metadata: {
-        userId: input.userId,
-        ...toStripeMetadata(snapshot),
-        ...(referral ? { referralCode: referral.code } : {}),
-      },
-    },
-    ...(discounts ? { discounts } : {}),
-    client_reference_id: input.userId,
-    // The subscription keeps this, so renewals and upgrade invoices are taxed
-    // too. Checkout taxes on the address stored on the customer, which starts
-    // with none and may be stale for a returning buyer; writing the billing
-    // address typed here back to it is what makes the tax follow that address.
-    automatic_tax: { enabled: true },
-    customer_update: { address: "auto" },
-    ...returnUrls(input.returnUrl),
-  });
+  let session = await open(referral);
+  if (referral === null) {
+    // A backfill expires the account's open pages once, after it commits; a
+    // page still being made then is not among them. Reading again after the
+    // page exists sees any such binding, and the buyer gets a page with it.
+    // The full-price page's URL never leaves this function.
+    const late = await firstPeriodDiscount(input.userId);
+    if (late !== null) session = await open(late);
+  }
 
   if (!session.url) {
     throw new Error(`Stripe returned a checkout session with no URL`);
