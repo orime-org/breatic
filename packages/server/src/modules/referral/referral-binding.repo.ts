@@ -4,8 +4,9 @@
 import { eq } from "drizzle-orm";
 import { db, referralBindings, referralCodes } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
+import type { SignupReferralSource } from "@breatic/shared";
 
-export type ReferralSource = "signup_link" | "signup_typed" | "later";
+export type ReferralSource = SignupReferralSource | "later";
 
 export interface StoredReferralBinding {
   referralCodeId: string;

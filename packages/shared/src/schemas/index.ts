@@ -7,6 +7,7 @@ export {
   emailSchema,
   registerSchema,
   REFERRAL_CODE_INPUT_MAX,
+  SIGNUP_REFERRAL_SOURCES,
   signupReferralFields,
   signupVerifySchema,
   SIGNUP_CODE_REGEX,
@@ -52,6 +53,7 @@ export {
 
 export type {
   RegisterInput,
+  SignupReferralSource,
   SignupVerifyInput,
   SetupStudioInput,
   CreateTeamStudioInput,

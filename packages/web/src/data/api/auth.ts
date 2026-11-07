@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import type { Attribution, MembershipTier, PersonalStudioRef, SignupInvitationPreview } from '@breatic/shared';
+import type { Attribution, MembershipTier, PersonalStudioRef, SignupInvitationPreview, SignupReferralSource } from '@breatic/shared';
 
 import { apiGet, apiPost } from '@web/data/api/request';
 
@@ -71,7 +71,7 @@ export type SignupReferralOutcome = 'applied' | 'not_applied';
 /** The referral code a sign-up carries, and whether it came from a share link. */
 export interface SignupReferralFields {
   referralCode?: string;
-  referralSource?: 'signup_link' | 'signup_typed';
+  referralSource?: SignupReferralSource;
 }
 
 /**

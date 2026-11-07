@@ -33,7 +33,7 @@ import {
   logger,
   sendMail,
 } from "@breatic/core";
-import { getActiveLocale, normalizeEmail, t } from "@breatic/shared";
+import { getActiveLocale, normalizeEmail, SIGNUP_REFERRAL_SOURCES, t } from "@breatic/shared";
 import type { Attribution, UserEntity } from "@breatic/shared";
 
 const CODE_SPACE = 1_000_000;
@@ -154,9 +154,6 @@ else
 end
 return left
 `;
-
-/** Where a sign-up's referral code can come from, as kept on the pending sign-up. */
-const SIGNUP_REFERRAL_SOURCES: readonly SignupReferral["source"][] = ["signup_link", "signup_typed"];
 
 /**
  * Checks a sign-up's referral code before any code is mailed (inner#1868 §5).

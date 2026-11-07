@@ -46,14 +46,14 @@ import {
 } from "@breatic/core";
 import { bindReferral } from "@server/modules/referral/referral-binding.service.js";
 import { adClickFrom, getActiveLocale, normalizeEmail, t } from "@breatic/shared";
-import type { Attribution, ReportedConsent, UserEntity } from "@breatic/shared";
+import type { Attribution, ReportedConsent, SignupReferralSource, UserEntity } from "@breatic/shared";
 
 const BCRYPT_ROUNDS = 12;
 
 /** A referral code carried by a sign-up (inner#1868 §5). */
 export interface SignupReferral {
   code: string;
-  source: "signup_link" | "signup_typed";
+  source: SignupReferralSource;
 }
 
 /** What became of a sign-up's referral code: none given, bound, or not used. */

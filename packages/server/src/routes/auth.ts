@@ -24,7 +24,7 @@ import { randomUUID } from "node:crypto";
 import { env, NotFoundError, UnauthorizedError, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { emailSchema, getActiveLocale, normalizeEmail, parseAttribution, signupReferralFields, t } from "@breatic/shared";
-import type { PersonalStudioRef } from "@breatic/shared";
+import type { PersonalStudioRef, SignupReferralSource } from "@breatic/shared";
 import { rateLimitFor, rateLimitForAll } from "@server/middleware/rate-limit.js";
 import {
   setSessionCookie,
@@ -117,7 +117,7 @@ auth.get("/options", (c) => {
  */
 function signupReferral(body: {
   referralCode?: string;
-  referralSource?: "signup_link" | "signup_typed";
+  referralSource?: SignupReferralSource;
 }): authService.SignupReferral | undefined {
   const code = body.referralCode?.trim();
   return code ? { code, source: body.referralSource ?? "signup_typed" } : undefined;

@@ -57,13 +57,17 @@ const attributionField = z.unknown().optional();
  */
 export const REFERRAL_CODE_INPUT_MAX = 40;
 
+/** Where a sign-up's referral code came from: a share link, or typed by the user. */
+export const SIGNUP_REFERRAL_SOURCES = ["signup_link", "signup_typed"] as const;
+export type SignupReferralSource = (typeof SIGNUP_REFERRAL_SOURCES)[number];
+
 /**
  * A referral code a sign-up carries (inner#1868): from a share link, or typed.
  * Blank means none; the server parses the code itself.
  */
 export const signupReferralFields = {
   referralCode: z.string().max(REFERRAL_CODE_INPUT_MAX).optional(),
-  referralSource: z.enum(["signup_link", "signup_typed"]).optional(),
+  referralSource: z.enum(SIGNUP_REFERRAL_SOURCES).optional(),
 };
 
 export const registerSchema = z.object({
