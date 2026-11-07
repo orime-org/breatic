@@ -326,13 +326,6 @@ auth.post(
   },
 );
 
-/**
- * `POST /auth/logout` - invalidate the current session.
- *
- * Requires a valid Bearer token in the Authorization header.
- * @param c - Hono context with authenticated user
- * @returns `200` with `{ message: "Logged out" }`
- */
 
 /**
  * `POST /auth/google` - authenticate with a Google ID token.
@@ -460,6 +453,13 @@ auth.get("/me", requireAuth, async (c) => {
   return c.json({ data: { ...shown, personalStudio: toPersonalStudioRef(studio) } });
 });
 
+/**
+ * `POST /auth/logout` - invalidate the current session.
+ *
+ * Requires a valid Bearer token in the Authorization header.
+ * @param c - Hono context with authenticated user
+ * @returns `200` with `{ message: "Logged out" }`
+ */
 auth.post("/logout", requireAuth, async (c) => {
   const token = readSessionCookie(c);
   if (token) {
