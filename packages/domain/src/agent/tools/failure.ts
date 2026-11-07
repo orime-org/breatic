@@ -20,28 +20,28 @@ import type { FailureLine, ToolFailure } from "@breatic/shared";
 /**
  * Build the error a tool throws when it failed.
  * @param forModel - The reason, specific and actionable, for the model alone.
- * @param readerKey - Which cause a reader is shown.
+ * @param userKey - Which cause a user is shown.
  * @param cause - What was caught, when something was. The turn logs the error,
  *   and a reason worded for the model can leave out what the log needs.
  * @returns The error to throw.
  */
-export function toolFailed(forModel: string, readerKey: FailureLine, cause?: unknown): Error {
+export function toolFailed(forModel: string, userKey: FailureLine, cause?: unknown): Error {
   return carrying(new Error(forModel, cause === undefined ? undefined : { cause }), {
     kind: "tool_failed",
     forModel,
-    readerKey,
+    userKey,
   } satisfies ToolFailure);
 }
 
 /**
- * A failure as both audiences read it: the model's sentence and the reader's
+ * A failure as both audiences read it: the model's sentence and the user's
  * cause, decided together so they never tell different stories (inner#1620).
  */
 export interface Failure {
   /** The reason, specific and actionable, for the model alone. */
   readonly forModel: string;
-  /** Which cause a reader is shown. */
-  readonly readerKey: FailureLine;
+  /** Which cause a user is shown. */
+  readonly userKey: FailureLine;
 }
 
 /**
@@ -52,14 +52,14 @@ export interface Failure {
  * @returns The error to throw.
  */
 export function failedWith(failure: Failure, cause?: unknown): Error {
-  return toolFailed(failure.forModel, failure.readerKey, cause);
+  return toolFailed(failure.forModel, failure.userKey, cause);
 }
 
 /**
  * Build the error a tool throws when it turns a call away to steer the model.
  *
  * Not a failure: nothing broke, and the model is told what to do instead. The
- * reader is shown nothing for it.
+ * user is shown nothing for it.
  * @param forModel - Why the call was turned away, and what to do instead.
  * @returns The error to throw.
  */
@@ -87,7 +87,7 @@ export const STOPPED_BY_USER: ToolFailure = {
   forModel:
     "The turn ended while this tool was still running, so it never returned. " +
     "Do not call it again on your own; if this comes up again, carry on from here.",
-  readerKey: FAILURE_LINES.stopped,
+  userKey: FAILURE_LINES.stopped,
 };
 
 /**
@@ -105,11 +105,11 @@ export function stoppedByUser(): Error {
  * Every word here is one a reason would otherwise have written for a single
  * tool. `web_search` failing and telling the user "search is unavailable" is
  * right; the same sentence out of an image search says a working capability
- * is down, and the reader is told something false about the tool they did
+ * is down, and the user is told something false about the tool they did
  * not use.
  */
 export interface FailureVoice {
-  /** What this tool does, as the model should name it to the reader. */
+  /** What this tool does, as the model should name it to the user. */
   readonly act: string;
   /** What a reply goes without when this tool fails. */
   readonly results: string;
@@ -120,8 +120,8 @@ export interface FailureVoice {
   /** Opens a sentence about one attempt: `<attempting> "query" failed`. */
   readonly attempting: string;
   /**
-   * What to do instead, when this tool's failure is not the reader's business.
-   * A tool the reader asked for leaves this out and says it is unavailable.
+   * What to do instead, when this tool's failure is not the user's business.
+   * A tool the user asked for leaves this out and says it is unavailable.
    */
   readonly fallback?: string;
 }
@@ -188,7 +188,7 @@ export function reason(what: string, next: NextMove): string {
  * model takes the one this sentence points at. A 5xx, a 429 or a 408 is the
  * service having a bad time and says nothing about the query. A 401 or 403 is
  * our credentials turned down, a 402 our account with the service unable to
- * pay -- neither is the reader's balance, which is checked before the turn; a 422 is what this side sent being refused, for
+ * pay -- neither is the user's balance, which is checked before the turn; a 422 is what this side sent being refused, for
  * a token it will not accept or a parameter out of range, and its `detail` text
  * is the same either way. A 3xx reaches this function at all because the
  * redirect is not followed, and means the address held here has moved. What is
@@ -206,7 +206,7 @@ export function reason(what: string, next: NextMove): string {
  * @param rewordable - Whether the model can write this request again, when the
  * caller knows; left out, the status decides.
  * @returns The reason, ending in what the model may do instead, and the
- *   reader's cause from the same branch.
+ *   user's cause from the same branch.
  */
 export function refusalReason(
   voice: FailureVoice,
@@ -235,13 +235,13 @@ export function refusalReason(
           "wording of it reaches past this.",
         moves.stop,
       ),
-      readerKey: FAILURE_LINES.busy,
+      userKey: FAILURE_LINES.busy,
     };
   }
 
   const thisRequest: Failure = {
     forModel: reason(`${opening} The service is reachable, so it is this request it would not take.`, moves.rewordOnce),
-    readerKey: FAILURE_LINES.refused,
+    userKey: FAILURE_LINES.refused,
   };
   if (rewordable === true) return thisRequest;
   const ours =
@@ -260,7 +260,7 @@ export function refusalReason(
   if (ours !== null) {
     return {
       forModel: reason(`${opening} ${ours} No wording of the query reaches it.`, moves.stop),
-      readerKey: FAILURE_LINES.unavailable,
+      userKey: FAILURE_LINES.unavailable,
     };
   }
   return thisRequest;
@@ -276,7 +276,7 @@ export function refusalReason(
  * @param voice - How this tool names what it does.
  * @param query - What was searched for.
  * @returns The reason, ending in what the model may do instead, and the
- *   reader's cause.
+ *   user's cause.
  */
 export function notOurPayloadReason(voice: FailureVoice, query: string): Failure {
   return {
@@ -285,7 +285,7 @@ export function notOurPayloadReason(voice: FailureVoice, query: string): Failure
         "results. That is a fault on their side.",
       nextMovesFor(voice).stop,
     ),
-    readerKey: FAILURE_LINES.badAnswer,
+    userKey: FAILURE_LINES.badAnswer,
   };
 }
 
@@ -299,7 +299,7 @@ export function notOurPayloadReason(voice: FailureVoice, query: string): Failure
  * @param query - What was searched for.
  * @param detail - What the read failed with.
  * @returns The reason, ending in what the model may do instead, and the
- *   reader's cause.
+ *   user's cause.
  */
 export function readFailedReason(voice: FailureVoice, query: string, detail: string): Failure {
   return {
@@ -308,7 +308,7 @@ export function readFailedReason(voice: FailureVoice, query: string, detail: str
         "The service answered, so it is the body that did not arrive.",
       nextMovesFor(voice).retryOnce,
     ),
-    readerKey: FAILURE_LINES.busy,
+    userKey: FAILURE_LINES.busy,
   };
 }
 
@@ -318,7 +318,7 @@ export function readFailedReason(voice: FailureVoice, query: string, detail: str
  * @param query - What was searched for.
  * @param detail - Why the address could not be reached.
  * @returns The reason, ending in what the model may do instead, and the
- *   reader's cause.
+ *   user's cause.
  */
 export function unreachableReason(voice: FailureVoice, query: string, detail: string): Failure {
   return {
@@ -328,7 +328,7 @@ export function unreachableReason(voice: FailureVoice, query: string, detail: st
         "query would fix.",
       nextMovesFor(voice).stop,
     ),
-    readerKey: FAILURE_LINES.noConnection,
+    userKey: FAILURE_LINES.noConnection,
   };
 }
 
@@ -338,7 +338,7 @@ export function unreachableReason(voice: FailureVoice, query: string, detail: st
  * Everything a tool prints outside a marked region is a line: the query, and
  * each result's own title and address. A line terminator in one of them puts
  * whatever follows where the tool's own lines live, in the same shape -- a page
- * whose title carries `\nurl: https://…` would be cited to the reader under
+ * whose title carries `\nurl: https://…` would be cited to the user under
  * the address it chose.
  *
  * All four JavaScript calls line terminators, not the two ASCII ones: `^` and

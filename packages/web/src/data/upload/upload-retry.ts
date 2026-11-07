@@ -93,7 +93,7 @@ export function isTransientUploadError(err: unknown): boolean {
   // status 0 = no HTTP response reached us (network drop / timeout / CORS),
   // which apiGet normalizes to `.status = 0` — the most retryable case.
   // A 429 is the per-user limit, whose window outlasts every retry here; the
-  // reader is told and retries once it has passed.
+  // user is told and retries once it has passed.
   if (status !== null) return status === 0 || status >= 500;
   return false;
 }

@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * A committed charge tells the project's readers, and failing to tell them
+ * A committed charge tells the project's users, and failing to tell them
  * never undoes or repeats the charge (inner#1611).
  *
- * The signal goes out after the transaction commits, so a reader who reads
+ * The signal goes out after the transaction commits, so a user who reads
  * again sees the charge. A publish that fails is handed back on the outcome:
  * thrown instead, `chargeOnceForGeneration` would drop its bill lock and a
  * retry under the same key would charge a second time.
@@ -68,7 +68,7 @@ beforeEach(() => {
 });
 
 describe("chargeForGeneration and the credits signal", () => {
-  it("tells the project's readers after the charge commits", async () => {
+  it("tells the project's users after the charge commits", async () => {
     const outcome = await chargeForGeneration(INPUT);
 
     expect(h.publish).toHaveBeenCalledWith(PROJECT);

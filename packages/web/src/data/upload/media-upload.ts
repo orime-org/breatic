@@ -57,7 +57,7 @@ export type StoredUpload = UploadStatusResult;
  * `storage` — the studio's account is out of room (#89), which no retry fixes
  * either, for the opposite reason: nothing is broken, there is simply nowhere
  * to put the bytes until the admin acts.
- * `rateLimited` — the reader went over a per-user limit on the upload routes
+ * `rateLimited` — the user went over a per-user limit on the upload routes
  * (tickets, or finishing uploads) in its window. A retry once the window has passed goes through.
  * `unsupportedType` — the edge read the stored bytes and turned them down.
  * The bytes are what they are, so re-sending them meets the same refusal.
@@ -134,7 +134,7 @@ const REASON_BY_STATUS: ReadonlyMap<number, UploadFailureReason> = new Map([
  * Say which failure this one ended in.
  *
  * Read off the status because the sentence beside it is localized on the server
- * and matching on the copy would break the moment anyone edits it or a reader
+ * and matching on the copy would break the moment anyone edits it or a user
  * switches language. A status with no reason of its own is the catch-all.
  *
  * Hashing is not read off an error at all — it is refused before anything is

@@ -94,7 +94,7 @@ export interface ConsolidationWindow {
   watermarkBefore: number;
   /** The turn the window ends on. */
   newWatermark: number;
-  /** Raised when the reader stopped the turn or the client went away. */
+  /** Raised when the user stopped the turn or the client went away. */
   signal?: AbortSignal;
 }
 
@@ -106,7 +106,7 @@ export type ConsolidationOutcome =
   | "failed"
   /** Another request had already folded from the same watermark; nothing written. */
   | "superseded"
-  /** The reader left; nothing written, and the watermark stays for next turn. */
+  /** The user left; nothing written, and the watermark stays for next turn. */
   | "aborted"
   /** The fold never started: what it reads first could not be read. */
   | "untouched";
@@ -234,7 +234,7 @@ function consolidationKey(conversationId: string, watermarkBefore: number, foldI
 /**
  * Charge the studio for one consolidation, and never fail over it.
  *
- * The tokens are spent by the time this is called and the reader is waiting
+ * The tokens are spent by the time this is called and the user is waiting
  * on a reply. Letting a charge take the turn down would fail an answer that
  * has nothing wrong with it, over bookkeeping nobody sees.
  * @param input - Who ran it, over which window, and what it cost.
@@ -308,15 +308,15 @@ export async function consolidateWindow(window: ConsolidationWindow): Promise<Co
   const where = { userId, conversationId, projectId, watermarkBefore, newWatermark };
 
   /**
-   * Whether the reader left, said so on the way out.
+   * Whether the user left, said so on the way out.
    *
    * Asked of the signal rather than of the error's name: a name says what the
    * provider called it, and one of the names the SDK treats as cancellation
    * is a timeout, which is the opposite case.
    * @param err - What the failing step threw, when something did.
-   * @returns True when the reader had already gone.
+   * @returns True when the user had already gone.
    */
-  const readerLeft = (err?: unknown): boolean => {
+  const userLeft = (err?: unknown): boolean => {
     if (signal?.aborted !== true) return false;
     logger.error({ err, ...where }, "memory_consolidation_aborted");
     return true;
@@ -335,7 +335,7 @@ export async function consolidateWindow(window: ConsolidationWindow): Promise<Co
     );
     model = getModel(config.consolidation_model);
   } catch (err) {
-    if (readerLeft(err)) return "aborted";
+    if (userLeft(err)) return "aborted";
     logger.error({ err, ...where }, "memory_consolidation_untouched");
     return "untouched";
   }
@@ -386,7 +386,7 @@ export async function consolidateWindow(window: ConsolidationWindow): Promise<Co
       });
       await bill({ userId, conversationId, projectId, watermarkBefore, usage, model: config.consolidation_model });
 
-      if (readerLeft()) return "aborted";
+      if (userLeft()) return "aborted";
       // An answer cut off by the output limit is cut off again when asked
       // the same way; the fold fails here.
       if (result.finishReason === "length") {
@@ -419,7 +419,7 @@ export async function consolidateWindow(window: ConsolidationWindow): Promise<Co
     }
     throw new Error(`consolidation answer failed its checks ${String(config.consolidation_answer_attempts)} times: ${errors.join("; ")}`);
   } catch (err) {
-    if (readerLeft(err)) return "aborted";
+    if (userLeft(err)) return "aborted";
     // The watermark is where it was and nothing was written: the next fold
     // reads these turns again.
     logger.error({ err, ...where }, "memory_consolidation_failed");

@@ -3,7 +3,7 @@
 
 /**
  * The colour and strength the light sphere draws its light in (inner#1304):
- * what the reader picked, so the sphere shows it as it is chosen.
+ * what the user picked, so the sphere shows it as it is chosen.
  */
 
 import { describe, expect, it } from 'vitest';

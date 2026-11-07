@@ -117,7 +117,7 @@ export function getSupportedLocales(): ReadonlyArray<Locale> {
  * Make sure a locale's catalog is registered, downloading it when needed.
  *
  * A failed download stays failed for the life of the page (the browser keeps
- * it in its module map), which is why the language menu tells the reader to
+ * it in its module map), which is why the language menu tells the user to
  * refresh.
  * @param locale - A supported locale.
  * @returns Whether its catalog is registered now.

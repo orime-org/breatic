@@ -221,7 +221,7 @@ describe('ImageNode', () => {
     );
     // Both were measured over the same bytes, so a disagreement means the
     // browser is showing something else — a re-encoded variant, a proxy. The
-    // ledger is what every other reader of this asset sees.
+    // ledger is what every other user of this asset sees.
     fireImageLoad(screen.getByTestId('image-node-img'), 800, 600);
     expect(screen.getByTestId('node-resolution-badge')).toHaveTextContent(
       '1920×1080',

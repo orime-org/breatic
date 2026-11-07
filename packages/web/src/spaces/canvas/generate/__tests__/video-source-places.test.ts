@@ -88,7 +88,7 @@ describe('what a video run still needs', () => {
   });
 
   it('names the empty places in the order the toolbar offers them', () => {
-    // A model may declare its last frame before its first; the reader is told
+    // A model may declare its last frame before its first; the user is told
     // about the first place on the toolbar that is still empty.
     const frames = model({
       end_image: { description: '', default: null, fill: 'canvas', accepts: 'image' },

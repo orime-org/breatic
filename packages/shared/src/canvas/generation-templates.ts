@@ -3,13 +3,13 @@
 
 /**
  * Generation templates (inner#977, inner#1345): nodes, wiring, inputs and
- * follow-up steps anchored on one generate node, which a reader picks in a
+ * follow-up steps anchored on one generate node, which a user picks in a
  * generate panel and the agent may propose. Each generate node fixes its own
  * mode, model and params. Its prompt is interface text in the locale files,
  * `canvas.template.<id>.prompt` for the anchor and
  * `canvas.template.<id>.node.<key>.prompt` for the others (a node with shots
  * has `shot.<n>` in place of `prompt`), with the places the
- * reader acts on written as the proposal marks: `[📎 …]` for material to @,
+ * user acts on written as the proposal marks: `[📎 …]` for material to @,
  * `{✏️ …}` for words to fill in. What to put in an input is its
  * `canvas.template.<id>.input.<key>.note`.
  *
@@ -20,7 +20,7 @@
  *
  * Each template serves one creative goal (inner#1807): the panel lists goals
  * first and a goal's templates in a submenu, and the agent reads each
- * template's goal and triggers to offer it when the reader asks for it or
+ * template's goal and triggers to offer it when the user asks for it or
  * has not yet seen they need it.
  *
  * Each template is defined in a file of its own under `canvas/templates/`;
@@ -59,7 +59,7 @@ export type TemplateGoal = (typeof TEMPLATE_GOALS)[number];
 
 /** When the agent offers a template, in the words it reads. */
 export interface TemplateTriggers {
-  /** What a reader says when they ask for it outright. */
+  /** What a user says when they ask for it outright. */
   asks: readonly string[];
   /** What the agent sees on the canvas or in the chat that makes it worth offering unasked; none for a template only offered when asked for. */
   offerWhen: readonly string[];
@@ -98,7 +98,7 @@ export interface TemplateResourceNode {
   resource: string;
 }
 
-/** Material the reader supplies. */
+/** Material the user supplies. */
 export interface TemplateInput {
   key: string;
   type: GenerationNodeType;
@@ -113,7 +113,7 @@ export interface TemplateEdge {
   into?: string;
 }
 
-/** One template: the nodes and wiring a reader or the agent starts a flow from. */
+/** One template: the nodes and wiring a user or the agent starts a flow from. */
 export interface GenerationTemplate {
   /** Stable id: the panel, the agent and the locale keys name it by this. */
   id: string;
@@ -122,7 +122,7 @@ export interface GenerationTemplate {
   nodes: readonly (TemplateGenerateNode | TemplateResourceNode)[];
   edges: readonly TemplateEdge[];
   inputs: readonly TemplateInput[];
-  /** Keys of the follow-up steps the reader does by hand once the anchor has generated; listed in the guide text node. */
+  /** Keys of the follow-up steps the user does by hand once the anchor has generated; listed in the guide text node. */
   steps: readonly string[];
   /** What it makes and what it is for, in the words the agent reads. */
   agentNote: string;

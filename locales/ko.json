@@ -850,7 +850,6 @@
         "character_orientation": "방향 기준",
         "keep_original_sound": "원본 소리 유지",
         "motion_prompt": "동작 설명",
-        "append_duration": "늘릴 길이",
         "ambience": "주변음",
         "double_output": "두 가지 생성",
         "light_azimuth": "조명 방향",
@@ -1182,10 +1181,6 @@
       "audio": {
         "separate": {
           "label": "보컬 분리"
-        },
-        "extend": {
-          "label": "연장",
-          "prompt": "이어질 소리를 설명하세요"
         },
         "denoise": {
           "label": "노이즈 제거"

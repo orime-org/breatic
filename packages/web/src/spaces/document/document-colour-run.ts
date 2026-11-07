@@ -7,7 +7,7 @@
  *
  * A colour is one of BlockNote's own inline styles, and a press goes through
  * `document-style-write.ts` with every other style, covering exactly the runs
- * the reader highlighted.
+ * the user highlighted.
  *
  * - The cell in force is the first run the selection covers
  *   (`firstRunValue`), which is how a value command reads (design §5.2).
@@ -15,7 +15,7 @@
  *   colour (R7, `document-tool-button.tsx`): a code block takes no marks, so
  *   every cell would be a press with nothing behind it.
  *
- * What the reader then sees is `index.css`: BlockNote renders the style as a
+ * What the user then sees is `index.css`: BlockNote renders the style as a
  * `data-value` and paints five of our seven names in Notion's own hex, so the
  * hues are painted from the palette there.
  *
@@ -188,7 +188,7 @@ export function colourFace(editor: ToolEditor): ColourFace {
  * @param hue - One of {@link COLOUR_HUES}.
  * @param range - The range to colour, where the press names one; the block
  *   handle hands in a range over the hovered block's content. Left out, it is
- *   the reader's own selection.
+ *   the user's own selection.
  */
 export function setColour(
   editor: ToolEditor,
@@ -202,12 +202,12 @@ export function setColour(
 /**
  * Takes the given rows' colours off the selection.
  *
- * Covers exactly what the reader highlighted.
+ * Covers exactly what the user highlighted.
  * @param editor - The editor.
  * @param kinds - Which rows. One for a row's own default cell, both for the
  *   reset button.
  * @param range - The range to clear, where the press names one. Left out, it
- *   is the reader's own selection.
+ *   is the user's own selection.
  */
 export function clearColours(
   editor: ToolEditor,
@@ -221,9 +221,9 @@ export function clearColours(
  * What the colour panel draws for one block, off the document alone.
  *
  * The block handle stands a block in for a selection over its content, and
- * this answers about THAT range — never about the reader, whose caret is where
+ * this answers about THAT range — never about the user, whose caret is where
  * the state-based reading would land (the handle is on screen only while the
- * reader holds no selection). An empty block covers no run, so every row reads
+ * user holds no selection). An empty block covers no run, so every row reads
  * as nothing and the panel is unavailable: there would be no text for a press
  * to reach (R7).
  * @param doc - The document.

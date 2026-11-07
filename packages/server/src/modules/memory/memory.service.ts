@@ -55,7 +55,7 @@ export async function buildContext(
 ): Promise<MemoryContext> {
   const config = getAgentConfig();
   // Together: neither read is an input to the other, and this sits on the
-  // path of every turn, in front of a reader waiting for the first word.
+  // path of every turn, in front of a user waiting for the first word.
   const [index, progress] = await Promise.all([
     memoryRepo.listIndex({ userId, projectId, conversationId }, config.memory_index_max_entries),
     memoryRepo.getProgress(conversationId),

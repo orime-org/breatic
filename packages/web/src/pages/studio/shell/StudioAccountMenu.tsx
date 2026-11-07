@@ -56,7 +56,7 @@ const CONFIRM_WAIT_BACKSTOP_MS = 60_000;
  * The figure once it is in hand. While it is on its way, a placeholder: the
  * wait ends by itself, and an empty row would read as a balance of nothing.
  * When the read failed, the word for it — whether the request lands is not
- * ours to promise, whether the reader knows it did not is. Where the
+ * ours to promise, whether the user knows it did not is. Where the
  * deployment does not bill, nothing at all: the three figures are zeroes
  * there, and a rendered 0 reads as "your money is gone".
  * @param overview - The account's three figures, as the query holds them.
@@ -310,7 +310,7 @@ export function StudioAccountMenu(): React.JSX.Element {
               Three ways there is no figure, and they do not look alike. On its
               way: a placeholder, because the wait is short and ends by itself.
               Read failed: said out loud — whether the request lands is not
-              ours to promise, but whether the reader knows it did not is.
+              ours to promise, but whether the user knows it did not is.
               Deployment does not bill: nothing, because there the three
               figures are zeroes and a rendered 0 reads as "your money is gone"
               rather than "we do not charge". */}

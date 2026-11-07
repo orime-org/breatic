@@ -5,7 +5,7 @@
  * The agent reads a template in full before proposing it (inner#1807): the
  * proposal tool's description indexes the templates in a line each, and this
  * tool returns one template's nodes, wiring, inputs and prompts in the
- * reader's language, how to send them, and the craft that fits its nodes.
+ * user's language, how to send them, and the craft that fits its nodes.
  */
 
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
@@ -83,7 +83,7 @@ describe("get_generation_template", () => {
     expect(metadata).toEqual({ runningLine: "chat.tool.readingTemplate" });
   });
 
-  it("returns every registered template's full text, the prompts in the reader's language", async () => {
+  it("returns every registered template's full text, the prompts in the user's language", async () => {
     for (const locale of ["en", "zh-CN"]) {
       setLocale(locale);
       for (const template of GENERATION_TEMPLATES) {

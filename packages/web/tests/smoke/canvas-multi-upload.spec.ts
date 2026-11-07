@@ -4,7 +4,7 @@
 /**
  * What one upload of several files becomes on the canvas (#2209).
  *
- * Several files arrive as one batch, so they leave as one: a Group the reader
+ * Several files arrive as one batch, so they leave as one: a Group the user
  * grabs once. The three ways a batch gets in — the left menu's tool, a drag
  * onto the canvas, a paste — meet in the same `processFiles`, and each is
  * walked here because only a real canvas answers whether the members ended up
@@ -218,7 +218,7 @@ test('the upload tool turns one batch into one Group', async ({ page }) => {
   const files = 5;
   await pickFiles(page, files);
 
-  // The Group is what the reader grabs next, so it is what is selected — and
+  // The Group is what the user grabs next, so it is what is selected — and
   // the only thing, or a right-click routes to the selection menu (#1477).
   const groupId = await theGroupOver(page, files);
   await expect
@@ -238,7 +238,7 @@ for (const entry of ['drop', 'paste'] as const) {
 }
 
 test('a row leaves each node its task counts', async ({ page }) => {
-  // The count column is what the reader watches while an upload runs, and it
+  // The count column is what the user watches while an upload runs, and it
   // is drawn outside the node's right edge. A row that steps by the node's own
   // width alone puts the next node on top of it.
   await handOverFiles(page, 'drop', 3);
@@ -313,7 +313,7 @@ test('the members keep the grid, and the Group takes them along', async ({
   const before = (await documentNodes(page)).find((n) => n.id === groupId)
     ?.position;
   // Grabbed on the Group's own top strip, above every member — the way a
-  // reader grabs the whole batch.
+  // user grabs the whole batch.
   await page.mouse.move(frame.x + 200, frame.y + 8);
   await page.mouse.down();
   for (let step = 1; step <= 6; step += 1) {
@@ -351,7 +351,7 @@ test('a second batch over a Group makes its own and joins nothing', async ({
   const nodes = await settledNodes(page, 6);
   const groups = nodes.filter((n) => n.type === 'group');
   // Each batch opens with a colour of its own, so two boxes drawn at the same
-  // place and the same size are still two things the reader can tell apart.
+  // place and the same size are still two things the user can tell apart.
   for (const group of groups) {
     expect(group.backgroundColor).toMatch(/^--color-palette-[a-z]+-bg$/);
   }
@@ -375,7 +375,7 @@ test('one undo takes the whole batch back', async ({ page }) => {
   await handOverFiles(page, 'drop', 3);
   await theGroupOver(page, 3);
 
-  // One drop is one thing the reader did, so it is one thing to take back.
+  // One drop is one thing the user did, so it is one thing to take back.
   // Aimed at the pane: the handler asks whether the event's target sits in
   // the canvas region before it reads the chord.
   await visibleSpace(page).locator('.react-flow__pane').press('ControlOrMeta+z');
@@ -390,7 +390,7 @@ test('one file stays one node, with no Group around it', async ({ page }) => {
 
   const nodes = await settledNodes(page, 1);
   expect(nodes[0].parentId).toBeNull();
-  // Nothing was wrapped, so the node itself is what the reader acts on.
+  // Nothing was wrapped, so the node itself is what the user acts on.
   await expect
     .poll(async () => selectedOnScreen(page), { timeout: 15_000 })
     .toEqual([nodes[0].id]);

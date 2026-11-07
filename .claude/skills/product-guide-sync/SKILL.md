@@ -5,11 +5,11 @@ description: Use when a change alters how users operate the canvas, the document
 
 # Keeping the Agent's product guide true
 
-The Agent answers "how do I do this" only from `packages/domain/src/agent/tools/product-guide.ts` (the `get_product_guide` tool). It cannot see the reader's screen, so whatever the guide says is what the reader is told. Read the guide, find every sentence your change makes false, and fix it in the same PR.
+The Agent answers "how do I do this" only from `packages/domain/src/agent/tools/product-guide.ts` (the `get_product_guide` tool). It cannot see the user's screen, so whatever the guide says is what the user is told. Read the guide, find every sentence your change makes false, and fix it in the same PR.
 
 ## What the guide may quote
 
-**A quoted name in the guide is text the reader sees on screen (a menu row, the words on a button, a tooltip that appears on hover), read from the catalog with `t("…")`.** A name that exists only in an `aria-label` or screen-reader-only text is invisible to the reader (screen readers are out of scope); describe such a control by how it looks and where it is. A `title` shows on hover, so it counts as visible.
+**A quoted name in the guide is text the user sees on screen (a menu row, the words on a button, a tooltip that appears on hover), read from the catalog with `t("…")`.** A name that exists only in an `aria-label` or screen-reader-only text is invisible to the user (screen readers are out of scope); describe such a control by how it looks and where it is. A `title` shows on hover, so it counts as visible.
 
 ## What follows automatically
 

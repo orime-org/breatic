@@ -105,7 +105,7 @@ export const AUDIO_SLOTS = {
     clearLabelKey: 'canvas.generatePanel.removeMusicSong',
     errorKey: 'canvas.generatePanel.errorNoMusicSong',
   },
-  // The song a cover is made of. Called what the reader calls it — a song —
+  // The song a cover is made of. Called what the user calls it — a song —
   // under the vendor's own name for the field, `audio`.
   coverSong: {
     field: 'coverSong',

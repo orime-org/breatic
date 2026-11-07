@@ -45,7 +45,7 @@ interface DocumentMediaPickerProps {
 
 /**
  * Provides the pick, and the hidden input it opens. Without file admission it
- * provides none, around the same children, so a reader turning read-only
+ * provides none, around the same children, so a user turning read-only
  * keeps the body mounted where it is.
  * @param props - See {@link DocumentMediaPickerProps}.
  * @param props.files - What admits chosen files.

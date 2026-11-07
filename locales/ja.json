@@ -850,7 +850,6 @@
         "character_orientation": "向きの基準",
         "keep_original_sound": "元の音声を保持",
         "motion_prompt": "動きの説明",
-        "append_duration": "延長する長さ",
         "ambience": "環境音",
         "double_output": "2 パターン生成",
         "light_azimuth": "光の方向",
@@ -1182,10 +1181,6 @@
       "audio": {
         "separate": {
           "label": "ボーカル分離"
-        },
-        "extend": {
-          "label": "延長",
-          "prompt": "続ける音を説明"
         },
         "denoise": {
           "label": "ノイズ除去"

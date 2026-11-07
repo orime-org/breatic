@@ -45,7 +45,7 @@ describe("requireAuth and error monitoring", () => {
   it("attaches only the account id to errors raised while serving the request", async () => {
     accounts.getUserByToken.mockResolvedValue({
       id: "user-1",
-      email: "reader@example.test",
+      email: "user@example.test",
       membershipTier: "base",
       locale: "en",
     });

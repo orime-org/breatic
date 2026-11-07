@@ -34,7 +34,7 @@ interface ChatEmptyProps {
    *
    * These write into the composer, and the composer is held still for that
    * window. Left live they would put their sentence into the conversation
-   * being left behind, where the reader watches it vanish as the new one
+   * being left behind, where the user watches it vanish as the new one
    * lands.
    */
   frozen?: boolean;

@@ -4,7 +4,7 @@
 /**
  * Handing one stored asset to the browser to download.
  *
- * A link the page clicks for the reader, so the request is the browser's own
+ * A link the page clicks for the user, so the request is the browser's own
  * navigation and the file lands in its download list. The element is removed
  * straight after: a page that downloads several things would otherwise
  * accumulate one dead anchor per file.
@@ -34,7 +34,7 @@ export function downloadAsset(assetUrl: string): void {
   // `beforeunload` listeners before the request goes out — before anything
   // could know the answer is a file — so a page guarding unsaved work would
   // put "Leave site?" in front of a plain download, and Cancel would leave
-  // the reader with nothing and no explanation. The context opened here holds
+  // the user with nothing and no explanation. The context opened here holds
   // no document of its own and closes itself once the answer turns out to be
   // an attachment.
   link.target = '_blank';

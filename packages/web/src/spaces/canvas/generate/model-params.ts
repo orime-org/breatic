@@ -96,7 +96,7 @@ export function resolveParamsForModel(
     if (descriptor.remote_source && current[key] === undefined) continue;
     next[key] = resolveParamValue(descriptor, current[key]);
   }
-  // Which side of a stand-in is in use is the reader's choice, not a catalog
+  // Which side of a stand-in is in use is the user's choice, not a catalog
   // param, so it is kept by name rather than by declaration (stand-in.ts).
   if (standInOf(model) && current[STAND_IN_ON] === true) next[STAND_IN_ON] = true;
   return next;

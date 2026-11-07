@@ -30,8 +30,8 @@ export type NameCollation =
   | typeof DEFAULT_NAME_COLLATION;
 
 /**
- * The collation a reader's names are sorted by.
- * @param locale - The reader's interface language.
+ * The collation a user's names are sorted by.
+ * @param locale - The user's interface language.
  * @returns The ICU collation for that language.
  */
 export function nameCollationFor(locale: string): NameCollation {

@@ -29,7 +29,7 @@ import type { ExportedFile, MiniToolCapture } from '@web/spaces/canvas/mini-tool
  * picture or the grid's picked tiles, as PNGs at the source's own resolution.
  * @param spec - The browser tool.
  * @param snapshot - The draft as it stood at the press.
- * @param capture - What the reader made on the node, copied out at the press.
+ * @param capture - What the user made on the node, copied out at the press.
  * @returns The files to upload, one per result, named after the tool's output.
  * @throws {Error} When the tool is not one this end draws, or the export fails.
  */

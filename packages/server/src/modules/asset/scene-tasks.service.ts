@@ -35,7 +35,7 @@ export interface SpaceTaskWire {
  * @param projectId - The project.
  * @param spaceId - The 3D Space.
  * @returns The rows newest first, and the server's clock the deadlines are read against.
- * @throws {NotFoundError} When the reader is not a member of the project.
+ * @throws {NotFoundError} When the user is not a member of the project.
  */
 export async function listSpaceTasks(
   userId: string,

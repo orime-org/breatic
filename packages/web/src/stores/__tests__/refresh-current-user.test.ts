@@ -96,7 +96,7 @@ describe('refreshCurrentUser', () => {
 
   // The account language is applied at sign-in and on a cold load only. A
   // refresh mid-session (opening the avatar menu, returning from checkout)
-  // leaves the language the reader is looking at where it is.
+  // leaves the language the user is looking at where it is.
   it('updates the user without moving the interface language', async () => {
     changeLocale('zh-CN');
     useCurrentUserStore.getState().setUser(toCurrentUser(account('u1', 'base')));

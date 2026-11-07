@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The reasons a reader is shown for a tool that did not finish (inner#1620),
+ * The reasons a user is shown for a tool that did not finish (inner#1620),
  * and the two endings that show none.
  */
 import { describe, it, expect } from "vitest";
@@ -11,7 +11,7 @@ import {
   LEGACY_FAILURE_LINES,
   NEVER_RAN,
   NOTHING_SAID_WHY,
-  isReaderLine,
+  isUserLine,
   toolFailureOf,
   wireLineOf,
 } from "@shared/agent/tool-failure.js";
@@ -46,7 +46,7 @@ const REASONS = [
   "ourFault",
 ];
 
-describe("the reasons a reader is shown", () => {
+describe("the reasons a user is shown", () => {
   it("are the sixteen causes, each its own key, beside the line for a stop", () => {
     const { stopped, ...reasons } = FAILURE_LINES;
     expect(Object.keys(reasons).sort()).toEqual([...REASONS].sort());
@@ -60,28 +60,28 @@ describe("the reasons a reader is shown", () => {
       "chat.tool.failure.unreachable",
       "chat.tool.failure.upstream",
     ]);
-    for (const key of Object.values(LEGACY_FAILURE_LINES)) expect(isReaderLine(key)).toBe(true);
-    for (const key of Object.values(FAILURE_LINES)) expect(isReaderLine(key)).toBe(true);
+    for (const key of Object.values(LEGACY_FAILURE_LINES)) expect(isUserLine(key)).toBe(true);
+    for (const key of Object.values(FAILURE_LINES)) expect(isUserLine(key)).toBe(true);
   });
 
   it("put a failure nothing recorded the reason of down to our server", () => {
-    expect(NOTHING_SAID_WHY).toMatchObject({ kind: "tool_failed", readerKey: FAILURE_LINES.ourFault });
+    expect(NOTHING_SAID_WHY).toMatchObject({ kind: "tool_failed", userKey: FAILURE_LINES.ourFault });
   });
 });
 
 describe("a call that never ran", () => {
-  it("reads back with its reason for the model and no line for the reader", () => {
+  it("reads back with its reason for the model and no line for the user", () => {
     expect(toolFailureOf(errorCarrying({ kind: "never_ran", forModel: "Never ran." }))).toEqual({
       kind: "never_ran",
       forModel: "Never ran.",
     });
     expect(
-      toolFailureOf(errorCarrying({ kind: "never_ran", forModel: "Never ran.", readerKey: FAILURE_LINES.ourFault })),
+      toolFailureOf(errorCarrying({ kind: "never_ran", forModel: "Never ran.", userKey: FAILURE_LINES.ourFault })),
     ).toBeUndefined();
   });
 
-  it("goes on the wire as a value that is not one of the reader's lines", () => {
+  it("goes on the wire as a value that is not one of the user's lines", () => {
     expect(wireLineOf({ kind: "never_ran", forModel: "x" })).toBe(NEVER_RAN);
-    expect(isReaderLine(NEVER_RAN)).toBe(false);
+    expect(isUserLine(NEVER_RAN)).toBe(false);
   });
 });

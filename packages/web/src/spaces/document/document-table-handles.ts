@@ -16,7 +16,7 @@
  * hovered, as a body block's does (inner#1619 T13, user 2026-10-21), and the
  * row and column handles only over a cell, its padding included. A press in a
  * cell that turns into a drag selection takes the handles away until the
- * button comes up, so they stay out of the reader's way.
+ * button comes up, so they stay out of the user's way.
  */
 
 import { createExtension, createStore, type BlockNoteEditor } from '@blocknote/core';

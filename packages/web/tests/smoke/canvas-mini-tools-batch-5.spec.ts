@@ -59,7 +59,6 @@ const AUDIO_TOOLS = [
   'audio.pitch',
   'audio.enhance',
   'audio.separate',
-  'audio.extend',
 ];
 
 let page: Page;
@@ -139,7 +138,7 @@ test.describe('panels', () => {
     seeded = 0;
   });
 
-  test('the audio Tools submenu lists the eleven new tools ahead of separate and extend', async () => {
+  test('the audio Tools submenu lists the eleven new tools ahead of separate', async () => {
     const id = await seedAudio();
     await nodeOf(id).click({ button: 'right' });
     await page.getByTestId('node-menu-tools').hover();

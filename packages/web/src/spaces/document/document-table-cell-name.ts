@@ -5,7 +5,7 @@
  * Holding on to one table cell while co-editors change the document.
  *
  * A table menu and a row or column drag both act on the cell they started
- * from, and both stay open while others edit. The reader's own edits carry
+ * from, and both stay open while others edit. The user's own edits carry
  * the cell by `tr.mapping`, through the start of the cell's content: a change
  * to the cell's own attributes (a fill, an alignment, a header) rewrites the
  * token before the cell and keeps what is inside it, while deleting the cell,
@@ -25,7 +25,7 @@
  * through.
  *
  * The element is taken again after every change to the body, from the view's
- * `update`: the sync plugin's view writes the reader's own edit into Yjs
+ * `update`: the sync plugin's view writes the user's own edit into Yjs
  * before ours runs, and a command that rebuilt the cell leaves it bound to a
  * new element.
  */

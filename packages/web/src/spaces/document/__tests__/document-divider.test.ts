@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * #124: placing a divider, and a divider inside the reader's selection.
+ * #124: placing a divider, and a divider inside the user's selection.
  *
  * A1 — `---` typed at the head of a line puts a divider above that line and
  * leaves the line where it is, caret at its start. A2 — the handle menu's
  * Divider row puts one under the pressed row with an empty line beneath it.
- * A3 · A6 — a no-text block inside the reader's selection carries the class
+ * A3 · A6 — a no-text block inside the user's selection carries the class
  * `index.css` paints the selection band with. A12 — the shared vocabulary
  * lists the divider.
  */
@@ -270,7 +270,7 @@ describe('the handle menu Divider row (A2)', () => {
   });
 });
 
-describe('a no-text block inside the reader selection (A3 · A6)', () => {
+describe('a no-text block inside the user selection (A3 · A6)', () => {
   /**
    * Whether each block's own element carries the band's class.
    * @param editor - The editor.

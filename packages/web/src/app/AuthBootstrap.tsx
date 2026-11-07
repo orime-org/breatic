@@ -7,7 +7,7 @@ import { authApi } from '@web/data/api/auth';
 import { changeLocale } from '@web/i18n/locale-bootstrap';
 // The store's own module, not the `@web/stores` barrel. `App` mounts this
 // file above the router and the route table imports `ProtectedRoute`
-// statically, so both land in the chunk every reader downloads — and the
+// statically, so both land in the chunk every user downloads — and the
 // barrel would put the canvas, project and toast stores in there with them.
 import {
   toCurrentUser,
@@ -52,7 +52,7 @@ export default function AuthBootstrap({
       .me()
       // Both branches answer about the session this ping was sent with, and a
       // sign-in that completed while it was out makes that answer stale — on a
-      // slow link that ordering is reachable either way. A reader signed in as
+      // slow link that ordering is reachable either way. A user signed in as
       // someone else would be signed out by a 401 about the session they no
       // longer have, or renamed to the previous account by a 200 about it
       // while every request carries the new cookie. So both speak only when

@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The agent offers a character template (inner#1807): when the reader asks
+ * The agent offers a character template (inner#1807): when the user asks
  * for consistent shots of one character outright, it reads one of the
- * character templates and the proposal built on it lands; when the reader
+ * character templates and the proposal built on it lands; when the user
  * attaches a photo of a character and only asks for two videos of it, what
  * lands carries that character into both videos, whether through a template
  * or a setup of its own. The same for the pet selfie vlog (inner#1816): asked
@@ -118,7 +118,7 @@ async function settledTurn(p: Page): Promise<Turn> {
 
 /**
  * Send one message in a new conversation and wait for the turn to end.
- * @param message - What the reader writes.
+ * @param message - What the user writes.
  * @param attach - A fixture file to attach to the message.
  */
 async function ask(message: string, attach?: string): Promise<void> {
@@ -134,7 +134,7 @@ async function ask(message: string, attach?: string): Promise<void> {
   }
   await composer.fill(message);
   // Attachments still uploading hold the send back; a press before then is
-  // ignored, so wait for the button the reader would see light up.
+  // ignored, so wait for the button the user would see light up.
   const send = page.getByTestId('chat-composer-send');
   await expect(send).toBeEnabled({ timeout: 60_000 });
   await send.click();
@@ -188,7 +188,7 @@ test('given a character photo and asked for two videos of her, it lands both vid
   test.setTimeout(240_000);
   await ask('This is my character. I want two short videos of her: one walking through a park, one sitting in a café. Do not ask me anything, just propose it.', 'character.jpg');
   const turn = await settledTurn(page);
-  // What the reader asked for is solved when both videos draw on her photo,
+  // What the user asked for is solved when both videos draw on her photo,
   // whether through a template or a setup of the agent's own.
   const carrying = turn.landed.reduce((count, proposal) => count + videosCarryingMaterial(proposal), 0);
   expect(carrying, `videos drawing on the photo in landed proposals. Templates: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(2);

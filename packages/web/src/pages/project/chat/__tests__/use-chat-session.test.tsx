@@ -262,7 +262,7 @@ describe('a reply as the panel draws it', () => {
     await waitFor(() => {
       expect(panel.result.current.messages.at(-1)?.thinking).toBe('先想想要什么风格');
     });
-    // 思考和正文是两样东西,面板分开画。混进正文里读者会看到模型的草稿。
+    // 思考和正文是两样东西,面板分开画。混进正文里用户会看到模型的草稿。
     expect(panel.result.current.messages.at(-1)?.content).toBe('好的');
   });
 
@@ -369,7 +369,7 @@ describe('a turn that failed', () => {
   });
 });
 
-describe('a turn the reader stopped', () => {
+describe('a turn the user stopped', () => {
   it('marks the reply the way the server records it', async () => {
     const panel = await anOpenPanel();
     await aReplyStartsArriving(panel);
@@ -425,7 +425,7 @@ describe('what the panel says went wrong (inner#1530)', () => {
     expect(toastSpy.error).not.toHaveBeenCalled();
   });
 
-  it('says it anyway when the reader did it on purpose', async () => {
+  it('says it anyway when the user did it on purpose', async () => {
     await anOpenPanel();
 
     act(() => {
@@ -448,7 +448,7 @@ describe('what the panel says went wrong (inner#1530)', () => {
     expect(toastSpy.error).toHaveBeenCalledWith(t('chat.error.network'));
   });
 
-  it('is not held for a reader who was not looking', async () => {
+  it('is not held for a user who was not looking', async () => {
     const panel = await anOpenPanel();
     panel.unmount();
 
@@ -502,7 +502,7 @@ describe('when the chat never opened', () => {
     expect(panel.result.current.currentId).toBeUndefined();
   });
 
-  it('starts a conversation when the reader sends anyway', async () => {
+  it('starts a conversation when the user sends anyway', async () => {
     vi.mocked(chatApi.openChat).mockRejectedValueOnce(new Error('offline'));
     const panel = render();
     await waitFor(() => {
@@ -728,7 +728,7 @@ describe('the wait for the limits before a send (inner#1413)', () => {
     };
   }
 
-  it('sends nothing once the reader has left the project during the wait', async () => {
+  it('sends nothing once the user has left the project during the wait', async () => {
     const answerTheLimits = await pressWhileTheLimitsAreRead();
 
     act(() => {
@@ -740,7 +740,7 @@ describe('the wait for the limits before a send (inner#1413)', () => {
     expect(chatApi.openChat).toHaveBeenCalledTimes(1);
   });
 
-  it('sends nothing into the conversation the reader switched to during the wait', async () => {
+  it('sends nothing into the conversation the user switched to during the wait', async () => {
     vi.mocked(chatApi.readConversation).mockResolvedValue({
       conversation: { id: 'c-2', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       messages: [],

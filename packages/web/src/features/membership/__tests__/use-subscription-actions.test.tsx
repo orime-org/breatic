@@ -8,7 +8,7 @@
  * A refused checkout is the case that matters: before refusing, the server
  * asked Stripe about a subscription the panel was showing as ended, found it
  * still live and stored it. The panel and the avatar menu then have to show
- * that, or the reader keeps looking at a tier and buttons the server no
+ * that, or the user keeps looking at a tier and buttons the server no
  * longer agrees with.
  */
 

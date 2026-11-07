@@ -7,7 +7,7 @@
  * Each step is collected as the SDK has it when it ends; a later request
  * carries it as it is. The step a turn ended inside -- stopped there, or cut
  * off by a provider error that no later request carried -- is partial, so it
- * is put together here from what had already reached the reader.
+ * is put together here from what had already reached the user.
  */
 
 import { convertToModelMessages, isToolUIPart } from "ai";
@@ -71,7 +71,7 @@ function callIdsIn(messages: readonly ModelMessage[]): Set<string> {
  * such `step-start` exists the turn stopped between steps, or the next
  * step's request failed before anything came back, and there is nothing to
  * add.
- * @param parts - The reply's parts, as the reader received them.
+ * @param parts - The reply's parts, as the user received them.
  * @param stepsKept - How many steps are kept as the SDK has them.
  * @param tools - The turn's tools, whose own conversion renders a result.
  * @param settled - How the turn's calls ended.

@@ -34,7 +34,7 @@ export interface PricedModel {
   readonly extra_steps?: readonly ExtraStep[];
 }
 
-/** One run as the reader has set it up so far. */
+/** One run as the user has set it up so far. */
 export interface EstimateInput {
   /** Values keyed by the catalog's param names. */
   readonly params: Readonly<Record<string, unknown>>;
@@ -126,8 +126,8 @@ export async function estimateCredits(
   const formulas = [model.pricing.formula, ...steps.map((s) => s.pricing.formula)];
   const promptField = model.prompt_upstream ?? "prompt";
 
-  // A required source the reader has not filled stands in as one placeholder,
-  // judged on the reader's own params: style files joining a pool do not fill
+  // A required source the user has not filled stands in as one placeholder,
+  // judged on the user's own params: style files joining a pool do not fill
   // the picture a run cannot go without.
   const priced = Object.entries(model.params).filter(([, spec]) => spec.joins === undefined);
   /**

@@ -13,5 +13,5 @@ export const PRIVACY_URL = new URL('privacy/', OFFICIAL_HOME_URL).href;
 /** The user manual, on the official website. */
 export const TUTORIALS_URL = new URL('tutorials/', OFFICIAL_HOME_URL).href;
 
-/** The mailbox readers write to for help. */
+/** The mailbox users write to for help. */
 export const SUPPORT_EMAIL = 'support@breatic.ai';

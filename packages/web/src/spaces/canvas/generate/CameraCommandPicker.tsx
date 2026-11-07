@@ -92,7 +92,7 @@ export const CameraCommandPicker = React.memo(function CameraCommandPicker({
     }
   }, []);
   // Focus goes to the popover itself, so every option's focus is one the
-  // reader moved there, and the pane shows its hint until they do.
+  // user moved there, and the pane shows its hint until they do.
   const focusPopover = React.useCallback((event: Event) => {
     event.preventDefault();
     (event.currentTarget as HTMLElement).focus();

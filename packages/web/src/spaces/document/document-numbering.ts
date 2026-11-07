@@ -98,7 +98,7 @@ function describe(container: PMNode): Block {
  * between the levels already say what the string is.
  * @param counters - The live per-level counters.
  * @param level - The level to build the path for.
- * @returns The string the reader sees, such as `1.` or `1.1`.
+ * @returns The string the user sees, such as `1.` or `1.1`.
  */
 function headingPath(counters: readonly number[], level: number): string {
   const shown: number[] = [];
@@ -206,7 +206,7 @@ function walkGroup(group: PMNode, parentKey: string, walk: Walk): void {
  * @param runs - The document's quote runs. Taken as an argument because the
  *   decoration plugin reads them too, and reading them is a walk of the whole
  *   document that then happened twice per keystroke.
- * @returns Block id to the literal string the reader sees.
+ * @returns Block id to the literal string the user sees.
  */
 export function computeNumbering(
   doc: PMNode,

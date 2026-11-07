@@ -252,7 +252,7 @@ describe('locating a card\'s passage (inner#1646)', () => {
   );
 });
 
-describe('a View press whose document the reader left (inner#1646)', () => {
+describe('a View press whose document the user left (inner#1646)', () => {
   it('ends, keeps the card landed and says nothing', () => {
     store().view(proposal('p1'), 'write');
     store().report('p1', 'left');

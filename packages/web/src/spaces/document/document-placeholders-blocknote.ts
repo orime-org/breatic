@@ -5,7 +5,7 @@
  * The document's one hint: "start writing", shown while the document LOOKS
  * empty.
  *
- * What counts as empty is what the READER sees rather than what the node count
+ * What counts as empty is what the USER sees rather than what the node count
  * says (user 2026-08-18). An empty code block shows its background, an empty
  * quote its border, an empty list its marker, a stand-in its labelled box —
  * all of those are content, and all of them keep the hint away. What is left
@@ -13,7 +13,7 @@
  *
  * ## What the flat model moved
  *
- * Two of the things a reader can see stopped being node types and became
+ * Two of the things a user can see stopped being node types and became
  * props. A quote is `quoted` on the block; a numbered heading is `numbered`.
  * Each paints while holding no text — a border, a number — and neither is
  * visible to a check that reads only the node's name, so both are read here.
@@ -50,7 +50,7 @@ import { QUOTED } from '@web/spaces/document/document-list-block';
 import { ownContentPaints } from '@web/spaces/document/document-row-paints';
 
 /**
- * Whether a block's own content node paints nothing a reader could see.
+ * Whether a block's own content node paints nothing a user could see.
  *
  * Which types can be invisible is the one judgement in
  * `document-row-paints.ts`. What this adds is reading it off a ProseMirror
@@ -97,7 +97,7 @@ function firstBlock(doc: PMNode): { node: PMNode; pos: number } | null {
 /**
  * Whether every block in the document paints nothing.
  * @param doc - The document node.
- * @returns True when a reader would see an empty page.
+ * @returns True when a user would see an empty page.
  */
 function looksEmpty(doc: PMNode): boolean {
   const group = doc.childCount > 0 ? doc.child(0) : null;

@@ -137,7 +137,7 @@ export interface ConversationPage {
  * The position a page of conversations continues from.
  *
  * A position rather than a count of rows to skip: this list is ordered by when
- * each conversation was last used, so it moves while a reader pages through
+ * each conversation was last used, so it moves while a user pages through
  * it. Counting rows then lands somewhere else than where the last page ended
  * -- a conversation comes back twice, or one is stepped over and cannot be
  * reached at all. Both columns are needed because both are in the order.
@@ -468,7 +468,7 @@ export async function softDeleteConversation(id: string): Promise<void> {
  * Give a conversation a name, but only if it has none.
  *
  * One statement, because "does it have one?" and "give it one" asked
- * separately are two moments with room between them: a reader who names a new
+ * separately are two moments with room between them: a user who names a new
  * conversation and then speaks in it sends two requests, and whichever order
  * the database commits them in, the answer must be the same -- the name they
  * chose. The condition is in the `WHERE`, so the write either happens against
@@ -510,7 +510,7 @@ export async function updateTitle(id: string, title: string): Promise<void> {
   // counts UTF-16 code units, and anything outside the basic plane takes two
   // of them -- so a name well inside the limit could still be cut, and the cut
   // landed between the halves of one character. What went into the column then
-  // was a replacement mark, which the reader can only get rid of by renaming
+  // was a replacement mark, which the user can only get rid of by renaming
   // the conversation themselves.
   const cut = [...title].slice(0, CONVERSATION_TITLE_MAX_CHARS).join("");
   // The title only. `updated_at` is what orders the list and what each row
@@ -560,7 +560,7 @@ export async function setProjectId(
  *
  * `updated_at` is left where it is, and that is load-bearing. It orders the
  * list and decides which conversation an open lands on, and what it means
- * there is "last used" — consolidating memory is bookkeeping this reader
+ * there is "last used" — consolidating memory is bookkeeping this user
  * never asked for and cannot see. Touching it would lift a conversation they
  * have not opened in weeks to the top of their list.
  * @param id - Conversation UUID to update.

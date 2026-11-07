@@ -5,11 +5,11 @@
  * Listing a project's conversations, a page at a time.
  *
  * A list with no second page is a list with a ceiling, and a ceiling nobody
- * declared: the reader sees the newest N and is told nothing about the rest.
+ * declared: the user sees the newest N and is told nothing about the rest.
  * So every answer here says whether anything comes after it, and the position
  * that fetches what does is part of the contract rather than a default buried
  * in the repository. A position and not a count of rows to skip: this list is
- * ordered by when each conversation was last used, so it moves while a reader
+ * ordered by when each conversation was last used, so it moves while a user
  * pages through it.
  *
  * The project filter is checked here too. It travels as `project_id`, and a
@@ -291,7 +291,7 @@ describe("the first page, the one that arrives with the panel", () => {
 
 describe("the conversation an open lands on", () => {
   it("is the one at the top of the list", async () => {
-    // 「最近用过的那条」和「列表最上面那条」必须是同一条。两处各排各的,读者
+    // 「最近用过的那条」和「列表最上面那条」必须是同一条。两处各排各的,用户
     // 打开 project 落在 A、列表却把 B 排在最前,而删掉当前那条时挑的又是列表
     // 那一份 —— 同一个词在同一个界面上指两个东西。
     const { userId, projectId, cookie } = await seedTwoProjects();

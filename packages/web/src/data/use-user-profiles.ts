@@ -56,7 +56,7 @@ export function useUserProfiles(
     // whose profile did not change, would go nameless until the request
     // lands. Same reasoning as the roster's own profile query.
     placeholderData: (previous) => previous,
-    // Against the app's default, which is off. Off suits data a reader can
+    // Against the app's default, which is off. Off suits data a user can
     // ask for again — reopen the panel, press the button. There is no asking
     // for this one: it is the only request behind every name on a board, so
     // one failure takes them all at once and leaves nothing that would fetch

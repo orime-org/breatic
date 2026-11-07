@@ -281,7 +281,7 @@ describe('a table cell holds blocks', () => {
     expect(again[0]!.children[0]!.children[0]!.props['colwidth']).toBeNull();
   });
 
-  it('draws the table where the reader can edit its cells, in the wrapper the table rules style', async () => {
+  it('draws the table where the user can edit its cells, in the wrapper the table rules style', async () => {
     const editor = open();
     editor.replaceBlocks(editor.document, [table([[[{ type: 'paragraph', content: 'a' }]]])] as never);
 

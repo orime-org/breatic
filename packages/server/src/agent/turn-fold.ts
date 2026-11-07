@@ -51,13 +51,13 @@ export interface TurnIdentity {
   projectId: string;
   /** The turn being answered; only turns before it may be folded. */
   turnIndex: number;
-  /** Raised when the reader stopped the turn or the client went away. */
+  /** Raised when the user stopped the turn or the client went away. */
   signal?: AbortSignal;
   /**
    * Called once, when a fold is about to run.
    *
    * Fires after the decision and before the model call, so it reaches the
-   * reader only on turns that really do stop to fold.
+   * user only on turns that really do stop to fold.
    */
   onStart?: () => void;
 }
@@ -78,7 +78,7 @@ export type FoldTrigger =
  * - `none`: no fold ran; send as it stands.
  * - `moved`: the watermark moved (`written`, `superseded`); assemble again.
  * - `untouched`: the fold could not start, or failed and wrote nothing.
- * - `aborted`: the reader left during the fold.
+ * - `aborted`: the user left during the fold.
  * - `too_long`: an overflow that no fold can fix, or one past
  *   `overflow_folds_per_turn`; end the turn as too long.
  */

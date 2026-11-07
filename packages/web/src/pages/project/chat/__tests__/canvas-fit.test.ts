@@ -56,7 +56,7 @@ function group(id: string, createdAt: number): Record<string, unknown> & { id: s
 /**
  * A canvas to fit.
  * @param entries - Its nodes.
- * @param selected - The ids the reader selected.
+ * @param selected - The ids the user selected.
  * @param links - Its links as [source, target].
  * @returns The input.
  */
@@ -203,7 +203,7 @@ describe('marking the selection', () => {
    */
   const marked = (text: string): string[] => parsed(text).nodes.filter((n) => n.selected === true).map((n) => n.id);
 
-  it('marks the nodes the reader selected, whole, slim or by name', () => {
+  it('marks the nodes the user selected, whole, slim or by name', () => {
     const input = canvasOf([group('g', 0), image('a', 1), image('b', 2), image('c', 3)], ['g', 'b']);
 
     expect(marked(fit(input, 100_000).text)).toEqual(['g', 'b']);

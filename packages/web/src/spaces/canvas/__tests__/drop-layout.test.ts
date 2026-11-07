@@ -38,7 +38,7 @@ describe('batchCentresAt', () => {
   });
 
   it('centres the batch on that point however many files it holds', () => {
-    // What the reader pointed at is the middle of what appears, so the batch
+    // What the user pointed at is the middle of what appears, so the batch
     // does not sprawl off to one side the way a top-left anchor would.
     for (const count of [2, 3, 4, 5, 9]) {
       expect(centreOfBatch(count)).toEqual(ORIGIN);

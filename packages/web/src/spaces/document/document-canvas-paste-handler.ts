@@ -22,7 +22,7 @@ import type { UploadSource } from '@web/spaces/document/document-upload-controll
 export interface CanvasPasteSink {
   /** Starts the upload behind a pending block just inserted. */
   start: (uploadId: string, source: UploadSource) => void;
-  /** Tells the reader how many nodes could not be pasted. */
+  /** Tells the user how many nodes could not be pasted. */
   notPasted: (count: number) => void;
 }
 

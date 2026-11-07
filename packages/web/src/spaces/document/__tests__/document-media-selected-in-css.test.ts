@@ -49,7 +49,7 @@ describe('a selected or hovered media block in the stylesheet', () => {
     expect(hovered).toBe(selected);
   });
 
-  it('draws the same frame on the block the reader selected, only in a body the reader can edit', () => {
+  it('draws the same frame on the block the user selected, only in a body the user can edit', () => {
     const css = readFileSync(resolve(import.meta.dirname, '../../../index.css'), 'utf8');
     let own: { selector: string; outline: string } | undefined;
     postcss.parse(css).walkRules((rule) => {

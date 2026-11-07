@@ -950,7 +950,7 @@ describe("POST /credits/lots/:id/refund", () => {
 
   it("refuses in the language of the request", async () => {
     // The handler puts `AppError.message` on the wire as it stands, so a
-    // refusal that reached for a literal would ship English to every reader.
+    // refusal that reached for a literal would ship English to every user.
     const fx = await seedFixture();
     const lotId = await seedLot(fx, 100, fx.studioId);
 

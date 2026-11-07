@@ -11,7 +11,7 @@ index 3f484971b5daae6d81b17afb01e238b170d0b03b..334e9e7435a6f26cb85a412782970207
 +    //
 +    // `isDestroyed` is a property nothing in `sync-plugin.js` ever assigns, so
 +    // this guard read `undefined` every time and let every batch through — a
-+    // reader who closes a Space between a `setMeta` and this tick gets an
++    // user who closes a Space between a `setMeta` and this tick gets an
 +    // uncaught `RangeError: Applying a mismatched transaction` as the batch
 +    // dispatches into an editor that is gone.
 +    //

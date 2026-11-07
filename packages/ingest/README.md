@@ -114,7 +114,7 @@ value that is not a full 40-character lowercase commit is ignored, and an
 reported as `development`.
 
 Every failure this Worker writes to its log also goes to Sentry, except the ones
-the reader caused: a link they handed us that cannot be fetched or is not a
+the user caused: a link they handed us that cannot be fetched or is not a
 kind we take, a part whose sender stopped mid-body, and stored bytes of a kind
 we do not take. Those are only logged.
 

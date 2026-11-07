@@ -28,7 +28,7 @@ export interface ApiError {
    * False when it is the library's -- which happens whenever something other
    * than our server answers, a gateway timing out being the ordinary case.
    * That sentence is written in English, for a developer, and names transport
-   * details; anything about to show a message to a reader has to be able to
+   * details; anything about to show a message to a user has to be able to
    * tell the two apart. The SSE transport makes the same distinction.
    *
    * Optional because tests build this shape by hand; absent reads as false,

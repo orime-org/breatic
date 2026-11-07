@@ -3,7 +3,7 @@
 
 /**
  * The placement's invariants (inner#1351 design §5.4.6) on random bodies,
- * random content and the selections a reader can make: the reader's words
+ * random content and the selections a user can make: the user's words
  * stay, put content never nests under the target, no block id repeats, the
  * caret ends in a line, a quoted target quotes what it takes, every medium
  * lands, and a drop lands as a paste at its point.
@@ -25,27 +25,27 @@ import { press, shape } from './paste-matrix';
 
 afterEach(unmountAll);
 
-/** Words the reader wrote use these letters; pasted words use the rest. */
-const READER = /[a-m]/g;
+/** Words the user wrote use these letters; pasted words use the rest. */
+const USER = /[a-m]/g;
 
-const readerWords = fc.stringMatching(/^[a-m]{1,4}$/);
+const userWords = fc.stringMatching(/^[a-m]{1,4}$/);
 const pastedWords = fc.stringMatching(/^[n-z]{1,4}$/);
 
 /** A body block, as the generator builds it. */
 type BodyBlock = Record<string, unknown>;
 
 const bodyBlock: fc.Arbitrary<BodyBlock> = fc.oneof(
-  readerWords.map((content) => ({ type: 'paragraph', content })),
-  readerWords.map((content) => ({ type: 'heading', content })),
+  userWords.map((content) => ({ type: 'paragraph', content })),
+  userWords.map((content) => ({ type: 'heading', content })),
   fc.constant({ type: 'paragraph' }),
   fc.constant({ type: 'heading' }),
   fc.constant({ type: 'bulletListItem' }),
-  readerWords.map((content) => ({ type: 'paragraph', content, props: { quoted: true } })),
+  userWords.map((content) => ({ type: 'paragraph', content, props: { quoted: true } })),
   fc.constant({ type: 'paragraph', props: { quoted: true } }),
-  fc.tuple(readerWords, readerWords).map(([content, kid]) => ({ type: 'paragraph', content, children: [{ type: 'paragraph', content: kid }] })),
+  fc.tuple(userWords, userWords).map(([content, kid]) => ({ type: 'paragraph', content, children: [{ type: 'paragraph', content: kid }] })),
   fc.nat(99).map((n) => ({ type: 'image', props: { url: `${OURS}old${n}.png` } })),
-  fc.tuple(readerWords, readerWords).map(([a, b]) => tableBlock({ rows: [{ cells: [a, b] }] })),
-  readerWords.map((content) => ({ type: 'codeBlock', content })),
+  fc.tuple(userWords, userWords).map(([a, b]) => tableBlock({ rows: [{ cells: [a, b] }] })),
+  userWords.map((content) => ({ type: 'codeBlock', content })),
 );
 
 /** A piece of pasted content: a list item may nest a picture or another item last. */
@@ -110,7 +110,7 @@ function blocksOf(pieces: readonly Piece[]): Record<string, unknown>[] {
   });
 }
 
-/** How the reader made the selection the paste replaces. */
+/** How the user made the selection the paste replaces. */
 type Aim =
   | { kind: 'caret'; at: number }
   | { kind: 'range'; from: number; to: number }
@@ -156,7 +156,7 @@ function starts(doc: PMNode, names: readonly string[]): number[] {
 }
 
 /**
- * Makes the selection the way a reader makes it: a click, a drag, a click on
+ * Makes the selection the way a user makes it: a click, a drag, a click on
  * a picture, an arrow key off a selected picture, a drag across cells. Falls
  * back to a click when the body has nothing of that kind.
  * @param editor - The editor.
@@ -281,7 +281,7 @@ const property = fc.record({
 });
 
 
-/** A random case: a body, content, where it was copied from and how the reader aimed. */
+/** A random case: a body, content, where it was copied from and how the user aimed. */
 interface Sample {
   readonly body: BodyBlock[];
   readonly pieces: Piece[];
@@ -313,8 +313,8 @@ function checkPut({ body, pieces, source, aim: chosen }: Sample): void {
     at = range.$to.pos;
   }
   outsideText += before.doc.textBetween(at, before.doc.content.size, '');
-  const outside = outsideText.match(READER)?.join('') ?? '';
-  const all = before.doc.textContent.match(READER)?.join('') ?? '';
+  const outside = outsideText.match(USER)?.join('') ?? '';
+  const all = before.doc.textContent.match(USER)?.join('') ?? '';
   const oldIds = new Set(containers(before.doc).map((c) => c.id));
   const tableCount = content.filter((p) => p.kind === 'table').length;
   const targetAfterDelete = selection instanceof CellSelection ? selection.$anchorCell : before.tr.deleteSelection().selection.$from;
@@ -337,10 +337,10 @@ function checkPut({ body, pieces, source, aim: chosen }: Sample): void {
     return;
   }
 
-  const kept = after.doc.textContent.match(READER)?.join('') ?? '';
+  const kept = after.doc.textContent.match(USER)?.join('') ?? '';
   // A table pasted into a table fills its cells over what they held, as prosemirror-tables pastes cells (design §5.4.3).
   const fillsCells = tableCount === 1 && inCell;
-  if (!fillsCells) expect([outside, all], `reader's words: ${where}`).toContain(kept);
+  if (!fillsCells) expect([outside, all], `user's words: ${where}`).toContain(kept);
 
   const placed = containers(after.doc).filter((c) => !oldIds.has(c.id));
   const ids = containers(after.doc).map((c) => c.id);
@@ -393,8 +393,8 @@ function yielding<T>(check: (value: T) => boolean | void): (value: T) => Promise
     return check(value);
   };
 }
-describe('content holding a medium, a table or a divider, put anywhere a reader can aim', () => {
-  it('keeps the reader\'s words, nests nothing, repeats no id, ends the caret in a line, quotes as the target and lands every medium', { timeout: PROPERTY_TIMEOUT }, async () => {
+describe('content holding a medium, a table or a divider, put anywhere a user can aim', () => {
+  it('keeps the user\'s words, nests nothing, repeats no id, ends the caret in a line, quotes as the target and lands every medium', { timeout: PROPERTY_TIMEOUT }, async () => {
     await fc.assert(
       fc.asyncProperty(property, yielding(checkPut)),
       { numRuns: 400 },
@@ -611,15 +611,15 @@ const letteredBody = fc.array(
 }));
 
 /**
- * Each line's reader letters.
+ * Each line's user letters.
  * @param doc - The document.
  * @returns One string per line that holds any.
  */
-function readerLines(doc: PMNode): string[] {
+function userLines(doc: PMNode): string[] {
   const out: string[] = [];
   doc.descendants((node) => {
     if (node.isTextblock) {
-      const letters = node.textContent.match(READER)?.join('') ?? '';
+      const letters = node.textContent.match(USER)?.join('') ?? '';
       if (letters !== '') out.push(letters);
     }
     return true;
@@ -628,7 +628,7 @@ function readerLines(doc: PMNode): string[] {
 }
 
 describe('a drop, then deleting what it selected (design §5.4.1)', () => {
-  it('keeps every line the reader wrote, its words and its own line', { timeout: PROPERTY_TIMEOUT }, async () => {
+  it('keeps every line the user wrote, its words and its own line', { timeout: PROPERTY_TIMEOUT }, async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.record({ body: letteredBody, pieces: fc.array(piece, { minLength: 1, maxLength: 4 }), at: fc.nat(), source: fc.constantFrom<Source>('web', 'own') }),
@@ -645,7 +645,7 @@ describe('a drop, then deleting what it selected (design §5.4.1)', () => {
             unmountAll();
             return;
           }
-          const letters = (doc: PMNode): string => [...(doc.textContent.match(READER) ?? [])].sort().join('');
+          const letters = (doc: PMNode): string => [...(doc.textContent.match(USER) ?? [])].sort().join('');
           const before = letters(view.state.doc);
           const html = editor.blocksToFullHTML(blocksOf(pieces) as never);
           const formats: Record<string, string> = source === 'own' ? { 'blocknote/html': html, 'text/html': html, 'text/plain': 'copied' } : { 'text/html': html, 'text/plain': 'copied' };
@@ -655,7 +655,7 @@ describe('a drop, then deleting what it selected (design §5.4.1)', () => {
           const event = new Event('drop', { bubbles: true, cancelable: true });
           Object.assign(event, { clientX: 1, clientY: 1 });
           Object.defineProperty(event, 'dataTransfer', { value: { types: Object.keys(formats), files: [], items: [], getData: (type: string): string => formats[type] ?? '' } });
-          const linesBefore = readerLines(view.state.doc);
+          const linesBefore = userLines(view.state.doc);
           view.dom.dispatchEvent(event);
           // One block alone is selected whole (ProseMirror's own drop), and
           // deleting it leaves a line it split in two.
@@ -663,8 +663,8 @@ describe('a drop, then deleting what it selected (design §5.4.1)', () => {
           view.dispatch(view.state.tr.deleteSelection());
           const where = `${source} ${JSON.stringify(blocks)} ${JSON.stringify(pieces)} @${point} → ${shape(editor)}`;
           expect(letters(view.state.doc), `words: ${where}`).toBe(before);
-          if (whole) for (const line of readerLines(view.state.doc)) expect(new Set(line).size, `lines: ${where}`).toBe(1);
-          else expect(readerLines(view.state.doc), `lines: ${where}`).toEqual(linesBefore);
+          if (whole) for (const line of userLines(view.state.doc)) expect(new Set(line).size, `lines: ${where}`).toBe(1);
+          else expect(userLines(view.state.doc), `lines: ${where}`).toEqual(linesBefore);
           unmountAll();
         }),
       ),
@@ -675,7 +675,7 @@ describe('a drop, then deleting what it selected (design §5.4.1)', () => {
 
 describe('a copy whose lines are nested (design §5.4.1)', () => {
   it('pastes as the same lines copied at the top level', { timeout: PROPERTY_TIMEOUT }, async () => {
-    const line = fc.oneof(readerWords, fc.constant(''));
+    const line = fc.oneof(userWords, fc.constant(''));
     await fc.assert(
       fc.asyncProperty(
         fc.record({

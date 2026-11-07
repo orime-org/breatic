@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * What a message tells the Agent about the reader's Spaces (inner#1413).
+ * What a message tells the Agent about the user's Spaces (inner#1413).
  *
  * Read in two steps. At the press, synchronously and from what this tab
  * already holds: the project's Spaces, and the open one's content when the
- * reader has it on. Nothing is created and nothing is asked for, so what goes
+ * user has it on. Nothing is created and nothing is asked for, so what goes
  * is the Space as it stood when send was pressed. Then, once the limits are
  * read from the server, cut to them: a document to its start, a canvas by
  * level of detail, with the selected nodes the message's attachments hold
@@ -43,11 +43,11 @@ export type ReadCurrentSpace = ChatSpace &
     | { state: 'unreadable' }
   );
 
-/** The reader's Spaces as read at the press, before they are cut. */
+/** The user's Spaces as read at the press, before they are cut. */
 export interface ReadSpaces {
   /** Every Space in the project, newest first. */
   spaces: ChatSpace[];
-  /** The open Space, when one is open and the reader has it on. */
+  /** The open Space, when one is open and the user has it on. */
   current?: ReadCurrentSpace;
 }
 
@@ -58,7 +58,7 @@ export interface SpaceContextSource {
   activeSpace: ProjectSpace | undefined;
   /** Every Space in the project. */
   spaces: readonly ProjectSpace[];
-  /** Whether the reader has the open Space on. */
+  /** Whether the user has the open Space on. */
   enabled: boolean;
   /** Holds the model catalog and each model's first voice. */
   queryClient: QueryClient;
@@ -90,7 +90,7 @@ export function holdsSynced(name: string): boolean {
 }
 
 /**
- * The nodes the reader has selected on a canvas, as its own render buffer
+ * The nodes the user has selected on a canvas, as its own render buffer
  * holds them; a selected group brings its members.
  * @param spaceId - The canvas.
  * @param nodes - Every node on it.
@@ -104,7 +104,7 @@ function selectedOn(spaceId: string, nodes: ReadonlyArray<{ id: string; parentId
 
 /**
  * A synced canvas's nodes and the links between them, each node with the run
- * settings of the model it would run and whether the reader selected it. The
+ * settings of the model it would run and whether the user selected it. The
  * open Space and a Space the Agent asked to look at are read by this one
  * function, so both reach the Agent alike.
  * @param doc - The canvas document, synced.
@@ -270,7 +270,7 @@ function readCurrent(source: SpaceContextSource, space: ProjectSpace): ReadCurre
 }
 
 /**
- * The reader's Spaces as they stand at the press. Synchronous, and reads only
+ * The user's Spaces as they stand at the press. Synchronous, and reads only
  * what this tab holds.
  * @param source - Where the read starts from.
  * @returns The Spaces, and the open one when it goes.

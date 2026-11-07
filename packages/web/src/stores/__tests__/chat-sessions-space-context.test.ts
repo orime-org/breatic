@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * A message carries the reader's Spaces, read when they pressed send, in the
+ * A message carries the user's Spaces, read when they pressed send, in the
  * body the server reads (inner#1413).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -68,7 +68,7 @@ function openConversation(): void {
   });
 }
 
-describe('the Spaces on a message the reader sends', () => {
+describe('the Spaces on a message the user sends', () => {
   it('puts the Spaces handed to the send in the body beside the message', async () => {
     openConversation();
 
@@ -88,7 +88,7 @@ describe('the Spaces on a message the reader sends', () => {
     });
   });
 
-  it('sends a list without an open Space when the reader turned it off', async () => {
+  it('sends a list without an open Space when the user turned it off', async () => {
     openConversation();
 
     await sendInSession('c-1', 'which Spaces are there?', [], { spaces: [space], spaces_total: 1 });

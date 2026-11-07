@@ -863,7 +863,6 @@
         "character_orientation": "Orientation from",
         "keep_original_sound": "Keep original sound",
         "motion_prompt": "Motion",
-        "append_duration": "Added length",
         "ambience": "Ambience",
         "double_output": "Two takes",
         "light_azimuth": "Light direction",
@@ -1182,10 +1181,6 @@
       "audio": {
         "separate": {
           "label": "Separate vocals"
-        },
-        "extend": {
-          "label": "Extend",
-          "prompt": "Describe the sound to add"
         },
         "denoise": {
           "label": "Denoise"

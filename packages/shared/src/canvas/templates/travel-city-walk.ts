@@ -16,10 +16,10 @@ export const TRAVEL_CITY_WALK: GenerationTemplate = {
   ],
   steps: [],
   agentNote:
-    "a 24-second vertical travel vlog of the reader's traveler walking through a city the reader names, five scenes of about 4 seconds each and an ending at a viewpoint at golden hour, the same face and outfit throughout",
+    "a 24-second vertical travel vlog of the user's traveler walking through a city the user names, five scenes of about 4 seconds each and an ending at a viewpoint at golden hour, the same face and outfit throughout",
   goal: "social-hooks",
   triggers: {
     asks: ["a travel vlog", "a city walk", "a video of my trip"],
-    offerWhen: ["the reader mentions a city or a trip"],
+    offerWhen: ["the user mentions a city or a trip"],
   },
 };

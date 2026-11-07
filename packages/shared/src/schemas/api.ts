@@ -57,7 +57,7 @@ export const registerSchema = z.object({
 });
 export type RegisterInput = z.infer<typeof registerSchema>;
 
-/** The code a reader types to finish an email sign-up (#287). */
+/** The code a user types to finish an email sign-up (#287). */
 export const SIGNUP_CODE_REGEX = /^\d{6}$/;
 export const signupVerifySchema = z.object({
   code: z.string().regex(SIGNUP_CODE_REGEX),
@@ -189,7 +189,7 @@ export type GoogleAuthInput = z.infer<typeof googleAuthSchema>;
 const ATTACHED_CHIP_ID_MAX = 128;
 
 /**
- * One item attached to a chat message: a piece of the canvas the reader added
+ * One item attached to a chat message: a piece of the canvas the user added
  * to the agent, or a file picked with the attach button. The snapshot is taken
  * when it is attached; later edits to the canvas do not reach it.
  */
@@ -220,7 +220,7 @@ const count = z.number().int().nonnegative();
  */
 const chatCanvasDetailSchema = z
   .object({
-    /** Nodes the reader has selected; a selected group counts its members. */
+    /** Nodes the user has selected; a selected group counts its members. */
     selected_total: count,
     /** Selected nodes sent with the rest because an attachment holds them unchanged. */
     selected_attached: count,
@@ -279,7 +279,7 @@ const chatLoadedSpaceSchema = chatSpaceSchema
   });
 
 /**
- * The Space the reader has open, as the browser read it at the press. The
+ * The Space the user has open, as the browser read it at the press. The
  * content is already cut to the limit; the server checks that limit, since
  * it lives in config this package cannot read.
  */
@@ -376,14 +376,14 @@ export const sharedSpaceSchema = z.discriminatedUnion("state", [
   }),
 ]);
 
-/** The reader's answer to a request to read Spaces: what they shared, or that they declined. */
+/** The user's answer to a request to read Spaces: what they shared, or that they declined. */
 export const spaceRequestAnswerSchema = z.discriminatedUnion("decision", [
   z.object({ toolCallId: z.string().min(1), decision: z.literal("shared"), spaces: z.array(sharedSpaceSchema) }),
   z.object({ toolCallId: z.string().min(1), decision: z.literal("declined") }),
 ]);
 
 export const chatMessageSchema = z.object({
-  /** What the reader wrote; empty when the request carries `answer` instead. */
+  /** What the user wrote; empty when the request carries `answer` instead. */
   message: z.string(),
   project_id: z.string().uuid(),
   /**
@@ -403,14 +403,14 @@ export const chatMessageSchema = z.object({
    */
   attached_chips: z.array(chatAttachedChipSchema).default([]),
   /**
-   * The IANA time zone the reader's browser reports, so the agent can tell
+   * The IANA time zone the user's browser reports, so the agent can tell
    * them what time it is where they are. Optional: a turn without one is told
    * the time in UTC and that the zone is unknown. The length cap matches the
    * credit purchase's `time_zone`.
    */
   time_zone: z.string().min(1).max(64).optional(),
   /**
-   * The model the reader has picked for this conversation (#1363). Absent
+   * The model the user has picked for this conversation (#1363). Absent
    * from a page that predates the picker, which is answered by the
    * conversation's own model.
    */
@@ -421,16 +421,16 @@ export const chatMessageSchema = z.object({
    */
   spaces: z.array(chatSpaceSchema).optional(),
   spaces_total: z.number().int().nonnegative().optional(),
-  /** The Space the reader has open, when the chip beside "+" is enabled. */
+  /** The Space the user has open, when the chip beside "+" is enabled. */
   current_space: chatCurrentSpaceSchema.optional(),
   /**
-   * The reader's answers to a questionnaire the agent is waiting on
+   * The user's answers to a questionnaire the agent is waiting on
    * (inner#1542). A request carrying it resumes the turn that asked, adds no
-   * message of the reader's, and has an empty `message`.
+   * message of the user's, and has an empty `message`.
    */
   answer: askUserAnswerSchema.optional(),
   /**
-   * The reader's answer to the agent's request to read Spaces (inner#1552),
+   * The user's answer to the agent's request to read Spaces (inner#1552),
    * resuming the turn that asked the way `answer` does.
    */
   shared_spaces: spaceRequestAnswerSchema.optional(),
@@ -464,8 +464,8 @@ export type ChatCurrentSpace = z.infer<typeof chatCurrentSpaceSchema>;
 export type ChatCanvasDetail = z.infer<typeof chatCanvasDetailSchema>;
 export type ChatDocumentBlock = z.infer<typeof chatDocumentBlockSchema>;
 /**
- * The reader's Spaces as one message carries them (inner#1413): the project's
- * Spaces, and the open one when the reader has it on. Read when they pressed
+ * The user's Spaces as one message carries them (inner#1413): the project's
+ * Spaces, and the open one when the user has it on. Read when they pressed
  * send and never stored, so each message says what is there now.
  */
 export type ChatSpaceContext = Pick<ChatMessageInput, "spaces" | "spaces_total" | "current_space">;
@@ -538,9 +538,9 @@ export const understandSchema = z.object({
   source_type: z.enum(["image", "video", "audio"]),
   /**
    * Where the media is. The run reads the file's name off it and writes that
-   * name into the sentence on the reader's row, so this is bound the same way
+   * name into the sentence on the user's row, so this is bound the same way
    * `source_mime_type` below is: uncapped, it is text a caller chooses and
-   * every reader of that node is shown. The ceiling is the one
+   * every user of that node is shown. The ceiling is the one
    * `/canvas/ingest-url` already holds an address to. That sibling also
    * demands https, which this one cannot: the address here is our own
    * storage, and a local deployment serves it over http.
@@ -554,7 +554,7 @@ export const understandSchema = z.object({
   //
   // Required, because a row on that node is the only thing that carries a
   // cause back to the canvas: a run naming none bills and answers into
-  // nowhere, and the reader watches a node that never changes.
+  // nowhere, and the user watches a node that never changes.
   node_ids: z.array(z.string().uuid()).min(1).max(1),
   /**
    * What the ledger judged this file to be, off the bytes that landed.
@@ -565,8 +565,8 @@ export const understandSchema = z.object({
    * before the ledger reported it.
    *
    * Capped at what the ledger's own column holds (`mime_type varchar(100)`):
-   * the run names this type in the sentence it writes onto the reader's row,
-   * so an uncapped value is text a caller chooses and every reader of that
+   * the run names this type in the sentence it writes onto the user's row,
+   * so an uncapped value is text a caller chooses and every user of that
    * node is shown.
    */
   source_mime_type: z.string().min(1).max(100).optional(),
@@ -578,6 +578,12 @@ export const understandSchema = z.object({
    * this build does not ship names none — the same as a request carrying no
    * locale at all.
    */
+  user_locale: z.string().optional(),
+  /**
+   * The same locale under its pre-#1378 name, sent by a page loaded before
+   * the deploy. Carries the old name until #1387 removes it, in the release
+   * that also runs the rename migration again.
+   */
   reader_locale: z.string().optional(),
   project_id: z.string().uuid(),
   /** Same as taskCreateSchema.space_id (v10 multi-doc). Required. */
@@ -588,7 +594,7 @@ export type UnderstandInput = z.infer<typeof understandSchema>;
 /**
  * One transcription press (inner#856): a reading of an audio or video node
  * with the fixed transcription question, and the panel's one switch. Bound
- * the same way as a reading; it carries no question of the reader's own.
+ * the same way as a reading; it carries no question of the user's own.
  */
 export const transcribeSchema = understandSchema.omit({ prompt: true, source_type: true }).extend({
   source_type: z.enum(["audio", "video"]),
@@ -607,7 +613,7 @@ export const nodeHistorySnapshotSchema = z.object({
   node_id: z.string().uuid(),
   // A snapshot of an empty node is not one, and the menu greys the item out
   // for the same reason — this is the half of that rule the server keeps.
-  // What a node holds is whatever the reader typed, blank lines included, so
+  // What a node holds is whatever the user typed, blank lines included, so
   // the floor is emptiness rather than blankness. No ceiling either: a text
   // node's words have none, and this row holds exactly them.
   text: z.string().min(1),
@@ -815,7 +821,7 @@ export const chatConversationsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
   // Where the last page stopped, rather than how many rows to skip. The list
   // is ordered by when each conversation was last used, so it moves under a
-  // reader who is paging through it: someone speaks and a row rises, someone
+  // user who is paging through it: someone speaks and a row rises, someone
   // starts one and everything shifts down. Counting rows to skip then lands
   // in the wrong place -- the same conversation comes back twice, or one is
   // stepped over and cannot be reached at all. A position does not move.
@@ -852,12 +858,12 @@ export type ChatCreateConversationInput = z.infer<typeof chatCreateConversationS
 /**
  * How long a conversation's name may be.
  *
- * One number, because six places enforce it: the two boxes a reader can type
+ * One number, because six places enforce it: the two boxes a user can type
  * a name into, the schema this sits beside, the two writes that cut a name to
  * the column's width before storing it, and the bound on the configurable
  * limit, which cannot be set past what the column takes. Two numbers means the
  * shorter one silently rewrites names the longer one accepted -- and the
- * reader never asked for that, they only opened a box and closed it again.
+ * user never asked for that, they only opened a box and closed it again.
  * The column is `varchar(200)`; keep them in step.
  */
 export const CONVERSATION_TITLE_MAX_CHARS = 200;

@@ -6,7 +6,7 @@
  * (#2175, inner#856).
  *
  * The node and its edge are written before the request goes out, because the
- * node is the reader's content and its existence does not depend on the
+ * node is the user's content and its existence does not depend on the
  * server agreeing to the run (downstream-node-creation decision, stage 2).
  * What the server decides lands on the row it opens against that node — which
  * is why the two questions the browser can answer for itself are asked first:
@@ -42,7 +42,7 @@ import {
 export interface UnderstandSource {
   id: string;
   /**
-   * What the reader calls it, which is what the node it builds is named
+   * What the user calls it, which is what the node it builds is named
    * after. Absent only in the view's type, which makes the field optional so
    * component tests need not spell it out; a node with no name to borrow
    * leaves the new one the name its own kind gives it.
@@ -91,7 +91,7 @@ export type Reading = 'understand' | 'transcribe';
  * The prefix on the built node's name follows `node-clipboard.ts` (`COPY-`
  * plus the name of what it was cloned from): a node derived from another is
  * named after it, marked by the act that derived it. A fixed-English data
- * value, like the other default names in `node-factory.ts` — the reader
+ * value, like the other default names in `node-factory.ts` — the user
  * renames it from there.
  */
 const READINGS: Readonly<Record<Reading, { prefix: string; sourceGone: string; couldNotStart: string }>> = {
@@ -285,7 +285,7 @@ function buildReadingRun(
   // node being read can be deleted by a collaborator while this menu stands
   // open. The address it holds was captured before that, so the reading goes
   // ahead — and the wire, which is the only thing saying what this reading is
-  // about, is missing, so the reader is told.
+  // about, is missing, so the user is told.
   if (!wired) toast.warning(t(READINGS[reading].sourceGone));
   onBuilt({ id: node.id, position });
 
@@ -299,8 +299,13 @@ function buildReadingRun(
     // file this end just let through.
     ...(source.mimeType !== undefined && { source_mime_type: source.mimeType }),
     // The answer becomes this node's body, and this is the only end that
-    // knows which language the reader set. It travels as the code; the
+    // knows which language the user set. It travels as the code; the
     // sentence is the model's to write, four processes from here.
+    user_locale: getLocale(),
+    // Under the pre-#1378 name too, for a server of the previous release
+    // still answering while a deploy rolls out. Carries the old name until
+    // #1387 removes it, in the release that also runs the rename migration
+    // again.
     reader_locale: getLocale(),
   };
 }
@@ -314,7 +319,7 @@ function buildReadingRun(
  * it and nothing coming, and the press is the only place the reason can be
  * said. The node stays either way; nothing here deletes one.
  *
- * A sentence our server wrote is the reader's own, and which layer put it in
+ * A sentence our server wrote is the user's own, and which layer put it in
  * their language depends on the branch: `error-handler.ts` calls `t()` itself
  * for an `HTTPException` and for the catch-all, and hands an `AppError`'s
  * message on untouched because that message is the thrower's — so the thrower
@@ -334,7 +339,7 @@ async function reportReadingFailure(reading: Reading, err: unknown): Promise<voi
  * (inner#1006); otherwise the reading's short line.
  * @param reading - Which reading it was.
  * @param err - The final failure.
- * @returns The sentence, in the reader's language.
+ * @returns The sentence, in the user's language.
  */
 async function readingFailureSentence(reading: Reading, err: unknown): Promise<string> {
   if (err instanceof ApiException && err.fromServer && err.message) return err.message;

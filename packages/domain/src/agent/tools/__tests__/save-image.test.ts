@@ -42,7 +42,7 @@ function turnCopy(save: SaveToStorage): Call {
 }
 
 /**
- * What a failed call carries for the model and the reader.
+ * What a failed call carries for the model and the user.
  * @param call - The pending call.
  * @returns The failure attached to its error.
  * @throws {Error} When the call did not fail.
@@ -153,7 +153,7 @@ describe("save_image", () => {
     const failure = await failureOf(turnCopy(save)(LINK));
 
     expect(failure?.kind).toBe("tool_failed");
-    expect(failure && "readerKey" in failure ? failure.readerKey : undefined).toBe(line);
+    expect(failure && "userKey" in failure ? failure.userKey : undefined).toBe(line);
   });
 
   it("names the link's own reason to the model", async () => {
@@ -177,7 +177,7 @@ describe("save_image", () => {
     const failure = toolFailureOf(thrown);
 
     expect(failure?.kind).toBe("tool_failed");
-    expect(failure && "readerKey" in failure ? failure.readerKey : undefined).toBe(FAILURE_LINES.ourFault);
+    expect(failure && "userKey" in failure ? failure.userKey : undefined).toBe(FAILURE_LINES.ourFault);
     expect((thrown as Error).cause, "the turn's log keeps what broke").toBe(down);
   });
 });

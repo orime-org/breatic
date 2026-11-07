@@ -42,7 +42,7 @@ function open(blocks: unknown[], at: number): { editor: Editor; manager: Y.UndoM
 }
 
 /**
- * Pastes clipboard data the way a reader's paste delivers it.
+ * Pastes clipboard data the way a user's paste delivers it.
  * @param editor - The editor.
  * @param text - The clipboard's plain text.
  */

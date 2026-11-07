@@ -5,7 +5,7 @@
  * What a visit leaves behind for the next one, measured in a browser (#2165).
  *
  * Every question here needs an engine that actually reloads: whether the strip
- * comes back, and whether the camera comes back — on a Space the reader
+ * comes back, and whether the camera comes back — on a Space the user
  * aimed, on one they only looked at, and across a project the Back button
  * returns to. jsdom has no reload and no viewport, and the storage this reads
  * is written by a browser that rendered.
@@ -63,8 +63,8 @@ test('brings three tabs and the one that was showing back through a reload', asy
   expect(await activeId(page)).toBe(before[1]);
 });
 
-test('keeps the camera of a Space the reader only looked at', async ({ page }) => {
-  // Zoom and centre are two numbers, and whatever set them is what the reader
+test('keeps the camera of a Space the user only looked at', async ({ page }) => {
+  // Zoom and centre are two numbers, and whatever set them is what the user
   // last saw — the framing this canvas does on a Space it has nothing stored
   // for included. Leaving stores them, so the next visit opens on that view.
   //
@@ -72,7 +72,7 @@ test('keeps the camera of a Space the reader only looked at', async ({ page }) =
   // and that is the path this walks.
   //
   // The Space needs something in it: framing an empty canvas moves nothing, so
-  // there the reader's view is the identity whether it is stored or not, and
+  // there the user's view is the identity whether it is stored or not, and
   // the case would pass on a canvas that stored the wrong thing.
   const projectUrl = await openFreshProject(page);
   const [looked] = await addSpaces(page, 1);
@@ -186,7 +186,7 @@ test('comes back to the camera the user aimed, across a switch and a reload', as
 
 test('puts back both the offset and the zoom of a Space switched away from', async ({ page }) => {
   // A Space switched away from stays mounted and hidden (inner#1235), and its
-  // camera comes back as the reader left it, the zoom as well as the offset.
+  // camera comes back as the user left it, the zoom as well as the offset.
   await openFreshProject(page);
   await addSpaces(page, 1);
   const [first, second] = (await stripIds(page)) as [string, string];
@@ -354,7 +354,7 @@ test('keeps one account’s strip out of the next account’s hands', async ({ b
 });
 
 test('opens on a Space again after the last one on the strip was deleted', async ({ page }) => {
-  // Deleting a Space drops its tab, and that is not the reader choosing an
+  // Deleting a Space drops its tab, and that is not the user choosing an
   // empty strip. The record is left naming the deleted Space, so the next
   // visit filters it out and lands on the newest Space the way a first visit
   // does — rather than opening onto an empty tab bar for good.

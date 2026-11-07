@@ -474,7 +474,7 @@ describe('useNodeCreation', () => {
       expect(generate.paramsByModel).toEqual({ 'some-model': { ratio: '1:1' } });
     });
 
-    it('puts the prompt in the generation node, @-ing the pooled node for the reader (inner#1315)', () => {
+    it('puts the prompt in the generation node, @-ing the pooled node for the user (inner#1315)', () => {
       const withRef: CanvasProposal = {
         ...PAIR,
         nodes: [PAIR.nodes[0]!, { ...PAIR.nodes[1]!, prompt: [{ text: 'white ground, ' }, { ref: 0 }] }],
@@ -570,9 +570,9 @@ describe('useNodeCreation', () => {
     });
 
     it('records the model as a choice, so switching mode and back keeps it', () => {
-      // The agent picked this model on the reader's behalf, which is a pick
+      // The agent picked this model on the user's behalf, which is a pick
       // like any other. Written as a mode switch it would be forgotten the
-      // moment the reader looked at another mode.
+      // moment the user looked at another mode.
       const { result } = renderHook(() => useNodeCreation('p-mm', 's-mm'));
 
       const { nodeIds: ids } = result.current.placeProposalAt(PAIR, { x: 0, y: 0 }, []);
@@ -623,7 +623,7 @@ describe('useNodeCreation', () => {
       expect(landed?.[1]?.prompt.toJSON()).toContain(`sourceNodeId="${ids[1]!}"`);
     });
 
-    describe('reminding the reader to edit the marked parts (inner#977)', () => {
+    describe('reminding the user to edit the marked parts (inner#977)', () => {
       beforeEach(() => {
         vi.mocked(toast.info).mockClear();
       });
@@ -709,7 +709,7 @@ describe('useNodeCreation', () => {
       });
     });
 
-    describe('the material a reader gave, landed and filled into slots (inner#1315)', () => {
+    describe('the material a user gave, landed and filled into slots (inner#1315)', () => {
       const PORTRAIT = 'https://ours.example/image/face.png';
       const VOICE = 'https://ours.example/audio/voice.mp3';
       const TALKING: CanvasProposal = {
@@ -892,7 +892,7 @@ describe('useNodeCreation', () => {
 
     it('leaves ordinary nodes behind: the model swaps and the group wires on', () => {
       // What lands is the canvas's own kind of node, not a special one the
-      // agent owns -- so the reader changes the model the agent picked and
+      // agent owns -- so the user changes the model the agent picked and
       // wires the result into something of their own, both the ordinary way.
       const { result } = renderHook(() => useNodeCreation('p-after', 's-after'));
       const { nodeIds: ids } = result.current.placeProposalAt(PAIR, { x: 0, y: 0 }, []);
@@ -1814,7 +1814,7 @@ describe('useNodeCreation', () => {
         const PAD = GROUP_PADDING;
         const anchor = seedAnchor('p-share', 's-share', { x: 2000, y: 2000 });
         const up = seed('p-share', 's-share', 'image', { x: PAD + LAYER_STEP_PX, y: PAD }, { name: 'Sketch', templateNode: { template: 'fx', key: 'up' } });
-        // The first apply joined the anchor's group; the reader then dragged the anchor further inside it.
+        // The first apply joined the anchor's group; the user then dragged the anchor further inside it.
         const groupId = seedGroup('p-share', 's-share', { x: 0, y: 0, width: 3000, height: 3000 }, [
           { id: up, position: { x: PAD + LAYER_STEP_PX, y: PAD } },
           { id: anchor, position: { x: 2000, y: 2000 } },
@@ -1886,7 +1886,7 @@ describe('useNodeCreation', () => {
 
       it('on a second apply, prefers the anchor\'s own group to the group the reused template nodes sit in', () => {
         const PAD = GROUP_PADDING;
-        // The reader dragged the anchor into a group of its own after the first apply.
+        // The user dragged the anchor into a group of its own after the first apply.
         const anchor = seedAnchor('p-both', 's-both', { x: 3000 + PAD, y: 500 + PAD });
         const anchorFrame = { x: 3000, y: 500, width: EMPTY_NODE_SIZE.width + 2 * PAD, height: EMPTY_NODE_SIZE.height + 2 * PAD };
         const anchorGroupId = seedGroup('p-both', 's-both', anchorFrame, [{ id: anchor, position: { x: PAD, y: PAD } }]);

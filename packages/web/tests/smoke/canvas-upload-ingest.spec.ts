@@ -14,7 +14,7 @@
  * budget the next time somebody reads that node's task list. Before the ticket
  * nothing exists, so there is no row to carry the failure and the toast is all
  * this side can say — the node stays, because a node that exists is the
- * reader's to remove and only theirs (#2177). `failUploadNode` holds both
+ * user's to remove and only theirs (#2177). `failUploadNode` holds both
  * halves and lives inside a `useCallback` no unit test can call.
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:
@@ -387,7 +387,7 @@ test('a transfer that dies after the ticket is reported and lands in the failed 
   expect(await page.locator('[data-sonner-toast]').count()).toBe(0);
 
   // Opening it is the whole point of putting the failure there: the row has to
-  // say why in the reader's language, and offer the re-send whose File this
+  // say why in the user's language, and offer the re-send whose File this
   // branch kept. Stopping at the badge would leave both unasserted.
   await failedCount.click();
   // The list is newest first (`node-task.repo.ts`, startedAt DESC), and this
@@ -414,7 +414,7 @@ test('a transfer that dies after the ticket is reported and lands in the failed 
 // A6: a transfer that dies BEFORE the ticket is answered. Nothing exists on the
 // server — no row, no grant, no timer — so there is no task row to carry the
 // failure; the uploader's own tab says it on the node, where the placeholder
-// stood (inner#1303 §6.7). The node stays: a node that exists is the reader's
+// stood (inner#1303 §6.7). The node stays: a node that exists is the user's
 // to remove, and only theirs (#2177).
 test('a drop that never gets a ticket keeps its node and says so', async () => {
   let aborted = 0;
@@ -440,7 +440,7 @@ test('a drop that never gets a ticket keeps its node and says so', async () => {
   );
 
   // The node the drop made is still there. It holds nothing and never will,
-  // and taking it away is the reader's call to make, not ours.
+  // and taking it away is the user's call to make, not ours.
   expect(await visibleSpace(page).locator('.react-flow__node').count()).toBe(nodesBefore + 1);
 
   await page.unroute('**/assets/upload-ticket*');
@@ -450,7 +450,7 @@ test('a drop that never gets a ticket keeps its node and says so', async () => {
 // gate at the picker, and whose bytes are something else. Only the edge ever
 // sees those bytes, so only a real transfer can reach this — the refusal is
 // named there, travels back through the finish, and lands on the task row as a
-// sentence in the reader's language.
+// sentence in the user's language.
 test('a file whose bytes are not what it claims is refused at the edge @needs-ingest @needs-storage', async () => {
 
   const before = await visibleSpace(page).locator('.react-flow__node').count();
@@ -481,7 +481,7 @@ test('a file whose bytes are not what it claims is refused at the edge @needs-in
   await failed.click();
   // Why, not just that. Told "the upload stopped" a person tries again, and
   // the edge refuses the same bytes the same way every time. Naming what the
-  // node does take is what a reader holding a refused file can act on.
+  // node does take is what a user holding a refused file can act on.
   await expect(page.locator('[data-testid="node-task-row"]')).toContainText(
     'Not a supported format. Images take PNG / JPG / WebP.',
     { timeout: 15_000 },
@@ -523,7 +523,7 @@ test('a format we do not take is refused at the drop, with no node and no ticket
   );
 
   // The message names the file and comes out of the locale, which is what
-  // makes it the reader's language rather than a string in the code.
+  // makes it the user's language rather than a string in the code.
   await expect(page.locator('[data-sonner-toast]')).toContainText(
     'drawing.svg isn’t a supported format.',
     { timeout: 15_000 },

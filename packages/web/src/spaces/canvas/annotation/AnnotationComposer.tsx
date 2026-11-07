@@ -121,7 +121,7 @@ export function AnnotationComposer({
           {...placingBoxKeys.box}
           onBlur={() => {
             // This box is the one whose content exists nowhere else, so a
-            // blur that is not the reader leaving must not end it.
+            // blur that is not the user leaving must not end it.
             if (placingBoxKeys.composing()) return;
             whenBlurLeaves(spaceId, () => apply({ type: 'blur' }));
           }}

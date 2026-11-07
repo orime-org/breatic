@@ -21,10 +21,10 @@ import { z } from "zod";
 
 const MODES_CONFIG_PATH = resolve(MONOREPO_ROOT, "config/models/modes.yaml");
 
-/** The kinds of node a mode can ask a reader for. */
+/** The kinds of node a mode can ask a user for. */
 export const SOURCE_TYPES = ["image", "video", "audio"] as const;
 
-/** One kind of node a mode can ask a reader for. */
+/** One kind of node a mode can ask a user for. */
 export type SourceType = (typeof SOURCE_TYPES)[number];
 
 /** One mode, as `config/models/modes.yaml` declares it. */

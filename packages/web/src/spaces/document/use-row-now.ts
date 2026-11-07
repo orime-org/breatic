@@ -8,7 +8,7 @@
  * arrived: the library refreshes it on a document change (`SideMenu.ts:381-385`)
  * but `update` keeps the menu as it is while the pointer still resolves to the
  * menu's block (`:201-206`). A menu stays open however long the
- * reader takes, and a co-editor can change the row or take it away meanwhile,
+ * user takes, and a co-editor can change the row or take it away meanwhile,
  * so every command reads it again by the one thing that does not go stale.
  *
  * Measured 2026-09-18: with the snapshot, a row reading `alpha PLUS` on screen

@@ -16,10 +16,10 @@ export const PHONE_VLOG_REALISM: GenerationTemplate = {
   ],
   steps: [],
   agentNote:
-    "a 15-second vertical day-in-the-life or get-ready-with-me vlog of the reader's person that looks really shot on a phone: hand shake, focus hunting, exposure jumps, no stabilisation, beauty filter or grade, chest-up framing, skin pores kept",
+    "a 15-second vertical day-in-the-life or get-ready-with-me vlog of the user's person that looks really shot on a phone: hand shake, focus hunting, exposure jumps, no stabilisation, beauty filter or grade, chest-up framing, skin pores kept",
   goal: "social-hooks",
   triggers: {
     asks: ["a vlog", "a day in my life", "make it look real, like shot on a phone"],
-    offerWhen: ["the reader says the videos they generated look too fake, too polished or too AI"],
+    offerWhen: ["the user says the videos they generated look too fake, too polished or too AI"],
   },
 };

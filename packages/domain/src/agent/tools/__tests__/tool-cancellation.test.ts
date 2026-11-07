@@ -81,9 +81,9 @@ describe("tools accept the cancellation signal", () => {
     ]);
   });
 
-  it("has two tools with nothing to run, the cards that wait for the reader", () => {
+  it("has two tools with nothing to run, the cards that wait for the user", () => {
     // ask_user and request_space_content have no `execute`: a call to either
-    // is answered by the reader in a later request, so there is no work in
+    // is answered by the user in a later request, so there is no work in
     // this turn to cancel.
     expect(registeredTools().filter(([, execute]) => execute === undefined).map(([name]) => name)).toEqual([
       "ask_user",

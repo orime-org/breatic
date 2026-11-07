@@ -21,8 +21,8 @@ import { create } from 'zustand';
 import { newId } from '@breatic/shared';
 
 /**
- * A message for the reader: a locale key and its parameters, or a sentence the
- * server already wrote in the reader's language.
+ * A message for the user: a locale key and its parameters, or a sentence the
+ * server already wrote in the user's language.
  */
 export type UploadMarkMessage = { key: string; params?: Record<string, string | number> } | { text: string };
 

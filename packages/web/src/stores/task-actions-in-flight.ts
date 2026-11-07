@@ -143,7 +143,7 @@ export interface RunOnceSpec<B, R> {
   send: (key: string, body: B) => Promise<R>;
   /** The final success; `leaving` keeps the button waiting while the page navigates away. */
   onDone?: (result: R) => 'leaving' | undefined;
-  /** The final failure, for the press to tell the reader; the press ends once it has. */
+  /** The final failure, for the press to tell the user; the press ends once it has. */
   onFailure?: (err: unknown) => void | Promise<void>;
 }
 

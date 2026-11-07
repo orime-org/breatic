@@ -128,7 +128,7 @@ describe('sampleUrlFor', () => {
     previewUrls: { 'Japanese (Japan)': 'https://cdn.test/ja.mp3' },
   };
 
-  it('plays the sample in the language the reader picked', () => {
+  it('plays the sample in the language the user picked', () => {
     expect(sampleUrlFor(voice, 'Japanese (Japan)')).toBe('https://cdn.test/ja.mp3');
   });
 

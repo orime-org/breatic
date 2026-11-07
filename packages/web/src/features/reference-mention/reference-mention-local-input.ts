@@ -64,7 +64,7 @@ export function createLocalUserInputTracker(): Plugin<boolean> {
         // otherwise a machine append after a remote edit would mask the remote
         // origin (the settled-state hole round 4 found).
         if (tr.getMeta('appendedTransaction')) return value;
-        // A machine dispatch is never the reader's input, whether or not it
+        // A machine dispatch is never the user's input, whether or not it
         // changes the doc itself: a meta-only one can still have follow-ups
         // appended that move the `@` range, and those ride on this judgment.
         if (tr.getMeta(MACHINE_EDIT_META) === true) return false;

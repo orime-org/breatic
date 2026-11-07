@@ -228,7 +228,7 @@ export function FocusCropControls({ onConfirm, onBackToPick }: FocusCropControls
       const current = store.getState().focusCrop;
       if (current === null) return;
       // Stage one only while the marquee is on screen (round-9): with the
-      // target scrolled away, Esc would silently eat a selection the reader
+      // target scrolled away, Esc would silently eat a selection the user
       // cannot see.
       if (current.frame !== null && current.rect !== null) clearMarquee();
       else backToPick();

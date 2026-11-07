@@ -19,7 +19,7 @@
  * layers `theme, base, components, utilities`, so a later layer beats an
  * earlier one whatever the specificity and ours clear it.
  *
- * What the reader actually sees is A6's browser half.
+ * What the user actually sees is A6's browser half.
  */
 
 import { readFileSync } from 'node:fs';

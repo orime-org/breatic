@@ -5,7 +5,7 @@
  * Where an unposted comment is going to land (#18, A21, design §9.4).
  *
  * These pin the plugin's own states — open, move, close, and the range carried
- * across the reader's own edits by ProseMirror mapping. How the range follows
+ * across the user's own edits by ProseMirror mapping. How the range follows
  * changes that come in through Yjs is pinned in `document-comment-rail.test.tsx`,
  * with a second editor as the peer.
  */
@@ -87,7 +87,7 @@ describe('mapDraftRange', () => {
   });
 
   it('does not widen when text is typed against its end', () => {
-    // A reader selects some words, presses the entry, then keeps typing where
+    // A user selects some words, presses the entry, then keeps typing where
     // the selection ended. Those characters are not part of what they are
     // commenting on — the same answer the mark itself gives, whose
     // `inclusive: false` keeps text typed at a comment's end outside it.
@@ -319,7 +319,7 @@ describe('the draft range plugin', () => {
   });
 
   it('keeps the range across a selection change', () => {
-    // Moving the caret is not an edit, and a reader clicking elsewhere before
+    // Moving the caret is not an edit, and a user clicking elsewhere before
     // typing their comment must not lose where it goes.
     const editor = open();
     const view = editor.prosemirrorView!;

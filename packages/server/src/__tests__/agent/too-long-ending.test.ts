@@ -5,7 +5,7 @@
  * A turn that ended as too long keeps saying so after it is stored
  * (inner#1567, A5; design 6.7).
  *
- * It is a failed turn with a reason, so the reader is shown "try a narrower
+ * It is a failed turn with a reason, so the user is shown "try a narrower
  * request" rather than "send it again", live and after a reload, and the
  * model reads back that the turn did not finish because there was too much
  * to process, not because something broke. Every hop between the wire, the

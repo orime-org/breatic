@@ -157,7 +157,7 @@ describe('the list of conversations in a project', () => {
     expect(currentId()).toBe('c-1');
   });
 
-  it('forgets the list when the reader leaves the project', async () => {
+  it('forgets the list when the user leaves the project', async () => {
     openAnswers([{ id: 'c-1', title: 'first' }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
 
@@ -245,7 +245,7 @@ describe('starting another conversation', () => {
   });
 
   it('changes nothing when the server does not make it', async () => {
-    // The panel stays on the conversation the reader was in, with whatever
+    // The panel stays on the conversation the user was in, with whatever
     // they had typed still in front of them.
     openAnswers([{ id: 'c-1', title: 'first' }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
@@ -336,7 +336,7 @@ describe('naming a conversation', () => {
   it('takes the name the turn gives it when the first message names it', async () => {
     // The server names a conversation after its first message and says so on
     // the event that opens the turn. Without taking it here, the list goes on
-    // showing the placeholder until the reader leaves and comes back.
+    // showing the placeholder until the user leaves and comes back.
     openAnswers([{ id: 'c-1', title: null }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
 
@@ -365,7 +365,7 @@ describe('removing a conversation', () => {
     expect(currentId()).toBe('c-1');
   });
 
-  it('moves to the next one when the reader deletes the one they are in', async () => {
+  it('moves to the next one when the user deletes the one they are in', async () => {
     openAnswers([{ id: 'c-1', title: 'first' }, { id: 'c-2', title: 'second' }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
     vi.mocked(chatApi.deleteConversation).mockResolvedValue(undefined);
@@ -383,7 +383,7 @@ describe('removing a conversation', () => {
 
   it('opens a fresh one when the last conversation is deleted', async () => {
     // Opening chat in a project with none makes one, which is the same answer
-    // the reader would get by leaving and coming back.
+    // the user would get by leaving and coming back.
     openAnswers([{ id: 'c-1', title: 'first' }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
     vi.mocked(chatApi.deleteConversation).mockResolvedValue(undefined);
@@ -456,7 +456,7 @@ describe('what each conversation has half-typed', () => {
     expect(conversationRuntime.draftOf('c-1')).toBe('half a thought');
   });
 
-  it('forgets every draft in a project once the reader leaves it', async () => {
+  it('forgets every draft in a project once the user leaves it', async () => {
     openAnswers([{ id: 'c-1', title: 'first' }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
     conversationRuntime.setDraft('c-1', 'half a thought');
@@ -466,7 +466,7 @@ describe('what each conversation has half-typed', () => {
     expect(conversationRuntime.draftOf('c-1')).toBe('');
   });
 
-  it('forgets the items attached in a project once the reader leaves it', async () => {
+  it('forgets the items attached in a project once the user leaves it', async () => {
     openAnswers([{ id: 'c-1', title: 'first' }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
     chatAttachments.add('c-1', [READY_ITEM], { maxItems: 10, maxChars: 200_000 });
@@ -706,7 +706,7 @@ describe('opening the list again', () => {
 
   it('says the first page is on its way while it is', async () => {
     // 「一条都没有」和「还不知道有没有」是两句不同的话,而列表在这两种情况下
-    // 手上都是空的。说错的那一句会让读者关掉列表、以为自己记错了。
+    // 手上都是空的。说错的那一句会让用户关掉列表、以为自己记错了。
     openAnswers([{ id: 'c-1', title: 'one' }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
 
@@ -844,7 +844,7 @@ describe('two requests for the first page at once', () => {
   });
 
   it('keeps saying it is on its way until both are done', async () => {
-    // 打开列表取第一页,中途读者把最后一条会话删了 —— 那条路会重开面板,也取
+    // 打开列表取第一页,中途用户把最后一条会话删了 —— 那条路会重开面板,也取
     // 第一页。记账按 project 记一份,先回来的那条若把它整个清掉,底部就不再说
     // 「正在加载」,而另一条确实还在飞。
     openAnswers([{ id: 'c-1', title: 'one' }], 'c-1');
@@ -889,7 +889,7 @@ describe('what a first page has to be told about', () => {
 
   it('does not put a page that arrived meanwhile at the top', async () => {
     // 整片重取的语义是「从第一页重新全部加载」,所以更早的那些页退掉、列表
-    // 回到第一页并重新说「还有更早的」,读者往下滚就能再要一次。要命的是
+    // 回到第一页并重新说「还有更早的」,用户往下滚就能再要一次。要命的是
     // 另一种结果:翻页拿回来的是更早的会话、不是刚建的,把它们当成新建的排
     // 到最前,列表就不再是「最近使用在前」了。
     openAnswers(
@@ -933,7 +933,7 @@ describe('what a first page has to be told about', () => {
 
   it('keeps a row made while the open call was out', async () => {
     // 打开 project 的那趟答复也是「一份组装于过去的答复」。它整片写列表,而
-    // 这期间读者按了新建 —— 那一行在服务器组装答复时还不存在。
+    // 这期间用户按了新建 —— 那一行在服务器组装答复时还不存在。
     let landOpen: (() => void) | undefined;
     vi.mocked(chatApi.openChat).mockImplementation(
       () =>
@@ -1050,8 +1050,8 @@ describe('what a first page has to be told about', () => {
     expect(useConversationRuntime.getState().listHasMore[PROJECT]).toBe(true);
   });
 
-  it('does not fetch a page the reader never scrolled to', async () => {
-    // 丢掉那份过期答复之后不再自己补一次:读者「滚到了末尾」这件事说的是**那份**
+  it('does not fetch a page the user never scrolled to', async () => {
+    // 丢掉那份过期答复之后不再自己补一次:用户「滚到了末尾」这件事说的是**那份**
     // 列表的末尾,而它已经被换掉了。替它补一页,等于把他从没要过的行塞进新列表。
     // 下一次要更早的,由他滚到新列表的末尾来决定。
     openAnswers(

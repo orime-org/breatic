@@ -7,7 +7,7 @@
  * Every call on a task's chain is bounded by its deadline, so a task cut
  * there fails with whatever the cut call threw. Its ending is the deadline's
  * all the same, and every place a task row is settled reads it from here, so
- * a reader sees one ending for a task that ran out of time whichever call was
+ * a user sees one ending for a task that ran out of time whichever call was
  * running when it did.
  * @param deadlineAt - When the task runs out, in epoch ms.
  * @param now - The clock now, in epoch ms.

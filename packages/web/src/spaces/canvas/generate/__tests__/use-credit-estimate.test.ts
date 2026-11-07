@@ -32,7 +32,7 @@ describe('useCreditEstimate', () => {
     await waitFor(() => expect(result.current).toEqual({ credits: 15, bound: 'exact' }));
   });
 
-  it('follows the params the reader changes', async () => {
+  it('follows the params the user changes', async () => {
     const { result, rerender } = renderHook(
       ({ hd }: { hd: boolean }) => useCreditEstimate(MIDJOURNEY, { params: { hd } }, 1),
       { initialProps: { hd: true } },

@@ -4,9 +4,9 @@
 /**
  * Landing an Agent's document proposal (inner#1509, design §5.4 · §5.5).
  *
- * When the reader presses a card, the proposal is checked against the
+ * When the user presses a card, the proposal is checked against the
  * document as it stands -- the block still there, its words still the ones
- * proposed on -- and written: a comment through the same function a reader's
+ * proposed on -- and written: a comment through the same function a user's
  * own comment goes through, off the undo stack like theirs; a rewrite or an
  * insert as one BlockNote write, one undo step, whose new blocks take ids
  * derived from the proposal.
@@ -256,7 +256,7 @@ export function sourceSpot(
 
 /**
  * The parts of a rewrite that go into a comment made from it: those whose
- * words are not only blanks, the rule a reader's own comment is sent by.
+ * words are not only blanks, the rule a user's own comment is sent by.
  * @param blocks - The rewrite's blocks.
  * @returns The blocks with words.
  */
@@ -364,12 +364,12 @@ function currentResult(
 }
 
 /**
- * Lands a proposal the reader pressed, after checking it still fits.
+ * Lands a proposal the user pressed, after checking it still fits.
  * @param handle - The document, mounted.
  * @param proposal - The proposal.
  * @param action - Whether to put it on as a comment or write it into the body.
  * @param readAdmission - Reads current lifecycle and write admission synchronously.
- * @returns How it ended, and the block to show the reader when it landed.
+ * @returns How it ended, and the block to show the user when it landed.
  * @throws {Error} If preparation, comment creation or an atomic block write fails.
  */
 export async function landProposal(

@@ -91,20 +91,20 @@ interface NodeContextMenuProps {
   /**
    * Open the node-history panel for this node (#1619, browse + restore past
    * results). Passed for editable content nodes; when absent the item does
-   * not render, so it never appears on a group or to a read-only reader.
+   * not render, so it never appears on a group or to a read-only user.
    */
   onOpenHistory?: () => void;
   /**
    * Whether this node has the item at all. Only a text node does: every other
    * modality's content is an asset that already has a row of its own, while
    * words are replaced by the next keystroke and nothing keeps them unless
-   * the reader says so.
+   * the user says so.
    */
   snapshotOffered?: boolean;
   /**
    * Keep a copy of what this node says right now (#2175). Absent on an
    * offered item disables it rather than dropping it: a node saying nothing
-   * has nothing to keep, and the reader sees that where the item always is.
+   * has nothing to keep, and the user sees that where the item always is.
    */
   onSnapshot?: () => void;
 
@@ -124,7 +124,7 @@ interface NodeContextMenuProps {
   /**
    * Download this node's content. Passed when the node is showing content on
    * screen; when absent the item is disabled, so a node whose content the
-   * reader cannot see says so rather than dropping the item off the menu.
+   * user cannot see says so rather than dropping the item off the menu.
    */
   onDownload?: () => void;
   /** Read what this node is showing into a text node downstream; absent disables the item rather than hiding it. */
@@ -171,7 +171,7 @@ interface NodeContextMenuProps {
  * duplicate / rename / lock / delete; a group offers copy / duplicate (with its
  * members) / ungroup / rename / lock / delete. Tools is a submenu of the
  * mini-tools this node's kind offers. Two different questions decide what a
- * reader sees. Whether this KIND of node is ever offered an item is answered
+ * user sees. Whether this KIND of node is ever offered an item is answered
  * by leaving it out: `snapshotOffered`, `assetActionsOffered` and
  * `toolsOffered` drop Snapshot, the two asset items and Tools whole, and
  * Generate is dropped with its handler, because an item greyed on every text
@@ -362,7 +362,7 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
                   {t('canvas.nodeMenu.understand')}
                 </DropdownMenuItem>
                 {/* Opens a panel first: whether filler words stay is the
-                    reader's to say before anything is built. */}
+                    user's to say before anything is built. */}
                 {transcribeOffered ? (
                   <DropdownMenuItem
                     disabled={!onTranscribe}

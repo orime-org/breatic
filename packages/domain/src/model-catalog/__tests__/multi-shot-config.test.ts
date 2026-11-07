@@ -144,7 +144,7 @@ describe("the names the multi-shot mode shows", () => {
 
 describe("which model each mode Seedance 2.5 image-to-video joins opens with", () => {
   // The panel opens a mode on the first model the catalog lists for it, so a
-  // new entry placed ahead of these would change what every reader sees.
+  // new entry placed ahead of these would change what every user sees.
   it.each([
     ["i2v", "gemini-omni-1.1-flash-image-to-video"],
     ["first_last", "gemini-omni-1.1-flash-image-to-video"],

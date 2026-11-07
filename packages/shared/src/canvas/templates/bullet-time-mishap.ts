@@ -14,10 +14,10 @@ export const BULLET_TIME_MISHAP: GenerationTemplate = {
   inputs: [],
   steps: [],
   agentNote:
-    "an 8-second vertical clip of a clumsy moment (a slip, a cat knocking a glass over) that freezes at its worst instant while the camera circles it 360 degrees, then finishes; the reader only writes who and what goes wrong",
+    "an 8-second vertical clip of a clumsy moment (a slip, a cat knocking a glass over) that freezes at its worst instant while the camera circles it 360 degrees, then finishes; the user only writes who and what goes wrong",
   goal: "social-hooks",
   triggers: {
     asks: ["bullet time", "freeze the moment it goes wrong"],
-    offerWhen: ["the reader wants a funny freeze-frame moment"],
+    offerWhen: ["the user wants a funny freeze-frame moment"],
   },
 };

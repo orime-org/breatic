@@ -6,7 +6,7 @@
  * reads it.
  *
  * They render as nothing, and U+E0020–E007E mirror printable ASCII, so a run
- * of them spells a line no reader sees but a model can still read as words. Their one legitimate use left is the England, Scotland and Wales
+ * of them spells a line no user sees but a model can still read as words. Their one legitimate use left is the England, Scotland and Wales
  * flags (black flag, tag letters, cancel tag), and those three pass through
  * whole.
  */

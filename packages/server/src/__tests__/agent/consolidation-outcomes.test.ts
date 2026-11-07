@@ -361,7 +361,7 @@ describe("a consolidation that works", () => {
     });
   });
 
-  it("logs a charge whose readers could not be told", async () => {
+  it("logs a charge whose users could not be told", async () => {
     chargeOnceForGeneration.mockResolvedValueOnce({
       billed: true, charged: "400.000000", shortfall: "0.000000", studioId: "s", lotIds: [], signalFailure: new Error("redis down"),
     });
@@ -515,7 +515,7 @@ describe("a consolidation that fails", () => {
   });
 });
 
-describe("a consolidation the reader did not wait for", () => {
+describe("a consolidation the user did not wait for", () => {
   it("does nothing at all once the signal is raised", async () => {
     const controller = new AbortController();
     controller.abort();
@@ -537,7 +537,7 @@ describe("a consolidation the reader did not wait for", () => {
     expect(call.abortSignal).toBe(controller.signal);
   });
 
-  it("ends as aborted when the reader left during the call, told by the signal rather than by a name", async () => {
+  it("ends as aborted when the user left during the call, told by the signal rather than by a name", async () => {
     const controller = new AbortController();
     generateTextRetry.mockImplementation(async () => {
       controller.abort();
@@ -550,7 +550,7 @@ describe("a consolidation the reader did not wait for", () => {
     expect(commitConsolidation).not.toHaveBeenCalled();
   });
 
-  it("does not ask again once the reader has left", async () => {
+  it("does not ask again once the user has left", async () => {
     const controller = new AbortController();
     generateTextRetry.mockImplementation(async () => {
       controller.abort();

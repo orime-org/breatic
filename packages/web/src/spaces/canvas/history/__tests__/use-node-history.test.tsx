@@ -127,7 +127,7 @@ describe('useNodeHistory (#1619 paginated + deduped + loop-proof refetch)', () =
     expect(vi.mocked(canvasApi.listNodeHistory)).not.toHaveBeenCalled();
   });
 
-  // Opening the panel is the reader asking to see this list now. The client
+  // Opening the panel is the user asking to see this list now. The client
   // holds pages for 30s, and a run that landed while the panel was shut moved
   // no count this hook was mounted to see — so what is cached can be a list
   // with the newest row missing.
