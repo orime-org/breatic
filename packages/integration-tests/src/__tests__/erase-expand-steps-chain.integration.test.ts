@@ -57,7 +57,7 @@ const V = 5.055;
 const ACCEPTED_AT = "2026-11-07T09:00:00.123456Z";
 
 let pg: ReturnType<typeof core.createPgClient>;
-let app: { request: (path: string, init: RequestInit) => Promise<Response> };
+let app: { request: (path: string, init: RequestInit) => Response | Promise<Response> };
 let base: core.MiniToolsConfig;
 let settings: core.MiniToolsConfig;
 let publicUrl: (key: string) => string;
