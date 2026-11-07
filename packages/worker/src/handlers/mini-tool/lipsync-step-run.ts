@@ -442,7 +442,8 @@ async function personStep(execution: LipSync, kind: "track" | "faces" | "clip" |
   const storage = await getStorageAdapter();
   switch (kind) {
     case "track":
-      return advanceGenerate(execution, { kind, endpoint: providerModel(execution.tracking.model), itemIndex: index, stepKey: keys.track, contentType: "application/json",
+      // The RLE answer is JSON text, which the Worker names by its bytes: signature-less text reads as text/plain.
+      return advanceGenerate(execution, { kind, endpoint: providerModel(execution.tracking.model), itemIndex: index, stepKey: keys.track, contentType: "text/plain",
         rejection: undefined, link: (outputs) => { const parsed = trackOutputs.safeParse(outputs); return parsed.success ? parsed.data[0].rle_url : null; },
         body: async () => {
           // §97 D21-4: one box in the prepared video's pixels on its anchor frame; the RLE is read, so no mask is applied.

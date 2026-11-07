@@ -38,7 +38,7 @@ import type * as coreModule from "@breatic/core";
 import { lipsyncSharedStepKeys, miniToolStepStateSchema, presentationPinService, taskRepo, upstreamStepRepo } from "@breatic/domain";
 import type * as sharedModule from "@breatic/shared";
 import type * as domainModule from "@breatic/domain";
-import { videoPresentationWorkKeyFor } from "@breatic/shared";
+import { isUploadableMediaType, sniffMimeType, UploadHttpError, verifyUploadTicket, videoPresentationWorkKeyFor } from "@breatic/shared";
 import { lipsyncFailureReasonSchema, plannedStageJobs } from "@breatic/shared/mini-tools";
 import type * as wavespeedModule from "@worker/providers/wavespeed.js";
 import { HttpStatusError, UpstreamTaskFailed } from "@worker/providers/http.js";
@@ -181,8 +181,15 @@ beforeEach(() => {
     if (resume.storedTaskId === null) await resume.persistTaskId(id);
     return { taskId: id, outputs: [`https://provider.example.test/gen/${person ?? "unknown"}.mp4`] };
   });
-  outside.fetchUrl.mockImplementation(async (sourceUrl: string) => ({
-    sha256: "8".repeat(64), sizeBytes: 4096, contentType: sourceUrl.endsWith(".json") ? "application/json" : "video/mp4" }));
+  // The Worker's finish rule: it names the stored object by its bytes, and refuses bytes that are neither uploadable nor
+  // the type the ticket signed. An RLE answer is JSON text, which reads as plain text.
+  outside.fetchUrl.mockImplementation(async (sourceUrl: string, target: { ticket: string }) => {
+    const verified = await verifyUploadTicket(target.ticket, INGEST_ENV.INGEST_SHARED_SECRET, Date.now());
+    if (!verified.ok) throw new UploadHttpError(401);
+    const stored = sourceUrl.endsWith(".json") ? await sniffMimeType(new TextEncoder().encode('["61b00f00jN117"]')) : "video/mp4";
+    if (!isUploadableMediaType(stored) && stored !== verified.payload.contentType) throw new UploadHttpError(415, "unsupported_type");
+    return { sha256: "8".repeat(64), sizeBytes: 4096, contentType: stored };
+  });
 });
 afterAll(async () => { await pg.end(); initCore(process.env); vi.unstubAllGlobals(); });
 
