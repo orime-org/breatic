@@ -48,6 +48,8 @@ import { runAnalysisPipeline, type AnalysisPipelineRequest } from '@ingest/conta
 import { decodeCocoRleMask } from '@ingest/container/coco-rle.js';
 import { runPlanJob, type PlanRunBody } from '@ingest/container/plan-run.js';
 import { lipsyncSourceFrameAt, type LipsyncTimeline } from '@shared/mini-tools/lipsync-plan.js';
+import { canonicalMediaType } from '@shared/upload/media-type.js';
+import { sniffMimeType } from '@shared/upload/sniff-mime.js';
 import type { VideoPresentationTable } from '@shared/mini-tools/video-presentation-table.js';
 
 vi.mock('@ingest/container/analysis-pipeline.js', () => ({ runAnalysisPipeline: vi.fn() }));
@@ -213,10 +215,13 @@ async function runJob(inputs: Record<string, string>, recipes: Recipe[], content
  * @param contentType - The output's content type.
  * @returns The written output path.
  */
-async function produce(inputs: Record<string, string>, recipe: Recipe, contentType?: string): Promise<string> {
+async function produce(inputs: Record<string, string>, recipe: Recipe, contentType = 'video/mp4'): Promise<string> {
   const { report, files } = await runJob(inputs, [recipe], contentType);
   expect(report.ok, `the job reports ok (${JSON.stringify(vi.mocked(console.error).mock.calls)})`).toBe(true);
   expect(report.outputs.map(output => output.outputIndex)).toEqual([0]);
+  // The Worker names each written output by its bytes and refuses one whose type differs from the planned one
+  // (src/jobs/job-objects.ts, job-write.ts), so the bytes must read as the type the worker plans.
+  expect(canonicalMediaType(await sniffMimeType(new Uint8Array(await readFile(files[0]!)))), 'the output reads as its planned type').toBe(contentType);
   return files[0]!;
 }
 
@@ -456,7 +461,7 @@ describe('lipsync_faces (§7.17 lipsync_faces row; execution design §9.4 no_fac
   it('LF01 writes one { frameIndex, faceRect } per prepared frame, searched only inside the tracked foreground', async () => {
     // The person's foreground is the left half: face A is inside it, face B (always present) is not.
     const path = await track('track-left.json', (_frame, x) => x < 80);
-    const file = await produce({ [ID.video]: join(dir, 'faces.mp4'), [ID.track]: path }, recipe(), 'application/json');
+    const file = await produce({ [ID.video]: join(dir, 'faces.mp4'), [ID.track]: path }, recipe(), 'text/plain');
     const json = JSON.parse(await readFile(file, 'utf8')) as { frames: { frameIndex: number; faceRect: Rect | null }[] };
     expect(json.frames.map(frame => frame.frameIndex)).toEqual(Array.from({ length: 10 }, (_unused, n) => n));
     json.frames.forEach(({ frameIndex, faceRect }) => {
@@ -471,13 +476,13 @@ describe('lipsync_faces (§7.17 lipsync_faces row; execution design §9.4 no_fac
   it('LF02 fails with no_face when the foreground holds no face on any frame, even though faces lie outside it', async () => {
     // Foreground only on the bottom band, below both faces.
     const path = await track('track-band.json', (_frame, _x, y) => y >= 60);
-    const { report } = await runJob({ [ID.video]: join(dir, 'faces.mp4'), [ID.track]: path }, [recipe()], 'application/json');
+    const { report } = await runJob({ [ID.video]: join(dir, 'faces.mp4'), [ID.track]: path }, [recipe()], 'text/plain');
     expect([report.ok, report.reason, report.outputs]).toEqual([false, 'no_face', []]);
   });
 
   it('LF03 fails with empty_foreground when no frame of the track has foreground', async () => {
     const path = await track('track-empty.json', () => false);
-    const { report } = await runJob({ [ID.video]: join(dir, 'faces.mp4'), [ID.track]: path }, [recipe()], 'application/json');
+    const { report } = await runJob({ [ID.video]: join(dir, 'faces.mp4'), [ID.track]: path }, [recipe()], 'text/plain');
     expect([report.ok, report.reason, report.outputs]).toEqual([false, 'empty_foreground', []]);
   });
 
@@ -500,7 +505,7 @@ describe('lipsync_faces (§7.17 lipsync_faces row; execution design §9.4 no_fac
     ['on equal intersections the larger face wins', 'tie.mp4', { x: 72, y: 40, width: 32, height: 32 }],
   ] as const)('LF04 several faces inside the foreground: %s', async (_name, video, expected) => {
     const path = await track(`track-${video}.json`, (_frame, x) => x < 80, 2);
-    const file = await produce({ [ID.video]: join(dir, video), [ID.track]: path }, recipe(), 'application/json');
+    const file = await produce({ [ID.video]: join(dir, video), [ID.track]: path }, recipe(), 'text/plain');
     const json = JSON.parse(await readFile(file, 'utf8')) as { frames: { frameIndex: number; faceRect: Rect | null }[] };
     expect(json.frames.map(frame => frame.frameIndex)).toEqual([0, 1]);
     for (const { frameIndex, faceRect } of json.frames) {
@@ -519,7 +524,7 @@ describe('lipsync_faces (§7.17 lipsync_faces row; execution design §9.4 no_fac
     await make('portraits.mp4', ['-loop', '1', '-framerate', String(FPS), '-i', PORTRAIT, '-filter_complex', '[0:v]scale=256:256,split[a][b];[b]hflip[m];[a][m]hstack,format=yuv420p[v]',
       '-map', '[v]', '-frames:v', '10', '-c:v', 'libx264', '-crf', '12', '-pix_fmt', 'yuv420p', '-video_track_timescale', String(FPS)]);
     const path = await track('track-portrait.json', (_frame, x) => x >= 256, 10, { width: 512, height: 256 });
-    const file = await produce({ [ID.video]: join(dir, 'portraits.mp4'), [ID.track]: path }, recipe(), 'application/json');
+    const file = await produce({ [ID.video]: join(dir, 'portraits.mp4'), [ID.track]: path }, recipe(), 'text/plain');
     const json = JSON.parse(await readFile(file, 'utf8')) as { frames: { frameIndex: number; faceRect: Rect | null }[] };
     expect(json.frames.map(frame => frame.frameIndex)).toEqual(Array.from({ length: 10 }, (_unused, n) => n));
     for (const { frameIndex, faceRect } of json.frames) {
