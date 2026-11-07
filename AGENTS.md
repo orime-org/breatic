@@ -9,6 +9,7 @@ Rules for coding agents live only in `AGENTS.md` files: this one for the whole r
 breatic is the real-time collaborative AI workspace for creative teams: a TypeScript pnpm + turbo monorepo of 10 packages, with three Node services (`server`, `worker`, `collab`), the `web` front end and the `ingest` Cloudflare Worker. The product nouns are Studio, Project and Space (a Space type is canvas, document, 3d or timeline); never invent a `Workspace` entity or name.
 
 - **breatic is a content-creation tool, not a design tool.** Benchmark it against content-creation products and describe it that way in copy, docs and the Agent's product guide.
+- **The person using the product is the user, never the reader, in identifiers, comments, docs, tests and text sent to the model.** breatic is a tool, and whoever works in it is its user. Check: does this word mean someone using breatic? Then `user`; screen readers, code that reads data and people reading documentation keep `reader`.
 - **breatic is source-available under the [Elastic License 2.0](LICENSE) (`Elastic-2.0`): anyone may read, modify and run it, and no one may provide it to third parties as a hosted service; the Breatic name and logo are covered by [TRADEMARKS.md](TRADEMARKS.md), not by the licence.** Describe it as source-available, never as open source. Check that a dependency's licence lets us ship it under ELv2 before adding it: no GPL or AGPL code inside our packages or bundles; a separate GPL program shipped beside ours (the ingest container's ffmpeg) is recorded in `THIRD-PARTY.md`.
 
 | Read | When |
