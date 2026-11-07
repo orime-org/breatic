@@ -457,9 +457,10 @@ function escapedForMarkdown(blocks: readonly BlockLike[]): BlockLike[] {
 /**
  * Blocks with their words escaped for a table written as HTML, against each
  * step of the way back (`fixedInline`) that HTML does not undo itself: a
- * backslash is doubled outside code, `&` is spelled `&amp;`, and a space
- * right after a hard break, in the same piece or the next, is spelled as an
- * entity. Markdown escapes do nothing here.
+ * backslash is doubled outside code, `&` is spelled `&amp;`, a link's
+ * address is escaped the same way, and a space right after a hard break, in
+ * the same piece or the next, is spelled as an entity. Markdown escapes do
+ * nothing here.
  * @param blocks - The blocks.
  * @returns They, escaped.
  */
@@ -473,7 +474,10 @@ function escapedForHtml(blocks: readonly BlockLike[]): BlockLike[] {
      * @returns It, escaped.
      */
     const one = (piece: Inline): Inline => {
-      if (piece.type === 'link') return { ...piece, content: (piece.content ?? []).map(one) };
+      if (piece.type === 'link') {
+        // The way back takes the address through the same steps as words.
+        return { ...piece, href: (piece.href ?? '').replace(/\\/g, '\\\\').replace(/&/g, '&amp;'), content: (piece.content ?? []).map(one) };
+      }
       if (piece.type !== 'text') {
         afterBreak = false;
         return piece;
@@ -502,69 +506,103 @@ function escapedFor(blocks: readonly BlockLike[], into: 'markdown' | 'html'): Bl
   return into === 'markdown' ? escapedForMarkdown(blocks) : escapedForHtml(blocks);
 }
 
-/** Where a range lies: the words of one line, or whole blocks. */
+/** The words a range leaves of a line at one of its ends, with the line's block to keep them in. */
+interface LineCut {
+  /** Where the line's block starts. */
+  readonly at: number;
+  readonly container: ProseMirrorNode;
+  readonly line: ProseMirrorNode;
+  /** The words outside the range. */
+  readonly words: Fragment;
+}
+
+/** Where a range lies (§5.3, §5.4). */
 type Span =
+  /** Words inside one line of a legacy table's cell. */
+  | { readonly kind: 'cell'; readonly from: number; readonly to: number }
+  /** Words inside one code block, all of them included. */
+  | { readonly kind: 'code'; readonly from: number; readonly to: number; readonly line: ProseMirrorNode }
+  /** Whole blocks from the first block's start to the end of the last's own content. */
+  | { readonly kind: 'blocks'; readonly from: number; readonly to: number; readonly first: number; readonly last: number }
+  /** Words cut out of a line at one end or both (Plate's open slice). */
   | {
       readonly kind: 'words';
       readonly from: number;
       readonly to: number;
-      /** The textblock. */
-      readonly line: ProseMirrorNode;
-      /** Where its content starts. */
-      readonly start: number;
-      /** Its block's container and where it starts; null for a legacy cell's line. */
-      readonly container: ProseMirrorNode | null;
-      readonly containerPos: number;
-    }
-  | {
-      readonly kind: 'blocks';
-      /** Where the first block's container starts. */
       readonly first: number;
-      /** Where the last block's container starts. */
       readonly last: number;
-      /** The end of the last block's own content. */
-      readonly to: number;
+      /** The words before the range; null when it starts at the edge of a block without words. */
+      readonly before: LineCut | null;
+      /** The words after the range; null when it ends at the edge of a block without words. */
+      readonly after: LineCut | null;
     };
 
 /**
- * Where a range lies (§5.4): a range that starts before a block's container
- * is whole blocks; one inside a line is its words, and words covering a
- * whole block's line are that block.
+ * One end of a range against the block it is in: the block, and the line of
+ * words it cuts with the words left outside; no line at the edge of a block
+ * without words.
  * @param doc - The body.
- * @param cover - The range.
+ * @param pos - The end.
+ * @param side - Which end.
+ * @returns The block and the cut.
+ */
+function endOf(doc: ProseMirrorNode, pos: number, side: 'start' | 'end'): { block: number; cut: LineCut | null; atEdge: boolean } {
+  const $pos = doc.resolve(pos);
+  let block: number;
+  let offset: number | null;
+  if ($pos.parent.isTextblock) {
+    block = $pos.before($pos.depth - 1);
+    offset = $pos.parentOffset;
+  } else if (side === 'start') {
+    block = pos;
+    offset = 0;
+  } else {
+    // A table ends the range after itself; a container's own content inside it.
+    block = $pos.parent.type.name === 'blockContainer' ? $pos.before($pos.depth) : pos - $pos.nodeBefore!.nodeSize;
+    offset = null;
+  }
+  const container = doc.nodeAt(block)!;
+  const line = container.type.name === 'blockContainer' && container.firstChild!.isTextblock ? container.firstChild! : null;
+  if (line === null) return { block, cut: null, atEdge: true };
+  const at = offset ?? line.content.size;
+  const words = side === 'start' ? line.content.cut(0, at) : line.content.cut(at);
+  return { block, cut: { at: block, container, line, words }, atEdge: words.size === 0 };
+}
+
+/**
+ * Where a range lies (§5.4): words inside one line of a legacy cell or of a
+ * code block are those words; a range from a block's start to a block's
+ * end is whole blocks (Plate `wholeTextBlocks`); any other cuts the line at
+ * either end.
+ * @param doc - The body.
+ * @param cover - The range, as `aiCoverOf` gives it.
  * @returns The span.
  */
 function spanOf(doc: ProseMirrorNode, cover: LocalRange): Span {
-  const at = doc.nodeAt(cover.from);
-  if (at?.type.isInGroup(BLOCK_GROUP) === true) {
-    const $to = doc.resolve(cover.to);
-    // A table ends the range after itself; a container's own content inside it.
-    const last = $to.parent.type.name === 'blockContainer' ? $to.before($to.depth) : cover.to - $to.nodeBefore!.nodeSize;
-    return { kind: 'blocks', first: cover.from, last, to: cover.to };
+  const { from, to } = cover;
+  const $from = doc.resolve(from);
+  if ($from.parent.isTextblock && $from.sameParent(doc.resolve(to))) {
+    if ($from.parent.type.name === LEGACY_CELL_LINE) return { kind: 'cell', from, to };
+    if ($from.parent.type.name === CODE) return { kind: 'code', from, to, line: $from.parent };
   }
-  const $from = doc.resolve(cover.from);
-  const line = $from.parent;
-  const start = $from.start();
-  const legacy = line.type.name === LEGACY_CELL_LINE;
-  const depth = $from.depth - 1;
-  const containerPos = legacy ? -1 : $from.before(depth);
-  if (!legacy && cover.from === start && cover.to === start + line.content.size) {
-    return { kind: 'blocks', first: containerPos, last: containerPos, to: containerPos + 1 + line.nodeSize };
-  }
-  return { kind: 'words', from: cover.from, to: cover.to, line, start, container: legacy ? null : $from.node(depth), containerPos };
+  const start = endOf(doc, from, 'start');
+  const end = endOf(doc, to, 'end');
+  if (start.atEdge && end.atEdge) return { kind: 'blocks', from, to, first: start.block, last: end.block };
+  return { kind: 'words', from, to, first: start.block, last: end.block, before: start.cut, after: end.cut };
 }
 
 /**
  * The blocks a span covers, as the block API reads them: whole blocks with
- * the children inside the span, or one paragraph of the words.
+ * the children inside the span, or one paragraph of the words of one line.
  * @param doc - The body.
  * @param span - The span.
  * @returns The blocks.
  */
 function blocksOf(doc: ProseMirrorNode, span: Span): Read[] {
   const schema = doc.type.schema;
-  if (span.kind === 'words') {
-    const cut = span.line.content.cut(span.from - span.start, span.to - span.start);
+  const $from = doc.resolve(span.from);
+  if (span.kind !== 'blocks' && $from.parent.isTextblock && $from.sameParent(doc.resolve(span.to))) {
+    const cut = $from.parent.content.cut($from.parentOffset, span.to - $from.start());
     const paragraph = schema.nodes['blockContainer']!.create({ id: 'ai-range' }, [schema.nodes['paragraph']!.create(null, cut)]);
     return [nodeToBlock(paragraph, doc) as unknown as Read];
   }
@@ -578,7 +616,7 @@ function blocksOf(doc: ProseMirrorNode, span: Span): Read[] {
     if (node.type.name === 'blockContainer' && node.firstChild?.type.name === 'blockGroup') node.firstChild.forEach(take);
     else if (node.type.isInGroup(BLOCK_GROUP)) out.push(nodeToBlock(node, doc) as unknown as Read);
   };
-  doc.slice(span.first, span.to).content.forEach(take);
+  doc.slice(span.kind === 'blocks' ? span.first : span.from, span.to).content.forEach(take);
   return out;
 }
 
@@ -593,7 +631,7 @@ function blocksOf(doc: ProseMirrorNode, span: Span): Read[] {
  */
 export function aiRequest(editor: ViewedEditor, doc: ProseMirrorNode, cover: LocalRange): string {
   const span = spanOf(doc, cover);
-  if (span.kind === 'words' && span.line.type.name === CODE) return escapeCode(doc.textBetween(span.from, span.to));
+  if (span.kind === 'code') return escapeCode(doc.textBetween(span.from, span.to));
   return blocksMarkdown(editor as never, blocksOf(doc, span), escapedFor);
 }
 
@@ -682,12 +720,11 @@ function formatted(blocks: readonly Read[], source: Read | null): Read[] {
 /**
  * The block a range starts in, as the block API reads it.
  * @param doc - The body.
- * @param span - The span.
- * @returns The block; null for a legacy cell's words.
+ * @param span - The span, whole blocks or words cut out of lines.
+ * @returns The block.
  */
-function sourceOf(doc: ProseMirrorNode, span: Span): Read | null {
-  if (span.kind === 'blocks') return nodeToBlock(doc.nodeAt(span.first)!, doc) as unknown as Read;
-  return span.container === null ? null : (nodeToBlock(span.container, doc) as unknown as Read);
+function sourceOf(doc: ProseMirrorNode, span: Span & { kind: 'blocks' | 'words' }): Read {
+  return nodeToBlock(doc.nodeAt(span.first)!, doc) as unknown as Read;
 }
 
 /**
@@ -709,10 +746,10 @@ export function aiAnswer(parser: ViewedEditor, state: EditorState, text: string,
   const { doc } = state;
   const cover = aiCoverIn(state);
   const span = cover === null ? null : spanOf(doc, cover);
-  if (span?.kind === 'words' && span.container === null) {
+  if (span?.kind === 'cell') {
     return { preview: [{ type: 'paragraph', props: {}, content: flattened(parsed(parser, text.trim())), children: [] } as WrittenBlock], leftOut: 0 };
   }
-  if (span?.kind === 'words' && span.line.type.name === CODE) {
+  if (span?.kind === 'code') {
     const code = decoded(text.replace(/^\s*```[^\n]*\n([\s\S]*?)\n?```\s*$/, '$1'));
     return { preview: [{ type: CODE, props: { ...span.line.attrs }, content: [{ type: 'text', text: code, styles: {} }], children: [] } as WrittenBlock], leftOut: 0 };
   }
@@ -812,50 +849,58 @@ function holdsLine(node: ProseMirrorNode): boolean {
 }
 
 /**
- * The answer written into a line of words (§5.3, Plate's open slice): the
+ * The answer written into lines of words (§5.3, Plate's open slice): the
  * answer's first block joins the words before the range when it holds a line
  * of words, and its last the words after; otherwise the words left on that
- * side stay a block of the line's own kind, and none is left when there are
- * no words.
- * @param span - The words.
+ * side stay a block of their line's own kind, and none is left when there
+ * are no words.
+ * @param before - The words before the range; null at a block without words.
+ * @param after - The words after the range; null at a block without words.
  * @param answer - The answer, laid flat.
- * @returns The blocks that take the line's place, laid flat.
+ * @returns The blocks that take the lines' place, laid flat.
  */
-function wordsJoined(span: Span & { kind: 'words' }, answer: readonly Flat[]): Flat[] {
-  const container = span.container!;
-  const { line } = span;
-  const before = line.content.cut(0, span.from - span.start);
-  const after = line.content.cut(span.to - span.start);
+function wordsJoined(before: LineCut | null, after: LineCut | null, answer: readonly Flat[]): Flat[] {
   /**
-   * The line's own kind of block holding some words.
+   * A line's own kind of block holding some words.
+   * @param cut - The line.
    * @param words - The words.
    * @param id - Its block id; null for a new one, which BlockNote's `UniqueID` gives it.
    * @returns The block.
    */
-  const ownBlock = (words: Fragment, id: unknown): Flat => ({ node: container.type.create({ ...container.attrs, id }, line.copy(words)), depth: 0, pos: -1 });
+  const ownBlock = (cut: LineCut, words: Fragment, id: unknown): Flat => ({
+    node: cut.container.type.create({ ...cut.container.attrs, id }, cut.line.copy(words)),
+    depth: 0,
+    pos: -1,
+  });
+  /**
+   * Whether the words of a line and of an answer block join into one line.
+   * @param cut - The line.
+   * @param block - The answer block.
+   * @returns True when both hold words outside code.
+   */
+  const joins = (cut: LineCut, block: ProseMirrorNode): boolean => cut.line.type.name !== CODE && holdsLine(block);
   const out = [...answer];
   const first = out[0]!;
-  const ownId = container.attrs['id'];
-  let idTaken = true;
-  if (holdsLine(first.node)) out[0] = ownBlock(before.append(first.node.firstChild!.content), ownId);
-  else if (before.size > 0) out.unshift(ownBlock(before, ownId));
-  else idTaken = false;
+  if (before !== null && joins(before, first.node)) out[0] = ownBlock(before, before.words.append(first.node.firstChild!.content), before.container.attrs['id']);
+  else if (before !== null && before.words.size > 0) out.unshift(ownBlock(before, before.words, before.container.attrs['id']));
+  const firstKept = out[0] !== first;
   const last = out[out.length - 1]!;
-  if (holdsLine(answer[answer.length - 1]!.node)) {
+  if (after === null) return out;
+  if (joins(after, answer[answer.length - 1]!.node)) {
     const words = last.node.firstChild!;
-    out[out.length - 1] = { ...last, node: last.node.copy(Fragment.from(words.copy(words.content.append(after)))) };
-  } else if (after.size > 0) {
-    out.push(ownBlock(after, idTaken ? null : ownId));
+    out[out.length - 1] = { ...last, node: last.node.copy(Fragment.from(words.copy(words.content.append(after.words)))) };
+  } else if (after.words.size > 0) {
+    out.push(ownBlock(after, after.words, firstKept && before?.at === after.at ? null : after.container.attrs['id']));
   }
   return out;
 }
 
 /**
  * Writes the preview over a span (§5.3) the way Plate's flat blocks take it:
- * the stretch it touches is laid flat, the range's blocks or words are
- * swapped for the answer there, and the stretch is built back in its place.
- * Every block outside the range keeps its level and its place in reading
- * order, after what is written.
+ * the stretch it touches is laid flat, the range's blocks, or the lines it
+ * cuts with the blocks between, are swapped for the answer there, and the
+ * stretch is built back in its place. Every block outside the range keeps
+ * its level and its place in reading order, after what is written.
  * @param tr - The transaction it is written in.
  * @param span - The span, valid in `tr.doc`.
  * @param preview - The preview blocks.
@@ -863,24 +908,19 @@ function wordsJoined(span: Span & { kind: 'words' }, answer: readonly Flat[]): F
 function writeOver(tr: Transaction, span: Span, preview: readonly WrittenBlock[]): void {
   const schema = tr.doc.type.schema;
   const head = ((preview[0] as Read | undefined)?.content ?? []) as Inline[];
-  if (span.kind === 'words' && span.container === null) {
+  if (span.kind === 'cell') {
     // A legacy cell holds one line of words.
     tr.replaceWith(span.from, span.to, inlineContentToNodes(head as never, schema, 'paragraph'));
     return;
   }
-  if (span.kind === 'words' && span.line.type.name === CODE) {
+  if (span.kind === 'code') {
     tr.insertText(head.map(wordsOf).join(''), span.from, span.to);
     return;
   }
   const answer = laidFlat(preview.map((b) => blockToNode(withoutIds(b as Read) as never, schema)), -1, 0);
-  if (span.kind === 'words') {
-    const container = span.container!;
-    const children = laidFlat([container], -1, 0).slice(1);
-    tr.replaceWith(span.containerPos, span.containerPos + container.nodeSize, rebuilt([...wordsJoined(span, answer), ...children], schema));
-    return;
-  }
-  // Whole blocks (Plate `wholeTextBlocks`): the stretch is every subtree of
-  // the first and the last block's common parent from the first's to the last's.
+  const written = span.kind === 'blocks' ? answer : wordsJoined(span.before, span.after, answer);
+  // The stretch is every subtree of the first and the last block's common
+  // parent from the first's to the last's.
   const $first = tr.doc.resolve(span.first);
   const depth = $first.sharedDepth(span.last);
   const parent = $first.node(depth);
@@ -893,7 +933,7 @@ function writeOver(tr: Transaction, span: Span, preview: readonly WrittenBlock[]
   const level = stretch[start]!.depth;
   tr.replaceWith(from, to, rebuilt([
     ...stretch.slice(0, start),
-    ...answer.map((item) => ({ ...item, depth: item.depth + level })),
+    ...written.map((item) => ({ ...item, depth: item.depth + level })),
     ...stretch.filter((item) => item.pos > span.last),
   ], schema));
 }

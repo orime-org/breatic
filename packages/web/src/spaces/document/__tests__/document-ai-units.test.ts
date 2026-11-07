@@ -13,9 +13,10 @@ import fc from 'fast-check';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
+import type { DecorationSet } from '@tiptap/pm/view';
 
 import { aiCapture } from '@web/spaces/document/document-ai-launch';
-import { aiCoverIn, DOCUMENT_AI_RANGE, ownContentEnd } from '@web/spaces/document/document-ai-range';
+import { aiCoverIn, containerAt, DOCUMENT_AI_RANGE, ownContentEnd } from '@web/spaces/document/document-ai-range';
 import {
   aiAnswer,
   aiAnswerEmpty,
@@ -346,6 +347,15 @@ function cellContents(handle: DocumentEditorHandle): unknown[] {
   return blocks(handle)[1]!.children[1]!.children[0]!.children.map((b) => b.content);
 }
 
+/**
+ * The words the open range is painted over, one entry per painted stretch.
+ * @param handle - The document.
+ * @returns The words.
+ */
+function painted(handle: DocumentEditorHandle): string[] {
+  return [...handle.editor.prosemirrorView!.dom.querySelectorAll('[data-show-selection]')].map((e) => e.textContent ?? '');
+}
+
 /** The characters the escape pair is tried on. */
 const TRICKY = ['a', 'b', ' ', ' ', '\n', '\\', '*', '_', '`', '#', '[', ']', '(', ')', '<', '>', '&', ';', '|', '!', '1', '.', '-', '+', '=', '~', '"', '%', ':', '/'];
 
@@ -493,17 +503,41 @@ describe('the escape pair (§5.1)', () => {
     expect(cellContents(h)).toEqual(before);
   });
 
+  it('echoes a link address with backslashes and entities in an HTML-form table cell unchanged', async () => {
+    const h = await open('Before\n\n| h | k |\n| --- | --- |\n| p | q |\n\nAfter');
+    const cell = blocks(h)[1]!.children[1]!.children[0]!;
+    h.editor.updateBlock(cell.children[0]!.id, { content: [{ type: 'link', href: 'https://e.com/\\>a&b&amp;\\\\c', content: 'a\\b' }] } as never);
+    h.editor.insertBlocks([{ type: 'paragraph', content: 'second' }] as never, cell.children[0]!.id, 'after');
+    const before = cellContents(h);
+    replaceWith(h, { from: rangeOf(h, 'Before').from, to: rangeOf(h, 'After').to }, (sent) => sent);
+    expect(cellContents(h)).toEqual(before);
+  });
+
   it('echoes any words in an HTML-form table cell unchanged', async () => {
-    // Code takes no other style in the body's schema.
-    const piece = fc.record({ text: fc.string({ unit: fc.constantFrom(...TRICKY), minLength: 1, maxLength: 10 }), style: fc.constantFrom({}, { code: true }, { bold: true }, { italic: true }) });
+    const address = fc.string({ unit: fc.constantFrom('a', '\\', '&', ';', '#', '>', '(', ')', '%', '1'), minLength: 1, maxLength: 8 });
+    const piece = fc.record({
+      text: fc.string({ unit: fc.constantFrom(...TRICKY), minLength: 1, maxLength: 10 }),
+      style: fc.constantFrom({}, { code: true }, { bold: true }, { italic: true }),
+      href: fc.option(address, { nil: null }),
+    });
     await fc.assert(
       fc.asyncProperty(fc.array(piece, { minLength: 1, maxLength: 3 }), async (pieces) => {
         fc.pre(pieces.some((x) => /\S/.test(x.text)));
         const h = await open('Before\n\n| h | k |\n| --- | --- |\n| p | q |\n\nAfter');
         const cell = blocks(h)[1]!.children[1]!.children[0]!;
-        const content = pieces.map((x) => ({ type: 'text', text: x.text, styles: x.style }));
+        const content = pieces.map((x) => (x.href === null
+          ? { type: 'text', text: x.text, styles: x.style }
+          : { type: 'link', href: `https://e.com/${x.href}`, content: [{ type: 'text', text: x.text, styles: x.style }] }));
         h.editor.updateBlock(cell.children[0]!.id, { content } as never);
         h.editor.insertBlocks([{ type: 'paragraph', content: 'second' }] as never, cell.children[0]!.id, 'after');
+        // Only documents the body's schema holds (code takes no other mark, a link included).
+        let valid = true;
+        try {
+          h.editor.prosemirrorState.doc.check();
+        } catch {
+          valid = false;
+        }
+        fc.pre(valid);
         const before = cellContents(h);
         replaceWith(h, { from: rangeOf(h, 'Before').from, to: rangeOf(h, 'After').to }, (sent) => sent);
         expect(cellContents(h)).toEqual(before);
@@ -633,9 +667,9 @@ describe('the answer as blocks (§5.3)', () => {
     expect(blocks(h)[0]!.type).toBe(kind);
   });
 
-  it('writes a paragraph answer for a code block as a paragraph', async () => {
-    const h = await open('```js\nconst a = 1;\n```');
-    capture(h, contentOf(h, blocks(h)[0]!.id));
+  it('writes a paragraph answer for whole blocks starting with a code block as a paragraph', async () => {
+    const h = await open('```js\nconst a = 1;\n```\n\nNext.');
+    capture(h, { from: rangeOf(h, 'const').from, to: rangeOf(h, 'Next.').to });
     const preview = read(h, 'It sets **a** to one.').preview as Seen[];
     expect(preview[0]!.type).toBe('paragraph');
     expect((preview[0]!.content as Piece[]).map((c) => c.styles)).toEqual([{}, { bold: true }, {}]);
@@ -901,6 +935,16 @@ function readingOrderOf(list: readonly Seen[]): Array<[string, string]> {
   ]);
 }
 
+/**
+ * Whether a position stands inside a docTable.
+ * @param $pos - The position.
+ * @returns True inside one.
+ */
+function inTable($pos: { depth: number; node: (depth: number) => { type: { name: string } } }): boolean {
+  for (let depth = 1; depth <= $pos.depth; depth += 1) if ($pos.node(depth).type.name === 'docTable') return true;
+  return false;
+}
+
 /** Answers of every shape at their edges: words, code, a nested list, a table, an image. */
 const ANSWERS = [
   'X',
@@ -915,12 +959,54 @@ const ANSWERS = [
   `X\n\n![i](${OURS}j.png)`,
 ];
 
-/** An edit made while the dialog is open: typing or deleting one character somewhere. */
-type Edit = { kind: 'none' } | { kind: 'type' | 'delete'; at: number };
+/** An edit made while the dialog is open: a character typed or deleted, Enter, Backspace joining two blocks, a block deleted or moved. */
+interface Edit {
+  kind: 'none' | 'type' | 'delete' | 'split' | 'join' | 'remove' | 'move';
+  at: number;
+  to: number;
+}
+
+/**
+ * Makes an edit the way the body would, skipping one the schema refuses.
+ * @param handle - The document.
+ * @param edit - The edit.
+ * @param spots - Every position inside a line of words.
+ */
+function edited(handle: DocumentEditorHandle, edit: Edit, spots: readonly number[]): void {
+  const view = handle.editor.prosemirrorView!;
+  const { doc } = view.state;
+  const blockAt: number[] = [];
+  doc.descendants((node, pos) => {
+    if (node.type.name === 'blockContainer') blockAt.push(pos);
+    return true;
+  });
+  const at = spots[edit.at % spots.length]!;
+  const $at = doc.resolve(at);
+  const tr = view.state.tr;
+  try {
+    if (edit.kind === 'type') tr.insertText('z', at);
+    else if (edit.kind === 'delete' && at > $at.start()) tr.delete(at - 1, at);
+    else if (edit.kind === 'split' && $at.node($at.depth - 1).type.name === 'blockContainer' && $at.parent.type.name !== 'codeBlock') tr.split(at, 2);
+    else if (edit.kind === 'join') tr.join(blockAt[edit.at % blockAt.length]!, 2);
+    else if (edit.kind === 'remove') tr.delete(blockAt[edit.at % blockAt.length]!, blockAt[edit.at % blockAt.length]! + doc.nodeAt(blockAt[edit.at % blockAt.length]!)!.nodeSize);
+    else if (edit.kind === 'move') {
+      const from = blockAt[edit.at % blockAt.length]!;
+      const node = doc.nodeAt(from)!;
+      const target = blockAt[edit.to % blockAt.length]!;
+      if (target > from && target < from + node.nodeSize) return;
+      tr.delete(from, from + node.nodeSize);
+      tr.insert(tr.mapping.map(target), node);
+    }
+    tr.doc.check();
+  } catch {
+    return;
+  }
+  if (tr.docChanged) view.dispatch(tr);
+}
 
 describe('replace and insert keep what is outside the range (§8 property)', () => {
   it('keeps every block outside the range in order and writes the preview, under any selection, edit and answer', async () => {
-    const edit = fc.oneof(fc.constant<Edit>({ kind: 'none' }), fc.record({ kind: fc.constantFrom<'type' | 'delete'>('type', 'delete'), at: fc.nat() }));
+    const edit = fc.record({ kind: fc.constantFrom<Edit['kind']>('none', 'type', 'delete', 'split', 'join', 'remove', 'move'), at: fc.nat(), to: fc.nat() });
     await fc.assert(
       fc.asyncProperty(shapes(2), fc.nat(), fc.nat(), edit, fc.constantFrom(...ANSWERS), fc.boolean(), async (list, a, b, change, text, inserting) => {
         const h = await open('');
@@ -946,12 +1032,8 @@ describe('replace and insert keep what is outside the range (§8 property)', () 
         const captured = aiCapture(view.state);
         fc.pre(captured !== null);
         view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, captured));
-        if (change.kind !== 'none') {
-          const places = spots();
-          const at = places[change.at % places.length]!;
-          if (change.kind === 'type') view.dispatch(view.state.tr.insertText('z', at));
-          else if (view.state.doc.resolve(at).parent.content.size > 0 && at > view.state.doc.resolve(at).start()) view.dispatch(view.state.tr.delete(at - 1, at));
-        }
+        if (change.kind !== 'none') edited(h, change, spots());
+        fc.pre(spots().length > 0);
         const before = readingOrder(h);
         const emptyBefore = new Set(flat(h).filter((x) => Array.isArray(x.content) && textOf(x) === '').map((x) => x.id));
         const answer = aiAnswer(h.editor, view.state, text, OURS, captured!.insertId);
@@ -968,6 +1050,11 @@ describe('replace and insert keep what is outside the range (§8 property)', () 
         }
         const range = cover(h);
         fc.pre(range !== null);
+        // What is painted is what replace covers.
+        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, spots()[0]!)));
+        const paint = (DOCUMENT_AI_RANGE.get(view.state)!.props.decorations as (state: typeof view.state) => DecorationSet)(view.state);
+        const shown = paint.find().filter((d) => (d as unknown as { type: { attrs?: Record<string, string> } }).type.attrs?.['data-show-selection'] === 'true');
+        expect(shown.map((d) => [d.from, d.to])).toEqual([[range!.from, range!.to]]);
         const doc = view.state.doc;
         const touched = new Set<string>();
         const whole = new Set<string>();
@@ -978,6 +1065,13 @@ describe('replace and insert keep what is outside the range (§8 property)', () 
           if (range!.from <= pos && end <= range!.to) whole.add(String(node.attrs['id']));
           return node.type.name !== 'docTable';
         });
+        // Whole blocks run from a block's start to a block's end; otherwise the
+        // first line keeps its block, the answer joined into it (Plate's open slice).
+        const $from = doc.resolve(range!.from);
+        const $to = doc.resolve(range!.to);
+        const isWhole = (!$from.parent.isTextblock || $from.parentOffset === 0) && (!$to.parent.isTextblock || range!.to === $to.end());
+        const firstBlock = $from.parent.isTextblock ? containerAt(doc, range!.from)! : range!.from;
+        if (!isWhole) whole.delete(String(doc.nodeAt(firstBlock)!.attrs['id']));
         const outside = before.filter(([id]) => !touched.has(id));
         expect(replaceAiAnswer(h, answer, WRITABLE).outcome).toBe('written');
         const after = readingOrder(h);
@@ -986,8 +1080,9 @@ describe('replace and insert keep what is outside the range (§8 property)', () 
         expect(after.filter(([id]) => kept.has(id))).toEqual(outside);
         expect(after.some(([id]) => whole.has(id))).toBe(false);
         expect(flat(h).filter((x) => Array.isArray(x.content) && textOf(x) === '' && !emptyBefore.has(x.id))).toEqual([]);
-        // Whole blocks: what took their place is the preview, block for block.
-        if (doc.nodeAt(range!.from)?.type.isInGroup('bnBlock') === true) {
+        // Whole blocks: what took their place is the preview, block for block
+        // (inside a cell the table is what reads as one block here).
+        if (isWhole && !inTable($from)) {
           expect(after.filter(([id]) => !kept.has(id)).map(([, type, words]) => [type, words])).toEqual(readingOrderOf(answer.preview as Seen[]));
         }
         _resetDocumentEditorCacheForTests();
@@ -1107,6 +1202,16 @@ describe('replace, words inside one line (§5.3, Plate openTextBlock)', () => {
 });
 
 describe('words inside a code block (§5.1, §5.3)', () => {
+  it('sends a whole code block\'s selected words as code and reads the answer back as code', async () => {
+    const h = await openBlocks([{ type: 'codeBlock', props: { language: 'js' }, content: '# not heading\n- x * y * z' }]);
+    capture(h, contentOf(h, blocks(h)[0]!.id));
+    expect(request(h)).toBe('# not heading\n- x * y * z');
+    const answer = read(h, '# not heading\n- x * y * z');
+    expect((answer.preview as Seen[]).map((b) => [b.type, textOf(b)])).toEqual([['codeBlock', '# not heading\n- x * y * z']]);
+    replaceAiAnswer(h, answer, WRITABLE);
+    expect(blocks(h).map((b) => [b.type, textOf(b), b.props['language']])).toEqual([['codeBlock', '# not heading\n- x * y * z', 'js']]);
+  });
+
   it('reads an echoed answer back as the same code, the rest of the block kept', async () => {
     const code = 'def f():\n    # note *x* [l](u) & <b>\n    return 1\nend';
     const h = await openBlocks([{ type: 'codeBlock', props: { language: 'python' }, content: code }]);
@@ -1130,6 +1235,63 @@ describe('edits while the dialog is open (A6, A7)', () => {
     type(h, rangeOf(h, 'Three').from, 'typed ');
     replaceAiAnswer(h, read(h, 'New.'), WRITABLE);
     expect(blocks(h).map(textOf)).toEqual(['Before.', 'New.', 'After.']);
+  });
+
+  it('joins the words on both lines when Enter split the range of words', async () => {
+    const h = await open('Intro: x y z end.');
+    capture(h, rangeOf(h, 'x y z'));
+    h.editor.prosemirrorView!.dispatch(h.editor.prosemirrorState.tr.split(rangeOf(h, 'y z').from, 2));
+    expect(painted(h).join('')).toBe('x y z');
+    replaceAiAnswer(h, read(h, 'X Y Z'), WRITABLE);
+    expect(blocks(h).map(textOf)).toEqual(['Intro: X Y Z end.']);
+  });
+
+  it('replaces both halves of a last block Enter split', async () => {
+    const h = await open('Before.\n\nOne two.\n\nThree four.\n\nAfter.');
+    capture(h, { from: rangeOf(h, 'One').from, to: rangeOf(h, 'four.').to });
+    h.editor.prosemirrorView!.dispatch(h.editor.prosemirrorState.tr.split(rangeOf(h, 'four.').from, 2));
+    replaceAiAnswer(h, read(h, 'New.'), WRITABLE);
+    expect(blocks(h).map(textOf)).toEqual(['Before.', 'New.', 'After.']);
+  });
+
+  it('keeps the words Backspace merged into the last block outside the range, painted and written', async () => {
+    const h = await open('Before.\n\nOne two.\n\nThree four.\n\nAfter.\n\nTail.');
+    capture(h, { from: rangeOf(h, 'One').from, to: rangeOf(h, 'four.').to });
+    const view = h.editor.prosemirrorView!;
+    view.dispatch(view.state.tr.join(rangeOf(h, 'After.').from - 2, 2));
+    expect(painted(h).join('')).not.toContain('After.');
+    replaceAiAnswer(h, read(h, 'New.'), WRITABLE);
+    expect(blocks(h).map(textOf)).toEqual(['Before.', 'New.After.', 'Tail.']);
+  });
+
+  it('replaces a table inside the range whole once the first block is gone', async () => {
+    const h = await open('Pone\n\n| a | b |\n| --- | --- |\n| c | d |\n\nPtwo\n\nAfter');
+    capture(h, { from: rangeOf(h, 'Pone').from, to: rangeOf(h, 'Ptwo').to });
+    h.editor.removeBlocks([blocks(h)[0]!.id]);
+    replaceAiAnswer(h, read(h, 'New.'), WRITABLE);
+    expect(blocks(h).map((b) => [b.type, textOf(b)])).toEqual([['paragraph', 'New.'], ['paragraph', 'After']]);
+  });
+
+  it('replaces a table whole, never cut, once both ends of the range are gone', async () => {
+    const h = await open('Pone\n\n| a | b |\n| --- | --- |\n| c | d |\n\nPtwo\n\nAfter');
+    capture(h, { from: rangeOf(h, 'Pone').from, to: rangeOf(h, 'Ptwo').to });
+    h.editor.removeBlocks([blocks(h)[0]!.id, blocks(h)[2]!.id]);
+    replaceAiAnswer(h, read(h, 'New.'), WRITABLE);
+    expect(blocks(h).map((b) => [b.type, textOf(b)])).toEqual([['paragraph', 'New.'], ['paragraph', 'After']]);
+  });
+
+  it('paints the whole table once the last block is moved into a cell, and replaces what it paints', async () => {
+    const h = await open('First.\n\nLast.\n\n| keep1 | keep2 |\n| --- | --- |\n| keep3 | keep4 |\n\nAfter.');
+    capture(h, { from: rangeOf(h, 'First.').from, to: rangeOf(h, 'Last.').to });
+    const view = h.editor.prosemirrorView!;
+    const at = rangeOf(h, 'Last.').from - 2;
+    const node = view.state.doc.nodeAt(at)!;
+    const tr = view.state.tr.insert(rangeOf(h, 'keep3').to + 1, node);
+    tr.delete(at, at + node.nodeSize);
+    view.dispatch(tr);
+    expect(painted(h).join('')).toContain('keep4');
+    replaceAiAnswer(h, read(h, 'New.'), WRITABLE);
+    expect(blocks(h).map(textOf)).toEqual(['New.', 'After.']);
   });
 
   it('has nothing to cover once every word of the range is deleted', async () => {

@@ -33,7 +33,7 @@
 
 import { createExtension } from '@blocknote/core';
 import { SuggestionMenu } from '@blocknote/core/extensions';
-import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import type { Node as ProseMirrorNode, ResolvedPos } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
@@ -48,6 +48,7 @@ import {
 } from '@web/spaces/document/document-local-range';
 import { blockById } from '@web/spaces/document/document-proposal-landing';
 import { noTextPaint } from '@web/spaces/document/document-selection-paint';
+import { cellDepthOf, tableAround } from '@web/spaces/document/document-table-nodes';
 
 /** What the dialog opens the range on (§4.6). */
 export interface AiCapture {
@@ -141,11 +142,52 @@ export function ownContentEnd(doc: ProseMirrorNode, blockPos: number): number {
 }
 
 /**
- * What replace covers now (§5.4): for words inside one line, the carried
- * words; for whole blocks, from the first block's start to the end of the
- * last block's own content, children left out. A first or last block gone since
- * gives way to the block of the carried letter at that end, and so do both
- * once the first has come after the last.
+ * The block a position counts in (§4.6): the innermost one around it, or
+ * the whole table when the range does not stay in one of its cells.
+ * @param $pos - The position.
+ * @param oneCell - Whether the range stays in one cell.
+ * @returns Where the block starts, or null outside any block.
+ */
+export function blockAround($pos: ResolvedPos, oneCell: boolean): number | null {
+  return (oneCell ? null : tableAround($pos)?.pos) ?? containerAt($pos.doc, $pos.pos);
+}
+
+/**
+ * Whether two positions stand in the same table cell.
+ * @param $a - One.
+ * @param $b - The other.
+ * @returns True when one cell holds both.
+ */
+export function inOneCell($a: ResolvedPos, $b: ResolvedPos): boolean {
+  const a = cellDepthOf($a);
+  const b = cellDepthOf($b);
+  return a > 0 && b > 0 && $a.before(a) === $b.before(b);
+}
+
+/**
+ * One end of a range taken the way §4.6 takes blocks: in a table it does
+ * not stay in one cell of, the table's edge; in a legacy table's line, whose
+ * block holds lines of its own, that block's edge; otherwise where it is.
+ * @param $pos - The end.
+ * @param oneCell - Whether the range stays in one cell.
+ * @param side - Which end.
+ * @returns The position.
+ */
+function blockEdge($pos: ResolvedPos, oneCell: boolean, side: 'start' | 'end'): number {
+  const table = oneCell ? null : tableAround($pos);
+  if (table !== null) return side === 'start' ? table.pos : table.pos + table.node.nodeSize;
+  const block = containerAt($pos.doc, $pos.pos);
+  if (block === null || !$pos.parent.isTextblock || $pos.before($pos.depth) === block + 1) return $pos.pos;
+  return side === 'start' ? block : ownContentEnd($pos.doc, block);
+}
+
+/**
+ * The range as it stands now (§5.4), one for what is painted and what
+ * replace covers, the way Plate's range anchor maps (`association:
+ * 'inward'`): from the carried letters, reaching back to the first block
+ * and on to the last block where those hold no letters, and to a block's
+ * edge where the letter at that end still sits at its line's edge; then
+ * each end taken as §4.6 takes blocks.
  * @param doc - The body now.
  * @param letters - The carried letters, or null once gone.
  * @param firstId - The first block, or null for words inside one line.
@@ -154,16 +196,28 @@ export function ownContentEnd(doc: ProseMirrorNode, blockPos: number): number {
  */
 export function aiCoverOf(doc: ProseMirrorNode, letters: LocalRange | null, firstId: string | null, lastId: string | null): LocalRange | null {
   if (letters === null) return null;
-  if (firstId === null || lastId === null) return letters;
+  const $first = doc.resolve(letters.from);
+  const $last = doc.resolve(letters.to);
   // A letter always stands in a block.
-  const byLetters = { first: containerAt(doc, letters.from)!, last: containerAt(doc, letters.to - 1)! };
-  let first = blockById(doc, firstId)?.pos ?? byLetters.first;
-  let last = blockById(doc, lastId)?.pos ?? byLetters.last;
-  if (first > last) {
-    first = byLetters.first;
-    last = byLetters.last;
+  const firstBlock = containerAt(doc, letters.from)!;
+  const lastBlock = containerAt(doc, letters.to - 1)!;
+  let from = letters.from;
+  let to = letters.to;
+  if (firstId !== null) {
+    const byId = blockById(doc, firstId)?.pos;
+    if (byId !== undefined && byId < firstBlock) from = byId;
+    else if (letters.from === $first.start()) from = firstBlock;
   }
-  return { from: first, to: ownContentEnd(doc, last) };
+  if (lastId !== null) {
+    const byId = blockById(doc, lastId)?.pos;
+    if (byId !== undefined && byId > lastBlock) to = ownContentEnd(doc, byId);
+    else if (letters.to === $last.end()) to = ownContentEnd(doc, lastBlock);
+  }
+  const $from = doc.resolve(from);
+  const $to = doc.resolve(to);
+  if ($from.parent.isTextblock && $from.sameParent($to)) return { from, to };
+  const oneCell = inOneCell($from, $to);
+  return { from: blockEdge($from, oneCell, 'start'), to: blockEdge($to, oneCell, 'end') };
 }
 
 /**
@@ -177,23 +231,21 @@ export function aiCoverIn(state: EditorState): LocalRange | null {
 }
 
 /**
- * The selected look over the range, where the user's own selection does not
- * already draw it: while the body holds the focus its selection is painted
+ * The selected look over the range replace covers, where the user's own
+ * selection does not already draw it: while the body holds the focus its selection is painted
  * too, and the two translucent bands over the same words would draw them
  * darker than either.
  * @param state - The editor state.
  * @returns The stand-in decorations.
  */
 function paintRange(state: EditorState): DecorationSet {
-  const range = presentIn(state);
-  const letters = range?.slots[0] ?? null;
-  if (range === null || letters === null) return DecorationSet.empty;
-  const cover = aiCoverOf(state.doc, letters, range.firstId, range.lastId)!;
+  const cover = aiCoverIn(state);
+  if (cover === null) return DecorationSet.empty;
   const { selection } = state;
   const drawn = bodyHolds(state) && !selection.empty ? selection : null;
   const parts = drawn === null
-    ? [letters]
-    : [{ from: letters.from, to: Math.min(letters.to, drawn.from) }, { from: Math.max(letters.from, drawn.to), to: letters.to }];
+    ? [cover]
+    : [{ from: cover.from, to: Math.min(cover.to, drawn.from) }, { from: Math.max(cover.from, drawn.to), to: cover.to }];
   return DecorationSet.create(state.doc, [
     ...parts.filter(({ from, to }) => to > from).map(({ from, to }) => Decoration.inline(from, to, { 'data-show-selection': 'true' })),
     ...noTextPaint(state.doc, cover),

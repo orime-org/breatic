@@ -10,14 +10,13 @@
  */
 
 import type { BlockNoteEditor } from '@blocknote/core';
-import type { Node as ProseMirrorNode, ResolvedPos } from '@tiptap/pm/model';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { EditorState } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 
-import { containerAt, inlineLetter, ownContentEnd, type AiCapture } from '@web/spaces/document/document-ai-range';
+import { blockAround, inlineLetter, inOneCell, ownContentEnd, type AiCapture } from '@web/spaces/document/document-ai-range';
 import { readTopBlocks } from '@web/spaces/document/document-blocks-read';
 import { letterBounds } from '@web/spaces/document/document-local-range';
-import { cellDepthOf, tableAround } from '@web/spaces/document/document-table-nodes';
 
 
 /** The blank line Markdown puts between two blocks. */
@@ -66,18 +65,6 @@ function firstCovered(doc: ProseMirrorNode, from: number, to: number): number {
 }
 
 /**
- * The block a covered position counts in: the innermost one around it, or
- * the whole table when the selection does not stay in one of its cells
- * (inner#1619 T14).
- * @param $pos - The position.
- * @param oneCell - Whether the selection stays in one cell.
- * @returns Where the block's container starts, or null outside any block.
- */
-function blockAround($pos: ResolvedPos, oneCell: boolean): number | null {
-  return (oneCell ? null : tableAround($pos)?.pos) ?? containerAt($pos.doc, $pos.pos);
-}
-
-/**
  * The range the AI dialog opens on (§4.6), the way Plate's
  * `captureTextRange` takes it: a block the selection only ends at the start
  * of, or only starts at the end of, is left out; what is left inside one
@@ -96,9 +83,7 @@ export function aiCapture(state: EditorState): AiCapture | null {
   if (firstAt >= to) return null;
   const $first = doc.resolve(firstAt);
   const $last = doc.resolve(lastCovered(doc, from, to));
-  const firstCell = cellDepthOf($first);
-  const lastCell = cellDepthOf($last);
-  const oneCell = firstCell > 0 && lastCell > 0 && $first.before(firstCell) === $last.before(lastCell);
+  const oneCell = inOneCell($first, $last);
   const first = blockAround($first, oneCell);
   const last = blockAround($last, oneCell);
   if (first === null || last === null) return null;
