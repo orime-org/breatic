@@ -1338,3 +1338,39 @@ describe("confirmCheckout — a Stripe failure is logged where it is answered (#
     );
   });
 });
+
+describe("confirmCheckout — the first conversion reports what the first invoice charged (inner#1868 §6)", () => {
+  it("reports and returns the discounted first-invoice amount before tax", async () => {
+    situationIs("none");
+    applySubscriptionWrite.mockResolvedValue({ tier: "pro", endedFrom: null, started: true });
+    stripe.checkout.sessions.retrieve.mockResolvedValueOnce({
+      mode: "subscription",
+      client_reference_id: USER,
+      subscription: {
+        id: "sub_first",
+        status: "active",
+        cancel_at_period_end: false,
+        pending_update: null,
+        metadata: {},
+        items: {
+          data: [{
+            id: "si_1",
+            current_period_end: 1_789_000_000,
+            price: { id: "price_pro_month", unit_amount: 1999, currency: "usd", recurring: { interval: "month" } },
+          }],
+        },
+        latest_invoice: { status: "paid", billing_reason: "subscription_create", total_excluding_tax: 1599 },
+      },
+    });
+
+    const stored = await service.confirmCheckout(USER, "cs_first");
+
+    expect(stored.firstInvoiceAmountCents).toBe(1599);
+    expect(stored.write.stripeSubscriptionId).toBe("sub_first");
+    expect(trackServerEvent).toHaveBeenCalledWith(
+      "subscription_started",
+      expect.objectContaining({ properties: expect.objectContaining({ amount_cents: 1599 }) }),
+      expect.anything(),
+    );
+  });
+});

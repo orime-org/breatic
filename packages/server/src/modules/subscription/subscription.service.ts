@@ -66,6 +66,12 @@ import { firstPeriodDiscount } from "@server/modules/referral/referral.service.j
 import { sendMembershipEndedMail } from "@server/modules/subscription/settle-tier.js";
 
 /** Where a checkout ends up, and whether it needs paying. */
+/** A Stripe answer as stored, and what its first invoice charged before tax when that was the invoice read. */
+export interface StoredAnswer {
+  write: SubscriptionWrite;
+  firstInvoiceAmountCents: number | null;
+}
+
 export interface CheckoutStart {
   /** Stripe's hosted checkout page. */
   readonly url: string;
@@ -106,7 +112,7 @@ async function readSituation(
  * @param input.referenceId - Identifies the change in the tier ledger.
  * @param input.logContext - Fields the caller adds to the log line when the
  *   answer cannot be read.
- * @returns The snapshot stored, or null when the answer was not stored.
+ * @returns The snapshot stored with its first invoice's amount, or null when the answer was not stored.
  * @throws {Error} if the database fails.
  */
 async function storeAnswer(input: {
@@ -115,7 +121,7 @@ async function storeAnswer(input: {
   observedAt: Date;
   referenceId: string;
   logContext?: Record<string, unknown>;
-}): Promise<SubscriptionWrite | null> {
+}): Promise<StoredAnswer | null> {
   const read = readStripeSubscription(input.subscription, input.userId, input.observedAt);
   if (!read.ok) {
     logger.error(
@@ -129,8 +135,8 @@ async function storeAnswer(input: {
     );
     return null;
   }
-  await writeSnapshot(input.userId, read.write, input.referenceId, input.subscription.metadata);
-  return read.write;
+  await writeSnapshot(input.userId, read.write, input.referenceId, input.subscription.metadata, read.firstInvoiceAmountCents);
+  return { write: read.write, firstInvoiceAmountCents: read.firstInvoiceAmountCents };
 }
 
 /**
@@ -140,6 +146,7 @@ async function storeAnswer(input: {
  * @param write - The snapshot.
  * @param referenceId - Identifies the change in the tier ledger.
  * @param metadata - The Stripe subscription's metadata, holding the checkout snapshot.
+ * @param firstInvoiceAmountCents - What the first invoice charged before tax, for the start report.
  * @throws {Error} if the database fails.
  */
 async function writeSnapshot(
@@ -147,6 +154,7 @@ async function writeSnapshot(
   write: SubscriptionWrite,
   referenceId: string,
   metadata: Record<string, unknown>,
+  firstInvoiceAmountCents: number | null,
 ): Promise<void> {
   const applied = await db.transaction((tx) =>
     applySubscriptionWrite({ userId, write, referenceId, tx }),
@@ -154,7 +162,7 @@ async function writeSnapshot(
   // After the commit: an email about a change that then rolled back cannot be
   // recalled.
   if (applied.endedFrom) await sendMembershipEndedMail(userId, applied.endedFrom);
-  if (applied.started) reportSubscriptionStarted(write, metadata);
+  if (applied.started) reportSubscriptionStarted(write, metadata, firstInvoiceAmountCents);
 }
 
 /**
@@ -311,7 +319,7 @@ export async function startCheckout(input: {
  * stored `observedAt` keeps from winning.
  * @param userId - The account the buyer is signed in as.
  * @param sessionId - The Checkout Session the return address named.
- * @returns The subscription as stored.
+ * @returns The subscription as stored, with what its first invoice charged.
  * @throws {NotFoundError} if the session is not a membership checkout of this
  *   account's, or Stripe has no such session.
  * @throws {AppError} `503` if the session holds no subscription yet, or holds
@@ -322,7 +330,7 @@ export async function startCheckout(input: {
 export async function confirmCheckout(
   userId: string,
   sessionId: string,
-): Promise<SubscriptionWrite> {
+): Promise<StoredAnswer> {
   // Stamped before the call: the moment that decides which of two writers
   // holds the newer view is when each of them asked.
   const observedAt = new Date();
@@ -681,7 +689,7 @@ export async function changePlan(input: {
     // the old one, and nothing later contradicts it.
     throw new AppError(500, t("server.membership.change_unconfirmed"));
   }
-  const pending = stored.hasPendingUpdate;
+  const pending = stored.write.hasPendingUpdate;
 
   if (situation === "cancelling") {
     const withdrawnAt = new Date();
@@ -701,7 +709,7 @@ export async function changePlan(input: {
 
   return {
     status: pending ? "pendingPayment" : "applied",
-    payableInvoiceUrl: stored.payableInvoiceUrl,
+    payableInvoiceUrl: stored.write.payableInvoiceUrl,
   };
 }
 
