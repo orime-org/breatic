@@ -443,7 +443,11 @@ function reportUnit(store: MachineStore, capability: Identity, unit: Record<stri
  */
 async function writeCarrier(key: string, bytes: Uint8Array): Promise<{ receipt: { storageKey: string; sha256: string; sizeBytes: number; contentType: string }; etag: string }> {
   const sha256 = await digest(bytes);
-  const object = await env.BUCKET.put(key, bytes, { httpMetadata: { contentType: 'video/mp4' }, sha256 });
+  // A job writes its outputs as a multipart upload (`writeStreamedObject`), so R2 keeps no SHA-256 of its own for them.
+  const created = await env.BUCKET.createMultipartUpload(key, { httpMetadata: { contentType: 'video/mp4' } });
+  const part = await created.uploadPart(1, bytes);
+  const object = await created.complete([part]);
+  expect((await env.BUCKET.head(key))?.checksums.sha256).toBeUndefined();
   return { receipt: { storageKey: key, sha256, sizeBytes: bytes.byteLength, contentType: 'video/mp4' }, etag: object.etag };
 }
 

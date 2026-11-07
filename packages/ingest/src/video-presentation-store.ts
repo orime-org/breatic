@@ -460,6 +460,18 @@ export class VideoPresentationStore {
   }
 
   /**
+   * The SHA-256 of a stored object: R2's own checksum when the write supplied one, otherwise measured by reading it back.
+   * Job outputs and carriers are written without one (multipart or streamed puts).
+   * @param head - The object's head.
+   * @returns The lowercase hex digest.
+   * @throws {Error} When R2 fails.
+   */
+  private async storedSha256(head: R2Object): Promise<string> {
+    const stored = head.checksums.sha256;
+    return stored === undefined ? hashStoredObject(this.bucket, head.key) : [...new Uint8Array(stored)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  /**
    * Publish after a dispatched copy or a stitch (§5.1 step 4): the done unit's forwarded receipt must match the DO's own
    * measurement of the R2 object; the DO then assembles the bundle, computes its versionId and submits it as verified.
    * @param state - The state.
@@ -475,8 +487,9 @@ export class VideoPresentationStore {
     const receipt = job.receipts?.[unit]?.find((output) => output.role === 'carrier');
     if (job.chunks[unit]?.state !== 'done' || receipt === undefined) return false;
     const head = await this.bucket.head(receipt.storageKey);
-    const sha256 = head?.checksums.sha256 === undefined ? null : [...new Uint8Array(head.checksums.sha256)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
-    if (head === null || head.size !== receipt.sizeBytes || head.httpMetadata?.contentType !== receipt.contentType || sha256 !== receipt.sha256) return false;
+    if (head === null || head.size !== receipt.sizeBytes || head.httpMetadata?.contentType !== receipt.contentType) return false;
+    const sha256 = await this.storedSha256(head);
+    if (sha256 !== receipt.sha256) return false;
     const carrier = { storageKey: receipt.storageKey, url: this.objectURL(admission, receipt.storageKey), etag: head.etag, size: head.size, sha256, contentType: receipt.contentType };
     let bundle = await this.assembleVersion(job, facts, carrier);
     if (receipt.geometry !== undefined) {
@@ -587,10 +600,8 @@ export class VideoPresentationStore {
       if (receipt.storageKey !== (route === 'identity' ? admission.storageKey : copyCarrierKey(admission, 1))) return false;
       const head = await this.bucket.head(receipt.storageKey);
       if (head === null || head.size !== receipt.sizeBytes || head.httpMetadata?.contentType !== receipt.contentType) return false;
-      const stored = head.checksums.sha256 === undefined ? null : [...new Uint8Array(head.checksums.sha256)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
-      const written = job.carrierWrites?.[receipt.storageKey]?.measured;
-      // The source's hash is its registered fingerprint; a copy's is R2's checksum or the Worker's measurement of this same object.
-      const sha256 = route === 'identity' ? admission.sourceFingerprint : stored ?? (written?.etag === head.etag ? written.sha256 : null);
+      // The source's hash is its registered fingerprint; a copy's is measured from the stored object.
+      const sha256 = route === 'identity' ? admission.sourceFingerprint : await this.storedSha256(head);
       if (sha256 !== receipt.sha256) return false;
       const carrier = { storageKey: receipt.storageKey, url: this.objectURL(admission, receipt.storageKey), etag: head.etag, size: head.size, sha256, contentType: receipt.contentType };
       const bundle = await this.assembleVersion(job, facts, carrier);
