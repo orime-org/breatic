@@ -223,3 +223,30 @@ describe("original analysis task pickup", () => {
     expect(h.execute).not.toHaveBeenCalled(); expect(h.finish).not.toHaveBeenCalled();
   });
 });
+
+// Execution design §10.3: the tracked mask executor throws a typed failure naming its code and step, and the pickup stores
+// exactly that as the analysis error on the first attempt; a passed deadline is the timeout code.
+describe("tracked mask failures (execution design §10.3)", () => {
+  const STEPS = "@worker/handlers/mini-tool/model-run-steps.js";
+  /** The typed failure, loaded by name so the cases above run before it exists. @returns Its constructor. */
+  const failed = async (): Promise<new (failure: { code: string; step: string }) => Error> =>
+    ((await import(/* @vite-ignore */ STEPS)) as { TrackedMaskFailed: new (failure: { code: string; step: string }) => Error }).TrackedMaskFailed;
+
+  it.each([
+    [{ code: "empty_foreground", step: "join" }],
+    [{ code: "model_rejected", step: "track" }],
+    [{ code: "failed", step: "prepare" }],
+  ] as const)("TM01 stores %j as the analysis error without another attempt", async (failure) => {
+    const { original } = trackedFixture(); h.start.mockResolvedValue(original);
+    h.execute.mockRejectedValue(new (await failed())(failure));
+    expect(await runMiniToolAnalysisTask(job(), "token", h.execute)).toEqual({ failed: true, reason: failure.code });
+    expect(h.finish.mock.calls[0]?.[1]).toEqual({ kind: "error", error: failure, consumptionSet: "complete" });
+  });
+
+  it("TM02 a passed deadline ends a tracked mask analysis with the timeout code", async () => {
+    const { original } = trackedFixture(); h.start.mockResolvedValue(original);
+    h.execute.mockRejectedValue(new DeadlinePassed());
+    expect(await runMiniToolAnalysisTask(job(), "token", h.execute)).toEqual({ failed: true, reason: "timeout" });
+    expect(h.finish.mock.calls[0]?.[1]).toMatchObject({ kind: "error", error: { code: "timeout" } });
+  });
+});
