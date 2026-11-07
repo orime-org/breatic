@@ -206,7 +206,7 @@ function refusalOf(code: SizeCode): { ok: false; reason: 'full' | 'over_ceiling'
  * @returns The wire fields.
  */
 function imageNode(id: string): CanvasNodeFields {
-  return { id, type: 'image', position: { x: 40, y: 40 }, data: { name: id, createdAt: 9, createdBy: 'u1', attachments: [], content: URL_B } } as CanvasNodeFields;
+  return { id, type: 'image', position: { x: 40, y: 40 }, data: { name: id, createdAt: 9, createdBy: 'u1', locked: false, attachments: [], content: URL_B } } as CanvasNodeFields;
 }
 
 const ROW = { name: NAME, seed };
@@ -439,7 +439,7 @@ describe('section 3: add writes', () => {
       kind: 'add',
       run: () => addNode(PID, SID, {
         id: 't9', type: 'text', position: { x: 0, y: 0 },
-        data: { name: 't9', createdAt: 9, createdBy: 'u1', attachments: [], content: 'written words' },
+        data: { name: 't9', createdAt: 9, createdBy: 'u1', locked: false, attachments: [], content: 'written words' },
       } as CanvasNodeFields),
       written: (_result, doc) => expect(bodyToPlainText(dataOf(doc, 't9').get('body') as Y.XmlFragment)).toBe('written words'),
       refused: (_result, doc) => expect(doc.getMap('nodesMap').has('t9')).toBe(false),

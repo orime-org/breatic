@@ -3936,7 +3936,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
      * @returns The spies, restored by `vi.restoreAllMocks` between tests.
      */
     const spyWrites = (): {
-      removeElements: ReturnType<typeof vi.spyOn>;
+      removeElements: MockInstance<typeof canvasSpace.removeElements>;
       addNode: MockInstance<typeof canvasSpace.addNode>;
       createGroup: ReturnType<typeof vi.spyOn>;
     } => ({

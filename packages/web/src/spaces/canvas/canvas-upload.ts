@@ -3,14 +3,14 @@
 
 import { validFocusImages } from '@web/data/focus-images';
 import {
-  formatBytes,
   isUploadableMediaType,
   uploadableSpellings,
   uploadableFormatList,
   reduceMediaType,
 } from '@breatic/shared';
 import type { MiniToolUploadTag } from '@web/data/upload/ingest-upload';
-import type { SpaceRefusal, SpaceWriteResult } from '@web/data/yjs/space-write';
+import { docName } from '@web/data/yjs/manager';
+import { canAdd, type SpaceWriteResult } from '@web/data/yjs/space-write';
 import {
   runMediaUpload,
   runMediaUploadBatch,
@@ -257,7 +257,7 @@ export async function fillNodeFromFile(
   }
   try {
     const written = deps.setContent(nodeId, await deps.extractText(file));
-    if (written && !written.ok) marks.fail(deps.spaceId, nodeId, deps.markOp, textRefusalMark(written));
+    if (written && !written.ok) marks.fail(deps.spaceId, nodeId, deps.markOp, TEXT_REFUSAL_MARK);
     else marks.answer(deps.spaceId, nodeId, deps.markOp);
   } catch {
     marks.fail(deps.spaceId, nodeId, deps.markOp, { key: 'canvas.upload.extractionFailed', params: { filename: file.name } });
@@ -266,15 +266,9 @@ export async function fillNodeFromFile(
 
 /**
  * What a text node says when the words read from its file were not written
- * because the Space had no room for them (inner#1790).
- * @param refusal - Why the size cap refused the words.
- * @returns The message for the node's upload mark.
+ * because the Space could not take them (inner#1790, design 5.5).
  */
-export function textRefusalMark(refusal: SpaceRefusal): UploadMarkMessage {
-  return refusal.reason === 'no_room'
-    ? { key: 'spaces.size.textNoRoom', params: { room: formatBytes(refusal.room) } }
-    : { key: 'spaces.size.textFull' };
-}
+export const TEXT_REFUSAL_MARK: UploadMarkMessage = { key: 'spaces.sizeCap.text' };
 
 /**
  * What a node says when its upload ended before the server answered: the
@@ -344,7 +338,9 @@ export interface FillNodesDeps extends BatchUploadDeps {
  * (inner#1303 §6.5): a locked node is left out, every other node is
  * registered as busy before anything awaits, and each file's outcome goes to
  * the caller as a single fill's would. What a node ends up holding arrives
- * from the server through Yjs.
+ * from the server through Yjs, past the size gate, so a Space that filled
+ * after the result nodes were built sends nothing and each node's mark says
+ * why (inner#1790, design 5.5).
  * @param entries - Each node and the file it is filled with.
  * @param projectId - The project, which gates the tickets.
  * @param deps - The upload network and the canvas sinks.
@@ -363,6 +359,11 @@ export function fillNodesFromFiles(
     }
   }
   if (open.length === 0) return;
+  if (!canAdd(docName.canvasSpace(projectId, deps.spaceId))) {
+    const marks = useUploadMarksStore.getState();
+    for (const entry of open) marks.fail(deps.spaceId, entry.nodeId, entry.markOp, { key: 'spaces.sizeCap.reason' });
+    return;
+  }
   const work = runMediaUploadBatch(
     open.map((entry) => ({
       file: entry.file,

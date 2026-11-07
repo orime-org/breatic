@@ -7,6 +7,7 @@ import {
   type TimelineDocumentV1, type TimelineTrack, type TimelineVideoClip, type TimelineVideoSource,
 } from '@breatic/shared';
 
+import type { SpaceRefusal } from '@web/data/yjs/space-write';
 import { compareTimelineIds, orderedTimelineClips, orderedTimelineTracks } from '@web/data/yjs/timeline-order';
 import { timelineClipIntervalValid, timelineSourceOffset, timelineSourceOverflow } from '@web/data/yjs/timeline-time';
 
@@ -48,10 +49,11 @@ export type TimelineEditCommand = z.infer<typeof TimelineEditCommandSchema>;
 export type TimelineEditRefusal = 'target_missing' | 'track_missing' | 'invalid_range' | 'id_taken'
   | 'main_track' | 'track_not_empty' | 'source_unavailable' | 'missing_source' | 'covers_missing_source';
 
-/** The planned next document, or why the edit was refused. */
+/** The planned next document, or why the edit was refused: by the layout, or by the Space's size (inner#1790). */
 export type TimelineEditPlan =
   | { ok: true; next: TimelineDocumentV1; created: string[]; bumped: string[] }
-  | { ok: false; reason: TimelineEditRefusal };
+  | { ok: false; reason: TimelineEditRefusal }
+  | SpaceRefusal;
 
 /** Carries a refusal out of a nested planning step. */
 class Refused extends Error {

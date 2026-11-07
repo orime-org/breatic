@@ -16,20 +16,12 @@
  * id derived from it. Both survive a reload, so a card drawn again knows.
  */
 
-import { blockToNode } from '@blocknote/core';
-import { Fragment, Slice, type Node as ProseMirrorNode } from '@tiptap/pm/model';
-import type { Transaction } from '@tiptap/pm/state';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { occurrences, type DocumentProposal } from '@breatic/shared';
 
 import type { WriteAccess } from '@web/data/yjs/collab-socket';
 import { docNameOf } from '@web/data/yjs/manager';
-import {
-  estimateSliceBytes,
-  reserveSpaceRoom,
-  type SpaceRefusal,
-  type SpaceReservation,
-} from '@web/data/yjs/space-write';
-import { refusalOf, SPACE_WRITE_META, type SpaceWriteMeta } from '@web/features/collab-editor/space-size-gate';
+import { checkAdd, type SpaceRefusal } from '@web/data/yjs/space-write';
 import { BODY_HEADING_LEVELS } from '@web/spaces/document/document-block-type';
 import { blockPlainText } from '@web/spaces/document/document-blocks-read';
 import { commentOn, type CommentAim } from '@web/spaces/document/document-comment-post';
@@ -51,18 +43,16 @@ type LandingResult =
   | { outcome: 'refused'; refusal: SpaceRefusal };
 
 /**
- * Reserves room for what a press writes, quietly: the press reports a
- * refusal through its own outcome.
+ * Whether the Space can take what a press adds, asked quietly: the press
+ * reports a refusal through its own outcome (inner#1790, design 5.2).
  * @param handle - The document.
- * @param estimate - Bytes the press can add.
- * @returns The reservation, or the outcome to end with.
+ * @returns The outcome to end with, or null when the write may go.
  */
-function reserveFor(handle: Landable, estimate: number): { reservation?: SpaceReservation; refused?: LandingResult } {
-  const view = handle.editor.prosemirrorView;
-  const name = view === undefined || view === null ? null : docNameOf(handle.undoManager.doc);
-  if (name === null) return {};
-  const result = reserveSpaceRoom(name, estimate, { notify: false });
-  return result.ok ? { reservation: result.reservation } : { refused: { outcome: 'refused', refusal: result } };
+function refusedForSize(handle: Landable): LandingResult | null {
+  const name = docNameOf(handle.undoManager.doc);
+  if (name === null) return null;
+  const result = checkAdd(name, { notify: false });
+  return result.ok ? null : { outcome: 'refused', refusal: result };
 }
 
 /** Current lifecycle and connection permission, read synchronously at commit. */
@@ -337,7 +327,7 @@ async function prepareBlocks(proposal: DocumentProposal): Promise<{ blocks: Writ
 
 /**
  * Writes prepared output in the target's current context as one undo step,
- * on room reserved for it first.
+ * once the Space is known to take an add.
  * @param handle - The document.
  * @param proposal - The proposal.
  * @param blocks - Its prepared new blocks.
@@ -351,21 +341,13 @@ function landBlocks(handle: Landable, proposal: DocumentProposal, blocks: readon
   const doc = editor.prosemirrorState.doc;
   const written = proposalBlocks(blocks, doc, blockInTableCell(doc, targetId), proposal.proposalId);
   if (written.length === 0) return null;
-  const nodes = Fragment.from(written.map((block) => blockToNode(block as never, doc.type.schema)));
-  // A rewrite takes its block out as it puts the new ones in: only the
-  // difference needs room, and none when it shrinks (the filter then judges
-  // the write an overwrite).
-  const replaced = proposal.kind === 'rewrite' ? blockById(doc, targetId)?.node : undefined;
-  const needed = estimateSliceBytes(new Slice(nodes, 0, 0)) - (replaced === undefined ? 0 : estimateSliceBytes(new Slice(Fragment.from(replaced), 0, 0)));
-  const { reservation, refused } = needed > 0 ? reserveFor(handle, needed) : {};
-  if (refused !== undefined) return refused;
-  const meta: SpaceWriteMeta = { notify: false, ...(reservation !== undefined && { reservation }) };
-  let landing: Transaction | null = null;
+  // A rewrite or an insert writes new blocks: an add, asked before writing.
+  // Nothing between the answer and the write can change the size state.
+  const refused = refusedForSize(handle);
+  if (refused !== null) return refused;
   undoManager.stopCapturing();
   try {
-    editor.transact((tr) => {
-      landing = tr;
-      tr.setMeta(SPACE_WRITE_META, meta);
+    editor.transact(() => {
       if (proposal.kind === 'rewrite') {
         editor.replaceBlocks([targetId], written as never);
       } else if (proposal.blockId !== null) {
@@ -379,11 +361,8 @@ function landBlocks(handle: Landable, proposal: DocumentProposal, blocks: readon
     });
   } finally {
     undoManager.stopCapturing();
-    // A no-op once the write holds it.
-    reservation?.release();
   }
-  const refusal = landing === null ? undefined : refusalOf(landing);
-  return refusal === undefined ? null : { outcome: 'refused', refusal };
+  return null;
 }
 
 /**

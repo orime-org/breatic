@@ -66,6 +66,7 @@ import { toast } from '@web/lib/toast';
 
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import { docName } from '@web/data/yjs/manager';
+import { checkAdd } from '@web/data/yjs/space-write';
 import type { ResolveCollaboratorName } from '@web/features/collab-editor/caret-render';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import type { DocumentCommentAuthInput } from '@web/spaces/document/document-comment-auth';
@@ -213,6 +214,10 @@ function createDocumentEditor(
           toast.warning(t(key, params));
         },
         start: uploads.start,
+        // A pending block is an add, and its upload is a request whose
+        // result lands in the body: neither starts while the Space cannot
+        // take one (inner#1790, design 5.2).
+        canAdd: () => target === undefined || checkAdd(docName.documentSpace(target.projectId, target.spaceId)).ok,
       });
   if (uploads !== null) {
     // Fetched now so a paste can tell our media from outside links the moment

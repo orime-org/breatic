@@ -7,13 +7,12 @@ import type { Awareness } from 'y-protocols/awareness';
 
 import { SceneObjectSchema, type SceneObject } from '@breatic/shared';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
-import { readDocSize } from '@web/data/yjs/doc-size';
+import { nextHistoryStep } from '@web/data/yjs/history-step';
 import {
-  applySceneCommand, createSceneHistory, readSceneDocument, sceneSizeRefuses,
+  applySceneCommand, createSceneHistory, readSceneDocument,
   type SceneCommand, type SceneCommandResult, type SceneDocumentSnapshot, type ScenePatch,
 } from '@web/data/yjs/scene-document';
-import { spaceRefusalMessage } from '@web/data/yjs/space-write';
-import { toast } from '@web/lib/toast';
+import { writeSpaceDoc } from '@web/data/yjs/space-write';
 import { userPaletteColor } from '@web/lib/user-color';
 import type { WriteAccess } from '@web/data/yjs/use-socket';
 
@@ -330,7 +329,6 @@ export class SceneSession {
   execute(command: SceneCommand): SceneCommandResult {
     const result = applySceneCommand(this.doc, command, this.origin, this.snapshot.canEdit, this.name);
     this.commandError = result.ok ? null : result;
-    if (!result.ok) this.warnFull(result);
     if (result.ok && (command.type === 'create' || command.type === 'duplicate')) this.replaceSelection(result.ids);
     this.refresh();
     return result;
@@ -339,30 +337,15 @@ export class SceneSession {
   /**
    * Undo or redo one personal operation even when the object has become explicitly locked.
    * @param direction - Personal undo or redo operation to invoke.
-   * @returns The step's outcome; `full` leaves the history untouched.
+   * @returns The step's outcome; a size refusal (its toast shown once) leaves the history untouched.
    */
   historyStep(direction: 'undo' | 'redo'): SceneCommandResult {
     if (!this.snapshot.canEdit) return { ok: false, reason: 'readOnly' };
-    if (sceneSizeRefuses(this.name)) {
-      const refused = { ok: false, reason: 'full' } as const;
-      this.commandError = refused;
-      this.warnFull(refused);
-      this.refresh();
-      return refused;
-    }
     this.endGesture(false);
-    this.history[direction]();
+    const written = writeSpaceDoc(this.name, nextHistoryStep(this.history, direction), () => { this.history[direction](); });
+    this.commandError = written.ok ? null : written;
     this.refresh();
-    return { ok: true, ids: [] };
-  }
-
-  /**
-   * Warn once for a refusal of a full Space; a rebuild has shown its own warning.
-   * @param result - The refused outcome.
-   */
-  private warnFull(result: Extract<SceneCommandResult, { ok: false }>): void {
-    if (result.reason !== 'full' || readDocSize(this.name).phase === 'resyncing') return;
-    toast.warning(spaceRefusalMessage(this.name, 'add', { ok: false, reason: 'full' }));
+    return written.ok ? { ok: true, ids: [] } : written;
   }
 
   /** Detach all owned listeners once the manager releases this document. */

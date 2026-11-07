@@ -760,7 +760,7 @@ describe('useApplyTemplate', () => {
       expect(template).toBeDefined();
       if (!template) return;
       seed('target', 'video');
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(template, 'target', [SEEDANCE_T2V], place);
 
       const { proposal } = placed(place);
@@ -792,7 +792,7 @@ describe('useApplyTemplate', () => {
       seed('target', 'video');
       seed('photo', 'image', { name: 'Hero photo', content: 'https://cdn/photo.png' });
       wire('photo', 'target');
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(template, 'target', [SEEDANCE_I2V, ULTRA], place);
 
       const { proposal, existing } = placed(place);

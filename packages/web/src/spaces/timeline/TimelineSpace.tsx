@@ -7,7 +7,7 @@ import { ArrowRightToLine, Copy, Film, Link2, Magnet, Pause, Play, Plus, Redo2, 
 import { useQueryClient } from '@tanstack/react-query';
 import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineVideoClip } from '@breatic/shared';
 import { resolveTimelineArrangement, type TimelineArrangementReason } from '@web/data/yjs/timeline-arrangement';
-import { removeTimelineClip } from '@web/data/yjs/timeline-document';
+import { isTimelineSizeRefusal, removeTimelineClip } from '@web/data/yjs/timeline-document';
 import type { TimelineEditCommand, TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 import { activeTimelineClipAt } from '@web/data/yjs/timeline-layers';
 import { orderedTimelineClips } from '@web/data/yjs/timeline-order';
@@ -223,7 +223,8 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const commit = React.useCallback((command: TimelineEditCommand, options?: TimelineEditOptions): TimelineEditPlan | null => {
     if (readOnly) return null;
     const plan = editWithNotice(command, options);
-    if (!plan.ok) toast.warning(t(`timeline.errors.${plan.reason}`));
+    // A size refusal was told by its own toast.
+    if (!plan.ok && !isTimelineSizeRefusal(plan)) toast.warning(t(`timeline.errors.${plan.reason}`));
     return plan;
   }, [readOnly, editWithNotice, t]);
   const removeDamaged = React.useCallback((clipId: string): void => { if (!readOnly) removeTimelineClip(doc, clipId, session.origin); }, [readOnly, doc, session]);
@@ -250,8 +251,8 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     const clip = needSelection();
     if (clip !== null) commit({ operation: 'delete', parameters: { clipId: clip.id }, placement });
   }, [needSelection, commit, placement]);
-  const undo = React.useCallback((): void => { if (!readOnly) session.undo(); }, [readOnly, session]);
-  const redo = React.useCallback((): void => { if (!readOnly) session.redo(); }, [readOnly, session]);
+  const undo = React.useCallback((): void => { if (!readOnly) session.historyStep('undo'); }, [readOnly, session]);
+  const redo = React.useCallback((): void => { if (!readOnly) session.historyStep('redo'); }, [readOnly, session]);
   const toggleMagnet = React.useCallback((): void => prefs.set({ magnet: !prefs.magnet }), [prefs]);
   const toggleSnap = React.useCallback((): void => prefs.set({ snap: !prefs.snap }), [prefs]);
   const toggleLinkage = React.useCallback((): void => prefs.set({ linkage: !prefs.linkage }), [prefs]);

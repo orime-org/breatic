@@ -192,7 +192,6 @@ const INSIDE_GATEWAY: ReadonlyArray<readonly [string, readonly string[], string]
     "store.history.entries[k]()",
   ],
   ["L-11a", ["declare const body: unknown;"], "writePlainTextIntoBody(body, 'w')"],
-  ["L-11b", [], "applyTimelineEdit(doc, {}, null)"],
 ];
 
 const CASES = {
@@ -369,13 +368,13 @@ const CASES = {
       errors: [at(15, 1), at(16, 1), at(17, 1), at(18, 1), at(19, 1)],
     },
     {
-      name: "L-11 writePlainTextIntoBody and applyTimelineEdit",
+      name: "L-11 writePlainTextIntoBody; applyTimelineEdit checks the cap itself and is not reported",
       code: source(
         "declare const body: unknown;",
         "writePlainTextIntoBody(body, 'w');",
         "applyTimelineEdit(doc, {}, null);",
       ),
-      errors: [at(8, 1), at(9, 1)],
+      errors: [at(8, 1)],
     },
     {
       name: "L-12 a function passed to writeSpaceDoc by variable is not inside it",

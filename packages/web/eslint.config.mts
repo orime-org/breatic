@@ -377,36 +377,6 @@ export default [
         {
           exceptions: [
             {
-              file: 'src/data/yjs/timeline-document.ts',
-              function: 'removeTimelineClip',
-              reason: 'Temporary: written on main before the size cap; inner#1790 classifies it per the size-cap design (section 5.2) and removes this entry before the branch merges.',
-            },
-            {
-              file: 'src/data/yjs/timeline-document.ts',
-              function: 'applyTimelineEdit',
-              reason: 'Temporary: written on main before the size cap; inner#1790 classifies it per the size-cap design (section 5.2) and removes this entry before the branch merges.',
-            },
-            {
-              file: 'src/data/yjs/timeline-edit-session.ts',
-              function: 'repairAfterPop',
-              reason: 'Temporary: written on main before the size cap; inner#1790 classifies it per the size-cap design (section 5.2) and removes this entry before the branch merges.',
-            },
-            {
-              file: 'src/data/yjs/timeline-edit-session.ts',
-              function: 'createTimelineEditSession',
-              reason: 'Temporary: written on main before the size cap; inner#1790 classifies it per the size-cap design (section 5.2) and removes this entry before the branch merges.',
-            },
-            {
-              file: 'src/spaces/document/document-upload-controller.ts',
-              function: 'createUploadController',
-              reason: 'Temporary: written on main before the size cap; inner#1790 classifies it per the size-cap design (section 5.2) and removes this entry before the branch merges.',
-            },
-            {
-              file: 'src/spaces/timeline/TimelineSpace.tsx',
-              function: 'TimelineEditor',
-              reason: 'Temporary: written on main before the size cap; inner#1790 classifies it per the size-cap design (section 5.2) and removes this entry before the branch merges.',
-            },
-            {
               file: 'src/data/yjs/canvas-space.ts',
               function: 'writeSnapshotNodes',
               reason: 'Takes a Y.Doc and writes both scratch documents and real Spaces; the real caller checks in its runCanvasUndoBatch.',
@@ -420,16 +390,6 @@ export default [
               file: 'src/spaces/canvas/generate/proposal-prompt.ts',
               function: 'writeProposalPrompt',
               reason: 'Only called inside the placeProposalAt batch.',
-            },
-            {
-              file: 'src/data/yjs/scene-document.ts',
-              function: 'applySceneCommand',
-              reason: '3D checks the size state in planSceneCommand and returns full.',
-            },
-            {
-              file: 'src/data/yjs/scene-session.ts',
-              function: 'historyStep',
-              reason: 'historyStep reads the size state and returns SceneCommandFailure full before stepping.',
             },
           ],
         },

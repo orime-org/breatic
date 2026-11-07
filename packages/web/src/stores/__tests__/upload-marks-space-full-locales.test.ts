@@ -42,12 +42,6 @@ function placeholders(message: string): string[] {
 
 const MESSAGES = [
   {
-    name: 'no_room',
-    en: 'Text not added: this doesn\'t fit — the Space has {room} left.',
-    zhCN: '文字没有写入：放不下，这个 Space 只剩 {room}。',
-    args: ['room'],
-  },
-  {
     name: 'full',
     en: 'Text not added: this Space is full.',
     zhCN: '文字没有写入：这个 Space 已满。',

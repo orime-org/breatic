@@ -73,7 +73,7 @@ import { documentSafariImeExtension } from '@web/spaces/document/document-safari
 import { documentTrailingPressExtension } from '@web/spaces/document/document-trailing-press';
 import { documentLinkEditMarkExtension } from '@web/spaces/document/document-link-edit-mark';
 import { documentDragDropExtension } from '@web/spaces/document/document-drag-drop';
-import { documentCommentMarkExtension } from '@web/spaces/document/document-comment-mark';
+import { documentCommentLiveMarkExtension, documentCommentMarkExtension } from '@web/spaces/document/document-comment-mark';
 import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';
 import {
   documentCommentsExtension,
@@ -211,6 +211,7 @@ export function buildDocumentEditor(
       // answered before the library's own handler takes the first of them.
       documentCommentSelection(),
       commentWiring(options.comments),
+      ...(options.comments === undefined ? [] : [documentCommentLiveMarkExtension(options.comments.doc)]),
       documentCommentPasteExtension(),
       documentCommentDraftRange(),
       documentFileDropExtension(options.onFiles),

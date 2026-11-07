@@ -338,6 +338,16 @@ export type BlockInput = Record<string, unknown>;
 export type BodyEditor = ReturnType<typeof buildDocumentEditor>;
 
 /** The open document body. */
+/**
+ * The ids of a body's top-level blocks; the body editor is typed without a
+ * block schema, so its blocks are read as plain records.
+ * @param editor - The body editor.
+ * @returns The ids, in order.
+ */
+export function topBlockIds(editor: BodyEditor): string[] {
+  return (editor.document as ReadonlyArray<{ id: string }>).map((block) => block.id);
+}
+
 export interface OpenBody {
   readonly handle: DocumentEditorHandle;
   readonly editor: BodyEditor;
@@ -426,7 +436,7 @@ export function openBody(blocks: BlockInput[]): OpenBody {
   // The body acts on copy, cut and paste only while it holds the focus.
   body.view.dom.focus();
   expectNoTextMappings(body.view, body.syncKey);
-  return { ...body, ids: body.editor.document.map((block) => block.id) };
+  return { ...body, ids: topBlockIds(body.editor) };
 }
 
 /** A block simplified to `[type, text]` or `[type, text, children]` (template X item 2). */

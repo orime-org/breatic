@@ -98,9 +98,9 @@ type HistoryCommand = () => (props: CommandProps) => boolean;
 
 /**
  * The collaboration extension with its `undo` and `redo` judged against the
- * Space's size (inner#1790): restoring deleted content is an add and stops at
- * a full Space. Its `Mod-z`, `Mod-y` and `Shift-Mod-z` bindings call these
- * commands by name, so they are gated too.
+ * Space's size (inner#1790): what the step writes decides whether a full
+ * Space lets it through. Its `Mod-z`, `Mod-y` and `Shift-Mod-z` bindings call
+ * these commands by name, so they are gated too.
  */
 const SizedCollaboration = Collaboration.extend({
   addCommands() {
@@ -154,8 +154,9 @@ export function buildCollabExtensions(
       fragment,
       ...(undoManager ? { yUndoOptions: { undoManager } } : {}),
     }),
-    // Every local edit is judged against the Space's size before it reaches
-    // the state, so the sync plugin never writes a refused one (inner#1790).
+    // While the Space is full every local edit is stopped before it reaches
+    // the state, so the sync plugin never writes it; deletions are written
+    // by the delete executor instead (inner#1790).
     sizeFilterExtension(fragment),
     // Undo must restore the selection the edit started from. Upstream emits its
     // stack-item-popped hand-off AFTER the restore transaction has run, so the

@@ -32,10 +32,8 @@ import {
   editAnnotationBody,
   editReply,
   removeReply,
-  annotationEditWrite,
   runCanvasUndoBatch,
 } from '@web/data/yjs/canvas-space';
-import { estimateNodeBytes } from '@web/data/yjs/space-write';
 import type { AnnotationNodeView } from '@web/data/yjs/node-view';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
@@ -167,16 +165,13 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
   );
 
   // Judged here as one batch so a Space without room keeps the box and its
-  // words open (the size cap says why) rather than reading as a note gone; a
-  // rewrite is judged by what it adds over the words it replaces.
+  // words open (the size cap says why) rather than reading as a note gone.
+  // A reply and a rewrite are both words the user wrote: an add.
   const write = React.useCallback(
     (at: DraftTarget, use: DraftState['use'], text: string): boolean | 'refused' => {
       const now = Date.now();
       let wrote = false;
-      const options = use === 'reply'
-        ? { kind: 'add' as const, estimate: estimateNodeBytes(text) }
-        : annotationEditWrite(projectId, spaceId, nodeId, at?.kind === 'reply' ? at.id : null, text, now);
-      const written = runCanvasUndoBatch(projectId, spaceId, options, () => {
+      const written = runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => {
         if (use === 'reply') {
           wrote = addReply(projectId, spaceId, nodeId, {
             id: newId(),

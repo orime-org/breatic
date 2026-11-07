@@ -26,8 +26,6 @@ import {
 } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
-import { docName } from '@web/data/yjs/manager';
-import { estimateNodeBytes, writeSpaceDoc } from '@web/data/yjs/space-write';
 import { formatBytes } from '@web/lib/format-bytes';
 import { toast } from '@web/lib/toast';
 import { runOnce, spaceTaskIntent, useRunning, type RunOnceOutcome } from '@web/stores/task-actions-in-flight';
@@ -278,16 +276,10 @@ function buildReadingRun(
   const edge = { id: `${source.id}->${node.id}`, source: source.id, target: node.id };
   // The node and its edge are one add for the size cap, judged before the
   // paid request: a Space without room for them gets no run and no charge.
-  const placed = writeSpaceDoc(
-    docName.canvasSpace(projectId, spaceId),
-    { kind: 'add', estimate: estimateNodeBytes(node) + estimateNodeBytes(edge) },
-    () => {
-      runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => {
-        addNode(projectId, spaceId, node);
-        wired = addEdge(projectId, spaceId, edge);
-      });
-    },
-  );
+  const placed = runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => {
+    addNode(projectId, spaceId, node);
+    wired = addEdge(projectId, spaceId, edge);
+  });
   if (!placed.ok) return null;
   // `addEdge` refuses an edge whose endpoint is gone and hands that back: the
   // node being read can be deleted by a collaborator while this menu stands

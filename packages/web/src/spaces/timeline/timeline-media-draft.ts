@@ -9,6 +9,9 @@ import type { TimelineEditCommand, TimelineEditPlacement, TimelineEditPlan } fro
 import { timelineApi } from '@web/data/api/timeline';
 import { uploadMedia } from '@web/data/upload/media-upload';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
+import { docName } from '@web/data/yjs/manager';
+import { checkAdd } from '@web/data/yjs/space-write';
+import type { TimelineEditOptions } from '@web/data/yjs/timeline-edit-session';
 import { parseTimelineFrame } from '@web/data/yjs/timeline-time';
 import { prepareTimelineMediaPlacement } from '@web/spaces/timeline/prepare-media-placement';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
@@ -30,7 +33,7 @@ export interface TimelineMediaDraftSnapshot {
 }
 
 /** The Project resource context fixed for this document's material workflow. */
-interface TimelineMediaDraftInputs { projectId: string; spaceId: string; queryClient: QueryClient; edit: (command: TimelineEditCommand) => TimelineEditPlan }
+interface TimelineMediaDraftInputs { projectId: string; spaceId: string; queryClient: QueryClient; edit: (command: TimelineEditCommand, options?: TimelineEditOptions) => TimelineEditPlan }
 
 /** The one writer of material selection, upload and acceptance state. */
 export interface TimelineMediaDraft {
@@ -208,6 +211,10 @@ function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs):
       const startFrame = parseTimelineFrame(captured.startFrame);
       if (!Number.isSafeInteger(startFrame)) { publish({ errorKey: 'invalid_range' }); return; }
       if ((captured.mode === 'project' && captured.selected === null) || (captured.mode === 'local' && captured.file === null)) { publish({ errorKey: 'source_unavailable' }); return; }
+      // The video is written into the Space only after the server answers, so a full Space asks nothing and the
+      // dialog says why (inner#1790); a Space being rebuilt says nothing, its own toast did.
+      const room = checkAdd(docName.timelineSpace(inputs.projectId, inputs.spaceId), { notify: false });
+      if (!room.ok) { publish({ errorKey: room.reason === 'resyncing' ? null : room.reason }); return; }
       const operationId = newId();
       const operations = useSpaceOperationsStore.getState();
       let released = false;
@@ -247,8 +254,9 @@ function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs):
         const target = captured.trackId === 'new' ? { trackId: TIMELINE_MAIN_TRACK_ID, newTrackId: newId() } : { trackId: captured.trackId };
         const prepared = prepareTimelineMediaPlacement(doc, { asset, startFrame, clipId, sourceId, canWrite, placement, ...target, ...(decodedDurationSeconds === undefined ? {} : { decodedDurationSeconds }) });
         if (!prepared.ok) { publish({ errorKey: prepared.reason }); return; }
-        const applied = inputs.edit(prepared.command);
-        if (!applied.ok) { publish({ errorKey: applied.reason }); return; }
+        // The dialog shows a size refusal itself.
+        const applied = inputs.edit(prepared.command, { notify: false });
+        if (!applied.ok) { publish({ errorKey: applied.reason === 'resyncing' ? null : applied.reason }); return; }
         close();
       } catch {
         if (active === attempt && !controller.signal.aborted) publish({ errorKey: failure });

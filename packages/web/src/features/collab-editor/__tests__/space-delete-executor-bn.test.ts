@@ -61,6 +61,7 @@ import {
   type Capture,
   type OpenBody,
   type Row,
+  topBlockIds,
   type SizeCode,
 } from '@web/features/collab-editor/__tests__/helpers/space-editor-harness';
 
@@ -133,7 +134,7 @@ function selectAllAndDelete(body: OpenBody): number {
  * @returns The position before the block.
  */
 function sideMenuDelete(body: OpenBody, index: number): number {
-  const id = body.editor.document[index].id;
+  const id = topBlockIds(body.editor)[index];
   const at = nodesOf(body.view.state.doc, 'blockContainer').find((pos) => body.view.state.doc.nodeAt(pos)!.attrs['id'] === id)!;
   deleteRow(body.editor, id);
   return at;
@@ -316,17 +317,17 @@ describe('11. the delete executor on the document body, accepted cases', () => {
   it.each(['F', 'O'] as const)('X-05: in %s, the side menu deleting the only block empties it and keeps its id', async (code) => {
     const ran = await run([p('only')], code, (body) => sideMenuDelete(body, 0));
     expectAccepted(ran, { result: [['paragraph', '']], shape: 'R', outside: [] });
-    expect(ran.body.editor.document[0].id).toBe(ran.body.ids[0]);
+    expect(topBlockIds(ran.body.editor)[0]).toBe(ran.body.ids[0]);
     await expectUndoRestores(ran.body, ran.before);
   });
 
   it.each((['F', 'O'] as const).flatMap((code) => [
     { code, how: 'Mod-a then Backspace', op: selectAllAndDelete },
-    { code, how: 'removeBlocks on every block', op: (body: OpenBody) => { body.editor.removeBlocks(body.editor.document.map((block) => block.id)); return 1; } },
+    { code, how: 'removeBlocks on every block', op: (body: OpenBody): number => { body.editor.removeBlocks(topBlockIds(body.editor)); return 1; } },
   ]))('X-06: in $code, $how keeps the first block, emptied, with its id', async ({ code, op }) => {
     const ran = await run([p('one'), p('two'), p('three')], code, op);
     expectAccepted(ran, { result: [['paragraph', '']], shape: 'R', outside: [] });
-    expect(ran.body.editor.document[0].id).toBe(ran.body.ids[0]);
+    expect(topBlockIds(ran.body.editor)[0]).toBe(ran.body.ids[0]);
     await expectUndoRestores(ran.body, ran.before);
   });
 

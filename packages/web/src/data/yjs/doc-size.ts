@@ -112,23 +112,33 @@ export function readDocSize(name: string): DocSizeState {
 }
 
 /**
+ * Call back whenever a document's size changes, outside React (the document
+ * upload controller rescans its bodies when a Space leaves `full`).
+ * @param name - Canonical document name.
+ * @param listener - Called on every change.
+ * @returns What stops listening.
+ */
+export function subscribeDocSize(name: string, listener: () => void): () => void {
+  let set = listeners.get(name);
+  if (!set) {
+    set = new Set();
+    listeners.set(name, set);
+  }
+  const held = set;
+  held.add(listener);
+  return (): void => {
+    held.delete(listener);
+    if (held.size === 0 && listeners.get(name) === held) listeners.delete(name);
+  };
+}
+
+/**
  * Follow a document's size.
  * @param name - Canonical document name.
  * @returns The state, updated on every change.
  */
 export function useDocSize(name: string): DocSizeState {
-  const subscribe = React.useCallback((listener: () => void): (() => void) => {
-    let set = listeners.get(name);
-    if (!set) {
-      set = new Set();
-      listeners.set(name, set);
-    }
-    set.add(listener);
-    return (): void => {
-      set.delete(listener);
-      if (set.size === 0) listeners.delete(name);
-    };
-  }, [name]);
+  const subscribe = React.useCallback((listener: () => void): (() => void) => subscribeDocSize(name, listener), [name]);
   const read = React.useCallback((): DocSizeState => readDocSize(name), [name]);
   return React.useSyncExternalStore(subscribe, read);
 }

@@ -9,7 +9,7 @@ import {
   type SceneEditableField, type SceneModel, type SceneObject, type SceneObjectValues,
 } from '@breatic/shared';
 
-import { readDocSize } from '@web/data/yjs/doc-size';
+import { strongestKind, writeSpaceDoc, type SpaceRefusalReason, type SpaceWriteKind } from '@web/data/yjs/space-write';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 
 const PATCH_SCHEMA = SceneObjectValuesSchema.pick({ name: true, position: true, rotation: true, scale: true })
@@ -23,8 +23,8 @@ export type SceneCommand =
   | { type: 'lock'; ids: readonly string[]; locked: boolean }
   | { type: 'duplicate'; copies: readonly { sourceId: string; id: string }[] };
 
-/** `full`: the Space is at its size cap, or being rebuilt after collab refused an update (inner#1790). */
-export type SceneCommandFailure = 'readOnly' | 'unsupported' | 'invalid' | 'locked' | 'missing' | 'duplicate' | 'full';
+/** A size reason: the Space's size refused the write (inner#1790), and `writeSpaceDoc` said so. */
+export type SceneCommandFailure = 'readOnly' | 'unsupported' | 'invalid' | 'locked' | 'missing' | 'duplicate' | SpaceRefusalReason;
 export type SceneCommandResult = { ok: true; ids: readonly string[] } | { ok: false; reason: SceneCommandFailure };
 
 export interface SceneDocumentSnapshot {
@@ -35,9 +35,20 @@ export interface SceneDocumentSnapshot {
 }
 
 interface SceneWrite { id: string; field: SceneEditableField; value: unknown }
+interface SceneUnset { id: string; field: SceneEditableField }
 interface SceneCreation { id: string; values: SceneObjectValues }
-type ScenePlan = { ok: true; ids: readonly string[]; creates: SceneCreation[]; writes: SceneWrite[]; deletes: string[] }
+/** `unsets` delete a key whose absence reads as its default (an unlock deletes `locked`). */
+type ScenePlan = { ok: true; ids: readonly string[]; creates: SceneCreation[]; writes: SceneWrite[]; unsets: SceneUnset[]; deletes: string[] }
   | { ok: false; reason: SceneCommandFailure };
+
+/**
+ * Whether a refusal is the Space's size, which its own toast reported.
+ * @param reason - The refusal.
+ * @returns True for `full`, `over_ceiling` and `resyncing`.
+ */
+export function isSceneSizeRefusal(reason: SceneCommandFailure): reason is SpaceRefusalReason {
+  return reason === 'full' || reason === 'over_ceiling' || reason === 'resyncing';
+}
 
 /**
  * Values read for an editable key that has no live value. Two members writing
@@ -141,33 +152,20 @@ export function createSceneHistory(doc: Y.Doc, origin: symbol): Y.UndoManager {
 }
 
 /**
- * Whether the Space's size stops every 3D write. 3D only adds until inner#1875
- * lands, so a full Space refuses every command, and a rebuilding one too; an
- * unknown size allows.
- * @param name - Canonical document name.
- * @returns True when writes are refused.
- */
-export function sceneSizeRefuses(name: string): boolean {
-  const { phase } = readDocSize(name);
-  return phase === 'full' || phase === 'resyncing';
-}
-
-/**
  * Plan one command from current committed content and the caller's current permission.
  * @param doc - Live collaborative scene document.
- * @param name - Its canonical document name, whose size state is read.
+ * @param _name - Its canonical document name; the size is judged when the plan is written.
  * @param command - User operation to validate against current committed scene data.
  * @param canEdit - Current write permission derived from role and connection facts.
  * @returns Record creations, field overwrites and deletions, or the typed refusal.
  */
-export function planSceneCommand(doc: Y.Doc, name: string, command: SceneCommand, canEdit: boolean): ScenePlan {
+export function planSceneCommand(doc: Y.Doc, _name: string, command: SceneCommand, canEdit: boolean): ScenePlan {
   if (!canEdit) return { ok: false, reason: 'readOnly' };
-  if (sceneSizeRefuses(name)) return { ok: false, reason: 'full' };
   const scene = readSceneDocument(doc);
   if (scene.status !== 'ready') return { ok: false, reason: 'unsupported' };
   const byId = new Map(scene.objects.map((object) => [object.id, object]));
   const invalidIds = new Set(scene.invalidObjects.map((object) => object.id));
-  const plan: Extract<ScenePlan, { ok: true }> = { ok: true, ids: [], creates: [], writes: [], deletes: [] };
+  const plan: Extract<ScenePlan, { ok: true }> = { ok: true, ids: [], creates: [], writes: [], unsets: [], deletes: [] };
 
   if (command.type === 'create' || command.type === 'duplicate') {
     const requested = command.type === 'create' ? command.objects.map((object) => object.id) : command.copies.map((copy) => copy.id);
@@ -216,28 +214,42 @@ export function planSceneCommand(doc: Y.Doc, name: string, command: SceneCommand
   } else plan.deletes.push(...ids);
   plan.ids = ids;
   plan.writes = plan.writes.filter((write) => JSON.stringify(byId.get(write.id)?.[write.field]) !== JSON.stringify(write.value));
+  // Unlocked is the default a missing key reads as, so an unlock deletes the key: a whole map entry (inner#1790).
+  plan.unsets = plan.writes.filter((write) => write.field === 'locked' && write.value === false).map(({ id, field }) => ({ id, field }));
+  plan.writes = plan.writes.filter((write) => !(write.field === 'locked' && write.value === false));
   return plan;
 }
 
 /**
- * Apply a validated command in one local transaction, which is one personal undo item.
+ * What a plan writes in Yjs: new records `add`, field values `edit`, deleted keys and records `remove`.
+ * @param plan - The accepted plan.
+ * @returns The strongest of them.
+ */
+function planKind(plan: Extract<ScenePlan, { ok: true }>): SpaceWriteKind {
+  return strongestKind(...(plan.creates.length > 0 ? ['add' as const] : []), ...(plan.writes.length > 0 ? ['edit' as const] : []));
+}
+
+/**
+ * Apply a validated command in one local transaction, which is one personal undo item, if the Space's size allows
+ * what it writes; a size refusal shows its toast once.
  * @param doc - Live collaborative scene document.
  * @param command - User operation to validate against current committed scene data.
  * @param origin - Origin tracked only by this local command history.
  * @param canEdit - Current write permission derived from role and connection facts.
- * @param name - Its canonical document name, whose size `planSceneCommand` reads.
+ * @param name - Its canonical document name, whose size gates the write.
  * @returns Affected object identities or the command refusal.
  */
 export function applySceneCommand(doc: Y.Doc, command: SceneCommand, origin: symbol, canEdit: boolean, name: string): SceneCommandResult {
   const plan = planSceneCommand(doc, name, command, canEdit);
   if (!plan.ok) return plan;
   const objects = doc.getMap<unknown>('objects');
-  doc.transact(() => {
+  const written = writeSpaceDoc(name, { kind: planKind(plan) }, () => doc.transact(() => {
     for (const creation of plan.creates) {
       objects.set(creation.id, new Y.Map<unknown>(Object.entries(creation.values)));
     }
     for (const write of plan.writes) (objects.get(write.id) as Y.Map<unknown>).set(write.field, write.value);
+    for (const unset of plan.unsets) (objects.get(unset.id) as Y.Map<unknown>).delete(unset.field);
     for (const id of plan.deletes) objects.delete(id);
-  }, origin);
-  return { ok: true, ids: plan.ids };
+  }, origin));
+  return written.ok ? { ok: true, ids: plan.ids } : written;
 }

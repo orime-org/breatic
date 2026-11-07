@@ -223,12 +223,12 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(readNodes(doc())[0].data).toMatchObject({ name: 'Hero shot' });
   });
 
-  it('setNodeLocked writes the lock flag into the node data Y.Map', () => {
+  it('setNodeLocked writes the lock flag into the node data Y.Map, and unlocking deletes the key (inner#1790)', () => {
     addNode(PID, SID, sampleFields('image', { content: 'x', locked: false }));
     setNodeLocked(PID, SID, 'n1', true);
     expect(readNodes(doc())[0].data).toMatchObject({ locked: true });
     setNodeLocked(PID, SID, 'n1', false);
-    expect(readNodes(doc())[0].data).toMatchObject({ locked: false });
+    expect(readNodes(doc())[0].data.locked).toBeUndefined();
   });
 
   it('addEdge / removeEdge round-trip under the edgesMap', () => {
@@ -940,7 +940,7 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       const depth = undo.undoStack.length;
       // onNodeDragStop dragging m2 out of the Group fires a position write AND a
       // setNodeParent(null) detach — batching makes the gesture ONE atomic undo step.
-      runCanvasUndoBatch(PID, SID, { kind: 'overwrite' }, () => {
+      runCanvasUndoBatch(PID, SID, { kind: 'edit' }, () => {
         setNodeParent(PID, SID, 'm2', null, { x: 9999, y: 9999 });
       });
       const m2 = doc().getMap('nodesMap').get('m2') as Y.Map<unknown>;
@@ -957,7 +957,7 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       addNode(PID, SID, sampleFields('image', {}, { id: 'b', position: { x: 50, y: 50 } }));
       const undo = createCanvasUndoManager(doc());
       const depth = undo.undoStack.length;
-      runCanvasUndoBatch(PID, SID, { kind: 'overwrite' }, () => {
+      runCanvasUndoBatch(PID, SID, { kind: 'edit' }, () => {
         setNodePosition(PID, SID, 'a', { x: 10, y: 10 }, null);
         setNodePosition(PID, SID, 'b', { x: 60, y: 60 }, null);
       });

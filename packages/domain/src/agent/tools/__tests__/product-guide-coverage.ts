@@ -55,11 +55,6 @@ interface Excluded {
 /** Every message the guide does not quote, and what the guide does with it. */
 export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.create.notAvailable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
-  "spaces.size.warning": { described: /a notice at the top of the space says how much of its limit it is using/ },
-  "spaces.size.fullNotice": { described: /once it is full the notice says so and that deleting some content makes room/ },
-  "spaces.size.noRoom": { described: /When something does not fit the room that is left, the message says how much room is left/ },
-  "spaces.size.proposalNoRoom": { described: /an Agent proposal that does not fit says it was not placed/ },
-  "spaces.size.textNoRoom": { described: /text read from a dropped file is not added/ },
   "timeline.loading": { excluded: REASONS.PASSING },
   "timeline.unavailable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "timeline.incompatible": { excluded: REASONS.SAYS_WHAT_HAPPENED },
@@ -84,6 +79,11 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "timeline.material.fileEmpty": { excluded: REASONS.SAYS_WHAT_TO_PICK },
   "timeline.material.preparing": { excluded: REASONS.PASSING },
   "timeline.material.progress": { excluded: REASONS.PASSING },
+  "spaces.sizeCap.noticeWarning": { described: /a notice at the top of the space says how much it is using and that past the limit no more content can be added/ },
+  "spaces.sizeCap.noticeFull": { described: /Once it is full the notice says so, and only deleting works until it is back under the limit/ },
+  "spaces.sizeCap.noticeOver": { described: /the notice says it is over its limit and only deleting a whole node or a whole passage works/ },
+  "timeline.errors.full": { described: /Adding media to a timeline or importing a 3D model shows the same sentence inside its dialog/ },
+  "timeline.errors.over_ceiling": { described: /Adding media to a timeline or importing a 3D model shows the same sentence inside its dialog/ },
   "timeline.errors.readonly": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "timeline.errors.source_unavailable": { excluded: REASONS.SAYS_TRY_AGAIN },
   "timeline.errors.metadata_unavailable": { excluded: REASONS.SAYS_TRY_AGAIN },

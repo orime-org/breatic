@@ -3215,7 +3215,9 @@
       "track_missing": "目標軌道已被移除，請選擇其他軌道。",
       "id_taken": "此項目已存在，請重試。",
       "main_track": "主軌無法刪除。",
-      "track_not_empty": "只能刪除空軌道。"
+      "track_not_empty": "只能刪除空軌道。",
+      "full": "這個 Space 已滿，刪除一些內容後才能繼續編輯。",
+      "over_ceiling": "這個 Space 已超出上限，請刪除整個節點或整段內容。"
     },
     "mainTrack": "主軌",
     "track": "畫面 {index}",

@@ -25,6 +25,8 @@ export type PendingStatus =
   | { readonly kind: 'waitingDemoted' }
   /** This page has the result and the server refused it. */
   | { readonly kind: 'waitingRefused' }
+  /** This page has the result and the Space is full (inner#1790). */
+  | { readonly kind: 'waitingFull' }
   /** Another client claims it as uploading. */
   | { readonly kind: 'peerUploading' }
   /** Another client claims it as failed. */
@@ -42,6 +44,8 @@ export interface PendingFacts {
   readonly refused: boolean;
   /** What other clients claim. */
   readonly claim: UploadClaim | null;
+  /** Whether the Space is full or over its ceiling, outside a rebuild. */
+  readonly full?: boolean;
 }
 
 /**
@@ -56,6 +60,7 @@ export function pendingStatus(facts: PendingFacts): PendingStatus {
     if (entry.phase === 'done' && facts.access === 'denied') {
       return facts.refused ? { kind: 'waitingRefused' } : { kind: 'waitingDemoted' };
     }
+    if (entry.phase === 'done' && facts.full === true) return { kind: 'waitingFull' };
     return { kind: 'uploading', progress: entry.phase === 'uploading' ? entry.progress : null };
   }
   if (facts.claim === 'uploading') return { kind: 'peerUploading' };

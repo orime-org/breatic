@@ -31,12 +31,7 @@ import type { TypedNodeView } from '@web/data/yjs/node-view';
 import { toNodeView } from '@web/data/yjs/node-view';
 import { fillNestedData, splitSnapshot } from '@web/data/yjs/node-data-snapshot';
 import {
-  encodedValueBytes,
-  estimateNodeBytes,
-  estimateTextBodyBytes,
-  replacementJudgement,
   writeSpaceDoc,
-  type SpaceReservation,
   type SpaceWriteKind,
   type SpaceWriteOptions,
   type SpaceWriteResult,
@@ -329,8 +324,8 @@ export function _resetCanvasUndoCacheForTests(): void {
  * `joinStep` — any other write in between leaves a different step on top.
  *
  * The size cap judges the batch once, as a whole (inner#1790): the caller
- * states the strongest kind among its writes and their summed estimate, and
- * the writes inside run without being judged again.
+ * states the strongest kind among its writes (`strongestKind`), and the
+ * writes inside run without being judged again.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space whose doc to mutate.
  * @param options - How the size cap judges the whole batch, plus `joinStep`
@@ -380,67 +375,18 @@ export interface CanvasBatchOptions extends SpaceWriteOptions {
 }
 
 /**
- * The options one canvas write is judged with (inner#1790).
+ * The document name and options one canvas write is judged with (inner#1790).
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space the write goes to.
- * @param kind - What the write does to the document's size.
- * @param added - For an add, what it writes, estimated with `estimateNodeBytes`.
+ * @param kind - What the write produces in Yjs (design 5.2).
  * @returns The document name and the options for `writeSpaceDoc`.
  */
-export function canvasWrite(
+function canvasWrite(
   projectId: string,
   spaceId: string,
   kind: SpaceWriteKind,
-  added?: unknown,
 ): { name: string; options: SpaceWriteOptions } {
-  const name = docName.canvasSpace(projectId, spaceId);
-  const estimate = kind === 'add' && added !== undefined ? estimateNodeBytes(added) : undefined;
-  return { name, options: estimate === undefined ? { kind } : { kind, estimate } };
-}
-
-/**
- * The options for a write that sets keys of one map, judged by what it adds
- * over the values it replaces (`replacementJudgement`).
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space the write goes to.
- * @param map - The map whose keys are set.
- * @param next - The keys and the values they get.
- * @returns The document name and the options for `writeSpaceDoc`.
- */
-function replacementWrite(
-  projectId: string,
-  spaceId: string,
-  map: Y.Map<unknown>,
-  next: Readonly<Record<string, unknown>>,
-): { name: string; options: SpaceWriteOptions } {
-  let current = 0;
-  let written = 0;
-  for (const [key, value] of Object.entries(next)) {
-    const held = map.get(key);
-    current += encodedValueBytes(held);
-    // A key that holds nothing yet is written with its name.
-    written += encodedValueBytes(value) + (held === undefined && value !== undefined ? encodedValueBytes(key) : 0);
-  }
-  return { name: docName.canvasSpace(projectId, spaceId), options: replacementJudgement(current, written) };
-}
-
-/**
- * The options for setting fields of a node's data, judged as
- * {@link replacementWrite} judges them.
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space containing the node.
- * @param nodeId - The node.
- * @param next - The fields and the values they get.
- * @returns The options; a delete, which writes nothing, when the node is gone.
- */
-export function nodeFieldsWrite(
-  projectId: string,
-  spaceId: string,
-  nodeId: string,
-  next: Readonly<Record<string, unknown>>,
-): SpaceWriteOptions {
-  const data = nodeDataMap(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId);
-  return data ? replacementWrite(projectId, spaceId, data, next).options : { kind: 'delete' };
+  return { name: docName.canvasSpace(projectId, spaceId), options: { kind } };
 }
 
 /**
@@ -464,51 +410,6 @@ function modelPickFields(
       ? (prev as Record<string, string>)
       : {};
   return { model, paramsByModel, modelByMode: { ...base, [mode]: model } };
-}
-
-/**
- * The options for {@link setNodeModel} with the same arguments.
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space containing the node.
- * @param nodeId - The node.
- * @param mode - The active mode.
- * @param model - The picked model.
- * @param paramsByModel - Every per-model record.
- * @returns The options; a delete, which writes nothing, when the node is gone.
- */
-export function nodeModelWrite(
-  projectId: string,
-  spaceId: string,
-  nodeId: string,
-  mode: string,
-  model: string,
-  paramsByModel: Record<string, Record<string, unknown>>,
-): SpaceWriteOptions {
-  const data = nodeDataMap(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId);
-  return data ? replacementWrite(projectId, spaceId, data, modelPickFields(data, mode, model, paramsByModel)).options : { kind: 'delete' };
-}
-
-/**
- * The options for rewriting an annotation's body or one of its replies, the
- * same judgement {@link editAnnotationBody} and {@link editReply} make.
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space holding the annotation.
- * @param nodeId - Id of the annotation.
- * @param replyId - The reply to rewrite, or null for the body.
- * @param content - The new text.
- * @param editedAt - When this edit happened, epoch milliseconds.
- * @returns The options; a delete, which writes nothing, when the target is gone.
- */
-export function annotationEditWrite(
-  projectId: string,
-  spaceId: string,
-  nodeId: string,
-  replyId: string | null,
-  content: string,
-  editedAt: number,
-): SpaceWriteOptions {
-  const target = annotationEditTarget(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId, replyId);
-  return target ? replacementWrite(projectId, spaceId, target, { content, editedAt }).options : { kind: 'delete' };
 }
 
 /**
@@ -676,16 +577,17 @@ export function useCanvasSpace(
   const undo = React.useCallback((): void => {
     const manager = undoManagerRef.current;
     if (!manager) return;
-    writeSpaceDoc(name, nextHistoryStep(manager, 'undo'), () => {
-      undoManagerRef.current?.undo();
+    // A step with no effect still runs: yjs drops the dead entries (Q8).
+    writeSpaceDoc(name, { kind: nextHistoryStep(manager, 'undo').kind }, () => {
+      manager.undo();
     });
     syncAvailability();
   }, [name, syncAvailability]);
   const redo = React.useCallback((): void => {
     const manager = undoManagerRef.current;
     if (!manager) return;
-    writeSpaceDoc(name, nextHistoryStep(manager, 'redo'), () => {
-      undoManagerRef.current?.redo();
+    writeSpaceDoc(name, { kind: nextHistoryStep(manager, 'redo').kind }, () => {
+      manager.redo();
     });
     syncAvailability();
   }, [name, syncAvailability]);
@@ -850,7 +752,7 @@ export function addNode(
 ): SpaceWriteResult {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const { name, options } = canvasWrite(projectId, spaceId, 'add', node);
+  const { name, options } = canvasWrite(projectId, spaceId, 'add');
   return writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       nodesMap.set(node.id, nodeEntry(node, buildDataMap(node.data, node.type)));
@@ -922,25 +824,59 @@ export function writeSnapshotNodes(
  * Within an open transaction, release a Group's members before it is deleted:
  * clear each member's `parentId` and convert its parent-relative position back
  * to absolute. Deleting a Group never deletes its members — they become
- * top-level nodes. No-op when the group has no resolvable position.
+ * top-level nodes. Members deleted in the same call are skipped: rewriting a
+ * node about to go would turn a pure removal into a compound one (design 5.2).
+ * No-op when the group has no resolvable position.
  * @param nodesMap - The canvas-space `nodesMap` (call inside a transaction).
  * @param groupId - The Group node being deleted.
+ * @param deleted - Every node deleted in the same call.
  */
 function releaseGroupMembers(
   nodesMap: Y.Map<Y.Map<unknown>>,
   groupId: string,
+  deleted: ReadonlySet<string>,
 ): void {
   const group = nodesMap.get(groupId);
   if (!(group instanceof Y.Map)) return;
   const groupPos = group.get('position') as { x: number; y: number } | undefined;
-  nodesMap.forEach((node) => {
-    if (!(node instanceof Y.Map) || node.get('parentId') !== groupId) return;
+  nodesMap.forEach((node, id) => {
+    if (!(node instanceof Y.Map) || node.get('parentId') !== groupId || deleted.has(id)) return;
     if (groupPos) {
       const p = node.get('position') as { x: number; y: number } | undefined;
       if (p) node.set('position', { x: p.x + groupPos.x, y: p.y + groupPos.y });
     }
     node.delete('parentId');
   });
+}
+
+/**
+ * What deleting these nodes produces (design 5.2): `compound` when a Group
+ * goes while one of its members stays, since that member is rewritten to
+ * stand on its own; otherwise `remove`.
+ * @param nodesMap - The canvas-space `nodesMap`.
+ * @param deleted - The nodes being deleted.
+ * @returns The kind.
+ */
+function removalKindOf(nodesMap: Y.Map<Y.Map<unknown>>, deleted: ReadonlySet<string>): 'remove' | 'compound' {
+  let kind: 'remove' | 'compound' = 'remove';
+  nodesMap.forEach((node, id) => {
+    const parentId = node instanceof Y.Map ? node.get('parentId') : undefined;
+    if (typeof parentId === 'string' && deleted.has(parentId) && !deleted.has(id)) kind = 'compound';
+  });
+  return kind;
+}
+
+/**
+ * What {@link removeElements} with these nodes produces, for a caller that
+ * judges the deletion before it writes (ReactFlow's `onBeforeDelete`).
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space to delete from.
+ * @param nodeIds - Node ids to delete.
+ * @returns `compound` or `remove`.
+ */
+export function removalKind(projectId: string, spaceId: string, nodeIds: ReadonlyArray<string>): 'remove' | 'compound' {
+  const nodesMap = getDoc(docName.canvasSpace(projectId, spaceId)).getMap<Y.Map<unknown>>(NODES_KEY);
+  return removalKindOf(nodesMap, new Set(nodeIds));
 }
 
 /**
@@ -951,20 +887,22 @@ function releaseGroupMembers(
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space to remove the node from.
  * @param nodeId - Id of the node to delete.
+ * @returns Whether the size cap let the deletion run.
  */
 export function removeNode(
   projectId: string,
   spaceId: string,
   nodeId: string,
-): void {
+): SpaceWriteResult {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const { name, options } = canvasWrite(projectId, spaceId, 'delete');
-  writeSpaceDoc(name, options, () => {
+  const deleted = new Set([nodeId]);
+  const { name, options } = canvasWrite(projectId, spaceId, removalKindOf(nodesMap, deleted));
+  return writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       const node = nodesMap.get(nodeId);
       if (node instanceof Y.Map && node.get('type') === 'group') {
-        releaseGroupMembers(nodesMap, nodeId);
+        releaseGroupMembers(nodesMap, nodeId, deleted);
       }
       nodesMap.delete(nodeId);
     }, CANVAS_UNDO);
@@ -995,7 +933,7 @@ export function setNodePosition(
   const node = nodesMap.get(nodeId);
   if (!node) return;
   if ((node.get('parentId') ?? null) !== parentId) return;
-  const { name, options } = canvasWrite(projectId, spaceId, 'overwrite');
+  const { name, options } = canvasWrite(projectId, spaceId, 'edit');
   writeSpaceDoc(name, options, () => {
     doc.transact(() => node.set('position', position), CANVAS_UNDO);
   });
@@ -1022,7 +960,7 @@ export function setNodeName(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  const write = replacementWrite(projectId, spaceId, data, { name });
+  const write = canvasWrite(projectId, spaceId, 'edit');
   writeSpaceDoc(write.name, write.options, () => {
     doc.transact(() => data.set('name', name), CANVAS_UNDO);
   });
@@ -1048,7 +986,7 @@ export function setNodeTemplateNode(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  const { name, options } = replacementWrite(projectId, spaceId, data, { templateNode });
+  const { name, options } = canvasWrite(projectId, spaceId, 'edit');
   writeSpaceDoc(name, options, () => {
     doc.transact(() => data.set('templateNode', { ...templateNode }), CANVAS_UNDO);
   });
@@ -1075,9 +1013,14 @@ export function setNodeLocked(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  const { name, options } = canvasWrite(projectId, spaceId, 'overwrite');
+  // Unlocking deletes the key, a pure removal a full Space still takes;
+  // readers treat only `=== true` as locked (design 5.2).
+  const { name, options } = canvasWrite(projectId, spaceId, locked ? 'edit' : 'remove');
   writeSpaceDoc(name, options, () => {
-    doc.transact(() => data.set('locked', locked), CANVAS_UNDO);
+    doc.transact(() => {
+      if (locked) data.set('locked', true);
+      else data.delete('locked');
+    }, CANVAS_UNDO);
   });
 }
 
@@ -1134,7 +1077,7 @@ export function addReply(
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const replies = repliesArray(doc, nodeId);
   if (!replies) return false;
-  const { name, options } = canvasWrite(projectId, spaceId, 'add', reply);
+  const { name, options } = canvasWrite(projectId, spaceId, 'add');
   return writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       const map = new Y.Map<unknown>();
@@ -1173,7 +1116,8 @@ export function editAnnotationBody(
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const data = annotationEditTarget(doc, nodeId, null);
   if (!data) return false;
-  const { name, options } = replacementWrite(projectId, spaceId, data, { content, editedAt });
+  // The body is words the user wrote, of any length: an add (design 5.2).
+  const { name, options } = canvasWrite(projectId, spaceId, 'add');
   return writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       data.set('content', content);
@@ -1204,7 +1148,7 @@ export function editReply(
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const reply = annotationEditTarget(doc, nodeId, replyId);
   if (!reply) return false;
-  const { name, options } = replacementWrite(projectId, spaceId, reply, { content, editedAt });
+  const { name, options } = canvasWrite(projectId, spaceId, 'add');
   return writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       reply.set('content', content);
@@ -1237,7 +1181,7 @@ export function removeReply(
   if (!replies) return;
   const index = replyIndex(replies, replyId);
   if (index === -1) return;
-  const { name, options } = canvasWrite(projectId, spaceId, 'delete');
+  const { name, options } = canvasWrite(projectId, spaceId, 'remove');
   writeSpaceDoc(name, options, () => {
     doc.transact(() => replies.delete(index, 1), CANVAS_UNDO);
   });
@@ -1272,7 +1216,7 @@ export function setNodeParams(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  const { name, options } = replacementWrite(projectId, spaceId, data, { paramsByModel });
+  const { name, options } = canvasWrite(projectId, spaceId, 'edit');
   writeSpaceDoc(name, options, () => {
     doc.transact(() => data.set('paramsByModel', paramsByModel), CANVAS_UNDO);
   });
@@ -1316,9 +1260,7 @@ export function setNodeSlotValue(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  const { name, options } = value === null
-    ? canvasWrite(projectId, spaceId, 'delete')
-    : replacementWrite(projectId, spaceId, data, { [key]: value });
+  const { name, options } = canvasWrite(projectId, spaceId, value === null ? 'remove' : 'edit');
   writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       if (value === null) {
@@ -1357,7 +1299,7 @@ export function appendNodeSlotItem(
   const data = doc.getMap<Y.Map<unknown>>(NODES_KEY).get(nodeId)?.get('data');
   if (!(data instanceof Y.Map)) return 'node-missing';
   let result: 'added' | 'filled' | 'present' | 'full' | 'refused' = 'refused';
-  const { name, options } = canvasWrite(projectId, spaceId, 'add', url);
+  const { name, options } = canvasWrite(projectId, spaceId, 'add');
   writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       const list = usableUrls(data.get(key));
@@ -1395,10 +1337,11 @@ export function removeNodeSlotItem(
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const data = doc.getMap<Y.Map<unknown>>(NODES_KEY).get(nodeId)?.get('data');
   if (!(data instanceof Y.Map)) return;
-  const { name, options } = canvasWrite(projectId, spaceId, 'delete');
+  const next = usableUrls(data.get(key)).filter((u) => u !== url);
+  // The last item goes with its key (a removal); any other rewrites the list.
+  const { name, options } = canvasWrite(projectId, spaceId, next.length === 0 ? 'remove' : 'compound');
   writeSpaceDoc(name, options, () => {
     doc.transact(() => {
-      const next = usableUrls(data.get(key)).filter((u) => u !== url);
       if (next.length === 0) data.delete(key);
       else data.set(key, next);
     }, CANVAS_UNDO);
@@ -1475,7 +1418,6 @@ function appendFocusImageCore(
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - Id of the generative node the crop belongs to.
  * @param image - The focus crop to append (see FocusImage copy semantics).
- * @param reservation - Room held for it before its upload started.
  * @returns 'added' on success; a discriminated refusal otherwise
  *   (round-8 — one boolean collapsed "node deleted mid-upload" into a
  *   misleading pool-full toast): 'node-missing' (deleted / data map gone),
@@ -1488,7 +1430,6 @@ export function addNodeFocusImage(
   spaceId: string,
   nodeId: string,
   image: FocusImage,
-  reservation?: SpaceReservation,
 ): 'added' | 'node-missing' | 'invalid-entry' | 'pool-full' | 'refused' {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
@@ -1497,8 +1438,8 @@ export function addNodeFocusImage(
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return 'node-missing';
   let result: 'added' | 'invalid-entry' | 'pool-full' | 'refused' = 'refused';
-  const { name, options } = canvasWrite(projectId, spaceId, 'add', image);
-  writeSpaceDoc(name, reservation === undefined ? options : { ...options, reservation }, () => {
+  const { name, options } = canvasWrite(projectId, spaceId, 'add');
+  writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       result = appendFocusImageCore(data, image);
     }, CONTENT_WRITE);
@@ -1586,7 +1527,9 @@ export function removeNodeFocusImage(
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return false;
   let removed = false;
-  const { name, options } = canvasWrite(projectId, spaceId, 'delete');
+  // Deleting from the Y.Array is a pure delete; the old plain-array form is
+  // converted first, which rewrites it.
+  const { name, options } = canvasWrite(projectId, spaceId, data.get('focusImages') instanceof Y.Array ? 'delete' : 'compound');
   writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       removed = removeFocusImageCore(data, focusId);
@@ -1625,7 +1568,7 @@ export function setNodeModel(
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
   const fields = modelPickFields(data, mode, model, paramsByModel);
-  const { name, options } = replacementWrite(projectId, spaceId, data, fields);
+  const { name, options } = canvasWrite(projectId, spaceId, 'edit');
   writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       data.set('model', model);
@@ -1665,7 +1608,7 @@ export function setNodeMode(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  const { name, options } = replacementWrite(projectId, spaceId, data, { mode, model, paramsByModel });
+  const { name, options } = canvasWrite(projectId, spaceId, 'edit');
   writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       data.set('mode', mode);
@@ -1792,7 +1735,7 @@ export function ensureTextBody(
   const existing = data.get('body');
   if (existing instanceof Y.XmlFragment) return existing;
   const body = bodyFromText('');
-  const { name, options } = canvasWrite(projectId, spaceId, 'add', '');
+  const { name, options } = canvasWrite(projectId, spaceId, 'add');
   const written = writeSpaceDoc(name, options, () => {
     doc.transact(() => data.set('body', body), CONTENT_WRITE);
   });
@@ -1912,9 +1855,8 @@ export function isNodeLocked(
  * @param content - The extracted text.
  * @param notify - Toast a refusal (default true); false where the node's own
  *   upload mark says it.
- * @returns Whether the size cap let it in (estimated a block per line, see
- *   `estimateTextBodyBytes`); a node already gone counts as written, there
- *   being nowhere left to put it.
+ * @returns Whether the size cap let it in (an add); a node already gone
+ *   counts as written, there being nowhere left to put it.
  */
 export function setNodeExtractedText(
   projectId: string,
@@ -1930,7 +1872,7 @@ export function setNodeExtractedText(
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return { ok: true };
   const name = docName.canvasSpace(projectId, spaceId);
-  const options = { kind: 'add' as const, estimate: estimateTextBodyBytes(content), notify };
+  const options = { kind: 'add' as const, notify };
   return writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       landHandlingContent(data, node.get('type'), content);
@@ -1976,20 +1918,8 @@ export function restoreNodeMedia(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  // A media node's content and media fields replace what it showed; a text
-  // node's words go into its body, one block per line.
-  const { media } = restored;
-  const { name, options } = node.get('type') === 'text'
-    ? { name: docName.canvasSpace(projectId, spaceId), options: { kind: 'add' as const, estimate: estimateTextBodyBytes(restored.content) } }
-    : replacementWrite(projectId, spaceId, data, {
-      content: restored.content,
-      coverUrl: media.coverUrl ?? undefined,
-      mediaWidth: media.width ?? undefined,
-      mediaHeight: media.height ?? undefined,
-      duration: media.duration ?? undefined,
-      mimeType: media.mimeType ?? undefined,
-      size: media.size ?? undefined,
-    });
+  // Restoring puts a result back on the node, new content: an add.
+  const { name, options } = canvasWrite(projectId, spaceId, 'add');
   writeSpaceDoc(name, options, () => doc.transact(() => {
     // Which field holds a node's content is decided by its type, once, in
     // `landHandlingContent` — a text node's words live in the body the editor
@@ -2062,9 +1992,8 @@ export function setGroupBackground(
   if (!(group instanceof Y.Map) || group.get('type') !== 'group') return;
   const data = group.get('data');
   if (!(data instanceof Y.Map)) return;
-  const { name, options } = color === undefined
-    ? canvasWrite(projectId, spaceId, 'delete')
-    : replacementWrite(projectId, spaceId, data, { backgroundColor: color });
+  // Clearing the tint deletes its key, a pure removal (design 5.2).
+  const { name, options } = canvasWrite(projectId, spaceId, color === undefined ? 'remove' : 'edit');
   writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       if (color === undefined) data.delete('backgroundColor');
@@ -2092,7 +2021,7 @@ export function createGroup(
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const { name, options } = canvasWrite(projectId, spaceId, 'add', { group, members });
+  const { name, options } = canvasWrite(projectId, spaceId, 'add');
   writeSpaceDoc(name, options, () => doc.transact(() => {
     const map = new Y.Map<unknown>();
     map.set('id', group.id);
@@ -2139,7 +2068,7 @@ export function setNodeParent(
   // Binding the node to it anyway leaves a parent nobody can see and a position
   // measured against an origin that is not there.
   if (parentId !== null && !(nodesMap.get(parentId) instanceof Y.Map)) return;
-  const { name, options } = canvasWrite(projectId, spaceId, 'overwrite');
+  const { name, options } = canvasWrite(projectId, spaceId, 'edit');
   writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       if (parentId === null) node.delete('parentId');
@@ -2180,7 +2109,7 @@ export function resizeGroup(
   if (!(group instanceof Y.Map) || group.get('type') !== 'group') return false;
   const data = group.get('data');
   if (!(data instanceof Y.Map)) return false;
-  const { name, options } = canvasWrite(projectId, spaceId, 'overwrite');
+  const { name, options } = canvasWrite(projectId, spaceId, 'edit');
   return writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       group.set('position', position);
@@ -2223,7 +2152,7 @@ export function expandGroup(
   const oldPos = group.get('position') as { x: number; y: number } | undefined;
   const dx = oldPos ? oldPos.x - position.x : 0;
   const dy = oldPos ? oldPos.y - position.y : 0;
-  const { name, options } = canvasWrite(projectId, spaceId, 'overwrite');
+  const { name, options } = canvasWrite(projectId, spaceId, 'edit');
   writeSpaceDoc(name, options, () => doc.transact(() => {
     group.set('position', position);
     data.set('width', width);
@@ -2260,7 +2189,7 @@ export function addEdge(
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
   let added = false;
-  const { name, options } = canvasWrite(projectId, spaceId, 'add', edge);
+  const { name, options } = canvasWrite(projectId, spaceId, 'add');
   writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       added = putEdge(nodesMap, edgesMap, edge);
@@ -2339,7 +2268,7 @@ export function removeEdge(
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
-  const { name, options } = canvasWrite(projectId, spaceId, 'delete');
+  const { name, options } = canvasWrite(projectId, spaceId, 'remove');
   writeSpaceDoc(name, options, () => {
     doc.transact(() => {
       edgesMap.delete(edgeId);
@@ -2357,22 +2286,24 @@ export function removeEdge(
  * @param spaceId - Canvas space to delete from.
  * @param nodeIds - Node ids to delete.
  * @param edgeIds - Edge ids to delete.
+ * @returns Whether the size cap let the deletion run.
  */
 export function removeElements(
   projectId: string,
   spaceId: string,
   nodeIds: ReadonlyArray<string>,
   edgeIds: ReadonlyArray<string>,
-): void {
+): SpaceWriteResult {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
-  const { name, options } = canvasWrite(projectId, spaceId, 'delete');
-  writeSpaceDoc(name, options, () => doc.transact(() => {
+  const deleted = new Set(nodeIds);
+  const { name, options } = canvasWrite(projectId, spaceId, removalKindOf(nodesMap, deleted));
+  return writeSpaceDoc(name, options, () => doc.transact(() => {
     nodeIds.forEach((id) => {
       const node = nodesMap.get(id);
       if (node instanceof Y.Map && node.get('type') === 'group') {
-        releaseGroupMembers(nodesMap, id);
+        releaseGroupMembers(nodesMap, id, deleted);
       }
       nodesMap.delete(id);
     });

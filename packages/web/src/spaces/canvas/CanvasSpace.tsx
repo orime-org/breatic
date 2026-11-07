@@ -103,6 +103,7 @@ import {
   appendNodeSlotItem,
   expandGroup,
   removeEdge,
+  removalKind,
   removeElements,
   removeNode,
   resizeGroup,
@@ -166,9 +167,9 @@ import {
   type UploadNodeSpec,
   assetUrlSurvives,
   isReportableAssetUrl,
-  textRefusalMark,
+  TEXT_REFUSAL_MARK,
 } from '@web/spaces/canvas/canvas-upload';
-import { estimateNodeBytes, reserveSpaceRoom, type SpaceRefusal } from '@web/data/yjs/space-write';
+import { checkAdd, checkWrite, type SpaceRefusal } from '@web/data/yjs/space-write';
 import {
   runMediaUpload,
   type UploadFailure,
@@ -947,14 +948,10 @@ function CanvasSpaceInner({
         toast.warning(t('canvas.generatePanel.referencePoolFull', { cap }));
         return false;
       }
+      // The crop is uploaded before it is written, so the Space is asked
+      // first: one that cannot take an add uploads nothing (inner#1790).
+      if (!checkAdd(docName.canvasSpace(projectId, spaceId)).ok) return false;
       const pendingId = newId();
-      // The crop's URL is not known before its upload; the source's, an
-      // asset URL of the same form, stands in for it.
-      const room = reserveSpaceRoom(
-        docName.canvasSpace(projectId, spaceId),
-        estimateNodeBytes({ id: pendingId, url: sourceUrl, name: sourceName, width: 0, height: 0 }),
-      );
-      if (!room.ok) return false;
       store.addPendingFocusUpload({
         id: pendingId,
         nodeId: panelNodeId,
@@ -987,9 +984,7 @@ function CanvasSpaceInner({
                 spaceId,
                 panelNodeId,
                 image,
-                room.reservation,
               );
-              room.reservation.release();
               if (outcome === 'added') return;
               if (outcome === 'pool-full') {
                 toast.warning(
@@ -1028,7 +1023,6 @@ function CanvasSpaceInner({
               }
             },
             onFailure: (stage) => {
-              room.reservation.release();
               sessionStore.getState().removePendingFocusUpload(pendingId);
               toast.error(t(focusFailureMessageKey(stage)));
             },
@@ -1627,9 +1621,14 @@ function CanvasSpaceInner({
       if (survivors.nodes.length === 0 && survivors.edges.length === 0) {
         return false;
       }
+      // Judged here, with the kind `removeElements` will write, so a deletion
+      // the size cap refuses leaves ReactFlow's own copy whole (inner#1790);
+      // `onDelete` makes the write.
+      const kind = removalKind(projectId, spaceId, survivors.nodes.map((node) => node.id));
+      if (!checkWrite(docName.canvasSpace(projectId, spaceId), { kind }).ok) return false;
       return survivors;
     },
-    [readOnly, flowNodes, deletingViewer, t],
+    [readOnly, flowNodes, deletingViewer, t, projectId, spaceId],
   );
 
   // Activity-feed reporters (ADR 2026-07-04) behind the canvas write-backs.
@@ -1666,13 +1665,13 @@ function CanvasSpaceInner({
       nodes: Node[];
       edges: Edge[];
     }): void => {
-      removeElements(
+      const written = removeElements(
         projectId,
         spaceId,
         deletedNodes.map((node) => node.id),
         deletedEdges.map((edge) => edge.id),
       );
-      reportDeletedAssets(deletedNodes);
+      if (written.ok) reportDeletedAssets(deletedNodes);
     },
     [projectId, spaceId, reportDeletedAssets],
   );
@@ -1900,7 +1899,7 @@ function CanvasSpaceInner({
       // Judged here so a Space without room says so once, and is not also
       // reported as a missing endpoint.
       let added = false;
-      const written = runCanvasUndoBatch(projectId, spaceId, { kind: 'add', estimate: estimateNodeBytes(edge) }, () => {
+      const written = runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => {
         added = addEdge(projectId, spaceId, edge);
       });
       // Surface a deleted-endpoint race like the reference-pick flow does, so a
@@ -2069,7 +2068,7 @@ function CanvasSpaceInner({
       // collaborator may have deleted either node between render and click).
       const edge = { id: `${node.id}->${target}`, source: node.id, target };
       let added = false;
-      const written = runCanvasUndoBatch(projectId, spaceId, { kind: 'add', estimate: estimateNodeBytes(edge) }, () => {
+      const written = runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => {
         added = addEdge(projectId, spaceId, edge);
       });
       // Couldn't wire = the node (or target) was deleted mid-pick — surface it;
@@ -2437,8 +2436,7 @@ function CanvasSpaceInner({
         y: connectCreate.y,
       });
       // One add for the size cap: the empty node and its wire.
-      const estimate = estimateNodeBytes({ type, position: point }) + estimateNodeBytes({ source: connectCreate.sourceId });
-      runCanvasUndoBatch(projectId, spaceId, { kind: 'add', estimate }, () => {
+      runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => {
         const id = createNodeAt(type, point);
         const added = addEdge(projectId, spaceId, {
           id: `${connectCreate.sourceId}->${id}`,
@@ -2595,11 +2593,7 @@ function CanvasSpaceInner({
         let selectAfter: string[] = [];
         // One add for the size cap: the empty nodes and their Group. A full
         // Space refuses the whole drop, and nothing is uploaded or read.
-        const estimate = admitted.reduce(
-          (sum, { file, spec }) => sum + estimateNodeBytes({ type: spec.nodeType, name: file.name }),
-          admitted.length >= 2 ? estimateNodeBytes({ type: 'group' }) : 0,
-        );
-        const built = runCanvasUndoBatch(projectId, spaceId, { kind: 'add', estimate }, () => {
+        const built = runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => {
           const laid = batchCentresAt(origin, admitted.length);
           const tops = laid.map((centre) => centerToTopLeft(centre, EMPTY_NODE_SIZE));
           // Two or more files arrive inside a Group, framed the way
@@ -2706,7 +2700,7 @@ function CanvasSpaceInner({
                   // The node's own mark says it when the words do not fit.
                   const written = setNodeExtractedText(projectId, spaceId, nodeId, text, false);
                   if (written.ok) useUploadMarksStore.getState().answer(spaceId, nodeId, op);
-                  else useUploadMarksStore.getState().fail(spaceId, nodeId, op, textRefusalMark(written));
+                  else useUploadMarksStore.getState().fail(spaceId, nodeId, op, TEXT_REFUSAL_MARK);
                 })
                 .catch(() =>
                   useUploadMarksStore.getState().fail(spaceId, nodeId, op, {
@@ -3253,12 +3247,12 @@ function CanvasSpaceInner({
       // origin an expansion is moving its Group to, so each node takes one
       // write and the Group's own geometry is all the expansion writes.
       let step: CanvasUndoStep | undefined;
-      // An overwrite for the size cap; a refused move leaves the document as
-      // it was, and the release puts the nodes back where it has them.
+      // An edit for the size cap; a refused move leaves the document as it
+      // was, and the release puts the nodes back where it has them.
       runCanvasUndoBatch(
         projectId,
         spaceId,
-        { kind: 'overwrite', joinStep, onStep: (landed) => { step = landed; } },
+        { kind: 'edit', joinStep, onStep: (landed) => { step = landed; } },
         () => {
           for (const r of ops.reparents) {
             setNodeParent(projectId, spaceId, r.id, r.parentId, r.position);
@@ -3418,13 +3412,14 @@ function CanvasSpaceInner({
       );
       if (blocked && reason) warnNodeGate(t(NODE_GATE_TOAST_KEY[reason]));
       if (survivors.nodes.length === 0 && survivors.edges.length === 0) return;
-      removeElements(
+      const written = removeElements(
         projectId,
         spaceId,
         survivors.nodes.map((node) => node.id),
         survivors.edges.map((edge) => edge.id),
       );
-      reportDeletedAssets(survivors.nodes);
+      // Only a deletion that ran removed any asset (inner#1790).
+      if (written.ok) reportDeletedAssets(survivors.nodes);
     },
     [readOnly, projectId, spaceId, t, reportDeletedAssets, buffer, deletingViewer],
   );
@@ -3758,6 +3753,13 @@ function CanvasSpaceInner({
       if (gateBlock) {
         warnNodeGate(t(gateBlock.toastKey));
         if (continuing !== undefined) useUploadMarksStore.getState().answer(spaceId, nodeId, continuing);
+        return undefined;
+      }
+      // What the node ends up holding is written by the server past the size
+      // gate, so a Space that cannot take an add sends nothing; a Retry keeps
+      // its file for later (inner#1790, design 5.2).
+      if (!checkAdd(docName.canvasSpace(projectId, spaceId)).ok) {
+        if (continuing !== undefined) useUploadMarksStore.getState().fail(spaceId, nodeId, continuing, { key: 'spaces.sizeCap.reason' });
         return undefined;
       }
       // The uploader sees the node wait from this moment until the server
@@ -4375,7 +4377,7 @@ function CanvasSpaceInner({
         // size/position, its members, PLUS any newly absorbed loose nodes.
         /** Put this resize into the document as one undo entry. */
         const writeDocument = (): void => {
-          runCanvasUndoBatch(projectId, spaceId, { kind: 'overwrite' }, () => {
+          runCanvasUndoBatch(projectId, spaceId, { kind: 'edit' }, () => {
             // Everything below is measured against the origin this call writes.
             // A collaborator can drop the Group between the frame this resize
             // was planned on and this transaction, and then there is no origin

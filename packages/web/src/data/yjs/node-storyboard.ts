@@ -17,7 +17,7 @@ import { addShot, enterCustom, newId, removeShot, retotal, stepShot } from '@bre
 
 import { CANVAS_UNDO, nodeDataMap } from '@web/data/yjs/canvas-space';
 import { docName, getDoc } from '@web/data/yjs/manager';
-import { estimateNodeBytes, writeSpaceDoc, type SpaceWriteOptions } from '@web/data/yjs/space-write';
+import { writeSpaceDoc, type SpaceWriteKind } from '@web/data/yjs/space-write';
 
 /** One shot as read off the document. */
 export interface StoryboardShotView {
@@ -85,24 +85,12 @@ function newShot(duration: number): Y.Map<unknown> {
   return shot;
 }
 
-/** What one shot is estimated as, for the size cap. */
-const SHOT_ESTIMATE = { id: '00000000-0000-0000-0000-000000000000', prompt: '', duration: 0 };
-
-/**
- * How laying out new shots is judged.
- * @param count - How many shots are laid out.
- * @returns An add of that many shots.
- */
-function shotsAdded(count: number): SpaceWriteOptions {
-  return { kind: 'add', estimate: count * estimateNodeBytes(SHOT_ESTIMATE) };
-}
-
 /**
  * Applies one edit to a node's shots in one transaction.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - The video node.
- * @param judged - What the edit does to the document's size (inner#1790).
+ * @param kind - What the edit produces in Yjs (inner#1790, design 5.2).
  * @param edit - Given the shots array and their durations, applies the change.
  * @returns Whether the node has shots to edit and the size cap let the edit in.
  */
@@ -110,12 +98,12 @@ function editShots(
   projectId: string,
   spaceId: string,
   nodeId: string,
-  judged: SpaceWriteOptions,
+  kind: SpaceWriteKind,
   edit: (shots: Y.Array<Y.Map<unknown>>, durations: number[]) => void,
 ): boolean {
   const shots = shotListOf(projectId, spaceId, nodeId);
   if (!shots) return false;
-  return writeSpaceDoc(docName.canvasSpace(projectId, spaceId), judged, () => {
+  return writeSpaceDoc(docName.canvasSpace(projectId, spaceId), { kind }, () => {
     shots.doc?.transact(() => {
       edit(shots, shots.toArray().map(durationOf));
     }, CANVAS_UNDO);
@@ -135,16 +123,16 @@ function writeDurations(shots: Y.Array<Y.Map<unknown>>, durations: readonly numb
 }
 
 /**
- * How entering the multi-shot mode is judged: laying out the two first
- * shots is an add, re-splitting existing ones an overwrite.
+ * What entering the multi-shot mode produces: laying out the two first shots
+ * is an add, re-splitting existing ones an edit.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - The video node.
- * @returns The options.
+ * @returns The kind.
  */
-export function storyboardEntryWrite(projectId: string, spaceId: string, nodeId: string): SpaceWriteOptions {
+export function storyboardEntryKind(projectId: string, spaceId: string, nodeId: string): SpaceWriteKind {
   const shots = shotListOf(projectId, spaceId, nodeId);
-  return shots && shots.length > 0 ? { kind: 'overwrite' } : shotsAdded(2);
+  return shots && shots.length > 0 ? 'edit' : 'add';
 }
 
 /**
@@ -156,7 +144,7 @@ export function storyboardEntryWrite(projectId: string, spaceId: string, nodeId:
  * @param total - The model's total seconds.
  */
 export function enterStoryboardShots(projectId: string, spaceId: string, nodeId: string, total: number): void {
-  editShots(projectId, spaceId, nodeId, storyboardEntryWrite(projectId, spaceId, nodeId), (shots, durations) => {
+  editShots(projectId, spaceId, nodeId, storyboardEntryKind(projectId, spaceId, nodeId), (shots, durations) => {
     const next = enterCustom(durations, total);
     if (shots.length === 0) shots.push(next.map((d) => newShot(d)));
     else writeDurations(shots, next);
@@ -180,7 +168,7 @@ export function addStoryboardShot(
   maxShots: number,
 ): string | null {
   let added: string | null = null;
-  editShots(projectId, spaceId, nodeId, shotsAdded(1), (shots, durations) => {
+  editShots(projectId, spaceId, nodeId, 'add', (shots, durations) => {
     const next = addShot(durations, total, maxShots);
     if (!next) return;
     writeDurations(shots, next);
@@ -206,7 +194,7 @@ export function stepStoryboardShot(
   shotId: string,
   delta: 1 | -1,
 ): void {
-  editShots(projectId, spaceId, nodeId, { kind: 'overwrite' }, (shots, durations) => {
+  editShots(projectId, spaceId, nodeId, 'edit', (shots, durations) => {
     const index = shots.toArray().findIndex((shot) => shot.get('id') === shotId);
     const next = index === -1 ? null : stepShot(durations, index, delta);
     if (next) writeDurations(shots, next);
@@ -228,7 +216,8 @@ export function removeStoryboardShot(
   shotId: string,
   total: number,
 ): void {
-  editShots(projectId, spaceId, nodeId, { kind: 'delete' }, (shots, durations) => {
+  // Its seconds go to the previous shot, a rewrite beside the delete.
+  editShots(projectId, spaceId, nodeId, 'compound', (shots, durations) => {
     const index = shots.toArray().findIndex((shot) => shot.get('id') === shotId);
     const next = index === -1 ? null : removeShot(durations, index, total);
     if (!next) return;
@@ -246,7 +235,7 @@ export function removeStoryboardShot(
  * @param total - The new total seconds.
  */
 export function retotalStoryboard(projectId: string, spaceId: string, nodeId: string, total: number): void {
-  editShots(projectId, spaceId, nodeId, { kind: 'overwrite' }, (shots, durations) => writeDurations(shots, retotal(durations, total)));
+  editShots(projectId, spaceId, nodeId, 'edit', (shots, durations) => writeDurations(shots, retotal(durations, total)));
 }
 
 /**
@@ -266,7 +255,7 @@ export function setStoryboardShots(
   durations: readonly number[],
 ): Y.XmlFragment[] {
   const fresh = durations.map((d) => newShot(d));
-  const landed = editShots(projectId, spaceId, nodeId, shotsAdded(durations.length), (shots) => {
+  const landed = editShots(projectId, spaceId, nodeId, 'add', (shots) => {
     shots.delete(0, shots.length);
     shots.push(fresh);
   });

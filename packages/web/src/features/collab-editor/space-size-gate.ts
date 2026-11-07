@@ -3,334 +3,70 @@
 
 /**
  * The size cap at the ProseMirror editors bound to a Space document
- * (inner#1790): the transaction filter every editor carries, and
- * the gate their undo and redo commands go through.
+ * (inner#1790 design 5.3): the transaction filter every editor carries, and
+ * the gate their undo and redo commands go through. The document body and
+ * the canvas text node body, prompt and lyrics share it.
  *
- * A transaction is as strong as its strongest step: `add`, then `overwrite`,
- * then `delete`. y-prosemirror writes a replaced range or a changed block
- * type as a delete of the old content plus the new content, which collab
- * admits up to the hard ceiling like any write that deletes live content.
+ * A transaction carrying the editor's own sync key meta came from Yjs (a
+ * peer, an undo, the binding, the redraw after an executor write) and always
+ * passes; each editor passes its own key, y-prosemirror's for the body and
+ * y-tiptap's for the canvas editors. A local transaction:
  *
- * The editors write Yjs from their sync plugin, after a transaction has been
- * applied, so the judgement is made on the transaction itself: a local
- * transaction is refused before it reaches the state, and the sync plugin then
- * has nothing to write. A transaction carrying the editor's own sync key meta
- * came from Yjs (a peer, an undo, the binding) or writes nothing to it, and is
- * always let through. Each editor passes its own key: the document body is on
- * y-prosemirror, the canvas editors on y-tiptap, and the two keys are
- * different objects.
- *
- * The replace steps of a transaction are weighed together, so a move or a
- * rewrite counts what it puts in against what it takes out:
- *
- * | steps | kind and estimate |
+ * | state | handling |
  * |---|---|
- * | replaces that take out live content and put in no more text and no larger estimate | `overwrite` |
- * | a `ReplaceAroundStep` whose slice holds no text and changes the block's type around kept content | `overwrite` |
- * | any other replace that puts something in | `add`, the larger of the estimate and the text it adds net |
- * | `AddMarkStep` | `add`, per text node 32 bytes plus the mark's name and attributes |
- * | `AttrStep`, `DocAttrStep`, a `setNodeMarkup` keeping the node's type | the changed attributes against the ones they replace, as stored: no larger is `overwrite`, otherwise `add` of the difference (`replacementJudgement`) |
- * | `AddNodeMarkStep`, any other step | `add`, the UTF-8 bytes of its `toJSON()` |
- * | `ReplaceStep` or `ReplaceAroundStep` without a slice, `RemoveMarkStep`, `RemoveNodeMarkStep` | `delete` |
+ * | `unknown`, `normal`, `warning` | passes; the sync plugin writes Yjs as usual |
+ * | `resyncing` | refused, no toast |
+ * | `full`, over the ceiling | refused, and handed to the delete executor; what it does not take is told with a toast |
  *
- * Over the hard ceiling a delete must free something: it removes a whole
- * block, or it removes at least `SPACE_DELETE_MIN_BYTES` of text without
- * joining two blocks (a join rewrites the joined text). Anything less is
- * refused as an overwrite, with its own sentence.
+ * While full the filter sees transactions before the sync plugin writes them,
+ * so a refused one never reaches Yjs. A transaction a plugin appends after a
+ * root (the state passed in is not the view's) is refused silently: what
+ * follows a redraw (the chip whitespace fix, BlockNote's id stamping and
+ * schema migration) waits until the Space is below its limit.
+ *
+ * The toast follows what the user did: a refused deletion (Backspace, Delete,
+ * cut, recorded as the trigger of the dispatch, or a transaction of plain
+ * deletions such as the side menu's) gets the compound sentence; anything
+ * else (typing, pasting, Enter, formatting, moving blocks) the add one; over
+ * the ceiling the over-ceiling one. The comment highlight sync is refused
+ * without one.
+ *
+ * Backspace in an empty block is taken over before the editor's own keys
+ * while full: the block goes whole, instead of first being turned into a
+ * paragraph or merged.
  */
 
 import type { Command } from '@tiptap/pm/state';
-import type { Mark, Node as ProseMirrorNode } from '@tiptap/pm/model';
-import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
-import {
-  AddMarkStep,
-  AttrStep,
-  DocAttrStep,
-  RemoveMarkStep,
-  RemoveNodeMarkStep,
-  ReplaceAroundStep,
-  ReplaceStep,
-  type Step,
-} from '@tiptap/pm/transform';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { Plugin, PluginKey, TextSelection, type Transaction } from '@tiptap/pm/state';
+import { AddMarkStep, RemoveMarkStep } from '@tiptap/pm/transform';
 import type { EditorView } from '@tiptap/pm/view';
-import * as Y from 'yjs';
+import type * as Y from 'yjs';
 
-import { SPACE_DELETE_MIN_BYTES, t } from '@breatic/shared';
 import { readDocSize } from '@web/data/yjs/doc-size';
 import { nextHistoryStep } from '@web/data/yjs/history-step';
+import { spaceRefusalMessage, writeSpaceDoc } from '@web/data/yjs/space-write';
 import {
-  encodedValueBytes,
-  estimateSliceBytes,
-  replacementJudgement,
-  utf8Bytes,
-  writeSpaceDoc,
-  type SpaceRefusal,
-  type SpaceReservation,
-  type SpaceWriteKind,
-} from '@web/data/yjs/space-write';
+  applySpaceDelete,
+  planNodeRemoval,
+  planSpaceDelete,
+  type SpaceDeleteBinding,
+  type SpaceDeletePlan,
+} from '@web/features/collab-editor/space-delete-executor';
 import { toast } from '@web/lib/toast';
 
-/** Bytes counted for each text node a mark or attribute change touches. */
-const MARK_BYTES = 32;
-
-/**
- * The meta a transaction carries when its room was reserved before it was
- * built (an upload, an Agent proposal), or when its caller reports a refusal
- * itself.
- */
-export const SPACE_WRITE_META = 'spaceWrite';
-
-/** What {@link SPACE_WRITE_META} carries. */
-export interface SpaceWriteMeta {
-  /** Room reserved for this write; the write consumes it. */
-  readonly reservation?: SpaceReservation;
-  /** Show the refusal toast (default true). */
-  readonly notify?: boolean;
-}
-
-/** Why each refused transaction was refused, for the caller that dispatched it. */
-const refusals = new WeakMap<Transaction, SpaceRefusal>();
-
-/**
- * Why the filter refused a transaction.
- * @param tr - A dispatched transaction.
- * @returns The refusal, or undefined when it was not refused.
- */
-export function refusalOf(tr: Transaction): SpaceRefusal | undefined {
-  return refusals.get(tr);
-}
-
-/** What a transaction does to its document's size. */
-interface Judged {
-  /** A step adds, or the replaces put in more than they take out. */
-  adds: boolean;
-  /** The replaces take out live content and put in no more. */
-  overwrites: boolean;
-  /** Bytes the adds in it can grow the document by. */
-  estimate: number;
-  /** UTF-8 bytes of the text its empty-slice deletes remove. */
-  deletedBytes: number;
-  /** A delete removes a whole block. */
-  removesBlock: boolean;
-  /** A delete joins two blocks, or unwraps what it keeps. */
-  joins: boolean;
-}
-
-/** What the replace steps of one transaction put in and take out, summed. */
-interface ReplaceTotals {
-  /** Estimate of the slices put in. */
-  added: number;
-  /** UTF-8 bytes of the text put in. */
-  addedText: number;
-  /** Estimate of the ranges taken out. */
-  removed: number;
-  /** UTF-8 bytes of the text taken out. */
-  removedText: number;
-  /** Some step takes out live content. */
-  removesLive: boolean;
-  /** Some step puts something in. */
-  puts: boolean;
-  /** Some step changes only the block around kept content. */
-  wraps: boolean;
-}
-
-/**
- * What one empty-slice replace removes from the document before it.
- * @param doc - The document the step applies to.
- * @param from - Start of the removed range.
- * @param to - End of the removed range.
- * @returns The removed text's bytes, whether a whole block goes, whether it joins blocks.
- */
-function removal(doc: ProseMirrorNode, from: number, to: number): { bytes: number; block: boolean; join: boolean } {
-  let block = false;
-  doc.nodesBetween(from, to, (node, pos) => {
-    if (node.isBlock && pos >= from && pos + node.nodeSize <= to) block = true;
-    return !block;
-  });
-  return {
-    bytes: utf8Bytes(doc.textBetween(from, to)),
-    block,
-    join: !doc.resolve(from).sameParent(doc.resolve(to)),
-  };
-}
-
-/**
- * Text nodes in a range.
- * @param doc - The document.
- * @param from - Start.
- * @param to - End.
- * @returns How many, at least one.
- */
-function textNodesIn(doc: ProseMirrorNode, from: number, to: number): number {
-  let count = 0;
-  doc.nodesBetween(from, to, (node) => {
-    if (node.isText) count += 1;
-    return true;
-  });
-  return Math.max(1, count);
-}
-
-/**
- * What one mark costs on each text node it lands on: y-prosemirror writes
- * its attributes as the format value.
- * @param mark - The mark.
- * @returns Bytes.
- */
-function markCost(mark: Mark): number {
-  return MARK_BYTES + utf8Bytes(mark.type.name) + utf8Bytes(JSON.stringify(mark.attrs));
-}
-
-/**
- * What marking ranges adds, as the filter judges the marks.
- * @param doc - The document.
- * @param ranges - The ranges.
- * @param mark - The mark.
- * @returns Bytes.
- */
-export function markBytes(doc: ProseMirrorNode, ranges: ReadonlyArray<{ from: number; to: number }>, mark: Mark): number {
-  return ranges.reduce((sum, { from, to }) => sum + markCost(mark) * textNodesIn(doc, from, to), 0);
-}
-
-/**
- * Add a range a replace takes out to the totals.
- * @param doc - The document before the step.
- * @param from - Start.
- * @param to - End.
- * @param totals - The running totals, updated in place.
- */
-function takeOut(doc: ProseMirrorNode, from: number, to: number, totals: ReplaceTotals): void {
-  if (to <= from) return;
-  totals.removed += estimateSliceBytes(doc.slice(from, to));
-  totals.removedText += utf8Bytes(doc.textBetween(from, to));
-  totals.removesLive = true;
-}
-
-/**
- * Judge one step against the document it applies to.
- * @param step - The step.
- * @param doc - The document before it.
- * @param judged - The running judgement, updated in place.
- * @param totals - The running replace totals, updated in place.
- */
-function judgeStep(step: Step, doc: ProseMirrorNode, judged: Judged, totals: ReplaceTotals): void {
-  if (step instanceof ReplaceStep || step instanceof ReplaceAroundStep) {
-    const text = step.slice.content.textBetween(0, step.slice.content.size);
-    if (step instanceof ReplaceAroundStep && step.slice.size > 0 && text === '') {
-      const markup = sameTypeMarkup(step, doc);
-      if (markup) {
-        // setNodeMarkup keeping the node: y-prosemirror sets the changed attributes.
-        judgeAttributes(markup.before, markup.after, judged);
-        return;
-      }
-      // Only the block around kept content changes; y-prosemirror rewrites
-      // the block, which collab admits like any write deleting live content.
-      totals.wraps = true;
-      return;
-    }
-    if (step.slice.size > 0) {
-      totals.added += estimateSliceBytes(step.slice);
-      totals.addedText += utf8Bytes(text);
-      totals.puts = true;
-      if (step instanceof ReplaceAroundStep) {
-        takeOut(doc, step.from, step.gapFrom, totals);
-        takeOut(doc, step.gapTo, step.to, totals);
-      } else {
-        takeOut(doc, step.from, step.to, totals);
-      }
-      return;
-    }
-    takeOut(doc, step.from, step.to, totals);
-    const removed = removal(doc, step.from, step.to);
-    judged.deletedBytes += removed.bytes;
-    judged.removesBlock ||= removed.block;
-    judged.joins ||= removed.join || step instanceof ReplaceAroundStep;
-    return;
-  }
-  if (step instanceof RemoveMarkStep || step instanceof RemoveNodeMarkStep) return;
-  if (step instanceof AttrStep || step instanceof DocAttrStep) {
-    const replaced: unknown = step instanceof AttrStep ? doc.nodeAt(step.pos)?.attrs[step.attr] : doc.attrs[step.attr];
-    judgeAttributes({ [step.attr]: replaced }, { [step.attr]: step.value }, judged);
-    return;
-  }
-  judged.adds = true;
-  judged.estimate += step instanceof AddMarkStep
-    ? markCost(step.mark) * textNodesIn(doc, step.from, step.to)
-    : jsonBytes(step.toJSON());
-}
-
-/**
- * The node a `ReplaceAroundStep` rewrites in place keeping its type, as
- * `setNodeMarkup` makes one: the slice holds one node of the same type that
- * wraps the kept content exactly.
- * @param step - The step.
- * @param doc - The document before it.
- * @returns The attributes before and after, or null for any other step.
- */
-function sameTypeMarkup(step: ReplaceAroundStep, doc: ProseMirrorNode): { before: Record<string, unknown>; after: Record<string, unknown> } | null {
-  const node = doc.nodeAt(step.from);
-  const next = step.slice.content.firstChild;
-  const wrapsExactly = step.insert === 1 && step.gapFrom === step.from + 1 && step.gapTo === step.to - 1;
-  if (!node || !next || step.slice.content.childCount !== 1 || !wrapsExactly || next.type !== node.type) return null;
-  return { before: node.attrs, after: next.attrs };
-}
-
-/**
- * Judge attributes written over the ones they replace: y-prosemirror sets
- * each changed attribute, deleting the value it replaces (`replacementJudgement`).
- * @param before - The attributes the node holds.
- * @param after - The attributes written.
- * @param judged - The running judgement, updated in place.
- */
-function judgeAttributes(before: Readonly<Record<string, unknown>>, after: Readonly<Record<string, unknown>>, judged: Judged): void {
-  let held = 0;
-  let written = 0;
-  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
-    if (before[key] === after[key]) continue;
-    held += encodedValueBytes(before[key]);
-    written += encodedValueBytes(after[key]);
-  }
-  const verdict = replacementJudgement(held, written);
-  if (verdict.kind === 'add') {
-    judged.adds = true;
-    judged.estimate += verdict.estimate ?? 0;
-  } else {
-    judged.overwrites = true;
-  }
-}
-
-/**
- * The UTF-8 bytes of a value's JSON; 0 for undefined.
- * @param value - The value.
- * @returns Its size.
- */
-function jsonBytes(value: unknown): number {
-  return utf8Bytes(JSON.stringify(value) ?? '');
-}
-
-/**
- * Judge a transaction: its marks and attributes step by step, its replaces
- * together, so a move or a rewrite is weighed by what it puts in against
- * what it takes out.
- * @param tr - The transaction.
- * @returns What it does to the size.
- */
-function judge(tr: Transaction): Judged & { kind: SpaceWriteKind } {
-  const judged: Judged = { adds: false, overwrites: false, estimate: 0, deletedBytes: 0, removesBlock: false, joins: false };
-  const totals: ReplaceTotals = { added: 0, addedText: 0, removed: 0, removedText: 0, removesLive: false, puts: false, wraps: false };
-  tr.steps.forEach((step, k) => {
-    judgeStep(step, tr.docs[k]!, judged, totals);
-  });
-  if (totals.puts) {
-    if (totals.removesLive && totals.addedText <= totals.removedText && totals.added <= totals.removed) {
-      judged.overwrites = true;
-    } else {
-      judged.adds = true;
-      judged.estimate += Math.max(totals.added - totals.removed, totals.addedText - totals.removedText, 0);
-    }
-  } else if (totals.wraps) {
-    judged.overwrites = true;
-  }
-  return { ...judged, kind: judged.adds ? 'add' : judged.overwrites ? 'overwrite' : 'delete' };
+/** What an editor tells the filter about itself. */
+export interface SpaceSizeFilterOptions {
+  /** The editor's own sync plugin key; its meta marks a transaction from Yjs. */
+  readonly syncKey: PluginKey;
+  /** The Space document's canonical name, or null when it is not a registered document. */
+  readonly docName: () => string | null;
+  /**
+   * Marks the editor's own extensions keep in step with other Yjs data (the
+   * comment mark, which BlockNote rewrites from the thread map): a
+   * transaction made only of them is refused without a toast while full.
+   */
+  readonly derivedMarks?: readonly string[];
 }
 
 /**
@@ -340,7 +76,7 @@ function judge(tr: Transaction): Judged & { kind: SpaceWriteKind } {
  * @returns True when every step is such a mark step.
  */
 function onlyMarks(tr: Transaction, marks: readonly string[]): boolean {
-  return marks.length > 0 && tr.steps.every((step) =>
+  return marks.length > 0 && tr.steps.length > 0 && tr.steps.every((step) =>
     (step instanceof AddMarkStep || step instanceof RemoveMarkStep) && marks.includes(step.mark.type.name));
 }
 
@@ -359,24 +95,30 @@ function redrawFromState(view: EditorView): void {
   view.updateState(view.state);
 }
 
-/** What an editor tells the filter about itself. */
-export interface SpaceSizeFilterOptions {
-  /** The editor's own sync plugin key; its meta marks a transaction from Yjs. */
-  readonly syncKey: PluginKey;
-  /** The Space document's canonical name, or null when it is not a registered document. */
-  readonly docName: () => string | null;
-  /**
-   * Marks the editor's own extensions keep in step with other Yjs data (the
-   * comment mark, which BlockNote rewrites from the thread map): a
-   * transaction made only of them, with no {@link SPACE_WRITE_META}, rewrites
-   * existing marks and is judged an overwrite without a toast.
-   */
-  readonly derivedMarks?: readonly string[];
+/**
+ * The node Backspace in an empty block removes: the text block, climbing to
+ * each wrapper below the document it is the only child of (BlockNote's
+ * container, then a nested group it would leave empty).
+ * @param view - The editor view.
+ * @returns The node's position, or null when the caret is not in an empty block the filter takes.
+ */
+function emptyBlockAt(view: EditorView): number | null {
+  const { selection } = view.state;
+  const { $from } = selection;
+  if (!selection.empty || !$from.parent.isTextblock || $from.parent.content.size !== 0) return null;
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    const role = $from.node(depth).type.spec['tableRole'] as string | undefined;
+    if (role === 'cell' || role === 'header_cell') return null;
+  }
+  // Whether the schema lets the node go is the executor's check.
+  let depth = $from.depth;
+  while (depth > 1 && $from.node(depth - 1).childCount === 1) depth -= 1;
+  return $from.before(depth);
 }
 
 /**
  * The filter for one editor. Build one per editor: it keeps that editor's
- * view, for redrawing after a refused composition.
+ * view, for the executor and for redrawing after a refused composition.
  * @param options - The editor's sync key and document name.
  * @returns The ProseMirror plugin.
  */
@@ -384,37 +126,139 @@ export function spaceSizeFilterPlugin(options: SpaceSizeFilterOptions): Plugin {
   let view: EditorView | null = null;
   /** A composition was refused and its characters are still on screen. */
   let refusedComposition = false;
+  /** The dispatch running now was triggered by Backspace, Delete or cut. */
+  let deleteTriggered = false;
+
+  /**
+   * Records that the current event deletes, until its handlers have run.
+   */
+  const markDeleteTrigger = (): void => {
+    deleteTriggered = true;
+    // ProseMirror runs every handler of the event in one listener; the mark
+    // is gone before the next event.
+    queueMicrotask(() => {
+      deleteTriggered = false;
+    });
+  };
+
+  /**
+   * The size state the filter acts on.
+   * @returns The document name with whether it is full and over its ceiling, or null while the size does not stop writes.
+   */
+  const fullState = (): { name: string; overCeiling: boolean } | null => {
+    const name = options.docName();
+    if (name === null) return null;
+    const size = readDocSize(name);
+    return size.phase === 'full' ? { name, overCeiling: size.overCeiling } : null;
+  };
+
+  /**
+   * The editor's sync binding.
+   * @param editorView - The view.
+   * @returns The binding.
+   */
+  const bindingOf = (editorView: EditorView): SpaceDeleteBinding =>
+    (options.syncKey.getState(editorView.state) as { binding: SpaceDeleteBinding }).binding;
+
+  /**
+   * Step 8: writes an accepted plan once the refused dispatch has returned
+   * (writing Yjs inside the filter would re-enter dispatch), unless the
+   * document changed in between; the sync plugin then redraws the editor and
+   * the caret goes to where the deletion started.
+   * @param editorView - The view.
+   * @param name - The document name.
+   * @param plan - The plan.
+   * @param before - The document it was planned on.
+   * @param addToHistory - Whether the deletion goes on the undo stack.
+   */
+  const execute = (
+    editorView: EditorView,
+    name: string,
+    plan: Extract<SpaceDeletePlan, { ok: true }>,
+    before: ProseMirrorNode,
+    addToHistory: boolean,
+  ): void => {
+    queueMicrotask(() => {
+      if (editorView.isDestroyed || editorView.state.doc !== before) return;
+      const binding = bindingOf(editorView);
+      const result = writeSpaceDoc(name, { kind: plan.kind }, () => {
+        binding.doc.transact((ytr) => {
+          applySpaceDelete(plan, ytr, addToHistory);
+        }, options.syncKey);
+      });
+      if (!result.ok) return;
+      const { doc } = editorView.state;
+      editorView.dispatch(editorView.state.tr.setSelection(TextSelection.near(doc.resolve(Math.min(plan.at, doc.content.size)), -1)));
+    });
+  };
+
+  /**
+   * Backspace in an empty block while full: the block goes whole and the caret
+   * goes to the end of the one before. Not taken in a table cell or where the
+   * schema needs the block; the editor's own Backspace then runs.
+   * @param editorView - The view.
+   * @param state - The size state.
+   * @param state.name - The document name.
+   * @param state.overCeiling - Whether the Space is over its ceiling.
+   * @returns True when taken over.
+   */
+  const takeEmptyBlock = (editorView: EditorView, { name, overCeiling }: { name: string; overCeiling: boolean }): boolean => {
+    const pos = emptyBlockAt(editorView);
+    if (pos === null) return false;
+    const { doc } = editorView.state;
+    const plan = planNodeRemoval(doc, pos, bindingOf(editorView), { syncKey: options.syncKey, overCeiling });
+    if (!plan.ok) return false;
+    execute(editorView, name, { ...plan, at: TextSelection.near(doc.resolve(pos), -1).from }, doc, true);
+    return true;
+  };
+
   return new Plugin({
     key: new PluginKey('spaceSizeFilter'),
-    filterTransaction: (tr): boolean => {
-      // Appended transactions follow a root that was already judged (BlockNote
-      // stamps ids on new blocks); refusing one would leave the root half done.
-      if (!tr.docChanged || tr.getMeta(options.syncKey) !== undefined || tr.getMeta('appendedTransaction') !== undefined) return true;
+    props: {
+      // DOM handlers run before every plugin's `handleKeyDown`, whatever
+      // order the extensions put the keymaps in.
+      handleDOMEvents: {
+        keydown: (editorView, event): boolean => {
+          if (event.key !== 'Backspace' && event.key !== 'Delete') return false;
+          markDeleteTrigger();
+          const state = event.key === 'Backspace' && !editorView.composing ? fullState() : null;
+          if (state === null || !takeEmptyBlock(editorView, state)) return false;
+          event.preventDefault();
+          return true;
+        },
+        cut: (): boolean => {
+          markDeleteTrigger();
+          return false;
+        },
+      },
+    },
+    filterTransaction: (tr, state): boolean => {
+      if (!tr.docChanged || tr.getMeta(options.syncKey) !== undefined) return true;
       const name = options.docName();
       if (name === null) return true;
-      const meta = tr.getMeta(SPACE_WRITE_META) as SpaceWriteMeta | undefined;
+      const size = readDocSize(name);
       const composing = view?.composing === true || tr.getMeta('composition') !== undefined;
-      const derived = meta === undefined && onlyMarks(tr, options.derivedMarks ?? []);
-      // A machine edit (`addToHistory: false`) is not something the reader did.
-      const notify = (meta?.notify ?? true) && !derived && !(composing && refusedComposition) && tr.getMeta('addToHistory') !== false;
-      const judged = derived ? { ...judge(tr), kind: 'overwrite' as const } : judge(tr);
-      let refusal: SpaceRefusal | null = null;
-      if (judged.kind === 'delete' && readDocSize(name).overCeiling && !judged.removesBlock
-        && (judged.joins || judged.deletedBytes < SPACE_DELETE_MIN_BYTES)) {
-        refusal = { ok: false, reason: 'full' };
-        if (notify && readDocSize(name).phase !== 'resyncing') toast.warning(t('spaces.size.overCeilingDelete'));
-      } else {
-        const result = writeSpaceDoc(name, {
-          kind: judged.kind,
-          ...(judged.kind === 'add' && { estimate: judged.estimate }),
-          ...(meta?.reservation !== undefined && { reservation: meta.reservation }),
-          notify,
-          landsLater: true,
-        }, () => undefined);
-        if (!result.ok) refusal = result;
+      if (size.phase === 'resyncing') {
+        if (composing) refusedComposition = true;
+        return false;
       }
-      if (refusal === null) return true;
-      refusals.set(tr, refusal);
+      if (size.phase !== 'full') return true;
+      // Step 0: appended after a root, or before the view exists.
+      if (view === null || state !== view.state) return false;
+      if (onlyMarks(tr, options.derivedMarks ?? [])) return false;
+      const plan = planSpaceDelete(tr, bindingOf(view), { syncKey: options.syncKey, overCeiling: size.overCeiling, deleteTriggered });
+      if (plan.ok) {
+        execute(view, name, plan, tr.before, tr.getMeta('addToHistory') !== false);
+        return false;
+      }
+      // A machine edit (`addToHistory: false`) is not something the user did,
+      // and a composition already refused once has said so.
+      if (tr.getMeta('addToHistory') !== false && !(composing && refusedComposition)) {
+        const message = size.overCeiling
+          ? spaceRefusalMessage('add', 'over_ceiling')
+          : spaceRefusalMessage(plan.refusal === 'compound' ? 'compound' : 'add', 'full');
+        if (message !== null) toast.warning(message);
+      }
       if (composing) refusedComposition = true;
       return false;
     },
@@ -441,7 +285,8 @@ export function spaceSizeFilterPlugin(options: SpaceSizeFilterOptions): Plugin {
 }
 
 /**
- * Runs an undo or redo if the Space's size allows what it restores.
+ * Runs an undo or redo if the Space's size allows what it does (design 5.2:
+ * the kind comes from `nextHistoryStep`; a step with no effect still runs).
  * @param name - The Space document's name, or null for an unregistered one.
  * @param manager - The undo manager the step comes from.
  * @param direction - Which stack.
@@ -458,7 +303,7 @@ export function gatedHistoryStep(
   const stack = direction === 'undo' ? manager.undoStack : manager.redoStack;
   if (name === null || stack.length === 0) return run();
   let ran = false;
-  const result = writeSpaceDoc(name, nextHistoryStep(manager, direction), () => {
+  const result = writeSpaceDoc(name, { kind: nextHistoryStep(manager, direction).kind }, () => {
     ran = run();
   });
   return result.ok ? ran : true;

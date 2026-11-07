@@ -89,6 +89,19 @@ export function canAdd(name: string): boolean {
 }
 
 /**
+ * Judge a write without running it, with the toast the state calls for when
+ * it is refused: for an action whose write happens elsewhere later.
+ * @param name - Canonical document name.
+ * @param options - What the write produces.
+ * @returns Whether it may run, or why not.
+ */
+export function checkWrite(name: string, options: SpaceWriteOptions): SpaceWriteResult {
+  const { kind, notify = true } = options;
+  const reason = refusalOf(name, kind);
+  return reason === null ? { ok: true } : refuse(kind, reason, notify);
+}
+
+/**
  * {@link canAdd}, with the toast the state calls for when it is false.
  * @param name - Canonical document name.
  * @param options - Options.
@@ -96,8 +109,7 @@ export function canAdd(name: string): boolean {
  * @returns Whether the request may go, or why not.
  */
 export function checkAdd(name: string, { notify = true }: { notify?: boolean } = {}): SpaceWriteResult {
-  const reason = refusalOf(name, 'add');
-  return reason === null ? { ok: true } : refuse('add', reason, notify);
+  return checkWrite(name, { kind: 'add', notify });
 }
 
 /** Space documents with an allowed write running, by depth. */

@@ -66,6 +66,7 @@ import {
   typeText,
   type BlockInput,
   type OpenBody,
+  topBlockIds,
   type SizeCode,
 } from '@web/features/collab-editor/__tests__/helpers/space-editor-harness';
 
@@ -161,7 +162,7 @@ function bold(view: EditorView, needle: string): void {
  * @returns The id.
  */
 function idAt(body: OpenBody, index: number): string {
-  return body.editor.document[index].id;
+  return topBlockIds(body.editor)[index];
 }
 
 /**
@@ -708,7 +709,7 @@ describe('13. Backspace in an empty block', () => {
     press(body.view, 'Backspace');
     await flush();
     expect(rows(body.view.state.doc)).toEqual([['paragraph', '']]);
-    expect(body.editor.document[0].id).toBe(body.ids[0]);
+    expect(topBlockIds(body.editor)[0]).toBe(body.ids[0]);
     expect(cap.shape()).toBe('∅');
     expectWarnings();
   });

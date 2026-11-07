@@ -3215,7 +3215,9 @@
       "track_missing": "The target track was removed. Choose another track.",
       "id_taken": "This item already exists. Try again.",
       "main_track": "The main track cannot be deleted.",
-      "track_not_empty": "Only an empty track can be deleted."
+      "track_not_empty": "Only an empty track can be deleted.",
+      "full": "This Space is full. Delete some content before editing further.",
+      "over_ceiling": "This Space is over its limit. Delete a whole node or a whole passage."
     },
     "mainTrack": "Main track",
     "track": "Visual {index}",

@@ -106,7 +106,7 @@ const PICTURE = 'https://cdn.example.test/img1.png';
  * while the size is still unknown.
  */
 function seed(): void {
-  const base = { createdAt: 1, createdBy: 'u1', attachments: [] };
+  const base = { createdAt: 1, createdBy: 'u1', locked: false, attachments: [] };
   addNode(PID, SID, { id: 'e1', type: 'image', position: { x: 0, y: 0 }, data: { name: 'e1', ...base } } as CanvasNodeFields);
   addNode(PID, SID, { id: 'img1', type: 'image', position: { x: 600, y: 0 }, data: { name: 'img1', content: PICTURE, ...base } } as CanvasNodeFields);
 }

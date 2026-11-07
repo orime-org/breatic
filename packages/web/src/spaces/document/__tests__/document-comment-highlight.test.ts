@@ -6,7 +6,9 @@
  *
  * Half of what the task asks for is that a comment is visible where it was
  * made. The mark carrying the thread id is the library's; what it looks like
- * is ours, and nothing else in the stylesheet paints `bn-thread-mark`.
+ * is ours: the decoration `doc-comment-mark-live`, drawn over the mark while
+ * its thread is open (inner#1790), and the library's own paint on
+ * `bn-thread-mark` is taken off.
  *
  * TWO READINGS, BECAUSE NEITHER ALONE HOLDS IT. The document says the mark is
  * on the right words and carries the right thread; the stylesheet says it is
@@ -144,7 +146,10 @@ describe('the highlight in the body', () => {
 });
 
 describe('what the highlight looks like', () => {
-  const MARK = '.doc-body .bn-thread-mark';
+  const MARK = '.doc-body .doc-comment-mark-live';
+
+  /** The library's mark, under the decoration. */
+  const LIBRARY_MARK = '.doc-body .bn-thread-mark';
 
   /** The class our decoration carries, outside the library's namespace. */
   const READING_CLASS = 'doc-comment-mark-reading';
@@ -171,7 +176,7 @@ describe('what the highlight looks like', () => {
   it('says it can be pressed while a press on it opens the thread', () => {
     // The same condition `document-comment-hit.ts` asks: a press reaches a
     // thread only while the mark it lands on is not orphaned.
-    expect(ruleBody(`${MARK}:not([data-orphan='true'])`)).toContain(
+    expect(ruleBody(`${MARK}[data-thread-id]`)).toContain(
       'cursor: pointer',
     );
   });
@@ -185,7 +190,7 @@ describe('what the highlight looks like', () => {
     // get is decided by every rule that matches them, so a case asking only
     // whether one of those rules stays silent passes while another one hands
     // them the pointer.
-    expect(ruleBody(`${MARK}[data-orphan='true']`)).toContain('cursor: auto');
+    expect(ruleBody(LIBRARY_MARK)).toContain('cursor: auto');
   });
 
   it('says nothing about the caret without asking which mark this is', () => {
@@ -198,7 +203,7 @@ describe('what the highlight looks like', () => {
   it('goes unpainted once its thread is resolved or gone', () => {
     // The mark stays: it is where the highlight comes back from when the
     // thread is reopened. Only the paint goes.
-    expect(ruleBody(`${MARK}[data-orphan='true']`)).toContain(
+    expect(ruleBody(LIBRARY_MARK)).toContain(
       'background-color: transparent',
     );
   });

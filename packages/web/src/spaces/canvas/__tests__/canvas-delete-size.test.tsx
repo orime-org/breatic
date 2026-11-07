@@ -170,8 +170,8 @@ async function beforeDelete(...ids: string[]): Promise<boolean | { nodes: Node[]
  * @returns The size sentences, in order.
  */
 function sizeToasts(): unknown[] {
-  const sentences = new Set<string>([...Object.values(SIZE_COPY_EN), ...Object.values(SIZE_COPY_ZH_CN)]);
-  return vi.mocked(toast.warning).mock.calls.map(([message]) => message).filter((m) => sentences.has(m as string));
+  const sentences = new Set<unknown>([...Object.values(SIZE_COPY_EN), ...Object.values(SIZE_COPY_ZH_CN)]);
+  return vi.mocked(toast.warning).mock.calls.map(([message]) => message).filter((m) => sentences.has(m));
 }
 
 /**

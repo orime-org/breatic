@@ -31,18 +31,9 @@ import { documentCommentThreads } from '@breatic/shared';
 
 import type { UserSummary } from '@web/data/api/users';
 import { usersApi } from '@web/data/api/users';
+import { readDocSize } from '@web/data/yjs/doc-size';
 import { docNameOf } from '@web/data/yjs/manager';
-import {
-  encodedValueBytes,
-  estimateNodeBytes,
-  replacementJudgement,
-  reserveSpaceRoom,
-  writeSpaceDoc,
-  type SpaceReservation,
-  type SpaceReserveResult,
-  type SpaceWriteKind,
-  type SpaceWriteOptions,
-} from '@web/data/yjs/space-write';
+import { checkAdd, writeSpaceDoc, type SpaceWriteKind, type SpaceWriteResult } from '@web/data/yjs/space-write';
 import {
   documentCommentAuth,
   type DocumentCommentAuthInput,
@@ -59,8 +50,9 @@ interface CommentUser {
 }
 
 /**
- * A comment write the Space's size refused (inner#1790). The refusal toast
- * has been shown; whoever awaited the write keeps what the reader wrote.
+ * A comment write the Space's size refused (inner#1790): full, over its
+ * ceiling, or being rebuilt. Any toast has been shown; whoever awaited the
+ * write keeps what the user wrote.
  */
 export class SpaceFullError extends Error {
   /** Names the error. */
@@ -70,72 +62,78 @@ export class SpaceFullError extends Error {
   }
 }
 
-/** What each thread store write does to the document's size (inner#1790). */
+/** What each thread store write produces in Yjs (inner#1790, design 5.2). */
 const WRITE_KINDS: ReadonlyArray<readonly [keyof YjsThreadStore, SpaceWriteKind]> = [
   ['createThread', 'add'],
   ['addComment', 'add'],
+  // The body is new text the user wrote, of any length.
   ['updateComment', 'add'],
   ['addReaction', 'add'],
-  ['resolveThread', 'overwrite'],
-  ['unresolveThread', 'overwrite'],
-  ['deleteComment', 'delete'],
-  ['deleteThread', 'delete'],
-  ['deleteReaction', 'delete'],
+  ['resolveThread', 'edit'],
+  ['unresolveThread', 'edit'],
+  // The library's write also sets the thread's `updatedAt`; a full Space takes the whole-entry removal below.
+  ['deleteComment', 'edit'],
+  ['deleteThread', 'remove'],
+  ['deleteReaction', 'remove'],
 ];
 
-/** What `updateComment` is called with. */
-interface CommentEdit {
+/** What `deleteComment` is called with. */
+interface CommentDelete {
   readonly threadId: string;
   readonly commentId: string;
-  readonly comment: { readonly body: unknown; readonly metadata?: unknown };
+}
+
+/** Where a comment to delete sits. */
+interface CommentEntry {
+  readonly comments: Y.Array<Y.Map<unknown>>;
+  readonly index: number;
+  /** No comment would be left, so the whole thread goes. */
+  readonly last: boolean;
 }
 
 /**
- * How editing a comment is judged: its body and metadata replace the ones
- * stored, so the edit adds only what the new ones take over the old.
+ * Find a comment to delete as whole map entries, for a full Space; the checks
+ * are the library's own `deleteComment`.
+ * @param store - The store.
  * @param doc - The document the threads live in.
- * @param edit - The edit.
- * @returns The options for `writeSpaceDoc`; an add of the whole new comment
- *   when the stored one is not found.
+ * @param target - The comment.
+ * @param target.threadId - Its thread.
+ * @param target.commentId - The comment.
+ * @returns Where it sits.
+ * @throws {Error} When the thread or comment is missing or the user may not delete it.
  */
-function commentEditJudgement(doc: Y.Doc, edit: CommentEdit): SpaceWriteOptions {
-  const next = encodedValueBytes(edit.comment.body) + encodedValueBytes(edit.comment.metadata);
-  const thread = documentCommentThreads(doc).get(edit.threadId);
-  const comments = thread instanceof Y.Map ? thread.get('comments') : undefined;
-  const stored = comments instanceof Y.Array
-    ? (comments.toArray() as unknown[]).find((c): c is Y.Map<unknown> => c instanceof Y.Map && c.get('id') === edit.commentId)
-    : undefined;
-  if (!stored) return { kind: 'add', estimate: estimateNodeBytes(edit.comment) };
-  return replacementJudgement(encodedValueBytes(stored.get('body')) + encodedValueBytes(stored.get('metadata')), next);
+function commentEntry(store: YjsThreadStore, doc: Y.Doc, { threadId, commentId }: CommentDelete): CommentEntry {
+  const thread = documentCommentThreads(doc).get(threadId);
+  if (!(thread instanceof Y.Map)) throw new Error('Thread not found');
+  const comments = thread.get('comments') as Y.Array<Y.Map<unknown>>;
+  const all = comments.toArray();
+  const index = all.findIndex((comment) => comment.get('id') === commentId);
+  if (index === -1) throw new Error('Comment not found');
+  if (!store.auth.canDeleteComment(store.getThread(threadId).comments[index]!)) throw new Error('Not authorized');
+  return { comments, index, last: all.every((comment, i) => i === index || comment.get('deletedAt')) };
 }
 
 /** The document each size-gated store writes. */
 const storeDocs = new WeakMap<object, Y.Doc>();
 
-/** Room reserved for a store write, carried beside the library's own options. */
-interface ReservedOptions {
-  readonly spaceReservation?: SpaceReservation;
-}
-
 /**
- * Reserve room for a write of a size-gated store before it is made.
+ * Whether a size-gated store may add now, before a write that follows a
+ * round trip.
  * @param store - The store.
- * @param bytes - Bytes the write can add.
  * @param notify - Show the refusal toast.
- * @returns The reservation, or why there is no room.
+ * @returns Whether it may, or why not.
  */
-export function reserveCommentRoom(store: object, bytes: number, notify: boolean): SpaceReserveResult {
+export function checkCommentAdd(store: object, notify: boolean): SpaceWriteResult {
   const doc = storeDocs.get(store);
   const name = doc === undefined ? null : docNameOf(doc);
-  if (name === null) return { ok: true, reservation: { release: (): void => undefined } };
-  return reserveSpaceRoom(name, bytes, { notify });
+  return name === null ? { ok: true } : checkAdd(name, { notify });
 }
 
 /**
  * Puts every write of a thread store behind the Space's size. The store's
  * writes run their Yjs transaction before their first await, so the write
- * happens inside the gate's callback. An add is estimated from its options;
- * a write may carry `spaceReservation`, room held for it beforehand.
+ * happens inside the gate's callback; a refused one rejects with
+ * {@link SpaceFullError}.
  * @param store - The store; its methods are replaced in place.
  * @param doc - The document the threads live in.
  * @returns The same store.
@@ -146,18 +144,27 @@ function sizeGated(store: YjsThreadStore, doc: Y.Doc): YjsThreadStore {
   for (const [method, kind] of WRITE_KINDS) {
     const write = methods[method]!;
     methods[method] = (options: unknown): Promise<unknown> => {
-      const { spaceReservation, ...rest } = (options ?? {}) as ReservedOptions & Record<string, unknown>;
       const name = docNameOf(doc);
-      if (name === null) return write(rest);
+      if (name === null) return write(options);
+      const { phase, overCeiling } = readDocSize(name);
+      // A full Space deletes the comment's map, or the whole thread when it was the last, without `updatedAt`.
+      if (method === 'deleteComment' && (phase === 'full' || overCeiling)) {
+        const target = options as CommentDelete;
+        let entry: CommentEntry;
+        try {
+          entry = commentEntry(store, doc, target);
+        } catch (err) {
+          return Promise.reject(err);
+        }
+        const result = writeSpaceDoc(name, { kind: 'remove' }, () => doc.transact(() => {
+          if (entry.last) documentCommentThreads(doc).delete(target.threadId);
+          else entry.comments.delete(entry.index);
+        }));
+        return result.ok ? Promise.resolve(undefined) : Promise.reject(new SpaceFullError());
+      }
       let written: Promise<unknown> = Promise.resolve(undefined);
-      const judged = method === 'updateComment'
-        ? commentEditJudgement(doc, rest as unknown as CommentEdit)
-        : { kind, ...(kind === 'add' && { estimate: estimateNodeBytes(rest) }) };
-      const result = writeSpaceDoc(name, {
-        ...judged,
-        ...(spaceReservation !== undefined && { reservation: spaceReservation }),
-      }, () => {
-        written = write(rest);
+      const result = writeSpaceDoc(name, { kind }, () => {
+        written = write(options);
       });
       return result.ok ? written : Promise.reject(new SpaceFullError());
     };

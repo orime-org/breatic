@@ -25,7 +25,7 @@
 import { create } from 'zustand';
 import { t, type DocumentProposal } from '@breatic/shared';
 
-import { proposalRefusalMessage, type SpaceRefusal } from '@web/data/yjs/space-write';
+import type { SpaceRefusal } from '@web/data/yjs/space-write';
 import { toast } from '@web/lib/toast';
 
 /** What the user pressed: put it on as a comment, or write it into the body. */
@@ -94,7 +94,8 @@ const FAILED_KEY: Readonly<Record<PressKind, string>> = {
  */
 function tell(proposal: DocumentProposal, action: LandingAction, outcome: DocumentProposalOutcome, leftOut: number, refusal: SpaceRefusal | undefined): void {
   if (outcome === 'refused') {
-    if (refusal !== undefined) toast.warning(proposalRefusalMessage(refusal));
+    // A rebuild said its own sentence once.
+    if (refusal !== undefined && refusal.reason !== 'resyncing') toast.warning(t('spaces.sizeCap.proposal'));
   } else if (outcome === 'failed') {
     toast.error(t(FAILED_KEY[pressKind(proposal, action)]));
   } else if (outcome === 'applied' || outcome === 'mediaOnly') {

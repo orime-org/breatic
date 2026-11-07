@@ -38,6 +38,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 import { docNameOf } from '@web/data/yjs/manager';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
+import { SPACE_DELETE_META } from '@web/features/collab-editor/space-delete-executor';
 import { gatedHistoryCommand } from '@web/features/collab-editor/space-size-gate';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { isOwnUndoStep } from '@web/spaces/document/document-undo-step';
@@ -159,8 +160,13 @@ export function createDocumentUndo(doc: Y.Doc): DocumentUndo {
         // The marker answers for a ProseMirror dispatch, and the manager's
         // own write-back is not one — it carries the content an undo took
         // out, and asking a question about somebody else's dispatch keeps
-        // that content off the redo stack.
-        captureTransaction: (tr) => tr.origin === manager || marker.userDriven,
+        // that content off the redo stack. Neither is the delete executor's
+        // write while the Space is full (inner#1790): the dispatch it stands
+        // for was refused, so the marker never saw it, and the write says
+        // itself whether it is the user's — a deletion, never a comment
+        // highlight, so `addToHistory` is the whole answer.
+        captureTransaction: (tr) => tr.origin === manager
+          || (tr.meta.has(SPACE_DELETE_META) ? tr.meta.get('addToHistory') !== false : marker.userDriven),
       }),
   );
   return { manager, extension: undoExtension(manager, marker) };
@@ -321,7 +327,7 @@ function undoExtension(
     ],
     dependsOn: ['yCursor', 'ySync'],
     // Judged against the Space's size before the manager runs (inner#1790):
-    // restoring deleted content is an add and stops at a full Space. The
+    // what the step writes decides whether a full Space lets it through. The
     // keymap and `editor.undo()` / `editor.redo()` both go through these.
     undoCommand: gatedHistoryCommand(() => docNameOf(manager.doc), manager, 'undo', undoCommand),
     redoCommand: gatedHistoryCommand(() => docNameOf(manager.doc), manager, 'redo', redoCommand),

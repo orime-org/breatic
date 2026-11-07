@@ -3215,7 +3215,9 @@
       "track_missing": "目标轨道已被移除，请选择其他轨道。",
       "id_taken": "该项已存在，请重试。",
       "main_track": "主轨不能删除。",
-      "track_not_empty": "只能删除空轨道。"
+      "track_not_empty": "只能删除空轨道。",
+      "full": "这个 Space 已满，删除一些内容后才能继续编辑。",
+      "over_ceiling": "这个 Space 已超出上限，请删除整个节点或整段内容。"
     },
     "mainTrack": "主轨",
     "track": "画面 {index}",

@@ -31,15 +31,14 @@
 import { CommentsExtension, type ThreadData } from '@blocknote/core/comments';
 import type { EditorState } from '@tiptap/pm/state';
 
-import { estimateNodeBytes, type SpaceRefusal } from '@web/data/yjs/space-write';
-import { SPACE_WRITE_META, markBytes, type SpaceWriteMeta } from '@web/features/collab-editor/space-size-gate';
+import type { SpaceRefusal } from '@web/data/yjs/space-write';
 import { draftRangeIn } from '@web/spaces/document/document-comment-draft-range';
 import {
   COMMENT_MARK,
   asCommentBody,
   commentsOn,
 } from '@web/spaces/document/document-comment-extension';
-import { reserveCommentRoom, SpaceFullError } from '@web/spaces/document/document-comment-thread-store';
+import { checkCommentAdd, SpaceFullError } from '@web/spaces/document/document-comment-thread-store';
 
 /** The editor surface this needs. */
 interface CommentableEditor {
@@ -82,8 +81,8 @@ function somewhere(ranges: ReturnType<CommentAim>): ranges is NonNullable<Return
  * thread stays in the map with no mark, so the panel leaves it out like any
  * thread whose words are gone -- §9.2's S3.
  *
- * Room for both writes is reserved before the first one, so the Space's size
- * lets both in or neither.
+ * A full Space creates nothing (inner#1790): the thread is an `add`, asked
+ * for before anything is written.
  * @param editor - The document editor, with the comments extension registered.
  * @param body - The first comment, as a comment body.
  * @param aim - Where the comment goes, read off the body as it stands.
@@ -91,7 +90,7 @@ function somewhere(ranges: ReturnType<CommentAim>): ranges is NonNullable<Return
  * @param options - Options.
  * @param options.notify - Show the size refusal toast (default true).
  * @returns The thread created; null when there was nowhere to comment, or
- *   why the Space had no room -- in both cases nothing was created.
+ *   why the Space's size refused it -- in both cases nothing was created.
  * @throws {Error} Whatever the thread store throws while creating the thread.
  */
 export async function commentOn(
@@ -112,37 +111,23 @@ export async function commentOn(
     initialComment: { body, ...(metadata.comment === undefined ? {} : { metadata: metadata.comment }) },
     ...(metadata.thread === undefined ? {} : { metadata: metadata.thread }),
   };
-  const threadRoom = reserveCommentRoom(comments.threadStore, estimateNodeBytes(options), notify);
-  if (!threadRoom.ok) return threadRoom;
-  // The thread's id is not known yet; one of the same length stands in for it.
-  const sized = view.state.schema.marks[COMMENT_MARK]!.create({ threadId: '00000000-0000-0000-0000-000000000000', orphan: false });
-  const markRoom = reserveCommentRoom(comments.threadStore, markBytes(view.state.doc, aimed, sized), notify);
-  if (!markRoom.ok) {
-    threadRoom.reservation.release();
-    return markRoom;
-  }
-  try {
-    const thread = (await comments.threadStore.createThread({
-      ...options,
-      spaceReservation: threadRoom.reservation,
-    } as Parameters<typeof comments.threadStore.createThread>[0])) as ThreadData;
+  const room = checkCommentAdd(comments.threadStore, notify);
+  if (!room.ok) return room;
+  // Asked just now in this same task, so the store's own check lets it in.
+  const thread = (await comments.threadStore.createThread(options)) as ThreadData;
 
-    const landing = aim(view.state);
-    if (!somewhere(landing)) return thread;
+  const landing = aim(view.state);
+  if (!somewhere(landing)) return thread;
 
-    const mark = view.state.schema.marks[COMMENT_MARK]!.create({
-      threadId: thread.id,
-      orphan: false,
-    });
-    const tr = view.state.tr;
-    for (const { from, to } of landing) tr.addMark(from, to, mark);
-    view.dispatch(tr.setMeta(SPACE_WRITE_META, { reservation: markRoom.reservation, notify } satisfies SpaceWriteMeta));
+  const mark = view.state.schema.marks[COMMENT_MARK]!.create({
+    threadId: thread.id,
+    orphan: false,
+  });
+  const tr = view.state.tr;
+  for (const { from, to } of landing) tr.addMark(from, to, mark);
+  view.dispatch(tr);
 
-    return thread;
-  } finally {
-    threadRoom.reservation.release();
-    markRoom.reservation.release();
-  }
+  return thread;
 }
 
 /**
@@ -152,7 +137,7 @@ export async function commentOn(
  * @param body - What the user wrote.
  * @returns The thread created, or null when there is no open draft or the
  *   text it was aimed at is gone — in which case nothing was created.
- * @throws {SpaceFullError} When the Space had no room; the toast said so.
+ * @throws {SpaceFullError} When the Space's size refused it; any toast said so.
  * @throws {Error} Whatever the thread store throws while creating the thread.
  */
 export async function postComment(editor: CommentableEditor, body: string): Promise<ThreadData | null> {
