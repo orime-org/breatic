@@ -223,6 +223,29 @@ test('refine, replace, and undo brings the original back', async ({ page }) => {
   await expect(page.locator(`${BODY} p`).first()).toHaveText('alpha bravo');
 });
 
+test('a selection across two lines widens to both, and replace pastes the answer over them', async ({ page }) => {
+  const sent = await answerTextTool(page, { status: 200, body: streamOf('One.\n\nTwo.'), sse: true });
+  await openFreshDocument(page);
+  await page.keyboard.type('first line');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('second line');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('third line');
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home');
+  for (let i = 0; i < 3; i += 1) await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Shift+ArrowDown');
+
+  await pressAi(page, 'refine');
+  expect(sent[0]).toMatchObject({ selection: 'first line\n\nsecond line' });
+  await expect(page.locator(`${BODY} [data-show-selection]`)).toHaveText(['first line', 'second line']);
+  await page.getByTestId('doc-ai-replace').click();
+
+  await expect(page.locator(DIALOG)).toHaveCount(0);
+  await expect(page.locator(`${BODY} p`)).toHaveText(['One.', 'Two.', 'third line']);
+  await page.keyboard.press(UNDO);
+  await expect(page.locator(`${BODY} p`)).toHaveText(['first line', 'second line', 'third line']);
+});
+
 test('translate into Japanese names the language in the title and the request', async ({ page }) => {
   const sent = await answerTextTool(page, { status: 200, body: streamOf('アルファ、ブラボー。'), sse: true });
   await openFreshDocument(page);
