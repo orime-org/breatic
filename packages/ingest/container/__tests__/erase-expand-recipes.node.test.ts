@@ -476,7 +476,7 @@ describe('model_window, model_window_mask and frame_at (execution design §10.5 
     };
   }
 
-  it('MW01 each 16 fps slot shows the covering source frame in the source rectangle over RGB 127, the last frame repeated to the grid count', async () => {
+  it('MW01 each 16 fps slot shows the covering source frame in the source rectangle over the RGB 127 fill, the last frame repeated to the grid count', async () => {
     const file = await produce({ [SOURCE]: join(dir, 'greys25.mp4') }, modelWindow(r(0)));
     const stream = await video(file);
     expect([stream.width, stream.height]).toEqual([64, 48]);
@@ -486,7 +486,11 @@ describe('model_window, model_window_mask and frame_at (execution design §10.5 
     const source = (await rgbMeans(join(dir, 'greys25.mp4'), { width: W, height: H }, { x: 0, y: 0, width: W, height: H })).map(rgb => rgb[0]!);
     const inside = (await rgbMeans(file, FRAME, ROI_IN)).map(rgb => rgb[0]!);
     inside.forEach((value, j) => expect(Math.abs(value - source[Math.min(9, Math.floor((25 * j) / 16))]!), `slot ${j}`).toBeLessThan(3));
-    for (const rgb of await rgbMeans(file, FRAME, FILL_IN)) for (const channel of rgb) expect(Math.abs(channel - 127)).toBeLessThanOrEqual(1);
+    // The fill is the RGB 127 FFmpeg writes for 0x7f7f7f in BT.709 limited range, as the measured VACE input was made.
+    const reference = join(dir, 'fill-127.mp4');
+    await make('fill-127.mp4', ['-f', 'lavfi', '-i', 'color=c=0x7f7f7f:s=64x48:d=0.0625,format=yuv420p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv', '-frames:v', '1', '-c:v', 'libx264', '-crf', '0']);
+    const [fillRgb] = await rgbMeans(reference, FRAME, FILL_IN);
+    for (const rgb of await rgbMeans(file, FRAME, FILL_IN)) rgb.forEach((channel, at) => expect(Math.abs(channel - fillRgb![at]!)).toBeLessThanOrEqual(1));
   });
 
   it('MW02 the grid starts at the span start: the first slot of a span at 0.1 s is source frame 2, the next frame 4', async () => {

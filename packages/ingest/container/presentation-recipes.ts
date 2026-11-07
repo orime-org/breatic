@@ -11,7 +11,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { rational } from "@shared/mini-tools/video-presentation-projection.js";
 import type {
-  MiniToolPlanAudio, MiniToolPlanEntry, MiniToolPlanEraseComposite, MiniToolPlanExact, MiniToolPlanExpandComposite, MiniToolPlanPixelRect, MiniToolPlanRecipe, MiniToolPlanStitch,
+  MiniToolPlanAudio, MiniToolPlanEntry, MiniToolPlanExact, MiniToolPlanExpandComposite, MiniToolPlanPixelRect, MiniToolPlanRecipe, MiniToolPlanStitch,
   MiniToolPlanTarget, MiniToolPlanTransitionProfile, MiniToolPlanTransitionStitch, MiniToolPlanTransitionWindow,
 } from "@shared/upload/mini-tool-plan-types.js";
 import type { ContainerFailure } from "@shared/mini-tools/types.js";
@@ -37,7 +37,7 @@ export class RecipeFailure extends Error {
 export interface PlanLimits { probeStdoutBytes: number; analysisStdoutBytes: number; stderrTailBytes: number }
 /** The recipes this module runs. */
 export type PresentationRecipe = Extract<MiniToolPlanRecipe, { kind: "copy_carrier" | "chunk_encode" | "prepare_model_input" }> | MiniToolPlanStitch
-  | FrameRecipe | PeopleRecipe | SceneRecipe | SegmentRecipe | MiniToolPlanTransitionStitch | MiniToolPlanTransitionWindow | MiniToolPlanEraseComposite | MiniToolPlanExpandComposite;
+  | FrameRecipe | PeopleRecipe | SceneRecipe | SegmentRecipe | MiniToolPlanTransitionStitch | MiniToolPlanTransitionWindow | MiniToolPlanExpandComposite;
 /** A still frame on a full-ledger entry (§91 D4-3). */
 type FrameRecipe = Extract<MiniToolPlanRecipe, { kind: "frame"; entry: MiniToolPlanEntry }>;
 /** People detection on the anchor's entry (§91 D4-5). */
@@ -124,6 +124,22 @@ export function placement(target: MiniToolPlanTarget): { rect: MiniToolPlanPixel
 }
 
 /**
+ * The filters that tone map HDR frames and scale them with the plan matrix (§4.3 colour/HDR row), before any output conversion.
+ * @param source - The plan's matrix and tone mapping.
+ * @param source.colorMatrix - The plan matrix.
+ * @param source.toneMap - The tone mapping.
+ * @param width - The scaled width.
+ * @param height - The scaled height.
+ * @returns The filter chain text.
+ * @throws {RangeError} When the plan matrix has no decode value.
+ */
+export function decodedPicture(source: { colorMatrix: string; toneMap: "none" | "sdr-bt709" }, width: number, height: number): string {
+  const matrix = SCALE_MATRICES[source.colorMatrix];
+  if (matrix === undefined) throw new RangeError(`No decode matrix for ${source.colorMatrix}`);
+  return `${source.toneMap === "sdr-bt709" ? `${TONE_MAP},` : ""}scale=${width}:${height}:in_color_matrix=${matrix}`;
+}
+
+/**
  * The filters that turn decoded display frames into the target picture (§4.3 odd-size and colour/HDR/bit-depth rows, §3.5): HDR
  * tone mapped, decoded with the plan matrix, scaled to the picture rectangle and padded around it to the even coded size;
  * an alpha source is packed premultiplied colour left and alpha right as `alpha-presentation.ts` packs it.
@@ -133,10 +149,8 @@ export function placement(target: MiniToolPlanTarget): { rect: MiniToolPlanPixel
  * @throws {RangeError} When the plan matrix has no decode value.
  */
 export function picture(target: MiniToolPlanTarget, label: string): string {
-  const matrix = SCALE_MATRICES[target.colorMatrix];
-  if (matrix === undefined) throw new RangeError(`No decode matrix for ${target.colorMatrix}`);
   const { rect, planeWidth } = placement(target);
-  const head = `${target.toneMap === "sdr-bt709" ? `${TONE_MAP},` : ""}scale=${rect.width}:${rect.height}:in_color_matrix=${matrix}`;
+  const head = decodedPicture(target, rect.width, rect.height);
   const pad = `pad=${planeWidth}:${target.height}:${rect.x}:${rect.y}:color=black`;
   // The frames are already upright; a display matrix left on them would be written to the output and rotate it again.
   const unrotated = `${BT709_TAGS},sidedata=mode=delete:type=DISPLAYMATRIX`;
@@ -471,9 +485,11 @@ async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_e
     graph.push(audio.graph);
   }
   let encode: { video: string[]; muxer: string[] };
-  if (profile === undefined) encode = videoOutput(target, clock, roundTimes(minus(span(entries[entries.length - 1]!).end, span(entries[0]!).start), clock));
+  const count = recipe.window.end - recipe.window.start;
+  if (recipe.kind === "prepare_model_input" && (recipe.order === "reverse" || recipe.grid !== undefined)) {
+    encode = modelInputTiming(recipe, graph, clock, count, target);
+  } else if (profile === undefined) encode = videoOutput(target, clock, roundTimes(minus(span(entries[entries.length - 1]!).end, span(entries[0]!).start), clock));
   else {
-    const count = recipe.window.end - recipe.window.start;
     const [tick, base] = rational(profile.timeBase);
     // The window's graph ends at [v]; the grid takes it from there (the audio chain, absent for a chunk, never follows it).
     graph.push(`${graph.pop()!.replace(/\[v\]$/u, "[w]")};[w]${profileGrid(profile, count)}[v]`);
@@ -481,6 +497,38 @@ async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_e
   }
   args.push("-filter_complex", graph.join(";"), "-map", "[v]", ...encode.video, ...(audio === null ? ["-an"] : audioOutput(target)), ...encode.muxer, output);
   await runPlanCommand("ffmpeg", args, run);
+}
+
+/**
+ * Re-time a model input's frames (execution design §10.2, §10.4): a reversed tracking clip plays the window's frames backwards
+ * from 0, one window frame step each; a `frames` grid keeps every frame and stamps frame N at N / rate; a `resample` grid shows
+ * at slot j the frame covering j / rate (`fps` rounding up gives each frame the first slot at or after its start) and holds
+ * the last frame to exactly the grid's count. Rewrites the graph's last chain to end on the re-timed `[v]`.
+ * @param recipe - The model input recipe.
+ * @param graph - The window graph, whose last chain ends on `[v]`.
+ * @param clock - The window's timescale.
+ * @param count - The window's frame count.
+ * @param target - The encode target.
+ * @returns The encoder and muxer arguments for the re-timed frames.
+ * @throws {RangeError} When a resample grid's rate is not a whole number of frames per second.
+ */
+function modelInputTiming(recipe: Extract<PresentationRecipe, { kind: "prepare_model_input" }>, graph: string[], clock: bigint, count: number, target: MiniToolPlanTarget): { video: string[]; muxer: string[] } {
+  const relabel = (chain: string): void => { graph.push(`${graph.pop()!.replace(/\[v\]$/u, "[w]")};[w]${chain}[v]`); };
+  if (recipe.order === "reverse") {
+    const end = roundTimes(minus(span(recipe.entries[recipe.entries.length - 1]!).end, span(recipe.entries[0]!).start), clock);
+    const step = end / BigInt(count) > 0n ? end / BigInt(count) : 1n;
+    relabel(`reverse,setpts=N*${step}`);
+    if (recipe.grid === undefined) return videoOutput(target, clock, step * BigInt(count));
+  }
+  const grid = recipe.grid!;
+  if (grid.mode === "frames") {
+    const base = 90000n;
+    relabel(`settb=1/${base},setpts=round(N*${base}/${grid.rate})`);
+    return videoOutput(target, base, BigInt(Math.round((grid.frameCount * Number(base)) / grid.rate)));
+  }
+  if (!Number.isInteger(grid.rate)) throw new RangeError("A resample grid runs at a whole frame rate");
+  relabel(`fps=fps=${grid.rate}:round=up,tpad=stop_mode=clone:stop=${grid.frameCount},trim=end_frame=${grid.frameCount}`);
+  return videoOutput(target, BigInt(grid.rate), BigInt(grid.frameCount));
 }
 
 /**
@@ -561,9 +609,9 @@ function ticksFrom(time: MiniToolPlanExact, origin: MiniToolPlanExact, clock: bi
 }
 
 /**
- * Composite a model's result over a window (§7.17 model_composite row; execution design §8, §8.1; §97 D20-2, D20-3), on the
- * window's own clock from 0 and opening with a keyframe as a segment does. Erase shows the result inside its range, placed by
- * presentation time from the range start, and the source elsewhere. Expand lays each background over the target from its
+ * Composite an expand's backgrounds over a window (§7.17 model_composite row; execution design §8, §8.1; §97 D20-2, D20-3), on
+ * the window's own clock from 0 and opening with a keyframe as a segment does (the erase composite is in `model-recipes.ts`).
+ * Expand lays each background over the target from its
  * window's start by its own PTS (cropped to the product ROI and scaled to the target first when it is a whole model frame),
  * fades each later background in across its overlap with the one before by presentation time, and places the source at its
  * frozen rectangle on top. Model outputs are SDR BT.709 (§5.3). The audio is the stitch's.
@@ -575,12 +623,12 @@ function ticksFrom(time: MiniToolPlanExact, origin: MiniToolPlanExact, clock: bi
  * @throws {RangeError} When a time is malformed or the plan matrix has no decode value.
  * @throws {Error} When an input is missing or FFmpeg fails.
  */
-async function compositeWindow(recipe: MiniToolPlanEraseComposite | MiniToolPlanExpandComposite, files: ReadonlyMap<string, string>, output: string, run: Run): Promise<void> {
+async function compositeWindow(recipe: MiniToolPlanExpandComposite, files: ReadonlyMap<string, string>, output: string, run: Run): Promise<void> {
   const { entries, target } = recipe;
   const clock = BigInt(recipe.timescale);
   const origin = span(entries[0]!).start;
   const { rect } = placement(target);
-  const sourceTarget = recipe.mode === "expand" ? { ...target, width: rect.width, height: rect.height, displayRect: null } : target;
+  const sourceTarget = { ...target, width: rect.width, height: rect.height, displayRect: null };
   const window = await windowGraph(entries, clock, local(files, recipe.inputId), run, (label) => picture(sourceTarget, label),
     () => `color=c=black:s=${sourceTarget.width}x${sourceTarget.height}:r=1:d=1,format=yuv420p,setsar=1,${BT709_TAGS}`);
   const { args, graph } = window;
@@ -598,25 +646,18 @@ async function compositeWindow(recipe: MiniToolPlanEraseComposite | MiniToolPlan
     // On the output's own time base: a model output at a higher rate than the window's clock keeps every frame's PTS.
     return `[${inputs++}:v:0]${chain},setpts=PTS-STARTPTS+(${ticksFrom(from, origin, clock)}/${clock})/TB`;
   };
-  if (recipe.mode === "erase") {
-    // Half a tick below each bound, so a frame on the range start is inside it and one on its end outside.
-    const bound = (time: MiniToolPlanExact): number => (Number(ticksFrom(time, origin, clock)) - 0.5) / Number(clock);
-    graph.push(`${placed(recipe.result, recipe.range.start, picture({ ...target, colorMatrix: "bt709", toneMap: "none" }, "r"))}[r]`,
-      `[v][r]overlay=eof_action=pass:enable='gte(t\\,${bound(recipe.range.start)})*lt(t\\,${bound(recipe.range.end)})'[o]`);
-  } else {
-    graph.push("[v]split[sv][sc]", `[sc]pad=${target.width}:${target.height}:${rect.x}:${rect.y}:color=black[b0]`);
-    recipe.backgrounds.forEach((background, at) => {
-      const crop = background.crop === undefined ? "" : `crop=${background.crop.width}:${background.crop.height}:${background.crop.x}:${background.crop.y}:exact=1,`;
-      const previous = recipe.backgrounds[at - 1];
-      const overlap = previous === undefined ? null : minus(previous.window.end, background.window.start);
-      const fade = overlap === null || overlap[0] <= 0n ? ""
-        : `,format=yuva420p,fade=t=in:st=${Number(ticksFrom(background.window.start, origin, clock)) / Number(clock)}:d=${seconds(overlap)}:alpha=1`;
-      graph.push(`${placed(background.inputId, background.window.start,
-        `${crop}scale=${target.width}:${target.height}:in_color_matrix=bt709:out_color_matrix=bt709:out_range=tv,format=yuv420p,setsar=1,${BT709_TAGS}`)}${fade}[g${at}]`,
-      `[b${at}][g${at}]overlay[b${at + 1}]`);
-    });
-    graph.push(`[b${recipe.backgrounds.length}][sv]overlay=${rect.x}:${rect.y}[o]`);
-  }
+  graph.push("[v]split[sv][sc]", `[sc]pad=${target.width}:${target.height}:${rect.x}:${rect.y}:color=black[b0]`);
+  recipe.backgrounds.forEach((background, at) => {
+    const crop = background.crop === undefined ? "" : `crop=${background.crop.width}:${background.crop.height}:${background.crop.x}:${background.crop.y}:exact=1,`;
+    const previous = recipe.backgrounds[at - 1];
+    const overlap = previous === undefined ? null : minus(previous.window.end, background.window.start);
+    const fade = overlap === null || overlap[0] <= 0n ? ""
+      : `,format=yuva420p,fade=t=in:st=${Number(ticksFrom(background.window.start, origin, clock)) / Number(clock)}:d=${seconds(overlap)}:alpha=1`;
+    graph.push(`${placed(background.inputId, background.window.start,
+      `${crop}scale=${target.width}:${target.height}:in_color_matrix=bt709:out_color_matrix=bt709:out_range=tv,format=yuv420p,setsar=1,${BT709_TAGS}`)}${fade}[g${at}]`,
+    `[b${at}][g${at}]overlay[b${at + 1}]`);
+  });
+  graph.push(`[b${recipe.backgrounds.length}][sv]overlay=${rect.x}:${rect.y}[o]`);
   // An overlay goes on after its main input ends while a model output still has frames; the chunk is the window's frames.
   graph.push(`[o]trim=end_frame=${recipe.window.end - recipe.window.start}[c]`);
   const { video, muxer } = videoOutput(target, clock, roundTimes(minus(span(entries[entries.length - 1]!).end, origin), clock));
