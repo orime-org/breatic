@@ -17,7 +17,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { aiCapture, aiContextOf, aiInsertBlockId } from '@web/spaces/document/document-ai-launch';
+import { aiCapture, aiContextOf } from '@web/spaces/document/document-ai-launch';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -108,6 +108,7 @@ describe('the range captured (§4.6, Plate captureTextRange)', () => {
       range: { from: at(editor, 'x y z'), to: at(editor, 'x y z') + 5 },
       firstId: null,
       lastId: null,
+      insertId: topIds(editor)[0],
     });
   });
 
@@ -175,11 +176,10 @@ describe('the range captured (§4.6, Plate captureTextRange)', () => {
  * @param editor - The editor.
  * @returns Its id.
  */
-function insertBlockOf(editor: Editor): string | null {
-  const state = editor.prosemirrorState;
-  const captured = aiCapture(state);
+function insertBlockOf(editor: Editor): string {
+  const captured = aiCapture(editor.prosemirrorState);
   expect(captured).not.toBeNull();
-  return aiInsertBlockId(state.doc, captured!);
+  return captured!.insertId;
 }
 
 describe('the insert block (§5.4)', () => {

@@ -82,7 +82,9 @@ function blockAround($pos: ResolvedPos, oneCell: boolean): number | null {
  * `captureTextRange` takes it: a block the selection only ends at the start
  * of, or only starts at the end of, is left out; what is left inside one
  * line of words is the selected words, and anything else takes the whole
- * blocks it touches, a table it runs into whole.
+ * blocks it touches, a table it runs into whole. The insert block (§5.4) is
+ * the range's last block: the whole table for a range that takes one in,
+ * the block in the cell for words inside a single cell.
  * @param state - The editor state, holding the selection.
  * @returns The range, or null when it holds no words.
  */
@@ -100,29 +102,16 @@ export function aiCapture(state: EditorState): AiCapture | null {
   const first = blockAround($first, oneCell);
   const last = blockAround($last, oneCell);
   if (first === null || last === null) return null;
+  const lastId = String(doc.nodeAt(last)!.attrs['id']);
   // Inside one block is inside one line of words: a legacy table's cells
   // are lines of one block, and a selection across them takes the table.
   if (first === last && $first.sameParent($last)) {
     const letters = letterBounds(doc, { from, to }, inlineLetter);
-    return letters === null ? null : { range: letters, firstId: null, lastId: null };
+    return letters === null ? null : { range: letters, firstId: null, lastId: null, insertId: lastId };
   }
   const range = { from: first, to: ownContentEnd(doc, last) };
   if (letterBounds(doc, range, inlineLetter) === null) return null;
-  return { range, firstId: String(doc.nodeAt(first)!.attrs['id']), lastId: String(doc.nodeAt(last)!.attrs['id']) };
-}
-
-/**
- * The block a result is inserted under (§5.4): the range's last block, the
- * whole table for a range that takes one in, the block in the cell for one
- * inside a single cell.
- * @param doc - The body the range was captured from.
- * @param captured - The range.
- * @returns The block's id; null when the range is in no block.
- */
-export function aiInsertBlockId(doc: ProseMirrorNode, captured: AiCapture): string | null {
-  if (captured.lastId !== null) return captured.lastId;
-  const around = containerAt(doc, captured.range.from);
-  return around === null ? null : String(doc.nodeAt(around)!.attrs['id']);
+  return { range, firstId: String(doc.nodeAt(first)!.attrs['id']), lastId, insertId: lastId };
 }
 
 /** One top-level block of the context: its Markdown and its place in the body. */

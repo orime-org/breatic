@@ -64,7 +64,7 @@ import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentAiLaunchContext, TONE_LABEL_KEYS, type AiLaunch } from '@web/spaces/document/document-ai-context';
-import { aiCapture, aiContextOf, aiInsertBlockId } from '@web/spaces/document/document-ai-launch';
+import { aiCapture, aiContextOf } from '@web/spaces/document/document-ai-launch';
 import { aiCoverIn, aiRangeIn, DOCUMENT_AI_RANGE, onAiEscape } from '@web/spaces/document/document-ai-range';
 import {
   aiDialogButtons,
@@ -105,7 +105,7 @@ interface Opened {
   /** What every request of the session sends besides its command. */
   readonly base: { readonly project_id: string; readonly selection: string; readonly document: string };
   /** The block a result is inserted under. */
-  readonly insertBlockId: string | null;
+  readonly insertBlockId: string;
   /** The point a select-all pinned the panel to, in viewport coordinates. */
   readonly frozen: { readonly x: number; readonly y: number } | null;
   /** How fast the answer is shown, in characters per second. */
@@ -276,13 +276,10 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
         // Written at the press: the original range is cleared as the session
         // closes, right after this. The panel fetched the media prefix as it opened.
         try {
-          const cover = aiCoverIn(editor.prosemirrorState);
-          const answer = aiAnswer(editor, editor.prosemirrorState.doc, effect.result, ourMediaPrefix(), cover, at.insertBlockId);
-          if (effect.how === 'insert') {
-            if (at.insertBlockId !== null) told(insertAiAnswer({ editor }, at.insertBlockId, answer, admission));
-            return;
-          }
-          told(replaceAiAnswer({ editor }, answer, cover, admission));
+          const answer = aiAnswer(editor, editor.prosemirrorState, effect.result, ourMediaPrefix(), at.insertBlockId);
+          told(effect.how === 'insert'
+            ? insertAiAnswer({ editor }, at.insertBlockId, answer, admission)
+            : replaceAiAnswer({ editor }, answer, aiCoverIn(editor.prosemirrorState), admission));
         } catch (err) {
           failed();
           throw err;
@@ -313,7 +310,7 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
         key: openings.current,
         base: { project_id: projectId, selection: sent, document: aiContextOf(editor, config.contextMaxChars) },
         revealCharsPerSecond: config.revealCharsPerSecond,
-        insertBlockId: aiInsertBlockId(doc, captured),
+        insertBlockId: captured.insertId,
         frozen: bar === null ? null : { x: bar.left, y: bar.bottom },
       };
       openedRef.current = next;
@@ -404,7 +401,6 @@ function anchorBox(editor: ViewedEditor, opened: Opened): DOMRect | null {
     const line = view.coordsAtPos(last, -1);
     return new DOMRect(left, line.top, 0, line.bottom - line.top);
   }
-  if (opened.insertBlockId === null) return null;
   const block = view.dom.querySelector(`[data-id="${CSS.escape(opened.insertBlockId)}"]`);
   if (block === null) return null;
   const box = block.getBoundingClientRect();
@@ -451,7 +447,7 @@ function AiPanel({
   const finished = (session.state === 'stopped' || session.state === 'done') && isComplete;
   const answer = React.useMemo<AiAnswer | null>(
     () => (finished
-      ? aiAnswer(editor, editor.prosemirrorState.doc, session.result, ourPrefix, aiCoverIn(editor.prosemirrorState), opened.insertBlockId)
+      ? aiAnswer(editor, editor.prosemirrorState, session.result, ourPrefix, opened.insertBlockId)
       : null),
     [finished, editor, session.result, ourPrefix, opened.insertBlockId],
   );
@@ -867,7 +863,7 @@ function Preview({
 }: {
   editor: ViewedEditor;
   ourPrefix: string | null;
-  insertBlockId: string | null;
+  insertBlockId: string;
   text: string;
   streaming: boolean;
   running: boolean;
@@ -898,7 +894,7 @@ function Preview({
     const parse = (): void => {
       timer.current = null;
       const shown = latest.current;
-      const blocks = aiAnswer(parser, editor.prosemirrorState.doc, shown, ourPrefix, aiCoverIn(editor.prosemirrorState), insertBlockId).preview;
+      const blocks = aiAnswer(parser, editor.prosemirrorState, shown, ourPrefix, insertBlockId).preview;
       setHtml(blocks.length === 0 ? '' : parser.blocksToFullHTML(blocks as never));
     };
     if (!streaming) {

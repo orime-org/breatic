@@ -57,6 +57,8 @@ export interface AiCapture {
   readonly firstId: string | null;
   /** The last of the whole blocks; null for words inside one line. */
   readonly lastId: string | null;
+  /** The block a result is inserted under (§5.4): the range's last block. */
+  readonly insertId: string;
 }
 
 /** The original range: on its words, or gone. */
