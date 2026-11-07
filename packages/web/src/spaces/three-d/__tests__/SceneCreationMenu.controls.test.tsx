@@ -208,3 +208,58 @@ describe('SceneCreationMenu receiving Agent proposals (inner#1691 design 6.2, 8.
     expect(toast.warning).not.toHaveBeenCalled();
   });
 });
+
+describe('SceneCreationMenu focus after the generation dialog closes (inner#1691 design 7.1)', () => {
+  /**
+   * Render the rail beside a stand-in for the new task row, which the editor
+   * focuses when it is told a generation opened.
+   * @returns The stand-in row.
+   */
+  function renderWithRow(): HTMLElement {
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <TooltipProvider>
+          <button type='button' data-testid='new-row'>row</button>
+          <SceneCreationMenu
+            projectId={PROJECT}
+            spaceId={SPACE}
+            myRole='editor'
+            canEdit
+            onAdd={vi.fn()}
+            onImport={vi.fn()}
+            onGenerated={() => screen.getByTestId('new-row').focus()}
+          />
+        </TooltipProvider>
+      </QueryClientProvider>,
+    );
+    return screen.getByTestId('new-row');
+  }
+
+  it('leaves focus on the new task row once a submit closes the dialog', async () => {
+    const user = userEvent.setup();
+    api.post.mockResolvedValue({ task_id: 'task-1', row_id: 'row-1', status: 'pending' });
+    const row = renderWithRow();
+
+    await user.click(screen.getByRole('button', { name: 'AI generation' }));
+    const dialog = await screen.findByRole('dialog', { name: 'AI generation' });
+    await within(dialog).findByTestId('generate-param-texture-toggle');
+    await user.type(within(dialog).getByTestId('scene-generate-prompt'), 'A stone lion');
+    await user.click(within(dialog).getByTestId('scene-generate-run'));
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'AI generation' })).toBeNull());
+    expect(document.activeElement).toBe(row);
+  });
+
+  it('hands focus back to the AI generation button when the dialog is closed without a submit', async () => {
+    const user = userEvent.setup();
+    renderWithRow();
+
+    const trigger = screen.getByRole('button', { name: 'AI generation' });
+    await user.click(trigger);
+    const dialog = await screen.findByRole('dialog', { name: 'AI generation' });
+    await user.click(within(dialog).getByRole('button', { name: 'Close' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'AI generation' })).toBeNull());
+    expect(document.activeElement).toBe(trigger);
+  });
+});

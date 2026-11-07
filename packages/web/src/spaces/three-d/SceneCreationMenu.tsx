@@ -101,12 +101,29 @@ export const SceneCreationMenu = React.memo(function SceneCreationMenu({ project
     if (submitting) toast.warning(busyText);
     else openFilled(generateRequest.fill);
   }, [generateRequest, submitting, busyText, openFilled]);
+  // The row a submit opened, handed on once the dialog has finished closing:
+  // the close returns focus to whatever opened the dialog, so a row focused
+  // before that would lose it again.
+  const openedRow = React.useRef<string | null>(null);
   /**
-   * Hand the opened row on once the dialog has closed on it.
+   * Keep the row the server opened until the dialog has closed on it.
    * @param rowId - The row the server opened.
    * @throws {never} Never.
    */
-  const submitted = React.useCallback((rowId: string): void => onGenerated?.(rowId), [onGenerated]);
+  const submitted = React.useCallback((rowId: string): void => {
+    openedRow.current = rowId;
+  }, []);
+  /**
+   * Return focus as every closing overlay does, then hand on the row a submit opened.
+   * @param event - The dialog's close-focus event.
+   * @throws {never} Never.
+   */
+  const generateClosed = React.useCallback((event: Event): void => {
+    returnFocus(event);
+    const rowId = openedRow.current;
+    openedRow.current = null;
+    if (rowId !== null) onGenerated?.(rowId);
+  }, [returnFocus, onGenerated]);
   /**
    * Open the controls dialog.
    * @throws {never} Never.
@@ -124,7 +141,7 @@ export const SceneCreationMenu = React.memo(function SceneCreationMenu({ project
       <Tooltip><TooltipTrigger asChild><span className='inline-flex'><Button variant={null} size={null} disabled className='inline-flex h-10 w-10 items-center justify-center rounded-lg text-foreground-disabled'><MessageCircle className='size-5' /></Button></span></TooltipTrigger><TooltipContent side='right'>{t('spaces.threeD.annotationsLater')}</TooltipContent></Tooltip>
       <div className='my-1 h-px w-7 bg-border' /><SceneIconButton rail label={t('spaces.threeD.controls')} onClick={showControls}>{icons.controls}</SceneIconButton>
     </nav>
-    <SceneGenerateDialog projectId={projectId} spaceId={spaceId} open={aiOpen} onOpenChange={setAiOpen} fill={fill} onSubmitted={submitted} onCloseAutoFocus={returnFocus} />
+    <SceneGenerateDialog projectId={projectId} spaceId={spaceId} open={aiOpen} onOpenChange={setAiOpen} fill={fill} onSubmitted={submitted} onCloseAutoFocus={generateClosed} />
     <Dialog open={controlsOpen} onOpenChange={setControlsOpen}><DialogContent onCloseAutoFocus={returnFocus}><DialogHeader><DialogTitle>{t('spaces.threeD.controls')}</DialogTitle><DialogDescription>{t('spaces.threeD.helpBody')}</DialogDescription></DialogHeader></DialogContent></Dialog>
   </>;
 });
