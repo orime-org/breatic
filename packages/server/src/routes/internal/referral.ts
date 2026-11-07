@@ -4,7 +4,7 @@
 import type { Context, Hono } from "hono";
 import { z } from "zod";
 import { REFERRAL_CODE_INPUT_MAX } from "@breatic/shared";
-import { withoutNul } from "@server/utils/without-nul.js";
+import { storableText } from "@server/utils/storable-text.js";
 import { requirePayments } from "@server/middleware/require-payments.js";
 import { validate } from "@server/middleware/validate.js";
 import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
@@ -16,15 +16,15 @@ const OPERATIONS = "/internal/v1/referral-operations";
 
 const uuid = z.string().uuid();
 const requestKey = z.string().regex(/^bo-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
-const reason = withoutNul(z.string().min(1).max(500));
+const reason = storableText(z.string().min(1).max(500));
 const idParam = z.object({ id: uuid });
 const page = {
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   cursor: z.string().max(512).optional(),
 };
 
-const approveBody = z.object({ reason, code: z.string().max(REFERRAL_CODE_INPUT_MAX).optional() }).strict();
-const rejectBody = z.object({ reason, applicantNote: withoutNul(z.string().max(500)).optional() }).strict();
+const approveBody = z.object({ reason, code: storableText(z.string().max(REFERRAL_CODE_INPUT_MAX)).optional() }).strict();
+const rejectBody = z.object({ reason, applicantNote: storableText(z.string().max(500)).optional() }).strict();
 const codeBody = z.object({ reason }).strict();
 
 /**

@@ -12,7 +12,7 @@
 
 import type { Context, Hono, MiddlewareHandler } from "hono";
 import { z } from "zod";
-import { withoutNul } from "@server/utils/without-nul.js";
+import { storableText } from "@server/utils/storable-text.js";
 import { creditLotService } from "@breatic/domain";
 import "@server/middleware/internal-auth.js";
 import { validate } from "@server/middleware/validate.js";
@@ -40,7 +40,7 @@ const RESEND = "/internal/v1/refund-operations/:operationId/mail/resend";
  * @returns The schema.
  */
 function text(max: number): z.ZodType<string> {
-  return withoutNul(z.string().min(1).max(max));
+  return storableText(z.string().min(1).max(max));
 }
 const reason = text(500);
 const refundIds = z.array(text(255)).max(100);

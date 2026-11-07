@@ -91,6 +91,14 @@ describe("approving a promoter application", () => {
     expect(app!.status).toBe("pending");
   });
 
+  it("refuses an asked-for code the database cannot store as a malformed body", async () => {
+    const { applicationId } = await applicant();
+    const res = await approve(applicationId, { reason: "x", code: "AB\u0000CD" });
+    expect(res.status).toBe(422);
+    const [app] = await suite.sql`select status from promoter_applications where id = ${applicationId}`;
+    expect(app!.status).toBe("pending");
+  });
+
   it("refuses a malformed code as invalid_code", async () => {
     const { applicationId } = await applicant();
     const res = await approve(applicationId, { reason: "x", code: "a!" });
@@ -146,10 +154,10 @@ describe("rejecting a promoter application", () => {
     expect(app).toEqual({ status: "rejected", applicant_note: "Your links did not open.", decision_reason: "Channels unreachable" });
   });
 
-  it("refuses a note the database cannot store as a malformed body", async () => {
+  it.each(["a\u0000b", "a\ud800b"])("refuses a note the database cannot store (%j) as a malformed body", async (note) => {
     const { applicationId } = await applicant();
     const res = await call(suite.baseUrl, `/internal/v1/promoter-applications/${applicationId}/reject`, {
-      body: { reason: "Channels unreachable", applicantNote: "a\u0000b" }, idempotencyKey: key(),
+      body: { reason: "Channels unreachable", applicantNote: note }, idempotencyKey: key(),
     });
     expect(res.status).toBe(422);
     const [app] = await suite.sql`select status from promoter_applications where id = ${applicationId}`;
