@@ -49,3 +49,15 @@ describe("trackingClips (execution design §10.2)", () => {
     expect(() => joinTrackingClips(clips, ["a", "b"], ["c", "d"])).toThrow(RangeError);
   });
 });
+
+// Execution design §10.2: the erase anchor must lie in the tracking range, checked by the panel and analysis admission alike.
+describe("anchorInTrackingRange (execution design §10.2)", () => {
+  it("TC08 holds for start ≤ anchor.pts < end only", async () => {
+    const { anchorInTrackingRange } = await import("../tracking-clips.js");
+    const range = { start: 1, end: 3 };
+    expect(anchorInTrackingRange(range, { frameIndex: 25, pts: 1 })).toBe(true);
+    expect(anchorInTrackingRange(range, { frameIndex: 74, pts: 2.96 })).toBe(true);
+    expect(anchorInTrackingRange(range, { frameIndex: 75, pts: 3 })).toBe(false);
+    expect(anchorInTrackingRange(range, { frameIndex: 24, pts: 0.96 })).toBe(false);
+  });
+});
