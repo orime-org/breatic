@@ -30,7 +30,8 @@ import { join } from 'node:path';
 import { expect, type BrowserContext, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 
-import { openSmokeProject } from '../helpers/project';
+import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
+import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace, VISIBLE_SPACE } from '../helpers/space';
 import { dropFile, expectOnlyPartsTo, expectOpenedUpload, PART_PATH, recordRequests } from '../helpers/upload';
 
@@ -128,6 +129,24 @@ async function videoSources(target: Page): Promise<string[]> {
     ), VISIBLE_SPACE);
 }
 
+/**
+ * The video node's stored content and cover, as the canvas document holds them.
+ * @param target - The page.
+ * @returns The first video node's URLs, empty until there is one.
+ */
+async function storedVideo(target: Page): Promise<{ content: string; coverUrl: string }> {
+  const at = await liveModuleUrl(target, CANVAS_SPACE);
+  return target.evaluate(async ([pid, sid, url]: [string, string, string]) => {
+    const canvas = (await import(/* @vite-ignore */ url)) as {
+      readCanvasGraph: (p: string, s: string) => {
+        nodes: { type: string; data?: { content?: string; coverUrl?: string } }[];
+      };
+    };
+    const video = canvas.readCanvasGraph(pid, sid).nodes.find((n) => n.type === 'video');
+    return { content: video?.data?.content ?? '', coverUrl: video?.data?.coverUrl ?? '' };
+  }, [smokeProjectId(), spaceId, at] as [string, string, string]);
+}
+
 test.beforeEach(async ({ browser }) => {
   context = await browser.newContext();
   page = await context.newPage();
@@ -223,6 +242,9 @@ test('a multi-part video lands with the cover our worker pulled out of it @needs
   // nothing it is here to prove.
   expect(size).toBeGreaterThan(2 * 8 * 1024 * 1024);
 
+  // The node plays through a presentation the server prepares; held, so the
+  // node stays at the stage where the cover is what it shows.
+  await page.route('**/assets/video-presentation?*', () => {});
   await dropFile(
     page,
     'multipart.mp4',
@@ -233,19 +255,21 @@ test('a multi-part video lands with the cover our worker pulled out of it @needs
   // The node hears nothing until the cover is out, so this one wait covers the
   // whole chain: every part written, the report accepted, the asset
   // registered, ffmpeg run, and one event carrying both URLs.
+  let stored = { content: '', coverUrl: '' };
   await expect
-    .poll(async () => (await videoSources(page)).length, { timeout: 360_000 })
-    .toBeGreaterThan(0);
-  const [videoUrl] = await videoSources(page);
-  expect(videoUrl).toMatch(/^https?:\/\//);
+    .poll(async () => {
+      stored = await storedVideo(page);
+      return /^https?:\/\//.test(stored.content) && /^https?:\/\//.test(stored.coverUrl);
+    }, { timeout: 360_000 })
+    .toBe(true);
+  expect(stored.coverUrl).not.toBe(stored.content);
 
-  // The cover rides in on the same event, as the node's poster.
-  const poster = await page.evaluate(
-    (space: string) =>
-      (document.querySelector(`${space} .react-flow__node video`) as HTMLVideoElement)
-        ?.poster ?? '', VISIBLE_SPACE);
-  expect(poster).toMatch(/^https?:\/\//);
-  expect(poster).not.toBe(videoUrl);
+  // The cover is what the node shows over the video while its presentation is
+  // prepared; that preparation is held above, so the cover stays up.
+  const cover = visibleSpace(page).locator('.react-flow__node [data-testid="media-player"] img');
+  await expect(cover).toBeVisible();
+  expect(await cover.getAttribute('src')).toMatch(/^https?:\/\//);
+  await expect.poll(() => cover.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0);
 });
 
 // A4: the second drop of a file this studio already stores sends no bytes and
