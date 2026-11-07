@@ -11,7 +11,7 @@
 # so one call at this ceiling occupies several times it in memory.
 #
 # The browser refuses a larger file before it builds anything, and says this
-# number — so it is the figure a reader is told, and 20 MiB is what "20 MB"
+# number — so it is the figure a user is told, and 20 MiB is what "20 MB"
 # means to the file manager they got the file from.
 max_media_bytes: 20971520
 
@@ -20,7 +20,7 @@ max_media_bytes: 20971520
 # deadline (inner#1367, `default_budget_ms` in config/node-tasks.yaml).
 
 # How much the model may write about one piece of media, in tokens.
-# What it writes is the whole of what the new text node holds, and a reader
+# What it writes is the whole of what the new text node holds, and a user
 # who asked for a description of a video is reading all of it.
 max_output_tokens: 8192
 
