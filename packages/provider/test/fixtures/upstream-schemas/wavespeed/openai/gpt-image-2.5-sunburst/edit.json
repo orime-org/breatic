@@ -86,7 +86,7 @@
     ]
   },
   "required": [
-    "prompt",
-    "images"
+    "images",
+    "prompt"
   ]
 }

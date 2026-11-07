@@ -1,17 +1,6 @@
 {
   "source": "https://api.sandbase.ai/v1/models/kwaivgi/kling-video/o3/4k/image-to-video",
   "fields": {
-    "image": [
-      {
-        "type": "string"
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string",
-        "maxLength": 2500
-      }
-    ],
     "duration": [
       {
         "type": "integer",
@@ -38,14 +27,15 @@
         "type": "string"
       }
     ],
-    "shot_type": [
+    "generate_audio": [
       {
-        "type": "string",
-        "enum": [
-          "customize",
-          "intelligent"
-        ],
-        "default": "customize"
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "image": [
+      {
+        "type": "string"
       }
     ],
     "multi_prompt": [
@@ -96,16 +86,26 @@
         }
       }
     ],
-    "generate_audio": [
+    "prompt": [
       {
-        "type": "boolean",
-        "default": false
+        "type": "string",
+        "maxLength": 2500
+      }
+    ],
+    "shot_type": [
+      {
+        "type": "string",
+        "enum": [
+          "customize",
+          "intelligent"
+        ],
+        "default": "customize"
       }
     ]
   },
   "required": [
-    "prompt",
-    "image"
+    "image",
+    "prompt"
   ],
   "modes": [
     "async"

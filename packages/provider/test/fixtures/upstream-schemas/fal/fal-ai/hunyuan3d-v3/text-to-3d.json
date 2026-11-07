@@ -1,16 +1,24 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/hunyuan3d-v3/text-to-3d",
   "fields": {
-    "prompt": [
-      {
-        "type": "string",
-        "maxLength": 1024
-      }
-    ],
     "enable_pbr": [
       {
         "type": "boolean",
         "default": false
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "face_count": [
+      {
+        "type": "integer",
+        "minimum": 40000,
+        "maximum": 1500000,
+        "default": 500000
       }
     ],
     "generate_type": [
@@ -24,12 +32,6 @@
         "default": "Normal"
       }
     ],
-    "enable_safety_checker": [
-      {
-        "type": "boolean",
-        "default": true
-      }
-    ],
     "polygon_type": [
       {
         "type": "string",
@@ -40,12 +42,10 @@
         "default": "triangle"
       }
     ],
-    "face_count": [
+    "prompt": [
       {
-        "type": "integer",
-        "minimum": 40000,
-        "maximum": 1500000,
-        "default": 500000
+        "type": "string",
+        "maxLength": 1024
       }
     ]
   },
@@ -53,25 +53,12 @@
     "prompt"
   ],
   "outputs": {
-    "model_glb.file_name": [
+    "model_glb": [
       {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_glb.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_glb.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
+        "type": "object",
+        "required": [
+          "url"
+        ]
       }
     ],
     "model_glb.content_type": [
@@ -82,46 +69,195 @@
         "type": "null"
       }
     ],
-    "model_glb": [
+    "model_glb.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_glb.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_glb.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls": [
+      {
+        "type": "object"
+      }
+    ],
+    "model_urls.fbx": [
       {
         "type": "object",
         "required": [
           "url"
         ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.fbx.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.fbx.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.fbx.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.fbx.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls.glb": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.glb.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.glb.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.glb.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.glb.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls.obj": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.obj.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.obj.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.obj.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.obj.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls.usdz": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.usdz.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.usdz.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.usdz.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.usdz.url": [
+      {
+        "type": "string"
       }
     ],
     "seed": [
       {
         "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "thumbnail.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "thumbnail.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "thumbnail.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "thumbnail.content_type": [
-      {
-        "type": "string"
       },
       {
         "type": "null"
@@ -138,7 +274,7 @@
         "type": "null"
       }
     ],
-    "model_urls.fbx.file_name": [
+    "thumbnail.content_type": [
       {
         "type": "string"
       },
@@ -146,12 +282,15 @@
         "type": "null"
       }
     ],
-    "model_urls.fbx.url": [
+    "thumbnail.file_name": [
       {
         "type": "string"
+      },
+      {
+        "type": "null"
       }
     ],
-    "model_urls.fbx.file_size": [
+    "thumbnail.file_size": [
       {
         "type": "integer"
       },
@@ -159,148 +298,9 @@
         "type": "null"
       }
     ],
-    "model_urls.fbx.content_type": [
+    "thumbnail.url": [
       {
         "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.fbx": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.glb.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.glb.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_urls.glb.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.glb.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.glb": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.obj.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.obj.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_urls.obj.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.obj.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.obj": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.usdz.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.usdz.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_urls.usdz.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.usdz.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.usdz": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls": [
-      {
-        "type": "object"
       }
     ]
   }

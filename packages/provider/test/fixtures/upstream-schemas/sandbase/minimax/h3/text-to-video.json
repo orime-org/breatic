@@ -1,12 +1,24 @@
 {
   "source": "https://api.sandbase.ai/v1/models/minimax/h3/text-to-video",
   "fields": {
-    "prompt": [
+    "aigc_watermark": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "aspect_ratio": [
       {
         "type": "string",
-        "minLength": 1,
-        "maxLength": 7000,
-        "default": "A cinematic wide shot of an astronaut walking across a red desert at sunset, wind lifting fine dust, with natural footsteps and distant ambient sound."
+        "enum": [
+          "21:9",
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16"
+        ],
+        "default": "16:9"
       }
     ],
     "duration": [
@@ -29,6 +41,14 @@
         "default": 5
       }
     ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 7000,
+        "default": "A cinematic wide shot of an astronaut walking across a red desert at sunset, wind lifting fine dust, with natural footsteps and distant ambient sound."
+      }
+    ],
     "resolution": [
       {
         "type": "string",
@@ -38,31 +58,11 @@
         ],
         "default": "2K"
       }
-    ],
-    "aspect_ratio": [
-      {
-        "type": "string",
-        "enum": [
-          "21:9",
-          "16:9",
-          "4:3",
-          "1:1",
-          "3:4",
-          "9:16"
-        ],
-        "default": "16:9"
-      }
-    ],
-    "aigc_watermark": [
-      {
-        "type": "boolean",
-        "default": false
-      }
     ]
   },
   "required": [
-    "prompt",
-    "duration"
+    "duration",
+    "prompt"
   ],
   "modes": [
     "async"

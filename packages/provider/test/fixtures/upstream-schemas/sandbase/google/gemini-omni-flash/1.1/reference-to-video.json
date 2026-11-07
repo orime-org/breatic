@@ -1,6 +1,24 @@
 {
   "source": "https://api.sandbase.ai/v1/models/google/gemini-omni-flash/1.1/reference-to-video",
   "fields": {
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "16:9",
+          "9:16"
+        ],
+        "default": "16:9"
+      }
+    ],
+    "duration": [
+      {
+        "type": "integer",
+        "minimum": 3,
+        "maximum": 10,
+        "default": 8
+      }
+    ],
     "images": [
       {
         "type": "array",
@@ -23,6 +41,18 @@
         "maxLength": 20000
       }
     ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "360p",
+          "720p",
+          "1080p",
+          "4k"
+        ],
+        "default": "720p"
+      }
+    ],
     "videos": [
       {
         "type": "array",
@@ -37,36 +67,6 @@
           },
           "required": []
         }
-      }
-    ],
-    "duration": [
-      {
-        "type": "integer",
-        "minimum": 3,
-        "maximum": 10,
-        "default": 8
-      }
-    ],
-    "resolution": [
-      {
-        "type": "string",
-        "enum": [
-          "360p",
-          "720p",
-          "1080p",
-          "4k"
-        ],
-        "default": "720p"
-      }
-    ],
-    "aspect_ratio": [
-      {
-        "type": "string",
-        "enum": [
-          "16:9",
-          "9:16"
-        ],
-        "default": "16:9"
       }
     ]
   },

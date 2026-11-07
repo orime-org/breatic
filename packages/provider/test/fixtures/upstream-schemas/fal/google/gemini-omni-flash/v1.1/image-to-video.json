@@ -1,10 +1,22 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=google/gemini-omni-flash/v1.1/image-to-video",
   "fields": {
-    "prompt": [
+    "aspect_ratio": [
       {
         "type": "string",
-        "maxLength": 20000
+        "enum": [
+          "16:9",
+          "9:16"
+        ],
+        "default": "16:9"
+      }
+    ],
+    "duration": [
+      {
+        "type": "integer",
+        "minimum": 3,
+        "maximum": 10,
+        "default": 8
       }
     ],
     "end_image_url": [
@@ -13,6 +25,17 @@
       },
       {
         "type": "null"
+      }
+    ],
+    "image_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "maxLength": 20000
       }
     ],
     "resolution": [
@@ -26,42 +49,19 @@
         ],
         "default": "720p"
       }
-    ],
-    "aspect_ratio": [
-      {
-        "type": "string",
-        "enum": [
-          "16:9",
-          "9:16"
-        ],
-        "default": "16:9"
-      }
-    ],
-    "image_url": [
-      {
-        "type": "string"
-      }
-    ],
-    "duration": [
-      {
-        "type": "integer",
-        "minimum": 3,
-        "maximum": 10,
-        "default": 8
-      }
     ]
   },
   "required": [
-    "prompt",
-    "image_url"
+    "image_url",
+    "prompt"
   ],
   "outputs": {
-    "video.file_name": [
+    "video": [
       {
-        "type": "string"
-      },
-      {
-        "type": "null"
+        "type": "object",
+        "required": [
+          "url"
+        ]
       }
     ],
     "video.content_type": [
@@ -72,9 +72,12 @@
         "type": "null"
       }
     ],
-    "video.url": [
+    "video.file_name": [
       {
         "type": "string"
+      },
+      {
+        "type": "null"
       }
     ],
     "video.file_size": [
@@ -85,12 +88,9 @@
         "type": "null"
       }
     ],
-    "video": [
+    "video.url": [
       {
-        "type": "object",
-        "required": [
-          "url"
-        ]
+        "type": "string"
       }
     ]
   }

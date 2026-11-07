@@ -6,6 +6,27 @@
         "type": "string"
       }
     ],
+    "image_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "mask_url": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
     "resolution": [
       {
         "type": "string",
@@ -21,45 +42,32 @@
         "type": "boolean",
         "default": false
       }
-    ],
-    "prompt": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "image_url": [
-      {
-        "type": "string"
-      }
-    ],
-    "mask_url": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
     ]
   },
   "required": [
-    "image_url",
-    "audio_url"
+    "audio_url",
+    "image_url"
   ],
   "outputs": {
+    "duration": [
+      {
+        "type": "number"
+      }
+    ],
+    "video": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
     "video.content_type": [
       {
         "type": "string"
       },
       {
         "type": "null"
-      }
-    ],
-    "video.url": [
-      {
-        "type": "string"
       }
     ],
     "video.file_name": [
@@ -78,17 +86,9 @@
         "type": "null"
       }
     ],
-    "video": [
+    "video.url": [
       {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      }
-    ],
-    "duration": [
-      {
-        "type": "number"
+        "type": "string"
       }
     ]
   }

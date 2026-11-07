@@ -1,25 +1,6 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=meta/muse-image/edit",
   "fields": {
-    "output_format": [
-      {
-        "type": "string",
-        "enum": [
-          "jpeg",
-          "png",
-          "webp"
-        ],
-        "default": "webp"
-      }
-    ],
-    "num_images": [
-      {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 10,
-        "default": 1
-      }
-    ],
     "aspect_ratio": [
       {
         "type": "string",
@@ -46,10 +27,23 @@
         }
       }
     ],
-    "sync_mode": [
+    "num_images": [
       {
-        "type": "boolean",
-        "default": false
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "default": 1
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "jpeg",
+          "png",
+          "webp"
+        ],
+        "default": "webp"
       }
     ],
     "prompt": [
@@ -57,11 +51,17 @@
         "type": "string",
         "minLength": 1
       }
+    ],
+    "sync_mode": [
+      {
+        "type": "boolean",
+        "default": false
+      }
     ]
   },
   "required": [
-    "prompt",
-    "image_urls"
+    "image_urls",
+    "prompt"
   ],
   "outputs": {
     "images": [

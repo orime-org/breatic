@@ -219,9 +219,11 @@ export function snapshotOf(schema: unknown, options: { root: unknown; source: st
   collect(schema, "", options.root, fields, 0);
   const top = fields[""] ?? [];
   delete fields[""];
-  const required = [...new Set(top.flatMap((leaf) => leaf.required ?? []))];
+  const required = [...new Set(top.flatMap((leaf) => leaf.required ?? []))].sort();
   const requiredAnyOf = top.find((leaf) => leaf.requiredAnyOf !== undefined)?.requiredAnyOf;
-  return { source: options.source, fields, required, ...(requiredAnyOf === undefined ? {} : { requiredAnyOf }) };
+  // Sorted by name, so a sync rewrites a snapshot only when what it states changed.
+  const sorted = Object.fromEntries(Object.entries(fields).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  return { source: options.source, fields: sorted, required, ...(requiredAnyOf === undefined ? {} : { requiredAnyOf }) };
 }
 
 /**

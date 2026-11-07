@@ -36,7 +36,7 @@ import { isPresent } from "../packages/provider/src/pricing/estimate.js";
 // The test helpers read `__dirname`, which only a CommonJS load of them has.
 const load = createRequire(import.meta.url);
 const { catalog, coveredValues, shipped } = load("../packages/provider/src/config/__tests__/shipped.ts") as typeof import("../packages/provider/src/config/__tests__/shipped.js");
-const { runnerCalls, takes } = load("../packages/provider/src/media/__tests__/reseller-bodies.ts") as typeof import("../packages/provider/src/media/__tests__/reseller-bodies.js");
+const { sampledCalls, takes } = load("../packages/provider/src/media/__tests__/reseller-bodies.ts") as typeof import("../packages/provider/src/media/__tests__/reseller-bodies.js");
 
 /** One param of our catalog, as far as samples read it. */
 interface CatalogParam {
@@ -135,8 +135,25 @@ const sourceGroups = new Map(catalog().models.map((m) => [m.name, m.source_group
  * @returns The run.
  */
 function withParam(binding: MediaBinding, base: Run, name: string, value: unknown, param: CatalogParam | undefined): Run {
-  const params = { ...base.params, [name]: value };
+  const params = { ...base.params, [name]: shotsAddingUp(value, param, base.params) };
   return { params, prompt: carriesShots(param) ? "" : promptOf(binding, params) };
+}
+
+/**
+ * Shots whose seconds add up to the run's own param of that name, as the storyboard keeps them (`totalParam`): the last
+ * shot takes what the others leave.
+ * @param value - The param's value.
+ * @param param - The catalog's param.
+ * @param params - The run's other params.
+ * @returns The value, its last shot's seconds set when the shots carry seconds the run totals.
+ */
+function shotsAddingUp(value: unknown, param: CatalogParam | undefined, params: Record<string, unknown>): unknown {
+  const seconds = Object.keys(param?.fields ?? {}).find((field) => field !== "prompt");
+  const total = seconds === undefined ? undefined : params[seconds];
+  if (!carriesShots(param) || !Array.isArray(value) || value.length === 0 || typeof total !== "number") return value;
+  const shots = value as Record<string, unknown>[];
+  const others = shots.slice(0, -1).reduce((sum, shot) => sum + Number(shot[seconds!]), 0);
+  return [...shots.slice(0, -1), { ...shots.at(-1), [seconds!]: total - others }];
 }
 
 const written = new Set<string>();
@@ -194,17 +211,7 @@ for (const [model, { upstreams: bindings }] of Object.entries(config.media.model
         else untaken.push({ param: name, value });
       }
     }
-    // Each run goes through the runner; its own call is its body, and each other step is shown on the first run that makes it.
-    const own = binding.reused_by === undefined ? "generate" : "voice";
-    const samples: SampleRun[] = [];
-    const steps: { kind: string; endpoint: string; run: number; body: Record<string, unknown> }[] = [];
-    for (const [index, run] of runs.entries()) {
-      const calls = await runnerCalls(model, binding, run);
-      const body = calls.find((c) => c.kind === own)?.body;
-      if (body === undefined) throw new Error(`${model} on ${binding.upstream}: the runner sent no ${own} call for ${JSON.stringify(run.params)}`);
-      samples.push({ ...run, body });
-      for (const call of calls.filter((c) => c.kind !== own)) if (!steps.some((s) => s.kind === call.kind)) steps.push({ ...call, run: index });
-    }
+    const { runs: samples, steps } = await sampledCalls(model, binding, runs);
     const path = resolve(BODIES, binding.upstream, `${model}.json`);
     writeJson(path, {
       model,

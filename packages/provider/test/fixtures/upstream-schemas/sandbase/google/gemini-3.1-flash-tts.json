@@ -1,123 +1,6 @@
 {
   "source": "https://api.sandbase.ai/v1/models/google/gemini-3.1-flash-tts",
   "fields": {
-    "voice": [
-      {
-        "type": "string",
-        "enum": [
-          "Achernar",
-          "Achird",
-          "Algenib",
-          "Algieba",
-          "Alnilam",
-          "Aoede",
-          "Autonoe",
-          "Callirrhoe",
-          "Charon",
-          "Despina",
-          "Enceladus",
-          "Erinome",
-          "Fenrir",
-          "Gacrux",
-          "Iapetus",
-          "Kore",
-          "Laomedeia",
-          "Leda",
-          "Orus",
-          "Pulcherrima",
-          "Puck",
-          "Rasalgethi",
-          "Sadachbia",
-          "Sadaltager",
-          "Schedar",
-          "Sulafat",
-          "Umbriel",
-          "Vindemiatrix",
-          "Zephyr",
-          "Zubenelgenubi"
-        ],
-        "default": "Kore"
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 50000
-      }
-    ],
-    "speakers": [
-      {
-        "type": "array",
-        "items": {
-          "fields": {
-            "voice": [
-              {
-                "type": "string",
-                "enum": [
-                  "Achernar",
-                  "Achird",
-                  "Algenib",
-                  "Algieba",
-                  "Alnilam",
-                  "Aoede",
-                  "Autonoe",
-                  "Callirrhoe",
-                  "Charon",
-                  "Despina",
-                  "Enceladus",
-                  "Erinome",
-                  "Fenrir",
-                  "Gacrux",
-                  "Iapetus",
-                  "Kore",
-                  "Laomedeia",
-                  "Leda",
-                  "Orus",
-                  "Pulcherrima",
-                  "Puck",
-                  "Rasalgethi",
-                  "Sadachbia",
-                  "Sadaltager",
-                  "Schedar",
-                  "Sulafat",
-                  "Umbriel",
-                  "Vindemiatrix",
-                  "Zephyr",
-                  "Zubenelgenubi"
-                ]
-              }
-            ],
-            "speaker_id": [
-              {
-                "type": "string"
-              }
-            ],
-            "": [
-              {
-                "type": "object",
-                "required": [
-                  "voice",
-                  "speaker_id"
-                ]
-              }
-            ]
-          },
-          "required": [
-            "voice",
-            "speaker_id"
-          ]
-        }
-      }
-    ],
-    "temperature": [
-      {
-        "type": "number",
-        "minimum": 0,
-        "maximum": 2,
-        "default": 1
-      }
-    ],
     "language_code": [
       {
         "type": "string",
@@ -223,10 +106,127 @@
         "default": "mp3"
       }
     ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 50000
+      }
+    ],
+    "speakers": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "voice": [
+              {
+                "type": "string",
+                "enum": [
+                  "Achernar",
+                  "Achird",
+                  "Algenib",
+                  "Algieba",
+                  "Alnilam",
+                  "Aoede",
+                  "Autonoe",
+                  "Callirrhoe",
+                  "Charon",
+                  "Despina",
+                  "Enceladus",
+                  "Erinome",
+                  "Fenrir",
+                  "Gacrux",
+                  "Iapetus",
+                  "Kore",
+                  "Laomedeia",
+                  "Leda",
+                  "Orus",
+                  "Pulcherrima",
+                  "Puck",
+                  "Rasalgethi",
+                  "Sadachbia",
+                  "Sadaltager",
+                  "Schedar",
+                  "Sulafat",
+                  "Umbriel",
+                  "Vindemiatrix",
+                  "Zephyr",
+                  "Zubenelgenubi"
+                ]
+              }
+            ],
+            "speaker_id": [
+              {
+                "type": "string"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "voice",
+                  "speaker_id"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "voice",
+            "speaker_id"
+          ]
+        }
+      }
+    ],
     "style_instructions": [
       {
         "type": "string",
         "maxLength": 4000
+      }
+    ],
+    "temperature": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 2,
+        "default": 1
+      }
+    ],
+    "voice": [
+      {
+        "type": "string",
+        "enum": [
+          "Achernar",
+          "Achird",
+          "Algenib",
+          "Algieba",
+          "Alnilam",
+          "Aoede",
+          "Autonoe",
+          "Callirrhoe",
+          "Charon",
+          "Despina",
+          "Enceladus",
+          "Erinome",
+          "Fenrir",
+          "Gacrux",
+          "Iapetus",
+          "Kore",
+          "Laomedeia",
+          "Leda",
+          "Orus",
+          "Pulcherrima",
+          "Puck",
+          "Rasalgethi",
+          "Sadachbia",
+          "Sadaltager",
+          "Schedar",
+          "Sulafat",
+          "Umbriel",
+          "Vindemiatrix",
+          "Zephyr",
+          "Zubenelgenubi"
+        ],
+        "default": "Kore"
       }
     ]
   },

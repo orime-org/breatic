@@ -5,13 +5,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { shipped } from "../../config/__tests__/shipped.js";
-import { runnerCalls, type SampleRun } from "./reseller-bodies.js";
+import { sampledCalls, type SampleRun, type SampleStep } from "./reseller-bodies.js";
 
 /** The reviewed request bodies of one reseller binding (`scripts/provider-reseller-bodies.ts`). */
 interface BodySample {
   runs: SampleRun[];
-  /** Each extra step on the first run that makes it (`run`, an index into `runs`), as the runner sent it. */
-  steps: { kind: string; endpoint: string; run: number; body: Record<string, unknown> }[];
+  steps: SampleStep[];
 }
 
 const BODIES = resolve(__dirname, "../../../test/fixtures/bodies");
@@ -24,14 +23,7 @@ describe.each(cases)("the request bodies of $model on $binding.upstream", ({ mod
 
   it("are what the runner sends for each sample run, its own call and each extra step", async () => {
     expect(sample, path).toBeDefined();
-    const own = binding.reused_by === undefined ? "generate" : "voice";
-    const made: BodySample["steps"] = [];
-    for (const [index, run] of sample!.runs.entries()) {
-      const calls = await runnerCalls(model, binding, run);
-      expect(calls.find((c) => c.kind === own)?.body, JSON.stringify(run.params)).toEqual(run.body);
-      for (const call of calls.filter((c) => c.kind !== own)) if (!made.some((s) => s.kind === call.kind)) made.push({ ...call, run: index });
-    }
-    expect(sample!.steps).toEqual(made);
+    expect(await sampledCalls(model, binding, sample!.runs)).toEqual({ runs: sample!.runs, steps: sample!.steps });
   });
 
   it("send each extra step only the source of the param it serves", () => {

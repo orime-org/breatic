@@ -1,32 +1,6 @@
 {
   "source": "https://api.sandbase.ai/v1/models/xai/grok-imagine-image/2.0/text-to-image",
   "fields": {
-    "prompt": [
-      {
-        "type": "string",
-        "maxLength": 8000
-      }
-    ],
-    "quality": [
-      {
-        "type": "string",
-        "enum": [
-          "low",
-          "medium"
-        ],
-        "default": "medium"
-      }
-    ],
-    "resolution": [
-      {
-        "type": "string",
-        "enum": [
-          "1k",
-          "2k"
-        ],
-        "default": "1k"
-      }
-    ],
     "aspect_ratio": [
       {
         "type": "string",
@@ -52,6 +26,32 @@
           "png"
         ],
         "default": "jpeg"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "maxLength": 8000
+      }
+    ],
+    "quality": [
+      {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium"
+        ],
+        "default": "medium"
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "1k",
+          "2k"
+        ],
+        "default": "1k"
       }
     ]
   },

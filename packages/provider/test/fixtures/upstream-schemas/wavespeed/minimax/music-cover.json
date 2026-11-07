@@ -13,7 +13,7 @@
     ]
   },
   "required": [
-    "prompt",
-    "audio"
+    "audio",
+    "prompt"
   ]
 }

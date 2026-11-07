@@ -7,15 +7,15 @@
         "default": true
       }
     ],
+    "image_url": [
+      {
+        "type": "string"
+      }
+    ],
     "trim_first_second": [
       {
         "type": "boolean",
         "default": true
-      }
-    ],
-    "image_url": [
-      {
-        "type": "string"
       }
     ],
     "video_url": [
@@ -29,17 +29,20 @@
     "video_url"
   ],
   "outputs": {
+    "video": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
     "video.content_type": [
       {
         "type": "string"
       },
       {
         "type": "null"
-      }
-    ],
-    "video.url": [
-      {
-        "type": "string"
       }
     ],
     "video.file_name": [
@@ -58,12 +61,9 @@
         "type": "null"
       }
     ],
-    "video": [
+    "video.url": [
       {
-        "type": "object",
-        "required": [
-          "url"
-        ]
+        "type": "string"
       }
     ]
   }

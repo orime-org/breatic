@@ -1,21 +1,62 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/minimax/speech-2.8-hd",
   "fields": {
-    "output_format": [
+    "audio_setting": [
+      {
+        "type": "object"
+      }
+    ],
+    "audio_setting.bitrate": [
+      {
+        "type": "integer",
+        "enum": [
+          32000,
+          64000,
+          128000,
+          256000
+        ],
+        "default": 128000
+      }
+    ],
+    "audio_setting.channel": [
+      {
+        "type": "integer",
+        "enum": [
+          1,
+          2
+        ],
+        "default": 1
+      }
+    ],
+    "audio_setting.format": [
       {
         "type": "string",
         "enum": [
-          "url",
-          "hex"
+          "mp3",
+          "pcm",
+          "flac"
         ],
-        "default": "hex"
+        "default": "mp3"
       }
     ],
-    "prompt": [
+    "audio_setting.sample_rate": [
       {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 10000
+        "type": "integer",
+        "enum": [
+          8000,
+          16000,
+          22050,
+          24000,
+          32000,
+          44100
+        ],
+        "default": 32000
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
       }
     ],
     "language_boost": [
@@ -66,70 +107,15 @@
         "type": "null"
       }
     ],
-    "enable_safety_checker": [
-      {
-        "type": "boolean",
-        "default": true
-      }
-    ],
-    "audio_setting.channel": [
-      {
-        "type": "integer",
-        "enum": [
-          1,
-          2
-        ],
-        "default": 1
-      }
-    ],
-    "audio_setting.bitrate": [
-      {
-        "type": "integer",
-        "enum": [
-          32000,
-          64000,
-          128000,
-          256000
-        ],
-        "default": 128000
-      }
-    ],
-    "audio_setting.sample_rate": [
-      {
-        "type": "integer",
-        "enum": [
-          8000,
-          16000,
-          22050,
-          24000,
-          32000,
-          44100
-        ],
-        "default": 32000
-      }
-    ],
-    "audio_setting.format": [
-      {
-        "type": "string",
-        "enum": [
-          "mp3",
-          "pcm",
-          "flac"
-        ],
-        "default": "mp3"
-      }
-    ],
-    "audio_setting": [
+    "normalization_setting": [
       {
         "type": "object"
       }
     ],
-    "normalization_setting.target_peak": [
+    "normalization_setting.enabled": [
       {
-        "type": "number",
-        "minimum": -3,
-        "maximum": 0,
-        "default": -0.5
+        "type": "boolean",
+        "default": true
       }
     ],
     "normalization_setting.target_loudness": [
@@ -140,10 +126,12 @@
         "default": -18
       }
     ],
-    "normalization_setting.enabled": [
+    "normalization_setting.target_peak": [
       {
-        "type": "boolean",
-        "default": true
+        "type": "number",
+        "minimum": -3,
+        "maximum": 0,
+        "default": -0.5
       }
     ],
     "normalization_setting.target_range": [
@@ -154,9 +142,29 @@
         "default": 8
       }
     ],
-    "normalization_setting": [
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "url",
+          "hex"
+        ],
+        "default": "hex"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 10000
+      }
+    ],
+    "pronunciation_dict": [
       {
         "type": "object"
+      },
+      {
+        "type": "null"
       }
     ],
     "pronunciation_dict.tone_list": [
@@ -174,7 +182,7 @@
         }
       }
     ],
-    "pronunciation_dict": [
+    "voice_modify": [
       {
         "type": "object"
       },
@@ -182,7 +190,7 @@
         "type": "null"
       }
     ],
-    "voice_modify.timbre": [
+    "voice_modify.intensity": [
       {
         "type": "integer",
         "minimum": -100,
@@ -198,7 +206,7 @@
         "default": 0
       }
     ],
-    "voice_modify.intensity": [
+    "voice_modify.timbre": [
       {
         "type": "integer",
         "minimum": -100,
@@ -206,27 +214,16 @@
         "default": 0
       }
     ],
-    "voice_modify": [
+    "voice_setting": [
       {
-        "type": "object"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "voice_setting.vol": [
-      {
-        "type": "number",
-        "minimum": 0.01,
-        "maximum": 10,
-        "default": 1
-      }
-    ],
-    "voice_setting.voice_id": [
-      {
-        "type": "string",
-        "minLength": 1,
-        "default": "Wise_Woman"
+        "type": "object",
+        "default": {
+          "vol": 1,
+          "voice_id": "Wise_Woman",
+          "english_normalization": false,
+          "pitch": 0,
+          "speed": 1
+        }
       }
     ],
     "voice_setting.emotion": [
@@ -268,16 +265,19 @@
         "default": 1
       }
     ],
-    "voice_setting": [
+    "voice_setting.voice_id": [
       {
-        "type": "object",
-        "default": {
-          "vol": 1,
-          "voice_id": "Wise_Woman",
-          "english_normalization": false,
-          "pitch": 0,
-          "speed": 1
-        }
+        "type": "string",
+        "minLength": 1,
+        "default": "Wise_Woman"
+      }
+    ],
+    "voice_setting.vol": [
+      {
+        "type": "number",
+        "minimum": 0.01,
+        "maximum": 10,
+        "default": 1
       }
     ]
   },
@@ -285,27 +285,17 @@
     "prompt"
   ],
   "outputs": {
-    "duration_ms": [
+    "audio": [
       {
-        "type": "integer"
+        "type": "object",
+        "required": [
+          "url"
+        ]
       }
     ],
     "audio.content_type": [
       {
         "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "audio.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "audio.file_size": [
-      {
-        "type": "integer"
       },
       {
         "type": "null"
@@ -319,12 +309,22 @@
         "type": "null"
       }
     ],
-    "audio": [
+    "audio.file_size": [
       {
-        "type": "object",
-        "required": [
-          "url"
-        ]
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "duration_ms": [
+      {
+        "type": "integer"
       }
     ]
   }

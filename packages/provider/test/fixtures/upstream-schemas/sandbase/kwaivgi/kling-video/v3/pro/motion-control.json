@@ -1,20 +1,18 @@
 {
   "source": "https://api.sandbase.ai/v1/models/kwaivgi/kling-video/v3/pro/motion-control",
   "fields": {
+    "character_orientation": [
+      {
+        "type": "string",
+        "enum": [
+          "image",
+          "video"
+        ]
+      }
+    ],
     "image": [
       {
         "type": "string"
-      }
-    ],
-    "video": [
-      {
-        "type": "string"
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string",
-        "maxLength": 2500
       }
     ],
     "keep_original_sound": [
@@ -23,13 +21,15 @@
         "default": true
       }
     ],
-    "character_orientation": [
+    "prompt": [
       {
         "type": "string",
-        "enum": [
-          "image",
-          "video"
-        ]
+        "maxLength": 2500
+      }
+    ],
+    "video": [
+      {
+        "type": "string"
       }
     ]
   },

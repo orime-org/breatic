@@ -1,17 +1,17 @@
 {
   "source": "https://api.sandbase.ai/v1/models/bytedance/omnihuman/1.5",
   "fields": {
-    "mask": [
-      {
-        "type": "string"
-      }
-    ],
     "audio": [
       {
         "type": "string"
       }
     ],
     "image": [
+      {
+        "type": "string"
+      }
+    ],
+    "mask": [
       {
         "type": "string"
       }
@@ -39,9 +39,9 @@
     ]
   },
   "required": [
-    "prompt",
+    "audio",
     "image",
-    "audio"
+    "prompt"
   ],
   "modes": [
     "async"

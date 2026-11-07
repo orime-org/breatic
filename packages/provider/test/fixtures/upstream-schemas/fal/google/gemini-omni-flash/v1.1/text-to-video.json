@@ -1,24 +1,6 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=google/gemini-omni-flash/v1.1/text-to-video",
   "fields": {
-    "prompt": [
-      {
-        "type": "string",
-        "maxLength": 20000
-      }
-    ],
-    "resolution": [
-      {
-        "type": "string",
-        "enum": [
-          "360p",
-          "720p",
-          "1080p",
-          "4k"
-        ],
-        "default": "720p"
-      }
-    ],
     "aspect_ratio": [
       {
         "type": "string",
@@ -36,18 +18,36 @@
         "maximum": 10,
         "default": 8
       }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "maxLength": 20000
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "360p",
+          "720p",
+          "1080p",
+          "4k"
+        ],
+        "default": "720p"
+      }
     ]
   },
   "required": [
     "prompt"
   ],
   "outputs": {
-    "video.file_name": [
+    "video": [
       {
-        "type": "string"
-      },
-      {
-        "type": "null"
+        "type": "object",
+        "required": [
+          "url"
+        ]
       }
     ],
     "video.content_type": [
@@ -58,9 +58,12 @@
         "type": "null"
       }
     ],
-    "video.url": [
+    "video.file_name": [
       {
         "type": "string"
+      },
+      {
+        "type": "null"
       }
     ],
     "video.file_size": [
@@ -71,12 +74,9 @@
         "type": "null"
       }
     ],
-    "video": [
+    "video.url": [
       {
-        "type": "object",
-        "required": [
-          "url"
-        ]
+        "type": "string"
       }
     ]
   }

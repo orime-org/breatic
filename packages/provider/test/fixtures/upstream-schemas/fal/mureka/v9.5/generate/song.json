@@ -1,6 +1,22 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=mureka/v9.5/generate/song",
   "fields": {
+    "duration": [
+      {
+        "type": "integer",
+        "minimum": 120,
+        "maximum": 300
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
     "gender": [
       {
         "type": "string",
@@ -8,16 +24,6 @@
           "female",
           "male"
         ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 2000
       },
       {
         "type": "null"
@@ -33,7 +39,7 @@
         "type": "null"
       }
     ],
-    "vocal_id": [
+    "melody_id": [
       {
         "type": "string",
         "minLength": 1
@@ -42,10 +48,23 @@
         "type": "null"
       }
     ],
-    "enable_safety_checker": [
+    "prompt": [
       {
-        "type": "boolean",
-        "default": true
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "reference_id": [
+      {
+        "type": "string",
+        "minLength": 1
+      },
+      {
+        "type": "null"
       }
     ],
     "styles": [
@@ -82,26 +101,7 @@
         "type": "null"
       }
     ],
-    "reference_id": [
-      {
-        "type": "string",
-        "minLength": 1
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "duration": [
-      {
-        "type": "integer",
-        "minimum": 120,
-        "maximum": 300
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "melody_id": [
+    "vocal_id": [
       {
         "type": "string",
         "minLength": 1
@@ -113,9 +113,20 @@
   },
   "required": [],
   "outputs": {
-    "audio.url": [
+    "audio": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
+    "audio.content_type": [
       {
         "type": "string"
+      },
+      {
+        "type": "null"
       }
     ],
     "audio.file_name": [
@@ -134,20 +145,9 @@
         "type": "null"
       }
     ],
-    "audio.content_type": [
+    "audio.url": [
       {
         "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "audio": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
       }
     ],
     "duration": [

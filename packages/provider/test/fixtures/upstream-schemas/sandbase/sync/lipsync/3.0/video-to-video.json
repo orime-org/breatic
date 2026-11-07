@@ -6,11 +6,6 @@
         "type": "string"
       }
     ],
-    "video": [
-      {
-        "type": "string"
-      }
-    ],
     "sync_mode": [
       {
         "type": "string",
@@ -23,11 +18,16 @@
         ],
         "default": "cut_off"
       }
+    ],
+    "video": [
+      {
+        "type": "string"
+      }
     ]
   },
   "required": [
-    "video",
-    "audio"
+    "audio",
+    "video"
   ],
   "modes": [
     "async"

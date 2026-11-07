@@ -1,10 +1,20 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/recraft/v4.1/pro/text-to-vector",
   "fields": {
-    "enable_safety_checker": [
+    "background_color": [
       {
-        "type": "boolean",
-        "default": true
+        "type": "object"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "background_color.b": [
+      {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 0
       }
     ],
     "background_color.g": [
@@ -21,63 +31,6 @@
         "minimum": 0,
         "maximum": 255,
         "default": 0
-      }
-    ],
-    "background_color.b": [
-      {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 255,
-        "default": 0
-      }
-    ],
-    "background_color": [
-      {
-        "type": "object"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "image_size.width": [
-      {
-        "type": "integer",
-        "exclusiveMinimum": 0,
-        "maximum": 14142,
-        "default": 512
-      }
-    ],
-    "image_size.height": [
-      {
-        "type": "integer",
-        "exclusiveMinimum": 0,
-        "maximum": 14142,
-        "default": 512
-      }
-    ],
-    "image_size": [
-      {
-        "type": "object",
-        "default": "square_hd"
-      },
-      {
-        "type": "string",
-        "enum": [
-          "square_hd",
-          "square",
-          "portrait_4_3",
-          "portrait_16_9",
-          "landscape_4_3",
-          "landscape_16_9"
-        ],
-        "default": "square_hd"
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 10000
       }
     ],
     "colors": [
@@ -118,6 +71,53 @@
           },
           "required": []
         }
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "image_size": [
+      {
+        "type": "object",
+        "default": "square_hd"
+      },
+      {
+        "type": "string",
+        "enum": [
+          "square_hd",
+          "square",
+          "portrait_4_3",
+          "portrait_16_9",
+          "landscape_4_3",
+          "landscape_16_9"
+        ],
+        "default": "square_hd"
+      }
+    ],
+    "image_size.height": [
+      {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 14142,
+        "default": 512
+      }
+    ],
+    "image_size.width": [
+      {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 14142,
+        "default": 512
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 10000
       }
     ]
   },

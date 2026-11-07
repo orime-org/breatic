@@ -1,24 +1,16 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=mirelo-ai/sfx1.6/text-to-audio",
   "fields": {
-    "num_samples": [
-      {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 4,
-        "default": 2
-      }
-    ],
     "ambience": [
       {
         "type": "boolean",
         "default": false
       }
     ],
-    "text_prompt": [
+    "double_output": [
       {
-        "type": "string",
-        "minLength": 4
+        "type": "boolean",
+        "default": false
       }
     ],
     "duration": [
@@ -27,6 +19,30 @@
         "minimum": 0.1,
         "maximum": 60,
         "default": 10
+      }
+    ],
+    "num_samples": [
+      {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 4,
+        "default": 2
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer",
+        "minimum": -1,
+        "maximum": 18446744073709552000
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "text_prompt": [
+      {
+        "type": "string",
+        "minLength": 4
       }
     ],
     "upload_audio_format": [
@@ -40,34 +56,12 @@
         ],
         "default": "wav"
       }
-    ],
-    "seed": [
-      {
-        "type": "integer",
-        "minimum": -1,
-        "maximum": 18446744073709552000
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "double_output": [
-      {
-        "type": "boolean",
-        "default": false
-      }
     ]
   },
   "required": [
     "text_prompt"
   ],
   "outputs": {
-    "model": [
-      {
-        "type": "string",
-        "pattern": "^sfx-[0-9]+\\.[0-9]+$"
-      }
-    ],
     "audio": [
       {
         "type": "array",
@@ -115,6 +109,12 @@
             "url"
           ]
         }
+      }
+    ],
+    "model": [
+      {
+        "type": "string",
+        "pattern": "^sfx-[0-9]+\\.[0-9]+$"
       }
     ]
   }

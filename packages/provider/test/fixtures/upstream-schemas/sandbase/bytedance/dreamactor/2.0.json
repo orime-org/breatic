@@ -6,15 +6,15 @@
         "type": "string"
       }
     ],
-    "video": [
-      {
-        "type": "string"
-      }
-    ],
     "trim_first_second": [
       {
         "type": "boolean",
         "default": true
+      }
+    ],
+    "video": [
+      {
+        "type": "string"
       }
     ]
   },

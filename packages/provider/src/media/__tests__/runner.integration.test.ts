@@ -4,14 +4,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fc from "fast-check";
 import type { MediaBinding, ProviderConfigInput } from "../../config/schema.js";
-import { DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed } from "../../errors.js";
+import { costsOf, DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed } from "../../errors.js";
 import { Aborted, NoAnswer } from "../../http/errors.js";
 import { estimateCost } from "../../pricing/estimate.js";
 import { createProvider } from "../../provider.js";
 import type { Route } from "../../routing/route.js";
 import { createMediaRunner, type MediaAnswer, type MediaClone, type MediaRunner, type MediaTicket, type PlanOptions } from "../runner.js";
 import { wavespeedAdapter } from "../wavespeed/adapter.js";
-import { accepted, billedIds, billing, fakeUpstream, finishedAtOnce, result, submits, type FakeUpstream } from "./fake-upstream.js";
+import { accepted, billedIds, billing, driven, fakeUpstream, finishedAtOnce, result, submits, type FakeUpstream } from "./fake-upstream.js";
 
 const pricing = { kind: "formula", base_price: 0, formula: "", discount_rate: 100 };
 const DEFAULT: Route = { mode: "default" };
@@ -541,6 +541,7 @@ describe("WaveSpeed answers at the edges of their shapes", () => {
     const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
     const error = await r.send(stored(planned.ticket), live()).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(NoAnswer);
+    expect(costsOf(error)).toEqual([expect.objectContaining({ state: "missing" })]);
     expect(submits(b.seen)).toHaveLength(0);
   });
 
@@ -1015,12 +1016,8 @@ describe("ticketFromLegacy — the rows a run before the provider layer stored",
       ],
     };
     const input = { prompt: "pop", params: { song: "https://cdn.example/song.mp3", melody: "https://cdn.example/melody.mp3", vocal: "https://cdn.example/vocal.mp3" } };
-    let answer = await r.ticketFromLegacy("mureka", input, DEFAULT, options(), legacy);
-    const kinds: string[] = [];
-    while (answer.state === "send" || (answer.state === "running" && kinds.at(-1) !== "generate")) {
-      if (answer.state === "send") kinds.push(answer.step.kind);
-      answer = answer.state === "send" ? await r.send(stored(answer.ticket), live()) : await r.poll(stored(answer.ticket), live());
-    }
+    const answer = await r.ticketFromLegacy("mureka", input, DEFAULT, options(), legacy);
+    const { kinds } = await driven(r, answer, { bounds: live, stopAfter: "generate" });
     expect(kinds).toEqual(["upload_reference", "upload_melody", "vocal", "generate"]);
     expect(submits(a.seen).map((s) => s.body)).toEqual([
       { audio: "https://cdn.example/song.mp3", purpose: "reference" },

@@ -20,11 +20,6 @@
     "audio_url"
   ],
   "outputs": {
-    "vocal_id": [
-      {
-        "type": "string"
-      }
-    ],
     "created_at": [
       {
         "type": "integer"
@@ -39,6 +34,11 @@
       },
       {
         "type": "null"
+      }
+    ],
+    "vocal_id": [
+      {
+        "type": "string"
       }
     ]
   }

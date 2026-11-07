@@ -1,12 +1,6 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/elevenlabs/tts/eleven-v3",
   "fields": {
-    "timestamps": [
-      {
-        "type": "boolean",
-        "default": false
-      }
-    ],
     "apply_text_normalization": [
       {
         "type": "string",
@@ -16,6 +10,14 @@
           "off"
         ],
         "default": "auto"
+      }
+    ],
+    "language_code": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
       }
     ],
     "stability": [
@@ -33,18 +35,16 @@
         "maxLength": 5000
       }
     ],
+    "timestamps": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
     "voice": [
       {
         "type": "string",
         "default": "Rachel"
-      }
-    ],
-    "language_code": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
       }
     ]
   },
@@ -52,27 +52,20 @@
     "text"
   ],
   "outputs": {
-    "timestamps": [
+    "audio": [
       {
-        "type": "array",
-        "items": {
-          "fields": {
-            "": [
-              {
-                "type": "any"
-              }
-            ]
-          },
-          "required": []
-        }
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
+    "audio.content_type": [
+      {
+        "type": "string"
       },
       {
         "type": "null"
-      }
-    ],
-    "audio.url": [
-      {
-        "type": "string"
       }
     ],
     "audio.file_name": [
@@ -91,20 +84,27 @@
         "type": "null"
       }
     ],
-    "audio.content_type": [
+    "audio.url": [
       {
         "type": "string"
+      }
+    ],
+    "timestamps": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "any"
+              }
+            ]
+          },
+          "required": []
+        }
       },
       {
         "type": "null"
-      }
-    ],
-    "audio": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
       }
     ]
   }

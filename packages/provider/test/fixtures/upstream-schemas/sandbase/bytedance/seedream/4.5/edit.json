@@ -1,48 +1,6 @@
 {
   "source": "https://api.sandbase.ai/v1/models/bytedance/seedream/4.5/edit",
   "fields": {
-    "images": [
-      {
-        "type": "array",
-        "items": {
-          "fields": {
-            "": [
-              {
-                "type": "string"
-              }
-            ]
-          },
-          "required": []
-        }
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string",
-        "minLength": 3,
-        "maxLength": 50000,
-        "default": "Replace the clothing in image 1 with the outfit from image 2."
-      }
-    ],
-    "image_size.width": [
-      {
-        "type": "integer",
-        "minimum": 512,
-        "maximum": 8192
-      }
-    ],
-    "image_size.height": [
-      {
-        "type": "integer",
-        "minimum": 512,
-        "maximum": 8192
-      }
-    ],
-    "image_size": [
-      {
-        "type": "object"
-      }
-    ],
     "aspect_ratio": [
       {
         "type": "string",
@@ -58,6 +16,40 @@
         ]
       }
     ],
+    "image_size": [
+      {
+        "type": "object"
+      }
+    ],
+    "image_size.height": [
+      {
+        "type": "integer",
+        "minimum": 512,
+        "maximum": 8192
+      }
+    ],
+    "image_size.width": [
+      {
+        "type": "integer",
+        "minimum": 512,
+        "maximum": 8192
+      }
+    ],
+    "images": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
     "output_format": [
       {
         "type": "string",
@@ -67,11 +59,19 @@
         ],
         "default": "png"
       }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 50000,
+        "default": "Replace the clothing in image 1 with the outfit from image 2."
+      }
     ]
   },
   "required": [
-    "prompt",
-    "images"
+    "images",
+    "prompt"
   ],
   "modes": [
     "async"

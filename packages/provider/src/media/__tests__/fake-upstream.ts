@@ -3,6 +3,7 @@
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+import type { MediaAnswer, MediaRunner, MediaTicket } from "../runner.js";
 
 /** One request a fake upstream received. */
 export interface Seen {
@@ -156,4 +157,37 @@ export function billedIds(seen: readonly Seen[]): string[] {
  */
 export function submits(seen: readonly Seen[]): Seen[] {
   return seen.filter((s) => s.method === "POST" && s.path !== "/billings/search");
+}
+
+/**
+ * Drive a run step by step, its ticket through a JSON round trip between calls as the application stores it: a `send`
+ * answer is sent and a `running` one polled, until the run ends or, with `stopAfter`, a step of that kind is running.
+ * @param runner - The runner.
+ * @param first - The answer the run starts from.
+ * @param options - How to drive it.
+ * @param options.bounds - The bounds of each call.
+ * @param options.stopAfter - The kind of step whose running answer ends the drive.
+ * @param options.beforeSend - Called with each step's kind before it is sent.
+ * @returns The last answer and the kinds of the steps sent, in order.
+ * @throws {Error} When the run takes more than 50 calls.
+ */
+export async function driven(
+  runner: MediaRunner,
+  first: MediaAnswer,
+  options: { bounds: () => Parameters<MediaRunner["send"]>[1]; stopAfter?: string; beforeSend?: (kind: string) => void },
+): Promise<{ answer: MediaAnswer; kinds: string[] }> {
+  const kinds: string[] = [];
+  let answer = first;
+  for (let turn = 0; turn < 50; turn++) {
+    if (answer.state === "send") {
+      options.beforeSend?.(answer.step.kind);
+      kinds.push(answer.step.kind);
+      answer = await runner.send(JSON.parse(JSON.stringify(answer.ticket)) as MediaTicket, options.bounds());
+    } else if (answer.state === "running" && kinds.at(-1) !== options.stopAfter) {
+      answer = await runner.poll(JSON.parse(JSON.stringify(answer.ticket)) as MediaTicket, options.bounds());
+    } else {
+      return { answer, kinds };
+    }
+  }
+  throw new Error("The run did not end within 50 calls");
 }

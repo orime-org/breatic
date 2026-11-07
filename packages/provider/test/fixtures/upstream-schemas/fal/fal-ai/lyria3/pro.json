@@ -1,6 +1,20 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/lyria3/pro",
   "fields": {
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "image_url": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
     "negative_prompt": [
       {
         "type": "string",
@@ -13,45 +27,18 @@
         "minLength": 1,
         "maxLength": 5000
       }
-    ],
-    "image_url": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "enable_safety_checker": [
-      {
-        "type": "boolean",
-        "default": true
-      }
     ]
   },
   "required": [
     "prompt"
   ],
   "outputs": {
-    "lyrics": [
+    "audio": [
       {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "audio.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "audio.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
+        "type": "object",
+        "required": [
+          "url"
+        ]
       }
     ],
     "audio.content_type": [
@@ -70,12 +57,25 @@
         "type": "null"
       }
     ],
-    "audio": [
+    "audio.file_size": [
       {
-        "type": "object",
-        "required": [
-          "url"
-        ]
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "lyrics": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
       }
     ]
   }

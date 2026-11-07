@@ -1,48 +1,6 @@
 {
   "source": "https://api.sandbase.ai/v1/models/minimax/speech/2.8/hd",
   "fields": {
-    "text": [
-      {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 5000,
-        "default": "Hello, welcome to Sandbase"
-      }
-    ],
-    "pitch": [
-      {
-        "type": "integer",
-        "minimum": -12,
-        "maximum": 12,
-        "default": 0
-      }
-    ],
-    "speed": [
-      {
-        "type": "number",
-        "minimum": 0.5,
-        "maximum": 2,
-        "default": 1
-      }
-    ],
-    "format": [
-      {
-        "type": "string",
-        "enum": [
-          "mp3",
-          "pcm",
-          "flac"
-        ]
-      }
-    ],
-    "volume": [
-      {
-        "type": "number",
-        "minimum": 0.1,
-        "maximum": 10,
-        "default": 1
-      }
-    ],
     "bitrate": [
       {
         "type": "integer",
@@ -78,22 +36,19 @@
         "default": "happy"
       }
     ],
-    "voice_id": [
+    "english_normalization": [
       {
-        "type": "string",
-        "default": "Wise_Woman"
+        "type": "boolean",
+        "default": false
       }
     ],
-    "sample_rate": [
+    "format": [
       {
-        "type": "integer",
+        "type": "string",
         "enum": [
-          8000,
-          16000,
-          22050,
-          24000,
-          32000,
-          44100
+          "mp3",
+          "pcm",
+          "flac"
         ]
       }
     ],
@@ -142,10 +97,55 @@
         ]
       }
     ],
-    "english_normalization": [
+    "pitch": [
       {
-        "type": "boolean",
-        "default": false
+        "type": "integer",
+        "minimum": -12,
+        "maximum": 12,
+        "default": 0
+      }
+    ],
+    "sample_rate": [
+      {
+        "type": "integer",
+        "enum": [
+          8000,
+          16000,
+          22050,
+          24000,
+          32000,
+          44100
+        ]
+      }
+    ],
+    "speed": [
+      {
+        "type": "number",
+        "minimum": 0.5,
+        "maximum": 2,
+        "default": 1
+      }
+    ],
+    "text": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 5000,
+        "default": "Hello, welcome to Sandbase"
+      }
+    ],
+    "voice_id": [
+      {
+        "type": "string",
+        "default": "Wise_Woman"
+      }
+    ],
+    "volume": [
+      {
+        "type": "number",
+        "minimum": 0.1,
+        "maximum": 10,
+        "default": 1
       }
     ]
   },

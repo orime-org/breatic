@@ -1,64 +1,36 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=recraft/v4/style/text-to-image",
   "fields": {
-    "enable_safety_checker": [
+    "background_color": [
       {
-        "type": "boolean",
-        "default": true
-      }
-    ],
-    "style_id": [
-      {
-        "type": "string"
+        "type": "object"
       },
       {
         "type": "null"
       }
     ],
-    "style_match": [
-      {
-        "type": "string",
-        "enum": [
-          "precise",
-          "flexible"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "image_size.width": [
+    "background_color.b": [
       {
         "type": "integer",
-        "exclusiveMinimum": 0,
-        "maximum": 14142,
-        "default": 512
+        "minimum": 0,
+        "maximum": 255,
+        "default": 0
       }
     ],
-    "image_size.height": [
+    "background_color.g": [
       {
         "type": "integer",
-        "exclusiveMinimum": 0,
-        "maximum": 14142,
-        "default": 512
+        "minimum": 0,
+        "maximum": 255,
+        "default": 0
       }
     ],
-    "image_size": [
+    "background_color.r": [
       {
-        "type": "object",
-        "default": "square_hd"
-      },
-      {
-        "type": "string",
-        "enum": [
-          "square_hd",
-          "square",
-          "portrait_4_3",
-          "portrait_16_9",
-          "landscape_4_3",
-          "landscape_16_9"
-        ],
-        "default": "square_hd"
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 0
       }
     ],
     "colors": [
@@ -101,6 +73,46 @@
         }
       }
     ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "image_size": [
+      {
+        "type": "object",
+        "default": "square_hd"
+      },
+      {
+        "type": "string",
+        "enum": [
+          "square_hd",
+          "square",
+          "portrait_4_3",
+          "portrait_16_9",
+          "landscape_4_3",
+          "landscape_16_9"
+        ],
+        "default": "square_hd"
+      }
+    ],
+    "image_size.height": [
+      {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 14142,
+        "default": 512
+      }
+    ],
+    "image_size.width": [
+      {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 14142,
+        "default": 512
+      }
+    ],
     "image_urls": [
       {
         "type": "array",
@@ -128,33 +140,21 @@
         "maxLength": 10000
       }
     ],
-    "background_color.g": [
+    "style_id": [
       {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 255,
-        "default": 0
+        "type": "string"
+      },
+      {
+        "type": "null"
       }
     ],
-    "background_color.r": [
+    "style_match": [
       {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 255,
-        "default": 0
-      }
-    ],
-    "background_color.b": [
-      {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 255,
-        "default": 0
-      }
-    ],
-    "background_color": [
-      {
-        "type": "object"
+        "type": "string",
+        "enum": [
+          "precise",
+          "flexible"
+        ]
       },
       {
         "type": "null"
@@ -165,14 +165,6 @@
     "prompt"
   ],
   "outputs": {
-    "style_id": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
     "images": [
       {
         "type": "array",
@@ -220,6 +212,14 @@
             "url"
           ]
         }
+      }
+    ],
+    "style_id": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
       }
     ]
   }

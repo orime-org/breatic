@@ -256,7 +256,7 @@
           },
           {
             "prompt": "sample",
-            "duration": 1
+            "duration": 4
           }
         ]
       },
@@ -271,7 +271,7 @@
           },
           {
             "prompt": "sample",
-            "duration": "1"
+            "duration": "4"
           }
         ],
         "negative_prompt": "",

@@ -1,15 +1,14 @@
 {
   "source": "https://api.sandbase.ai/v1/models/google/gemini-omni-flash/1.1/image-to-video",
   "fields": {
-    "image": [
-      {
-        "type": "string"
-      }
-    ],
-    "prompt": [
+    "aspect_ratio": [
       {
         "type": "string",
-        "maxLength": 20000
+        "enum": [
+          "16:9",
+          "9:16"
+        ],
+        "default": "16:9"
       }
     ],
     "duration": [
@@ -25,6 +24,17 @@
         "type": "string"
       }
     ],
+    "image": [
+      {
+        "type": "string"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "maxLength": 20000
+      }
+    ],
     "resolution": [
       {
         "type": "string",
@@ -36,21 +46,11 @@
         ],
         "default": "720p"
       }
-    ],
-    "aspect_ratio": [
-      {
-        "type": "string",
-        "enum": [
-          "16:9",
-          "9:16"
-        ],
-        "default": "16:9"
-      }
     ]
   },
   "required": [
-    "prompt",
-    "image"
+    "image",
+    "prompt"
   ],
   "modes": [
     "async"

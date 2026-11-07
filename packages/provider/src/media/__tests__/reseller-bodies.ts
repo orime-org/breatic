@@ -11,7 +11,7 @@ import { shipped } from "../../config/__tests__/shipped.js";
 import { rejectedInput } from "../../pricing/estimate.js";
 import { createProvider } from "../../provider.js";
 import { createMediaRunner } from "../runner.js";
-import { fakeUpstream } from "./fake-upstream.js";
+import { driven, fakeUpstream } from "./fake-upstream.js";
 
 const config = shipped();
 const provider = createProvider({ config, keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
@@ -97,18 +97,15 @@ export async function runnerCalls(model: string, binding: MediaBinding, run: Pic
       media: { models: { ...config.media.models, [model]: { ...config.media.models[model]!, upstreams: [{ ...binding, weight: 0 }] } } },
     };
     const runner = createMediaRunner(createProvider({ config: only, keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t }), { mediaLimits: { maxMediaBytes: 1_000_000 }, pollIntervalMs: 0 });
-    let answer = await runner.plan(model, run, { mode: "upstream", upstream: binding.upstream }, { idempotencyKey: "Sample", sourceKeys: {}, clones: [], durations: {} });
-    for (let turn = 0; turn < 50; turn++) {
-      if (answer.state === "done") break;
-      if (answer.state === "failed") throw answer.reason;
-      if (answer.state === "send") {
-        if (answer.step.kind === "describe") throw new Error(`${model} on ${binding.upstream}: a description step asks a language model`);
-        pending.push({ kind: answer.step.kind });
-        answer = await runner.send(answer.ticket, { deadlineAt: Date.now() + 10_000 });
-      } else {
-        answer = await runner.poll(answer.ticket, { deadlineAt: Date.now() + 10_000 });
-      }
-    }
+    const planned = await runner.plan(model, run, { mode: "upstream", upstream: binding.upstream }, { idempotencyKey: "Sample", sourceKeys: {}, clones: [], durations: {} });
+    const { answer } = await driven(runner, planned, {
+      bounds: () => ({ deadlineAt: Date.now() + 10_000 }),
+      beforeSend: (step) => {
+        if (step === "describe") throw new Error(`${model} on ${binding.upstream}: a description step asks a language model`);
+        pending.push({ kind: step });
+      },
+    });
+    if (answer.state === "failed") throw answer.reason;
     if (answer.state !== "done") throw new Error(`${model} on ${binding.upstream}: the sample run did not finish`);
     const posts = fake.seen.filter((s) => s.method === "POST");
     return posts.map((s, i) => {
@@ -118,4 +115,35 @@ export async function runnerCalls(model: string, binding: MediaBinding, run: Pic
   } finally {
     await fake.close();
   }
+}
+
+/** An extra step of a sample, on the first run that makes it (`run`, an index into the runs), as the runner sent it. */
+export interface SampleStep {
+  kind: string;
+  endpoint: string;
+  run: number;
+  body: Record<string, unknown>;
+}
+
+/**
+ * The bodies the runner sends for a binding's sample runs: each run's own call (the voice call of a binding with
+ * `reused_by`, the generate call otherwise) as the run's body, and each other step once, on the first run that makes it.
+ * @param model - Our model.
+ * @param binding - The binding.
+ * @param runs - The sample runs.
+ * @returns The runs with their bodies, and the steps.
+ * @throws {Error} When a run fails, needs a description step, or the runner sends no call of its own.
+ */
+export async function sampledCalls(model: string, binding: MediaBinding, runs: readonly Pick<SampleRun, "params" | "prompt">[]): Promise<{ runs: SampleRun[]; steps: SampleStep[] }> {
+  const own = binding.reused_by === undefined ? "generate" : "voice";
+  const samples: SampleRun[] = [];
+  const steps: SampleStep[] = [];
+  for (const [index, run] of runs.entries()) {
+    const calls = await runnerCalls(model, binding, run);
+    const body = calls.find((c) => c.kind === own)?.body;
+    if (body === undefined) throw new Error(`${model} on ${binding.upstream}: the runner sent no ${own} call for ${JSON.stringify(run.params)}`);
+    samples.push({ params: run.params, prompt: run.prompt, body });
+    for (const call of calls.filter((c) => c.kind !== own)) if (!steps.some((s) => s.kind === call.kind)) steps.push({ ...call, run: index });
+  }
+  return { runs: samples, steps };
 }

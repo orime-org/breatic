@@ -22,6 +22,14 @@ function falInput(name: string, input: string): SchemaSnapshot {
 }
 
 describe("snapshotOf", () => {
+  it("lists fields and required fields by name, whatever order the upstream's document holds them in", () => {
+    const forward = snapshotOf({ type: "object", required: ["b", "a"], properties: { b: { type: "string" }, a: { type: "integer" } } }, { root: {}, source: "s" });
+    const reversed = snapshotOf({ type: "object", required: ["a", "b"], properties: { a: { type: "integer" }, b: { type: "string" } } }, { root: {}, source: "s" });
+    expect(JSON.stringify(forward)).toBe(JSON.stringify(reversed));
+    expect(Object.keys(forward.fields)).toEqual(["a", "b"]);
+    expect(forward.required).toEqual(["a", "b"]);
+  });
+
   it("keeps every branch of a union and expands an object branch into dotted fields", () => {
     const snap = falInput("fal-ai_flux_dev", "FluxDevInput");
     expect(snap.source).toBe("sample:fal-ai_flux_dev");

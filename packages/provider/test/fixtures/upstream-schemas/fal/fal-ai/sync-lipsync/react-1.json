@@ -1,31 +1,28 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/sync-lipsync/react-1",
   "fields": {
+    "audio_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "emotion": [
+      {
+        "type": "string",
+        "enum": [
+          "happy",
+          "sad",
+          "angry",
+          "disgusted",
+          "surprised",
+          "neutral"
+        ]
+      }
+    ],
     "enable_safety_checker": [
       {
         "type": "boolean",
         "default": true
-      }
-    ],
-    "video_url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_mode": [
-      {
-        "type": "string",
-        "enum": [
-          "lips",
-          "face",
-          "head"
-        ],
-        "default": "face"
-      }
-    ],
-    "audio_url": [
-      {
-        "type": "string"
       }
     ],
     "lipsync_mode": [
@@ -41,6 +38,17 @@
         "default": "bounce"
       }
     ],
+    "model_mode": [
+      {
+        "type": "string",
+        "enum": [
+          "lips",
+          "face",
+          "head"
+        ],
+        "default": "face"
+      }
+    ],
     "temperature": [
       {
         "type": "number",
@@ -49,26 +57,58 @@
         "default": 0.5
       }
     ],
-    "emotion": [
+    "video_url": [
       {
-        "type": "string",
-        "enum": [
-          "happy",
-          "sad",
-          "angry",
-          "disgusted",
-          "surprised",
-          "neutral"
-        ]
+        "type": "string"
       }
     ]
   },
   "required": [
-    "video_url",
     "audio_url",
-    "emotion"
+    "emotion",
+    "video_url"
   ],
   "outputs": {
+    "video": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
+    "video.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.duration": [
+      {
+        "type": "number"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
     "video.fps": [
       {
         "type": "number"
@@ -98,52 +138,12 @@
         "type": "string"
       }
     ],
-    "video.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "video.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
     "video.width": [
       {
         "type": "integer"
       },
       {
         "type": "null"
-      }
-    ],
-    "video.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "video.duration": [
-      {
-        "type": "number"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "video": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
       }
     ]
   }

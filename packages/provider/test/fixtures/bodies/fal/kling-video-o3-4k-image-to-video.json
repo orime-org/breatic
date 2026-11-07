@@ -211,7 +211,7 @@
           },
           {
             "prompt": "sample",
-            "duration": 1
+            "duration": 4
           }
         ]
       },
@@ -226,7 +226,7 @@
           },
           {
             "prompt": "sample",
-            "duration": "1"
+            "duration": "4"
           }
         ],
         "generate_audio": false

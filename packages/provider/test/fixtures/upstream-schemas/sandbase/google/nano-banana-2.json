@@ -1,26 +1,6 @@
 {
   "source": "https://api.sandbase.ai/v1/models/google/nano-banana-2",
   "fields": {
-    "prompt": [
-      {
-        "type": "string",
-        "minLength": 3,
-        "maxLength": 50000,
-        "default": "A photo of a close-up portrait of an elderly Japanese ceramicist with deep, sun-etched wrinkles and a warm, knowing smile. He is carefully inspecting a freshly glazed tea bowl. The setting is his rustic, sun-drenched workshop. The scene is illuminated by soft, golden hour light streaming through a window, highlighting the fine texture of the clay. Captured with an 85mm portrait lens, resulting in a soft, blurred background (bokeh). The overall mood is serene and masterful. Vertical portrait orientation."
-      }
-    ],
-    "resolution": [
-      {
-        "type": "string",
-        "enum": [
-          "0.5K",
-          "1K",
-          "2K",
-          "4K"
-        ],
-        "default": "1K"
-      }
-    ],
     "aspect_ratio": [
       {
         "type": "string",
@@ -43,6 +23,18 @@
         "default": "1:1"
       }
     ],
+    "enable_image_search": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "enable_web_search": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
     "output_format": [
       {
         "type": "string",
@@ -53,16 +45,24 @@
         "default": "png"
       }
     ],
-    "enable_web_search": [
+    "prompt": [
       {
-        "type": "boolean",
-        "default": false
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 50000,
+        "default": "A photo of a close-up portrait of an elderly Japanese ceramicist with deep, sun-etched wrinkles and a warm, knowing smile. He is carefully inspecting a freshly glazed tea bowl. The setting is his rustic, sun-drenched workshop. The scene is illuminated by soft, golden hour light streaming through a window, highlighting the fine texture of the clay. Captured with an 85mm portrait lens, resulting in a soft, blurred background (bokeh). The overall mood is serene and masterful. Vertical portrait orientation."
       }
     ],
-    "enable_image_search": [
+    "resolution": [
       {
-        "type": "boolean",
-        "default": false
+        "type": "string",
+        "enum": [
+          "0.5K",
+          "1K",
+          "2K",
+          "4K"
+        ],
+        "default": "1K"
       }
     ]
   },

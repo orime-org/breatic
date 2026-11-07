@@ -1,30 +1,22 @@
 {
   "source": "https://api.sandbase.ai/v1/models/alibaba/happy-horse/1.1/reference-to-video",
   "fields": {
-    "seed": [
-      {
-        "type": "integer"
-      }
-    ],
-    "images": [
-      {
-        "type": "array",
-        "items": {
-          "fields": {
-            "": [
-              {
-                "type": "string"
-              }
-            ]
-          },
-          "required": []
-        }
-      }
-    ],
-    "prompt": [
+    "aspect_ratio": [
       {
         "type": "string",
-        "minLength": 1
+        "enum": [
+          "21:9",
+          "16:9",
+          "3:2",
+          "4:3",
+          "5:4",
+          "1:1",
+          "4:5",
+          "3:4",
+          "2:3",
+          "9:16"
+        ],
+        "default": "16:9"
       }
     ],
     "duration": [
@@ -48,6 +40,27 @@
         "default": 5
       }
     ],
+    "images": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 1
+      }
+    ],
     "resolution": [
       {
         "type": "string",
@@ -59,22 +72,9 @@
         "default": "720p"
       }
     ],
-    "aspect_ratio": [
+    "seed": [
       {
-        "type": "string",
-        "enum": [
-          "21:9",
-          "16:9",
-          "3:2",
-          "4:3",
-          "5:4",
-          "1:1",
-          "4:5",
-          "3:4",
-          "2:3",
-          "9:16"
-        ],
-        "default": "16:9"
+        "type": "integer"
       }
     ]
   },

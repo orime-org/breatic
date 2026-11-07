@@ -1,25 +1,24 @@
 {
   "source": "https://api.sandbase.ai/v1/models/bytedance/seedance/2.5/text-to-video",
   "fields": {
-    "seed": [
+    "aspect_ratio": [
       {
-        "type": "integer",
-        "minimum": -1,
-        "maximum": 4294967295
+        "type": "string",
+        "enum": [
+          "16:9",
+          "9:16",
+          "1:1",
+          "4:3",
+          "3:4",
+          "21:9"
+        ],
+        "default": "16:9"
       }
     ],
     "draft": [
       {
         "type": "boolean",
         "default": false
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string",
-        "minLength": 3,
-        "maxLength": 50000,
-        "default": "Photorealistic style: Under a clear blue sky, a vast expanse of white daisy fields stretches out. The camera gradually zooms in and finally fixates on a close-up of a single daisy, with several glistening dewdrops resting on its petals."
       }
     ],
     "draft_id": [
@@ -64,6 +63,20 @@
         "default": 5
       }
     ],
+    "generate_audio": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 50000,
+        "default": "Photorealistic style: Under a clear blue sky, a vast expanse of white daisy fields stretches out. The camera gradually zooms in and finally fixates on a close-up of a single daisy, with several glistening dewdrops resting on its petals."
+      }
+    ],
     "resolution": [
       {
         "type": "string",
@@ -75,24 +88,11 @@
         "default": "720p"
       }
     ],
-    "aspect_ratio": [
+    "seed": [
       {
-        "type": "string",
-        "enum": [
-          "16:9",
-          "9:16",
-          "1:1",
-          "4:3",
-          "3:4",
-          "21:9"
-        ],
-        "default": "16:9"
-      }
-    ],
-    "generate_audio": [
-      {
-        "type": "boolean",
-        "default": true
+        "type": "integer",
+        "minimum": -1,
+        "maximum": 4294967295
       }
     ]
   },

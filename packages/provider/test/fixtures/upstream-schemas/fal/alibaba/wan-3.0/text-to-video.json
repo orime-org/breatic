@@ -1,30 +1,6 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=alibaba/wan-3.0/text-to-video",
   "fields": {
-    "enable_safety_checker": [
-      {
-        "type": "boolean",
-        "default": true
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 20000
-      }
-    ],
-    "resolution": [
-      {
-        "type": "string",
-        "enum": [
-          "480p",
-          "720p",
-          "1080p"
-        ],
-        "default": "1080p"
-      }
-    ],
     "aspect_ratio": [
       {
         "type": "string",
@@ -37,12 +13,6 @@
           "9:16"
         ],
         "default": "adaptive"
-      }
-    ],
-    "enable_prompt_expansion": [
-      {
-        "type": "boolean",
-        "default": true
       }
     ],
     "audio": [
@@ -63,6 +33,42 @@
         "default": 5
       }
     ],
+    "enable_prompt_expansion": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "enable_thinking": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 20000
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "480p",
+          "720p",
+          "1080p"
+        ],
+        "default": "1080p"
+      }
+    ],
     "seed": [
       {
         "type": "integer",
@@ -71,12 +77,6 @@
       },
       {
         "type": "null"
-      }
-    ],
-    "enable_thinking": [
-      {
-        "type": "boolean",
-        "default": false
       }
     ]
   },
@@ -92,7 +92,65 @@
         "type": "null"
       }
     ],
+    "duration": [
+      {
+        "type": "number"
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      }
+    ],
+    "video": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
+    "video.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.duration": [
+      {
+        "type": "number"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
     "video.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.fps": [
+      {
+        "type": "number"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.height": [
       {
         "type": "integer"
       },
@@ -119,64 +177,6 @@
       },
       {
         "type": "null"
-      }
-    ],
-    "video.height": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "video.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "video.duration": [
-      {
-        "type": "number"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "video.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "video.fps": [
-      {
-        "type": "number"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "video": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      }
-    ],
-    "duration": [
-      {
-        "type": "number"
-      }
-    ],
-    "seed": [
-      {
-        "type": "integer"
       }
     ]
   }

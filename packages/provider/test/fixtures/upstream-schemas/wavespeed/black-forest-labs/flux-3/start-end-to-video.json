@@ -56,8 +56,8 @@
     ]
   },
   "required": [
-    "prompt",
     "image",
-    "last_image"
+    "last_image",
+    "prompt"
   ]
 }

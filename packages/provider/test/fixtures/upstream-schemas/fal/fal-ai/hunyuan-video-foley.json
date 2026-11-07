@@ -1,15 +1,18 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/hunyuan-video-foley",
   "fields": {
-    "text_prompt": [
-      {
-        "type": "string"
-      }
-    ],
     "enable_safety_checker": [
       {
         "type": "boolean",
         "default": true
+      }
+    ],
+    "guidance_scale": [
+      {
+        "type": "number",
+        "minimum": 1,
+        "maximum": 10,
+        "default": 4.5
       }
     ],
     "negative_prompt": [
@@ -26,19 +29,6 @@
         "default": 50
       }
     ],
-    "guidance_scale": [
-      {
-        "type": "number",
-        "minimum": 1,
-        "maximum": 10,
-        "default": 4.5
-      }
-    ],
-    "video_url": [
-      {
-        "type": "string"
-      }
-    ],
     "seed": [
       {
         "type": "integer"
@@ -46,13 +36,47 @@
       {
         "type": "null"
       }
+    ],
+    "text_prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "video_url": [
+      {
+        "type": "string"
+      }
     ]
   },
   "required": [
-    "video_url",
-    "text_prompt"
+    "text_prompt",
+    "video_url"
   ],
   "outputs": {
+    "video": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
+    "video.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
     "video.file_size": [
       {
         "type": "integer"
@@ -64,30 +88,6 @@
     "video.url": [
       {
         "type": "string"
-      }
-    ],
-    "video.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "video.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "video": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
       }
     ]
   }

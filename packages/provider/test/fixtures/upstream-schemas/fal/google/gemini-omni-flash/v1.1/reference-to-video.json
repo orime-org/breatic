@@ -1,10 +1,22 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=google/gemini-omni-flash/v1.1/reference-to-video",
   "fields": {
-    "prompt": [
+    "aspect_ratio": [
       {
         "type": "string",
-        "maxLength": 20000
+        "enum": [
+          "16:9",
+          "9:16"
+        ],
+        "default": "16:9"
+      }
+    ],
+    "duration": [
+      {
+        "type": "integer",
+        "minimum": 3,
+        "maximum": 10,
+        "default": 8
       }
     ],
     "image_urls": [
@@ -21,6 +33,12 @@
           },
           "required": []
         }
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "maxLength": 20000
       }
     ],
     "reference_video_urls": [
@@ -50,36 +68,18 @@
         ],
         "default": "720p"
       }
-    ],
-    "aspect_ratio": [
-      {
-        "type": "string",
-        "enum": [
-          "16:9",
-          "9:16"
-        ],
-        "default": "16:9"
-      }
-    ],
-    "duration": [
-      {
-        "type": "integer",
-        "minimum": 3,
-        "maximum": 10,
-        "default": 8
-      }
     ]
   },
   "required": [
     "prompt"
   ],
   "outputs": {
-    "video.file_name": [
+    "video": [
       {
-        "type": "string"
-      },
-      {
-        "type": "null"
+        "type": "object",
+        "required": [
+          "url"
+        ]
       }
     ],
     "video.content_type": [
@@ -90,9 +90,12 @@
         "type": "null"
       }
     ],
-    "video.url": [
+    "video.file_name": [
       {
         "type": "string"
+      },
+      {
+        "type": "null"
       }
     ],
     "video.file_size": [
@@ -103,12 +106,9 @@
         "type": "null"
       }
     ],
-    "video": [
+    "video.url": [
       {
-        "type": "object",
-        "required": [
-          "url"
-        ]
+        "type": "string"
       }
     ]
   }

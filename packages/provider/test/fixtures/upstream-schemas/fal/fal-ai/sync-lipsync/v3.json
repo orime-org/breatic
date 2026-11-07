@@ -1,80 +1,34 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/sync-lipsync/v3",
   "fields": {
+    "audio_url": [
+      {
+        "type": "string"
+      }
+    ],
     "enable_safety_checker": [
       {
         "type": "boolean",
         "default": true
       }
     ],
-    "video_url": [
+    "options": [
       {
-        "type": "string"
-      }
-    ],
-    "sync_mode": [
-      {
-        "type": "string",
-        "enum": [
-          "cut_off",
-          "loop",
-          "bounce",
-          "silence",
-          "remap"
-        ],
-        "default": "cut_off"
-      }
-    ],
-    "audio_url": [
-      {
-        "type": "string"
-      }
-    ],
-    "options.active_speaker_detection.face_image": [
-      {
-        "type": "string"
+        "type": "object"
       },
       {
         "type": "null"
       }
     ],
-    "options.active_speaker_detection.use_v2": [
+    "options.active_speaker_detection": [
       {
-        "type": "boolean"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "options.active_speaker_detection.coordinates": [
-      {
-        "type": "array",
-        "minItems": 2,
-        "maxItems": 2,
-        "items": {
-          "fields": {
-            "": [
-              {
-                "type": "integer"
-              }
-            ]
-          },
-          "required": []
-        }
+        "type": "object"
       },
       {
         "type": "null"
       }
     ],
     "options.active_speaker_detection.auto_detect": [
-      {
-        "type": "boolean"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "options.active_speaker_detection.v3": [
       {
         "type": "boolean"
       },
@@ -113,6 +67,42 @@
         "type": "null"
       }
     ],
+    "options.active_speaker_detection.bounding_boxes_url": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "options.active_speaker_detection.coordinates": [
+      {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 2,
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "integer"
+              }
+            ]
+          },
+          "required": []
+        }
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "options.active_speaker_detection.face_image": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
     "options.active_speaker_detection.frame_number": [
       {
         "type": "integer",
@@ -122,17 +112,33 @@
         "type": "null"
       }
     ],
-    "options.active_speaker_detection.bounding_boxes_url": [
+    "options.active_speaker_detection.use_v2": [
       {
-        "type": "string"
+        "type": "boolean"
       },
       {
         "type": "null"
       }
     ],
-    "options.active_speaker_detection": [
+    "options.active_speaker_detection.v3": [
       {
-        "type": "object"
+        "type": "boolean"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "options.model_mode": [
+      {
+        "type": "string",
+        "enum": [
+          "lips",
+          "face",
+          "head",
+          "lipsync",
+          "emotion",
+          "talking_head"
+        ]
       },
       {
         "type": "null"
@@ -177,22 +183,6 @@
         "type": "null"
       }
     ],
-    "options.model_mode": [
-      {
-        "type": "string",
-        "enum": [
-          "lips",
-          "face",
-          "head",
-          "lipsync",
-          "emotion",
-          "talking_head"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
     "options.temperature": [
       {
         "type": "number",
@@ -203,21 +193,47 @@
         "type": "null"
       }
     ],
-    "options": [
+    "sync_mode": [
       {
-        "type": "object"
-      },
+        "type": "string",
+        "enum": [
+          "cut_off",
+          "loop",
+          "bounce",
+          "silence",
+          "remap"
+        ],
+        "default": "cut_off"
+      }
+    ],
+    "video_url": [
       {
-        "type": "null"
+        "type": "string"
       }
     ]
   },
   "required": [
-    "video_url",
-    "audio_url"
+    "audio_url",
+    "video_url"
   ],
   "outputs": {
+    "video": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
     "video.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_name": [
       {
         "type": "string"
       },
@@ -236,22 +252,6 @@
     "video.url": [
       {
         "type": "string"
-      }
-    ],
-    "video.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "video": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
       }
     ]
   }

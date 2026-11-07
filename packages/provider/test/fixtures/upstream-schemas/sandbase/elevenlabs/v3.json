@@ -1,27 +1,6 @@
 {
   "source": "https://api.sandbase.ai/v1/models/elevenlabs/v3",
   "fields": {
-    "text": [
-      {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 5000
-      }
-    ],
-    "voice": [
-      {
-        "type": "string",
-        "default": "Rachel"
-      }
-    ],
-    "stability": [
-      {
-        "type": "number",
-        "minimum": 0,
-        "maximum": 1,
-        "default": 0.5
-      }
-    ],
     "language_code": [
       {
         "type": "string",
@@ -102,6 +81,27 @@
           "vie",
           "cym"
         ]
+      }
+    ],
+    "stability": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.5
+      }
+    ],
+    "text": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 5000
+      }
+    ],
+    "voice": [
+      {
+        "type": "string",
+        "default": "Rachel"
       }
     ]
   },

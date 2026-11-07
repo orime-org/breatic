@@ -49,8 +49,8 @@
     ]
   },
   "required": [
+    "image",
     "left_audio",
-    "right_audio",
-    "image"
+    "right_audio"
   ]
 }

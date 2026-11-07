@@ -28,7 +28,7 @@
     ]
   },
   "required": [
-    "image",
-    "audio"
+    "audio",
+    "image"
   ]
 }

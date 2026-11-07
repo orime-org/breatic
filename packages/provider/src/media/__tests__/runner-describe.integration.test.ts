@@ -11,7 +11,7 @@ import { MediaRefused } from "../../http/fetch-media.js";
 import { createProvider } from "../../provider.js";
 import { costsOf, DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed } from "../../errors.js";
 import { createMediaRunner, type MediaAnswer, type MediaClone, type MediaRunner, type MediaTicket } from "../runner.js";
-import { accepted, billing, fakeUpstream, result, submits, type FakeUpstream, type Reply } from "./fake-upstream.js";
+import { accepted, billing, driven, fakeUpstream, result, submits, type FakeUpstream, type Reply } from "./fake-upstream.js";
 
 // The loopback image server stands in for a public host; 10.0.0.5 is private.
 vi.mock("../../http/private-address.js", () => ({
@@ -323,17 +323,13 @@ describe("cached elements", () => {
       return path === "/predictions/p-el/result" ? result("p-el", "completed", [{ element_id: "el-new" }]) : result("p-gen", "processing");
     });
     const cached: MediaClone[] = [{ upstream: "wavespeed", kind: "element", sourceKey: "sha-cat:Element 2", upstreamId: "el-cached" }];
-    let answer: MediaAnswer = await r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl, second] } }, { mode: "default" }, {
+    const answer: MediaAnswer = await r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl, second] } }, { mode: "default" }, {
       idempotencyKey: "task-1",
       sourceKeys: { [imageUrl]: "sha-img", [second]: "sha-cat" },
       clones: cached,
       durations: {},
     });
-    const kinds: string[] = [];
-    while (answer.state === "send" || (answer.state === "running" && kinds.at(-1) !== "generate")) {
-      if (answer.state === "send") kinds.push(answer.step.kind);
-      answer = answer.state === "send" ? await r.send(stored(answer.ticket), live()) : await r.poll(stored(answer.ticket), live());
-    }
+    const { kinds } = await driven(r, answer, { bounds: live, stopAfter: "generate" });
     expect(kinds).toEqual(["describe", "element", "generate"]);
     expect(submits(wavespeed.seen)[1]?.body).toMatchObject({ elements: [{ element_id: "el-new" }, { element_id: "el-cached" }] });
   });
@@ -363,17 +359,13 @@ describe("cached elements", () => {
       const id = path.split("/")[2] ?? "";
       return id.startsWith("p-el-") ? result(id, "completed", [{ element_id: `el-${id.slice(5)}` }]) : result(id, "processing");
     });
-    let answer: MediaAnswer = await r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl, imageUrl] } }, { mode: "default" }, {
+    const answer: MediaAnswer = await r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl, imageUrl] } }, { mode: "default" }, {
       idempotencyKey: "task-1",
       sourceKeys: {},
       clones: [],
       durations: {},
     });
-    const kinds: string[] = [];
-    while (answer.state === "send" || (answer.state === "running" && kinds.at(-1) !== "generate")) {
-      if (answer.state === "send") kinds.push(answer.step.kind);
-      answer = answer.state === "send" ? await r.send(stored(answer.ticket), live()) : await r.poll(stored(answer.ticket), live());
-    }
+    const { kinds } = await driven(r, answer, { bounds: live, stopAfter: "generate" });
     expect(kinds).toEqual(["describe", "element", "describe", "element", "generate"]);
     expect(submits(wavespeed.seen).map((s) => (s.body as { name?: string }).name)).toEqual(["Element 1", "Element 2", undefined]);
     expect(submits(wavespeed.seen)[2]?.body).toMatchObject({ elements: [{ element_id: "el-1" }, { element_id: "el-2" }] });
@@ -401,12 +393,8 @@ describe("an element step over one image, not described first", () => {
       return path === "/predictions/p-el/result" ? result("p-el", "completed", [{ element_id: "el-1" }]) : result("p-gen", "processing");
     });
     const r = runner(plain());
-    let answer: MediaAnswer = await r.plan("kling-elements", { prompt: "go", params: { elements: imageUrl } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [], durations: {} });
-    const kinds: string[] = [];
-    while (answer.state === "send" || (answer.state === "running" && kinds.at(-1) !== "generate")) {
-      if (answer.state === "send") kinds.push(answer.step.kind);
-      answer = answer.state === "send" ? await r.send(stored(answer.ticket), live()) : await r.poll(stored(answer.ticket), live());
-    }
+    const answer: MediaAnswer = await r.plan("kling-elements", { prompt: "go", params: { elements: imageUrl } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [], durations: {} });
+    const { kinds } = await driven(r, answer, { bounds: live, stopAfter: "generate" });
     expect(kinds).toEqual(["element", "generate"]);
     expect(submits(wavespeed.seen).map((s) => s.body)).toEqual([
       { name: "Element 1", description: "", image: imageUrl, element_refer_list: [imageUrl] },

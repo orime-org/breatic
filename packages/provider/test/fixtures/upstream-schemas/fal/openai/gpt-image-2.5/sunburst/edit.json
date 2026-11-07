@@ -1,45 +1,6 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=openai/gpt-image-2.5/sunburst/edit",
   "fields": {
-    "output_compression": [
-      {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 100
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 32000
-      }
-    ],
-    "num_images": [
-      {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 10,
-        "default": 1
-      }
-    ],
-    "sync_mode": [
-      {
-        "type": "boolean",
-        "default": false
-      }
-    ],
-    "mask_url": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
     "background": [
       {
         "type": "string",
@@ -51,45 +12,10 @@
         "default": "auto"
       }
     ],
-    "output_format": [
+    "enable_safety_checker": [
       {
-        "type": "string",
-        "enum": [
-          "jpeg",
-          "png",
-          "webp"
-        ],
-        "default": "png"
-      }
-    ],
-    "quality": [
-      {
-        "type": "string",
-        "enum": [
-          "auto",
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "high"
-      }
-    ],
-    "image_size.height": [
-      {
-        "type": "integer",
-        "exclusiveMinimum": 0,
-        "maximum": 14142,
-        "default": 512
-      }
-    ],
-    "image_size.width": [
-      {
-        "type": "integer",
-        "exclusiveMinimum": 0,
-        "maximum": 14142,
-        "default": 512
+        "type": "boolean",
+        "default": true
       }
     ],
     "image_size": [
@@ -111,10 +37,20 @@
         "default": "auto"
       }
     ],
-    "enable_safety_checker": [
+    "image_size.height": [
       {
-        "type": "boolean",
-        "default": true
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 14142,
+        "default": 512
+      }
+    ],
+    "image_size.width": [
+      {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 14142,
+        "default": 512
       }
     ],
     "image_urls": [
@@ -132,11 +68,75 @@
           "required": []
         }
       }
+    ],
+    "mask_url": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "num_images": [
+      {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "default": 1
+      }
+    ],
+    "output_compression": [
+      {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 100
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "jpeg",
+          "png",
+          "webp"
+        ],
+        "default": "png"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 32000
+      }
+    ],
+    "quality": [
+      {
+        "type": "string",
+        "enum": [
+          "auto",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "high"
+      }
+    ],
+    "sync_mode": [
+      {
+        "type": "boolean",
+        "default": false
+      }
     ]
   },
   "required": [
-    "prompt",
-    "image_urls"
+    "image_urls",
+    "prompt"
   ],
   "outputs": {
     "images": [

@@ -38,7 +38,7 @@
     ]
   },
   "required": [
-    "video",
-    "audio"
+    "audio",
+    "video"
   ]
 }

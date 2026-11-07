@@ -1,34 +1,7 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/hunyuan3d-v3/image-to-3d",
   "fields": {
-    "right_image_url": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "input_image_url": [
-      {
-        "type": "string"
-      }
-    ],
     "back_image_url": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "enable_safety_checker": [
-      {
-        "type": "boolean",
-        "default": true
-      }
-    ],
-    "left_image_url": [
       {
         "type": "string"
       },
@@ -42,6 +15,20 @@
         "default": false
       }
     ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "face_count": [
+      {
+        "type": "integer",
+        "minimum": 40000,
+        "maximum": 1500000,
+        "default": 500000
+      }
+    ],
     "generate_type": [
       {
         "type": "string",
@@ -51,6 +38,19 @@
           "Geometry"
         ],
         "default": "Normal"
+      }
+    ],
+    "input_image_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "left_image_url": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
       }
     ],
     "polygon_type": [
@@ -63,12 +63,12 @@
         "default": "triangle"
       }
     ],
-    "face_count": [
+    "right_image_url": [
       {
-        "type": "integer",
-        "minimum": 40000,
-        "maximum": 1500000,
-        "default": 500000
+        "type": "string"
+      },
+      {
+        "type": "null"
       }
     ]
   },
@@ -76,25 +76,12 @@
     "input_image_url"
   ],
   "outputs": {
-    "model_glb.file_name": [
+    "model_glb": [
       {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_glb.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_glb.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
+        "type": "object",
+        "required": [
+          "url"
+        ]
       }
     ],
     "model_glb.content_type": [
@@ -105,46 +92,195 @@
         "type": "null"
       }
     ],
-    "model_glb": [
+    "model_glb.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_glb.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_glb.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls": [
+      {
+        "type": "object"
+      }
+    ],
+    "model_urls.fbx": [
       {
         "type": "object",
         "required": [
           "url"
         ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.fbx.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.fbx.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.fbx.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.fbx.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls.glb": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.glb.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.glb.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.glb.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.glb.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls.obj": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.obj.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.obj.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.obj.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.obj.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls.usdz": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.usdz.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.usdz.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.usdz.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.usdz.url": [
+      {
+        "type": "string"
       }
     ],
     "seed": [
       {
         "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "thumbnail.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "thumbnail.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "thumbnail.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "thumbnail.content_type": [
-      {
-        "type": "string"
       },
       {
         "type": "null"
@@ -161,7 +297,7 @@
         "type": "null"
       }
     ],
-    "model_urls.fbx.file_name": [
+    "thumbnail.content_type": [
       {
         "type": "string"
       },
@@ -169,12 +305,15 @@
         "type": "null"
       }
     ],
-    "model_urls.fbx.url": [
+    "thumbnail.file_name": [
       {
         "type": "string"
+      },
+      {
+        "type": "null"
       }
     ],
-    "model_urls.fbx.file_size": [
+    "thumbnail.file_size": [
       {
         "type": "integer"
       },
@@ -182,148 +321,9 @@
         "type": "null"
       }
     ],
-    "model_urls.fbx.content_type": [
+    "thumbnail.url": [
       {
         "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.fbx": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.glb.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.glb.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_urls.glb.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.glb.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.glb": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.obj.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.obj.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_urls.obj.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.obj.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.obj": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.usdz.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.usdz.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_urls.usdz.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.usdz.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.usdz": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls": [
-      {
-        "type": "object"
       }
     ]
   }

@@ -49,7 +49,7 @@
     ]
   },
   "required": [
-    "prompt",
-    "image"
+    "image",
+    "prompt"
   ]
 }

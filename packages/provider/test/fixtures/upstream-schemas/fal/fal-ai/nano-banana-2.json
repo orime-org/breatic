@@ -1,19 +1,31 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/nano-banana-2",
   "fields": {
-    "prompt": [
+    "aspect_ratio": [
       {
         "type": "string",
-        "minLength": 3,
-        "maxLength": 50000
-      }
-    ],
-    "seed": [
-      {
-        "type": "integer"
+        "enum": [
+          "auto",
+          "21:9",
+          "16:9",
+          "3:2",
+          "4:3",
+          "5:4",
+          "1:1",
+          "4:5",
+          "3:4",
+          "2:3",
+          "9:16",
+          "4:1",
+          "1:4",
+          "8:1",
+          "1:8"
+        ],
+        "default": "auto"
       },
       {
-        "type": "null"
+        "type": "null",
+        "default": "auto"
       }
     ],
     "context": [
@@ -191,87 +203,16 @@
         }
       }
     ],
-    "thinking_level": [
-      {
-        "type": "string",
-        "enum": [
-          "minimal",
-          "high"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "top_p": [
-      {
-        "type": "number",
-        "minimum": 0,
-        "maximum": 1
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "limit_generations": [
-      {
-        "type": "boolean",
-        "default": true
-      }
-    ],
-    "temperature": [
-      {
-        "type": "number",
-        "minimum": 0,
-        "maximum": 2
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "output_format": [
-      {
-        "type": "string",
-        "enum": [
-          "jpeg",
-          "png",
-          "webp"
-        ],
-        "default": "png"
-      }
-    ],
-    "safety_tolerance": [
-      {
-        "type": "string",
-        "enum": [
-          "1",
-          "2",
-          "3",
-          "4",
-          "5",
-          "6"
-        ],
-        "default": "4"
-      }
-    ],
     "enable_image_search": [
       {
         "type": "boolean",
         "default": false
       }
     ],
-    "return_history": [
+    "enable_web_search": [
       {
         "type": "boolean",
         "default": false
-      }
-    ],
-    "include_thoughts": [
-      {
-        "type": "boolean"
-      },
-      {
-        "type": "null"
       }
     ],
     "history": [
@@ -512,17 +453,54 @@
         }
       }
     ],
-    "sync_mode": [
+    "include_thoughts": [
       {
-        "type": "boolean",
-        "default": false
+        "type": "boolean"
+      },
+      {
+        "type": "null"
       }
     ],
-    "system_prompt": [
+    "limit_generations": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "max_output_tokens": [
+      {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 32768
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "num_images": [
+      {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 4,
+        "default": 1
+      }
+    ],
+    "output_format": [
       {
         "type": "string",
-        "maxLength": 50000,
-        "default": ""
+        "enum": [
+          "jpeg",
+          "png",
+          "webp"
+        ],
+        "default": "png"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 50000
       }
     ],
     "resolution": [
@@ -537,52 +515,74 @@
         "default": "1K"
       }
     ],
-    "enable_web_search": [
+    "return_history": [
       {
         "type": "boolean",
         "default": false
       }
     ],
-    "num_images": [
-      {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 4,
-        "default": 1
-      }
-    ],
-    "aspect_ratio": [
+    "safety_tolerance": [
       {
         "type": "string",
         "enum": [
-          "auto",
-          "21:9",
-          "16:9",
-          "3:2",
-          "4:3",
-          "5:4",
-          "1:1",
-          "4:5",
-          "3:4",
-          "2:3",
-          "9:16",
-          "4:1",
-          "1:4",
-          "8:1",
-          "1:8"
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6"
         ],
-        "default": "auto"
-      },
-      {
-        "type": "null",
-        "default": "auto"
+        "default": "4"
       }
     ],
-    "max_output_tokens": [
+    "seed": [
       {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 32768
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "sync_mode": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "system_prompt": [
+      {
+        "type": "string",
+        "maxLength": 50000,
+        "default": ""
+      }
+    ],
+    "temperature": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 2
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "thinking_level": [
+      {
+        "type": "string",
+        "enum": [
+          "minimal",
+          "high"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "top_p": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
       },
       {
         "type": "null"
@@ -593,26 +593,6 @@
     "prompt"
   ],
   "outputs": {
-    "description": [
-      {
-        "type": "string"
-      }
-    ],
-    "grounding_metadata": [
-      {
-        "type": "array",
-        "items": {
-          "fields": {
-            "": [
-              {
-                "type": "object"
-              }
-            ]
-          },
-          "required": []
-        }
-      }
-    ],
     "conversations": [
       {
         "type": "array",
@@ -868,6 +848,26 @@
           "required": [
             "messages"
           ]
+        }
+      }
+    ],
+    "description": [
+      {
+        "type": "string"
+      }
+    ],
+    "grounding_metadata": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "required": []
         }
       }
     ],

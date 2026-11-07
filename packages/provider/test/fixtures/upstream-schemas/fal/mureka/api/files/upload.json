@@ -1,6 +1,11 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=mureka/api/files/upload",
   "fields": {
+    "file_url": [
+      {
+        "type": "string"
+      }
+    ],
     "purpose": [
       {
         "type": "string",
@@ -15,11 +20,6 @@
           "lyrics-video"
         ]
       }
-    ],
-    "file_url": [
-      {
-        "type": "string"
-      }
     ]
   },
   "required": [
@@ -27,6 +27,22 @@
     "purpose"
   ],
   "outputs": {
+    "bytes": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "created_at": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
     "filename": [
       {
         "type": "string"
@@ -43,22 +59,6 @@
     "purpose": [
       {
         "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "created_at": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "bytes": [
-      {
-        "type": "integer"
       },
       {
         "type": "null"

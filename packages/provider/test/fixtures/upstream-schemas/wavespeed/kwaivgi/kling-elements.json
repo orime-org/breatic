@@ -70,9 +70,9 @@
     ]
   },
   "required": [
-    "name",
     "description",
+    "element_refer_list",
     "image",
-    "element_refer_list"
+    "name"
   ]
 }

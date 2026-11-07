@@ -1,20 +1,56 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/kling-video/v3/4k/text-to-video",
   "fields": {
-    "prompt": [
+    "aspect_ratio": [
       {
         "type": "string",
-        "maxLength": 2500
-      },
-      {
-        "type": "null"
+        "enum": [
+          "16:9",
+          "9:16",
+          "1:1"
+        ],
+        "default": "16:9"
       }
     ],
-    "negative_prompt": [
+    "cfg_scale": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.5
+      }
+    ],
+    "duration": [
       {
         "type": "string",
-        "maxLength": 2500,
-        "default": "blur, distort, and low quality"
+        "enum": [
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9",
+          "10",
+          "11",
+          "12",
+          "13",
+          "14",
+          "15"
+        ],
+        "default": "5"
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "generate_audio": [
+      {
+        "type": "boolean",
+        "default": true
       }
     ],
     "multi_prompt": [
@@ -68,50 +104,20 @@
         "type": "null"
       }
     ],
-    "duration": [
+    "negative_prompt": [
       {
         "type": "string",
-        "enum": [
-          "3",
-          "4",
-          "5",
-          "6",
-          "7",
-          "8",
-          "9",
-          "10",
-          "11",
-          "12",
-          "13",
-          "14",
-          "15"
-        ],
-        "default": "5"
+        "maxLength": 2500,
+        "default": "blur, distort, and low quality"
       }
     ],
-    "cfg_scale": [
-      {
-        "type": "number",
-        "minimum": 0,
-        "maximum": 1,
-        "default": 0.5
-      }
-    ],
-    "aspect_ratio": [
+    "prompt": [
       {
         "type": "string",
-        "enum": [
-          "16:9",
-          "9:16",
-          "1:1"
-        ],
-        "default": "16:9"
-      }
-    ],
-    "generate_audio": [
+        "maxLength": 2500
+      },
       {
-        "type": "boolean",
-        "default": true
+        "type": "null"
       }
     ],
     "shot_type": [
@@ -123,16 +129,26 @@
         ],
         "default": "customize"
       }
-    ],
-    "enable_safety_checker": [
-      {
-        "type": "boolean",
-        "default": true
-      }
     ]
   },
   "required": [],
   "outputs": {
+    "video": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
+    "video.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
     "video.file_name": [
       {
         "type": "string"
@@ -149,25 +165,9 @@
         "type": "null"
       }
     ],
-    "video.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
     "video.url": [
       {
         "type": "string"
-      }
-    ],
-    "video": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
       }
     ]
   }

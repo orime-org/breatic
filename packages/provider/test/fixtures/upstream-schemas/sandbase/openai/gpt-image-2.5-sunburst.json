@@ -1,37 +1,6 @@
 {
   "source": "https://api.sandbase.ai/v1/models/openai/gpt-image-2.5-sunburst",
   "fields": {
-    "prompt": [
-      {
-        "type": "string",
-        "minLength": 3,
-        "maxLength": 50000,
-        "default": "Generate an image of gray tabby cat hugging an otter with an orange scarf"
-      }
-    ],
-    "quality": [
-      {
-        "type": "string",
-        "enum": [
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "high"
-      }
-    ],
-    "resolution": [
-      {
-        "type": "string",
-        "enum": [
-          "1k",
-          "2k",
-          "4k"
-        ]
-      }
-    ],
     "aspect_ratio": [
       {
         "type": "string",
@@ -64,6 +33,37 @@
           "webp"
         ],
         "default": "png"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 50000,
+        "default": "Generate an image of gray tabby cat hugging an otter with an orange scarf"
+      }
+    ],
+    "quality": [
+      {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "high"
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "1k",
+          "2k",
+          "4k"
+        ]
       }
     ]
   },

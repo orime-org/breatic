@@ -1,23 +1,6 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/minimax/voice-clone",
   "fields": {
-    "noise_reduction": [
-      {
-        "type": "boolean",
-        "default": false
-      }
-    ],
-    "audio_url": [
-      {
-        "type": "string"
-      }
-    ],
-    "need_volume_normalization": [
-      {
-        "type": "boolean",
-        "default": false
-      }
-    ],
     "accuracy": [
       {
         "type": "number",
@@ -26,6 +9,17 @@
       },
       {
         "type": "null"
+      }
+    ],
+    "audio_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
       }
     ],
     "model": [
@@ -40,10 +34,16 @@
         "default": "speech-02-hd"
       }
     ],
-    "enable_safety_checker": [
+    "need_volume_normalization": [
       {
         "type": "boolean",
-        "default": true
+        "default": false
+      }
+    ],
+    "noise_reduction": [
+      {
+        "type": "boolean",
+        "default": false
       }
     ],
     "text": [
@@ -62,27 +62,20 @@
     "audio_url"
   ],
   "outputs": {
-    "custom_voice_id": [
+    "audio": [
       {
-        "type": "string"
-      }
-    ],
-    "audio.content_type": [
-      {
-        "type": "string"
+        "type": "object",
+        "required": [
+          "url"
+        ]
       },
       {
         "type": "null"
       }
     ],
-    "audio.url": [
+    "audio.content_type": [
       {
         "type": "string"
-      }
-    ],
-    "audio.file_size": [
-      {
-        "type": "integer"
       },
       {
         "type": "null"
@@ -96,15 +89,22 @@
         "type": "null"
       }
     ],
-    "audio": [
+    "audio.file_size": [
       {
-        "type": "object",
-        "required": [
-          "url"
-        ]
+        "type": "integer"
       },
       {
         "type": "null"
+      }
+    ],
+    "audio.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "custom_voice_id": [
+      {
+        "type": "string"
       }
     ]
   }

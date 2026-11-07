@@ -1,11 +1,6 @@
 {
   "source": "https://api.sandbase.ai/v1/models/tencent/hunyuan-3d/3.0/image-to-3d",
   "fields": {
-    "image": [
-      {
-        "type": "string"
-      }
-    ],
     "back_image": [
       {
         "type": "string"
@@ -25,12 +20,23 @@
         "default": 500000
       }
     ],
-    "left_image": [
+    "generate_type": [
+      {
+        "type": "string",
+        "enum": [
+          "Normal",
+          "LowPoly",
+          "Geometry"
+        ],
+        "default": "Normal"
+      }
+    ],
+    "image": [
       {
         "type": "string"
       }
     ],
-    "right_image": [
+    "left_image": [
       {
         "type": "string"
       }
@@ -45,15 +51,9 @@
         "default": "triangle"
       }
     ],
-    "generate_type": [
+    "right_image": [
       {
-        "type": "string",
-        "enum": [
-          "Normal",
-          "LowPoly",
-          "Geometry"
-        ],
-        "default": "Normal"
+        "type": "string"
       }
     ]
   },

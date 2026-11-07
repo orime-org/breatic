@@ -1,17 +1,10 @@
 {
   "source": "https://api.sandbase.ai/v1/models/minimax/h3/image-to-video",
   "fields": {
-    "image": [
+    "aigc_watermark": [
       {
-        "type": "string"
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 7000,
-        "default": "The camera slowly pulls back, revealing the full landscape as clouds drift overhead and light shifts across the terrain."
+        "type": "boolean",
+        "default": false
       }
     ],
     "duration": [
@@ -39,6 +32,19 @@
         "type": "string"
       }
     ],
+    "image": [
+      {
+        "type": "string"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 7000,
+        "default": "The camera slowly pulls back, revealing the full landscape as clouds drift overhead and light shifts across the terrain."
+      }
+    ],
     "resolution": [
       {
         "type": "string",
@@ -48,18 +54,12 @@
         ],
         "default": "2K"
       }
-    ],
-    "aigc_watermark": [
-      {
-        "type": "boolean",
-        "default": false
-      }
     ]
   },
   "required": [
-    "prompt",
+    "duration",
     "image",
-    "duration"
+    "prompt"
   ],
   "modes": [
     "async"
