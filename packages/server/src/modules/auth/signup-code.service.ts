@@ -330,7 +330,7 @@ return {0}
 /**
  * Compare a code with the browser's pending sign-up and, on a match, write
  * the account with the address marked verified. The account takes the
- * language this request is made in: the reader may have switched it on the
+ * language this request is made in: the user may have switched it on the
  * code step after the sign-up started, and the account keeps what they read
  * when it was made, the same as the other two ways an account is created.
  * @param ticket - The browser's ticket, or `null` when it has none.
