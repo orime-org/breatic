@@ -50,9 +50,8 @@ describe("the model this build talks to", () => {
   it("is DeepSeek V4.1 Flash 1017 in the shipped config", () => {
     const config = shippedConfig();
     expect(config.default_model).toBe(MODEL);
-    // Consolidation summarises old turns. Leaving it on the previous model
-    // would mean a conversation is read by one model and written by another,
-    // and the bill would name two.
+    // Consolidation stays on this one model whatever model a conversation
+    // picked.
     expect(config.consolidation_model).toBe(MODEL);
   });
 
