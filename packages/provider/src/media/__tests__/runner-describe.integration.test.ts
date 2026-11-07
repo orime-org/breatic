@@ -253,6 +253,12 @@ describe("the element image's type", () => {
     expect(sentType()).toBe("image/png");
   });
 
+  it.each(["image/jpeg", "image/webp", "image/gif"])("sends an image served as %s under that type", async (served) => {
+    imageType = served;
+    expectState(await describeImage(), "send");
+    expect(sentType()).toBe(served);
+  });
+
   it("answers failed with MediaRefused for an address that serves no image type, asking no model", async () => {
     imageType = "text/html";
     const failed = expectState(await describeImage(), "failed");
@@ -308,6 +314,45 @@ describe("cached elements", () => {
     expect(failed.retiredClones).toEqual([cached[1]]);
   });
 
+  it("keeps a cached second element in its place behind a first one made now", async () => {
+    const r = runner();
+    wavespeed.answer(({ method, path }) => {
+      if (path === "/billings/search") return billing([]);
+      if (method === "POST" && path === "/kwaivgi/kling-elements") return accepted("p-el");
+      if (method === "POST") return accepted("p-gen");
+      return path === "/predictions/p-el/result" ? result("p-el", "completed", [{ element_id: "el-new" }]) : result("p-gen", "processing");
+    });
+    const cached: MediaClone[] = [{ upstream: "wavespeed", kind: "element", sourceKey: "sha-cat:Element 2", upstreamId: "el-cached" }];
+    let answer: MediaAnswer = await r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl, second] } }, { mode: "default" }, {
+      idempotencyKey: "task-1",
+      sourceKeys: { [imageUrl]: "sha-img", [second]: "sha-cat" },
+      clones: cached,
+      durations: {},
+    });
+    const kinds: string[] = [];
+    while (answer.state === "send" || (answer.state === "running" && kinds.at(-1) !== "generate")) {
+      if (answer.state === "send") kinds.push(answer.step.kind);
+      answer = answer.state === "send" ? await r.send(stored(answer.ticket), live()) : await r.poll(stored(answer.ticket), live());
+    }
+    expect(kinds).toEqual(["describe", "element", "generate"]);
+    expect(submits(wavespeed.seen)[1]?.body).toMatchObject({ elements: [{ element_id: "el-new" }, { element_id: "el-cached" }] });
+  });
+
+  it("keeps the cached elements through a failure that names no element", async () => {
+    const r = runner();
+    wavespeed.answer(({ method, path }) => {
+      if (path === "/billings/search") return billing([]);
+      return method === "POST" ? accepted("p-gen") : result("p-gen", "failed", [], "content policy");
+    });
+    const cached: MediaClone[] = [{ upstream: "wavespeed", kind: "element", sourceKey: "sha-img:Element 1", upstreamId: "el-1" }];
+    const planned = expectState(
+      await r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: { [imageUrl]: "sha-img" }, clones: cached, durations: {} }),
+      "send",
+    );
+    const running = expectState(await r.send(stored(planned.ticket), live()), "running");
+    expect(expectState(await r.poll(stored(running.ticket), live()), "failed").retiredClones).toEqual([]);
+  });
+
   it("describes and creates one element per reference image, in the images' order, before the video", async () => {
     const r = runner();
     let element = 0;
@@ -335,6 +380,51 @@ describe("cached elements", () => {
   });
 });
 
+
+describe("an element step over one image, not described first", () => {
+  /**
+   * The model with one element step that is neither per item nor described.
+   * @returns The raw configuration.
+   */
+  function plain(): ProviderConfigInput {
+    const raw = config();
+    const [binding] = raw.media.models["kling-elements"]!.upstreams;
+    raw.media.models["kling-elements"]!.upstreams = [{ ...binding!, extra_steps: [{ kind: "element", endpoint: "kwaivgi/kling-elements", at: "before", for_param: "elements" }] }];
+    return raw;
+  }
+
+  it("creates the element as the first one, with no description, and sends it with the video", async () => {
+    wavespeed.answer(({ method, path }) => {
+      if (path === "/billings/search") return billing([]);
+      if (method === "POST" && path === "/kwaivgi/kling-elements") return accepted("p-el");
+      if (method === "POST") return accepted("p-gen");
+      return path === "/predictions/p-el/result" ? result("p-el", "completed", [{ element_id: "el-1" }]) : result("p-gen", "processing");
+    });
+    const r = runner(plain());
+    let answer: MediaAnswer = await r.plan("kling-elements", { prompt: "go", params: { elements: imageUrl } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [], durations: {} });
+    const kinds: string[] = [];
+    while (answer.state === "send" || (answer.state === "running" && kinds.at(-1) !== "generate")) {
+      if (answer.state === "send") kinds.push(answer.step.kind);
+      answer = answer.state === "send" ? await r.send(stored(answer.ticket), live()) : await r.poll(stored(answer.ticket), live());
+    }
+    expect(kinds).toEqual(["element", "generate"]);
+    expect(submits(wavespeed.seen).map((s) => s.body)).toEqual([
+      { name: "Element 1", description: "", image: imageUrl, element_refer_list: [imageUrl] },
+      { prompt: "go", elements: [{ element_id: "el-1" }] },
+    ]);
+    expect(openrouter.seen).toHaveLength(0);
+  });
+
+  it("sends a cached element as the first one", async () => {
+    wavespeed.answer(({ method }) => (method === "POST" ? accepted("p-gen") : result("p-gen", "processing")));
+    const r = runner(plain());
+    const cached: MediaClone[] = [{ upstream: "wavespeed", kind: "element", sourceKey: "sha-img:Element 1", upstreamId: "el-cached" }];
+    const planned = expectState(await r.plan("kling-elements", { prompt: "go", params: { elements: imageUrl } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: { [imageUrl]: "sha-img" }, clones: cached, durations: {} }), "send");
+    expect(planned.step.kind).toBe("generate");
+    await r.send(stored(planned.ticket), live());
+    expect(submits(wavespeed.seen)[0]?.body).toEqual({ prompt: "go", elements: [{ element_id: "el-cached" }] });
+  });
+});
 
 describe("a describe step followed by a switch", () => {
   it("keeps the paid description in the moved ticket's costs", async () => {
@@ -609,7 +699,126 @@ describe("a describe step and the understand model's answer", () => {
     const error = await describeImage();
     expect(error).toBeInstanceOf(Error);
     expect(error).not.toBeInstanceOf(SendNotAccepted);
+    expect(error).not.toBeInstanceOf(DeadlinePassed);
     expect((error as { state?: unknown }).state).toBeUndefined();
+  });
+});
+
+describe("a describe step and how its understand call ended", () => {
+  /**
+   * Send the describe step of a run whose understand call throws as given.
+   * @param thrown - What the understand call throws.
+   * @returns What send did.
+   */
+  async function understandThrowing(thrown: Error): Promise<unknown> {
+    const keys: Record<string, string> = { WAVESPEED_API_KEY: "ws-key", OPENROUTER_API_KEY: "or-key" };
+    const provider = createProvider({ config: config(), keyOf: (name) => keys[name], llmMaxRetries: 0, cleanText: (t) => t });
+    vi.spyOn(provider.llm, "understand").mockRejectedValue(thrown);
+    const r = createMediaRunner(provider, { mediaLimits: { maxMediaBytes: 1_000_000 }, pollIntervalMs: 0 });
+    const planned = expectState(
+      await r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [], durations: {} }),
+      "send",
+    );
+    try {
+      return await r.send(stored(planned.ticket), live()).catch((e: unknown) => e);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  }
+
+  it.each(["AbortError", "TimeoutError"])("calls an understand call cut by an %s DeadlinePassed", async (name) => {
+    expect(await understandThrowing(new DOMException("cut", name))).toBeInstanceOf(DeadlinePassed);
+  });
+
+  it("calls an understand call whose cause is an abort DeadlinePassed", async () => {
+    expect(await understandThrowing(new Error("the call ended", { cause: new DOMException("cut", "TimeoutError") }))).toBeInstanceOf(DeadlinePassed);
+  });
+
+  it("throws any other end of the understand call as it is", async () => {
+    const thrown = new Error("the call ended", { cause: new Error("socket closed") });
+    expect(await understandThrowing(thrown)).toBe(thrown);
+  });
+
+  it("feeds the description to the element step without the whitespace around it", async () => {
+    openrouter.answer(() => ({
+      status: 200,
+      body: { id: "gen-1", object: "chat.completion", created: 1, model: "m", choices: [{ index: 0, message: { role: "assistant", content: "  A red fox.\n" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2, cost: 0.0001 } },
+    }));
+    wavespeed.answer(({ method }) => (method === "POST" ? accepted("p-el") : result("p-el", "processing")));
+    const r = runner();
+    const planned = expectState(
+      await r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [], durations: {} }),
+      "send",
+    );
+    const element = expectState(await r.send(stored(planned.ticket), live()), "send");
+    await r.send(stored(element.ticket), live());
+    expect((submits(wavespeed.seen)[0]?.body as { description: string }).description).toBe("A red fox.");
+  });
+});
+
+describe("a describe step whose understand upstreams fail in different ways", () => {
+  /**
+   * The model with understanding on OpenRouter first and Google second, Google's key not configured.
+   * @returns The raw configuration.
+   */
+  function withGoogle(): ProviderConfigInput {
+    const raw = config();
+    raw.upstreams.google = { kind: "google", base_url: openrouter.url, key_env: "GOOGLE_API_KEY" };
+    raw.llm!.understand_routes = [{ prefix: "", upstreams: [{ upstream: "openrouter", weight: 0 }, { upstream: "google", weight: 1 }] }];
+    return raw;
+  }
+
+  it("throws SendNotAccepted when one upstream fails in a passing way and the other has no key", async () => {
+    openrouter.answer(() => ({ status: 503, body: {} }));
+    const keys: Record<string, string> = { WAVESPEED_API_KEY: "ws-key", OPENROUTER_API_KEY: "or-key" };
+    const provider = createProvider({ config: withGoogle(), keyOf: (name) => keys[name], llmMaxRetries: 0, cleanText: (t) => t });
+    const r = createMediaRunner(provider, { mediaLimits: { maxMediaBytes: 1_000_000 }, pollIntervalMs: 0 });
+    const planned = expectState(
+      await r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [], durations: {} }),
+      "send",
+    );
+    expect(await r.send(stored(planned.ticket), live()).catch((e: unknown) => e)).toBeInstanceOf(SendNotAccepted);
+  });
+
+  it("answers failed with what the lasting refusal cost when OpenRouter billed it", async () => {
+    openrouter.answer(() => ({ status: 200, body: { id: "gen-1", usage: { cost: 0.0007 }, choices: [{ index: 0, message: { role: "assistant", content: "" }, finish_reason: "error", error: { code: 402, message: "Insufficient credits" } }] } }));
+    const r = runner();
+    const planned = expectState(
+      await r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [], durations: {} }),
+      "send",
+    );
+    const failed = expectState(await r.send(stored(planned.ticket), live()), "failed");
+    expect(failed.reason).toBeInstanceOf(NoUpstreamAvailable);
+    expect(failed.costs).toContainEqual(expect.objectContaining({ state: "known", usd: 0.0007 }));
+  });
+});
+
+describe("ticketFromLegacy for element rows", () => {
+  const legacyOptions = { idempotencyKey: "task-1", sourceKeys: {}, clones: [], durations: {} };
+  const generate = { position: 1, kind: "generate" as const, endpoint: "kwaivgi/kling-video", itemIndex: null, status: "pending" as const, predictionId: null, output: {}, inlineCostUsd: 0 };
+
+  it("sends the stored description with the element, describing nothing again", async () => {
+    wavespeed.answer(({ method }) => (method === "POST" ? accepted("p-el") : result("p-el", "processing")));
+    const legacy = { steps: [{ position: 0, kind: "element" as const, endpoint: "kwaivgi/kling-elements", itemIndex: 0, status: "pending" as const, predictionId: null, output: { description: "An old fox" }, inlineCostUsd: 0 }, generate] };
+    const r = runner();
+    const answer = expectState(await r.ticketFromLegacy("kling-elements", { prompt: "go", params: { elements: [imageUrl] } }, { mode: "default" }, legacyOptions, legacy), "send");
+    expect(answer.step.kind).toBe("element");
+    await r.send(stored(answer.ticket), live());
+    expect((submits(wavespeed.seen)[0]?.body as { description: string }).description).toBe("An old fox");
+    expect(openrouter.seen).toHaveLength(0);
+  });
+
+  it("describes the image of a pending element from its own param", async () => {
+    const legacy = { steps: [{ position: 0, kind: "element" as const, endpoint: "kwaivgi/kling-elements", itemIndex: 0, status: "pending" as const, predictionId: null, output: {}, inlineCostUsd: 0 }, generate] };
+    const r = runner();
+    const answer = expectState(await r.ticketFromLegacy("kling-elements", { prompt: "go", params: { elements: [imageUrl] } }, { mode: "default" }, legacyOptions, legacy), "send");
+    expect(expectState(await r.send(stored(answer.ticket), live()), "send").step.kind).toBe("element");
+  });
+
+  it("goes on to the video after an element already made", async () => {
+    const legacy = { steps: [{ position: 0, kind: "element" as const, endpoint: "kwaivgi/kling-elements", itemIndex: 0, status: "done" as const, predictionId: "p-el", output: { index: 0, elementId: "el-old", prediction: "p-el" }, inlineCostUsd: 0 }, generate] };
+    const answer = expectState(await runner().ticketFromLegacy("kling-elements", { prompt: "go", params: { elements: [imageUrl] } }, { mode: "default" }, legacyOptions, legacy), "send");
+    expect(answer.step.kind).toBe("generate");
   });
 });
 

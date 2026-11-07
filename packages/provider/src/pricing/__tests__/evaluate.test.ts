@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
-import { priceUsd, type PriceContract } from "../evaluate.js";
+import { evaluationMessage, priceUsd, type PriceContract } from "../evaluate.js";
 
 interface PriceFixture {
   contracts: Record<string, PriceContract>;
@@ -58,5 +58,13 @@ describe("priceUsd — properties", () => {
 
   it("a formula without a finite total_price is refused", async () => {
     await expect(priceUsd({ basePrice: 1, formula: "{\"other\": 1}", discountRate: 100 }, {}, {})).rejects.toThrow("total_price");
+  });
+});
+
+describe("the words of what an evaluation threw", () => {
+  it("are its message, or the value as text when it carries none", () => {
+    expect(evaluationMessage({ message: "bad token", code: "S0201" })).toBe("bad token");
+    expect(evaluationMessage({ code: "S0201" })).toBe("[object Object]");
+    expect(evaluationMessage(undefined)).toBe("undefined");
   });
 });

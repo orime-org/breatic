@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { MediaBinding, ProviderConfigInput } from "../../../config/schema.js";
 import { costsOf, NoUpstreamAvailable, UpstreamRequestRejected, UpstreamTaskFailed } from "../../../errors.js";
-import { NoAnswer } from "../../../http/errors.js";
+import { HttpStatus, NoAnswer } from "../../../http/errors.js";
 import { createProvider } from "../../../provider.js";
 import { createMediaRunner, type MediaAnswer, type MediaRunner, type MediaTicket } from "../../runner.js";
 import { accepted, fakeUpstream, submits, type FakeUpstream, type Reply } from "../../__tests__/fake-upstream.js";
@@ -145,6 +145,7 @@ describe("fal submit and queue", () => {
     const running = expectState(await sent(run, "video"), "running");
     const submit = submits(fal.seen)[0]!;
     expect(submit.authorization).toBe("Key fal-key");
+    expect(submit.headers["content-type"]).toBe("application/json");
     expect(submit.body).toEqual({ prompt: "a fox", duration: "5", task: "extension" });
     const done = expectState(await run.poll(stored(running.ticket), live()), "done");
     expect(done.outputs).toEqual([{ kind: "url", url: "https://v.fal.media/out.mp4" }]);
@@ -244,6 +245,85 @@ describe("fal submit and queue", () => {
   });
 });
 
+describe("fal answers at the edges of their shapes", () => {
+  /**
+   * A run on fal whose status and result answer as given.
+   * @param status - What the status address answers.
+   * @param result - What the result address answers, ask by ask.
+   * @param model - Our model.
+   * @returns The runner and the running answer.
+   */
+  async function asked(status: Reply, result: (ask: number) => Reply, model = "video"): Promise<{ run: MediaRunner; running: Extract<MediaAnswer, { state: "running" }> }> {
+    const { run } = runner(undefined, NESTED);
+    let asks = 0;
+    fal.answer(({ method, path }) => {
+      if (method === "POST") return queued("e1");
+      if (path.endsWith("/e1/status")) return status;
+      if (path.endsWith("/e1")) return result(++asks);
+      if (path === "/v1/models/billing-events") return events([0.1]);
+      return undefined;
+    });
+    return { run, running: expectState(await sent(run, model), "running") };
+  }
+
+  const completed: Reply = { status: 200, body: { status: "COMPLETED" } };
+  const video: Reply = { status: 200, body: { video: { url: "https://v/e1.mp4" } } };
+
+  it("finishes a completed request whose error is null", async () => {
+    const { run, running } = await asked({ status: 200, body: { status: "COMPLETED", error: null } }, () => video);
+    expectState(await run.poll(stored(running.ticket), live()), "done");
+  });
+
+  it.each([400, 404])("fails the run when the result answers %s", async (code) => {
+    const { run, running } = await asked(completed, () => ({ status: code, body: { detail: `refused ${code}` } }));
+    const failed = expectState(await run.poll(stored(running.ticket), live()), "failed");
+    expect((failed.reason as UpstreamTaskFailed).upstreamError).toContain(`refused ${code}`);
+  });
+
+  it("throws a result answered with a redirect for the caller to see, without failing the run", async () => {
+    const { run, running } = await asked(completed, () => ({ status: 302, body: {}, headers: { location: "https://elsewhere.example/r" } }));
+    expect(await run.poll(stored(running.ticket), live()).catch((e: unknown) => e)).toBeInstanceOf(HttpStatus);
+  });
+
+  it("fails the run in the words of a 4xx result that is not JSON", async () => {
+    const { run, running } = await asked(completed, () => ({ status: 400, raw: "bad request body", contentType: "text/plain" }));
+    const failed = expectState(await run.poll(stored(running.ticket), live()), "failed");
+    expect((failed.reason as UpstreamTaskFailed).upstreamError).toContain("bad request body");
+  });
+
+  it("refuses a ticket whose step lost its result address", async () => {
+    const { run, running } = await asked(completed, () => video);
+    const ticket = stored(running.ticket) as unknown as { steps: { handle?: Record<string, string> }[] };
+    delete ticket.steps[0]!.handle!.response_url;
+    await expect(run.poll(ticket as unknown as MediaTicket, live())).rejects.toThrow("has no status and result addresses");
+  });
+
+  it.each([429, 500])("asks again when the result answers %s", async (code) => {
+    const { run, running } = await asked(completed, (ask) => (ask <= 3 ? { status: code, body: { detail: "later" } } : video));
+    const again = expectState(await run.poll(stored(running.ticket), live()), "running");
+    expectState(await run.poll(stored(again.ticket), live()), "done");
+  });
+
+  it.each([
+    ["a null file", "video", { video: null }],
+    ["no file", "video", {}],
+    ["a null object on the way", "nested", { data: null }],
+    ["no object on the way", "nested", {}],
+  ])("fails the run on a result with %s under the output field", async (_label, model, body) => {
+    const { run, running } = await asked(completed, () => ({ status: 200, body }), model);
+    expectState(await run.poll(stored(running.ticket), live()), "failed");
+  });
+
+  it("throws NoAnswer carrying one missing cost when the submit answers no request id", async () => {
+    const { run } = runner();
+    fal.answer(() => ({ status: 200, body: { status_url: `${fal.url}/x/status`, response_url: `${fal.url}/x` } }));
+    const planned = expectState(await run.plan("video", { prompt: "a cat", params: { duration: 5 } }, { mode: "default" }, options), "send");
+    const error = await run.send(stored(planned.ticket), live()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(NoAnswer);
+    expect(costsOf(error)).toEqual([expect.objectContaining({ state: "missing" })]);
+  });
+});
+
 describe("fal costs", () => {
   /**
    * A run that finishes on fal, with billing answering as given.
@@ -283,8 +363,16 @@ describe("fal costs", () => {
     expect(done.warnings.map((w) => w.code)).toContainEqual(expect.stringMatching(/^billing_query_/));
   });
 
-  it("makes a cost missing at once when billing refuses the key, naming the permission", async () => {
-    const { done } = await finished({ status: 403, body: { error: { type: "authorization_error", message: "forbidden" } } });
+  it("asks billing without a key when none is configured, and makes the refused cost missing", async () => {
+    const { provider } = runner({});
+    fal.answer(({ path }) => (path === "/v1/models/billing-events" ? { status: 401, body: { detail: "no key" } } : undefined));
+    const cost = await provider.cost.lookup({ upstream: "fal", predictionId: "r7" }, { lastAttempt: false });
+    expect(cost.state).toBe("missing");
+    expect(fal.seen[0]?.authorization).toBe("Key");
+  });
+
+  it.each([401, 403])("makes a cost missing at once when billing refuses the key with %s, naming the permission", async (code) => {
+    const { done } = await finished({ status: code, body: { error: { type: "authorization_error", message: "forbidden" } } });
     expect(done.costs).toHaveLength(1);
     expect(done.costs[0]!.state).toBe("missing");
     expect((done.costs[0] as { reason: string }).reason).toContain("FAL_KEY");
@@ -330,6 +418,19 @@ describe("fal refusals", () => {
     expect(moved.warnings[0]?.detail.failure).toBe("model_not_found");
   });
 
+  it.each([
+    ["a 403 that is not the account lock", 403, "Forbidden"],
+    ["a 404 that is not an unknown application", 404, "Not Found"],
+    ["an unknown application answered with another status", 403, 'Application "seedance-2.5" not found'],
+    ["the account lock answered with another status", 404, "User is locked. Reason: Exhausted balance."],
+  ])("stays on fal and fails the run on %s", async (_label, status, detail) => {
+    const { run } = runner();
+    fal.answer(() => ({ status, body: { detail } }));
+    ws.answer(() => accepted("w3"));
+    expectState(await sent(run, "video"), "failed");
+    expect(submits(ws.seen)).toHaveLength(0);
+  });
+
   it("stays on fal and fails the run on a 422 refusal of the params", async () => {
     const { run } = runner();
     fal.answer(() => ({ status: 422, body: { detail: [{ loc: ["body", "duration"], msg: "invalid", type: "enum" }] } }));
@@ -366,6 +467,11 @@ describe("fal extra steps", () => {
     ]);
   });
 });
+
+/** A model whose files fal answers under a nested output field. */
+const NESTED: ProviderConfigInput["media"]["models"] = {
+  nested: { upstreams: onFal("custom/nested", "data.video") },
+};
 
 /** A MiniMax voice clone on fal: the clone, then speech in the cloned voice. */
 const VOICE: ProviderConfigInput["media"]["models"] = {

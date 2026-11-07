@@ -3,7 +3,7 @@
 
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { cloneKeyOf, stepCalls, stepSource } from "../estimate.js";
+import { cloneKeyOf, mentionsWritten, stepCalls, stepSource } from "../estimate.js";
 
 const params = { elements: ["https://a/1.png", "https://a/2.png"], song: "https://a/song.mp3", empty: "", none: [] };
 
@@ -14,6 +14,8 @@ describe("the calls an extra step makes and the source each reads", () => {
     expect(stepCalls({ for_param: "empty" }, params)).toEqual([]);
     expect(stepCalls({ for_param: "none", per_item: true }, params)).toEqual([]);
     expect(stepCalls({}, params)).toEqual([null]);
+    expect(stepCalls({ for_param: "elements" }, params)).toEqual([null]);
+    expect(stepCalls({ for_param: "song", per_item: true }, params)).toEqual([null]);
   });
 
   it("reads each call's own item, the whole value for a single call, and nothing that is not a url", () => {
@@ -23,6 +25,7 @@ describe("the calls an extra step makes and the source each reads", () => {
     expect(stepSource(params, "elements", null)).toBeUndefined();
     expect(stepSource(params, "empty", null)).toBeUndefined();
     expect(stepSource(params, "elements", 2)).toBeUndefined();
+    expect(stepSource(params, undefined, null)).toBeUndefined();
   });
 });
 
@@ -39,5 +42,16 @@ describe("the source a clone is keyed by", () => {
         expect(key?.sourceKey.split(":")[0]).toBe(url === undefined ? undefined : sourceKeys[url]);
       }),
     );
+  });
+});
+
+describe("the references a prompt names", () => {
+  it("are written the upstream's way, counting from 1 or from 0, past the ninth", () => {
+    expect(mentionsWritten({ images: "<IMG_{i}>", videos: "@video{n}" }, "<<ref:images:10>> and <<ref:videos:12>>")).toBe("<IMG_9> and @video12");
+  });
+
+  it("stay as they are where the upstream has no template for the param, or none at all", () => {
+    expect(mentionsWritten({ images: "<IMG_{i}>" }, "<<ref:audios:1>>")).toBe("<<ref:audios:1>>");
+    expect(mentionsWritten(undefined, "<<ref:audios:1>>")).toBe("<<ref:audios:1>>");
   });
 });

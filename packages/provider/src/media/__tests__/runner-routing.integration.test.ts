@@ -109,7 +109,7 @@ describe("plan options", () => {
 });
 
 describe("a run is sent only where its input can go (critical path)", () => {
-  it("property: whatever the weights, keys, input limits, request values and submit answers", async () => {
+  it("property: whatever the weights and the deployment's overrides of them, keys, input limits, request values, submit answers and restarts between sends", async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.uniqueArray(fc.integer({ min: 0, max: 9 }), { minLength: 3, maxLength: 3 }),
@@ -125,14 +125,29 @@ describe("a run is sent only where its input can go (critical path)", () => {
           { arbitrary: fc.constant<Route>({ mode: "cheapest" }), weight: 2 },
           { arbitrary: fc.constantFrom(...NAMES.map((upstream): Route => ({ mode: "upstream", upstream }))), weight: 1 },
         ),
-        async (weights, keyed, limits, prices, params, audioSeconds, answers, route) => {
+        // The deployment's routing.yaml: a new weight for some upstreams, outside the shipped ones so none repeats.
+        fc.tuple(...NAMES.map(() => fc.option(fc.integer({ min: 10, max: 12 }), { nil: undefined }))).filter((o) => new Set(o.filter((w) => w !== undefined)).size === o.filter((w) => w !== undefined).length),
+        // Before which sends the process restarts, the ticket read back by a new provider instance.
+        fc.array(fc.boolean(), { maxLength: 4 }),
+        async (shipped, keyed, limits, prices, params, audioSeconds, answers, route, overrides, restarts) => {
+          const weights = NAMES.map((_, i) => overrides[i] ?? shipped[i]!);
+          const overridden = Object.fromEntries(NAMES.flatMap((n, i) => (overrides[i] === undefined ? [] : [[n, overrides[i]]])));
           const config: ProviderConfigInput = {
             upstreams: Object.fromEntries(NAMES.map((n) => [n, { kind: KINDS[n], base_url: fakes[n].url, key_env: ENVS[n], ...(n === "fal" ? { billing_url: `${fakes[n].url}/v1` } : {}) }])),
-            media: { models: { m: { upstreams: NAMES.map((n, i) => binding(n, weights[i]!, limits[i]!, prices[i]!)) } } },
+            media: { models: { m: { upstreams: NAMES.map((n, i) => binding(n, shipped[i]!, limits[i]!, prices[i]!)) } } },
+            ...(Object.keys(overridden).length === 0 ? {} : { routing: { models: { m: { weights: overridden } } } }),
           };
           const keys = Object.fromEntries(NAMES.flatMap((n, i) => (keyed[i] ? [[ENVS[n], "key"]] : [])));
-          const provider = createProvider({ config, keyOf: (env) => keys[env], llmMaxRetries: 0, cleanText: (t) => t });
-          const runner = createMediaRunner(provider, { mediaLimits: { maxMediaBytes: 1_000_000 }, pollIntervalMs: 0 });
+          /**
+           * A provider instance and its runner, as one process starts them.
+           * @returns Both.
+           */
+          const started = (): { provider: ReturnType<typeof createProvider>; runner: ReturnType<typeof createMediaRunner> } => {
+            const provider = createProvider({ config, keyOf: (env) => keys[env], llmMaxRetries: 0, cleanText: (t) => t });
+            return { provider, runner: createMediaRunner(provider, { mediaLimits: { maxMediaBytes: 1_000_000 }, pollIntervalMs: 0 }) };
+          };
+          const { provider } = started();
+          let { runner } = started();
           const submitted: Name[] = [];
           for (const [i, name] of NAMES.entries()) {
             fakes[name].answer(({ method }) => {
@@ -157,7 +172,8 @@ describe("a run is sent only where its input can go (critical path)", () => {
 
           let answer: MediaAnswer = await runner.plan("m", input, route, { idempotencyKey: "task-1", sourceKeys: {}, clones: [], durations });
           let notAccepted = false;
-          while (answer.state === "send") {
+          for (let sends = 0; answer.state === "send"; sends++) {
+            if (restarts[sends] === true) runner = started().runner;
             try {
               answer = await runner.send(JSON.parse(JSON.stringify(answer.ticket)) as MediaTicket, { deadlineAt: Date.now() + 60_000 });
             } catch (error) {

@@ -114,7 +114,7 @@ describe("parseProviderConfig", () => {
     expect(problems.join("\n")).toContain("reused");
   });
 
-  it.each(["fal", "openrouter", "toString"])("refuses a media binding on an upstream of kind %s, which no media adapter speaks to", (kind) => {
+  it.each(["falai", "openrouter", "toString"])("refuses a media binding on an upstream of kind %s, which no media adapter speaks to", (kind) => {
     const raw: ProviderConfigInput = {
       upstreams: { ...upstreams, typo: { kind, base_url: "https://x.example", key_env: "TYPO_KEY" } },
       media: { models: { seedance: { upstreams: [bind("typo", 1)] } } },

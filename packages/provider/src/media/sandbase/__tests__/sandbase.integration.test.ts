@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProviderConfigInput } from "../../../config/schema.js";
-import { costsOf, NoUpstreamAvailable, UpstreamRequestRejected, UpstreamTaskFailed } from "../../../errors.js";
+import { costsOf, DeadlinePassed, NoUpstreamAvailable, UpstreamRequestRejected, UpstreamTaskFailed } from "../../../errors.js";
 import { NoAnswer } from "../../../http/errors.js";
 import { createProvider } from "../../../provider.js";
 import { createMediaRunner, type MediaAnswer, type MediaRunner, type MediaTicket } from "../../runner.js";
@@ -140,6 +140,80 @@ describe("SandBase runs", () => {
     });
     let answer = expectState(await sent(run), "running");
     for (let i = 0; i < 3; i++) answer = expectState(await run.poll(stored(answer.ticket), live()), "running");
+  });
+
+  it("keeps running while a run answer cannot be read", async () => {
+    const { run } = runner();
+    sb.answer(({ method, path }) => {
+      if (method === "POST" && path === "/v1/run") return { status: 202, body: { id: "r3", status: "pending" } };
+      if (path === "/v1/run/r3") return { status: 200, body: { id: 3, status: "completed", outputs: [{ url: "https://media.example/r3.png" }] } };
+      return undefined;
+    });
+    const running = expectState(await sent(run), "running");
+    expectState(await run.poll(stored(running.ticket), live()), "running");
+  });
+
+  it("keeps a run still running past the empty-output wait running", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const { run } = runner();
+      sb.answer(({ method, path }) => {
+        if (method === "POST" && path === "/v1/run") return { status: 202, body: { id: "r4", status: "pending" } };
+        if (path === "/v1/run/r4") return { status: 200, body: { id: "r4", status: "running" } };
+        return undefined;
+      });
+      let answer = expectState(await sent(run), "running");
+      answer = expectState(await run.poll(stored(answer.ticket), live()), "running");
+      vi.setSystemTime(Date.now() + EMPTY_OUTPUT_WAIT_MS + 1_000);
+      expectState(await run.poll(stored(answer.ticket), live()), "running");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reads an empty run id as none: a completed run without one is billed as missing", async () => {
+    const { run } = runner();
+    sb.answer(({ method, path }) => (method === "POST" && path === "/v1/run" ? { status: 200, body: { id: "", status: "completed", outputs: [{ url: "https://media.example/e.png" }] } } : undefined));
+    const done = expectState(await sent(run), "done");
+    expect(done.costs).toEqual([expect.objectContaining({ state: "missing" })]);
+  });
+
+  it.each([
+    ["no words", {}, "the run ended failed"],
+    ["words that are not text", { error: { code: 7, message: "nope" } }, '{"code":7,"message":"nope"}'],
+    ["null words", { error: null }, "the run ended timeout"],
+  ])("fails a run SandBase ends with %s, in words of its own", async (_label, extra, words) => {
+    const { run } = runner();
+    const status = words.endsWith("timeout") ? "timeout" : "failed";
+    sb.answer(({ method, path }) => {
+      if (method === "POST" && path === "/v1/run") return { status: 202, body: { id: "r5", status: "pending" } };
+      if (path === "/v1/run/r5") return { status: 200, body: { id: "r5", status, ...extra } };
+      return undefined;
+    });
+    const running = expectState(await sent(run), "running");
+    const failed = expectState(await run.poll(stored(running.ticket), live()), "failed");
+    expect((failed.reason as UpstreamTaskFailed).upstreamError).toBe(words);
+  });
+
+  it("finishes a submit that answers a completed run without an id", async () => {
+    const { run } = runner();
+    sb.answer(({ method, path }) => (method === "POST" && path === "/v1/run" ? { status: 200, body: { status: "completed", outputs: [{ url: "https://media.example/n.png" }] } } : undefined));
+    const done = expectState(await sent(run), "done");
+    expect(done.outputs).toEqual([{ kind: "url", url: "https://media.example/n.png" }]);
+  });
+
+  it("fails a run whose submit answers failed without an id, with SandBase's words", async () => {
+    const { run } = runner();
+    sb.answer(({ method, path }) => (method === "POST" && path === "/v1/run" ? { status: 200, body: { status: "failed", error: "prompt refused" } } : undefined));
+    const failed = expectState(await sent(run), "failed");
+    expect((failed.reason as UpstreamTaskFailed).upstreamError).toContain("prompt refused");
+  });
+
+  it("stops a submit that hangs at its deadline", async () => {
+    const { run } = runner();
+    sb.answer(() => "hang");
+    const planned = expectState(await run.plan("flux", { prompt: "a fox", params: { aspect_ratio: "16:9" } }, { mode: "default" }, options), "send");
+    await expect(run.send(stored(planned.ticket), { deadlineAt: Date.now() + 300 })).rejects.toBeInstanceOf(DeadlinePassed);
   });
 
   describe("a completed run that answers no outputs", () => {
@@ -347,6 +421,16 @@ describe("SandBase costs", () => {
     return { done: expectState(await run.poll(stored(running.ticket), live()), "done"), provider };
   }
 
+  it.each([["12.5", 12.5], ["2", 2], [" 1.5 ", 1.5], ["0.025000", 0.025]])("reads the cost %j SandBase writes as a decimal string", async (text, usd) => {
+    const { done } = await finished(taskCost(true, text));
+    expect(done.costs).toEqual([{ state: "known", usd, source: "billing" }]);
+  });
+
+  it.each(["1.5abc", "abc1.5", "1.", ".5"])("leaves the cost %j pending, as not a decimal", async (text) => {
+    const { done } = await finished(taskCost(true, text));
+    expect(done.costs).toEqual([{ state: "pending", lookup: { upstream: "sandbase", predictionId: "r9" } }]);
+  });
+
   it("leaves an unsettled cost pending, and missing on the last lookup", async () => {
     const { done, provider } = await finished(taskCost(false, "0.020000"));
     expect(done.costs).toEqual([{ state: "pending", lookup: { upstream: "sandbase", predictionId: "r9" } }]);
@@ -409,6 +493,14 @@ describe("SandBase refusals", () => {
     expect(moved.warnings[0]?.detail.failure).toBe("model_not_found");
   });
 
+  it("stays on SandBase on a 400 whose words read like an unknown model", async () => {
+    const { run } = runner();
+    sb.answer(() => ({ status: 400, body: { error: "model not found: bfl/flux-2/flash" } }));
+    ws.answer(() => accepted("w3"));
+    expectState(await sent(run), "failed");
+    expect(submits(ws.seen)).toHaveLength(0);
+  });
+
   it("stays on SandBase and fails the run on a 400 refusal of the input", async () => {
     const { run } = runner();
     sb.answer(() => ({ status: 400, body: { error: "invalid capability input" } }));
@@ -463,6 +555,14 @@ describe("a MiniMax voice clone on SandBase", () => {
     ]);
     expect(clones).toEqual([{ upstream: "sandbase", kind: "voice", sourceKey: "sha-a", upstreamId: "sb-voice-1" }]);
     expect(done.outputs).toEqual([{ kind: "url", url: "https://media.example/s1/0.mp3" }]);
+  });
+
+  it("bills a clone SandBase took and failed at once under its id, once, leaving the speech unsent", async () => {
+    const { run } = runner(undefined, VOICE);
+    sb.answer(({ method }) => (method === "POST" ? { status: 200, body: { id: "c1", status: "failed", error: "audio too short" } } : undefined));
+    const planned = expectState(await run.plan("voice-clone", speech, { mode: "default" }, { ...keyed, clones: [], durations: {} }), "send");
+    const failed = expectState(await run.send(stored(planned.ticket), live()), "failed");
+    expect(failed.costs).toEqual([{ state: "pending", lookup: { upstream: "sandbase", predictionId: "c1" } }]);
   });
 
   it("speaks with SandBase's cached clone and skips the clone step", async () => {

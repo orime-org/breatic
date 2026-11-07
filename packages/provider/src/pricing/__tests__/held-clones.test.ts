@@ -114,6 +114,10 @@ describe("estimates with the caller's live clones", () => {
     expect(await cheapest("voice", run({ audio: VOICE }))).toEqual({ usd: 1.53, bound: "at_most", upstream: "ws_b" });
   });
 
+  it("is exact for a clone model's run that carries no source to clone, though the caller does not know its clones", async () => {
+    expect(await cheapest("voice", run({}))).toMatchObject({ bound: "exact" });
+  });
+
   it("stays an upper bound for a vocal clone when the caller does not know its clones", async () => {
     expect(await cheapest("song", run({ lyrics: "la", vocal: VOCAL }))).toEqual({ usd: 5.15, bound: "at_most", upstream: "ws_b" });
   });
