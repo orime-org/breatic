@@ -13,10 +13,11 @@
  * gone stays gone, even when undo writes the words back: the comment draft's
  * rule.
  *
- * A range across blocks covers them whole (Plate `captureTextRange`). The
- * carried letters miss an image or an empty line at its edges, so the first
- * and the last block are held by id as well; what replace covers is worked
- * out from both (`aiCoverOf`), and so is what is painted.
+ * A range that is not words inside one line covers whole blocks (Plate
+ * `captureTextRange`). The carried letters miss an image or an empty line at
+ * its edges, so the first and the last block are held by id as well; what
+ * replace covers is worked out from both (`aiCoverOf`), and so is what is
+ * painted.
  *
  * While the dialog is open the range keeps the body's selected look (design
  * §5.3): the user's own selection moves on, so the words wear the
@@ -50,11 +51,11 @@ import { noTextPaint } from '@web/spaces/document/document-selection-paint';
 
 /** What the dialog opens the range on (§4.6). */
 export interface AiCapture {
-  /** The captured range: inside one block, its words; across blocks, the whole blocks. */
+  /** The captured range: inside one line of words, those words; otherwise the whole blocks. */
   readonly range: LocalRange;
-  /** The first block of a range across blocks; null inside one block. */
+  /** The first of the whole blocks; null for words inside one line. */
   readonly firstId: string | null;
-  /** The last block of a range across blocks; null inside one block. */
+  /** The last of the whole blocks; null for words inside one line. */
   readonly lastId: string | null;
 }
 
@@ -138,15 +139,15 @@ export function ownContentEnd(doc: ProseMirrorNode, blockPos: number): number {
 }
 
 /**
- * What replace covers now (§5.4): inside one block, the carried words;
- * across blocks, from the first block's start to the end of the last
- * block's own content, children left out. A first or last block gone since
+ * What replace covers now (§5.4): for words inside one line, the carried
+ * words; for whole blocks, from the first block's start to the end of the
+ * last block's own content, children left out. A first or last block gone since
  * gives way to the block of the carried letter at that end, and so do both
  * once the first has come after the last.
  * @param doc - The body now.
  * @param letters - The carried letters, or null once gone.
- * @param firstId - The first block, or null inside one block.
- * @param lastId - The last block, or null inside one block.
+ * @param firstId - The first block, or null for words inside one line.
+ * @param lastId - The last block, or null for words inside one line.
  * @returns The range, or null once the letters are gone.
  */
 export function aiCoverOf(doc: ProseMirrorNode, letters: LocalRange | null, firstId: string | null, lastId: string | null): LocalRange | null {

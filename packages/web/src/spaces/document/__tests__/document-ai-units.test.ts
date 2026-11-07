@@ -14,7 +14,7 @@ import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
 
-import { aiCapture } from '@web/spaces/document/document-ai-launch';
+import { aiCapture, aiInsertBlockId } from '@web/spaces/document/document-ai-launch';
 import { aiCoverIn, DOCUMENT_AI_RANGE } from '@web/spaces/document/document-ai-range';
 import {
   aiAnswer,
@@ -196,7 +196,20 @@ function capture(handle: DocumentEditorHandle, range: LocalRange): void {
   view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, range.from, range.to)));
   const captured = aiCapture(view.state);
   expect(captured).not.toBeNull();
+  insertBlocks.set(handle, aiInsertBlockId(view.state.doc, captured!));
   view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, captured));
+}
+
+/** The insert block each open dialog took when it opened, as the dialog keeps it. */
+const insertBlocks = new WeakMap<DocumentEditorHandle, string | null>();
+
+/**
+ * The insert block the open dialog took.
+ * @param handle - The document.
+ * @returns Its id.
+ */
+function insertBlock(handle: DocumentEditorHandle): string | null {
+  return insertBlocks.get(handle) ?? null;
 }
 
 /**
@@ -224,7 +237,7 @@ function request(handle: DocumentEditorHandle): string {
  * @returns The answer.
  */
 function read(handle: DocumentEditorHandle, text: string): AiAnswer {
-  return aiAnswer(handle.editor, handle.editor.prosemirrorState.doc, text, OURS, cover(handle));
+  return aiAnswer(handle.editor, handle.editor.prosemirrorState.doc, text, OURS, cover(handle), insertBlock(handle));
 }
 
 /**
@@ -294,6 +307,34 @@ function legacyCells(handle: DocumentEditorHandle): string[][] {
  */
 function docCells(table: Seen): string[][] {
   return table.children.map((row) => row.children.map((cell) => cell.children.map(textOf).join('\n')));
+}
+
+/**
+ * The words of the block a block hangs under.
+ * @param handle - The document.
+ * @param words - The block's words.
+ * @returns Its parent's words; null at the top or when there is no such block.
+ */
+function parentWords(handle: DocumentEditorHandle, words: string): string | null {
+  const walk = (list: Seen[], parent: Seen | null): string | null | undefined => {
+    for (const b of list) {
+      if (textOf(b) === words) return parent === null ? null : textOf(parent);
+      const found = walk(b.children, b);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  };
+  return walk(blocks(handle), null) ?? null;
+}
+
+/**
+ * Whether every block id in the body is its own.
+ * @param handle - The document.
+ * @returns True when none repeats.
+ */
+function idsUnique(handle: DocumentEditorHandle): boolean {
+  const ids = flat(handle).map((b) => b.id);
+  return new Set(ids).size === ids.length;
 }
 
 /** The characters the escape pair is tried on. */
@@ -421,6 +462,16 @@ describe('the escape pair (§5.1)', () => {
     const html = docCells(blocks(h)[1]!);
     replaceWith(h, { from: rangeOf(h, 'Before').from, to: rangeOf(h, 'After').to }, (sent) => sent);
     expect(docCells(blocks(h)[1]!)).toEqual(html);
+  });
+
+  it('echoes code with backslashes in an HTML-form table cell unchanged', async () => {
+    const h = await open('Before\n\n| h | k |\n| --- | --- |\n| p | q |\n\nAfter');
+    const cell = blocks(h)[1]!.children[1]!.children[0]!;
+    h.editor.updateBlock(cell.children[0]!.id, { content: [{ type: 'text', text: 'C:\\dir \\\\x', styles: { code: true } }] } as never);
+    h.editor.insertBlocks([{ type: 'codeBlock', content: 'a\\b & <c>' }] as never, cell.children[0]!.id, 'after');
+    const before = docCells(blocks(h)[1]!);
+    replaceWith(h, { from: rangeOf(h, 'Before').from, to: rangeOf(h, 'After').to }, (sent) => sent);
+    expect(docCells(blocks(h)[1]!)).toEqual(before);
   });
 
   it('echoes a list item that holds a table, its own words and the paragraph under it read as words', async () => {
@@ -699,6 +750,58 @@ describe('replace, open slice (§5.3, Plate openStart/openEnd)', () => {
     expect(all.every((b) => textOf(b) !== '')).toBe(true);
   });
 
+  it('writes whole blocks of different levels from a code block as the preview, a paragraph staying a paragraph', async () => {
+    const h = await open('```js\nconst a = 1;\n```\n\n- parent\n  - kid\n\nAfter');
+    const answer = replaceWith(h, { from: rangeOf(h, 'const').from, to: rangeOf(h, 'kid').to }, () => 'Plain words.\n\nSecond.');
+    expect(flat(h).map((b) => [b.type, textOf(b)])).toEqual([['paragraph', 'Plain words.'], ['paragraph', 'Second.'], ['paragraph', 'After']]);
+    expect(blocks(h).slice(0, 2).map(idless)).toEqual(answer.preview.map(idless));
+  });
+
+  it('lands an answer opening with a code block over whole blocks of different levels, no empty block before it', async () => {
+    const h = await open('Para one.\n\n- parent\n  - kid\n\nAfter');
+    replaceWith(h, { from: rangeOf(h, 'Para').from, to: rangeOf(h, 'kid').to }, () => '```js\nx = 1\n```\n\nTail.');
+    expect(flat(h).map((b) => [b.type, textOf(b)])).toEqual([['codeBlock', 'x = 1'], ['paragraph', 'Tail.'], ['paragraph', 'After']]);
+  });
+
+  it('writes an answer that keeps a code block and a nested list over them as it reads', async () => {
+    const h = await open('Before.\n\n```js\nconst a = 1;\n```\n\n- parent\n  - kid\n\nAfter');
+    replaceWith(h, { from: rangeOf(h, 'const').from, to: rangeOf(h, 'kid').to }, (sent) => sent.replace('parent', 'Parent').replace('kid', 'Kid'));
+    expect(flat(h).map((b) => [b.type, textOf(b)])).toEqual([
+      ['paragraph', 'Before.'],
+      ['codeBlock', 'const a = 1;'],
+      ['bulletListItem', 'Parent'],
+      ['bulletListItem', 'Kid'],
+      ['paragraph', 'After'],
+    ]);
+    expect(parentWords(h, 'Kid')).toBe('Parent');
+  });
+
+  it('hangs the sub-items of the block the words were in under the answer\'s last block, every id its own', async () => {
+    const h = await open('- item one\n  - sub one\n- item two');
+    const sub = flat(h)[1]!.id;
+    replaceWith(h, rangeOf(h, 'one'), () => 'X\n\n- a\n  - b');
+    expect(flat(h).map(textOf)).toEqual(['item X', 'a', 'b', 'sub one', 'item two']);
+    expect(parentWords(h, 'sub one')).toBe('b');
+    expect(flat(h)[3]!.id).toBe(sub);
+    expect(idsUnique(h)).toBe(true);
+  });
+
+  it('hangs the last block\'s sub-items under the answer\'s last block across levels, no empty block', async () => {
+    const h = await open('- item one\n  - sub one\n    - subsub');
+    replaceWith(h, { from: rangeOf(h, 'item one').from, to: rangeOf(h, 'sub one').to }, () => 'X\n\nY');
+    expect(flat(h).map(textOf)).toEqual(['X', 'Y', 'subsub']);
+    expect(parentWords(h, 'subsub')).toBe('Y');
+    expect(idsUnique(h)).toBe(true);
+  });
+
+  it('keeps the sub-items with the words after the range when the answer ends with a code block', async () => {
+    const h = await open('- Intro: x end.\n  - kid');
+    replaceWith(h, rangeOf(h, 'x'), () => 'A\n\n```js\nc\n```');
+    expect(flat(h).map(textOf)).toEqual(['Intro: A', 'c', ' end.', 'kid']);
+    expect(parentWords(h, 'kid')).toBe(' end.');
+    expect(idsUnique(h)).toBe(true);
+  });
+
   it('changes only the words inside one docTable cell, rows and columns unchanged', async () => {
     const h = await open('| a | b |\n| --- | --- |\n| c d | e |');
     replaceWith(h, rangeOf(h, 'd'), () => 'D');
@@ -757,6 +860,18 @@ describe('insert (§5.3)', () => {
     expect(insertAiAnswer(h, blocks(h)[1]!.id, answer, WRITABLE).outcome).toBe('written');
     expect(blocks(h).map(textOf)).toEqual(['one', 'two', 'a', 'b', 'after']);
     expect(blocks(h).slice(2, 4).map(idless)).toEqual(answer.preview.map(idless));
+  });
+
+  it('inserts a table answered in a docTable cell as the preview shows it once the range is gone', async () => {
+    const h = await open('| a | b |\n| --- | --- |\n| c dd | e |');
+    capture(h, rangeOf(h, 'dd'));
+    const view = h.editor.prosemirrorView!;
+    const gone = rangeOf(h, 'dd');
+    view.dispatch(view.state.tr.delete(gone.from, gone.to));
+    const answer = read(h, '| x | y |\n| --- | --- |\n| z | w |');
+    expect(insertAiAnswer(h, insertBlock(h)!, answer, WRITABLE).outcome).toBe('written');
+    const cell = blocks(h)[0]!.children[1]!.children[0]!;
+    expect(cell.children.slice(1).map(idless)).toEqual(answer.preview.map(idless));
   });
 
   it('inserts nothing once the insert block is gone', async () => {

@@ -170,8 +170,20 @@ describe('the range captured (§4.6, Plate captureTextRange)', () => {
   });
 });
 
+/**
+ * The insert block the dialog takes for the editor's selection.
+ * @param editor - The editor.
+ * @returns Its id.
+ */
+function insertBlockOf(editor: Editor): string | null {
+  const state = editor.prosemirrorState;
+  const captured = aiCapture(state);
+  expect(captured).not.toBeNull();
+  return aiInsertBlockId(state.doc, captured!);
+}
+
 describe('the insert block (§5.4)', () => {
-  it('is the block the selection ends in', () => {
+  it('is the last block of the range', () => {
     const editor = open([
       { type: 'paragraph', content: 'Alpha line' },
       { type: 'paragraph', content: 'Bravo line' },
@@ -179,7 +191,7 @@ describe('the insert block (§5.4)', () => {
     ]);
     select(editor, at(editor, 'Alpha'), at(editor, 'Bravo') + 3);
 
-    expect(aiInsertBlockId(editor.prosemirrorState)).toBe(blockHolding(editor, 'Bravo'));
+    expect(insertBlockOf(editor)).toBe(blockHolding(editor, 'Bravo'));
   });
 
   it('is the block before when the selection ends at the start of the next one', () => {
@@ -191,7 +203,7 @@ describe('the insert block (§5.4)', () => {
     ]);
     select(editor, at(editor, 'Alpha'), at(editor, 'Bravo'));
 
-    expect(aiInsertBlockId(editor.prosemirrorState)).toBe(blockHolding(editor, 'Alpha'));
+    expect(insertBlockOf(editor)).toBe(blockHolding(editor, 'Alpha'));
   });
 
   it('is an image block the selection ends with', () => {
@@ -202,7 +214,7 @@ describe('the insert block (§5.4)', () => {
     ]);
     select(editor, at(editor, 'Alpha'), at(editor, 'Omega'));
 
-    expect(aiInsertBlockId(editor.prosemirrorState)).toBe(topIds(editor)[1]);
+    expect(insertBlockOf(editor)).toBe(topIds(editor)[1]);
   });
 
   it('is a video block the selection ends with', () => {
@@ -213,7 +225,7 @@ describe('the insert block (§5.4)', () => {
     ]);
     select(editor, at(editor, 'Alpha'), at(editor, 'Omega'));
 
-    expect(aiInsertBlockId(editor.prosemirrorState)).toBe(topIds(editor)[1]);
+    expect(insertBlockOf(editor)).toBe(topIds(editor)[1]);
   });
 
   it('is the whole table when the selection enters it from outside', () => {
@@ -224,7 +236,7 @@ describe('the insert block (§5.4)', () => {
     ]);
     select(editor, at(editor, 'Intro'), at(editor, 'a1') + 1);
 
-    expect(aiInsertBlockId(editor.prosemirrorState)).toBe(topIds(editor)[1]);
+    expect(insertBlockOf(editor)).toBe(topIds(editor)[1]);
   });
 
   it('is the whole table when the selection runs from one cell into another', () => {
@@ -235,7 +247,17 @@ describe('the insert block (§5.4)', () => {
     ]);
     select(editor, at(editor, 'a1'), at(editor, 'b1') + 1);
 
-    expect(aiInsertBlockId(editor.prosemirrorState)).toBe(topIds(editor)[1]);
+    expect(insertBlockOf(editor)).toBe(topIds(editor)[1]);
+  });
+
+  it('is the block in the cell the range is in when the selection starts at the end of the cell before', () => {
+    const editor = open([
+      { type: 'paragraph', content: 'Intro line' },
+      tableBlock({ rows: [{ cells: ['a1', 'b1 words'] }, { cells: ['a2', 'b2'] }] }),
+    ]);
+    select(editor, at(editor, 'a1') + 2, at(editor, 'b1') + 2);
+
+    expect(insertBlockOf(editor)).toBe(blockHolding(editor, 'b1 words'));
   });
 
   it('is the block in the cell when the selection stays inside one cell', () => {
@@ -245,7 +267,7 @@ describe('the insert block (§5.4)', () => {
     ]);
     select(editor, at(editor, 'cell'), at(editor, 'cell') + 4);
 
-    expect(aiInsertBlockId(editor.prosemirrorState)).toBe(blockHolding(editor, 'first cell words'));
+    expect(insertBlockOf(editor)).toBe(blockHolding(editor, 'first cell words'));
   });
 });
 

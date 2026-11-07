@@ -5,7 +5,8 @@
  * What the AI output dialog sends, previews and writes (inner#1860, design
  * §4.6, §5.1–§5.3): the original range goes out as one piece of Markdown,
  * the whole answer read into blocks is the preview, and replace pastes it
- * over the range the way Plate's `replaceSelection` does.
+ * over the range the way Plate's `replaceSelection` does. Words inside a
+ * code block go out as their code and come back as code.
  *
  * The escaping going out and the decoding coming back are a pair, fitted to
  * BlockNote 0.56's own Markdown exporter and parser (§5.1): the exporter
@@ -18,7 +19,7 @@ import { Fragment, Slice, type Node as ProseMirrorNode } from '@tiptap/pm/model'
 import type { Transaction } from '@tiptap/pm/state';
 import { yUndoPluginKey } from 'y-prosemirror';
 
-import { BLOCK_GROUP, ownContentEnd } from '@web/spaces/document/document-ai-range';
+import { BLOCK_GROUP, containerAt, ownContentEnd } from '@web/spaces/document/document-ai-range';
 import type { DocumentEditorHandle } from '@web/spaces/document/document-editor-cache';
 import type { ViewedEditor } from '@web/spaces/document/document-editor-view';
 import type { WrittenBlock } from '@web/spaces/document/document-external-media';
@@ -34,7 +35,7 @@ import {
 } from '@web/spaces/document/document-proposal-landing';
 import { LEGACY_CELL_LINE } from '@web/spaces/document/document-table-legacy';
 import { blocksMarkdown, type BlockLike } from '@web/spaces/document/document-table-markdown';
-import { blockInTableCell, cellDepthOf, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { blockInTableCell, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /** How a write ended. */
 export type AiWriteResult =
@@ -469,7 +470,8 @@ function escapedForMarkdown(blocks: readonly BlockLike[]): BlockLike[] {
 /**
  * Blocks with their words escaped for a table written as HTML, where
  * Markdown escapes do nothing: only a backslash and `&`, which the way back
- * reads once more than HTML does.
+ * reads once more than HTML does. Code is read back as it is, so in code
+ * only `&`.
  * @param blocks - The blocks.
  * @returns They, escaped.
  */
@@ -477,14 +479,18 @@ function escapedForHtml(blocks: readonly BlockLike[]): BlockLike[] {
   /**
    * One piece's words.
    * @param piece - The piece.
+   * @param code - Whether it is code.
    * @returns It, escaped.
    */
-  const one = (piece: Inline): Inline => (piece.type === 'link'
-    ? { ...piece, content: (piece.content ?? []).map(one) }
-    : { ...piece, text: (piece.text ?? '').replace(/\\/g, '\\\\').replace(/&/g, '&amp;') });
+  const one = (piece: Inline, code: boolean): Inline => {
+    if (piece.type === 'link') return { ...piece, content: (piece.content ?? []).map((inner) => one(inner, code)) };
+    const text = piece.text ?? '';
+    const words = code || piece.styles?.['code'] === true ? text : text.replace(/\\/g, '\\\\');
+    return { ...piece, text: words.replace(/&/g, '&amp;') };
+  };
   return (blocks as readonly Read[]).map((block) => ({
     ...block,
-    content: Array.isArray(block.content) ? (block.content as Inline[]).map(one) : block.content,
+    content: Array.isArray(block.content) ? (block.content as Inline[]).map((piece) => one(piece, block.type === CODE)) : block.content,
     children: escapedForHtml(block.children ?? []) as Read[],
   }));
 }
@@ -691,14 +697,24 @@ function sourceOf(doc: ProseMirrorNode, span: Span): Read | null {
  * write (§5.3): parsed whole, outside media and blocks past the
  * body's levels left out, the first block formatted from the range's, a
  * table inside a cell unfolded, and for a legacy cell its words on lines.
+ * For words inside a code block it is that code: one fence the model
+ * wrapped it in taken off, the entities decoded, one code block.
  * @param parser - An editor with the body's schema.
  * @param doc - The body.
  * @param text - The answer, as far as it is shown.
  * @param ourPrefix - Where our own media live.
  * @param cover - What replace covers now; null once it is gone.
+ * @param insertBlockId - The insert block, which tells whether the answer lands in a table cell.
  * @returns The answer.
  */
-export function aiAnswer(parser: ViewedEditor, doc: ProseMirrorNode, text: string, ourPrefix: string | null, cover: LocalRange | null): AiAnswer {
+export function aiAnswer(
+  parser: ViewedEditor,
+  doc: ProseMirrorNode,
+  text: string,
+  ourPrefix: string | null,
+  cover: LocalRange | null,
+  insertBlockId: string | null,
+): AiAnswer {
   if (aiAnswerEmpty(text)) return { preview: [], leftOut: 0 };
   const span = cover === null ? null : spanOf(doc, cover);
   if (span?.kind === 'words' && span.container === null) {
@@ -710,7 +726,7 @@ export function aiAnswer(parser: ViewedEditor, doc: ProseMirrorNode, text: strin
   }
   const { blocks, leftOut } = keepWritable(parsed(parser, text.trim()), ourPrefix);
   const shaped = formatted(blocks as Read[], span === null ? null : sourceOf(doc, span));
-  const inCell = cover !== null && cellDepthOf(doc.resolve(cover.from)) > 0;
+  const inCell = insertBlockId !== null && blockInTableCell(doc, insertBlockId);
   return { preview: inCell ? blocksInContext(shaped, doc, true) : shaped, leftOut };
 }
 
@@ -753,13 +769,14 @@ function openDepth(node: ProseMirrorNode | undefined, side: 'start' | 'end'): nu
  */
 function writeOver(tr: Transaction, span: Span, preview: readonly WrittenBlock[]): void {
   const schema = tr.doc.type.schema;
+  const head = ((preview[0] as Read | undefined)?.content ?? []) as Inline[];
   if (span.kind === 'words' && span.container === null) {
     // A legacy cell holds one line of words.
-    tr.replaceWith(span.from, span.to, inlineContentToNodes(((preview[0] as Read | undefined)?.content ?? []) as never, schema, 'paragraph'));
+    tr.replaceWith(span.from, span.to, inlineContentToNodes(head as never, schema, 'paragraph'));
     return;
   }
   if (span.kind === 'words' && span.line.type.name === CODE) {
-    tr.insertText(wordsOf((((preview[0] as Read | undefined)?.content ?? []) as Inline[])[0] ?? { type: 'text' }), span.from, span.to);
+    tr.insertText(head.map(wordsOf).join(''), span.from, span.to);
     return;
   }
   const nodes = preview.map((b) => blockToNode(withoutIds(b as Read) as never, schema));
@@ -783,10 +800,25 @@ function writeOver(tr: Transaction, span: Span, preview: readonly WrittenBlock[]
   }
   // Otherwise an open slice (Plate `tx.slice.replace` with `openStart` and
   // `openEnd`): the first block of words joins the words before the range,
-  // the words after join the last.
-  const from = span.kind === 'words' ? span.from : textStart(tr.doc, span.first);
+  // the words after join the last. Whole blocks have no words before them.
+  const from = span.kind === 'words' ? span.from : span.first;
   const to = span.kind === 'words' ? span.to : textEnd(tr.doc, span.last);
-  tr.replace(from, to, new Slice(Fragment.from(nodes), openDepth(nodes[0], 'start'), openDepth(nodes[nodes.length - 1], 'end')));
+  // The last block's children are lifted out and hung under the block that
+  // holds the words after the range; left in place, the slice's closing
+  // edge strands them in a copy of their old block, its id included.
+  const lastAt = span.kind === 'words' ? span.containerPos : span.last;
+  const lastBlock = tr.doc.nodeAt(lastAt)!;
+  const children = lastBlock.type.name === 'blockContainer' && lastBlock.childCount > 1 ? lastBlock.lastChild : null;
+  if (children !== null) {
+    const end = ownContentEnd(tr.doc, lastAt);
+    tr.delete(end, end + children.nodeSize);
+  }
+  const openStart = span.kind === 'words' ? openDepth(nodes[0], 'start') : 0;
+  tr.replace(from, to, new Slice(Fragment.from(nodes), openStart, openDepth(nodes[nodes.length - 1], 'end')));
+  if (children !== null) {
+    const holder = containerAt(tr.doc, tr.mapping.map(to, 1))!;
+    tr.replaceWith(holder, holder + tr.doc.nodeAt(holder)!.nodeSize, withChildren(tr.doc.nodeAt(holder)!, children));
+  }
 }
 
 /**
@@ -800,16 +832,6 @@ function childrenOf(group: ProseMirrorNode): ProseMirrorNode[] {
     out.push(child);
   });
   return out;
-}
-
-/**
- * Where a block's words start; its container's start for a block without.
- * @param doc - The body.
- * @param containerPos - Where its container starts.
- * @returns The position.
- */
-function textStart(doc: ProseMirrorNode, containerPos: number): number {
-  return doc.nodeAt(containerPos)!.firstChild?.isTextblock === true ? containerPos + 2 : containerPos;
 }
 
 /**
@@ -868,7 +890,7 @@ export function insertAiAnswer(
   if (refusal !== null) return { outcome: refusal };
   const doc = handle.editor.prosemirrorState.doc;
   if (blockById(doc, blockId) === null) return { outcome: 'targetGone' };
-  const written = blocksInContext(answer.preview.map((b) => withoutIds(b as Read)), doc, blockInTableCell(doc, blockId));
+  const written = answer.preview.map((b) => withoutIds(b as Read));
   if (written.length === 0) return { outcome: 'mediaOnly', leftOut: answer.leftOut };
   asOneUndoStep(undoOf(handle), () => {
     handle.editor.insertBlocks(written as never, blockId, 'after');

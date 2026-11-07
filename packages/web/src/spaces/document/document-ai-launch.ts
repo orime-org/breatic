@@ -14,7 +14,7 @@ import type { Node as ProseMirrorNode, ResolvedPos } from '@tiptap/pm/model';
 import type { EditorState } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 
-import { BLOCK_GROUP, containerAt, inlineLetter, ownContentEnd, type AiCapture } from '@web/spaces/document/document-ai-range';
+import { containerAt, inlineLetter, ownContentEnd, type AiCapture } from '@web/spaces/document/document-ai-range';
 import { readTopBlocks } from '@web/spaces/document/document-blocks-read';
 import { letterBounds } from '@web/spaces/document/document-local-range';
 import { cellDepthOf, tableAround } from '@web/spaces/document/document-table-nodes';
@@ -81,7 +81,7 @@ function blockAround($pos: ResolvedPos, oneCell: boolean): number | null {
  * The range the AI dialog opens on (§4.6), the way Plate's
  * `captureTextRange` takes it: a block the selection only ends at the start
  * of, or only starts at the end of, is left out; what is left inside one
- * block is the selected words, and what runs across blocks takes the whole
+ * line of words is the selected words, and anything else takes the whole
  * blocks it touches, a table it runs into whole.
  * @param state - The editor state, holding the selection.
  * @returns The range, or null when it holds no words.
@@ -112,29 +112,17 @@ export function aiCapture(state: EditorState): AiCapture | null {
 }
 
 /**
- * The block a result is inserted under (§5.4): the one the selection ends in.
- * A selection running into a table from outside it, or from one cell into
- * another, acts on the whole table (inner#1619 T14), so the table is the
- * block; one inside a single cell keeps the block in that cell.
- * @param state - The editor state, holding the selection.
- * @returns The block's id, or null when the selection is in no block.
+ * The block a result is inserted under (§5.4): the range's last block, the
+ * whole table for a range that takes one in, the block in the cell for one
+ * inside a single cell.
+ * @param doc - The body the range was captured from.
+ * @param captured - The range.
+ * @returns The block's id; null when the range is in no block.
  */
-export function aiInsertBlockId(state: EditorState): string | null {
-  const { doc, selection } = state;
-  const $last = doc.resolve(lastCovered(doc, selection.from, selection.to));
-  const table = tableAround($last);
-  if (table !== null) {
-    const $from = doc.resolve(selection.from);
-    const fromCell = cellDepthOf($from);
-    const lastCell = cellDepthOf($last);
-    const oneCell = fromCell > 0 && lastCell > 0 && $from.before(fromCell) === $last.before(lastCell);
-    if (!oneCell) return String(table.node.attrs['id']);
-  }
-  const around = containerAt(doc, $last.pos);
-  if (around !== null) return String(doc.nodeAt(around)!.attrs['id']);
-  // A position between blocks: the block right after it.
-  const after = $last.nodeAfter;
-  return after !== null && after.type.isInGroup(BLOCK_GROUP) ? String(after.attrs['id']) : null;
+export function aiInsertBlockId(doc: ProseMirrorNode, captured: AiCapture): string | null {
+  if (captured.lastId !== null) return captured.lastId;
+  const around = containerAt(doc, captured.range.from);
+  return around === null ? null : String(doc.nodeAt(around)!.attrs['id']);
 }
 
 /** One top-level block of the context: its Markdown and its place in the body. */

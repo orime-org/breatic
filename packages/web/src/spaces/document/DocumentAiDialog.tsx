@@ -39,7 +39,6 @@ import {
   type VirtualElement,
 } from '@floating-ui/react';
 import { AllSelection, TextSelection } from '@tiptap/pm/state';
-import { CellSelection } from '@tiptap/pm/tables';
 import { RotateCcw, Sparkles, Square, X } from 'lucide-react';
 import { useSmoothText } from 'use-smooth-text';
 import * as Y from 'yjs';
@@ -278,7 +277,7 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
         // closes, right after this. The panel fetched the media prefix as it opened.
         try {
           const cover = aiCoverIn(editor.prosemirrorState);
-          const answer = aiAnswer(editor, editor.prosemirrorState.doc, effect.result, ourMediaPrefix(), cover);
+          const answer = aiAnswer(editor, editor.prosemirrorState.doc, effect.result, ourMediaPrefix(), cover, at.insertBlockId);
           if (effect.how === 'insert') {
             if (at.insertBlockId !== null) told(insertAiAnswer({ editor }, at.insertBlockId, answer, admission));
             return;
@@ -299,7 +298,6 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
       const view = viewOf(editor);
       if (view === null) return;
       const { selection } = view.state;
-      if (selection.empty || selection instanceof CellSelection) return;
       const captured = aiCapture(view.state);
       if (captured === null) return;
       const { doc } = view.state;
@@ -315,7 +313,7 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
         key: openings.current,
         base: { project_id: projectId, selection: sent, document: aiContextOf(editor, config.contextMaxChars) },
         revealCharsPerSecond: config.revealCharsPerSecond,
-        insertBlockId: aiInsertBlockId(view.state),
+        insertBlockId: aiInsertBlockId(doc, captured),
         frozen: bar === null ? null : { x: bar.left, y: bar.bottom },
       };
       openedRef.current = next;
@@ -452,8 +450,10 @@ function AiPanel({
   // The answer as insert and replace would write it, once all of it is on screen.
   const finished = (session.state === 'stopped' || session.state === 'done') && isComplete;
   const answer = React.useMemo<AiAnswer | null>(
-    () => (finished ? aiAnswer(editor, editor.prosemirrorState.doc, session.result, ourPrefix, aiCoverIn(editor.prosemirrorState)) : null),
-    [finished, editor, session.result, ourPrefix],
+    () => (finished
+      ? aiAnswer(editor, editor.prosemirrorState.doc, session.result, ourPrefix, aiCoverIn(editor.prosemirrorState), opened.insertBlockId)
+      : null),
+    [finished, editor, session.result, ourPrefix, opened.insertBlockId],
   );
   // Blank answers leave nothing to write (§5.3).
   const resultEmpty = aiAnswerEmpty(session.result);
@@ -615,6 +615,7 @@ function AiPanel({
             <Preview
               editor={editor}
               ourPrefix={ourPrefix}
+              insertBlockId={opened.insertBlockId}
               text={shown}
               streaming={session.state === 'streaming' || !isComplete}
               running={session.state === 'streaming'}
@@ -850,6 +851,7 @@ function useOurMediaPrefix(): string | null {
  * @param props - The preview.
  * @param props.editor - The document editor, whose surroundings the preview copies.
  * @param props.ourPrefix - Where our own media live.
+ * @param props.insertBlockId - The insert block, which tells whether the result lands in a table cell.
  * @param props.text - The result as far as it is shown yet.
  * @param props.streaming - Whether the text is still growing.
  * @param props.running - Whether the request is still running; the Agent's dot shows until it has drawn words.
@@ -858,12 +860,14 @@ function useOurMediaPrefix(): string | null {
 function Preview({
   editor,
   ourPrefix,
+  insertBlockId,
   text,
   streaming,
   running,
 }: {
   editor: ViewedEditor;
   ourPrefix: string | null;
+  insertBlockId: string | null;
   text: string;
   streaming: boolean;
   running: boolean;
@@ -894,7 +898,7 @@ function Preview({
     const parse = (): void => {
       timer.current = null;
       const shown = latest.current;
-      const blocks = aiAnswer(parser, editor.prosemirrorState.doc, shown, ourPrefix, aiCoverIn(editor.prosemirrorState)).preview;
+      const blocks = aiAnswer(parser, editor.prosemirrorState.doc, shown, ourPrefix, aiCoverIn(editor.prosemirrorState), insertBlockId).preview;
       setHtml(blocks.length === 0 ? '' : parser.blocksToFullHTML(blocks as never));
     };
     if (!streaming) {
@@ -909,7 +913,7 @@ function Preview({
     // While it streams, at most one parse per interval, of whatever has
     // arrived by then.
     timer.current ??= window.setTimeout(parse, PREVIEW_THROTTLE_MS);
-  }, [parser, text, streaming, ourPrefix, editor]);
+  }, [parser, text, streaming, ourPrefix, insertBlockId, editor]);
 
   const host = React.useRef<HTMLDivElement>(null);
   const scroller = React.useRef<HTMLDivElement>(null);
