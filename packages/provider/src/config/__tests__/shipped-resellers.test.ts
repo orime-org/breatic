@@ -396,6 +396,8 @@ describe("the limits a reseller states beyond its schema", () => {
     ["mureka-v9.5-generate-song", { prompt: "a song", params: { lyrics: "x".repeat(5001) } }, { prompt: "a song", params: { lyrics: "x".repeat(5000) } }, "5000"],
     ["mureka-v9.5-generate-song", { prompt: "a song", params: { lyrics: "la", song: URL_A }, durations: { song: [20] } }, { prompt: "a song", params: { lyrics: "la", song: URL_A }, durations: { song: [30] } }, "[30,30]"],
     ["mureka-v9.5-generate-song", { prompt: "a song", params: { lyrics: "la", vocal: URL_A }, durations: { vocal: [14] } }, { prompt: "a song", params: { lyrics: "la", vocal: URL_A }, durations: { vocal: [15] } }, "[15,30]"],
+    // Measured on WaveSpeed (2026-11-07): lyrics, prompt and melody failed; lyrics and melody completed.
+    ["mureka-v9.5-generate-song", { prompt: "a song", params: { lyrics: "la", melody: URL_A }, durations: { melody: [10] } }, { params: { lyrics: "la", melody: URL_A }, durations: { melody: [10] } }, "combination"],
     ["mureka-v9.5-generate-bgm", { prompt: "x".repeat(1025) }, { prompt: "x".repeat(1024) }, "1024"],
     ["hunyuan3d-v3", { prompt: "x".repeat(1025) }, { prompt: "x".repeat(1024) }, "1024"],
     ["elevenlabs-voice-changer", { params: { audio: URL_A, voice_id: "Aria" }, durations: { audio: [601] } }, { params: { audio: URL_A, voice_id: "Aria" }, durations: { audio: [600] } }, "10 minutes"],

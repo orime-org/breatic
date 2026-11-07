@@ -15,6 +15,9 @@
 models:
   mureka-v9.5-generate-song:
     rejects:
+      - when: $exists(melody) and ($exists(prompt) or $exists(song) or $exists(vocal))
+        reason: "Mureka song/generate melody_id: does not support combination with other control options (WaveSpeed refused lyrics, prompt and melody on 2026-11-07)"
+        source: https://platform.mureka.ai/docs/api/operations/post-v1-song-generate.html
       - when: $exists(lyrics) and $length(prompt) > 1024
         reason: "Mureka song/generate prompt: maximum 1024 characters"
         source: https://platform.mureka.ai/docs/api/operations/post-v1-song-generate.html
@@ -126,8 +129,6 @@ models:
               formula: ""
               discount_rate: 100
         rejects:
-          - when: $exists(melody_id) and ($exists(prompt) or $exists(reference_id) or $exists(vocal_id))
-            reason: "fal melody_id: This cannot be combined with prompt, reference_id, or vocal_id"
           - when: $not($exists(prompt) or $exists(lyrics))
             reason: "fal prompt: Required when lyrics is omitted"
           - when: get_duration(vocal_id) > 30 or get_duration(vocal_id, min=15, max=1000000, total=1000000) > get_duration(vocal_id)

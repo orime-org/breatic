@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { isPresent } from "../../../pricing/estimate.js";
+
 /** Where the WaveSpeed bindings depart from what today's code sends, for the fixture tests that compare the two. */
 
 /** Models WaveSpeed no longer serves (absent from `/api/v3/models`, rechecked on 2026-11-02): they carry no WaveSpeed binding. */
@@ -44,7 +46,7 @@ export const REFUSED: Readonly<Record<string, Readonly<Record<string, readonly u
 };
 
 /** A run as the predicates below read it: our params and the known clip lengths. */
-type Run = { params: Readonly<Record<string, unknown>>; durations?: Readonly<Record<string, readonly number[]>> };
+type Run = { params: Readonly<Record<string, unknown>>; prompt?: string; durations?: Readonly<Record<string, readonly number[]>> };
 
 /**
  * Whether a run's shots add up to other than its duration.
@@ -63,8 +65,9 @@ const shotsOffTotal = (run: Run): boolean => {
 export const OUTSIDE_VENDOR: Readonly<Record<string, (run: Run) => boolean>> = {
   // Google: "Video references support a maximum of 3 clips, up to 3 seconds each."
   "gemini-omni-1.1-flash-reference-to-video": (r) => (r.durations?.videos ?? []).some((s) => s > 3),
-  // Mureka's upload: reference "[30,30] seconds", melody "[5,60] seconds".
-  "mureka-v9.5-generate-song": (r) => (r.durations?.song ?? []).some((s) => s < 30) || (r.durations?.melody ?? []).some((s) => s < 5),
+  // Mureka's upload: reference "[30,30] seconds", melody "[5,60] seconds"; melody_id "does not support combination with other control options".
+  "mureka-v9.5-generate-song": (r) => (r.durations?.song ?? []).some((s) => s < 30) || (r.durations?.melody ?? []).some((s) => s < 5)
+    || (isPresent(r.params.melody) && (isPresent(r.params.song) || isPresent(r.params.vocal) || (r.prompt ?? "") !== "")),
   // Kling: "sum of all shot durations must equal the total video duration".
   "kling-v3.0-4k-text-to-video": shotsOffTotal,
   "kling-video-o3-4k-image-to-video": shotsOffTotal,
