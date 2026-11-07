@@ -6,8 +6,10 @@
 -- conversation_messages.parts becomes userKey; reader_locale in tasks.params
 -- and in node_history.metadata.params becomes user_locale. Where both names
 -- are present the new one keeps its value. Rows already on the new names do
--- not match, so the SQL runs again with no change; #1387 replays it in a
--- migration file of its own to rename what was written during the deploy.
+-- not match, so the SQL runs again with no change. #1387 replays it in a
+-- migration file of its own: that run renames the readerKey a server of the
+-- previous release writes during the deploy, and the reader_locale this
+-- release keeps writing beside user_locale.
 --
 -- Rollback, run by hand:
 --   UPDATE conversation_messages AS m SET parts = (
