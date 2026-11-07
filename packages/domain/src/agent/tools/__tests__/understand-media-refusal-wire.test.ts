@@ -42,7 +42,7 @@ type Kind = keyof typeof FIXTURES;
  * are doubled. No understanding function or typed refusal is substituted.
  * @param kinds - The sources in their supplied order.
  * @param response - The service's actual status and error-envelope facts.
- * @returns The model-facing error, reader key and actual provider request body.
+ * @returns The model-facing error, user key and actual provider request body.
  * @throws {Error} when the tool unexpectedly succeeds or loses its failure metadata.
  */
 async function refusedBatch(kinds: Kind[], response: { status: number; message: string; code?: number }): Promise<{

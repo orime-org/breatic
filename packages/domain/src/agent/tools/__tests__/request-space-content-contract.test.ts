@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * One tool asks the reader to let the agent read Spaces (inner#1552), and its
+ * One tool asks the user to let the agent read Spaces (inner#1552), and its
  * arguments are the card.
  *
  * Like `ask_user` it has no `execute`: a call is a request waiting for the
- * reader, and what they share comes back as its result in a later request.
+ * user, and what they share comes back as its result in a later request.
  * What only the turn knows is checked here, when the call arrives: that each
  * id is in the Space list this turn sent the model, once, that a block range
  * names a document and node ids a canvas, and the configured caps.
@@ -83,7 +83,7 @@ describe("the one name this tool has", () => {
     expect(BASELINE_TOOLS).toContain("request_space_content");
   });
 
-  it("is one of the tools a turn waits on the reader for, beside ask_user and nothing else", () => {
+  it("is one of the tools a turn waits on the user for, beside ask_user and nothing else", () => {
     expect(AWAITS_USER).toEqual([ASK_USER, REQUEST_SPACE_CONTENT]);
     expect(AWAITS_USER).toEqual(["ask_user", "request_space_content"]);
   });
@@ -95,7 +95,7 @@ describe("the one name this tool has", () => {
 });
 
 describe("how the tool runs", () => {
-  it("has no execute, so a call waits for the reader", () => {
+  it("has no execute, so a call waits for the user", () => {
     expect((tool as { execute?: unknown }).execute).toBeUndefined();
   });
 

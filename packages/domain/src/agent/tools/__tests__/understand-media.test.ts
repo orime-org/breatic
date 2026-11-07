@@ -8,7 +8,7 @@
  * The layer underneath reports and does not interpret: it returns whatever
  * `finish_reason` came back, and throws only when nothing usable did. Turning
  * those into sentences is this file's subject, and every sentence is aimed at
- * the model rather than at a reader. Which of the coarse reader lines each
+ * the model rather than at a user. Which of the coarse user lines each
  * ending picks is pinned here too, though the three of them carry the same
  * sentence today and the panel renders none of them.
  *
@@ -106,7 +106,7 @@ async function run(
 /**
  * The reason a failed call put in front of the model.
  * @param call - The call to await.
- * @returns The model-facing reason and the reader's line.
+ * @returns The model-facing reason and the user's line.
  */
 async function failureOf(call: Promise<unknown>): Promise<{
   kind: string;
@@ -547,7 +547,7 @@ describe("understand_media — one at a time within a turn", () => {
     const { kind, forModel } = await failureOf(
       call({ url: "https://example.com/b.mp4", question: "What is this?" }),
     );
-    // Nothing failed: the model is steered, and the reader is shown nothing.
+    // Nothing failed: the model is steered, and the user is shown nothing.
     expect(kind).toBe("turned_away");
     // Both halves: why this one was turned away, and what to do about it. And
     // in the past tense — the sentence is stored on the call and read again by
@@ -977,10 +977,10 @@ describe("understand_media — naming the real reason", () => {
 
     expect(forModel).toContain("video/x-msvideo");
     expect(forModel).toContain(`It takes ${VIDEO_FORMAT_NAMES}.`);
-    // Names a reader can act on. The endpoint's own word for a .mov is
+    // Names a user can act on. The endpoint's own word for a .mov is
     // `video/mov`, which is not a type any converter knows; and the audio
     // sentence two branches over says mp3 and wav, so a list of MIME types
-    // here would be two vocabularies for one reader.
+    // here would be two vocabularies for one user.
     expect(VIDEO_FORMAT_NAMES).toBe("MP4 / MPEG / WebM / MOV");
     expect(forModel).not.toMatch(/not an image, a video or audio/i);
   });
@@ -1018,7 +1018,7 @@ describe("understand_media — naming which side failed", () => {
     // Everything about the address arrives as MediaUnavailable, so this branch
     // is reached only by the model call. Reporting it as the address being
     // unreadable sends the model to blame a url that was fine, and it puts the
-    // vendor endpoint into the conversation on its way to the reader.
+    // vendor endpoint into the conversation on its way to the user.
     understandMediaAtMock.mockRejectedValue(
       new Error("http request to https://openrouter.ai/api/v1/chat/completions timed out"),
     );
@@ -1079,9 +1079,9 @@ describe("understand_media — naming which side failed", () => {
   });
 });
 
-describe("understand_media — what a reader is shown, and what the panel is told", () => {
+describe("understand_media — what a user is shown, and what the panel is told", () => {
   it("picks the line for a failure that is nobody's fault but the file's", async () => {
-    // Three reader lines carry the same sentence today and the panel renders
+    // Three user lines carry the same sentence today and the panel renders
     // none of them, so nothing about the screen catches a wrong pick. It is
     // still recorded, because the pick is what the panel will read when it
     // starts telling them apart.
@@ -1106,7 +1106,7 @@ describe("understand_media — what a reader is shown, and what the panel is tol
     ).toBe(FAILURE_LINES.emptyFile);
   });
 
-  it("shows the reader nothing when this turn is the one holding the gate", async () => {
+  it("shows the user nothing when this turn is the one holding the gate", async () => {
     // The call was turned away to steer the model, not failed: there is no
     // line for it.
     const call = turnCopy();

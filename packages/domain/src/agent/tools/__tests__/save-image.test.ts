@@ -42,7 +42,7 @@ function turnCopy(save: SaveToStorage): Call {
 }
 
 /**
- * What a failed call carries for the model and the reader.
+ * What a failed call carries for the model and the user.
  * @param call - The pending call.
  * @returns The failure attached to its error.
  * @throws {Error} When the call did not fail.

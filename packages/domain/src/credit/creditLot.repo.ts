@@ -1316,7 +1316,7 @@ export async function listLedgerByPayer(
       //
       // `unbilled` is every row of a deployment that charges nobody, and the
       // runs that reached no pool where it does charge. The line stays: this
-      // list answers "what did I use", and a run the reader started is part
+      // list answers "what did I use", and a run the user started is part
       // of that answer whether or not it cost him.
       kind: sql<CreditLedgerKind>`CASE
         WHEN BOOL_AND(${creditLedger.lotId} IS NULL) THEN 'unbilled'
@@ -1345,7 +1345,7 @@ export async function listLedgerByPayer(
         // empty it while the cursor still says there is more.
         inArray(creditLedger.entryType, SPENDING_ENTRY_TYPES),
         // Two branches, and the first is the one easy to lose. A run that
-        // belongs to no studio is one the reader made themselves — the text
+        // belongs to no studio is one the user made themselves — the text
         // tools carry no project, and a project deleted mid-task leaves the
         // same shape — so it is theirs to see. The rest is narrowed to what
         // they administer: paying for a run does not make somebody else's

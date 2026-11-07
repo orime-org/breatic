@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Request-space-content tool — ask the reader to let the agent read Spaces
+ * Request-space-content tool — ask the user to let the agent read Spaces
  * other than the one they have open, and wait there for what they share
  * (inner#1552).
  */
@@ -81,7 +81,7 @@ function schemaFor(context: RequestSpaceContentContext): RequestSchema {
 /**
  * The request-space-content tool, as a turn receives it.
  *
- * It has no `execute`, like `ask_user`: a call is a card the reader answers,
+ * It has no `execute`, like `ask_user`: a call is a card the user answers,
  * the turn stops at it, and what they share comes back as this call's result
  * in the request that resumes the turn.
  * @param context - This turn's Space list.

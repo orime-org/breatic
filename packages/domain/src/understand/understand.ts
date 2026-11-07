@@ -269,7 +269,7 @@ async function readAnswer(
  * Reports rather than interprets: an answer that came back is returned with
  * whatever `finishReason` it carried, empty text and all. Deciding what an
  * empty answer or a truncated one should say to anyone is the caller's, one
- * layer up, where the reader is known.
+ * layer up, where the user is known.
  * @param request - The media, the question, and who to ask.
  * @returns What the model wrote and why it stopped.
  * @throws {UnderstandRefused} when the service would not answer.

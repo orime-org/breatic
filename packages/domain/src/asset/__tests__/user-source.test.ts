@@ -6,7 +6,7 @@ import { INGEST_NO_ANSWER, INGEST_REFUSED_UNNAMED } from "@breatic/shared";
 import { isUserLinkFault, urlIngestFailureLevel } from "@domain/asset/user-source.js";
 
 describe("urlIngestFailureLevel", () => {
-  it("treats a link the reader handed us that cannot be taken as the reader's input", () => {
+  it("treats a link the user handed us that cannot be taken as the user's input", () => {
     expect(urlIngestFailureLevel("source_unreachable")).toBe("warn");
     expect(urlIngestFailureLevel("unsupported_type")).toBe("warn");
     expect(urlIngestFailureLevel("over_cap")).toBe("warn");

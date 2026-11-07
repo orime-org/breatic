@@ -119,7 +119,7 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
  * The tools that do work on their own, in a stable order.
  *
  * Narrower than `TOOL_MAP`: the canvas tools below are about the spaces in
- * front of the reader, so they are kept apart.
+ * front of the user, so they are kept apart.
  */
 export const BASELINE_TOOLS: readonly string[] = [
   "web_search",
@@ -137,7 +137,7 @@ export const BASELINE_TOOLS: readonly string[] = [
 ];
 
 /**
- * The tools that describe the spaces the reader is looking at.
+ * The tools that describe the spaces the user is looking at.
  *
  * What makes a tool belong here is that its answer is about the product in
  * front of someone, which is why the search tools are not in it even though

@@ -41,7 +41,7 @@ export interface AgentConfigRequest {
   memoryContext?: MemoryContext;
   /**
    * The model this turn is answered by, as the route resolved it from the
-   * reader's pick (#1363); `default_model` when the caller names none.
+   * user's pick (#1363); `default_model` when the caller names none.
    */
   modelId?: string;
   /** What the turn knows that a tool needs when it is built. */

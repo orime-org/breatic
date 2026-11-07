@@ -11,7 +11,7 @@
  * the call.
  *
  * Every throw is checked for both audiences: the sentence the model reads and
- * the line the reader is shown. A bare `throw` reaches the model with "Correct
+ * the line the user is shown. A bare `throw` reaches the model with "Correct
  * the call and try once more." appended, which would send it back to rewrite
  * arguments that were fine.
  */
@@ -118,7 +118,7 @@ function neverFinishes(status = 200): Response {
 
 /**
  * Ask the tool one question of each type.
- * @param abortSignal - The reader's stop, when the test supplies one.
+ * @param abortSignal - The user's stop, when the test supplies one.
  * @returns Whatever the tool answers.
  */
 async function askAll(abortSignal?: AbortSignal, usage?: UsageRecorder): Promise<unknown> {
@@ -537,7 +537,7 @@ describe("failing says what broke", () => {
     expect(forModel).not.toContain("openrouter.ai");
   });
 
-  it("tells the reader the feature is unavailable when our account cannot pay, and the model to stop", async () => {
+  it("tells the user the feature is unavailable when our account cannot pay, and the model to stop", async () => {
     httpRequestMock.mockResolvedValueOnce(responseOf({ error: { message: "Insufficient credits" } }, 402));
     const { forModel, userKey } = await failureOf(askAll);
     expect(userKey).toBe(FAILURE_LINES.unavailable);
@@ -553,7 +553,7 @@ describe("failing says what broke", () => {
 
   it("lets the model rewrite a request the service would not take", async () => {
     // A 413 or a 400 is about this request, which the model wrote and can
-    // write again smaller. `stop` would tell the reader a working capability
+    // write again smaller. `stop` would tell the user a working capability
     // is down.
     httpRequestMock.mockResolvedValueOnce(responseOf({ error: "too large" }, 413));
     const { forModel } = await failureOf(askAll);
@@ -565,7 +565,7 @@ describe("failing says what broke", () => {
     const { forModel } = await failureOf(askAll);
     expect(forModel).toContain("Do not repeat");
     // A judgement is the model's own deliberation, so the fallback is to
-    // decide without it rather than to announce it to the reader.
+    // decide without it rather than to announce it to the user.
     expect(forModel).toContain("decide from what you already hold");
     expect(forModel).not.toMatch(/tell the user/i);
   });
@@ -611,7 +611,7 @@ describe("failing says what broke", () => {
     expect(forModel).not.toContain("openrouter.ai");
   });
 
-  it("answers the reader's stop as a stop even holding a refusal", async () => {
+  it("answers the user's stop as a stop even holding a refusal", async () => {
     // `request.ts:401` settles the retry on the raised signal and `:415`
     // returns the response it is holding rather than throwing, so a stop that
     // lands while the endpoint is refusing arrives here as a non-2xx.
@@ -639,9 +639,9 @@ describe("failing says what broke", () => {
     expect(Date.now() - began, "one budget, not two").toBeLessThan(320);
   });
 
-  it("answers the reader's stop as a stop while the body is arriving", async () => {
+  it("answers the user's stop as a stop while the body is arriving", async () => {
     // Timed, because the key alone does not separate the two: `isStop`
-    // (failure.ts:isStop) answers true on a raised reader signal whatever
+    // (failure.ts:isStop) answers true on a raised user signal whatever
     // ended the read, so a read running on its own clock reaches the same
     // key -- a whole budget later.
     timeoutMs = 800;
@@ -658,9 +658,9 @@ describe("failing says what broke", () => {
     );
   });
 
-  it("answers the reader's stop as a stop while the refusal body is arriving", async () => {
+  it("answers the user's stop as a stop while the refusal body is arriving", async () => {
     // Reading the refusal for what it said is a second read inside the same
-    // call, and the reader may press stop during it. What the reader did
+    // call, and the user may press stop during it. What the user did
     // outranks what the service said, here as at every other exit.
     const controller = new AbortController();
     httpRequestMock.mockResolvedValueOnce(neverFinishes(400));
@@ -680,7 +680,7 @@ describe("failing says what broke", () => {
     const began = Date.now();
     const { forModel } = await failureOf(askAll);
     expect(forModel).toContain("400");
-    expect(Date.now() - began, "the reader is not held for the whole figure").toBeLessThan(1500);
+    expect(Date.now() - began, "the user is not held for the whole figure").toBeLessThan(1500);
   });
 
   it("says the body did not arrive when the answer holds nothing", async () => {
@@ -754,7 +754,7 @@ describe("failing says what broke", () => {
     expect(forModel, "every other status names itself").toContain("422");
   });
 
-  it("answers the reader's stop as a stop", async () => {
+  it("answers the user's stop as a stop", async () => {
     const controller = new AbortController();
     httpRequestMock.mockImplementationOnce(() => {
       controller.abort();

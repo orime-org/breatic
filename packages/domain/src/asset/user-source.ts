@@ -10,7 +10,7 @@
 import { canonicalMediaType, isUploadableMediaType, reduceMediaType } from "@breatic/shared";
 
 /**
- * Refusals that come from the link the reader handed us: it would not answer,
+ * Refusals that come from the link the user handed us: it would not answer,
  * it held a kind we do not take, it was larger than the ticket allows, or it
  * sent nothing.
  */
@@ -37,10 +37,10 @@ export function isUserLinkFault(reason: string): boolean {
 /**
  * The log level a failed transfer is recorded at.
  *
- * Error logs become error-monitoring events, so a link the reader got wrong
+ * Error logs become error-monitoring events, so a link the user got wrong
  * is a warning; a failure on our side stays an error.
  * @param reason - The failure reason recorded on the task.
- * @returns `warn` for the reader's own link, `error` otherwise.
+ * @returns `warn` for the user's own link, `error` otherwise.
  * @throws {never} Never.
  */
 export function urlIngestFailureLevel(reason: string): "warn" | "error" {

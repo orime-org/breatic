@@ -95,7 +95,7 @@ function unsupportedSentence(declaredType: string | undefined): string {
  * added without a sentence of its own would otherwise inherit whichever one
  * happens to be last, and say something false about it.
  * @param err - What the fetch refused with.
- * @returns The sentence for the model, and the line a reader is shown.
+ * @returns The sentence for the model, and the line a user is shown.
  */
 function unavailableFailure(err: MediaUnavailable): Error {
   const item = err.itemIndex === undefined ? "" : `Item ${String(err.itemIndex)} (${err.url ?? "unknown address"}): `;
@@ -144,7 +144,7 @@ function unavailableFailure(err: MediaUnavailable): Error {
  * @param cause - What was caught.
  * @param userKey - Whether the service failed (`busy`) or never answered
  *   at all (`noConnection`).
- * @returns The sentence for the model, and the line a reader is shown.
+ * @returns The sentence for the model, and the line a user is shown.
  */
 function serviceSilent(cause: unknown, userKey: FailureLine): Error {
   return toolFailed(
@@ -164,7 +164,7 @@ function serviceSilent(cause: unknown, userKey: FailureLine): Error {
  * than no words, since "do not send this file again" on a question the model
  * could simply reword takes away the only step that would have worked.
  * @param err - What the service refused with.
- * @returns The sentence for the model, and the line a reader is shown.
+ * @returns The sentence for the model, and the line a user is shown.
  */
 function refusedFailure(err: UnderstandRefused): Error {
   switch (err.kind) {
@@ -323,7 +323,7 @@ export function makeUnderstandMediaTool(options: { seesPictures?: boolean } = {}
 
       if (running) {
         // Turned away, not failed: nothing went wrong, the model is told to wait,
-        // and the reader is shown nothing for it. Past tense, and no mention of
+        // and the user is shown nothing for it. Past tense, and no mention of
         // a turn. This sentence is stored on the call and read again by every
         // later turn that reads the record — the same rule `web-search.ts`
         // states for its own reasons — so one saying something is running now

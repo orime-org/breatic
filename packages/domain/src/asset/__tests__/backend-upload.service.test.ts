@@ -572,7 +572,7 @@ describe("what lane ② asks the Worker for", () => {
 // A link somebody other than a provider handed over: the agent's save
 // (inner#1315). Nobody here knows what it holds, so the Worker reads the type
 // off the source, and a refusal is the link's, settled before it is reported.
-describe("transferUserUrlToStorage — a reader's link (inner#1315)", () => {
+describe("transferUserUrlToStorage — a user's link (inner#1315)", () => {
   const LINK = "https://imgs.example/photos/cat.JPG?sig=abc";
   const WHO = { projectId: "p1", actingUserId: "u1" };
 

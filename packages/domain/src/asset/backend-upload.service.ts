@@ -296,7 +296,7 @@ export async function transferUrlToStorage(
   );
 }
 
-/** Why a reader's link did not land: the reason the grant was settled with. */
+/** Why a user's link did not land: the reason the grant was settled with. */
 export class UserUrlTransferError extends Error {
   /**
    * A refusal carrying the reason its grant was settled with.
@@ -384,7 +384,7 @@ async function settleAborted(storageKey: string, reason: string, cause: unknown)
   }
 }
 
-/** How pulling a reader's link ended: settled before any bytes were judged, or reported. */
+/** How pulling a user's link ended: settled before any bytes were judged, or reported. */
 export type UserLinkPull =
   | {
       status: "failed";
@@ -400,8 +400,8 @@ export type UserLinkPull =
   | { status: "reported"; outcome: IngestReportOutcome };
 
 /**
- * Have the Worker pull a reader's link into the object a ticket names, and
- * file what came of it: the one flow both lanes for a reader's link run (the
+ * Have the Worker pull a user's link into the object a ticket names, and
+ * file what came of it: the one flow both lanes for a user's link run (the
  * canvas paste through the worker's queue, the agent's save in its request).
  * Either way the grant ends settled; what each lane says about it is its own.
  * @param storageKey - The key the grant was opened on.
