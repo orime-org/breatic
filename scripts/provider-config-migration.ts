@@ -103,6 +103,8 @@ const WAVESPEED: Readonly<Record<string, {
   rejects?: readonly { when: string; reason: string }[];
   mentions?: Readonly<Record<string, string>>;
 }>> = {
+  "gpt-image-2.5-sunburst-text-to-image": { rejects: [{ when: "$length(prompt) > 32000", reason: "OpenAI GPT Image prompt: maximum length is 32000 characters" }] },
+  "gpt-image-2.5-sunburst-edit": { rejects: [{ when: "$length(prompt) > 32000", reason: "OpenAI GPT Image prompt: maximum length is 32000 characters" }] },
   "flux-3-start-end-to-video": { renames: { start_image: "image", end_image: "last_image" } },
   "muse-image-edit": { renames: { image_urls: "images" }, refuses: { aspect_ratio: ["9:21"] } },
   "wan-3.0-text-to-video": { renames: { enable_audio: "generate_audio" } },
@@ -136,8 +138,11 @@ const WAVESPEED: Readonly<Record<string, {
       { when: "$length(prompt) > 7000", reason: "WaveSpeed prompt maxLength 7000" },
       { when: "$exists(reference_audios) and $not($exists(reference_images) or $exists(reference_videos))", reason: "WaveSpeed reference_audios: Audio cannot be provided alone" },
       // No reference-video length limit: WaveSpeed normalizes each clip and trims the total (measured).
+      { when: "get_duration(reference_audios) > 15", reason: "MiniMax H3 reference_audios: total length up to 15 seconds" },
+      { when: "get_duration(reference_audios, min=2, max=1000000, total=1000000) > get_duration(reference_audios)", reason: "MiniMax H3 reference_audios: 2-15 seconds each" },
     ],
   },
+  "minimax-voice-clone": { rejects: [{ when: "get_duration(audio) > 300", reason: "MiniMax clone audio: maximum 5 minutes (WaveSpeed refused 360 s: The voice sample is too long)" }] },
   "mureka-v9.5-generate-song": {
     rejects: [
       { when: "$length(prompt) > 1024", reason: "WaveSpeed prompt: Official limit: up to 1024 characters" },

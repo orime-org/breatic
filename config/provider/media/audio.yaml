@@ -344,7 +344,7 @@ models:
         pricing:
           kind: formula
           base_price: 12500
-          formula: '{"total_price": $min([$max([$ceil(get_duration(audio_url) / 60), 1]), 30]) * base_price}'
+          formula: '{"total_price": $min([$max([$ceil($round(get_duration(audio_url)) / 60), 1]), 30]) * base_price}'
           discount_rate: 100
   sfx-1.6-extend-audio:
     upstreams:

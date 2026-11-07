@@ -404,6 +404,15 @@ describe("the limits a reseller states beyond its schema", () => {
     ["sync-react-1", "wavespeed", { params: { audio: URL_A, video: URL_A }, durations: { audio: [5], video: [16] } }, { params: { audio: URL_A, video: URL_A }, durations: { audio: [5], video: [15] } }, "15"],
     ["seedvr2-video", "wavespeed", { params: { video: URL_A }, durations: { video: [601] } }, { params: { video: URL_A }, durations: { video: [600] } }, "10 minutes"],
     ["rife-interpolation", "wavespeed", { params: { video: URL_A }, durations: { video: [601] } }, { params: { video: URL_A }, durations: { video: [600] } }, "10 minutes"],
+    ...(["sandbase", "wavespeed"] as const).flatMap((upstream): [string, string, Partial<EstimateInput>, Partial<EstimateInput>, string][] => [
+      ["gpt-image-2.5-sunburst-text-to-image", upstream, { prompt: "x".repeat(32001) }, { prompt: "x".repeat(32000) }, "32000"],
+      ["gpt-image-2.5-sunburst-edit", upstream, { prompt: "x".repeat(32001), params: { images: [URL_A] } }, { prompt: "x".repeat(32000), params: { images: [URL_A] } }, "32000"],
+      ["minimax-h3-reference-to-video", upstream, { prompt: "a fox", params: { images: [URL_A], audios: [URL_A] }, durations: { audios: [1.5] } }, { prompt: "a fox", params: { images: [URL_A], audios: [URL_A] }, durations: { audios: [2] } }, "2"],
+      ["minimax-h3-reference-to-video", upstream, { prompt: "a fox", params: { images: [URL_A], audios: [URL_A, URL_A] }, durations: { audios: [8, 8] } }, { prompt: "a fox", params: { images: [URL_A], audios: [URL_A, URL_A] }, durations: { audios: [8, 7] } }, "15 seconds"],
+    ]),
+    ["gemini-omni-1.1-flash-reference-to-video", "fal", { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [3.5] } }, { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [3] } }, "3 seconds"],
+    ["wan-3.0-reference-to-video", "fal", { prompt: "a fox", params: { duration: 5, videos: [URL_A] }, durations: { videos: [0.5] } }, { prompt: "a fox", params: { duration: 5, videos: [URL_A] }, durations: { videos: [1] } }, "1-15 seconds"],
+    ["minimax-voice-clone", "wavespeed", { prompt: "hi", params: { audio: URL_A }, durations: { audio: [301] } }, { prompt: "hi", params: { audio: URL_A }, durations: { audio: [300] } }, "5 minutes"],
   ];
 
   // WaveSpeed's own words say it normalizes or trims these, so it takes them.
@@ -418,6 +427,20 @@ describe("the limits a reseller states beyond its schema", () => {
   it.each(STATED)("keeps a %s run off %s where its own words refuse it, and takes the nearest run it allows", async (model, upstream, refusedRun, takenRun, words) => {
     expect(await refused(model, upstream, refusedRun)).toEqual({ reason: expect.stringContaining(words) });
     expect(await refused(model, upstream, takenRun)).toBeUndefined();
+  });
+
+  // Mirelo's /v3/models states max_prompt_chars 5000, and WaveSpeed refused 5001 characters (probed 2026-11-06).
+  it.each(["sfx-1.6-text-to-audio", "sfx-1.6-extend-audio"])("caps a %s prompt at Mirelo's 5000 characters on every upstream", (model) => {
+    expect(catalog().models.find((m) => m.name === model)?.max_input_chars).toBe(5000);
+  });
+
+  // fal: "rounded to whole seconds, then up to full minutes".
+  it.each([[60.4, 1], [60.6, 2], [0.4, 1]])("prices a %s s veed clean audio run on fal at %s minutes", async (seconds, minutes) => {
+    const input = run({ params: { audio: URL_A }, durations: { audio: [seconds] } });
+    const rules = provider.pricingRules("veed-clean-audio");
+    const minute = await estimateCost(rules, provider.availability("veed-clean-audio"), run({ params: { audio: URL_A }, durations: { audio: [60] } }), { mode: "upstream", upstream: "fal" });
+    const estimate = await estimateCost(rules, provider.availability("veed-clean-audio"), input, { mode: "upstream", upstream: "fal" });
+    expect(estimate?.usd).toBeCloseTo((minute?.usd ?? Number.NaN) * minutes, 9);
   });
 
   it("keeps a Mureka vocal sample outside 15 to 30 seconds off fal's voice clone", async () => {

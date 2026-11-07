@@ -230,6 +230,7 @@ models:
     guide: "Text input — one effect per take, with ambience that loops seamlessly."
     generation_time: 300
     icon: "mirelo"
+    max_input_chars: 5000
     params:
       loop:
         upstream: "ambience"
@@ -399,6 +400,7 @@ models:
     guide: "Extends audio with a seamless tail"
     generation_time: 300
     icon: "mirelo"
+    max_input_chars: 5000
     params:
       ambience:
         description: "Loops seamlessly end to start"

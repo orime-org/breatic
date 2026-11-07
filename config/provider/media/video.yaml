@@ -854,6 +854,10 @@ models:
             reason: WaveSpeed prompt maxLength 7000
           - when: $exists(reference_audios) and $not($exists(reference_images) or $exists(reference_videos))
             reason: "WaveSpeed reference_audios: Audio cannot be provided alone"
+          - when: get_duration(reference_audios) > 15
+            reason: "MiniMax H3 reference_audios: total length up to 15 seconds"
+          - when: get_duration(reference_audios, min=2, max=1000000, total=1000000) > get_duration(reference_audios)
+            reason: "MiniMax H3 reference_audios: 2-15 seconds each"
         pricing:
           kind: formula
           base_price: 700000
@@ -897,10 +901,14 @@ models:
             reason: "SandBase videos: combined duration must not exceed 15 seconds"
           - when: get_duration(videos, min=2, max=1000000, total=1000000) > get_duration(videos)
             reason: "SandBase videos: Each clip must be 2–15 seconds"
+          - when: get_duration(audios) > 15
+            reason: "MiniMax H3 audios: total length up to 15 seconds"
+          - when: get_duration(audios, min=2, max=1000000, total=1000000) > get_duration(audios)
+            reason: "MiniMax H3 audios: 2-15 seconds each"
         pricing:
           kind: formula
           base_price: 130000
-          formula: '{"total_price": (duration + get_duration(videos)) * (resolution = "768p" ? 60000 : base_price) + ($count(images) > 5 ? 40000 * ($count(images) - 5) : 0)}'
+          formula: '{"total_price": ((duration ? duration : 5) + get_duration(videos)) * (resolution = "768p" ? 60000 : base_price) + ($count(images) > 5 ? 40000 * ($count(images) - 5) : 0)}'
           discount_rate: 100
   gemini-omni-1.1-flash-reference-to-video:
     upstreams:
@@ -958,8 +966,8 @@ models:
         rejects:
           - when: $length(prompt) > 20000
             reason: fal prompt maxLength 20000
-          - when: get_duration(reference_video_urls) > get_duration(reference_video_urls, min=0, max=10, total=1000000)
-            reason: "fal reference_video_urls: Each video must be at most ten seconds long"
+          - when: get_duration(reference_video_urls) > get_duration(reference_video_urls, min=0, max=3, total=1000000)
+            reason: "Google Gemini Omni reference videos: up to 3 seconds each"
         pricing:
           kind: formula
           base_price: 30000
@@ -1078,6 +1086,8 @@ models:
             reason: "fal reference_video_urls: Up to 5 reference video URLs totaling at most 15 seconds"
           - when: "(duration ? duration : 5) + get_duration(reference_video_urls) > 30"
             reason: "fal reference_video_urls: Alibaba's Wan 3.0 rule, reference video length plus output length must stay within 30 seconds"
+          - when: get_duration(reference_video_urls, min=1, max=1000000, total=1000000) > get_duration(reference_video_urls)
+            reason: "Alibaba Wan 3.0 reference videos: 1-15 seconds each"
         pricing:
           kind: formula
           base_price: 50000

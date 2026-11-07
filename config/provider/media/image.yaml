@@ -26,6 +26,9 @@ models:
             field: quality
           resolution:
             field: resolution
+        rejects:
+          - when: $length(prompt) > 32000
+            reason: "OpenAI GPT Image prompt: maximum length is 32000 characters"
         pricing:
           kind: formula
           base_price: 24000
@@ -72,8 +75,8 @@ models:
         fixed:
           mode: async
         rejects:
-          - when: $length(prompt) > 50000
-            reason: SandBase prompt maxLength 50000
+          - when: $length(prompt) > 32000
+            reason: "OpenAI GPT Image prompt: maximum length is 32000 characters"
           - when: $length(prompt) < 3
             reason: SandBase prompt minLength 3
         pricing:
@@ -593,6 +596,9 @@ models:
           style_images: "*"
         mentions:
           images: image {n}
+        rejects:
+          - when: $length(prompt) > 32000
+            reason: "OpenAI GPT Image prompt: maximum length is 32000 characters"
         pricing:
           kind: formula
           base_price: 39000
@@ -651,8 +657,8 @@ models:
         fixed:
           mode: async
         rejects:
-          - when: $length(prompt) > 50000
-            reason: SandBase prompt maxLength 50000
+          - when: $length(prompt) > 32000
+            reason: "OpenAI GPT Image prompt: maximum length is 32000 characters"
           - when: $length(prompt) < 3
             reason: SandBase prompt minLength 3
         pricing:

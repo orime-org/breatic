@@ -1321,6 +1321,9 @@ models:
               formula: '{"total_price":base_price * $length(text) / 1000}'
               discount_rate: 100
         reused_by: audio
+        rejects:
+          - when: get_duration(audio) > 300
+            reason: "MiniMax clone audio: maximum 5 minutes (WaveSpeed refused 360 s: The voice sample is too long)"
         pricing:
           kind: formula
           base_price: 1600000

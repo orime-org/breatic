@@ -257,6 +257,16 @@ const SAME_EFFECT: Readonly<Record<string, string>> = {
   "fal fal-ai/nano-banana-2/edit aspect_ratio": "fal's auto and WaveSpeed's none both take the input image's ratio (WaveSpeed: 'If not specified, it is determined automatically from the input image')",
 };
 
+/**
+ * Text limits the model's own vendor states below the bound a reseller's schema gives, keyed
+ * `upstream endpoint field`: the binding's reject sits at the vendor's limit.
+ */
+const VENDOR_TEXT_LIMITS: Readonly<Record<string, number>> = {
+  // OpenAI's image API reference: "The maximum length is 32000 characters"; SandBase's schema says 50000.
+  "sandbase openai/gpt-image-2.5-sunburst prompt": 32_000,
+  "sandbase openai/gpt-image-2.5-sunburst/edit prompt": 32_000,
+};
+
 const config = shipped();
 const models = new Map(catalog().models.map((m) => [m.name, m.params as Record<string, CatalogParam>]));
 const cases = Object.entries(config.media.models).flatMap(([model, { upstreams }]) => upstreams.map((binding) => ({ model, binding })));
@@ -735,20 +745,21 @@ describe.each(cases)("$model on $binding.upstream", ({ model, binding }) => {
       const text = leaves.find((leaf) => leaf.type === "string");
       if (text === undefined) continue;
       const length = inList ? `\\b${escaped(named)}\\b.*\\$length\\(` : `\\$length\\(\\s*${escaped(named)}\\s*\\)`;
-      if (text.maxLength !== undefined && (ours === undefined || ours > text.maxLength) && !rejectMatches(binding, new RegExp(`${length}[^<>]*>\\s*${text.maxLength}\\b`))) unstated.push(`${where} maxLength ${text.maxLength}`);
+      const max = VENDOR_TEXT_LIMITS[`${binding.upstream} ${binding.model_id} ${named}`] ?? text.maxLength;
+      if (max !== undefined && (ours === undefined || ours > max) && !rejectMatches(binding, new RegExp(`${length}[^<>]*>\\s*${max}\\b`))) unstated.push(`${where} maxLength ${max}`);
       if (text.minLength !== undefined && text.minLength > 1 && !rejectMatches(binding, new RegExp(`${length}[^<>]*<\\s*${text.minLength}\\b`))) unstated.push(`${where} minLength ${text.minLength}`);
       if (text.pattern !== undefined && !rejectMatches(binding, new RegExp(`\\b${escaped(named)}\\b`))) unstated.push(`${where} pattern ${text.pattern}`);
     }
     expect(unstated, unstated.join("\n")).toEqual([]);
   });
 
-  it("states each length reject of a field at the bound its upstream's schema gives", () => {
+  it("states each length reject of a field at the bound its upstream's schema gives, or the model vendor's tighter one", () => {
     const stale: string[] = [];
     for (const { when } of binding.rejects ?? []) {
       const match = /^\$length\((\w+)\)\s*>\s*(\d+)$/.exec(when.trim());
       if (match === null) continue;
-      const bound = (snapshot.fields[match[1]!] ?? []).find((leaf) => leaf.type === "string")?.maxLength;
-      if (bound !== undefined && bound !== Number(match[2])) stale.push(`${when}: the schema says maxLength ${bound}`);
+      const bound = VENDOR_TEXT_LIMITS[`${binding.upstream} ${binding.model_id} ${match[1]!}`] ?? (snapshot.fields[match[1]!] ?? []).find((leaf) => leaf.type === "string")?.maxLength;
+      if (bound !== undefined && bound !== Number(match[2])) stale.push(`${when}: the bound is ${bound}`);
     }
     expect(stale, stale.join("\n")).toEqual([]);
   });
