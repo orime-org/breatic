@@ -10,6 +10,7 @@ import { ApiException } from '@web/data/api/types';
 import { Button } from '@web/components/ui/button';
 import { Checkbox } from '@web/components/ui/checkbox';
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
@@ -109,88 +110,90 @@ export function PromoterApplyDialog({
           <DialogTitle>{t('membership.promoter.dialogTitle')}</DialogTitle>
           <DialogDescription>{t('membership.promoter.dialogDescription')}</DialogDescription>
         </DialogHeader>
-        <DialogBody className='gap-4'>
-          <div className='flex flex-col gap-1.5'>
-            <Label htmlFor='promoter-country'>{t('membership.promoter.country')}</Label>
-            <Select value={country} onValueChange={(v) => { setCountry(v); setErrors((e) => ({ ...e, country: undefined })); }}>
-              <SelectTrigger id='promoter-country' aria-label={t('membership.promoter.country')} aria-invalid={!!errors.country || undefined}>
-                <SelectValue placeholder={t('membership.promoter.countryPlaceholder')} />
-              </SelectTrigger>
-              <SelectContent>
-                {countries.map((c) => <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            {errors.country ? <FieldError>{errors.country}</FieldError> : null}
-          </div>
-
-          <div className='flex flex-col gap-1.5'>
-            <div className='flex items-baseline justify-between'>
-              <Label>{t('membership.promoter.channels')}</Label>
-              <span className='text-xs text-muted-foreground'>{t('membership.promoter.channelsHint')}</span>
+        <ScrollArea viewportClassName='max-h-[calc(100dvh-200px)]'>
+          <DialogBody className='gap-4'>
+            <div className='flex flex-col gap-1.5'>
+              <Label htmlFor='promoter-country'>{t('membership.promoter.country')}</Label>
+              <Select value={country} onValueChange={(v) => { setCountry(v); setErrors((e) => ({ ...e, country: undefined })); }}>
+                <SelectTrigger id='promoter-country' aria-label={t('membership.promoter.country')} aria-invalid={!!errors.country || undefined}>
+                  <SelectValue placeholder={t('membership.promoter.countryPlaceholder')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {countries.map((c) => <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {errors.country ? <FieldError>{errors.country}</FieldError> : null}
             </div>
-            {channels.map((channel, i) => (
-              <div key={i} className='flex gap-2'>
-                <Input
-                  autoComplete='off'
-                  maxLength={200}
-                  value={channel}
-                  placeholder={i === 0 ? t('membership.promoter.channelPlaceholder') : undefined}
-                  aria-invalid={!!errors.channels || undefined}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setChannels((list) => list.map((c, j) => (j === i ? value : c)));
-                    setErrors((er) => ({ ...er, channels: undefined }));
-                  }}
-                />
-                {channels.length > 1 ? (
-                  <Button type='button' variant='ghost' size='icon' aria-label={t('membership.promoter.removeChannel')}
-                    onClick={() => setChannels((list) => list.filter((_, j) => j !== i))}>
-                    <Trash2 className='h-3.5 w-3.5' />
-                  </Button>
-                ) : null}
+
+            <div className='flex flex-col gap-1.5'>
+              <div className='flex items-baseline justify-between'>
+                <Label>{t('membership.promoter.channels')}</Label>
+                <span className='text-xs text-muted-foreground'>{t('membership.promoter.channelsHint')}</span>
               </div>
-            ))}
-            {channels.length < MAX_CHANNELS ? (
-              <Button type='button' variant='link' size='compact' className='w-fit gap-1 px-0 text-xs text-muted-foreground'
-                icon={<Plus className='h-3 w-3' />} onClick={() => setChannels((list) => [...list, ''])}>
-                {t('membership.promoter.addChannel')}
-              </Button>
-            ) : null}
-            {errors.channels ? <FieldError>{errors.channels}</FieldError> : null}
-          </div>
+              {channels.map((channel, i) => (
+                <div key={i} className='flex gap-2'>
+                  <Input
+                    autoComplete='off'
+                    maxLength={200}
+                    value={channel}
+                    placeholder={i === 0 ? t('membership.promoter.channelPlaceholder') : undefined}
+                    aria-invalid={!!errors.channels || undefined}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setChannels((list) => list.map((c, j) => (j === i ? value : c)));
+                      setErrors((er) => ({ ...er, channels: undefined }));
+                    }}
+                  />
+                  {channels.length > 1 ? (
+                    <Button type='button' variant='ghost' size='icon' aria-label={t('membership.promoter.removeChannel')}
+                      onClick={() => setChannels((list) => list.filter((_, j) => j !== i))}>
+                      <Trash2 className='h-3.5 w-3.5' />
+                    </Button>
+                  ) : null}
+                </div>
+              ))}
+              {channels.length < MAX_CHANNELS ? (
+                <Button type='button' variant='link' size='compact' className='w-fit gap-1 px-0 text-xs text-muted-foreground'
+                  icon={<Plus className='h-3 w-3' />} onClick={() => setChannels((list) => [...list, ''])}>
+                  {t('membership.promoter.addChannel')}
+                </Button>
+              ) : null}
+              {errors.channels ? <FieldError>{errors.channels}</FieldError> : null}
+            </div>
 
-          <div className='flex flex-col gap-1.5'>
-            <Label htmlFor='promoter-plan'>{t('membership.promoter.plan')}</Label>
-            <Textarea
-              id='promoter-plan'
-              rows={4}
-              maxLength={2000}
-              value={plan}
-              placeholder={t('membership.promoter.planPlaceholder')}
-              aria-invalid={!!errors.plan || undefined}
-              onChange={(e) => { setPlan(e.target.value); setErrors((er) => ({ ...er, plan: undefined })); }}
-            />
-            {errors.plan ? <FieldError>{errors.plan}</FieldError> : null}
-          </div>
-
-          {termsNotice ? <FieldError role='alert'>{t('membership.promoter.termsChanged')}</FieldError> : null}
-          <div className='flex flex-col gap-1'>
-            <label className='flex items-start gap-2 text-sm'>
-              <Checkbox
-                checked={agreed}
-                aria-invalid={!!errors.agree || undefined}
-                onCheckedChange={(v) => { setAgreed(v === true); setTermsNotice(false); setErrors((er) => ({ ...er, agree: undefined })); }}
+            <div className='flex flex-col gap-1.5'>
+              <Label htmlFor='promoter-plan'>{t('membership.promoter.plan')}</Label>
+              <Textarea
+                id='promoter-plan'
+                rows={4}
+                maxLength={2000}
+                value={plan}
+                placeholder={t('membership.promoter.planPlaceholder')}
+                aria-invalid={!!errors.plan || undefined}
+                onChange={(e) => { setPlan(e.target.value); setErrors((er) => ({ ...er, plan: undefined })); }}
               />
-              <span>
-                {t('membership.promoter.agreeLead')}{' '}
-                <a href={PROMOTER_TERMS_URL} target='_blank' rel='noopener noreferrer' className='inline-flex items-center gap-0.5 underline'>
-                  {t('membership.promoter.termsLink')}<ExternalLink className='h-3 w-3' />
-                </a>
-              </span>
-            </label>
-            {errors.agree ? <FieldError>{errors.agree}</FieldError> : null}
-          </div>
-        </DialogBody>
+              {errors.plan ? <FieldError>{errors.plan}</FieldError> : null}
+            </div>
+
+            {termsNotice ? <FieldError role='alert'>{t('membership.promoter.termsChanged')}</FieldError> : null}
+            <div className='flex flex-col gap-1'>
+              <label className='flex items-start gap-2 text-sm'>
+                <Checkbox
+                  checked={agreed}
+                  aria-invalid={!!errors.agree || undefined}
+                  onCheckedChange={(v) => { setAgreed(v === true); setTermsNotice(false); setErrors((er) => ({ ...er, agree: undefined })); }}
+                />
+                <span>
+                  {t('membership.promoter.agreeLead')}{' '}
+                  <a href={PROMOTER_TERMS_URL} target='_blank' rel='noopener noreferrer' className='inline-flex items-center gap-0.5 underline'>
+                    {t('membership.promoter.termsLink')}<ExternalLink className='h-3 w-3' />
+                  </a>
+                </span>
+              </label>
+              {errors.agree ? <FieldError>{errors.agree}</FieldError> : null}
+            </div>
+          </DialogBody>
+        </ScrollArea>
         <DialogFooter>
           <Button type='button' variant='outline' onClick={() => onOpenChange(false)}>{t('membership.promoter.cancel')}</Button>
           <Button type='button' loading={pressing} onClick={submit}>{t('membership.promoter.submit')}</Button>

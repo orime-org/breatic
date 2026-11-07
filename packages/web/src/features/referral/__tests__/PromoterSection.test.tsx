@@ -146,6 +146,17 @@ describe('the promoter program section (inner#1868 table 12.11)', () => {
 });
 
 describe('the application dialog (inner#1868 table 12.12)', () => {
+  it('scrolls the form inside the dialog, keeping the title and buttons on screen', async () => {
+    // Up to ten channel rows can make the form taller than a laptop screen.
+    const user = userEvent.setup();
+    setup(OPEN);
+    await user.click(await screen.findByRole('button', { name: 'Apply to become a promoter' }));
+    const viewport = screen.getByLabelText('Country or region').closest('[data-radix-scroll-area-viewport]');
+    expect(viewport).not.toBeNull();
+    expect(viewport!.contains(screen.getByRole('button', { name: 'Submit application' }))).toBe(false);
+    expect(viewport!.contains(screen.getByRole('heading', { name: 'Apply to become a promoter' }))).toBe(false);
+  });
+
   it('asks for agreement to the terms before sending', async () => {
     const user = userEvent.setup();
     setup(OPEN);
