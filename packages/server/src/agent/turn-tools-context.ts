@@ -9,7 +9,8 @@
  * the turn's usage recorder, and the ones that need something of the turn
  * carry it in the shape they use: the save and the canvas proposal the
  * project (inner#1315), the document proposal the open document (inner#1509),
- * and the record tools the user's records (inner#1469).
+ * the record tools the user's records (inner#1469), and the memory tools the
+ * user's memory (#1363).
  */
 
 import type { ChatSpaceContext } from "@breatic/shared";
@@ -18,10 +19,12 @@ import {
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
   RECORD_TOOL_NAMES,
+  MEMORY_TOOL_NAMES,
   SAVE_IMAGE,
   UNDERSTAND_MEDIA,
   usageContextFor,
   type OpenDocument,
+  type AgentMemory,
   type ProjectRecords,
   type SaveToStorage,
 } from "@breatic/domain";
@@ -40,6 +43,7 @@ type UsageRecorder = Parameters<typeof usageContextFor>[1];
  * @param turn.openDocument - The document the reader has open, which a
  *   document proposal goes to, or null when none can be read.
  * @param turn.records - The user's records this turn may read (inner#1469).
+ * @param turn.memory - The user's memory this turn may write and read (#1363).
  * @returns The context, by tool name.
  * @throws {never} Never.
  */
@@ -53,6 +57,7 @@ export function turnToolsContext(
     actorUserId?: string;
     openDocument: OpenDocument | null;
     records: ProjectRecords;
+    memory: AgentMemory;
   },
 ): Record<string, Record<string, unknown>> {
   const context: Record<string, Record<string, unknown>> = { ...usageContextFor(tools, usage) };
@@ -75,6 +80,9 @@ export function turnToolsContext(
   }
   for (const name of RECORD_TOOL_NAMES) {
     if (context[name]) context[name] = { ...context[name], records: turn.records };
+  }
+  for (const name of MEMORY_TOOL_NAMES) {
+    if (context[name]) context[name] = { ...context[name], memory: turn.memory };
   }
   return context;
 }

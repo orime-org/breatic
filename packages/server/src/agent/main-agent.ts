@@ -31,6 +31,7 @@ import { readerClockNote } from "@server/agent/reader-clock.js";
 import { getAgentConfig, getStorageAdapter } from "@breatic/core";
 import { assetService, creditLotService, createUsageRecorder } from "@breatic/domain";
 import { saveToStorageFor } from "@server/agent/save-to-storage.js";
+import { agentMemoryFor } from "@server/agent/agent-memory.js";
 import { projectRecordsFor } from "@server/agent/project-records.js";
 import { openDocumentOf, turnToolsContext } from "@server/agent/turn-tools-context.js";
 import { buildTurnContext } from "@server/agent/turn-context.js";
@@ -44,7 +45,7 @@ import { toStoredParts } from "@server/modules/conversation/message-part-mapping
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
 import { foldIfTooLong } from "@server/agent/turn-fold.js";
 import { knownTokensAtStart, requestTokens } from "@server/agent/request-size.js";
-import type { Assembly, TurnIdentity } from "@server/agent/turn-fold.js";
+import type { Assembly, FoldResult, FoldTrigger, TurnIdentity } from "@server/agent/turn-fold.js";
 import { readContextOverflow, unrecognised400, type ContextOverflow } from "@server/agent/context-overflow.js";
 import { claimFirstMilestone, currentConsent, getContext, serverAnalyticsWanted, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
@@ -119,6 +120,7 @@ export class MainAgent {
    * @param attached - What the user attached to the message, in order.
    * @param timeZone - The zone the reader's browser reported, if any.
    * @param space - The project's Spaces and the one the reader has open.
+   * @param modelId - The model the route resolved for this turn (#1363); the default when absent.
    * @returns The turn, as the SDK's own message chunks.
    */
   async chat(
@@ -127,8 +129,9 @@ export class MainAgent {
     attached: readonly ChatAttachedChip[] = [],
     timeZone?: string,
     space: ChatSpaceContext = {},
+    modelId?: string,
   ): Promise<ReadableStream<UIMessageChunk>> {
-    return this.runTurn(userMessage, attached, signal, timeZone, space);
+    return this.runTurn(userMessage, attached, signal, timeZone, space, modelId);
   }
 
   /**
@@ -138,6 +141,7 @@ export class MainAgent {
    * @param signal - Raised when the user stops the turn or the client leaves
    * @param timeZone - The zone the reader's browser reported, if any
    * @param space - The project's Spaces and the one the reader has open
+   * @param modelId - The model the route resolved for this turn
    * @returns The turn, as the SDK's own message chunks.
    */
   private async runTurn(
@@ -146,6 +150,7 @@ export class MainAgent {
     signal: AbortSignal | undefined,
     timeZone: string | undefined,
     space: ChatSpaceContext,
+    modelId: string | undefined,
   ): Promise<ReadableStream<UIMessageChunk>> {
     const { conversationId } = this.ctx;
 
@@ -199,7 +204,7 @@ export class MainAgent {
       turn: { ...space, chips: attached, message: said },
       closedAsks,
     };
-    return this.runStream(opening, turnIndex, title, openDocumentOf(space), signal);
+    return this.runStream(opening, turnIndex, title, openDocumentOf(space), signal, modelId);
   }
 
   /**
@@ -216,6 +221,7 @@ export class MainAgent {
    * @param signal - Raised when the user stops the turn or the client goes away.
    * @param timeZone - The zone the reader's browser reported, if any.
    * @param space - The project's Spaces and the one the reader has open.
+   * @param modelId - The model the turn started on, as the route resolved it (#1363).
    * @returns The segment, as the SDK's own message chunks.
    */
   async answer(
@@ -225,6 +231,7 @@ export class MainAgent {
     signal?: AbortSignal,
     timeZone?: string,
     space: ChatSpaceContext = {},
+    modelId?: string,
   ): Promise<ReadableStream<UIMessageChunk>> {
     const opening: Opening = {
       kind: "answer",
@@ -233,7 +240,7 @@ export class MainAgent {
       toolCallId,
       output,
     };
-    return this.runStream(opening, turnIndex, null, openDocumentOf(space), signal);
+    return this.runStream(opening, turnIndex, null, openDocumentOf(space), signal, modelId);
   }
 
   /**
@@ -276,6 +283,7 @@ export class MainAgent {
    * @param openDocument - The document the reader has open, which a document
    *   proposal goes to, or null when none can be read.
    * @param signal - Raised when the user stops the turn or the client goes away.
+   * @param requestedModel - The model the route resolved for this turn (#1363).
    * @returns The turn's chunks, in the SDK's own protocol.
    */
   private runStream(
@@ -284,6 +292,7 @@ export class MainAgent {
     title: string | null,
     openDocument: OpenDocument | null,
     signal?: AbortSignal,
+    requestedModel?: string,
   ): ReadableStream<UIMessageChunk> {
     const { userId, conversationId, projectId } = this.ctx;
     const agentCfg = getAgentConfig();
@@ -412,6 +421,10 @@ export class MainAgent {
     let reportedRequest: { hash: string; messages: number } | undefined;
     // Folds set off by the provider turning a call away, this turn.
     let overflowFolds = 0;
+    // A fold of this turn could not start or failed. The turn folds no more:
+    // its window and the consolidation model are the same, so a second try
+    // pays again for the same answer (design 6.4).
+    let foldFailed = false;
     // The turn ended because its request could not be made to fit.
     let tooLong = false;
 
@@ -476,6 +489,9 @@ export class MainAgent {
       return {
         messages,
         prefixHash: prefixHash(sent.agentConfig, ahead),
+        // The model this turn started on, which a segment resumed by an
+        // answer to its card runs on too (#1363).
+        modelId: sent.agentConfig.modelId,
         steps: keptSteps,
         ...(pictureFacts.length === 0 ? {} : { pictures: pictureFacts }),
         countCoverage: {
@@ -500,8 +516,8 @@ export class MainAgent {
      * Read everything the model is given, and lay it out as it will be sent.
      *
      * Repeatable on purpose: a consolidation changes both halves of what this
-     * reads — the watermark shortens the history, the summary lands in memory
-     * — so the turn runs it again afterwards rather than editing the first
+     * reads — the watermark shortens the history, and the folded turns land in
+     * the memory entries and the progress note — so the turn runs it again afterwards rather than editing the first
      * result, which would leave the folded turns missing from both places.
      * @returns The request, and what it was built from.
      */
@@ -538,6 +554,7 @@ export class MainAgent {
       const firstAssembly = fixedAgentConfig === undefined;
       fixedAgentConfig ??= await buildAgentConfig({
         basePrompt: buildSystemPrompt(), memoryContext,
+        ...(requestedModel === undefined ? {} : { modelId: requestedModel }),
         ...(signal === undefined ? {} : { signal }),
         toolContext: {
           mediaUrlAllowed: (url) => storage.keyFromUrl(url) !== null || vouchedMedia.has(url),
@@ -621,6 +638,22 @@ export class MainAgent {
     });
 
     /**
+     * Fold when the request does not fit, unless a fold of this turn already
+     * failed: then a precheck sends as it stands, and an overflow ends as one
+     * whose fold moved nothing.
+     * @param writer - The stream the turn is written to.
+     * @param finished - This turn's finished steps, as they go back to the model.
+     * @param trigger - What set it off.
+     * @returns How it ended; see {@link FoldResult}.
+     */
+    const fold = async (writer: UIMessageStreamWriter, finished: readonly ModelMessage[], trigger: FoldTrigger): Promise<FoldResult> => {
+      if (foldFailed) return trigger.kind === "precheck" ? "none" : "untouched";
+      const result = await foldIfTooLong(sent!, finished, foldFor(writer), trigger);
+      if (result === "untouched") foldFailed = true;
+      return result;
+    };
+
+    /**
      * Keep this turn's message as it is about to go out, so later turns send
      * it again as it is. Losing the copy costs this turn nothing: later turns
      * render the message from its parts the way they always did, so the
@@ -690,7 +723,7 @@ export class MainAgent {
         logger.warn({ userId, conversationId, model: sent.agentConfig.modelId, window: sent.agentConfig.contextWindow }, "agent_context_window_fallback");
       }
       const knownAtStart = knownTokensAtStart(sent.replayed);
-      const opened = await foldIfTooLong(sent, [], foldFor(writer), { kind: "precheck", at: "start", known: knownAtStart });
+      const opened = await fold(writer, [], { kind: "precheck", at: "start", known: knownAtStart });
       signal?.throwIfAborted();
       // The last count the conversation has stands for the first call until
       // that call reports. A fold voids it, and one that could not run is not
@@ -726,7 +759,7 @@ export class MainAgent {
         if (turnedAway === undefined) return;
 
         overflowFolds += 1;
-        const folded = await foldIfTooLong(sent, stripThinking(steps.flat()), foldFor(writer), {
+        const folded = await fold(writer, stripThinking(steps.flat()), {
           kind: "overflow",
           overflow: turnedAway.overflow,
           known: lastCallTotal,
@@ -814,7 +847,7 @@ export class MainAgent {
           // until the next call reports, so two folds always have a call
           // between them.
           if (steps.length > 0) {
-            const folded = await foldIfTooLong(sent!, stripThinking(steps.flat()), foldFor(writer), {
+            const folded = await fold(writer, stripThinking(steps.flat()), {
               kind: "precheck",
               at: "step",
               known: lastCallTotal,
@@ -874,6 +907,7 @@ export class MainAgent {
             turnIndex,
             spaces: (opening.kind === "message" ? opening.turn.spaces : opening.space.spaces) ?? [],
           }),
+          memory: agentMemoryFor({ userId, projectId, conversationId }),
         }) as never,
         // One ceiling for the whole turn, every stream of it together: a
         // stream that carries on after a fold has the steps already taken

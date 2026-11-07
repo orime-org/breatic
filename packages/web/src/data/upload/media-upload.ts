@@ -165,29 +165,38 @@ export interface MediaUploadDeps {
    * the upload is then REFUSED up front (user decision 2026-07-26) — see
    * {@link runMediaUpload}.
    */
-  hashFile: (file: File) => Promise<string | null>;
+  hashFile: (file: File, signal?: AbortSignal) => Promise<string | null>;
   /** Ask for a ticket, or be told the studio already holds this content. */
-  requestTicket: (params: UploadTicketRequest) => Promise<UploadTicketResponse>;
+  requestTicket: (params: UploadTicketRequest, signal?: AbortSignal) => Promise<UploadTicketResponse>;
   /** Send the bytes to the ingest Worker and have our server queue the finish. */
   sendToIngest: (
     file: File,
     ticket: UploadTicket,
     cfg: UploadClientConfig,
     onPartLanded?: (bytesLanded: number) => void,
+    signal?: AbortSignal,
   ) => Promise<QueuedFinish>;
   /**
    * Wait for how a queued finish ended (`waitForUploadEnding` unless a test
    * stands in for it).
    */
-  waitForEnding?: (storageKey: string) => Promise<UploadEnding>;
+  waitForEnding?: (storageKey: string, signal?: AbortSignal) => Promise<UploadEnding>;
+  /** The accepted finish is now awaiting authoritative registration. */
+  onRegistering?: () => void;
+  /**
+   * An upload with a task row registered: its row now holds the result. Told
+   * only for such uploads, whose content reaches its place through the server.
+   */
+  onRegistered?: () => void;
   /** Told the share of the file that has landed, from 0 to 1, after each part. */
   onProgress?: (fraction: number) => void;
   /**
    * The server answered: an opened upload or one it could not open, either of
    * which opened the upload's task row, or a copy the studio already holds.
-   * Told once, before any bytes move.
+   * Told once, before any bytes move, with the row the answer names (a 3D
+   * model's dedup hit names one too).
    */
-  onAnswered?: () => void;
+  onAnswered?: (taskId?: string) => void;
   /**
    * The bytes are delivered and the server has them.
    *
@@ -215,8 +224,8 @@ export interface MediaUploadDeps {
  * content answers instantly and nothing moves — else send the parts to the
  * ingest Worker and complete. The two halves retry under different rules: the
  * ticket request through `retryTransient` on the knobs above, each part inside
- * the shared HTTP transport on its own compiled-in policy. Never throws — both
- * outcomes route through `onSuccess` / `onFailure`.
+ * the shared HTTP transport on its own compiled-in policy. Network outcomes
+ * route through `onSuccess` / `onFailure`; cancellation rejects the operation.
  *
  * NO HASH, NO UPLOAD (user decision 2026-07-26). The hash the browser computes
  * answers one question — does this studio already hold this content — and the
@@ -231,17 +240,23 @@ export interface MediaUploadDeps {
  * @param file - The media file to upload.
  * @param context - Where it lands and what it is for.
  * @param deps - Injected config / hash / network / result callbacks.
+ * @param signal - Optional cancellation owned by this single upload.
+ * @throws {DOMException} When the supplied signal is cancelled.
  */
 export async function runMediaUpload(
   file: File,
   context: UploadContext,
   deps: MediaUploadDeps,
+  signal?: AbortSignal,
 ): Promise<void> {
+  signal?.throwIfAborted();
   let cfg: UploadClientConfig;
   let answer: UploadTicketResponse;
   try {
     cfg = await deps.getUploadConfig();
-    const hash = await deps.hashFile(file);
+    signal?.throwIfAborted();
+    const hash = await deps.hashFile(file, signal);
+    signal?.throwIfAborted();
     if (hash === null) {
       // Refused up front: nothing asked for, nothing sent, no bandwidth burnt.
       deps.onFailure({ reason: 'hash' });
@@ -255,23 +270,26 @@ export async function runMediaUpload(
           contentType: file.type,
           size: file.size,
           hash,
-        }),
+        }, signal),
       {
         attempts: cfg.clientMaxAttempts,
         baseDelayMs: cfg.clientRetryBaseDelayMs,
         ...(deps.sleep !== undefined && { sleep: deps.sleep }),
+        ...(signal !== undefined && { signal }),
       },
     );
+    signal?.throwIfAborted();
   } catch (err) {
+    signal?.throwIfAborted();
     deps.onFailure({ reason: failureOf(err) });
     return;
   }
 
-  await deliverTicket(file, answer, cfg, deps, deps);
+  await deliverTicket(file, answer, cfg, deps, deps, signal);
 }
 
 /** Where one file's outcome goes. */
-type UploadSinks = Pick<MediaUploadDeps, 'onProgress' | 'onAnswered' | 'onSuccess' | 'onFailure'>;
+type UploadSinks = Pick<MediaUploadDeps, 'onProgress' | 'onAnswered' | 'onRegistering' | 'onRegistered' | 'onSuccess' | 'onFailure'>;
 
 /** What the delivery half calls out to. */
 type DeliveryDeps = Pick<MediaUploadDeps, 'sendToIngest' | 'waitForEnding'>;
@@ -285,6 +303,8 @@ type DeliveryDeps = Pick<MediaUploadDeps, 'sendToIngest' | 'waitForEnding'>;
  * @param cfg - The upload knobs.
  * @param sinks - Where its outcome goes.
  * @param deps - The network.
+ * @param signal - Optional cancellation of this delivery and status observer.
+ * @throws {DOMException} When the supplied signal is cancelled.
  */
 async function deliverTicket(
   file: File,
@@ -292,8 +312,11 @@ async function deliverTicket(
   cfg: UploadClientConfig,
   sinks: UploadSinks,
   deps: DeliveryDeps,
+  signal?: AbortSignal,
 ): Promise<void> {
-  sinks.onAnswered?.();
+  signal?.throwIfAborted();
+  sinks.onAnswered?.(answer.taskId);
+  signal?.throwIfAborted();
   if (isAlreadyStored(answer)) {
     // Nothing moves. When a node is behind this upload, the server has already
     // written its history and published what ends its handling; an upload with
@@ -320,13 +343,12 @@ async function deliverTicket(
   let queued: QueuedFinish;
   try {
     const { onProgress } = sinks;
-    queued =
-      onProgress === undefined
-        ? await deps.sendToIngest(file, answer, cfg)
-        : await deps.sendToIngest(file, answer, cfg, (landed) => {
-          onProgress(landed / file.size);
-        });
+    queued = await deps.sendToIngest(file, answer, cfg, onProgress && ((landed) => {
+      if (!signal?.aborted) onProgress(landed / file.size);
+    }), signal);
+    signal?.throwIfAborted();
   } catch (err) {
+    signal?.throwIfAborted();
     sinks.onFailure({
       reason: failureOf(err),
       ...(taskId !== undefined && { taskId }),
@@ -334,14 +356,19 @@ async function deliverTicket(
     return;
   }
 
-  const ending = (deps.waitForEnding ?? waitForUploadEnding)(queued.storageKey);
+  sinks.onRegistering?.();
+  signal?.throwIfAborted();
+  const waitForEnding = deps.waitForEnding ?? waitForUploadEnding;
+  const ending = waitForEnding(queued.storageKey, signal);
   if (taskId !== undefined) {
     void ending.then((end) => {
       if (end.state !== 'completed') sinks.onFailure({ reason: failureOfEnding(end), taskId });
+      else sinks.onRegistered?.();
     });
     return;
   }
   const end = await ending;
+  signal?.throwIfAborted();
   if (end.state !== 'completed') {
     sinks.onFailure({ reason: failureOfEnding(end) });
     return;
@@ -457,13 +484,18 @@ export class UploadFailedError extends Error {
  * @param file - The file to upload.
  * @param context - Where it lands and what it is for.
  * @param onProgress - Told the share of the file that has landed, after each part.
+ * @param signal - Cancellation owned by this upload and its status observer.
+ * @param onRegistering - Called when transferred bytes await registration.
  * @returns What the server filed the upload under.
  * @throws {UploadFailedError} When the upload does not complete.
+ * @throws {DOMException} When the caller cancels the upload.
  */
 export function uploadMedia(
   file: File,
   context: UploadContext,
   onProgress?: (fraction: number) => void,
+  signal?: AbortSignal,
+  onRegistering?: () => void,
 ): Promise<StoredUpload> {
   return new Promise((resolve, reject) => {
     void runMediaUpload(file, context, {
@@ -472,8 +504,9 @@ export function uploadMedia(
       requestTicket: assetsApi.requestUploadTicket,
       sendToIngest: sendFileAndFinish,
       ...(onProgress !== undefined && { onProgress }),
+      ...(onRegistering !== undefined && { onRegistering }),
       onSuccess: resolve,
       onFailure: (outcome) => reject(new UploadFailedError(outcome.reason)),
-    });
+    }, signal).catch(reject);
   });
 }

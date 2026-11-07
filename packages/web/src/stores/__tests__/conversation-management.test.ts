@@ -179,7 +179,7 @@ describe('switching to another conversation', () => {
     await conversationRuntime.ensureLoaded(PROJECT);
 
     vi.mocked(chatApi.readConversation).mockResolvedValue({
-      conversation: { id: 'c-2', title: 'second' },
+      conversation: { id: 'c-2', title: 'second', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       messages: [
         {
           id: 'm-9',
@@ -234,6 +234,8 @@ describe('starting another conversation', () => {
     vi.mocked(chatApi.createConversation).mockResolvedValue({
       id: 'c-new',
       title: null,
+      agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' },
+
     } as unknown as Awaited<ReturnType<typeof chatApi.createConversation>>);
 
     await conversationRuntime.startNew(PROJECT);
@@ -265,7 +267,7 @@ describe('starting another conversation', () => {
     let settle!: () => void;
     vi.mocked(chatApi.createConversation).mockReturnValue(
       new Promise((resolve) => {
-        settle = () => resolve({ id: 'c-new', title: null } as never);
+        settle = () => resolve({ id: 'c-new', title: null, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } } as never);
       }),
     );
 
@@ -286,6 +288,8 @@ describe('starting another conversation', () => {
     vi.mocked(chatApi.createConversation).mockResolvedValue({
       id: 'c-new',
       title: null,
+      agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' },
+
     } as unknown as Awaited<ReturnType<typeof chatApi.createConversation>>);
 
     await conversationRuntime.startNew(PROJECT);
@@ -366,7 +370,7 @@ describe('removing a conversation', () => {
     await conversationRuntime.ensureLoaded(PROJECT);
     vi.mocked(chatApi.deleteConversation).mockResolvedValue(undefined);
     vi.mocked(chatApi.readConversation).mockResolvedValue({
-      conversation: { id: 'c-2', title: 'second' },
+      conversation: { id: 'c-2', title: 'second', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       messages: [],
       hasMore: false,
     } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
@@ -386,7 +390,7 @@ describe('removing a conversation', () => {
     vi.mocked(chatApi.openChat).mockResolvedValue({
       conversations: [{ id: 'c-fresh', title: null }],
       current: {
-        conversation: { id: 'c-fresh', title: null },
+        conversation: { id: 'c-fresh', title: null, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
         messages: [],
         hasMore: false,
       },
@@ -420,7 +424,7 @@ describe('what each conversation has half-typed', () => {
     openAnswers([{ id: 'c-1', title: 'first' }, { id: 'c-2', title: 'second' }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
     vi.mocked(chatApi.readConversation).mockResolvedValue({
-      conversation: { id: 'c-2', title: 'second' },
+      conversation: { id: 'c-2', title: 'second', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       messages: [],
       hasMore: false,
     } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
@@ -435,7 +439,7 @@ describe('what each conversation has half-typed', () => {
     openAnswers([{ id: 'c-1', title: 'first' }, { id: 'c-2', title: 'second' }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
     vi.mocked(chatApi.readConversation).mockResolvedValue({
-      conversation: { id: 'c-2', title: 'second' },
+      conversation: { id: 'c-2', title: 'second', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       messages: [],
       hasMore: false,
     } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
@@ -443,7 +447,7 @@ describe('what each conversation has half-typed', () => {
     conversationRuntime.setDraft('c-1', 'half a thought');
     await conversationRuntime.switchTo(PROJECT, 'c-2');
     vi.mocked(chatApi.readConversation).mockResolvedValue({
-      conversation: { id: 'c-1', title: 'first' },
+      conversation: { id: 'c-1', title: 'first', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       messages: [],
       hasMore: false,
     } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
@@ -478,7 +482,7 @@ describe('what each conversation has half-typed', () => {
     chatAttachments.add('c-1', [READY_ITEM], { maxItems: 10, maxChars: 200_000 });
     vi.mocked(chatApi.deleteConversation).mockResolvedValue(undefined);
     vi.mocked(chatApi.readConversation).mockResolvedValue({
-      conversation: { id: 'c-2', title: 'second' },
+      conversation: { id: 'c-2', title: 'second', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       messages: [],
       hasMore: false,
     } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
@@ -938,7 +942,7 @@ describe('what a first page has to be told about', () => {
             res({
               conversations: [{ id: 'c-1', title: 'one' }],
               hasMoreConversations: false,
-              current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+              current: { conversation: { id: 'c-1', title: 'one', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
             } as never);
         }),
     );
@@ -948,6 +952,8 @@ describe('what a first page has to be told about', () => {
     vi.mocked(chatApi.createConversation).mockResolvedValue({
       id: 'c-new',
       title: null,
+      agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' },
+
     } as never);
     await conversationRuntime.startNew(PROJECT);
 
@@ -1097,7 +1103,7 @@ describe('what a first page has to be told about', () => {
             res({
               conversations: [{ id: 'c-1', title: 'one' }],
               hasMoreConversations: false,
-              current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+              current: { conversation: { id: 'c-1', title: 'one', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
             } as never);
         }),
     );
@@ -1124,7 +1130,7 @@ describe('what a first page has to be told about', () => {
           settleOpen = (): void =>
             resolve({
               conversations: [{ id: 'c-1', title: 'one' }],
-              current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+              current: { conversation: { id: 'c-1', title: 'one', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
               hasMoreConversations: false,
             } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
         }),

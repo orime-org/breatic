@@ -8,7 +8,10 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from '@web/components/ui/hover-card';
-import { MediaPlayer } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
+import type { MediaFullscreenSource } from '@web/spaces/canvas/nodes/_shared/MediaFullscreen';
+import { MediaFullscreenButton } from '@web/spaces/canvas/nodes/_shared/MediaFullscreenButton';
+import { MediaPlayer, type MediaPlayerHandle } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
+import { useMediaFullscreen } from '@web/spaces/canvas/nodes/_shared/use-media-fullscreen';
 import {
   HOVER_OPEN_DELAY_MS,
   HOVER_CLOSE_DELAY_MS,
@@ -67,6 +70,12 @@ export interface HoverPreviewProps {
    * upward). Radix still flips it when that side has no room.
    */
   side?: 'top' | 'right' | 'bottom' | 'left';
+  /**
+   * What full screen shows when it is not the preview itself (inner#1844): a
+   * chip previews a thumbnail but opens its source. A function is read when
+   * the card opens; null means there is nothing to open.
+   */
+  fullscreen?: MediaFullscreenSource | null | (() => MediaFullscreenSource | null);
   /** The trigger element (the small thumbnail / chip). */
   children: React.ReactNode;
 }
@@ -98,6 +107,7 @@ export interface HoverPreviewProps {
  * @param root0.followCanvas - Follow the ReactFlow viewport while open (canvas surfaces).
  * @param root0.body - A preview of the caller's own, used in place of the kind's form.
  * @param root0.side - The side the card opens on, in place of the default.
+ * @param root0.fullscreen - What full screen shows, when not the preview itself.
  * @param root0.children - The trigger element (thumbnail / chip).
  * @returns The trigger with (when it has content) a hover preview.
  */
@@ -112,6 +122,7 @@ export function HoverPreview({
   followCanvas = false,
   body,
   side,
+  fullscreen,
   children,
 }: HoverPreviewProps): React.JSX.Element {
   // Live-at-open cache (decision C, the prompt `@` chip's live projection):
@@ -125,6 +136,18 @@ export function HoverPreview({
   // live-at-open resolvers fire at the right moment.
   const [open, setOpen] = React.useState(false);
   useFollowCanvasViewport(followCanvas ? open : false);
+  // A `fullscreen` function is read when the card opens, and kept through
+  // the close animation; the button only exists in the open card.
+  const [resolvedFullscreen, setResolvedFullscreen] = React.useState<MediaFullscreenSource | null>(null);
+  const player = React.useRef<MediaPlayerHandle>(null);
+  const fullscreenLayer = useMediaFullscreen({
+    name: alt,
+    currentSrc: src,
+    player,
+    // The trigger opens the card when it takes the focus, and most triggers
+    // cannot hold it anyway.
+    onCloseAutoFocus: (event) => event.preventDefault(),
+  });
 
   const previewText = resolveOnOpen ? resolved?.text : text;
   const previewHint = resolveOnOpen ? resolved?.emptyHint : emptyHint;
@@ -139,11 +162,25 @@ export function HoverPreview({
   const hasAnything = Boolean(body || src || text || emptyHint || resolveOnOpen);
 
   const isMedia = kind === 'audio' || kind === 'video';
+  const showsPicture = !body && (kind === 'image' || kind === 'video') && Boolean(src);
+  const fullscreenSource: MediaFullscreenSource | null = !showsPicture
+    ? null
+    : fullscreen === undefined
+      ? { kind: kind as 'image' | 'video', src: src!, poster }
+      : (typeof fullscreen === 'function' ? resolvedFullscreen : fullscreen) ?? null;
+
+  /** Closes the card and opens full screen where the preview player is. */
+  const openFullscreen = (): void => {
+    if (!fullscreenSource) return;
+    setOpen(false);
+    fullscreenLayer.open(fullscreenSource);
+  };
+
   let content: React.ReactNode = null;
   if (body) {
     content = body;
   } else if (isMedia && src) {
-    content = <MediaPlayer modality={kind} src={src} poster={poster} variant='preview' />;
+    content = <MediaPlayer ref={player} modality={kind} src={src} poster={poster} variant='preview' />;
   } else if (kind === 'image' && src) {
     // Filling the preview's width, height following its aspect, sharp corners
     // like video / audio (user 2026-07-23, decisions A and B).
@@ -161,40 +198,50 @@ export function HoverPreview({
   }
 
   return (
-    <HoverCard
-      openDelay={HOVER_OPEN_DELAY_MS}
-      closeDelay={HOVER_CLOSE_DELAY_MS}
-      onOpenChange={(next) => {
+    <>
+      <HoverCard
+        open={open}
+        openDelay={HOVER_OPEN_DELAY_MS}
+        closeDelay={HOVER_CLOSE_DELAY_MS}
+        onOpenChange={(next) => {
         // Nothing to show means nothing opens — and `open` must stay false so
         // the viewport follower is not armed for a card that will never
         // render. The wrapper still mounts (that is what keeps the trigger
         // stable), but it costs nothing while empty.
-        setOpen(next && hasAnything);
-        if (next) {
-          if (resolveOnOpen) setResolved(resolveOnOpen());
-        }
-      }}
-    >
-      <HoverCardTrigger asChild>{children}</HoverCardTrigger>
-      {hasAnything ? (
-        <HoverCardContent
-          data-testid='hover-preview-content'
-          side={side ?? (followCanvas ? 'top' : 'left')}
-          avoidCollisions={followCanvas ? false : undefined}
-          // Pushed in from the viewport edge rather than flush against it.
-          collisionPadding={HOVER_PREVIEW_EDGE_GAP}
-          // Re-enable clicks inside a modal Sheet: the modal sets the body to
-          // `pointer-events: none`, which the portaled content inherits; an
-          // explicit `auto` on the content lets its play / seek subtree be
-          // clicked (verified with elementFromPoint). Harmless outside a modal
-          // (already auto there). See the hover-preview spec §3.10 / INV-11.
-          style={{ pointerEvents: 'auto' }}
-        >
-          {/* One width for every form, so a short text or a hint opens as
+          setOpen(next && hasAnything);
+          if (next) {
+            if (resolveOnOpen) setResolved(resolveOnOpen());
+            if (typeof fullscreen === 'function') setResolvedFullscreen(fullscreen());
+          }
+        }}
+      >
+        <HoverCardTrigger asChild>{children}</HoverCardTrigger>
+        {hasAnything ? (
+          <HoverCardContent
+            data-testid='hover-preview-content'
+            side={side ?? (followCanvas ? 'top' : 'left')}
+            avoidCollisions={followCanvas ? false : undefined}
+            // Pushed in from the viewport edge rather than flush against it.
+            collisionPadding={HOVER_PREVIEW_EDGE_GAP}
+            // Re-enable clicks inside a modal Sheet: the modal sets the body to
+            // `pointer-events: none`, which the portaled content inherits; an
+            // explicit `auto` on the content lets its play / seek subtree be
+            // clicked (verified with elementFromPoint). Harmless outside a modal
+            // (already auto there). See the hover-preview spec §3.10 / INV-11.
+            style={{ pointerEvents: 'auto' }}
+          >
+            {/* One width for every form, so a short text or a hint opens as
               wide as a picture does. */}
-          <div className='w-[220px]'>{content}</div>
-        </HoverCardContent>
-      ) : null}
-    </HoverCard>
+            <div className='group/media relative w-[220px]'>
+              {content}
+              {fullscreenSource ? (
+                <MediaFullscreenButton onOpen={openFullscreen} className='absolute right-1.5 top-1.5' />
+              ) : null}
+            </div>
+          </HoverCardContent>
+        ) : null}
+      </HoverCard>
+      {fullscreenLayer.layer}
+    </>
   );
 }

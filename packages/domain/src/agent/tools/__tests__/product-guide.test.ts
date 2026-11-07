@@ -133,8 +133,10 @@ describe("the guide as a tool", () => {
     // The guide has a Mini-tools section; a description that leaves them out
     // let "scale this picture up" go unlooked-up (#1366).
     expect(said).toMatch(/mini-tools/i);
-    expect(said).toMatch(/cannot see/i);
     expect(said).toMatch(/icon/i);
+    // The open Space comes with each message and the tools read the rest, so
+    // the description says nothing of what the model can or cannot see.
+    expect(said).not.toMatch(/\b(can|cannot|can't) see\b/i);
   });
 });
 
@@ -605,10 +607,10 @@ describe("what the guide says", () => {
     expect(list).not.toMatch(/video and sound nodes list none/);
   });
 
-  it("says a template may place generations upstream to run first, wired and @'d, and an input fed upstream reuses a picture already connected", () => {
+  it("says a template may place generations upstream to run first, wired and @'d, and nodes it places to take what it needs reuse a picture already connected, even one the node itself does not use", () => {
     const generating = section("Generating");
     expect(generating).toMatch(/A template may also place picture or video nodes to the left that generate first, connected and @'d; a note at the top of the prompt says to generate them first\./);
-    expect(generating).toMatch(/When a template feeds what it needs into those nodes too, a picture already connected to the node is connected to them as well\./);
+    expect(generating).toMatch(/When a template places nodes that take what it needs, a picture already connected to the node is connected to them as well, also when the node itself does not use it\./);
     expect(generating).not.toMatch(/the two listed here do neither/);
   });
 
@@ -755,6 +757,18 @@ describe("the guide's source", () => {
 });
 
 describe("what the guide says about each surface", () => {
+  it("names a missing video among the Timeline conflict reasons (inner#1708 M3)", () => {
+    expect(t("timeline.conflictReason.missing_source")).toBe("Its video is missing");
+    expect(section("Timeline spaces")).toContain(`"${t("timeline.conflictReason.missing_source")}"`);
+  });
+
+  it("says how the Timeline adds a top track, cancels a drag and snaps (inner#1708 G1)", () => {
+    const timeline = section("Timeline spaces");
+    expect(timeline).toMatch(/Alt\+Up on the top visual track adds a new visual track/);
+    expect(timeline).toMatch(/Esc cancels a drag without changing anything/);
+    expect(timeline).toMatch(/other clip edges, the playhead and frame 0/);
+  });
+
   it("reads the message and attachment limits off their sources", () => {
     const chat = section("The chat panel");
     expect(chat).toContain(`up to ${CHAT_MESSAGE_MAX_CHARS.toLocaleString("en")} characters`);
@@ -958,5 +972,20 @@ describe("mini-tools and the task rows", () => {
     expect(generating).toContain(`"${t("canvas.task.action.finish")}"`);
     expect(generating).toContain(`"${t("canvas.task.action.view")}"`);
     expect(generating).toMatch(/opens the node's history at that result/i);
+  });
+});
+
+// inner#1844: one full-screen view, opened from the top-right corner of a
+// node, of a hover preview and from a document's row of icons.
+describe("product guide: full screen", () => {
+  it("says where full screen opens and how it closes", () => {
+    const text = renderProductGuide();
+    expect(text).toMatch(/Hovering a picture or video node shows a full-screen button/);
+    expect(text).toMatch(/large preview that pops up on hovering a small picture or video[^.]*same button at its top-right corner/);
+    expect(text).toContain(`"${t("common.mediaViewer.fullscreen")}" (two arrows pointing out to opposite corners, pictures and videos`);
+    expect(text).toMatch(/an X at the top right of the screen closes it/);
+    expect(text).toMatch(/row of icons over a picture or video holds only full screen/);
+    expect(text).not.toMatch(/full-screen controls/);
+    expect(text).not.toMatch(/play, seek and fullscreen/);
   });
 });

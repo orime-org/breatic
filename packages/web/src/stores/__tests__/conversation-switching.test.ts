@@ -113,7 +113,7 @@ describe('switching away from a running turn and back', () => {
 
     vi.mocked(chatApi.readConversation).mockImplementation((id) =>
       Promise.resolve({
-        conversation: { id, title: id },
+        conversation: { id, title: id, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
         messages: [],
         hasMore: false,
       } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>),
@@ -155,7 +155,7 @@ describe('two switches whose answers come back out of order', () => {
 
     vi.mocked(chatApi.readConversation).mockImplementation((id) => {
       const answer = {
-        conversation: { id, title: id },
+        conversation: { id, title: id, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
         messages: [],
         hasMore: false,
       } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>;
@@ -213,7 +213,7 @@ describe('a new conversation started while a switch is still out', () => {
         new Promise((resolve) => {
           releaseRead = () =>
             resolve({
-              conversation: { id, title: id },
+              conversation: { id, title: id, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
               messages: [],
               hasMore: false,
             } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
@@ -224,6 +224,8 @@ describe('a new conversation started while a switch is still out', () => {
     vi.mocked(chatApi.createConversation).mockResolvedValue({
       id: 'c-new',
       title: null,
+      agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' },
+
     } as unknown as Awaited<ReturnType<typeof chatApi.createConversation>>);
     await conversationRuntime.startNew(P);
     expect(useConversationRuntime.getState().currentByProject[P]).toBe('c-new');
@@ -257,7 +259,7 @@ describe('picking another row while a delete is in flight', () => {
     );
     vi.mocked(chatApi.readConversation).mockImplementation((id) =>
       Promise.resolve({
-        conversation: { id, title: id },
+        conversation: { id, title: id, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
         messages: [],
         hasMore: false,
       } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>),
@@ -291,7 +293,7 @@ describe('a conversation started while the project is still opening', () => {
             resolve({
               conversations: [{ id: 'c-1', title: 'one' }],
               hasMoreConversations: false,
-              current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+              current: { conversation: { id: 'c-1', title: 'one', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
             } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
         }),
     );
@@ -300,6 +302,8 @@ describe('a conversation started while the project is still opening', () => {
     vi.mocked(chatApi.createConversation).mockResolvedValue({
       id: 'c-new',
       title: null,
+      agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' },
+
     } as unknown as Awaited<ReturnType<typeof chatApi.createConversation>>);
     await conversationRuntime.startNew(P);
 
@@ -414,7 +418,7 @@ describe('a conversation started before the project has finished opening', () =>
                 { id: 'c-2', title: 'two' },
               ],
               hasMoreConversations: true,
-              current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+              current: { conversation: { id: 'c-1', title: 'one', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
             } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
         }),
     );
@@ -423,6 +427,8 @@ describe('a conversation started before the project has finished opening', () =>
     vi.mocked(chatApi.createConversation).mockResolvedValue({
       id: 'c-new',
       title: null,
+      agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' },
+
     } as unknown as Awaited<ReturnType<typeof chatApi.createConversation>>);
     await conversationRuntime.startNew(P);
 
@@ -464,7 +470,7 @@ describe('the landing after a delete, when the reader has moved on', () => {
     );
 
     vi.mocked(chatApi.readConversation).mockResolvedValue({
-      conversation: { id: 'c-3', title: 'three' },
+      conversation: { id: 'c-3', title: 'three', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       messages: [],
       hasMore: false,
     } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
@@ -495,7 +501,7 @@ describe('a new conversation that could not be created', () => {
             resolve({
               conversations: [{ id: 'c-1', title: 'one' }],
               hasMoreConversations: false,
-              current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+              current: { conversation: { id: 'c-1', title: 'one', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
             } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
         }),
     );
@@ -521,7 +527,7 @@ describe('a new conversation that could not be created', () => {
     let n = 0;
     vi.mocked(chatApi.createConversation).mockImplementation(() => {
       n += 1;
-      return Promise.resolve({ id: `c-new-${n}`, title: null } as never);
+      return Promise.resolve({ id: `c-new-${n}`, title: null, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } } as never);
     });
     await conversationRuntime.startNew(P);
     await conversationRuntime.startNew(P);
@@ -577,7 +583,7 @@ describe('a press that fails while an older answer is still on its way', () => {
             resolve({
               conversations: [{ id: 'c-1', title: 'one' }],
               hasMoreConversations: false,
-              current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+              current: { conversation: { id: 'c-1', title: 'one', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
             } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
         }),
     );
@@ -617,7 +623,7 @@ describe('a press that fails while an older answer is still on its way', () => {
     vi.mocked(chatApi.openChat).mockResolvedValue({
       conversations: [{ id: 'c-1', title: 'one' }],
       hasMoreConversations: false,
-      current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+      current: { conversation: { id: 'c-1', title: 'one', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
     } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
     await conversationRuntime.ensureLoaded(P);
 
@@ -659,6 +665,8 @@ describe('the landing after deleting the only conversation there was', () => {
     vi.mocked(chatApi.createConversation).mockResolvedValue({
       id: 'c-new',
       title: null,
+      agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' },
+
     } as unknown as Awaited<ReturnType<typeof chatApi.createConversation>>);
     await conversationRuntime.startNew(P);
 
@@ -716,6 +724,8 @@ describe('a conversation started when the first page never arrived', () => {
       id: 'c-new',
       title: null,
       updatedAt: '2026-08-16T00:00:00.000Z',
+      agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' },
+
     } as unknown as Awaited<ReturnType<typeof chatApi.createConversation>>);
     await conversationRuntime.startNew(P);
 
@@ -751,7 +761,7 @@ describe('a visit that was abandoned while its request was still out', () => {
           failFirst = () => res({
             conversations: [],
             hasMoreConversations: false,
-            current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+            current: { conversation: { id: 'c-1', title: 'one', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
           } as never);
         }),
       )
@@ -760,7 +770,7 @@ describe('a visit that was abandoned while its request was still out', () => {
           landSecond = () => res({
             conversations: [{ id: 'c-2', title: 'two' }],
             hasMoreConversations: false,
-            current: { conversation: { id: 'c-2', title: 'two' }, messages: [], hasMore: false },
+            current: { conversation: { id: 'c-2', title: 'two', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
           } as never);
         }),
       );
@@ -811,7 +821,7 @@ describe('pressing send while a switch is still on its way', () => {
     vi.mocked(chatApi.readConversation).mockImplementationOnce(
       () => new Promise((res) => {
         landSwitch = () => res({
-          conversation: { id: 'c-2', title: 'two' }, messages: [], hasMore: false,
+          conversation: { id: 'c-2', title: 'two', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false,
         } as never);
       }),
     );
@@ -840,7 +850,7 @@ describe('pressing send while a switch is still on its way', () => {
     vi.mocked(chatApi.readConversation).mockImplementationOnce(
       () => new Promise((res) => {
         landSwitch = () => res({
-          conversation: { id: 'c-2', title: 'two' }, messages: [], hasMore: false,
+          conversation: { id: 'c-2', title: 'two', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false,
         } as never);
       }),
     );
@@ -878,7 +888,7 @@ describe('while a switch is on its way', () => {
     vi.mocked(chatApi.readConversation).mockImplementationOnce(
       () => new Promise((res) => {
         land = () => res({
-          conversation: { id: 'c-2', title: 'two' }, messages: [], hasMore: false,
+          conversation: { id: 'c-2', title: 'two', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false,
         } as never);
       }),
     );
@@ -962,7 +972,7 @@ describe('fetching the next page of the list', () => {
     vi.mocked(chatApi.openChat).mockResolvedValueOnce({
       conversations: [{ id: 'c-1', title: 'one', updatedAt: '2026-08-16T00:00:00.000Z' }],
       hasMoreConversations: true,
-      current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+      current: { conversation: { id: 'c-1', title: 'one', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
     } as never);
     await conversationRuntime.ensureLoaded(P);
     expect(useConversationRuntime.getState().listLoadingMore[P]).toBeUndefined();
@@ -991,7 +1001,7 @@ describe('fetching the next page of the list', () => {
     vi.mocked(chatApi.openChat).mockResolvedValueOnce({
       conversations: [{ id: 'c-1', title: 'one', updatedAt: '2026-08-16T00:00:00.000Z' }],
       hasMoreConversations: true,
-      current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+      current: { conversation: { id: 'c-1', title: 'one', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
     } as never);
     await conversationRuntime.ensureLoaded(P);
 
@@ -1003,7 +1013,7 @@ describe('fetching the next page of the list', () => {
     vi.mocked(chatApi.openChat).mockResolvedValueOnce({
       conversations: [{ id: 'c-new', title: null, updatedAt: '2026-08-16T00:00:01.000Z' }],
       hasMoreConversations: false,
-      current: { conversation: { id: 'c-new', title: null }, messages: [], hasMore: false },
+      current: { conversation: { id: 'c-new', title: null, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
     } as never);
     await conversationRuntime.remove(P, 'c-1');
 
@@ -1025,7 +1035,7 @@ describe('what a conversation answer says about its name', () => {
     await conversationRuntime.ensureLoaded(P);
 
     vi.mocked(chatApi.readConversation).mockResolvedValue({
-      conversation: { id: 'c-2', title: 'renamed elsewhere' },
+      conversation: { id: 'c-2', title: 'renamed elsewhere', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       messages: [],
       hasMore: false,
     } as never);
@@ -1081,7 +1091,7 @@ describe('pressing the row that is already on screen', () => {
         new Promise((resolve) => {
           landC2 = () =>
             resolve({
-              conversation: { id: 'c-2', title: 'two' },
+              conversation: { id: 'c-2', title: 'two', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
               messages: [],
               hasMore: false,
             } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
@@ -1111,7 +1121,7 @@ describe('pressing the row that is already on screen', () => {
         new Promise((resolve) => {
           landC2 = () =>
             resolve({
-              conversation: { id: 'c-2', title: 'two' },
+              conversation: { id: 'c-2', title: 'two', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
               messages: [],
               hasMore: false,
             } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
@@ -1169,7 +1179,7 @@ describe('what a navigation that failed hands back', () => {
             res({
               conversations: [{ id: 'c-old', title: 'old' }],
               hasMoreConversations: false,
-              current: { conversation: { id: 'c-old', title: 'old' }, messages: [], hasMore: false },
+              current: { conversation: { id: 'c-old', title: 'old', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
             } as never);
         }),
     );
@@ -1179,6 +1189,8 @@ describe('what a navigation that failed hands back', () => {
     vi.mocked(chatApi.createConversation).mockResolvedValueOnce({
       id: 'c-new',
       title: null,
+      agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' },
+
     } as never);
     await conversationRuntime.startNew(P);
     expect(useConversationRuntime.getState().currentByProject[P]).toBe('c-new');

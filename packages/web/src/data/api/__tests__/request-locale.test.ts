@@ -5,8 +5,9 @@
  * The language a user picked has to reach the server, or the server cannot
  * answer in it.
  *
- * `changeLocale` writes `localStorage` and swaps the UI catalog; it does not
- * touch the network. The server reads `Accept-Language`, which the browser
+ * `changeLocale` writes `localStorage` and swaps the UI catalog, downloading
+ * it first when this page has not loaded it yet, but it never calls our
+ * backend. The server reads `Accept-Language`, which the browser
  * sends from the OS/browser setting. Those are two different languages, and
  * nothing joined them — so an English browser with the UI switched to Chinese
  * got English error text no matter how much of the backend went through `t()`.

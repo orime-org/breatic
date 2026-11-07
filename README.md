@@ -41,11 +41,11 @@ The hosted service has a free Starter plan. AI generation credits are purchased 
 | **Document Spaces** | Write scripts, shot descriptions and production checklists with headings, lists and formatted text. |
 | **Canvas Spaces** | Arrange references and media on an infinite canvas; generate and refine assets using prompts, models and reference inputs. |
 | **3D (DEV)** | Arrange built-in objects in a shared scene and edit their position, rotation and scale. |
-| **Timeline (DEV)** | Add Project videos or upload local videos to a shared visual track, adjust start frames and preview the sequence. |
+| **Timeline (DEV)** | Arrange Project videos or uploaded local videos on shared tracks: move, trim, split, duplicate and delete clips, undo your own edits and preview the sequence. |
 | **An AI agent in your project** | Discuss ideas, provide document or canvas context, and review proposed work alongside your materials. |
 | **Real-time collaboration** | Invite collaborators, set project access permissions and work on synchronized canvases, documents, 3D scenes and Timelines. |
 
-Supported media includes images, video, audio and 3D assets. Generation capabilities depend on configured providers and model access. Canvas and Document Spaces are available; the 3D and Timeline editors carry **DEV** badges in both creation entries. The current Timeline supports video arrangement and preview on one visual track. Multi-track editing, additional media types, Web Animation and video export are planned. Model generation and annotations within the 3D scene are under development.
+Supported media includes images, video, audio and 3D assets. Generation capabilities depend on configured providers and model access. Canvas and Document Spaces are available; the 3D and Timeline editors carry **DEV** badges in both creation entries. The current Timeline edits and previews video on multiple visual tracks. Additional media types, Web Animation and video export are planned. Model generation and annotations within the 3D scene are under development.
 
 ## Review changes together
 

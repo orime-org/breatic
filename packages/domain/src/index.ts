@@ -123,6 +123,7 @@ export {
   SAVE_IMAGE,
   UNDERSTAND_MEDIA,
   RECORD_TOOL_NAMES,
+  MEMORY_TOOL_NAMES,
 } from "@domain/agent/tools/index.js";
 export type { OpenDocument } from "@domain/agent/tools/propose-document-edit.js";
 export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
@@ -141,6 +142,15 @@ export type {
   NodeRecords,
   ActivityPage,
 } from "@domain/agent/tools/project-records.js";
+export { MemoryRefused, countCharacters, memoryContent, memoryTitle } from "@domain/agent/memory-entries.js";
+export type {
+  AgentMemory,
+  MemoryEntry,
+  MemoryOrigin,
+  MemoryRefusalKind,
+  MemoryScope,
+  MemorySearchPage,
+} from "@domain/agent/memory-entries.js";
 export { buildAgentConfig, instructionsForAgentMemory } from "@domain/agent/agent-config.js";
 export {
   createAgentPicturePreparer,
@@ -195,6 +205,7 @@ export type { Voice, VoicePage, VoiceQuery } from "@domain/model-catalog/voice-c
 
 // ── Node tasks (one row per task on a node; the four counts the node shows) ──
 export * as nodeTaskService from "@domain/node-task/node-task.service.js";
+export * as sceneTaskService from "@domain/node-task/scene-task.service.js";
 export { settleTaskForNode } from "@domain/node-task/settle-for-node.js";
 export { failureOutcome } from "@domain/node-task/failure-outcome.js";
 export type {

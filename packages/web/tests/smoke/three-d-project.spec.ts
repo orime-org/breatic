@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /** Project creation and real membership around collaborative 3D scenes (inner#1689). */
-import { expect, type BrowserContext, type Locator, type Page } from 'playwright/test';
+import { expect, type Locator, type Page } from 'playwright/test';
 import { test, stateFile } from '../helpers/slot';
 import { dataOf } from '../helpers/api';
 import { credentialsFor } from '../helpers/credentials';
+import { cleanMembership, inviteMember } from '../helpers/project-members';
 import { archiveProjects, MADE_BY_SMOKE } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
@@ -109,42 +110,6 @@ async function cleanProject(page: Page, project: Project | null, spaceId?: strin
   }
 }
 
-/**
- * Read the actual invitation notification addressed to this account and Project.
- * @throws {Error} When no invitation token was delivered.
- */
-async function invitationToken(context: BrowserContext, projectId: string): Promise<string> {
-  let token: string | undefined;
-  await expect.poll(async () => {
-    const bell = await dataOf<{ items: Array<{ type: string; payload: { projectId?: string; shareToken?: string } }> }>(
-      await context.request.get('/api/v1/users/me/notifications'), 'read invitee notification',
-    );
-    token = bell.items.find((item) => item.type === 'project.invite_request' && item.payload.projectId === projectId)?.payload.shareToken;
-    return token;
-  }).toBeDefined();
-  if (!token) throw new Error('No invitation token was delivered');
-  return token;
-}
-
-/** Remove accepted membership and revoke any invitation left pending by an earlier failure. */
-async function cleanMembership(page: Page, projectId: string, memberId: string): Promise<void> {
-  try {
-    const members = await dataOf<Array<{ userId: string }>>(
-      await page.request.get(`/api/v1/projects/${projectId}/members`), 'list members for cleanup',
-    );
-    if (members.some((member) => member.userId === memberId)) {
-      await dataOf(await page.request.delete(`/api/v1/projects/${projectId}/members/${memberId}`), 'remove invited member');
-    }
-  } finally {
-    const pending = await dataOf<Array<{ invitationId: string; invitedUserId: string | null }>>(
-      await page.request.get(`/api/v1/projects/${projectId}/invitations`), 'list pending invitations for cleanup',
-    );
-    for (const invitation of pending.filter((item) => item.invitedUserId === memberId)) {
-      await dataOf(await page.request.delete(`/api/v1/projects/${projectId}/invitations/${invitation.invitationId}`), 'revoke unused invitation');
-    }
-  }
-}
-
 test('Studio creation with 3D Space opens the first Project directly as a scene', async ({ page }) => {
   const studio = await ownStudio(page);
   let project: Project | null = null;
@@ -203,20 +168,7 @@ for (const role of ['editor', 'viewer'] as const) {
       sceneId = await createSpace(page, '3d', `Shared scene ${crypto.randomUUID()}`);
       const objectId = await addBlock(page, 'Shared block');
 
-      await dataOf(await page.request.post(`/api/v1/projects/${project.id}/invitations`, {
-        data: { email: credentialsFor('B').email, role },
-      }), 'invite another account');
-      const token = await invitationToken(invitee, project.id);
-      const memberPage = await invitee.newPage();
-      await memberPage.goto(`/decision?token=${encodeURIComponent(token)}`);
-      await expect(memberPage.getByRole('heading', { name: 'You\'ve been invited to a Project', exact: true })).toBeVisible();
-      const [accepted] = await Promise.all([
-        memberPage.waitForResponse((response) => new URL(response.url()).pathname === '/api/v1/decisions/respond'
-          && response.request().method() === 'POST'),
-        memberPage.getByRole('button', { name: 'Accept', exact: true }).click(),
-      ]);
-      await dataOf(accepted, 'accept real Project invitation');
-      expect(await dataOf<{ myRole: string }>(await invitee.request.get(`/api/v1/projects/${project.id}`), 'read granted role')).toMatchObject({ myRole: role });
+      const memberPage = await inviteMember(page, invitee, project.id, credentialsFor('B').email, role);
 
       const shared = await openScene(memberPage, project, sceneId);
       const name = await objectName(memberPage, objectId);

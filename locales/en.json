@@ -177,6 +177,7 @@
       "references_too_many": "Too many references to attachments. A message may carry at most {limit, number}; this one carries {actual, number}.",
       "ask_not_found": "This question card is not in this conversation.",
       "ask_already_answered": "This question card has already been answered.",
+      "model_unavailable": "The selected model is no longer available.",
       "answer_mismatch": "These answers do not fit the questions on the card."
     },
     "mail": {
@@ -306,6 +307,11 @@
     }
   },
   "chat": {
+    "modelPicker": {
+      "label": "Model",
+      "listFailed": "Could not load the model list",
+      "saveFailed": "Could not save the model choice"
+    },
     "composer": {
       "chipsAria": "Selected chips",
       "placeholder": "Ask something, or hand me things from the canvas…",
@@ -410,6 +416,9 @@
       "readingConversation": "Reading the conversation",
       "readingNodeHistory": "Checking the node's history",
       "readingActivity": "Checking Project activity",
+      "savingMemory": "Saving to memory",
+      "deletingMemory": "Removing from memory",
+      "readingMemory": "Reading memory",
       "running": "Calling {tool}",
       "step": {
         "webSearch": "Search for “{query}”",
@@ -426,6 +435,9 @@
         "readConversation": "Reading the conversation",
         "readNodeHistory": "Checking the node's history",
         "readActivity": "Checking Project activity",
+        "saveMemory": "Saving to memory",
+        "deleteMemory": "Removing from memory",
+        "readMemory": "Reading memory",
         "other": "Calling {tool}",
         "readTemplate": "Reading the template",
         "requestSpace": "Asking to look at Spaces"
@@ -1374,7 +1386,8 @@
       "unavailable": "Unavailable",
       "goal": {
         "character": "Character design & consistency",
-        "comics-storyboards": "Comics & storyboards"
+        "comics-storyboards": "Comics & storyboards",
+        "social-hooks": "Social hooks"
       },
       "storyboard-grid-25": {
         "name": "25-panel storyboard",
@@ -1475,6 +1488,161 @@
           "reference": {
             "name": "Character",
             "note": "Add the character reference first, then generate."
+          }
+        }
+      },
+      "pet-selfie-vlog": {
+        "name": "Pet steals the selfie vlog",
+        "description": "A selfie vlog the pet takes over, ending nose to lens",
+        "prompt": "A vertical phone selfie vlog. The only animal in the video is [📎 Pet]: exactly one, its breed, coat colour and markings, eye colour and size as in the picture, nothing else taken from the picture. 0–3 s: the phone is held at arm's length, someone starts talking to the camera in {✏️ where, e.g. a sunny living room}, and the pet already walks into the frame behind them. 3–7 s: the pet {✏️ what it does to steal the shot, e.g. jumps onto the sofa and sniffs the phone}, its ears, tail and paws moving the way this animal really moves. 7–10 s: the pet comes right up to the lens until its nose fills the frame and the picture goes soft. The camera is the hand-held phone the whole time, small wobbles, no cuts. Daylight from a window. Sound: the person's surprised laugh and the pet's own sounds, no music. No text on screen.",
+        "input": {
+          "pet": {
+            "name": "Pet",
+            "note": "Add a clear photo of your pet first, the whole animal in view, then generate."
+          }
+        }
+      },
+      "phone-vlog-realism": {
+        "name": "Real phone vlog",
+        "description": "A day-in-the-life vlog that looks shot on a phone",
+        "prompt": "A vertical vlog that looks really shot on a phone, of [📎 Person]: the same face, hairstyle, skin and build as in the picture, the pores and small marks of the skin kept. {✏️ what they do, e.g. getting ready in the morning, then grabbing a coffee}. 0–3 s: already mid-action, chest-up, the person talks to the camera held in their own hand. 3–15 s: {✏️ two or three more moments of the day, each about 4 seconds}. The phone shows its flaws: small hand shake, the focus hunting now and then, the exposure jumping when a window comes into view. No stabilisation, no beauty filter, no colour grade. Framing never wider than chest-up. Ordinary room light. Sound: the person's voice, room tone and small handling noises of the phone, no music. No text on screen.",
+        "input": {
+          "person": {
+            "name": "Person",
+            "note": "Add a clear front-facing photo of the person first, then generate."
+          }
+        }
+      },
+      "retro-found-footage": {
+        "name": "Retro DV found footage",
+        "description": "Early-2000s home camcorder tape of one small event",
+        "prompt": "Found footage from an early-2000s home camcorder: low resolution, soft focus, video noise, a slight colour bleed, the white balance a little off, the zoom rocker used by hand. Place: {✏️ where it was filmed, e.g. a backyard birthday party at dusk}. 0–3 s: already recording, the camera held by someone walking. 3–8 s: {✏️ one small event that happens, e.g. the cake falls off the table}, the person filming reacts and the camera swings to follow. 8–10 s: hard cut to black. One light source as in the place. Sound: the camcorder's own microphone, muffled voices and wind noise, no music. No text on screen.",
+        "input": {}
+      },
+      "time-freeze-rewind": {
+        "name": "Time freeze and rewind",
+        "description": "Everything freezes and rewinds, except one person",
+        "prompt": "[📎 Person] is the only one not affected by time: the same face, hairstyle and outfit as in the picture. Place: {✏️ a busy place, e.g. a café terrace}. 0–4 s: normal, people moving around them. 4–8 s: {✏️ a collision, e.g. a waiter trips and a tray of drinks flies into the air}. 8–12 s: everything freezes in mid-air, drops hanging still, people stopped mid-step; only [📎 Person] keeps moving and looks around. 12–16 s: the camera slowly circles them and the frozen scene at the same height and distance. 16–20 s: everything rewinds back to just before the collision while [📎 Person] stays where they are. The first frame is already moving. One light source. Sound: café noise, which cuts to silence at the freeze and plays reversed during the rewind. No text on screen.",
+        "input": {
+          "person": {
+            "name": "Person",
+            "note": "Add a clear photo of the person who is not affected first, then generate."
+          }
+        }
+      },
+      "bullet-time-mishap": {
+        "name": "Bullet-time mishap",
+        "description": "A clumsy moment freezes while the camera circles it",
+        "prompt": "{✏️ who and what goes wrong, e.g. a cat knocks a full glass of milk off the kitchen table}. 0–1 s: already happening, the mishap starts. 1–6 s: at the worst instant time stops completely, like a frozen photograph: the subject, the splashes and the falling pieces hang perfectly still in mid-air and nothing in the scene moves at all; only the camera moves, travelling in a full circle around the frozen moment at the same height and distance, so we see it from the side, from behind, from the other side and back to the front. 6–8 s: time snaps back and the mishap finishes. One light source. Sound: a sudden silence at the freeze, a low whoosh while the camera circles, then the crash. No text on screen.",
+        "input": {}
+      },
+      "beat-sync-outfit-change": {
+        "name": "Beat-sync outfit change",
+        "description": "Each turn on the beat swaps the outfit and backdrop",
+        "prompt": "[📎 Person] does a turning outfit-change challenge: the same face, hairstyle and build as in the picture in every look. Themes in order: {✏️ 4 themes, e.g. street wear, red carpet, astronaut, knight}. 0–3 s: in the first theme's outfit and backdrop, facing the camera, already moving to the beat. 3–6 s, 6–9 s, 9–12 s: on each beat they spin once, and when they face the camera again the outfit and the backdrop have become the next theme. The camera stays still at chest height, full body in frame. Even light that changes colour with each backdrop. Sound: one upbeat music track with a clear beat, a whoosh on each spin. No text on screen.",
+        "input": {
+          "person": {
+            "name": "Person",
+            "note": "Add a clear full-body photo of the person first, then generate."
+          }
+        }
+      },
+      "pov-continuous-shot": {
+        "name": "POV one-take",
+        "description": "A first-person walk in one continuous shot",
+        "prompt": "A first-person view in one continuous shot, the camera mounted at eye height on the head of someone walking; their hands come into frame now and then. Place and goal: {✏️ where they go and what they reach, e.g. through a night market to a lantern-lit temple gate}. 0–3 s: the first frame is already full of the place and already moving forward. 3–9 s: {✏️ what they pass and do on the way}. 9–12 s: they arrive and the view settles on {✏️ what is revealed at the end}. No cuts, no zoom; the camera only walks, turns the head and stops. Light from the place itself. Sound: footsteps, breathing and the sounds of the place, no music. No text on screen.",
+        "input": {}
+      },
+      "carried-object-transition": {
+        "name": "Object-carried transition",
+        "description": "One object carries the view from scene A to scene B",
+        "prompt": "(💡 Generate Scene A first, then set it as the First frame)(💡 Generate Scene B first, then set it as the End frame)The video starts on the first frame and ends on the end frame. The object in the middle of both frames is the same object at the same place and size; the camera follows it the whole time. 0–2 s: in scene A, {✏️ how the object moves, e.g. a hand tosses it up}. 2–4 s: the object fills more of the frame as it passes the camera, and as it moves away again the world around it has become scene B. 4–5 s: settles on the end frame. One continuous shot, no cut; the transition is made by the object. Sound: the sound of the object moving, the ambience changing from scene A's to scene B's. No text on screen.",
+        "input": {
+          "object": {
+            "name": "Object",
+            "note": "Add a clear photo of the object first, then generate Scene A and Scene B."
+          }
+        },
+        "node": {
+          "scene-a": {
+            "name": "Scene A",
+            "prompt": "Use [📎 Object] as the object reference: the same shape, colours, materials and markings, nothing redesigned. A vertical photo of {✏️ scene A, e.g. a sunny beach}, with the object in the exact centre of the frame, filling about a quarter of the frame's width, seen straight on at eye height. Natural light of the place. No text."
+          },
+          "scene-b": {
+            "name": "Scene B",
+            "prompt": "Use [📎 Object] as the object reference: the same shape, colours, materials and markings, nothing redesigned. A vertical photo of {✏️ scene B, e.g. a snowy mountain hut at night}, with the object in the exact centre of the frame, filling about a quarter of the frame's width, seen straight on at eye height, the same place and size as in scene A. Natural light of the place. No text."
+          }
+        }
+      },
+      "fisheye-clone-pov": {
+        "name": "Fisheye clones",
+        "description": "A 0.5x fisheye shot filled with clones of one subject",
+        "prompt": "A phone photo taken with the 0.5x ultra-wide lens from above, strong fisheye curve at the edges. Place: {✏️ where, e.g. a basketball court}. The place is filled with many clones of [📎 Subject], about 12, each in a different pose and doing something different, near ones big and distorted by the lens, far ones small. Every clone has the same face, hairstyle and outfit as in the picture. Daylight. Real photo, not illustrated. No text.",
+        "input": {
+          "subject": {
+            "name": "Subject",
+            "note": "Add a clear photo of the subject first, then generate."
+          }
+        }
+      },
+      "flash-photo-dump-grid": {
+        "name": "Flash photo dump",
+        "description": "Six flash snapshots of one person in a 3x2 grid",
+        "prompt": "One image made of exactly 6 photos in a grid of 3 columns and 2 rows, thin white gaps between them. All 6 are of [📎 Person], used only to know who they are: the same face, hairstyle and skin in each. Each photo is a direct-flash snapshot from a small compact camera: bright flash on the face, hard shadow behind, slightly overexposed, a little grain. Six different expressions, one per photo: laughing, pouting, surprised, winking, serious, mid-sneeze. Setting: {✏️ where, e.g. a house party at night}. Close framing, chest-up. No text.",
+        "input": {
+          "person": {
+            "name": "Person",
+            "note": "Add a clear front-facing photo of the person first, then generate."
+          }
+        }
+      },
+      "game-ui-livestream": {
+        "name": "Game livestream look",
+        "description": "Gameplay that looks like a livestreamed video game",
+        "prompt": "Gameplay footage that looks like a livestreamed video game, with [📎 Character] as the player character: the same face, hairstyle and outfit as in the picture, rendered in {✏️ a game style, e.g. a stylised 3D action game}. On screen, drawn only as shapes and colours with no readable letters or numbers: a health bar top left, a round minimap top right, a row of ability icons at the bottom, a small webcam frame in one corner. 0–4 s: already in action, the camera behind the character. 4–9 s: {✏️ what happens in the game, e.g. a boss fight in a ruined castle}. 9–12 s: {✏️ how it ends, e.g. a winning move and a burst of light}. The game camera follows the character. Sound: game effects and music, no voice. No text on screen.",
+        "input": {
+          "character": {
+            "name": "Character",
+            "note": "Add a clear photo of the character first, then generate."
+          }
+        }
+      },
+      "travel-city-walk": {
+        "name": "City walk travel vlog",
+        "description": "One traveler walks through a city, scene by scene",
+        "prompt": "A vertical travel vlog of [📎 Traveler] walking through {✏️ a city, e.g. Lisbon}: the same face, hairstyle and outfit as in the picture in every scene. 0–4 s: {✏️ scene 1, e.g. climbing a steep tiled street}. 4–8 s: {✏️ scene 2}. 8–12 s: {✏️ scene 3}. 12–16 s: {✏️ scene 4}. 16–20 s: {✏️ scene 5}. 20–24 s: they stop at a viewpoint at golden hour and look out over the city. In each scene one camera move: following behind, then beside, then in front. Natural light, the sun getting lower scene by scene. Sound: the street sounds of each place, footsteps, light music at the end. No text on screen.",
+        "input": {
+          "traveler": {
+            "name": "Traveler",
+            "note": "Add a clear full-body photo of the traveler first, then generate."
+          }
+        }
+      },
+      "twist-comedy-skit": {
+        "name": "Twist comedy skit",
+        "description": "A deadpan skit built back from one visible punchline",
+        "prompt": "A comedy skit with [📎 Character], the same face, hairstyle and outfit as in the picture, shot completely straight like a serious drama. The punchline: {✏️ the twist we see at the end, e.g. the burglar was the dog all along}. 0–2 s hook: {✏️ something odd already happening}. 2–5 s setup: {✏️ what the character thinks is going on}. 5–7 s countdown: the tension builds, the camera slowly pushes in. 7–10 s twist: the punchline is revealed on screen. 10–13 s reaction: the character's frozen, deadpan face. 13–15 s button: {✏️ one last small gag}. Steady camera, serious lighting. Sound: dramatic music that stops dead at the twist, then silence. No text on screen.",
+        "input": {
+          "character": {
+            "name": "Character",
+            "note": "Add a clear photo of the character first, then generate."
+          }
+        }
+      },
+      "vertical-15s-quick-tip": {
+        "name": "15-second quick tip",
+        "description": "Result first, three steps, then back to the start",
+        "shot": {
+          "1": "Hook, the end shown first: [📎 Subject] already done, {✏️ what it looks like when done, e.g. a shirt folded flat and square}, close-up, vertical frame, the camera already pushing in slowly. Bright even light. No text on screen.",
+          "2": "Step 1: [📎 Subject], {✏️ the first step, e.g. lay the shirt face down and fold both sleeves to the back}, close on the hands, the camera still. The same light and setting as the first shot. No text on screen.",
+          "3": "Step 2: [📎 Subject], {✏️ the second step, e.g. fold both sides in to the middle}, close on the hands, the camera still. The same light and setting. No text on screen.",
+          "4": "Step 3: [📎 Subject], {✏️ the third step, e.g. fold the bottom up to the collar}, close on the hands, the camera still. The same light and setting. No text on screen.",
+          "5": "Loop: [📎 Subject] ends on exactly the same finished result and framing as the first shot, so the video loops. No text on screen."
+        },
+        "input": {
+          "subject": {
+            "name": "Subject",
+            "note": "Add a photo of the person or the thing the tip is about first, then generate."
           }
         }
       },
@@ -1706,6 +1874,11 @@
     },
     "runOnce": {
       "unknownResult": "Couldn't confirm whether that went through. Check the result."
+    },
+    "mediaViewer": {
+      "fullscreen": "View full screen",
+      "close": "Close",
+      "loadFailed": "Can't load this file"
     }
   },
   "members": {
@@ -1952,8 +2125,6 @@
         "remove": "Remove",
         "caption": "Caption",
         "captionPlaceholder": "Add a caption",
-        "fullscreen": "View full screen",
-        "close": "Close",
         "download": "Download",
         "delete": "Delete",
         "leftOut": "{count, plural, one {# image, video or audio was not pasted.} other {# images, videos or audio were not pasted.}} Drop or paste the files instead.",
@@ -2004,7 +2175,7 @@
       "generate": "AI generation",
       "annotationsLater": "Annotations (coming later)",
       "controls": "Controls",
-      "tasks": "Generation tasks",
+      "tasks": "Tasks",
       "minimap": "Scene minimap",
       "generationDev": "3D model generation is in development",
       "prompt": "Describe the 3D model you want to generate",
@@ -2012,7 +2183,74 @@
       "chooseReference": "Choose reference image",
       "submit": "Generate",
       "helpBody": "Click an object to select it. Drag empty space to orbit; use the wheel to zoom. Use the floating selection menu to move, rotate or scale objects.",
-      "closePanel": "Close"
+      "closePanel": "Close",
+      "importModel": {
+        "title": "Import model",
+        "description": "Choose GLB, glTF or ZIP; include the model’s accompanying files.",
+        "chooseFiles": "Choose files",
+        "chooseFolder": "Choose folder",
+        "inputLimit": "Up to {size} MiB",
+        "dropFiles": "Drop the model and its accompanying files here",
+        "resourceHint": "Choose a GLB directly. For glTF, include its textures and bin files, or choose a complete ZIP.",
+        "readOnly": "Currently read-only",
+        "readOnlyHint": "You can import a model once you have editing access.",
+        "checking": "Checking model…",
+        "preview": "Model preview",
+        "previewFailed": "The model preview could not be displayed.",
+        "entry": "Main file",
+        "chooseEntry": "Choose main file",
+        "name": "Model name",
+        "fileCount": "{count, plural, one {# file} other {# files}}",
+        "meshCount": "{count, plural, one {# mesh} other {# meshes}}",
+        "skinned": "Includes skeletons",
+        "checkingResources": "Checking format and accompanying files",
+        "ready": "Model and accompanying files are ready",
+        "addResources": "Add accompanying files",
+        "optionalExtensions": "Optional extensions may display differently:",
+        "showFiles": "View file list",
+        "hideFiles": "Hide file list",
+        "hide": "Hide",
+        "retry": "Retry",
+        "confirm": "Import",
+        "errorMissing": "Add the missing accompanying files.",
+        "errorEntry": "Choose a main file to preview.",
+        "errorUnsupported": "Unsupported model format or required extension.",
+        "errorEmpty": "The model has no displayable meshes.",
+        "errorBudget": "The model exceeds an import limit.",
+        "errorInvalid": "The model or an accompanying file could not be read.",
+        "errorDuplicate": "Some files have the same path. Choose a collection without conflicts.",
+        "errorUpload": "The model could not be uploaded. Try again.",
+        "errorLoad": "The model could not be loaded. Try again.",
+        "limit": {
+          "input": "Selected files total {actual} MiB; the limit is {allowed} MiB.",
+          "files": "{actual} files; the limit is {allowed}.",
+          "expanded": "Unpacked size {actual} MiB; the limit is {allowed} MiB.",
+          "entryJson": "Model description {actual} MiB; the limit is {allowed} MiB.",
+          "artifact": "Packaged model {actual} MiB; the limit is {allowed} MiB.",
+          "textureEdge": "Texture edge {actual} px; the limit is {allowed} px.",
+          "textureBytes": "Texture memory {actual} MiB; the limit is {allowed} MiB."
+        }
+      },
+      "taskList": {
+        "kind": "Import",
+        "you": "You",
+        "member": "A member",
+        "uploading": "Uploading {percent}%",
+        "running": "Uploading",
+        "runningFor": "Uploading · {minutes} min",
+        "registering": "Registering",
+        "done": "Done",
+        "failed": "Failed",
+        "expired": "Timed out",
+        "failedReason": "The model failed to upload.",
+        "place": "Place in scene",
+        "retry": "Retry",
+        "remove": "Remove",
+        "empty": "Models you import appear here.",
+        "loadFailed": "Couldn’t load tasks.",
+        "removeFailed": "Couldn’t remove the task. Try again.",
+        "placeFailed": "The model couldn’t be placed in the scene."
+      }
     }
   },
   "menu": {
@@ -2496,6 +2734,7 @@
       "theme": "Theme: {theme}"
     },
     "languageNotSaved": "Language not saved to your account",
+    "languageLoadFailed": "Couldn't switch language. Refresh the page and try again.",
     "help": {
       "trigger": "Help",
       "manual": "User manual",
@@ -2545,7 +2784,8 @@
       "spaceLocked": "{actor} locked space {spaceName}",
       "spaceUnlocked": "{actor} unlocked space {spaceName}",
       "spaceRestored": "{actor} restored space {spaceName}",
-      "spaceRenamed": "{actor} renamed space {oldSpaceName} to {spaceName}"
+      "spaceRenamed": "{actor} renamed space {oldSpaceName} to {spaceName}",
+      "assetUploadedModel": "{actor} uploaded the model {name}"
     },
     "header": "Project activity",
     "label": "Project activity",
@@ -2888,22 +3128,29 @@
     "empty": "Add a video to start your Timeline.",
     "video": "Video",
     "conflict": "Conflict",
-    "conflictHelp": "Clips overlap. Select a clip and change its start frame.",
+    "conflictHelp": "Conflicting clips don't play. Select one to fix it.",
+    "conflictList": "Conflicts",
+    "noConflicts": "No conflicts",
+    "conflictReason": {
+      "overlap": "Overlaps another clip",
+      "missing_track": "Its track was removed",
+      "invalid_range": "Outside its video",
+      "incompatible_track": "On a track of another kind",
+      "damaged": "This clip can no longer be read",
+      "missing_source": "Its video is missing"
+    },
     "loadingMedia": "Loading video…",
     "mediaUnavailable": "This video is unavailable.",
     "retry": "Retry",
     "play": "Play",
     "pause": "Pause",
     "seek": "Preview frame",
-    "framePosition": "Frame {frame} / {total}",
     "tracks": "Tracks",
     "addMedia": "Add media",
-    "visualTrack": "Visual 1",
     "selectClip": "Select a clip to view its properties.",
     "clipFrames": "Start {start} · Duration {duration} frames",
-    "editStart": "Change start frame",
+    "sourceExtent": "Video {frames, plural, one {# frame} other {# frames}} · {fps, number} fps",
     "startFrame": "Start frame",
-    "apply": "Apply",
     "cancel": "Cancel",
     "transport": {
       "paused": "Paused",
@@ -2925,17 +3172,54 @@
       "fileEmpty": "Choose a local video file.",
       "preparing": "Preparing video…",
       "progress": "Uploading {progress}%",
-      "confirm": "Add to Timeline"
+      "confirm": "Add to Timeline",
+      "insertAfter": "Inserts after {name}",
+      "insertFirst": "Inserts at the start of the main track"
     },
     "errors": {
+      "missing_source": "This clip's video is missing. Delete the clip first.",
+      "covers_missing_source": "A clip in the way has lost its video. Delete that clip first.",
       "readonly": "Editing is unavailable for your current role.",
       "source_unavailable": "This video is unavailable. Choose another or retry.",
       "metadata_unavailable": "Video duration is unavailable. Retry or choose another video.",
-      "invalid_range": "Enter a valid start frame.",
-      "overlap": "This position overlaps another clip. Change the start frame.",
+      "invalid_range": "Enter a frame range inside the video.",
       "target_missing": "The target has changed. Check the position and retry.",
+      "clip_removed": "This clip was removed by another member.",
       "upload": "Upload failed. Retry with the selected file.",
-      "permission_changed": "Editing permission changed. Confirm again to add this video."
+      "permission_changed": "Editing permission changed. Confirm again to add this video.",
+      "track_missing": "The target track was removed. Choose another track.",
+      "id_taken": "This item already exists. Try again.",
+      "main_track": "The main track cannot be deleted.",
+      "track_not_empty": "Only an empty track can be deleted."
+    },
+    "mainTrack": "Main track",
+    "track": "Visual {index}",
+    "edit": {
+      "undo": "Undo",
+      "redo": "Redo",
+      "split": "Split",
+      "duplicate": "Duplicate",
+      "delete": "Delete",
+      "magnet": "Main track magnet",
+      "magnetOn": "Magnet",
+      "magnetOff": "Free",
+      "snap": "Auto snap",
+      "linkage": "Linkage",
+      "zoom": "Zoom",
+      "track": "Track",
+      "inPoint": "In point",
+      "duration": "Duration",
+      "newTrack": "New visual track",
+      "newTrackZone": "Drop here for a new track",
+      "trackRemoved": "Track removed",
+      "deleteTrack": "Delete track",
+      "ghostInsert": "Insert",
+      "ghostOverwrite": "Covers clips below",
+      "selectFirst": "Select a clip first.",
+      "magnetStartHint": "Main track magnet is on. Drag to reorder.",
+      "splitOutside": "Move the playhead inside the selected clip to split it.",
+      "lowestTrack": "This clip is already on the bottom visual track.",
+      "bumped": "{count, plural, one {# linked clip moved} other {# linked clips moved}} to a track above."
     }
   }
 }

@@ -2,36 +2,51 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Memory service — orchestrates the two memory layers.
+ * Memory service — the Agent's memory entries and each conversation's
+ * progress note (#1363).
  *
- * Reads and writes conversation and project memory. Used by the agent system
- * to build LLM context and persist consolidation results.
- *
- * Both layers are the reader's own: project memory is keyed by member as well
- * as project, so nothing one person's agent summarised reaches another's
- * prompt.
+ * Reads what a turn's system prompt carries, what a consolidation is shown,
+ * and writes what a consolidation produced. All of it is the member's own:
+ * nothing one person's Agent kept reaches another's prompt.
  */
 
 import * as memoryRepo from "@server/modules/memory/memory.repo.js";
 import * as conversationRepo from "@server/modules/conversation/conversation.repo.js";
+import type { MemoryScopeKey } from "@server/modules/memory/memory.repo.js";
 import { db, getAgentConfig } from "@breatic/core";
-import type { MemoryContext } from "@breatic/shared";
+import { countCharacters, type MemoryEntry, type MemoryScope } from "@breatic/domain";
+import type { AgentMemoryEntity, MemoryContext } from "@breatic/shared";
 
 /**
- * Assemble project + conversation memory for injection into a system prompt.
+ * One row as the memory tools and the consolidation read it.
+ * @param entity - The row.
+ * @returns The entry.
+ * @throws {never} Never.
+ */
+export function toMemoryEntry(entity: AgentMemoryEntity): MemoryEntry {
+  return {
+    id: entity.id,
+    scope: entity.conversationId === null ? "project" : "conversation",
+    title: entity.title,
+    content: entity.content,
+    origin: entity.origin,
+    sourceConversationId: entity.sourceConversationId,
+    updatedAt: entity.updatedAt.toISOString(),
+  };
+}
+
+/**
+ * Assemble a turn's memory for its system prompt: the index of the entries it
+ * sees and the conversation's progress note.
  *
- * Each id is half of a key: conversation memory is keyed by the conversation,
- * project memory by the member and the project together. All three are
- * required because a missing one is not a smaller context, it is a layer that
- * comes back empty with nothing saying so.
- *
- * Both layers are truncated to the max sizes in agent config. The
- * conversation layer needs its own ceiling because consolidation rewrites it
- * whole every time it runs, so it is the one segment that grows itself.
+ * All three ids are required: the entries are keyed by the member and the
+ * Project together, and by the conversation for its own ones; a missing one
+ * is not a smaller context, it is a set that comes back empty with nothing
+ * saying so.
  * @param userId - Whose memory to read.
  * @param conversationId - The conversation being spoken in.
  * @param projectId - The project it belongs to.
- * @returns Both layers, each within its ceiling.
+ * @returns The memory the turn carries.
  */
 export async function buildContext(
   userId: string,
@@ -41,132 +56,130 @@ export async function buildContext(
   const config = getAgentConfig();
   // Together: neither read is an input to the other, and this sits on the
   // path of every turn, in front of a reader waiting for the first word.
-  const [projectMemory, conversationMemory] = await Promise.all([
-    memoryRepo.getProjectMemory(userId, projectId),
-    memoryRepo.getConversationMemory(conversationId),
+  const [index, progress] = await Promise.all([
+    memoryRepo.listIndex({ userId, projectId, conversationId }, config.memory_index_max_entries),
+    memoryRepo.getProgress(conversationId),
   ]);
-
-  return {
-    projectMemory: truncate(projectMemory, config.memory_project_max_size),
-    conversationMemory: truncate(conversationMemory, config.memory_conversation_max_size),
-  };
+  return { ...index, progress };
 }
 
-/** Consolidation data from the LLM memory rewriter. */
-export interface ConsolidationData {
-  conversationUpdate: string;
-  projectUpdate?: string;
-  historyEntry: string;
+/** What one consolidation is shown of the memory it may change. */
+export interface ConsolidationInput {
+  /** Shown in full, so it may update or delete them: migrated blocks first, then newest first. */
+  full: MemoryEntry[];
+  /** Shown by id and title only, past the character bound; it may not change them. */
+  titlesOnly: Array<{ id: string; title: string; scope: MemoryScope }>;
+  /** The conversation's progress note as it stands. */
+  progress: string;
 }
 
-/** One consolidation's results, and how far it says the conversation is folded. */
-export interface ConsolidationCommit {
-  /** Whose memory this is. */
-  userId: string;
-  /** The conversation that was read. */
-  conversationId: string;
-  /** The project it belongs to. */
-  projectId: string;
-  /** What the model produced. */
-  data: ConsolidationData;
+/**
+ * What a consolidation is shown: every entry the turn sees, the migrated
+ * blocks and the newest in full while their content stays within the bound,
+ * the rest by title.
+ * @param scope - Whose and where.
+ * @param maxChars - How many characters of content it is shown in full.
+ * @returns The input.
+ */
+export async function consolidationInput(scope: MemoryScopeKey, maxChars: number): Promise<ConsolidationInput> {
+  const [entries, progress] = await Promise.all([
+    memoryRepo.listVisible(scope),
+    memoryRepo.getProgress(scope.conversationId),
+  ]);
+  const full: MemoryEntry[] = [];
+  const titlesOnly: ConsolidationInput["titlesOnly"] = [];
+  let used = 0;
+  for (const entity of entries) {
+    const entry = toMemoryEntry(entity);
+    used += countCharacters(entry.content);
+    // A migrated block is always shown whole: it is there to be split, and a
+    // consolidation that sees only its title cannot.
+    if (entity.origin === "migration" || (titlesOnly.length === 0 && used <= maxChars)) full.push(entry);
+    else titlesOnly.push({ id: entry.id, title: entry.title, scope: entry.scope });
+  }
+  return { full, titlesOnly, progress };
+}
+
+/** One change a consolidation makes to a single entry. */
+export type MemoryOperation =
+  | { op: "add"; scope: MemoryScope; title: string; content: string }
+  | { op: "update"; id: string; title: string; content: string }
+  | { op: "delete"; id: string };
+
+/** One consolidation's results, and the watermark they cover. */
+export interface ConsolidationCommit extends MemoryScopeKey {
+  /** The entries the consolidation was shown in full, as it read them. */
+  shown: ReadonlyArray<{ id: string; scope: MemoryScope; title: string; content: string }>;
+  /** The watermark the consolidation read. */
+  watermarkBefore: number;
   /** The turn the window ended on. */
   newWatermark: number;
+  /** The progress note, replacing the one there. */
+  progress: string;
+  /** The changes to entries, checked against what the consolidation was shown. */
+  operations: readonly MemoryOperation[];
 }
 
 /**
  * Write one consolidation, or nothing at all.
  *
- * The memory and the watermark go in one transaction because the invariant
- * that makes the watermark meaningful spans both: everything under it is
- * supposed to be in memory. Written separately, a crash between them leaves
- * turns that are in neither — gone from the history because the watermark
- * passed them, and absent from memory because that write never happened.
+ * The entries, the progress note and the watermark go in one transaction
+ * because the invariant that makes the watermark meaningful spans all of
+ * them: everything under it is in memory. Written separately, a crash between
+ * them leaves turns that are in neither.
  *
- * The watermark moves first and only forwards. Two tabs on one conversation
- * compute different windows, and the narrower one must not overwrite memory
- * that already covers more; finding the watermark already further along is
- * that answer, and it costs the caller a reassembly rather than any data.
+ * The watermark moves first, and only from where the consolidation read it.
+ * Two tabs on one conversation fold from the same watermark, and the second
+ * would add the same facts again; finding the watermark moved is that answer,
+ * and it costs the caller a reassembly rather than any data.
+ *
+ * An entry is changed or deleted only while it still holds what the
+ * consolidation was shown, scope included. A Project entry another
+ * conversation changed, moved or deleted while the fold ran fails the whole
+ * write, so the next fold reads it as it now is.
  * @param commit - The results and the watermark they cover.
  * @returns Whether this call's memory landed.
+ * @throws {Error} When a write fails, or an entry it changes no longer holds
+ *   what it was shown; nothing is written then.
  */
-export async function commitConsolidation(
-  commit: ConsolidationCommit,
-): Promise<"written" | "superseded"> {
-  const { userId, conversationId, projectId, data, newWatermark } = commit;
-  const config = getAgentConfig();
-  // Cut where the row is made, so the row itself is within the ceiling. A
-  // model answering longer than it was asked to is the ordinary case: the
-  // ceiling reaches it as a line in a prompt and nothing else. Storing the
-  // overflow would mean paying to write characters that the read side then
-  // cuts off on every single read, for as long as the row lives.
-  const conversationUpdate = truncate(
-    data.conversationUpdate,
-    config.memory_conversation_max_size,
+export async function commitConsolidation(commit: ConsolidationCommit): Promise<"written" | "superseded"> {
+  const { userId, projectId, conversationId, shown, watermarkBefore, newWatermark, progress, operations } = commit;
+  const read = new Map(
+    shown.map((entry) => [
+      entry.id,
+      { title: entry.title, content: entry.content, conversationId: entry.scope === "conversation" ? conversationId : null },
+    ]),
   );
-  const projectUpdate = data.projectUpdate
-    ? truncate(data.projectUpdate, config.memory_project_max_size)
-    : undefined;
-
   return db.transaction(async (tx) => {
-    const moved = await conversationRepo.advanceConsolidatedTurn(
-      conversationId,
-      newWatermark,
-      tx,
-    );
+    const moved = await conversationRepo.advanceConsolidatedTurn(conversationId, watermarkBefore, newWatermark, tx);
     if (!moved) return "superseded";
 
-    await memoryRepo.upsertConversationMemory(conversationId, conversationUpdate, tx);
-    await memoryRepo.appendHistory(conversationId, data.historyEntry, tx);
-
-    if (projectUpdate) {
-      await memoryRepo.appendProjectEntry(
-        projectId,
-        userId,
-        projectUpdate,
-        conversationId,
-        tx,
-      );
-      await memoryRepo.upsertProjectMemory(userId, projectId, projectUpdate, tx);
+    await memoryRepo.upsertProgress(conversationId, progress, tx);
+    for (const operation of operations) {
+      if (operation.op === "add") {
+        await memoryRepo.insertEntry(
+          {
+            userId,
+            projectId,
+            conversationId: operation.scope === "conversation" ? conversationId : null,
+            sourceConversationId: conversationId,
+            title: operation.title,
+            content: operation.content,
+            origin: "consolidation",
+          },
+          tx,
+        );
+        continue;
+      }
+      const was = read.get(operation.id);
+      const done =
+        was === undefined
+          ? null
+          : operation.op === "update"
+            ? await memoryRepo.updateEntry(operation.id, { title: operation.title, content: operation.content }, tx, was)
+            : await memoryRepo.softDeleteEntry(operation.id, tx, was);
+      if (done === null) throw new Error(`memory entry ${operation.id} changed after the consolidation read it`);
     }
     return "written";
   });
-}
-
-/**
- * Move the watermark past a window whose summary never arrived.
- *
- * The turns it covered are lost. Leaving the watermark where it is would be
- * worse: the next turn sends a strictly larger version of an input that
- * already failed, to a call that asks for `temperature: 0` wherever the model
- * takes it, and does so on
- * every turn from then on. Nothing the reader can do — refreshing, relogging,
- * another tab — changes any of the inputs.
- * @param conversationId - The conversation whose window was discarded.
- * @param newWatermark - The turn the window ended on.
- * @returns Whether this call moved it. False means the write matched no row:
- *   the watermark is already at or past this turn, or the conversation is
- *   soft-deleted.
- */
-export async function discardConsolidation(
-  conversationId: string,
-  newWatermark: number,
-): Promise<boolean> {
-  return await conversationRepo.advanceConsolidatedTurn(conversationId, newWatermark);
-}
-
-/**
- * Truncate a string to a maximum character count.
- * @param text - Source string to truncate.
- * @param maxLength - Maximum number of characters to keep.
- * @returns The original string if within the limit, otherwise the first `maxLength` characters.
- */
-function truncate(text: string, maxLength: number): string {
-  // Counted and cut in code points. A code-unit cut lands between the halves
-  // of a surrogate pair — every emoji is one, and a model summarising in the
-  // reader's language reaches for them — and half a pair is stored, and read
-  // back, as the replacement character, in every prompt this memory is put
-  // into from then on. `conversation.service.ts` states the same for titles.
-  const characters = [...text];
-  if (characters.length <= maxLength) return text;
-  return characters.slice(0, maxLength).join("");
 }

@@ -210,7 +210,7 @@ const SELECTION_BOX = new DOMRect(137, 0, 400, 20);
  * `Range.prototype.getBoundingClientRect = ...` and leaving it, as this once
  * did, leaks into every file that runs after: `vitest.setup.ts` assigns with
  * `??=`, which is a no-op against a function already there, and
- * `vitest.config.ts` runs `forks` with `singleFork`, so one jsdom environment
+ * `vitest.config.mts` runs `forks` with `singleFork`, so one jsdom environment
  * — one `Range.prototype` — serves the whole package. Measured: files running
  * after this one saw `createRange()` return the 137 by 400 pinned here, and
  * `reference-mention-caret.ts` sizes a drag image off exactly that.

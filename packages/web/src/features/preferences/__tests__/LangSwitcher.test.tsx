@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { LangSwitcher } from '@web/features/preferences/LangSwitcher';
@@ -22,6 +22,39 @@ vi.mock('@web/data/api/users', () => ({
   usersApi: { setLocale: vi.fn().mockResolvedValue({ locale: 'en' }) },
 }));
 vi.mock('@web/lib/toast', () => ({ toast: { error: vi.fn() } }));
+// The real switch by default; a case that needs a download in flight hands the
+// switcher a promise it settles itself.
+vi.mock('@web/i18n/locale-bootstrap', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@web/i18n/locale-bootstrap')>();
+  return { ...actual, changeLocale: vi.fn(actual.changeLocale) };
+});
+
+/** What `changeLocale` settles with. */
+type SwitchResult = Awaited<ReturnType<typeof changeLocale>>;
+
+interface HeldSwitch {
+  settle: (result: SwitchResult) => Promise<void>;
+}
+
+/**
+ * Make the next `changeLocale` call wait until the case settles it.
+ * @returns A handle that settles the call inside `act`.
+ */
+function holdNextSwitch(): HeldSwitch {
+  let resolve!: (result: SwitchResult) => void;
+  const promise = new Promise<SwitchResult>((r) => {
+    resolve = r;
+  });
+  vi.mocked(changeLocale).mockImplementationOnce(() => promise);
+  return {
+    settle: async (result) => {
+      await act(async () => {
+        resolve(result);
+        await promise;
+      });
+    },
+  };
+}
 
 /** Put a signed-in account in the store, as `ProtectedRoute` guarantees on app pages. */
 function signIn(): void {
@@ -43,6 +76,7 @@ function signIn(): void {
 // .claude/skills/react-state-traps/SKILL.md#do-not-mirror-engine-state-in-zustand).
 describe('LangSwitcher', () => {
   beforeEach(() => {
+    vi.mocked(changeLocale).mockReset();
     changeLocale('en');
     vi.mocked(usersApi.setLocale).mockClear();
     vi.mocked(toast.error).mockClear();
@@ -115,7 +149,8 @@ describe('LangSwitcher', () => {
     await user.click(screen.getByTestId('lang-trigger'));
     await user.click(await screen.findByTestId('lang-option-ja'));
     expect(getLocale()).toBe('ja');
-    expect(usersApi.setLocale).toHaveBeenCalledWith('ja');
+    // The account write follows the switch's result, a promise.
+    await vi.waitFor(() => expect(usersApi.setLocale).toHaveBeenCalledWith('ja'));
   });
 
   it('keeps the new language on screen and says so when the account write fails', async () => {
@@ -129,5 +164,97 @@ describe('LangSwitcher', () => {
     await vi.waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(t('chrome.languageNotSaved')),
     );
+  });
+
+  describe('while the picked language downloads', () => {
+    it('keeps the menu open with the picked item loading', async () => {
+      holdNextSwitch();
+      const user = userEvent.setup();
+      render(<LangSwitcher />);
+      await user.click(screen.getByTestId('lang-trigger'));
+      await user.click(await screen.findByTestId('lang-option-ja'));
+
+      expect(screen.getByTestId('lang-popover')).toBeInTheDocument();
+      expect(screen.getByTestId('lang-option-ja')).toHaveAttribute('aria-busy', 'true');
+      expect(screen.getByTestId('lang-option-ko')).not.toHaveAttribute('aria-busy');
+    });
+
+    it('closes the menu and writes the account once the switch lands', async () => {
+      signIn();
+      const ja = holdNextSwitch();
+      const user = userEvent.setup();
+      render(<LangSwitcher />);
+      await user.click(screen.getByTestId('lang-trigger'));
+      await user.click(await screen.findByTestId('lang-option-ja'));
+      expect(screen.getByTestId('lang-popover')).toBeInTheDocument();
+      expect(usersApi.setLocale).not.toHaveBeenCalled();
+
+      await ja.settle('switched');
+
+      await vi.waitFor(() => expect(screen.queryByTestId('lang-popover')).not.toBeInTheDocument());
+      expect(usersApi.setLocale).toHaveBeenCalledExactlyOnceWith('ja');
+    });
+
+    it('says so, keeps the menu open and writes nothing to the account when the download fails', async () => {
+      signIn();
+      const ja = holdNextSwitch();
+      const user = userEvent.setup();
+      render(<LangSwitcher />);
+      await user.click(screen.getByTestId('lang-trigger'));
+      await user.click(await screen.findByTestId('lang-option-ja'));
+
+      await ja.settle('failed');
+
+      await vi.waitFor(() =>
+        expect(toast.error).toHaveBeenCalledWith(t('chrome.languageLoadFailed')),
+      );
+      expect(screen.getByTestId('lang-popover')).toBeInTheDocument();
+      expect(screen.getByTestId('lang-option-ja')).not.toHaveAttribute('aria-busy');
+      expect(usersApi.setLocale).not.toHaveBeenCalled();
+    });
+
+    it('follows the last pick: an earlier pick superseded by it says nothing and writes nothing', async () => {
+      signIn();
+      const ja = holdNextSwitch();
+      const ko = holdNextSwitch();
+      const user = userEvent.setup();
+      render(<LangSwitcher />);
+      await user.click(screen.getByTestId('lang-trigger'));
+      await user.click(await screen.findByTestId('lang-option-ja'));
+      await user.click(screen.getByTestId('lang-option-ko'));
+
+      await ja.settle('superseded');
+      expect(screen.getByTestId('lang-popover')).toBeInTheDocument();
+      expect(screen.getByTestId('lang-option-ko')).toHaveAttribute('aria-busy', 'true');
+
+      await ko.settle('switched');
+
+      await vi.waitFor(() => expect(screen.queryByTestId('lang-popover')).not.toBeInTheDocument());
+      expect(toast.error).not.toHaveBeenCalled();
+      expect(usersApi.setLocale).toHaveBeenCalledExactlyOnceWith('ko');
+    });
+
+    it('lets a switch from outside the menu supersede the pick and closes quietly', async () => {
+      signIn();
+      const ja = holdNextSwitch();
+      const user = userEvent.setup();
+      render(<LangSwitcher />);
+      await user.click(screen.getByTestId('lang-trigger'));
+      await user.click(await screen.findByTestId('lang-option-ja'));
+
+      // The account's language read at sign-in lands while ja downloads.
+      act(() => {
+        void changeLocale('ko');
+      });
+      await ja.settle('superseded');
+
+      await vi.waitFor(() => expect(screen.queryByTestId('lang-popover')).not.toBeInTheDocument());
+      expect(toast.error).not.toHaveBeenCalled();
+      expect(usersApi.setLocale).not.toHaveBeenCalled();
+
+      await user.click(screen.getByTestId('lang-trigger'));
+      expect(await screen.findByTestId('lang-option-ja')).not.toHaveAttribute('aria-busy');
+      expect(screen.getByTestId('lang-trigger')).toHaveTextContent('한');
+    });
   });
 });

@@ -19,7 +19,7 @@
  *   sent twice, and nothing is sent without its partner;
  * - `fetch_page` ran once per call the model made;
  * - the reply carries an error chunk only when it ends as failed, it ends as
- *   failed only after an overflow fold that touched nothing, it ends stopped
+ *   failed only after an overflow fold that touched nothing or failed, it ends stopped
  *   only after a fold the reader stopped, and a turn that ended neither
  *   failed, too long nor stopped ends with its answer.
  *
@@ -87,7 +87,7 @@ const stepArbitrary: fc.Arbitrary<Step> = fc.oneof(
 const outcomeArbitrary: fc.Arbitrary<World["foldOutcomes"][number]> = fc.constantFrom(
   "written" as const,
   "written" as const,
-  "discarded" as const,
+  "failed" as const,
   "superseded" as const,
   "untouched" as const,
   "aborted" as const,
@@ -167,11 +167,11 @@ describe("tool calls across folds and continuations", () => {
           const plainFailure = failed.length === 1 && !("reason" in failed[0]! && failed[0].reason !== undefined);
           expect(errors).toBe(plainFailure ? 1 : 0);
           // Nothing generated here fails a turn but an overflow fold that
-          // touched nothing, and nothing stops one but a fold the reader
-          // stopped (the state table in 6.6).
+          // touched nothing or failed (#1363), and nothing stops one but a
+          // fold the reader stopped (the state table in 6.6).
           const endedFolds = outcomes.slice(0, world.folds.length);
           const interrupted = parts.some((part) => part.type === "interrupted");
-          if (!endedFolds.includes("untouched")) expect(plainFailure).toBe(false);
+          if (!endedFolds.includes("untouched") && !endedFolds.includes("failed")) expect(plainFailure).toBe(false);
           if (!endedFolds.includes("aborted")) expect(interrupted).toBe(false);
           if (failed.length === 0 && !interrupted) {
             expect(world.script).toHaveLength(0);

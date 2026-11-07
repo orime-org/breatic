@@ -403,18 +403,18 @@ export const chatMessageSchema = z.object({
    */
   attached_chips: z.array(chatAttachedChipSchema).default([]),
   /**
-   * A model override for this message. The composer does not send it, and
-   * the `/message` handler does not read it: the model comes from the
-   * agent config.
-   */
-  model: z.string().optional(),
-  /**
    * The IANA time zone the reader's browser reports, so the agent can tell
    * them what time it is where they are. Optional: a turn without one is told
    * the time in UTC and that the zone is unknown. The length cap matches the
    * credit purchase's `time_zone`.
    */
   time_zone: z.string().min(1).max(64).optional(),
+  /**
+   * The model the reader has picked for this conversation (#1363). Absent
+   * from a page that predates the picker, which is answered by the
+   * conversation's own model.
+   */
+  model: z.string().min(1).max(100).optional(),
   /**
    * The project's Spaces, newest first, cut to the list limit; `spaces_total`
    * is how many there were before the cut. Sent on every turn.
@@ -890,6 +890,13 @@ export const chatRenameConversationSchema = z.object({
   title: z.string().trim().min(1).max(CONVERSATION_TITLE_MAX_CHARS),
 });
 export type ChatRenameConversationInput = z.infer<typeof chatRenameConversationSchema>;
+
+/** Body for picking the model a conversation is answered by (#1363). */
+export const chatSetModelSchema = z.object({
+  project_id: z.string().uuid(),
+  model: z.string().min(1).max(100),
+});
+export type ChatSetModelInput = z.infer<typeof chatSetModelSchema>;
 
 /**
  * Query for the page of a conversation that comes before the one in hand.

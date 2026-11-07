@@ -94,7 +94,7 @@ function pageSize(): number {
  */
 async function conversationOf(turns: number): Promise<string> {
   const { userId, projectId } = await seedProject();
-  const conv = await conversationRepo.createConversation(userId);
+  const conv = await conversationRepo.createConversation(userId, "deepseek/deepseek-v4.1-flash-1017");
   await conversationRepo.setProjectId(conv.id, projectId);
   for (let i = 0; i < turns; i += 1) {
     const turn = await messageRepo.addMessage(conv.id, {

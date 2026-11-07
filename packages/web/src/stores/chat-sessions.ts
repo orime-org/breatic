@@ -82,6 +82,14 @@ export interface ChatSessionInit {
    * next message.
    */
   onFirstFrame: (sent: readonly ChatAttachedChip[]) => void;
+  /**
+   * The model this conversation is answered by, read when each message is
+   * sent (#1363), so a pick made a moment before goes with it. Absent, the
+   * message carries none and the server answers on the conversation's own.
+   */
+  modelOf?: () => string | undefined;
+  /** Told when the server refuses a send (#1363), so the picker can ask for the list of models again. */
+  onRefused?: () => void;
 }
 
 /** The chunk the server names a conversation on. */
@@ -260,12 +268,16 @@ function attachedOn(message: StoredUiMessage | undefined): ChatAttachedChip[] {
  * @param projectId - The project the conversation is in.
  * @param conversationId - The conversation being written to.
  * @param onFirstFrame - Told when this conversation's turn starts answering.
+ * @param modelOf - The conversation's model, read at each send.
+ * @param onRefused - Told when the server refuses a send.
  * @returns A transport pointed at the chat endpoint.
  */
 function transportFor(
   projectId: string,
   conversationId: string,
   onFirstFrame: (sent: readonly ChatAttachedChip[]) => void,
+  modelOf?: () => string | undefined,
+  onRefused?: () => void,
 ): ChatTransport<StoredUiMessage> {
   const wire = new DefaultChatTransport<StoredUiMessage>({
     // Built from the one definition of the prefix rather than spelled out.
@@ -283,6 +295,7 @@ function transportFor(
       // An answer to a questionnaire says nothing of the reader's: the last
       // message is the paused reply, whose words and items are not theirs.
       const isAnswer = answering.has(conversationId);
+      const model = modelOf?.();
       const said = (last?.parts ?? [])
         .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
         .map((part) => part.text)
@@ -298,6 +311,8 @@ function transportFor(
         // Read on every send: the agent is told the time where the reader is
         // now, and a laptop can change zones mid-session.
         time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        // Read at the press, so a pick made a moment before goes with it.
+        ...(model === undefined ? {} : { model }),
       };
       // A body over the request limit goes through storage first (inner#1006).
       // No beat can come before the request goes out, so the watch on this
@@ -347,6 +362,7 @@ function transportFor(
         // Decided before the turn settles and says anything, so an
         // out-of-date page has silenced the panel's toast by then.
         await checkStaleRelease(envelopeInBody(refused)?.reason);
+        onRefused?.();
         throw refused;
       }
       return sayWhenItOpens(
@@ -881,11 +897,11 @@ export function chatSessionFor(init: ChatSessionInit): Chat<StoredUiMessage> {
   const existing = sessions.get(init.conversationId);
   if (existing) return existing;
 
-  const { projectId, conversationId, onTitled, onFirstFrame } = init;
+  const { projectId, conversationId, onTitled, onFirstFrame, modelOf, onRefused } = init;
   const chat = new Chat<StoredUiMessage>({
     id: conversationId,
     messages: init.history,
-    transport: transportFor(projectId, conversationId, onFirstFrame),
+    transport: transportFor(projectId, conversationId, onFirstFrame, modelOf, onRefused),
     onData: (part) => {
       if (part.type === BEAT) {
         const turn = runningTurn.get(conversationId);

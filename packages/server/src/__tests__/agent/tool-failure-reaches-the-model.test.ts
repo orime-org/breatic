@@ -36,7 +36,7 @@ const thisCase = vi.hoisted(() => ({ step: 0, uncarried: false }));
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { projectMemory: "", conversationMemory: "" },
+    memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
     history: [],
   })),
 }));

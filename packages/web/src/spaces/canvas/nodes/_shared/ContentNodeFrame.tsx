@@ -94,7 +94,8 @@ export function ContentNodeFrame({
   const occupants = React.useContext(NodeOccupantsContext);
   const badgeShown = resolution !== undefined;
   return (
-    <div className='relative'>
+    // `group/media`: the media's full-screen button shows while the pointer is on the node.
+    <div className='group/media relative'>
       <ZoomCounterScaled
         testId='node-header-anchor'
         className='absolute bottom-full left-0 origin-bottom-left pb-1'

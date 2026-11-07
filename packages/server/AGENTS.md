@@ -78,9 +78,9 @@ Check: am I asserting a call certainly ran, or certainly did not? First establis
 
 Check: am I writing to a conversation id the client gave me? Were all three checked? Details: [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md#chat-conversation-ownership).
 
-### The system prompt names no tool
+### The system prompt names no product tool
 
-**The system prompt (`src/agent/context.ts`) holds only rules that apply to every tool (call tools rather than writing the call out, read errors, say what you could not get); it says nothing about any particular tool, even without naming it.** A tool's guidance lives in its own definition ([domain rule](../domain/AGENTS.md#tool-guidance-lives-in-the-tool-definition)); `__tests__/agent/system-prompt.test.ts` catches only tool names, so an unnamed description is caught by this rule alone.
+**The whole system prompt (the `src/agent/context.ts` template plus the memory sections `instructionsForAgentMemory` in `packages/domain/src/agent/instructions.ts` assembles) holds rules that apply to every tool (call tools rather than writing the call out, read errors, say what you could not get) and the memory protocol: when to use the Agent's own memory tools (`save_memory`, `delete_memory`, `read_memory`) and that turns which left the context are read with `read_conversation`; it says nothing about any product tool, even without naming it.** Each piece of guidance then has one home: the memory tools' timing lives in the protocol, every other tool's in its own definition ([domain rule](../domain/AGENTS.md#tool-guidance-lives-in-the-tool-definition)). `__tests__/agent/system-prompt.test.ts` lets the prompt name only those memory tools and the two record tools, so an unnamed description is caught by this rule alone.
 
 ## Payments
 

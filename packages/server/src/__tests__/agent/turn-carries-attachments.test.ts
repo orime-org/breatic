@@ -23,7 +23,7 @@ const modelSays = vi.hoisted(() => ({ parts: [] as unknown[], prompts: [] as unk
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { projectMemory: "", conversationMemory: "" },
+    memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
     history: [],
   })),
 }));

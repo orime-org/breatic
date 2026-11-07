@@ -43,7 +43,9 @@ export function taskRowKind(
   displayNameOf: (modelId: string) => string | null,
 ): TaskRowKind {
   switch (entry.action) {
+    // A 3D Space's model upload lists on that Space's own task list, never on a node.
     case 'upload':
+    case 'scene_import':
       return { icon: ArrowUp, label: t('canvas.task.kind.upload'), detail: entry.label };
     case 'generate':
       return {

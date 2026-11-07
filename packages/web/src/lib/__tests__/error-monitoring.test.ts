@@ -85,6 +85,17 @@ describe('errorMonitoringInit', () => {
     });
   });
 
+  it('keeps a caught locale chunk NetworkError', () => {
+    const beforeSend = errorMonitoringInit({ dsn: DSN, mode: 'production', version: SHA })?.beforeSend;
+    const event: ErrorEvent = {
+      type: undefined,
+      exception: { values: [{ value: 'NetworkError when attempting to fetch resource.' }] },
+      tags: { error_boundary: 'locale-chunk' },
+    };
+
+    expect(beforeSend?.(event, {})).toEqual(event);
+  });
+
   it('still filters unrelated browser noise carrying route chunk context', () => {
     const beforeSend = errorMonitoringInit({ dsn: DSN, mode: 'production', version: SHA })?.beforeSend;
     const event = (value: string): ErrorEvent => ({

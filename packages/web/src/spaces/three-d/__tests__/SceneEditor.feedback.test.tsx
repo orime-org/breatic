@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
+import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
+
 import * as React from 'react';
 import * as Y from 'yjs';
 import { Unlock } from 'lucide-react';
@@ -15,12 +17,15 @@ import { SceneSession } from '@web/data/yjs/scene-session';
 import SceneEditor from '@web/spaces/three-d/SceneEditor';
 import type * as ToastModule from '@web/lib/toast';
 import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 
 const { reportError, viewportInputs } = vi.hoisted(() => ({ reportError: vi.fn(), viewportInputs: vi.fn() }));
 
-vi.mock('@web/data/api/scene', () => ({
-  getSceneControls: vi.fn(async () => ({ scaleSensitivity: 1 })),
-  resolveSceneAsset: vi.fn(async () => ({ url: 'https://example.invalid/model.glb', mimeType: 'model/gltf-binary' })),
+vi.mock('@web/data/api/scene', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/scene')>()),
+  listSpaceTasks: vi.fn(async () => ({ serverNow: new Date().toISOString(), tasks: [] })),
+  getSceneControls: vi.fn(async () => ({ scaleSensitivity: 1, import: IMPORT_LIMITS })),
+  resolveSceneAsset: vi.fn(async () => ({ url: 'https://example.invalid/model.glb', mimeType: 'model/gltf-binary', sizeBytes: 100 })),
 }));
 vi.mock('@web/spaces/three-d/viewport/SceneViewport', () => ({
   default: (props: SceneViewportProps): React.JSX.Element => { viewportInputs(props); return <div data-testid='scene-viewport-boundary' />; },
@@ -147,5 +152,19 @@ describe('scene command failure feedback (inner#1724)', () => {
     await screen.findByTestId('scene-viewport-boundary');
     expect(reportError).toHaveBeenCalledTimes(1);
     expect(readSceneDocument(doc).objects).toEqual([{ ...OBJECT, locked: true }]);
+  });
+});
+
+describe('registered model load failures (inner#1690)', () => {
+  it('states why a model could not load and offers Retry only when retrying can help', async () => {
+    const { session, client } = fixture();
+    render(editorTree(session, client, 'visible'));
+    await screen.findByTestId('scene-viewport-boundary');
+    const props = viewportInputs.mock.calls.at(-1)![0] as SceneViewportProps;
+    act(() => { props.onModelStateChange?.(ID, 'failed', new ModelImportError('invalid', 'Model texture could not be decoded', { detail: 'textures/wood.png' })); });
+    expect(await screen.findByText('textures/wood.png')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: t('spaces.threeD.retry') })).toBeNull();
+    act(() => { props.onModelStateChange?.(ID, 'failed', new Error('Scene model request failed (503)')); });
+    expect(await screen.findByRole('button', { name: t('spaces.threeD.retry') })).toBeInTheDocument();
   });
 });

@@ -6,7 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } fro
 import postgres from "postgres";
 import type { Hono } from "hono";
 import type * as DomainModule from "@breatic/domain";
-import { initCore, loadLocales } from "@breatic/core";
+import { getAgentConfig, initCore, loadLocales } from "@breatic/core";
 import { activityRows, rejectActivityWrites, seedActivityProject, seedActivityUser } from "./helpers/account-activity-fixture.js";
 import type { ActivityProject } from "./helpers/account-activity-fixture.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
@@ -45,15 +45,16 @@ interface Chat extends ActivityProject {
 const QUESTION = { questions: [{ header: "Ratio", question: "Which ratio?", options: [{ label: "16:9" }, { label: "9:16" }] }] };
 
 /**
- * Seed a conversation owned by the fixture's authenticated user.
+ * Seed a conversation owned by the fixture's authenticated user, on the
+ * model a new conversation starts on (#1363).
  * @returns The real account, Project, conversation and cookie.
  * @throws {Error} When a fixture insert fails.
  */
 async function seedChat(): Promise<Chat> {
   const project = await seedActivityProject(sql);
   const [conversation] = await sql<{ id: string }[]>`
-    INSERT INTO conversations (user_id, project_id)
-    VALUES (${project.userId}, ${project.projectId}) RETURNING id
+    INSERT INTO conversations (user_id, project_id, agent_model)
+    VALUES (${project.userId}, ${project.projectId}, ${getAgentConfig().default_model}) RETURNING id
   `;
   if (!conversation) throw new Error("activity conversation fixture was not inserted");
   return { ...project, conversationId: conversation.id };

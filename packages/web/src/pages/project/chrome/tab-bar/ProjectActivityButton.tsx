@@ -157,6 +157,11 @@ function entryMessage(entry: ProjectActivityEntry): {
       if (tool !== undefined) {
         return { key: 'activity.type.generationSucceededTool', params: { actor, toolName: tool } };
       }
+      // A 3D model is named as the user called it (inner#1690).
+      const model = p['model'];
+      if (typeof model === 'object' && model !== null && typeof (model as { name?: unknown }).name === 'string') {
+        return { key: 'activity.type.assetUploadedModel', params: { actor, name: (model as { name: string }).name } };
+      }
       // Specific copy per media kind (image / video / audio); a `file` kind or
       // an absent kind falls back to the generic upload message (#1622).
       const k = p['kind'];

@@ -117,8 +117,8 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
       hash: HASH,
       nodeId: 'n1',
       spaceId: 's1',
-    });
-    expect(deps.sendToIngest).toHaveBeenCalledWith(file, TICKET, CFG);
+    }, undefined);
+    expect(deps.sendToIngest).toHaveBeenCalledWith(file, TICKET, CFG, undefined, undefined);
     expect(deps.onFailure).not.toHaveBeenCalled();
   });
 
@@ -177,7 +177,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
 
     await runMediaUpload(file, { projectId: 'p1', derived: true }, deps);
 
-    expect(deps.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey);
+    expect(deps.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey, undefined);
     expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith({
       fileUrl: 'https://cdn/p.png',
       assetId: 'asset-new',
@@ -280,7 +280,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
       size: file.size,
       hash: HASH,
       purpose: 'studio_avatar',
-    });
+    }, undefined);
   });
 
   // No hash, no upload (user decision 2026-07-26): the ledger keys on content,
@@ -429,7 +429,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
       size: file.size,
       hash: HASH,
       derived: true,
-    });
+    }, undefined);
   });
 });
 
@@ -456,7 +456,7 @@ describe('uploadMedia — the pipeline wired to the real network, as a promise',
       height: 480,
     });
     expect(assetsApi.requestUploadTicket).toHaveBeenCalledWith(
-      expect.objectContaining({ projectId: 'p1', derived: true, hash: HASH }),
+      expect.objectContaining({ projectId: 'p1', derived: true, hash: HASH }), undefined,
     );
   });
 

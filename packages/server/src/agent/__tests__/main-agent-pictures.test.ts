@@ -33,7 +33,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   const { modelProducing } = await import("../../__tests__/helpers/model-double.js");
   return {
     ...actual,
-    ...domainMock(),
+    ...(await domainMock()),
     finalizeTurn: actual.finalizeTurn,
     streamTextRetry: actual.streamTextRetry,
     buildAgentConfig: async () => ({
@@ -142,7 +142,7 @@ beforeEach(() => {
   h.add.mockReset().mockImplementation(async () => h.turnIndex);
   h.setUser.mockReset().mockResolvedValue(undefined);
   h.fold.mockReset().mockResolvedValue("none");
-  h.context.mockReset().mockImplementation(async () => ({ memoryContext: { projectMemory: "", conversationMemory: "" }, history: h.history, watermark: 0 }));
+  h.context.mockReset().mockImplementation(async () => ({ memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" }, history: h.history, watermark: 0 }));
   h.makePreparer.mockReset().mockReturnValue(h.prepare);
   h.prepare.mockReset().mockImplementation(async (sources: Array<{ label: string; sourceUrl: string }>): Promise<PreparedAgentPicture[]> => sources.map((source) => {
     const index = Number(new URL(source.sourceUrl).pathname.split("/").pop()?.split(".")[0]);

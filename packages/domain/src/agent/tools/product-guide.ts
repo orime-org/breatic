@@ -315,6 +315,18 @@ export function renderProductGuide(): string {
       "is greyed. While a reply is being written the button becomes a red square, which stops the reply. A " +
       `message holds up to ${CHAT_MESSAGE_MAX_CHARS.toLocaleString("en")} characters; at the limit a short message at the top ` +
       "of the screen says so, and again for each key the full box turns away.",
+    "Left of that button, the name of the model that answers this conversation shows with a small downward " +
+      `arrow. Clicking it opens a menu headed ${quoted(t("chat.modelPicker.label"))} that lists the models the ` +
+      "reader can pick, the current one highlighted. After a pick a spinner shows beside the name until it is " +
+      "saved, and then the name changes; a pick takes effect from the next message, and a reply " +
+      "already being written finishes on the model it started on. Each conversation keeps its own model, the same " +
+      "on every device, and a new conversation starts on the model picked last. Every model is open to every " +
+      "membership. While the list cannot be read the name is greyed and does not open, and a short message at the " +
+      `top of the screen says ${quoted(t("chat.modelPicker.listFailed"))}; when a pick cannot be saved, the ` +
+      `name stays on the previous model and such a message says ${quoted(t("chat.modelPicker.saveFailed"))}. A message ` +
+      "sent from a page left open after a model was taken off is turned away: the words stay in the box, the name " +
+      "then shows the model the conversation answers on, and a short message says " +
+      `${quoted(t("server.chat.model_unavailable"))}`,
     "The plus sign at the bottom left of the box attaches up to " +
       `${String(getAgentConfig().attachment_max_items)} pictures, videos, sounds, PDF, Word (.docx), Excel or ` +
       "plain text files to the next message; pasting such files into the box (a screenshot, a copied file) " +
@@ -507,8 +519,13 @@ export function renderProductGuide(): string {
     "Apart from that placeholder, a running, failed or expired task changes nothing on the node, which keeps " +
       "showing what it holds, or its empty look; what its tasks did is in the column of task icons described under Generating. A picture or " +
       "video node shows its width × " +
-      "height just outside its top-right corner. Video and sound nodes have their own play, time, volume and, " +
-      "for video, full-screen controls.",
+      "height just outside its top-right corner. Video and sound nodes have their own play, time and volume " +
+      "controls. Hovering a picture or video node shows a full-screen button (two arrows pointing out to " +
+      "opposite corners) over the top-right corner of the picture; it opens the picture or video large over a " +
+      "dark backdrop, a video going on from where it was, and an X at the top right of the screen, Escape or " +
+      "a click on the dark area closes it. The large preview that pops up on hovering a small picture or video " +
+      "anywhere (a generate panel slot, an @ reference, node history, a chat attachment) has the same button " +
+      "at its top-right corner.",
     "Every picture, video, sound and text node shows its name just above its top-left corner, after a type " +
     "icon. A node the reader makes is named Text, Image, Audio or Video in every language, and a node placed " +
       "from a proposal card has the name the card showed. A copied node or group is named COPY- followed by the " +
@@ -684,12 +701,17 @@ export function renderProductGuide(): string {
       `${templateMenuLine("audio", "A sound node")} A template whose model this ` +
       `deployment lacks reads ${quoted(t("canvas.template.unavailable"))} and cannot be picked. Picking one sets ` +
       "the panel's mode, model and settings to the template's and replaces that mode's prompt with the " +
-      "template's; nothing asks first. The pictures it needs are @'d in the prompt: a picture already " +
+      "template's; nothing asks first. A template with a shot list switches a video node to its multi-shot mode " +
+      "and writes the shots in place of the prompt, each with its seconds and its words. The pictures it needs are " +
+      "@'d in the prompt: a picture already " +
       "connected to the node is used as it is; for one that is missing, an empty node is placed to the left, " +
-      "connected and @'d, and a note at the top of the prompt says what to put in it. A template may also place " +
+      "connected and @'d, and a note at the top of the prompt says what to put in it (with a shot list, at the " +
+      "top of the first shot). A template may also place " +
       "picture or video nodes to the left that generate first, connected and @'d; a note at the top of the prompt " +
-      "says to generate them first. When a template feeds what it needs into those nodes too, a picture already " +
-      "connected to the node is connected to them as well. A template that brings " +
+      "says to generate them first. A picture such a template places for the first or end frame is connected " +
+      "but not @'d, and its note says to pick it into that frame once it has generated. When a template places " +
+      "nodes that take what it needs, a picture already " +
+      "connected to the node is connected to them as well, also when the node itself does not use it. A template that brings " +
       "files of its own places them as nodes to the left as well, connected and @'d, and one with steps to take " +
       "after it generates also places a text node listing them. Picking it " +
       "again on the same node reuses what it placed before. When the nodes or the panel, grown around the prompt, " +
@@ -1259,19 +1281,45 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.documentProposal.mediaLeftOut", { count: 1 }))}`,
     "",
     "## Timeline spaces",
-    `The central video preview sits above ${quoted(t("timeline.tracks"))}, with the ` +
-      `${quoted(t("timeline.visualTrack"))} track below. ${quoted(t("timeline.play"))} and ` +
+    `The central video preview sits above the toolbar and the tracks. ${quoted(t("timeline.play"))} and ` +
       `${quoted(t("timeline.pause"))} control playback; the slider below the preview selects its integer frame. ` +
-      "Selecting a clip shows its source name, start and duration in the bottom properties row and keeps the preview frame. " +
-      `${quoted(t("timeline.editStart"))} opens ${quoted(t("timeline.startFrame"))}; enter a whole frame ` +
-      `and press ${quoted(t("timeline.apply"))}. Clips marked ${quoted(t("timeline.conflict"))} also ` +
-      `appear in a selectable conflict list. ${quoted(t("timeline.conflictHelp"))}`,
+      `The bottom visual track is ${quoted(t("timeline.mainTrack"))}; tracks above it are named like ` +
+      `${quoted(t("timeline.track", { index: 2 }))}, and the preview shows the clip on the highest track at the playhead. ` +
+      "Each clip shows its name and its length as a timecode (hours:minutes:seconds:frames), as does the position beside the play button. Click a clip to select it, or an empty part of a track to clear the selection; " +
+      "the panel on the right shows its source name, " +
+      `${quoted(t("timeline.edit.track"))}, ${quoted(t("timeline.startFrame"))}, ${quoted(t("timeline.edit.inPoint"))} and ` +
+      `${quoted(t("timeline.edit.duration"))}, then its video's length in frames at the Timeline's frame rate. Type a whole frame and press Enter or leave the field to apply it. ` +
+      "Drag a clip to move it, onto another track to change track, or into the dashed row above the top track to create a " +
+      "new visual track. Drag the edges of the selected clip to trim it. " +
+      `The toolbar has ${quoted(t("timeline.edit.undo"))}, ${quoted(t("timeline.edit.redo"))}, ` +
+      `${quoted(t("timeline.edit.split"))} (splits the selected clip at the playhead), ` +
+      `${quoted(t("timeline.edit.duplicate"))} (places a copy right after it) and ${quoted(t("timeline.edit.delete"))}, ` +
+      `then three icon switches whose names show on hover, ${quoted(t("timeline.edit.magnet"))}, ${quoted(t("timeline.edit.snap"))} and ` +
+      `${quoted(t("timeline.edit.linkage"))}, and the ${quoted(t("timeline.edit.zoom"))} slider. The switches are yours and are kept for your account in this browser. ` +
+      `With ${quoted(t("timeline.edit.magnet"))} on, clips on ${quoted(t("timeline.mainTrack"))} play end to end: a dropped clip is inserted ` +
+      "and later clips move along, a deleted or trimmed clip closes its gap, and the start frame there is read only " +
+      `(${quoted(t("timeline.edit.magnetStartHint"))}). On other tracks, or with the magnet off, a clip dropped on another ` +
+      "covers it: the covered part is trimmed away, a clip covered in the middle splits in two, and a deleted clip leaves a gap. " +
+      `With ${quoted(t("timeline.edit.linkage"))} on, clips above a main-track clip move or are deleted with it. ` +
+      `${quoted(t("timeline.edit.snap"))} lines dragged edges up with other clip edges, the playhead and frame 0. ` +
+      `An empty track above the main track shows ${quoted(t("timeline.edit.deleteTrack"))}. ` +
+      "Keys: Left and Right move the selected clip one frame (Shift one second); on the main track with the magnet on they swap it with the clip before or after it; " +
+      "with nothing selected they move the playhead; " +
+      "Alt+Up and Alt+Down change its track, and Alt+Up on the top visual track adds a new visual track; Esc cancels a drag without changing anything; Delete or Backspace deletes; Cmd/Ctrl+D duplicates; Cmd/Ctrl+B splits; " +
+      "Cmd/Ctrl+Z undoes and Cmd/Ctrl+Shift+Z or Ctrl+Y redoes your own edits; N turns snapping on or off. " +
+      `Clips marked ${quoted(t("timeline.conflict"))} are listed under ${quoted(t("timeline.conflictList"))} below the properties ` +
+      `(${quoted(t("timeline.noConflicts"))} when there are none); pressing a row selects the clip, moves the playhead to its start ` +
+      "and scrolls the tracks to it. Each row names the clip's track and says why, as do the selected clip's properties, for example " +
+      `${quoted(t("timeline.conflictReason.missing_track"))}, which changing the clip's track fixes, or ` +
+      `${quoted(t("timeline.conflictReason.missing_source"))}, which deleting the clip fixes. ` +
+      `A row reading ${quoted(t("timeline.conflictReason.damaged"))} offers ${quoted(t("timeline.edit.delete"))}. ${quoted(t("timeline.conflictHelp"))}`,
     `${quoted(t("timeline.addMedia"))} in the track controls opens a form with ` +
       `${quoted(t("timeline.material.project"))} and ${quoted(t("timeline.material.local"))}. ` +
       `The Project list shows registered videos; ${quoted(t("timeline.material.more"))} reads its next page. ` +
       `For a local file press ${quoted(t("timeline.material.chooseFile"))}. The form's ` +
-      `${quoted(t("timeline.startFrame"))} starts at the sequence end and can be changed explicitly. ` +
-      `${quoted(t("timeline.material.confirm"))} confirms that position and adds a separate clip each time. ` +
+      `${quoted(t("timeline.edit.track"))} starts at the selected clip's track or ${quoted(t("timeline.mainTrack"))} and also offers ` +
+      `${quoted(t("timeline.edit.newTrack"))}; ${quoted(t("timeline.startFrame"))} starts at the sequence end and can be changed explicitly. ` +
+      `${quoted(t("timeline.material.confirm"))} confirms that position and adds a separate clip each time; on the main track with the magnet on, the form names the clip it will follow and the clip is inserted there, keeping the main track end to end. ` +
       `A local file uploads at that captured position; its file and position stay in the form after a failure. ` +
       `A permission change requires another confirmation after editing is available. ` +
       `${quoted(t("timeline.cancel"))} ends the current material selection; a registered upload remains in Project videos. ` +
@@ -1286,6 +1334,15 @@ export function renderProductGuide(): string {
     `The floating left rail starts with a plus icon, ${quoted(t("spaces.threeD.add"))}. Its menu offers ` +
       `${quoted(t("spaces.threeD.addBox"))} and ${quoted(t("spaces.threeD.addFigure"))}, which place a ` +
       `${quoted(t("spaces.threeD.box"))} or ${quoted(t("spaces.threeD.figure"))}. ` +
+      `The upload-arrow icon below it, ${quoted(t("spaces.threeD.importModel.title"))}, opens the import dialog; it is unavailable while you cannot edit. ` +
+      `The dialog takes ${quoted(t("spaces.threeD.importModel.chooseFiles"))}, ${quoted(t("spaces.threeD.importModel.chooseFolder"))} or files dropped on it: ` +
+      "a glTF 2.0 .glb, or a .gltf with its .bin and texture files, or a ZIP holding them. It checks the files, previews the model, " +
+      `and shows ${quoted(t("spaces.threeD.importModel.name"))}, which starts as the main file's name. With several main files, pick one under ` +
+      `${quoted(t("spaces.threeD.importModel.entry"))}; when files are missing it lists their paths and ${quoted(t("spaces.threeD.importModel.addResources"))} adds them. ` +
+      "A small button under the model's details shows or hides the list of its files. " +
+      `${quoted(t("spaces.threeD.importModel.confirm"))} starts the upload: the dialog waits and cannot be closed while the upload is being prepared, ` +
+      `then closes and the ${quoted(t("spaces.threeD.tasks"))} panel opens on the new row. You can start another import at once. ` +
+      "While a file is still being sent, closing this Space's tab is held back and leaving the page asks first. " +
       `The sparkle icon opens ${quoted(t("spaces.threeD.generate"))}, a dialog displaying ` +
       `${quoted(t("spaces.threeD.generationDev"))}. It has a disabled ${quoted(t("spaces.threeD.prompt"))} field, ` +
       `a disabled ${quoted(t("spaces.threeD.chooseReference"))} button under ${quoted(t("spaces.threeD.reference"))}, ` +
@@ -1298,8 +1355,16 @@ export function renderProductGuide(): string {
       "Click one to open its panel on the right; click the same button again to close it, or another to switch content. " +
       `An X with the ${quoted(t("spaces.threeD.closePanel"))} tooltip also closes the panel. Its content scrolls above the minimap. ` +
       "Opening a header menu while the panel is open keeps keyboard focus in that new menu. " +
-      `The tasks panel currently says ${quoted(t("spaces.threeD.generationDev"))}; the minimap button toggles the scene's top view; ` +
-      "clicking that map navigates your personal viewing camera.",
+      "The minimap button toggles the scene's top view; clicking that map navigates your personal viewing camera.",
+    `The ${quoted(t("spaces.threeD.tasks"))} panel lists every member's model imports in this Space, newest first, the same for everyone. ` +
+      `Each row shows the model's name, ${quoted(t("spaces.threeD.taskList.kind"))}, who started it (${quoted(t("spaces.threeD.taskList.you"))} for you, ${quoted(t("spaces.threeD.taskList.member"))} when the name is unknown) and its state: ` +
+      `${quoted(t("spaces.threeD.taskList.running"))} with a percentage while the uploader's page is sending it, ${quoted(t("spaces.threeD.taskList.registering"))}, ` +
+      `${quoted(t("spaces.threeD.taskList.done"))}, ${quoted(t("spaces.threeD.taskList.failed"))} or ${quoted(t("spaces.threeD.taskList.expired"))} after two hours without an end. ` +
+      `Resting the pointer on a cut-off name shows it whole. A finished row has ${quoted(t("spaces.threeD.taskList.place"))}: each press puts one copy on the ground at the centre of your view and selects it, ` +
+      "and the panel stays open for the next one; a row that timed out but whose model arrived later has it too. " +
+      `A failed row, and a timed-out one with no model, has ${quoted(t("spaces.threeD.taskList.remove"))}; the page that uploaded a failed row also has ` +
+      `${quoted(t("spaces.threeD.taskList.retry"))} when sending the same file again could succeed, until that page is reloaded. A row holding a model cannot be removed. A Viewer sees the list without buttons. ` +
+      `When there are none it says ${quoted(t("spaces.threeD.taskList.empty"))} The project activity records each import whose file was uploaded, under the model's name; importing a model this studio already has adds no activity entry.`,
     `The ${quoted(t("spaces.threeD.objects"))} panel lists scene objects; when empty it says ${quoted(t("spaces.threeD.empty"))} ` +
       "Click an object in the list or viewport to select it; Shift-click adds it to or removes it from the selection. " +
       "Click empty space to clear the selection. Selected objects have outlines; the list also marks selected rows and locked objects.",
@@ -1461,15 +1526,17 @@ export function renderProductGuide(): string {
       "audio, or clicking it, shows a row of icons above it: left, centre and right alignment (only when the " +
       "picture or video is narrower than the page; audio is always as wide as the page), " +
       `${quoted(t("spaces.document.media.caption"))} (a T), which opens a line under it for a caption, ` +
-      `${quoted(t("spaces.document.media.fullscreen"))} (two arrows pointing out to opposite corners, pictures only; double-clicking the ` +
-      "picture does the same, and an X at the top right closes it), " +
+      `${quoted(t("common.mediaViewer.fullscreen"))} (two arrows pointing out to opposite corners, pictures and videos; ` +
+      "double-clicking a picture does the same; a video goes on from where it was, and an X at the top right of the " +
+      "screen closes it), " +
       `${quoted(t("spaces.document.media.download"))} (an arrow into a tray), which downloads the file, and ` +
       `${quoted(t("spaces.document.media.delete"))} (a bin). Clicking a picture or video also shows a small square at each ` +
       "corner; dragging one changes its width. Dragging the picture, video or audio itself moves it, like its six " +
       "dots. Videos and audio play in place. When a video is too narrow for its playback controls, " +
-      "hover it to open a floating panel, or Tab to the video and press Enter. Editing icons occupy " +
-      "the first row and play, seek and fullscreen the second; Escape returns to the video. Someone " +
-      "who can only view the document still has playback controls, without editing icons. A caption " +
+      "hover it to open a floating panel, or Tab to the video and press Enter. The icons, full " +
+      "screen among them, occupy the first row and play and seek the second; Escape returns to the video. Someone " +
+      "who can only view the document still has playback controls, and the row of icons over a picture or video " +
+      "holds only full screen. A caption " +
       "draft stays copyable if permission becomes read-only or the media is removed; undoing the " +
       "removal restores its field. Copy a retained draft before closing the Space. Enter or blur saves " +
       "an editable changed caption; Escape cancels it to the latest shared caption.",
@@ -1632,8 +1699,8 @@ export const productGuide: Tool<z.infer<typeof inputSchema>, string> = tool({
     "panel and what is in it, the mini-tools on a picture, video or sound node, source slots, focus crops, " +
     "mentions, groups, placing a proposal card; 3D Space " +
     "objects, transforms, locks, personal view and collaboration; writing in a " +
-    "document; and what the screen shows when something goes wrong. Read it before telling the reader how to do something here: you cannot see " +
-    "their screen. Describe only what it says. Name a control with words on it by the quoted name it gives, " +
+    "document; and what the screen shows when something goes wrong. Read it before telling the reader how to do something here. " +
+    "Describe only what it says. Name a control with words on it by the quoted name it gives, " +
     "which is what the reader's screen shows; describe an icon-only control the way it describes it.",
   inputSchema,
   metadata: { runningLine: "chat.tool.readingGuide" },
