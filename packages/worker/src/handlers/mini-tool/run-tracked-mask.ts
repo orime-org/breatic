@@ -18,11 +18,10 @@ import {
 } from "@breatic/shared/mini-tools";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
 import {
-  advanceContainer, advanceGenerate, catalogModel, modelStepCategory, providerModel, storedRequest, TrackedMaskFailed, trackedMaskFailure, type ModelStepRun,
+  advanceContainer, advanceGenerate, catalogModel, eachSubmitted, modelStepCategory, providerModel, storedRequest, TrackedMaskFailed, trackedMaskFailure, type ModelStepRun,
 } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { advanceAnalysisJob, frozenLedger } from "@worker/handlers/mini-tool/run-container-analysis.js";
 import { modelInputTarget, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
-import { StillRunning } from "@worker/providers/still-running.js";
 import { upstreamBody } from "@worker/providers/upstream-body.js";
 
 type Execution = miniToolAnalysisService.MiniToolAnalysisExecution;
@@ -32,26 +31,6 @@ type TrackedMaskResult = Extract<MiniToolAnalysisResult, { kind: "tracked_mask" 
 const SOURCE = "00000000-0000-4000-8000-000000000001";
 const TRACKS = { forward: "00000000-0000-4000-8002-000000000000", reverse: "00000000-0000-4000-8007-000000000000" } as const;
 const trackOutputs = z.tuple([z.object({ rle_url: z.url() })]);
-
-/**
- * Run each step in turn, so every step is submitted before the pickup waits on any; the first wait is thrown after all.
- * @param steps - The steps.
- * @returns Their values.
- * @throws {StillRunning} When any step still runs.
- * @throws {Error} When a step fails otherwise.
- */
-async function eachSubmitted<T>(steps: readonly (() => Promise<T>)[]): Promise<T[]> {
-  const values: T[] = [];
-  let waiting: StillRunning | null = null;
-  for (const step of steps) {
-    try { values.push(await step()); } catch (error) {
-      if (!(error instanceof StillRunning)) throw error;
-      waiting ??= error;
-    }
-  }
-  if (waiting !== null) throw waiting;
-  return values;
-}
 
 /**
  * Advance one accepted tracked mask analysis through its steps.

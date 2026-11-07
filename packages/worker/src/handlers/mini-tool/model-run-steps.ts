@@ -10,15 +10,19 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { getMiniToolsConfig, getRawEnvVar, logger } from "@breatic/core";
 import {
-  backendUploadService, beginMiniToolStepAttempt, failMiniToolStep, getFullModelConfig, miniToolStepStateSchema, openMiniToolPlanJob, recordMiniToolStepIdentity,
+  backendUploadService, beginMiniToolStepAttempt, failMiniToolStep, getFullModelConfig, miniToolStepStateSchema, openContainerOutputs, openMiniToolPlanJob, recordMiniToolStepIdentity,
   recordMiniToolStepResult, taskRepo, upstreamStepRepo, type FullModelEntry, type MiniToolStepJson,
 } from "@breatic/domain";
 import {
-  DeadlinePassed, HttpRetryError, miniToolPlanJobRequestSchema, readMiniToolPlanJobReport, videoPresentationWorkKeyFor, type MiniToolPlanJobRequest, type MiniToolPlanRecipe,
+  DeadlinePassed, HttpRetryError, miniToolPlanJobRequestSchema, readMiniToolPlanJobReport, videoPresentationWorkKeyFor, type MiniToolPlanExact, type MiniToolPlanJobRequest,
+  type MiniToolPlanRecipe, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from "@breatic/shared";
-import type { ExpandFailureReason } from "@breatic/shared/mini-tools";
+import type { ExpandFailureReason, MiniToolExecutionRegistered } from "@breatic/shared/mini-tools";
 import { advanceMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { appendStep } from "@worker/handlers/mini-tool/prepare-model-input.js";
+import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
+import { registered } from "@worker/handlers/mini-tool/run-video-tool.js";
+import { FullLedgerInvalid, readJobLedger } from "@worker/handlers/video-presentation-recipes.js";
 import { HttpStatusError, UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 import { runPrediction } from "@worker/providers/wavespeed.js";
@@ -378,4 +382,128 @@ export async function advanceContainer(run: ModelStepRun, planned: ContainerStep
     reason = report.reason;
   }
   return planned.failed(reason);
+}
+
+/**
+ * The reduced exact time of seconds written in decimal.
+ * @param seconds - The seconds.
+ * @returns The exact time.
+ * @throws {RangeError} When the number is negative, not finite or only writable in exponent form.
+ */
+export function exactSeconds(seconds: number): MiniToolPlanExact {
+  const text = String(seconds);
+  if (!Number.isFinite(seconds) || seconds < 0 || text.includes("e")) throw new RangeError(`${text} seconds have no exact decimal form`);
+  const [whole, fraction = ""] = text.split(".");
+  const numerator = BigInt(whole! + fraction);
+  const denominator = 10n ** BigInt(fraction.length);
+  let [a, b] = [numerator, denominator];
+  while (b !== 0n) [a, b] = [b, a % b];
+  const divisor = a === 0n ? denominator : a;
+  return { numerator: String(numerator / divisor), denominator: String(denominator / divisor) };
+}
+
+/**
+ * Read a run's frozen full ledger; one that fails its receipt fails the run (§91 D3b-9).
+ * @param run - The run.
+ * @param receipt - The frozen receipt.
+ * @param deadlineAt - The task deadline.
+ * @returns The ledger.
+ * @throws {UpstreamTaskFailed} With `source_ledger_invalid` when the ledger fails its receipt.
+ * @throws {Error} When the read fails in transport.
+ */
+export async function runLedger(run: ModelStepRun, receipt: VideoPresentationLedgerReceipt, deadlineAt: number): Promise<VideoPresentationLedger> {
+  try {
+    return await readJobLedger(receipt, deadlineAt);
+  } catch (error) {
+    if (!(error instanceof FullLedgerInvalid)) throw error;
+    logger.error({ err: error, ctx: { taskId: run.taskId } }, `mini_tool_${run.log}_ledger_invalid`);
+    throw new UpstreamTaskFailed("container", "source_ledger_invalid");
+  }
+}
+
+/**
+ * Advance every chunk step, each submitted before the pickup waits on any (frames-split §5.4).
+ * @param run - The run.
+ * @param chunks - The chunk steps in order.
+ * @param deadlineAt - The task deadline.
+ * @returns Every chunk's output in order, or the first failure.
+ * @throws {StillRunning} While a chunk runs.
+ * @throws {Error} When persistence or the job boundary fails.
+ */
+export async function advanceChunks(run: ModelStepRun, chunks: readonly ContainerStep[], deadlineAt: number): Promise<{ keys: string[] } | Exclude<StepEnded, { key: string }>> {
+  const keys: string[] = [];
+  let running = false;
+  for (const chunk of chunks) {
+    let ended: StepEnded;
+    try { ended = await advanceContainer(run, chunk, deadlineAt); } catch (error) {
+      if (!(error instanceof StillRunning)) throw error;
+      running = true;
+      continue;
+    }
+    if (!("key" in ended)) return ended;
+    keys.push(ended.key);
+  }
+  if (running) throw new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms);
+  return { keys };
+}
+
+/** A run's one registered output job. */
+export interface RegisteredStep {
+  stepKey: string;
+  /** The output's upload name prefix. */
+  namePrefix: string;
+  container: "mp4" | "webm";
+  build: () => Promise<{ recipe: MiniToolPlanRecipe; inputs: { inputId: string; storageKey: string }[] }>;
+}
+
+/**
+ * Advance the job that writes the run's one registered output, up to the frozen retries.
+ * @param run - The run.
+ * @param planned - The step.
+ * @param userId - The run's user.
+ * @param deadlineAt - The task deadline.
+ * @returns The registered output, or null when every attempt failed.
+ * @throws {StillRunning} While the job runs.
+ * @throws {Error} When persistence, grants or registration fail.
+ */
+export async function advanceRegistered(run: ModelStepRun, planned: RegisteredStep, userId: string, deadlineAt: number): Promise<MiniToolExecutionRegistered | null> {
+  for (let attempt = 1; attempt <= run.container.chunkRetries + 1; attempt += 1) {
+    const jobId = `${run.taskId}:${planned.stepKey}:a${attempt}`;
+    const steps = await upstreamStepRepo.listSteps(run.taskId);
+    let step = steps.find((candidate) => storedRequest(candidate)?.jobId === jobId);
+    let request = step === undefined ? null : storedRequest(step);
+    if (request === null) {
+      const built = await planned.build();
+      const [grant] = await openContainerOutputs({ projectId: run.projectId, actingUserId: userId, taskId: run.taskId, deadlineAt,
+        outputs: [{ modality: "video", namePrefix: planned.namePrefix, ...(planned.container === "webm" ? { container: "webm" as const } : {}) }] });
+      if (grant === undefined) throw new Error(`The ${run.log} output requires its upload grant`);
+      request = miniToolPlanJobRequestSchema.parse({ schemaVersion: 2, jobId, containerClass: run.container.containerClass, deadlineAt, limits: run.container.limits,
+        inputs: built.inputs, outputs: [{ ...grant, outputIndex: 0, recipe: built.recipe }] });
+      step = await appendStep(run.taskId, { kind: "container_job", endpoint: run.container.containerClass, itemIndex: steps.length });
+    }
+    const job = await advanceRegisteredMiniToolPlanJob({ taskId: run.taskId, stepId: step!.id, chunkIndex: step!.position, chargeTo: "user", request });
+    const written = job.assets.find((entry) => entry.outputIndex === 0);
+    if (job.report.state === "done" && written !== undefined) return await registered(written.asset) as MiniToolExecutionRegistered;
+  }
+  return null;
+}
+
+/**
+ * Run each step in turn, so every step is submitted before the pickup waits on any; the first wait is thrown after all.
+ * @param steps - The steps.
+ * @returns Their values.
+ * @throws {StillRunning} When any step still runs.
+ * @throws {Error} When a step fails otherwise.
+ */
+export async function eachSubmitted<T>(steps: readonly (() => Promise<T>)[]): Promise<T[]> {
+  const values: T[] = [];
+  let waiting: StillRunning | null = null;
+  for (const step of steps) {
+    try { values.push(await step()); } catch (error) {
+      if (!(error instanceof StillRunning)) throw error;
+      waiting ??= error;
+    }
+  }
+  if (waiting !== null) throw waiting;
+  return values;
 }

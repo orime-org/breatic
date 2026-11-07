@@ -13,6 +13,8 @@ import { runMiniToolRemoveBackground } from "@worker/handlers/mini-tool/run-remo
 import { runMiniToolVideoTool } from "@worker/handlers/mini-tool/run-video-tool.js";
 import { runMiniToolLipSync } from "@worker/handlers/mini-tool/run-lip-sync.js";
 import { runMiniToolTransitions } from "@worker/handlers/mini-tool/run-transitions.js";
+import { runMiniToolErase } from "@worker/handlers/mini-tool/run-erase.js";
+import { runMiniToolExpand } from "@worker/handlers/mini-tool/run-expand.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { verdictStands } from "@worker/handlers/understand-failure.js";
 import { StillRunning } from "@worker/providers/still-running.js";
@@ -47,11 +49,14 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
       phase = "computation";
       try {
         assertBeforeDeadline(deadlineAt);
-        if (execution.tool === "video.extract-frames" || execution.tool === "video.split" || execution.tool === "video.lip-sync" || execution.tool === "video.transitions") {
+        if (execution.tool !== "video.remove-bg") {
           // Lip-sync walks its steps per pickup like the frames runner (DD §7.2, §7.3); its one output ends registered or with
           // the one §9.4 reason as its error, which the terminal commit carries as the run's error.
+          // Erase and expand walk theirs the same way and end with their own reason (execution design §10.4, §10.5).
           const pickup = execution.tool === "video.lip-sync" ? await runMiniToolLipSync(execution, task.userId, deadlineAt)
-            : execution.tool === "video.transitions" ? await runMiniToolTransitions(execution, task.userId, deadlineAt) : await runMiniToolVideoTool(execution, task.userId, deadlineAt);
+            : execution.tool === "video.transitions" ? await runMiniToolTransitions(execution, task.userId, deadlineAt)
+              : execution.tool === "video.erase" ? await runMiniToolErase(execution, task.userId, deadlineAt)
+                : execution.tool === "video.expand" ? await runMiniToolExpand(execution, task.userId, deadlineAt) : await runMiniToolVideoTool(execution, task.userId, deadlineAt);
           const outputs = execution.outputs.map((output, index) => ({ ...output, result: pickup.results.get(output.outputIndex) ?? record.outputs[index]?.result ?? null, late: false }));
           // Each poll commits what finished non-terminally; the one terminal commit waits for every output (design §7.11, line 622).
           if (pickup.waiting || outputs.some((output) => output.result === null)) {

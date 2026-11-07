@@ -53,7 +53,7 @@ export interface ExpandBox { frame: { width: number; height: number }; size: "83
 /**
  * The expand model's standard frame and the two rectangles a plan freezes in it (§10.5 standard frame row): a landscape or
  * square target is placed in 832x480, a portrait one in 480x832, scaled to fit and centred; `targetRoi` is the target's
- * rectangle (the composite crops it), `sourceRoi` the source's (the model input and mask place it).
+ * rectangle (the composite crops it), `sourceRoi` the source's (the model input and mask place it), with even sides.
  * @param layout - The even video expand layout.
  * @param source - The source's display size.
  * @param source.width - Its width.
@@ -68,7 +68,16 @@ export function expandBox(layout: VideoExpandLayout, source: { width: number; he
   const width = Math.round(layout.width * scale);
   const height = Math.round(layout.height * scale);
   const targetRoi = { x: Math.round((frame.width - width) / 2), y: Math.round((frame.height - height) / 2), width, height };
+  // The source layer is encoded as H.264, so its sides are even; the source is laid back over the result at its own
+  // rectangle, which hides the at most one pixel this takes off.
+  /**
+   * A side rounded down to even, at least 2.
+   * @param side - The side.
+   * @returns The even side.
+   * @throws {never} Never.
+   */
+  const even = (side: number): number => Math.max(2, 2 * Math.floor(side / 2));
   const sourceRoi = { x: targetRoi.x + Math.round(layout.sourceX * scale), y: targetRoi.y + Math.round(layout.sourceY * scale),
-    width: Math.round(source.width * scale), height: Math.round(source.height * scale) };
+    width: even(Math.round(source.width * scale)), height: even(Math.round(source.height * scale)) };
   return { frame, size: landscape ? "832*480" : "480*832", targetRoi, sourceRoi };
 }

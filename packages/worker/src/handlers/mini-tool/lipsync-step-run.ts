@@ -28,7 +28,7 @@ import { miniToolPlanJobRequestSchema, type MiniToolPlanExact, type MiniToolPlan
 import { presentationFrameCount, trackingClips, type MiniToolExecutionRegistered, type TrackingClips } from "@breatic/shared/mini-tools";
 import { lipsyncFacesFailureLine, lipsyncStepCategory, lipsyncTrackJoinFailureLine } from "@worker/handlers/mini-tool/lipsync-steps.js";
 import {
-  advanceContainer, advanceGenerate, catalogModel, providerModel, runsOf, storedRequest, type ContainerStep, type ModelStepRun, type StepEnded,
+  advanceContainer, advanceGenerate, catalogModel, exactSeconds, providerModel, runsOf, storedRequest, type ContainerStep, type ModelStepRun, type StepEnded,
 } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { appendStep, prepareModelInput, preparedRequest, type PreparingRun } from "@worker/handlers/mini-tool/prepare-model-input.js";
 import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
@@ -142,19 +142,6 @@ async function ledgerOf(execution: LipSync, deadlineAt: number): Promise<VideoPr
     logger.error({ err: error, ctx: { taskId: execution.taskId } }, "mini_tool_lipsync_ledger_invalid");
     throw new UpstreamTaskFailed("container", "source_ledger_invalid");
   }
-}
-
-/**
- * The reduced exact time of seconds written in decimal.
- * @param seconds - The seconds.
- * @returns The exact time.
- * @throws {RangeError} When the number is negative, not finite or only writable in exponent form.
- */
-function exactSeconds(seconds: number): MiniToolPlanExact {
-  const text = String(seconds);
-  if (!Number.isFinite(seconds) || seconds < 0 || text.includes("e")) throw new RangeError(`${text} seconds have no exact decimal form`);
-  const [whole, fraction = ""] = text.split(".");
-  return exact(BigInt(whole! + fraction), 10n ** BigInt(fraction.length));
 }
 
 /**
