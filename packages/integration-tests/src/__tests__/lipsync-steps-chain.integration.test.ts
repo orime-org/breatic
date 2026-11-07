@@ -115,6 +115,7 @@ interface Fixture { execution: Record<string, unknown> & { taskId: string; perso
 let pg: ReturnType<typeof createPgClient>;
 let publicUrl: (key: string) => string;
 let submitted: Job[];
+let jsonType: string;
 let scripted: Map<string, Record<string, unknown>>;
 // Per-person provider behaviour of the generation submit.
 let genFault: Partial<Record<Person, unknown>>;
@@ -132,6 +133,11 @@ function configure(): void {
  * @returns The report.
  */
 function done(request: Job): Record<string, unknown> {
+  // The Worker measures each written output by its bytes and fails the job when that differs from the planned type
+  // (ingest job-write.ts); a faces table is JSON text.
+  if (request.outputs.some((output) => output.recipe.kind === "lipsync_faces" && output.contentType !== jsonType)) {
+    return { schemaVersion: 2, state: "failed", reason: "internal", outputs: [], usage: { wallMs: 1000, cpuUsec: 2000000 } };
+  }
   return { schemaVersion: 2, state: "done", usage: { wallMs: 1000, cpuUsec: 2000000 }, outputs: request.outputs.map((output) => ({
     outputIndex: output.outputIndex, storageKey: output.storageKey, sha256: "9".repeat(64), sizeBytes: 2048, contentType: output.contentType,
     ...(output.contentType.startsWith("video/") ? { width: 320, height: 180, durationSeconds: 2, cover: null, upright: null } : {}) })) };
@@ -147,6 +153,7 @@ function failedReport(): Record<string, unknown> {
 
 beforeAll(async () => {
   configure(); loadLocales(); pg = createPgClient(inject("DATABASE_URL"), { name: "lipsync-chain", max: 6 });
+  jsonType = await sniffMimeType(new TextEncoder().encode('{"frames":[]}'));
   const storage = await getStorageAdapter(); publicUrl = storage.publicUrl.bind(storage);
 });
 beforeEach(() => {
@@ -392,7 +399,7 @@ describe("lip-sync step bodies after track submits (ยง97 D21; execution design ย
       expect(job.jobId).toContain(f.execution.persons.find((p) => p.personId === person)!.stepKeys.faces);
       expect(bound(job, recipe.inputId)).toBe(preparedKey);
       expect(recipe.profile).toMatchObject({ id: "opencv-yunet-2023mar" });
-      expect(job.outputs[0]).toMatchObject({ storageKey: videoPresentationWorkKeyFor(SOURCE_KEY, job.jobId), contentType: "application/json" });
+      expect(job.outputs[0]).toMatchObject({ storageKey: videoPresentationWorkKeyFor(SOURCE_KEY, job.jobId), contentType: jsonType });
       expect(await pinned(f.execution.taskId)).toContain(job.outputs[0]!.storageKey);
       expect(await assetsAt([job.outputs[0]!.storageKey])).toBe(0);
     }

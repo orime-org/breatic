@@ -459,7 +459,8 @@ async function personStep(execution: LipSync, kind: "track" | "faces" | "clip" |
             x_max: Math.round(rect.x + (box.x + box.width) * rect.width), y_max: Math.round(rect.y + (box.y + box.height) * rect.height) }] }, "person") as Record<string, MiniToolStepJson>;
         } }, userId, deadlineAt);
     case "faces":
-      return personContainer(execution, keys.faces, "application/json", async () => {
+      // The faces table is JSON text, measured by its bytes as text/plain like every analysis table.
+      return personContainer(execution, keys.faces, "text/plain", async () => {
         const [prepared, track] = [(await preparedOf(execution)).outputs[0]!.storageKey, await objectOf(execution, personId, "track", userId, deadlineAt)];
         return { recipe: { kind: "lipsync_faces", inputId: PREPARED, track: inputOf(TRACK, 0), profile: getMiniToolsConfig().analyses.people.profile },
           inputs: [{ inputId: PREPARED, storageKey: prepared }, { inputId: inputOf(TRACK, 0), storageKey: track }] };
