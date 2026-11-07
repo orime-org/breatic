@@ -29,6 +29,11 @@ export interface CanvasCapabilityAnswer {
  * out, since they generate nothing — which says where they are not without
  * saying what they are.
  */
+/** Where a picture's or video's look comes from, so a named style is not taken for a production pipeline. */
+const LOOK_NOTE =
+  "Every image and video mode draws in whatever look its prompt names (a 3D render, anime, live action, watercolour); " +
+  "a look comes from the prompt and needs no 3D modelling or rigging.";
+
 const TEXT_NODE_NOTE = [
   "text node: holds words and generates nothing, so no mode applies to it.",
   "- A mention names the node rather than copying it: what goes out is whatever that node holds at the moment the reader presses Generate, so editing the node changes what every mention of it sends.",
@@ -57,7 +62,7 @@ export function renderCapabilitiesForModel(answer: CanvasCapabilityAnswer): stri
     const lines = node.modes.map((mode) => `- ${mode.mode} (${mode.label}): ${mode.what}`);
     return [`${node.nodeType} node:`, ...lines].join("\n");
   });
-  return [...blocks, TEXT_NODE_NOTE].join("\n\n");
+  return [...blocks, LOOK_NOTE, TEXT_NODE_NOTE].join("\n\n");
 }
 
 export const canvasCapabilities: Tool<

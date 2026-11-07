@@ -29,7 +29,7 @@ export const CHARACTER_DESIGN_FROM_TEXT: GenerationTemplate = {
   inputs: [],
   steps: [],
   agentNote:
-    "a new character designed from the reader's description and style as one full-body picture, then drawn into a full character sheet; for when there is no picture of the character yet",
+    "a new character designed from the reader's description as one full-body picture, then drawn into a full character sheet; for when there is no picture of the character yet",
   goal: "character",
   triggers: {
     asks: ["design a character for me", "create a new character", "I need a character but have no picture of it"],
