@@ -7,6 +7,19 @@ import { findBindingByUser, insertBinding } from "@server/modules/referral/refer
 import type { ReferralSource } from "@server/modules/referral/referral-binding.repo.js";
 import { parseReferralCode } from "@server/modules/referral/referral-code.js";
 import { findCodeByCode } from "@server/modules/referral/referral-code.repo.js";
+import type { StoredReferralCode } from "@server/modules/referral/referral-code.repo.js";
+
+/**
+ * The active code that text names, if any: what a sign-up or a binding accepts.
+ * @param raw - The code as typed or carried.
+ * @param tx - The caller's transaction, if any.
+ * @returns The stored code, or null when the text is no code or the code is not active.
+ */
+export async function findActiveCode(raw: string, tx?: DbTx): Promise<StoredReferralCode | null> {
+  const parsed = parseReferralCode(raw);
+  const code = parsed === null ? null : await findCodeByCode(parsed, tx);
+  return code?.status === "active" ? code : null;
+}
 
 export type BindRefusal = "invalid_code" | "already_bound" | "not_eligible" | "already_paid";
 export type BindOutcome = { ok: true } | { ok: false; reason: BindRefusal };
@@ -29,9 +42,8 @@ export async function bindReferral(
   input: { userId: string; code: string; source: ReferralSource },
   tx: DbTx,
 ): Promise<BindOutcome> {
-  const parsed = parseReferralCode(input.code);
-  const code = parsed === null ? null : await findCodeByCode(parsed, tx);
-  if (code === null || code.status !== "active") return { ok: false, reason: "invalid_code" };
+  const code = await findActiveCode(input.code, tx);
+  if (code === null) return { ok: false, reason: "invalid_code" };
 
   await lockAccountRow(input.userId, tx);
   if ((await findBindingByUser(input.userId, tx)) !== null) return { ok: false, reason: "already_bound" };

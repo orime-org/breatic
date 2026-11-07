@@ -20,8 +20,7 @@ import crypto from "node:crypto";
 import * as userRepo from "@server/modules/auth/user.repo.js";
 import { SignupReferralRefused, createAccount, hashPassword } from "@server/modules/auth/auth.service.js";
 import type { SignupReferral, SignupReferralOutcome } from "@server/modules/auth/auth.service.js";
-import { parseReferralCode } from "@server/modules/referral/referral-code.js";
-import { findCodeByCode } from "@server/modules/referral/referral-code.repo.js";
+import { findActiveCode } from "@server/modules/referral/referral-binding.service.js";
 import { buildSignupCodeMail } from "@server/modules/auth/auth-mail.js";
 import { getSignupCodeConfig } from "@server/config/auth.js";
 import { logMailResult } from "@server/utils/log-mail.js";
@@ -131,12 +130,12 @@ return 1
 `;
 
 /**
- * Replace the password and language of a pending sign-up for the same
+ * Replace the password and referral code of a pending sign-up for the same
  * address, keeping its lifetime. A pending sign-up for another address is
- * deleted.
+ * deleted; a blank code removes the stored one.
  *
  * KEYS[1] pending sign-up · ARGV[1] normalized address · ARGV[2] password
- * hash.
+ * hash · ARGV[3] referral code or '' · ARGV[4] its source or ''.
  * Returns the milliseconds the sign-up has left · 0 no such sign-up or another address.
  */
 const UPDATE_PENDING_SCRIPT = `
@@ -168,9 +167,8 @@ const SIGNUP_REFERRAL_SOURCES: readonly SignupReferral["source"][] = ["signup_li
  */
 async function checkSignupReferral(referral: SignupReferral | undefined): Promise<SignupReferral | undefined> {
   if (referral === undefined || !env.PAYMENT_ENABLED) return undefined;
-  const code = parseReferralCode(referral.code);
-  const found = code === null ? null : await findCodeByCode(code);
-  if (found === null || found.status !== "active") throw new SignupReferralRefused();
+  const found = await findActiveCode(referral.code);
+  if (found === null) throw new SignupReferralRefused();
   return { code: found.code, source: referral.source };
 }
 
@@ -312,7 +310,8 @@ export async function resendSignupCode(ticket: string | null): Promise<SignupCod
  * account.
  *
  * KEYS[1] pending sign-up · ARGV[1] sha256 of the submitted code · ARGV[2] comparisons allowed.
- * Returns {-1} missing · {-2} code used up · {0} wrong · {1, email, passwordHash} match.
+ * Returns {-1} missing · {-2} code used up · {0} wrong ·
+ * {1, email, passwordHash, referralCode or '', referralSource or ''} match.
  */
 const COMPARE_SCRIPT = `
 if redis.call('EXISTS', KEYS[1]) == 0 then return {-1} end
