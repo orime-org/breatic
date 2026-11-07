@@ -69,7 +69,7 @@ const DEFAULT_RETRY_DELAY_MS = 100;
 /**
  * Thrown when the per-project Space count lock could not be acquired within
  * the retry budget — other Space changes held it the whole time. The caller
- * maps this to `BUSY` so the reader is told to try again.
+ * maps this to `BUSY` so the user is told to try again.
  */
 export class SpaceCountLockBusyError extends Error {
   /**

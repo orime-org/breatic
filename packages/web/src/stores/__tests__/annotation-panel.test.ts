@@ -3,7 +3,7 @@
 
 /**
  * Expanding an annotation is the fifth panel in the one exclusive node-anchored
- * slot (#1881 §8.7.3). It is local state and never Yjs: which note this reader
+ * slot (#1881 §8.7.3). It is local state and never Yjs: which note this user
  * has open is nobody else's business.
  */
 

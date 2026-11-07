@@ -220,7 +220,7 @@ describe('formatAudioParam — a value reads in its own unit', () => {
     expect(formatAudioParam('latency_mode', 2, t)).toBe('2');
   });
 
-  // A clip length reads in the reader's own language: all five catalogs carry
+  // A clip length reads in the user's own language: all five catalogs carry
   // a translation for it, while `x` and `dB` have none — which is what makes
   // those two symbols rather than words.
   it('reads a clip length through the translator', () => {

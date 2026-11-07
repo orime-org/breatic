@@ -25,7 +25,7 @@ const PAGE_TRIGGER_DISTANCE = 24;
  * The height is the same in every state: a full result set scrolls inside it,
  * a short one leaves the space below empty, and the loading and empty lines
  * centre in it. The popover opens upward, so a box that grew and shrank with
- * its contents would take the search box with it, out from under the reader's
+ * its contents would take the search box with it, out from under the user's
  * hands — and on every keystroke, since each one restarts the request.
  */
 const LIST_ROWS = 5;
@@ -64,7 +64,7 @@ interface VoiceListProps {
   onRetry: () => void;
   /** The one player every sample in the settings panel goes through. */
   player: SamplePlayer;
-  /** The language the reader picked, for a voice with a sample in each. */
+  /** The language the user picked, for a voice with a sample in each. */
   language: unknown;
 }
 
@@ -135,7 +135,7 @@ export const VoiceList = React.memo(function VoiceList({
         />
       </div>
       {/* One height for every state this list can be in. A box that grew with
-          its contents would move under the reader on each keystroke, since the
+          its contents would move under the user on each keystroke, since the
           popover opens upward and a search changes how many rows there are —
           so a short result set leaves the space below it empty instead
           (user 2026-09-03). */}
@@ -256,7 +256,7 @@ export const VoiceList = React.memo(function VoiceList({
               )}
               {list.moreFailed && !list.loadingMore && (
                 // Scrolling again would retry on its own, but only after the
-                // reader scrolls up and back down — from where they are
+                // user scrolls up and back down — from where they are
                 // standing the list just stopped.
                 <div className='flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground'>
                   {/* Its own sentence: the whole-list one is written for an

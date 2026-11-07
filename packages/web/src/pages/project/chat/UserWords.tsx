@@ -11,18 +11,18 @@ import { attachmentLabel } from '@web/pages/project/chat/attachment-label';
 import { REFERENCE_BLOCK_CLASS } from '@web/pages/project/chat/chat-reference';
 
 interface UserWordsProps {
-  /** What the reader typed, references written as markers. */
+  /** What the user typed, references written as markers. */
   content: string;
   /** What the message carried. */
   attachments: readonly ChatAttachedChip[] | undefined;
 }
 
 /**
- * What the reader typed, as they typed it: plain characters, with each
+ * What the user typed, as they typed it: plain characters, with each
  * reference to one of this message's attachments drawn as the block it was
  * in the box. A marker for anything else is shown as the text it is.
  * @param root0 - Component props.
- * @param root0.content - What the reader typed.
+ * @param root0.content - What the user typed.
  * @param root0.attachments - What the message carried.
  * @returns The words.
  */

@@ -295,7 +295,7 @@ function VideoGeneratePanelBody({
   const shots = useShots(projectId, spaceId, nodeId);
 
   // The shot whose box is open (#1201): the first when the mode opens, then
-  // the one the reader opens or adds, kept by `nextOpenShot` across every
+  // the one the user opens or adds, kept by `nextOpenShot` across every
   // change to the list. Leaving the mode forgets it, so coming back opens the
   // first shot again.
   const [openedShot, setOpenedShot] = React.useState<string | null>(null);
@@ -307,7 +307,7 @@ function VideoGeneratePanelBody({
   const expandedShotRef = React.useRef(expandedShot);
   expandedShotRef.current = expandedShot;
   const shotEditors = React.useRef(new Map<string, PromptEditorHandle>());
-  // Set by the reader's own open, add or remove, and spent once that shot's
+  // Set by the user's own open, add or remove, and spent once that shot's
   // box is shown; a collaborator's change never moves the caret.
   const focusOnOpen = React.useRef(false);
   React.useEffect(() => {
@@ -321,7 +321,7 @@ function VideoGeneratePanelBody({
   }, []);
   // The rail refuses a row the prompt cannot take itself (#1966), so this
   // only routes the insert: the open shot's box, else the main prompt. A chip
-  // put into a closed shot would arrive where the reader cannot see it. Shot
+  // put into a closed shot would arrive where the user cannot see it. Shot
   // boxes are mounted only in the multi-shot mode and leave the map when
   // they unmount.
   const insertTarget = React.useCallback(
@@ -535,7 +535,7 @@ function VideoGeneratePanelBody({
   const onAddShot = React.useCallback(() => {
     const { spec: liveSpec, total: liveTotal } = liveShots();
     const added = liveSpec ? addStoryboardShot(projectId, spaceId, nodeId, liveTotal, liveSpec.maxShots) : null;
-    // A shot the reader adds is one they are about to write.
+    // A shot the user adds is one they are about to write.
     if (added !== null) onExpandShot(added);
   }, [projectId, spaceId, nodeId, liveShots, onExpandShot]);
   const onStepShot = React.useCallback(

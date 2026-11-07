@@ -5,7 +5,7 @@
  * The agent reads a template in full before proposing it (inner#1807): the
  * proposal tool's description indexes the templates in a line each, and this
  * tool returns one template's nodes, wiring, inputs and prompts in the
- * reader's language, how to send them, and the craft that fits its nodes.
+ * user's language, how to send them, and the craft that fits its nodes.
  */
 
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
@@ -83,7 +83,7 @@ describe("get_generation_template", () => {
     expect(metadata).toEqual({ runningLine: "chat.tool.readingTemplate" });
   });
 
-  it("returns every registered template's full text, the prompts in the reader's language", async () => {
+  it("returns every registered template's full text, the prompts in the user's language", async () => {
     for (const locale of ["en", "zh-CN"]) {
       setLocale(locale);
       for (const template of GENERATION_TEMPLATES) {
@@ -101,10 +101,10 @@ describe("get_generation_template", () => {
     expect(said).toContain("{ id } in template on the anchor, { id, key } on each other node");
   });
 
-  it("says to fill every tweak segment before sending, from the reader's words or by asking or choosing as the working rules say, and never to send one as it is (breatic#1361)", async () => {
+  it("says to fill every tweak segment before sending, from the user's words or by asking or choosing as the working rules say, and never to send one as it is (breatic#1361)", async () => {
     const said = await read("character-design-from-text");
     expect(said).toContain(
-      "fill every tweak segment with words before you send it: from what the reader said, or, for one their words leave open, after asking them or choosing as your working rules say.",
+      "fill every tweak segment with words before you send it: from what the user said, or, for one their words leave open, after asking them or choosing as your working rules say.",
     );
     expect(said).toContain("A template's tweak segment is never sent as it is.");
     expect(said).not.toContain("your own choice");
@@ -113,10 +113,10 @@ describe("get_generation_template", () => {
 
   it("asks for a character described in words alone, and leaves an unnamed style to the working rules rather than choosing one itself (breatic#1361)", async () => {
     const said = await read("character-design-from-text");
-    expect(said).toContain("from the reader's description as one full-body picture");
-    expect(said).not.toContain("the reader's description and style");
+    expect(said).toContain("from the user's description as one full-body picture");
+    expect(said).not.toContain("the user's description and style");
     expect(said).toContain(TEMPLATE_CRAFT.character);
-    expect(TEMPLATE_CRAFT.character).not.toContain("When the reader names no style");
+    expect(TEMPLATE_CRAFT.character).not.toContain("When the user names no style");
   });
 
   it("adds the craft that fits the template: video craft for a video, character craft for a character goal", async () => {

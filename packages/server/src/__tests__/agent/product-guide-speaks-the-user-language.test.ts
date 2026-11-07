@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The product guide names controls in the reader's language, inside a turn.
+ * The product guide names controls in the user's language, inside a turn.
  *
- * The request pins the reader's locale for everything it runs; the guide reads
+ * The request pins the user's locale for everything it runs; the guide reads
  * it when the SDK calls the tool, several awaits and a stream later. A lost
  * locale would not throw -- the guide would quietly name every button in
- * English while the reader's screen shows another language.
+ * English while the user's screen shows another language.
  */
 import { describe, it, expect, vi, beforeAll } from "vitest";
 import type * as CoreModule from "@breatic/core";
@@ -80,7 +80,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage: vi.fn(async () => 1),
-  addReaderMessage: vi.fn(async () => ({ turnIndex: 1, closedAsks: [] })),
+  addUserMessage: vi.fn(async () => ({ turnIndex: 1, closedAsks: [] })),
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
 

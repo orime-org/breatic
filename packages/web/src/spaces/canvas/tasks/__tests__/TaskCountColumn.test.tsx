@@ -10,7 +10,7 @@
  *
  * A state this node has nothing in draws nothing: zero is not a value the
  * column renders, it is the absence of that count (user 2026-09-06). The ones
- * that are there keep their lifecycle order, so a reader who has seen the
+ * that are there keep their lifecycle order, so a user who has seen the
  * column before knows which is which without reading the numbers.
  */
 
@@ -84,7 +84,7 @@ describe('TaskCountColumn', () => {
   });
 
   it('names the state and its count when the pointer rests on it', () => {
-    // An icon on its own says nothing to a reader meeting it for the first
+    // An icon on its own says nothing to a user meeting it for the first
     // time, and the number it replaced has to stay reachable.
     renderColumn({ counts: COUNTS, endedShown: true, openFor: null, onOpen: vi.fn() });
 
@@ -147,7 +147,7 @@ describe('TaskCountColumn', () => {
     const cell = screen.getByTestId('task-count-done').className;
     expect(cell).toContain('hover-enabled:bg-background');
     expect(cell).not.toMatch(/hover-enabled:bg-accent(\s|$)/);
-    // A fill darker than the unopened cells beside it made the one the reader
+    // A fill darker than the unopened cells beside it made the one the user
     // picked read as the least present of the four.
     expect(cell).not.toContain('bg-muted');
   });

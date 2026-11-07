@@ -59,7 +59,7 @@ function cutFractions(side: number | undefined, parts: number): number[] {
 /**
  * The grid tool's layer over the node's picture while its panel is open on it
  * (inner#1303 §6.4, A15): the lines the picture is cut along, and one tile per
- * cell the reader picks or leaves out. The tile's checkbox is its one control
+ * cell the user picks or leaves out. The tile's checkbox is its one control
  * (Tab, Space); a click anywhere on the tile toggles it too. A tile left out is
  * dimmed; one too small on screen for its checkbox shows the dimming alone.
  * @param root0 - Component props.

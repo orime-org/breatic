@@ -136,7 +136,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     // While waiting the button stays focusable: a native `disabled` would
     // drop keyboard focus to <body> the moment it is pressed (measured in
     // Chromium 151), and a dialog kept open after a failed reply needs the
-    // reader's focus still on its confirm button.
+    // user's focus still on its confirm button.
     return (
       <button
         {...props}

@@ -128,9 +128,9 @@ const READ_ONLY_GROUPS: ReadonlyArray<ShortcutGroup> = CANVAS_SHORTCUT_GROUPS
   .filter((group) => group.rows.length > 0);
 
 /**
- * The groups a reader should see: a read-only member only gets the rows that
+ * The groups a user should see: a read-only member only gets the rows that
  * do something for them, and a group left empty is dropped.
- * @param readOnly - Whether the reader cannot edit the canvas.
+ * @param readOnly - Whether the user cannot edit the canvas.
  * @returns The groups to show.
  */
 export function visibleShortcutGroups(readOnly: boolean): ReadonlyArray<ShortcutGroup> {

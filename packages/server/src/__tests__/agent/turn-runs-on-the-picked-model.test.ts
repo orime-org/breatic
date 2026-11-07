@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * A turn runs on the model the route resolved from the reader's pick (#1363),
+ * A turn runs on the model the route resolved from the user's pick (#1363),
  * and its reply records that model, which a segment resumed by an answer to
  * its card runs on too.
  */
@@ -59,7 +59,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
-  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
+  addUserMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
@@ -71,7 +71,7 @@ vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }
 const { MainAgent } = await import("@server/agent/main-agent.js");
 const { runWithContext } = await import("@breatic/core");
 
-describe("a turn and the model the reader picked", () => {
+describe("a turn and the model the user picked", () => {
   it("is assembled on that model and records it in its reply", async () => {
     await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
       const turn = await new MainAgent().chat("hello", undefined, [], undefined, {}, "anthropic/claude-opus-5.5");

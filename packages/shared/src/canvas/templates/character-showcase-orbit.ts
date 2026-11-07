@@ -21,10 +21,10 @@ export const CHARACTER_SHOWCASE_ORBIT: GenerationTemplate = {
   inputs: [{ key: "reference", type: "image" }],
   steps: [],
   agentNote:
-    "a 6-second video in which the camera circles the reference character from the front round to the back while they stand still, at one height and distance, to show the whole look; when the reader comes back with the result, check that it shows different sides of the character, not the character turning round",
+    "a 6-second video in which the camera circles the reference character from the front round to the back while they stand still, at one height and distance, to show the whole look; when the user comes back with the result, check that it shows different sides of the character, not the character turning round",
   goal: "character",
   triggers: {
     asks: ["show off my character's look", "spin around the character", "a turnaround video"],
-    offerWhen: ["the reader has just made a character sheet or a costume sheet and wants to see the character in motion"],
+    offerWhen: ["the user has just made a character sheet or a costume sheet and wants to see the character in motion"],
   },
 };

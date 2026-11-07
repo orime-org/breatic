@@ -95,7 +95,7 @@ const MODES = [
  * @param type - The node the generation is on.
  * @param mode - The mode it is set to.
  * @param model - The model it names.
- * @param source - The kind of empty node the reader is asked for.
+ * @param source - The kind of empty node the user is asked for.
  * @returns The proposal.
  */
 function onePiece(

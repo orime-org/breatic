@@ -8,7 +8,7 @@
  * says which mode it runs in, so the name does not say it again. Where one
  * list holds several versions of one model under the same name (Gemini's text,
  * image and reference endpoints all run the multi-shot mode), each joins on
- * its `variant`, so the reader can tell them apart.
+ * its `variant`, so the user can tell them apart.
  */
 
 /** The parts of a catalog entry its name is made from. */

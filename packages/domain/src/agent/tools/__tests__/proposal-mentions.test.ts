@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The agent @s the nodes it wires in, for the reader (inner#1315, user
+ * The agent @s the nodes it wires in, for the user (inner#1315, user
  * 2026-10-09): a `ref` segment in a prompt is an @ of another proposed node,
  * every node going into the pool is @'d, an @ of a node that lands empty
  * comes with a note saying what to do first, and the lyrics box is @'d at
@@ -33,8 +33,8 @@ const EDIT = "nano-banana-pro-edit-ultra";
 const DRAW = "nano-banana-2";
 
 /**
- * An empty source node for the reader's picture.
- * @param name - What the reader sees.
+ * An empty source node for the user's picture.
+ * @param name - What the user sees.
  * @returns The node.
  */
 function emptyPicture(name: string): ProposalNode {

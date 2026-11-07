@@ -366,7 +366,7 @@ describe("fetchMedia — the size limit", () => {
     // The ceiling is what this server will handle, so it holds for whichever
     // kind an address turns out to hold. An image is settled off the peek and
     // its length arrives with that same peek, so the refusal costs nothing and
-    // the reader is told the size rather than being sent to the endpoint to
+    // the user is told the size rather than being sent to the endpoint to
     // hear a refusal in the endpoint's own words.
     httpRequestMock.mockResolvedValueOnce(
       head({ "content-type": "image/png", "content-length": "31000000" }),
@@ -451,7 +451,7 @@ describe("fetchMedia — the size limit", () => {
 
   it("says a file is over the limit without inventing a size it does not know", async () => {
     // The stream path only knows "more than the limit arrived". Reporting the
-    // cut-off point as the file size is a number the reader can act on and it
+    // cut-off point as the file size is a number the user can act on and it
     // would be wrong.
     httpRequestMock
       .mockResolvedValueOnce(head({ "content-type": "video/mp4" }))
@@ -703,7 +703,7 @@ describe("fetchMedia — where it will not go", () => {
   it("says nothing about what it found there, and says why it refused", async () => {
     // A status code is the answer to "is something listening on this port",
     // and that is the question this gate exists to leave unanswered. Why we
-    // declined is a different fact and the reader typed the address, so
+    // declined is a different fact and the user typed the address, so
     // withholding it only leaves the model saying nothing useful.
     const failure = await fetchMedia({ ...base, url: "http://169.254.169.254/x.mp4" }).catch(
       (err: MediaUnavailable) => err,
@@ -750,7 +750,7 @@ describe("fetchMedia — following a redirect", () => {
   });
 
   it("says it was the redirect target that is not public, not the address given", async () => {
-    // The address the reader typed is public — a shortener, or a host with an
+    // The address the user typed is public — a shortener, or a host with an
     // open redirect. Reporting the refusal as if it were about that address
     // sends them to check something they cannot find anything wrong with,
     // while "it redirects somewhere we do not go" is a move they can make.
@@ -807,7 +807,7 @@ describe("fetchMedia — an image whose address is dead", () => {
   it("lets the GET speak for a dead address whose name implies a format we refuse", async () => {
     // The mirror of the case below: a name is a guess, so a guess that says
     // "audio we cannot take" is no more settled than one that says "image".
-    // Telling a reader to convert a file at an address that holds nothing
+    // Telling a user to convert a file at an address that holds nothing
     // sends them to convert and come back to the same dead link.
     httpRequestMock
       .mockResolvedValueOnce(head({}, 404))

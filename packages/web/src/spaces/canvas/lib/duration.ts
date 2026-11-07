@@ -6,7 +6,7 @@
  *
  * Three places on the canvas put a duration on screen — the counter on a
  * running task's row, the media player's position and running time, and the
- * focus crop timeline's — and a reader sees them in the same session. One
+ * focus crop timeline's — and a user sees them in the same session. One
  * definition, because two would eventually
  * disagree about where the hour goes: the media player's used to say `60:00`
  * for an hour-long video while a task's counter said `1:00:00`.
@@ -16,7 +16,7 @@ const SECOND_MS = 1000;
 const MINUTE_MS = 60 * SECOND_MS;
 const HOUR_MS = 60 * MINUTE_MS;
 
-/** A duration broken into the units a reader reads out. */
+/** A duration broken into the units a user reads out. */
 export interface DurationParts {
   /** Hours, the top unit — a long allowance reads as 30 hours, not 1 day. */
   hours: number;

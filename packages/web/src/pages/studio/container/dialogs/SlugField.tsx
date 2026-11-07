@@ -23,13 +23,13 @@ interface SlugFieldProps {
   /**
    * Holds the value while an edit could not be submitted anyway (a request is
    * in flight). Read-only, not disabled: Chromium drops a disabled field's
-   * focus to the page, so after a refused submit the reader's typing would go
+   * focus to the page, so after a refused submit the user's typing would go
    * nowhere.
    */
   readOnly?: boolean;
   /**
    * A reason found when the form was submitted (an empty required slug). It
-   * replaces the check's own line until the reader edits the field. A form
+   * replaces the check's own line until the user edits the field. A form
    * that refuses a shape at the press passes it as an `invalid` check instead.
    */
   error?: string | null;

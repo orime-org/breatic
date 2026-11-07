@@ -21,7 +21,7 @@ import type { JSONValue, ToolResultPart } from "ai";
 import { NOTHING_SAID_WHY, stripDsml } from "@breatic/shared";
 import { userTurnForModel } from "@server/agent/user-turn.js";
 import { EARLIER_RESULT_NOTE } from "@server/agent/stored-model-output.js";
-import { AWAITS_READER } from "@breatic/domain";
+import { AWAITS_USER } from "@breatic/domain";
 import type { MessageData, MessagePart } from "@breatic/shared";
 
 /** A tool part, once narrowed out of the union. */
@@ -39,13 +39,13 @@ type ToolPart = Extract<MessagePart, { type: "tool" }>;
  */
 function reachesTheModel(part: ToolPart): boolean {
   // A card -- a questionnaire (inner#1542) or a request to read Spaces
-  // (inner#1552) -- goes back as the call and the reader's answer once it has
+  // (inner#1552) -- goes back as the call and the user's answer once it has
   // one, and not while it still waits: a call without its result makes the
   // SDK refuse the request. A card turned away goes back as its refusal,
   // which is how the model learns it was not shown. A question from before
   // the card is in the reply as words, written there by the turn, so sending
   // the call too would put it in the context twice.
-  if (AWAITS_READER.includes(part.toolName)) return part.failure?.kind === "turned_away" || isAnswer(part);
+  if (AWAITS_USER.includes(part.toolName)) return part.failure?.kind === "turned_away" || isAnswer(part);
   return part.status !== "pending" && part.argumentsIncomplete !== true;
 }
 
@@ -76,7 +76,7 @@ function toolOutput(part: ToolPart): ToolResultPart["output"] {
   // A card's answer is what the card holds: a questionnaire's answers, or a
   // Space request's summary (its content lives only in the row's kept copy,
   // which a row on this path does not have).
-  if (AWAITS_READER.includes(part.toolName) && isAnswer(part)) return { type: "json", value: part.output as JSONValue };
+  if (AWAITS_USER.includes(part.toolName) && isAnswer(part)) return { type: "json", value: part.output as JSONValue };
   if (part.status === "error") {
     // The field is newer than some of the rows it is read off, and a row
     // written before it existed has none. An empty string reads as a call
@@ -234,7 +234,7 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
 }
 
 /**
- * Whether a card's call ended with the reader's answer: a questionnaire's
+ * Whether a card's call ended with the user's answer: a questionnaire's
  * answers, the Spaces shared or declined, or word that they wrote a message
  * instead.
  * @param part - The card's part.

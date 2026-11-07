@@ -56,7 +56,7 @@ export function memoryReserveTokens(ceilings: {
   return MEMORY_RESERVE_FACTOR * (index + ceilings.memory_progress_max_chars);
 }
 
-/** One model the reader can pick in the chat panel. */
+/** One model the user can pick in the chat panel. */
 const chatModelSchema = z.object({
   id: z.string().regex(/[^/]$/),
   name: z.string().trim().min(1),
@@ -72,7 +72,7 @@ const agentConfigSchema = z.object({
   // prefix it matched.
   default_model: z.string().regex(/[^/]$/).default("deepseek/deepseek-v4.1-flash-1017"),
   /**
-   * The models the reader can pick in the chat panel, in the order shown
+   * The models the user can pick in the chat panel, in the order shown
    * (#1363). A conversation with no pick of its own is answered by
    * `default_model`, which must be one of them. Names are English and shown
    * as written.
@@ -90,7 +90,7 @@ const agentConfigSchema = z.object({
   /**
    * How long a cached prompt prefix lives, for the providers that cache only
    * when asked (Claude). Writes cost 1.25x the input price at 5m and 2x at 1h;
-   * reads cost a fraction of it, so the longer lifetime pays off when readers
+   * reads cost a fraction of it, so the longer lifetime pays off when users
    * come back between five minutes and an hour later.
    */
   prompt_cache_ttl: z.enum(["5m", "1h"]).default("1h"),
@@ -161,7 +161,7 @@ const agentConfigSchema = z.object({
   /**
    * How long the words of one turn's question may be, in characters.
    *
-   * The browser draws a lower line and says so as the reader types; this one
+   * The browser draws a lower line and says so as the user types; this one
    * is where a client cannot skip it.
    */
   user_message_max_chars: z.number().int().positive().default(15000),
@@ -368,7 +368,7 @@ const agentConfigSchema = z.object({
    *
    * The same bounds and the same default as `web_search_max_tokens`: both cap
    * one answer from one model, and a floor matters here because a description
-   * cut off at the length limit reaches the reader as a half sentence.
+   * cut off at the length limit reaches the user as a half sentence.
    */
   understand_media_max_output_tokens: z.number().int().min(1024).max(32768).default(8192),
   /**
@@ -401,7 +401,7 @@ const agentConfigSchema = z.object({
 }).superRefine((config, ctx) => {
   // A conversation nobody picked a model for is answered by the default, and
   // the picker shows the model that answers it: one it does not list would
-  // be a name the reader can neither see nor pick back.
+  // be a name the user can neither see nor pick back.
   if (!config.chat_models.some((m) => m.id === config.default_model)) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -416,7 +416,7 @@ const agentConfigSchema = z.object({
   // line and the pass has nothing to run to — every fold takes the whole
   // conversation, and past it the line is negative, which the loop reads as
   // never stopping. Both are configs that load clean and are found by the
-  // first reader whose conversation needs a fold.
+  // first user whose conversation needs a fold.
   // The room the fold may add, held back from the keep line below.
   const reserved = memoryReserveTokens(config);
   if (reserved >= config.memory_keep_tokens) {
@@ -442,7 +442,7 @@ const agentConfigSchema = z.object({
   // A figure past what a timer holds is rewritten to 1ms rather than refused,
   // so every video and every audio clip would fail the instant the read began
   // and be reported as a download that ran out of time. Neither knob is
-  // anything the reader chose, so the refusal belongs at load, in front of the
+  // anything the user chose, so the refusal belongs at load, in front of the
   // operator who typed the number. Checked as a pair because the budget is a
   // product of the two and bounding one alone leaves the other way in open.
   const worstReadMs = Math.ceil(

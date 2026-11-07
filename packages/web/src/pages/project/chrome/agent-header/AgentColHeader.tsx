@@ -42,7 +42,7 @@ interface AgentColHeaderProps {
  * The history trigger uses `MessagesSquare` rather than `PanelLeftOpen`:
  * what is behind it is a list of past conversations, not a side panel.
  *
- * No count. How many conversations a project holds is not something a reader
+ * No count. How many conversations a project holds is not something a user
  * needs to know -- what they need is which one they are in -- and the list is
  * paged, so the number held here would not be the total anyway.
  *

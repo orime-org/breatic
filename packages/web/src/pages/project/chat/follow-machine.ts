@@ -6,9 +6,9 @@ export type FollowState = 'following' | 'travelling' | 'held';
 
 /** Everything that can happen to the chat column. */
 export type FollowEvent =
-  | 'readerMovedUp'
-  | 'readerMovedDownShort'
-  | 'readerMovedDownToEnd'
+  | 'userMovedUp'
+  | 'userMovedDownShort'
+  | 'userMovedDownToEnd'
   | 'wayBackPressed'
   | 'messageSent'
   | 'conversationSwitched'
@@ -30,13 +30,13 @@ export type FollowEvent =
  * Eight of these forty-two the column never asks about; what makes each one
  * unreachable is recorded beside it in `__tests__/follow-machine.test.ts`.
  * They answer "nothing changed", so a reason that turns out to be wrong leaves
- * the reader where they are rather than somewhere new.
+ * the user where they are rather than somewhere new.
  */
 const TRANSITIONS: Readonly<Record<FollowState, Readonly<Record<FollowEvent, FollowState>>>> = {
   following: {
-    readerMovedUp: 'held',
-    readerMovedDownShort: 'following',
-    readerMovedDownToEnd: 'following',
+    userMovedUp: 'held',
+    userMovedDownShort: 'following',
+    userMovedDownToEnd: 'following',
     wayBackPressed: 'following',
     messageSent: 'following',
     conversationSwitched: 'following',
@@ -50,14 +50,14 @@ const TRANSITIONS: Readonly<Record<FollowState, Readonly<Record<FollowEvent, Fol
     glideArrived: 'following',
   },
   travelling: {
-    readerMovedUp: 'held',
+    userMovedUp: 'held',
     // Pressing the way back says "take me to the end", and a push downward
     // agrees with it; only a push back up is a change of mind. This is also
     // where a browser's scroll anchoring lands -- content above the viewport
     // growing taller moves the column down with nobody touching it -- and a
     // journey has no business ending on that.
-    readerMovedDownShort: 'travelling',
-    readerMovedDownToEnd: 'following',
+    userMovedDownShort: 'travelling',
+    userMovedDownToEnd: 'following',
     wayBackPressed: 'travelling',
     messageSent: 'following',
     conversationSwitched: 'following',
@@ -71,9 +71,9 @@ const TRANSITIONS: Readonly<Record<FollowState, Readonly<Record<FollowEvent, Fol
     glideArrived: 'following',
   },
   held: {
-    readerMovedUp: 'held',
-    readerMovedDownShort: 'held',
-    readerMovedDownToEnd: 'following',
+    userMovedUp: 'held',
+    userMovedDownShort: 'held',
+    userMovedDownToEnd: 'following',
     wayBackPressed: 'travelling',
     messageSent: 'following',
     conversationSwitched: 'following',

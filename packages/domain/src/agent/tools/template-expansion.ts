@@ -9,7 +9,7 @@
  * the agent starts, not a lock: whatever the agent wrote stays, and the
  * template's params come along only while the node keeps the mode and model
  * they belong to. A generate node's prompt is the agent's own (inner#1315):
- * the template's words mark each reference for the reader to mention by hand,
+ * the template's words mark each reference for the user to mention by hand,
  * and a proposal mentions the nodes it wires in, so the agent sends those
  * words back with a ref where each mark stood.
  */
@@ -176,9 +176,9 @@ export function expandAt(place: TemplatePlace, rest: ProposalNode, at: NodeLabel
     const words = sentWords(filled.mode);
     const pool = keeps ? ` Each node ${words.mentions} goes into the pool. ${poolSentence(rest.name)}` : "";
     const shotList = own?.role === "generate" && own.shots !== undefined;
-    return refuse("template-no-prompt", `"${rest.name}" names template "${template.id}" and sends no ${words.name}. The template's ${shotList ? "shots" : "prompt"}, to rewrite in the reader's language with their story or detail in it: ${templateSegmentsText(template, key)}.${pool}`, fixOn(at, words.write));
+    return refuse("template-no-prompt", `"${rest.name}" names template "${template.id}" and sends no ${words.name}. The template's ${shotList ? "shots" : "prompt"}, to rewrite in the user's language with their story or detail in it: ${templateSegmentsText(template, key)}.${pool}`, fixOn(at, words.write));
   }
-  // A template's own tweak mark sent back unchanged is a blank the reader
+  // A template's own tweak mark sent back unchanged is a blank the user
   // never filled in, so the result would be made without it.
   const ownTweaks = templateTweakLabels(template, key);
   const sent = [...(rest.prompt ?? []), ...(rest.shots ?? []).flatMap((shot) => shot.prompt)];
@@ -187,7 +187,7 @@ export function expandAt(place: TemplatePlace, rest: ProposalNode, at: NodeLabel
     return refuse(
       "template-tweak-unfilled",
       `"${rest.name}" still holds template "${template.id}"'s blanks ${quoted(left)}.`,
-      fixOn(at, "write each one from what the reader said, or ask them or choose it as your working rules say, and send the words in its place."),
+      fixOn(at, "write each one from what the user said, or ask them or choose it as your working rules say, and send the words in its place."),
     );
   }
   return { ok: true, node: filled };

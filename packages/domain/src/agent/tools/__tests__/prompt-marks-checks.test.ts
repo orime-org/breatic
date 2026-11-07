@@ -3,7 +3,7 @@
 
 /**
  * What the proposal check asks of the marks now that the agent @s for the
- * reader (inner#1315): every node wired into a pool is @'d by a ref, every
+ * user (inner#1315): every node wired into a pool is @'d by a ref, every
  * node landing empty, or going into a slot by an edge or unwired, has a note
  * (a slot filled through fills takes none), a note is never words
  * of a written node, and the words a wired text node holds count against the
@@ -310,7 +310,7 @@ describe("where each wired node goes, said on its edge", () => {
   });
 });
 
-describe("marks the reader can act on", () => {
+describe("marks the user can act on", () => {
   const char: ProposalNode = { ...CHARACTER, name: "Char" };
 
   it("refuses into on an edge whose node the model takes no way at all, naming it", () => {
@@ -335,7 +335,7 @@ describe("marks the reader can act on", () => {
 
   it("refuses a lone generation from a template whose input has no node, as the panel would place one", () => {
     // inner#1345 design 6.7 step 3: a template lands whole from either entry,
-    // so its input comes with a node of its own the reader fills.
+    // so its input comes with a node of its own the user fills.
     const answer = answerFor({
       nodes: [{ role: "generate", type: "image", name: "Grid", template: { id: "storyboard-grid-25" }, prompt: [{ slot: { kind: "note", label: "Wire your character in and @ it" } }, { text: "A 5x5 storyboard." }] }],
       edges: [],
@@ -564,7 +564,7 @@ describe("a mark the agent writes as words", () => {
     expect(answer).toMatchObject({ ok: false });
     const reason = answer.ok ? "" : answer.reason;
     expect(reason).toContain(`types 2 mark(s) into its words as text: "${asset}", "{✏️ the weather}".`);
-    expect(reason).toContain('{"ref": <index>} for a node; {"slot": {"kind": "tweak", "label": "…", "note": "…"}} for words the reader writes.');
+    expect(reason).toContain('{"ref": <index>} for a node; {"slot": {"kind": "tweak", "label": "…", "note": "…"}} for words the user writes.');
   });
 
   it("tells a written node to take a typed reference or note out, the way the role check does", () => {
@@ -607,19 +607,19 @@ describe("the templates as the agent is shown them", () => {
 });
 
 describe("what the agent is told about marks", () => {
-  it("says a ref @s a node by its index, and no longer speaks of asset marks or the reader @ing by hand", () => {
+  it("says a ref @s a node by its index, and no longer speaks of asset marks or the user @ing by hand", () => {
     const said = JSON.stringify(inputSchema.toJSONSchema()) + (makeProposeCanvasAction().description ?? "");
     expect(said).toMatch(/An @ of the node at this index in nodes/);
     expect(said).not.toMatch(/asset mark|asset segment|@s it by hand|@s every reference by hand/);
   });
 
-  it("asks for the prompt written up from what the reader asked, their exact words only when they ask for that", () => {
+  it("asks for the prompt written up from what the user asked, their exact words only when they ask for that", () => {
     const prompt = inputSchema.shape.nodes.element.shape.prompt.description ?? "";
-    expect(prompt).toMatch(/Write it up from what the reader asked for; copy their words exactly only when they ask for that/);
+    expect(prompt).toMatch(/Write it up from what the user asked for; copy their words exactly only when they ask for that/);
   });
 
-  it("asks for the prompt in the language the reader writes in", () => {
-    expect(JSON.stringify(inputSchema.toJSONSchema())).toMatch(/language the reader/);
+  it("asks for the prompt in the language the user writes in", () => {
+    expect(JSON.stringify(inputSchema.toJSONSchema())).toMatch(/language the user/);
   });
 });
 
@@ -693,7 +693,7 @@ describe("a note for every node going into a slot (design 5.7, user 2026-10-08)"
     });
     expect(checkProposal(proposal([{ text: "she walks" }]))).toMatchObject({
       ok: false,
-      reason: expect.stringContaining('"Photo" goes into no generation, so the reader picks it into a slot'),
+      reason: expect.stringContaining('"Photo" goes into no generation, so the user picks it into a slot'),
     });
     expect(checkProposal(proposal([{ slot: { kind: "note", label: "Pick Photo into the image slot" } }, { text: "she walks" }]))).toEqual({ ok: true });
   });
@@ -708,7 +708,7 @@ describe("a note for every node going into a slot (design 5.7, user 2026-10-08)"
     };
     expect(checkProposal(proposal)).toMatchObject({
       ok: false,
-      reason: expect.stringContaining('"Front", "Back" go into no generation, so the reader picks each into a slot'),
+      reason: expect.stringContaining('"Front", "Back" go into no generation, so the user picks each into a slot'),
     });
   });
 

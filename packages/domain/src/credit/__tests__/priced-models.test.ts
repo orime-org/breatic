@@ -55,7 +55,7 @@ describe("the startup price check", () => {
 });
 
 describe("the models the agent's own paths run on (#1363)", () => {
-  it("are every model the reader can pick and the consolidation model, each once", () => {
+  it("are every model the user can pick and the consolidation model, each once", () => {
     const config = getAgentConfig();
     expect(agentModelIds().sort()).toEqual(
       [...new Set([...config.chat_models.map((m) => m.id), config.consolidation_model])].sort(),

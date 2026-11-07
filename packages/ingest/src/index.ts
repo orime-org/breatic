@@ -1023,9 +1023,9 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
   );
   if (!verified.ok) return new Response("Unauthorized", { status: 401 });
   const { storageKey, partSize, totalParts } = verified.payload;
-  // A link the reader handed us rather than one a provider answered with. Its
-  // failures are the reader's to act on and are logged without being reported.
-  const fromReader = { userInput: verified.payload.typeFromSource === true };
+  // A link the user handed us rather than one a provider answered with. Its
+  // failures are the user's to act on and are logged without being reported.
+  const fromUser = { userInput: verified.payload.typeFromSource === true };
 
   const body = await request.json<FetchBody>().catch(() => null);
   const source = body?.url;
@@ -1034,7 +1034,7 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
   }
 
   const upstream = await fetch(source, { headers: { "user-agent": SOURCE_USER_AGENT } }).catch(
-    noted("ingest_source_unreachable", { storageKey }, fromReader),
+    noted("ingest_source_unreachable", { storageKey }, fromUser),
   );
   if (upstream === null || !upstream.ok || upstream.body === null) {
     if (upstream !== null && !upstream.ok) {
@@ -1042,7 +1042,7 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
         "ingest_source_refused",
         { storageKey, status: upstream.status },
         undefined,
-        fromReader,
+        fromUser,
       );
     }
     // Nothing was written. The caller drove this transfer, so it is the caller
@@ -1056,7 +1056,7 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
       "ingest_source_type_refused",
       { storageKey, declared: upstream.headers.get("content-type") },
       undefined,
-      fromReader,
+      fromUser,
     );
     return refused("unsupported_type", "The source is not an uploadable kind", 415);
   }
@@ -1076,7 +1076,7 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
     totalParts,
   ).catch((err: unknown) => {
     if (err instanceof SourceReadError) {
-      noteFailure("ingest_source_read_failed", { storageKey }, err.cause, fromReader);
+      noteFailure("ingest_source_read_failed", { storageKey }, err.cause, fromUser);
       return "source_failed" as const;
     }
     noteFailure("ingest_source_write_failed", { storageKey }, err);

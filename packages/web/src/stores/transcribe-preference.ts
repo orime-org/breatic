@@ -4,7 +4,7 @@
 /**
  * The transcription panel's filler switch (inner#856).
  *
- * One for the whole page: a reader who turned fillers off in one canvas
+ * One for the whole page: a user who turned fillers off in one canvas
  * expects them off in the next. A canvas session is one per Space and is
  * dropped with its tab, so the switch lives here, until the page reloads.
  */

@@ -338,7 +338,7 @@ export interface StudioProjectListOptions {
   cursor?: string;
   /** Page size; clamped to the configured bounds, the default when omitted. */
   limit?: number;
-  /** The reader's interface language, which decides how names compare. */
+  /** The user's interface language, which decides how names compare. */
   locale: string;
   /**
    * Told when a cursor was sent but could not be read; the first page is

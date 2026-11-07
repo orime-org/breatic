@@ -9,7 +9,7 @@
  * which can be mounted again (StrictMode mounts it twice); the editor
  * does not go with it — it belongs to the document
  * (`document-editor-cache.ts`) — so the boxes read
- * and write here and keep nothing of their own. Unsent words are the reader's
+ * and write here and keep nothing of their own. Unsent words are the user's
  * until they send or clear them.
  *
  * WeakMaps, so nothing here outlives what it is keyed by: a draft's words go

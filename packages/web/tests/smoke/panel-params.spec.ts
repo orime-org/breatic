@@ -5,7 +5,7 @@
  * The params pill of the image and video Generate panels, end to end (#2156).
  *
  * Every param a panel draws stands on a value the catalog declares, the pill
- * says what each one stands on, the params are named in the reader's language
+ * says what each one stands on, the params are named in the user's language
  * and an option's text is never cut (user 2026-09-29).
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:
@@ -79,7 +79,7 @@ test('a video model names its own params and cuts none of their options', async 
   await expect(page.getByText('Emotion', { exact: true })).toBeVisible();
 });
 
-test('a param is named in the reader\'s language, its options stay as the vendor spells them', async ({ page }) => {
+test('a param is named in the user\'s language, its options stay as the vendor spells them', async ({ page }) => {
   // The interface follows the account language, so the switch goes through
   // the language menu, which records it on the account, and is put back.
   await switchLanguage(page, 'zh-CN');

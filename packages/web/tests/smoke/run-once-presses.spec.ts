@@ -7,7 +7,7 @@
  *
  * Seven buttons send a request the server runs once per `Idempotency-Key`.
  * Each press is held outside the panel, dialog or column it was made in, so a
- * reader who closes that and opens it again finds the button still waiting,
+ * user who closes that and opens it again finds the button still waiting,
  * and pressing it again sends nothing. What no jsdom test reaches is the real
  * panel unmounting and mounting again around a request still on the wire.
  *

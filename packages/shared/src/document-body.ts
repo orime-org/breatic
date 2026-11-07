@@ -109,7 +109,7 @@ export function documentCommentThreads(doc: Y.Doc): Y.Map<unknown> {
  * default for. Writing them here keeps the first client from filling them in
  * itself, and an attribute left out is supplied from the schema's default the
  * first time anyone edits — a write carried to every peer that says nothing
- * about what the reader did. `backend-seed-contract.test.ts` compares this
+ * about what the user did. `backend-seed-contract.test.ts` compares this
  * list against the schema, so a new attribute turns red here.
  * @returns The `blockGroup` element, ready to insert into a fragment.
  */

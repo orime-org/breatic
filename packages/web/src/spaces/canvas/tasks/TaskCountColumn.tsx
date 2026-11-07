@@ -6,7 +6,7 @@
  *
  * They are the whole of what the shared document says about this node's
  * tasks: four numbers, no entries, no ids. The rows behind a number are
- * fetched only when the reader asks for them by clicking it.
+ * fetched only when the user asks for them by clicking it.
  *
  * A state this node has nothing in draws nothing, and a node with no task at
  * all draws no column: zero is not a value this column renders, it is the
@@ -120,7 +120,7 @@ function TaskCount({
   }, [isOpen, onOpen, status]);
 
   // The state's name and how many are in it: the icon alone says nothing to a
-  // reader meeting it for the first time, and it is where the number the cell
+  // user meeting it for the first time, and it is where the number the cell
   // used to print now lives (user 2026-09-06).
   const tip = t('canvas.task.countTip', {
     status: t(LABEL_KEY[status]),
@@ -142,7 +142,7 @@ function TaskCount({
             'flex items-center justify-center rounded-chrome p-1.5',
             // The open cell keeps the fill its neighbours have, and the coloured
             // rim is what says it is open: a darker fill made the cell the
-            // reader had picked read as the least present of the four. The base
+            // user had picked read as the least present of the four. The base
             // fill is repeated under `hover-enabled:` so this one does not take
             // the variant's `hover-enabled:bg-accent` like any other cell — the
             // two share a modifier, so the merge keeps only this one.

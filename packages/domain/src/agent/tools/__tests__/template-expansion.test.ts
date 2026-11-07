@@ -214,7 +214,7 @@ describe("expandTemplate", () => {
 });
 
 // The Agent sent a template's character design with its style blank still in
-// the prompt, leaving the reader to fill it in by hand (breatic#1361): a
+// the prompt, leaving the user to fill it in by hand (breatic#1361): a
 // template's tweak segment is never sent as it is.
 describe("a template's tweak segments left in the prompt", () => {
   const DESIGN: Tag = { id: "character-design-from-text", key: "design" };

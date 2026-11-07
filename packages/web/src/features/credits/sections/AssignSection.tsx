@@ -103,7 +103,7 @@ export function AssignSection({
       scrolls={false}
       title={t('credits.section.assign')}
       // The rule holds whatever the list is doing, so it stays on screen
-      // for a reader whose list is empty or still arriving.
+      // for a user whose list is empty or still arriving.
       footer={
         billing ? <Footnote>{t('credits.assignNote')}</Footnote> : undefined
       }
@@ -215,7 +215,7 @@ function AssignRow({
   };
 
   // What the row leads with: a price where somebody paid one, and otherwise
-  // where the credits came from — the one thing about the row a reader
+  // where the credits came from — the one thing about the row a user
   // cannot work out from the rest of it.
   const lead =
     lot.paidCents === null

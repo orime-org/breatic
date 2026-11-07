@@ -8,7 +8,7 @@
  * the message is read, which is what makes it the same card after a refresh
  * and several turns later. A call that was refused carries a reason instead of
  * a group, and a row stored before this tool existed carries the model's own
- * text -- reading either as a proposal would put a card in front of the reader
+ * text -- reading either as a proposal would put a card in front of the user
  * that builds nothing, or take the whole conversation down while it is built.
  */
 
@@ -63,7 +63,7 @@ describe('a turn that proposed a group', () => {
 
   it('carries whether each generation draws a prompt box, which the canvas reads', () => {
     // The canvas reads it off the answer rather than the model catalog, which
-    // may not have loaded when the reader presses Use.
+    // may not have loaded when the user presses Use.
     const message = toChatMessage(
       turnWith({
         ...ACCEPTED,
@@ -87,7 +87,7 @@ describe('a turn that proposed a group', () => {
   });
 });
 
-describe('a turn whose proposal never reached the reader', () => {
+describe('a turn whose proposal never reached the user', () => {
   it('draws no card for one the tool refused', () => {
     const message = toChatMessage(
       turnWith({ placed: false, reason: '"i2i" needs a node to put it in.' }),

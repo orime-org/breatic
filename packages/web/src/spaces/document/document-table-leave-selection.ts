@@ -361,7 +361,7 @@ export const documentTableLeaveSelectionExtension = createExtension(() => ({
         // A typed key replaces the selection with its letter, through the
         // selection's own replace, as the body's typing does. From a table,
         // the letter takes the marks of the empty line in the table's place:
-        // none unless the reader picked some.
+        // none unless the user picked some.
         handleTextInput: (view, _from, _to, text) => {
           const tables = heldTables(view.state.selection);
           if (tables === null) return false;

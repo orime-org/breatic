@@ -18,7 +18,7 @@ interface TurnActionsProps {
   /** What copy puts on the clipboard. */
   text: string;
   /**
-   * The reader's own message.
+   * The user's own message.
    *
    * Its line is right-aligned and waits for hover, and the answer to a press
    * hugs the right edge because that is the edge its button sits against.
@@ -37,7 +37,7 @@ interface TurnActionsProps {
  * is typing another message, which the composer below is already for.
  * @param root0 - The component props.
  * @param root0.text - What copy puts on the clipboard.
- * @param root0.own - Whether this is the reader's own message.
+ * @param root0.own - Whether this is the user's own message.
  * @param root0.sentAt - When the message was written down.
  * @param root0.sources - Every page the turn found.
  * @returns The row.
@@ -50,7 +50,7 @@ export const TurnActions = React.memo(function TurnActions({
 }: TurnActionsProps): React.JSX.Element {
   const t = useTranslation();
   const { answered, copy } = useCopyAnswer(text);
-  // Everything on the reader's own line waits for the pointer together, and
+  // Everything on the user's own line waits for the pointer together, and
   // an answered press brings the whole line up: half a line -- a time showing
   // beside a copy that is not -- reads as something having gone wrong.
   const waiting = own === true && !answered;
@@ -62,7 +62,7 @@ export const TurnActions = React.memo(function TurnActions({
       data-testid='turn-actions'
       className={cn(
         'mt-3 flex items-center gap-2',
-        // A line of its own under the reader's own message, and it keeps that
+        // A line of its own under the user's own message, and it keeps that
         // line whether or not anything on it is showing: a row that took no
         // space let the reply below come up under it, and the two were drawn
         // on top of each other.
@@ -75,8 +75,8 @@ export const TurnActions = React.memo(function TurnActions({
         // asked to stand in for it in the stretch before that: two messages a
         // moment apart would then be timed by two different clocks.
         //
-        // The reader's own day: an absolute instant arrives, and a Date reads
-        // it in the zone the reader is in. `getLocale()` rather than the
+        // The user's own day: an absolute instant arrives, and a Date reads
+        // it in the zone the user is in. `getLocale()` rather than the
         // runtime default, which is the browser's language and not the one
         // the language switch set.
         <span
@@ -94,7 +94,7 @@ export const TurnActions = React.memo(function TurnActions({
       )}
       {/* Offered only when there is something to put on the clipboard: a turn
           that searched and wrote nothing still keeps this line for its
-          sources, and copying it would replace whatever the reader had
+          sources, and copying it would replace whatever the user had
           copied with nothing at all. */}
       {text === '' ? null : (
         <span className='relative inline-flex'>

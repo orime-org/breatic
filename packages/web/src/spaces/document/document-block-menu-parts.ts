@@ -84,7 +84,7 @@ const GREYED = {
  * what they read.
  *
  * The third thing — say so — is the treatment itself, the same dimming the
- * reader has already met on the bubble bar's own two slots when the selection
+ * user has already met on the bubble bar's own two slots when the selection
  * moved out of reach. No extra words: the commands ARE built, so a "not open
  * yet" note would say something false here.
  * @param unavailable - Whether the command is out of reach on this row.

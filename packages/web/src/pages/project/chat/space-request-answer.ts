@@ -3,7 +3,7 @@
 
 /**
  * Where a request card reads the Spaces it was asked for and sends the
- * reader's answer (inner#1552).
+ * user's answer (inner#1552).
  *
  * The card sits deep inside a message, and the conversation and the project's
  * Spaces are held by the panel; the panel provides this, as it does for the
@@ -26,7 +26,7 @@ export interface SpaceRequestAnswering {
    * shared socket dials; rejects once the signal is raised.
    */
   read: (request: ChatSpaceRequest, url: string, signal: AbortSignal) => Promise<SharedSpace[]>;
-  /** Send the reader's answer; resolves when the turn it resumes is over. */
+  /** Send the user's answer; resolves when the turn it resumes is over. */
   answer: (answer: SpaceRequestAnswer) => Promise<void>;
 }
 

@@ -68,7 +68,7 @@ function makeRouter(initialPath: string) {
  *
  * The pages load on demand (task #142), so vitest transforms a page's whole
  * module graph at render time rather than when this file is imported. That is
- * the test runner's cost, not the reader's — a built chunk is already
+ * the test runner's cost, not the user's — a built chunk is already
  * compiled — and under `turbo test`, with every package's suite running at
  * once, it runs past `findBy`'s one-second default.
  */

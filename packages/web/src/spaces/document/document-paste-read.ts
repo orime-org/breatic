@@ -168,7 +168,7 @@ function withDescriptors(url: string, descriptors: readonly string[]): Candidate
  * The address of the largest candidate of a `srcset` that can be fetched:
  * the widest, or else the densest. A browser picks by the width it shows the
  * picture at and the screen's density, neither of which a clipboard carries;
- * the largest is never worse than the one the reader saw.
+ * the largest is never worse than the one the user saw.
  * @param srcset - The attribute.
  * @returns The address, or null when no candidate can be fetched.
  */

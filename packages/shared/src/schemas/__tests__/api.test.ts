@@ -97,7 +97,7 @@ describe("chatMessageSchema — time_zone", () => {
   });
 });
 
-describe("chatMessageSchema — the reader's Spaces (inner#1413)", () => {
+describe("chatMessageSchema — the user's Spaces (inner#1413)", () => {
   const message = {
     message: "summarise this",
     project_id: "11111111-1111-4111-8111-111111111111",

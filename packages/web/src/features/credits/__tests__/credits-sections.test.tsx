@@ -378,7 +378,7 @@ describe('the credits overlay, section by section', () => {
       await openOn('lots');
       const body = await panel();
 
-      // What was paid leads: it is the figure a reader checks against a
+      // What was paid leads: it is the figure a user checks against a
       // statement.
       expect(body).toHaveTextContent('$50.00');
       expect(body).toHaveTextContent('2026-08-21');
@@ -408,7 +408,7 @@ describe('the credits overlay, section by section', () => {
     it('leaves a purchase under refund without that instruction', async () => {
       // Asking for a refund detaches it from every studio and bars it from
       // being pointed anywhere. Telling this row to go and assign it asks the
-      // reader to do something the server refuses.
+      // user to do something the server refuses.
       paymentHistory.mockResolvedValue({
         items: [
           purchase(),
@@ -427,7 +427,7 @@ describe('the credits overlay, section by section', () => {
       expect(body).not.toHaveTextContent(/use Assign on the left/);
     });
 
-    // "Unassigned" is what this panel teaches the reader to act on — assign
+    // "Unassigned" is what this panel teaches the user to act on — assign
     // it to a Studio and it becomes spendable. On a purchase under refund
     // that reading is wrong twice over: the detachment is the refund's doing,
     // and the assign screen will not offer it.
@@ -638,7 +638,7 @@ describe('the credits overlay, section by section', () => {
 
     it('starts a section at the top of its own list', async () => {
       // Each section brings its own scroller, so an offset left in one cannot
-      // drop the reader into the middle of the next — where the sentinel may
+      // drop the user into the middle of the next — where the sentinel may
       // already be in view, asking for a page nobody scrolled to.
       const user = await openOn('ledger');
       const first = (await panel()).querySelector(
@@ -752,7 +752,7 @@ describe('the credits overlay, section by section', () => {
       expect(body).toHaveTextContent(/Could not load this page/i);
     });
 
-    it('stops the watcher after a failed page until the reader scrolls again', async () => {
+    it('stops the watcher after a failed page until the user scrolls again', async () => {
       paymentHistory
         .mockResolvedValueOnce({ items: [purchase()], nextCursor: 'c2' })
         .mockRejectedValueOnce(new Error('nope'));
@@ -764,7 +764,7 @@ describe('the credits overlay, section by section', () => {
         expect(paymentHistory).toHaveBeenCalledTimes(2);
       });
       // No retry of its own accord, and the first page stays: replacing what
-      // the reader has already seen with a failure loses more than the
+      // the user has already seen with a failure loses more than the
       // failure did.
       await new Promise((r) => setTimeout(r, 60));
       expect(paymentHistory).toHaveBeenCalledTimes(2);
@@ -790,7 +790,7 @@ describe('the credits overlay, section by section', () => {
       expect(body).toHaveTextContent('1 credit pack assigned to it');
     });
 
-    it('withholds the debt from a reader who no longer administers it', async () => {
+    it('withholds the debt from a user who no longer administers it', async () => {
       // 欠账是 studio 自己的数，只有 admin 能拿它做决定。服务端在这种情形
       // 下发的是 null，这一行要说得出「不是零、是没有」。
       fetchCreditOverview.mockResolvedValue(
@@ -805,7 +805,7 @@ describe('the credits overlay, section by section', () => {
 
     it('keeps a deleted studio\'s name and adds a badge', async () => {
       // The row is kept so the spending can say where it went. Replacing the
-      // name with "deleted studio" erases it a second time — the reader can
+      // name with "deleted studio" erases it a second time — the user can
       // no longer tell which one it was.
       fetchCreditOverview.mockResolvedValue(
         overview({
@@ -954,7 +954,7 @@ describe('the credits overlay, section by section', () => {
     });
 
     it('shows a skeleton while the first read is in flight', async () => {
-      // Held unresolved: this is the moment the reader sees.
+      // Held unresolved: this is the moment the user sees.
       paymentHistory.mockReturnValue(new Promise(() => {}));
       await openOn('lots');
 
@@ -963,7 +963,7 @@ describe('the credits overlay, section by section', () => {
       ).toBeInTheDocument();
     });
 
-    it('asks again with the cursor once the reader reaches the end', async () => {
+    it('asks again with the cursor once the user reaches the end', async () => {
       paymentHistory
         .mockResolvedValueOnce({ items: [purchase()], nextCursor: 'cursor-2' })
         .mockResolvedValueOnce({
@@ -1094,7 +1094,7 @@ describe('the credits overlay, section by section', () => {
       // A purchase pointed at a team, and the account demoted there since.
       // The options answer "where may it go"; the picker shows "where is it
       // now". With the second outside the first, Radix matches nothing and
-      // the cell reads empty, leaving the reader unable to find the money.
+      // the cell reads empty, leaving the user unable to find the money.
       fetchCreditLots.mockResolvedValue({
         items: [
           lot({ designatedStudioId: 's9', designatedStudioName: 'Ex team' }),
@@ -1125,7 +1125,7 @@ describe('the credits overlay, section by section', () => {
 
     // The server writes a sentence for the one refusal this screen can earn —
     // the purchase moved into the refund flow while the list was open — and it
-    // is the only true thing there is to say. "Try again" sends the reader
+    // is the only true thing there is to say. "Try again" sends the user
     // back to an action that can never succeed.
     it('says what the server said when a repoint is refused', async () => {
       fetchCreditLots.mockResolvedValue({
@@ -1318,10 +1318,10 @@ describe('the credits overlay, section by section', () => {
         expect(fetchCreditOverview).toHaveBeenCalled();
       });
       // A refused ask leaves the confirmation open for another try; the
-      // reader backs out of it to move on.
+      // user backs out of it to move on.
       expect(screen.getByRole('alertdialog')).toBeInTheDocument();
       await user.click(within(dialog).getByRole('button', { name: /cancel/i }));
-      // The history is not, so it was marked stale: the reader going back to
+      // The history is not, so it was marked stale: the user going back to
       // it gets the row as it now stands rather than the thirty-second-old
       // answer saying the pack is theirs to spend.
       await user.click(document.getElementById('credits-tab-lots')!);
@@ -1388,7 +1388,7 @@ describe('the credits overlay, section by section', () => {
 
     // The terms are the only place this screen states the rule, so a screen
     // that could not read them says so. Silence there reads as "this screen
-    // has no terms", and the reader is left to work out from the rows alone
+    // has no terms", and the user is left to work out from the rows alone
     // why one carries a button and the next does not.
     it('says so when the refund terms could not be read', async () => {
       paymentTiers.mockRejectedValue(new Error('nope'));
@@ -1543,7 +1543,7 @@ describe('the credits overlay, section by section', () => {
       });
 
       it('leads the right column with the balance and the left with where it points', async () => {
-        // One figure, one place, on all three screens: a reader switching
+        // One figure, one place, on all three screens: a user switching
         // between them reads the balance off the same corner every time.
         // What this screen is about goes under it, and the line under the
         // name says where the purchase points.

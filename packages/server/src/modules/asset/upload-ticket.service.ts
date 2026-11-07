@@ -11,7 +11,7 @@
  * gets the upload id and the first token and never the ticket, so each ticket
  * opens exactly one upload (inner#1595). The storage allowance is asked
  * through the caller, because a batch asks it once for every file that needs
- * room and a single upload throws its refusal straight to the reader.
+ * room and a single upload throws its refusal straight to the user.
  */
 
 import { accountActivityRepo } from "@breatic/core";
@@ -369,7 +369,7 @@ async function prepareUpload(
 /**
  * Open a prepared file's upload at the ingest Worker, under its task's
  * deadline. A failure is already settled by the opener; it is answered as
- * `openFailed` so the node shows its one failed row and the reader can retry.
+ * `openFailed` so the node shows its one failed row and the user can retry.
  * @param scope - Who asked.
  * @param prepared - The file's grant, row and ticket request.
  * @returns The opened upload, or `openFailed`.

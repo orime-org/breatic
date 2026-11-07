@@ -166,7 +166,7 @@ describe("订阅路由 — 把请求翻译成业务调用", () => {
 
   it("refuses a request that names no period before the service sees it", async () => {
     // A tier has two prices. Without this half the service would have to
-    // pick one, and neither of them is the one the reader pressed. Stopping
+    // pick one, and neither of them is the one the user pressed. Stopping
     // it here is what keeps a default period from existing at all.
     const res = await post("/checkout", {
       tier: "pro",

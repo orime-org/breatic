@@ -46,7 +46,7 @@ export type BlockTypeId =
  * Every row, in the order the face is looked up.
  *
  * The three headings come before `ordered-list` because those two rows can
- * both hold at once, and what the reader sees on such a line is a heading —
+ * both hold at once, and what the user sees on such a line is a heading —
  * the heading's size, with a heading path where a list marker would be. The
  * face answers "what am I looking at", so it answers with that.
  */
@@ -308,7 +308,7 @@ export function rowOf(content: PMNode): BlockTypeId | undefined {
 /**
  * Which row the slot shows as this selection's face.
  *
- * The end the reader anchored on, so the face answers "what am I in" rather
+ * The end the user anchored on, so the face answers "what am I in" rather
  * than going blank over a selection spanning two types (user 2026-08-27). An
  * anchor that resolves outside any block — a select-all, a node selection —
  * falls to the first block the selection covers, and so does one in a table

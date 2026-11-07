@@ -89,7 +89,7 @@ export const COUNTS_COLUMN_FLOW_DEPTH =
   (TASK_COUNT_ORDER.length * COUNTS_COLUMN_WIDTH + (TASK_COUNT_ORDER.length - 1) * COUNTS_CELL_GAP) /
   OVERLAY_SCALE_FLOOR_ZOOM;
 
-/** Gap the reader sees between the column and whatever is anchored past it. */
+/** Gap the user sees between the column and whatever is anchored past it. */
 const CLEARANCE = 8;
 
 /**

@@ -195,7 +195,7 @@ export type VideoSlotUrls = Partial<Record<VideoSlot, string>>;
  * A slot and the reference pool are two gestures for one thing, and both are
  * places the run's material comes from. Which of them this mode needs is the
  * model's to say, through `missingSources` — the rule the server re-checks
- * before enqueue. The panel only reorders the answer, so the reader is told
+ * before enqueue. The panel only reorders the answer, so the user is told
  * about the first empty place on the toolbar rather than the first one the
  * model happened to declare.
  * @param model - The model the run names.

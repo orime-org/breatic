@@ -16,7 +16,7 @@ interface ChromeBarBox {
  * Three bars are drawn this way -- the top bar, the agent column's header and
  * the space tab bar -- and each carries a 1px rule along its bottom. The rule
  * is inside the 40, so centring against what is left of them puts the
- * contents half a pixel above the middle of the band a reader sees; the pixel
+ * contents half a pixel above the middle of the band a user sees; the pixel
  * on top balances it. Two of these bars sit side by side on the same line, so
  * balancing one and not the others is what pulls them out of line with each
  * other -- which is why the box is stated here rather than at each bar.

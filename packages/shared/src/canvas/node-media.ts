@@ -5,7 +5,7 @@
  * The six media fields a result puts on a node besides its content (#2184).
  *
  * Two writers put a result on a node: collab when a task settles, and the
- * canvas when a reader restores a history row or replaces from the task list.
+ * canvas when a user restores a history row or replaces from the task list.
  * Both go through this function, so the same result leaves the node holding
  * the same fields whichever way it arrived.
  */

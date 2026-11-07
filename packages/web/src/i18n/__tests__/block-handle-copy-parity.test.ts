@@ -34,7 +34,7 @@ describe.each(KEYS)('%s', (key) => {
   });
 
   it('is translated in the four non-English catalogs', () => {
-    // Copying the English across also passes the case above, and the reader
+    // Copying the English across also passes the case above, and the user
     // gets a foreign sentence.
     const english = readPath(LOCALE_CATALOGS[0][1], key);
     for (const [tag, catalog] of LOCALE_CATALOGS.slice(1)) {

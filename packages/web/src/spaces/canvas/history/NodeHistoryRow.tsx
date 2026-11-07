@@ -50,7 +50,7 @@ export const HISTORY_MODALITIES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * What the type chip says a row IS. A read a reader asked to keep is neither
+ * What the type chip says a row IS. A read a user asked to keep is neither
  * of the other two: nothing generated it and nobody uploaded it.
  */
 const TYPE_LABEL: Record<NodeHistoryEntry['entryType'], string> = {
@@ -84,7 +84,7 @@ export interface NodeHistoryRowProps {
   isCurrent: boolean;
   /**
    * Whether a task row's View opened the history at this entry (inner#888
-   * §7.7): the row is outlined so the reader sees which result it meant.
+   * §7.7): the row is outlined so the user sees which result it meant.
    */
   isFocused: boolean;
   /**
@@ -161,7 +161,7 @@ function previewFor(
     };
   }
   // A text row's content IS the preview: an icon says nothing about which of
-  // several reads this row is, and the words are what the reader is choosing
+  // several reads this row is, and the words are what the user is choosing
   // between.
   if (modality === 'text') return { kind: 'text', text: entry.content };
   return { kind: 'audio', src: entry.content }; // audio
@@ -295,7 +295,7 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
             }
           >
             {/* A cause this product knows becomes a sentence where the
-                reader's language is, through the one gate the task list
+                user's language is, through the one gate the task list
                 beside this panel reads by. */}
             {failed
               ? failureSentence(entry.errorMessage, t, mediumOf(modality))

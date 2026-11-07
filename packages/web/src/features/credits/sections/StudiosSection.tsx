@@ -134,7 +134,7 @@ const StudioRow = React.memo(function StudioRow({ studio, billing }: StudioRowPr
               ? '—'
               : formatCreditAmount(studio.spendable)}
           </span>
-          {/* A debt is the studio's, and null here says this reader no longer
+          {/* A debt is the studio's, and null here says this user no longer
               administers it. What they spent stays either way: that is their
               own history. */}
           <span className='block text-xs text-muted-foreground'>

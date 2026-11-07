@@ -3,7 +3,7 @@
 
 /**
  * A document proposal landing (inner#1509): checked against the document as
- * it is when the reader presses, written (a rewrite or an insert as one undo
+ * it is when the user presses, written (a rewrite or an insert as one undo
  * step, a comment off the undo stack), and recognised as
  * landed from the marks it left -- a thread carrying its id, or a block whose
  * id was derived from it.
@@ -40,7 +40,7 @@ async function open(markdown: string): Promise<DocumentEditorHandle> {
   const doc = new Y.Doc();
   const handle = getDocumentEditor(doc, `project-p/document-${String(Math.random())}`, {
     caretProvider: { awareness: new Awareness(doc) },
-    readWho: () => ({ role: 'editor', viewerId: 'reader-1' }),
+    readWho: () => ({ role: 'editor', viewerId: 'user-1' }),
     editable: true,
   });
   const root = document.createElement('div');
@@ -137,7 +137,7 @@ function proposalOn(handle: DocumentEditorHandle, index: number | null, fields: 
 }
 
 describe('a comment', () => {
-  it('hangs on the quoted words, written by the reader and marked as from the Agent', async () => {
+  it('hangs on the quoted words, written by the user and marked as from the Agent', async () => {
     const handle = await open('The hero arrives at the gate.');
     const proposal = proposalOn(handle, 0, { kind: 'comment', quote: 'the gate', body: 'Which gate?' });
 
@@ -146,7 +146,7 @@ describe('a comment', () => {
     const [thread] = threads(handle);
     expect(result).toEqual({ outcome: 'applied', how: 'comment', blockId: blocks(handle)[0]!.id, threadId: thread!.id });
     expect(thread?.metadata).toEqual({ proposalId: proposal.proposalId });
-    expect(thread?.comments[0]).toMatchObject({ userId: 'reader-1', metadata: { fromAgent: true } });
+    expect(thread?.comments[0]).toMatchObject({ userId: 'user-1', metadata: { fromAgent: true } });
     expect(marked(handle)).toEqual([{ threadId: thread!.id, text: 'the gate' }]);
   });
 
@@ -198,7 +198,7 @@ describe('a rewrite', () => {
 });
 
 describe('one undo step', () => {
-  it('takes back the landing and leaves what the reader typed just before it', async () => {
+  it('takes back the landing and leaves what the user typed just before it', async () => {
     const handle = await open('Typed here.\n\nTarget.');
     const proposal = proposalOn(handle, 1, { kind: 'rewrite', body: 'Rewritten.' });
     const view = handle.editor.prosemirrorView!;
@@ -380,7 +380,7 @@ describe('the block a landed proposal is shown at (inner#1509 review round 1)', 
 });
 
 describe('a comment that lands', () => {
-  it('stays off the undo stack, like a comment the reader writes', async () => {
+  it('stays off the undo stack, like a comment the user writes', async () => {
     const handle = await open('Alpha bravo.');
     const before = handle.undoManager.undoStack.length;
 

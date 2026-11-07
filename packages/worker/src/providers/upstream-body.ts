@@ -44,7 +44,7 @@ export function upstreamBody(
     if (isPresent(value) && value !== spec.absent_value) sent.set(name, value);
   }
   // A param that stands in for another says the same thing a second way, and
-  // the endpoint ignores one of them; only the one the reader filled goes.
+  // the endpoint ignores one of them; only the one the user filled goes.
   const replaced = new Set(
     [...sent.keys()].map((name) => entry.params?.[name]?.replaces).filter((name) => typeof name === "string"),
   );

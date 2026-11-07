@@ -62,7 +62,7 @@ function emptyTable(size: TableSize, quoted: boolean): BlockSpec {
  * `insertBlocks` with `'after'` — `getInsertionPos` puts it at the
  * container's end (`getBlockInfoFromPos.ts:580-582`), and a container holds its nested blocks
  * (`BlockContainer.ts:71`), so the new row would land below the whole subtree.
- * Referencing the first child with `'before'` is the same place the reader
+ * Referencing the first child with `'before'` is the same place the user
  * gets from pressing Enter.
  *
  * Blocks named in `lead` go in first, in the same place, and the row comes
@@ -103,7 +103,7 @@ export function insertRowForMenu(
  *
  * A block type is a new row turned into that type; a divider is a divider with
  * the new row under it (#124 A2); a table is the table with the new row under
- * it and the caret in its first cell (inner#1126 A1), so the reader writes in
+ * it and the caret in its first cell (inner#1126 A1), so the user writes in
  * the table and has a line below it to carry on.
  * @param editor - The editor to write to.
  * @param row - The block the menu was opened on.
@@ -168,7 +168,7 @@ export function insertMediaOnRow(editor: HandleEditor, row: PressedBlock, blocks
  * Whether the handle shows the plus for this row (#1097, A1): a paragraph
  * with nothing in it. The same emptiness BlockNote's own add button reads
  * (`AddBlockButton.tsx`), held to paragraphs — an empty heading or list item
- * already carries a type the reader chose.
+ * already carries a type the user chose.
  * @param row - The row, as the document holds it now.
  * @returns True for an empty paragraph; false for anything else or no row.
  */
@@ -186,7 +186,7 @@ export function isEmptyParagraph(row: PressedBlock | undefined): boolean {
  * A block type becomes the row's own type, so the row keeps its id. The
  * divider goes above the row, which stays the empty paragraph under it — what
  * typing `---` at the start of a line leaves. The caret is set into the row in
- * both cases: the handle follows the pointer, so the reader's caret can be in
+ * both cases: the handle follows the pointer, so the user's caret can be in
  * any other row, and the menu closing only hands the focus back.
  *
  * One transaction, so one undo takes it all back (A6).

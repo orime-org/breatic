@@ -200,7 +200,7 @@ describe('DangerZone — leaving the studio', () => {
     expect(confirm).toHaveAttribute('aria-busy', 'true');
     expect(confirm).toHaveAttribute('aria-disabled', 'true');
 
-    // A refused leave: the dialog stays so the reader can press again.
+    // A refused leave: the dialog stays so the user can press again.
     rerender(tree(false, onLeave));
     expect(confirm).not.toHaveAttribute('aria-busy');
     expect(screen.getByTestId('settings-leave-dialog')).toBeInTheDocument();

@@ -42,7 +42,7 @@ const RUNS: { name: string; run: () => Promise<unknown> }[] = [
     name: 'a reading',
     run: () =>
       canvasApi.understand(
-        { project_id: PROJECT, space_id: 's', source_type: 'image', source_url: 'u', node_ids: [], reader_locale: 'en' },
+        { project_id: PROJECT, space_id: 's', source_type: 'image', source_url: 'u', node_ids: [], user_locale: 'en', reader_locale: 'en' },
         'k2',
       ),
   },

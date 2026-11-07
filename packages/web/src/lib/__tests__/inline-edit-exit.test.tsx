@@ -129,7 +129,7 @@ describe('useInlineEditExit', () => {
     expect(document.activeElement).toBe(screen.getByTestId('target'));
   });
 
-  it('leaves focus where the reader went when editing ends by leaving the box', () => {
+  it('leaves focus where the user went when editing ends by leaving the box', () => {
     setup();
     const elsewhere = screen.getByTestId('elsewhere');
     act(() => elsewhere.focus());

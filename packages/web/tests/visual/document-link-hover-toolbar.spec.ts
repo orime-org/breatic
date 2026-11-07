@@ -37,7 +37,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('comes up once the pointer rests on a link', async ({ page }) => {
-  // Acceptance A1, the reader's own words: "鼠标放在上面，延迟一下就把工具条
+  // Acceptance A1, the user's own words: "鼠标放在上面，延迟一下就把工具条
   // 显示出来". What only a real pointer reaches is the geometry — the
   // coordinates resolved to a position, and the rectangle hit test. The
   // delay itself is the toolbar's own timer, and jsdom pins it.
@@ -103,7 +103,7 @@ test('survives the trip from the link to itself', async ({ page }) => {
 
 test('stays while the pointer rests on the link', async ({ page }) => {
   // Acceptance A5, and WCAG 2.2 SC 1.4.13 Persistent: it does not time out
-  // from under a reader who is still reading it.
+  // from under a user who is still reading it.
   await restOnLink(page, 0);
   await expect(page.getByTestId('doc-link-url')).toBeVisible({
     timeout: 5_000,
@@ -174,7 +174,7 @@ test('stays away while the pointer rests where no link is drawn', async ({ page 
   // What the hit test is for. `posAtCoords` answers with the position
   // NEAREST the coordinates, not the one under them, so on its own it hands
   // back a link for a pointer that is only beside one — and the toolbar
-  // would come up over a link the reader is not pointing at.
+  // would come up over a link the user is not pointing at.
   const body = (await page
     .locator(`${DOCUMENT_EDITOR}`)
     .boundingBox())!;
@@ -419,7 +419,7 @@ test('opens the address and goes when its link is pressed', async ({ page }) => 
 test('comes back when the pointer leaves the link and returns to it', async ({ page }) => {
   // The other half of the press: what was dismissed is one link, and
   // reaching it again is a fresh ask. Nothing happens while the pointer sits
-  // still on the link it just pressed, which is what the reader wants of a
+  // still on the link it just pressed, which is what the user wants of a
   // press — the toolbar does not spring back over the tab they opened.
   await restOnLink(page, 0);
   await expect(page.getByTestId('doc-link-url')).toBeVisible({
@@ -520,7 +520,7 @@ test('puts the open field away on a press outside', async ({ page }) => {
 });
 
 test('goes on Enter with the pointer parked away', async ({ page }) => {
-  // D2 by the keyboard. The hand is off the screen as far as this reader is
+  // D2 by the keyboard. The hand is off the screen as far as this user is
   // concerned, which is the case the reporter had in mind: standing the
   // toolbar back up to report the write would be talking to nobody.
   await restOnLink(page, 0);
@@ -542,7 +542,7 @@ test('goes on Enter with the pointer parked away', async ({ page }) => {
 });
 
 test('goes on Escape with the pointer back on the toolbar', async ({ page }) => {
-  // D2b holds wherever the hand is. The reader answering the field ends the
+  // D2b holds wherever the hand is. The user answering the field ends the
   // round, and a hand that wandered off and came back does not keep it.
   await restOnLink(page, 0);
   await page.getByTestId('doc-link-edit').click();
@@ -586,8 +586,8 @@ test('keeps the open field when the pointer crosses the link on its way out', as
   );
 });
 
-test('leaves the focus where the reader put it when Escape takes it away', async ({ page }) => {
-  // The toolbar the pointer raised is not necessarily what the reader is
+test('leaves the focus where the user put it when Escape takes it away', async ({ page }) => {
+  // The toolbar the pointer raised is not necessarily what the user is
   // working in: the chat composer sits beside the body, and Escape is the
   // gesture for dismissing the toolbar. Taking the focus on the way out puts
   // the next keystrokes into the shared document.
@@ -679,7 +679,7 @@ test('stays while the pointer slides to the trailing edge of its link', async ({
 });
 
 test('stays away when the pointer twitches after Escape', async ({ page }) => {
-  // A4 again, with the pointer where the reader left it. A resting hand on a
+  // A4 again, with the pointer where the user left it. A resting hand on a
   // trackpad emits moves of its own, and the dismissal is about a link
   // rather than about the pointer holding perfectly still: measured before
   // the fix, a one-pixel move put the toolbar straight back.
@@ -703,7 +703,7 @@ test('stays away when the pointer twitches after Escape', async ({ page }) => {
 });
 
 test('gives a second link a delay of its own', async ({ page }) => {
-  // The delay is what keeps the toolbar off a link the reader is sweeping
+  // The delay is what keeps the toolbar off a link the user is sweeping
   // across. A countdown left running from the link before it is spent on
   // this one: measured before the fix, 85ms on the first link and 40ms on
   // the second was enough to raise the second one's toolbar.
@@ -737,7 +737,7 @@ test('keeps the link under the pointer after a flick across another', async ({ p
   // the pointer arrives somewhere else. Measured before the fix: a flick
   // onto the third link and straight back re-pointed the toolbar at the
   // third one while the pointer rested on the first, so pressing Remove
-  // would have stripped a link the reader never pointed at.
+  // would have stripped a link the user never pointed at.
   await restOnLink(page, 0);
   // Whatever address the first link carries by now: cases before this one
   // in the group write to it, and this one is about which link is held.
@@ -765,7 +765,7 @@ test('keeps the caret its link when the pointer lets go of another', async ({ pa
   // A6 does not depend on the pointer. One hold with one route means a
   // pointer that took the toolbar to another link takes it away for good
   // when it leaves, while the caret is still sitting in the first one and
-  // nothing asks again until the reader types.
+  // nothing asks again until the user types.
   await page
     .locator(`${DOCUMENT_EDITOR} p`)
     .nth(0)
@@ -791,7 +791,7 @@ test('keeps the caret its link when the pointer lets go of another', async ({ pa
 test('comes back over a link whose address it just rewrote', async ({ page }) => {
   // Writing an address gives the run a different mark, and ProseMirror
   // throws away the element it was drawn as. A toolbar holding that element
-  // pointed at nothing from then on: the reader moved off the link, came
+  // pointed at nothing from then on: the user moved off the link, came
   // back, and nothing came up. A position is what it holds, so this takes
   // the whole trip — write, leave, return. It runs last in this block
   // because it leaves the first link carrying an address of its own.

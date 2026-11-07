@@ -80,7 +80,7 @@ interface ShotListProps<Shot extends ShotRow> {
   shots: readonly Shot[];
   /** The id of the shot whose box is open. */
   expanded: string;
-  /** The reader opened another shot. */
+  /** The user opened another shot. */
   onExpand: (shotId: string) => void;
   /** What a closed shot with no words shows. */
   placeholder: string;

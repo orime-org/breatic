@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Markup objects as Fabric draws them, and read back after the reader moves or
+ * Markup objects as Fabric draws them, and read back after the user moves or
  * resizes one (inner#1303 §6.2). One conversion serves the node's canvas and
  * the export, so the two draw alike; sizes are shares of the picture's
  * shorter side, so they come out the same at the node's size and the source's.

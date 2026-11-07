@@ -278,7 +278,7 @@ test('clearing the selection during the pan leaves the copy without the keyboard
   await expect.poll(async () => (await nodes()).length, { timeout: 20_000 }).toBe(before.length + 1);
   const [copy] = (await nodes()).filter((n) => !before.some((o) => o.id === n.id));
   await expect(drawn(copy?.id ?? '')).toHaveClass(/selected/);
-  // The canvas is sliding to the copy; the reader clears the selection before it settles.
+  // The canvas is sliding to the copy; the user clears the selection before it settles.
   await page.keyboard.press('Escape');
   await page.waitForTimeout(600);
   await expect(drawn(copy?.id ?? '')).not.toHaveClass(/selected/);

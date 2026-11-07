@@ -121,7 +121,7 @@ const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
   setUserForModel: vi.fn(async () => undefined),
-  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }), getMessages }));
+  addUserMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }), getMessages }));
 
 vi.mock("@server/agent/turn-fold.js", () => ({
   foldIfTooLong,
@@ -280,7 +280,7 @@ describe("一个回合扣不满时", () => {
     expect(line?.[0]).toMatchObject({ shortfall: "70.000000", charged: "30.000000" });
   });
 
-  it("logs a turn charge whose readers could not be told", async () => {
+  it("logs a turn charge whose users could not be told", async () => {
     chargeOnceForGeneration.mockResolvedValueOnce({
       billed: true,
       charged: "30.000000",

@@ -410,7 +410,7 @@ describe('what makes the panel ask the server again (#2175)', () => {
 
   // The refetch exists because a finished run lands silently: the content the
   // node shows becomes something no loaded row holds, and that is the only
-  // announcement there is. A text node's words are not that — the reader
+  // announcement there is. A text node's words are not that — the user
   // types them — so reading a keystroke as a landed result would put a
   // request on the wire for every letter.
   // A run that finishes while the panel is open puts a row at the top of a
@@ -472,7 +472,7 @@ describe('what makes the panel ask the server again (#2175)', () => {
     );
   });
 
-  it('does not ask again because the reader typed into a text node', async () => {
+  it('does not ask again because the user typed into a text node', async () => {
     vi.mocked(canvasApi.listNodeHistory).mockResolvedValue({
       entries: [entry('a')],
       total: 1,

@@ -21,10 +21,10 @@ export const CARRIED_OBJECT_TRANSITION: GenerationTemplate = {
   ],
   steps: [],
   agentNote:
-    "a 5-second seamless transition: the reader's object sits at the same place and size in two generated vertical scene pictures, which become the first and end frame of a video that follows the object from scene A into scene B; the reader generates both scenes and picks them into the first and end frame before generating the video",
+    "a 5-second seamless transition: the user's object sits at the same place and size in two generated vertical scene pictures, which become the first and end frame of a video that follows the object from scene A into scene B; the user generates both scenes and picks them into the first and end frame before generating the video",
   goal: "social-hooks",
   triggers: {
     asks: ["a seamless transition", "a match cut between two places"],
-    offerWhen: ["the reader has two scenes or clips that need a transition between them"],
+    offerWhen: ["the user has two scenes or clips that need a transition between them"],
   },
 };

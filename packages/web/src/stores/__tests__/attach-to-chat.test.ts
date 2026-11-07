@@ -6,7 +6,7 @@
  *
  * They land in the list above the box of the conversation on screen, which is
  * opened first when there is none, with the agent column brought back into
- * view so the reader sees them arrive.
+ * view so the user sees them arrive.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 

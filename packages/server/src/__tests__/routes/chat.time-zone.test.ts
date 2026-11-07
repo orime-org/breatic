@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The reader's time zone, from the request body to the turn.
+ * The user's time zone, from the request body to the turn.
  *
  * The browser reports it with every message; the route hands it to the agent
  * as it came, and the agent decides what an unknown one means.
@@ -89,7 +89,7 @@ beforeEach(() => {
   handedZones.length = 0;
 });
 
-describe("POST /chat/message and the reader's time zone", () => {
+describe("POST /chat/message and the user's time zone", () => {
   it("hands the zone the browser reported to the turn", async () => {
     expect(await post({ ...BODY, time_zone: "Asia/Shanghai" })).toBe(200);
     expect(handedZones).toEqual(["Asia/Shanghai"]);

@@ -9,8 +9,8 @@
  * — and finds the table from it inside the transaction it writes. It writes
  * the table in place, never through the block's JSON: our comment mark is
  * ignored by BlockNote's block conversion, and a round trip would drop it.
- * The reader's own selection is put back at the end of the same transaction:
- * the cell a command acts on is never the reader's selection.
+ * The user's own selection is put back at the end of the same transaction:
+ * the cell a command acts on is never the user's selection.
  */
 
 import type { BlockNoteEditor } from '@blocknote/core';
@@ -93,7 +93,7 @@ export function cellAt(doc: PMNode, cellPos: number): CellAt | null {
 
 /**
  * Runs a write against the table a cell is in, evened first, and puts the
- * reader's selection back.
+ * user's selection back.
  * @param editor - The editor to write to.
  * @param cellPos - The cell the command acts on.
  * @param write - What the command does, given the cell and its position as
@@ -107,13 +107,13 @@ function runOnTable(
   editor.transact((tr) => {
     const found = cellAt(tr.doc, cellPos);
     if (found === null) return;
-    const reader = tr.selection;
+    const userSelection = tr.selection;
     const written = tr.mapping.maps.length;
     squareTable(tr, found.tableStart - 1);
     const cell = tr.mapping.slice(written).map(cellPos);
     write(tr, cellAt(tr.doc, cell)!, cell);
     if (tr.mapping.maps.length > written) {
-      tr.setSelection(reader.map(tr.doc, tr.mapping.slice(written)));
+      tr.setSelection(userSelection.map(tr.doc, tr.mapping.slice(written)));
     }
   });
 }
@@ -486,7 +486,7 @@ export function canMergeCells(state: EditorState): boolean {
 
 /**
  * Whether a cell holds one empty paragraph with nothing nested under it.
- * Other empty block types carry the reader's chosen structure.
+ * Other empty block types carry the user's chosen structure.
  * @param cell - The cell node.
  * @returns True when it is empty.
  */

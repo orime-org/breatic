@@ -39,7 +39,7 @@ import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
  * @param root0.spaceId - ID of the document space.
  * @param root0.projectId - ID of the owning project.
  * @param root0.readOnly - True for a viewer; the body goes read-only.
- * @param root0.myRole - This reader's role on the project.
+ * @param root0.myRole - This user's role on the project.
  * @returns The document editor, or a loading placeholder while it mounts.
  */
 export function DocumentSpace({
@@ -54,7 +54,7 @@ export function DocumentSpace({
   // The comment store asks who is reading before every write it authorises,
   // and it asks the editor — which is built once per document and kept across
   // Space-tab switches. So what it gets is a reading off the latest render
-  // rather than the values this one happened to have: a reader demoted while
+  // rather than the values this one happened to have: a user demoted while
   // the document is open stops being able to write (A17), and one promoted
   // starts, neither of them needing the Space reopened.
   const who = React.useRef({ role: myRole, viewerId });
@@ -68,7 +68,7 @@ export function DocumentSpace({
   // content has EVER arrived, because once it has the local document holds it
   // and edits made offline merge cleanly on reconnect. Reading the live flag
   // would tear the editor out of the DOM on every blip, taking the caret, the
-  // in-flight IME composition and the reader's place on the page with it.
+  // in-flight IME composition and the user's place on the page with it.
   //
   // Read from the tab rather than subscribed here: this body is hidden, not
   // unmounted, on a Space-tab switch, and hiding cleans up its effects. A
@@ -163,7 +163,7 @@ export function DocumentSpace({
   // 2026-07-29 weighed this against the alternative and chose it).
   const shown = hasEverSynced ? handle : null;
 
-  // Cards the reader pressed in the chat for this document land here, once
+  // Cards the user pressed in the chat for this document land here, once
   // there is an editor and the connection has said whether it may write.
   const landed = useDocumentProposalPickup(spaceId, shown, writeAccess, intercepted || unavailable, name);
 

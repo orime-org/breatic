@@ -92,7 +92,7 @@ describe("get_canvas_capabilities", () => {
   });
 
   it("names a mode the way its picker names it", async () => {
-    // The label is what the reader has to find on screen: the mode code is
+    // The label is what the user has to find on screen: the mode code is
     // nowhere in the picker. Two of them were written a second time in the
     // catalog and came out as something no selector shows.
     const rendered = renderCapabilitiesForModel(await run<CanvasCapabilityAnswer>(canvasCapabilities, {}));
@@ -137,7 +137,7 @@ describe("what get_canvas_capabilities says about text nodes", () => {
     // Both paths read the node at submit time, so editing the node changes
     // what every mention of it sends. A model that reads a mention as a
     // snapshot writes the words into the prompt a second time instead.
-    expect(await rendered()).toContain("at the moment the reader presses Generate");
+    expect(await rendered()).toContain("at the moment the user presses Generate");
   });
 
   it("says one text node can be mentioned by several nodes downstream", async () => {
@@ -145,7 +145,7 @@ describe("what get_canvas_capabilities says about text nodes", () => {
   });
 
   it("names the three things a text node carries", async () => {
-    // The reader keeps one, the flow is described by another, and the third is
+    // The user keeps one, the flow is described by another, and the third is
     // the prompt fragment the nodes downstream mention.
     const text = await rendered();
     expect(text).toContain("a finished piece of writing");
@@ -162,7 +162,7 @@ describe("what get_canvas_capabilities says about text nodes", () => {
   });
 });
 
-// A reader who names a look ("3D like the donghua X") was told Breatic has no
+// A user who names a look ("3D like the donghua X") was told Breatic has no
 // modelling or rigging (breatic#1361): the look or sound comes from the prompt.
 describe("what get_canvas_capabilities says about the look or sound a mode makes", () => {
   const LOOK =
@@ -367,7 +367,7 @@ describe("what the rendered answer tells the model", () => {
 
   it("lists what the picker lists for a range it walks", async () => {
     // The picker walks an unstepped range one whole step at a time, so the
-    // two ends alone would have a reader ask for a value in between.
+    // two ends alone would have a user ask for a value in between.
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
     expect(renderGenerationModelsForModel(answer)).toMatch(
       /duration: one of 3 \| 4 \| 5[^\n]*\| 15;/,
@@ -393,7 +393,7 @@ describe("what the rendered answer tells the model", () => {
   });
 
   it("says a voice stands on the first of its list rather than quoting the yaml default", async () => {
-    // The panel sends the list's first voice until the reader picks one, so the
+    // The panel sends the list's first voice until the user picks one, so the
     // yaml default is never what the run takes.
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "tts" });
     const rendered = renderGenerationModelsForModel(answer);
@@ -405,7 +405,7 @@ describe("what the rendered answer tells the model", () => {
 
   it("leaves a gate off a mode whose model has no such switch", async () => {
     // Reference-to-music takes lyrics on every run: the model behind it
-    // declares no instrumental switch, so a clause about one sends the reader
+    // declares no instrumental switch, so a clause about one sends the user
     // looking for a control the panel never draws.
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "a2m" });
     const rendered = renderGenerationModelsForModel(answer);
@@ -418,7 +418,7 @@ describe("what the rendered answer tells the model", () => {
   it("names the other modes of this node a model also serves", async () => {
     // What a model is good at is written once for the whole entry, so an
     // entry serving two modes says things about the other one. Naming that
-    // mode is what lets a reader place the sentence it belongs to.
+    // mode is what lets a user place the sentence it belongs to.
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "i2v" });
     expect(renderGenerationModelsForModel(answer)).toMatch(/also serves first_last/i);
   });
@@ -431,7 +431,7 @@ describe("what the rendered answer tells the model", () => {
   });
 
   it("names the parameters nothing here can reach, beside what it is for", async () => {
-    // A reader picks a model off the head line. A capability sold there whose
+    // A user picks a model off the head line. A capability sold there whose
     // parameter has no control is one they cannot take, and the per-parameter
     // lines saying so are read after the choice is already made.
     // No model a panel reaches declares such a parameter today, so the answer

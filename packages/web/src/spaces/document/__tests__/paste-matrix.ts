@@ -3,7 +3,7 @@
 
 /**
  * The combinations the placement takes (inner#1351 design §5.4.6): target
- * lines with the selection a reader makes there, content shapes, and what
+ * lines with the selection a user makes there, content shapes, and what
  * §5.4.3 puts for each, shared by every source's matrix.
  */
 
@@ -108,7 +108,7 @@ export function nodeAt(editor: Editor, name: string, nth = 0): number {
 }
 
 /**
- * Presses a key the way a reader does.
+ * Presses a key the way a user does.
  * @param editor - The editor.
  * @param key - The key.
  */
@@ -130,7 +130,7 @@ export function setText(editor: Editor, from: number, to = from): void {
   view.focus();
 }
 
-/** A target line: the body it sits in and how the reader puts the selection there. */
+/** A target line: the body it sits in and how the user puts the selection there. */
 export interface Target {
   readonly blocks: unknown[];
   readonly select: (editor: Editor) => void;

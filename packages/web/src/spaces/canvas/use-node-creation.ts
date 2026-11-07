@@ -269,13 +269,13 @@ function arrangeProposal(
   };
   // The anchor's own group first. An anchor in no unlocked group lends the new
   // nodes the group this template's reused nodes sit in, which a first apply
-  // made, so the instance stays one piece the reader drags as one. A
-  // reference the reader wired in keeps its own group to itself.
+  // made, so the instance stays one piece the user drags as one. A
+  // reference the user wired in keeps its own group to itself.
   const joinGroup = unlockedGroupOf(anchorId)
     ?? [...existing.values()].filter((node) => node.instance === true).map((node) => unlockedGroupOf(node.nodeId)).find((group) => group !== undefined);
   // When a reused node of this instance sits in the group the new nodes join,
   // the flow lines up on it, so a node put back lands in its place in the
-  // instance wherever the reader has since moved the anchor.
+  // instance wherever the user has since moved the anchor.
   const alignIndex = (joinGroup
     && [...existing].find(([index, node]) => index !== anchorIndex && node.instance === true && unlockedGroupOf(node.nodeId)?.id === joinGroup.id)?.[0])
     ?? anchorIndex;
@@ -483,7 +483,7 @@ export function useNodeCreation(
       // Takes back everything this press writes when a write fails part way.
       // The failed transaction is marked so the canvas undo manager skips it,
       // and the rollback's own undo is an origin that manager does not track,
-      // so the reader's undo history holds no trace of either.
+      // so the user's undo history holds no trace of either.
       const rollback = createCanvasRollback(projectId, spaceId);
       try {
         runCanvasUndoBatch(projectId, spaceId, (tr) => {
@@ -502,7 +502,7 @@ export function useNodeCreation(
                 });
                 nodeIds[i] = id;
                 setNodeName(projectId, spaceId, id, node.name);
-                // The reader's material, with the numbers its registration
+                // The user's material, with the numbers its registration
                 // holds, the same write a restored result goes through
                 // (inner#1315). The tool answers with both or neither.
                 if (node.material !== undefined && node.materialMedia !== undefined) {
@@ -586,17 +586,17 @@ export function useNodeCreation(
               if (fresh[i]) writeProposalFills(projectId, spaceId, id, node, proposal.nodes);
               if (node.role === 'written') {
                 // A written node's words are its body, not a prompt: nothing
-                // generates there, and the body is what the reader reads and edits.
+                // generates there, and the body is what the user reads and edits.
                 const body = getTextBody(projectId, spaceId, id);
                 if (body && node.prompt) writePlainTextIntoBody(body, promptPlainText(node.prompt));
                 return;
               }
               if (!node.mode) return;
               // Words sent into a song model's lyrics box are @'d there, the way
-              // the reader would @ them, and nowhere else.
+              // the user would @ them, and nowhere else.
               const lyrics = proposal.edges.filter((edge) => edge.toIndex === i && edge.into === PANEL_EDITOR_PARAM);
               const lyricsBox = lyrics.length > 0 ? getLyricsFragment(projectId, spaceId, id, node.mode) : null;
-              // One line each, the way a reader @'ing them by hand would: two
+              // One line each, the way a user @'ing them by hand would: two
               // mentions on one line send their words run together.
               const lyricsLines = lyrics.flatMap((edge, k) =>
                 k === 0 ? [{ ref: edge.fromIndex }] : [{ text: '\n' }, { ref: edge.fromIndex }],
@@ -640,7 +640,7 @@ export function useNodeCreation(
         rollback.destroy();
       }
       fetchTemplateResources(projectId, spaceId, proposal, nodeIds, fresh, (key) => toast.error(t(key)));
-      // Words in braces are the reader's to write. Saying so is all: what
+      // Words in braces are the user's to write. Saying so is all: what
       // they leave as it is goes out as it is (inner#977). A proposal's
       // references land as mentions and its notes show in the box, so only
       // braces are left to point at (inner#1315). Where no prompt box is drawn

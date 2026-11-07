@@ -162,13 +162,13 @@ describe("estimateCredits", () => {
     expect(estimate.credits).toBeCloseTo(8.4, 6);
   });
 
-  it("prices the params the reader set, in credits after the discount", async () => {
+  it("prices the params the user set, in credits after the discount", async () => {
     const estimate = await estimateCredits(WAN_T2V, { params: { resolution: "1080p", duration: 10 } }, 1);
     expect(estimate.bound).toBe("exact");
     expect(estimate.credits).toBeCloseTo(190, 6);
   });
 
-  it("fills what the reader left unset from the declared defaults", async () => {
+  it("fills what the user left unset from the declared defaults", async () => {
     const estimate = await estimateCredits(WAN_T2V, { params: {} }, 1);
     expect(estimate.credits).toBeCloseTo(47.5, 6);
   });

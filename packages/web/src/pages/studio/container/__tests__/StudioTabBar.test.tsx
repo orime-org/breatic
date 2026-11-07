@@ -116,7 +116,7 @@ describe('StudioTabBar — a nav of links, not a tablist', () => {
     expect(links.map((l) => l.getAttribute('href'))).toEqual([
       // The default section's address IS the studio's, not a second spelling
       // of it — otherwise the strip's first link points away from the page the
-      // reader is already on.
+      // user is already on.
       '/studio/acme-studio',
       '/studio/acme-studio/archived',
       '/studio/acme-studio/collections',
@@ -140,7 +140,7 @@ describe('StudioTabBar — a nav of links, not a tablist', () => {
   });
 
   it('marks the current section so it LOOKS different, not only reads different', () => {
-    // `aria-current` is for the machine. A sighted reader needs the strip to
+    // `aria-current` is for the machine. A sighted user needs the strip to
     // show which section they are in, and asserting the attribute cannot see
     // whether anything paints — which is how the indicator went missing: the
     // classes were concatenated, so `border-transparent` and
@@ -205,10 +205,10 @@ describe('StudioTabBar — a nav of links, not a tablist', () => {
     // going somewhere takes a deliberate press. Together they are what a
     // tablist could not give.
     //
-    // "Once" is the load-bearing word, and what it promises the reader is that
+    // "Once" is the load-bearing word, and what it promises the user is that
     // one press in costs one Back out. Asserting the destination alone says
     // nothing about that: the address is right whether the press left the
-    // previous page reachable or replaced it, and the reader only finds out
+    // previous page reachable or replaced it, and the user only finds out
     // when Back does not take them home. Pressing Back is the only way to ask.
     //
     // Not counted, pressed. Counting entries would need a number the router
@@ -216,7 +216,7 @@ describe('StudioTabBar — a nav of links, not a tablist', () => {
     // and it would also be measuring the wrong thing: a second push of the SAME
     // address is not even possible here, because a `<Link>` whose target equals
     // the current location replaces rather than pushes (verified against the
-    // installed react-router). What a reader can actually be robbed of is the
+    // installed react-router). What a user can actually be robbed of is the
     // page they came from.
     const user = userEvent.setup();
     const { location, goBack } = setupWithLocation('team');

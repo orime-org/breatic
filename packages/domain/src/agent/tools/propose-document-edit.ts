@@ -5,11 +5,11 @@
  * Propose a comment, a rewrite or an insert for the open document
  * (inner#1509).
  *
- * The target is the document Space the reader has open this turn, read from
+ * The target is the document Space the user has open this turn, read from
  * the blocks their browser sent with the message: each top-level block
  * behind a `<!-- b:N -->` marker in what the model reads, and its plain text
  * beside it. The tool checks a proposal against those blocks and answers
- * with what the card draws; nothing lands until the reader presses a button
+ * with what the card draws; nothing lands until the user presses a button
  * on the card. A refusal says what is wrong, the rule it breaks and the facts
  * the agent needs, and the agent puts the proposal right from that.
  */
@@ -21,7 +21,7 @@ import { z } from "zod";
 
 import { hasWords, occurrences, type ChatDocumentBlock, type DocumentProposal, type ProposalRefused } from "@breatic/shared";
 
-/** The document a proposal goes to: the one the reader has open this turn. */
+/** The document a proposal goes to: the one the user has open this turn. */
 export interface OpenDocument {
   spaceId: string;
   spaceName: string;
@@ -134,7 +134,7 @@ function blockProblem(input: DocumentEditInput, blocks: readonly ChatDocumentBlo
  * The answer for one proposal: checked against the open document's blocks,
  * and filled in with what the card and the landing read.
  * @param input - What the agent sent.
- * @param open - The document the reader has open, or null when none can be read.
+ * @param open - The document the user has open, or null when none can be read.
  * @param proposalId - The id this proposal is known by from here on.
  * @returns The proposal, or why it was refused.
  * @throws {never} Never.
@@ -145,7 +145,7 @@ export function answerDocumentEdit(
   proposalId: string,
 ): DocumentProposalAnswer {
   if (open === null) {
-    return refused("The reader has no document open that this message could read, so there is no block to propose on.");
+    return refused("The user has no document open that this message could read, so there is no block to propose on.");
   }
   const problem = blockProblem(input, open.blocks);
   if (problem !== null) return refused(problem);
@@ -180,7 +180,7 @@ export function answerDocumentEdit(
 }
 
 /**
- * The one line the model reads back. The proposal is for the reader; the
+ * The one line the model reads back. The proposal is for the user; the
  * model sent it, and repeating it into every later turn costs it again.
  * @param answer - What the tool answered.
  * @returns A sentence saying it is on screen, or why it is not.
@@ -188,11 +188,11 @@ export function answerDocumentEdit(
  */
 export function renderDocumentProposalForModel(answer: DocumentProposalAnswer): string {
   return answer.placed
-    ? "The proposal is on screen as a card. The reader decides whether to apply it."
+    ? "The proposal is on screen as a card. The user decides whether to apply it."
     : `That proposal was refused, so nothing is on screen. ${answer.reason}`;
 }
 
-/** What this tool is handed in its context: the document the reader has open. */
+/** What this tool is handed in its context: the document the user has open. */
 export interface ProposeDocumentContext extends Record<string, unknown> {
   openDocument: OpenDocument | null;
 }
@@ -217,13 +217,13 @@ const proposeDocumentContextSchema: z.ZodType<ProposeDocumentContext> = z.object
 export function makeProposeDocumentEdit(): Tool<DocumentEditInput, DocumentProposalAnswer, ProposeDocumentContext> {
   return tool({
     description:
-      "Propose a comment on, a rewrite of, or an insert into the document the reader has open, as a card they " +
-      "apply with one press. It works on the document under \"The Space the reader has open\" in the message, " +
+      "Propose a comment on, a rewrite of, or an insert into the document the user has open, as a card they " +
+      "apply with one press. It works on the document under \"The Space the user has open\" in the message, " +
       "where each top-level block follows a <!-- b:N --> marker: name a block by that N. A comment hangs on " +
-      "words in one block and the reader can reply to it or resolve it; a rewrite replaces one whole block with " +
+      "words in one block and the user can reply to it or resolve it; a rewrite replaces one whole block with " +
       "your Markdown; an insert adds Markdown -- paragraphs, headings (#, ## and ### only: the document has three " +
       "levels, and deeper ones land as ###), lists, a table -- after a block or at the " +
-      "end. Nothing changes in the document until the reader presses the card. One proposal per change: several " +
+      "end. Nothing changes in the document until the user presses the card. One proposal per change: several " +
       "changes are several calls, and content that follows one place -- a run of paragraphs, several scenes -- " +
       "goes in one insert, in the order it reads. An image, video or audio in the Markdown lands only when its " +
       "address is in our storage (a file uploaded or saved here); an outside link is left out.",

@@ -16,7 +16,7 @@ export function fromYjs(tr: Transaction): boolean {
 }
 
 /**
- * Whether a transaction is the reader's own undo or redo.
+ * Whether a transaction is the user's own undo or redo.
  * @param tr - The transaction.
  * @returns True when the binding writes an undo or redo into the body.
  */

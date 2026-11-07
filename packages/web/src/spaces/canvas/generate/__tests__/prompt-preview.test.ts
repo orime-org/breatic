@@ -3,7 +3,7 @@
 
 /**
  * The line a collapsed prompt row shows: the box's words as the box shows
- * them, so the reader recognises the prompt without opening it (#1201).
+ * them, so the user recognises the prompt without opening it (#1201).
  */
 
 import { describe, expect, it } from 'vitest';

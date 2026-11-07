@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Where the selection goes when the reader enters one of a block's own
+ * Where the selection goes when the user enters one of a block's own
  * controls from a body that does not hold the focus (inner#1127, design
- * 3.5.1): the selection the reader left elsewhere counts as gone, and the one
+ * 3.5.1): the selection the user left elsewhere counts as gone, and the one
  * put in its place is on the block the control belongs to.
  */
 

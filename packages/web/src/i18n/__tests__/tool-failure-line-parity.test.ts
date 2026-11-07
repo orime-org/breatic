@@ -43,7 +43,7 @@ describe('工具失败的那一行，五个语种都有', () => {
 });
 
 describe('each cause reads differently in every language (inner#1620)', () => {
-  // A reader is told which cause it was, so two causes that read the same
+  // A user is told which cause it was, so two causes that read the same
   // would be one cause on screen.
   it.each(LOCALE_CATALOGS)('%s', (_tag, catalog) => {
     const shown = LINE_KEYS.map((key) => readPath(catalog, key));

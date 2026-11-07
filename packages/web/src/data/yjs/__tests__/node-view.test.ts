@@ -241,7 +241,7 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     // Two people replying in the same sync window converge on an order Yjs
     // decides from their client ids, not from the clock: measured on yjs
     // 13.6.32, the same pair of pushes lands `newer, older` one way round and
-    // `older, newer` with the ids swapped. The reader is promised time order,
+    // `older, newer` with the ids swapped. The user is promised time order,
     // so it is settled here rather than in the document.
     const v = toNodeView(
       fields('annotation', {

@@ -17,7 +17,7 @@
  * flight, so a page that was asked for under an earlier question can never
  * land as if it answered this one.
  *
- * `status` says what the reader sees; `fetching` and `loadingMore` say what is
+ * `status` says what the user sees; `fetching` and `loadingMore` say what is
  * on its way. They are separate because both are true at once for most of the
  * time a request is out: the loaded voices stay on screen through a new search
  * and through a next page, so the picture is `ready` while a request travels.
@@ -43,7 +43,7 @@ export interface VoiceListState {
    * A whole list is on its way.
    *
    * Separate from `status` because the two answer different questions:
-   * `status` is what the reader sees, and a search holds the loaded voices on
+   * `status` is what the user sees, and a search holds the loaded voices on
    * screen while its answer travels — so `ready` and "a request is out" are
    * true at once, and only this says the second one. It is what decides
    * whether a request gets sent at all.
@@ -112,7 +112,7 @@ function startLoading(state: VoiceListState, query: string): VoiceListState {
  * Starts a fresh request under what is on screen: the picture holds until the
  * answer replaces it.
  *
- * Which of the two a search takes turns on whether the reader is looking at
+ * Which of the two a search takes turns on whether the user is looking at
  * anything worth holding. `ready` and `empty` are answers to a question about
  * the same model, and a new term does not make them wrong to look at — while
  * sweeping them away would do it on every keystroke, since each one restarts

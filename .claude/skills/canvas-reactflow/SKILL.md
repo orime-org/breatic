@@ -79,7 +79,7 @@ Memory-only state tied to a canvas document (its `Y.UndoManager`, for example) i
 
 ### Mini-tool runs create new nodes
 
-**A mini-tool Run writes its result as new nodes connected to the source by edges; it never writes back into the source node.** `spaces/canvas/mini-tool/start-mini-tool-run.ts` writes the result nodes and edges before it calls the server, so the reader's content exists at once, and what the run does next lands on those nodes' task rows.
+**A mini-tool Run writes its result as new nodes connected to the source by edges; it never writes back into the source node.** `spaces/canvas/mini-tool/start-mini-tool-run.ts` writes the result nodes and edges before it calls the server, so the user's content exists at once, and what the run does next lands on those nodes' task rows.
 
 ## Gating details
 

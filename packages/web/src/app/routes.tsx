@@ -10,8 +10,8 @@ import { routeImports } from '@web/app/route-imports';
 import { behindLoadingScreen } from '@web/app/LoadingBoundary';
 import { hasSeenSession } from '@web/lib/session-seen';
 
-// One chunk per entry: the reader downloads the page they asked for and
-// nothing else. `lazyRoute` is what carries the recovery a reader needs after
+// One chunk per entry: the user downloads the page they asked for and
+// nothing else. `lazyRoute` is what carries the recovery a user needs after
 // a deploy, so every production entry goes through it. The dev gallery is the
 // exception — its import sits inside an `import.meta.env.DEV` branch, which
 // the production build folds away entirely.
@@ -21,10 +21,10 @@ import { hasSeenSession } from '@web/lib/session-seen';
 const StudioLayout = lazyRoute(routeImports.studioLayout);
 const StudioRecentPage = lazyRoute(routeImports.studioRecentPage);
 const StudioContainerPage = lazyRoute(routeImports.studioContainerPage);
-// The one page the reader works in, so it is the one that speaks: a chunk it
+// The one page the user works in, so it is the one that speaks: a chunk it
 // cannot fetch says the page did not load and offers the refresh (user
 // 2026-09-18). Every other entry reads like an ordinary web page — it simply
-// does not arrive, and the reader refreshes if they want to.
+// does not arrive, and the user refreshes if they want to.
 const ProjectPage = lazyRoute(routeImports.projectPage, {
   editingSurface: true,
 });
@@ -187,9 +187,9 @@ preloadMatched(router.state.matches, hasSeenSession());
 
 // And again once each navigation settles. The root address matches
 // a redirect, which carries no page, so the call above finds nothing to
-// start for the reader who types the bare domain — the commonest cold entry
+// start for the user who types the bare domain — the commonest cold entry
 // there is. The subscriber runs when the destination is known, so it can never
-// ask for a chunk the reader is not going to.
+// ask for a chunk the user is not going to.
 router.subscribe((state) => {
   preloadMatched(state.matches, hasSeenSession());
 });

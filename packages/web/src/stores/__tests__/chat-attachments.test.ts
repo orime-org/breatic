@@ -27,7 +27,7 @@ import {
 } from '@web/stores/chat-attachments';
 
 /**
- * The last warning the reader was shown.
+ * The last warning the user was shown.
  * @returns Its text, or null.
  */
 function lastWarning(): unknown {

@@ -6,7 +6,7 @@
  *
  * The proposal tool's description indexes every template in one line: what
  * it makes, its goal and when to offer it. The full text -- nodes, wiring,
- * inputs, steps and each generate node's prompt in the reader's language --
+ * inputs, steps and each generate node's prompt in the user's language --
  * is read here when the agent means to propose one, so a turn does not carry
  * every template's prompts whether it uses them or not.
  */
@@ -26,7 +26,7 @@ const HOW_TO_SEND =
   "and wire them as its edges say. Give each input a node of your own wired into the nodes it feeds; " +
   "{ id, input } on that node is optional. A resource node lands holding the template's file: send it with no material. " +
   "Leave out the mode and model you keep. Send each generate node's prompt as its own, rewritten in the language " +
-  "the reader writes in with their story or detail in it: fill every tweak segment with words before you send it: from what the reader said, or, for one their words leave open, after asking them or choosing as your working rules say. A template's tweak segment is never sent as it is. " +
+  "the user writes in with their story or detail in it: fill every tweak segment with words before you send it: from what the user said, or, for one their words leave open, after asking them or choosing as your working rules say. A template's tweak segment is never sent as it is. " +
   "A node sent in multi_shot sends shots and no prompt, their durations adding up to the node's duration: the one you " +
   "write in its params, else the template's while the node keeps the template's mode and model; on another mode or model, write one. " +
   "A node sent in any other mode sends a prompt, a template's shots written as one. " +
@@ -35,7 +35,7 @@ const HOW_TO_SEND =
 /**
  * One template written out for the agent: its nodes, wiring, inputs,
  * resources and follow-up steps, what it makes, and each generate node's
- * prompt in the reader's language, so the agent can rewrite that prompt
+ * prompt in the user's language, so the agent can rewrite that prompt
  * rather than write one from nothing.
  *
  * A prompt is shown as the segments a proposal sends, not as the box shows
@@ -86,7 +86,7 @@ async function applyCost(template: GenerationTemplate): Promise<string> {
 export const getGenerationTemplate: Tool<{ id: string }, string> = tool({
   description:
     `Read one generation template in full before proposing it with ${PROPOSE_CANVAS_ACTION}: its nodes and wiring, ` +
-    "the inputs the reader supplies, each generate node's prompt in the reader's language as the segments to send, " +
+    "the inputs the user supplies, each generate node's prompt in the user's language as the segments to send, " +
     "how to send it, and the craft for writing its prompts. The templates, and when to offer each, are listed in " +
     `${PROPOSE_CANVAS_ACTION}'s description.`,
   inputSchema: z.object({ id: z.enum(GENERATION_TEMPLATES.map((template) => template.id)).describe("The template's id, as the proposal tool's description lists it.") }),

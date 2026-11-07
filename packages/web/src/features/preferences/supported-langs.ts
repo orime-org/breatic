@@ -54,10 +54,10 @@ export interface UseLocaleSwitch {
  * the account. The interface switches once the language's strings are on the
  * page (at once when they already are) and the choice is kept on this device;
  * only then does the account write run, behind it, and when it fails the
- * reader is told the choice was not saved to the account. A visitor on a
+ * user is told the choice was not saved to the account. A visitor on a
  * sign-in page has no account to write to, so their choice stays on the
  * device only.
- * @param code - The locale the reader picked.
+ * @param code - The locale the user picked.
  * @returns How the switch ended, as `changeLocale` reports it.
  */
 async function switchLocale(code: Locale): Promise<LocaleSwitch> {

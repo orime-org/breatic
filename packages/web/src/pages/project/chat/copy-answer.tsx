@@ -11,7 +11,7 @@ import { useTranslation } from '@web/i18n/use-translation';
  * How long the answer to a press stays up.
  *
  * Long enough to be read after the eye has moved on, short enough that the
- * control is back to offering copy before the reader thinks to press again.
+ * control is back to offering copy before the user thinks to press again.
  */
 export const COPY_ANSWER_MS = 1600;
 
@@ -27,7 +27,7 @@ export interface KeyedCopy {
  * Copying, and saying it worked.
  *
  * Every copy in the panel behaves this way -- the one under a reply, the one
- * under a reader's own message, the one over a code block, the ones on a found
+ * under a user's own message, the one over a code block, the ones on a found
  * picture -- so all of them ask here rather than each keeping its own state
  * and its own timer. The key says which thing the answer belongs to, so
  * several buttons can share one answer and tell whose it is.
@@ -128,7 +128,7 @@ interface CopyAnswerLabelProps {
  * element tells you about it, and this is what pressing it did. Nothing in it
  * can be pointed at, so it needs none of what a real overlay is for.
  *
- * Above the button, wherever the button is: a reader who has pressed copy
+ * Above the button, wherever the button is: a user who has pressed copy
  * once knows where the word appears, and a second button that answered
  * somewhere else would be a second thing to learn.
  * @param root0 - The component props.

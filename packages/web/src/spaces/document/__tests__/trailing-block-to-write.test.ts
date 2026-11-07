@@ -10,7 +10,7 @@
  * BlockNote answers it with `TrailingNodeExtension`, and the shape of that
  * answer is what makes it safe in a shared document: the affordance is a WIDGET
  * DECORATION, so it is not part of the content. Nothing is written until the
- * reader presses it, nothing is broadcast, nothing lands on anyone's undo
+ * user presses it, nothing is broadcast, nothing lands on anyone's undo
  * stack, and a viewer never sees one. Those are the three things this pins,
  * because they are the ones a change upstream could take away quietly.
  */
