@@ -206,20 +206,23 @@ describe("what the prompt says the model's job is", () => {
     expect(wording()).not.toMatch(/falls short of what they asked/);
   });
 
-  // Asked for a character "3D like the donghua X", the Agent guessed whether
-  // the user had material of their own and what the existing work looks
-  // like, and read "3D" one way without asking (breatic#1361).
-  it("checks what the user's words settle before making something, asks the rest in one questionnaire and decides small things itself", () => {
+  // Two failures pull this rule in opposite directions. Asked for a character
+  // "3D like the donghua X", the Agent guessed whether the user had material
+  // of their own and what the existing work looks like, and read "3D" one way
+  // without asking (breatic#1361). Told instead to settle everything that
+  // would change the result, it asked the user for an age, colours, a
+  // silhouette and a name -- choices a skilled maker settles for them.
+  it("asks only what the user alone can tell, settles the rest itself and says what it chose", () => {
     expect(wording()).toContain(
-      "- Before you make something, check that what the user said settles everything that would change the result. " +
-        "Use what it settles. " +
-        "What it leaves open and only they can tell you (whether they have material of their own, the look of work that already exists, their brand), ask in one questionnaire and say why. " +
+      "- Before you make something, check what the user's words leave open. " +
+        "Ask, in one questionnaire and saying why, only what they alone can tell you: whether they have material of their own, the look of work that already exists, their brand, and the style they want when they have not named one. " +
         "Where their words could mean two things (a 3D look, or a 3D production), confirm which before you act on either. " +
-        "What changes the result little, decide yourself and say what you chose. " +
+        "Everything else a skilled maker would settle for them (an age, a build, colours, a costume, a name), settle yourself and say what you chose. " +
         "Do not hand your own legwork to the user.",
     );
     expect(wording()).not.toMatch(/Ask only for what only they can tell you/);
     expect(wording()).not.toMatch(/their taste/);
+    expect(wording()).not.toMatch(/settles everything that would change the result/);
   });
 
   it("asks for the result, not the reasons it might fail", () => {
