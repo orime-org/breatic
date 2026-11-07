@@ -2069,6 +2069,11 @@
         "riskUploads": "正在进行的上传会被中断，可以先切到对应的 Space 看一眼。",
         "action": "刷新页面"
       },
+      "outline": {
+        "show": "显示大纲",
+        "hide": "隐藏大纲",
+        "empty": "添加的标题会显示在这里"
+      },
       "docMenu": {
         "label": "整个 Document 的命令",
         "saveSnapshot": "保存快照",

@@ -2069,6 +2069,11 @@
         "riskUploads": "正在進行的上傳會被中斷，可以先切到對應的 Space 看一眼。",
         "action": "重新整理頁面"
       },
+      "outline": {
+        "show": "顯示大綱",
+        "hide": "隱藏大綱",
+        "empty": "新增的標題會顯示在這裡"
+      },
       "docMenu": {
         "label": "整個 Document 的命令",
         "saveSnapshot": "儲存快照",

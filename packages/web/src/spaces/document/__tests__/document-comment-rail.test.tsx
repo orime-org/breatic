@@ -17,14 +17,8 @@
  * TDD: red because neither the menu row nor the panel exists yet.
  */
 
-import {
-  render,
-  screen,
-  waitFor,
-  renderHook,
-  act,
-  fireEvent,
-} from '@testing-library/react';
+import { screen, waitFor, renderHook, act, fireEvent } from '@testing-library/react';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';

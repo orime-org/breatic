@@ -10,10 +10,12 @@
 
 import * as React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, renderHook, screen, waitFor, within } from '@testing-library/react';
 import * as Y from 'yjs';
 
 import { Awareness } from 'y-protocols/awareness';
+
+import { documentBodyFragment } from '@breatic/shared';
 
 
 import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
@@ -23,10 +25,15 @@ import {
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
+import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { readUserPreferences } from '@web/lib/user-preferences-storage';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import { useDocumentViewStore } from '@web/stores/document-view';
 
 const USER = 'user-1';
+
+/** Collaborator editors a test mounted, unmounted after it. */
+const collaborators: ReturnType<typeof buildDocumentEditor>[] = [];
 
 /** Every ResizeObserver the chrome made, with what it watches. */
 const observers: { callback: ResizeObserverCallback; targets: Element[] }[] = [];
@@ -151,7 +158,8 @@ function row(text: string): HTMLElement {
 function idOf(handle: DocumentEditorHandle, text: string): string {
   const words = (content: unknown): string =>
     Array.isArray(content) ? content.map((c: { text?: string }) => c.text ?? '').join('') : '';
-  const block = handle.editor.document.find((b) => words(b.content) === text);
+  const blocks = handle.editor.document as readonly { id: string; content?: unknown }[];
+  const block = blocks.find((b) => words(b.content) === text);
   if (block === undefined) throw new Error(`no block holds ${text}`);
   return block.id;
 }
@@ -179,7 +187,6 @@ function placeAt(element: Element, top: number): void {
 describe('DocumentOutline', () => {
   let opened: { handle: DocumentEditorHandle; doc: Y.Doc; awareness: Awareness };
   let scrollTo: ReturnType<typeof vi.fn>;
-  let savedScrollTo: PropertyDescriptor | undefined;
 
   beforeEach(async () => {
     observers.length = 0;
@@ -187,15 +194,12 @@ describe('DocumentOutline', () => {
     window.localStorage.clear();
     useDocumentViewStore.setState(useDocumentViewStore.getInitialState());
     useDocumentViewStore.getState().restore(USER);
-    savedScrollTo = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTo');
     scrollTo = vi.fn();
-    Object.defineProperty(Element.prototype, 'scrollTo', { configurable: true, writable: true, value: scrollTo });
     opened = await openHandle('project-p/outline');
   });
 
   afterEach(() => {
-    if (savedScrollTo === undefined) delete (Element.prototype as { scrollTo?: unknown }).scrollTo;
-    else Object.defineProperty(Element.prototype, 'scrollTo', savedScrollTo);
+    for (const editor of collaborators.splice(0)) editor.unmount();
     _resetDocumentEditorCacheForTests();
     opened.awareness.destroy();
     opened.doc.destroy();
@@ -211,6 +215,9 @@ describe('DocumentOutline', () => {
     render(<DocumentEditor handle={opened.handle} {...props} />);
     fill(opened.handle, blocks);
     resizeTo(1440);
+    // On the body's viewport itself: a prototype stub is shadowed by any
+    // `scrollTo` another file left on a closer prototype in the shared document.
+    Object.defineProperty(bodyViewport(), 'scrollTo', { configurable: true, value: scrollTo });
   }
 
   describe('A6 — follows the document', () => {
@@ -230,7 +237,7 @@ describe('DocumentOutline', () => {
       // The peer's edit arrives as a Yjs update, the way the collaboration provider delivers it.
       const remote = new Y.Doc();
       Y.applyUpdate(remote, Y.encodeStateAsUpdate(opened.doc));
-      const theirs = (await openHandleOn(remote)).editor;
+      const theirs = collaboratorOn(remote);
       act(() => theirs.insertBlocks([h('t', 1, 'Theirs')] as never, theirs.document.at(-1)!, 'after'));
       act(() => Y.applyUpdate(opened.doc, Y.encodeStateAsUpdate(remote)));
 
@@ -247,7 +254,7 @@ describe('DocumentOutline', () => {
 
       const remote = new Y.Doc();
       Y.applyUpdate(remote, Y.encodeStateAsUpdate(opened.doc));
-      const theirs = (await openHandleOn(remote)).editor;
+      const theirs = collaboratorOn(remote);
       act(() => theirs.insertBlocks([h('t', 2, 'While hidden')] as never, theirs.document.at(-1)!, 'after'));
       act(() => Y.applyUpdate(opened.doc, Y.encodeStateAsUpdate(remote)));
 
@@ -288,7 +295,7 @@ describe('DocumentOutline', () => {
       fireEvent.click(row('Two'));
 
       const editor = opened.handle.editor;
-      expect(editor.getTextCursorPosition().block.id).toBe(idOf(opened.handle, 'Two'));
+      expect((editor.getTextCursorPosition().block as { id: string }).id).toBe(idOf(opened.handle, 'Two'));
       expect(editor.prosemirrorState.selection.empty).toBe(true);
       expect(editor.prosemirrorState.selection.$from.parentOffset).toBe(0);
     });
@@ -408,15 +415,16 @@ describe('DocumentOutline', () => {
 });
 
 /**
- * A second editor over another copy of the document, standing in for a collaborator.
+ * A mounted editor over another copy of the document, standing in for a
+ * collaborator; an editor keeps what it is given only once it is mounted.
  * @param doc - The collaborator's Yjs document.
- * @returns Its handle.
+ * @returns The editor.
  */
-async function openHandleOn(doc: Y.Doc): Promise<DocumentEditorHandle> {
-  const awareness = new Awareness(doc);
-  const { result } = renderHook(() =>
-    useDocumentEditor({ doc, name: `project-p/peer-${doc.clientID}`, caretProvider: { awareness }, readWho: () => ({ role: 'editor', viewerId: 'peer' }) }),
-  );
-  await waitFor(() => expect(result.current).not.toBeNull());
-  return result.current!;
+function collaboratorOn(doc: Y.Doc): ReturnType<typeof buildDocumentEditor> {
+  const editor = buildDocumentEditor({ fragment: documentBodyFragment(doc) });
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  editor.mount(host);
+  collaborators.push(editor);
+  return editor;
 }

@@ -110,7 +110,8 @@ function entry(level: number, text: string, children: Shape[] = []): Shape {
 function idOf(editor: Editor, text: string): string {
   const words = (content: unknown): string =>
     Array.isArray(content) ? content.map((c: { text?: string }) => c.text ?? '').join('') : '';
-  const block = editor.document.find((b) => words(b.content) === text);
+  const blocks = editor.document as readonly { id: string; content?: unknown }[];
+  const block = blocks.find((b) => words(b.content) === text);
   if (block === undefined) throw new Error(`no block holds ${text}`);
   return block.id;
 }

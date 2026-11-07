@@ -12,15 +12,8 @@
  */
 
 import * as React from 'react';
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  renderHook,
-  screen,
-  waitFor,
-} from '@testing-library/react';
+import { act, cleanup, fireEvent, renderHook, screen, waitFor } from '@testing-library/react';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TextSelection } from '@tiptap/pm/state';
@@ -221,7 +214,7 @@ describe('an explicit Agent comment View', () => {
 
   it('repeats the final reveal for a fresh View of the same selected thread', async () => {
     const { proposal, threadId } = await fixture();
-    const viewport = document.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!;
+    const viewport = document.querySelector<HTMLElement>('.doc-body-scroller [data-radix-scroll-area-viewport]')!;
     vi.spyOn(handle.editor.prosemirrorView!, 'coordsAtPos').mockReturnValue({
       top: 600, bottom: 620, left: 0, right: 10,
     });
