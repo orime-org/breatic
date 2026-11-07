@@ -14,7 +14,7 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { FAILURE_LINES, type FailureLine } from "@breatic/shared";
-import { readerUrlSchema } from "@domain/asset/source-url.js";
+import { userUrlSchema } from "@domain/asset/source-url.js";
 import { isStop, stoppedByUser, toolFailed, turnedAway } from "@domain/agent/tools/failure.js";
 import { PROPOSE_CANVAS_ACTION } from "@domain/agent/tools/tool-names.js";
 
@@ -61,7 +61,7 @@ const saveContextSchema: z.ZodType<SaveContext> = z.object({
 });
 
 const inputSchema = z.object({
-  url: readerUrlSchema.describe("The https address of the picture to save, as it was found."),
+  url: userUrlSchema.describe("The https address of the picture to save, as it was found."),
 });
 
 /** The reader's cause for each reason a link could not be saved. */

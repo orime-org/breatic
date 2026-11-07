@@ -97,7 +97,7 @@ function commentMarks(editor: Editor): { threadId: string; orphan: boolean }[] {
  * Puts a comment on the first run, the way this Space does.
  * @param editor - The editor.
  */
-function readerOpensAComment(editor: Editor): void {
+function userOpensAComment(editor: Editor): void {
   const view = editor.prosemirrorView!;
   const { from, to } = firstRun(editor);
   const mark = view.state.schema.marks.comment.create({
@@ -191,7 +191,7 @@ describe('undo around comment highlights', () => {
   it('leaves both the reader-made highlight and the flag rewrite alone', () => {
     const { editor, manager } = open();
 
-    readerOpensAComment(editor);
+    userOpensAComment(editor);
     manager.stopCapturing();
     libraryMarksItOrphaned(editor);
     manager.stopCapturing();
@@ -212,7 +212,7 @@ describe('undo around comment highlights', () => {
     // next real edit puts it back to true rather than being swallowed.
     const { editor, manager } = open();
 
-    readerOpensAComment(editor);
+    userOpensAComment(editor);
     manager.stopCapturing();
     libraryMarksItOrphaned(editor);
     manager.stopCapturing();

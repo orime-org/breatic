@@ -11,7 +11,7 @@
  * anywhere else. The window going to the background is not leaving: coming
  * back, the body is as it was. Letting go never moves the selection; the
  * selection is only not drawn, and anything that reads it as "what the reader
- * has selected" reads {@link readerSelection}.
+ * has selected" reads {@link userSelection}.
  *
  * Only an editable body has this state. A read-only body cannot take the
  * focus and draws its selection the browser's way.
@@ -185,7 +185,7 @@ export function bodyHolds(state: EditorState): boolean {
  * @param state - The editor's state.
  * @returns The selection, or null.
  */
-export function readerSelection(state: EditorState): Selection | null {
+export function userSelection(state: EditorState): Selection | null {
   const focus = KEY.getState(state);
   return focus === undefined || focus.holds || focus.readOnly ? state.selection : null;
 }

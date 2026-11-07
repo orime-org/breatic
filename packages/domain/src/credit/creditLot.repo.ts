@@ -543,7 +543,7 @@ export async function studiosWithDebtFrom(
  * @param userId - The account reading.
  * @returns A condition on `credit_ledger.studio_id`.
  */
-export function administeredByReader(userId: string): SQL {
+export function administeredByUser(userId: string): SQL {
   return sql`EXISTS (
     SELECT 1 FROM ${studioMembers}
     WHERE ${studioMembers.studioId} = ${creditLedger.studioId}
@@ -1352,7 +1352,7 @@ export async function listLedgerByPayer(
         // studio, its projects and its output theirs to read.
         or(
           isNull(creditLedger.studioId),
-          administeredByReader(payerUserId),
+          administeredByUser(payerUserId),
         ),
         studioId ? eq(creditLedger.studioId, studioId) : undefined,
       ),
@@ -1547,7 +1547,7 @@ export async function sumSpentByStudio(
         // The administering half of the same test the ledger list applies.
         // Its other half — a run belonging to no studio — has no line here:
         // this answers one line per studio, and such a run was in none.
-        administeredByReader(payerUserId),
+        administeredByUser(payerUserId),
       ),
     )
     .groupBy(

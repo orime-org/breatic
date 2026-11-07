@@ -11,7 +11,7 @@ import {
   LEGACY_FAILURE_LINES,
   NEVER_RAN,
   NOTHING_SAID_WHY,
-  isReaderLine,
+  isUserLine,
   toolFailureOf,
   wireLineOf,
 } from "@shared/agent/tool-failure.js";
@@ -60,8 +60,8 @@ describe("the reasons a reader is shown", () => {
       "chat.tool.failure.unreachable",
       "chat.tool.failure.upstream",
     ]);
-    for (const key of Object.values(LEGACY_FAILURE_LINES)) expect(isReaderLine(key)).toBe(true);
-    for (const key of Object.values(FAILURE_LINES)) expect(isReaderLine(key)).toBe(true);
+    for (const key of Object.values(LEGACY_FAILURE_LINES)) expect(isUserLine(key)).toBe(true);
+    for (const key of Object.values(FAILURE_LINES)) expect(isUserLine(key)).toBe(true);
   });
 
   it("put a failure nothing recorded the reason of down to our server", () => {
@@ -82,6 +82,6 @@ describe("a call that never ran", () => {
 
   it("goes on the wire as a value that is not one of the reader's lines", () => {
     expect(wireLineOf({ kind: "never_ran", forModel: "x" })).toBe(NEVER_RAN);
-    expect(isReaderLine(NEVER_RAN)).toBe(false);
+    expect(isUserLine(NEVER_RAN)).toBe(false);
   });
 });

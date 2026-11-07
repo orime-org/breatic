@@ -115,7 +115,7 @@ async function aFinishedTurn(p: Page): Promise<void> {
  * still landing.
  * @param p - The page to run the turn in.
  */
-async function aReaderWhoWentUpMidTurn(p: Page): Promise<void> {
+async function aUserWhoWentUpMidTurn(p: Page): Promise<void> {
   await ask(
     p,
     'Write thirty numbered paragraphs about the history of neon signage, each at least four sentences long.',
@@ -337,7 +337,7 @@ test('a reader who takes the column mid-turn keeps it, and hands it back at the 
 
 test('the way back takes the column to the newest message and steps aside @needs-model', async () => {
   test.setTimeout(240_000);
-  await aReaderWhoWentUpMidTurn(page);
+  await aUserWhoWentUpMidTurn(page);
 
   const back = page.getByTestId('back-to-latest');
   await expect(back).toBeVisible({ timeout: 20_000 });

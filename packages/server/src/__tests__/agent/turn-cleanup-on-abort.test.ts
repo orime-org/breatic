@@ -121,7 +121,7 @@ const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
   setUserForModel: vi.fn(async () => undefined),
-  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }), getMessages }));
+  addUserMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }), getMessages }));
 
 vi.mock("@server/agent/turn-fold.js", () => ({
   foldIfTooLong,

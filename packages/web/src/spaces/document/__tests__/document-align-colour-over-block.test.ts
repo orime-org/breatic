@@ -119,14 +119,14 @@ function caretElsewhere(editor: Editor): void {
  * case asserting it did not move asserts nothing.
  * @param editor - The editor.
  */
-function readerCarriesBold(editor: Editor): void {
+function userCarriesBold(editor: Editor): void {
   const view = editor.prosemirrorView!;
   const bold = view.state.schema.marks['bold']!;
   view.dispatch(view.state.tr.setStoredMarks([bold.create()]));
 }
 
 /** What the reader's own state reads as. */
-function readerState(editor: Editor) {
+function userState(editor: Editor) {
   const { selection, storedMarks } = editor.prosemirrorState;
   return {
     from: selection.from,
@@ -193,13 +193,13 @@ describe('colour off the block handle', () => {
   it('leaves the reader’s caret, selection and stored marks alone', () => {
     const editor = open();
     caretElsewhere(editor);
-    readerCarriesBold(editor);
-    const before = readerState(editor);
+    userCarriesBold(editor);
+    const before = userState(editor);
     expect(before.marks).toEqual(['bold']);
 
     setColour(editor as never, 'textColor', 'red', over(editor, 0));
 
-    expect(readerState(editor)).toEqual(before);
+    expect(userState(editor)).toEqual(before);
   });
 });
 
@@ -211,13 +211,13 @@ describe('what an empty block does to a colour press', () => {
   it('writes nothing and leaves the reader carrying what they carried', () => {
     const editor = open();
     caretElsewhere(editor);
-    readerCarriesBold(editor);
-    const before = readerState(editor);
+    userCarriesBold(editor);
+    const before = userState(editor);
 
     setColour(editor as never, 'textColor', 'red', over(editor, 4));
 
     expect(runStyles(editor, 4)).toEqual([]);
-    expect(readerState(editor)).toEqual(before);
+    expect(userState(editor)).toEqual(before);
   });
 });
 
@@ -269,12 +269,12 @@ describe('alignment off the block handle', () => {
   it('leaves the reader’s caret, selection and stored marks alone', () => {
     const editor = open();
     caretElsewhere(editor);
-    readerCarriesBold(editor);
-    const before = readerState(editor);
+    userCarriesBold(editor);
+    const before = userState(editor);
 
     runAlignment(editor as never, 'center', over(editor, 0));
 
-    expect(readerState(editor)).toEqual(before);
+    expect(userState(editor)).toEqual(before);
   });
 });
 

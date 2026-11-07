@@ -275,7 +275,7 @@ export interface World {
   /** The turn index the next reader message is filed under. */
   nextTurn: number;
   /** Reader messages written, with their turn. */
-  readerMessages: Array<{ turnIndex: number; message: { parts: MessageData["parts"] } }>;
+  userMessages: Array<{ turnIndex: number; message: { parts: MessageData["parts"] } }>;
   /** Every `setUserForModel` write. */
   userForModel: Array<{ turnIndex: number; kept: { messages: ModelMessage[]; snapshot?: unknown } }>;
   /** Every reply row written, with what was kept for the model. */
@@ -312,7 +312,7 @@ function emptyWorld(): World {
     toolOutput: "the page",
     toolRuns: 0,
     nextTurn: 1,
-    readerMessages: [],
+    userMessages: [],
     userForModel: [],
     replies: [],
     recorded: [],
@@ -424,7 +424,7 @@ export function plainTurn(turnIndex: number, size: number): Array<MessageData & 
  * @throws {Error} When the turn left no reader message.
  */
 export function rowsOf(turnIndex: number): Array<MessageData & { forModel: unknown }> {
-  const reader = world.readerMessages.find((one) => one.turnIndex === turnIndex);
+  const reader = world.userMessages.find((one) => one.turnIndex === turnIndex);
   const kept = world.userForModel.filter((one) => one.turnIndex === turnIndex).at(-1)?.kept;
   const rows: Array<MessageData & { forModel: unknown }> = [];
   if (reader !== undefined) {
@@ -522,9 +522,9 @@ export async function overflowDomain(): Promise<Record<string, unknown>> {
  */
 export function overflowRepo(): Record<string, unknown> {
   return {
-    addReaderMessage: async (_conversationId: string, message: { parts: MessageData["parts"] }) => {
+    addUserMessage: async (_conversationId: string, message: { parts: MessageData["parts"] }) => {
       const turnIndex = world.nextTurn;
-      world.readerMessages.push({ turnIndex, message });
+      world.userMessages.push({ turnIndex, message });
       return { turnIndex, closedAsks: [] };
     },
     setUserForModel: async (_conversationId: string, turnIndex: number, kept: World["userForModel"][number]["kept"]) => {

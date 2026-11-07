@@ -94,7 +94,7 @@ export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
     return;
   }
 
-  const pulled = await backendUploadService.pullReaderLink(storageKey, target, url, deadlineAt);
+  const pulled = await backendUploadService.pullUserLink(storageKey, target, url, deadlineAt);
   if (pulled.status === "failed") {
     if (pulled.reported === undefined) {
       logger[urlIngestFailureLevel(pulled.reason)](

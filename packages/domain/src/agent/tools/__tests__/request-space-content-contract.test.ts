@@ -17,7 +17,7 @@ import type { ChatSpace } from "@breatic/shared";
 
 import {
   ASK_USER,
-  AWAITS_READER,
+  AWAITS_USER,
   BASELINE_TOOLS,
   makeRequestSpaceContentTool,
   REQUEST_SPACE_CONTENT,
@@ -84,13 +84,13 @@ describe("the one name this tool has", () => {
   });
 
   it("is one of the tools a turn waits on the reader for, beside ask_user and nothing else", () => {
-    expect(AWAITS_READER).toEqual([ASK_USER, REQUEST_SPACE_CONTENT]);
-    expect(AWAITS_READER).toEqual(["ask_user", "request_space_content"]);
+    expect(AWAITS_USER).toEqual([ASK_USER, REQUEST_SPACE_CONTENT]);
+    expect(AWAITS_USER).toEqual(["ask_user", "request_space_content"]);
   });
 
   it("is exported with that set from the package entry the server reads", () => {
     expect((domain as Record<string, unknown>).REQUEST_SPACE_CONTENT).toBe("request_space_content");
-    expect((domain as Record<string, unknown>).AWAITS_READER).toEqual(["ask_user", "request_space_content"]);
+    expect((domain as Record<string, unknown>).AWAITS_USER).toEqual(["ask_user", "request_space_content"]);
   });
 });
 

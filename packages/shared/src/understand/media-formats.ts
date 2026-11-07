@@ -69,7 +69,7 @@ export const IMAGE_TYPES: ReadonlySet<string> = new Set([
  * them would mean teaching that table to guess a medium for a subtype, and
  * `mp4` is two formats depending on which one it guessed.
  */
-const READER_SPELLING: Readonly<Record<string, string>> = {
+const USER_SPELLING: Readonly<Record<string, string>> = {
   png: "PNG",
   jpeg: "JPG",
   webp: "WebP",
@@ -97,7 +97,7 @@ const READER_SPELLING: Readonly<Record<string, string>> = {
 function names(types: Iterable<string>): readonly string[] {
   return [...new Set(types)].map((type) => {
     const subtype = type.split("/").pop() ?? type;
-    return READER_SPELLING[subtype] ?? subtype;
+    return USER_SPELLING[subtype] ?? subtype;
   });
 }
 

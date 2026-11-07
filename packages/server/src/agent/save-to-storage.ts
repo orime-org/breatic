@@ -15,7 +15,7 @@
 import { AppError, checkRateLimit, getRedis, logger } from "@breatic/core";
 import {
   backendUploadService,
-  isReaderLinkFault,
+  isUserLinkFault,
   SaveRefused,
   urlIngestFailureLevel,
   type SaveToStorage,
@@ -74,18 +74,18 @@ export function saveToStorageFor({ projectId, userId }: { projectId: string; use
 
     let stored;
     try {
-      stored = await backendUploadService.transferReaderUrlToStorage(
+      stored = await backendUploadService.transferUserUrlToStorage(
         url,
         { projectId, actingUserId: userId },
         signal,
       );
     } catch (err) {
       if (signal?.aborted === true) throw err;
-      if (err instanceof backendUploadService.ReaderUrlTransferError) {
+      if (err instanceof backendUploadService.UserUrlTransferError) {
         // Only a refusal of the reader's own link is the link's to answer
         // for; one on our side is a fault, told to the model as one.
         logger[urlIngestFailureLevel(err.reason)]({ err, projectId, userId, url, reason: err.reason, reported: err.reported }, "agent_save_failed");
-        if (isReaderLinkFault(err.reason)) throw new SaveRefused("link", err.reason);
+        if (isUserLinkFault(err.reason)) throw new SaveRefused("link", err.reason);
         throw err;
       }
       logger.error({ err, projectId, userId, url }, "agent_save_failed");

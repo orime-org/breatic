@@ -104,7 +104,7 @@ test('refuses an equivalent picture URL from another Studio @needs-model @needs-
   const otherContext = await browser.newContext({ storageState: stateFile('B') });
   const otherPage = await otherContext.newPage();
   let ownerSpace = '';
-  let readerSpace = '';
+  let userSpace = '';
   try {
     await openSmokeProject(otherPage, 'B');
     ownerSpace = await createSpace(otherPage, 'canvas', `agent-source-owner-${Date.now()}`);
@@ -113,9 +113,9 @@ test('refuses an equivalent picture URL from another Studio @needs-model @needs-
     const sourceUrl = `${source.protocol}//${source.hostname.toUpperCase()}:${source.port || '443'}${source.pathname}?view=1#preview`;
 
     await openSmokeProject(page);
-    readerSpace = await createSpace(page, 'canvas', `agent-source-reader-${Date.now()}`);
+    userSpace = await createSpace(page, 'canvas', `agent-source-reader-${Date.now()}`);
     await startNewConversation(page);
-    await attachCanvasSource(page, readerSpace, sourceUrl);
+    await attachCanvasSource(page, userSpace, sourceUrl);
     const result = await askAboutPictures(page,
       'Inspect the attached image directly. If it is available, name the top and bottom large color bands. ' +
       'If its pixels are unavailable, reply exactly UNAVAILABLE. Do not call tools.',
@@ -129,7 +129,7 @@ test('refuses an equivalent picture URL from another Studio @needs-model @needs-
       body: Buffer.from(JSON.stringify({ sourceUrl, answer: result.reply, parts: result.parts }, null, 2)), contentType: 'application/json',
     });
   } finally {
-    if (readerSpace !== '') await deleteSpace(page, readerSpace);
+    if (userSpace !== '') await deleteSpace(page, userSpace);
     if (ownerSpace !== '') await deleteSpace(otherPage, ownerSpace);
     await otherContext.close();
   }

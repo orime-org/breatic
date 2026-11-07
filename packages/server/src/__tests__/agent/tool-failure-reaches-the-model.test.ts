@@ -73,7 +73,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
             throw carrying(new Error(FOR_MODEL), {
               kind: "tool_failed",
               forModel: FOR_MODEL,
-              userKey: FOR_READER,
+              userKey: FOR_USER,
             });
           },
         }),
@@ -102,7 +102,7 @@ const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
-  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
+  addUserMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
   getMessages,
 }));
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
@@ -132,7 +132,7 @@ const FOR_MODEL =
   `Fetching ${REFUSED} failed: the site answered HTTP 404. Do not fetch the same address again.`;
 
 /** The coarse line a reader is shown, which the model has no use for. */
-const FOR_READER = "chat.tool.failure.upstream";
+const FOR_USER = "chat.tool.failure.upstream";
 
 /** Run one turn of the agent against the double model, to its end. */
 async function runTurn(): Promise<void> {

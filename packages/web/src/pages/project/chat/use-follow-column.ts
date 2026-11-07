@@ -11,7 +11,7 @@ import {
 import { AT_END_EPSILON_PX, readScroll } from '@web/pages/project/chat/scroll-reading';
 
 /** The things a reader does that the column hears about from our own callbacks. */
-export type ReaderAction = Extract<
+export type UserAction = Extract<
   FollowEvent,
   'wayBackPressed' | 'messageSent' | 'conversationSwitched' | 'thinkingOpened' | 'earlierLoaded'
 >;
@@ -25,7 +25,7 @@ export interface FollowColumn {
   /** Whether to draw the way back to the newest message. */
   showWayBack: boolean;
   /** Tell it about something the reader did elsewhere. */
-  send: (action: ReaderAction) => void;
+  send: (action: UserAction) => void;
 }
 
 /**
@@ -361,7 +361,7 @@ export function useFollowColumn(): FollowColumn {
   );
 
   const send = React.useCallback(
-    (action: ReaderAction): void => {
+    (action: UserAction): void => {
       apply(column, action);
     },
     [column],

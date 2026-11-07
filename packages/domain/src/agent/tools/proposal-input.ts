@@ -16,7 +16,7 @@ import {
 
 import type { Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
-import { readerUrlSchema } from "@domain/asset/source-url.js";
+import { userUrlSchema } from "@domain/asset/source-url.js";
 
 /** Whether a proposal holds together, and which refusal it meets when it does not. */
 export type ProposalVerdict = { ok: true } | Refusal;
@@ -95,7 +95,7 @@ const proposalNode = z
       .describe("What the reader sees on the node"),
     // The address save_image takes, so a picture found on the web and told
     // to be saved first can always be.
-    material: readerUrlSchema
+    material: userUrlSchema
       .optional()
       .describe(
         `role source only: the address of material in the user's storage -- a file uploaded in the chat, ` +

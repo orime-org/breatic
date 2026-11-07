@@ -113,7 +113,7 @@ const KNOWN_LINES = new Set<string>([...Object.values(FAILURE_LINES), ...Object.
  * @param value - Whatever arrived where a key was expected.
  * @returns True when it is a key from the table.
  */
-export function isReaderLine(value: unknown): value is FailureLine | LegacyFailureLine | StoppedLine {
+export function isUserLine(value: unknown): value is FailureLine | LegacyFailureLine | StoppedLine {
   return typeof value === "string" && KNOWN_LINES.has(value);
 }
 

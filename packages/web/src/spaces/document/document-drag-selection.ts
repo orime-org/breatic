@@ -42,7 +42,7 @@ import {
   rowById,
 } from '@web/spaces/document/document-row-by-id';
 import { placeOnBlock } from '@web/spaces/document/document-block-place';
-import { readerSelection } from '@web/spaces/document/document-body-focus';
+import { userSelection } from '@web/spaces/document/document-body-focus';
 
 /** One end of the reader's selection, addressed so a move cannot shift it. */
 interface Anchored {
@@ -65,7 +65,7 @@ interface OnEdge {
 type End = Anchored | OnEdge;
 
 /** Where the reader was, for as long as the drag lasts. */
-export interface ReaderPlace {
+export interface UserPlace {
   /** Where the selection started. */
   readonly anchor: End;
   /** Where it ended; the same as the anchor for a caret. */
@@ -82,7 +82,7 @@ export interface ReaderPlace {
  * @param blockId - The block to put the caret in.
  * @returns That place.
  */
-export function caretAtStartOf(blockId: string): ReaderPlace {
+export function caretAtStartOf(blockId: string): UserPlace {
   const end = { blockId, offset: 0 };
   return { anchor: end, head: end };
 }
@@ -117,8 +117,8 @@ function anchor(doc: PMNode, pos: number): Anchored | undefined {
  * @param state - The editor's state.
  * @returns The place, or undefined when there is nothing to hand back.
  */
-export function readerPlace(state: EditorState): ReaderPlace | undefined {
-  const selection = readerSelection(state);
+export function userPlace(state: EditorState): UserPlace | undefined {
+  const selection = userSelection(state);
   const { doc } = state;
   if (!(selection instanceof TextSelection) && !(selection instanceof BodyEdgeSelection)) return undefined;
   /**
@@ -167,9 +167,9 @@ function positionOf(doc: PMNode, end: End): number | undefined {
  * lesser of the two, since the other is the bubble bar standing over a row
  * nobody selected (measured 2026-09-18).
  * @param view - The editor view to write to.
- * @param place - What {@link readerPlace} read.
+ * @param place - What {@link userPlace} read.
  */
-export function restoreReaderPlace(view: EditorView, place: ReaderPlace): void {
+export function restoreUserPlace(view: EditorView, place: UserPlace): void {
   const { doc } = view.state;
   const anchorPos = positionOf(doc, place.anchor);
   const headPos = positionOf(doc, place.head);
@@ -190,10 +190,10 @@ export function restoreReaderPlace(view: EditorView, place: ReaderPlace): void {
  * @param place - Where the reader was, read as the drag began.
  * @param blockId - The row that moved.
  */
-export function restoreAfterRowDrag(view: EditorView, place: ReaderPlace | undefined, blockId: string): void {
+export function restoreAfterRowDrag(view: EditorView, place: UserPlace | undefined, blockId: string): void {
   if (place === undefined && rowById(view.state.doc, blockId) !== undefined) {
     view.dispatch(view.state.tr.setSelection(placeOnBlock(view.state, blockId)));
     return;
   }
-  restoreReaderPlace(view, place ?? caretAtStartOf(blockId));
+  restoreUserPlace(view, place ?? caretAtStartOf(blockId));
 }

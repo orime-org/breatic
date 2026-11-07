@@ -14,7 +14,7 @@ import { NodeSelection } from '@tiptap/pm/state';
 import { rowHasLanded, rowIsFlying } from '@web/spaces/document/document-drag-drop';
 import { previewRowDrag } from '@web/spaces/document/document-drag-preview';
 import {
-  readerPlace,
+  userPlace,
   restoreAfterRowDrag,
 } from '@web/spaces/document/document-drag-selection';
 import { rowById } from '@web/spaces/document/document-row-by-id';
@@ -47,7 +47,7 @@ export function startRowDrag(
   const view = editor.prosemirrorView!;
   // Read before the library takes the selection for its own (`blockDragStart`
   // puts a node selection on the row).
-  const held = readerPlace(view.state);
+  const held = userPlace(view.state);
   // Which row is in flight, for the drop to read out of the document rather
   // than out of the payload.
   rowIsFlying(blockId, held);

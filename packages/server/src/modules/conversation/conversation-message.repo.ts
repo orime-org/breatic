@@ -114,7 +114,7 @@ function toMessageData(row: StoredRow): MessageData {
  * @returns The turn index this message went into — callers billing by turn
  *   need this exact number and recomputing it later would race
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
- *   `main-agent.ts` writes the user's own message through `addReaderMessage`,
+ *   `main-agent.ts` writes the user's own message through `addUserMessage`,
  *   which numbers it with the same locked insert, before a turn starts, so a
  *   conversation that is already gone fails the turn before any billing state
  *   exists. Here, the reply is written later in the turn, and this throw does
@@ -252,7 +252,7 @@ async function settleInRow(
  * @returns The turn index the message opened, and the calls it closed.
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
  */
-export async function addReaderMessage(
+export async function addUserMessage(
   id: string,
   message: MessageInput,
   settle: (toolCallId: string, toolName: string) => AskSettlement,

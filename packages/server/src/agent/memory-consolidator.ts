@@ -316,7 +316,7 @@ export async function consolidateWindow(window: ConsolidationWindow): Promise<Co
    * @param err - What the failing step threw, when something did.
    * @returns True when the reader had already gone.
    */
-  const readerLeft = (err?: unknown): boolean => {
+  const userLeft = (err?: unknown): boolean => {
     if (signal?.aborted !== true) return false;
     logger.error({ err, ...where }, "memory_consolidation_aborted");
     return true;
@@ -335,7 +335,7 @@ export async function consolidateWindow(window: ConsolidationWindow): Promise<Co
     );
     model = getModel(config.consolidation_model);
   } catch (err) {
-    if (readerLeft(err)) return "aborted";
+    if (userLeft(err)) return "aborted";
     logger.error({ err, ...where }, "memory_consolidation_untouched");
     return "untouched";
   }
@@ -386,7 +386,7 @@ export async function consolidateWindow(window: ConsolidationWindow): Promise<Co
       });
       await bill({ userId, conversationId, projectId, watermarkBefore, usage, model: config.consolidation_model });
 
-      if (readerLeft()) return "aborted";
+      if (userLeft()) return "aborted";
       // An answer cut off by the output limit is cut off again when asked
       // the same way; the fold fails here.
       if (result.finishReason === "length") {
@@ -419,7 +419,7 @@ export async function consolidateWindow(window: ConsolidationWindow): Promise<Co
     }
     throw new Error(`consolidation answer failed its checks ${String(config.consolidation_answer_attempts)} times: ${errors.join("; ")}`);
   } catch (err) {
-    if (readerLeft(err)) return "aborted";
+    if (userLeft(err)) return "aborted";
     // The watermark is where it was and nothing was written: the next fold
     // reads these turns again.
     logger.error({ err, ...where }, "memory_consolidation_failed");

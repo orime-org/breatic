@@ -33,7 +33,7 @@ import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import {
   extFromUrl,
   labelForUrl,
-  readerUrlSchema,
+  userUrlSchema,
   voiceSampleUrl,
 } from "@breatic/domain";
 import {
@@ -156,7 +156,7 @@ canvas.get("/limits", (c) => {
  */
 const ingestUrlSchema = z
   .object({
-    url: readerUrlSchema.optional(),
+    url: userUrlSchema.optional(),
     // A file a generation template brings (inner#1345), named by its path
     // under our hosted-resources address; the address is built here.
     template_resource: z.string().min(1).max(512).optional(),

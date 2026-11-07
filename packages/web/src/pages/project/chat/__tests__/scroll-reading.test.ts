@@ -61,7 +61,7 @@ describe('readScroll', () => {
       // this reader's three pixels for our own write coming home and leave the
       // column following while they meant to stop it.
       //
-      expect(readScroll(reading({ top: 1497, lastTop: 1500, written: 1500 }))).toBe('readerMovedUp');
+      expect(readScroll(reading({ top: 1497, lastTop: 1500, written: 1500 }))).toBe('userMovedUp');
     });
 
     it('hears a reader who moved in the same frame we wrote', () => {
@@ -70,7 +70,7 @@ describe('readScroll', () => {
       // landed after the write.
       expect(
         readScroll({ top: 5000, lastTop: 5180, end: 5260, lastEnd: 5220, written: 5220 }),
-      ).toBe('readerMovedUp');
+      ).toBe('userMovedUp');
     });
 
     it('says nothing about probe reading 7, where a clamp came to rest far from the end', () => {
@@ -124,7 +124,7 @@ describe('readScroll', () => {
       // it was. So this is the reader, however small the move.
       expect(
         readScroll({ top: END - 2, lastTop: END, end: END, lastEnd: END, written: undefined }),
-      ).toBe('readerMovedUp');
+      ).toBe('userMovedUp');
     });
 
     it('takes a reader who moved up while the end was growing under them', () => {
@@ -132,26 +132,26 @@ describe('readScroll', () => {
       // move a column upward. So this one was moved by the reader.
       expect(
         readScroll({ top: 1800, lastTop: 2060, end: END, lastEnd: 1900, written: undefined }),
-      ).toBe('readerMovedUp');
+      ).toBe('userMovedUp');
     });
   });
 
   describe('what the reader did', () => {
     it('reads a move up', () => {
-      expect(readScroll(reading({ top: 1200, lastTop: END }))).toBe('readerMovedUp');
+      expect(readScroll(reading({ top: 1200, lastTop: END }))).toBe('userMovedUp');
     });
 
     it('reads a move down that stops short of the end', () => {
-      expect(readScroll(reading({ top: 1500, lastTop: 1200 }))).toBe('readerMovedDownShort');
+      expect(readScroll(reading({ top: 1500, lastTop: 1200 }))).toBe('userMovedDownShort');
     });
 
     it('reads a move down that reaches the end', () => {
-      expect(readScroll(reading({ top: END, lastTop: 1200 }))).toBe('readerMovedDownToEnd');
+      expect(readScroll(reading({ top: END, lastTop: 1200 }))).toBe('userMovedDownToEnd');
     });
 
     it('counts the epsilon as having reached the end', () => {
       expect(readScroll(reading({ top: END - AT_END_EPSILON_PX, lastTop: 1200 }))).toBe(
-        'readerMovedDownToEnd',
+        'userMovedDownToEnd',
       );
     });
 
@@ -159,12 +159,12 @@ describe('readScroll', () => {
       // Two pixels is the worst a real Chromium left between a column's own
       // end and the furthest it would scroll. The reader here did everything
       // they could: the column will not go down another pixel.
-      expect(readScroll(reading({ top: END - 2, lastTop: 1200 }))).toBe('readerMovedDownToEnd');
+      expect(readScroll(reading({ top: END - 2, lastTop: 1200 }))).toBe('userMovedDownToEnd');
     });
 
     it('counts one pixel past the epsilon as short of it', () => {
       expect(readScroll(reading({ top: END - AT_END_EPSILON_PX - 1, lastTop: 1200 }))).toBe(
-        'readerMovedDownShort',
+        'userMovedDownShort',
       );
     });
 

@@ -74,9 +74,9 @@ export function readScroll(reading: ScrollReading): FollowEvent | null {
   const { top, lastTop, end, lastEnd, written } = reading;
   if (written !== undefined && Math.abs(top - written) <= OWN_WRITE_EPSILON_PX) return null;
 
-  if (top < lastTop) return end < lastEnd ? null : 'readerMovedUp';
+  if (top < lastTop) return end < lastEnd ? null : 'userMovedUp';
 
   const atEnd = Math.abs(end - top) <= AT_END_EPSILON_PX;
-  if (top > lastTop) return atEnd ? 'readerMovedDownToEnd' : 'readerMovedDownShort';
+  if (top > lastTop) return atEnd ? 'userMovedDownToEnd' : 'userMovedDownShort';
   return null;
 }

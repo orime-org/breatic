@@ -14,7 +14,7 @@ import { canonicalMediaType, isUploadableMediaType, reduceMediaType } from "@bre
  * it held a kind we do not take, it was larger than the ticket allows, or it
  * sent nothing.
  */
-const READER_SOURCE_REFUSALS: ReadonlySet<string> = new Set([
+const USER_SOURCE_REFUSALS: ReadonlySet<string> = new Set([
   "source_unreachable",
   "unsupported_type",
   "over_cap",
@@ -30,8 +30,8 @@ const READER_SOURCE_REFUSALS: ReadonlySet<string> = new Set([
  * @returns True where the link is at fault.
  * @throws {never} Never.
  */
-export function isReaderLinkFault(reason: string): boolean {
-  return READER_SOURCE_REFUSALS.has(reason);
+export function isUserLinkFault(reason: string): boolean {
+  return USER_SOURCE_REFUSALS.has(reason);
 }
 
 /**
@@ -44,7 +44,7 @@ export function isReaderLinkFault(reason: string): boolean {
  * @throws {never} Never.
  */
 export function urlIngestFailureLevel(reason: string): "warn" | "error" {
-  return isReaderLinkFault(reason) ? "warn" : "error";
+  return isUserLinkFault(reason) ? "warn" : "error";
 }
 
 /**

@@ -25,9 +25,9 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
   caretAtStartOf,
-  readerPlace,
+  userPlace,
   restoreAfterRowDrag,
-  restoreReaderPlace,
+  restoreUserPlace,
 } from '@web/spaces/document/document-drag-selection';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
 import { BodyEdgeSelection, bodyEdgePos } from '@web/spaces/document/document-body-edge-selection';
@@ -91,11 +91,11 @@ describe('putting the reader back after a drag', () => {
         selectionOverBlockContent(view.state.doc, second),
       ),
     );
-    const held = readerPlace(view.state);
+    const held = userPlace(view.state);
     if (held === undefined) throw new Error('no place');
     selectTheRow(editor);
 
-    restoreReaderPlace(view, held);
+    restoreUserPlace(view, held);
 
     expect(view.state.selection).toBeInstanceOf(TextSelection);
     expect(
@@ -109,7 +109,7 @@ describe('putting the reader back after a drag', () => {
     const view = editor.prosemirrorView;
     selectTheRow(editor);
 
-    restoreReaderPlace(view, caretAtStartOf('a-row-that-is-gone'));
+    restoreUserPlace(view, caretAtStartOf('a-row-that-is-gone'));
 
     expect(view.state.selection).toBeInstanceOf(TextSelection);
     expect(view.state.selection.empty).toBe(true);
@@ -127,7 +127,7 @@ describe('putting back a selection that reaches past the last block', () => {
     const view = editor.prosemirrorView;
     const alphaText = 3;
     view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, alphaText + 1, 'end')));
-    const held = readerPlace(view.state);
+    const held = userPlace(view.state);
     if (held === undefined) throw new Error('no place');
 
     // The drag: `beta` goes to the top.
@@ -137,7 +137,7 @@ describe('putting back a selection that reaches past the last block', () => {
     view.dispatch(view.state.tr.delete(betaPos, betaPos + beta.nodeSize).insert(1, beta));
     selectTheRow(editor);
 
-    restoreReaderPlace(view, held);
+    restoreUserPlace(view, held);
 
     const { selection, doc } = view.state;
     expect(selection).toBeInstanceOf(BodyEdgeSelection);
@@ -156,7 +156,7 @@ describe('a drag started from a body that does not hold the focus (inner#1127)',
     document.body.appendChild(outside);
     outside.focus();
 
-    expect(readerPlace(view.state)).toBeUndefined();
+    expect(userPlace(view.state)).toBeUndefined();
     outside.remove();
   });
 

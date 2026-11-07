@@ -23,7 +23,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 
 import {
   restoreAfterRowDrag,
-  type ReaderPlace,
+  type UserPlace,
 } from '@web/spaces/document/document-drag-selection';
 import { moveRowTo } from '@web/spaces/document/document-drag-move';
 
@@ -32,7 +32,7 @@ interface RowInFlight {
   /** The row being carried. */
   readonly blockId: string;
   /** Where the reader was when they reached for the handle. */
-  readonly place: ReaderPlace | undefined;
+  readonly place: UserPlace | undefined;
 }
 
 let flying: RowInFlight | undefined;
@@ -50,7 +50,7 @@ let flying: RowInFlight | undefined;
  */
 export function rowIsFlying(
   blockId: string,
-  place: ReaderPlace | undefined,
+  place: UserPlace | undefined,
 ): void {
   flying = { blockId, place };
 }

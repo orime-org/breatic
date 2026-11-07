@@ -22,7 +22,7 @@ import {
   chipOfPart,
   documentProposalSchema,
   FAILURE_LINES,
-  isReaderLine,
+  isUserLine,
   LEGACY_FAILURE_LINES,
   NEVER_RAN,
   readQuestionnaire,
@@ -68,7 +68,7 @@ const REQUEST_SPACE_TOOL = 'request_space_content';
  * The tools whose card stops the turn until the reader answers; a step keeps
  * only the first card of either and the server names it with one mark.
  */
-const AWAITS_READER: ReadonlySet<string> = new Set([ASK_TOOL, REQUEST_SPACE_TOOL]);
+const AWAITS_USER: ReadonlySet<string> = new Set([ASK_TOOL, REQUEST_SPACE_TOOL]);
 
 /** How long the turn thought, as the wire names it. */
 const THINKING_TIME = 'data-thinking-time';
@@ -241,7 +241,7 @@ function failureLineOf(part: { state: string; input?: unknown }, name: string): 
   // the table is what answers that. The same field carries the SDK's own
   // fixed English sentence when it has nothing else to put there, which is
   // never put on the screen.
-  const reason = isReaderLine(errorText) ? (LEGACY.has(errorText) ? null : errorText) : FAILURE_LINES.ourFault;
+  const reason = isUserLine(errorText) ? (LEGACY.has(errorText) ? null : errorText) : FAILURE_LINES.ourFault;
   return { step, reason, count: 1 };
 }
 
@@ -491,7 +491,7 @@ export function toChatMessage(
 
   for (const part of message.parts) {
     if (isToolUIPart(part)) {
-      const isCard = AWAITS_READER.has(getToolName(part));
+      const isCard = AWAITS_USER.has(getToolName(part));
       // A card waiting for the reader is not a call that came to nothing; a
       // second card in the step, of either tool, which the server named
       // nothing for, was turned away rather than failed.

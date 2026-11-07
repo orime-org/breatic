@@ -65,7 +65,7 @@ function offsetOf(now: Date, p: Record<ClockPart, string>): string {
  * @param timeZone - The zone the reader's browser reported, if any.
  * @returns One bracketed line for the model.
  */
-export function readerClockNote(now: Date, timeZone: string | undefined): string {
+export function userClockNote(now: Date, timeZone: string | undefined): string {
   const known = timeZone !== undefined && isKnownTimeZone(timeZone);
   const p = readClock(now, known ? timeZone : "UTC");
   const when = `${p.weekday}, ${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;

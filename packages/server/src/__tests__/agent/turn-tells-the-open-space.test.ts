@@ -8,10 +8,10 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as CoreModule from "@breatic/core";
-import { READER_LANGUAGE_REMINDER, userTurnForModel } from "@server/agent/user-turn.js";
+import { USER_LANGUAGE_REMINDER, userTurnForModel } from "@server/agent/user-turn.js";
 import type { ChatCurrentSpace, ChatSpace, MessageData } from "@breatic/shared";
 import { saying } from "../helpers/model-double.js";
-import { readerClockNote } from "@server/agent/reader-clock.js";
+import { userClockNote } from "@server/agent/user-clock.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 7);
@@ -59,7 +59,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
-  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
+  addUserMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
@@ -122,13 +122,13 @@ describe("a turn tells the model about the reader's Spaces", () => {
     await runOneTurn("summarise this", open);
 
     expect(userTextsSent().at(-1)).toBe(
-      `${readerClockNote(new Date(), "Asia/Shanghai")}\n\n${userTurnForModel({
+      `${userClockNote(new Date(), "Asia/Shanghai")}\n\n${userTurnForModel({
         chips: [],
         message: "summarise this",
         spaces,
         spaces_total: spaces.length,
         current_space: open,
-      })}\n\n${READER_LANGUAGE_REMINDER}`,
+      })}\n\n${USER_LANGUAGE_REMINDER}`,
     );
     expect(userTextsSent().at(-1)).toContain('## The Space the reader has open: "Storyboard" (document)');
   });

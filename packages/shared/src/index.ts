@@ -633,7 +633,7 @@ export type { AskUserAnswer, AskUserInput, AskUserQuestion, AskUserResult } from
 export {
   carrying,
   FAILURE_LINES,
-  isReaderLine,
+  isUserLine,
   LEGACY_FAILURE_LINES,
   NEVER_RAN,
   NOTHING_SAID_WHY,

@@ -199,7 +199,7 @@ export function userTurnForModel(turn: UserTurn, spaceUnchanged = false): UserCo
  * prompt alone, the model echoed a translated term the reader had just typed
  * (inner#1600).
  */
-export const READER_LANGUAGE_REMINDER =
+export const USER_LANGUAGE_REMINDER =
   "(Reply and write every text the user will read or edit in the language this message is written in, " +
   "unless the user has asked for a specific language or the work itself sets one. " +
   "Keep the product terms the system prompt lists in English, even where this message translates them.)";
@@ -215,11 +215,11 @@ export const READER_LANGUAGE_REMINDER =
  */
 export function userMessageForModel(clockNote: string, turn: UserTurn, spaceUnchanged = false): UserContent {
   const content = userTurnForModel(turn, spaceUnchanged);
-  if (typeof content === "string") return `${clockNote}\n\n${content}\n\n${READER_LANGUAGE_REMINDER}`;
+  if (typeof content === "string") return `${clockNote}\n\n${content}\n\n${USER_LANGUAGE_REMINDER}`;
   return [
     { type: "text", text: `${clockNote}\n\n` },
     ...content,
-    { type: "text", text: READER_LANGUAGE_REMINDER },
+    { type: "text", text: USER_LANGUAGE_REMINDER },
   ];
 }
 

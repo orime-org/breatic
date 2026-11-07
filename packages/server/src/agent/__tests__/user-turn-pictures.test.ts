@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { ChatAttachedChip } from "@breatic/shared";
 import type { UserContent } from "ai";
 
-import { READER_LANGUAGE_REMINDER, userMessageForModel, userTurnForModel } from "@server/agent/user-turn.js";
+import { USER_LANGUAGE_REMINDER, userMessageForModel, userTurnForModel } from "@server/agent/user-turn.js";
 import type { UserTurn } from "@server/agent/user-turn.js";
 
 const CHIP: ChatAttachedChip = {
@@ -44,7 +44,7 @@ describe("the main model receives prepared attachment JPEG files", () => {
     const texts = textParts(content);
 
     expect(texts[0]!.startsWith("reader clock\n\n")).toBe(true);
-    expect(texts.at(-1)!.endsWith(READER_LANGUAGE_REMINDER)).toBe(true);
+    expect(texts.at(-1)!.endsWith(USER_LANGUAGE_REMINDER)).toBe(true);
     expect(Array.isArray(content) ? content.at(-1) : undefined).toMatchObject({ type: "text" });
     expect(content).toContainEqual({ type: "file", data: PICTURE.url, mediaType: "image/jpeg" });
   });
@@ -58,7 +58,7 @@ describe("the main model receives prepared attachment JPEG files", () => {
       { type: "file", data: PICTURE.url, mediaType: "image/jpeg" },
       { type: "file", data: second.url, mediaType: "image/jpeg" },
     ]);
-    expect(textParts(content).at(-1)!.endsWith(READER_LANGUAGE_REMINDER)).toBe(true);
+    expect(textParts(content).at(-1)!.endsWith(USER_LANGUAGE_REMINDER)).toBe(true);
   });
 
   it("retains the exact old text representation when preparation produces no pictures", () => {
@@ -80,6 +80,6 @@ describe("the main model receives prepared attachment JPEG files", () => {
     expect(text).toContain(PICTURE.sourceUrl);
     expect(text).toContain("source-not-found");
     expect(Array.isArray(content) ? content.filter((part) => part.type === "file") : []).toEqual([]);
-    expect(textParts(content).at(-1)!.endsWith(READER_LANGUAGE_REMINDER)).toBe(true);
+    expect(textParts(content).at(-1)!.endsWith(USER_LANGUAGE_REMINDER)).toBe(true);
   });
 });

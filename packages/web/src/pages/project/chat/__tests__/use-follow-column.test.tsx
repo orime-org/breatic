@@ -5,7 +5,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import * as React from 'react';
 
-import { useFollowColumn, type ReaderAction } from '@web/pages/project/chat/use-follow-column';
+import { useFollowColumn, type UserAction } from '@web/pages/project/chat/use-follow-column';
 
 /** Undos owed at the end of the current test, newest first. */
 const undos: Array<() => void> = [];
@@ -125,7 +125,7 @@ async function settle(): Promise<void> {
  * @param root0.actions - Actions to expose as buttons, so a test can send one.
  * @returns The host.
  */
-function Host({ actions = [] }: { actions?: ReaderAction[] }): React.JSX.Element {
+function Host({ actions = [] }: { actions?: UserAction[] }): React.JSX.Element {
   const column = useFollowColumn();
   return (
     <div data-testid='viewport' data-viewport ref={column.setViewport}>
@@ -159,7 +159,7 @@ function Host({ actions = [] }: { actions?: ReaderAction[] }): React.JSX.Element
  * @param viewport - The scroller.
  * @param top - Where the reader left it.
  */
-function readerScrollsTo(geometry: Geometry, viewport: HTMLElement, top: number): void {
+function userScrollsTo(geometry: Geometry, viewport: HTMLElement, top: number): void {
   geometry.scrollTop = top;
   fireEvent.scroll(viewport);
 }
@@ -200,7 +200,7 @@ describe('useFollowColumn', () => {
       render(<Host />);
       await settle();
 
-      readerScrollsTo(geometry, screen.getByTestId('viewport'), 900);
+      userScrollsTo(geometry, screen.getByTestId('viewport'), 900);
       column.reset();
 
       geometry.scrollHeight = 2400;
@@ -229,7 +229,7 @@ describe('useFollowColumn', () => {
         resize.fire();
       });
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), geometry.scrollTop - 180);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), geometry.scrollTop - 180);
       });
 
       const whereTheyLeftIt = geometry.scrollTop;
@@ -257,7 +257,7 @@ describe('useFollowColumn', () => {
 
       for (let nudge = 0; nudge < 3; nudge += 1) {
         await act(async () => {
-          readerScrollsTo(geometry, screen.getByTestId('viewport'), geometry.scrollTop - 2);
+          userScrollsTo(geometry, screen.getByTestId('viewport'), geometry.scrollTop - 2);
         });
         // The next chunk lands, which is what used to reset the reader's ground.
         geometry.scrollHeight += 40;
@@ -281,7 +281,7 @@ describe('useFollowColumn', () => {
       // "is the reader near enough that we may finish the trip for them", and
       // the reader is the one who put it there.
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 1594);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), 1594);
       });
       expect(screen.getByTestId('way-back')).toBeInTheDocument();
     });
@@ -294,12 +294,12 @@ describe('useFollowColumn', () => {
       await settle();
 
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 900);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), 900);
       });
       expect(screen.getByTestId('way-back')).toBeInTheDocument();
 
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 1600);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), 1600);
       });
       expect(screen.queryByTestId('way-back')).toBeNull();
 
@@ -324,7 +324,7 @@ describe('useFollowColumn', () => {
       // Sixty pixels up: held, and near enough to the end that losing content
       // will carry them onto it.
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 1540);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), 1540);
       });
       expect(screen.getByTestId('way-back')).toBeInTheDocument();
 
@@ -364,7 +364,7 @@ describe('useFollowColumn', () => {
       await settle();
 
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 0);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), 0);
       });
       await act(async () => {
         fireEvent.click(screen.getByTestId('way-back'));
@@ -414,7 +414,7 @@ describe('useFollowColumn', () => {
       await settle();
 
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 0);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), 0);
       });
       await act(async () => {
         fireEvent.click(screen.getByTestId('way-back'));
@@ -439,7 +439,7 @@ describe('useFollowColumn', () => {
       await settle();
 
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 1000);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), 1000);
       });
       await act(async () => {
         fireEvent.click(screen.getByTestId('way-back'));
@@ -449,7 +449,7 @@ describe('useFollowColumn', () => {
       });
 
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 900);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), 900);
       });
       const whereTheyLeftIt = geometry.scrollTop;
       await settle();
@@ -471,7 +471,7 @@ describe('useFollowColumn', () => {
       await settle();
 
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 1000);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), 1000);
       });
       await act(async () => {
         fireEvent.click(screen.getByTestId('way-back'));
@@ -487,7 +487,7 @@ describe('useFollowColumn', () => {
       geometry.scrollHeight -= 300;
       await act(async () => {
         resize.fire();
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), geometry.scrollTop - 300);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), geometry.scrollTop - 300);
       });
 
       let frames = 0;
@@ -515,7 +515,7 @@ describe('useFollowColumn', () => {
       await settle();
 
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 1000);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), 1000);
       });
       await act(async () => {
         fireEvent.click(screen.getByTestId('way-back'));
@@ -528,7 +528,7 @@ describe('useFollowColumn', () => {
       // can carry it past any fixed point, and a push to that point would then
       // be a push back up.
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), geometry.scrollTop + 100);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), geometry.scrollTop + 100);
       });
 
       let frames = 0;
@@ -553,7 +553,7 @@ describe('useFollowColumn', () => {
       await settle();
 
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 200);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), 200);
       });
       await act(async () => {
         fireEvent.click(screen.getByTestId('send-messageSent'));
@@ -592,7 +592,7 @@ describe('useFollowColumn', () => {
     await settle();
 
     await act(async () => {
-      readerScrollsTo(geometry, screen.getByTestId('viewport'), 0);
+      userScrollsTo(geometry, screen.getByTestId('viewport'), 0);
     });
     await act(async () => {
       fireEvent.click(screen.getByTestId('way-back'));

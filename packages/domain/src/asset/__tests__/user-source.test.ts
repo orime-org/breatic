@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { INGEST_NO_ANSWER, INGEST_REFUSED_UNNAMED } from "@breatic/shared";
-import { isReaderLinkFault, urlIngestFailureLevel } from "@domain/asset/reader-source.js";
+import { isUserLinkFault, urlIngestFailureLevel } from "@domain/asset/user-source.js";
 
 describe("urlIngestFailureLevel", () => {
   it("treats a link the reader handed us that cannot be taken as the reader's input", () => {
@@ -21,16 +21,16 @@ describe("urlIngestFailureLevel", () => {
   });
 });
 
-describe("isReaderLinkFault", () => {
+describe("isUserLinkFault", () => {
   it("puts a link that could not be reached or held the wrong thing down to the link", () => {
     for (const reason of ["source_unreachable", "unsupported_type", "over_cap", "empty"]) {
-      expect(isReaderLinkFault(reason), reason).toBe(true);
+      expect(isUserLinkFault(reason), reason).toBe(true);
     }
   });
 
   it("puts a failure in storing or judging what arrived down to our side", () => {
     for (const reason of ["store_failed", "assemble_failed", INGEST_REFUSED_UNNAMED, "type_not_reported", INGEST_NO_ANSWER]) {
-      expect(isReaderLinkFault(reason), reason).toBe(false);
+      expect(isUserLinkFault(reason), reason).toBe(false);
     }
   });
 });

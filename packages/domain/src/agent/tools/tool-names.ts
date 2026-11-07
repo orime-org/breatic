@@ -34,7 +34,7 @@ export const REQUEST_SPACE_CONTENT = "request_space_content";
  * The tools a turn stops at to wait for the reader: a call with no `execute`
  * whose result comes back in the request that resumes the turn.
  */
-export const AWAITS_READER: readonly string[] = [ASK_USER, REQUEST_SPACE_CONTENT];
+export const AWAITS_USER: readonly string[] = [ASK_USER, REQUEST_SPACE_CONTENT];
 
 /**
  * Ask which modes each generation node can be set to.

@@ -18,7 +18,7 @@ import { callOptionsFor, getModel, resolveProvider, systemFor } from "@breatic/d
 import {
   buildAgentConfig,
   finalizeTurn,
-  AWAITS_READER,
+  AWAITS_USER,
   agentPictureOutputOf,
   expandAgentPictures,
   instructionsForAgentMemory,
@@ -27,7 +27,7 @@ import {
 } from "@breatic/domain";
 import type { AgentGenerationStep, AgentPicture, OpenDocument, PrepareAgentPictures, ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
-import { readerClockNote } from "@server/agent/reader-clock.js";
+import { userClockNote } from "@server/agent/user-clock.js";
 import { getAgentConfig, getStorageAdapter } from "@breatic/core";
 import { assetService, creditLotService, createUsageRecorder } from "@breatic/domain";
 import { saveToStorageFor } from "@server/agent/save-to-storage.js";
@@ -163,7 +163,7 @@ export class MainAgent {
     // Every card still waiting is closed by this message, in the same
     // transaction: its result says the reader wrote a message instead, and is
     // kept beside the call in the row that asked, under that call's own tool.
-    const { turnIndex, closedAsks } = await messageRepo.addReaderMessage(
+    const { turnIndex, closedAsks } = await messageRepo.addUserMessage(
       conversationId,
       {
         role: "user",
@@ -200,7 +200,7 @@ export class MainAgent {
     // picture policy. Unchanged prefixes can reuse the provider's cache.
     const opening: Opening = {
       kind: "message",
-      clockNote: readerClockNote(new Date(), timeZone),
+      clockNote: userClockNote(new Date(), timeZone),
       turn: { ...space, chips: attached, message: said },
       closedAsks,
     };
@@ -235,7 +235,7 @@ export class MainAgent {
   ): Promise<ReadableStream<UIMessageChunk>> {
     const opening: Opening = {
       kind: "answer",
-      clockNote: readerClockNote(new Date(), timeZone),
+      clockNote: userClockNote(new Date(), timeZone),
       space,
       toolCallId,
       output,
@@ -311,7 +311,7 @@ export class MainAgent {
 
     // The card this segment stopped at, if it did, and the ones put in the
     // same step after it. Decided when the model's stream finishes: a tool in
-    // `AWAITS_READER` has no `execute`, so the SDK stops the step at it and never
+    // `AWAITS_USER` has no `execute`, so the SDK stops the step at it and never
     // consults `stopWhen` (`ai@7.0.68` `dist/index.js:10046-10053`).
     let awaitingCall: string | undefined;
     let turnedAwayCalls: TurnedAwayCall[] = [];
@@ -1067,7 +1067,7 @@ export class MainAgent {
           // its stored parts at the exit below.
           sayThoughtFor(writer);
           // The step stopped at a card when it holds a call to a tool that
-          // waits for the reader (`AWAITS_READER`) the schema took and nothing
+          // waits for the reader (`AWAITS_USER`) the schema took and nothing
           // has answered. The first, whichever tool made it, is the card the
           // reader is shown; any later one in the step is turned away. Said on the wire here, while the writer is still open, so
           // the panel draws the card as waiting rather than as a call that
@@ -1081,7 +1081,7 @@ export class MainAgent {
             finishReason === "error" || seen.failed === true
               ? []
               : toolCalls
-                .filter((call) => AWAITS_READER.includes(call.toolName) && call.invalid !== true && !howToolEnded.has(call.toolCallId))
+                .filter((call) => AWAITS_USER.includes(call.toolName) && call.invalid !== true && !howToolEnded.has(call.toolCallId))
                 .map(({ toolCallId, toolName }) => ({ toolCallId, toolName }));
           if (asks[0] !== undefined) {
             awaitingCall = asks[0].toolCallId;

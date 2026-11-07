@@ -10,7 +10,7 @@ import { describe, it, expect } from "vitest";
 import {
   FAILURE_LINES,
   TURNED_AWAY,
-  isReaderLine,
+  isUserLine,
   toolFailureOf,
   wireLineOf,
 } from "@shared/agent/tool-failure.js";
@@ -46,7 +46,7 @@ describe("a call turned away to steer the model", () => {
   });
 
   it("goes on the wire as a value that is not one of the reader's lines", () => {
-    expect(isReaderLine(TURNED_AWAY)).toBe(false);
+    expect(isUserLine(TURNED_AWAY)).toBe(false);
     expect(Object.values(FAILURE_LINES)).not.toContain(TURNED_AWAY);
   });
 

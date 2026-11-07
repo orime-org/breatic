@@ -20,7 +20,7 @@ import { z } from "zod";
  * same kind of input. One rule for every lane that takes such an address, so
  * the agent's save and the canvas paste refuse the same ones.
  */
-export const readerUrlSchema = z.string().url().max(2048).startsWith("https://");
+export const userUrlSchema = z.string().url().max(2048).startsWith("https://");
 
 /**
  * Anything an extension may be made of, and the longest one worth keeping.
