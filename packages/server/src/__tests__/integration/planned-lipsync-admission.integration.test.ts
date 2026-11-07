@@ -452,6 +452,26 @@ describe("lip-sync fresh quote (§97; execution design §9.3 pricing paragraph)"
     expect(quotes[1]).toBeCloseTo(2 * (gen + track) + std4(20000), 6);
     expect(quotes[1]! - quotes[0]!).toBeCloseTo(gen + track, 6);
   });
+
+  // Execution design §10.2 last paragraph: tracking is priced per person per clip over its encoded length; the anchor at
+  // frame 0 tracks the used range forward only, a middle anchor tracks [a, e) forward and [0, a] reversed, and the last
+  // frame tracks only the reversed clip. The precheck floor dominates the container work, as in LA09.
+  it.each([
+    ["a middle frame", 500, [511, 501]],
+    ["the last frame", 1010, [1011]],
+  ] as const)("LA11 an anchor on %s quotes tracking once per clip it tracks", async (_case, anchorFrame, clipFrames) => {
+    lipSync.precheck_seconds = 20000;
+    const f = await seed([{ registered: 3, claimed: 3 }, { registered: 2.5, claimed: 2.5 }], { anchorFrame });
+    speak(f, [[0, 0, 0], [0, 1, 3]]);
+    await accept(f);
+    const frozen = await plan(f.body.run_id);
+    expect(frozen.usedRange).toEqual({ start: 0, end: V });
+    const gen = await estimateTaskCredits(SYNC, { params: {}, durations: { video: [V], audio: [V] }, sources: ["video", "audio"] });
+    let track = 0;
+    for (const frames of clipFrames) track += await estimateTaskCredits(TRACKER, { params: {}, durations: { video: [frames / 200] }, sources: ["video"] });
+    expect(frozen.credits).toBeCloseTo(gen + track + std4(20000), 6);
+    expect(Object.keys(frozen.sharedStepKeys ?? {}).filter((key) => key.startsWith("prepare:")).sort()).toEqual(clipFrames.length === 2 ? ["prepare:fwd", "prepare:rev"] : ["prepare:rev"]);
+  });
 });
 
 // frames-split §5.4 上限 row: lip-sync's stages are prepare, faces (persons), clip and stem (2 × persons), composite chunks
