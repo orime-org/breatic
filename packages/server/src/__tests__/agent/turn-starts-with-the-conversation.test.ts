@@ -14,7 +14,7 @@
  * mismatched. That is gone: the client's own message list is what
  * `POST /chat/open` gave it, and a connection that drops mid-reply leaves the
  * screen out of step with a server whose records are intact -- which the
- * reader gets out of by reloading.
+ * user gets out of by reloading.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
@@ -122,7 +122,7 @@ describe("the name a turn gives its conversation", () => {
 
     // Held open, so that anything waiting on it waits forever. Three round
     // trips -- the memories, the conversation and its history -- and every
-    // one of them is time the reader spends in front of a screen where
+    // one of them is time the user spends in front of a screen where
     // nothing has happened.
     let releaseTheSlowWork = (): void => undefined;
     buildTurnContext.mockImplementationOnce(

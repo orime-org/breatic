@@ -670,7 +670,7 @@ export const domainMock = async () => ({
   // and a copy that drifts throws nothing: the match simply never happens and
   // a turn carries on talking past the question it just asked.
   ASK_USER: REAL_ASK_USER,
-  // The same reason: the tools a turn stops at for the reader (inner#1552).
+  // The same reason: the tools a turn stops at for the user (inner#1552).
   AWAITS_USER: REAL_AWAITS_USER,
   REQUEST_SPACE_CONTENT: REAL_REQUEST_SPACE_CONTENT,
   // Read by the turn when it hands the tools their context.

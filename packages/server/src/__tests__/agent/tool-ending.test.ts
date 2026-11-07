@@ -133,7 +133,7 @@ describe("a call the SDK refused, in either shape it arrives in", () => {
 
   it("stays a failure when it is a tool's own exception or some other error", () => {
     // A bug in a tool, or the turn's own stream failing, is something the
-    // reader is told about.
+    // user is told about.
     expect(endingOf(new Error("boom"))).toMatchObject({
       kind: "tool_failed",
       userKey: FAILURE_LINES.ourFault,

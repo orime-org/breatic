@@ -200,7 +200,7 @@ async function insertIn(tx: DbTx, id: string, message: MessageInput, forModel?: 
   return turnIndex;
 }
 
-/** The result a question waiting for the reader is settled with. */
+/** The result a question waiting for the user is settled with. */
 export interface AskSettlement {
   /** The call's output as stored and drawn. */
   output: unknown;
@@ -238,7 +238,7 @@ async function settleInRow(
 }
 
 /**
- * Append the reader's message and, in the same transaction, settle every
+ * Append the user's message and, in the same transaction, settle every
  * question the agent is waiting on in this conversation.
  *
  * A message written instead of answering a card closes the card. Every
@@ -246,7 +246,7 @@ async function settleInRow(
  * can be stored after a turn another tab started, and a call left without a
  * result makes every later request in the conversation fail.
  * @param id - Conversation UUID.
- * @param message - The reader's message.
+ * @param message - The user's message.
  * @param settle - The settlement for a waiting call, given its id and its
  *   tool's name, which the result the model reads is filed under.
  * @returns The turn index the message opened, and the calls it closed.
@@ -293,7 +293,7 @@ export type AnswerOutcome =
   | { kind: "missing" };
 
 /**
- * Settle a waiting question with the reader's answer, once.
+ * Settle a waiting question with the user's answer, once.
  *
  * Under the conversation lock: the question is settled only while it is still
  * waiting, so of two answers (or an answer and a message) the first to take
@@ -462,7 +462,7 @@ export async function getMessages(
   // Rows come newest first, so the last one is the oldest — and when there is
   // more behind it, it is the turn the limit cut through. Drop it whole and
   // it becomes the next page's job, complete. Unless it is the only turn
-  // here, in which case dropping it would return nothing and the reader could
+  // here, in which case dropping it would return nothing and the user could
   // never get past it.
   const oldestTurn = rows.at(-1)?.turnIndex;
   const kept =

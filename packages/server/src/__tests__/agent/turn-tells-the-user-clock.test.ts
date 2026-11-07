@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Where a turn tells the model the reader's local time.
+ * Where a turn tells the model the user's local time.
  *
  * The note opens this turn's user message and nothing else: the system prompt
  * stays word for word what it was. The words are stored without it; the copy
@@ -76,9 +76,9 @@ const { runWithContext } = await import("@breatic/core");
 
 const NOW = "2026-10-01T09:27:00Z";
 const SHANGHAI_NOTE =
-  "[The reader's local time when they sent this message: Thursday, 2026-10-01 17:27 (Asia/Shanghai, GMT+08:00).]";
+  "[The user's local time when they sent this message: Thursday, 2026-10-01 17:27 (Asia/Shanghai, GMT+08:00).]";
 const UNKNOWN_ZONE_NOTE =
-  "[The time when the reader sent this message: Thursday, 2026-10-01 09:27 UTC. Their time zone is unknown.]";
+  "[The time when the user sent this message: Thursday, 2026-10-01 09:27 UTC. Their time zone is unknown.]";
 
 const image: ChatAttachedChip = {
   id: "a1",
@@ -91,7 +91,7 @@ const image: ChatAttachedChip = {
  * Run one turn to its end.
  * @param said - What the user typed.
  * @param chips - What the user attached.
- * @param timeZone - The zone the reader's browser reported.
+ * @param timeZone - The zone the user's browser reported.
  */
 async function runOneTurn(
   said: string,
@@ -132,7 +132,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("a turn tells the model the reader's local time", () => {
+describe("a turn tells the model the user's local time", () => {
   it("opens the user message with the note, then a blank line, then the words", async () => {
     await runOneTurn("what time is it?", [], "Asia/Shanghai");
 
@@ -179,7 +179,7 @@ describe("a turn tells the model the reader's local time", () => {
     await runOneTurn("second", [], "Asia/Shanghai");
 
     expect(userTextsSent().at(-1)).toBe(
-      `[The reader's local time when they sent this message: Friday, 2026-10-02 09:00 (Asia/Shanghai, GMT+08:00).]\n\nsecond\n\n${USER_LANGUAGE_REMINDER}`,
+      `[The user's local time when they sent this message: Friday, 2026-10-02 09:00 (Asia/Shanghai, GMT+08:00).]\n\nsecond\n\n${USER_LANGUAGE_REMINDER}`,
     );
   });
 

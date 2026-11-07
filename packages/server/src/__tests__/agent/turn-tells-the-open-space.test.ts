@@ -3,7 +3,7 @@
 
 /**
  * A turn tells the model which Spaces the project has and what is in the one
- * the reader has open (inner#1413). Like the clock note, it reaches the model
+ * the user has open (inner#1413). Like the clock note, it reaches the model
  * on this turn's message only and is never stored.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -77,7 +77,7 @@ const open: ChatCurrentSpace = { ...storyboard, state: "loaded", content: "# Sce
 /**
  * Run one turn to its end.
  * @param said - What the user typed.
- * @param current - The Space the reader has open, when it is on.
+ * @param current - The Space the user has open, when it is on.
  */
 async function runOneTurn(said: string, current: ChatCurrentSpace | undefined): Promise<void> {
   modelSays.parts = saying("the reply");
@@ -117,7 +117,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("a turn tells the model about the reader's Spaces", () => {
+describe("a turn tells the model about the user's Spaces", () => {
   it("sends the clock note, then the Spaces and the open one, then the words", async () => {
     await runOneTurn("summarise this", open);
 
@@ -130,7 +130,7 @@ describe("a turn tells the model about the reader's Spaces", () => {
         current_space: open,
       })}\n\n${USER_LANGUAGE_REMINDER}`,
     );
-    expect(userTextsSent().at(-1)).toContain('## The Space the reader has open: "Storyboard" (document)');
+    expect(userTextsSent().at(-1)).toContain('## The Space the user has open: "Storyboard" (document)');
   });
 
   it("stores the words without the Spaces", async () => {

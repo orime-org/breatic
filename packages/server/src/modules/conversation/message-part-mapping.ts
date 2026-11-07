@@ -13,7 +13,7 @@
  * `failed` and `truncated` are things we know about a turn, not things a
  * model streamed, so
  * they travel as data parts -- the one channel the protocol leaves open for
- * what it does not define -- and not transient ones: a reader who reloads has
+ * what it does not define -- and not transient ones: a user who reloads has
  * to still see that a turn was cut off.
  */
 import { getToolName, isToolUIPart } from "ai";
@@ -107,7 +107,7 @@ function storedTool(part: Extract<UiPart, { toolCallId: string }>): MessagePart 
   if (status === "error") {
     // Written so that a part is never stored `error` with no account of
     // itself, and written as not knowing: what this side of the boundary has
-    // is the wire, and the wire carries the line a reader is shown, not the
+    // is the wire, and the wire carries the line a user is shown, not the
     // reason. The turn replaces this from the callbacks handed the error
     // itself -- one for a tool that ran and failed, one for a call refused
     // before it ran -- and this stands for the case where neither saw it.
@@ -157,7 +157,7 @@ export function toStoredParts(parts: UiParts): MessagePart[] {
 export function toUiParts(parts: MessagePart[]): UiParts {
   // A questionnaire still waiting reads back the way it went out: the call,
   // and after everything else the segment that asked holds, the mark naming
-  // it as the card the reader is shown.
+  // it as the card the user is shown.
   const ui = parts.map((part): UiPart =>
     part.type === "tool" && part.status === "awaiting"
       ? { type: `tool-${part.toolName}`, toolCallId: part.toolCallId, input: part.input, state: "input-available" }

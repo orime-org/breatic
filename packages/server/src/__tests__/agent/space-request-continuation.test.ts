@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The segment of a turn that resumes after the reader answers a Space request
+ * The segment of a turn that resumes after the user answers a Space request
  * (inner#1552).
  *
  * It resumes the turn that asked, the way an answered questionnaire does. The
@@ -95,7 +95,7 @@ const WHOLE = {
   groups_not_listed: 0,
 };
 
-/** The result the reader shared, in full. */
+/** The result the user shared, in full. */
 const FULL = {
   spaces: [{ id: "c1", name: "Cast", kind: "canvas", state: "read", content: "THE CAST LIST: Ada, Ben", total_chars: 23, detail: WHOLE }],
 };

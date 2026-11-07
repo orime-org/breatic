@@ -39,7 +39,7 @@ type ToolPart = Extract<MessagePart, { type: "tool" }>;
  */
 function reachesTheModel(part: ToolPart): boolean {
   // A card -- a questionnaire (inner#1542) or a request to read Spaces
-  // (inner#1552) -- goes back as the call and the reader's answer once it has
+  // (inner#1552) -- goes back as the call and the user's answer once it has
   // one, and not while it still waits: a call without its result makes the
   // SDK refuse the request. A card turned away goes back as its refusal,
   // which is how the model learns it was not shown. A question from before
@@ -234,7 +234,7 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
 }
 
 /**
- * Whether a card's call ended with the reader's answer: a questionnaire's
+ * Whether a card's call ended with the user's answer: a questionnaire's
  * answers, the Spaces shared or declined, or word that they wrote a message
  * instead.
  * @param part - The card's part.

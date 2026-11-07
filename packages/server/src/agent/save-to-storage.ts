@@ -8,7 +8,7 @@
  * rate, access, storage -- and then the transfer, in this request rather than
  * through the paste's queue: the model is waiting on the answer. Each refusal
  * is handed to the tool as the kind it tells the model about. The rate-limit
- * and link refusals are logged here, where the turn's project and reader are
+ * and link refusals are logged here, where the turn's project and user are
  * known; the storage gate logs its own, and an access refusal is not logged.
  */
 
@@ -45,8 +45,8 @@ function asRefusal(err: unknown): unknown {
 }
 
 /**
- * The save one turn hands its tool: bound to the project and the reader.
- * @param who - The turn's project and reader.
+ * The save one turn hands its tool: bound to the project and the user.
+ * @param who - The turn's project and user.
  * @param who.projectId - The project the picture is charged to.
  * @param who.userId - Who is saving it.
  * @returns The save.
@@ -65,8 +65,8 @@ export function saveToStorageFor({ projectId, userId }: { projectId: string; use
       await assertStorageAllowance(projectId, "upload");
     } catch (err) {
       // The storage gate logs its own refusal, and an access refusal is the
-      // reader's standing rather than a fault. Anything else is a fault on
-      // our side, logged where the turn's project and reader are known.
+      // user's standing rather than a fault. Anything else is a fault on
+      // our side, logged where the turn's project and user are known.
       const refusal = asRefusal(err);
       if (!(refusal instanceof SaveRefused)) logger.error({ err, projectId, userId, url }, "agent_save_gate_failed");
       throw refusal;
@@ -82,7 +82,7 @@ export function saveToStorageFor({ projectId, userId }: { projectId: string; use
     } catch (err) {
       if (signal?.aborted === true) throw err;
       if (err instanceof backendUploadService.UserUrlTransferError) {
-        // Only a refusal of the reader's own link is the link's to answer
+        // Only a refusal of the user's own link is the link's to answer
         // for; one on our side is a fault, told to the model as one.
         logger[urlIngestFailureLevel(err.reason)]({ err, projectId, userId, url, reason: err.reason, reported: err.reported }, "agent_save_failed");
         if (isUserLinkFault(err.reason)) throw new SaveRefused("link", err.reason);

@@ -18,7 +18,7 @@ interface PictureIdentity {
 
 /**
  * Bind source authorization and edge JPEG creation to one turn's identity.
- * @param who - The reader, project and owning Studio.
+ * @param who - The user, project and owning Studio.
  * @returns The turn-local bounded preparation callback.
  * @throws {unknown} Invalid runtime configuration.
  */
@@ -82,7 +82,7 @@ export function picturePreparerFor(who: PictureIdentity): PrepareAgentPictures {
 
 /**
  * Read only images explicitly attached as files or picked canvas nodes.
- * @param chips - The actual attachments of the current reader message.
+ * @param chips - The actual attachments of the current user message.
  * @returns Sources in attachment and node order, retaining duplicate occurrences.
  * @throws {never} Never.
  */

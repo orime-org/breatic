@@ -220,7 +220,7 @@ describe("POST /mini-tools", () => {
     );
   });
 
-  // inner#1302: what the reader drew reaches the pinned model through the task's params.
+  // inner#1302: what the user drew reaches the pinned model through the task's params.
   it("sends the drawn mask and the node's own source to the inpaint model", async () => {
     const res = await post({
       tool: "image.inpaint",
@@ -271,8 +271,8 @@ describe("POST /mini-tools", () => {
     });
   });
 
-  // inner#1304: the restyle prefix always goes; what the reader wrote follows it.
-  it("sends the restyle prefix alone, or with the reader's words after it", async () => {
+  // inner#1304: the restyle prefix always goes; what the user wrote follows it.
+  it("sends the restyle prefix alone, or with the user's words after it", async () => {
     const preamble = miniToolById("image.restyle")?.prompt?.preamble;
     const run = (prompt: string): Promise<Response> =>
       post({

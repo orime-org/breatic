@@ -16,7 +16,7 @@
  * Three of our parts have no counterpart in the SDK's list. `interrupted` and
  * `failed` are things we know about a turn, not things a model streamed, so
  * they travel as data parts -- the one channel the protocol leaves open for
- * what it does not define. They are not transient: a reader who reloads has
+ * what it does not define. They are not transient: a user who reloads has
  * to still see that a turn was cut off.
  */
 import { LEGACY_FAILURE_LINES, NEVER_RAN, TURNED_AWAY } from "@breatic/shared";
@@ -149,7 +149,7 @@ describe("what a finished turn writes down", () => {
       },
     ]);
 
-    // What the wire carries on that field is the line a reader is shown, not
+    // What the wire carries on that field is the line a user is shown, not
     // the reason the model needs -- two different things, and this side of
     // the boundary only ever has the first. The turn fills in the reason
     // afterwards from the callback handed the error itself; what is written
@@ -265,7 +265,7 @@ describe("what a conversation hands back when it is opened", () => {
     expect(JSON.stringify(ui)).not.toContain("the models, as the model read them");
   });
 
-  it("carries a stopped turn back as something the reader can see", () => {
+  it("carries a stopped turn back as something the user can see", () => {
     const ui = toUiParts([{ type: "text", text: "写到一半" }, { type: "interrupted" }]);
 
     // A data part, because the protocol has no part meaning "this was cut
@@ -330,7 +330,7 @@ describe("a message that goes out and comes back", () => {
 
     // One field does not survive, deliberately: the model's copy of the
     // reason does not go out to the browser, so what comes back carries the
-    // reader's key in its place. Everything else is the same message.
+    // user's key in its place. Everything else is the same message.
     const back = toStoredParts(toUiParts(original));
     expect(back.map((p) => p.type)).toEqual(original.map((p) => p.type));
     expect(back[0]).toEqual(original[0]);
@@ -540,8 +540,8 @@ describe("a failure stored under the pre-#1378 name", () => {
   });
 });
 
-describe("a questionnaire waiting for the reader (inner#1542)", () => {
-  it("reads back as the call, followed by the mark naming it as the card the reader is shown", () => {
+describe("a questionnaire waiting for the user (inner#1542)", () => {
+  it("reads back as the call, followed by the mark naming it as the card the user is shown", () => {
     const parts = toUiParts([
       { type: "tool", toolCallId: "ask-1", toolName: "ask_user", input: { questions: [] }, status: "awaiting" },
     ]);
@@ -562,7 +562,7 @@ describe("a questionnaire waiting for the reader (inner#1542)", () => {
     expect(parts.map((p) => p.type)).toEqual(["text", "tool-ask_user", "data-thinking-time", "data-ask-awaiting"]);
   });
 
-  it("reads back as an answered call once the reader has answered", () => {
+  it("reads back as an answered call once the user has answered", () => {
     const parts = toUiParts([
       {
         type: "tool",

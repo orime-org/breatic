@@ -532,7 +532,7 @@ async function startReading(
   reading: Record<string, unknown>,
 ): Promise<{ taskId: string; status: Awaited<ReturnType<typeof startRowedRun>> }> {
   // A reading runs on one model, pinned (user 2026-09-19). Naming it here is
-  // what puts it on the row the reader sees, in the history row this run
+  // what puts it on the row the user sees, in the history row this run
   // writes, and against the charge — the three places every other modality
   // names the model it ran on.
   const model = UNDERSTAND_PINS.model;
@@ -682,7 +682,7 @@ canvas.get("/tasks", validate("query", paginationSchema), async (c) => {
  * `GET /canvas/nodes/:nodeId/history` — list a node's content history.
  *
  * Returns AIGC generation results (success + failed), user uploads, and
- * the copies a reader asked to keep, ordered by most recent first. Used by
+ * the copies a user asked to keep, ordered by most recent first. Used by
  * the frontend to show version history and support restore.
  * @param c - Hono context, requires `project_id` query param
  * @returns `{ data: { entries: NodeHistoryEntity[], total: number } }`
@@ -737,7 +737,7 @@ canvas.get(
  * four numbers on the node and the rows in this table are not kept in lock
  * step — a dropped `node-task:counts` leaves the node showing a number the
  * table no longer holds, and a node that still reads as running cannot be
- * deleted. This is the way back: the reader who noticed asks for the truth,
+ * deleted. This is the way back: the user who noticed asks for the truth,
  * and everyone's node follows. The space rides in the query because a
  * document is what the counts are published to, and a node with no rows left
  * still has one.

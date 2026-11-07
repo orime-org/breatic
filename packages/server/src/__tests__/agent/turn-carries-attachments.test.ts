@@ -5,9 +5,9 @@
  * What a turn does with the items attached to the message that opened it.
  *
  * They are stored beside the typed words rather than folded into them, so the
- * bubble shows what the reader typed and the conversation is named after it.
+ * bubble shows what the user typed and the conversation is named after it.
  * The model is sent both, attachments first, on the very turn they came with,
- * after the note that says when the reader sent it.
+ * after the note that says when the user sent it.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type * as CoreModule from "@breatic/core";

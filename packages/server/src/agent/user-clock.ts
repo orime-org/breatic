@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The note that tells the model when, on the reader's own clock, a message
+ * The note that tells the model when, on the user's own clock, a message
  * was sent.
  *
  * The model has no clock of its own, and the server runs on UTC, so the
- * reader's zone comes from their browser with each message. The note opens
+ * user's zone comes from their browser with each message. The note opens
  * that turn's user message, which is stored as it was sent and replayed as it
  * is on later turns, so each message kept that way still tells the model when
  * it was sent. It stays out of the system prompt; see `MainAgent.runTurn`.
@@ -60,9 +60,9 @@ function offsetOf(now: Date, p: Record<ClockPart, string>): string {
 }
 
 /**
- * Say when a message was sent, in the reader's zone when we know it.
+ * Say when a message was sent, in the user's zone when we know it.
  * @param now - When the message was sent.
- * @param timeZone - The zone the reader's browser reported, if any.
+ * @param timeZone - The zone the user's browser reported, if any.
  * @returns One bracketed line for the model.
  */
 export function userClockNote(now: Date, timeZone: string | undefined): string {
@@ -70,6 +70,6 @@ export function userClockNote(now: Date, timeZone: string | undefined): string {
   const p = readClock(now, known ? timeZone : "UTC");
   const when = `${p.weekday}, ${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
   return known
-    ? `[The reader's local time when they sent this message: ${when} (${timeZone}, ${offsetOf(now, p)}).]`
-    : `[The time when the reader sent this message: ${when} UTC. Their time zone is unknown.]`;
+    ? `[The user's local time when they sent this message: ${when} (${timeZone}, ${offsetOf(now, p)}).]`
+    : `[The time when the user sent this message: ${when} UTC. Their time zone is unknown.]`;
 }

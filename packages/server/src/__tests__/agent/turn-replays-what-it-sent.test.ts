@@ -222,7 +222,7 @@ describe("a turn keeps its own message as it was sent", () => {
     expect(JSON.stringify(sent)).toContain(JSON.stringify(message?.content).slice(1, -1));
   });
 
-  it("answers the reader even when keeping that copy fails, and says so in the log", async () => {
+  it("answers the user even when keeping that copy fails, and says so in the log", async () => {
     setUserForModel.mockImplementation(async () => {
       throw new Error("database away");
     });
@@ -289,7 +289,7 @@ describe("a turn sends the open Space once while it stays the same", () => {
 
   /**
    * Run one turn with the Space open.
-   * @param current - The Space as the reader has it.
+   * @param current - The Space as the user has it.
    */
   async function runWithSpaceOpen(current: typeof open): Promise<void> {
     modelSays.parts = saying("the reply");

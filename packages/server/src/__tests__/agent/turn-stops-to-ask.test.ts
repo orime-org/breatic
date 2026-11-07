@@ -5,7 +5,7 @@
  * A turn that asks the user something stops there and waits.
  *
  * The model asking a question is not a step on the way to an answer -- it is
- * where this segment of the turn stops, until the reader answers on the card
+ * where this segment of the turn stops, until the user answers on the card
  * or writes a message (inner#1542). `ask_user` has no `execute`, so the SDK
  * stops the step at the call and the call is stored as `awaiting`; the panel
  * is told on the wire which call it is, because it cannot work that out.
@@ -223,7 +223,7 @@ describe("a turn that asked the user something", () => {
   it("stops at the card instead of talking past it", async () => {
     const { modelCalls, answered } = await runTurn([asksFor("ask_user"), carriesOn]);
 
-    // One call, not two, and no result for the card: the reader gives it.
+    // One call, not two, and no result for the card: the user gives it.
     expect(modelCalls).toBe(1);
     expect(answered).toEqual(new Set());
   });

@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The segment of a turn that resumes after the reader answers a questionnaire
+ * The segment of a turn that resumes after the user answers a questionnaire
  * (inner#1542).
  *
  * It belongs to the turn that asked: same turn index, the paused reply in its
  * history with the answer already appended to that reply's copy of what was
- * sent. What it adds of its own -- the reader's clock and Spaces, then the
+ * sent. What it adds of its own -- the user's clock and Spaces, then the
  * reply -- is kept in its own row under the hash of everything before it, so
  * the next request sends it again as it was sent.
  */
@@ -119,7 +119,7 @@ function pausedTurn(): Array<MessageData & { forModel: unknown }> {
 
 /**
  * Run the resumed segment to its end.
- * @param space - The reader's Spaces when they pressed submit.
+ * @param space - The user's Spaces when they pressed submit.
  * @returns Every chunk of its stream.
  */
 async function resume(space: Record<string, unknown> = {}): Promise<Array<Record<string, unknown>>> {
@@ -187,7 +187,7 @@ describe("the resumed segment", () => {
     expect(replayRows(rows, PREFIX).at(-1)?.asSent).toBe(true);
   });
 
-  it("leaves the reader's message of that turn alone, and checks the provider's count before it sends", async () => {
+  it("leaves the user's message of that turn alone, and checks the provider's count before it sends", async () => {
     // A resumed segment folds by the same rule as any other (inner#1567, A3):
     // the check runs before its first call, and the fold itself, when one
     // runs, takes only turns before the one it resumes.

@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * What the result of a call that waits for the reader is sent to the model
+ * What the result of a call that waits for the user is sent to the model
  * as: `ask_user` (inner#1542) and `request_space_content` (inner#1552).
  *
- * The call waits for the reader, so its result is written later than the call
- * -- when the reader answers on the card, writes a message instead, or the
+ * The call waits for the user, so its result is written later than the call
+ * -- when the user answers on the card, writes a message instead, or the
  * turn turns a second card away -- and it is appended to the asking row's
  * copy of what was sent, beside the call it answers. Each result is filed
  * under the call's own tool name: one filed under another is a result the
@@ -19,7 +19,7 @@ import type { AskUserResult, SharedSpace } from "@breatic/shared";
 /** What a Space request ends with: the Spaces as read, a refusal, or a message written instead. */
 export type SpaceRequestResult = { spaces: SharedSpace[] } | { declined: true } | { repliedInChat: true };
 
-/** What any call that waits for the reader ends with. */
+/** What any call that waits for the user ends with. */
 export type CardResult = AskUserResult | SpaceRequestResult;
 
 /** What the card keeps of one shared Space: what names it and how its read went, no content. */

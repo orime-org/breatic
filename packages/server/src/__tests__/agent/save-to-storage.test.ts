@@ -103,7 +103,7 @@ describe("saveToStorageFor", () => {
     expect(order).toEqual([...order].sort((a, b) => a - b));
   });
 
-  it("logs a gate failing on our side as an error, with the turn's project and reader, and rethrows it", async () => {
+  it("logs a gate failing on our side as an error, with the turn's project and user, and rethrows it", async () => {
     const down = new Error("db down");
     assertAccess.mockRejectedValue(down);
 
@@ -122,7 +122,7 @@ describe("saveToStorageFor", () => {
     expect(transferUserUrlToStorage).not.toHaveBeenCalled();
   });
 
-  it.each([403, 404])("refuses a reader with no edit access (%s)", async (status) => {
+  it.each([403, 404])("refuses a user with no edit access (%s)", async (status) => {
     assertAccess.mockRejectedValue(new AppError(status, "no"));
 
     const err = await refusalOf(save(LINK));
@@ -139,7 +139,7 @@ describe("saveToStorageFor", () => {
     expect(transferUserUrlToStorage).not.toHaveBeenCalled();
   });
 
-  it("refuses a link that did not land, at warn for the reader's own link", async () => {
+  it("refuses a link that did not land, at warn for the user's own link", async () => {
     transferUserUrlToStorage.mockRejectedValue(new UserUrlTransferError("source_unreachable"));
 
     const err = await refusalOf(save(LINK));

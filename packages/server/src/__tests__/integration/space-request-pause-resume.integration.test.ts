@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * A Space request pauses the turn, and the reader's answer resumes it
+ * A Space request pauses the turn, and the user's answer resumes it
  * (inner#1552).
  *
- * `request_space_content` waits for the reader the way `ask_user` does: the
+ * `request_space_content` waits for the user the way `ask_user` does: the
  * segment that asked stops, the call is stored as `awaiting`, and the answer
  * comes back on `/chat/message` as `shared_spaces` -- the Spaces the browser
- * read, or a refusal -- or as word that the reader wrote a message instead.
+ * read, or a refusal -- or as word that the user wrote a message instead.
  * The card keeps a summary per Space; the model's copy keeps the content.
  *
  * The model is a double, and everything else is real: the route, the turn,

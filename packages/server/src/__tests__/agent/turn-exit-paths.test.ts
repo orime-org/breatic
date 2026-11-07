@@ -12,7 +12,7 @@
  * say -- unless the record says otherwise.
  *
  * Stopping is driven by a signal here rather than by anything the model
- * produces, because that is how it happens: the reader presses stop or the
+ * produces, because that is how it happens: the user presses stop or the
  * page goes, the route raises the signal, and the SDK ends the turn. There is
  * no part a model can send that means "the user left".
  */
@@ -315,9 +315,9 @@ describe("a turn the ceiling cut off", () => {
     expect(parts?.map((p) => p.type)).toContain("truncated");
   });
 
-  it("says so on the wire, so the reader sees it without reloading", async () => {
+  it("says so on the wire, so the user sees it without reloading", async () => {
     // Whether the model runs out of room is not ours to decide. Whether the
-    // reader is told it happened is, and that half is no different from a
+    // user is told it happened is, and that half is no different from a
     // turn that failed: both are things this side knows and the browser
     // cannot work out for itself.
     await runTurn([

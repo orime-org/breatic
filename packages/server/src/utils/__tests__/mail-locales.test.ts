@@ -359,7 +359,7 @@ describe("the language actually changes", () => {
 });
 
 describe("mail contact address", () => {
-  it("sends readers who need help to the support mailbox", () => {
+  it("sends users who need help to the support mailbox", () => {
     expect(getMailLayout().contactEmail).toBe("support@breatic.ai");
   });
 });

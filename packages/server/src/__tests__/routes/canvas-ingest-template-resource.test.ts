@@ -4,7 +4,7 @@
 /**
  * `POST /canvas/ingest-url` with `template_resource` (inner#1345, design 6.6).
  *
- * A template's resource node is fetched into the reader's storage through the
+ * A template's resource node is fetched into the user's storage through the
  * same lane as any address, but the client sends only the storage path the
  * template declares. The server checks that some template in the registry
  * declares that path, builds the address with `voiceSampleUrl(path)` and hands

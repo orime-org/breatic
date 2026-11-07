@@ -53,7 +53,7 @@ afterAll(async () => {
   await sql?.end({ timeout: 5 });
 });
 
-/** A fresh lower-case address and the same address as a reader might type it. */
+/** A fresh lower-case address and the same address as a user might type it. */
 function addressPair(): { stored: string; typed: string } {
   const stored = `case-${crypto.randomUUID()}@example.test`;
   return { stored, typed: `  ${stored.toUpperCase()} ` };

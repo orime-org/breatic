@@ -39,11 +39,11 @@ describe("the main model receives prepared attachment JPEG files", () => {
     expect(textParts(content).join("\n")).toContain("Attachment 1");
   });
 
-  it("keeps the reader clock first and the language reminder at the end of the last text block", () => {
-    const content = userMessageForModel("reader clock", turn());
+  it("keeps the user clock first and the language reminder at the end of the last text block", () => {
+    const content = userMessageForModel("user clock", turn());
     const texts = textParts(content);
 
-    expect(texts[0]!.startsWith("reader clock\n\n")).toBe(true);
+    expect(texts[0]!.startsWith("user clock\n\n")).toBe(true);
     expect(texts.at(-1)!.endsWith(USER_LANGUAGE_REMINDER)).toBe(true);
     expect(Array.isArray(content) ? content.at(-1) : undefined).toMatchObject({ type: "text" });
     expect(content).toContainEqual({ type: "file", data: PICTURE.url, mediaType: "image/jpeg" });
@@ -51,7 +51,7 @@ describe("the main model receives prepared attachment JPEG files", () => {
 
   it("keeps prepared picture ordering stable before the final reminder", () => {
     const second = { ...PICTURE, label: "Attachment 2", sourceUrl: "https://source.example/second.png", url: "https://media.example/second.agent-v1-1024-q85.jpg" };
-    const content = userMessageForModel("reader clock", turn([PICTURE, second]));
+    const content = userMessageForModel("user clock", turn([PICTURE, second]));
     const files = Array.isArray(content) ? content.filter((part) => part.type === "file") : [];
 
     expect(files).toEqual([
@@ -65,7 +65,7 @@ describe("the main model receives prepared attachment JPEG files", () => {
     const oldTurn = { chips: [CHIP], message: "What is shown?" };
 
     expect(userTurnForModel(turn([]))).toBe(userTurnForModel(oldTurn));
-    expect(userMessageForModel("reader clock", turn([]))).toBe(userMessageForModel("reader clock", oldTurn));
+    expect(userMessageForModel("user clock", turn([]))).toBe(userMessageForModel("user clock", oldTurn));
   });
 
   it("keeps unavailable attachment labels, original sources and reasons in the sent text", () => {
@@ -73,7 +73,7 @@ describe("the main model receives prepared attachment JPEG files", () => {
       chips: [CHIP], message: "What is shown?",
       pictureFailures: [{ label: PICTURE.label, sourceUrl: PICTURE.sourceUrl, reason: "source-not-found" }],
     };
-    const content = userMessageForModel("reader clock", unavailable);
+    const content = userMessageForModel("user clock", unavailable);
     const text = textParts(content).join("\n");
 
     expect(text).toContain(PICTURE.label);

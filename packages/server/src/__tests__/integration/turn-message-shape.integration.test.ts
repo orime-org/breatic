@@ -367,7 +367,7 @@ describe("the language an error about the request comes back in", () => {
   it("is the one the request asked for, not the browser's own", async () => {
     // Chat posts through the SDK's own transport, which sent no language at
     // all until this task added one. Without it the server negotiates from
-    // whatever the browser advertises, so a reader on an English interface in
+    // whatever the browser advertises, so a user on an English interface in
     // a Chinese browser is told off in Chinese.
     const { projectId, cookie } = await seedProject();
     const conversationId = await openConversation(projectId, cookie);
@@ -417,7 +417,7 @@ async function readBack(
  * Run one turn on a fresh conversation and read it back.
  * @param parts - What the model streams.
  * @returns The reply the read route hands the panel.
- * @throws {Error} When the read-back has no reply after the reader's message.
+ * @throws {Error} When the read-back has no reply after the user's message.
  */
 async function replyReadBack(parts: ModelStreamPart[]): Promise<Record<string, unknown>[]> {
   stream.parts = parts;
@@ -440,7 +440,7 @@ describe("how a turn's ending reads back when the conversation is reopened", () 
     expect(parts).toEqual([]);
   });
 
-  it("carries a failed tool step with the reader's line and how it ended", async () => {
+  it("carries a failed tool step with the user's line and how it ended", async () => {
     const parts = await replyReadBack([
       { type: "tool-call", toolCallId: "tc-fail", toolName: "always_fails", input: "{}" },
       FINISHED_ASKING_FOR_A_TOOL,
@@ -475,7 +475,7 @@ describe("how a turn that was steered reads back", () => {
     expect(parts.filter((p) => p.type === "text")).toEqual([]);
   });
 
-  it("reads input the SDK refused back as turned away, with no line for the reader", async () => {
+  it("reads input the SDK refused back as turned away, with no line for the user", async () => {
     const parts = await replyReadBack([
       {
         type: "tool-call",

@@ -130,7 +130,7 @@ export async function openChat(
       throw new NotFoundError(t("server.error.not_found"));
     }
 
-    // A new conversation starts on the model the reader last picked.
+    // A new conversation starts on the model the user last picked.
     const created = await conversationRepo.createConversation(userId, resolveAgentModel(null, userModel).id, tx);
     await conversationRepo.setProjectId(created.id, projectId, tx);
     return { ...created, projectId };
@@ -189,7 +189,7 @@ function titleFromMessage(said: string, limit: number): string | null {
  * Called once per turn, and it answers rather than returning nothing so the
  * turn can tell the client the name in the same breath as it confirms the
  * message landed. Without that the list and the header go on showing the
- * placeholder until the reader leaves the project and comes back.
+ * placeholder until the user leaves the project and comes back.
  *
  * Having no name is a column holding null, not a column holding a particular
  * string. Two things follow. A conversation the owner named before saying
@@ -231,7 +231,7 @@ export async function titleForTurn(
  *
  * That distinction is what keeps "a conversation is only ever created
  * automatically in one place" true. The rule guards against an id that no
- * longer resolves quietly turning into a new conversation while the reader
+ * longer resolves quietly turning into a new conversation while the user
  * believes they are still in the old one; a deliberate press is not that.
  *
  * Access is judged as a WRITE, same as opening: a member who may only read
@@ -255,7 +255,7 @@ export async function createConversation(
   projectId: string,
 ): Promise<ChatConversation> {
   await projectService.assertAccess(projectId, userId, "editor");
-  // A new conversation starts on the model the reader last picked.
+  // A new conversation starts on the model the user last picked.
   const model = resolveAgentModel(null, await userRepo.getAgentModel(userId));
 
   return db.transaction(async (tx) => {
@@ -466,7 +466,7 @@ export async function deleteConversation(
 }
 
 /**
- * Take the reader's answer to the questionnaire the agent is waiting on
+ * Take the user's answer to the questionnaire the agent is waiting on
  * (inner#1542), once.
  *
  * The answer is held to the questions as they were asked, and the call is
@@ -495,7 +495,7 @@ export async function answerAsk(
 }
 
 /**
- * Take the reader's answer to the request to read Spaces the agent is waiting
+ * Take the user's answer to the request to read Spaces the agent is waiting
  * on (inner#1552), once.
  *
  * Held to the request as it was made, and settled only while the call still
@@ -539,9 +539,9 @@ function listedModel(id: string | null): AgentModelChoice | undefined {
 
 /**
  * The model a conversation is answered by: its own pick while the deployment
- * lists it, else the reader's last pick while listed, else the default.
+ * lists it, else the user's last pick while listed, else the default.
  * @param conversationModel - The conversation's stored pick.
- * @param userModel - The reader's last pick.
+ * @param userModel - The user's last pick.
  * @returns The model.
  * @throws {never} Never; the config guarantees the default is listed.
  */
@@ -551,9 +551,9 @@ export function resolveAgentModel(conversationModel: string | null, userModel: s
 }
 
 /**
- * The models the reader can pick, in order, and the one a new conversation
+ * The models the user can pick, in order, and the one a new conversation
  * of theirs starts on.
- * @param userId - The reader.
+ * @param userId - The user.
  * @returns The list and the id of the starting model.
  */
 export async function listChatModels(userId: string): Promise<{ models: AgentModelChoice[]; lastUsed: string }> {
@@ -562,7 +562,7 @@ export async function listChatModels(userId: string): Promise<{ models: AgentMod
 }
 
 /**
- * The model the deployment lists by this id, or the refusal the reader reads.
+ * The model the deployment lists by this id, or the refusal the user reads.
  * @param model - The model id the client sent.
  * @returns It.
  * @throws {ValidationError} When the deployment does not list it.
@@ -574,19 +574,19 @@ function assertListed(model: string): AgentModelChoice {
 }
 
 /**
- * Pick the model a conversation is answered by; it becomes the reader's last
+ * Pick the model a conversation is answered by; it becomes the user's last
  * pick too.
  *
  * Checked like a rename: the conversation id came from the client, so it has
- * to be this reader's, in this Project, and live.
+ * to be this user's, in this Project, and live.
  * @param conversationId - The conversation, as the client named it.
- * @param userId - The reader.
+ * @param userId - The user.
  * @param projectId - The Project the request claims to be in.
  * @param model - The model id.
  * @returns The conversation as it now stands.
  * @throws {ValidationError} When the deployment does not list the model.
  * @throws {NotFoundError} When the conversation is missing, deleted, someone else's or in another Project.
- * @throws {ForbiddenError} When the reader may only read the Project.
+ * @throws {ForbiddenError} When the user may only read the Project.
  */
 export async function setConversationModel(
   conversationId: string,
@@ -606,12 +606,12 @@ export async function setConversationModel(
 
 /**
  * The model a new message is answered by. The conversation's model is the
- * reader's pick, written by the pick alone; a message writes it only where
+ * user's pick, written by the pick alone; a message writes it only where
  * the conversation has none the deployment lists, and only while it still holds
  * what was read. A message from a page whose pick is still being saved carries
  * the model it showed, and must not undo that pick.
  * @param conversation - The conversation, already checked writable.
- * @param userId - The reader.
+ * @param userId - The user.
  * @param requested - The model the page sent; absent from a page that predates the picker.
  * @returns The model id.
  * @throws {ValidationError} When the page sent a model the deployment no longer lists.
@@ -637,7 +637,7 @@ export async function modelForMessage(
  * own by the usual order, written into the conversation. Never a refusal: the
  * answer must be able to resume the turn.
  * @param conversation - The conversation, already checked writable.
- * @param userId - The reader.
+ * @param userId - The user.
  * @param toolCallId - The call being answered.
  * @returns The model id.
  */

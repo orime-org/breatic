@@ -419,7 +419,7 @@ describe("Tasks routes", () => {
       );
     });
 
-    // A snapshot of nothing is not one: the row would show the reader a
+    // A snapshot of nothing is not one: the row would show the user a
     // blank line they cannot tell apart from any other. The browser greys
     // the item out on a node saying nothing; this is the same rule where it
     // is authoritative.
@@ -545,7 +545,7 @@ describe("Tasks routes", () => {
     );
   });
 
-  // The label is what the reader sees naming this run in the node's task
+  // The label is what the user sees naming this run in the node's task
   // list, and the two other writers of that column put the model or the tool
   // there — a proper noun, the same in every language. A reading is a model
   // call like any other, so it names the model it pins.
@@ -836,7 +836,7 @@ describe("Tasks routes", () => {
     // up, read the media and bill for it. The job's id is recorded for
     // whoever has to find that job by hand — no code reads it — so a run
     // whose id went unrecorded still runs, and marking it failed would put
-    // "failed" on a node the reader
+    // "failed" on a node the user
     // then watches produce a reading, and bill them for it.
     it("leaves a queued run running when its job id cannot be recorded", async () => {
       mocks.taskService.setJobId.mockRejectedValueOnce(new Error("db down"));
@@ -884,7 +884,7 @@ describe("Tasks routes", () => {
 
     // A row on the node is the only thing that carries a cause back to the
     // canvas, so a run that names no node is refused before anything is
-    // created: it would bill and answer into nowhere while the reader
+    // created: it would bill and answer into nowhere while the user
     // watches a node that never changes.
     it("refuses a run that named no node", async () => {
       const app = createApp();
@@ -907,7 +907,7 @@ describe("Tasks routes", () => {
     // The task row is written before the node's row is opened, so opening
     // that row is one more way out that has to end the first: a task left
     // `pending` is one no worker will pick up and no sweep will end, and the
-    // reader is told by the rejection, there being no row to hold the cause.
+    // user is told by the rejection, there being no row to hold the cause.
     it("does not leave the task pending when the node's row cannot be opened", async () => {
       mocks.nodeTaskService.open.mockRejectedValueOnce(new Error("collab down"));
       const app = createApp();

@@ -75,7 +75,7 @@ describe("openDocumentOf", () => {
   const blocks = [{ id: "b1", type: "paragraph", text: "x", lossy: false, partial: false }];
   const base = { id: "d1", name: "Storyboard", kind: "document" as const };
 
-  it("is the loaded document the reader has open, with its blocks", () => {
+  it("is the loaded document the user has open, with its blocks", () => {
     expect(
       openDocumentOf({ current_space: { ...base, state: "loaded", content: "<!-- b:1 -->\nx", total_chars: 14, blocks } }),
     ).toEqual({ spaceId: "d1", spaceName: "Storyboard", blocks });
