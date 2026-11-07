@@ -3,20 +3,27 @@
 
 import * as React from 'react';
 import type * as Y from 'yjs';
-import { ArrowRightToLine, Copy, Film, Link2, Magnet, Pause, Play, Plus, Redo2, Scissors, Trash2, Undo2 } from 'lucide-react';
+import { ArrowRightToLine, Code, Copy, Film, Link2, ListChecks, Magnet, Pause, Play, Plus, Redo2, Scissors, Sparkles, Trash2, Undo2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineClip, type TimelineDocumentV1 } from '@breatic/shared';
-import { resolveTimelineArrangement, timelineClipSource, type TimelineArrangementReason } from '@web/data/yjs/timeline-arrangement';
+import {
+  newId, TIMELINE_MAIN_TRACK_ID, type TimelineClip, type TimelineDocumentV1, type TimelineExecution, type TimelineWebAnimationClip,
+} from '@breatic/shared';
+import { TimelineExecutionCreateInputSchema, webAnimationDurationFrames } from '@breatic/shared/space-content';
+import { resolveTimelineArrangement, timelineClipSource, timelineWebSourceOf, type TimelineArrangementReason } from '@web/data/yjs/timeline-arrangement';
 import { removeTimelineClip } from '@web/data/yjs/timeline-document';
 import type { TimelineEditCommand, TimelineEditPlan } from '@web/data/yjs/timeline-edit';
-import { activeTimelineClipAt } from '@web/data/yjs/timeline-layers';
+import { visibleTimelineClipsAt } from '@web/data/yjs/timeline-layers';
 import { orderedTimelineClips } from '@web/data/yjs/timeline-order';
 
+import { CountChip } from '@web/components/CountChip';
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Separator } from '@web/components/ui/separator';
 import { Slider } from '@web/components/ui/slider';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
+import { spaceTasksQueryKey } from '@web/data/api/scene';
+import { serverMessage } from '@web/data/api/server-message';
+import { timelineApi, type TimelineExecutionRow } from '@web/data/api/timeline';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { useSpaceConnection } from '@web/data/yjs/space-connection';
 import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
@@ -26,6 +33,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { isEditableTarget } from '@web/lib/is-editable-target';
 import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
+import { runOnce } from '@web/stores/task-actions-in-flight';
 import type { SpaceBodyProps } from '@web/spaces';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
 import { TimelineClipProperties } from '@web/spaces/timeline/TimelineClipProperties';
@@ -40,6 +48,15 @@ import { useTimelineDocument } from '@web/spaces/timeline/use-timeline-document'
 import { useTimelineEditPrefs } from '@web/spaces/timeline/use-timeline-edit-prefs';
 import { useTimelinePlayback } from '@web/spaces/timeline/use-timeline-playback';
 import { useTimelineAsset } from '@web/spaces/timeline/use-timeline-asset';
+import { TimelineExecutionList, timelineCancelIntent, timelineExecutionInput, type TimelineExecutionView } from '@web/spaces/timeline/TimelineExecutionList';
+import type { TimelineWebClipView } from '@web/spaces/timeline/TimelineTrackArea';
+import { TimelineWebAnimationDialog } from '@web/spaces/timeline/TimelineWebAnimationDialog';
+import { TimelineWebPreview, type TimelineWebEntry } from '@web/spaces/timeline/TimelineWebPreview';
+import { timelineExecutionUnfinished, useTimelineExecutions } from '@web/spaces/timeline/use-timeline-executions';
+import { useTimelineLimits } from '@web/spaces/timeline/use-timeline-limits';
+import { useTimelineWebResolution } from '@web/spaces/timeline/use-timeline-web-resolution';
+import { transitionCreationDraft, type CreationDraftInput, type CreationDraftState } from '@web/spaces/timeline/web-animation-creation-draft';
+import type { TimelineWebLayer, WebAnimationPlayerElement } from '@web/spaces/timeline/web-animation-host';
 
 /** The existing content document and its supported native projection. */
 interface TimelineEditorProps extends SpaceBodyProps { doc: Y.Doc; document: TimelineDocumentV1; damagedClipIds: readonly string[] }
@@ -49,6 +66,8 @@ interface TimelineConflictRowProps {
   projectId: string;
   clip: TimelineClip;
   assetId: string;
+  /** A web copy's name; a video is named by its asset. */
+  webName: string | null;
   track: string;
   reason: TimelineArrangementReason['code'] | null;
   selected: boolean;
@@ -88,6 +107,7 @@ const ZOOM_STEP = 0.1;
  * @param props.projectId - The Project authorizing its source.
  * @param props.clip - The placement.
  * @param props.assetId - Its registered asset.
+ * @param props.webName - A web copy's name.
  * @param props.track - Its track's name.
  * @param props.reason - The first reason it conflicts.
  * @param props.selected - Whether it is selected.
@@ -95,15 +115,15 @@ const ZOOM_STEP = 0.1;
  * @returns The conflict row.
  * @throws {never} Never.
  */
-function TimelineConflictRow({ projectId, clip, assetId, track, reason, selected, onLocate }: TimelineConflictRowProps): React.JSX.Element {
+function TimelineConflictRow({ projectId, clip, assetId, webName, track, reason, selected, onLocate }: TimelineConflictRowProps): React.JSX.Element {
   const t = useTranslation();
   const asset = useTimelineAsset(projectId, assetId);
-  const name = asset.data?.displayName || t('timeline.video');
+  const name = webName ?? (asset.data?.displayName || t('timeline.video'));
   const locate = React.useCallback((): void => onLocate(clip.id), [onLocate, clip.id]);
   return <Button data-testid={`timeline-conflict-${clip.id}`} type='button' variant={null} size={null} aria-pressed={selected} onClick={locate}
     className={cn('flex w-full min-w-0 flex-col items-start gap-0.5 overflow-hidden rounded-chrome border border-status-error-border bg-status-error-bg px-2 py-1.5 text-left text-xs hover-enabled:border-status-error', selected && 'border-active-border')}>
     <span className='flex w-full min-w-0 items-center gap-2'>
-      <Film className='size-4 shrink-0' />
+      {clip.kind === 'web-animation' ? <Code className='size-4 shrink-0' /> : <Film className='size-4 shrink-0' />}
       <Tooltip>
         <TooltipTrigger asChild><span className='min-w-0 truncate leading-normal'>{name}</span></TooltipTrigger>
         <TooltipContent portal className='max-w-sm break-all'>{name}</TooltipContent>
@@ -150,6 +170,40 @@ function TimelineSwitch({ testId, label, shortcut, pressed, icon, onToggle }: Ti
   </Tooltip>;
 }
 const PANEL = 'flex flex-col gap-2 rounded-chrome border border-border p-3 text-xs';
+const CLOSED_DRAFT: CreationDraftState = { status: 'closed' };
+
+/**
+ * A configured aspect as the creation input names it.
+ * @param value - The configured aspect.
+ * @returns It, or null when the creation input does not accept it.
+ * @throws {never} Never.
+ */
+function aspectOf(value: string | undefined): CreationDraftInput['aspect'] | null {
+  const parsed = TimelineExecutionCreateInputSchema.shape.aspect.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+/**
+ * What a web copy on a track shows, and the request it came from.
+ * @param clip - The copy.
+ * @param web - The resolution of its references.
+ * @param rows - The Space's executions by result and by id.
+ * @param rows.bySource - By the source version they produced.
+ * @param rows.byId - By id.
+ * @returns Its view.
+ * @throws {never} Never.
+ */
+function webClipView(clip: TimelineWebAnimationClip, web: Parameters<typeof timelineWebSourceOf>[0], rows: { bySource: ReadonlyMap<string, TimelineExecutionRow>; byId: ReadonlyMap<string, TimelineExecutionRow> }): TimelineWebClipView {
+  const { operationId } = clip.contentBinding;
+  const sourceId = timelineWebSourceOf(web, clip);
+  const row = (operationId === null ? undefined : rows.byId.get(operationId)) ?? (sourceId === null ? undefined : rows.bySource.get(sourceId));
+  const prompt = row === undefined ? null : timelineExecutionInput(row)?.prompt ?? null;
+  if (sourceId !== null && web.sources[sourceId] !== undefined) return { state: 'ready', prompt, status: null, phase: null };
+  const execution = operationId === null ? undefined : web.executions[operationId];
+  if (execution === undefined) return { state: 'unresolved', prompt, status: null, phase: null };
+  const ended = !timelineExecutionUnfinished(execution.status) && execution.status !== 'succeeded';
+  return { state: ended ? 'failed' : 'pending', prompt, status: execution.status, phase: row?.status === 'running' ? row.phase : null };
+}
 const MAGNET_ICON = <Magnet className='size-4' />;
 const SNAP_ICON = <ArrowRightToLine className='size-4' />;
 const LINKAGE_ICON = <Link2 className='size-4' />;
@@ -196,20 +250,72 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   }, [materialState.open, materialOpen, setMaterialOpen, material]);
   const [media, setMedia] = React.useState<HTMLVideoElement | null>(null);
   const clips = React.useMemo(() => orderedTimelineClips(document.clips), [document.clips]);
-  const arrangement = React.useMemo(() => resolveTimelineArrangement(document), [document]);
+  const webLimits = useTimelineLimits(projectId)?.webAnimation;
+  const refreshMs = webLimits?.sourceRefreshIntervalMs;
+  const executions = useTimelineExecutions(projectId, spaceId, refreshMs);
+  const rows = executions.data;
+  const web = useTimelineWebResolution(projectId, spaceId, document, refreshMs);
+  // Edits of web copies plan against the extents this resolution gives.
+  session.setWebResolution(web);
+  const arrangement = React.useMemo(() => resolveTimelineArrangement(document, web), [document, web]);
   const readyIds = React.useMemo(() => new Set(arrangement.readyClipIds), [arrangement.readyClipIds]);
   const reasons = React.useMemo(() => new Map(arrangement.conflicts.map((placement) => [placement.clipId, placement.reasons[0]?.code ?? null])), [arrangement.conflicts]);
   const selectedId = history.selectedClipId;
   const selected = selectedId === null ? undefined : document.clips[selectedId];
   const selectedAssetId = selected === undefined ? '' : timelineClipSource(document.sources, selected)?.assetId ?? '';
   const selectedResource = useTimelineAsset(projectId, selectedAssetId);
-  const active = activeTimelineClipAt(document, readyIds, frame);
+  const visible = React.useMemo(() => visibleTimelineClipsAt(document, web, readyIds, frame), [document, web, readyIds, frame]);
+  const bottom = visible[0];
+  const active = bottom?.kind === 'video' ? bottom : null;
   const source = active === null ? null : document.sources[active.sourceId] ?? null;
+  const rowsBy = React.useMemo(() => {
+    const bySource = new Map<string, TimelineExecutionRow>();
+    const byId = new Map<string, TimelineExecutionRow>();
+    for (const row of rows ?? []) {
+      byId.set(row.id, row);
+      if (row.resultSourceVersionId !== null) bySource.set(row.resultSourceVersionId, row);
+    }
+    return { bySource, byId };
+  }, [rows]);
+  const webClips = React.useMemo(() => new Map(clips.flatMap((clip) => clip.kind === 'web-animation' ? [[clip.id, webClipView(clip, web, rowsBy)] as const] : [])), [clips, web, rowsBy]);
+  const webEntries = React.useMemo(() => {
+    const ordinals = new Map<string, number>();
+    return visible.flatMap((clip, index): TimelineWebEntry[] => {
+      if (clip.kind !== 'web-animation') return [];
+      const sourceId = timelineWebSourceOf(web, clip);
+      const resolved = sourceId === null ? undefined : web.sources[sourceId];
+      const track = labels.nameOf(clip.trackId) ?? clip.trackId;
+      const status = clip.contentBinding.operationId === null ? null : web.executions[clip.contentBinding.operationId]?.status ?? null;
+      if (sourceId === null || resolved === undefined) return [{ clip, track, z: index + 1, instance: null, status }];
+      const ordinal = ordinals.get(sourceId) ?? 0;
+      ordinals.set(sourceId, ordinal + 1);
+      return [{ clip, track, z: index + 1, instance: { key: `${sourceId}:${ordinal}`, sourceVersionId: sourceId, fps: resolved.fps }, status }];
+    });
+  }, [visible, web, labels]);
+  const [players, setPlayers] = React.useState<ReadonlyMap<string, WebAnimationPlayerElement>>(() => new Map());
+  const registerPlayer = React.useCallback((key: string, player: WebAnimationPlayerElement | null): void => setPlayers((current) => {
+    if ((current.get(key) ?? null) === player) return current;
+    const next = new Map(current);
+    if (player === null) next.delete(key);
+    else next.set(key, player);
+    return next;
+  }), []);
+  const layerSpecs = webEntries.flatMap((entry) => entry.instance === null ? [] : [{ key: entry.instance.key, clip: entry.clip, fps: entry.instance.fps }]);
+  const layerSignature = JSON.stringify(layerSpecs);
+  // The layer set keeps its identity while its content is unchanged, so playing on does not resync the instances.
+  const webLayers = React.useMemo((): TimelineWebLayer[] => layerSpecs.flatMap((spec) => {
+    const player = players.get(spec.key);
+    return player === undefined ? [] : [{ ...spec, player }];
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the specs change only when their signature does.
+  }), [layerSignature, players]);
   const assetId = source?.assetId ?? '';
   const resource = useTimelineAsset(projectId, assetId);
   const resourceState = source === null ? 'ready' : resource.isError ? 'failed' : resource.isPending ? 'loading' : 'ready';
-  const playback = useTimelinePlayback({ document, readyClipIds: readyIds, frame, onFrame: setFrame, clip: active, source, media, enabled: true, resourceState });
-  const { seek, retry: retryPlayback } = playback;
+  const playback = useTimelinePlayback({
+    document, readyClipIds: readyIds, frame, onFrame: setFrame, clip: active, source, media, enabled: true, resourceState,
+    webLayers, webLoadTimeoutMs: webLimits?.playerLoadTimeoutMs,
+  });
+  const { seek, retry: retryPlayback, retryWeb } = playback;
   const { refetch: refetchResource } = resource;
   const duration = Math.max(0, ...clips.map((clip) => clip.startFrame + clip.durationFrames));
   const fps = document.settings.fps;
@@ -229,6 +335,116 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const removeDamaged = React.useCallback((clipId: string): void => { if (!readOnly) removeTimelineClip(doc, clipId, session.origin); }, [readOnly, doc, session]);
   const commitCommand = React.useCallback((command: TimelineEditCommand): void => { commit(command); }, [commit]);
   const vanished = React.useCallback((): void => { toast.warning(t('timeline.errors.clip_removed')); }, [t]);
+
+  // Web animation (inner#1711 design §8, §9): the creation dialog, the landing of what it accepted, and the list.
+  const [draft, dispatchDraft] = React.useReducer(transitionCreationDraft, CLOSED_DRAFT);
+  const [retryDialog, setRetryDialog] = React.useState(false);
+  const [listOpen, setListOpen] = React.useState(false);
+  const [listView, setListView] = React.useState<TimelineExecutionView>('inProgress');
+  const [openRow, setOpenRow] = React.useState<string | null>(null);
+  // What a landing reads when its accept answers, which may be after the role or switches changed.
+  const landing = React.useRef({ readOnly, placement });
+  landing.current = { readOnly, placement };
+  const mounted = React.useRef(false);
+  React.useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  const refreshTasks = React.useCallback((): void => { void queryClient.invalidateQueries({ queryKey: spaceTasksQueryKey(projectId, spaceId) }); }, [queryClient, projectId, spaceId]);
+  /**
+   * Write an accepted action's receipt, with its placeholder when asked. A read-only or closed Space writes nothing;
+   * reopening it lands the receipt then.
+   * @param actionId - The dialog's action.
+   * @param execution - The accepted execution.
+   * @param addClip - Where the placeholder goes and how long it is.
+   * @throws {never} Never.
+   */
+  const land = React.useCallback((actionId: string, execution: Pick<TimelineExecution, 'id' | 'inputHash' | 'status'>, addClip?: { startFrame: number; acceptedDurationFrames: number }): void => {
+    const { readOnly: locked, placement: switches } = landing.current;
+    if (locked || !mounted.current) return;
+    const receipt = { executionId: execution.id, inputHash: execution.inputHash, landedAt: new Date().toISOString() };
+    session.edit({
+      operation: 'land_execution',
+      parameters: addClip === undefined ? { actionId, receipt } : {
+        actionId, receipt,
+        addClip: { clipId: newId(), startFrame: addClip.startFrame, newTrackId: newId(), extent: { status: execution.status, acceptedDurationFrames: addClip.acceptedDurationFrames, fps: document.settings.fps } },
+      },
+      placement: switches,
+    });
+  }, [session, document.settings.fps]);
+  // An action accepted while this Space could not write, or whose page closed before landing, lands when an Editor
+  // opens it before its deadline.
+  React.useEffect(() => {
+    if (readOnly || rows === undefined) return;
+    const now = Date.now();
+    for (const row of rows) {
+      if (row.status !== 'awaiting_landing' || document.operationReceipts[row.actionId] !== undefined || new Date(row.deadlineAt).getTime() <= now) continue;
+      land(row.actionId, row);
+    }
+  }, [readOnly, rows, document.operationReceipts, land]);
+  const openCreate = React.useCallback((input?: CreationDraftInput): void => {
+    const aspect = aspectOf(webLimits?.aspects[0]);
+    if (readOnly || webLimits === undefined || aspect === null) return;
+    if (draft.status === 'closed') setRetryDialog(input !== undefined);
+    dispatchDraft({ type: 'open', input: input ?? { prompt: '', engine: 'deepseek', aspect, durationSeconds: webLimits.durationSeconds.min, addAtPlayhead: true } });
+  }, [readOnly, webLimits, draft.status]);
+  const openBlankCreate = React.useCallback((): void => openCreate(), [openCreate]);
+  const editDraft = React.useCallback((patch: Partial<CreationDraftInput>): void => dispatchDraft({ type: 'edit', patch }), []);
+  const closeDraft = React.useCallback((): void => dispatchDraft({ type: 'close' }), []);
+  const execute = React.useCallback((): void => {
+    if (draft.status !== 'drafting' || readOnly) return;
+    const { input } = draft;
+    const actionId = newId();
+    const fps = document.settings.fps;
+    // The placeholder goes where the playhead is when Execute is pressed.
+    const startFrame = frame;
+    dispatchDraft({ type: 'execute', actionId });
+    void runOnce(`timeline-execution:${spaceId}:${actionId}`, {
+      scope: 'timeline-execution',
+      prepare: () => ({ projectId, spaceId, actionId, prompt: input.prompt, engine: input.engine, aspect: input.aspect, durationSeconds: input.durationSeconds, fps }),
+      send: (key, body) => timelineApi.acceptExecution(body, key),
+    }).then((outcome) => {
+      if (outcome.kind !== 'done') {
+        dispatchDraft({ type: 'refused', error: serverMessage(outcome.kind === 'failed' ? outcome.error : null, t('common.runOnce.unknownResult')) });
+        return;
+      }
+      const execution = outcome.result;
+      land(actionId, execution, input.addAtPlayhead ? { startFrame, acceptedDurationFrames: webAnimationDurationFrames({ durationSeconds: input.durationSeconds, fps }) } : undefined);
+      dispatchDraft({ type: 'accepted', executionId: execution.id });
+      setListOpen(true);
+      setListView('inProgress');
+      setOpenRow(execution.id);
+      refreshTasks();
+    });
+  }, [draft, readOnly, document.settings.fps, frame, spaceId, projectId, land, refreshTasks, t]);
+  const toggleList = React.useCallback((): void => setListOpen((open) => !open), []);
+  const closeList = React.useCallback((): void => setListOpen(false), []);
+  const toggleRow = React.useCallback((id: string): void => setOpenRow((current) => current === id ? null : id), []);
+  const cancelExecution = React.useCallback((row: TimelineExecutionRow): void => {
+    if (readOnly) return;
+    void runOnce(timelineCancelIntent(row.id), {
+      scope: 'timeline-execution',
+      prepare: () => row.id,
+      send: (key, id) => timelineApi.cancelExecution(id, key),
+      onDone: () => { refreshTasks(); return undefined; },
+      onFailure: (err) => { toast.error(serverMessage(err, t('common.runOnce.unknownResult'))); },
+    });
+  }, [readOnly, refreshTasks, t]);
+  // A result is added as a new copy each time; a running execution as a placeholder that turns into its result.
+  const addExecution = React.useCallback((row: TimelineExecutionRow): void => {
+    const input = timelineExecutionInput(row);
+    if (input === null) return;
+    const accepted = webAnimationDurationFrames(input);
+    const parameters = row.status === 'succeeded' && row.resultSourceVersionId !== null
+      ? { from: { sourceVersionId: row.resultSourceVersionId }, extent: { durationFrames: accepted, fps: input.fps } }
+      : { from: { executionId: row.id }, extent: { status: row.status, acceptedDurationFrames: accepted, fps: input.fps } };
+    if (commit({ operation: 'add_web_animation', parameters: { clipId: newId(), startFrame: frame, newTrackId: newId(), ...parameters }, placement })?.ok === true) refreshTasks();
+  }, [commit, frame, placement, refreshTasks]);
+  const retryExecution = React.useCallback((row: TimelineExecutionRow): void => {
+    const input = timelineExecutionInput(row);
+    if (input !== null) openCreate({ prompt: input.prompt, engine: input.engine, aspect: input.aspect, durationSeconds: input.durationSeconds, addAtPlayhead: true });
+  }, [openCreate]);
+  const inProgressCount = (rows ?? []).filter((row) => timelineExecutionUnfinished(row.status)).length;
 
   const needSelection = React.useCallback((): TimelineClip | null => {
     if (selected === undefined) { toast.warning(t('timeline.edit.selectFirst')); return null; }
@@ -412,6 +628,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
             // eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded asset; no caption track until caption authoring lands.
             <video key={`${source.id}:${assetId}:${resource.data.fileUrl}`} ref={setMedia} src={resource.data.fileUrl} poster={resource.data.coverUrl ?? undefined} preload='auto' playsInline className='absolute inset-0 h-full w-full object-contain' />
           )}
+          <TimelineWebPreview projectId={projectId} entries={webEntries} states={playback.webStates} onPlayer={registerPlayer} onRetry={retryWeb} />
           {clips.length === 0 && <div data-testid='timeline-space-empty' className='flex flex-col items-center gap-3 p-6 text-center text-sm text-muted-foreground'><Film className='size-8' /><p>{t('timeline.empty')}</p></div>}
           {inConflict && active === null && <p className='p-6 text-center text-sm text-status-error-foreground'>{t('timeline.conflictHelp')}</p>}
           {source !== null && resource.isPending && <p className='p-6 text-sm text-muted-foreground'>{t('timeline.loadingMedia')}</p>}
@@ -427,6 +644,10 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       <div role='toolbar' aria-label={t('timeline.tracks')} className='flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-2'>
         <div className='flex flex-wrap items-center gap-2'>
           <Button data-testid='timeline-add-media' variant='outline' size='sm' className='gap-1.5' disabled={readOnly} onClick={openMaterial} icon={<Plus className='size-4' />}>{t('timeline.addMedia')}</Button>
+          {!readOnly && webLimits !== undefined && <Button data-testid='timeline-create-web-animation' variant='outline' size='sm' className='gap-1.5' onClick={openBlankCreate} icon={<Sparkles className='size-4' />}>{t('timeline.webAnimation.create')}</Button>}
+          <Button data-testid='timeline-open-executions' variant='outline' size='sm' className='gap-1.5 aria-pressed:border-active-border' aria-pressed={listOpen} onClick={toggleList} icon={<ListChecks className='size-4' />}>
+            {t('timeline.webAnimation.executions')}{inProgressCount > 0 && <CountChip count={inProgressCount} />}
+          </Button>
           <Button data-testid='timeline-undo' variant='outline' size='sm' className='gap-1.5' disabled={readOnly || !history.canUndo} onClick={undo} icon={<Undo2 className='size-4' />}>{t('timeline.edit.undo')}</Button>
           <Button data-testid='timeline-redo' variant='outline' size='sm' className='gap-1.5' disabled={readOnly || !history.canRedo} onClick={redo} icon={<Redo2 className='size-4' />}>{t('timeline.edit.redo')}</Button>
           <Separator orientation='vertical' className='h-5' />
@@ -445,28 +666,33 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
         </div>
       </div>
       <TimelineTrackArea projectId={projectId} document={document} labels={labels} readyIds={readyIds} selectedId={selectedId} frame={frame} extent={extent} viewportRef={trackViewport}
-        pixelsPerFrame={pixelsPerFrame} readOnly={readOnly} snap={prefs.snap} placement={placement} onSelect={selectClip} onSeek={seekTo} onCommit={commitCommand} onVanished={vanished} onDraggingChange={draggingChange} />
+        pixelsPerFrame={pixelsPerFrame} readOnly={readOnly} snap={prefs.snap} placement={placement} web={web} webClips={webClips} onSelect={selectClip} onSeek={seekTo} onCommit={commitCommand} onVanished={vanished} onDraggingChange={draggingChange} />
     </div>
     <aside data-testid='timeline-side-panel' className='flex w-72 shrink-0 flex-col border-l border-border'>
       <ScrollArea className='min-h-0 flex-1' viewportClassName='p-3'>
-        <div className='flex flex-col gap-3'>
+        {listOpen ? <TimelineExecutionList projectId={projectId} rows={rows} view={listView} openId={openRow} readOnly={readOnly} onView={setListView} onToggle={toggleRow} onClose={closeList}
+          onCancel={cancelExecution} onAdd={addExecution} onRetry={retryExecution} /> : <div className='flex flex-col gap-3'>
           <section className={PANEL}>
             {selected === undefined ? <p className='text-muted-foreground'>{t('timeline.selectClip')}</p>
-              : <TimelineClipProperties key={selected.id} spaceId={spaceId} document={document} clip={selected} conflict={!readyIds.has(selected.id)} reason={reasons.get(selected.id) ?? null} labels={labels} readOnly={readOnly} placement={placement} onCommit={commitCommand}
-                name={selectedResource.data?.displayName || t(selectedResource.isError ? 'timeline.mediaUnavailable' : 'timeline.video')} />}
+              : <TimelineClipProperties key={selected.id} spaceId={spaceId} document={document} web={web} clip={selected} conflict={!readyIds.has(selected.id)} reason={reasons.get(selected.id) ?? null} labels={labels} readOnly={readOnly} placement={placement} onCommit={commitCommand}
+                name={selected.kind === 'web-animation' ? t('timeline.webAnimation.copy') : selectedResource.data?.displayName || t(selectedResource.isError ? 'timeline.mediaUnavailable' : 'timeline.video')}
+                request={selected.kind === 'web-animation' ? webClips.get(selected.id)?.prompt ?? null : null} />}
           </section>
           <section data-testid='timeline-conflicts' className={PANEL}>
             <h3 className='text-sm font-semibold'>{t('timeline.conflictList')}</h3>
             {hasConflicts ? <>
               <p className='text-muted-foreground'>{t('timeline.conflictHelp')}</p>
-              {clips.filter((clip) => !readyIds.has(clip.id)).map((clip) => <TimelineConflictRow key={clip.id} projectId={projectId} clip={clip} assetId={timelineClipSource(document.sources, clip)?.assetId ?? ''} track={labels.nameOf(clip.trackId) ?? t('timeline.edit.trackRemoved')} reason={reasons.get(clip.id) ?? null} selected={selectedId === clip.id} onLocate={locateClip} />)}
+              {clips.filter((clip) => !readyIds.has(clip.id)).map((clip) => <TimelineConflictRow key={clip.id} projectId={projectId} clip={clip} assetId={timelineClipSource(document.sources, clip)?.assetId ?? ''}
+                webName={clip.kind === 'web-animation' ? webClips.get(clip.id)?.prompt || t('timeline.webAnimation.copy') : null} track={labels.nameOf(clip.trackId) ?? t('timeline.edit.trackRemoved')} reason={reasons.get(clip.id) ?? null} selected={selectedId === clip.id} onLocate={locateClip} />)}
               {damagedClipIds.map((clipId) => <TimelineDamagedRow key={clipId} clipId={clipId} readOnly={readOnly} onDelete={removeDamaged} />)}
             </> : <p className='text-muted-foreground'>{t('timeline.noConflicts')}</p>}
           </section>
-        </div>
+        </div>}
       </ScrollArea>
     </aside>
     {materialState.open && materialOpen && <TimelineMaterialDialog key={`${projectId}:${spaceId}`} projectId={projectId} spaceId={spaceId} draft={material} canWrite={!readOnly} document={document} placement={placement} onClose={closeMaterial} />}
+    {draft.status !== 'closed' && draft.open && webLimits !== undefined && <TimelineWebAnimationDialog spaceId={spaceId} draft={draft} retry={retryDialog} limits={webLimits}
+      onEdit={editDraft} onExecute={execute} onClose={closeDraft} />}
   </div>;
 }
 

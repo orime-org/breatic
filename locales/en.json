@@ -3149,7 +3149,8 @@
       "invalid_range": "Outside its video",
       "incompatible_track": "On a track of another kind",
       "damaged": "This clip can no longer be read",
-      "missing_source": "Its video is missing"
+      "missing_source": "Its video is missing",
+      "source_unresolved": "Its web animation is unavailable"
     },
     "loadingMedia": "Loading video…",
     "mediaUnavailable": "This video is unavailable.",
@@ -3202,7 +3203,8 @@
       "track_missing": "The target track was removed. Choose another track.",
       "id_taken": "This item already exists. Try again.",
       "main_track": "The main track cannot be deleted.",
-      "track_not_empty": "Only an empty track can be deleted."
+      "track_not_empty": "Only an empty track can be deleted.",
+      "source_unresolved": "This web animation is not ready yet. Try again shortly."
     },
     "mainTrack": "Main track",
     "track": "Visual {index}",
@@ -3232,6 +3234,63 @@
       "splitOutside": "Move the playhead inside the selected clip to split it.",
       "lowestTrack": "This clip is already on the bottom visual track.",
       "bumped": "{count, plural, one {# linked clip moved} other {# linked clips moved}} to a track above."
+    },
+    "webAnimation": {
+      "create": "Create web animation",
+      "executions": "Executions",
+      "copy": "Web animation copy",
+      "dialog": {
+        "title": "Create web animation",
+        "retryTitle": "Run web animation again",
+        "description": "Describe the animation, then press Execute.",
+        "prompt": "Prompt",
+        "promptPlaceholder": "For example: on a blue background, a title slides in from the left",
+        "engine": "Engine",
+        "aspect": "Aspect ratio",
+        "duration": "Duration (seconds)",
+        "addAtPlayhead": "Add to the Timeline at the playhead",
+        "execute": "Execute"
+      },
+      "list": {
+        "close": "Close executions",
+        "completed": "Completed",
+        "inProgress": "In progress",
+        "emptyCompleted": "No completed executions yet.",
+        "emptyInProgress": "No executions in progress."
+      },
+      "status": {
+        "awaiting_landing": "Saving",
+        "queued": "Queued",
+        "running": "Creating",
+        "cancelling": "Cancelling",
+        "succeeded": "Succeeded",
+        "failed": "Failed",
+        "cancelled": "Cancelled",
+        "expired": "Expired"
+      },
+      "step": {
+        "landing": "Save the request"
+      },
+      "phase": {
+        "writing": "Write the page",
+        "validating": "Check frames and manifest",
+        "saving": "Save the source"
+      },
+      "usage": "Usage: {credits} credits",
+      "usagePending": "Usage is settled when it ends",
+      "cancel": "Cancel",
+      "addToTimeline": "Add to Timeline",
+      "addPlaceholder": "Add to Timeline now",
+      "retry": "Run again",
+      "failure": {
+        "feature_disabled": "Web animation is unavailable right now.",
+        "unknown": "This execution failed."
+      },
+      "preview": {
+        "pending": "{track}: web animation {status}…",
+        "failed": "{track}: web animation {status}, not shown",
+        "unavailable": "{track}: web animation unavailable"
+      }
     }
   }
 }

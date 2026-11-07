@@ -3149,7 +3149,8 @@
       "invalid_range": "動画の範囲外です",
       "incompatible_track": "種類の異なるトラックにあります",
       "damaged": "このクリップは読み込めなくなりました",
-      "missing_source": "動画が見つかりません"
+      "missing_source": "動画が見つかりません",
+      "source_unresolved": "ウェブアニメーションを利用できません"
     },
     "loadingMedia": "動画を読み込み中…",
     "mediaUnavailable": "この動画を利用できません。",
@@ -3202,7 +3203,8 @@
       "track_missing": "対象のトラックは削除されました。別のトラックを選択してください。",
       "id_taken": "この項目はすでに存在します。もう一度お試しください。",
       "main_track": "メイントラックは削除できません。",
-      "track_not_empty": "空のトラックのみ削除できます。"
+      "track_not_empty": "空のトラックのみ削除できます。",
+      "source_unresolved": "ウェブアニメーションはまだ準備できていません。しばらくしてから再試行してください。"
     },
     "mainTrack": "メイントラック",
     "track": "映像 {index}",
@@ -3232,6 +3234,63 @@
       "splitOutside": "分割するには再生ヘッドを選択中のクリップ内に移動してください。",
       "lowestTrack": "このクリップはすでに一番下の映像トラックにあります。",
       "bumped": "連動クリップ {count, plural, other {# 件}}を上のトラックに移動しました。"
+    },
+    "webAnimation": {
+      "create": "ウェブアニメーションを作成",
+      "executions": "実行リスト",
+      "copy": "ウェブアニメーションのコピー",
+      "dialog": {
+        "title": "ウェブアニメーションを作成",
+        "retryTitle": "ウェブアニメーションを再実行",
+        "description": "内容を入力して「実行」を押してください。",
+        "prompt": "指示",
+        "promptPlaceholder": "例：青い背景で、タイトルが左からスライドイン",
+        "engine": "エンジン",
+        "aspect": "アスペクト比",
+        "duration": "長さ（秒）",
+        "addAtPlayhead": "再生ヘッドの位置で Timeline に追加",
+        "execute": "実行"
+      },
+      "list": {
+        "close": "実行リストを閉じる",
+        "completed": "完了",
+        "inProgress": "進行中",
+        "emptyCompleted": "完了した実行はまだありません。",
+        "emptyInProgress": "進行中の実行はありません。"
+      },
+      "status": {
+        "awaiting_landing": "保存中",
+        "queued": "待機中",
+        "running": "作成中",
+        "cancelling": "キャンセル中",
+        "succeeded": "成功",
+        "failed": "失敗",
+        "cancelled": "キャンセル済み",
+        "expired": "期限切れ"
+      },
+      "step": {
+        "landing": "実行リクエストを保存"
+      },
+      "phase": {
+        "writing": "ページを作成",
+        "validating": "フレームとマニフェストを検証",
+        "saving": "ソースを保存"
+      },
+      "usage": "使用量：{credits} クレジット",
+      "usagePending": "使用量は終了後に精算されます",
+      "cancel": "キャンセル",
+      "addToTimeline": "Timeline に追加",
+      "addPlaceholder": "先に Timeline に追加",
+      "retry": "再実行",
+      "failure": {
+        "feature_disabled": "ウェブアニメーションは現在利用できません。",
+        "unknown": "実行に失敗しました。"
+      },
+      "preview": {
+        "pending": "{track}：ウェブアニメーション{status}…",
+        "failed": "{track}：ウェブアニメーション{status}、表示されません",
+        "unavailable": "{track}：ウェブアニメーションを利用できません"
+      }
     }
   }
 }
