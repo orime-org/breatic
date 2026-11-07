@@ -367,7 +367,7 @@ describe('DocumentOutline', () => {
       await scrolled(viewport);
       expect(itemOf('Two')).toHaveClass('bg-accent-strong');
 
-      viewport.scrollTop = 199;
+      viewport.scrollTop = 198;
       await scrolled(viewport);
       expect(itemOf('Two')).toHaveClass('bg-accent-strong');
 
@@ -378,7 +378,7 @@ describe('DocumentOutline', () => {
 
     it('keeps the clicked heading when its landing is within 2px of the end', async () => {
       renderWith(DOC);
-      const viewport = layOutForPin(1385);
+      const viewport = layOutForPin(1386);
 
       fireEvent.click(row('Two'));
       expect(scrollTo).toHaveBeenCalledWith({ top: 584, behavior: 'instant' });
@@ -409,6 +409,45 @@ describe('DocumentOutline', () => {
       resizeTo(1440);
       await nextFrame();
       expect(itemOf('One')).toHaveClass('bg-accent-strong');
+    });
+
+    it('highlights the clicked heading at once when the jump does not move the body', async () => {
+      renderWith(DOC);
+      const viewport = layOutForPin(1000);
+      viewport.scrollTop = 200;
+      await scrolled(viewport);
+      expect(itemOf('Three')).toHaveClass('bg-accent-strong');
+
+      fireEvent.click(row('Two'));
+      expect(scrollTo).toHaveBeenCalledWith({ top: 200, behavior: 'instant' });
+      expect(itemOf('Two')).toHaveClass('bg-accent-strong');
+      await nextFrame();
+      expect(itemOf('Two')).toHaveClass('bg-accent-strong');
+    });
+
+    it('pins nothing for a jump that ends short of the end, even without a scroll', async () => {
+      renderWith(DOC);
+      const viewport = layOutForPin(5000);
+      viewport.scrollTop = 584;
+      placeAt(lineOf('Two'), 100 + 16);
+      fireEvent.click(row('Two'));
+      expect(scrollTo).toHaveBeenCalledWith({ top: 584, behavior: 'instant' });
+
+      viewport.scrollTop = 4200;
+      await scrolled(viewport);
+      expect(itemOf('Three')).toHaveClass('bg-accent-strong');
+    });
+
+    it('keeps the clicked heading in a body too short to scroll', async () => {
+      renderWith(DOC);
+      const viewport = layOutForPin(800);
+      fireEvent.click(row('Three'));
+      await nextFrame();
+
+      act(() => opened.handle.editor.updateBlock(idOf(opened.handle, 'Three'), { content: 'Three more' } as never));
+      await nextFrame();
+      expect(itemOf('Three more')).toHaveClass('bg-accent-strong');
+      expect(viewport.scrollTop).toBe(0);
     });
 
     it('lets go once the clicked heading is deleted', async () => {

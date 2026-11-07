@@ -330,9 +330,10 @@ export const DocumentOutline = React.memo(function DocumentOutline({
     const want = viewport.scrollTop + line.getBoundingClientRect().top - viewport.getBoundingClientRect().top - LANDING;
     const target = Math.max(0, Math.min(viewport.scrollHeight - viewport.clientHeight, want));
     viewport.scrollTo({ top: target, behavior: 'instant' });
-    // At the end of the document the reading rule picks the lowest heading in
-    // view, so a jump that ends there holds the clicked heading until the body
-    // leaves the end; scroll anchoring keeps it there when content above grows.
+    // A jump that ends at the body's end (a body too short to scroll always
+    // is) can leave the heading short of the landing, where the reading rule
+    // picks another, so the clicked heading holds until the body leaves the
+    // end; scroll anchoring keeps it there when content above grows.
     pinned.current = atEnd(viewport) ? id : null;
     setReading(id);
     if (!readOnly) {
