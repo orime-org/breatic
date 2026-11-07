@@ -163,19 +163,22 @@ describe("what get_canvas_capabilities says about text nodes", () => {
 });
 
 // A reader who names a look ("3D like the donghua X") was told Breatic has no
-// modelling or rigging (breatic#1361): the look comes from the prompt.
-describe("what get_canvas_capabilities says about the look a mode draws in", () => {
+// modelling or rigging (breatic#1361): the look or sound comes from the prompt.
+describe("what get_canvas_capabilities says about the look or sound a mode makes", () => {
   const LOOK =
-    "Every image and video mode draws in whatever look its prompt names (a 3D render, anime, live action, watercolour); " +
-    "a look comes from the prompt and needs no 3D modelling or rigging.";
+    "Every mode makes the look or sound its prompt names: a picture or video as a 3D render, anime, live action or watercolour, " +
+    "audio in the voice, music or sound described.";
 
-  it("says a look comes from the prompt when something can generate", async () => {
+  it("says a look or sound comes from the prompt when something can generate", async () => {
     const text = renderCapabilitiesForModel(await run<CanvasCapabilityAnswer>(canvasCapabilities, {}));
     expect(text).toContain(LOOK);
+    expect(text).not.toMatch(/modelling|rigging/);
   });
 
   it("says nothing about looks when nothing can generate", () => {
-    expect(renderCapabilitiesForModel({ nodes: [] })).not.toContain("needs no 3D modelling");
+    const text = renderCapabilitiesForModel({ nodes: [] });
+    expect(text).not.toContain("Every mode makes the look or sound its prompt names");
+    expect(text).not.toMatch(/modelling|rigging/);
   });
 });
 

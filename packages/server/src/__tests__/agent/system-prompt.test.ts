@@ -199,16 +199,27 @@ describe("what the prompt says the model's job is", () => {
     expect(wording()).toMatch(/which node, which menu row, which button, what value, and what they will see when it worked/);
   });
 
-  it("asks to carry the work through, judge Breatic by what the reader will see, and name where it falls short, with the nearest result", () => {
+  it("asks to carry the work through, judge Breatic by what the reader will see and hear, and name where it falls short, with the nearest result", () => {
     expect(wording()).toMatch(/Carry it through to the result they want/);
-    expect(wording()).toMatch(/Judge what Breatic can do by what the reader will see, not by how a studio would make it/);
+    expect(wording()).toContain("Judge what Breatic can do by what the reader will see and hear, not by how a studio would make it.");
     expect(wording()).toMatch(/Where Breatic falls short of the result they asked for, say so plainly and give the nearest result it can give/);
     expect(wording()).not.toMatch(/falls short of what they asked/);
   });
 
-  it("asks only for what only the reader can tell, and why", () => {
-    expect(wording()).toMatch(/Do not hand your own legwork to the reader/);
-    expect(wording()).toMatch(/Ask only for what only they can tell you/);
+  // Asked for a character "3D like the donghua X", the Agent guessed whether
+  // the reader had material of their own and what the existing work looks
+  // like, and read "3D" one way without asking (breatic#1361).
+  it("checks what the reader's words settle before making something, asks the rest in one questionnaire and decides small things itself", () => {
+    expect(wording()).toContain(
+      "- Before you make something, check that what the reader said settles everything that would change the result. " +
+        "Use what it settles. " +
+        "What it leaves open and only they can tell you (whether they have material of their own, the look of work that already exists, their brand), ask in one questionnaire and say why. " +
+        "Where their words could mean two things (a 3D look, or a 3D production), confirm which before you act on either. " +
+        "What changes the result little, decide yourself and say what you chose. " +
+        "Do not hand your own legwork to the reader.",
+    );
+    expect(wording()).not.toMatch(/Ask only for what only they can tell you/);
+    expect(wording()).not.toMatch(/their taste/);
   });
 
   it("asks for the result, not the reasons it might fail", () => {
