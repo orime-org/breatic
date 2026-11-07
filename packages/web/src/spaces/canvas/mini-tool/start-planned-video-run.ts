@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { newId, t } from '@breatic/shared';
-import { miniToolById, miniToolPlannedRequestSchema, videoToolDraftSchema, type MiniToolAnalysisRecord, type MiniToolPlannedRequest, type VideoToolAnalysisRef, type VideoToolDraft, type VideoToolId } from '@breatic/shared/mini-tools';
+import { miniToolById, miniToolPlannedRequestSchema, planVideoFrames, planVideoSplit, videoToolDraftSchema, type MiniToolAnalysisRecord, type MiniToolPlannedRequest, type VideoPresentationTable, type VideoToolAnalysisRef, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
 import { miniToolsApi, type MiniToolPlannedRunAnswer } from '@web/data/api/mini-tools';
 import { ApiException } from '@web/data/api/types';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
@@ -25,6 +25,8 @@ export interface PlannedVideoRun extends Pick<MiniToolRun, 'projectId' | 'spaceI
   canWrite: () => boolean;
   /** The quoted press's analysis refs and output node ids (§97 D27-1); a run without a quote names new nodes. */
   plan?: Pick<PlannedVideoPress, 'analysisRefs' | 'outputNodeIds'>;
+  /** The source's compact presentation table, which frames and split plan their outputs from; null while not read. */
+  frameTable?: VideoPresentationTable | null;
 }
 
 /** What the panel knows besides the draft that a planned request names (§97 D27-1). */
@@ -35,15 +37,40 @@ export interface PlannedVideoFacts {
   presentationRef: MiniToolPlannedRequest['presentation_ref'];
   /** The analysis refs the node holds; the draft's own are the ones the request names. */
   analysisRefs: readonly VideoToolAnalysisRef[];
+  /** The source's compact presentation table, which frames and split plan their outputs from. */
+  frameTable?: VideoPresentationTable | null;
 }
 
 /** A quoted press: the request facts and the output node ids its quote named. */
 export interface PlannedVideoPress extends PlannedVideoFacts { outputNodeIds: readonly string[] }
 
-/** The one output recipe each planned video tool's request names. */
-const PLANNED_RECIPES: Partial<Record<VideoToolId, MiniToolPlannedRequest['outputs'][number]['recipe']>> = {
+type PlannedRecipe = MiniToolPlannedRequest['outputs'][number]['recipe'];
+/** The one output recipe each single-output planned video tool's request names. */
+const SINGLE_RECIPES: Partial<Record<VideoToolId, PlannedRecipe>> = {
   'video.remove-bg': { kind: 'remove-bg' }, 'video.lip-sync': { kind: 'lip-sync' }, 'video.transitions': { kind: 'transitions' },
 };
+
+/**
+ * Each output's recipe, in output order: frames and split plan theirs from the source table with the shared planner the
+ * admission runs on the same table, so the request's outputs equal what the server plans.
+ * @param tool - The tool.
+ * @param draft - The draft.
+ * @param frameTable - The source's compact presentation table.
+ * @returns The recipes.
+ * @throws {Error} When the tool has no planned request, or frames and split have no table.
+ * @throws {z.ZodError} When the table or the draft's selection is invalid.
+ */
+export function plannedVideoRecipes(tool: VideoToolId, draft: VideoToolDraft, frameTable: VideoPresentationTable | null | undefined): PlannedRecipe[] {
+  if (tool === 'video.extract-frames' || tool === 'video.split') {
+    if (frameTable == null) throw new Error('Frames and split plan their outputs from the source table');
+    return tool === 'video.extract-frames'
+      ? planVideoFrames(frameTable, (draft as VideoToolDraftById['video.extract-frames']).params).map(({ frameIndex, pts }) => ({ kind: 'frame' as const, frameIndex, pts }))
+      : planVideoSplit(frameTable, (draft as VideoToolDraftById['video.split']).params.cuts).map(({ start, end }) => ({ kind: 'segment' as const, range: { start, end } }));
+  }
+  const recipe = SINGLE_RECIPES[tool];
+  if (recipe === undefined) throw new Error(`${tool} has no planned request`);
+  return [recipe];
+}
 
 /**
  * The planned request the quote and the Run both send (§97 D27-1): the draft as it is, the draft's own analysis refs, the
@@ -57,11 +84,11 @@ const PLANNED_RECIPES: Partial<Record<VideoToolId, MiniToolPlannedRequest['outpu
  * @throws {Error} When the tool has no single-recipe planned request.
  */
 export function buildPlannedVideoRequest(tool: VideoToolId, draft: VideoToolDraft, facts: PlannedVideoFacts, outputNodeIds: readonly string[]): MiniToolPlannedRequest {
-  const recipe = PLANNED_RECIPES[tool];
-  if (recipe === undefined) throw new Error(`${tool} has no single-recipe planned request`);
+  const recipes = plannedVideoRecipes(tool, draft, facts.frameTable);
+  if (recipes.length !== outputNodeIds.length) throw new Error('Each planned output needs its own node');
   return miniToolPlannedRequestSchema.parse({ tool, project_id: facts.projectId, space_id: facts.spaceId, run_id: newId(), draft: structuredClone(draft),
     analysis_refs: facts.analysisRefs.filter((reference) => reference.toolId === tool && reference.draftId === draft.draftId).map((reference) => structuredClone(reference)),
-    presentation_ref: structuredClone(facts.presentationRef), outputs: outputNodeIds.map((nodeId, outputIndex) => ({ outputIndex, nodeId, recipe })) });
+    presentation_ref: structuredClone(facts.presentationRef), outputs: outputNodeIds.map((nodeId, outputIndex) => ({ outputIndex, nodeId, recipe: recipes[outputIndex]! })) });
 }
 
 /**
@@ -74,12 +101,13 @@ export async function preparePlannedVideoRun(run: PlannedVideoRun): Promise<Mini
   const draft = structuredClone(run.draft);
   const source = structuredClone(run.source);
   if (!run.canWrite() || !run.sourceExists()) return null;
-  if (PLANNED_RECIPES[run.toolId] === undefined) throw new Error('Planned video execution requires a complete public recipe');
   const held = videoToolDraftSchema(run.toolId).parse(draft) as VideoToolDraft;
   if (held.source.nodeId !== source.id) throw new Error('Planned source differs from its canvas host');
+  const recipes = plannedVideoRecipes(run.toolId, held, run.frameTable);
   const spec = miniToolById(run.toolId);
-  if (spec === undefined || spec.run.kind !== 'planned' || !spec.outputs) throw new Error('Planned video execution has no output descriptor');
-  const placements = plannedOutputPlacementOf(spec.outputs, [{ width: held.source.mediaInfo.width, height: held.source.mediaInfo.height }], source.name);
+  if (spec === undefined || spec.run.kind !== 'planned' || spec.outputs?.length !== 1) throw new Error('Planned video execution has no output descriptor');
+  const size = { width: held.source.mediaInfo.width, height: held.source.mediaInfo.height };
+  const placements = plannedOutputPlacementOf(recipes.map(() => spec.outputs![0]!), recipes.map(() => size), source.name);
   const nodes = placements.map((placed, index) => {
     const node = createEmptyNode(placed.output.modality, {
       x: source.position.x + (source.groupOrigin?.x ?? 0) + NODE_STEP.x + placed.x,
@@ -89,7 +117,7 @@ export async function preparePlannedVideoRun(run: PlannedVideoRun): Promise<Mini
     return { ...node, id, data: { ...node.data, name: placed.name,
       ...(placed.size === undefined ? {} : { mediaWidth: placed.size.width, mediaHeight: placed.size.height }) } };
   });
-  const body = buildPlannedVideoRequest(run.toolId, held, { projectId: run.projectId, spaceId: run.spaceId, presentationRef: run.presentationRef, analysisRefs: run.plan?.analysisRefs ?? [] },
+  const body = buildPlannedVideoRequest(run.toolId, held, { projectId: run.projectId, spaceId: run.spaceId, presentationRef: run.presentationRef, analysisRefs: run.plan?.analysisRefs ?? [], frameTable: run.frameTable },
     nodes.map((node) => node.id));
   runCanvasUndoBatch(run.projectId, run.spaceId, () => {
     for (const node of nodes) {

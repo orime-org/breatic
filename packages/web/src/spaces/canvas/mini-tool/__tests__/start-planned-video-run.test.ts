@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as ApiModule from '@web/data/api/mini-tools';
 import type * as ToastModule from '@web/lib/toast';
 import type { MiniToolPlannedRequest, VideoToolDraftById } from '@breatic/shared/mini-tools';
-import { miniToolPlannedRequestSchema } from '@breatic/shared/mini-tools';
+import { miniToolPlannedRequestSchema, planVideoFrames, planVideoSplit } from '@breatic/shared/mini-tools';
 import { CANVAS_NODES_KEY } from '@breatic/shared';
 import { miniToolsApi } from '@web/data/api/mini-tools';
 import { ApiException } from '@web/data/api/types';
@@ -60,6 +60,41 @@ beforeEach(() => {
   vi.mocked(miniToolsApi.runPlanned).mockResolvedValue({ task_id: TASK, status: 'pending' });
 });
 afterEach(() => { resetRunOnceForTests(); vi.useRealTimers(); destroyDoc(docName.canvasSpace(PROJECT, SPACE)); });
+
+// The source's compact presentation table: seven 40 ms frames (0.28 s), as the admission reads it.
+const TABLE = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 7, step: 4, duration: 4 }] };
+const COMMON = { version: 1 as const, draftId: draft().draftId, revision: draft().revision, source: draft().source, inputs: [] };
+
+// Frames and split name one output per planned frame or segment; each recipe is what the admission plans from the same table
+// with the same shared function (planVideoFrames, planVideoSplit), which the server requires to equal the request's outputs.
+describe('planned frame and segment outputs', () => {
+  it('F20 extracts the picked frame into one image destination whose recipe is the planned frame', async () => {
+    const framesDraft: VideoToolDraftById['video.extract-frames'] = { ...COMMON, params: { mode: 'last', currentTime: 0 } };
+    const body = await preparePlannedVideoRun(press({ toolId: 'video.extract-frames', draft: framesDraft, frameTable: TABLE }));
+    const [frame] = planVideoFrames(TABLE, framesDraft.params);
+    expect(body?.outputs).toEqual([{ outputIndex: 0, nodeId: expect.any(String), recipe: { kind: 'frame', frameIndex: frame!.frameIndex, pts: frame!.pts } }]);
+    expect(miniToolPlannedRequestSchema.safeParse(body).success).toBe(true);
+    expect(targets()).toEqual([expect.objectContaining({ id: body!.outputs[0]!.nodeId, type: 'image' })]);
+  });
+
+  it('F21 splits into one video destination per planned segment, in order', async () => {
+    const splitDraft: VideoToolDraftById['video.split'] = { ...COMMON, params: { cuts: [0.1, 0.2] } };
+    const body = await preparePlannedVideoRun(press({ toolId: 'video.split', draft: splitDraft, frameTable: TABLE }));
+    const segments = planVideoSplit(TABLE, splitDraft.params.cuts);
+    expect(segments).toHaveLength(3);
+    expect(body?.outputs.map((output) => output.recipe)).toEqual(segments.map(({ start, end }) => ({ kind: 'segment', range: { start, end } })));
+    expect(body?.outputs.map((output) => output.outputIndex)).toEqual([0, 1, 2]);
+    expect(miniToolPlannedRequestSchema.safeParse(body).success).toBe(true);
+    expect(targets().map((node) => node.type)).toEqual(['video', 'video', 'video']);
+    expect(new Set(targets().map((node) => node.id))).toEqual(new Set(body!.outputs.map((output) => output.nodeId)));
+  });
+
+  it('F22 builds nothing for a frame or segment run without the source table', async () => {
+    const splitDraft: VideoToolDraftById['video.split'] = { ...COMMON, params: { cuts: [0.1] } };
+    await expect(preparePlannedVideoRun(press({ toolId: 'video.split', draft: splitDraft, frameTable: null }))).rejects.toThrow();
+    expect(targets()).toHaveLength(0);
+  });
+});
 
 describe('planned video press: independent frozen body and original graph', () => {
   it('F05 prepares one distinct video destination and a strict complete public request without touching its source', async () => {

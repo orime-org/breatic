@@ -4285,11 +4285,12 @@ function CanvasSpaceInner({
     const group = host.parentId === undefined ? undefined : nodes.find((node) => node.id === host.parentId);
     // The run is bound to the selected version the panel shows for this host; without one it is not sent (§10.8, §7.12).
     // A quoted press names the inputs, analysis refs and output node its quote named (§97 D27-1).
-    const presentationRef = plan?.presentationRef ?? videoRuntime.presentations.get(nodeId)?.presentationRef;
+    const presented = videoRuntime.presentations.get(nodeId);
+    const presentationRef = plan?.presentationRef ?? presented?.presentationRef;
     if (presentationRef === undefined) return Promise.resolve();
     const session = sessionStore.getState().panelSession;
     return startPlannedVideoRun({
-      projectId, spaceId, userId: viewerId ?? '', toolId, draft, analyses, presentationRef,
+      projectId, spaceId, userId: viewerId ?? '', toolId, draft, analyses, presentationRef, frameTable: presented?.frameTable ?? null,
       ...(plan === undefined ? {} : { plan: { analysisRefs: plan.analysisRefs, outputNodeIds: plan.outputNodeIds } }),
       source: { id: host.id, name: view.name, position: host.position, groupOrigin: group?.position ?? null,
         mimeType: view.mimeType, width: draft.source.mediaInfo.width, height: draft.source.mediaInfo.height },
