@@ -190,7 +190,7 @@ export async function remove(taskId: string): Promise<boolean> {
  * @param taskId - Which row.
  * @returns The row, or null when no row without a node has that id.
  */
-export async function findRow(taskId: string): Promise<(SceneTaskRow & { deletedAt: Date | null }) | null> {
+export async function findById(taskId: string): Promise<(SceneTaskRow & { deletedAt: Date | null }) | null> {
   return repo.findSceneRow(taskId);
 }
 

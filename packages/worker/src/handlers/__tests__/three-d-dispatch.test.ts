@@ -64,13 +64,6 @@ vi.mock("@worker/providers/generate.js", () => ({
   validateModelParams: (_modality: string, model: string, params: Record<string, unknown>) => [model, params],
 }));
 vi.mock("@worker/handlers/step-deps.js", () => ({ stepDepsFor: () => ({}) }));
-// The separate 3D lane this change retires. Answering here keeps a job that
-// still takes it from failing for an unrelated reason, so what the cases see
-// is which lane ran and what was settled.
-vi.mock("@worker/providers/three-d/index.js", () => ({
-  validateThreeDParams: (model: string, params: Record<string, unknown>) => [model, params],
-  generateAsync: async () => ({ outputs: [{ url: "https://cdn/three_d/out.glb" }], cost: 0.24 }),
-}));
 vi.mock("@breatic/core", () => ({
   runWithConsent: (_consent: unknown, fn: () => unknown) => fn(),
   reportCollaboratorFirstAction: vi.fn(async () => undefined),

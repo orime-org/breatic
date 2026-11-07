@@ -26,7 +26,7 @@ import * as projectService from "@server/modules/project/project.service.js";
 import { publishSpaceTasksQuietly } from "@server/modules/task/publish-counts.js";
 import { tasksQueue } from "@server/modules/task/tasks-queue.js";
 
-type SpaceRow = NonNullable<Awaited<ReturnType<typeof sceneTaskService.findRow>>>;
+type SpaceRow = NonNullable<Awaited<ReturnType<typeof sceneTaskService.findById>>>;
 
 /** What every row of the list carries. */
 interface SpaceTaskCommon {
@@ -143,7 +143,7 @@ async function spaceRow(
   taskId: string,
   actions: readonly string[] = ["scene_import", "generate"],
 ): Promise<SpaceRow> {
-  const row = await sceneTaskService.findRow(taskId);
+  const row = await sceneTaskService.findById(taskId);
   if (
     row === null ||
     row.nodeId !== null ||
