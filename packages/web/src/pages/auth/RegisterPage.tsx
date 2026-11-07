@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
-import { normalizeEmail } from '@breatic/shared';
+import { getLocale, normalizeEmail } from '@breatic/shared';
 import type { SignupInvitationPreview } from '@breatic/shared';
 
 import { authApi, type AuthUser, type SignupCodeSent, type SignupReferralOutcome } from '@web/data/api/auth';
@@ -362,14 +362,22 @@ export default function RegisterPage(): React.JSX.Element {
               ? t('auth.register.creating')
               : t('auth.register.create')}
           </Button>
-          {typeof __GOOGLE_CLIENT_ID__ === 'string' && __GOOGLE_CLIENT_ID__ !== '' ? (
+        </form>
+        {typeof __GOOGLE_CLIENT_ID__ === 'string' && __GOOGLE_CLIENT_ID__ !== '' ? (
+          <div className='mt-4 flex flex-col gap-3'>
+            <div className='flex items-center gap-2 text-xs text-muted-foreground'>
+              <div className='h-px flex-1 bg-border' />
+              <span>{t('auth.or')}</span>
+              <div className='h-px flex-1 bg-border' />
+            </div>
             <GoogleSignIn
+              key={getLocale()}
               clientId={__GOOGLE_CLIENT_ID__}
               busy={submitting || referral.field === 'loading'}
               onCredential={handleGoogleCredential}
             />
-          ) : null}
-        </form>
+          </div>
+        ) : null}
       </AuthCardShell>
     </>
   );

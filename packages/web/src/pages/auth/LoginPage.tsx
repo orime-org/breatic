@@ -21,6 +21,10 @@ import { TermsNotice } from '@web/pages/auth/_shared/TermsNotice';
 import { FieldError } from '@web/components/FieldError';
 import { looksLikeEmail } from '@web/lib/looks-like-email';
 import { safeNextPath } from '@web/lib/safe-next-path';
+import { toast } from '@web/lib/toast';
+import { Skeleton } from '@web/components/ui/skeleton';
+import { useSignupReferral } from '@web/features/referral/use-signup-referral';
+import { X } from 'lucide-react';
 
 /**
  * Email + password login.
@@ -62,6 +66,11 @@ export default function LoginPage(): React.JSX.Element {
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
+  const referral = useSignupReferral();
+  // The carried code is named on one row; once refused it is named as no longer valid (inner#1868 table 12.14).
+  const [rowCode, setRowCode] = React.useState<string | null>(() => referral.value || null);
+  const [invalidCode, setInvalidCode] = React.useState<string | null>(null);
+  const [expanded, setExpanded] = React.useState(false);
   const pending = React.useRef(false);
   const mounted = React.useRef(true);
   React.useEffect(() => {
@@ -81,18 +90,91 @@ export default function LoginPage(): React.JSX.Element {
     setFormError(null);
     trackEvent('signup_started', { method: 'google' });
     try {
-      const { user, created } = await authApi.google({ credential, ...attributionBody() });
+      const { user, created, referral: outcome } = await authApi.google({ credential, ...attributionBody(), ...referral.body() });
       if (!mounted.current) return;
       setUser(toCurrentUser(user));
       if (created) reportConversion('signup', `signup:${user.id}`);
+      referral.used();
+      // Before navigating: the Toaster sits outside the router and keeps it (inner#1868 §10).
+      if (outcome === 'not_applied') toast.warning(t('auth.referral.existingAccount'));
       void changeLocale(user.locale);
       navigate(next, { replace: true });
     } catch (err) {
-      if (mounted.current) setFormError(err instanceof ApiException ? err.message : t('auth.login.failed'));
+      if (!mounted.current) return;
+      if (err instanceof ApiException && err.status === 422 && err.reason === 'invalid_code') {
+        referral.refused(err.message);
+        if (!expanded && rowCode !== null) {
+          setInvalidCode(rowCode);
+          setRowCode(null);
+          referral.change('');
+        }
+      } else {
+        setFormError(err instanceof ApiException ? err.message : t('auth.login.failed'));
+      }
     } finally {
       pending.current = false;
       if (mounted.current) setSubmitting(false);
     }
+  }
+
+  /** The visitor drops the carried code: the row folds to "Have a referral code?". */
+  function removeCarried(): void {
+    setRowCode(null);
+    setInvalidCode(null);
+    referral.change('');
+    referral.used();
+  }
+
+  /**
+   * The referral row above the Google button: only a new Google account uses it.
+   * @returns The row for the current state, or null while payments are off.
+   */
+  function referralRow(): React.ReactNode {
+    if (referral.field === 'loading') return <Skeleton data-testid='login-referral-loading' className='h-7 w-full' />;
+    if (referral.field === 'hidden') return null;
+    const named = invalidCode ?? rowCode;
+    if (named !== null) {
+      return (
+        <div
+          className={invalidCode !== null
+            ? 'flex items-center justify-between rounded-md border border-status-error px-3 py-1.5 text-xs text-status-error'
+            : 'flex items-center justify-between rounded-md bg-accent px-3 py-1.5 text-xs'}
+        >
+          <span>{invalidCode !== null
+            ? t('auth.referral.carriedInvalid', { code: named })
+            : t('auth.referral.carried', { code: named })}</span>
+          <Button type='button' variant='ghost' size='compact' aria-label={t('auth.referral.remove')} onClick={removeCarried}>
+            <X className='h-3.5 w-3.5' />
+          </Button>
+        </div>
+      );
+    }
+    if (!expanded) {
+      return (
+        <Button type='button' variant='link' size='compact' className='w-fit px-0 text-xs text-muted-foreground' onClick={() => setExpanded(true)}>
+          {t('auth.referral.haveCode')}
+        </Button>
+      );
+    }
+    return (
+      <div className='flex flex-col gap-1'>
+        <div className='flex items-baseline justify-between'>
+          <Label htmlFor='login-referral'>{t('auth.referral.label')}</Label>
+          <span className='text-xs text-muted-foreground'>{t('auth.referral.googleOnly')}</span>
+        </div>
+        <Input
+          id='login-referral'
+          autoComplete='off'
+          value={referral.value}
+          placeholder={t('auth.referral.placeholder')}
+          onChange={(e) => referral.change(e.target.value)}
+          readOnly={submitting}
+          aria-invalid={!!referral.error || undefined}
+          aria-describedby={referral.error ? 'login-referral-error' : undefined}
+        />
+        {referral.error ? <FieldError id='login-referral-error'>{referral.error}</FieldError> : null}
+      </div>
+    );
   }
   // Field-level errors (inline below each input). `formError` is the
   // single async / server failure line that sits above the submit
@@ -220,7 +302,8 @@ export default function LoginPage(): React.JSX.Element {
             <span>{t('auth.or')}</span>
             <div className='h-px flex-1 bg-border' />
           </div>
-          <GoogleSignIn key={getLocale()} clientId={__GOOGLE_CLIENT_ID__} busy={submitting} onCredential={handleGoogleCredential} />
+          {referralRow()}
+          <GoogleSignIn key={getLocale()} clientId={__GOOGLE_CLIENT_ID__} busy={submitting || referral.field === 'loading'} onCredential={handleGoogleCredential} />
         </div>
       ) : null}
     </AuthCardShell>
