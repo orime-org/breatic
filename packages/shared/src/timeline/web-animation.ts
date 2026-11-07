@@ -11,9 +11,9 @@ import { z } from "zod";
 import { TimelineRateSchema, type TimelineRate } from "@shared/timeline/schema.js";
 import { durationToFrames } from "@shared/timeline/time.js";
 import { decodeBase64Utf8, encodeBase64Utf8 } from "@shared/upload/base64.js";
+import { WEB_ANIMATION_RUNTIME } from "@shared/timeline/web-animation-runtime.js";
 
-/** The animation runtime every source package is built with. */
-export const WEB_ANIMATION_RUNTIME = { id: "hyperframes", version: "0.8.186" } as const;
+export { WEB_ANIMATION_RUNTIME };
 
 const positiveInteger = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
 const viewport = z.object({ width: positiveInteger, height: positiveInteger }).strict();

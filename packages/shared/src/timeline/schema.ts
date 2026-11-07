@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { z } from "zod";
-import { durationToFrames } from "@shared/timeline/time.js";
+import { durationToFrames, type TimelineRate } from "@shared/timeline/time.js";
 
-/** A positive rational rate owned by the Timeline format. */
-export interface TimelineRate { num: number; den: number }
+export type { TimelineRate };
 
 /** The fixed creation viewport and frame rate of one Timeline document. */
 export interface TimelineSettings { width: number; height: number; fps: TimelineRate }

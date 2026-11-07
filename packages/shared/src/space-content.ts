@@ -17,3 +17,4 @@ export {
   WEB_ANIMATION_CONTAINER_CLASS, webAnimationJobRequestSchema, webAnimationJobCancelSchema, webAnimationJobReportSchema,
   type WebAnimationJobRequest, type WebAnimationJobCancel, type WebAnimationJobReport, type WebAnimationJobCall,
 } from "@shared/upload/web-animation-job.js";
+export { WEB_ANIMATION_BRIDGE_SCRIPT } from "@shared/timeline/web-animation-bridge.js";
