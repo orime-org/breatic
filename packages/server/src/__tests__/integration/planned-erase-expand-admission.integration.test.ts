@@ -21,7 +21,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } fro
 import * as core from "@breatic/core";
 import * as shared from "@breatic/shared";
 import * as miniTools from "@breatic/shared/mini-tools";
-import { fingerprintMiniToolAnalysisInput, miniToolAnalysisRecordSchema, presentationFrameAt, projectMiniToolAnalysisInput } from "@breatic/shared/mini-tools";
+import { fingerprintMiniToolAnalysisInput, miniToolAnalysisRecordSchema, presentationFrameAt, projectMiniToolAnalysisInput, type VideoPresentationTable } from "@breatic/shared/mini-tools";
 import { estimateTaskCredits, miniToolFrozenAnalysisSchema } from "@breatic/domain";
 import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "./studio-credit-fixtures.js";
 import { presentedSource, REMOVAL_ENCODING, REMOVAL_PLAN, REMOVAL_TABLE, type PresentedSource } from "./presentation-fixtures.js";
@@ -243,7 +243,7 @@ async function refused(f: Fixture, key: string, params?: Record<string, number>)
  */
 function framesOf(range: Range): Range[] {
   return Array.from({ length: Math.round((range.end - range.start) * 200) }, (_unused, at) => {
-    const frame = presentationFrameAt(REMOVAL_TABLE, Math.round(range.start * 200) + at);
+    const frame = presentationFrameAt(REMOVAL_TABLE as VideoPresentationTable, Math.round(range.start * 200) + at);
     return { start: frame.pts, end: frame.displayEnd };
   });
 }
