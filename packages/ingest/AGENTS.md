@@ -20,6 +20,8 @@ The ingest Worker on Cloudflare. The browser sends file bytes straight to it; it
 | `POST /media` | Our services: read stored media numbers, audio peaks, display previews or the Agent's static JPEG |
 | `POST /jobs`, `GET /jobs/{class}/{id}` | Our worker: submit and poll container mini-tool jobs (`src/jobs/`) |
 | `/long-media/*` | Our worker: submit, inspect, plan, run and cancel durable long-media jobs, and acknowledge segment registration |
+| `POST /jobs/WebAnimationContainer/{id}/cancel` | Our worker: cancel a web-animation job (submitted and read through the two `/jobs` endpoints) |
+| `GET /web-animation/{token}/index.html` | The browser: a web-animation package under a server-signed token, as `text/html` under a sandboxing CSP; the font set beside it is static assets |
 
 **`POST /media` writes only derivatives of its authorized source: `wantPreview` requests the display WebP, `wantPeaks` requests audio peaks, and `agentPicture` requests a separately versioned static JPEG.** Agent JPEG creation is conditional: an existing object is never overwritten, and both a cache hit and a lost creation race return the stored winner's actual size and MIME. Reads of standing peaks alone or a standing Agent JPEG alone omit the container. The contracts and key ownership are described in [Agent picture requests](../../docs/ARCHITECTURE.md#agent-picture-requests).
 
@@ -29,13 +31,15 @@ The ingest Worker on Cloudflare. The browser sends file bytes straight to it; it
 
 ## The only outbound request
 
-**The Worker never calls our endpoints and holds none of their addresses; its only outbound request is `POST /fetch` pulling the named source, sent with the User-Agent from `src/source-request.ts`.** Some sites refuse requests without it, and a Worker's `fetch` sends none of its own.
+**The Worker never calls our endpoints and holds none of their addresses; its outbound requests are `POST /fetch` pulling the named source, sent with the User-Agent from `src/source-request.ts`, and the web-animation container's model calls, which `src/jobs/web-animation-model-relay.ts` rebuilds and sends to OpenRouter with `HARNESS_OPENROUTER_API_KEY`.** Some sites refuse requests without that User-Agent, and a Worker's `fetch` sends none of its own.
 
 ## State
 
 **The upload path keeps no state between requests: the R2 `uploadId` and each part's etag travel with the caller and come back on every request.** This package also does not judge whether an upload is dead (the server computes task deadlines when a node's task list is read) or whether a key is already being finished (the server takes that grant from the ledger before calling).
 
-**It binds container Durable Object classes: `MediaContainer` (one per storage key, idles after answering), `MiniToolContainerStd1` / `MiniToolContainerStd4` (`src/jobs/mini-tool-container.ts`, same image, one class per instance size, one instance per job id, destroyed at the job deadline), and `LongMediaContainer` (`src/jobs/long-media-container.ts`, durable long-media jobs).** The mini-tool class is selected by `config/mini-tools.yaml`; long-media jobs use the `LONG_MEDIA` binding.
+**It binds container Durable Object classes: `MediaContainer` (one per storage key, idles after answering), `MiniToolContainerStd1` / `MiniToolContainerStd4` (`src/jobs/mini-tool-container.ts`, same image, one class per instance size, one instance per job id, destroyed at the job deadline), `LongMediaContainer` (`src/jobs/long-media-container.ts`, durable long-media jobs) and `WebAnimationContainer` (`src/jobs/web-animation-container.ts`, its own image `web-animation.Dockerfile`, one instance per job).** The mini-tool class is selected by `config/mini-tools.yaml`; long-media jobs use the `LONG_MEDIA` binding.
+
+**Web animation is optional: the `WEB_ANIMATION` binding and `HARNESS_OPENROUTER_API_KEY` stay out of `REQUIRED_SETTINGS`, and without either its job routes answer 501 `feature_disabled` after the secret check.** Its container also reaches `model.local`, where every call is registered with the job object before it is sent and ended exactly once.
 
 **A container cannot reach the internet; downloading the source, writing results back and reporting all go through the Worker's outbound handler, which only allows the keys the job names (`src/jobs/mini-tool-container.ts`).**
 
