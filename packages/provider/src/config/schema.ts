@@ -149,6 +149,8 @@ const llmSchema = z.strictObject({
   openrouter_backends: z.record(z.string(), z.strictObject({ only: z.array(z.string()), allow_fallbacks: z.boolean() })).optional(),
   /** Direct token prices in USD per million tokens, by our model id. */
   prices: z.record(z.string(), llmPriceSchema).optional(),
+  /** OpenRouter's token prices in USD per million tokens, by our model id, as `pnpm provider:prices` writes them from OpenRouter's model list. */
+  openrouter_prices: z.record(z.string(), llmPriceSchema).optional(),
   /** The request size past which Gemini takes media through its Files API, in bytes. */
   gemini_inline_max_bytes: z.number().int().positive().default(GEMINI_INLINE_MAX_BYTES),
   /** How often an uploaded Gemini file's state is asked about, in ms. */
@@ -387,6 +389,7 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
     vendor_ids: raw.llm?.vendor_ids ?? {},
     openrouter_backends: raw.llm?.openrouter_backends ?? {},
     prices: raw.llm?.prices ?? {},
+    openrouter_prices: raw.llm?.openrouter_prices ?? {},
     gemini_inline_max_bytes: raw.llm?.gemini_inline_max_bytes ?? GEMINI_INLINE_MAX_BYTES,
     gemini_file_poll_ms: raw.llm?.gemini_file_poll_ms ?? GEMINI_FILE_POLL_MS,
   };

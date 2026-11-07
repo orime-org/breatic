@@ -7,7 +7,9 @@
 # vendor_ids is the id an upstream serves one of our models under.
 # openrouter_backends pins the backend OpenRouter routes a model to. prices are
 # the direct token prices, in USD per million tokens, for upstreams that report
-# no cost of their own.
+# no cost of their own. openrouter_prices are OpenRouter's token prices for the
+# same models, as pnpm provider:prices writes them, so a cheapest call can rank
+# OpenRouter beside the direct upstream.
 # gemini_inline_max_bytes is the request size past which media goes to Gemini
 # through its Files API rather than inline; gemini_file_poll_ms is how often an
 # uploaded file is asked about until it is ready.
@@ -81,3 +83,19 @@ prices:
     output_per_mtok: 3.75
 gemini_inline_max_bytes: 20000000
 gemini_file_poll_ms: 5000
+openrouter_prices:
+  deepseek/deepseek-v4-pro:
+    input_cache_miss_per_mtok: 0.648672
+    output_per_mtok: 1.297344
+  deepseek/deepseek-v4.1-flash-1017:
+    input_cache_miss_per_mtok: 0.15
+    output_per_mtok: 0.6
+  anthropic/claude-opus-5.5:
+    input_cache_miss_per_mtok: 4
+    output_per_mtok: 20
+  google/gemini-2.5-flash:
+    input_cache_miss_per_mtok: 0.3
+    output_per_mtok: 2.5
+  google/gemini-3.8-flash:
+    input_cache_miss_per_mtok: 0.825
+    output_per_mtok: 4.125

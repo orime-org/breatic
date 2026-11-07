@@ -78,6 +78,12 @@ describe("the shipped provider configuration", () => {
     expect(() => provider.llm.assertModelsPriced([agent.default_model, agent.consolidation_model, ...describers])).not.toThrow();
   });
 
+  it("states OpenRouter's unit price beside each direct price, for cheapest calls to rank both", () => {
+    const llm = shipped().llm!;
+    const missing = Object.keys(llm.prices ?? {}).filter((model) => llm.openrouter_prices?.[model] === undefined);
+    expect(missing).toEqual([]);
+  });
+
   it("ships the deployment override only as a template", () => {
     expect(existsSync(resolve(ROOT, "config/provider/routing.yaml.template"))).toBe(true);
     expect(() => parseProviderConfig({ ...shipped(), routing: yaml("provider/routing.yaml.template") ?? undefined })).not.toThrow();

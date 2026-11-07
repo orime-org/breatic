@@ -1,0 +1,279 @@
+{
+  "wavespeed-ai/hunyuan3d-v3/text-to-3d": [
+    {
+      "inputs": {
+        "prompt": "x"
+      },
+      "usd": 0.63
+    },
+    {
+      "inputs": {
+        "prompt": "x",
+        "generate_type": "Normal",
+        "enable_pbr": false,
+        "face_count": 40000
+      },
+      "usd": 0.63
+    },
+    {
+      "inputs": {
+        "prompt": "x",
+        "generate_type": "Normal",
+        "enable_pbr": false,
+        "face_count": 1500000
+      },
+      "usd": 0.63
+    },
+    {
+      "inputs": {
+        "prompt": "x",
+        "generate_type": "Normal",
+        "enable_pbr": true,
+        "face_count": 40000
+      },
+      "usd": 0.81
+    },
+    {
+      "inputs": {
+        "prompt": "x",
+        "generate_type": "Normal",
+        "enable_pbr": true,
+        "face_count": 1500000
+      },
+      "usd": 0.81
+    },
+    {
+      "inputs": {
+        "prompt": "x",
+        "generate_type": "Geometry",
+        "enable_pbr": false,
+        "face_count": 40000
+      },
+      "usd": 0.45
+    },
+    {
+      "inputs": {
+        "prompt": "x",
+        "generate_type": "Geometry",
+        "enable_pbr": false,
+        "face_count": 1500000
+      },
+      "usd": 0.45
+    },
+    {
+      "inputs": {
+        "prompt": "x",
+        "generate_type": "Geometry",
+        "enable_pbr": true,
+        "face_count": 40000
+      },
+      "usd": 0.63
+    },
+    {
+      "inputs": {
+        "prompt": "x",
+        "generate_type": "Geometry",
+        "enable_pbr": true,
+        "face_count": 1500000
+      },
+      "usd": 0.63
+    }
+  ],
+  "wavespeed-ai/hunyuan3d-v3/image-to-3d": [
+    {
+      "inputs": {
+        "image": "https://example.com/sample.png"
+      },
+      "usd": 0.63
+    },
+    {
+      "inputs": {
+        "image": "https://example.com/sample.png",
+        "generate_type": "Normal",
+        "enable_pbr": false
+      },
+      "usd": 0.63
+    },
+    {
+      "inputs": {
+        "image": "https://example.com/sample.png",
+        "generate_type": "Normal",
+        "enable_pbr": false,
+        "back_image": "https://example.com/sample.png"
+      },
+      "usd": 0.81
+    },
+    {
+      "inputs": {
+        "image": "https://example.com/sample.png",
+        "generate_type": "Normal",
+        "enable_pbr": false,
+        "back_image": "https://example.com/sample.png",
+        "left_image": "https://example.com/sample.png",
+        "right_image": "https://example.com/sample.png"
+      },
+      "usd": 0.81
+    },
+    {
+      "inputs": {
+        "image": "https://example.com/sample.png",
+        "generate_type": "Normal",
+        "enable_pbr": false,
+        "back_image": "",
+        "left_image": "",
+        "right_image": ""
+      },
+      "usd": 0.63
+    },
+    {
+      "inputs": {
+        "image": "https://example.com/sample.png",
+        "generate_type": "Normal",
+        "enable_pbr": true
+      },
+      "usd": 0.81
+    },
+    {
+      "inputs": {
+        "image": "https://example.com/sample.png",
+        "generate_type": "Normal",
+        "enable_pbr": true,
+        "back_image": "https://example.com/sample.png"
+      },
+      "usd": 0.99
+    },
+    {
+      "inputs": {
+        "image": "https://example.com/sample.png",
+        "generate_type": "Normal",
+        "enable_pbr": true,
+        "back_image": "https://example.com/sample.png",
+        "left_image": "https://example.com/sample.png",
+        "right_image": "https://example.com/sample.png"
+      },
+      "usd": 0.99
+    },
+    {
+      "inputs": {
+        "image": "https://example.com/sample.png",
+        "generate_type": "Normal",
+        "enable_pbr": true,
+        "back_image": "",
+        "left_image": "",
+        "right_image": ""
+      },
+      "usd": 0.81
+    },
+    {
+      "inputs": {
+        "image": "https://example.com/sample.png",
+        "generate_type": "Geometry",
+        "enable_pbr": false
+      },
+      "usd": 0.45
+    },
+    {
+      "inputs": {
+        "image": "https://example.com/sample.png",
+        "generate_type": "Geometry",
+        "enable_pbr": false,
+        "back_image": "https://example.com/sample.png"
+      },
+      "usd": 0.63
+    },
+    {
+      "inputs": {
+        "image": "https://example.com/sample.png",
+        "generate_type": "Geometry",
+        "enable_pbr": false,
+        "back_image": "https://example.com/sample.png",
+        "left_image": "https://example.com/sample.png",
+        "right_image": "https://example.com/sample.png"
+      },
+      "usd": 0.63
+    },
+    {
+      "inputs": {
+        "image": "https://example.com/sample.png",
+        "generate_type": "Geometry",
+        "enable_pbr": false,
+        "back_image": "",
+        "left_image": "",
+        "right_image": ""
+      },
+      "usd": 0.45
+    },
+    {
+      "inputs": {
+        "image": "https://example.com/sample.png",
+        "generate_type": "Geometry",
+        "enable_pbr": true
+      },
+      "usd": 0.63
+    },
+    {
+      "inputs": {
+        "image": "https://example.com/sample.png",
+        "generate_type": "Geometry",
+        "enable_pbr": true,
+        "back_image": "https://example.com/sample.png"
+      },
+      "usd": 0.81
+    },
+    {
+      "inputs": {
+        "image": "https://example.com/sample.png",
+        "generate_type": "Geometry",
+        "enable_pbr": true,
+        "back_image": "https://example.com/sample.png",
+        "left_image": "https://example.com/sample.png",
+        "right_image": "https://example.com/sample.png"
+      },
+      "usd": 0.81
+    },
+    {
+      "inputs": {
+        "image": "https://example.com/sample.png",
+        "generate_type": "Geometry",
+        "enable_pbr": true,
+        "back_image": "",
+        "left_image": "",
+        "right_image": ""
+      },
+      "usd": 0.63
+    }
+  ],
+  "wavespeed-ai/hunyuan-3d-v3.1/image-to-3d-rapid": [
+    {
+      "inputs": {
+        "image": "https://example.com/sample.png"
+      },
+      "usd": 0.27
+    }
+  ],
+  "meshy/v6/text-to-3d": [
+    {
+      "inputs": {
+        "prompt": "x"
+      },
+      "usd": 1.44
+    },
+    {
+      "inputs": {
+        "prompt": ""
+      },
+      "usd": 1.44
+    },
+    {
+      "inputs": {
+        "prompt": "x",
+        "topology": "quad",
+        "target_polycount": 300000,
+        "enable_pbr": true,
+        "symmetry_mode": "off",
+        "pose_mode": "t-pose"
+      },
+      "usd": 1.44
+    }
+  ]
+}

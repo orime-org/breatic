@@ -21,12 +21,18 @@
  * fal: writes each binding's and extra step's `base_price` from fal's
  * `unit_price`, except where the unit changed.
  * WaveSpeed: writes the 3D models' prices (`THREE_D` below) and checks them
- * against WaveSpeed's own price for sample params; for every other model it
+ * against WaveSpeed's own price for sample params, writing what WaveSpeed
+ * charged for each sample to `packages/provider/test/fixtures/three-d-prices.json`
+ * (`three-d-prices.test.ts` prices the samples against it); for every other model it
  * lists where the live base price differs from the binding's, and where the
  * binding's price for the catalog's default run differs from what WaveSpeed's
  * `/model/price` charges for it (`discounted_price`), without rewriting it.
  * SandBase: each snapshot also records who serves the model (`owned_by` in
- * SandBase's model list). Last it regenerates
+ * SandBase's model list).
+ * OpenRouter: after the media upstreams, writes `openrouter_prices` in
+ * `config/provider/llm.yaml`, OpenRouter's token prices for every model with a
+ * direct price there, from OpenRouter's public model list (no key), so a
+ * cheapest LLM call ranks OpenRouter beside the direct upstream. Last it regenerates
  * `config/provider/upstream-field-names.json`: the upstream field names no
  * catalog param shares, which non-provider code must not spell.
  *
@@ -46,6 +52,7 @@ import { buildBody } from "../packages/provider/src/media/body.js";
 import { assess } from "../packages/provider/src/pricing/estimate.js";
 import { priceUsd } from "../packages/provider/src/pricing/evaluate.js";
 import { createProvider } from "../packages/provider/src/provider.js";
+import { openRouterPrices } from "./provider-llm-prices.mjs";
 import { priceFactDrift, statedPrice } from "./provider-price-drift.mjs";
 import { yamlText } from "./provider-yaml.mjs";
 
@@ -72,6 +79,9 @@ const WAVESPEED = "https://api.wavespeed.ai/api/v3";
 const FAL_OPENAPI = "https://fal.ai/api/openapi/queue/openapi.json";
 const FAL_PRICING = "https://api.fal.ai/v1/models/pricing";
 const SANDBASE_MODELS = "https://api.sandbase.ai/v1/models";
+const OPENROUTER_MODELS = "https://openrouter.ai/api/v1/models";
+const LLM = resolve(ROOT, "config/provider/llm.yaml");
+const THREE_D_PRICES = resolve(ROOT, "packages/provider/test/fixtures/three-d-prices.json");
 
 /** A sample input whose clip or file WaveSpeed's price endpoint does not read. */
 const SAMPLE_IMAGE = "https://example.com/sample.png";
@@ -219,6 +229,7 @@ async function syncWaveSpeed(upstream: string, list: typeof bindings): Promise<v
   process.stdout.write(`${upstream}: ${written} schema snapshots written\n`);
 
   const differences: string[] = [];
+  const threeDCharged = new Map<string, { inputs: Record<string, unknown>; usd: number }[]>();
   for (const { modality, model, index, binding } of list) {
     const live = byId.get(binding.model_id);
     const threeD = THREE_D[binding.model_id];
@@ -231,6 +242,7 @@ async function syncWaveSpeed(upstream: string, list: typeof bindings): Promise<v
         const line = `${model} ${JSON.stringify(inputs)}: WaveSpeed ${usd}, local ${local}`;
         process.stdout.write(`${line}\n`);
         if (typeof usd !== "number" || Math.abs(usd - local) > 1e-9) problems.push(`price mismatch: ${line}`);
+        if (typeof usd === "number") threeDCharged.set(binding.model_id, [...(threeDCharged.get(binding.model_id) ?? []), { inputs, usd }]);
       }
       continue;
     }
@@ -245,6 +257,8 @@ async function syncWaveSpeed(upstream: string, list: typeof bindings): Promise<v
       if (Math.round(usd * MICRO) !== pricing.base_price) differences.push(`${model} ${endpoint}: live base_price ${Math.round(usd * MICRO)}, binding ${pricing.base_price}`);
     }
   }
+  // Written whole each run, in THREE_D order, so a sample dropped from THREE_D leaves the fixture with it.
+  writeJson(THREE_D_PRICES, Object.fromEntries(Object.keys(THREE_D).flatMap((id) => (threeDCharged.has(id) ? [[id, threeDCharged.get(id)]] : []))));
   process.stdout.write(`${upstream}: ${differences.length} live base prices differ from the binding's\n${differences.map((d) => `  ${d}\n`).join("")}`);
 
   // The binding's price for the catalog's default run against what WaveSpeed charges for it; listed, never rewritten.
@@ -371,6 +385,25 @@ async function syncSandBase(upstream: string, list: typeof bindings): Promise<vo
   process.stdout.write(`${upstream}: ${written} schema snapshots written\n`);
 }
 
+/**
+ * Write OpenRouter's token prices into `openrouter_prices` of `config/provider/llm.yaml`, for every model
+ * of its `prices` and in their order, keeping the file's comments; a model given no price is a problem.
+ * OpenRouter's id for a model is `vendor_ids[model].openrouter` when set, else ours.
+ * @throws {Error} When OpenRouter's model list does not answer 2xx.
+ */
+async function syncOpenRouterPrices(): Promise<void> {
+  const doc = parseDocument(readFileSync(LLM, "utf8"));
+  const llm = doc.toJS() as { prices?: Record<string, unknown>; vendor_ids?: Record<string, Record<string, string>> };
+  const ids = new Map(Object.keys(llm.prices ?? {}).map((model) => [model, llm.vendor_ids?.[model]?.openrouter ?? model]));
+  const listed = at(await json(OPENROUTER_MODELS), "data") as { id: string; pricing?: { prompt?: unknown; completion?: unknown } }[];
+  const { prices, problems: unpriced } = openRouterPrices(listed, ids);
+  problems.push(...unpriced);
+  doc.set("openrouter_prices", doc.createNode(prices));
+  const text = yamlText(doc, { lineWidth: 0 });
+  if (text !== readFileSync(LLM, "utf8")) writeFileSync(LLM, text);
+  process.stdout.write(`openrouter: ${Object.keys(prices).length} of ${ids.size} token prices written\n`);
+}
+
 const SYNC: Readonly<Record<string, (upstream: string, list: typeof bindings) => Promise<void>>> = { wavespeed: syncWaveSpeed, fal: syncFal, sandbase: syncSandBase };
 
 for (const upstream of [...new Set(bindings.map((b) => b.binding.upstream))]) {
@@ -388,6 +421,8 @@ for (const [modality, doc] of docs) {
   const text = yamlText(doc, { lineWidth: 0 });
   if (text !== readFileSync(path, "utf8")) writeFileSync(path, text);
 }
+
+await syncOpenRouterPrices();
 
 const ours = new Set(catalog().models
   .flatMap((m) => Object.entries(m.params).flatMap(([name, p]) => [name, ...Object.keys(p.fields ?? {})])));

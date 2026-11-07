@@ -156,7 +156,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
   const planFor = (route: LlmRoute, modelId: string, chosen: Route): RoutePlan => {
     const candidates = candidatesOn(route);
     if (chosen.mode !== "cheapest") return planRoute(modelId, chosen, candidates);
-    // Cheapest by unit price: input first, then output; an upstream without a price goes last.
+    // Cheapest by unit price: input first, then output, then weight; an upstream without a price goes last.
     const plan = planRoute(modelId, DEFAULT_ROUTE, candidates);
     /**
      * An upstream's input and output unit prices.
@@ -164,7 +164,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
      * @returns Both prices; infinite when unknown.
      */
     const price = (c: Candidate): [number, number] => {
-      const p = kindOf(c.upstream) === "openrouter" ? undefined : config.llm.prices[modelId];
+      const p = kindOf(c.upstream) === "openrouter" ? config.llm.openrouter_prices[modelId] : config.llm.prices[modelId];
       return p === undefined ? [Infinity, Infinity] : [p.input_cache_miss_per_mtok, p.output_per_mtok];
     };
     const order = [...plan.order].sort((a, b) => {
