@@ -140,7 +140,11 @@ describe('routes', () => {
   });
 
   it('/login renders the auth page (title key resolved by i18n)', async () => {
-    render(<AppRouter router={makeRouter('/login')} />);
+    render(
+      <QueryClientProvider>
+        <AppRouter router={makeRouter('/login')} />
+      </QueryClientProvider>,
+    );
     // Default boot locale is English; the title key resolves to "Sign in".
     expect(
       await screen.findByRole('heading', { name: 'Sign in' }),
