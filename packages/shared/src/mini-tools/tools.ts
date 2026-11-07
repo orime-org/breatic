@@ -438,6 +438,11 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     sourceParam: "video",
     sourceMany: false,
     expand: { imageParam: "video", maskParam: "mask" },
+    // Execution design §10.5: an empty prompt sends this, as image expand does.
+    prompt: {
+      placeholderKey: "canvas.miniTool.videoUI.expandPrompt",
+      defaultText: "Extend the video naturally past its edges, matching its content, style, lighting and motion.",
+    },
   },
   {
     id: "video.erase",

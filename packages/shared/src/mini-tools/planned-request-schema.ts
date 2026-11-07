@@ -15,6 +15,8 @@ export const miniToolExecutionRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("segment"), range }),
   z.strictObject({ kind: z.literal("transitions") }),
   z.strictObject({ kind: z.literal("lip-sync") }),
+  z.strictObject({ kind: z.literal("erase") }),
+  z.strictObject({ kind: z.literal("expand") }),
 ]);
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const toolInputRef = z.strictObject({ toolInputId: hash, planSha256: hash });
@@ -61,10 +63,22 @@ const lipSync = z.strictObject({
   ...common, tool: z.literal("video.lip-sync"), draft: videoToolDraftSchema("video.lip-sync"),
   outputs: z.array(z.strictObject({ ...destination, recipe: miniToolExecutionRecipeSchema.options[4] })),
 });
+// One output over the range; the tracked mask it erases comes from the one referenced tracking analysis (§10.4).
+const erase = z.strictObject({
+  ...common, tool: z.literal("video.erase"), draft: videoToolDraftSchema("video.erase"),
+  outputs: z.array(z.strictObject({ ...destination, recipe: miniToolExecutionRecipeSchema.options[5] })),
+}).refine((request) => request.analysis_refs.length === 1 && request.analysis_refs[0]!.toolId === "video.erase", { path: ["analysis_refs"], message: "An erase names exactly one tracking analysis" });
+// One output over the whole source; expand reads no analysis (§10.5).
+const expand = z.strictObject({
+  ...common, tool: z.literal("video.expand"), draft: videoToolDraftSchema("video.expand"),
+  outputs: z.array(z.strictObject({ ...destination, recipe: miniToolExecutionRecipeSchema.options[6] })),
+}).refine((request) => request.analysis_refs.length === 0, { path: ["analysis_refs"], message: "An expand names no analysis" });
+/** The tools a planned run has exactly one output for. */
+const SINGLE_OUTPUT = new Set(["video.remove-bg", "video.transitions", "video.lip-sync", "video.erase", "video.expand"]);
 /** Complete press-frozen drafts and ordered output mappings for planned execution. */
-export const miniToolPlannedRequestSchema = z.discriminatedUnion("tool", [removal, frames, split, transitions, lipSync]).superRefine((request, ctx) => {
+export const miniToolPlannedRequestSchema = z.discriminatedUnion("tool", [removal, frames, split, transitions, lipSync, erase, expand]).superRefine((request, ctx) => {
   if (request.outputs.length === 0 || request.outputs.some((output, position) => output.outputIndex !== position)
-    || ((request.tool === "video.remove-bg" || request.tool === "video.transitions" || request.tool === "video.lip-sync") && request.outputs.length !== 1)) {
+    || (SINGLE_OUTPUT.has(request.tool) && request.outputs.length !== 1)) {
     ctx.addIssue({ code: "custom", path: ["outputs"], message: "A fresh execution requires its complete ordered output indices" });
   }
   if (new Set(request.outputs.map((output) => output.nodeId)).size !== request.outputs.length
@@ -77,7 +91,7 @@ export type MiniToolPlannedRequest = z.infer<typeof miniToolPlannedRequestSchema
 
 /** A new execution reuses only original failed output identities, not current draft inputs. */
 export const miniToolExecutionRetryRequestSchema = z.strictObject({
-  tool: z.enum(["video.remove-bg", "video.extract-frames", "video.split", "video.lip-sync"]), project_id: z.uuid(), space_id: z.uuid(), run_id: z.uuid(),
+  tool: z.enum(["video.remove-bg", "video.extract-frames", "video.split", "video.lip-sync", "video.erase", "video.expand"]), project_id: z.uuid(), space_id: z.uuid(), run_id: z.uuid(),
   retry: z.strictObject({ runId: z.uuid(), outputIndexes: z.array(index).min(1).refine((ids) => new Set(ids).size === ids.length) }),
 }).refine((request) => request.run_id !== request.retry.runId, { message: "A retry requires a new execution identity" });
 export type MiniToolExecutionRetryRequest = z.infer<typeof miniToolExecutionRetryRequestSchema>;

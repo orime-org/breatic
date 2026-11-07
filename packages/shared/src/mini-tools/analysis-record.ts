@@ -15,7 +15,7 @@ const frameMetadataSchema = z.strictObject({
 
 /** References to registered bytes; their MIME and media kind retain ingest truth. */
 export const miniToolAnalysisArtifactSchema = z.strictObject({
-  role: z.enum(["thumbnail", "normalized_clip", "rle", "binary_mask"]),
+  role: z.enum(["thumbnail", "rle"]),
   assetId: z.string().uuid(), canonicalURL: z.string().url(), contentHash: hashSchema,
   kind: z.enum(["image", "video", "audio", "document"]),
   mimeType: z.string().min(1), size: z.number().int().nonnegative(),
@@ -48,7 +48,6 @@ export const miniToolAnalysisResultSchema = z.discriminatedUnion("kind", [
   z.strictObject({ ...identityShape, kind: z.literal("scene_cuts"), timeBase: timeBaseSchema, frameCount: z.number().int().positive(), cuts: z.array(z.strictObject({ frameIndex: z.number().int().nonnegative(), pts: z.number().nonnegative(), detectionScore: z.number() })) }),
   z.strictObject({
     ...identityShape, kind: z.literal("tracked_mask"), ...frameMetadataSchema.shape,
-    polarity: z.strictObject({ remove: z.literal(0), keep: z.literal(255) }),
     anchor: miniToolAnchorSchema, regionFingerprint: hashSchema,
     sourceFrameMapping: z.array(z.strictObject({ frameIndex: z.number().int().nonnegative(), sourcePts: z.number() })),
     artifactRefs: z.array(miniToolAnalysisArtifactSchema),
@@ -62,9 +61,8 @@ export const miniToolAnalysisResultSchema = z.discriminatedUnion("kind", [
   if (result.kind === "tracked_mask") {
     if (result.sourceFrameMapping.length !== result.frameCount) ctx.addIssue({ code: "custom", path: ["sourceFrameMapping"], message: "Every normalized frame requires a source mapping" });
     if (new Set(result.sourceFrameMapping.map((frame) => frame.frameIndex)).size !== result.frameCount || result.sourceFrameMapping.some((frame) => frame.frameIndex >= result.frameCount)) ctx.addIssue({ code: "custom", path: ["sourceFrameMapping"], message: "Normalized frame indices must form the complete unique frame set" });
-    for (const role of ["rle", "normalized_clip", "binary_mask"] as const) {
-      if (result.artifactRefs.filter((ref) => ref.role === role).length !== 1) ctx.addIssue({ code: "custom", path: ["artifactRefs"], message: `Expected one ${role} artifact` });
-    }
+    // Execution design §10.3: the joined RLE is the one artifact.
+    if (result.artifactRefs.length !== 1 || result.artifactRefs[0]!.role !== "rle") ctx.addIssue({ code: "custom", path: ["artifactRefs"], message: "Expected exactly one rle artifact" });
   }
 });
 

@@ -81,7 +81,6 @@ const draftSchemas = {
       anchor: miniToolAnchorSchema,
       region: miniToolAnalysisInputSchema.options[2].shape.region,
       trackingPrompt: z.string(),
-      erasePrompt: z.string(),
     }),
   }),
   "video.lip-sync": z.strictObject({

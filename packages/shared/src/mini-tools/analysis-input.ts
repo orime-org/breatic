@@ -65,8 +65,13 @@ export function projectMiniToolAnalysisInput(input: MiniToolAnalysisInputSource)
       return miniToolAnalysisInputSchema.parse({ ...common, anchor: input.params.anchor });
     case "scene_cuts":
       return miniToolAnalysisInputSchema.parse({ ...common, range: input.params.range });
-    case "tracked_mask":
-      return miniToolAnalysisInputSchema.parse({ ...common, range: input.params.range, anchor: input.params.anchor, region: input.params.region, trackingPrompt: input.params.trackingPrompt });
+    case "tracked_mask": {
+      // Execution design §10.2: the prompt is trimmed, and an empty one is the profile's default, frozen into the fingerprint.
+      const prompt = typeof input.params.trackingPrompt === "string" ? input.params.trackingPrompt.trim() : input.params.trackingPrompt;
+      const fallback = (input.profile as { params?: { default_prompt?: unknown } } | null)?.params?.default_prompt;
+      const trackingPrompt = prompt === "" && typeof fallback === "string" ? fallback : prompt;
+      return miniToolAnalysisInputSchema.parse({ ...common, range: input.params.range, anchor: input.params.anchor, region: input.params.region, trackingPrompt });
+    }
   }
 }
 
