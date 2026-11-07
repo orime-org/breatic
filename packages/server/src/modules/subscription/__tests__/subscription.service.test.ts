@@ -78,6 +78,14 @@ vi.mock("@server/modules/subscription/settle-tier.js", () => ({
   sendMembershipEndedMail,
 }));
 
+const { firstPeriodDiscount, ensureFirstPeriodCoupon } = vi.hoisted(() => ({
+  firstPeriodDiscount: vi.fn(),
+  ensureFirstPeriodCoupon: vi.fn(),
+}));
+
+vi.mock("@server/modules/referral/referral.service.js", () => ({ firstPeriodDiscount }));
+vi.mock("@server/modules/referral/referral-coupon.js", () => ({ ensureFirstPeriodCoupon }));
+
 vi.mock("@server/modules/auth/user.repo.js", () => ({
   getUserById: vi.fn(),
   getStripeCustomerId: vi.fn(),
@@ -127,6 +135,41 @@ beforeEach(() => {
   } as never);
   stripe.checkout.sessions.create.mockResolvedValue({
     url: "https://checkout.example/s",
+  });
+  firstPeriodDiscount.mockResolvedValue(null);
+});
+
+describe("startCheckout — referral first-period discount (inner#1868)", () => {
+  const start = (): Promise<unknown> =>
+    service.startCheckout({ userId: USER, tier: "pro", period: "month", returnUrl: RETURN_URL });
+
+  it("puts the referral coupon on the session and the code on the subscription when the account qualifies", async () => {
+    situationIs("none");
+    firstPeriodDiscount.mockResolvedValue({ code: "ALICE", percent: 20 });
+    ensureFirstPeriodCoupon.mockResolvedValue("referral-first-period-20");
+    await start();
+    expect(ensureFirstPeriodCoupon).toHaveBeenCalledWith(20);
+    const call = stripe.checkout.sessions.create.mock.calls[0]?.[0];
+    expect(call.discounts).toEqual([{ coupon: "referral-first-period-20" }]);
+    expect(call.subscription_data.metadata.referralCode).toBe("ALICE");
+    expect(call.subscription_data.metadata.userId).toBe(USER);
+  });
+
+  it("sends no discount and no code when the account does not qualify", async () => {
+    situationIs("none");
+    await start();
+    expect(ensureFirstPeriodCoupon).not.toHaveBeenCalled();
+    const call = stripe.checkout.sessions.create.mock.calls[0]?.[0];
+    expect(call).not.toHaveProperty("discounts");
+    expect(call.subscription_data.metadata).not.toHaveProperty("referralCode");
+  });
+
+  it("opens no checkout page when the coupon cannot be had", async () => {
+    situationIs("none");
+    firstPeriodDiscount.mockResolvedValue({ code: "ALICE", percent: 20 });
+    ensureFirstPeriodCoupon.mockRejectedValue(new Error("coupon mismatch"));
+    await expect(start()).rejects.toThrow("coupon mismatch");
+    expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
   });
 });
 

@@ -61,6 +61,8 @@ import { getStripeClient } from "@server/infra/stripe.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
 import { applySubscriptionWrite } from "@server/modules/subscription/apply-subscription.js";
 import { readStripeSubscription } from "@server/modules/subscription/read-stripe-subscription.js";
+import { ensureFirstPeriodCoupon } from "@server/modules/referral/referral-coupon.js";
+import { firstPeriodDiscount } from "@server/modules/referral/referral.service.js";
 import { sendMembershipEndedMail } from "@server/modules/subscription/settle-tier.js";
 
 /** Where a checkout ends up, and whether it needs paying. */
@@ -255,6 +257,10 @@ export async function startCheckout(input: {
 
   const customerId = await ensureCustomer(input.userId);
   const snapshot = await takeCheckoutSnapshot(input.userId);
+  // A referred account that never paid gets its code's first-period coupon;
+  // the code on the subscription is for reference only (inner#1868 §6).
+  const referral = await firstPeriodDiscount(input.userId);
+  const discounts = referral ? [{ coupon: await ensureFirstPeriodCoupon(referral.percent) }] : undefined;
   const session = await getStripeClient().checkout.sessions.create({
     mode: "subscription",
     customer: customerId,
@@ -270,7 +276,14 @@ export async function startCheckout(input: {
     // Reaches the subscription object, which is what events carry. Top-level
     // metadata and `client_reference_id` stop at the Session. The subscribing
     // browser's consent and ad click ride here for the same reason (inner#1442 §4.4.5).
-    subscription_data: { metadata: { userId: input.userId, ...toStripeMetadata(snapshot) } },
+    subscription_data: {
+      metadata: {
+        userId: input.userId,
+        ...toStripeMetadata(snapshot),
+        ...(referral ? { referralCode: referral.code } : {}),
+      },
+    },
+    ...(discounts ? { discounts } : {}),
     client_reference_id: input.userId,
     // The subscription keeps this, so renewals and upgrade invoices are taxed
     // too. Checkout taxes on the address stored on the customer, which starts
