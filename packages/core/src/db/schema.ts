@@ -47,7 +47,7 @@ import type { CreditGrantResult, CreditGrantWrite } from "@core/credit/credit-gr
 import type { EnterpriseMembershipResult, EnterpriseMembershipWrite } from "@core/auth/enterprise-membership-contract.js";
 import type { ReclaimScope, ReclaimDecision, ReclaimControlDecision, ReclaimItemResult, ReclaimRun } from "@core/maintenance/types.js";
 import { PROJECT_NAME_MAX_CHARS, STRIPE_WEBHOOK_RESULTS } from "@breatic/shared";
-import type { StripeWebhookResult } from "@breatic/shared";
+import type { SignupReferralSource, StripeWebhookResult } from "@breatic/shared";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -1202,7 +1202,7 @@ export const referralBindings = pgTable("referral_bindings", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: uuid("user_id").notNull().unique().references(() => users.id, { onDelete: "restrict" }),
   referralCodeId: uuid("referral_code_id").notNull().references(() => referralCodes.id, { onDelete: "restrict" }),
-  source: text("source").$type<"signup_link" | "signup_typed" | "later">().notNull(),
+  source: text("source").$type<SignupReferralSource | "later">().notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
