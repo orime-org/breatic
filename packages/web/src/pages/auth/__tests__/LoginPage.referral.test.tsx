@@ -120,6 +120,7 @@ describe('the sign-in page referral row (inner#1868 table 12.14)', () => {
     const user = userEvent.setup();
     setup();
     await user.click(await screen.findByRole('button', { name: 'Have a referral code?' }));
+    expect(screen.getByLabelText('Referral code')).toHaveAttribute('maxLength', '40');
     await user.type(screen.getByLabelText('Referral code'), 'bob');
     await user.click(google());
     expect(authApi.google).toHaveBeenCalledWith(expect.objectContaining({ referralCode: 'bob', referralSource: 'signup_typed' }));

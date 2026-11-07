@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
-import { getLocale, normalizeEmail } from '@breatic/shared';
+import { getLocale, normalizeEmail, REFERRAL_CODE_INPUT_MAX } from '@breatic/shared';
 import type { SignupInvitationPreview } from '@breatic/shared';
 
 import { authApi, type AuthUser, type SignupCodeSent, type SignupReferralOutcome } from '@web/data/api/auth';
@@ -345,6 +345,7 @@ export default function RegisterPage(): React.JSX.Element {
               <Input
                 id='register-referral'
                 autoComplete='off'
+                maxLength={REFERRAL_CODE_INPUT_MAX}
                 value={referral.value}
                 placeholder={t('auth.referral.placeholder')}
                 onChange={(e) => referral.change(e.target.value)}

@@ -10,10 +10,10 @@
  * consent drops the stored copy.
  */
 
+import { REFERRAL_CODE_INPUT_MAX } from '@breatic/shared';
 import { STORAGE_KEYS } from '@web/lib/storage-keys';
 
 const STORAGE_KEY = STORAGE_KEYS.referralCode;
-const MAX_LENGTH = 40;
 
 let memory: string | null = null;
 let persist = false;
@@ -25,7 +25,7 @@ let persist = false;
  */
 function normalise(raw: string | null): string | null {
   const code = raw?.trim().toUpperCase() ?? '';
-  return code === '' || code.length > MAX_LENGTH ? null : code;
+  return code === '' || code.length > REFERRAL_CODE_INPUT_MAX ? null : code;
 }
 
 /**

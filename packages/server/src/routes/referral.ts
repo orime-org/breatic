@@ -11,7 +11,7 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { withoutNul } from "@server/utils/without-nul.js";
-import { t } from "@breatic/shared";
+import { REFERRAL_CODE_INPUT_MAX, t } from "@breatic/shared";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
@@ -28,7 +28,7 @@ const referral = new Hono<{ Variables: AuthVariables }>();
 referral.use(requireAuth);
 referral.use(requirePayments);
 
-const bindingBody = z.object({ code: z.string().min(1).max(40) });
+const bindingBody = z.object({ code: z.string().min(1).max(REFERRAL_CODE_INPUT_MAX) });
 const applicationBody = z.object({
   country: z.string().regex(/^[A-Z]{2}$/),
   channels: z.array(withoutNul(z.string().trim().min(1).max(200))).min(1).max(10),

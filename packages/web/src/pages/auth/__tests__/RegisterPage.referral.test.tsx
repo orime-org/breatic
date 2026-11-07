@@ -106,6 +106,8 @@ describe('the sign-up page referral field (inner#1868 table 12.13)', () => {
     const user = userEvent.setup();
     setup();
     expect(await screen.findByLabelText('Referral code')).toHaveValue('ALICE');
+    // The API takes at most 40 characters; longer text could not reach the field's own refusal.
+    expect(screen.getByLabelText('Referral code')).toHaveAttribute('maxLength', '40');
     await submit(user);
     expect(authApi.register).toHaveBeenCalledWith(expect.objectContaining({ referralCode: 'ALICE', referralSource: 'signup_link' }));
     expect(await screen.findByTestId('recovery-page')).toBeInTheDocument();

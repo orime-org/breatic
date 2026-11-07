@@ -3,6 +3,7 @@
 
 import type { Context, Hono } from "hono";
 import { z } from "zod";
+import { REFERRAL_CODE_INPUT_MAX } from "@breatic/shared";
 import { withoutNul } from "@server/utils/without-nul.js";
 import { requirePayments } from "@server/middleware/require-payments.js";
 import { validate } from "@server/middleware/validate.js";
@@ -22,7 +23,7 @@ const page = {
   cursor: z.string().max(512).optional(),
 };
 
-const approveBody = z.object({ reason, code: z.string().max(40).optional() }).strict();
+const approveBody = z.object({ reason, code: z.string().max(REFERRAL_CODE_INPUT_MAX).optional() }).strict();
 const rejectBody = z.object({ reason, applicantNote: withoutNul(z.string().max(500)).optional() }).strict();
 const codeBody = z.object({ reason }).strict();
 

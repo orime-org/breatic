@@ -116,6 +116,7 @@ describe('the referral code section (inner#1868 tables 12.9, 12.10)', () => {
     const user = userEvent.setup();
     setup();
     expect(await screen.findByLabelText('Referral code')).toHaveValue('ALICE');
+    expect(screen.getByLabelText('Referral code')).toHaveAttribute('maxLength', '40');
     const invalidate = vi.spyOn(client, 'invalidateQueries');
     await user.click(screen.getByRole('button', { name: 'Add' }));
     expect(await screen.findByText(/20% off your first membership period/)).toBeInTheDocument();

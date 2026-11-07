@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
+import { REFERRAL_CODE_INPUT_MAX } from '@breatic/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { referralApi, type AccountReferral } from '@web/data/api/referral';
 import { ApiException } from '@web/data/api/types';
@@ -144,6 +145,7 @@ function BindForm({ view }: { view: AccountReferral }): React.JSX.Element {
             autoComplete='off'
             value={value}
             placeholder={t('membership.referral.placeholder')}
+            maxLength={REFERRAL_CODE_INPUT_MAX}
             readOnly={pressing}
             aria-invalid={!!error || undefined}
             onChange={(e) => {

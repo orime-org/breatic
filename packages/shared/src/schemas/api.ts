@@ -51,11 +51,18 @@ export const emailSchema = z.string().transform(normalizeEmail).pipe(z.email().m
 const attributionField = z.unknown().optional();
 
 /**
+ * The longest referral code text any request carries (inner#1868): room for a
+ * code with stray spaces, well short of a pasted link. Inputs stop at it too,
+ * so too-long text gets the field's own refusal.
+ */
+export const REFERRAL_CODE_INPUT_MAX = 40;
+
+/**
  * A referral code a sign-up carries (inner#1868): from a share link, or typed.
  * Blank means none; the server parses the code itself.
  */
 export const signupReferralFields = {
-  referralCode: z.string().max(40).optional(),
+  referralCode: z.string().max(REFERRAL_CODE_INPUT_MAX).optional(),
   referralSource: z.enum(["signup_link", "signup_typed"]).optional(),
 };
 

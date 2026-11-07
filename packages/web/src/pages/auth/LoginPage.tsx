@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { getLocale } from '@breatic/shared';
+import { getLocale, REFERRAL_CODE_INPUT_MAX } from '@breatic/shared';
 import { GoogleSignIn } from '@web/pages/auth/GoogleSignIn';
 
 import { authApi } from '@web/data/api/auth';
@@ -168,6 +168,7 @@ export default function LoginPage(): React.JSX.Element {
         <Input
           id='login-referral'
           autoComplete='off'
+          maxLength={REFERRAL_CODE_INPUT_MAX}
           value={referral.value}
           placeholder={t('auth.referral.placeholder')}
           onChange={(e) => referral.change(e.target.value)}

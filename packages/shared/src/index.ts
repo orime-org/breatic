@@ -298,6 +298,7 @@ export {
   normalizeEmail,
   emailSchema,
   registerSchema,
+  REFERRAL_CODE_INPUT_MAX,
   signupReferralFields,
   signupVerifySchema,
   SIGNUP_CODE_REGEX,
