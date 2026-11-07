@@ -201,6 +201,7 @@ export type LoginInput = z.infer<typeof loginSchema>;
 
 export const googleAuthSchema = z.object({
   credential: z.string().min(1),
+  attribution: attributionField,
   ...signupReferralFields,
 });
 export type GoogleAuthInput = z.infer<typeof googleAuthSchema>;

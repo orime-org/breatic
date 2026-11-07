@@ -298,6 +298,7 @@ export {
   normalizeEmail,
   emailSchema,
   registerSchema,
+  googleAuthSchema,
   REFERRAL_CODE_INPUT_MAX,
   SIGNUP_REFERRAL_SOURCES,
   signupReferralFields,

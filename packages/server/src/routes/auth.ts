@@ -15,7 +15,7 @@ import { validate } from "@server/middleware/validate.js";
 import { OAuth2Client } from "google-auth-library";
 import type { TokenPayload } from "google-auth-library";
 
-import { registerSchema, signupVerifySchema, loginSchema, setupStudioSchema } from "@server/routes/schemas.js";
+import { registerSchema, signupVerifySchema, loginSchema, googleAuthSchema, setupStudioSchema } from "@server/routes/schemas.js";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -23,7 +23,7 @@ import { authService, invitationService, signupCodeService, studioService } from
 import { randomUUID } from "node:crypto";
 import { env, NotFoundError, UnauthorizedError, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { emailSchema, getActiveLocale, normalizeEmail, parseAttribution, signupReferralFields, t } from "@breatic/shared";
+import { emailSchema, getActiveLocale, normalizeEmail, parseAttribution, t } from "@breatic/shared";
 import type { PersonalStudioRef, SignupReferralSource } from "@breatic/shared";
 import { rateLimitFor, rateLimitForAll } from "@server/middleware/rate-limit.js";
 import {
@@ -333,11 +333,6 @@ auth.post(
  * @param c - Hono context with authenticated user
  * @returns `200` with `{ message: "Logged out" }`
  */
-const googleAuthSchema = z.object({
-  credential: z.string().min(1),
-  attribution: z.unknown().optional(),
-  ...signupReferralFields,
-});
 
 /**
  * `POST /auth/google` - authenticate with a Google ID token.
