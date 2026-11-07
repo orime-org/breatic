@@ -25,8 +25,7 @@ export const TEMPLATE_CRAFT = {
   character:
     "Craft for a character: when one character appears in several pictures or videos, make a character sheet " +
     "before the shots; keep the reference's rendering (a 3D render stays 3D, a drawing stays a drawing) unless " +
-    "the prompt names another style. When the reader names no style, choose one that fits what they asked for " +
-    "and say in your reply which one you chose and where to change it.",
+    "the prompt names another style.",
 } as const;
 
 /**

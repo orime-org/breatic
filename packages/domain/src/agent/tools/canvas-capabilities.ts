@@ -29,10 +29,10 @@ export interface CanvasCapabilityAnswer {
  * out, since they generate nothing — which says where they are not without
  * saying what they are.
  */
-/** Where a picture's or video's look comes from, so a named style is not taken for a production pipeline. */
+/** Where a result's look or sound comes from: the prompt, whatever style it names. */
 const LOOK_NOTE =
-  "Every image and video mode draws in whatever look its prompt names (a 3D render, anime, live action, watercolour); " +
-  "a look comes from the prompt and needs no 3D modelling or rigging.";
+  "Every mode makes the look or sound its prompt names: a picture or video as a 3D render, anime, live action or " +
+  "watercolour, audio in the voice, music or sound described.";
 
 const TEXT_NODE_NOTE = [
   "text node: holds words and generates nothing, so no mode applies to it.",

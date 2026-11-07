@@ -26,7 +26,7 @@ const HOW_TO_SEND =
   "and wire them as its edges say. Give each input a node of your own wired into the nodes it feeds; " +
   "{ id, input } on that node is optional. A resource node lands holding the template's file: send it with no material. " +
   "Leave out the mode and model you keep. Send each generate node's prompt as its own, rewritten in the language " +
-  "the reader writes in with their story or detail in it: fill every tweak segment with words, from what the reader said or, where they left it open, your own choice. " +
+  "the reader writes in with their story or detail in it: fill every tweak segment with words before you send it: from what the reader said, or, for one their words leave open, after asking them or choosing as your working rules say. A template's tweak segment is never sent as it is. " +
   "A node sent in multi_shot sends shots and no prompt, their durations adding up to the node's duration: the one you " +
   "write in its params, else the template's while the node keeps the template's mode and model; on another mode or model, write one. " +
   "A node sent in any other mode sends a prompt, a template's shots written as one. " +
