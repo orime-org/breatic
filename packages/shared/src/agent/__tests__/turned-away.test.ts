@@ -3,7 +3,7 @@
 
 /**
  * The third ending: a call a tool, or the SDK, turned away to steer the
- * model. Nothing failed and the reader is shown nothing, so it carries a
+ * model. Nothing failed and the user is shown nothing, so it carries a
  * reason for the model and no line for the panel.
  */
 import { describe, it, expect } from "vitest";
@@ -27,13 +27,13 @@ function errorCarrying(failure: unknown): Error {
 }
 
 describe("a call turned away to steer the model", () => {
-  it("reads back with its reason for the model and no line for the reader", () => {
+  it("reads back with its reason for the model and no line for the user", () => {
     expect(
       toolFailureOf(errorCarrying({ kind: "turned_away", forModel: "ask one thing at a time" })),
     ).toStrictEqual({ kind: "turned_away", forModel: "ask one thing at a time" });
   });
 
-  it("is not read back when it carries a line for the reader", () => {
+  it("is not read back when it carries a line for the user", () => {
     expect(
       toolFailureOf(
         errorCarrying({
@@ -45,7 +45,7 @@ describe("a call turned away to steer the model", () => {
     ).toBeUndefined();
   });
 
-  it("goes on the wire as a value that is not one of the reader's lines", () => {
+  it("goes on the wire as a value that is not one of the user's lines", () => {
     expect(isUserLine(TURNED_AWAY)).toBe(false);
     expect(Object.values(FAILURE_LINES)).not.toContain(TURNED_AWAY);
   });

@@ -1023,8 +1023,8 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
   );
   if (!verified.ok) return new Response("Unauthorized", { status: 401 });
   const { storageKey, partSize, totalParts } = verified.payload;
-  // A link the reader handed us rather than one a provider answered with. Its
-  // failures are the reader's to act on and are logged without being reported.
+  // A link the user handed us rather than one a provider answered with. Its
+  // failures are the user's to act on and are logged without being reported.
   const fromUser = { userInput: verified.payload.typeFromSource === true };
 
   const body = await request.json<FetchBody>().catch(() => null);

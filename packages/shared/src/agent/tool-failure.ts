@@ -20,9 +20,9 @@
  */
 
 /**
- * The lines a reader may be shown when a tool comes back empty (inner#1620).
+ * The lines a user may be shown when a tool comes back empty (inner#1620).
  *
- * Each is one cause, said as itself, and the reader can tell from it whether
+ * Each is one cause, said as itself, and the user can tell from it whether
  * there is something for them to do. None names a vendor, a host or a status:
  * those are the model's to read. Which one a failure gets is decided in the
  * same place as the sentence the model reads, so the two never disagree.
@@ -50,9 +50,9 @@ export const FAILURE_LINES = {
   tooSlow: "chat.tool.failure.tooSlow",
   /** The studio has no storage left. */
   storageFull: "chat.tool.failure.storageFull",
-  /** The reader cannot add material to this project. */
+  /** The user cannot add material to this project. */
   noPermission: "chat.tool.failure.noPermission",
-  /** The reader is no longer a member of this project. */
+  /** The user is no longer a member of this project. */
   notMember: "chat.tool.failure.notMember",
   /** Too many of these in a short time. */
   tooFrequent: "chat.tool.failure.tooFrequent",
@@ -63,7 +63,7 @@ export const FAILURE_LINES = {
   /**
    * The turn was stopped, and this use of a tool did not finish because of it.
    *
-   * Here rather than beside the failures because every reader key belongs in
+   * Here rather than beside the failures because every user key belongs in
    * one table -- the panel reads them all the same way, and a key living on
    * its own is one nothing checks against the locale files.
    */
@@ -88,7 +88,7 @@ export type LegacyFailureLine = (typeof LEGACY_FAILURE_LINES)[keyof typeof LEGAC
 /** The line for the one ending that is not a failure. */
 export type StoppedLine = typeof FAILURE_LINES.stopped;
 
-/** Which line a reader is shown when a tool failed. */
+/** Which line a user is shown when a tool failed. */
 export type FailureLine = Exclude<
   (typeof FAILURE_LINES)[keyof typeof FAILURE_LINES],
   StoppedLine
@@ -127,19 +127,19 @@ export type ToolFailureKind =
    * The call was turned away to steer the model: a second question in one
    * turn, a second media call while one is running, or a call the SDK refused
    * (input that does not fit the schema, or a tool name that does not exist).
-   * Nothing failed; the model reads why and carries on, and the reader is
+   * Nothing failed; the model reads why and carries on, and the user is
    * shown nothing.
    */
   | "turned_away"
   /**
    * The call never ran: the turn failed or was cut off before it did, whether
    * its arguments were still arriving or had just finished. The turn's own ending line says what happened, so
-   * the reader is shown nothing for the call.
+   * the user is shown nothing for the call.
    */
   | "never_ran";
 
 /**
- * What every ending says, apart from which line the reader is shown.
+ * What every ending says, apart from which line the user is shown.
  *
  * Split out so the fields that vary with the kind are the only ones written
  * in each arm below.
@@ -157,16 +157,16 @@ interface FailureDetail {
 /**
  * Why a use of a tool ended without a result.
  *
- * The kind and the reader's line go together: the line about being stopped
+ * The kind and the user's line go together: the line about being stopped
  * belongs to the ending that was a stop, the lines about a failure belong to
  * the ending that was one, and a call turned away carries no line at all.
  * Written as one type with a `userKey` of its own, the pair
  * "stopped by the user" and "could not run" type-checks, and the panel then
- * tells a reader their own button press was something going wrong.
+ * tells a user their own button press was something going wrong.
  *
  * `userKey` is a translation key rather than a sentence because the row
- * outlives the language it was written in: a message stored in one reader's
- * language would still be in that language when a different reader opens the
+ * outlives the language it was written in: a message stored in one user's
+ * language would still be in that language when a different user opens the
  * conversation.
  */
 export type ToolFailure =
@@ -176,10 +176,10 @@ export type ToolFailure =
   | (FailureDetail & { kind: "never_ran" });
 
 /**
- * What a turned-away call puts on the wire where a reader line would go.
+ * What a turned-away call puts on the wire where a user line would go.
  *
- * Not a reader line: it has no text in any locale, because there is nothing
- * for the reader to read. The panel takes it as "draw nothing for this call".
+ * Not a user line: it has no text in any locale, because there is nothing
+ * for the user to read. The panel takes it as "draw nothing for this call".
  */
 export const TURNED_AWAY = "turned_away";
 
@@ -189,7 +189,7 @@ export const NEVER_RAN = "never_ran";
 /**
  * The value an ending puts in the wire's single error field.
  * @param failure - How the call ended.
- * @returns The reader line to draw, or a marker that says draw nothing.
+ * @returns The user line to draw, or a marker that says draw nothing.
  */
 export function wireLineOf(
   failure: ToolFailure,
@@ -241,7 +241,7 @@ export function toolFailureOf(err: unknown): ToolFailure | undefined {
   if (typeof carried !== "object" || carried === null) return undefined;
   const { kind, forModel, userKey } = carried as Record<string, unknown>;
   if (typeof forModel !== "string") return undefined;
-  // The one ending with no line for the reader. Carrying one anyway is a pair
+  // The one ending with no line for the user. Carrying one anyway is a pair
   // that does not belong together, the same as the two checks below.
   if (kind === "turned_away" || kind === "never_ran") return userKey === undefined ? { kind, forModel } : undefined;
   // Checked against the table rather than merely for being a string. What the

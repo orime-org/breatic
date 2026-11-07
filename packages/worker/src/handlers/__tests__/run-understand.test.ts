@@ -251,7 +251,7 @@ describe("running one understand task", () => {
   });
 
   // An answer of nothing is a run that finished having put nothing on the
-  // node. Writing it would replace whatever the reader had with an empty
+  // node. Writing it would replace whatever the user had with an empty
   // node while the count says the run succeeded.
   it("refuses an empty answer rather than writing it", async () => {
     vi.mocked(understandMediaAt).mockResolvedValue({
@@ -338,7 +338,7 @@ describe("running one understand task", () => {
     expect(rows).toEqual([]);
   });
 
-  // The words this produces are the node's body, and a reader opens that
+  // The words this produces are the node's body, and a user opens that
   // node in the language they set. Nothing about the media says which that
   // is, so the run is told — and the telling has to reach the model, because
   // the model is what decides the language of the answer.
@@ -378,10 +378,10 @@ describe("running one understand task", () => {
     }
   });
 
-  // A reader who typed their own question gets asked that question. The
+  // A user who typed their own question gets asked that question. The
   // language line still rides along: they wrote it in their own language and
   // an answer in another one is not what they asked for.
-  it("keeps the reader's own question and still names the language", async () => {
+  it("keeps the user's own question and still names the language", async () => {
     await runUnderstand(
       {
         ...PARAMS,

@@ -64,7 +64,7 @@ export function joinSlotFiles(
     const files = usableUrls(out[name]);
     delete out[name];
     if (files.length === 0) continue;
-    // The pool goes as the panel built it, repeats included: the reader's
+    // The pool goes as the panel built it, repeats included: the user's
     // mention numbers count its entries.
     const sent = out[joins];
     const pool = Array.isArray(sent) ? sent.filter((v): v is string => typeof v === "string" && v.length > 0) : [];

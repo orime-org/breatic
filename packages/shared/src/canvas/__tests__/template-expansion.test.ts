@@ -652,7 +652,7 @@ describe('templateGuideNode', () => {
     expect(promptPlainText(guide?.prompt ?? [])).toBe('Fixture flow\n1. Split the grid into nine\n2. Animate each panel');
   });
 
-  it('writes the guide in the reader’s language', () => {
+  it('writes the guide in the user’s language', () => {
     setLocale('zh-CN');
     const guide = templateGuideNode(FIXTURE, 0);
     expect(guide?.name).toBe('Fixture flow (zh)');

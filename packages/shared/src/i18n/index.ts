@@ -236,7 +236,7 @@ function resolveKey(obj: Record<string, unknown>, key: string): string | undefin
 
 /**
  * The keys {@link tInEveryLocale} reads back in every language. The web app
- * downloads only English and the reader's own catalog, so its build carries
+ * downloads only English and the user's own catalog, so its build carries
  * these keys of every locale separately (`packages/web/every-locale-messages.mts`).
  */
 export const EVERY_LOCALE_KEYS = ["canvas.promptMark.reference"] as const;
@@ -268,7 +268,7 @@ export function setEveryLocaleMessages(
  *
  * For reading back text that may have been written in another language than
  * the one active now -- a prompt filled in by a collaborator, or before the
- * reader switched language.
+ * user switched language.
  * @param key - Dot-notation translation key
  * @param params - Optional parameter map for ICU placeholders
  * @returns One formatted string per locale that has the key, without repeats

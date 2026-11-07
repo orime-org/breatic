@@ -59,9 +59,9 @@ export const IMAGE_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * What a reader calls each format, keyed on the subtype these tables use.
+ * What a user calls each format, keyed on the subtype these tables use.
  *
- * The same words `FORMAT_SPELLING` decides for the sentences a reader sees,
+ * The same words `FORMAT_SPELLING` decides for the sentences a user sees,
  * kept separately because the two are asked different questions. That one
  * takes a whole media type, which is what a refusal holds; `names` below
  * walks `AUDIO_FORMATS`' VALUES, which are bare subtypes (`mp3`, `wav`), and
@@ -84,12 +84,12 @@ const USER_SPELLING: Readonly<Record<string, string>> = {
 };
 
 /**
- * The formats in one of these tables, as names a reader could act on.
+ * The formats in one of these tables, as names a user could act on.
  *
- * Derived so that anything telling a reader what to convert to is saying what
+ * Derived so that anything telling a user what to convert to is saying what
  * the table says: written out by hand a list goes on naming two formats the
  * day a third is added, and nothing reports it. The subtype alone, because the
- * name a format travels under here is not always one a reader could act on —
+ * name a format travels under here is not always one a user could act on —
  * this endpoint calls a .mov `video/mov`, and no converter knows that type.
  * @param types - What the endpoint calls each format it takes.
  * @returns The names, e.g. `["MP3", "WAV"]`.

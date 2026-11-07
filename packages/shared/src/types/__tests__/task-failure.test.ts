@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Reading a stored failure code as something the reader can be told (#207).
+ * Reading a stored failure code as something the user can be told (#207).
  *
  * The lanes that fail an upload write a code of their own, and there are more
- * of them than a reader needs to tell apart: five separate ways our own side
+ * of them than a user needs to tell apart: five separate ways our own side
  * can break all leave the same thing for the person to do. So the codes are
  * many and the causes this product names are few, and the mapping between
  * them lives here rather than in the sentence file.
  *
- * A code with no cause reaches the reader as itself — the raw identifier,
+ * A code with no cause reaches the user as itself — the raw identifier,
  * in every language.
  */
 
@@ -98,7 +98,7 @@ describe("the cause a stored code is read as", () => {
 /**
  * What a cause says about the file it happened to.
  *
- * A refusal over a format leaves the reader asking which of their files this
+ * A refusal over a format leaves the user asking which of their files this
  * was and what it was in. Both are known where the refusal is raised and
  * nowhere the sentence is written, so they are stored beside the cause.
  */
@@ -139,7 +139,7 @@ describe("a cause and what it was about", () => {
   // The size travels the same way the other two do, and it is the one the
   // sentence prints as a measurement rather than a name — so a value that
   // cannot be measured (a size nobody recorded, a count that came back as
-  // Infinity) has to drop out rather than reach the reader as a word.
+  // Infinity) has to drop out rather than reach the user as a word.
   it("carries the size it measured, and only a real one", () => {
     expect(
       readTaskFailure(

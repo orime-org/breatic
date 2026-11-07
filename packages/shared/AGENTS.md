@@ -28,7 +28,7 @@ The protocol layer used by both web and the backend: zod schemas, types, constan
 
 Check: will web call this module's exports? If yes, put it in the barrel, run `pnpm build && pnpm --filter @breatic/web verify:chunks`, and give the module its own subpath entry if the guard fails. Modules web never calls go in the barrel.
 
-**Decide with the guard, never by reading the code.** The main entry builds to one file, so every export web reaches from the barrel ships in the entry chunk that every reader downloads, even if only a lazy page calls it, and what an export drags along depends on everything it calls. `packages/web/verify-chunks.mjs` names known heavy dependencies in `HEAVY` and caps the total with `ENTRY_BUDGET`; the list lags, so a new heavy dependency shows up only as the total going over.
+**Decide with the guard, never by reading the code.** The main entry builds to one file, so every export web reaches from the barrel ships in the entry chunk that every user downloads, even if only a lazy page calls it, and what an export drags along depends on everything it calls. `packages/web/verify-chunks.mjs` names known heavy dependencies in `HEAVY` and caps the total with `ENTRY_BUDGET`; the list lags, so a new heavy dependency shows up only as the total going over.
 
 ## HTTP transport
 

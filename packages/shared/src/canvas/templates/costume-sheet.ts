@@ -31,7 +31,7 @@ export const COSTUME_SHEET: GenerationTemplate = {
       "a fitting or wardrobe test shot",
     ],
     offerWhen: [
-      "the reader is about to use one character in several pictures or videos and the canvas has no front, side and back views of them yet",
+      "the user is about to use one character in several pictures or videos and the canvas has no front, side and back views of them yet",
     ],
   },
 };

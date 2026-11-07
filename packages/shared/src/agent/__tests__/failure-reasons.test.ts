@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The reasons a reader is shown for a tool that did not finish (inner#1620),
+ * The reasons a user is shown for a tool that did not finish (inner#1620),
  * and the two endings that show none.
  */
 import { describe, it, expect } from "vitest";
@@ -46,7 +46,7 @@ const REASONS = [
   "ourFault",
 ];
 
-describe("the reasons a reader is shown", () => {
+describe("the reasons a user is shown", () => {
   it("are the sixteen causes, each its own key, beside the line for a stop", () => {
     const { stopped, ...reasons } = FAILURE_LINES;
     expect(Object.keys(reasons).sort()).toEqual([...REASONS].sort());
@@ -70,7 +70,7 @@ describe("the reasons a reader is shown", () => {
 });
 
 describe("a call that never ran", () => {
-  it("reads back with its reason for the model and no line for the reader", () => {
+  it("reads back with its reason for the model and no line for the user", () => {
     expect(toolFailureOf(errorCarrying({ kind: "never_ran", forModel: "Never ran." }))).toEqual({
       kind: "never_ran",
       forModel: "Never ran.",
@@ -80,7 +80,7 @@ describe("a call that never ran", () => {
     ).toBeUndefined();
   });
 
-  it("goes on the wire as a value that is not one of the reader's lines", () => {
+  it("goes on the wire as a value that is not one of the user's lines", () => {
     expect(wireLineOf({ kind: "never_ran", forModel: "x" })).toBe(NEVER_RAN);
     expect(isUserLine(NEVER_RAN)).toBe(false);
   });

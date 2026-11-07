@@ -16,7 +16,7 @@ export const FLASH_PHOTO_DUMP_GRID: GenerationTemplate = {
   ],
   steps: [],
   agentNote:
-    "a 3:4 image of six direct-flash compact-camera snapshots of the reader's person in a 3 by 2 grid, one expression each; the photo is used only to know who they are",
+    "a 3:4 image of six direct-flash compact-camera snapshots of the user's person in a 3 by 2 grid, one expression each; the photo is used only to know who they are",
   goal: "social-hooks",
   triggers: {
     asks: ["a photo dump", "flash snapshots", "a grid of candid photos"],

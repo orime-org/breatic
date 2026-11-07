@@ -3,7 +3,7 @@
 
 /**
  * What a node task was doing (inner#888 §7.7). The row's first line names it,
- * so the reader tells an upload from a generation from a tool run whatever
+ * so the user tells an upload from a generation from a tool run whatever
  * state the row is in. `kind` stays the behaviour (`upload` / `generation`)
  * the server settles by; this is what the row says.
  */

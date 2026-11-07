@@ -26,7 +26,7 @@ export const EXPRESSION_SHEET: GenerationTemplate = {
   triggers: {
     asks: ["an expression sheet", "my character's expressions", "facial expressions of my character"],
     offerWhen: [
-      "the reader is making dialogue or emotional close-ups of a character and the canvas has no expressions of them, or only small ones on a character sheet",
+      "the user is making dialogue or emotional close-ups of a character and the canvas has no expressions of them, or only small ones on a character sheet",
     ],
   },
 };

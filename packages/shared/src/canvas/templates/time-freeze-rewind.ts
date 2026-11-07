@@ -16,10 +16,10 @@ export const TIME_FREEZE_REWIND: GenerationTemplate = {
   ],
   steps: [],
   agentNote:
-    "a 20-second vertical spectacle in five beats: normal, a collision, everything freezes mid-air, the camera circles, everything rewinds; only the reader's person moves through it unaffected",
+    "a 20-second vertical spectacle in five beats: normal, a collision, everything freezes mid-air, the camera circles, everything rewinds; only the user's person moves through it unaffected",
   goal: "social-hooks",
   triggers: {
     asks: ["time stops", "freeze time", "rewind everything"],
-    offerWhen: ["the reader wants a spectacle that people watch to the end"],
+    offerWhen: ["the user wants a spectacle that people watch to the end"],
   },
 };
