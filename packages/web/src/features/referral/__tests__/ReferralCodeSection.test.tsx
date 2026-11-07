@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -134,6 +134,33 @@ describe('the referral code section (inner#1868 tables 12.9, 12.10)', () => {
     await user.type(await screen.findByLabelText('Referral code'), 'ALICE');
     await user.click(screen.getByRole('button', { name: 'Add' }));
     await waitFor(() => expect(screen.getByLabelText('Referral code')).toHaveAttribute('readonly'));
+  });
+
+  it('shows the code being sent after the panel is closed and opened again, and tells a refusal that arrives meanwhile', async () => {
+    api.get.mockResolvedValue(CAN_BIND);
+    let refuse: (err: unknown) => void = () => undefined;
+    api.bind.mockReturnValue(new Promise((_, reject) => { refuse = reject; }));
+    const user = userEvent.setup();
+    const first = render(
+      <QueryClientProvider client={(client = new QueryClient({ defaultOptions: { queries: { retry: false } } }))}>
+        <ReferralCodeSection />
+      </QueryClientProvider>,
+    );
+    await user.type(await screen.findByLabelText('Referral code'), 'XYZ');
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(api.bind).toHaveBeenCalled());
+    first.unmount();
+
+    render(
+      <QueryClientProvider client={client}>
+        <ReferralCodeSection />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByLabelText('Referral code')).toHaveValue('XYZ');
+    expect(screen.getByLabelText('Referral code')).toHaveAttribute('readonly');
+
+    await act(async () => { refuse(refusal(422, 'invalid_code')); });
+    await waitFor(() => expect(toasts.error).toHaveBeenCalledWith('refused invalid_code'));
   });
 
   it('asks for a code instead of sending an empty one', async () => {

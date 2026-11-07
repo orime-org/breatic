@@ -19,6 +19,7 @@ import { FieldError } from '@web/components/FieldError';
 import { useTranslation } from '@web/i18n/use-translation';
 import { PROMOTER_TERMS_URL } from '@web/lib/official-home';
 import { toast } from '@web/lib/toast';
+import { useMountedRef } from '@web/lib/use-mounted-ref';
 import { countryOptions } from '@web/features/referral/countries';
 import { referralQueryKey } from '@web/features/referral/referral-query';
 import { runOnce, useRunning } from '@web/stores/task-actions-in-flight';
@@ -63,7 +64,16 @@ export function PromoterApplyDialog({
   // The version a terms_changed answer named; agreeing again agrees to it.
   const [answeredTerms, setAnsweredTerms] = React.useState<string | null>(null);
   const agreedTerms = answeredTerms ?? termsVersion;
-  const pressing = useRunning(APPLY_INTENT) !== undefined;
+  // A waiting press outlives this dialog when the panel closes: the form it
+  // sends is what the dialog shows, and its answer goes to a toast once the dialog is gone.
+  const running = useRunning(APPLY_INTENT);
+  const pressing = running !== undefined;
+  const sent = typeof running === 'object' && running !== null ? (running as PromoterApplicationForm) : null;
+  const shownCountry = sent?.country ?? country;
+  const shownChannels = sent?.channels ?? channels;
+  const shownPlan = sent?.plan ?? plan;
+  const shownAgreed = sent !== null || agreed;
+  const mounted = useMountedRef();
   const countries = React.useMemo(() => countryOptions(getLocale()), []);
 
   const submit = React.useCallback((): void => {
@@ -75,9 +85,11 @@ export function PromoterApplyDialog({
     if (!agreed) next.agree = t('membership.promoter.agreeRequired');
     setErrors(next);
     if (Object.keys(next).length > 0) return;
+    const form: PromoterApplicationForm = { country, channels: filled, plan: plan.trim(), termsVersion: agreedTerms };
     void runOnce(APPLY_INTENT, {
       scope: 'referral',
-      prepare: (): PromoterApplicationForm => ({ country, channels: filled, plan: plan.trim(), termsVersion: agreedTerms }),
+      meta: form,
+      prepare: () => form,
       send: (key, body: PromoterApplicationForm) => referralApi.apply(body, key),
       onDone: (answer: AccountReferral): undefined => {
         client.setQueryData(referralQueryKey(userId), answer);
@@ -87,11 +99,15 @@ export function PromoterApplyDialog({
       },
       onFailure: (err) => {
         if (err instanceof ApiException && err.reason === 'terms_changed') {
+          void client.invalidateQueries({ queryKey: referralQueryKey(userId) });
+          if (!mounted.current) {
+            toast.warning(t('membership.promoter.termsChanged'));
+            return;
+          }
           const named = err.details?.termsVersion;
           if (typeof named === 'string') setAnsweredTerms(named);
           setAgreed(false);
           setTermsNotice(true);
-          void client.invalidateQueries({ queryKey: referralQueryKey(userId) });
           return;
         }
         toast.error(err instanceof ApiException ? err.message : t('membership.referral.loadFailed'));
@@ -101,7 +117,7 @@ export function PromoterApplyDialog({
         }
       },
     });
-  }, [channels, country, plan, agreed, agreedTerms, t, client, userId, onOpenChange]);
+  }, [channels, country, plan, agreed, agreedTerms, t, client, userId, onOpenChange, mounted]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -116,7 +132,7 @@ export function PromoterApplyDialog({
             <DialogBody className='gap-4'>
               <div className='flex flex-col gap-1.5'>
                 <Label htmlFor='promoter-country'>{t('membership.promoter.country')}</Label>
-                <Select disabled={pressing} value={country} onValueChange={(v) => { setCountry(v); setErrors((e) => ({ ...e, country: undefined })); }}>
+                <Select disabled={pressing} value={shownCountry} onValueChange={(v) => { setCountry(v); setErrors((e) => ({ ...e, country: undefined })); }}>
                   <SelectTrigger id='promoter-country' aria-label={t('membership.promoter.country')} aria-invalid={!!errors.country || undefined}>
                     <SelectValue placeholder={t('membership.promoter.countryPlaceholder')} />
                   </SelectTrigger>
@@ -132,7 +148,7 @@ export function PromoterApplyDialog({
                   <Label>{t('membership.promoter.channels')}</Label>
                   <span className='text-xs text-muted-foreground'>{t('membership.promoter.channelsHint')}</span>
                 </div>
-                {channels.map((channel, i) => (
+                {shownChannels.map((channel, i) => (
                   <div key={i} className='flex gap-2'>
                     <Input
                       autoComplete='off'
@@ -146,7 +162,7 @@ export function PromoterApplyDialog({
                         setErrors((er) => ({ ...er, channels: undefined }));
                       }}
                     />
-                    {channels.length > 1 ? (
+                    {shownChannels.length > 1 ? (
                       <Button type='button' variant='ghost' size='icon' aria-label={t('membership.promoter.removeChannel')}
                         onClick={() => setChannels((list) => list.filter((_, j) => j !== i))}>
                         <Trash2 className='h-3.5 w-3.5' />
@@ -154,7 +170,7 @@ export function PromoterApplyDialog({
                     ) : null}
                   </div>
                 ))}
-                {channels.length < MAX_CHANNELS ? (
+                {shownChannels.length < MAX_CHANNELS ? (
                   <Button type='button' variant='link' size='compact' className='w-fit gap-1 px-0 text-xs text-muted-foreground'
                     icon={<Plus className='h-3 w-3' />} onClick={() => setChannels((list) => [...list, ''])}>
                     {t('membership.promoter.addChannel')}
@@ -169,7 +185,7 @@ export function PromoterApplyDialog({
                   id='promoter-plan'
                   rows={4}
                   maxLength={2000}
-                  value={plan}
+                  value={shownPlan}
                   placeholder={t('membership.promoter.planPlaceholder')}
                   aria-invalid={!!errors.plan || undefined}
                   onChange={(e) => { setPlan(e.target.value); setErrors((er) => ({ ...er, plan: undefined })); }}
@@ -181,7 +197,7 @@ export function PromoterApplyDialog({
               <div className='flex flex-col gap-1'>
                 <label className='flex items-start gap-2 text-sm'>
                   <Checkbox
-                    checked={agreed}
+                    checked={shownAgreed}
                     aria-invalid={!!errors.agree || undefined}
                     onCheckedChange={(v) => { setAgreed(v === true); setTermsNotice(false); setErrors((er) => ({ ...er, agree: undefined })); }}
                   />

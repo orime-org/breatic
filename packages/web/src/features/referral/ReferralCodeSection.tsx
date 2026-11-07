@@ -12,6 +12,7 @@ import { Skeleton } from '@web/components/ui/skeleton';
 import { FieldError } from '@web/components/FieldError';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
+import { useMountedRef } from '@web/lib/use-mounted-ref';
 import { carriedReferralCode, forgetCarriedReferralCode, forgetRefusedReferralCode } from '@web/lib/referral-carry';
 import { membershipQueryKey } from '@web/features/membership/membership-query';
 import { SectionHeading } from '@web/features/membership/SectionHeading';
@@ -98,7 +99,12 @@ function BindForm({ view }: { view: AccountReferral }): React.JSX.Element {
   const userId = useCurrentUserStore((s) => s.user?.id ?? null);
   const [value, setValue] = React.useState(() => carriedReferralCode() ?? '');
   const [error, setError] = React.useState<string | null>(null);
-  const pressing = useRunning(BIND_INTENT) !== undefined;
+  // A waiting press outlives this form when the panel closes: the code it sends
+  // is what the form shows, and its answer goes to a toast once the form is gone.
+  const running = useRunning(BIND_INTENT);
+  const pressing = running !== undefined;
+  const shown = typeof running === 'string' ? running : value;
+  const mounted = useMountedRef();
   const percent = view.firstPeriodDiscountPercent;
   const figure = React.useMemo(() => ({ percent, zhe: zheOf(percent) }), [percent]);
 
@@ -110,6 +116,7 @@ function BindForm({ view }: { view: AccountReferral }): React.JSX.Element {
     }
     void runOnce(BIND_INTENT, {
       scope: 'referral',
+      meta: code,
       prepare: () => code,
       send: (key, body: string) => referralApi.bind(body, key),
       onDone: (answer: AccountReferral): undefined => {
@@ -122,8 +129,9 @@ function BindForm({ view }: { view: AccountReferral }): React.JSX.Element {
       },
       onFailure: (err) => {
         if (err instanceof ApiException && err.status === 422 && err.reason === 'invalid_code') {
-          setError(err.message);
           forgetRefusedReferralCode(code);
+          if (mounted.current) setError(err.message);
+          else toast.error(err.message);
           return;
         }
         toast.error(err instanceof ApiException ? err.message : t('membership.referral.loadFailed'));
@@ -132,7 +140,7 @@ function BindForm({ view }: { view: AccountReferral }): React.JSX.Element {
         }
       },
     });
-  }, [value, t, client, userId, figure]);
+  }, [value, t, client, userId, figure, mounted]);
 
   return (
     <section className='flex flex-col gap-2'>
@@ -143,7 +151,7 @@ function BindForm({ view }: { view: AccountReferral }): React.JSX.Element {
           <Input
             aria-label={t('membership.referral.heading')}
             autoComplete='off'
-            value={value}
+            value={shown}
             placeholder={t('membership.referral.placeholder')}
             maxLength={REFERRAL_CODE_INPUT_MAX}
             readOnly={pressing}

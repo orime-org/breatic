@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -215,6 +215,31 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
     // Radix Select opens on pointerdown, which a disabled fieldset does not stop.
     await user.click(screen.getByLabelText('Country or region'));
     expect(screen.queryByRole('listbox')).toBeNull();
+  });
+
+  it('shows the application being sent after the panel is closed and opened again, and tells a refusal that arrives meanwhile', async () => {
+    let refuse: (err: unknown) => void = () => undefined;
+    api.apply.mockReturnValue(new Promise((_, reject) => { refuse = reject; }));
+    const user = userEvent.setup();
+    api.get.mockResolvedValue(OPEN);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const first = render(<QueryClientProvider client={client}><PromoterSection /></QueryClientProvider>);
+    await user.click(await screen.findByRole('button', { name: 'Apply to become a promoter' }));
+    await fillForm(user);
+    await user.click(screen.getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: 'Submit application' }));
+    await waitFor(() => expect(api.apply).toHaveBeenCalled());
+    first.unmount();
+
+    render(<QueryClientProvider client={client}><PromoterSection /></QueryClientProvider>);
+    await user.click(await screen.findByRole('button', { name: 'Apply to become a promoter' }));
+    expect(screen.getByRole('combobox', { name: 'Country or region' })).toHaveTextContent('Singapore');
+    expect(screen.getByLabelText('How you will promote')).toHaveValue('Tutorials for designers');
+    expect(screen.getByDisplayValue('https://youtube.com/@me')).toBeDisabled();
+    expect(screen.getByRole('checkbox')).toBeChecked();
+
+    await act(async () => { refuse(refusal409('terms_changed', { termsVersion: '2026-12-01' })); });
+    await waitFor(() => expect(toasts.warning).toHaveBeenCalledWith('The promoter terms have been updated. Read them again, then agree.'));
   });
 
   it('asks for agreement to the terms before sending', async () => {
