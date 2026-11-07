@@ -1,20 +1,22 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
+import { randomInt } from "node:crypto";
 import { z } from "zod";
 import { AppError, ConflictError, ForbiddenError, NotFoundError, ValidationError, budgetDeadlineFrom, db, env, getMiniToolsConfig, getNodeTaskConfig, projectAuthService, type MiniToolsConfig, type DbTx } from "@breatic/core";
 import {
-  TaskStatus, ceilToCreditCent, readVideoPresentationCompact, readVideoPresentationLedger, t, videoPresentationKeyframeFlags,
+  TaskStatus, ceilToCreditCent, extractPromptText, readVideoPresentationCompact, readVideoPresentationLedger, t, videoPresentationKeyframeFlags,
   type MiniToolPlanTarget, type TaskEntity, type TaskStatusType, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from "@breatic/shared";
 import {
-  batchVideoRunOutputs, canonicalMiniToolValue, miniToolPlannedRequestSchema, presentationCoveringFrame, lipsyncFailureReasonSchema, lipsyncFailureRetryable, estimateAudioEncodeSeconds, estimateVideoJobSeconds, lipsyncMonotonicSegments, planLipsyncCompositeChunks, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
+  anchorInTrackingRange, batchVideoRunOutputs, canonicalMiniToolValue, fingerprintMiniToolAnalysisInput, gridSecondsAllowed, miniToolById, modelGrid, planModelWindows, projectMiniToolAnalysisInput, videoExpandLayout, type ModelGrid, type ModelWindow, type VideoExpandLayout, miniToolPlannedRequestSchema, presentationCoveringFrame, presentationFrameAt, trackingClips, lipsyncFailureReasonSchema, lipsyncFailureRetryable, estimateAudioEncodeSeconds, estimateVideoJobSeconds, lipsyncMonotonicSegments, planLipsyncCompositeChunks, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
   plannedStageJobs, planVideoFrames, planVideoSplit, type FrameWindow, type FramesExecutionLayout, type MiniToolExecutionRequest, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type MiniToolPresentationRef, type MiniToolSourceBinding, type MiniToolStageJobs,
   type LipsyncExecutionLayout, type LipsyncTimeline, type TransitionExecutionLayout, type TransitionOutputProfile, planTransitionChunks, planVideoTimeline, transitionOutputProfile, type VideoEncodeChunk, type VideoEncoderRates, type VideoExecutionDialogue, type VideoJobWork, type VideoPresentationTable,
 } from "@breatic/shared/mini-tools";
 import { prepareVideoRemoveBackground, type PreparedVideoRemoveBackground } from "@domain/mini-tool/remove-background-preparation.service.js";
 import { resolveSource } from "@domain/mini-tool/analysis.service.js";
-import { lipSyncDialogues, lipSyncModel, lipSyncPeople, lipsyncPersonStepKeys, lipsyncSharedStepKeys, lipSyncTimeline, type LipSyncGenerator, type LipSyncPerson } from "@domain/mini-tool/lipsync-admission.js";
+import { lipSyncDialogues, lipSyncModel, lipSyncPeople, lipsyncPersonStepKeys, lipsyncSharedStepKeys, lipsyncStepKey, lipSyncTimeline, type LipSyncGenerator, type LipSyncPerson } from "@domain/mini-tool/lipsync-admission.js";
+import { eraseTracking, expandBox, type EraseTracking, type ExpandBox } from "@domain/mini-tool/erase-expand-admission.js";
 import { selectedToolInput } from "@domain/mini-tool/selected-tool-input.js";
 import { executionPlanFromTask } from "@domain/mini-tool/execution-plan.service.js";
 import { recordFromPlan } from "@domain/mini-tool/execution.service.js";
@@ -66,6 +68,20 @@ export type AcceptedMiniToolExecution = ExecutionPlan & (TransitionsExecution | 
     /** The shared steps' frozen keys: `composite:<k>` per chunk and `stitch` (DD §7.1). */
     sharedStepKeys: Record<string, string>;
     container: MiniToolContainerPolicy & { startSeconds: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; chunkRetries: number } }
+  | { tool: "video.erase";
+    /** The tracking analysis the run reads and its RLE (execution design §10.4 request row). */
+    tracking: EraseTracking;
+    /** The range's presentation frames and the model grid over them (§10.4 model grid row). */
+    range: FrameWindow; grid: ModelGrid;
+    asyncRejection: { path: string; equals: unknown }; matte: { dilate: number; feather: number }; modelCredits: number;
+    /** The composite chunks over the whole presentation and the frozen step keys (§10.4 steps row, §10.7). */
+    composite: FrameWindow[]; stageJobs: MiniToolStageJobs[]; stepKeys: Record<string, string>;
+    container: MiniToolContainerPolicy & { startSeconds: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; chunkRetries: number } }
+  | ({ tool: "video.expand";
+    /** The even target layout (§10.5 geometry row), the resolved prompt, the frozen seed and the windows on the presentation. */
+    layout: VideoExpandLayout; prompt: string; seed: number; windows: ModelWindow[]; modelFps: number; modelCredits: number;
+    composite: FrameWindow[]; stageJobs: MiniToolStageJobs[]; stepKeys: Record<string, string>;
+    container: MiniToolContainerPolicy & { startSeconds: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; chunkRetries: number } } & ExpandBox)
 )));
 /**
  * A transitions run (frames-split §5.4, §7.17; §97 D23-3): both clips' frozen inputs by draft input id, the chunk layout on
@@ -92,7 +108,7 @@ export interface MiniToolExecutionAdmission { taskId: string; status: TaskStatus
 /** The immutable task namespace, separate from analysis and worker-only steps. */
 export interface MiniToolExecutionTaskParams extends Record<string, unknown> { miniToolExecution: AcceptedMiniToolExecution }
 const replayIdentitySchema = z.object({
-  schemaVersion: z.literal(1), tool: z.enum(["video.remove-bg", "video.extract-frames", "video.split", "video.lip-sync"]),
+  schemaVersion: z.literal(1), tool: z.enum(["video.remove-bg", "video.extract-frames", "video.split", "video.lip-sync", "video.transitions", "video.erase", "video.expand"]),
   taskId: z.uuid(), projectId: z.uuid(), spaceId: z.uuid(), requestFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
 });
 const statusSchema = z.enum(TaskStatus);
@@ -440,8 +456,26 @@ async function prepareLipSync(request: Extract<MiniToolPlannedRequest, { tool: "
   const dialogues = await lipSyncDialogues(request);
   const { timeline, usedRange } = lipSyncTimeline(request, table, dialogues, settings, model);
   const generation = await estimateTaskCredits(model.name, { params: {}, durations: { video: [timeline.duration], audio: [timeline.duration] }, sources: ["video", "audio"] });
-  const tracking = await estimateTaskCredits(settings.tracking.model, { params: {}, durations: { video: [usedRange.end - usedRange.start] }, sources: ["video"] });
-  const { layout, seconds } = lipSyncLayout(ledger, table, { timeline, usedRange, persons: persons.length, cropSize: model.crop_size }, config);
+  const { layout, seconds: layoutWork } = lipSyncLayout(ledger, table, { timeline, usedRange, persons: persons.length, cropSize: model.crop_size }, config);
+  // Execution design §10.2: the one anchor is tracked on [a, e) and, when a > 0, on [0, a] reversed; each clip is priced
+  // over its encoded length, and a clip other than the preparation itself is prepared, and each person's tracks joined.
+  const clips = trackingClips({ start: 0, end: layout.preparation.at(-1)!.end }, persons[0]!.anchor.frameIndex);
+  const clipList = [clips.forward, clips.reverse].filter((clip) => clip !== null);
+  /**
+   * A clip's encoded length in seconds.
+   * @param clip - The clip's presentation frames.
+   * @param clip.start - Its first frame.
+   * @param clip.end - The frame after its last.
+   * @returns The seconds.
+   * @throws {RangeError} When a frame lies outside the table.
+   */
+  const clipSeconds = (clip: { start: number; end: number }): number => presentationFrameAt(table, clip.end - 1).displayEnd - presentationFrameAt(table, clip.start).pts;
+  let tracking = 0;
+  for (const clip of clipList) tracking += await estimateTaskCredits(settings.tracking.model, { params: {}, durations: { video: [clipSeconds(clip)] }, sources: ["video"] });
+  const rates = encoderRates(config);
+  const prepared = clipList.filter((clip) => !(clip === clips.forward && clip.start === 0));
+  const seconds = layoutWork + prepared.reduce((total, clip) => total + estimateVideoJobSeconds(spanWork(ledger, clip.start, clip.end - clip.start), rates), 0)
+    + persons.length * rates.startSeconds;
   const stageJobs = plannedStageJobs(layout);
   assertWithinParallelCap(stageJobs, config);
   const container = { ...containerPolicy(settings.container_class, settings.precheck_seconds, config), startSeconds: config.encoding.encoder.start_seconds,
@@ -454,8 +488,184 @@ async function prepareLipSync(request: Extract<MiniToolPlannedRequest, { tool: "
   // Every step key is computed once here and frozen (DD §7.1 steps row): over the plan's fingerprint before the keys, which
   // the keys cannot be part of; a retry copies them, so a step done anywhere along its chain is found again.
   const keyed = await hashMiniToolValue(plan);
-  return { ...plan, persons: persons.map((person) => ({ ...person, stepKeys: lipsyncPersonStepKeys(keyed, person) })),
-    sharedStepKeys: lipsyncSharedStepKeys(keyed, layout.composite.length) };
+  return { ...plan, persons: persons.map((person) => ({ ...person, stepKeys: lipsyncPersonStepKeys(keyed, person, clips) })),
+    sharedStepKeys: lipsyncSharedStepKeys(keyed, layout.composite.length, clips) };
+}
+
+/**
+ * Seconds to decode and convert one pixel of a source at its depth and range tier.
+ * @param ledger - The validated full ledger.
+ * @param rates - The encoder rates.
+ * @returns The seconds per pixel.
+ * @throws {never} Never.
+ */
+function decodePixelSeconds(ledger: VideoPresentationLedger, rates: VideoEncoderRates): number {
+  return 1 / rates.decodeConvertPixelsPerSecond[`${isHdrTransfer(ledger.plan.source.transfer) ? "hdr" : "sdr"}_${ledger.plan.source.bitDepth > 8 ? 10 : 8}bit`];
+}
+
+/**
+ * The composite chunks of a model run over the whole presentation (frames-split §5.4): one job when it fits the chunk share,
+ * else keyframe-aligned chunks of it.
+ * @param ledger - The validated full ledger.
+ * @param frameSeconds - One output frame's composite work.
+ * @param config - The acceptance snapshot.
+ * @returns The chunks.
+ * @throws {RangeError} When the work is out of range.
+ */
+function compositeChunks(ledger: VideoPresentationLedger, frameSeconds: number, config: MiniToolsConfig): FrameWindow[] {
+  const rates = encoderRates(config);
+  const share = shareSeconds(config);
+  const flags = videoPresentationKeyframeFlags(ledger);
+  if (rates.startSeconds + flags.length * frameSeconds <= share) return [{ start: 0, end: flags.length }];
+  return planVideoEncodeChunks({ keyframes: flags, frameSeconds, targetSeconds: share - rates.startSeconds });
+}
+
+/**
+ * The selected tool input of a model run and its compact table and full ledger, refusing a transparent source (execution
+ * design §10.4 transparent source row: neither Bria nor VACE takes alpha).
+ * @param request - The fresh request.
+ * @param config - The acceptance snapshot.
+ * @returns The source and its presentation.
+ * @throws {AppError} When the source presents with transparency.
+ * @throws {ValidationError} When the tool input is not the selected, ready one.
+ * @throws {Error} When ingest or a read fails.
+ */
+async function modelRunSource(request: Extract<MiniToolPlannedRequest, { tool: "video.erase" | "video.expand" }>, config: MiniToolsConfig): Promise<{
+  binding: MiniToolSourceBinding; sourceKey: string; versionId: string; receipt: VideoPresentationLedgerReceipt; table: VideoPresentationTable; ledger: VideoPresentationLedger;
+}> {
+  const deadlineAt = budgetDeadlineFrom(Date.now());
+  const { binding, sourceKey } = await resolveSource(request.draft.source);
+  const { versionId, receipt } = await selectedToolInput(request.presentation_ref.source, binding, sourceKey, config);
+  const limits = { maxBytes: config.presentation.source_ledger.max_bytes };
+  const table = await readVideoPresentationCompact(receipt, limits, { deadlineAt });
+  const ledger = await readVideoPresentationLedger(receipt, limits, { deadlineAt });
+  if (ledger.plan.policy.emptyFill === "transparent") throw new AppError(400, t("server.mini_tool.transparentSource"));
+  return { binding, sourceKey, versionId, receipt, table, ledger };
+}
+
+/**
+ * The frozen standard-4 policy of a model run's container steps.
+ * @param settings - The tool's configured container class and precheck.
+ * @param settings.container_class - The class.
+ * @param settings.precheck_seconds - The precheck floor.
+ * @param config - The acceptance snapshot.
+ * @returns The policy with the encoder start, encode parameters and chunk retries.
+ * @throws {Error} When the class is not configured.
+ */
+function runContainer(settings: { container_class: string; precheck_seconds: number }, config: MiniToolsConfig): MiniToolContainerPolicy & { startSeconds: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; chunkRetries: number } {
+  return { ...containerPolicy(settings.container_class, settings.precheck_seconds, config), startSeconds: config.encoding.encoder.start_seconds,
+    encode: { crf: config.presentation.crf, preset: config.presentation.preset }, chunkRetries: config.encoding.chunk_retries };
+}
+
+/**
+ * Admit an erase run (execution design §10.4): the anchor inside the range, the one completed tracking analysis made for
+ * this selection, the model grid over the range within Bria's seconds; the quote is Bria over the grid's seconds plus the
+ * prepare, mask, composite and stitch container work.
+ * @param request - The fresh erase request.
+ * @param common - The plan facts every tool shares.
+ * @returns The plan projection.
+ * @throws {AppError} When a check refuses the run with its reason, or the deployment offers no erase.
+ * @throws {ValidationError} When the tool input is not the selected, ready one.
+ * @throws {Error} When ingest, a read or pricing fails.
+ */
+async function prepareErase(request: Extract<MiniToolPlannedRequest, { tool: "video.erase" }>, common: ExecutionCommon): Promise<ExecutionProjection> {
+  const config = structuredClone(getMiniToolsConfig());
+  const settings = config.executions["video.erase"];
+  if (settings === undefined) throw new AppError(400, t("server.mini_tool.unavailable"));
+  const { binding, sourceKey, versionId, receipt, table, ledger } = await modelRunSource(request, config);
+  const { params } = request.draft;
+  if (!anchorInTrackingRange(params.range, params.anchor)) throw new AppError(400, t("server.mini_tool.anchorOutsideRange"));
+  // The current selection projected exactly as the analysis admission projected it (analysis.service.ts), so a matching
+  // fingerprint means the tracking was made for this selection.
+  const current = await fingerprintMiniToolAnalysisInput(projectMiniToolAnalysisInput({ kind: "tracked_mask", source: { canonicalURL: binding.canonicalURL },
+    profile: config.analyses.tracked_mask.profile, params: { ...params, trackingPrompt: extractPromptText(params.trackingPrompt) } }));
+  const tracking = await eraseTracking(request, request.project_id, current);
+  const { first, count } = framesIn(table, params.range);
+  const grid = modelGrid(Array.from({ length: count }, (_unused, at) => {
+    const frame = presentationFrameAt(table, first + at);
+    return { start: frame.pts, end: frame.displayEnd };
+  }), settings.model.max_grid_fps);
+  const { min_seconds: min, max_seconds: max } = settings.model;
+  if (count === 0 || !gridSecondsAllowed(grid, { minSeconds: min, maxSeconds: max })) throw new AppError(400, t("server.mini_tool.eraseRange", { min, max }));
+  const modelCredits = await estimateTaskCredits(settings.model.name, { params: {}, durations: { video: [grid.frameCount / grid.rate] }, sources: ["video"] });
+  const rates = encoderRates(config);
+  const pixels = ledger.plan.display.width * ledger.plan.display.height;
+  const decode = pixels * decodePixelSeconds(ledger, rates);
+  const encode = pixels / rates.encodePixelsPerSecond;
+  // A composite frame decodes the source and, inside the range, the result, and encodes the output (§10.4 composite row).
+  const frameSeconds = 2 * decode + encode;
+  const composite = compositeChunks(ledger, frameSeconds, config);
+  const { duration } = ledger.plan.display;
+  const seconds = estimateVideoJobSeconds(spanWork(ledger, first, count), rates) + rates.startSeconds + grid.frameCount * encode
+    + videoPresentationKeyframeFlags(ledger).length * frameSeconds + rates.startSeconds * composite.length
+    + estimateAudioEncodeSeconds(Number(duration.numerator) / Number(duration.denominator), { startSeconds: rates.startSeconds, aacEncodeSecondsPerSecond: config.encoding.encoder.aac_encode_seconds_per_second });
+  const stageJobs = plannedStageJobs({ preparation: [{ start: first, end: first + count }], composite });
+  assertWithinParallelCap(stageJobs, config);
+  const container = runContainer(settings, config);
+  const plan = { ...common, tool: request.tool, binding, sourceKey, presentationRef: request.presentation_ref, ledgerReceipts: { source: receipt },
+    versionIds: { source: versionId }, model: settings.model.name, tracking, range: { start: first, end: first + count }, grid,
+    asyncRejection: settings.model.async_rejection, matte: settings.matte, modelCredits, composite, stageJobs, container,
+    credits: modelCredits + containerCredits(container, seconds) };
+  // Step keys are frozen over the plan's fingerprint before them, as lip-sync's are (§10.7), so a retry finds every done step.
+  const keyed = await hashMiniToolValue(plan);
+  const steps = ["prepare", "mask", "generate", ...composite.map((_chunk, k) => `composite:${k}`), "stitch"];
+  return { ...plan, stepKeys: Object.fromEntries(steps.map((step) => [step, lipsyncStepKey(keyed, null, step)])) };
+}
+
+/**
+ * Admit an expand run (execution design §10.5): the source within the duration limit, the even target within the long-side
+ * limit, the standard frame and its two rectangles, the resolved prompt, a random seed and the windows over the whole
+ * presentation; the quote is each window's VACE price plus every window's three container jobs, the composite and stitch.
+ * @param request - The fresh expand request.
+ * @param common - The plan facts every tool shares.
+ * @returns The plan projection.
+ * @throws {AppError} When a check refuses the run with its reason, or the deployment offers no expand.
+ * @throws {ValidationError} When the tool input is not the selected, ready one.
+ * @throws {Error} When ingest, a read or pricing fails.
+ */
+async function prepareExpand(request: Extract<MiniToolPlannedRequest, { tool: "video.expand" }>, common: ExecutionCommon): Promise<ExecutionProjection> {
+  const config = structuredClone(getMiniToolsConfig());
+  const settings = config.executions["video.expand"];
+  if (settings === undefined) throw new AppError(400, t("server.mini_tool.unavailable"));
+  const { binding, sourceKey, versionId, receipt, table, ledger } = await modelRunSource(request, config);
+  const { display } = ledger.plan;
+  const videoSeconds = Number(display.duration.numerator) / Number(display.duration.denominator);
+  if (videoSeconds > settings.max_duration_seconds) throw new AppError(400, t("server.mini_tool.expandTooLong", { max: settings.max_duration_seconds }));
+  const layout = videoExpandLayout(request.draft.params.frame, display, settings.max_target_side);
+  if (layout.overSide) throw new AppError(400, t("server.mini_tool.expandTooLarge", { max: settings.max_target_side }));
+  const box = expandBox(layout, display);
+  const prompt = extractPromptText(request.draft.params.prompt).trim() || (miniToolById("video.expand")?.prompt?.defaultText ?? "");
+  const count = framesIn(table, { start: 0, end: Number.POSITIVE_INFINITY }).count;
+  const windows = planModelWindows(Array.from({ length: count }, (_unused, at) => {
+    const frame = presentationFrameAt(table, at);
+    return { start: frame.pts, end: frame.displayEnd };
+  }), settings.model.max_window_seconds, settings.model.overlap_seconds);
+  let modelCredits = 0;
+  for (const window of windows) modelCredits += await estimateTaskCredits(settings.model.name, { params: { duration: window.duration }, durations: { video: [window.duration] }, sources: ["video"] });
+  const rates = encoderRates(config);
+  const decode = decodePixelSeconds(ledger, rates);
+  const standard = box.frame.width * box.frame.height;
+  // Each window renders its grid in the standard frame and its mask, and a later window takes one condition frame (§10.5).
+  const windowSeconds = windows.reduce((total, window, k) => {
+    const frames = settings.model.model_fps * window.duration;
+    return total + 2 * rates.startSeconds + frames * (display.width * display.height * decode + 2 * standard / rates.encodePixelsPerSecond)
+      + (k > 0 ? rates.startSeconds + standard * decode : 0);
+  }, 0);
+  // A composite frame decodes the source and up to two overlapping backgrounds, and encodes the target.
+  const frameSeconds = (display.width * display.height + 2 * standard) * decode + layout.width * layout.height / rates.encodePixelsPerSecond;
+  const composite = compositeChunks(ledger, frameSeconds, config);
+  const seconds = windowSeconds + count * frameSeconds + rates.startSeconds * composite.length
+    + estimateAudioEncodeSeconds(videoSeconds, { startSeconds: rates.startSeconds, aacEncodeSecondsPerSecond: config.encoding.encoder.aac_encode_seconds_per_second });
+  const stageJobs = plannedStageJobs({ preparation: [], composite });
+  assertWithinParallelCap(stageJobs, config);
+  const container = runContainer(settings, config);
+  const plan = { ...common, tool: request.tool, binding, sourceKey, presentationRef: request.presentation_ref, ledgerReceipts: { source: receipt },
+    versionIds: { source: versionId }, model: settings.model.name, layout, ...box, prompt, seed: randomInt(0, 2 ** 31 - 1), windows,
+    modelFps: settings.model.model_fps, modelCredits, composite, stageJobs, container, credits: modelCredits + containerCredits(container, seconds) };
+  const keyed = await hashMiniToolValue(plan);
+  const steps = [...windows.flatMap((_window, k) => [`window:${k}`, `window_mask:${k}`, ...(k > 0 ? [`condition:${k}`] : []), `generate:${k}`]),
+    ...composite.map((_chunk, k) => `composite:${k}`), "stitch"];
+  return { ...plan, stepKeys: Object.fromEntries(steps.map((step) => [step, lipsyncStepKey(keyed, null, step)])) };
 }
 
 /**
@@ -471,6 +681,8 @@ async function prepare(request: MiniToolPlannedRequest): Promise<ExecutionProjec
   if (request.tool === "video.remove-bg") return prepareRemoval(request, common);
   if (request.tool === "video.lip-sync") return prepareLipSync(request, common);
   if (request.tool === "video.transitions") return prepareTransitions(request, common);
+  if (request.tool === "video.erase") return prepareErase(request, common);
+  if (request.tool === "video.expand") return prepareExpand(request, common);
   const deadlineAt = budgetDeadlineFrom(Date.now());
   const config = structuredClone(getMiniToolsConfig());
   const maxOutputs = config.executions[request.tool].max_outputs;
@@ -764,7 +976,7 @@ async function claimRetry(request: MiniToolExecutionRetryRequest, userId: string
       }
       return claim;
     }
-    if (frozen.tool === "video.lip-sync") {
+    if (frozen.tool === "video.lip-sync" || frozen.tool === "video.erase" || frozen.tool === "video.expand") {
       // The same frozen plan and quote with the original's frozen step keys, so the retry reuses every done step and its
       // object (§97 D21-6, DD §7.1, frames-split §7.11 retry row).
       const claim = await claimPrepared({ ...frozen, ...retried }, request, userId, fingerprint, tx);

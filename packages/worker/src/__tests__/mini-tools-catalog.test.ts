@@ -65,6 +65,11 @@ const modelTools = MINI_TOOLS.filter((tool) => tool.run.kind === "model");
 const plannedClaims = {
   "video.remove-bg": ["video", "background_color", "output_container_and_codec", "preserve_audio"],
 } as const;
+// Erase and expand fill every request field of their model in the worker's step runner (execution design §10.4, §10.5).
+const modelRunClaims = {
+  "video.erase": ["video", "mask_video", "copy_audio"],
+  "video.expand": ["video", "mask_video", "image", "task", "duration", "size", "num_inference_steps", "guidance_scale", "flow_shift", "context_scale", "seed"],
+} as const;
 const plannedContainerClasses = {
   "video.extract-frames": "MiniToolContainerStd4",
   "video.split": "MiniToolContainerStd4",
@@ -74,12 +79,22 @@ const plannedContainerClasses = {
 } as const;
 
 /**
+ * The model each erase or expand execution configures under `model.name`.
+ * @returns Configured operation-to-model names.
+ * @throws {Error} When the execution configuration cannot be loaded.
+ */
+function modelRunExecutions(): Record<string, string> {
+  return Object.fromEntries(Object.entries(getMiniToolsConfig().executions).flatMap(([operation, execution]) =>
+    "model" in execution && typeof execution.model === "object" ? [[operation, execution.model.name]] : []));
+}
+
+/**
  * Enumerate only model-backed planned executions; the container branch has its own closed-set assertion.
  * @returns Configured operation-to-model names without treating containers as models.
  * @throws {Error} When the execution configuration cannot be loaded.
  */
 function plannedModelExecutions(): Record<string, string> {
-  return Object.fromEntries(Object.entries(getMiniToolsConfig().executions).flatMap(([operation, execution]) => "model" in execution ? [[operation, execution.model]] : []));
+  return Object.fromEntries(Object.entries(getMiniToolsConfig().executions).flatMap(([operation, execution]) => "model" in execution && typeof execution.model === "string" ? [[operation, execution.model]] : []));
 }
 
 describe("model tools against the catalog", () => {
@@ -184,7 +199,7 @@ describe("model tools against the catalog", () => {
   it("reads only declared params in every pinned model's pricing formula", () => {
     const models = catalog();
     const undeclared: string[] = [];
-    const names = new Set([...modelTools.map((tool) => modelOf(tool)!), ...Object.values(plannedModelExecutions())]);
+    const names = new Set([...modelTools.map((tool) => modelOf(tool)!), ...Object.values(plannedModelExecutions()), ...Object.values(modelRunExecutions())]);
     for (const name of names) {
       const model = models.get(name)!;
       for (const provider of model.providers ?? []) {
@@ -211,6 +226,9 @@ describe("model tools against the catalog", () => {
       const name = executions[operation];
       for (const key of keys) claimed.add(`${name}.${key}`);
     }
+    const runs = modelRunExecutions();
+    expect(Object.keys(runs).sort()).toEqual(Object.keys(modelRunClaims).sort());
+    for (const [operation, keys] of Object.entries(modelRunClaims)) for (const key of keys) claimed.add(`${runs[operation]}.${key}`);
     const unclaimed: string[] = [];
     for (const model of catalog().values()) {
       for (const [key, spec] of Object.entries(model.params ?? {})) {

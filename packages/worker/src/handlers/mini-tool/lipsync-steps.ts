@@ -107,6 +107,17 @@ export function lipsyncFacesFailureLine(reason: string): { step: LipsyncPersonSt
 }
 
 /**
+ * The person line of a failed `track_join` job (execution design §10.2): no foreground over the range means the track found
+ * nobody; any other failure of the join is `failed`.
+ * @param reason - The container's failure reason.
+ * @returns The step and category to record.
+ * @throws {never} Never.
+ */
+export function lipsyncTrackJoinFailureLine(reason: string): { step: LipsyncPersonStep; category: LipsyncCategory } {
+  return { step: "track", category: reason === "empty_foreground" ? "no_face" : "failed" };
+}
+
+/**
  * The one CommitFail reason of §9.4: a line per person who did not succeed, and the shared step's line.
  * @param people - Every person's progress and whether it succeeded.
  * @param shared - The failed shared step, or null.

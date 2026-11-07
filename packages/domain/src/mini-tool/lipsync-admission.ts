@@ -11,7 +11,7 @@ import { z } from "zod";
 import { AppError, ValidationError, getStorageAdapter, type MiniToolsConfig } from "@breatic/core";
 import { t } from "@breatic/shared";
 import {
-  lipsyncTimeline, lipsyncUsedSourceRange, miniToolAnalysisRecordSchema, presentationFrameAt, presentationVideoEnd,
+  lipsyncTimeline, lipsyncUsedSourceRange, type TrackingClips, miniToolAnalysisRecordSchema, presentationFrameAt, presentationVideoEnd,
   type LipsyncTimeline, type MiniToolPlannedRequest, type VideoExecutionDialogue, type VideoPresentationTable,
 } from "@breatic/shared/mini-tools";
 import { miniToolFrozenAnalysisSchema } from "@domain/mini-tool/analysis.service.js";
@@ -22,8 +22,13 @@ import * as taskRepo from "@domain/task/task.repo.js";
 export type LipSyncRequest = Extract<MiniToolPlannedRequest, { tool: "video.lip-sync" }>;
 /** The configured lip-sync execution. */
 export type LipSyncSettings = NonNullable<MiniToolsConfig["executions"]["video.lip-sync"]>;
-/** A per-person lip-sync step (DD §7.1 steps row). */
-export type LipSyncPersonStep = "track" | "faces" | "clip" | "stem" | "gen";
+/**
+ * A per-person lip-sync step (DD §7.1 steps row): tracking runs on the forward clip, the reversed clip or both, and joins
+ * them (execution design §10.2).
+ */
+export type LipSyncPersonStep = "track:fwd" | "track:rev" | "track_join" | "faces" | "clip" | "stem" | "gen";
+/** A shared lip-sync step: a tracking clip's preparation, a composite chunk or the stitch. */
+export type LipSyncSharedStep = "prepare:fwd" | "prepare:rev" | `composite:${number}` | "stitch";
 /** A referenced person as the plan freezes it (DD §7.1 persons row). */
 export interface LipSyncPerson {
   personId: string;
@@ -31,43 +36,52 @@ export interface LipSyncPerson {
   anchor: { frameIndex: number; pts: number };
   anchorFaceBox: { x: number; y: number; width: number; height: number };
   /** The step keys a retry carries from its original run, so the retry reuses the done steps (§97 D21-6). */
-  stepKeys?: Record<LipSyncPersonStep, string>;
+  stepKeys?: Partial<Record<LipSyncPersonStep, string>>;
 }
 
 /**
- * The DD §7.1 step key: a digest of the plan, the person (none for the composite) and the step kind.
+ * The DD §7.1 step key: a digest of the plan, the person (none for a shared step) and the step kind; erase and expand key
+ * their steps the same way, with no person (execution design §10.7).
  * @param planFingerprint - The frozen plan's fingerprint.
  * @param personId - The person, or null for a shared step.
  * @param kind - The step kind.
  * @returns A 64-hex key.
  * @throws {never} Never.
  */
-export function lipsyncStepKey(planFingerprint: string, personId: string | null, kind: LipSyncPersonStep | `composite:${number}` | "stitch"): string {
+export function lipsyncStepKey(planFingerprint: string, personId: string | null, kind: string): string {
   return createHash("sha256").update(JSON.stringify({ planFingerprint, personId, kind })).digest("hex");
 }
 
 /**
- * The shared steps' keys a fresh plan freezes (DD §7.1 steps row): `composite:<k>` per composite chunk and `stitch`.
+ * The shared steps' keys a fresh plan freezes (DD §7.1 steps row): the tracking clips' preparations the anchor needs (the
+ * forward clip of an anchor on the first frame is the run's preparation itself, execution design §10.2), `composite:<k>` per
+ * composite chunk and `stitch`.
  * @param planFingerprint - The fingerprint of the plan the keys are frozen into, before its keys.
  * @param compositeChunks - The frozen composite chunk count.
+ * @param clips - The tracking clips over the prepared frames.
  * @returns The keys by step.
  * @throws {never} Never.
  */
-export function lipsyncSharedStepKeys(planFingerprint: string, compositeChunks: number): Record<string, string> {
-  const steps = [...Array.from({ length: compositeChunks }, (_, k) => `composite:${k}` as const), "stitch" as const];
+export function lipsyncSharedStepKeys(planFingerprint: string, compositeChunks: number, clips: TrackingClips): Record<string, string> {
+  const preparations: LipSyncSharedStep[] = [...(clips.forward !== null && clips.reverse !== null ? ["prepare:fwd" as const] : []), ...(clips.reverse !== null ? ["prepare:rev" as const] : [])];
+  const steps = [...preparations, ...Array.from({ length: compositeChunks }, (_, k) => `composite:${k}` as const), "stitch" as const];
   return Object.fromEntries(steps.map((step) => [step, lipsyncStepKey(planFingerprint, null, step)]));
 }
 
 /**
- * A person's step keys: those the plan froze, else the digests over the plan's fingerprint.
+ * A person's step keys: those the plan froze, else the digests over the plan's fingerprint, one per tracking clip the anchor
+ * needs (execution design §10.2) and the join, faces, clip, stem and gen.
  * @param planFingerprint - The run's plan fingerprint.
  * @param person - The frozen person.
- * @returns Every per-person step's key.
+ * @param clips - The tracking clips over the prepared frames.
+ * @returns The person's step keys.
  * @throws {never} Never.
  */
-export function lipsyncPersonStepKeys(planFingerprint: string, person: LipSyncPerson): Record<LipSyncPersonStep, string> {
-  const kinds: LipSyncPersonStep[] = ["track", "faces", "clip", "stem", "gen"];
-  return person.stepKeys ?? Object.fromEntries(kinds.map((kind) => [kind, lipsyncStepKey(planFingerprint, person.personId, kind)])) as Record<LipSyncPersonStep, string>;
+export function lipsyncPersonStepKeys(planFingerprint: string, person: LipSyncPerson, clips: TrackingClips): Partial<Record<LipSyncPersonStep, string>> {
+  if (person.stepKeys !== undefined) return person.stepKeys;
+  const kinds: LipSyncPersonStep[] = [...(clips.forward !== null ? ["track:fwd" as const] : []), ...(clips.reverse !== null ? ["track:rev" as const] : []),
+    "track_join", "faces", "clip", "stem", "gen"];
+  return Object.fromEntries(kinds.map((kind) => [kind, lipsyncStepKey(planFingerprint, person.personId, kind)]));
 }
 /** The selected model as the plan freezes it (§9.3). */
 export interface LipSyncGenerator { backend: "wavespeed-crop"; modelId: string; schemaFingerprint: string; providerSyncMode: "cut_off" | null }

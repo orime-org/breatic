@@ -120,9 +120,23 @@ export async function pinnedKeys(keys: readonly string[], tx?: DbTx): Promise<Se
  * @throws {Error} When the execution has no single live pin, or a write fails.
  */
 export async function appendExecutionPinObjects(taskId: string, keys: readonly string[], tx: DbTx): Promise<void> {
+  await appendPinObjects("execution", taskId, keys, tx);
+}
+
+/**
+ * Append keys to a run's or an analysis's live pin inside the caller's transaction (frames-split §7.15; execution design
+ * §10.3: a tracking analysis's clips and RLE stay pinned with the analysis until it ends).
+ * @param holderKind - The holder's kind.
+ * @param holderId - The holder.
+ * @param keys - The keys.
+ * @param tx - The registration transaction.
+ * @returns Nothing.
+ * @throws {Error} When the holder has no single live pin, or a write fails.
+ */
+export async function appendPinObjects(holderKind: "execution" | "analysis", holderId: string, keys: readonly string[], tx: DbTx): Promise<void> {
   if (keys.length === 0) return;
-  await lockHolder("execution", taskId, tx);
-  const live = await findLive("execution", taskId, tx);
-  if (live.length !== 1) throw new Error(`Execution ${taskId} has ${live.length} live pins; appending needs exactly one`);
+  await lockHolder(holderKind, holderId, tx);
+  const live = await findLive(holderKind, holderId, tx);
+  if (live.length !== 1) throw new Error(`${holderKind} ${holderId} has ${live.length} live pins; appending needs exactly one`);
   await addObjects(live[0]!.id, keys, tx);
 }

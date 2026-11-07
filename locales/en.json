@@ -269,7 +269,14 @@
       "lipSyncTooManyDialogues": "Lip sync takes up to {max} dialogue lines.",
       "lipSyncPeopleRunning": "Person detection is still running. Try again when it finishes.",
       "lipSyncPeopleStale": "The detected people no longer match this video. Detect people again.",
-      "lipSyncStepTooLong": "This lip-sync run is too long for one processing step. Shorten the dialogue or the video."
+      "lipSyncStepTooLong": "This lip-sync run is too long for one processing step. Shorten the dialogue or the video.",
+      "eraseRange": "Erase takes a range of {min}–{max} s.",
+      "anchorOutsideRange": "The frame you selected on is outside the erase range. Select on a frame inside the range.",
+      "trackingRunning": "Tracking is still running. Try again when it finishes.",
+      "trackingStale": "The tracking no longer matches this selection. Track the selection again.",
+      "transparentSource": "This tool doesn't work on videos with transparency.",
+      "expandTooLong": "Expand takes videos up to {max} s long.",
+      "expandTooLarge": "The expanded video can be at most {max} px on its long side. Make the frame smaller."
     },
     "idempotency": {
       "missing": "This page was updated. Refresh it and try again.",

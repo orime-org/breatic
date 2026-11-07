@@ -23,7 +23,7 @@ describe("lip-sync tracking steps follow trackingClips (execution design §10.2)
     for (const step of preparations) expect(shared[step]).toBe(lipsyncStepKey(PLAN, null, step));
     const person = lipsyncPersonStepKeys(PLAN, { ...PERSON, anchor: { frameIndex: anchor, pts: anchor / 30 } }, clips);
     expect(Object.keys(person).sort()).toEqual([...tracks, "track_join", "faces", "clip", "stem", "gen"].sort());
-    for (const [step, key] of Object.entries(person)) expect(key).toBe(lipsyncStepKey(PLAN, PERSON.personId, step as Parameters<typeof lipsyncStepKey>[2]));
+    for (const [step, key] of Object.entries(person)) expect(key).toBe(lipsyncStepKey(PLAN, PERSON.personId, step));
   });
 
   it("LT02 a retry keeps the keys its original run froze", () => {

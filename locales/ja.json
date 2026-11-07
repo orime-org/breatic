@@ -269,7 +269,14 @@
       "lipSyncTooManyDialogues": "リップシンクのセリフは最大 {max} 行です。",
       "lipSyncPeopleRunning": "人物の検出がまだ実行中です。完了してからもう一度お試しください。",
       "lipSyncPeopleStale": "検出した人物がこの動画と一致しなくなりました。人物をもう一度検出してください。",
-      "lipSyncStepTooLong": "このリップシンクは長すぎて、1 つの処理ステップで完了できません。セリフか動画を短くしてください。"
+      "lipSyncStepTooLong": "このリップシンクは長すぎて、1 つの処理ステップで完了できません。セリフか動画を短くしてください。",
+      "eraseRange": "消去する範囲は {min}～{max} 秒にしてください。",
+      "anchorOutsideRange": "選択したフレームが消去範囲の外にあります。範囲内のフレームで選択してください。",
+      "trackingRunning": "トラッキングはまだ実行中です。完了してから再度お試しください。",
+      "trackingStale": "トラッキング結果が現在の選択と一致しなくなりました。選択範囲をもう一度トラッキングしてください。",
+      "transparentSource": "このツールは透明部分のある動画には使えません。",
+      "expandTooLong": "拡張できるのは {max} 秒以内の動画です。",
+      "expandTooLarge": "拡張後の動画の長辺は最大 {max} px です。拡張範囲を小さくしてください。"
     },
     "idempotency": {
       "missing": "ページが更新されました。再読み込みしてからもう一度お試しください。",

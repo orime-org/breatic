@@ -269,7 +269,14 @@
       "lipSyncTooManyDialogues": "립싱크 대사는 최대 {max}줄입니다.",
       "lipSyncPeopleRunning": "인물 감지가 아직 진행 중입니다. 완료되면 다시 시도하세요.",
       "lipSyncPeopleStale": "감지된 인물이 더 이상 이 동영상과 맞지 않습니다. 인물을 다시 감지하세요.",
-      "lipSyncStepTooLong": "이 립싱크는 너무 길어 한 번의 처리 단계로 완료할 수 없습니다. 대사나 동영상을 줄이세요."
+      "lipSyncStepTooLong": "이 립싱크는 너무 길어 한 번의 처리 단계로 완료할 수 없습니다. 대사나 동영상을 줄이세요.",
+      "eraseRange": "지우기 구간은 {min}~{max}초여야 합니다.",
+      "anchorOutsideRange": "선택한 프레임이 지우기 구간 밖에 있습니다. 구간 안의 프레임에서 선택하세요.",
+      "trackingRunning": "추적이 아직 진행 중입니다. 완료된 후 다시 시도하세요.",
+      "trackingStale": "추적 결과가 현재 선택과 더 이상 일치하지 않습니다. 선택 영역을 다시 추적하세요.",
+      "transparentSource": "이 도구는 투명 영역이 있는 동영상을 지원하지 않습니다.",
+      "expandTooLong": "확장은 최대 {max}초 길이의 동영상을 지원합니다.",
+      "expandTooLarge": "확장된 동영상의 긴 변은 최대 {max}px입니다. 확장 범위를 줄이세요."
     },
     "idempotency": {
       "missing": "페이지가 업데이트되었습니다. 새로고침한 후 다시 시도하세요.",

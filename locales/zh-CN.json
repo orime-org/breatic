@@ -269,7 +269,14 @@
       "lipSyncTooManyDialogues": "对口型最多支持 {max} 行对白。",
       "lipSyncPeopleRunning": "人物识别仍在进行，完成后再试。",
       "lipSyncPeopleStale": "识别出的人物已和这个视频对不上，请重新识别人物。",
-      "lipSyncStepTooLong": "这次对口型太长，单个处理步骤无法完成。请缩短对白或视频。"
+      "lipSyncStepTooLong": "这次对口型太长，单个处理步骤无法完成。请缩短对白或视频。",
+      "eraseRange": "擦除的区间需在 {min}–{max} 秒之间。",
+      "anchorOutsideRange": "框选所在的帧不在擦除区间内。请在区间内的帧上框选。",
+      "trackingRunning": "跟踪还在进行中，完成后再试。",
+      "trackingStale": "跟踪结果与当前选区不再一致。请重新跟踪选区。",
+      "transparentSource": "这个工具不支持带透明背景的视频。",
+      "expandTooLong": "外扩支持最长 {max} 秒的视频。",
+      "expandTooLarge": "外扩后的视频长边最多 {max} 像素。请缩小外扩范围。"
     },
     "idempotency": {
       "missing": "页面已更新，请刷新后重试。",

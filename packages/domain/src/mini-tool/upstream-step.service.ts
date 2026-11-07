@@ -42,7 +42,8 @@ export interface RecordMiniToolStepResultInput {
   /**
    * Presentation pins written with a newly stored preparation result (§7.15 prepared row, release points): the final prepared
    * output the run now keeps, outputs it no longer needs (a failed attempt's, chunks after their stitch), and intermediates
-   * appended to the run's execution pin (§97 D21-1: a lip-sync step's derived objects).
+   * appended to the run's execution pin, or an analysis's analysis pin (§97 D21-1: a lip-sync step's derived objects;
+   * execution design §10.3: a tracking analysis's clips and RLE).
    */
   presentation?: { prepared?: { toolInputId: string; preparedKey: string }; retire?: string[]; pin?: string[] };
 }
@@ -172,7 +173,7 @@ export async function recordMiniToolStepResult(input: RecordMiniToolStepResultIn
       await presentationPinService.acquire({ holderKind: "prepared", holderId: task.id, toolInputId: pins.prepared.toolInputId, preparedKey: pins.prepared.preparedKey, objectKeys: [pins.prepared.preparedKey] }, tx);
     }
     if (pins?.retire !== undefined) await presentationPinService.retire(pins.retire, tx);
-    if (pins?.pin !== undefined) await pinRepo.appendExecutionPinObjects(task.id, pins.pin, tx);
+    if (pins?.pin !== undefined) await pinRepo.appendPinObjects(task.taskType === "mini_tool_analysis" ? "analysis" : "execution", task.id, pins.pin, tx);
     return reread(task.id, step.id, tx);
   });
   if (answer instanceof Error) throw answer;

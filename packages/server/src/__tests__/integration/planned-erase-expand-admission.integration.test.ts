@@ -295,7 +295,7 @@ describe("expand fresh admission (execution design §10.5)", () => {
     const windows = planners.planModelWindows(framesOf({ start: 0, end: V }));
     expect(plan.windows).toEqual(windows);
     expect(windows.map(window => window.duration)).toEqual([10]);
-    expect(plan.modelCredits).toBe(await estimateTaskCredits(VACE, { params: {}, durations: { video: [10] }, sources: ["video"] }));
+    expect(plan.modelCredits).toBe(await estimateTaskCredits(VACE, { params: { duration: 10 }, durations: { video: [10] }, sources: ["video"] }));
     expect(plan.credits).toBeGreaterThan(plan.modelCredits!);
   });
 

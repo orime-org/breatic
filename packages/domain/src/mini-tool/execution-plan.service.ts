@@ -37,6 +37,12 @@ const frozenToolInput = {
   ledgerReceipts: z.strictObject({ source: videoPresentationLedgerReceiptSchema }), versionIds: z.strictObject({ source: fingerprint }),
   retry: miniToolExecutionRetryRequestSchema.shape.retry.optional(),
 };
+const runContainer = z.strictObject({ ...container, startSeconds: z.number().nonnegative().finite(),
+  encode: z.strictObject({ crf: z.number().int().min(0).max(51), preset: x264PresetSchema }), chunkRetries: index });
+const rect = z.strictObject({ x: z.number().int(), y: z.number().int(), width: z.number().int().positive(), height: z.number().int().positive() });
+/** The recipe kind each tool's outputs carry. */
+const RECIPE_KIND = { "video.split": "segment", "video.remove-bg": "remove-bg", "video.lip-sync": "lip-sync", "video.extract-frames": "frame",
+  "video.transitions": "transitions", "video.erase": "erase", "video.expand": "expand" } as const;
 const storedPlanSchema = z.union([
   z.strictObject({ ...common, ...frozenToolInput, tool: z.literal("video.remove-bg"),
     provider: z.strictObject({ provider: z.literal("wavespeed"), model_id: z.literal("bria/fibo/video-background-remover") }),
@@ -74,12 +80,29 @@ const storedPlanSchema = z.union([
       anchor: z.strictObject({ frameIndex: index, pts: z.number().nonnegative() }),
       anchorFaceBox: z.strictObject({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }),
       // Every step key is frozen at the first admission and copied by each retry (DD §7.1).
-      stepKeys: z.strictObject({ track: fingerprint, faces: fingerprint, clip: fingerprint, stem: fingerprint, gen: fingerprint }) })).min(1),
-    sharedStepKeys: z.record(z.string().regex(/^(composite:\d+|stitch)$/), fingerprint),
+      stepKeys: z.strictObject({ "track:fwd": fingerprint.optional(), "track:rev": fingerprint.optional(), track_join: fingerprint, faces: fingerprint,
+        clip: fingerprint, stem: fingerprint, gen: fingerprint }) })).min(1),
+    sharedStepKeys: z.record(z.string().regex(/^(prepare:fwd|prepare:rev|composite:\d+|stitch)$/), fingerprint),
     tracking: z.strictObject({ model: z.string().min(1) }), cropSize: z.number().int().positive(),
     layout: z.strictObject({ preparation: frameWindows, persons: z.number().int().positive(), composite: frameWindows }), stageJobs,
     container: z.strictObject({ ...container, startSeconds: z.number().nonnegative().finite(),
       encode: z.strictObject({ crf: z.number().int().min(0).max(51), preset: x264PresetSchema }), chunkRetries: index }),
+  }),
+  // An erase run (execution design §10.4).
+  z.strictObject({ ...common, ...frozenToolInput, tool: z.literal("video.erase"),
+    tracking: z.strictObject({ analysisRunId: z.uuid(), rleKey: z.string().min(1) }), range: z.strictObject({ start: index, end: index }),
+    grid: z.strictObject({ mode: z.enum(["frames", "resample"]), rate: z.number().positive(), frameCount: z.number().int().positive() }),
+    asyncRejection: z.strictObject({ path: z.string().min(1), equals: z.json() }), matte: z.strictObject({ dilate: index, feather: index }),
+    modelCredits: z.number().nonnegative(), composite: frameWindows, stageJobs,
+    stepKeys: z.record(z.string().regex(/^(prepare|mask|generate|composite:\d+|stitch)$/), fingerprint), container: runContainer,
+  }),
+  // An expand run (execution design §10.5).
+  z.strictObject({ ...common, ...frozenToolInput, tool: z.literal("video.expand"),
+    layout: z.strictObject({ width: z.number().int().positive(), height: z.number().int().positive(), sourceX: z.number().int(), sourceY: z.number().int(), overSide: z.literal(false) }),
+    frame: z.strictObject({ width: z.number().int().positive(), height: z.number().int().positive() }), size: z.enum(["832*480", "480*832"]), targetRoi: rect, sourceRoi: rect,
+    prompt: z.string().min(1), seed: index, modelFps: z.number().int().positive(), modelCredits: z.number().nonnegative(),
+    windows: z.array(z.strictObject({ span: z.strictObject({ start: z.number().nonnegative(), end: z.number().positive() }), duration: z.union([z.literal(5), z.literal(10)]) })).min(1),
+    composite: frameWindows, stageJobs, stepKeys: z.record(z.string().regex(/^((window|window_mask|condition|generate|composite):\d+|stitch)$/), fingerprint), container: runContainer,
   }),
 ]);
 
@@ -114,7 +137,7 @@ export async function executionPlanFromTask(task: TaskEntity): Promise<MiniToolE
     if (stored.retry.runId === stored.taskId || canonicalMiniToolValue([...indexes].sort((a, b) => a - b)) !== canonicalMiniToolValue([...stored.retry.outputIndexes].sort((a, b) => a - b))
       || new Set(indexes).size !== indexes.length || new Set(stored.outputs.map((output) => output.nodeId)).size !== stored.outputs.length
       || stored.outputs.some((output, i) => output.nodeId === draft.source.nodeId || (i > 0 && output.outputIndex <= stored.outputs[i - 1]!.outputIndex)
-        || output.recipe.kind !== (stored.tool === "video.split" ? "segment" : stored.tool === "video.remove-bg" ? "remove-bg" : stored.tool === "video.lip-sync" ? "lip-sync" : "frame"))) throw new Error("Retry differs from its frozen subset");
+        || output.recipe.kind !== RECIPE_KIND[stored.tool])) throw new Error("Retry differs from its frozen subset");
   } else {
     miniToolPlannedRequestSchema.parse({ tool: stored.tool, project_id: stored.projectId, space_id: stored.spaceId, run_id: stored.taskId,
       draft, analysis_refs: stored.analysisRefs, outputs: stored.outputs, presentation_ref: stored.presentationRef });

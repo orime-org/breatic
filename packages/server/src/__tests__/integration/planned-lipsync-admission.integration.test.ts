@@ -665,13 +665,14 @@ describe("lip-sync retry admission (frames-split §7.11 retry row, §7.15; execu
 
   /**
    * Require the original's frozen step keys to be present, so equality with them is not equality of two absent values:
-   * five per person and the shared composite and stitch keys, every one a 64-hex digest (DD §7.1 steps row).
+   * per person the forward track (these fixtures anchor on the first frame), the join, faces, clip, stem and gen, and the
+   * shared composite and stitch keys, every one a 64-hex digest (DD §7.1 steps row; execution design §10.2).
    * @param frozen - The original's frozen plan, read from its task's `params.miniToolExecution`.
    * @returns Nothing.
    * @throws {Error} On assertion failure.
    */
   function frozenStepKeys(frozen: Failed["plan"]): void {
-    for (const p of frozen.persons ?? []) expect(Object.keys(p.stepKeys ?? {}).sort()).toEqual(["clip", "faces", "gen", "stem", "track"]);
+    for (const p of frozen.persons ?? []) expect(Object.keys(p.stepKeys ?? {}).sort()).toEqual(["clip", "faces", "gen", "stem", "track:fwd", "track_join"]);
     expect(Object.keys(frozen.sharedStepKeys ?? {})).toContain("stitch");
     expect(Object.keys(frozen.sharedStepKeys ?? {}).some((step) => step.startsWith("composite:"))).toBe(true);
     for (const key of [...(frozen.persons ?? []).flatMap((p) => Object.values(p.stepKeys ?? {})), ...Object.values(frozen.sharedStepKeys ?? {})]) expect(key).toMatch(/^[a-f0-9]{64}$/);

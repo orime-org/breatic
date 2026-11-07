@@ -27,7 +27,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import { createPgClient, getStorageAdapter, initCore, loadLocales } from "@breatic/core";
-import { lipsyncPersonStepKeys, lipsyncSharedStepKeys, miniToolStepStateSchema, taskRepo, upstreamStepRepo } from "@breatic/domain";
+import { lipsyncPersonStepKeys, lipsyncSharedStepKeys, miniToolStepStateSchema, presentationPinService, taskRepo, upstreamStepRepo } from "@breatic/domain";
 import { plannedStageJobs, trackingClips } from "@breatic/shared/mini-tools";
 import type * as wavespeedModule from "@worker/providers/wavespeed.js";
 import { HttpStatusError } from "@worker/providers/http.js";
@@ -79,7 +79,7 @@ afterAll(async () => { await pg.end(); initCore(process.env); vi.unstubAllGlobal
 interface Fixture { execution: Record<string, unknown> & { taskId: string; persons: typeof PERSONS }; userId: string; deadlineAt: number }
 
 /**
- * A running lip-sync parent with its frozen run: two people, a 2 s cut_off timeline whose used range [0, 2) is frames
+ * A running lip-sync parent with its frozen run and its execution pin as admission writes it: two people, a 2 s cut_off timeline whose used range [0, 2) is frames
  * [0, 50) of the cfr96 source.
  * @returns The fixture.
  * @throws {Error} On fixture SQL failure.
@@ -110,6 +110,8 @@ async function seed(): Promise<Fixture> {
   };
   await pg`INSERT INTO tasks (id,user_id,project_id,space_id,task_type,mode,source,status,model,params,result)
     VALUES (${taskId},${target.userId},${target.projectId},${spaceId},'video','append','mini_tool','running',${execution.model},${pg.json({ miniToolExecution: execution })},${pg.json({})})`;
+  // The execution pin admission writes; the shared clips are appended to it (execution design §10.2).
+  await presentationPinService.acquire({ holderKind: "execution", holderId: taskId, toolInputId: RECEIPT.toolInputId, objectKeys: presentationPinService.ledgerObjectKeys(execution.sourceKey, RECEIPT.toolInputId) });
   const task = await taskRepo.getMiniToolExecutionTask(taskId);
   if (task === null) throw new Error("Fixture parent disappeared");
   return { execution, userId: target.userId, deadlineAt: await taskDeadline(task.id, task.createdAt) };

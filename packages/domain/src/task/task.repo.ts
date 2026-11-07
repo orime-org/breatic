@@ -55,6 +55,7 @@ export async function listMiniToolDeliveryCandidates(limit: number, cursor?: Min
 /** Parent facts read while serializing one task's consumption writes. */
 export interface LockedMiniToolConsumptionTask {
   id: string;
+  taskType: string;
   userId: string;
   projectId: string | null;
   status: string;
@@ -74,7 +75,7 @@ export interface LockedMiniToolConsumptionTask {
  */
 export async function lockMiniToolConsumptionTask(taskId: string, tx: DbTx): Promise<LockedMiniToolConsumptionTask | null> {
   const [row] = await tx.select({
-    id: tasks.id, userId: tasks.userId, projectId: tasks.projectId,
+    id: tasks.id, taskType: tasks.taskType, userId: tasks.userId, projectId: tasks.projectId,
     status: tasks.status, source: tasks.source, result: tasks.result,
     model: tasks.model, billedAt: tasks.billedAt, billedCredits: tasks.billedCredits,
   }).from(tasks).where(eq(tasks.id, taskId)).for("update");

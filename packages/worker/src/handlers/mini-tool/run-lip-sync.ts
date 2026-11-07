@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The lip-sync runner on the frozen plan (execution design §9.3, §9.4; multi-person lip-sync DD §7.2). Each pickup walks
- * the stages in order (prepare, track, faces, clip and stem, gen, composite, stitch); a finished step answers `done`
+ * The lip-sync runner on the frozen plan (execution design §9.3, §9.4, §10.2; multi-person lip-sync DD §7.2). Each pickup
+ * walks the stages in order (prepare, the shared tracking clips, each person's tracks and their join, faces, clip and stem,
+ * gen, composite, stitch); a finished step answers `done`
  * again, so the walk resumes where the run is. A `no_face` or `model_rejected` stops every other person's unsubmitted
  * paid step; the one output then fails with the §9.4 reason as its error.
  */
@@ -16,8 +17,8 @@ export interface LipSyncExecution { taskId: string; persons: readonly { personId
 /** What one pickup observed of the one output. */
 export interface LipSyncPickup { results: Map<number, NonNullable<MiniToolExecutionOutput["result"]>>; waiting: boolean }
 
-/** The per-person stages in order; clip and stem run in one stage. */
-const PERSON_STAGES: readonly (readonly LipSyncStepKind[])[] = [["track"], ["faces"], ["clip", "stem"], ["gen"]];
+/** The per-person stages in order; a person's two tracking clips run in one stage, and clip and stem in one. */
+const PERSON_STAGES: readonly (readonly LipSyncStepKind[])[] = [["track:fwd", "track:rev"], ["track_join"], ["faces"], ["clip", "stem"], ["gen"]];
 
 /**
  * Run one pickup of a lip-sync execution.
@@ -48,10 +49,10 @@ export async function runMiniToolLipSync(execution: LipSyncExecution, userId: st
    * @returns False when it still runs or failed (the pickup is then settled).
    * @throws {Error} When the step throws.
    */
-  const shared = async (kind: "prepare" | "composite" | "stitch"): Promise<boolean> => {
+  const shared = async (kind: "prepare" | "prepare:fwd" | "prepare:rev" | "composite" | "stitch"): Promise<boolean> => {
     const outcome = await runLipSyncStep(execution, { kind, personId: null }, userId, deadlineAt);
     if (outcome.state === "running") { pickup.waiting = true; return false; }
-    if (outcome.state === "failed") { fail({ step: kind, category: outcome.category === "timeout" ? "timeout" : "failed" }); return false; }
+    if (outcome.state === "failed") { fail({ step: kind.startsWith("prepare") ? "prepare" : kind as "composite" | "stitch", category: outcome.category === "timeout" ? "timeout" : "failed" }); return false; }
     if (kind === "stitch") {
       if (outcome.result === undefined) throw new Error("The lip-sync stitch ended without a registered output");
       pickup.results.set(0, outcome.result);
@@ -60,18 +61,24 @@ export async function runMiniToolLipSync(execution: LipSyncExecution, userId: st
   };
 
   if (!await shared("prepare")) return pickup;
+  // The two tracking clips are submitted one after the other, so each step takes its own position, and run side by side.
+  const forward = await shared("prepare:fwd");
+  if (pickup.results.has(0)) return pickup;
+  const reverse = await shared("prepare:rev");
+  if (!forward || !reverse) return pickup;
   for (const stage of PERSON_STAGES) {
     for (const person of people) {
       if (person.failure !== null) continue;
       for (const kind of stage) {
         if (person.failure !== null) break;
         const outcome = await runLipSyncStep(execution, { kind, personId: person.personId }, userId, deadlineAt);
+        const paid = kind === "gen" ? "gen" : kind.startsWith("track") ? "track" : null;
         if (outcome.state === "running") {
           pickup.waiting = true;
-          if (kind === "track" || kind === "gen") person[kind] = "submitted";
+          if (paid !== null) person[paid] = "submitted";
         } else if (outcome.state === "failed") {
           person.failure = { step: outcome.step as "track" | "faces" | "clip" | "stem" | "gen", category: outcome.category };
-        } else if (kind === "track" || kind === "gen") person[kind] = "done";
+        } else if (kind === "track_join" || kind === "gen") person[paid!] = "done";
       }
     }
     for (const line of lipsyncStoppedLines(people)) {
