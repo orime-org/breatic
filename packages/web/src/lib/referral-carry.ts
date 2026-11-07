@@ -86,8 +86,18 @@ export function carriedReferralCode(): string | null {
   return memory ?? stored();
 }
 
-/** Forgets the code everywhere: it was used, removed by the visitor, or refused by the server. */
+/** Forgets the code everywhere: it was used or removed by the visitor. */
 export function forgetCarriedReferralCode(): void {
   memory = null;
   store(null);
+}
+
+/**
+ * Forgets the carried code when the server refused that very code; a refusal
+ * of other text the visitor typed leaves it.
+ * @param refused - The code as it was sent.
+ */
+export function forgetRefusedReferralCode(refused: string): void {
+  const carried = carriedReferralCode();
+  if (carried !== null && carried === normalise(refused)) forgetCarriedReferralCode();
 }

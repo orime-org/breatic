@@ -11,7 +11,7 @@ import { Skeleton } from '@web/components/ui/skeleton';
 import { FieldError } from '@web/components/FieldError';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
-import { carriedReferralCode, forgetCarriedReferralCode } from '@web/lib/referral-carry';
+import { carriedReferralCode, forgetCarriedReferralCode, forgetRefusedReferralCode } from '@web/lib/referral-carry';
 import { membershipQueryKey } from '@web/features/membership/membership-query';
 import { SectionHeading } from '@web/features/membership/SectionHeading';
 import { referralQueryKey, useAccountReferral, zheOf } from '@web/features/referral/referral-query';
@@ -122,6 +122,7 @@ function BindForm({ view }: { view: AccountReferral }): React.JSX.Element {
       onFailure: (err) => {
         if (err instanceof ApiException && err.status === 422 && err.reason === 'invalid_code') {
           setError(err.message);
+          forgetRefusedReferralCode(code);
           return;
         }
         toast.error(err instanceof ApiException ? err.message : t('membership.referral.loadFailed'));

@@ -199,8 +199,11 @@ export default function RegisterPage(): React.JSX.Element {
       try {
         const answer = await authApi.google({ credential, ...attributionBody(), ...referral.body() });
         setUser(toCurrentUser(answer.user));
-        if (answer.created) reportConversion('signup', `signup:${answer.user.id}`);
-        referral.used();
+        // An existing account keeps the carried code: the warning below points to the panel, which fills from it.
+        if (answer.created) {
+          reportConversion('signup', `signup:${answer.user.id}`);
+          referral.used();
+        }
         if (answer.referral === 'not_applied') toast.warning(t('auth.referral.existingAccount'));
         void changeLocale(answer.user.locale);
         navigate(answer.created ? slugPath : next, { replace: true });

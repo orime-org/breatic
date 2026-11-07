@@ -66,4 +66,22 @@ describe('the referral code a visitor carries (inner#1868 §11)', () => {
     expect(carry.carriedReferralCode()).toBeNull();
     expect(window.localStorage.getItem(KEY)).toBeNull();
   });
+
+  it('forgets the code when the server refused that very code, however it was typed', async () => {
+    const carry = await load();
+    carry.captureReferralFromUrl(new URL('https://app.example/register?ref=alice'));
+    carry.setReferralPersistence(true);
+    carry.forgetRefusedReferralCode(' alice ');
+    expect(carry.carriedReferralCode()).toBeNull();
+    expect(window.localStorage.getItem(KEY)).toBeNull();
+  });
+
+  it('keeps the code when the server refused other text the visitor typed', async () => {
+    const carry = await load();
+    carry.captureReferralFromUrl(new URL('https://app.example/register?ref=alice'));
+    carry.setReferralPersistence(true);
+    carry.forgetRefusedReferralCode('BOB');
+    expect(carry.carriedReferralCode()).toBe('ALICE');
+    expect(window.localStorage.getItem(KEY)).toBe('ALICE');
+  });
 });

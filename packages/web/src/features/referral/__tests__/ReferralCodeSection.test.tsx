@@ -9,7 +9,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const { api, carry, toasts } = vi.hoisted(() => ({
   api: { get: vi.fn(), bind: vi.fn(), apply: vi.fn() },
-  carry: { code: null as string | null, forget: vi.fn() },
+  carry: { code: null as string | null, forget: vi.fn(), refused: vi.fn() },
   toasts: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }));
 
@@ -20,6 +20,7 @@ vi.mock('@web/data/api/referral', async (importOriginal) => ({
 vi.mock('@web/lib/referral-carry', () => ({
   carriedReferralCode: () => carry.code,
   forgetCarriedReferralCode: carry.forget,
+  forgetRefusedReferralCode: carry.refused,
 }));
 vi.mock('@web/lib/toast', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@web/lib/toast')>();
@@ -141,6 +142,7 @@ describe('the referral code section (inner#1868 tables 12.9, 12.10)', () => {
     await user.type(await screen.findByLabelText('Referral code'), 'NOPE');
     await user.click(screen.getByRole('button', { name: 'Add' }));
     expect(await screen.findByText('refused invalid_code')).toBeInTheDocument();
+    expect(carry.refused).toHaveBeenCalledWith('NOPE');
     await user.type(screen.getByLabelText('Referral code'), 'X');
     expect(screen.queryByText('refused invalid_code')).toBeNull();
   });

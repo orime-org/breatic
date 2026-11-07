@@ -10,7 +10,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const { carry, warning } = vi.hoisted(() => ({
-  carry: { code: null as string | null, forget: vi.fn() },
+  carry: { code: null as string | null, forget: vi.fn(), refused: vi.fn() },
   warning: vi.fn(),
 }));
 
@@ -24,6 +24,7 @@ vi.mock('@web/lib/referral-carry', () => ({
     carry.forget();
     carry.code = null;
   },
+  forgetRefusedReferralCode: carry.refused,
 }));
 vi.mock('@web/lib/toast', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@web/lib/toast')>();
@@ -137,6 +138,8 @@ describe('the sign-in page referral row (inner#1868 table 12.14)', () => {
     await waitFor(() => expect(warning).toHaveBeenCalledWith(
       'This account already exists, so the referral code was not used. If you have not had a membership yet, you can add it in the membership panel.',
     ));
+    // The warning sends the user to the panel, whose field fills from the carried code.
+    expect(carry.forget).not.toHaveBeenCalled();
   });
 
   it('has no referral row while payments are off', async () => {

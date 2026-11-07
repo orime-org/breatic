@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { authApi, type SignupReferralFields } from '@web/data/api/auth';
-import { carriedReferralCode, forgetCarriedReferralCode } from '@web/lib/referral-carry';
+import { carriedReferralCode, forgetCarriedReferralCode, forgetRefusedReferralCode } from '@web/lib/referral-carry';
 
 /** The deployment options query, shared by every page that reads them. */
 export const AUTH_OPTIONS_QUERY_KEY = ['auth', 'options'] as const;
@@ -20,7 +20,7 @@ export interface SignupReferral {
   change: (value: string) => void;
   /** What the sign-up request carries: nothing for a blank or hidden field. */
   body: () => SignupReferralFields;
-  /** The server refused the code: show why and stop offering the carried one. */
+  /** The server refused the code: show why, and stop offering the carried code when that is what was refused. */
   refused: (message: string) => void;
   /** The sign-up went through: the carried code has done its job. */
   used: () => void;
@@ -58,8 +58,8 @@ export function useSignupReferral(): SignupReferral {
 
   const refused = React.useCallback((message: string): void => {
     setError(message);
-    forgetCarriedReferralCode();
-  }, []);
+    forgetRefusedReferralCode(value);
+  }, [value]);
 
   const used = React.useCallback((): void => {
     forgetCarriedReferralCode();

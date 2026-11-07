@@ -93,8 +93,11 @@ export default function LoginPage(): React.JSX.Element {
       const { user, created, referral: outcome } = await authApi.google({ credential, ...attributionBody(), ...referral.body() });
       if (!mounted.current) return;
       setUser(toCurrentUser(user));
-      if (created) reportConversion('signup', `signup:${user.id}`);
-      referral.used();
+      // An existing account keeps the carried code: the warning below points to the panel, which fills from it.
+      if (created) {
+        reportConversion('signup', `signup:${user.id}`);
+        referral.used();
+      }
       // Before navigating: the Toaster sits outside the router and keeps it (inner#1868 §10).
       if (outcome === 'not_applied') toast.warning(t('auth.referral.existingAccount'));
       void changeLocale(user.locale);

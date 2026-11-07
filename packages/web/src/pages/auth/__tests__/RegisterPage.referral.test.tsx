@@ -10,7 +10,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const { carry, warning } = vi.hoisted(() => ({
-  carry: { code: null as string | null, forget: vi.fn() },
+  carry: { code: null as string | null, forget: vi.fn(), refused: vi.fn() },
   warning: vi.fn(),
 }));
 
@@ -18,17 +18,26 @@ vi.mock('@web/data/api/auth', async () => {
   const actual = await vi.importActual<typeof AuthModule>('@web/data/api/auth');
   return {
     ...actual,
-    authApi: { ...actual.authApi, options: vi.fn(), register: vi.fn(), verifySignupCode: vi.fn(), resendSignupCode: vi.fn() },
+    authApi: { ...actual.authApi, options: vi.fn(), register: vi.fn(), verifySignupCode: vi.fn(), resendSignupCode: vi.fn(), google: vi.fn() },
   };
 });
 vi.mock('@web/lib/referral-carry', () => ({
   carriedReferralCode: () => carry.code,
   forgetCarriedReferralCode: carry.forget,
+  forgetRefusedReferralCode: carry.refused,
 }));
 vi.mock('@web/lib/toast', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@web/lib/toast')>();
   return { ...actual, toast: { ...actual.toast, warning } };
 });
+
+vi.mock('@web/pages/auth/GoogleSignIn', () => ({
+  GoogleSignIn: ({ busy, onCredential }: { busy: boolean; onCredential: (c: string) => Promise<void> }) => (
+    <button type='button' disabled={busy} onClick={() => void onCredential('credential')}>
+      Continue with Google
+    </button>
+  ),
+}));
 
 import RegisterPage from '@web/pages/auth/RegisterPage';
 import { authApi } from '@web/data/api/auth';
@@ -103,7 +112,7 @@ describe('the sign-up page referral field (inner#1868 table 12.13)', () => {
     expect(carry.forget).toHaveBeenCalled();
   });
 
-  it('shows a refused code under the field, stays on the page and forgets the carried code', async () => {
+  it('shows a refused code under the field, stays on the page and names the refused code to the carried one', async () => {
     carry.code = 'ALICE';
     vi.mocked(authApi.register).mockRejectedValue(
       new ApiException({ status: 422, message: 'This referral code is not valid.', fromServer: true, reason: 'invalid_code' }),
@@ -114,7 +123,7 @@ describe('the sign-up page referral field (inner#1868 table 12.13)', () => {
     await submit(user);
     expect(await screen.findByText('This referral code is not valid.')).toBeInTheDocument();
     expect(screen.getByLabelText('Referral code')).toHaveAttribute('aria-invalid', 'true');
-    expect(carry.forget).toHaveBeenCalledTimes(1);
+    expect(carry.refused).toHaveBeenCalledWith('ALICE');
     expect(screen.queryByTestId('recovery-page')).toBeNull();
   });
 
@@ -132,5 +141,29 @@ describe('the sign-up page referral field (inner#1868 table 12.13)', () => {
     expect(warning).toHaveBeenCalledWith(
       'The referral code is no longer valid and was not used. You can add a code in the membership panel.',
     );
+  });
+
+  it('forgets the carried code once Google made a new account with it', async () => {
+    vi.stubGlobal('__GOOGLE_CLIENT_ID__', 'test.apps.googleusercontent.com');
+    carry.code = 'ALICE';
+    vi.mocked(authApi.google).mockResolvedValue({ user: USER, created: true, referral: 'applied' } as never);
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Continue with Google' }));
+    expect(await screen.findByTestId('onboarding-page')).toBeInTheDocument();
+    expect(carry.forget).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the carried code when Google signed in to an existing account, for the panel to offer', async () => {
+    vi.stubGlobal('__GOOGLE_CLIENT_ID__', 'test.apps.googleusercontent.com');
+    carry.code = 'ALICE';
+    vi.mocked(authApi.google).mockResolvedValue({ user: USER, created: false, referral: 'not_applied' } as never);
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Continue with Google' }));
+    await waitFor(() => expect(warning).toHaveBeenCalled());
+    expect(carry.forget).not.toHaveBeenCalled();
   });
 });
