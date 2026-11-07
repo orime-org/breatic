@@ -3,8 +3,8 @@
 
 /**
  * The model facts a video tool panel reads beyond its draft (inner#1306; canvas design §4 remove-background and lip-sync rows): the
- * configured models from `GET /canvas/limits`, joined to their catalog entries; and, for lip-sync, the last run's failure
- * and its retry (execution design §9.4, frames-split §7.11 retry row).
+ * configured models and the erase and expand limits from `GET /canvas/limits`, the models joined to their catalog entries;
+ * and, for lip-sync, the last run's failure and its retry (execution design §9.4, §10.4, §10.5; frames-split §7.11 retry row).
  */
 import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -22,9 +22,16 @@ import { plannedRunRefusalText } from '@web/spaces/canvas/mini-tool/start-planne
 import type { LipSyncChoices } from '@web/spaces/canvas/mini-tool/video/VideoToolControls';
 import { runOnce } from '@web/stores/task-actions-in-flight';
 
+/** The erase model input's limits the panel checks (config `executions."video.erase".model`). */
+export interface EraseLimits { model: { min_seconds: number; max_seconds: number; max_grid_fps: number } }
+/** The expand limits the panel checks (config `executions."video.expand"`). */
+export interface ExpandLimits { max_duration_seconds: number; max_target_side: number }
+
 /** What the panel reads of its tool's models. */
 export interface VideoToolModels {
   lipSync?: LipSyncChoices;
+  erase?: EraseLimits;
+  expand?: ExpandLimits;
   lipSyncFailure: LipsyncFailureReason | null;
   onRetryFailed?: () => void;
 }
@@ -66,8 +73,12 @@ export function useVideoToolModels(args: { projectId: string; spaceId: string; n
   const t = useTranslation();
   const queryClient = useQueryClient();
   const modelTool = toolId === 'video.lip-sync';
-  const limits = useQuery({ ...canvasLimitsQuery(), enabled: modelTool }).data;
+  const limits = useQuery({ ...canvasLimitsQuery(), enabled: modelTool || toolId === 'video.erase' || toolId === 'video.expand' }).data;
   const catalog = useQuery({ ...modelCatalogQuery(), enabled: modelTool }).data;
+  const erase = React.useMemo((): EraseLimits | undefined => limits?.erase == null ? undefined
+    : { model: { min_seconds: limits.erase.minSeconds, max_seconds: limits.erase.maxSeconds, max_grid_fps: limits.erase.maxGridFps } }, [limits]);
+  const expand = React.useMemo((): ExpandLimits | undefined => limits?.expand == null ? undefined
+    : { max_duration_seconds: limits.expand.maxDurationSeconds, max_target_side: limits.expand.maxTargetSide }, [limits]);
   const lipSync = React.useMemo((): LipSyncChoices | undefined => {
     const config = limits?.lipSync;
     if (toolId !== 'video.lip-sync' || config == null || catalog === undefined) return undefined;
@@ -95,5 +106,5 @@ export function useVideoToolModels(args: { projectId: string; spaceId: string; n
       onFailure: (error) => { toast.error(plannedRunRefusalText(error, t)); },
     });
   }, [failure, spaceId, nodeId, projectId, queryClient, t, failureKey]);
-  return { ...(lipSync === undefined ? {} : { lipSync }), lipSyncFailure: failure?.reason ?? null, ...(onRetryFailed === undefined ? {} : { onRetryFailed }) };
+  return { ...(lipSync === undefined ? {} : { lipSync }), ...(erase === undefined ? {} : { erase }), ...(expand === undefined ? {} : { expand }), lipSyncFailure: failure?.reason ?? null, ...(onRetryFailed === undefined ? {} : { onRetryFailed }) };
 }

@@ -55,6 +55,10 @@ export interface CanvasLimits {
   removeBackgroundModel?: string | null;
   /** The lip-sync choices (config `executions.video.lip-sync`), or null where the deployment offers no lip-sync. */
   lipSync?: CanvasLipSyncLimits | null;
+  /** The erase model input's seconds and grid rate (config `executions.video.erase.model`), or null where none is offered. */
+  erase?: { minSeconds: number; maxSeconds: number; maxGridFps: number } | null;
+  /** The expand source and target limits (config `executions.video.expand`), or null where none is offered. */
+  expand?: { maxDurationSeconds: number; maxTargetSide: number } | null;
 }
 
 /**

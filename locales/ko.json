@@ -1420,7 +1420,6 @@
         "dialogueStartTime": "시작 시간",
         "drawBox": "드래그하여 영역 지정",
         "editTimeline": "타임라인 편집",
-        "erasePrompt": "제거 후 배경 입력",
         "expandPrompt": "채울 내용을 입력하세요. 비워 두면 비디오에 맞게 자연스럽게 넓힙니다",
         "export": "내보내기",
         "first": "첫 프레임",
@@ -1459,7 +1458,7 @@
         "timelineInstructions": "클립 순서와 구간을 조정하고 인접 클립 간 전환을 설정하세요. 미리보기를 재생한 후 내보내세요.",
         "timelineProperties": "클립 설정",
         "trackObject": "선택 영역 추적",
-        "trackingPrompt": "채울 내용을 입력하세요. 비워 두면 비디오에 맞게 자연스럽게 넓힙니다",
+        "trackingPrompt": "추적할 대상을 설명하세요. 비워 두면 선택 영역만으로 추적합니다",
         "transition": "유형",
         "transitionDuration": "전환 길이",
         "transparentOutput": "투명 원본은 다운로드와 후속 도구에 사용합니다.",
@@ -1496,7 +1495,38 @@
         "trackingEstimate": "예상 {credits}",
         "trackingActual": "사용 {credits}",
         "lipSyncDurationRange": "이 모델은 {min}–{max}초를 지원합니다. 결과는 {duration}초입니다.",
-        "lipSyncTrackingRange": "인물 추적은 {min}–{max}초 분량의 동영상을 지원합니다. 이번 실행은 {length}초를 사용합니다."
+        "lipSyncTrackingRange": "인물 추적은 {min}–{max}초 분량의 동영상을 지원합니다. 이번 실행은 {length}초를 사용합니다.",
+        "eraseRange": "지우기 구간은 {min}~{max}초여야 합니다.",
+        "anchorOutsideRange": "구간 안의 프레임에서 선택하세요.",
+        "expandTooLong": "확장은 최대 {max}초 길이의 동영상을 지원합니다.",
+        "expandTooLarge": "확장된 동영상의 긴 변은 최대 {max}px입니다.",
+        "transparentSource": "이 도구는 투명 영역이 있는 동영상을 지원하지 않습니다.",
+        "trackingFailure": {
+          "empty_foreground": "추적된 대상이 없습니다. 선택 영역이나 설명을 바꾸세요.",
+          "tracking_output_mismatch": "추적에 실패했습니다.",
+          "model_rejected": "모델이 이 선택 영역을 거부했습니다. 선택 영역이나 설명을 바꾸세요.",
+          "timeout": "추적 시간이 초과되었습니다.",
+          "failed": "추적에 실패했습니다."
+        },
+        "retryTracking": "다시 추적",
+        "stepFail": {
+          "prepare": "준비",
+          "mask": "마스크",
+          "generate": "생성",
+          "composite": "합성",
+          "stitch": "이어 붙이기",
+          "expired": "전체 실행",
+          "window": "창 입력",
+          "window_mask": "창 마스크",
+          "condition": "연결 프레임"
+        },
+        "windowNumber": "창 {number}",
+        "failOutputMismatch": "결과 불일치",
+        "eraseRejectedNext": "구간이나 선택 영역을 바꾼 뒤 다시 실행하세요.",
+        "eraseMismatchNext": "구간을 바꾼 뒤 다시 실행하세요.",
+        "expandRejectedNext": "확장 범위나 설명을 바꾼 뒤 다시 실행하세요.",
+        "windowStoppedNext": "창 {number} 때문에 중지되었습니다. 창 {number}의 다음 단계를 따르세요.",
+        "retryFailedItems": "실패한 항목 다시 시도"
       }
     },
     "template": {

@@ -1420,7 +1420,6 @@
         "dialogueStartTime": "开始时间",
         "drawBox": "拖动标记区域",
         "editTimeline": "编辑时间线",
-        "erasePrompt": "描述移除后的背景",
         "expandPrompt": "写要补画什么，留空就按视频内容自然外扩",
         "export": "导出",
         "first": "首帧",
@@ -1459,7 +1458,7 @@
         "timelineInstructions": "选择片段，调整顺序与入出点，设置相邻片段转场，播放预览后导出。",
         "timelineProperties": "片段设置",
         "trackObject": "跟踪选区",
-        "trackingPrompt": "写要补画什么，留空就按视频内容自然外扩",
+        "trackingPrompt": "描述要跟踪的对象，留空则只按选区跟踪",
         "transition": "转场类型",
         "transitionDuration": "转场时长",
         "transparentOutput": "透明原片用于下载和下游工具。",
@@ -1496,7 +1495,38 @@
         "trackingEstimate": "预计 {credits}",
         "trackingActual": "已用 {credits}",
         "lipSyncDurationRange": "这个模型支持 {min}–{max} 秒，当前结果为 {duration} 秒。",
-        "lipSyncTrackingRange": "人物跟踪支持 {min}–{max} 秒的视频，这次用到 {length} 秒。"
+        "lipSyncTrackingRange": "人物跟踪支持 {min}–{max} 秒的视频，这次用到 {length} 秒。",
+        "eraseRange": "擦除的区间需在 {min}–{max} 秒之间。",
+        "anchorOutsideRange": "请在区间内的帧上框选。",
+        "expandTooLong": "外扩支持最长 {max} 秒的视频。",
+        "expandTooLarge": "外扩后的视频长边最多 {max} 像素。",
+        "transparentSource": "这个工具不支持带透明背景的视频。",
+        "trackingFailure": {
+          "empty_foreground": "没有跟踪到对象。请换一个选区或描述。",
+          "tracking_output_mismatch": "跟踪失败。",
+          "model_rejected": "模型拒绝了这个选区。请换一个选区或描述。",
+          "timeout": "跟踪超时。",
+          "failed": "跟踪失败。"
+        },
+        "retryTracking": "重新跟踪",
+        "stepFail": {
+          "prepare": "准备",
+          "mask": "遮罩",
+          "generate": "生成",
+          "composite": "合成",
+          "stitch": "拼接",
+          "expired": "整次运行",
+          "window": "窗口画面",
+          "window_mask": "窗口遮罩",
+          "condition": "衔接画面"
+        },
+        "windowNumber": "窗口 {number}",
+        "failOutputMismatch": "结果不匹配",
+        "eraseRejectedNext": "换一个区间或选区后重新运行。",
+        "eraseMismatchNext": "换一个区间后重新运行。",
+        "expandRejectedNext": "改外扩范围或描述后重新运行。",
+        "windowStoppedNext": "因窗口 {number} 停止，按窗口 {number} 的下一步处理。",
+        "retryFailedItems": "重试失败项"
       }
     },
     "template": {

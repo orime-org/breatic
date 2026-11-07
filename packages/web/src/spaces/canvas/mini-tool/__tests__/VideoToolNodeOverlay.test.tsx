@@ -38,7 +38,7 @@ describe('source selection gesture ownership', () => {
 });
 
 // Execution design §10.3 overlay paragraph: a finished tracking draws the box that follows the object in the success
-// colour in place of the reader's selection; without one (outside the range, stale) the reader's selection is shown.
+// colour in place of the user's selection; without one (outside the range, stale) the user's selection is shown.
 describe('the tracked box', () => {
   const selected = { box: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }, points: [] };
 
@@ -51,7 +51,7 @@ describe('the tracked box', () => {
     expect(screen.queryByTestId('video-tool-region-box')).toBeNull();
   });
 
-  it('shows the reader\'s selection when there is no tracked box', () => {
+  it('shows the user\'s selection when there is no tracked box', () => {
     const proposed: object = { trackedBox: null };
     render(<VideoToolNodeOverlay {...props} region={selected} {...proposed} />);
     expect(screen.queryByTestId('video-tool-tracked-box')).toBeNull();

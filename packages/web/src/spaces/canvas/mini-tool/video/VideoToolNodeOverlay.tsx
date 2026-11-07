@@ -5,6 +5,7 @@ import * as React from 'react';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { MiniToolAnalysisResult, VideoToolDraftById } from '@breatic/shared/mini-tools';
+import type { TrackedBox } from '@web/spaces/canvas/mini-tool/video/tracked-box';
 
 export type VideoEraseRegion = VideoToolDraftById['video.erase']['params']['region'];
 export interface VideoToolNodeOverlayProps {
@@ -14,6 +15,8 @@ export interface VideoToolNodeOverlayProps {
   people?: Extract<MiniToolAnalysisResult, { kind: 'people' }>;
   activePersonId?: string | null;
   onPerson?: (personId: string) => void;
+  /** The box following the tracked object on the presented frame; it replaces the selection box while present (§10.3). */
+  trackedBox?: TrackedBox | null;
   disabled: boolean;
   revision: string;
   sourceEpoch: number;
@@ -133,7 +136,8 @@ export function VideoToolNodeOverlay(props: VideoToolNodeOverlayProps): React.JS
     }
   }} className='nodrag nopan nokey nowheel pointer-events-none absolute inset-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring' data-testid='video-tool-node-overlay'>
     {props.region === undefined ? null : <div data-testid='video-tool-region-gesture' role='presentation' className='pointer-events-auto absolute inset-0 cursor-crosshair' onPointerDown={(event) => begin(event, 'draw')} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} />}
-    {region?.box === null || region?.box === undefined ? null : <div className='pointer-events-auto absolute cursor-move border border-status-selected bg-status-selected/10' style={{ left: `${region.box.x * 100}%`, top: `${region.box.y * 100}%`, width: `${region.box.width * 100}%`, height: `${region.box.height * 100}%` }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish}>{['nw', 'ne', 'sw', 'se'].map((handle) => <Button key={handle} data-region-handle={handle} variant={null} size={null} disabled={props.disabled} className='absolute size-2 rounded-none border border-status-selected bg-popover' style={{ left: handle.includes('w') ? 0 : '100%', top: handle.includes('n') ? 0 : '100%', transform: 'translate(-50%,-50%)', cursor: `${handle}-resize` }} onPointerDown={(event) => begin(event, handle)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} />)}</div>}
+    {props.trackedBox == null ? null : <div data-testid='video-tool-tracked-box' className='pointer-events-none absolute border border-status-success bg-status-success/10' style={{ left: `${props.trackedBox.x * 100}%`, top: `${props.trackedBox.y * 100}%`, width: `${props.trackedBox.width * 100}%`, height: `${props.trackedBox.height * 100}%` }} />}
+    {props.trackedBox != null || region?.box === null || region?.box === undefined ? null : <div data-testid='video-tool-region-box' className='pointer-events-auto absolute cursor-move border border-status-selected bg-status-selected/10' style={{ left: `${region.box.x * 100}%`, top: `${region.box.y * 100}%`, width: `${region.box.width * 100}%`, height: `${region.box.height * 100}%` }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish}>{['nw', 'ne', 'sw', 'se'].map((handle) => <Button key={handle} data-region-handle={handle} variant={null} size={null} disabled={props.disabled} className='absolute size-2 rounded-none border border-status-selected bg-popover' style={{ left: handle.includes('w') ? 0 : '100%', top: handle.includes('n') ? 0 : '100%', transform: 'translate(-50%,-50%)', cursor: `${handle}-resize` }} onPointerDown={(event) => begin(event, handle)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} />)}</div>}
     {region?.points.map((at, index) => <Button key={index} variant={null} size={null} disabled={props.disabled} className='pointer-events-auto absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-status-selected bg-popover' style={{ left: `${at.x * 100}%`, top: `${at.y * 100}%` }} onClick={() => props.onRegion?.({ ...region, points: region.points.filter((_, position) => position !== index) })}>{at.label === 'positive' ? '+' : '−'}</Button>)}
     {props.people?.people.map((person, index) => <Button key={person.personId} variant={null} size={null} disabled={props.disabled} aria-pressed={props.activePersonId === person.personId} className='pointer-events-auto absolute border border-dashed border-status-selected bg-status-selected/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring' style={{ left: `${person.faceBox.x * 100}%`, top: `${person.faceBox.y * 100}%`, width: `${person.faceBox.width * 100}%`, height: `${person.faceBox.height * 100}%` }} onClick={(event) => { event.stopPropagation(); props.onPerson?.(person.personId); }}><span className='absolute left-0 top-full mt-1 whitespace-nowrap rounded-chrome border border-border bg-popover px-1.5 py-0.5 text-xs'>{t('canvas.miniTool.videoUI.personNumber', { number: index + 1 })}</span></Button>)}
   </div>;

@@ -15,7 +15,7 @@ import * as React from 'react';
 
 import type { NodeRef } from '@web/data/yjs/node-view';
 import { newId, type NodeTaskEntry } from '@breatic/shared';
-import { lipsyncFailureReasonSchema, lipsyncFailureRetryable, miniToolById } from '@breatic/shared/mini-tools';
+import { eraseFailureReasonSchema, expandFailureReasonSchema, lipsyncFailureReasonSchema, lipsyncFailureRetryable, miniToolById, modelFailureRetryable, type EraseFailureReason, type ExpandFailureReason } from '@breatic/shared/mini-tools';
 
 import { canvasApi } from '@web/data/api/canvas';
 import { miniToolsApi } from '@web/data/api/mini-tools';
@@ -25,6 +25,7 @@ import { toast } from '@web/lib/toast';
 import { NodeTaskPanel } from '@web/spaces/canvas/tasks/NodeTaskPanel';
 import { plannedRunRefusalText } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
 import { LipSyncFailure } from '@web/spaces/canvas/mini-tool/video/VideoToolControls';
+import { ModelRunFailure } from '@web/spaces/canvas/mini-tool/video/ModelRunFailure';
 import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import { useTickingClock } from '@web/spaces/canvas/tasks/use-ticking-clock';
 import {
@@ -177,26 +178,42 @@ function OpenNodeTaskPanel({
   });
   // A lip-sync run's output node is where its failure is shown: one line per person and, when every failure can clear on a
   // retry, the retry of the failed output on the run's frozen plan (§97 D24-1; execution design §9.4).
+  // An erase or expand output shows its run's failure the same way (execution design §10.4, §10.5).
   const lipSyncFailures = React.useMemo(() => new Map(parentRunIds.flatMap((runId, at) => {
     const result = runs[at]?.data?.outputs[0]?.result;
     const reason = result?.status === 'failed' ? lipsyncFailureReasonSchema.safeParse(result.error) : null;
     return reason?.success === true ? [[runId, reason.data] as const] : [];
   })), [parentRunIds, runs]);
-  const retryLipSync = React.useCallback((runId: string): void => {
-    void runOnce(`lip-sync-retry:${runId}`, {
+  const modelFailures = React.useMemo(() => new Map(parentRunIds.flatMap((runId, at) => {
+    const result = runs[at]?.data?.outputs[0]?.result;
+    if (result?.status !== 'failed') return [];
+    const erase = eraseFailureReasonSchema.safeParse(result.error);
+    const expand = expandFailureReasonSchema.safeParse(result.error);
+    const reason: EraseFailureReason | ExpandFailureReason | null = erase.success ? erase.data : expand.success ? expand.data : null;
+    return reason === null ? [] : [[runId, reason] as const];
+  })), [parentRunIds, runs]);
+  const retryFailed = React.useCallback((runId: string, tool: 'video.lip-sync' | 'video.erase' | 'video.expand' = 'video.lip-sync'): void => {
+    void runOnce(`${tool === 'video.lip-sync' ? 'lip-sync' : tool}-retry:${runId}`, {
       scope: 'mini-tool',
-      prepare: () => ({ tool: 'video.lip-sync' as const, project_id: projectId, space_id: spaceId, run_id: newId(), retry: { runId, outputIndexes: [0] } }),
+      prepare: () => ({ tool, project_id: projectId, space_id: spaceId, run_id: newId(), retry: { runId, outputIndexes: [0] } }),
       send: (key, body) => miniToolsApi.retryPlannedVideoRun(body, key),
       onDone: () => { void query.refetch(); return undefined; },
       onFailure: (error) => { toast.error(plannedRunRefusalText(error, t)); },
     });
   }, [projectId, spaceId, query, t]);
   const detailOf = React.useCallback((taskId: string): React.ReactNode => {
-    const runId = entries.find((entry) => entry.id === taskId && entry.label === 'video.lip-sync')?.taskId;
-    const reason = runId == null ? undefined : lipSyncFailures.get(runId);
-    return reason === undefined || runId == null ? null
-      : <LipSyncFailure reason={reason} disabled={readOnly} {...(lipsyncFailureRetryable(reason) ? { onRetry: () => retryLipSync(runId) } : {})} />;
-  }, [entries, lipSyncFailures, readOnly, retryLipSync]);
+    const entry = entries.find((candidate) => candidate.id === taskId);
+    const runId = entry?.taskId;
+    if (runId == null) return null;
+    if (entry?.label === 'video.erase' || entry?.label === 'video.expand') {
+      const tool = entry.label;
+      const failure = modelFailures.get(runId);
+      return failure === undefined ? null : <ModelRunFailure reason={failure} disabled={readOnly} {...(modelFailureRetryable(failure) ? { onRetry: () => retryFailed(runId, tool) } : {})} />;
+    }
+    const reason = entry?.label === 'video.lip-sync' ? lipSyncFailures.get(runId) : undefined;
+    return reason === undefined ? null
+      : <LipSyncFailure reason={reason} disabled={readOnly} {...(lipsyncFailureRetryable(reason) ? { onRetry: () => retryFailed(runId) } : {})} />;
+  }, [entries, lipSyncFailures, modelFailures, readOnly, retryFailed]);
   // Only the running list reads the clock, and only while it has a row: the
   // three settled states show fixed instants.
   const counting = React.useMemo(

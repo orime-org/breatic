@@ -49,7 +49,7 @@ const TOOL = { current: 'video.erase' as 'video.erase' | 'video.expand' };
  * @returns The row.
  */
 function row(): NodeTaskEntry {
-  return { id: '40000000-0000-4000-8000-000000000001', taskId: RUN, projectId: PROJECT, spaceId: SPACE, nodeId: OUTPUT, kind: 'generation', action: 'mini_tool', label: TOOL.current, status: 'failed', startedByUserId: 'reader',
+  return { id: '40000000-0000-4000-8000-000000000001', taskId: RUN, projectId: PROJECT, spaceId: SPACE, nodeId: OUTPUT, kind: 'generation', action: 'mini_tool', label: TOOL.current, status: 'failed', startedByUserId: 'user',
     startedAt: '2026-10-26T00:00:00.000Z', settledAt: '2026-10-26T00:00:01.000Z', budgetMs: 7_200_000, errorMessage: 'Lip sync failed', nodeHistoryId: null, content: null, coverUrl: null, mediaWidth: null, mediaHeight: null, duration: null, mimeType: null, size: null };
 }
 
@@ -61,7 +61,7 @@ function row(): NodeTaskEntry {
 function record(reason: Record<string, unknown>): MiniToolExecutionRecord {
   return { schemaVersion: 1, runId: RUN, status: 'failed', planFingerprint: 'a'.repeat(64), resultVersion: 1,
     sourceBindings: [{ assetId: '80000000-0000-4000-8000-000000000001', contentHash: 'b'.repeat(64), canonicalURL: 'https://assets.example.test/video/source.mp4', kind: 'video', mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' } }],
-    outputs: [{ outputIndex: 0, nodeId: OUTPUT, recipe: { kind: TOOL.current === 'video.erase' ? 'erase' : 'expand' }, late: false, result: { status: 'failed', error: structuredClone(reason) } }],
+    outputs: [{ outputIndex: 0, nodeId: OUTPUT, recipe: { kind: TOOL.current === 'video.erase' ? 'erase' : 'expand' }, late: false, result: { status: 'failed', error: structuredClone(reason) as never } }],
     usage: [], billingState: 'settled', error: { message: 'output failed' } };
 }
 

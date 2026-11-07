@@ -963,8 +963,14 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.miniTool.videoUI.point"))} under ${quoted(t("canvas.miniTool.videoUI.selection"))} and mark ` +
       "the target on the video itself. Set the range with " +
       `${quoted(t("canvas.miniTool.videoUI.rangeStart"))} and ${quoted(t("canvas.miniTool.videoUI.rangeEnd"))}, then ` +
-      `${quoted(t("canvas.miniTool.videoUI.trackObject"))} tracks that selection. Erase takes a range of 1–5 s, and ` +
-      "the frame the selection was marked on must lie inside the range. Video expansion uses the frame around the " +
+      `${quoted(t("canvas.miniTool.videoUI.trackObject"))} tracks that selection; the text box above it can describe the ` +
+      "object to track. Once tracked, the box turns green and follows the object frame by frame. A tracking that failed " +
+      `says why under the button, and ${quoted(t("canvas.miniTool.videoUI.retryTracking"))} tracks the selection again ` +
+      "when that can help. Erase takes a range of 1–5 s, and the frame the selection was marked on must lie inside the " +
+      "range; Track selection and Run stay unavailable, with a toast saying why, until both hold. A failed erase or " +
+      "expansion lists on its output node what failed, by step or by window, and what to do next; " +
+      `${quoted(t("canvas.miniTool.videoUI.retryFailedItems"))} is offered only when retrying can succeed. ` +
+      "Video expansion uses the frame around the " +
       "fixed source, with the same ratio buttons and exposed-background dragging as picture expansion; it takes videos " +
       "up to 180 s, and the expanded video's long side can be at most 4096 px. Neither erase nor expansion works on a " +
       "video with transparency, such as a background removal result.",

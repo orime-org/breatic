@@ -178,7 +178,9 @@ export function useCanvasVideoBindings(hostId: string | null, canonicalURL: stri
       const panelState = facts === undefined ? undefined : deriveVideoToolPanelState({ sourceURL: canonicalURL, presentationStatus: snapshot?.status === 'failed' ? 'failed' : 'ready', response: facts.response, resourceVersionId, table: frameTable, tableStatus: facts.tableStatus, retrying: facts.retrying });
       presentations.set(hostId, { status: snapshot?.status === 'failed' ? 'failed' : 'ready', sourceURL: canonicalURL, sourceEpoch: binding.sourceEpoch, seekEpoch: binding.getSeekEpoch(), presentedTime: frame?.mediaTime ?? null, frameTable: frameTable !== null && panelState === 'usable' ? frameTable.table : null, getPresentedFrame: actualFrame, onSeek: binding.seek,
         ...(facts === undefined ? {} : { panelState, retrying: facts.retrying, onRetry: facts.onRetry, previewSource: facts.previewSource }),
-        ...(facts?.response?.presentation ? { presentationRef: { source: { toolInputId: facts.response.presentation.toolInputId, planSha256: facts.response.presentation.planSha256 } } } : {}),
+        // A transparent source plays as an alpha-packed version (execution design §10.4 transparent source row).
+        ...(facts?.response?.presentation ? { presentationRef: { source: { toolInputId: facts.response.presentation.toolInputId, planSha256: facts.response.presentation.planSha256 } },
+          transparent: facts.response.presentation.playback.kind === 'alpha-packed' } : {}),
       });
     }
     return { bindings, presentations, onVideoBinding, onVideoFrame };

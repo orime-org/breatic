@@ -16,7 +16,7 @@ export function createVideoToolDraft<K extends VideoToolId>(toolId: K, source: V
   const common = { version: 1 as const, draftId: newId(), revision: newId(), source, inputs: [] };
   const drafts: VideoToolDraftById = {
     'video.expand': { ...common, params: { frame: { x: 0, y: 0, width: 1, height: 1 }, ratio: 'free', prompt: '' } },
-    'video.erase': { ...common, params: { range: { start: 0, end: source.mediaInfo.duration }, anchor: { frameIndex: 0, pts: 0 }, region: { box: null, points: [] }, trackingPrompt: '', erasePrompt: '' } },
+    'video.erase': { ...common, params: { range: { start: 0, end: source.mediaInfo.duration }, anchor: { frameIndex: 0, pts: 0 }, region: { box: null, points: [] }, trackingPrompt: '' } },
     'video.lip-sync': { ...common, params: { anchor: { frameIndex: 0, pts: 0 }, dialogues: [{ dialogueId: newId(), personId: null, analysisRunId: null, audioInputId: null, startTime: 0 }], syncMode: 'cut_off' } },
     'video.remove-bg': { ...common, params: {} },
     'video.extract-frames': { ...common, params: { mode: 'current', currentTime: 0 } },

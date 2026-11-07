@@ -1420,7 +1420,6 @@
         "dialogueStartTime": "Start time",
         "drawBox": "Drag to mark an area",
         "editTimeline": "Edit timeline",
-        "erasePrompt": "Describe the background after removal",
         "expandPrompt": "Describe what to fill in, or leave it empty to extend the video naturally",
         "export": "Export",
         "first": "First frame",
@@ -1459,7 +1458,7 @@
         "timelineInstructions": "Select a clip, change its order and trim it. Set transitions between adjacent clips, then play the preview before exporting.",
         "timelineProperties": "Clip settings",
         "trackObject": "Track selection",
-        "trackingPrompt": "Describe what to fill in, or leave it empty to extend the video naturally",
+        "trackingPrompt": "Describe the object to track, or leave empty to track the selection only",
         "transition": "Type",
         "transitionDuration": "Transition duration",
         "transparentOutput": "Transparent source stays available for download and downstream tools.",
@@ -1496,7 +1495,38 @@
         "trackingEstimate": "Est. {credits}",
         "trackingActual": "Used {credits}",
         "lipSyncDurationRange": "This model takes {min}–{max} s; the result is {duration} s.",
-        "lipSyncTrackingRange": "Person tracking takes {min}–{max} s of video; this run uses {length} s."
+        "lipSyncTrackingRange": "Person tracking takes {min}–{max} s of video; this run uses {length} s.",
+        "eraseRange": "Erase takes a range of {min}–{max} s.",
+        "anchorOutsideRange": "Mark the selection on a frame inside the range.",
+        "expandTooLong": "Expand takes videos up to {max} s long.",
+        "expandTooLarge": "The expanded video can be at most {max} px on its long side.",
+        "transparentSource": "This tool doesn't work on videos with transparency.",
+        "trackingFailure": {
+          "empty_foreground": "Nothing was tracked. Change the selection or the description.",
+          "tracking_output_mismatch": "Tracking failed.",
+          "model_rejected": "The model rejected this selection. Change the selection or the description.",
+          "timeout": "Tracking timed out.",
+          "failed": "Tracking failed."
+        },
+        "retryTracking": "Retry tracking",
+        "stepFail": {
+          "prepare": "Preparation",
+          "mask": "Mask",
+          "generate": "Generation",
+          "composite": "Compositing",
+          "stitch": "Stitching",
+          "expired": "Whole run",
+          "window": "Window input",
+          "window_mask": "Window mask",
+          "condition": "Continuity frame"
+        },
+        "windowNumber": "Window {number}",
+        "failOutputMismatch": "Result mismatch",
+        "eraseRejectedNext": "Change the range or the selection and run again.",
+        "eraseMismatchNext": "Change the range and run again.",
+        "expandRejectedNext": "Change the expanded area or the description and run again.",
+        "windowStoppedNext": "Stopped because of Window {number}. Follow Window {number}'s next step.",
+        "retryFailedItems": "Retry failed items"
       }
     },
     "template": {

@@ -1420,7 +1420,6 @@
         "dialogueStartTime": "開始時間",
         "drawBox": "ドラッグして領域を指定",
         "editTimeline": "タイムラインを編集",
-        "erasePrompt": "除去後の背景を入力",
         "expandPrompt": "補う内容を入力。空欄なら動画に合わせて自然に広げます",
         "export": "書き出し",
         "first": "最初",
@@ -1459,7 +1458,7 @@
         "timelineInstructions": "クリップの順序と範囲を調整し、隣接クリップ間のトランジションを設定します。再生して確認後、書き出します。",
         "timelineProperties": "クリップ設定",
         "trackObject": "選択領域を追跡",
-        "trackingPrompt": "補う内容を入力。空欄なら動画に合わせて自然に広げます",
+        "trackingPrompt": "追跡する対象を説明します。空欄なら選択範囲だけで追跡します",
         "transition": "種類",
         "transitionDuration": "切替時間",
         "transparentOutput": "透過した元の動画をダウンロードや後続ツールで利用できます。",
@@ -1496,7 +1495,38 @@
         "trackingEstimate": "見積 {credits}",
         "trackingActual": "使用 {credits}",
         "lipSyncDurationRange": "このモデルは {min}–{max} 秒に対応しています。結果は {duration} 秒です。",
-        "lipSyncTrackingRange": "人物トラッキングは {min}–{max} 秒の動画に対応しています。今回は {length} 秒を使います。"
+        "lipSyncTrackingRange": "人物トラッキングは {min}–{max} 秒の動画に対応しています。今回は {length} 秒を使います。",
+        "eraseRange": "消去する範囲は {min}～{max} 秒にしてください。",
+        "anchorOutsideRange": "範囲内のフレームで選択してください。",
+        "expandTooLong": "拡張できるのは {max} 秒以内の動画です。",
+        "expandTooLarge": "拡張後の動画の長辺は最大 {max} px です。",
+        "transparentSource": "このツールは透明部分のある動画には使えません。",
+        "trackingFailure": {
+          "empty_foreground": "何も追跡されませんでした。選択範囲か説明を変えてください。",
+          "tracking_output_mismatch": "追跡に失敗しました。",
+          "model_rejected": "モデルがこの選択範囲を拒否しました。選択範囲か説明を変えてください。",
+          "timeout": "追跡がタイムアウトしました。",
+          "failed": "追跡に失敗しました。"
+        },
+        "retryTracking": "もう一度追跡",
+        "stepFail": {
+          "prepare": "準備",
+          "mask": "マスク",
+          "generate": "生成",
+          "composite": "合成",
+          "stitch": "結合",
+          "expired": "実行全体",
+          "window": "ウィンドウ入力",
+          "window_mask": "ウィンドウマスク",
+          "condition": "つなぎフレーム"
+        },
+        "windowNumber": "ウィンドウ {number}",
+        "failOutputMismatch": "結果の不一致",
+        "eraseRejectedNext": "範囲か選択範囲を変えて、もう一度実行してください。",
+        "eraseMismatchNext": "範囲を変えて、もう一度実行してください。",
+        "expandRejectedNext": "拡張範囲か説明を変えて、もう一度実行してください。",
+        "windowStoppedNext": "ウィンドウ {number} のため停止しました。ウィンドウ {number} の次の手順に従ってください。",
+        "retryFailedItems": "失敗した項目を再試行"
       }
     },
     "template": {

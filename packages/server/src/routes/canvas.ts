@@ -124,7 +124,9 @@ const urlIngestQueue = createQueue("url-ingest");
  * (inner#1305).
  *
  * `removeBackgroundModel` and `lipSync`: the models the video panel quotes and
- * offers, from the same executions admission reads (inner#1306).
+ * offers, from the same executions admission reads (inner#1306). `erase` and
+ * `expand`: the limits the panel checks before tracking or running, as admission
+ * checks them again (execution design §10.4, §10.5).
  * @param c - Hono context (auth required, no params)
  * @returns `200` with the canvas knobs the frontend reads.
  */
@@ -141,9 +143,32 @@ canvas.get("/limits", (c) => {
       waveformPeaksRetryMaxMs: getMiniToolsConfig().waveform_peaks_retry_max_ms,
       removeBackgroundModel: getMiniToolsConfig().executions["video.remove-bg"]?.model ?? null,
       lipSync: lipSyncChoices(),
+      erase: eraseLimits(),
+      expand: expandLimits(),
     },
   });
 });
+
+/**
+ * The erase limits the video panel checks, or null where the deployment offers no erase: the model input's seconds and the
+ * grid rate it is timed on.
+ * @returns The limits.
+ * @throws {never} Never.
+ */
+function eraseLimits(): { minSeconds: number; maxSeconds: number; maxGridFps: number } | null {
+  const erase = getMiniToolsConfig().executions["video.erase"];
+  return erase === undefined ? null : { minSeconds: erase.model.min_seconds, maxSeconds: erase.model.max_seconds, maxGridFps: erase.model.max_grid_fps };
+}
+
+/**
+ * The expand limits the video panel checks, or null where the deployment offers no expand.
+ * @returns The limits.
+ * @throws {never} Never.
+ */
+function expandLimits(): { maxDurationSeconds: number; maxTargetSide: number } | null {
+  const expand = getMiniToolsConfig().executions["video.expand"];
+  return expand === undefined ? null : { maxDurationSeconds: expand.max_duration_seconds, maxTargetSide: expand.max_target_side };
+}
 
 /**
  * The lip-sync choices the video panel offers, or null where the deployment configures none: each selectable model's
