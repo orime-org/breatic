@@ -182,7 +182,7 @@ test('rests as a single 32×32 button in the top right corner', async () => {
     });
 
     // Size and inset come from `--doc-entry-size` / `--doc-entry-inset`
-    // (`index.css`); the 20 is `top-5` on the layer itself, which is the one
+    // (`BODY_ROW_VARS`, `document-columns.ts`); the 20 is `top-5` on the layer itself, which is the one
     // number those variables do not carry. Asserted exactly: a range wide
     // enough to swallow a changed token proves nothing.
     expect(geometry.width).toBe(32);
