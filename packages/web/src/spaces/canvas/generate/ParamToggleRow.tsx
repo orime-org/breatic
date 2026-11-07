@@ -35,6 +35,12 @@ interface ParamToggleRowProps {
   onCheckedChange: (next: boolean) => void;
   /** Row spacing from the parent. */
   className?: string;
+  /**
+   * Set while a rule holds the switch: it stays pressable but marked
+   * `aria-disabled` and dimmed, and a press calls this to say why instead of
+   * throwing it.
+   */
+  onLocked?: () => void;
 }
 
 /**
@@ -45,6 +51,7 @@ interface ParamToggleRowProps {
  * @param root0.checked - Whether the param is on.
  * @param root0.onCheckedChange - Called with the new value.
  * @param root0.className - Row spacing from the parent.
+ * @param root0.onLocked - Says why the switch is held, while a rule holds it.
  * @returns The switch row.
  */
 export function ParamToggleRow({
@@ -53,6 +60,7 @@ export function ParamToggleRow({
   checked,
   onCheckedChange,
   className,
+  onLocked,
 }: ParamToggleRowProps): React.JSX.Element {
   const t = useTranslation();
   return (
@@ -75,7 +83,9 @@ export function ParamToggleRow({
         <Switch
           id={id}
           checked={checked}
-          onCheckedChange={onCheckedChange}
+          onCheckedChange={onLocked === undefined ? onCheckedChange : onLocked}
+          aria-disabled={onLocked === undefined ? undefined : true}
+          className={onLocked === undefined ? undefined : 'opacity-50'}
           data-testid={id}
         />
       </span>

@@ -1,0 +1,116 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+/**
+ * What the 3D generation dialog, its task rows and the Agent's proposal card
+ * share (inner#1691, design 2.1 and 7.1): the two generation modes, which
+ * catalog entry a run goes to, which settings every entry has, and what the
+ * dialog is filled with when it opens from a proposal or a retry.
+ */
+
+import type { ModelEntry, SceneGenerationProposal } from '@breatic/shared';
+
+import type { SpaceTask } from '@web/data/api/scene';
+import { spaceTaskIntent } from '@web/stores/task-actions-in-flight';
+
+/** The two ways to generate a 3D model. */
+export type SceneGenerationMode = 't23d' | 'i23d';
+
+/** Mode names, English only like every generation mode name. */
+export const SCENE_MODE_LABELS: Readonly<Record<SceneGenerationMode, string>> = {
+  t23d: 'Text to 3D',
+  i23d: 'Image to 3D',
+};
+
+/** The views an image run takes, in the order the model reads them. */
+export const SCENE_VIEWS = ['front', 'left', 'back', 'right'] as const;
+
+/** One picture in a view slot. */
+export interface SceneViewImage {
+  assetId: string;
+  url: string;
+  displayName?: string | null;
+}
+
+/** What the dialog opens filled with, besides blank: an Agent proposal or a Retry. */
+export interface SceneGenerateFill {
+  source: 'agent' | 'retry';
+  origin: 'space' | 'agent';
+  mode: SceneGenerationMode;
+  model: string;
+  prompt: string;
+  negativePrompt: string;
+  params: Record<string, unknown>;
+  images: SceneViewImage[];
+}
+
+/**
+ * The run-once intent of one 3D Space's generate press.
+ * @param spaceId - The 3D Space.
+ * @returns The intent its button and its proposal receiver read.
+ */
+export function sceneGenerateIntent(spaceId: string): string {
+  return spaceTaskIntent('generate', spaceId, 'scene-generate');
+}
+
+/**
+ * Read a mode off the wire, which says it as a plain string.
+ * @param mode - The mode as stored.
+ * @returns The mode; text when it is not an image mode.
+ */
+function modeOf(mode: string | undefined): SceneGenerationMode {
+  return mode === 'i23d' ? 'i23d' : 't23d';
+}
+
+/**
+ * The catalog entry a run goes to (design 2.1): the text entry, or for images
+ * the single-image entry while only the front view is filled and the
+ * multi-view entry once another view is.
+ * @param entries - The catalog's 3D bucket.
+ * @param mode - The mode.
+ * @param views - How many views are filled.
+ * @returns The entry, or undefined before the catalog holds one.
+ */
+export function sceneEntryFor(entries: readonly ModelEntry[], mode: SceneGenerationMode, views: number): ModelEntry | undefined {
+  const inMode = entries.filter((entry) => (Array.isArray(entry.mode) ? entry.mode.includes(mode) : entry.mode === mode));
+  if (mode === 't23d') return inMode[0];
+  const wanted = views > 1 ? 'images' : 'image';
+  return inMode.find((entry) => entry.params[wanted] !== undefined) ?? inMode[0];
+}
+
+/**
+ * The settings every 3D entry declares, which the dialog draws above the
+ * mode's own section (design 2.3).
+ * @param entries - The catalog's 3D bucket.
+ * @returns Their param names.
+ */
+export function commonSceneParams(entries: readonly ModelEntry[]): ReadonlySet<string> {
+  const [first, ...rest] = entries;
+  if (first === undefined) return new Set();
+  return new Set(Object.keys(first.params).filter((name) => rest.every((entry) => entry.params[name] !== undefined)));
+}
+
+/**
+ * The dialog's fill for an Agent proposal; the negative prompt rides in its params.
+ * @param proposal - The proposal the card handed in.
+ * @returns The fill.
+ */
+export function fillFromProposal(proposal: SceneGenerationProposal): SceneGenerateFill {
+  const negative = proposal.params.negative_prompt;
+  return {
+    source: 'agent', origin: 'agent', mode: proposal.mode, model: proposal.model, prompt: proposal.prompt ?? '',
+    negativePrompt: typeof negative === 'string' ? negative : '', params: proposal.params, images: proposal.images,
+  };
+}
+
+/**
+ * The dialog's fill for a Retry of a generation row (design 4.6); the new run keeps the row's origin.
+ * @param task - The generation row.
+ * @returns The fill.
+ */
+export function fillFromTask(task: SpaceTask): SceneGenerateFill {
+  return {
+    source: 'retry', origin: task.origin ?? 'space', mode: modeOf(task.mode), model: task.model?.name ?? '',
+    prompt: task.prompt ?? '', negativePrompt: task.negativePrompt ?? '', params: task.params ?? {}, images: task.inputs ?? [],
+  };
+}

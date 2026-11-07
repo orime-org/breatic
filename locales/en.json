@@ -456,7 +456,8 @@
         "readMemory": "Reading memory",
         "other": "Calling {tool}",
         "readTemplate": "Reading the template",
-        "requestSpace": "Asking to look at Spaces"
+        "requestSpace": "Asking to look at Spaces",
+        "proposeScene": "Drafting a 3D generation"
       },
       "proposingSceneGeneration": "Drafting a 3D generation"
     },
@@ -569,6 +570,12 @@
         "timedOut": "Timed out",
         "failed": "Couldn't read"
       }
+    },
+    "sceneProposal": {
+      "title": "3D generation",
+      "open": "Open in 3D Space",
+      "needScene": "Open a 3D Space first.",
+      "credits": "About {credits} credits"
     }
   },
   "canvas": {
@@ -888,7 +895,23 @@
         "light_color_hex": "Custom light colour",
         "light_intensity": "Intensity",
         "light_quality": "Light quality",
-        "strength": "Strength"
+        "strength": "Strength",
+        "texture": "Texture",
+        "pbr": "PBR",
+        "texture_quality": "Texture quality",
+        "texture_version": "Texture version",
+        "delight": "Remove lighting",
+        "geometry_quality": "Geometry quality",
+        "smart_low_poly": "Smart low-poly",
+        "generate_parts": "Separate parts",
+        "face_limit": "Face limit",
+        "auto_size": "Auto size",
+        "export_uv": "Export UV",
+        "model_seed": "Model seed",
+        "texture_seed": "Texture seed",
+        "texture_alignment": "Texture alignment",
+        "orientation": "Orientation",
+        "enable_image_autofix": "Image autofix"
       },
       "paramField": {
         "speaker": "Name",
@@ -931,7 +954,8 @@
         "loadFailed": "The 3D view could not load. Refresh the page to use it."
       },
       "editProposalMarks": "Replace the text in braces. Orange notes are not sent to the model.",
-      "notePrefix": "Note: "
+      "notePrefix": "Note: ",
+      "integerBlank": "Blank for auto"
     },
     "edge": {
       "delete": "Delete connection"
@@ -2275,10 +2299,77 @@
         "place": "Place in scene",
         "retry": "Retry",
         "remove": "Remove",
-        "empty": "Models you import appear here.",
+        "empty": "Models you import or generate appear here.",
         "loadFailed": "Couldn’t load tasks.",
         "removeFailed": "Couldn’t remove the task. Try again.",
-        "placeFailed": "The model couldn’t be placed in the scene."
+        "placeFailed": "The model couldn’t be placed in the scene.",
+        "kindGeneration": "Generate",
+        "originSpace": "In Space",
+        "originAgent": "Agent",
+        "generating": "Generating",
+        "generatingFor": "Generating · {minutes} min",
+        "stillRunning": "This generation is still finishing. Try again later.",
+        "hasResult": "This generation has a result. You can place it in the scene.",
+        "checkFailed": "Couldn’t check this generation. Try again.",
+        "locate": "Locate in scene",
+        "filter": "Filter",
+        "filterRunning": "Running only",
+        "filterKind": "Type",
+        "filterAll": "All",
+        "filterStarter": "Started by",
+        "filterEveryone": "All members",
+        "filterMe": "Me",
+        "filterOrigin": "Origin",
+        "filterEmpty": "No tasks match the filters."
+      },
+      "proposalBusy": "Another generation is being submitted.",
+      "readOnlyCreate": "Viewers can’t add, import or generate models.",
+      "force": {
+        "parts_geometry_only": "Separate parts generates geometry only.",
+        "pbr_needs_texture": "PBR needs texture.",
+        "fast_uses_v35": "Fast texture uses v3.5 only."
+      },
+      "generateDialog": {
+        "descriptionBlank": "The model goes to the task list and can be placed in the scene when it’s done.",
+        "descriptionAgent": "Filled in from the Agent’s proposal. Check it, then generate.",
+        "descriptionRetry": "Filled in from the earlier task. Check it, then generate.",
+        "common": "Common settings",
+        "prompt": "Prompt",
+        "promptPlaceholder": "Describe the 3D model you want",
+        "views": "Reference images",
+        "viewsHint": "Fill views in front, left, back, right order.",
+        "view": {
+          "front": "Front",
+          "left": "Left",
+          "back": "Back",
+          "right": "Right"
+        },
+        "required": "Required",
+        "upload": "Upload",
+        "pickProject": "Choose from Project",
+        "removeView": "Remove",
+        "changeView": "Change {view} image",
+        "addView": "Add {view} image",
+        "uploadFailed": "Upload failed",
+        "fillEarlier": "Fill the previous view first",
+        "rule": {
+          "bounds": "Enter {min} to {max}.",
+          "integer": "Enter a whole number.",
+          "length": "At most {max} characters.",
+          "values": "Choose one of the options."
+        }
+      },
+      "picker": {
+        "title": "Choose image",
+        "description": "Choose an image from this Project, or upload one.",
+        "project": "Project",
+        "local": "Local",
+        "loadFailed": "Couldn’t load images.",
+        "empty": "This Project has no images yet.",
+        "unnamed": "Untitled image",
+        "more": "Load more",
+        "formats": "PNG, JPEG or WebP",
+        "chooseFile": "Choose file"
       }
     }
   },

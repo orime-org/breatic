@@ -429,7 +429,7 @@ async function startFrontUpload(user: ReturnType<typeof userEvent.setup>): Promi
 }
 
 describe('SceneGenerateDialog view slot uploads (inner#1691 design 7.1)', () => {
-  beforeEach(() => upload.run.mockReset());
+  beforeEach(() => { upload.run.mockReset(); });
 
   it('shows the upload progress in its slot and keeps Generate unavailable until it lands', async () => {
     const user = userEvent.setup();

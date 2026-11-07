@@ -456,7 +456,8 @@
         "readMemory": "查记忆",
         "other": "调用 {tool}",
         "readTemplate": "读模板",
-        "requestSpace": "请求查看 Space"
+        "requestSpace": "请求查看 Space",
+        "proposeScene": "拟 3D 生成建议"
       },
       "proposingSceneGeneration": "正在拟一份 3D 生成建议"
     },
@@ -569,6 +570,12 @@
         "timedOut": "读取超时",
         "failed": "读取失败"
       }
+    },
+    "sceneProposal": {
+      "title": "3D 生成",
+      "open": "在 3D Space 中打开",
+      "needScene": "先打开一个 3D Space。",
+      "credits": "约 {credits} 积分"
     }
   },
   "canvas": {
@@ -875,7 +882,23 @@
         "light_color_hex": "自定义光色",
         "light_intensity": "强度",
         "light_quality": "光质",
-        "strength": "强度"
+        "strength": "强度",
+        "texture": "贴图",
+        "pbr": "PBR",
+        "texture_quality": "贴图质量",
+        "texture_version": "贴图版本",
+        "delight": "去除光照",
+        "geometry_quality": "几何质量",
+        "smart_low_poly": "智能低面数",
+        "generate_parts": "拆分部件",
+        "face_limit": "面数上限",
+        "auto_size": "自动尺寸",
+        "export_uv": "导出 UV",
+        "model_seed": "模型种子",
+        "texture_seed": "贴图种子",
+        "texture_alignment": "贴图对齐",
+        "orientation": "朝向",
+        "enable_image_autofix": "图片自动修正"
       },
       "paramField": {
         "speaker": "名字",
@@ -918,7 +941,8 @@
         "loadFailed": "3D 视图加载失败，刷新页面后可用"
       },
       "editProposalMarks": "请替换大括号里的内容。橙色的注意事项不会发给模型。",
-      "notePrefix": "注意事项："
+      "notePrefix": "注意事项：",
+      "integerBlank": "留空为自动"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -2275,10 +2299,77 @@
         "place": "放入场景",
         "retry": "重试",
         "remove": "移除",
-        "empty": "你导入的模型会显示在这里。",
+        "empty": "导入或生成的模型会显示在这里。",
         "loadFailed": "任务加载失败。",
         "removeFailed": "移除失败，请重试。",
-        "placeFailed": "模型未能放入场景。"
+        "placeFailed": "模型未能放入场景。",
+        "kindGeneration": "生成",
+        "originSpace": "Space 内",
+        "originAgent": "Agent",
+        "generating": "生成中",
+        "generatingFor": "生成中 · 已用 {minutes} 分钟",
+        "stillRunning": "这次生成还在收尾，请稍后再试。",
+        "hasResult": "这次生成已有结果，可以放入场景。",
+        "checkFailed": "无法查询这次生成，请重试。",
+        "locate": "在场景中定位",
+        "filter": "筛选",
+        "filterRunning": "只看进行中",
+        "filterKind": "类型",
+        "filterAll": "全部",
+        "filterStarter": "发起人",
+        "filterEveryone": "所有成员",
+        "filterMe": "我",
+        "filterOrigin": "来源",
+        "filterEmpty": "没有符合筛选的任务。"
+      },
+      "proposalBusy": "正在提交另一次生成。",
+      "readOnlyCreate": "Viewer 不能添加、导入或生成模型。",
+      "force": {
+        "parts_geometry_only": "拆分部件只生成几何。",
+        "pbr_needs_texture": "PBR 需要贴图。",
+        "fast_uses_v35": "Fast 贴图只有 v3.5。"
+      },
+      "generateDialog": {
+        "descriptionBlank": "生成的模型进入任务列表，完成后可放入场景。",
+        "descriptionAgent": "已按 Agent 的建议填好，确认后点生成。",
+        "descriptionRetry": "已按原任务填好，确认后点生成。",
+        "common": "通用设置",
+        "prompt": "提示词",
+        "promptPlaceholder": "描述你想生成的 3D 模型",
+        "views": "参考图",
+        "viewsHint": "视图按正、左、后、右依次填写。",
+        "view": {
+          "front": "正面",
+          "left": "左",
+          "back": "后",
+          "right": "右"
+        },
+        "required": "必填",
+        "upload": "上传",
+        "pickProject": "从 Project 选择",
+        "removeView": "移除",
+        "changeView": "更换{view}图",
+        "addView": "添加{view}图",
+        "uploadFailed": "上传失败",
+        "fillEarlier": "先填前一个视图",
+        "rule": {
+          "bounds": "请输入 {min} 到 {max}。",
+          "integer": "请输入整数。",
+          "length": "最多 {max} 个字符。",
+          "values": "请选择一个选项。"
+        }
+      },
+      "picker": {
+        "title": "选择图片",
+        "description": "从本 Project 的图片中选择，或上传。",
+        "project": "Project",
+        "local": "本地",
+        "loadFailed": "图片加载失败。",
+        "empty": "本 Project 还没有图片。",
+        "unnamed": "未命名图片",
+        "more": "加载更多",
+        "formats": "PNG、JPEG 或 WebP",
+        "chooseFile": "选择文件"
       }
     }
   },

@@ -140,7 +140,7 @@ describe('the 3D Space task list (inner#1690)', () => {
     expect(await rowOf('zhang')).toHaveTextContent('Zhang · Uploading 78%');
     expect(await rowOf('li')).toHaveTextContent('Li · Uploading · 3 min');
     expect(await rowOf('done')).toHaveTextContent('You · Done');
-    expect(screen.getAllByTestId(/^scene-task-/).map((element) => element.dataset.testid)).toEqual(['scene-task-zhang', 'scene-task-li', 'scene-task-done']);
+    expect(screen.getAllByTestId(/^scene-task-(?!filter)/).map((element) => element.dataset.testid)).toEqual(['scene-task-zhang', 'scene-task-li', 'scene-task-done']);
   });
 
   it('names a starter it cannot resolve as a member, so every row says who and what', async () => {
@@ -191,13 +191,13 @@ describe('the 3D Space task list (inner#1690)', () => {
     api.listSpaceTasks.mockResolvedValue(listed(row({ id: 'done', status: 'done', assetId: 'a' }), row({ id: 'failed', status: 'failed', errorMessage: 'aborted' })));
     renderList({ canEdit: false, uploads: store([{ taskId: 'failed', phase: 'retained' }]) });
     await rowOf('done');
-    expect(screen.queryAllByRole('button')).toEqual([]);
+    expect(within(screen.getByTestId('scene-tasks-panel')).queryAllByRole('button')).toEqual([]);
   });
 
   it('says so when the Space has no tasks', async () => {
     api.listSpaceTasks.mockResolvedValue(listed());
     renderList();
-    expect(await screen.findByText('Models you import appear here.')).toBeInTheDocument();
+    expect(await screen.findByText('Models you import or generate appear here.')).toBeInTheDocument();
   });
 
   it('reads the list again for a row this page just opened, then gives that row focus and says so once', async () => {

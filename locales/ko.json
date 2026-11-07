@@ -456,7 +456,8 @@
         "readMemory": "메모리 확인",
         "other": "{tool} 실행",
         "readTemplate": "템플릿 확인",
-        "requestSpace": "Space 보기 요청"
+        "requestSpace": "Space 보기 요청",
+        "proposeScene": "3D 생성 제안 작성"
       },
       "proposingSceneGeneration": "3D 생성 제안을 작성하는 중"
     },
@@ -569,6 +570,12 @@
         "timedOut": "시간 초과",
         "failed": "읽기 실패"
       }
+    },
+    "sceneProposal": {
+      "title": "3D 생성",
+      "open": "3D Space에서 열기",
+      "needScene": "먼저 3D Space를 여세요.",
+      "credits": "약 {credits} 크레딧"
     }
   },
   "canvas": {
@@ -875,7 +882,23 @@
         "light_color_hex": "사용자 지정 조명 색",
         "light_intensity": "강도",
         "light_quality": "조명 질감",
-        "strength": "강도"
+        "strength": "강도",
+        "texture": "텍스처",
+        "pbr": "PBR",
+        "texture_quality": "텍스처 품질",
+        "texture_version": "텍스처 버전",
+        "delight": "조명 제거",
+        "geometry_quality": "지오메트리 품질",
+        "smart_low_poly": "스마트 로우폴리",
+        "generate_parts": "파트 분리",
+        "face_limit": "면 수 제한",
+        "auto_size": "자동 크기",
+        "export_uv": "UV 내보내기",
+        "model_seed": "모델 시드",
+        "texture_seed": "텍스처 시드",
+        "texture_alignment": "텍스처 정렬",
+        "orientation": "방향",
+        "enable_image_autofix": "이미지 자동 보정"
       },
       "paramField": {
         "speaker": "이름",
@@ -918,7 +941,8 @@
         "loadFailed": "3D 보기를 불러오지 못했습니다. 페이지를 새로고침하면 사용할 수 있습니다"
       },
       "editProposalMarks": "중괄호 안의 내용을 바꿔 주세요. 주황색 안내는 모델에 전달되지 않습니다.",
-      "notePrefix": "안내: "
+      "notePrefix": "안내: ",
+      "integerBlank": "비우면 자동"
     },
     "nodeMenu": {
       "generate": "생성",
@@ -2275,10 +2299,77 @@
         "place": "장면에 배치",
         "retry": "다시 시도",
         "remove": "제거",
-        "empty": "가져온 모델이 여기에 표시됩니다.",
+        "empty": "가져오거나 생성한 모델이 여기에 표시됩니다.",
         "loadFailed": "작업을 불러오지 못했습니다.",
         "removeFailed": "작업을 제거하지 못했습니다. 다시 시도하세요.",
-        "placeFailed": "모델을 장면에 배치하지 못했습니다."
+        "placeFailed": "모델을 장면에 배치하지 못했습니다.",
+        "kindGeneration": "생성",
+        "originSpace": "Space 내",
+        "originAgent": "Agent",
+        "generating": "생성 중",
+        "generatingFor": "생성 중 · {minutes}분 경과",
+        "stillRunning": "이 생성은 아직 마무리 중입니다. 나중에 다시 시도하세요.",
+        "hasResult": "이 생성에 결과가 있습니다. 장면에 배치할 수 있습니다.",
+        "checkFailed": "이 생성을 확인하지 못했습니다. 다시 시도하세요.",
+        "locate": "장면에서 찾기",
+        "filter": "필터",
+        "filterRunning": "진행 중만",
+        "filterKind": "유형",
+        "filterAll": "전체",
+        "filterStarter": "시작한 사람",
+        "filterEveryone": "모든 멤버",
+        "filterMe": "나",
+        "filterOrigin": "출처",
+        "filterEmpty": "필터에 맞는 작업이 없습니다."
+      },
+      "proposalBusy": "다른 생성을 제출하는 중입니다.",
+      "readOnlyCreate": "Viewer는 모델을 추가, 가져오기, 생성할 수 없습니다.",
+      "force": {
+        "parts_geometry_only": "파트 분리는 지오메트리만 생성합니다.",
+        "pbr_needs_texture": "PBR에는 텍스처가 필요합니다.",
+        "fast_uses_v35": "Fast 텍스처는 v3.5만 지원합니다."
+      },
+      "generateDialog": {
+        "descriptionBlank": "생성된 모델은 작업 목록에 들어가며 완료되면 장면에 배치할 수 있습니다.",
+        "descriptionAgent": "Agent의 제안으로 채워졌습니다. 확인 후 생성하세요.",
+        "descriptionRetry": "이전 작업 내용으로 채워졌습니다. 확인 후 생성하세요.",
+        "common": "공통 설정",
+        "prompt": "프롬프트",
+        "promptPlaceholder": "원하는 3D 모델을 설명하세요",
+        "views": "참조 이미지",
+        "viewsHint": "정면, 왼쪽, 뒤, 오른쪽 순서로 채웁니다.",
+        "view": {
+          "front": "정면",
+          "left": "왼쪽",
+          "back": "뒤",
+          "right": "오른쪽"
+        },
+        "required": "필수",
+        "upload": "업로드",
+        "pickProject": "Project에서 선택",
+        "removeView": "제거",
+        "changeView": "{view} 이미지 변경",
+        "addView": "{view} 이미지 추가",
+        "uploadFailed": "업로드 실패",
+        "fillEarlier": "이전 보기를 먼저 채우세요",
+        "rule": {
+          "bounds": "{min}~{max} 사이로 입력하세요.",
+          "integer": "정수를 입력하세요.",
+          "length": "최대 {max}자입니다.",
+          "values": "옵션 중 하나를 선택하세요."
+        }
+      },
+      "picker": {
+        "title": "이미지 선택",
+        "description": "이 Project의 이미지에서 선택하거나 업로드하세요.",
+        "project": "Project",
+        "local": "로컬",
+        "loadFailed": "이미지를 불러오지 못했습니다.",
+        "empty": "이 Project에는 아직 이미지가 없습니다.",
+        "unnamed": "제목 없는 이미지",
+        "more": "더 불러오기",
+        "formats": "PNG, JPEG 또는 WebP",
+        "chooseFile": "파일 선택"
       }
     }
   },

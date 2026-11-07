@@ -26,11 +26,12 @@ import {
   LEGACY_FAILURE_LINES,
   NEVER_RAN,
   readQuestionnaire,
+  sceneGenerationProposalSchema,
   spaceRequestInputSchema,
   stripDsml,
   TURNED_AWAY,
 } from '@breatic/shared';
-import type { CanvasProposal, ChatAttachedChip, DocumentProposal } from '@breatic/shared';
+import type { CanvasProposal, ChatAttachedChip, DocumentProposal, SceneGenerationProposal } from '@breatic/shared';
 import type {
   ChatAsset,
   ChatFailureLine,
@@ -84,6 +85,9 @@ const PROPOSE_TOOL = 'propose_canvas_action';
 
 /** The tool that proposes a comment, rewrite or insert for the open document. */
 const PROPOSE_DOCUMENT_TOOL = 'propose_document_edit';
+
+/** The tool that proposes a 3D generation for the 3D Space in front (inner#1691). */
+const PROPOSE_SCENE_TOOL = 'propose_scene_generation';
 
 /**
  * The proposal one finished `propose_canvas_action` or `propose_document_edit`
@@ -192,6 +196,7 @@ const STEP_KEYS: Readonly<Record<string, string>> = {
   judge_likelihood: 'chat.tool.step.judge',
   propose_canvas_action: 'chat.tool.step.proposeCanvas',
   propose_document_edit: 'chat.tool.step.proposeDocument',
+  propose_scene_generation: 'chat.tool.step.proposeScene',
   list_generation_models: 'chat.tool.step.listModels',
   get_canvas_capabilities: 'chat.tool.step.canvasCapabilities',
   get_product_guide: 'chat.tool.step.productGuide',
@@ -473,6 +478,7 @@ export function toChatMessage(
   const assets: ChatAsset[] = [];
   const proposals: CanvasProposal[] = [];
   const documentProposals: DocumentProposal[] = [];
+  const sceneProposals: SceneGenerationProposal[] = [];
   const questionnaires: ChatQuestionnaire[] = [];
   const spaceRequests: ChatSpaceRequest[] = [];
   // Read before the loop, because the mark comes after the call it names.
@@ -545,6 +551,11 @@ export function toChatMessage(
         const proposal = placedOf(part.output, documentProposalSchema);
         if (proposal === 'expired') hasExpiredProposal = true;
         else if (proposal !== null) documentProposals.push(proposal);
+      }
+      if (status === 'success' && getToolName(part) === PROPOSE_SCENE_TOOL) {
+        const proposal = placedOf(part.output, sceneGenerationProposalSchema);
+        if (proposal === 'expired') hasExpiredProposal = true;
+        else if (proposal !== null) sceneProposals.push(proposal);
       }
       if (status === 'success' && getToolName(part) === SEARCH_TOOL) {
         found.push(...sourcesOf(part.output));
@@ -637,6 +648,7 @@ export function toChatMessage(
     ...(assets.length > 0 ? { assets } : {}),
     ...(proposals.length > 0 ? { proposals } : {}),
     ...(documentProposals.length > 0 ? { documentProposals } : {}),
+    ...(sceneProposals.length > 0 ? { sceneProposals } : {}),
     ...(questionnaires.length > 0 ? { questionnaires } : {}),
     ...(spaceRequests.length > 0 ? { spaceRequests } : {}),
     ...(hasExpiredProposal ? { hasExpiredProposal: true as const } : {}),

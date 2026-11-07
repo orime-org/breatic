@@ -9,7 +9,8 @@
  * named on screen from the locales by its param name
  * (`canvas.generatePanel.param.<name>`); its shape comes from the
  * declaration: `values` is a row of options (a true/false pair is a switch),
- * `min`/`max` is a slider, `type: text` is a text box. The `label` is what
+ * `min`/`max` is a slider, `type: text` is a text box, `type: integer` a
+ * whole-number box that may be left blank (inner#1691). The `label` is what
  * marks a param as one of these. A list of entries (`type: items`) is a list
  * editor whose rows follow the entry's `fields`. A param declared for some
  * modes only is drawn in those modes only, so every reader names the mode.
@@ -43,6 +44,7 @@ export type ModelControl =
   | { kind: 'choice'; name: string; options: ParamOption[] }
   | { kind: 'range'; name: string; min: number; max: number; step: number; stops?: SliderStop[]; display?: 'percent' }
   | { kind: 'text'; name: string }
+  | { kind: 'integer'; name: string }
   | { kind: 'items'; name: string; max: number | undefined; fields: ItemFieldControl[] }
   | { kind: 'cameraAngle'; name: 'camera_angle'; params: CameraAngleParams }
   | { kind: 'lightAngle'; name: 'light_angle'; params: AngleParams }
@@ -124,6 +126,7 @@ function controlFor(name: string, spec: ParamDescriptor): ModelControl | undefin
     return { kind: 'items', name, max: spec.max_items, fields };
   }
   if (spec.type === 'text') return { kind: 'text', name };
+  if (spec.type === 'integer') return { kind: 'integer', name };
   const values = spec.values;
   if (values && values.length > 0) {
     if (values.every((v) => typeof v === 'boolean')) return { kind: 'toggle', name };

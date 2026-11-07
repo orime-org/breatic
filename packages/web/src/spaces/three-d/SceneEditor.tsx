@@ -17,7 +17,8 @@ import { readSceneView, writeSceneView } from '@web/lib/scene-view-storage';
 import { toast } from '@web/lib/toast';
 import type { SpaceBodyProps } from '@web/spaces';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
-import { SceneCreationMenu } from '@web/spaces/three-d/SceneCreationMenu';
+import { SceneCreationMenu, type SceneGenerateRequest } from '@web/spaces/three-d/SceneCreationMenu';
+import { fillFromTask } from '@web/spaces/three-d/scene-generation';
 import { SceneField, type SceneFieldDraft } from '@web/spaces/three-d/SceneField';
 import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
 import { SceneObjectList } from '@web/spaces/three-d/SceneObjectList';
@@ -57,6 +58,7 @@ export interface SceneEditorProps extends SpaceBodyProps {
  * @param root0 - Scene identity and document bindings supplied by the Space host.
  * @param root0.projectId - Project whose scene is being edited.
  * @param root0.spaceId - Space that owns the current scene.
+ * @param root0.myRole - The member's project role, which gates the rail's create entries.
  * @param root0.userId - Signed-in account owning this personal view.
  * @param root0.session - Document-scoped editing owner.
  * @param root0.snapshot - Current shared content and local selection projection.
@@ -67,7 +69,7 @@ export interface SceneEditorProps extends SpaceBodyProps {
  * @param root0.UnlockIcon - The host's existing unlocked-state icon.
  * @returns The object list, shared scene, inspector and error feedback.
  */
-const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId, session, snapshot, connection,
+const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole, userId, session, snapshot, connection,
   namedPeers, readObjects, ownsKeyboard, UnlockIcon }: SceneEditorProps): React.JSX.Element {
   const t = useTranslation();
   const figureName = t('spaces.threeD.figure');
@@ -265,6 +267,10 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
   }, [handedOff, setRightOpen]);
   /** The handed row has been shown; a later reopening of the task list starts where the user left it. */
   const taskFocused = React.useCallback((): void => setFocusTaskId(null), []);
+  const [generateRequest, setGenerateRequest] = React.useState<SceneGenerateRequest | null>(null);
+  /** Open the generation dialog filled from a generation row's Retry (design 4.6). */
+  const retryGeneration = React.useCallback((task: SpaceTask): void => setGenerateRequest({ fill: fillFromTask(task) }), []);
+  const [filterHost, setFilterHost] = React.useState<HTMLSpanElement | null>(null);
 
   // A placement holds its model through the viewport's own cache until the
   // viewport holds the placed object too, so the model is loaded once.
@@ -319,6 +325,18 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
     keepTasksPanel.current = true;
     session.select(id, false);
   }, [session, placeFailedText, t]);
+
+  const placedAssetIds = React.useMemo(() => new Set(snapshot.objects.flatMap((object) => (object.model.kind === 'asset' ? [object.model.assetId] : []))), [snapshot.objects]);
+  /**
+   * Select the scene's objects of one model, keeping the task list open.
+   * @param assetId - The model.
+   */
+  const locateAsset = React.useCallback((assetId: string): void => {
+    const ids = snapshot.objects.filter((object) => object.model.kind === 'asset' && object.model.assetId === assetId).map((object) => object.id);
+    if (ids.length === 0) return;
+    keepTasksPanel.current = true;
+    ids.forEach((id, index) => session.select(id, index > 0));
+  }, [snapshot.objects, session]);
 
   const wasRightOpen = React.useRef(false);
   React.useEffect(() => {
@@ -445,7 +463,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
     ? <SceneIconButton label={allSelectedLocked ? unlockText : lockText} data-testid='scene-selection-lock'
       aria-pressed={allSelectedLocked} disabled={!snapshot.canEdit} onClick={toggleSelectionLock}>
       {allSelectedLocked ? lockIcon : unlockedIcon}
-    </SceneIconButton> : null, [panel, selected.length, allSelectedLocked, unlockText, lockText, snapshot.canEdit, toggleSelectionLock, unlockedIcon]);
+    </SceneIconButton> : panel === 'tasks' ? <span ref={setFilterHost} className='inline-flex' /> : null,
+  [panel, selected.length, allSelectedLocked, unlockText, lockText, snapshot.canEdit, toggleSelectionLock, unlockedIcon]);
   const inspectorFallback = React.useMemo(() => <p className='p-4 text-sm text-muted-foreground'>{loadingText}</p>, [loadingText]);
   const viewportFallback = React.useMemo(() => <div className='grid h-full place-items-center text-sm'>{loadingText}</div>, [loadingText]);
   const panelContent = React.useMemo(() => panel === 'properties'
@@ -455,9 +474,10 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
     </React.Suspense>
     : panel === 'objects' ? <SceneObjectList session={session} snapshot={snapshot} modelStates={modelStates} onSelect={showSelectedProperties} />
       : <SceneTaskList projectId={projectId} spaceId={spaceId} userId={userId} canEdit={snapshot.canEdit} uploads={uploads}
-        remoteUploads={snapshot.remoteUploads} onPlace={placeTask} focusTaskId={focusTaskId} onFocused={taskFocused} />,
+        remoteUploads={snapshot.remoteUploads} onPlace={placeTask} focusTaskId={focusTaskId} onFocused={taskFocused}
+        onRetryGeneration={retryGeneration} placedAssetIds={placedAssetIds} onLocate={locateAsset} filterHost={filterHost} />,
   [panel, inspectorFallback, session, snapshot, readObjects, namedPeers, spaceId, fieldDrafts, onFieldDraftChange, modelStates, showSelectedProperties,
-    projectId, userId, uploads, placeTask, focusTaskId, taskFocused]);
+    projectId, userId, uploads, placeTask, focusTaskId, taskFocused, retryGeneration, placedAssetIds, locateAsset, filterHost]);
   // An older-format scene is never opened, so no editing chrome is shown around its message.
   if (snapshot.status === 'unsupported' && isOlderSceneFormat(snapshot.version)) {
     return <div ref={stage} className='relative isolate h-full min-h-0 min-w-0 bg-canvas' data-testid='three-d-space'>
@@ -486,7 +506,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
         {modelRetryable && <Button size='sm' variant='ghost' onClick={() => setModelRetryRevision((value) => value + 1)}>{t('spaces.threeD.retry')}</Button>}
       </div> : null}
     </div>
-    <SceneCreationMenu canEdit={snapshot.canEdit && importController !== null} onAdd={addBuiltin} onImport={showImport} />
+    <SceneCreationMenu projectId={projectId} spaceId={spaceId} myRole={myRole} canEdit={snapshot.canEdit && importController !== null} onAdd={addBuiltin} onImport={showImport}
+      generateRequest={generateRequest} onGenerated={importStarted} />
     {importController && importLimits && <React.Suspense fallback={null}><SceneModelImportHost controller={importController}
       open={importOpen} onOpenChange={setImportOpen} canEdit={snapshot.canEdit} maxInputBytes={importLimits.maxInputBytes} onStarted={importStarted} /></React.Suspense>}
     <SceneRightPanel open={rightOpen} onOpenChange={setRightOpen} automatic={automaticPanel} stage={stage} returnTarget={returnTarget} cancelGesture={cancelGesture} contentRef={rightPanel}
