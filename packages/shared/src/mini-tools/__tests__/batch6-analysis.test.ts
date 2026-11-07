@@ -129,13 +129,11 @@ function recordFor(kind: AnalysisKind, analysisRunId = earlyId, acceptedAt = ear
       ? { timeBase: { numerator: 1, denominator: 1000 }, frameCount: 125, cuts: [] }
       : {
           timeBase: { numerator: 1, denominator: 1000 }, frameCount: 125,
-          width: 960, height: 540, polarity: { remove: 0, keep: 255 },
+          width: 960, height: 540,
           anchor: { frameIndex: 3, pts: 0.12 }, regionFingerprint: "c".repeat(64),
           sourceFrameMapping: Array.from({ length: 125 }, (_, frameIndex) => ({ frameIndex, sourcePts: frameIndex / 25 })),
           artifactRefs: [
             { role: "rle", assetId: "30000000-0000-4000-8000-000000000001", canonicalURL: "https://media.example.test/mask.json", contentHash: "d".repeat(64), kind: "document", mimeType: "text/plain", size: 2048, frameMetadata: null },
-            { role: "normalized_clip", assetId: "30000000-0000-4000-8000-000000000002", canonicalURL: "https://media.example.test/normalized.mp4", contentHash: "e".repeat(64), kind: "video", mimeType: "video/mp4", size: 8192, frameMetadata: { width: 960, height: 540, frameCount: 125, timeBase: { numerator: 1, denominator: 1000 } } },
-            { role: "binary_mask", assetId: "30000000-0000-4000-8000-000000000003", canonicalURL: "https://media.example.test/binary-mask.mp4", contentHash: "f".repeat(64), kind: "video", mimeType: "video/mp4", size: 4096, frameMetadata: { width: 960, height: 540, frameCount: 125, timeBase: { numerator: 1, denominator: 1000 } } },
           ],
         };
   return { ...identity, status: "completed", result: { ...structuredClone(identity), ...data }, error: null, usage: [], artifactUnavailable: false };
@@ -372,22 +370,30 @@ describe("batch six analysis public contract", () => {
       expect(api.miniToolAnalysisRecordSchema.safeParse({ ...record, result: { ...record.result, sourceFrameMapping } }).success).toBe(false);
     });
 
-    it.each(["rle", "normalized_clip", "binary_mask"])("requires the registered %s artifact", (role) => {
+    it.each(["rle"])("requires the registered %s artifact", (role) => {
       const record = recordFor("tracked_mask");
       const artifactRefs = fixtureArtifacts(record).filter((artifact) => artifact.role !== role);
       expect(api.miniToolAnalysisRecordSchema.safeParse({ ...record, result: { ...record.result, artifactRefs } }).success).toBe(false);
     });
 
-    it.each(["rle", "normalized_clip", "binary_mask"])("rejects a repeated %s artifact role", (role) => {
+    it.each(["rle"])("rejects a repeated %s artifact role", (role) => {
       const record = recordFor("tracked_mask");
       const artifacts = fixtureArtifacts(record);
       const artifactRefs = [...artifacts, artifacts.find((artifact) => artifact.role === role)];
       expect(api.miniToolAnalysisRecordSchema.safeParse({ ...record, result: { ...record.result, artifactRefs } }).success).toBe(false);
     });
 
-    it.each([{ remove: 255, keep: 0 }, { remove: 1, keep: 255 }, { remove: 0, keep: 0 }])("rejects an incompatible binary mask polarity %j", (polarity) => {
+    // Execution design §10.3: a tracked mask registers its RLE alone; the clip, binary mask and polarity are gone.
+    it.each(["normalized_clip", "binary_mask"])("rejects a %s artifact beside the RLE", (role) => {
       const record = recordFor("tracked_mask");
-      expect(api.miniToolAnalysisRecordSchema.safeParse({ ...record, result: { ...record.result, polarity } }).success).toBe(false);
+      const rle = fixtureArtifacts(record)[0]!;
+      const artifactRefs = [rle, { ...rle, role, assetId: "30000000-0000-4000-8000-000000000002" }];
+      expect(api.miniToolAnalysisRecordSchema.safeParse({ ...record, result: { ...record.result, artifactRefs } }).success).toBe(false);
+    });
+
+    it("rejects the retired binary mask polarity", () => {
+      const record = recordFor("tracked_mask");
+      expect(api.miniToolAnalysisRecordSchema.safeParse({ ...record, result: { ...record.result, polarity: { remove: 0, keep: 255 } } }).success).toBe(false);
     });
   });
 
