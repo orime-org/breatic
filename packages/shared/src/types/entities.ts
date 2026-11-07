@@ -918,3 +918,48 @@ export interface AccountActivityCoverageEntity {
   endedAt: Date | null;
   createdAt: Date;
 }
+
+/** Where a Timeline execution is (inner#1711); only `timelineExecutionRepo.transition` moves it. */
+export type TimelineExecutionStatus =
+  | "awaiting_landing"
+  | "queued"
+  | "running"
+  | "cancelling"
+  | "succeeded"
+  | "failed"
+  | "cancelled"
+  | "expired";
+
+/** One Timeline execution the user accepted (inner#1711). Timestamps are UTC ISO strings at microsecond precision. */
+export interface TimelineExecution {
+  id: string;
+  projectId: string;
+  spaceId: string;
+  actorUserId: string;
+  kind: "web_animation_create";
+  /** The client's idempotency key, unique per Project and Space. */
+  actionId: string;
+  /** The accepted input, frozen at acceptance. */
+  input: Record<string, unknown>;
+  inputHash: string;
+  engine: "deepseek";
+  status: TimelineExecutionStatus;
+  /** The stage a running attempt reports to the user. */
+  phase: "writing" | "validating" | "saving" | null;
+  steps: unknown[];
+  /** How many attempts have claimed it. */
+  attempt: number;
+  /** The id of the attempt allowed to finish it; null when no attempt holds it. */
+  fence: string | null;
+  /** The two-hour budget's end, set once at acceptance. */
+  deadlineAt: string;
+  nextDispatchAt: string | null;
+  dispatchedAt: string | null;
+  resultSourceVersionId: string | null;
+  failureReason: string | null;
+  /** Credits charged, as Postgres renders the numeric. */
+  billedCredits: string | null;
+  billedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

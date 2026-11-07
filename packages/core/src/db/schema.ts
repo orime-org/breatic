@@ -2160,6 +2160,59 @@ export const agentMemories = pgTable(
   ],
 );
 
+/**
+ * One Timeline execution the user accepted (0117, inner#1711).
+ *
+ * `status` moves only through `timelineExecutionRepo.transition`; `fence`
+ * names the attempt allowed to finish it and `billed_at` lets it be charged
+ * at most once. `space_id` has no foreign key, as with `tasks.space_id`. The
+ * kind, engine, status and phase CHECKs and the partial indexes are written in
+ * 0117 only.
+ */
+export const timelineExecutions = pgTable(
+  "timeline_executions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    spaceId: uuid("space_id").notNull(),
+    actorUserId: uuid("actor_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    kind: text("kind").notNull(),
+    actionId: text("action_id").notNull(),
+    input: jsonb("input").$type<Record<string, unknown>>().notNull(),
+    inputHash: text("input_hash").notNull(),
+    engine: text("engine").notNull(),
+    status: text("status").notNull().default("awaiting_landing"),
+    phase: text("phase"),
+    steps: jsonb("steps").$type<unknown[]>().notNull().default(sql`'[]'::jsonb`),
+    attempt: integer("attempt").notNull().default(0),
+    fence: uuid("fence"),
+    deadlineAt: timestamp("deadline_at", { withTimezone: true }).notNull(),
+    nextDispatchAt: timestamp("next_dispatch_at", { withTimezone: true }),
+    dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
+    resultSourceVersionId: uuid("result_source_version_id"),
+    failureReason: text("failure_reason"),
+    billedCredits: numeric("billed_credits"),
+    billedAt: timestamp("billed_at", { withTimezone: true }),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("timeline_executions_action_idx")
+      .on(table.projectId, table.spaceId, table.actionId)
+      .where(sql`${table.deletedAt} IS NULL`),
+    index("timeline_executions_space_idx")
+      .on(table.projectId, table.spaceId, table.status, desc(table.createdAt))
+      .where(sql`${table.deletedAt} IS NULL`),
+    index("timeline_executions_open_idx")
+      .on(table.createdAt)
+      .where(sql`${table.deletedAt} IS NULL AND ${table.status} IN ('awaiting_landing', 'queued', 'running', 'cancelling')`),
+  ],
+);
+
 // ── 12. Project Memory Entries ───────────────────────────────────────
 
 export const projectMemoryEntries = pgTable(
