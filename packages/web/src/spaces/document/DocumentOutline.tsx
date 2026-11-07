@@ -155,7 +155,7 @@ const OutlineRow = React.memo(function OutlineRow({
   return (
     <div
       data-outline-item=''
-      className={cn('group flex h-7 items-center rounded-md hover:bg-accent', active && 'bg-accent-strong font-medium hover:bg-accent-strong')}
+      className={cn('group flex h-7 items-center rounded-md hover:bg-accent', active && 'bg-accent-strong hover:bg-accent-strong')}
       style={{ paddingLeft: depth * INDENT }}
     >
       {entry.children.length > 0 ? (
@@ -178,7 +178,9 @@ const OutlineRow = React.memo(function OutlineRow({
             size={null}
             data-testid='doc-outline-row'
             data-outline-id={entry.id}
-            className='flex h-full min-w-0 flex-1 items-center gap-1.5 pl-1 pr-2 text-left text-sm'
+            // `Button` centres and sets a medium weight on everything it draws;
+            // a row reads from its left edge, and only the one being read is medium.
+            className={cn('flex h-full min-w-0 flex-1 items-center justify-start gap-1.5 pl-1 pr-2 text-left text-sm', active ? 'font-medium' : 'font-normal')}
             onClick={() => onJump(entry.id)}
           >
             {entry.number !== null && <span className='flex-none tabular-nums text-muted-foreground'>{entry.number}</span>}

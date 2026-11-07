@@ -135,6 +135,21 @@ test('a jump leaves each level of heading 16px under the top and the caret at it
   await expect(row(page, 'ZOne one')).toBeVisible();
 });
 
+test('a row reads from its left edge, indented by level, and only the one being read is medium weight', async () => {
+  await openWith(page, DOCUMENT);
+  await row(page, 'Two').click();
+  const rows = await page.evaluate((outline) => [...document.querySelectorAll(`${outline} [data-testid="doc-outline-row"]`)].map((r) => {
+    const words = r.lastElementChild!.getBoundingClientRect();
+    return { text: r.textContent, gap: Math.round(words.left - r.getBoundingClientRect().left), left: Math.round(words.left), weight: getComputedStyle(r).fontWeight };
+  }), OUTLINE);
+  const of = (text: string): (typeof rows)[number] => rows.find((r) => r.text === text)!;
+  for (const r of rows) expect(r.gap).toBeLessThanOrEqual(8);
+  expect(of('One one').left - of('One').left).toBe(12);
+  expect(of('One one one').left - of('One one').left).toBe(12);
+  expect(of('Two').weight).toBe('500');
+  expect(of('One').weight).toBe('400');
+});
+
 test('the highlight follows the scroll, and a short last section keeps the one clicked', async () => {
   await openWith(page, DOCUMENT);
   await page.evaluate((viewport) => {
