@@ -90,14 +90,14 @@ import { createChangeTrackingExtension } from "@collab/services/change-tracking.
 import { getCollabConfig, getConnectionTimings, getReassemblyLimits } from "@collab/config.js";
 import { convertStoredTablesOnLoad } from "@collab/services/legacy-table-conversion.js";
 import {
-  addAppliedBound,
-  dropUnapplied,
+  addApplied,
   forget as forgetDocSize,
   openDocSizeRecord,
   pushDocSize,
   readDocSizeRecord,
+  release as releaseDocSize,
 } from "@collab/services/document-size.js";
-import { createDocumentSizeGate } from "@collab/hooks/document-size-gate.js";
+import { createDocumentSizeGate, watchDocumentSize } from "@collab/hooks/document-size-gate.js";
 import { fetchDocData } from "@collab/services/yjs-documents.repo.js";
 import {
   handleSpaceRpc,
@@ -380,14 +380,15 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // The size cap decides first (inner#1790); a refused message records no
     // activity, as it is never applied.
     beforeSync: async (data) => {
-      await documentSizeGate(data);
+      documentSizeGate(data);
       await recordContentActivity(data);
     },
 
-    // Runs after every message, applied or not (a refused, read-only or
-    // unknown sync message is not), so an admitted update stops counting.
+    // Runs after every message, applied or not: an admitted update that was
+    // never applied (the connection turned read-only meanwhile, or the
+    // activity record threw) stops being held.
     afterHandleMessage: async ({ documentName, connection }) => {
-      dropUnapplied(documentName, connection);
+      releaseDocSize(documentName, connection);
     },
 
     extensions,
@@ -489,6 +490,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       // every update the way a deployment without a limit does.
       try {
         openDocSizeRecord(document);
+        if (readDocSizeRecord(documentName)) watchDocumentSize(document);
       } catch (err) {
         logger.error({ err, documentName, reason: "doc_size_record_failed" }, "doc_size_record_failed");
       }
@@ -713,16 +715,11 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         return;
       }
 
-      if (parsed.kind === "canvas" || parsed.kind === "document" || parsed.kind === "timeline") {
+      if (parsed.kind === "canvas" || parsed.kind === "document") {
         const request = SyncConfirmRequestSchema.safeParse(json);
         if (!request.success) return;
         try {
-          // The size follows the confirmation on the same connection, so the
-          // browser reads a size that covers every update it had sent
-          // (inner#1790).
-          if (replySyncConfirmation(document, connection, request.data.id) && readDocSizeRecord(documentName)) {
-            pushDocSize(documentName, connection);
-          }
+          replySyncConfirmation(document, connection, request.data.id);
         } catch (err) {
           logger.error({ err, ctx: { documentName, requestId: request.data.id } }, "Sync confirmation failed");
         }
@@ -763,11 +760,11 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     },
 
     // Updates that did not pass `beforeSync` (another instance's, collab's
-    // own writes, yjs's formatting cleanup with a null origin) still raise
-    // the size bound (inner#1790).
+    // own writes, yjs's formatting cleanup with a null origin) are counted
+    // once applied, by their length (inner#1790).
     onChange: async ({ documentName, update, transactionOrigin }) => {
       if ((transactionOrigin as { source?: unknown } | null)?.source !== "connection") {
-        addAppliedBound(documentName, update);
+        addApplied(documentName, update.byteLength);
       }
 
       // (Nothing enforces write boundaries here. The meta doc is

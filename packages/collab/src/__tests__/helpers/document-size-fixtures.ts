@@ -338,6 +338,10 @@ export function chunk(id: number, n: number): { tail: Uint8Array; full: Uint8Arr
  */
 export function mass(n: number): { server: Y.Doc; client: Y.Doc; nodes: Y.Map<Y.Map<unknown>> } {
   const client = new Y.Doc();
+  // Every item encodes its origin's client id, so a random id below 2^28
+  // (four varuint bytes, not five) would shrink the document by about a byte
+  // an item; the measured sizes are for a five-byte id.
+  client.clientID = MASS_CLIENT;
   const nodes = client.getMap<Y.Map<unknown>>("nodes");
   client.transact(() => {
     for (let i = 0; i < n; i++) {
@@ -365,6 +369,9 @@ export function mass(n: number): { server: Y.Doc; client: Y.Doc; nodes: Y.Map<Y.
   Y.applyUpdate(server, Y.encodeStateAsUpdate(client));
   return { server, client, nodes };
 }
+
+/** The client id `mass` writes with: five varuint bytes, as the spec's measures had. */
+export const MASS_CLIENT = 0x2000_0001;
 
 /** The client id `fill` writes with. */
 export const FILL_CLIENT = 0xf00001;

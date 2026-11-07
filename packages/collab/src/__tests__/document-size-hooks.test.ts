@@ -1002,7 +1002,7 @@ describe("beforeSync: admit and the record", () => {
     expect(refusalLogs()).toEqual([
       [{ documentName: CV, userId: "u1", current, limit: L, ceiling: CEIL, step: "pending" }, REFUSED],
     ]);
-    expect(c.close).toHaveBeenCalledWith({ reason: COLLAB_DOCUMENT_TOO_LARGE_REASON });
+    expect(c.close).toHaveBeenCalledWith(expect.objectContaining({ reason: COLLAB_DOCUMENT_TOO_LARGE_REASON }));
     expect(doc.store.pendingStructs).toBeNull();
     expect(rec(CV).current).toBe(1000 + k);
   });

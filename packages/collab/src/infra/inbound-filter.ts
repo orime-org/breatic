@@ -9,9 +9,10 @@
  * when the client's SyncStep2 for that document passes: Updates sent before
  * it would be applied ahead of the size check `beforeSync` makes on the
  * handshake, so they are dropped. The refusal mark is set by `markRefused`
- * once `beforeSync` turned the client's state down: Hocuspocus has already
- * queued the frames that followed it, and every one of them is dropped until
- * the client authenticates that document again, which starts a new handshake.
+ * once the size cap refused one of the client's updates: Hocuspocus may have
+ * queued the frames that followed it, and every one of them is dropped (and
+ * refused by `beforeSync`, which reads the mark through `isRefused`) until the
+ * client authenticates that document again, which starts a new handshake.
  *
  * A message is judged from its own bytes and the socket id only. A frame
  * that cannot be decoded passes unchanged and changes nothing, so Hocuspocus
@@ -99,6 +100,17 @@ export function markRefused(socketId: string, documentName: string): void {
   const docs = marks.get(socketId);
   if (docs === undefined) marks.set(socketId, new Map([[documentName, "refused"]]));
   else docs.set(documentName, "refused");
+}
+
+/**
+ * Whether a document on a socket carries the refusal mark, so `beforeSync`
+ * refuses what Hocuspocus had already queued behind the refused message.
+ * @param socketId - The Hocuspocus socket id.
+ * @param documentName - The document.
+ * @returns True until the socket authenticates that document again.
+ */
+export function isRefused(socketId: string, documentName: string): boolean {
+  return marks.get(socketId)?.get(documentName) === "refused";
 }
 
 /**

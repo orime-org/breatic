@@ -1063,7 +1063,7 @@ describe("createCollabServer — content sync receipts (inner#1641)", () => {
     return config.onStateless;
   }
 
-  it.each(["canvas", "document", "timeline"])("confirms only the requesting live writable %s connection", async (kind) => {
+  it.each(["canvas", "document"])("confirms only the requesting live writable %s connection", async (kind) => {
     const hook = await dispatcher();
     const connection = { readOnly: false, context: {}, sendStateless: vi.fn() };
     const broadcastStateless = vi.fn();
@@ -1087,7 +1087,7 @@ describe("createCollabServer — content sync receipts (inner#1641)", () => {
     expect(connection.sendStateless).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ type: "sync:confirmed", id: ID, ok: false }));
   });
 
-  it.each([`project-${PID}/meta`, `project-${PID}/3d-${SID}`, "invalid"])("does not confirm the non-content document %s", async (documentName) => {
+  it.each([`project-${PID}/meta`, `project-${PID}/timeline-${SID}`, "invalid"])("does not confirm the non-content document %s", async (documentName) => {
     const hook = await dispatcher();
     const connection = { readOnly: false, context: {}, sendStateless: vi.fn() };
     await hook({ documentName, document: { hasConnection: (): boolean => true }, connection, payload: JSON.stringify({ type: "sync:confirm", id: ID }) });
