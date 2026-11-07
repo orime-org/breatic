@@ -218,6 +218,13 @@ describe("Project registered media HTTP reads", () => {
     expect(await readData<unknown>(limitsPath!, cookie)).toEqual({
       defaults: { width: config.defaults.width, height: config.defaults.height, fps: config.defaults.fps },
       assets: { pageSize: config.assets.page_size, pageMax: config.assets.page_max },
+      webAnimation: {
+        promptMaxLength: config.web_animation.prompt_max_length,
+        durationSeconds: { min: config.web_animation.duration_seconds.min, max: config.web_animation.duration_seconds.max },
+        aspects: Object.keys(config.web_animation.viewports),
+        playerLoadTimeoutMs: config.web_animation.player_load_timeout_ms,
+        sourceRefreshIntervalMs: config.web_animation.source_refresh_interval_ms,
+      },
     });
   });
 
