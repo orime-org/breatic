@@ -342,5 +342,5 @@ export async function verifySignupCode(
   if (await userRepo.getUserByEmail(email)) {
     throw new ConflictError(t("server.auth.email_taken"));
   }
-  return createAccount({ email, hashedPassword, locale: getActiveLocale(), emailVerified: true, attribution });
+  return (await createAccount({ email, hashedPassword, locale: getActiveLocale(), emailVerified: true, attribution })).user;
 }
