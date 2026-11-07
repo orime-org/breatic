@@ -138,7 +138,7 @@ export async function* executeTextTool(
 
   try {
     const model = getModelForTool(tool);
-    await accountActivityRepo.recordActivity({ userId, projectId, kind: "agent_started" });
+    await accountActivityRepo.recordActivity({ userId, projectId: null, kind: "agent_started" });
     modelString = model;
     const watch = watchModelCalls(usage, { model, description: `Text tool: ${tool}` });
     calls = watch;
