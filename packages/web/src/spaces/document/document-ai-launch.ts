@@ -9,10 +9,13 @@
  */
 
 import type { BlockNoteEditor } from '@blocknote/core';
-import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import type { Node as ProseMirrorNode, ResolvedPos } from '@tiptap/pm/model';
 import type { EditorState } from '@tiptap/pm/state';
+import { CellSelection } from '@tiptap/pm/tables';
 
+import { inlineLetter, ownContentEnd, type AiCapture } from '@web/spaces/document/document-ai-range';
 import { readTopBlocks } from '@web/spaces/document/document-blocks-read';
+import { letterBounds } from '@web/spaces/document/document-local-range';
 import { cellDepthOf, tableAround } from '@web/spaces/document/document-table-nodes';
 
 /** What a block is told apart by in the body. */
@@ -40,6 +43,76 @@ function lastCovered(doc: ProseMirrorNode, from: number, to: number): number {
     return true;
   });
   return last;
+}
+
+/**
+ * Where the first thing the selection covers starts: the first letter, or
+ * the first block with no letters it takes in, past its start.
+ * @param doc - The body.
+ * @param from - The selection's start.
+ * @param to - Its end.
+ * @returns The position; `to` when the selection covers nothing.
+ */
+function firstCovered(doc: ProseMirrorNode, from: number, to: number): number {
+  let first = to;
+  doc.nodesBetween(from, to, (node, pos) => {
+    if (first < to) return false;
+    if ((node.isText || node.isAtom) && pos + node.nodeSize > from) {
+      first = Math.max(pos, from);
+      return false;
+    }
+    return true;
+  });
+  return first;
+}
+
+/**
+ * The block a covered position counts in: the innermost one around it, or
+ * the whole table when the selection does not stay in one of its cells
+ * (inner#1619 T14).
+ * @param $pos - The position.
+ * @param oneCell - Whether the selection stays in one cell.
+ * @returns Where the block's container starts, or null outside any block.
+ */
+function blockAround($pos: ResolvedPos, oneCell: boolean): number | null {
+  const table = oneCell ? null : tableAround($pos);
+  if (table !== null) return table.pos;
+  for (let depth = $pos.depth; depth > 0; depth -= 1) {
+    if ($pos.node(depth).type.isInGroup(BLOCK_GROUP)) return $pos.before(depth);
+  }
+  return null;
+}
+
+/**
+ * The range the AI dialog opens on (§4.6), the way Plate's
+ * `captureTextRange` takes it: a block the selection only ends at the start
+ * of, or only starts at the end of, is left out; what is left inside one
+ * block is the selected words, and what runs across blocks takes the whole
+ * blocks it touches, a table it runs into whole.
+ * @param state - The editor state, holding the selection.
+ * @returns The range, or null when it holds no words.
+ */
+export function aiCapture(state: EditorState): AiCapture | null {
+  const { doc, selection } = state;
+  if (selection.empty || selection instanceof CellSelection) return null;
+  const { from, to } = selection;
+  const firstAt = firstCovered(doc, from, to);
+  if (firstAt >= to) return null;
+  const $first = doc.resolve(firstAt);
+  const $last = doc.resolve(lastCovered(doc, from, to));
+  const firstCell = cellDepthOf($first);
+  const lastCell = cellDepthOf($last);
+  const oneCell = firstCell > 0 && lastCell > 0 && $first.before(firstCell) === $last.before(lastCell);
+  const first = blockAround($first, oneCell);
+  const last = blockAround($last, oneCell);
+  if (first === null || last === null) return null;
+  if (first === last && (firstCell <= 0 || oneCell)) {
+    const letters = letterBounds(doc, { from, to }, inlineLetter);
+    return letters === null ? null : { range: letters, firstId: null, lastId: null };
+  }
+  const range = { from: first, to: ownContentEnd(doc, last) };
+  if (letterBounds(doc, range, inlineLetter) === null) return null;
+  return { range, firstId: String(doc.nodeAt(first)!.attrs['id']), lastId: String(doc.nodeAt(last)!.attrs['id']) };
 }
 
 /**

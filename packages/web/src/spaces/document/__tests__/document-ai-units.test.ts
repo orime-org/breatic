@@ -573,20 +573,22 @@ describe('replace, whole blocks (§5.3, Plate wholeTextBlocks)', () => {
     expect(blocks(h).map(textOf)).toEqual(['Before.', 'Head', 'Para', 'item', 'After.']);
   });
 
-  it('overwrites an image and an empty line at the edges of the range, undo bringing them back', async () => {
+  it('overwrites images at the edges of the range and an empty line inside it, undo bringing them back', async () => {
     const h = await openBlocks([
       { type: 'paragraph', content: 'Before.' },
       { type: 'image', props: { url: `${OURS}a.png` } },
       { type: 'paragraph', content: 'Middle.' },
       { type: 'paragraph' },
+      { type: 'image', props: { url: `${OURS}b.png` } },
       { type: 'paragraph', content: 'After.' },
     ]);
-    // From the end of "Before." to the empty line: a range starting at the
-    // end of a block leaves that block out, so the image comes first.
-    replaceWith(h, { from: rangeOf(h, 'Before.').to, to: contentOf(h, blocks(h)[3]!.id).to }, () => 'Rewritten.');
+    // From the end of "Before." to just past the second image: a range
+    // starting at the end of a block leaves that block out, so the first
+    // image comes first.
+    replaceWith(h, { from: rangeOf(h, 'Before.').to, to: contentOf(h, blocks(h)[4]!.id).to }, () => 'Rewritten.');
     expect(blocks(h).map((b) => [b.type, textOf(b)])).toEqual([['paragraph', 'Before.'], ['paragraph', 'Rewritten.'], ['paragraph', 'After.']]);
     h.undoManager.undo();
-    expect(blocks(h).map((b) => b.type)).toEqual(['paragraph', 'image', 'paragraph', 'paragraph', 'paragraph']);
+    expect(blocks(h).map((b) => b.type)).toEqual(['paragraph', 'image', 'paragraph', 'paragraph', 'image', 'paragraph']);
   });
 
   it('covers from the block of the first tracked word once the first block was deleted', async () => {
@@ -691,7 +693,8 @@ describe('edits while the dialog is open (A6, A7)', () => {
   it('replaces the range after Enter and typing inside it', async () => {
     const h = await open('Before.\n\nOne two.\n\nThree four.\n\nAfter.');
     capture(h, { from: rangeOf(h, 'One').from, to: rangeOf(h, 'four.').to });
-    h.editor.prosemirrorView!.dispatch(h.editor.prosemirrorState.tr.split(rangeOf(h, 'two').from));
+    // Enter splits the line and its block, as BlockNote does.
+    h.editor.prosemirrorView!.dispatch(h.editor.prosemirrorState.tr.split(rangeOf(h, 'two').from, 2));
     type(h, rangeOf(h, 'Three').from, 'typed ');
     replaceAiAnswer(h, read(h, 'New.'), cover(h), WRITABLE);
     expect(blocks(h).map(textOf)).toEqual(['Before.', 'New.', 'After.']);

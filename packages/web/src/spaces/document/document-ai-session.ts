@@ -42,7 +42,7 @@ export type AiSessionEvent =
   | { readonly type: 'open'; readonly command: AiCommand }
   | { readonly type: 'submit'; readonly instructions: string }
   | { readonly type: 'delta'; readonly seq: number; readonly text: string }
-  | { readonly type: 'done'; readonly seq: number; readonly formatFailed?: boolean }
+  | { readonly type: 'done'; readonly seq: number }
   | { readonly type: 'error'; readonly seq: number }
   | { readonly type: 'stop' | 'retry' | 'close' }
   | { readonly type: 'insert' | 'replace'; readonly writable: boolean };
@@ -51,7 +51,7 @@ export type AiSessionEvent =
 export type AiEffect =
   | { readonly kind: 'request' | 'abort'; readonly seq: number }
   | { readonly kind: 'write'; readonly how: 'insert' | 'replace'; readonly result: string }
-  | { readonly kind: 'toastFailure' | 'toastFormat' | 'toastNotWritable' };
+  | { readonly kind: 'toastFailure' | 'toastNotWritable' };
 
 /** A session after one event, and what has to happen because of it. */
 export interface AiStep {
@@ -110,10 +110,7 @@ function streamed(session: AiSession, event: AiSessionEvent & { type: 'delta' | 
     case 'delta':
       return unchanged({ ...session, result: session.result + event.text });
     case 'done':
-      // An answer that names no unit sent fails, with its own toast (§6.2 E3).
-      return event.formatFailed === true
-        ? { session: { ...session, state: 'failed', result: '' }, effects: [{ kind: 'toastFormat' }] }
-        : unchanged({ ...session, state: 'done' });
+      return unchanged({ ...session, state: 'done' });
     case 'error':
       // Failures toast here, in this function only (§6.2 invariant).
       return { session: { ...session, state: 'failed', result: '' }, effects: [{ kind: 'toastFailure' }] };

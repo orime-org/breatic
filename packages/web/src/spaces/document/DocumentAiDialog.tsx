@@ -38,7 +38,7 @@ import {
   type Placement,
   type VirtualElement,
 } from '@floating-ui/react';
-import { AllSelection } from '@tiptap/pm/state';
+import { AllSelection, TextSelection } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 import { RotateCcw, Sparkles, Square, X } from 'lucide-react';
 import { useSmoothText } from 'use-smooth-text';
@@ -65,8 +65,9 @@ import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentAiLaunchContext, TONE_LABEL_KEYS, type AiLaunch } from '@web/spaces/document/document-ai-context';
-import { aiContextOf, aiInsertBlockId } from '@web/spaces/document/document-ai-launch';
-import { aiRangeIn, aiUnitRangesIn, DOCUMENT_AI_RANGE, onAiEscape } from '@web/spaces/document/document-ai-range';
+import { aiCapture, aiContextOf, aiInsertBlockId } from '@web/spaces/document/document-ai-launch';
+import { aiCoverIn, aiCoverOf, aiRangeIn, DOCUMENT_AI_RANGE, inlineLetter, onAiEscape } from '@web/spaces/document/document-ai-range';
+import { letterBounds } from '@web/spaces/document/document-local-range';
 import {
   aiDialogButtons,
   reduceAiSession,
@@ -80,19 +81,14 @@ import {
 import {
   aiAnswer,
   aiAnswerEmpty,
-  aiFormatFailed,
-  aiReplaceAvailable,
-  aiTextUnits,
-  aiUnitsRequest,
+  aiRequest,
   insertAiAnswer,
   replaceAiAnswer,
   type AiAnswer,
-  type AiTextUnit,
   type AiWriteResult,
 } from '@web/spaces/document/document-ai-units';
 import { viewOf, type ViewedEditor } from '@web/spaces/document/document-editor-view';
 import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
-import { aimAt } from '@web/spaces/document/document-local-range';
 import { blockById, type ProposalAdmission } from '@web/spaces/document/document-proposal-landing';
 import { ourMediaPrefix, ourMediaPrefixReady } from '@web/spaces/document/document-external-media';
 import { inPlaceOf } from '@web/spaces/document/document-preview-styles';
@@ -112,8 +108,6 @@ interface Opened {
   readonly base: { readonly project_id: string; readonly selection: string; readonly document: string };
   /** The block a result is inserted under. */
   readonly insertBlockId: string | null;
-  /** The text units sent, which the answer is read back into (design §4.6). */
-  readonly units: readonly AiTextUnit[];
   /** The point a select-all pinned the panel to, in viewport coordinates. */
   readonly frozen: { readonly x: number; readonly y: number } | null;
   /** How fast the answer is shown, in characters per second. */
@@ -242,7 +236,7 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
         void textToolsApi.stream(requestFor(at.base, now.command, now.instructions), {
           onEvent: (event) => {
             if (event.type === 'text_delta') send({ type: 'delta', seq, text: event.text });
-            else if (event.type === 'done') send({ type: 'done', seq, formatFailed: aiFormatFailed(sessionRef.current?.result ?? '', at.units) });
+            else if (event.type === 'done') send({ type: 'done', seq });
             else if (event.type === 'error') {
               failure.current = event.message === '' ? null : event.message;
               send({ type: 'error', seq });
@@ -265,9 +259,6 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
         toast.error(failure.current ?? t('server.text_tool.failed'));
         failure.current = null;
         return;
-      case 'toastFormat':
-        toast.error(t('spaces.document.ai.formatFailed'));
-        return;
       case 'toastNotWritable':
         toast.error(t('spaces.document.ai.notWritable'));
         return;
@@ -287,13 +278,13 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
         // Written at the press: the original range is cleared as the session
         // closes, right after this. The panel fetched the media prefix as it opened.
         try {
-          const ranges = aiUnitRangesIn(editor.prosemirrorState);
-          const answer = aiAnswer(editor, editor.prosemirrorState.doc, at.units, effect.result, command, ourMediaPrefix(), ranges);
+          const cover = aiCoverIn(editor.prosemirrorState);
+          const answer = aiAnswer(editor, editor.prosemirrorState.doc, effect.result, ourMediaPrefix(), cover);
           if (effect.how === 'insert') {
             if (at.insertBlockId !== null) told(insertAiAnswer({ editor }, at.insertBlockId, answer, admission));
             return;
           }
-          told(replaceAiAnswer({ editor }, answer, ranges, admission));
+          told(replaceAiAnswer({ editor }, answer, cover, admission));
         } catch (err) {
           failed();
           throw err;
@@ -310,12 +301,14 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
       if (view === null) return;
       const { selection } = view.state;
       if (selection.empty || selection instanceof CellSelection) return;
-      const segments = aimAt(view.state.doc, selection.ranges.map((r) => ({ from: r.$from.pos, to: r.$to.pos })));
-      const { units, ranges } = aiTextUnits(view.state.doc, segments);
-      if (units.length === 0) return;
-      // The budget is measured on what is sent, tags included (§5.2).
-      const tagged = aiUnitsRequest(editor, view.state.doc, units, ranges.map((range) => [range]), command.id);
-      if (tagged.length > config.selectionMaxChars) {
+      const captured = aiCapture(view.state);
+      if (captured === null) return;
+      const { doc } = view.state;
+      const cover = aiCoverOf(doc, letterBounds(doc, captured.range, inlineLetter), captured.firstId, captured.lastId);
+      if (cover === null) return;
+      // The budget is measured on what is sent (§5.2).
+      const sent = aiRequest(editor, doc, cover);
+      if (sent.length > config.selectionMaxChars) {
         toast.error(t('spaces.document.ai.selectionTooLong'));
         return;
       }
@@ -323,10 +316,9 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
       openings.current += 1;
       const next: Opened = {
         key: openings.current,
-        base: { project_id: projectId, selection: tagged, document: aiContextOf(editor, config.contextMaxChars) },
+        base: { project_id: projectId, selection: sent, document: aiContextOf(editor, config.contextMaxChars) },
         revealCharsPerSecond: config.revealCharsPerSecond,
         insertBlockId: aiInsertBlockId(view.state),
-        units,
         frozen: bar === null ? null : { x: bar.left, y: bar.bottom },
       };
       openedRef.current = next;
@@ -339,7 +331,10 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
       endsWithEditor.current = editor.onUnmount(() => {
         dispatch({ type: 'close' });
       });
-      view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, ranges));
+      // A range across blocks is shown as the whole blocks it takes (§4.6).
+      const shown = captured.firstId === null ? null : TextSelection.between(doc.resolve(captured.range.from), doc.resolve(captured.range.to));
+      const tr = view.state.tr.setMeta(DOCUMENT_AI_RANGE, captured);
+      view.dispatch(shown === null ? tr : tr.setSelection(shown));
       dispatch({ type: 'open', command });
     }, () => {
       configRequest.current = null;
@@ -407,7 +402,7 @@ function anchorBox(editor: ViewedEditor, opened: Opened): DOMRect | null {
   if (view === null) return null;
   // The panel lines up with the text column, under the line it follows.
   const left = view.dom.getBoundingClientRect().left;
-  const last = Math.max(...aiUnitRangesIn(view.state).flat().map(({ to }) => to));
+  const last = aiCoverIn(view.state)?.to ?? Number.NaN;
   if (Number.isFinite(last)) {
     // The line of the last selected character: a range ending at the start of
     // a line would otherwise measure the line after it.
@@ -460,13 +455,13 @@ function AiPanel({
   // The answer as insert and replace would write it, once all of it is on screen.
   const finished = (session.state === 'stopped' || session.state === 'done') && isComplete;
   const answer = React.useMemo<AiAnswer | null>(
-    () => (finished ? aiAnswer(editor, editor.prosemirrorState.doc, opened.units, session.result, session.command.id, ourPrefix, aiUnitRangesIn(editor.prosemirrorState)) : null),
-    [finished, editor, opened.units, session.result, session.command.id, ourPrefix],
+    () => (finished ? aiAnswer(editor, editor.prosemirrorState.doc, session.result, ourPrefix, aiCoverIn(editor.prosemirrorState)) : null),
+    [finished, editor, session.result, ourPrefix],
   );
   // Blank answers leave nothing to write (§5.3).
-  const resultEmpty = aiAnswerEmpty(session.result, opened.units);
+  const resultEmpty = aiAnswerEmpty(session.result);
   const readReplaceable = React.useCallback(
-    (current: ViewedEditor): boolean => answer !== null && aiReplaceAvailable(current.prosemirrorState.doc, answer, aiUnitRangesIn(current.prosemirrorState)),
+    (current: ViewedEditor): boolean => answer !== null && aiCoverIn(current.prosemirrorState) !== null,
     [answer],
   );
   // Replace and its button decide by the same function (§5.3).
@@ -622,8 +617,6 @@ function AiPanel({
             {session.instructions !== null && <InstructionLine text={session.instructions} />}
             <Preview
               editor={editor}
-              units={opened.units}
-              command={session.command.id}
               ourPrefix={ourPrefix}
               text={shown}
               streaming={session.state === 'streaming' || !isComplete}
@@ -855,12 +848,10 @@ function useOurMediaPrefix(): string | null {
 }
 
 /**
- * The result, drawn the way the body draws blocks: each answered unit as the
- * blocks insert and replace write for it (design §5.3).
+ * The result, drawn the way the body draws blocks: the blocks insert and
+ * replace write (design §5.3).
  * @param props - The preview.
  * @param props.editor - The document editor, whose surroundings the preview copies.
- * @param props.units - The units sent.
- * @param props.command - The command.
  * @param props.ourPrefix - Where our own media live.
  * @param props.text - The result as far as it is shown yet.
  * @param props.streaming - Whether the text is still growing.
@@ -869,16 +860,12 @@ function useOurMediaPrefix(): string | null {
  */
 function Preview({
   editor,
-  units,
-  command,
   ourPrefix,
   text,
   streaming,
   running,
 }: {
   editor: ViewedEditor;
-  units: readonly AiTextUnit[];
-  command: AiCommand['id'];
   ourPrefix: string | null;
   text: string;
   streaming: boolean;
@@ -910,14 +897,14 @@ function Preview({
     const parse = (): void => {
       timer.current = null;
       const shown = latest.current;
-      const blocks = shown.trim() === '' ? [] : aiAnswer(parser, editor.prosemirrorState.doc, units, shown, command, ourPrefix, aiUnitRangesIn(editor.prosemirrorState)).preview;
+      const blocks = shown.trim() === '' ? [] : aiAnswer(parser, editor.prosemirrorState.doc, shown, ourPrefix, aiCoverIn(editor.prosemirrorState)).preview;
       setHtml(blocks.length === 0 ? '' : parser.blocksToFullHTML(blocks as never));
     };
     if (!streaming) {
       if (timer.current !== null) window.clearTimeout(timer.current);
       parse();
-      // What it shows follows the body as replace would leave it: read again
-      // after its changes, at most once per interval, as while it streams.
+      // The first block's format and a cell's unfolding follow the range: read
+      // again after the body's changes, at most once per interval.
       return editor.onChange(() => {
         timer.current ??= window.setTimeout(parse, PREVIEW_THROTTLE_MS);
       });
@@ -925,7 +912,7 @@ function Preview({
     // While it streams, at most one parse per interval, of whatever has
     // arrived by then.
     timer.current ??= window.setTimeout(parse, PREVIEW_THROTTLE_MS);
-  }, [parser, text, streaming, ourPrefix, editor, units, command]);
+  }, [parser, text, streaming, ourPrefix, editor]);
 
   const host = React.useRef<HTMLDivElement>(null);
   const scroller = React.useRef<HTMLDivElement>(null);

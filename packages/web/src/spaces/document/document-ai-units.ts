@@ -2,27 +2,23 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The text units of the AI output dialog (inner#1860, design §4.6, §5.1–§5.3):
- * every block of the original range that holds selected words is one unit,
- * and so is every cell of a legacy table. The units are what is sent, what
- * the answer is read back into, what the preview shows and what replace
- * writes over, all from one computation (`unitSpan`).
+ * What the AI output dialog sends, previews and writes (inner#1860, design
+ * §4.6, §5.1–§5.3): the original range goes out as one piece of Markdown,
+ * the whole answer read into blocks is the preview, and replace pastes it
+ * over the range the way Plate's `replaceSelection` does.
  *
- * The request and the answer are numbered tags, `<u id="1" kind="heading">…</u>`,
- * holding Markdown. The escaping going out and the decoding coming back are a
- * pair, fitted to BlockNote 0.56's own Markdown exporter and parser (§5.1): the
- * parser decodes no entity, collapses runs of spaces, swallows raw HTML and
- * puts a space after every hard break.
+ * The escaping going out and the decoding coming back are a pair, fitted to
+ * BlockNote 0.56's own Markdown exporter and parser (§5.1): the exporter
+ * writes words as they are, and the parser decodes no entity, collapses runs
+ * of spaces, and puts a space after every hard break.
  */
 
 import { blockToNode, inlineContentToNodes, nodeToBlock } from '@blocknote/core';
-import type { Fragment, Node as ProseMirrorNode, ResolvedPos } from '@tiptap/pm/model';
+import { Fragment, Slice, type Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { Transaction } from '@tiptap/pm/state';
-import { liftTarget, Transform } from '@tiptap/pm/transform';
 import { yUndoPluginKey } from 'y-prosemirror';
 
-import type { AiUnitRanges } from '@web/spaces/document/document-ai-range';
-import type { AiCommand } from '@web/spaces/document/document-ai-session';
+import { ownContentEnd } from '@web/spaces/document/document-ai-range';
 import type { DocumentEditorHandle } from '@web/spaces/document/document-editor-cache';
 import type { ViewedEditor } from '@web/spaces/document/document-editor-view';
 import type { WrittenBlock } from '@web/spaces/document/document-external-media';
@@ -37,23 +33,8 @@ import {
   type UndoBoundary,
 } from '@web/spaces/document/document-proposal-landing';
 import { LEGACY_CELL_LINE } from '@web/spaces/document/document-table-legacy';
-import { blockInTableCell, cellDepthOf, DOC_TABLE, tableAround } from '@web/spaces/document/document-table-nodes';
-
-/** One unit: a block holding selected words, or one cell of a legacy table. */
-export interface AiTextUnit {
-  /** Its number in the request, from 1 in document order. */
-  readonly id: number;
-  /** The block's id; for a legacy table cell, the table's. */
-  readonly blockId: string;
-  /** The block's type; `tableCell` for a legacy table cell. */
-  readonly kind: string;
-  /** Which cell of a legacy table, and which of its lines, or null. */
-  readonly cell: { readonly row: number; readonly col: number; readonly line: number } | null;
-  /** Whether the selection covered all of the block's words when it opened. */
-  readonly whole: boolean;
-  /** The block's props when it opened, which an answer written into it keeps. */
-  readonly props: Readonly<Record<string, unknown>>;
-}
+import { blocksMarkdown, type BlockLike } from '@web/spaces/document/document-table-markdown';
+import { blockInTableCell, cellDepthOf, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /** How a write ended. */
 export type AiWriteResult =
@@ -61,41 +42,25 @@ export type AiWriteResult =
   | { readonly outcome: 'mediaOnly'; readonly leftOut: number }
   | { readonly outcome: 'readOnly' | 'failed' | 'targetGone' };
 
-/** What one unit becomes. */
-export type AiUnitWrite =
-  | { readonly kind: 'inline'; readonly block: WrittenBlock }
-  | { readonly kind: 'blocks'; readonly blocks: readonly WrittenBlock[] }
-  | { readonly kind: 'clear' };
-
-/** One answered unit. */
-export interface AiUnitResult {
-  readonly unit: AiTextUnit;
-  readonly write: AiUnitWrite;
-}
-
 /** An answer read into blocks. */
 export interface AiAnswer {
-  /** Tags were expected and no unit sent was recognised. */
-  readonly formatFailed: boolean;
-  /** The answered units, in document order. */
-  readonly results: readonly AiUnitResult[];
-  /** What the preview shows and insert writes, in order. */
+  /** What the preview shows and insert and replace write, in order. */
   readonly preview: readonly WrittenBlock[];
   /** How many outside media were left out. */
   readonly leftOut: number;
 }
 
-/** What a legacy table cell is called as a unit. */
-const LEGACY_KIND = 'tableCell';
+/** What a block is told apart by in the body: a block's container, or a table. */
+const BLOCK_GROUP = 'bnBlock';
 
 /** A code block's type. */
 const CODE = 'codeBlock';
 
-/** The props Markdown cannot write, which a block keeps whatever the answer says. */
-const KEPT_PROPS = ['quoted', 'textColor', 'backgroundColor', 'textAlignment'] as const;
+/** The list item types, whose answers take no block props (Plate `formatAIOutput`). */
+const LIST_ITEMS = new Set(['bulletListItem', 'numberedListItem', 'checkListItem', 'toggleListItem']);
 
-/** The props Markdown writes, which decide whether an answer kept a block's kind. */
-const MARKDOWN_PROPS = ['level', 'checked', 'language'] as const;
+/** A list item's props that the landing decides, never copied from the range. */
+const LIST_PROPS = ['start'] as const;
 
 /** The punctuation BlockNote 0.56's parser takes a backslash before. */
 const BACKSLASHED = /[\\`*_{}[\]()#+\-.!~|>]/g;
@@ -125,128 +90,6 @@ interface Read extends WrittenBlock {
  */
 function entity(ch: string): string {
   return `&#${String(ch.codePointAt(0))};`;
-}
-
-/** A unit's line of words in the body now. */
-interface Line {
-  /** The textblock. */
-  readonly node: ProseMirrorNode;
-  /** Where its content starts. */
-  readonly start: number;
-  /** The block container around it (for a legacy cell, the table's). */
-  readonly container: ProseMirrorNode;
-}
-
-/** A textblock a range covers, and the stretch of it covered. */
-interface Covered {
-  readonly node: ProseMirrorNode;
-  readonly start: number;
-  readonly from: number;
-  readonly to: number;
-}
-
-/**
- * The textblocks a range runs through, with the stretch of each it covers.
- * @param doc - The body.
- * @param segments - The range.
- * @returns By position.
- */
-function coveredLines(doc: ProseMirrorNode, segments: readonly LocalRange[]): Map<number, Covered> {
-  const out = new Map<number, Covered>();
-  for (const segment of segments) {
-    doc.nodesBetween(segment.from, segment.to, (node, pos) => {
-      if (!node.isTextblock) return true;
-      const start = pos + 1;
-      const from = Math.max(segment.from, start);
-      const to = Math.min(segment.to, start + node.content.size);
-      if (from < to && doc.textBetween(from, to) !== '') {
-        const seen = out.get(pos);
-        out.set(pos, seen === undefined ? { node, start, from, to } : { ...seen, from: Math.min(seen.from, from), to: Math.max(seen.to, to) });
-      }
-      return false;
-    });
-  }
-  return out;
-}
-
-/**
- * The units of a range, as it is when the dialog opens, and the stretch of
- * each, which the original range opens on.
- * @param doc - The body.
- * @param segments - The original range.
- * @returns The units, in document order, and their stretches in the same order.
- */
-export function aiTextUnits(doc: ProseMirrorNode, segments: readonly LocalRange[]): { units: AiTextUnit[]; ranges: LocalRange[] } {
-  const lines = [...coveredLines(doc, segments).entries()].sort(([a], [b]) => a - b).map(([, line]) => line);
-  const units = lines.map((line, index): AiTextUnit => {
-    const $start = doc.resolve(line.start);
-    const whole = line.from === line.start && line.to === line.start + line.node.content.size;
-    const place = placeAt($start);
-    if (place.cell !== null) return { id: index + 1, ...place, kind: LEGACY_KIND, whole, props: {} };
-    const container = $start.node($start.depth - 1);
-    const block = nodeToBlock(container.type.create(container.attrs, [line.node]), doc) as unknown as Read;
-    return { id: index + 1, ...place, kind: line.node.type.name, whole, props: block.props ?? {} };
-  });
-  return { units, ranges: lines.map((line) => ({ from: line.from, to: line.to })) };
-}
-
-/**
- * A unit as it stands now: its block, or its legacy cell and line, where its
- * selected words are, so the copies and the nesting follow them.
- * @param doc - The body now.
- * @param unit - The unit.
- * @param ranges - Every unit's pieces, where they are now.
- * @returns The unit, placed where its words are; as it opened when they are gone.
- */
-function located(doc: ProseMirrorNode, unit: AiTextUnit, ranges: AiUnitRanges): AiTextUnit {
-  const span = unitSpan(doc, unit, ranges);
-  if (span === null) return unit;
-  const place = placeAt(doc.resolve(span.from));
-  return (place.cell === null) === (unit.cell === null) ? { ...unit, ...place } : unit;
-}
-
-/**
- * The block a line belongs to, or for a legacy cell line its table and its
- * row, column and line.
- * @param $at - A position in the line.
- * @returns The block's id and the cell, or null for none.
- */
-function placeAt($at: ResolvedPos): Pick<AiTextUnit, 'blockId' | 'cell'> {
-  const depth = $at.depth;
-  return $at.parent.type.name === LEGACY_CELL_LINE
-    ? { blockId: String($at.node(depth - 4).attrs['id']), cell: { row: $at.index(depth - 3), col: $at.index(depth - 2), line: $at.index(depth - 1) } }
-    : { blockId: String($at.node(depth - 1).attrs['id']), cell: null };
-}
-
-/**
- * Where a unit's selected words are now: from its first piece to its last one
- * in the same line, the words typed among them included.
- * @param doc - The body now.
- * @param unit - The unit.
- * @param ranges - Every unit's pieces, where they are now.
- * @returns The span, or null when no selected word of it is left.
- */
-export function unitSpan(doc: ProseMirrorNode, unit: AiTextUnit, ranges: AiUnitRanges): LocalRange | null {
-  const pieces = ranges[unit.id - 1] ?? [];
-  const first = pieces[0];
-  if (first === undefined) return null;
-  const $first = doc.resolve(first.from);
-  if (!$first.parent.isTextblock) return null;
-  const inLine = pieces.filter((p) => doc.resolve(p.from).sameParent($first));
-  return { from: Math.min(...inLine.map((p) => p.from)), to: Math.max(...inLine.map((p) => p.to)) };
-}
-
-/**
- * The line a span sits on, and the block around it.
- * @param doc - The body.
- * @param span - The span.
- * @returns The line, and where its block starts.
- */
-function lineAt(doc: ProseMirrorNode, span: LocalRange): Line & { readonly containerPos: number } {
-  const $from = doc.resolve(span.from);
-  let depth = $from.depth - 1;
-  while ($from.node(depth).type.name !== 'blockContainer') depth -= 1;
-  return { node: $from.parent, start: $from.start(), container: $from.node(depth), containerPos: $from.before(depth) };
 }
 
 /**
@@ -292,7 +135,9 @@ function escapeWords(text: string, code: boolean): string {
   // spelled as an entity.
   // A backslash the words hold is spelled as an entity, so every backslash
   // left after parsing is one the model wrote to escape punctuation.
-  return code ? entities : entities.replace(BACKSLASHED, (c) => (c === '\\' ? '&#92;' : `\\${c}`)).replace(/:\/\//g, '&#58;//');
+  // A `|` is spelled as an entity too: a pipe table escapes its own, and a
+  // second backslash before it would end the cell there.
+  return code ? entities : entities.replace(BACKSLASHED, (c) => (c === '\\' ? '&#92;' : c === '|' ? '&#124;' : `\\${c}`)).replace(/:\/\//g, '&#58;//');
 }
 
 /** The styles Markdown writes around words, which cannot open or close at a space. */
@@ -423,143 +268,6 @@ function respelled(text: string): string {
 }
 
 /**
- * Takes the trailing newlines off an export.
- * @param markdown - BlockNote's Markdown.
- * @returns It, trimmed at the end.
- */
-function exported(markdown: string): string {
-  return markdown.replace(/\n+$/, '');
-}
-
-/**
- * A stretch of a line as one block of its own kind, its words only.
- * @param doc - The body.
- * @param line - The line.
- * @param from - Where the stretch starts.
- * @param to - Where it ends.
- * @returns The block, with the line block's id, type and props.
- */
-function pieceOf(doc: ProseMirrorNode, line: Line, from: number, to: number): Read {
-  const cut = line.node.content.cut(from - line.start, to - line.start);
-  if (line.node.type.name === LEGACY_CELL_LINE) return paragraphOfLine(doc, cut);
-  return nodeToBlock(doc.type.schema.nodes['blockContainer']!.create(line.container.attrs, [line.node.copy(cut)]), doc) as unknown as Read;
-}
-
-/**
- * The `selection` field a command sends: the units as numbered tags.
- * @param editor - An editor with the body's schema, for the Markdown export.
- * @param doc - The body.
- * @param units - The units.
- * @param ranges - Every unit's pieces.
- * @param command - The command.
- * @returns The tagged units.
- */
-export function aiUnitsRequest(
-  editor: ViewedEditor,
-  doc: ProseMirrorNode,
-  units: readonly AiTextUnit[],
-  ranges: AiUnitRanges,
-  command: AiCommand['id'],
-): string {
-  return units.map((unit) => {
-    const span = unitSpan(doc, unit, ranges);
-    const open = `<u id="${String(unit.id)}" kind="${unit.kind}">`;
-    if (span === null) return `${open}</u>`;
-    const piece = pieceOf(doc, lineAt(doc, span), span.from, span.to);
-    let body: string;
-    if (unit.kind === CODE) {
-      // A line break at either end is spelled as an entity: a raw one right
-      // inside the tags is the model's own layout and is taken off (codeOf).
-      const code = escapeWords(doc.textBetween(span.from, span.to), true).replace(/>/g, '&gt;').replace(/^\n/, '&#10;').replace(/\n$/, '&#10;');
-      body = command === 'custom' && unit.whole
-        ? exported(editor.blocksToMarkdownLossy([{ type: CODE, props: piece.props, content: code }] as never))
-        : code;
-    } else {
-      const content = escapeContent((piece.content ?? []) as Inline[]);
-      const block = command === 'custom' && unit.whole && unit.cell === null
-        ? { type: piece.type, props: piece.props, content, children: [] }
-        : { type: 'paragraph', content };
-      body = exported(editor.blocksToMarkdownLossy([block] as never));
-    }
-    return `${open}${body}</u>`;
-  }).join('\n');
-}
-
-/**
- * Reads the units' answers out of an answer, as far as it is shown: only
- * whole tags of units sent.
- * @param text - The answer shown so far.
- * @param units - The units sent.
- * @returns Each recognised unit's answer, and whether the format failed.
- */
-function unitAnswers(text: string, units: readonly AiTextUnit[]): { answers: Map<number, string>; formatFailed: boolean } {
-  const sent = new Set(units.map((u) => u.id));
-  const answers = new Map<number, string>();
-  // A raw `<` in an answer is always a tag (the words' own are entities), so
-  // a unit's words end at its closing tag or at the next opening one; the
-  // last unit may still be being written, without a closing tag begun.
-  const parts = text.split(/(?=<u id=")/);
-  parts.forEach((part, index) => {
-    const m = /^<u id="(\d+)"[^>]*>([\s\S]*)$/.exec(part);
-    if (m === null) return;
-    const id = Number(m[1]);
-    const close = m[2]!.indexOf('</u>');
-    const words = close >= 0 ? m[2]!.slice(0, close) : index === parts.length - 1 ? m[2]!.replace(/<\/?u?$/, '') : m[2]!;
-    if (sent.has(id) && !answers.has(id)) answers.set(id, words);
-  });
-  // `<` or `<u` alone is a tag still being written, not words.
-  const untagged = !/<u[\s>]/.test(text) && !/^\s*<u?$/.test(text);
-  if (untagged && units.length === 1) return { answers: new Map([[units[0]!.id, text]]), formatFailed: false };
-  return { answers, formatFailed: answers.size === 0 && text.trim() !== '' };
-}
-
-/**
- * Whether a finished answer is in the wrong format: tags were expected and
- * none of a unit sent came (§6.2 E3).
- * @param text - The whole answer.
- * @param units - The units sent.
- * @returns True when it is.
- */
-export function aiFormatFailed(text: string, units: readonly AiTextUnit[]): boolean {
-  return unitAnswers(text, units).formatFailed;
-}
-
-/**
- * Whether an answer leaves nothing to write: no unit sent has an answer that
- * is not blank (§5.3 "结果为空").
- * @param text - The answer.
- * @param units - The units sent.
- * @returns True when it does.
- */
-export function aiAnswerEmpty(text: string, units: readonly AiTextUnit[]): boolean {
-  const { answers } = unitAnswers(text, units);
-  return units.every((unit) => {
-    const answer = answers.get(unit.id);
-    return answer === undefined || blankAnswer(unit, answer);
-  });
-}
-
-/**
- * A code unit's answer as written: only the line breaks right inside the tags go.
- * @param answer - The answer.
- * @returns The code.
- */
-function codeOf(answer: string): string {
-  return answer.replace(/^\r?\n/, '').replace(/\r?\n$/, '');
-}
-
-/**
- * Whether a unit's answer is empty: blank, or for code, nothing at all,
- * since spaces are code.
- * @param unit - The unit.
- * @param answer - Its answer.
- * @returns True when it is.
- */
-function blankAnswer(unit: AiTextUnit, answer: string): boolean {
-  return unit.kind === CODE && unit.cell === null ? codeOf(answer) === '' : answer.trim() === '';
-}
-
-/**
  * Decodes the entities the request spelled, and the ones a model writes.
  * @param text - Words as parsed.
  * @returns The words.
@@ -660,44 +368,6 @@ function fixedBlock(block: Read): Read {
 }
 
 /**
- * A backslash before a line's block syntax, so the parser reads only inline
- * formatting (CommonMark 0.31 §4.1–4.6, §5.1, §5.2).
- * @param line - One line of an answer.
- * @returns It, its block syntax escaped.
- */
-function escapeLineStart(line: string): string {
-  const m = /^( {0,3})(.*)$/s.exec(line)!;
-  const indent = m[1]!;
-  const rest = m[2]!;
-  const ordered = /^(\d{1,9})([.)])(\s|$)/.exec(rest);
-  if (ordered !== null) return `${indent}${ordered[1]!}\\${rest.slice(ordered[1]!.length)}`;
-  const block = /^#{1,6}(\s|$)/.test(rest)
-    || rest.startsWith('>')
-    || /^[-*+](\s|$)/.test(rest)
-    || /^(`{3,}|~{3,})/.test(rest)
-    || /^([*\-_])(\s*\1){2,}\s*$/.test(rest)
-    || /^-+\s*$/.test(rest)
-    || rest.startsWith('|');
-  // `=` takes no backslash in this parser, so a setext underline's first one
-  // is spelled as an entity and decoded with the others.
-  if (/^=+\s*$/.test(rest)) return `${indent}&#61;${rest.slice(1)}`;
-  return block ? `${indent}\\${rest}` : line;
-}
-
-/**
- * Parses one unit's answer into blocks.
- * @param parser - An editor with the body's schema.
- * @param text - The answer.
- * @param inlineOnly - Whether its block syntax is read as words.
- * @returns The blocks.
- */
-function parsed(parser: ViewedEditor, text: string, inlineOnly: boolean): Read[] {
-  let markdown = text.replace(/\\\\/g, BACKSLASH_PAIR).replace(/</g, '&lt;');
-  if (inlineOnly) markdown = markdown.split('\n').map(escapeLineStart).join('\n');
-  return (parser.tryParseMarkdownToBlocks(markdown) as unknown as Read[]).map(fixedBlock);
-}
-
-/**
  * Inline content with neighbouring text of the same styles joined, as the
  * body keeps it.
  * @param content - The content.
@@ -743,545 +413,6 @@ function flattened(blocks: readonly Read[]): Inline[] {
   return joined(out);
 }
 
-/**
- * Blocks with the props Markdown cannot write taken from the unit's block.
- * @param blocks - The answer's blocks.
- * @param original - The unit's block.
- * @returns The blocks.
- */
-function keepingProps(blocks: readonly Read[], original: Read): Read[] {
-  return blocks.map((block) => {
-    const props = { ...(block.props ?? {}) };
-    for (const key of KEPT_PROPS) {
-      if (key in props && original.props !== undefined && key in original.props) props[key] = original.props[key];
-    }
-    return { ...block, props, children: keepingProps(block.children ?? [], original) };
-  });
-}
-
-/**
- * Whether an answer of one block kept the unit's kind.
- * @param unit - The unit.
- * @param block - The answer's block.
- * @param original - The unit's block.
- * @returns True when it did.
- */
-function keptKind(unit: AiTextUnit, block: Read, original: Read): boolean {
-  if (!unit.whole) return block.type === 'paragraph';
-  if (block.type !== original.type) return false;
-  return MARKDOWN_PROPS.every((key) => original.props === undefined || !(key in original.props) || original.props[key] === block.props?.[key]);
-}
-
-/**
- * The block an inline answer shows as.
- * @param original - The unit's block.
- * @param content - The answer's content.
- * @returns The block.
- */
-function inlineBlock(original: Read, content: readonly Inline[]): WrittenBlock {
-  return { type: original.type, props: original.props, content: joined(content), children: [] } as WrittenBlock;
-}
-
-/**
- * Blocks for where the unit stands: a table inside a cell unfolded.
- * @param blocks - The blocks.
- * @param doc - The body.
- * @param unit - The unit.
- * @returns The blocks.
- */
-function inContext(blocks: readonly WrittenBlock[], doc: ProseMirrorNode, unit: AiTextUnit): WrittenBlock[] {
-  return blockInTableCell(doc, unit.blockId) ? blocksInContext(blocks, doc, true) : [...blocks];
-}
-
-/** What one answered unit becomes (null: left as it was), and how many outside media it left out. */
-interface UnitWritten {
-  readonly write: AiUnitWrite | null;
-  readonly leftOut: number;
-}
-
-/**
- * What one answered unit becomes (§5.3 "答案变成块").
- * @param parser - An editor with the body's schema.
- * @param doc - The body.
- * @param unit - The unit.
- * @param answer - Its answer, as written.
- * @param command - The command.
- * @param ourPrefix - Where our own media live.
- * @returns What it becomes.
- */
-function unitWrite(
-  parser: ViewedEditor,
-  doc: ProseMirrorNode,
-  unit: AiTextUnit,
-  answer: string,
-  command: AiCommand['id'],
-  ourPrefix: string | null,
-): UnitWritten {
-  const custom = command === 'custom';
-  // An empty unit means "merged into another" only under custom.
-  if (blankAnswer(unit, answer)) return { write: custom ? { kind: 'clear' } : null, leftOut: 0 };
-  // The block as it was when the dialog opened: what the preview showed, and
-  // still there to show when the block has gone since.
-  const original: Read = unit.cell === null ? { type: unit.kind, props: { ...unit.props } } : { type: 'paragraph', props: {} };
-  /**
-   * The unit written as inline content into its own block.
-   * @param content - The content.
-   * @returns The write.
-   */
-  const inline = (content: readonly Inline[]): UnitWritten => ({ write: { kind: 'inline', block: inlineBlock(original, content) }, leftOut: 0 });
-
-  if (unit.kind === CODE && unit.cell === null && !(custom && unit.whole)) {
-    return inline([{ type: 'text', text: decoded(codeOf(answer)), styles: {} }]);
-  }
-  const text = answer.trim();
-  if (unit.cell !== null) return inline(flattened(parsed(parser, text, !custom)));
-  if (!custom) {
-    if (command === 'expand' && unit.kind === 'paragraph') {
-      const parts = text.split(/\n[ \t]*\n/).filter((part) => part.trim() !== '');
-      if (parts.length > 1) {
-        const blocks = parts.map((part) => ({ type: 'paragraph', props: original.props, content: flattened(parsed(parser, part, true)), children: [] }));
-        return { write: { kind: 'blocks', blocks: inContext(blocks, doc, unit) }, leftOut: 0 };
-      }
-    }
-    return inline(flattened(parsed(parser, text, true)));
-  }
-  const { blocks, leftOut } = keepWritable(parsed(parser, text, false), ourPrefix);
-  if (blocks.length === 0) return { write: null, leftOut };
-  const only = blocks[0] as Read;
-  if (blocks.length === 1 && keptKind(unit, only, original)) {
-    const content = Array.isArray(only.content) ? (only.content as Inline[]) : [];
-    return { write: { kind: 'inline', block: inlineBlock(original, content) }, leftOut };
-  }
-  return { write: { kind: 'blocks', blocks: inContext(keepingProps(blocks as Read[], original), doc, unit) }, leftOut };
-}
-
-/**
- * A block with every id taken out, children included, so a copy gets new ones.
- * @param block - The block.
- * @returns The copy.
- */
-function withoutIds(block: Read): Read {
-  const copy: Read = { ...block, children: (block.children ?? []).map(withoutIds) };
-  delete copy.id;
-  return copy;
-}
-
-/**
- * A legacy cell's line as a paragraph block.
- * @param doc - The body.
- * @param content - The line's content, or null for none.
- * @returns The block.
- */
-function paragraphOfLine(doc: ProseMirrorNode, content: Fragment | null): Read {
-  const schema = doc.type.schema;
-  const container = schema.nodes['blockContainer']!.create({ id: 'ai-cell' }, [schema.nodes['paragraph']!.create(null, content ?? undefined)]);
-  return nodeToBlock(container, doc) as unknown as Read;
-}
-
-/**
- * A copy of a legacy table as a docTable, its answered lines holding their
- * answers and its cells keeping their spans.
- * @param doc - The body.
- * @param tableId - The table.
- * @param answered - Each answered line's block, by `row:col:line`; null for a cleared one.
- * @returns The copy, or null once the table is gone.
- */
-function legacyCopy(doc: ProseMirrorNode, tableId: string, answered: ReadonlyMap<string, WrittenBlock | null>): WrittenBlock | null {
-  const table = blockById(doc, tableId)?.node.firstChild;
-  if (table == null) return null;
-  const rows: Read[] = [];
-  table.forEach((row, _rowOffset, r) => {
-    const cells: Read[] = [];
-    row.forEach((cell, _cellOffset, c) => {
-      const lines: Read[] = [];
-      cell.forEach((line, _lineOffset, l) => {
-        const answer = answered.get(`${String(r)}:${String(c)}:${String(l)}`);
-        const words = answer === undefined ? paragraphOfLine(doc, line.content).content : answer === null ? [] : (answer as Read).content;
-        lines.push({ type: 'paragraph', content: words, children: [] });
-      });
-      const { colspan, rowspan, colwidth } = cell.attrs as { colspan: number; rowspan: number; colwidth: number[] | null };
-      cells.push({ type: cell.type.name === 'tableHeader' ? 'docTableHeader' : 'docTableCell', props: { colspan, rowspan, colwidth }, children: lines });
-    });
-    rows.push({ type: 'docTableRow', children: cells });
-  });
-  return { type: DOC_TABLE, children: rows } as WrittenBlock;
-}
-
-/**
- * A copy of a docTable, the blocks of its answered units swapped for their answers.
- * @param doc - The body.
- * @param tableId - The table's block id.
- * @param results - Its units' results.
- * @returns The copy, or null once the table is gone.
- */
-function docTableCopy(doc: ProseMirrorNode, tableId: string, results: readonly AiUnitResult[]): WrittenBlock | null {
-  const found = blockById(doc, tableId);
-  if (found === null) return null;
-  const writes = new Map<string, AiUnitWrite[]>();
-  for (const r of results) writes.set(r.unit.blockId, [...(writes.get(r.unit.blockId) ?? []), r.write]);
-
-  /**
-   * Swaps answered blocks in a list for their answers.
-   * @param list - The blocks.
-   * @returns The list.
-   */
-  const swap = (list: readonly Read[]): Read[] => list.flatMap((block) => {
-    const answered = block.id === undefined ? undefined : writes.get(block.id);
-    const write = answered === undefined ? undefined : joinedWrites(answered.map((w) => asLineIs(w, block)));
-    const children = swap(block.children ?? []);
-    if (write === undefined) return [{ ...block, children }];
-    // The same placing replace does (writeUnit): an emptied block with
-    // children stays, the children of a split go under its last piece.
-    if (write.kind === 'clear') return children.length === 0 ? [] : [{ ...block, content: [], children }];
-    if (write.kind === 'inline') return [{ ...(write.block as Read), children }];
-    const pieces = (write.blocks as Read[]).map((b) => ({ ...b }));
-    const last = pieces[pieces.length - 1];
-    if (last !== undefined) last.children = [...(last.children ?? []), ...children];
-    return pieces;
-  });
-  const table = nodeToBlock(found.node, doc) as unknown as Read;
-  return withoutIds({ ...table, children: swap(table.children ?? []) });
-}
-
-/**
- * A write as replace puts it into its line: a single-line answer takes the
- * line's kind and props as they are now.
- * @param write - The write.
- * @param line - The line's block now, or null once it is gone.
- * @returns The write.
- */
-function asLineIs(write: AiUnitWrite, line: Pick<Read, 'type' | 'props'> | null): AiUnitWrite {
-  return write.kind === 'inline' && line !== null ? { kind: 'inline', block: { ...write.block, type: line.type, props: line.props } as WrittenBlock } : write;
-}
-
-/**
- * What the units answered in one line come to, in the order their words
- * stand, as replace writes them into it: an answer of several blocks splits
- * the line where its words start, single-line answers next to each other
- * stay one line, and a cleared unit's words are only taken out.
- * @param writes - Their writes, in that order.
- * @returns The line's write.
- */
-function joinedWrites(writes: readonly AiUnitWrite[]): AiUnitWrite {
-  const kept = writes.filter((w): w is AiUnitWrite & { kind: 'inline' | 'blocks' } => w.kind !== 'clear');
-  if (kept.length === 0) return writes[0]!;
-  if (kept.length === 1) return kept[0]!;
-  const blocks: WrittenBlock[] = [];
-  let line: Read | null = null;
-  for (const w of kept) {
-    if (w.kind === 'blocks') {
-      blocks.push(...w.blocks);
-      line = null;
-    } else if (line === null) {
-      line = { ...(w.block as Read) };
-      blocks.push(line);
-    } else {
-      line.content = joined([...(line.content as Inline[]), ...((w.block as Read).content as Inline[])]);
-    }
-  }
-  return blocks.length === 1 && line !== null ? { kind: 'inline', block: line } : { kind: 'blocks', blocks };
-}
-
-/** Where a unit stands in a table: the table and the cell. */
-interface TablePlace {
-  /** The table, `legacy:` before a legacy one's id. */
-  readonly table: string;
-  /** The cell, unique within the table. */
-  readonly cell: string;
-}
-
-/**
- * Where a unit stands in a table, if it does.
- * @param doc - The body.
- * @param unit - The unit.
- * @returns Its place, or null outside a table.
- */
-function tablePlace(doc: ProseMirrorNode, unit: AiTextUnit): TablePlace | null {
-  if (unit.cell !== null) return { table: `legacy:${unit.blockId}`, cell: `${String(unit.cell.row)}:${String(unit.cell.col)}` };
-  const found = blockById(doc, unit.blockId);
-  if (found === null) return null;
-  const $pos = doc.resolve(found.pos);
-  const cell = cellDepthOf($pos);
-  const table = cell > 0 ? tableAround($pos) : null;
-  return table === null ? null : { table: String(table.node.attrs['id']), cell: String($pos.before(cell)) };
-}
-
-/**
- * What the preview shows and insert writes: each answer as replace leaves it.
- * The units of a table are shown as one copy of it, a legacy one as a
- * docTable, unless the selection stayed inside one of its cells: the same
- * rule that puts insert under the whole table (`aiInsertBlockId`). Outside
- * copies, the answers of units in one line are joined as replace writes them
- * into it, a single-line answer takes the line's kind now, and a cleared unit
- * that keeps children stays an empty block above them.
- * @param doc - The body.
- * @param units - The units sent.
- * @param results - The results, in the order their words now stand.
- * @param shown - The body as replace leaves it around the units: their words
- *   Enter moved to other lines taken out. Copies and nesting are made of it.
- * @returns The blocks.
- */
-function previewOf(doc: ProseMirrorNode, units: readonly AiTextUnit[], results: readonly AiUnitResult[], shown: ProseMirrorNode): WrittenBlock[] {
-  const places = new Map(units.map((u) => [u.id, tablePlace(doc, u)]));
-  /**
-   * Whether a table's units are shown as a copy of it.
-   * @param table - The table.
-   * @returns True when the selection did not stay inside one of its cells.
-   */
-  const copied = (table: string): boolean => {
-    const inTable = units.filter((u) => places.get(u.id)?.table === table);
-    return inTable.length < units.length || new Set(inTable.map((u) => places.get(u.id)!.cell)).size > 1;
-  };
-  const out: Read[] = [];
-  const done = new Set<string>();
-  // Where each answered unit's answered descendants go, as replace leaves
-  // them (writeUnit): under its last block, or after it when that is a table.
-  const under = new Map<string, Read[]>();
-  // Results that share a line, joined: replace writes them into it together.
-  const lines: Array<{ unit: AiTextUnit; writes: AiUnitWrite[] }> = [];
-  /**
-   * The line a unit is written into.
-   * @param unit - The unit.
-   * @returns Its key.
-   */
-  const lineKey = (unit: AiTextUnit): string => (unit.cell === null ? unit.blockId : `${unit.blockId}:${String(unit.cell.row)}:${String(unit.cell.col)}:${String(unit.cell.line)}`);
-  for (const r of results) {
-    const place = places.get(r.unit.id) ?? null;
-    if (place !== null && copied(place.table)) {
-      if (done.has(place.table)) continue;
-      done.add(place.table);
-      const group = results.filter((g) => places.get(g.unit.id)?.table === place.table);
-      let copy: WrittenBlock | null;
-      if (r.unit.cell === null) {
-        copy = docTableCopy(shown, place.table, group);
-      } else {
-        const cellLines = new Map<string, AiUnitWrite[]>();
-        for (const g of group) {
-          const key = `${String(g.unit.cell!.row)}:${String(g.unit.cell!.col)}:${String(g.unit.cell!.line)}`;
-          cellLines.set(key, [...(cellLines.get(key) ?? []), g.write]);
-        }
-        copy = legacyCopy(shown, r.unit.blockId, new Map([...cellLines].map(([key, w]) => {
-          const write = joinedWrites(w);
-          return [key, write.kind === 'inline' ? write.block : null];
-        })));
-      }
-      if (copy !== null) lines.push({ unit: r.unit.cell === null ? { ...r.unit, blockId: place.table } : r.unit, writes: [{ kind: 'blocks', blocks: [copy] }] });
-      continue;
-    }
-    const last = lines[lines.length - 1];
-    if (last !== undefined && lineKey(last.unit) === lineKey(r.unit)) last.writes.push(r.write);
-    else lines.push({ unit: r.unit, writes: [r.write] });
-  }
-  const written = lines.map(({ unit, writes }) => {
-    const found = unit.cell === null ? blockById(shown, unit.blockId) : null;
-    const now = found === null ? null : (nodeToBlock(found.node.type.create(found.node.attrs, found.node.firstChild), shown) as unknown as Read);
-    return { unit, found, now, write: joinedWrites(writes.map((w) => asLineIs(w, now))) };
-  });
-  const cleared = new Set(written.filter((x) => x.write.kind === 'clear').map((x) => x.unit.blockId));
-  /**
-   * Whether replace leaves a block: one not cleared, or one keeping a child.
-   * @param node - The block.
-   * @returns True when it does.
-   */
-  const stays = (node: ProseMirrorNode): boolean => {
-    if (!cleared.has(String(node.attrs['id']))) return true;
-    let kept = false;
-    if (node.childCount > 1) node.lastChild!.forEach((child) => { kept ||= stays(child); });
-    return kept;
-  };
-  for (const { unit, found, now, write } of written) {
-    let pieces: Read[];
-    if (write.kind === 'clear') pieces = now !== null && stays(found!.node) ? [{ type: now.type, props: now.props, content: [], children: [] }] : [];
-    else if (write.kind === 'inline') pieces = [{ ...(write.block as Read), children: [] }];
-    else pieces = (write.blocks as Read[]).map((b) => ({ ...b, children: [...(b.children ?? [])] }));
-    if (pieces.length === 0) continue;
-    const list = answeredAncestor(shown, unit.blockId, under) ?? out;
-    list.push(...pieces);
-    const end = pieces[pieces.length - 1]!;
-    under.set(unit.blockId, end.type === DOC_TABLE ? list : (end.children ??= []));
-  }
-  return out;
-}
-
-/**
- * Where the nearest answered unit around a unit's block puts its descendants.
- * @param doc - The body.
- * @param blockId - The unit's block.
- * @param under - Where each answered unit puts its descendants, by its block id.
- * @returns That list, or null for none.
- */
-function answeredAncestor(doc: ProseMirrorNode, blockId: string, under: ReadonlyMap<string, Read[]>): Read[] | null {
-  const found = blockById(doc, blockId);
-  if (found === null) return null;
-  const $pos = doc.resolve(found.pos);
-  for (let depth = $pos.depth; depth > 0; depth -= 1) {
-    const parent = under.get(String($pos.node(depth).attrs['id']));
-    if (parent !== undefined) return parent;
-  }
-  return null;
-}
-
-/**
- * An answer, as far as it is shown, read into blocks per unit.
- * @param parser - An editor with the body's schema, for the Markdown import.
- * @param doc - The body.
- * @param sent - The units sent.
- * @param text - The answer shown so far.
- * @param command - The command.
- * @param ourPrefix - Where our own media live, or null when not known.
- * @param ranges - Every unit's pieces, where they are now.
- * @returns The answer.
- */
-export function aiAnswer(
-  parser: ViewedEditor,
-  doc: ProseMirrorNode,
-  sent: readonly AiTextUnit[],
-  text: string,
-  command: AiCommand['id'],
-  ourPrefix: string | null,
-  ranges: AiUnitRanges,
-): AiAnswer {
-  const { answers, formatFailed } = unitAnswers(text, sent);
-  const units = sent.map((unit) => located(doc, unit, ranges));
-  const results: AiUnitResult[] = [];
-  let leftOut = 0;
-  for (const unit of units) {
-    const answer = answers.get(unit.id);
-    if (answer === undefined) continue;
-    const { write, leftOut: dropped } = unitWrite(parser, doc, unit, answer, command, ourPrefix);
-    leftOut += dropped;
-    if (write !== null) results.push({ unit, write });
-  }
-  const spans = writtenSpans(doc, results, ranges);
-  // In the order the words now stand; a unit whose words are gone keeps its
-  // place after the one sent before it, and one written over is not shown.
-  const keyed: Array<{ r: AiUnitResult; key: number }> = [];
-  let key = -1;
-  for (const r of results) {
-    if (unitSpan(doc, r.unit, ranges) !== null) {
-      const span = spans.get(r.unit.id);
-      if (span === undefined) continue;
-      key = span.from;
-    }
-    keyed.push({ r, key });
-  }
-  const shown = new Transform(doc);
-  for (const { span, inCell } of movedOf(doc, results, ranges)) takeOutMoved(shown, span, inCell);
-  const ordered = keyed.sort((a, b) => a.key - b.key).map((x) => x.r);
-  return { formatFailed, results, preview: previewOf(doc, units, ordered, shown.doc), leftOut };
-}
-
-/**
- * Where each answered unit is written: its span, less the words an earlier
- * unit's span already covers, which that unit writes over, as it does words
- * typed among its own.
- * @param doc - The body now.
- * @param results - The answered units.
- * @param ranges - Every unit's pieces, where they are now.
- * @returns The spans by unit id; none for a unit written over or with no words left.
- */
-function writtenSpans(doc: ProseMirrorNode, results: readonly AiUnitResult[], ranges: AiUnitRanges): Map<number, LocalRange> {
-  const spans = results
-    .map((r) => ({ id: r.unit.id, span: unitSpan(doc, r.unit, ranges) }))
-    .filter((x): x is { id: number; span: LocalRange } => x.span !== null)
-    .sort((a, b) => a.span.from - b.span.from);
-  const out = new Map<number, LocalRange>();
-  let covered = -1;
-  for (const { id, span } of spans) {
-    const from = Math.max(span.from, covered);
-    if (from < span.to) out.set(id, { from, to: span.to });
-    covered = Math.max(covered, span.to);
-  }
-  return out;
-}
-
-/**
- * The answered units' selected words that Enter moved to other lines than
- * the one their answer goes in: replace takes them out, the answer standing
- * for all of a unit's words.
- * @param doc - The body now.
- * @param results - The answered units.
- * @param ranges - Every unit's pieces, where they are now.
- * @returns The words, last first.
- */
-function movedOf(doc: ProseMirrorNode, results: readonly AiUnitResult[], ranges: AiUnitRanges): Array<{ span: LocalRange; inCell: boolean }> {
-  return results.flatMap((r) => {
-    const span = unitSpan(doc, r.unit, ranges);
-    if (span === null) return [];
-    const $span = doc.resolve(span.from);
-    return (ranges[r.unit.id - 1] ?? [])
-      .filter((piece) => !doc.resolve(piece.from).sameParent($span))
-      .map((piece) => ({ span: piece, inCell: r.unit.cell !== null }));
-  }).sort((a, b) => b.span.from - a.span.from);
-}
-
-/**
- * Takes out words Enter moved to a line of their own. A line left empty goes,
- * its children moving under the block before it, where the words came from,
- * or into its place when no block is before it; a legacy cell's line stays.
- * @param tr - The change they are taken out in.
- * @param at - The words, in the body before it.
- * @param inCell - Whether they are in a legacy cell.
- */
-function takeOutMoved(tr: Transform, at: LocalRange, inCell: boolean): void {
-  const span = { from: tr.mapping.map(at.from, 1), to: tr.mapping.map(at.to, -1) };
-  if (span.to <= span.from) return;
-  const line = lineAt(tr.doc, span);
-  tr.delete(span.from, span.to);
-  if (inCell) return;
-  const left = tr.doc.nodeAt(line.containerPos);
-  if (left === null || left.firstChild?.content.size !== 0) return;
-  const children = left.childCount > 1 ? left.lastChild : null;
-  if (children === null) {
-    // The group goes with it when the line was its only block.
-    tr.deleteRange(line.containerPos, line.containerPos + left.nodeSize);
-    return;
-  }
-  // The children move in steps that keep positions in them mapping, for the
-  // writes after this: one deletion across the boundary joins them to the
-  // block before (to its own children, when it has some); with no block
-  // before, they are lifted into the line's place.
-  const $line = tr.doc.resolve(line.containerPos);
-  const index = $line.index();
-  const before = index > 0 ? $line.parent.child(index - 1) : null;
-  const childrenStart = line.containerPos + 1 + left.firstChild.nodeSize;
-  if (before !== null) {
-    if (before.childCount > 1) tr.delete(line.containerPos - 2, childrenStart + 1);
-    else tr.delete(line.containerPos - 1, childrenStart);
-    return;
-  }
-  const range = tr.doc.resolve(childrenStart + 1).blockRange(tr.doc.resolve(childrenStart + children.nodeSize - 1));
-  const target = range === null ? null : liftTarget(range);
-  if (range === null || target === null) return;
-  tr.lift(range, target);
-  tr.delete(line.containerPos, line.containerPos + left.firstChild.nodeSize + 2);
-}
-
-/**
- * Whether an answer writes nothing but left outside media out, which a press
- * reports, as insert does.
- * @param answer - The answer.
- * @returns True when it does.
- */
-function mediaOnly(answer: AiAnswer): boolean {
-  return answer.leftOut > 0 && answer.results.every((r) => r.write.kind === 'clear');
-}
-
-/**
- * Whether replace can be pressed: every unit with a non-empty answer still
- * has selected words, or the answer held only outside media. What else the
- * body gained meanwhile is the user's call: replace is one edit undo takes
- * back.
- * @param doc - The body now.
- * @param answer - The answer.
- * @param ranges - Every unit's pieces, where they are now.
- * @returns Whether it can.
- */
-export function aiReplaceAvailable(doc: ProseMirrorNode, answer: AiAnswer, ranges: AiUnitRanges): boolean {
-  if (mediaOnly(answer)) return true;
-  const written = answer.results.filter((r) => r.write.kind !== 'clear');
-  return written.length > 0 && written.every((r) => unitSpan(doc, r.unit, ranges) !== null);
-}
 
 /**
  * The body's undo manager, as the undo plugin holds it.
@@ -1307,107 +438,394 @@ function withChildren(block: ProseMirrorNode, children: ProseMirrorNode): ProseM
 }
 
 /**
- * Takes some words out of their line, and the line's block with them when
- * nothing is left in it: never a legacy cell's line.
- * @param editor - The body's editor.
- * @param tr - The transaction it is written in.
- * @param span - The words, still valid in `tr.doc`.
- * @param inCell - Whether they are in a legacy cell.
+ * A code block's words for the request: `&` and `<` as entities, and a line
+ * break at either end as one, which the exporter would drop.
+ * @param text - The code.
+ * @returns It, escaped.
  */
-function takeOut(editor: ViewedEditor, tr: Transaction, span: LocalRange, inCell: boolean): void {
-  const line = lineAt(tr.doc, span);
-  tr.delete(span.from, span.to);
-  if (inCell) return;
-  const left = tr.doc.nodeAt(line.containerPos);
-  if (left !== null && left.childCount === 1 && left.firstChild?.content.size === 0) editor.removeBlocks([String(line.container.attrs['id'])]);
+function escapeCode(text: string): string {
+  return escapeWords(text, true).replace(/^\n/, '&#10;').replace(/\n$/, '&#10;');
 }
 
 /**
- * Writes one unit's answer over its span (§5.3 "替换").
- * @param editor - The body's editor.
- * @param tr - The transaction it is written in.
- * @param result - The unit's result.
- * @param span - Its span, still valid in `tr.doc`: later units are written first.
+ * Blocks with their words escaped for Markdown (§5.1), children and legacy
+ * table cells included.
+ * @param blocks - The blocks.
+ * @returns They, escaped.
  */
-function writeUnit(editor: ViewedEditor, tr: Transaction, result: AiUnitResult, span: LocalRange): void {
-  const { unit, write } = result;
-  if (write.kind === 'inline') {
-    // The line's type now: the user may have turned it into code since.
-    const type = unit.cell !== null ? 'paragraph' : lineAt(tr.doc, span).node.type.name;
-    tr.replaceWith(span.from, span.to, inlineContentToNodes((write.block as Read).content as never, tr.doc.type.schema, type));
-    return;
+function escapedForMarkdown(blocks: readonly BlockLike[]): BlockLike[] {
+  return (blocks as readonly Read[]).map((block): Read => {
+    const children = escapedForMarkdown(block.children ?? []) as Read[];
+    if (block.type === CODE && Array.isArray(block.content)) {
+      return { ...block, content: (block.content as Inline[]).map((c) => ({ ...c, text: escapeCode(c.text ?? '') })), children };
+    }
+    if (Array.isArray(block.content)) return { ...block, content: escapeContent(block.content as Inline[]), children };
+    const table = block.content as { type?: string; rows?: Array<{ cells: Array<{ content?: Inline[] } | Inline[]> }> } | undefined;
+    if (table?.type === 'tableContent') {
+      const rows = (table.rows ?? []).map((row) => ({
+        ...row,
+        cells: row.cells.map((cell) => (Array.isArray(cell) ? escapeContent(cell) : { ...cell, content: escapeContent(cell.content ?? []) })),
+      }));
+      return { ...block, content: { ...table, rows }, children };
+    }
+    return { ...block, children };
+  });
+}
+
+/**
+ * Blocks with their words escaped for a table written as HTML, where
+ * Markdown escapes do nothing: only a backslash and `&`, which the way back
+ * reads once more than HTML does.
+ * @param blocks - The blocks.
+ * @returns They, escaped.
+ */
+function escapedForHtml(blocks: readonly BlockLike[]): BlockLike[] {
+  /**
+   * One piece's words.
+   * @param piece - The piece.
+   * @returns It, escaped.
+   */
+  const one = (piece: Inline): Inline => (piece.type === 'link'
+    ? { ...piece, content: (piece.content ?? []).map(one) }
+    : { ...piece, text: (piece.text ?? '').replace(/\\/g, '\\\\').replace(/&/g, '&amp;') });
+  return (blocks as readonly Read[]).map((block) => ({
+    ...block,
+    content: Array.isArray(block.content) ? (block.content as Inline[]).map(one) : block.content,
+    children: escapedForHtml(block.children ?? []) as Read[],
+  }));
+}
+
+/**
+ * Escapes blocks' words for where `blocksMarkdown` writes them.
+ * @param blocks - The blocks.
+ * @param into - As Markdown, or into a table's HTML.
+ * @returns They, escaped.
+ */
+function escapedFor(blocks: readonly BlockLike[], into: 'markdown' | 'html'): BlockLike[] {
+  return into === 'markdown' ? escapedForMarkdown(blocks) : escapedForHtml(blocks);
+}
+
+/** Where a range lies: the words of one line, or whole blocks. */
+type Span =
+  | {
+      readonly kind: 'words';
+      readonly from: number;
+      readonly to: number;
+      /** The textblock. */
+      readonly line: ProseMirrorNode;
+      /** Where its content starts. */
+      readonly start: number;
+      /** Its block's container and where it starts; null for a legacy cell's line. */
+      readonly container: ProseMirrorNode | null;
+      readonly containerPos: number;
+    }
+  | {
+      readonly kind: 'blocks';
+      /** Where the first block's container starts. */
+      readonly first: number;
+      /** Where the last block's container starts. */
+      readonly last: number;
+      /** The end of the last block's own content. */
+      readonly to: number;
+    };
+
+/**
+ * Where a range lies (§5.4): a range that starts before a block's container
+ * is whole blocks; one inside a line is its words, and words covering a
+ * whole block's line are that block.
+ * @param doc - The body.
+ * @param cover - The range.
+ * @returns The span.
+ */
+function spanOf(doc: ProseMirrorNode, cover: LocalRange): Span {
+  const at = doc.nodeAt(cover.from);
+  if (at?.type.isInGroup(BLOCK_GROUP) === true) {
+    const $to = doc.resolve(cover.to);
+    // A table ends the range after itself; a container's own content inside it.
+    const last = $to.parent.type.name === 'blockContainer' ? $to.before($to.depth) : cover.to - $to.nodeBefore!.nodeSize;
+    return { kind: 'blocks', first: cover.from, last, to: cover.to };
   }
-  if (write.kind === 'clear') {
-    takeOut(editor, tr, span, unit.cell !== null);
-    return;
+  const $from = doc.resolve(cover.from);
+  const line = $from.parent;
+  const start = $from.start();
+  const legacy = line.type.name === LEGACY_CELL_LINE;
+  const depth = $from.depth - 1;
+  const containerPos = legacy ? -1 : $from.before(depth);
+  if (!legacy && cover.from === start && cover.to === start + line.content.size) {
+    return { kind: 'blocks', first: containerPos, last: containerPos, to: containerPos + 1 + line.nodeSize };
   }
-  // The words before the span stay where they are, in the block with its id:
-  // the units written after this one may hold some of them. The block is
-  // split there as Enter splits it, and the rest is swapped for the answer
-  // and the words after, as nodes: the words left out keep every mark,
-  // comments included, and the children go under the last piece as they are.
-  // A null id is filled in by BlockNote's id plugin in the same dispatch.
-  let at = span;
-  const first = lineAt(tr.doc, span);
-  if (span.from > first.start) {
-    tr.split(span.from, 2, [{ type: first.container.type, attrs: { ...first.container.attrs, id: null } }, { type: first.node.type, attrs: first.node.attrs }]);
-    const map = tr.steps[tr.steps.length - 1]!.getMap();
-    at = { from: map.map(span.from, 1), to: map.map(span.to, 1) };
+  return { kind: 'words', from: cover.from, to: cover.to, line, start, container: legacy ? null : $from.node(depth), containerPos };
+}
+
+/**
+ * The blocks a span covers, as the block API reads them: whole blocks with
+ * the children inside the span, or one paragraph of the words.
+ * @param doc - The body.
+ * @param span - The span.
+ * @returns The blocks.
+ */
+function blocksOf(doc: ProseMirrorNode, span: Span): Read[] {
+  const schema = doc.type.schema;
+  if (span.kind === 'words') {
+    const cut = span.line.content.cut(span.from - span.start, span.to - span.start);
+    const paragraph = schema.nodes['blockContainer']!.create({ id: 'ai-range' }, [schema.nodes['paragraph']!.create(null, cut)]);
+    return [nodeToBlock(paragraph, doc) as unknown as Read];
   }
-  const { node, start, container, containerPos } = lineAt(tr.doc, at);
+  const out: Read[] = [];
+  doc.slice(span.first, span.to).content.forEach((node) => {
+    if (node.type.isInGroup(BLOCK_GROUP)) out.push(nodeToBlock(node, doc) as unknown as Read);
+  });
+  return out;
+}
+
+/**
+ * The `selection` field a command sends (§5.1, §5.2): the range's Markdown,
+ * its words escaped; words inside one line as a paragraph of them, a code
+ * block's as its code.
+ * @param editor - An editor with the body's schema, for the Markdown export.
+ * @param doc - The body.
+ * @param cover - The range.
+ * @returns The Markdown.
+ */
+export function aiRequest(editor: ViewedEditor, doc: ProseMirrorNode, cover: LocalRange): string {
+  const span = spanOf(doc, cover);
+  if (span.kind === 'words' && span.line.type.name === CODE) return escapeCode(doc.textBetween(span.from, span.to));
+  return blocksMarkdown(editor as never, blocksOf(doc, span), escapedFor);
+}
+
+/**
+ * Whether an answer is empty (§5.3).
+ * @param text - The answer.
+ * @returns True when it holds only white space.
+ */
+export function aiAnswerEmpty(text: string): boolean {
+  return text.trim() === '';
+}
+
+/**
+ * Parses an answer into blocks, its words fixed (§5.1).
+ * @param parser - An editor with the body's schema.
+ * @param text - The answer.
+ * @returns The blocks.
+ */
+function parsed(parser: ViewedEditor, text: string): Read[] {
+  const markdown = text.replace(/\\\\/g, BACKSLASH_PAIR);
+  return (parser.tryParseMarkdownToBlocks(markdown) as unknown as Read[]).map(fixedBlock);
+}
+
+/**
+ * Whether a block holds inline words outside code: what an open slice opens
+ * and the first-block format applies to (Plate `openTextBlock`).
+ * @param block - The block.
+ * @returns True for one.
+ */
+function holdsWords(block: Pick<Read, 'type' | 'content'>): boolean {
+  return Array.isArray(block.content) && block.type !== CODE;
+}
+
+/**
+ * Whether blocks hold a list item, nested ones included.
+ * @param blocks - The blocks.
+ * @returns True when they do.
+ */
+function hasListItems(blocks: readonly Read[]): boolean {
+  return blocks.some((b) => LIST_ITEMS.has(b.type) || hasListItems(b.children ?? []));
+}
+
+/**
+ * The styles of a block's first words.
+ * @param block - The block.
+ * @returns The styles; none for a block that starts with no words.
+ */
+function firstStyles(block: Read): Record<string, unknown> {
+  const first = (block.content as Inline[])[0];
+  const piece = first?.type === 'link' ? first.content?.[0] : first;
+  return piece?.type === 'text' ? { ...(piece.styles ?? {}) } : {};
+}
+
+/**
+ * Inline content with some styles under its own.
+ * @param content - The content.
+ * @param styles - The styles.
+ * @returns It.
+ */
+function styledUnder(content: readonly Inline[], styles: Record<string, unknown>): Inline[] {
+  return content.map((piece) => {
+    if (piece.type === 'link') return { ...piece, content: styledUnder(piece.content ?? [], styles) };
+    return piece.type === 'text' ? { ...piece, styles: { ...styles, ...(piece.styles ?? {}) } } : piece;
+  });
+}
+
+/**
+ * The answer's first block formatted from the range's first block, as
+ * Plate's `formatAIOutput` does with `'single'` (§5.3): its kind and props,
+ * unless the answer writes list items, and its first words' styles under the
+ * answer's own. Only between two blocks of words outside code.
+ * @param blocks - The answer's blocks.
+ * @param source - The range's first block.
+ * @returns The blocks.
+ */
+function formatted(blocks: readonly Read[], source: Read | null): Read[] {
+  const [head, ...rest] = blocks;
+  if (head === undefined || source === null || !holdsWords(source) || !holdsWords(head)) return [...blocks];
+  const props = { ...(source.props ?? {}) };
+  for (const key of LIST_PROPS) delete props[key];
+  const own = hasListItems(blocks) ? {} : { type: source.type, props };
+  return [{ ...head, ...own, content: styledUnder(head.content as Inline[], firstStyles(source)) }, ...rest];
+}
+
+/**
+ * The block a range starts in, as the block API reads it.
+ * @param doc - The body.
+ * @param span - The span.
+ * @returns The block; null for a legacy cell's words.
+ */
+function sourceOf(doc: ProseMirrorNode, span: Span): Read | null {
+  if (span.kind === 'blocks') return nodeToBlock(doc.nodeAt(span.first)!, doc) as unknown as Read;
+  return span.container === null ? null : (nodeToBlock(span.container, doc) as unknown as Read);
+}
+
+/**
+ * Reads an answer into the blocks the preview shows and insert and replace
+ * write (§5.3): parsed whole, outside media and blocks past the
+ * body's levels left out, the first block formatted from the range's, a
+ * table inside a cell unfolded, and for a legacy cell its words on lines.
+ * @param parser - An editor with the body's schema.
+ * @param doc - The body.
+ * @param text - The answer, as far as it is shown.
+ * @param ourPrefix - Where our own media live.
+ * @param cover - What replace covers now; null once it is gone.
+ * @returns The answer.
+ */
+export function aiAnswer(parser: ViewedEditor, doc: ProseMirrorNode, text: string, ourPrefix: string | null, cover: LocalRange | null): AiAnswer {
+  if (aiAnswerEmpty(text)) return { preview: [], leftOut: 0 };
+  const span = cover === null ? null : spanOf(doc, cover);
+  if (span?.kind === 'words' && span.container === null) {
+    return { preview: [{ type: 'paragraph', props: {}, content: flattened(parsed(parser, text.trim())), children: [] } as WrittenBlock], leftOut: 0 };
+  }
+  const { blocks, leftOut } = keepWritable(parsed(parser, text.trim()), ourPrefix);
+  const shaped = formatted(blocks as Read[], span === null ? null : sourceOf(doc, span));
+  const inCell = cover !== null && cellDepthOf(doc.resolve(cover.from)) > 0;
+  return { preview: inCell ? blocksInContext(shaped, doc, true) : shaped, leftOut };
+}
+
+/**
+ * A block with every id taken out, children included, so a copy gets new ones.
+ * @param block - The block.
+ * @returns The copy.
+ */
+function withoutIds(block: Read): Read {
+  const copy: Read = { ...block, children: (block.children ?? []).map(withoutIds) };
+  delete copy.id;
+  return copy;
+}
+
+/**
+ * Whether a block node opens in an open slice: a block of words outside code.
+ * @param node - The block's container.
+ * @returns True for one.
+ */
+function opens(node: ProseMirrorNode | null | undefined): boolean {
+  const content = node?.firstChild;
+  return content !== null && content !== undefined && content.isTextblock && content.type.name !== CODE;
+}
+
+/**
+ * Writes the preview over a span (§5.3).
+ * @param tr - The transaction it is written in.
+ * @param span - The span, valid in `tr.doc`.
+ * @param preview - The preview blocks.
+ */
+function writeOver(tr: Transaction, span: Span, preview: readonly WrittenBlock[]): void {
   const schema = tr.doc.type.schema;
-  const pieces: ProseMirrorNode[] = (write.blocks as Read[]).map((b) => blockToNode(b as never, schema));
-  if (at.to < start + node.content.size) pieces.push(container.type.create({ ...container.attrs, id: null }, [node.copy(node.content.cut(at.to - start))]));
-  const children = container.childCount > 1 ? container.lastChild : null;
-  if (children !== null) {
-    const last = pieces.pop()!;
-    // A table holds rows, not blocks: the children follow it.
-    if (last.type.name === DOC_TABLE) {
-      pieces.push(last);
-      children.forEach((child) => {
-        pieces.push(child);
-      });
-    } else {
-      pieces.push(withChildren(last, children));
+  if (span.kind === 'words' && span.container === null) {
+    // A legacy cell holds one line of words.
+    tr.replaceWith(span.from, span.to, inlineContentToNodes(((preview[0] as Read | undefined)?.content ?? []) as never, schema, 'paragraph'));
+    return;
+  }
+  const nodes = preview.map((b) => blockToNode(withoutIds(b as Read) as never, schema));
+  if (span.kind === 'blocks') {
+    const $first = tr.doc.resolve(span.first);
+    const $last = tr.doc.resolve(span.last);
+    if ($first.depth === $last.depth && $first.start() === $last.start()) {
+      // Whole sibling blocks (Plate `wholeTextBlocks`): swapped for the
+      // preview, the last one's children kept under its last block.
+      const lastBlock = tr.doc.nodeAt(span.last)!;
+      const children = lastBlock.type.name === 'blockContainer' && lastBlock.childCount > 1 ? lastBlock.lastChild : null;
+      if (children !== null) {
+        const tail = nodes.pop()!;
+        // A table holds rows, not blocks: the children follow it.
+        if (tail.type.name === DOC_TABLE) nodes.push(tail, ...childrenOf(children));
+        else nodes.push(withChildren(tail, children));
+      }
+      tr.replaceWith(span.first, span.last + lastBlock.nodeSize, nodes);
+      return;
     }
   }
-  tr.replaceWith(containerPos, containerPos + container.nodeSize, pieces);
+  // Otherwise an open slice (Plate `tx.slice.replace` with `openStart` and
+  // `openEnd`): the first block of words joins the words before the range,
+  // the words after join the last.
+  const from = span.kind === 'words' ? span.from : textStart(tr.doc, span.first);
+  const to = span.kind === 'words' ? span.to : textEnd(tr.doc, span.last);
+  tr.replace(from, to, new Slice(Fragment.from(nodes), opens(nodes[0]) ? 2 : 0, opens(nodes[nodes.length - 1]) ? 2 : 0));
 }
 
 /**
- * Writes an answer over its units, last to first, in one undo step.
+ * A group's blocks.
+ * @param group - The block group.
+ * @returns Its children.
+ */
+function childrenOf(group: ProseMirrorNode): ProseMirrorNode[] {
+  const out: ProseMirrorNode[] = [];
+  group.forEach((child) => {
+    out.push(child);
+  });
+  return out;
+}
+
+/**
+ * Where a block's words start; its container's start for a block without.
+ * @param doc - The body.
+ * @param containerPos - Where its container starts.
+ * @returns The position.
+ */
+function textStart(doc: ProseMirrorNode, containerPos: number): number {
+  return doc.nodeAt(containerPos)!.firstChild?.isTextblock === true ? containerPos + 2 : containerPos;
+}
+
+/**
+ * Where a block's words end; its own content's end for a block without.
+ * @param doc - The body.
+ * @param containerPos - Where its container starts.
+ * @returns The position.
+ */
+function textEnd(doc: ProseMirrorNode, containerPos: number): number {
+  const end = ownContentEnd(doc, containerPos);
+  return doc.nodeAt(containerPos)!.firstChild?.isTextblock === true ? end - 1 : end;
+}
+
+/**
+ * Writes an answer over what replace covers now, in one undo step.
  * @param handle - The document, mounted.
  * @param answer - The answer.
- * @param ranges - Every unit's pieces, where they are now.
+ * @param cover - What replace covers now; null once it is gone.
  * @param readAdmission - Reads current lifecycle and write admission synchronously.
  * @returns How it ended.
  */
 export function replaceAiAnswer(
   handle: Pick<DocumentEditorHandle, 'editor'>,
   answer: AiAnswer,
-  ranges: AiUnitRanges,
+  cover: LocalRange | null,
   readAdmission: () => ProposalAdmission,
 ): AiWriteResult {
   const refusal = writeRefusal(readAdmission(), handle.editor);
   if (refusal !== null) return { outcome: refusal };
-  if (mediaOnly(answer)) return { outcome: 'mediaOnly', leftOut: answer.leftOut };
+  if (cover === null) return { outcome: 'targetGone' };
+  if (answer.preview.length === 0) return answer.leftOut > 0 ? { outcome: 'mediaOnly', leftOut: answer.leftOut } : { outcome: 'failed' };
   const { editor } = handle;
-  const before = editor.prosemirrorState.doc;
-  const spans = writtenSpans(before, answer.results, ranges);
-  const written = answer.results
-    .map((r) => ({ r, span: spans.get(r.unit.id) }))
-    .filter((x): x is { r: AiUnitResult; span: LocalRange } => x.span !== undefined)
-    .sort((a, b) => b.span.from - a.span.from);
-  const moved = movedOf(before, answer.results, ranges);
   asOneUndoStep(undoOf(handle), () => {
     editor.transact((tr) => {
-      for (const { span, inCell } of moved) takeOutMoved(tr, span, inCell);
-      // Written last to first, each where the take-outs and the writes
-      // before it left its words.
-      for (const { r, span } of written) {
-        const at = { from: tr.mapping.map(span.from, 1), to: tr.mapping.map(span.to, -1) };
-        if (at.to > at.from) writeUnit(editor, tr, r, at);
-      }
+      writeOver(tr, spanOf(tr.doc, cover), answer.preview);
     });
   });
   return answer.leftOut > 0 ? { outcome: 'written', leftOut: answer.leftOut } : { outcome: 'written' };

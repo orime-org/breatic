@@ -1833,8 +1833,7 @@
         "rangeGone": "選択したテキストは削除されました",
         "blockGone": "元の段落は削除されました",
         "notWritable": "現在は編集できません",
-        "selectionTooLong": "選択した内容が多すぎます。範囲を減らしてもう一度お試しください",
-        "formatFailed": "結果の形式が正しくありません。もう一度お試しください"
+        "selectionTooLong": "選択した内容が多すぎます。範囲を減らしてもう一度お試しください"
       },
       "comment": {
         "placeholder": "コメントを書く",

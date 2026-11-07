@@ -2,25 +2,26 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The AI output dialog's original range (inner#1860, design §5.4, §6.3): the
- * words the user selected when the dialog opened, followed while it stays
- * open, through the same local-range carrying the unposted comment uses
+ * The AI output dialog's original range (inner#1860, design §4.6, §5.4,
+ * §6.3): the range captured when the dialog opened, followed while it stays
+ * open through the same local-range carrying the unposted comment uses
  * (`document-local-range.ts`), in an instance of its own.
  *
- * The range is one stretch per text unit (`document-ai-units.ts`), each
- * carried on its own, so a unit follows its own words when lines are split,
- * joined or moved. Words the user types among or over a unit's words are
- * not its words: the stretch they go in or write over is taken out of it,
- * the pieces left staying the unit's. A unit whose pieces are all gone has
- * no words left; the range is gone with
- * the last of them, by the user's own edit or one that comes in through
- * Yjs. Gone stays gone, even when undo writes the words back: the comment
- * draft's rule, and replace is then not offered again for words the user
- * may since have moved on from.
+ * The carrying holds one stretch from the first letter to the last, so what
+ * the user types among the words is inside it. Once no letter is left the
+ * range is gone, by the user's own edit or one that comes in through Yjs, and
+ * gone stays gone, even when undo writes the words back: the comment draft's
+ * rule.
  *
- * While the dialog is open the words keep the body's selected look (design
- * §5.3): the user's own selection moves on, so the range wears the
- * `[data-show-selection]` stand-in the link panel's words wear (`index.css`).
+ * A range across blocks covers them whole (Plate `captureTextRange`). The
+ * carried letters miss an image or an empty line at its edges, so the first
+ * and the last block are held by id as well; what replace covers is worked
+ * out from both (`aiCoverOf`), and so is what is painted.
+ *
+ * While the dialog is open the range keeps the body's selected look (design
+ * §5.3): the user's own selection moves on, so the words wear the
+ * `[data-show-selection]` stand-in the link panel's words wear (`index.css`),
+ * and blocks without words the look `document-selection-paint.ts` gives them.
  *
  * Escape typed in the body closes the open dialog and leaves the keyboard in
  * the body (design §5.3): BlockNote's own Escape would blur the editor and
@@ -31,10 +32,12 @@
 
 import { createExtension } from '@blocknote/core';
 import { SuggestionMenu } from '@blocknote/core/extensions';
-import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
-import { Mapping } from '@tiptap/pm/transform';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
+import { documentBarsOf } from '@web/spaces/document/document-bars';
+import { bodyHolds } from '@web/spaces/document/document-body-focus';
 import {
   changesText,
   letterBounds,
@@ -42,24 +45,27 @@ import {
   type IsLetter,
   type LocalRange,
 } from '@web/spaces/document/document-local-range';
-import { documentBarsOf } from '@web/spaces/document/document-bars';
-import { bodyHolds } from '@web/spaces/document/document-body-focus';
-import { fromYjs } from '@web/spaces/document/document-yjs-origin';
+import { blockById } from '@web/spaces/document/document-proposal-landing';
+import { noTextPaint } from '@web/spaces/document/document-selection-paint';
+
+/** What the dialog opens the range on (§4.6). */
+export interface AiCapture {
+  /** The captured range: inside one block, its words; across blocks, the whole blocks. */
+  readonly range: LocalRange;
+  /** The first block of a range across blocks; null inside one block. */
+  readonly firstId: string | null;
+  /** The last block of a range across blocks; null inside one block. */
+  readonly lastId: string | null;
+}
 
 /** The original range: on its words, or gone. */
 export type AiRange =
   | {
       readonly kind: 'present';
-      /**
-       * The units' pieces as carried, null where one is gone: a piece keeps
-       * its place, and a piece cut off goes at the end, so the names an undo
-       * hands back still fit the pieces they were taken for.
-       */
+      /** The one stretch of letters, as carried; null once it is gone. */
       readonly slots: readonly (LocalRange | null)[];
-      /** Which unit each piece is of: its index in the stretches the range opened on. */
-      readonly owners: readonly number[];
-      /** How many units the range opened on. */
-      readonly units: number;
+      readonly firstId: string | null;
+      readonly lastId: string | null;
       readonly entry: number;
     }
   | { readonly kind: 'gone' };
@@ -67,11 +73,8 @@ export type AiRange =
 /** The range while it is on its words. */
 type PresentRange = AiRange & { kind: 'present' };
 
-/** Each unit's words where they are now, by its index in the stretches the range opened on; none for a unit whose words are gone. */
-export type AiUnitRanges = readonly (readonly LocalRange[])[];
-
-/** What a caller dispatches under the key: one stretch per unit opens the range, `null` closes it. */
-export type AiRangeCommand = readonly LocalRange[] | null;
+/** What a caller dispatches under the key: a capture opens the range, `null` closes it. */
+export type AiRangeCommand = AiCapture | null;
 
 /** The plugin's key, which is also the meta an {@link AiRangeCommand} goes under. */
 export const DOCUMENT_AI_RANGE = new PluginKey<AiRange | null>('documentAiRange');
@@ -80,120 +83,19 @@ export const DOCUMENT_AI_RANGE = new PluginKey<AiRange | null>('documentAiRange'
 let entries = 0;
 
 /**
+ * A letter of the range: text, or an inline node such as a hard break.
+ * @param node - A node.
+ * @returns True for one.
+ */
+export const inlineLetter: IsLetter = (node) => node.isText || (node.isInline && node.isLeaf);
+
+/**
  * The AI dialog's original range.
  * @param state - The editor state.
  * @returns The range, or null while no dialog holds one.
  */
 export function aiRangeIn(state: EditorState): AiRange | null {
   return DOCUMENT_AI_RANGE.getState(state) ?? null;
-}
-
-/**
- * Each unit's words, by its index in the stretches the range opened on: its
- * pieces in document order, those that overlap or touch joined.
- * @param pieces - The pieces, null where one is gone.
- * @param owners - Which unit each piece is of.
- * @param units - How many units there are.
- * @returns Every unit's words; none for a unit whose pieces are all gone.
- */
-function byUnit(pieces: readonly (LocalRange | null)[], owners: readonly number[], units: number): LocalRange[][] {
-  const out: LocalRange[][] = Array.from({ length: units }, () => []);
-  pieces.forEach((piece, i) => {
-    if (piece !== null) out[owners[i]!]!.push(piece);
-  });
-  return out.map((list) => list.sort((a, b) => a.from - b.from).reduce<LocalRange[]>((joined, piece) => {
-    const last = joined[joined.length - 1];
-    if (last !== undefined && piece.from <= last.to) joined[joined.length - 1] = { from: last.from, to: Math.max(last.to, piece.to) };
-    else joined.push(piece);
-    return joined;
-  }, []));
-}
-
-/**
- * The range over some pieces, or gone once none is left.
- * @param slots - The pieces, null where one is gone.
- * @param owners - Which unit each piece is of.
- * @param units - How many units there are.
- * @param entry - The press that aimed it.
- * @returns The range.
- */
-function rangeOver(slots: readonly (LocalRange | null)[], owners: readonly number[], units: number, entry: number): AiRange {
-  return slots.every((piece) => piece === null) ? { kind: 'gone' } : { kind: 'present', slots, owners, units, entry };
-}
-
-/**
- * Each unit's words where they are now.
- * @param state - The editor state.
- * @returns Every unit's words; none at all while the range is gone or not open.
- */
-export function aiUnitRangesIn(state: EditorState): AiUnitRanges {
-  const range = presentIn(state);
-  return range === null ? [] : byUnit(range.slots, range.owners, range.units);
-}
-
-/**
- * The stretches of the body before the user's own change that it put
- * content in at, or wrote other words over. A stretch written over with the
- * same words, as BlockNote rebuilds a line with marks or links when it turns
- * into code, is no change to them: a leaf node without words of its own (a
- * hard break) is left out of the comparison, block boundaries counted.
- * @param tr - The change.
- * @returns The stretches, in the body before it.
- */
-function changedIn(tr: Transaction): LocalRange[] {
-  const out: LocalRange[] = [];
-  tr.mapping.maps.forEach((map, index) => {
-    const input = tr.docs[index]!;
-    const output = tr.docs[index + 1] ?? tr.doc;
-    const back = new Mapping(tr.mapping.maps.slice(0, index)).invert();
-    map.forEach((oldStart, oldEnd, newStart, newEnd) => {
-      if (newEnd <= newStart) return;
-      if (input.textBetween(oldStart, oldEnd, '\n', '') === output.textBetween(newStart, newEnd, '\n', '')) return;
-      out.push({ from: back.map(oldStart, -1), to: back.map(oldEnd, 1) });
-    });
-  });
-  return out;
-}
-
-/**
- * The pieces with the stretches the user's change rewrites taken out, so
- * what it puts in is no unit's word: a piece keeps its place with its first
- * part, or null when nothing of it is left, and each further part goes at
- * the end.
- * @param range - The range before the change.
- * @param tr - The change.
- * @returns The pieces and their units; the range's own when the change rewrites none of its words.
- */
-function withoutRewritten(range: PresentRange, tr: Transaction): Pick<PresentRange, 'slots' | 'owners'> {
-  let slots = [...range.slots];
-  let owners = [...range.owners];
-  let changed = false;
-  for (const change of changedIn(tr)) {
-    const nextSlots: (LocalRange | null)[] = [];
-    const nextOwners: number[] = [];
-    const after: Array<[LocalRange, number]> = [];
-    slots.forEach((piece, i) => {
-      const touches = piece !== null && (change.from === change.to
-        ? change.from > piece.from && change.from < piece.to
-        : change.from < piece.to && change.to > piece.from);
-      if (!touches) {
-        nextSlots.push(piece);
-        nextOwners.push(owners[i]!);
-        return;
-      }
-      changed = true;
-      const parts = [
-        ...(change.from > piece.from ? [{ from: piece.from, to: change.from }] : []),
-        ...(change.to < piece.to ? [{ from: change.to, to: piece.to }] : []),
-      ];
-      nextSlots.push(parts[0] ?? null);
-      nextOwners.push(owners[i]!);
-      for (const part of parts.slice(1)) after.push([part, owners[i]!]);
-    });
-    slots = [...nextSlots, ...after.map(([part]) => part)];
-    owners = [...nextOwners, ...after.map(([, owner]) => owner)];
-  }
-  return changed ? { slots, owners } : range;
 }
 
 /**
@@ -206,45 +108,94 @@ function presentIn(state: EditorState): PresentRange | null {
   return range?.kind === 'present' ? range : null;
 }
 
+/** What a block is told apart by in the body: a block's container, or a table. */
+const BLOCK_GROUP = 'bnBlock';
+
 /**
- * The selected look over the range's words, where the user's own selection
- * does not already draw it: while the body holds the focus its selection is
- * painted too, and the two translucent bands over the same words would draw
- * them darker than either.
+ * The position before the innermost block around a position.
+ * @param doc - The body.
+ * @param pos - The position.
+ * @returns Where that block starts, or null outside any.
+ */
+function containerAt(doc: ProseMirrorNode, pos: number): number | null {
+  const $pos = doc.resolve(pos);
+  for (let depth = $pos.depth; depth > 0; depth -= 1) {
+    if ($pos.node(depth).type.isInGroup(BLOCK_GROUP)) return $pos.before(depth);
+  }
+  return null;
+}
+
+/**
+ * Where a block's own content ends: a container's children left out, a
+ * table whole.
+ * @param doc - The body.
+ * @param blockPos - Where the block starts.
+ * @returns The position.
+ */
+export function ownContentEnd(doc: ProseMirrorNode, blockPos: number): number {
+  const block = doc.nodeAt(blockPos)!;
+  return block.type.name === 'blockContainer' ? blockPos + 1 + block.firstChild!.nodeSize : blockPos + block.nodeSize;
+}
+
+/**
+ * What replace covers now (§5.4): inside one block, the carried words;
+ * across blocks, from the first block's start to the end of the last
+ * block's own content, children left out. A first or last block gone since
+ * gives way to the block of the carried letter at that end, and so do both
+ * once the first has come after the last.
+ * @param doc - The body now.
+ * @param letters - The carried letters, or null once gone.
+ * @param firstId - The first block, or null inside one block.
+ * @param lastId - The last block, or null inside one block.
+ * @returns The range, or null once the letters are gone.
+ */
+export function aiCoverOf(doc: ProseMirrorNode, letters: LocalRange | null, firstId: string | null, lastId: string | null): LocalRange | null {
+  if (letters === null) return null;
+  if (firstId === null || lastId === null) return letters;
+  const byLetters = { first: containerAt(doc, letters.from), last: containerAt(doc, letters.to - 1) };
+  if (byLetters.first === null || byLetters.last === null) return letters;
+  let first = blockById(doc, firstId)?.pos ?? byLetters.first;
+  let last = blockById(doc, lastId)?.pos ?? byLetters.last;
+  if (first > last) {
+    first = byLetters.first;
+    last = byLetters.last;
+  }
+  return { from: first, to: ownContentEnd(doc, last) };
+}
+
+/**
+ * What replace covers now.
+ * @param state - The editor state.
+ * @returns The range, or null while no range is open or once it is gone.
+ */
+export function aiCoverIn(state: EditorState): LocalRange | null {
+  const range = presentIn(state);
+  return range === null ? null : aiCoverOf(state.doc, range.slots[0] ?? null, range.firstId, range.lastId);
+}
+
+/**
+ * The selected look over the range, where the user's own selection does not
+ * already draw it: while the body holds the focus its selection is painted
+ * too, and the two translucent bands over the same words would draw them
+ * darker than either.
  * @param state - The editor state.
  * @returns The stand-in decorations.
  */
 function paintRange(state: EditorState): DecorationSet {
   const range = presentIn(state);
-  if (range === null) return DecorationSet.empty;
+  const letters = range?.slots[0] ?? null;
+  const cover = aiCoverIn(state);
+  if (letters === null || cover === null) return DecorationSet.empty;
   const { selection } = state;
   const drawn = bodyHolds(state) && !selection.empty ? selection : null;
-  // A unit's words in one line are painted as one stretch: replace writes
-  // over the words typed among them too.
-  const stretches = byUnit(range.slots, range.owners, range.units).flatMap((words) => words.reduce<LocalRange[]>((joined, piece) => {
-    const last = joined[joined.length - 1];
-    if (last !== undefined && state.doc.resolve(last.from).sameParent(state.doc.resolve(piece.from))) joined[joined.length - 1] = { from: last.from, to: piece.to };
-    else joined.push(piece);
-    return joined;
-  }, []));
-  const parts = stretches.flatMap(({ from, to }) => (drawn === null
-    ? [{ from, to }]
-    : [{ from, to: Math.min(to, drawn.from) }, { from: Math.max(from, drawn.to), to }]));
-  return DecorationSet.create(
-    state.doc,
-    parts
-      .filter(({ from, to }) => to > from)
-      .map(({ from, to }) => Decoration.inline(from, to, { 'data-show-selection': 'true' })),
-  );
+  const parts = drawn === null
+    ? [letters]
+    : [{ from: letters.from, to: Math.min(letters.to, drawn.from) }, { from: Math.max(letters.from, drawn.to), to: letters.to }];
+  return DecorationSet.create(state.doc, [
+    ...parts.filter(({ from, to }) => to > from).map(({ from, to }) => Decoration.inline(from, to, { 'data-show-selection': 'true' })),
+    ...noTextPaint(state.doc, cover),
+  ]);
 }
-
-/**
- * A unit's letter: text, or an inline node such as a hard break, which is
- * as much the unit's as its words are.
- * @param node - A node.
- * @returns True for one.
- */
-const inlineLetter: IsLetter = (node) => node.isText || (node.isInline && node.isLeaf);
 
 /** Who closes the open dialog when Escape is typed in a given editor's body. */
 const escapeListeners = new WeakMap<object, Set<() => void>>();
@@ -314,14 +265,13 @@ export const documentAiRange = createExtension(() => {
             if (asked === null) return null;
             if (asked !== undefined) {
               entries += 1;
-              const slots = asked.map((stretch) => letterBounds(tr.doc, stretch, inlineLetter));
-              return rangeOver(slots, asked.map((_, unit) => unit), asked.length, entries);
+              const letters = letterBounds(tr.doc, asked.range, inlineLetter);
+              return letters === null ? { kind: 'gone' } : { kind: 'present', slots: [letters], firstId: asked.firstId, lastId: asked.lastId, entry: entries };
             }
             if (current?.kind !== 'present' || !changesText(tr)) return current;
-            const held = fromYjs(tr) ? current : { ...current, ...withoutRewritten(current, tr) };
-            const moved = tracker.carry(tr, held, before);
+            const moved = tracker.carry(tr, current, before);
             if (moved === current.slots) return current;
-            return rangeOver(moved, held.owners, current.units, current.entry);
+            return moved[0] == null ? { kind: 'gone' } : { ...current, slots: moved };
           },
         },
 

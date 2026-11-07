@@ -49,33 +49,16 @@ export function getTextToolsConfig(): TextToolsConfig {
 }
 
 /**
- * How the document AI menu's tools read the selection and write the answer
- * (inner#1860, design §5.1): the selection is numbered units, one per block,
- * and the answer gives each unit back under the same id.
+ * How the document AI menu's fixed commands read the selection and write the
+ * answer (inner#1860, design §5.1): the selection comes as one piece of
+ * Markdown and the whole answer goes back as Markdown of the same shape.
  */
-const UNITS =
-  'The selected text comes as numbered units, one per block: <u id="1" kind="heading">...</u>. ' +
-  "Each unit holds Markdown. Characters escaped in it (a backslash before punctuation, &amp;, &lt;, &#32;) " +
-  "are literal text; write literal text back escaped the same way. The kind attribute is only for reference. " +
-  'Answer every unit you were sent with the same id, as <u id="1">...</u>, adding none and dropping none, ' +
-  "and write nothing outside the units.";
+const MARKDOWN_SHAPE =
+  "The selected text is Markdown. Return Markdown with the same structure " +
+  "(headings, lists, emphasis, links) unless the task says otherwise.";
 
-/** Units of tools that keep the layout: every unit stays one block's words. */
-const INLINE_UNITS =
-  `${UNITS} Inside a unit write inline content only (bold, italic, links, inline code): ` +
-  "no headings, lists, quotes, tables or blank lines. A code block unit is its code; answer with the code only.";
-
-/** Units of expand: a paragraph may become several. */
-const EXPAND_UNITS =
-  `${UNITS} A unit of kind "paragraph" may become several paragraphs, separated by a blank line. ` +
-  "Every other unit is written as inline content only (bold, italic, links, inline code), on its own. " +
-  "A code block unit is its code; answer with the code only.";
-
-/** Units of custom: the request decides the structure. */
-const CUSTOM_UNITS =
-  `${UNITS} When the request keeps the structure, write each unit as it came, block markers included. ` +
-  "When the request changes the structure (a list, a split, a heading), a unit may hold block-level Markdown. " +
-  'To merge several units into one result, write the result in the first of them and leave the others empty, as <u id="2"></u>.';
+/** How custom reads the selection: the request decides the structure. */
+const MARKDOWN_IN_OUT = "The selected text is Markdown. Return Markdown.";
 
 /** System prompts per tool. */
 const PROMPTS: Record<string, string> = {
@@ -83,19 +66,19 @@ const PROMPTS: Record<string, string> = {
     "You are a professional writing editor. Improve the selected text's clarity, " +
     "grammar, flow, and word choice while preserving the original meaning and tone. " +
     "Keep the style consistent with the surrounding document. " +
-    INLINE_UNITS,
+    `${MARKDOWN_SHAPE} Return ONLY the improved text, nothing else.`,
 
   expand:
     "You are a skilled content writer. Expand the selected text into a more detailed, " +
     "richer version. Add context, examples, and nuance while maintaining the original " +
-    "voice and the document's overall direction. " +
-    EXPAND_UNITS,
+    "voice and the document's overall direction. A paragraph may become several paragraphs. " +
+    `${MARKDOWN_SHAPE} Return ONLY the expanded text, nothing else.`,
 
   shorten:
     "You are a concise editor. Make the selected text shorter while keeping its meaning, " +
     "its key details and its voice: cut repetition, filler and wordy phrasing rather than " +
     "reducing it to a list of key points. " +
-    INLINE_UNITS,
+    `${MARKDOWN_SHAPE} Return ONLY the shortened text, nothing else.`,
 
   summarize:
     "You are an expert summarizer. Condense the selected text into its key points. " +
@@ -106,19 +89,19 @@ const PROMPTS: Record<string, string> = {
     "You are a professional translator. Translate the selected text into the target " +
     "language named in the request naturally — not word-for-word. Adapt idioms and " +
     "cultural references for the target audience while keeping the meaning accurate. " +
-    INLINE_UNITS,
+    `${MARKDOWN_SHAPE} Return ONLY the translated text, nothing else.`,
 
   rewrite:
     "You are a versatile writer. Rewrite the selected text in the tone given in the " +
     "request, keeping its meaning. If no tone is given, improve clarity and engagement " +
     "while preserving the meaning. " +
-    INLINE_UNITS,
+    `${MARKDOWN_SHAPE} Return ONLY the rewritten text, nothing else.`,
 
   custom:
     "You are a capable writing assistant. Apply the user's request to the selected text. " +
     "Write in the language the request asks for; when it names none, write in the " +
     "language of the selected text. " +
-    CUSTOM_UNITS,
+    `${MARKDOWN_IN_OUT} Return ONLY the resulting text, nothing else.`,
 
   continue:
     "You are a creative writer. Continue writing from where the selected text " +

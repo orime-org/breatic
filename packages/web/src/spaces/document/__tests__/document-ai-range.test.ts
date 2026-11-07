@@ -306,10 +306,6 @@ describe('the AI range under any mix of edits (property)', () => {
       } else {
         wasGone = true;
       }
-      if (left === '' && !peerTouched) {
-        expect(range).toEqual({ kind: 'gone' });
-        wasGone = true;
-      }
     }
   });
 
@@ -321,7 +317,7 @@ describe('the AI range under any mix of edits (property)', () => {
     fc.assert(holdsItsLetters, { numRuns: 40, seed });
   });
 
-  it('is gone once the user types over every original letter, and keeps them when typing over words before them', () => {
+  it('holds what the user types over its words, and keeps them when typing over words before them', () => {
     const overAll: Edit[] = [{ by: 'user', kind: 'overtype', at: 5, length: 6, text: 'yz' }];
     const overHalves: Edit[] = [
       { by: 'user', kind: 'overtype', at: 8, length: 3, text: 'x' },

@@ -896,7 +896,7 @@ describe('what a command sends (design §5.2)', () => {
   });
 
   it('starts nothing over budget measured on the Markdown sent, and says so without numbers', async () => {
-    config.mockResolvedValue({ selectionMaxChars: 20, contextMaxChars: 20000, revealCharsPerSecond: 1_000_000 });
+    config.mockResolvedValue({ selectionMaxChars: 4, contextMaxChars: 20000, revealCharsPerSecond: 1_000_000 });
     await selected('<p>hello world</p>', 0, 5);
     const menu = await hoverOpenSlot('doc-bubble-ai');
     await act(async () => {

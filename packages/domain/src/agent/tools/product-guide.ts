@@ -1362,18 +1362,19 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.ai.tone.casual"))}, ${quoted(t("spaces.document.ai.tone.straightforward"))}, ` +
       `${quoted(t("spaces.document.ai.tone.confident"))} and ${quoted(t("spaces.document.ai.tone.friendly"))}. ` +
       "Picking a command opens a panel under the selection, titled with the command, where the result appears as " +
-      "it is written; the document itself does not change. While it is written the panel shows " +
+      "it is written; the document itself does not change. A selection running across several blocks is widened " +
+      "to those whole blocks as the panel opens, and the document shows the widened selection; a selection inside " +
+      "one block stays the selected words. While it is written the panel shows " +
       `${quoted(t("spaces.document.ai.stop"))}; once it is done or stopped it shows ` +
       `${quoted(t("spaces.document.ai.retry"))}, ${quoted(t("spaces.document.ai.insert"))} and ` +
       `${quoted(t("spaces.document.ai.replace"))}. ${quoted(t("spaces.document.ai.insert"))} adds the result as ` +
       "new blocks under the block the selection ends in (under the whole table when the selection runs into a " +
-      "table from outside or across cells) and keeps the selected words; " +
-      `${quoted(t("spaces.document.ai.replace"))} writes it over the selected words block by block, exactly as the ` +
-      "panel shows it. The fixed commands change only the selected words of each block and keep it what it was " +
-      "(a heading stays a heading, a list item stays in its list, a code block keeps its code); expand may turn a " +
+      "table from outside or across cells) and keeps the selection as it was; " +
+      `${quoted(t("spaces.document.ai.replace"))} puts the result in place of the selection, the way pasting does: ` +
+      "images and empty lines in it are replaced too, and words of a block left out of a selection inside that " +
+      "block stay. The fixed commands keep the structure (headings, lists, code blocks); expand may turn a " +
       "paragraph into several. A custom instruction can change the structure, such as turning the words into a " +
-      "list or merging paragraphs into one. Images and empty lines in the selection and words left out of it stay " +
-      "as they are. Either is one step Cmd+Z takes " +
+      "list or merging paragraphs into one. Either is one step Cmd+Z takes " +
       "back. If the selected words are deleted while the panel is open, " +
       `${quoted(t("spaces.document.ai.replace"))} is greyed and hovering it shows ` +
       `${quoted(t("spaces.document.ai.rangeGone"))}; if their block is deleted too, both are greyed with ` +
