@@ -102,6 +102,16 @@ async function highlighted(p: Page): Promise<string | null> {
 }
 
 /**
+ * Waits two frames: the click shows the clicked heading at once, and the
+ * highlight is computed again a frame after the scroll it makes.
+ * @param p - The page.
+ * @returns Once both frames have run.
+ */
+async function twoFrames(p: Page): Promise<void> {
+  await p.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+}
+
+/**
  * How far below the top of the body a heading's own line sits.
  * @param p - The page.
  * @param text - The heading's words.
@@ -164,8 +174,8 @@ test('a jump leaves each level of heading 16px under the top and the caret at it
   await openWith(page, DOCUMENT);
   for (const title of ['One one one', 'Two', 'One one']) {
     await row(page, title).click();
-    await expect.poll(() => lineBelowTop(page, title)).toBeGreaterThanOrEqual(14);
-    expect(await lineBelowTop(page, title)).toBeLessThanOrEqual(18);
+    expect(Math.abs(await lineBelowTop(page, title) - 16)).toBeLessThanOrEqual(2);
+    await twoFrames(page);
     expect(await highlighted(page)).toBe(title);
   }
   await page.keyboard.type('Z');
@@ -196,7 +206,8 @@ test('the highlight follows the scroll, and a short last section keeps the one c
   await expect.poll(() => highlighted(page)).toBe('One');
 
   await row(page, 'Tail a').click();
-  await expect.poll(() => highlighted(page)).toBe('Tail a');
+  await twoFrames(page);
+  expect(await highlighted(page)).toBe('Tail a');
 
   await page.mouse.move(900, 500);
   await page.mouse.wheel(0, -600);
@@ -289,7 +300,7 @@ test('a narrow Space floats the outline over the body, above the block handles, 
   expect(await page.evaluate(({ px, py }) => document.elementFromPoint(px, py)?.closest('[data-testid="doc-outline-row"]')?.textContent ?? null, { px: x, py: y })).toBe('Two');
 
   await page.mouse.click(x, y);
-  await expect.poll(() => lineBelowTop(page, 'Two')).toBeLessThanOrEqual(18);
+  expect(Math.abs(await lineBelowTop(page, 'Two') - 16)).toBeLessThanOrEqual(2);
   await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(page.locator(OUTLINE)).toHaveCount(0);
   const heading = await page.evaluate((editor) => {
