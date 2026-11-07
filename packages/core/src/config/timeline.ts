@@ -22,8 +22,6 @@ const webAnimationSchema = z.object({
     "9:16": viewport.default({ width: 1080, height: 1920 }),
     "1:1": viewport.default({ width: 1080, height: 1080 }),
   }).prefault({}),
-  /** Credits held per execution; divided by 100 and `CREDIT_MULTIPLIER` it is the container's model spend ceiling in USD. */
-  reserve_credits: z.number().positive().default(100),
   model: z.string().min(1).default("deepseek/deepseek-v4.1-flash-1017"),
   max_tokens: positiveInt.default(32_000),
   /** One model call's limit, and so the longest a cancel or deadline waits to drain it. */
@@ -77,22 +75,6 @@ export const timelineConfigSchema = z.object({
 export type TimelineConfig = z.infer<typeof timelineConfigSchema>;
 let cached: Readonly<TimelineConfig> | undefined;
 
-/** The creation defaults and asset paging alone, without the web-animation section. */
-export type TimelineMediaConfig = Pick<TimelineConfig, "defaults" | "assets">;
-
-/**
- * Read Timeline behavior configuration lazily after service bootstrap.
- * @returns The cached validated configuration.
- * @throws {Error} When the tracked YAML cannot be read or validated.
- */
-export function getTimelineConfig(): Readonly<TimelineConfig>;
-/**
- * The same reading, typed as the media sections only. Every call resolves to the signature above; this one is what
- * `ReturnType` and test doubles see, so a double of a media-only caller needs no web-animation section.
- * @returns The cached validated configuration.
- * @throws {Error} When the tracked YAML cannot be read or validated.
- */
-export function getTimelineConfig(): Readonly<TimelineMediaConfig>;
 /**
  * Read Timeline behavior configuration lazily after service bootstrap.
  * @returns The cached validated configuration.

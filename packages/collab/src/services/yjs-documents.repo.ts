@@ -25,7 +25,7 @@
 
 import { and, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { decodeUpdate } from "yjs";
-import { fetchLiveDocData, listedContentDocNamesInState, yjsDb, yjsDocuments } from "@breatic/core";
+import { listedContentDocNamesInState, yjsDb, yjsDocuments } from "@breatic/core";
 import { projectMetaDocName, spaceContentRowPattern } from "@breatic/shared";
 
 /** Stored live Space snapshots read only by the offline media-provenance scan. */
@@ -55,8 +55,12 @@ export async function scanMediaBackfillDocuments(cursor: string | null, limit: n
  * @returns The stored Yjs update bytes, or `null` when no live row exists
  */
 export async function fetchDocData(name: string): Promise<Uint8Array | null> {
-  // Core holds this one read so the worker reaches it too (inner#1711).
-  return fetchLiveDocData(name);
+  const rows = await yjsDb
+    .select({ data: yjsDocuments.data })
+    .from(yjsDocuments)
+    .where(and(eq(yjsDocuments.name, name), isNull(yjsDocuments.deletedAt)))
+    .limit(1);
+  return rows[0]?.data ?? null;
 }
 
 /**

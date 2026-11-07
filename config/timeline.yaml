@@ -19,9 +19,6 @@ web_animation:
     "16:9": { width: 1920, height: 1080 }
     "9:16": { width: 1080, height: 1920 }
     "1:1": { width: 1080, height: 1080 }
-  # Held at acceptance; also the run's model spend ceiling
-  # (reserve_credits / 100 / CREDIT_MULTIPLIER USD). Charged at actual use.
-  reserve_credits: 100
   model: deepseek/deepseek-v4.1-flash-1017
   max_tokens: 32000
   # One model call's limit; a cancel or the deadline waits at most this long to drain it.

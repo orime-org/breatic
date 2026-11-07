@@ -47,9 +47,6 @@ export type UsageSource =
 /** A service priced per request in `config/usage-pricing.yaml`. */
 export type PricedService = keyof UsagePricing["services"];
 
-/** The prices a recorder reads; a service without a price throws when it is recorded. */
-export type RecorderPricing = Pick<UsagePricing, "models"> & { services: Partial<UsagePricing["services"]> };
-
 /** One row of `agent_usage_records`, before it is written. */
 export interface UsageRow {
   operationKey: string;
@@ -138,7 +135,7 @@ export interface UsageRecorderOptions {
   actorUserId: string;
   projectId: string | null;
   /** Defaults to `config/usage-pricing.yaml`. */
-  pricing?: RecorderPricing;
+  pricing?: UsagePricing;
   /** Defaults to `CREDIT_MULTIPLIER`. */
   multiplier?: number;
   /** Defaults to appending to `agent_usage_records`. */
@@ -160,7 +157,7 @@ export interface UsageRecorderOptions {
  */
 function serviceCost(
   call: ServiceCall,
-  pricing: RecorderPricing,
+  pricing: UsagePricing,
 ): { costUsd: number; costSource: CostSource } {
   if (call.costUsd !== undefined) return { costUsd: call.costUsd, costSource: call.costSource ?? "provider" };
   // OpenRouter reports what it charged on every answer and has no table of

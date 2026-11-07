@@ -9,9 +9,9 @@
  * and Space to `queued`: the action, the execution, the input hash, a listed Space, the document's frame rate and the
  * original deadline must all agree. Each accepted row is enqueued under its execution id and signals the Space.
  *
- * A row left waiting is not lost: the next store tries it again, and the worker's sweep ends it at its deadline and
- * releases its hold. A duplicated Project's document carries its source's receipts; they name rows of another
- * Project, which this Project's query never returns.
+ * A row left waiting is not lost: the next store tries it again, and the worker's sweep ends it at its deadline. A
+ * duplicated Project's document carries its source's receipts; they name rows of another Project, which this
+ * Project's query never returns.
  */
 
 import * as Y from "yjs";

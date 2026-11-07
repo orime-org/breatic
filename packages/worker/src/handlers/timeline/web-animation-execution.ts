@@ -11,14 +11,13 @@
  *
  * Only a terminal report settles: the source version (for a done report whose Manifest matches the accepted input),
  * one usage row per settled model call under `timeline:<executionId>:<seq>` and one for the container, then the
- * `billed_at` gate decides whether this writer charges or only releases the hold, then the terminal transition. The
- * job lock is re-checked before each of those four writes, and the terminal transition also needs this attempt's
- * fence, so a writer that lost the job changes nothing more.
+ * `billed_at` gate decides whether this writer charges, then the terminal transition. The job lock is re-checked
+ * before each of those four writes, and the terminal transition also needs this attempt's fence, so a writer that
+ * lost the job changes nothing more.
  */
 
 import { DelayedError, type Job } from "bullmq";
 import {
-  env,
   getMiniToolsConfig,
   getStorageAdapter,
   getTimelineConfig,
@@ -31,7 +30,6 @@ import {
 import {
   containerCostUsd,
   createUsageRecorder,
-  creditHoldService,
   creditLotService,
   sumCreditsByOperationKeys,
   toChargeCredits,
@@ -52,7 +50,7 @@ import {
   type WebAnimationManifest,
 } from "@breatic/shared/space-content";
 import { StillRunning } from "@worker/providers/still-running.js";
-import { endUnspent, move } from "@worker/handlers/timeline/timeline-transition.js";
+import { move } from "@worker/handlers/timeline/timeline-transition.js";
 import {
   cancelWebAnimationJob,
   readWebAnimationJob,
@@ -168,7 +166,6 @@ function newStep(row: TimelineExecution, input: TimelineExecutionInput): JobStep
       manifestKey: `${prefix}/manifest.json`,
       fontSetVersion: config.font_set_version,
       maxPackageBytes: config.max_package_bytes,
-      costCeilingUsd: config.reserve_credits / (100 * env.CREDIT_MULTIPLIER),
       maxTokens: config.max_tokens,
       callTimeoutMs: config.call_timeout_ms,
       model: config.model,
@@ -186,7 +183,7 @@ async function take(row: TimelineExecution): Promise<TimelineExecution | null> {
   if (row.status === "queued") {
     // Never claimed, so never submitted: past its deadline it ends without a job.
     if (Date.parse(row.deadlineAt) <= Date.now()) {
-      await endUnspent(row, { type: "deadline" });
+      await move(row, { type: "deadline" });
       return null;
     }
     const claimed = await move(row, { type: "claim" });
@@ -298,8 +295,9 @@ async function recordUsage(pickup: Pickup, report: EndedReport): Promise<void> {
 }
 
 /**
- * Charge what the execution's rows add up to, once: only the writer whose `billed_at` update lands charges; every
- * other writer, and a run that spent nothing, only releases the hold.
+ * Charge what the execution's rows add up to, once: only the writer whose `billed_at` update lands charges, and a run
+ * that spent nothing charges nothing. As with an Agent chat turn nothing was held, and the charge may take the balance
+ * below zero.
  * @param pickup - The pickup.
  * @returns Nothing.
  * @throws {Error} When a write fails.
@@ -308,10 +306,7 @@ async function bill(pickup: Pickup): Promise<void> {
   const { row, step } = pickup;
   const sums = await sumCreditsByOperationKeys([operationKeyOf(row.id)]);
   const amount = toChargeCredits(Number(sums.get(operationKeyOf(row.id)) ?? 0));
-  if (amount <= 0 || !(await timelineExecutionRepo.markBilled(row.id, String(amount)))) {
-    await creditHoldService.releaseHold(row.id);
-    return;
-  }
+  if (amount <= 0 || !(await timelineExecutionRepo.markBilled(row.id, String(amount)))) return;
   const outcome = await creditLotService.chargeForGeneration({
     projectId: row.projectId,
     actorUserId: row.actorUserId,
@@ -320,7 +315,6 @@ async function bill(pickup: Pickup): Promise<void> {
     referenceId: row.id,
     model: step.request.model,
     provider: "openrouter",
-    releaseHold: row.id,
   });
   if (Number(outcome.shortfall) > 0) {
     logger.warn({ executionId: row.id, amount, shortfall: outcome.shortfall }, "timeline_charge_shortfall");
@@ -434,7 +428,7 @@ async function running(pickup: Pickup): Promise<void> {
   if (answer.kind === "missing") {
     // The Worker holds no job, so it never ran; past the deadline it is not started.
     if (Date.now() >= step.deadlineAt) {
-      if (await owns(pickup)) await endUnspent(pickup.row, { type: "deadline" });
+      if (await owns(pickup)) await move(pickup.row, { type: "deadline" });
       return;
     }
     answer = await submitWebAnimationJob(step.request, endsAt);
@@ -470,7 +464,7 @@ async function pickUp(job: Job<TimelineExecutionJobData>, token: string | undefi
   const input = TimelineExecutionInputSchema.safeParse(row.input);
   if (!input.success) {
     logger.error({ executionId: row.id, issues: input.error.issues }, "timeline_execution_input_unreadable");
-    await endUnspent(row, { type: "failure", fence: row.fence, reason: "internal" });
+    await move(row, { type: "failure", fence: row.fence, reason: "internal" });
     return;
   }
   let step = storedStep(row.steps);

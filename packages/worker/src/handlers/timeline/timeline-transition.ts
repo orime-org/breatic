@@ -3,11 +3,10 @@
 
 /**
  * Moving a Timeline execution from the worker (inner#1711 design §5.2): every applied transition signals the Space's
- * task list, and an end that spent nothing releases the hold.
+ * task list.
  */
 
 import { logger, publishSpaceTasksChanged, timelineExecutionRepo, type TimelineExecutionEvent, type TimelineExecutionTransition } from "@breatic/core";
-import { creditHoldService } from "@breatic/domain";
 import type { TimelineExecution } from "@breatic/shared";
 
 /**
@@ -34,21 +33,5 @@ export async function signalSpace(row: Pick<TimelineExecution, "id" | "projectId
 export async function move(row: Pick<TimelineExecution, "id" | "projectId" | "spaceId">, event: TimelineExecutionEvent): Promise<TimelineExecutionTransition> {
   const result = await timelineExecutionRepo.transition({ id: row.id, event });
   if (result.applied) await signalSpace(result.row);
-  return result;
-}
-
-/**
- * End an execution that spent nothing: apply the event and, when it applied, release the hold.
- * @param row - The execution.
- * @param event - A terminal event.
- * @returns The transition's outcome.
- * @throws {Error} When the write or the release fails.
- */
-export async function endUnspent(row: Pick<TimelineExecution, "id" | "projectId" | "spaceId">, event: TimelineExecutionEvent): Promise<TimelineExecutionTransition> {
-  const result = await timelineExecutionRepo.transition({ id: row.id, event });
-  if (result.applied) {
-    await creditHoldService.releaseHold(row.id);
-    await signalSpace(result.row);
-  }
   return result;
 }

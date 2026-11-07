@@ -32,7 +32,6 @@ export const webAnimationJobRequestSchema = z.object({
   manifestKey: webAnimationKey,
   fontSetVersion: positiveInteger,
   maxPackageBytes: positiveInteger,
-  costCeilingUsd: z.number().positive(),
   maxTokens: positiveInteger,
   callTimeoutMs: positiveInteger,
   model: z.string().min(1).max(200),

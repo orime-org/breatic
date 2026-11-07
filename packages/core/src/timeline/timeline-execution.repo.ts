@@ -19,7 +19,6 @@ import { timelineExecutions as t } from "@core/db/schema.js";
 /** What a caller sends to move an execution; the matrix in the design decides what each does in each state. */
 export type TimelineExecutionEvent =
   | { type: "land"; inputHash: string }
-  | { type: "targetGone" }
   | { type: "claim" }
   | { type: "retry" }
   | { type: "success"; fence: string | null; resultSourceVersionId: string }
@@ -31,8 +30,6 @@ export type TimelineExecutionEvent =
 
 /** The fields an accepted execution is inserted with. */
 export interface NewTimelineExecution {
-  /** The id to insert under, when the caller already keyed something by it (the credit hold); generated otherwise. */
-  id?: string;
   projectId: string;
   spaceId: string;
   actorUserId: string;
@@ -198,8 +195,6 @@ function plan(event: TimelineExecutionEvent): { where: SQL | undefined; set: PgU
         // Due at once: the sweep adds the job again if the enqueue right after this is lost.
         set: { status: "queued", nextDispatchAt: sql`now()` },
       };
-    case "targetGone":
-      return { where: eq(t.status, "awaiting_landing"), set: { status: "failed", failureReason: "target_unavailable" } };
     case "claim":
       return { where: eq(t.status, "queued"), set: { status: "running", ...newAttempt } };
     case "retry":

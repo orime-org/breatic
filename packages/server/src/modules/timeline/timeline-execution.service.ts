@@ -5,12 +5,13 @@
  * The Timeline execution routes' logic (inner#1711 design §4).
  *
  * Accepting looks up the action first: an action already accepted answers its own row, or a conflict when its input
- * differs, and holds nothing. A new one holds its credits under a fresh execution id, then writes the execution and
- * this Project's grant in one transaction; every failure after the hold releases it. Reads answer through the grant
- * rows, so a duplicated Project resolves and previews what its source made while its execution list stays its own.
+ * differs. A new one, like an Agent chat turn, needs only a balance above zero and holds no credits; it writes the
+ * execution and this Project's grant in one transaction, and settlement later charges actual use. Reads answer through
+ * the grant rows, so a duplicated Project resolves and previews what its source made while its execution list stays
+ * its own.
  */
 
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   AppError,
   ConflictError,
@@ -24,7 +25,7 @@ import {
   logger,
   timelineExecutionRepo,
 } from "@breatic/core";
-import { creditHoldService, sumCreditsByOperationKeys, webAnimationSourceRepo } from "@breatic/domain";
+import { SMALLEST_CREDIT, sumCreditsByOperationKeys, webAnimationSourceRepo } from "@breatic/domain";
 import { ceilToCreditCent, extractPromptText, signPayload, t, type TimelineExecution, type TimelineRate } from "@breatic/shared";
 import {
   TimelineExecutionInputSchema,
@@ -33,7 +34,7 @@ import {
   type TimelineExecutionCreateInput,
   type TimelineExecutionInput,
 } from "@breatic/shared/space-content";
-import { reserveForRun } from "@server/modules/payment/credit-precheck.service.js";
+import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
 import * as projectService from "@server/modules/project/project.service.js";
 import { publishSpaceTasksQuietly } from "@server/modules/task/publish-counts.js";
 import * as grantRepo from "@server/modules/timeline/execution-grant.repo.js";
@@ -114,18 +115,6 @@ function sameAction(row: TimelineExecution, inputHash: string): AcceptedExecutio
 }
 
 /**
- * Release a hold this request took, logging when that fails: the hold expires with its budget either way.
- * @param executionId - The hold's key.
- * @param projectId - For the log.
- * @returns Nothing.
- */
-async function releaseQuietly(executionId: string, projectId: string): Promise<void> {
-  await creditHoldService.releaseHold(executionId).catch((err: unknown) => {
-    logger.error({ err, executionId, projectId }, "timeline_execution_hold_release_failed");
-  });
-}
-
-/**
  * Accept a web-animation execution, or answer the one this action already created.
  * @param userId - The caller.
  * @param body - The validated request.
@@ -134,7 +123,7 @@ async function releaseQuietly(executionId: string, projectId: string): Promise<v
  * @throws {ForbiddenError} When the caller is below editor.
  * @throws {ValidationError} When the input is out of the configured bounds.
  * @throws {ConflictError} When the action was accepted with a different input.
- * @throws {AppError} 402 when the studio cannot cover the hold.
+ * @throws {AppError} 402 when the studio's balance is not above zero.
  */
 export async function accept(userId: string, body: TimelineExecutionCreateInput & { projectId: string }): Promise<AcceptedExecution> {
   const { projectId, spaceId, actionId } = body;
@@ -144,13 +133,12 @@ export async function accept(userId: string, body: TimelineExecutionCreateInput 
   const existing = await timelineExecutionRepo.findByAction({ projectId, spaceId, actionId });
   if (existing !== undefined) return sameAction(existing, inputHash);
 
-  const id = randomUUID();
-  await reserveForRun(projectId, userId, id, getTimelineConfig().web_animation.reserve_credits);
+  // An execution needs a balance above zero to start, as an Agent chat turn does (chat.ts). Payments off: no check.
+  await precheckCredits(projectId, userId, SMALLEST_CREDIT);
   try {
     const row = await db.transaction(async (tx) => {
       const inserted = await timelineExecutionRepo.insert(
         {
-          id,
           projectId,
           spaceId,
           actorUserId: userId,
@@ -164,12 +152,11 @@ export async function accept(userId: string, body: TimelineExecutionCreateInput 
         tx,
       );
       if (inserted === null) throw new ActionTaken();
-      await grantRepo.insertGrant({ executionId: id, projectId }, tx);
+      await grantRepo.insertGrant({ executionId: inserted.id, projectId }, tx);
       return inserted;
     });
     return { row, created: true };
   } catch (err) {
-    await releaseQuietly(id, projectId);
     if (!(err instanceof ActionTaken)) throw err;
     const winner = await timelineExecutionRepo.findByAction({ projectId, spaceId, actionId });
     if (winner === undefined) throw new AppError(500, t("server.error.internal"));
@@ -240,7 +227,7 @@ export async function resolveWebSources(
 }
 
 /**
- * Cancel an execution: one nothing has started ends at once and releases its hold; a running one is asked to stop.
+ * Cancel an execution: one nothing has started ends at once; a running one is asked to stop.
  * @param userId - The caller.
  * @param executionId - The execution.
  * @returns The row after the request; a terminal row unchanged.
@@ -254,8 +241,6 @@ export async function cancel(userId: string, executionId: string): Promise<Timel
   if (TERMINAL.has(row.status)) return row;
   const result = await timelineExecutionRepo.transition({ id: executionId, event: { type: "cancel" } });
   if (!result.applied) return result.row;
-  // A cancelled row has no attempt left to settle it; a cancelling one is settled by its attempt.
-  if (result.row.status === "cancelled") await creditHoldService.releaseHold(executionId);
   await publishSpaceTasksQuietly(result.row.projectId, result.row.spaceId);
   return result.row;
 }
