@@ -658,6 +658,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "chrome.aria.scrollTabsRight": { excluded: REASONS.SCREEN_READER, look: /arrows at either end scroll them/ },
   "chrome.aria.spacesToolbar": { excluded: REASONS.SCREEN_READER, look: /tabs along the top/ },
   "chrome.aria.theme": { excluded: REASONS.SCREEN_READER, look: /an icon for the theme/ },
+  "chrome.languageLoadFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "chrome.languageNotSaved": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "chrome.tooltip.agentHide": { excluded: REASONS.SCREEN_READER, look: /a panel icon, hides or shows it/ },
   "chrome.tooltip.agentShow": { excluded: REASONS.SCREEN_READER, look: /a panel icon, hides or shows it/ },

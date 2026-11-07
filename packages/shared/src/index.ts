@@ -382,6 +382,8 @@ export {
   getActiveLocale,
   getAvailableLocales,
   setLocaleMessages,
+  setEveryLocaleMessages,
+  EVERY_LOCALE_KEYS,
   setLocaleResolver,
   onLocaleChange,
   resetLocales,

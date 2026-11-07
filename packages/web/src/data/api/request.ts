@@ -43,7 +43,8 @@ function createClient(): AxiosInstance {
   // The server negotiates its reply language from `Accept-Language`, which
   // the browser fills from the OS setting. That is not the language the user
   // picked in our switcher — `changeLocale` writes localStorage and swaps the
-  // UI catalog without touching the network. Sending it here is what joins
+  // UI catalog, downloading it first when this page has not loaded it yet, but
+  // never calls our backend. Sending it here is what joins
   // the two, and it is read per request because the user can switch at any
   // time while this singleton lives for the life of the page.
   instance.interceptors.request.use((config) => {

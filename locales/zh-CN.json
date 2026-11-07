@@ -2734,6 +2734,7 @@
       "theme": "主题：{theme}"
     },
     "languageNotSaved": "语言未保存到账号",
+    "languageLoadFailed": "语言切换失败，请刷新页面后重试",
     "help": {
       "trigger": "帮助",
       "manual": "用户手册",

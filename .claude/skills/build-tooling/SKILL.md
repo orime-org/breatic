@@ -56,7 +56,7 @@ Check: can the mocked module be imported on its own?
 
 **A package's `test` script is `vitest run`.** Bare `vitest` starts watch mode and turbo waits on it forever.
 
-**Adding an alias to `packages/web/vite.config.mts` means adding the same alias to `packages/web/vitest.config.ts` in the same change.** The vitest config has its own `resolve.alias`; without the mirror every test importing through the alias fails with `Failed to resolve import`.
+**Adding an alias to `packages/web/vite.config.mts` means adding the same alias to `packages/web/vitest.config.mts` in the same change.** The vitest config has its own `resolve.alias`; without the mirror every test importing through the alias fails with `Failed to resolve import`.
 
 **A partial `vi.mock` must spread the real module.** The factory replaces the whole module, so any export it does not list becomes `undefined`, including exports added later.
 

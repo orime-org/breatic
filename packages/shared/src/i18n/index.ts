@@ -235,7 +235,36 @@ function resolveKey(obj: Record<string, unknown>, key: string): string | undefin
 }
 
 /**
- * A key formatted in every registered locale, the active one first.
+ * The keys {@link tInEveryLocale} reads back in every language. The web app
+ * downloads only English and the reader's own catalog, so its build carries
+ * these keys of every locale separately (`packages/web/every-locale-messages.mts`).
+ */
+export const EVERY_LOCALE_KEYS = ["canvas.promptMark.reference"] as const;
+
+/** A key {@link tInEveryLocale} can read back in every language. */
+export type EveryLocaleKey = (typeof EVERY_LOCALE_KEYS)[number];
+
+const _everyLocale = new Map<string, Partial<Record<EveryLocaleKey, string>>>();
+
+/**
+ * Register a locale's wording of {@link EVERY_LOCALE_KEYS} without registering
+ * its catalog: only {@link tInEveryLocale} reads it, so `t()` and
+ * {@link getAvailableLocales} still see only the catalogs set in full.
+ * @param locale - the locale code these messages belong to
+ * @param messages - the ICU string of each of those keys, by its dotted name
+ */
+export function setEveryLocaleMessages(
+  locale: Locale,
+  messages: Partial<Record<EveryLocaleKey, string>>,
+): void {
+  _everyLocale.set(locale, messages);
+  for (const key of _formatterCache.keys()) {
+    if (key.startsWith(`${locale}|`)) _formatterCache.delete(key);
+  }
+}
+
+/**
+ * A key formatted in every locale the engine knows it in, the active one first.
  *
  * For reading back text that may have been written in another language than
  * the one active now -- a prompt filled in by a collaborator, or before the
@@ -245,14 +274,15 @@ function resolveKey(obj: Record<string, unknown>, key: string): string | undefin
  * @returns One formatted string per locale that has the key, without repeats
  */
 export function tInEveryLocale(
-  key: string,
+  key: EveryLocaleKey,
   params?: Record<string, string | number | Date>,
 ): string[] {
   const active = activeLocale();
-  const order = [active, ...[..._locales.keys()].filter((locale) => locale !== active)];
-  const found = order.flatMap((locale) => {
-    const messages = _locales.get(locale);
-    const message = messages ? resolveKey(messages, key) : undefined;
+  const known = new Set([active, ..._locales.keys(), ..._everyLocale.keys()]);
+  const found = [...known].flatMap((locale) => {
+    const full = _locales.get(locale);
+    const message = (full ? resolveKey(full, key) : undefined)
+      ?? _everyLocale.get(locale)?.[key];
     return message === undefined ? [] : [formatIn(locale, key, message, params)];
   });
   return [...new Set(found)];
@@ -261,6 +291,7 @@ export function tInEveryLocale(
 /** Reset loaded locales (for testing). */
 export function resetLocales(): void {
   _locales.clear();
+  _everyLocale.clear();
   _formatterCache.clear();
   _currentLocale = "en";
   _localeResolver = null;

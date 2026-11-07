@@ -2734,6 +2734,7 @@
       "theme": "Theme: {theme}"
     },
     "languageNotSaved": "Language not saved to your account",
+    "languageLoadFailed": "Couldn't switch language. Refresh the page and try again.",
     "help": {
       "trigger": "Help",
       "manual": "User manual",
