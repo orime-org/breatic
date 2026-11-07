@@ -62,7 +62,7 @@ export interface AiCapture {
 export type AiRange =
   | {
       readonly kind: 'present';
-      /** The one stretch of letters, as carried; null once it is gone. */
+      /** The one stretch of letters, as carried; a null here turns the range gone. */
       readonly slots: readonly (LocalRange | null)[];
       readonly firstId: string | null;
       readonly lastId: string | null;
@@ -109,7 +109,7 @@ function presentIn(state: EditorState): PresentRange | null {
 }
 
 /** What a block is told apart by in the body: a block's container, or a table. */
-const BLOCK_GROUP = 'bnBlock';
+export const BLOCK_GROUP = 'bnBlock';
 
 /**
  * The position before the innermost block around a position.
@@ -117,7 +117,7 @@ const BLOCK_GROUP = 'bnBlock';
  * @param pos - The position.
  * @returns Where that block starts, or null outside any.
  */
-function containerAt(doc: ProseMirrorNode, pos: number): number | null {
+export function containerAt(doc: ProseMirrorNode, pos: number): number | null {
   const $pos = doc.resolve(pos);
   for (let depth = $pos.depth; depth > 0; depth -= 1) {
     if ($pos.node(depth).type.isInGroup(BLOCK_GROUP)) return $pos.before(depth);
@@ -152,8 +152,8 @@ export function ownContentEnd(doc: ProseMirrorNode, blockPos: number): number {
 export function aiCoverOf(doc: ProseMirrorNode, letters: LocalRange | null, firstId: string | null, lastId: string | null): LocalRange | null {
   if (letters === null) return null;
   if (firstId === null || lastId === null) return letters;
-  const byLetters = { first: containerAt(doc, letters.from), last: containerAt(doc, letters.to - 1) };
-  if (byLetters.first === null || byLetters.last === null) return letters;
+  // A letter always stands in a block.
+  const byLetters = { first: containerAt(doc, letters.from)!, last: containerAt(doc, letters.to - 1)! };
   let first = blockById(doc, firstId)?.pos ?? byLetters.first;
   let last = blockById(doc, lastId)?.pos ?? byLetters.last;
   if (first > last) {
@@ -184,8 +184,8 @@ export function aiCoverIn(state: EditorState): LocalRange | null {
 function paintRange(state: EditorState): DecorationSet {
   const range = presentIn(state);
   const letters = range?.slots[0] ?? null;
-  const cover = aiCoverIn(state);
-  if (letters === null || cover === null) return DecorationSet.empty;
+  if (range === null || letters === null) return DecorationSet.empty;
+  const cover = aiCoverOf(state.doc, letters, range.firstId, range.lastId)!;
   const { selection } = state;
   const drawn = bodyHolds(state) && !selection.empty ? selection : null;
   const parts = drawn === null

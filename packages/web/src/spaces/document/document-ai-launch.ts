@@ -3,9 +3,10 @@
 
 /**
  * What the AI output dialog takes from the body when it opens (inner#1860,
- * design §5.2, §5.4): the block a result is inserted under, and the context
- * Markdown sent with the selection, cut to the budget around it. The units
- * sent are `document-ai-units.ts`.
+ * design §4.6, §5.2, §5.4): the range it opens on (`aiCapture`), the block a
+ * result is inserted under, and the context Markdown sent with the
+ * selection, cut to the budget around it. What is sent for the range is
+ * `aiRequest` in `document-ai-units.ts`.
  */
 
 import type { BlockNoteEditor } from '@blocknote/core';
@@ -13,13 +14,11 @@ import type { Node as ProseMirrorNode, ResolvedPos } from '@tiptap/pm/model';
 import type { EditorState } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 
-import { inlineLetter, ownContentEnd, type AiCapture } from '@web/spaces/document/document-ai-range';
+import { BLOCK_GROUP, containerAt, inlineLetter, ownContentEnd, type AiCapture } from '@web/spaces/document/document-ai-range';
 import { readTopBlocks } from '@web/spaces/document/document-blocks-read';
 import { letterBounds } from '@web/spaces/document/document-local-range';
 import { cellDepthOf, tableAround } from '@web/spaces/document/document-table-nodes';
 
-/** What a block is told apart by in the body. */
-const BLOCK_GROUP = 'bnBlock';
 
 /** The blank line Markdown puts between two blocks. */
 const BETWEEN_BLOCKS = '\n\n';
@@ -75,12 +74,7 @@ function firstCovered(doc: ProseMirrorNode, from: number, to: number): number {
  * @returns Where the block's container starts, or null outside any block.
  */
 function blockAround($pos: ResolvedPos, oneCell: boolean): number | null {
-  const table = oneCell ? null : tableAround($pos);
-  if (table !== null) return table.pos;
-  for (let depth = $pos.depth; depth > 0; depth -= 1) {
-    if ($pos.node(depth).type.isInGroup(BLOCK_GROUP)) return $pos.before(depth);
-  }
-  return null;
+  return (oneCell ? null : tableAround($pos)?.pos) ?? containerAt($pos.doc, $pos.pos);
 }
 
 /**
@@ -106,7 +100,9 @@ export function aiCapture(state: EditorState): AiCapture | null {
   const first = blockAround($first, oneCell);
   const last = blockAround($last, oneCell);
   if (first === null || last === null) return null;
-  if (first === last && (firstCell <= 0 || oneCell)) {
+  // Inside one block is inside one line of words: a legacy table's cells
+  // are lines of one block, and a selection across them takes the table.
+  if (first === last && $first.sameParent($last)) {
     const letters = letterBounds(doc, { from, to }, inlineLetter);
     return letters === null ? null : { range: letters, firstId: null, lastId: null };
   }
@@ -134,10 +130,8 @@ export function aiInsertBlockId(state: EditorState): string | null {
     const oneCell = fromCell > 0 && lastCell > 0 && $from.before(fromCell) === $last.before(lastCell);
     if (!oneCell) return String(table.node.attrs['id']);
   }
-  for (let depth = $last.depth; depth > 0; depth -= 1) {
-    const node = $last.node(depth);
-    if (node.type.isInGroup(BLOCK_GROUP)) return String(node.attrs['id']);
-  }
+  const around = containerAt(doc, $last.pos);
+  if (around !== null) return String(doc.nodeAt(around)!.attrs['id']);
   // A position between blocks: the block right after it.
   const after = $last.nodeAfter;
   return after !== null && after.type.isInGroup(BLOCK_GROUP) ? String(after.attrs['id']) : null;

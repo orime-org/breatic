@@ -18,7 +18,7 @@ import { Fragment, Slice, type Node as ProseMirrorNode } from '@tiptap/pm/model'
 import type { Transaction } from '@tiptap/pm/state';
 import { yUndoPluginKey } from 'y-prosemirror';
 
-import { ownContentEnd } from '@web/spaces/document/document-ai-range';
+import { BLOCK_GROUP, ownContentEnd } from '@web/spaces/document/document-ai-range';
 import type { DocumentEditorHandle } from '@web/spaces/document/document-editor-cache';
 import type { ViewedEditor } from '@web/spaces/document/document-editor-view';
 import type { WrittenBlock } from '@web/spaces/document/document-external-media';
@@ -50,17 +50,11 @@ export interface AiAnswer {
   readonly leftOut: number;
 }
 
-/** What a block is told apart by in the body: a block's container, or a table. */
-const BLOCK_GROUP = 'bnBlock';
-
 /** A code block's type. */
 const CODE = 'codeBlock';
 
 /** The list item types, whose answers take no block props (Plate `formatAIOutput`). */
 const LIST_ITEMS = new Set(['bulletListItem', 'numberedListItem', 'checkListItem', 'toggleListItem']);
-
-/** A list item's props that the landing decides, never copied from the range. */
-const LIST_PROPS = ['start'] as const;
 
 /** The punctuation BlockNote 0.56's parser takes a backslash before. */
 const BACKSLASHED = /[\\`*_{}[\]()#+\-.!~|>]/g;
@@ -231,7 +225,7 @@ function escapeContent(content: readonly Inline[]): Inline[] {
     // cannot open or close at a space: those spaces are spelled as entities.
     if (code && /^ [\s\S]* $/.test(escaped)) escaped = `&#32;${escaped.slice(1, -1)}&#32;`;
     if (emphasisOf(piece) !== '') escaped = escaped.replace(/^[^\S\n]+|[^\S\n]+$/g, (edge) => [...edge].map(entity).join(''));
-    // A hard break is spelled as an entity: the exporter drops one at a unit's
+    // A hard break is spelled as an entity: the exporter drops one at a block's
     // edge, the parser ends a heading or a list item at one, and a line
     // starting with `=` or other block syntax would be read as a block.
     return { ...piece, text: escaped.replace(/\n/g, '&#10;') };
@@ -572,9 +566,16 @@ function blocksOf(doc: ProseMirrorNode, span: Span): Read[] {
     return [nodeToBlock(paragraph, doc) as unknown as Read];
   }
   const out: Read[] = [];
-  doc.slice(span.first, span.to).content.forEach((node) => {
-    if (node.type.isInGroup(BLOCK_GROUP)) out.push(nodeToBlock(node, doc) as unknown as Read);
-  });
+  /**
+   * Takes one node of the slice: a block, or a container the slice cut open
+   * above the range, whose blocks under it are taken instead.
+   * @param node - The node.
+   */
+  const take = (node: ProseMirrorNode): void => {
+    if (node.type.name === 'blockContainer' && node.firstChild?.type.name === 'blockGroup') node.firstChild.forEach(take);
+    else if (node.type.isInGroup(BLOCK_GROUP)) out.push(nodeToBlock(node, doc) as unknown as Read);
+  };
+  doc.slice(span.first, span.to).content.forEach(take);
   return out;
 }
 
@@ -668,8 +669,8 @@ function styledUnder(content: readonly Inline[], styles: Record<string, unknown>
 function formatted(blocks: readonly Read[], source: Read | null): Read[] {
   const [head, ...rest] = blocks;
   if (head === undefined || source === null || !holdsWords(source) || !holdsWords(head)) return [...blocks];
-  const props = { ...(source.props ?? {}) };
-  for (const key of LIST_PROPS) delete props[key];
+  // A list item's number is the landing's to decide.
+  const { start: _start, ...props } = source.props ?? {};
   const own = hasListItems(blocks) ? {} : { type: source.type, props };
   return [{ ...head, ...own, content: styledUnder(head.content as Inline[], firstStyles(source)) }, ...rest];
 }
@@ -703,6 +704,10 @@ export function aiAnswer(parser: ViewedEditor, doc: ProseMirrorNode, text: strin
   if (span?.kind === 'words' && span.container === null) {
     return { preview: [{ type: 'paragraph', props: {}, content: flattened(parsed(parser, text.trim())), children: [] } as WrittenBlock], leftOut: 0 };
   }
+  if (span?.kind === 'words' && span.line.type.name === CODE) {
+    const code = decoded(text.replace(/^\s*```[^\n]*\n([\s\S]*?)\n?```\s*$/, '$1'));
+    return { preview: [{ type: CODE, props: { ...span.line.attrs }, content: [{ type: 'text', text: code, styles: {} }], children: [] } as WrittenBlock], leftOut: 0 };
+  }
   const { blocks, leftOut } = keepWritable(parsed(parser, text.trim()), ourPrefix);
   const shaped = formatted(blocks as Read[], span === null ? null : sourceOf(doc, span));
   const inCell = cover !== null && cellDepthOf(doc.resolve(cover.from)) > 0;
@@ -721,13 +726,23 @@ function withoutIds(block: Read): Read {
 }
 
 /**
- * Whether a block node opens in an open slice: a block of words outside code.
- * @param node - The block's container.
- * @returns True for one.
+ * How deep an open slice opens at one edge of the answer (Plate
+ * `openTextBlock`, ProseMirror `Slice.maxOpen`): along the first or the last
+ * child down to a block of words outside code, or not at all when that edge
+ * reaches anything else first.
+ * @param node - The answer's first or last block.
+ * @param side - Which edge.
+ * @returns The depth.
  */
-function opens(node: ProseMirrorNode | null | undefined): boolean {
-  const content = node?.firstChild;
-  return content !== null && content !== undefined && content.isTextblock && content.type.name !== CODE;
+function openDepth(node: ProseMirrorNode | undefined, side: 'start' | 'end'): number {
+  let depth = 0;
+  let at = node;
+  while (at !== undefined && !at.isTextblock) {
+    if (at.type.name !== 'blockContainer' && at.type.name !== 'blockGroup') return 0;
+    depth += 1;
+    at = (side === 'start' ? at.firstChild : at.lastChild) ?? undefined;
+  }
+  return at !== undefined && at.type.name !== CODE && depth > 0 ? depth + 1 : 0;
 }
 
 /**
@@ -741,6 +756,10 @@ function writeOver(tr: Transaction, span: Span, preview: readonly WrittenBlock[]
   if (span.kind === 'words' && span.container === null) {
     // A legacy cell holds one line of words.
     tr.replaceWith(span.from, span.to, inlineContentToNodes(((preview[0] as Read | undefined)?.content ?? []) as never, schema, 'paragraph'));
+    return;
+  }
+  if (span.kind === 'words' && span.line.type.name === CODE) {
+    tr.insertText(wordsOf((((preview[0] as Read | undefined)?.content ?? []) as Inline[])[0] ?? { type: 'text' }), span.from, span.to);
     return;
   }
   const nodes = preview.map((b) => blockToNode(withoutIds(b as Read) as never, schema));
@@ -767,7 +786,7 @@ function writeOver(tr: Transaction, span: Span, preview: readonly WrittenBlock[]
   // the words after join the last.
   const from = span.kind === 'words' ? span.from : textStart(tr.doc, span.first);
   const to = span.kind === 'words' ? span.to : textEnd(tr.doc, span.last);
-  tr.replace(from, to, new Slice(Fragment.from(nodes), opens(nodes[0]) ? 2 : 0, opens(nodes[nodes.length - 1]) ? 2 : 0));
+  tr.replace(from, to, new Slice(Fragment.from(nodes), openDepth(nodes[0], 'start'), openDepth(nodes[nodes.length - 1], 'end')));
 }
 
 /**

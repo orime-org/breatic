@@ -318,6 +318,20 @@ describe('the range sent (§4.6, §5.2)', () => {
     expect(request(h)).toBe('Before\n\n| a | b |\n| --- | --- |\n| c | d |');
   });
 
+  it('sends a sub-item and the next top-level block as the whole blocks they are', async () => {
+    const h = await open('- parent\n  - kid\n- next item\n\nAfter.');
+    capture(h, { from: rangeOf(h, 'kid').from + 1, to: rangeOf(h, 'next').to });
+    expect(request(h)).toBe('* kid\n* next item');
+  });
+
+  it('sends a whole legacy table for a selection from one of its cells into another', async () => {
+    const h = await open('Before\n\nAfter');
+    legacyTable(h, [['one', 'two'], ['three', 'four']]);
+    capture(h, { from: rangeOf(h, 'one').from, to: rangeOf(h, 'three').to });
+    expect(request(h)).toContain('three');
+    expect(request(h)).toContain('four');
+  });
+
   it('sends the selected words of a legacy table cell as escaped text', async () => {
     const h = await open('');
     legacyTable(h, [['2. Methods', 'y']]);
@@ -667,6 +681,16 @@ describe('replace, open slice (§5.3, Plate openStart/openEnd)', () => {
     ]);
   });
 
+  it('joins the words after the range to the deepest last block of a nested list answer', async () => {
+    const h = await open('Intro: x y z end.');
+    replaceWith(h, rangeOf(h, 'x y z'), () => 'A\n\n- b\n  - c');
+    expect(flat(h).map((b) => [b.type, textOf(b)])).toEqual([
+      ['paragraph', 'Intro: A'],
+      ['bulletListItem', 'b'],
+      ['bulletListItem', 'c end.'],
+    ]);
+  });
+
   it('pastes over a list item and its sub-item, the later sub-item left in place, no empty block', async () => {
     const h = await open('- parent\n  - kid\n  - kid two\n- after');
     replaceWith(h, { from: rangeOf(h, 'parent').from, to: rangeOf(h, 'kid').to }, () => 'A\n\nB');
@@ -686,6 +710,21 @@ describe('replace, open slice (§5.3, Plate openStart/openEnd)', () => {
     legacyTable(h, [['one two', 'y']]);
     replaceWith(h, rangeOf(h, 'two'), () => 'TWO');
     expect(legacyCells(h)).toEqual([['one TWO', 'y']]);
+  });
+});
+
+describe('words inside a code block (§5.1, §5.3)', () => {
+  it('reads an echoed answer back as the same code, the rest of the block kept', async () => {
+    const code = 'def f():\n    # note *x* [l](u) & <b>\n    return 1\nend';
+    const h = await openBlocks([{ type: 'codeBlock', props: { language: 'python' }, content: code }]);
+    replaceWith(h, { from: rangeOf(h, '# note').from, to: rangeOf(h, 'return 1').to }, (sent) => sent);
+    expect(blocks(h).map((b) => [b.type, textOf(b)])).toEqual([['codeBlock', code]]);
+  });
+
+  it('takes the code out of a fence the model wrapped it in', async () => {
+    const h = await openBlocks([{ type: 'codeBlock', props: { language: 'python' }, content: 'a = 1\nb = 2\nc = 3' }]);
+    replaceWith(h, rangeOf(h, 'b = 2'), () => '```python\nb = 20\n```');
+    expect(blocks(h).map((b) => [b.type, textOf(b)])).toEqual([['codeBlock', 'a = 1\nb = 20\nc = 3']]);
   });
 });
 

@@ -66,8 +66,7 @@ import { cn } from '@web/lib/utils';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentAiLaunchContext, TONE_LABEL_KEYS, type AiLaunch } from '@web/spaces/document/document-ai-context';
 import { aiCapture, aiContextOf, aiInsertBlockId } from '@web/spaces/document/document-ai-launch';
-import { aiCoverIn, aiCoverOf, aiRangeIn, DOCUMENT_AI_RANGE, inlineLetter, onAiEscape } from '@web/spaces/document/document-ai-range';
-import { letterBounds } from '@web/spaces/document/document-local-range';
+import { aiCoverIn, aiRangeIn, DOCUMENT_AI_RANGE, onAiEscape } from '@web/spaces/document/document-ai-range';
 import {
   aiDialogButtons,
   reduceAiSession,
@@ -304,10 +303,8 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
       const captured = aiCapture(view.state);
       if (captured === null) return;
       const { doc } = view.state;
-      const cover = aiCoverOf(doc, letterBounds(doc, captured.range, inlineLetter), captured.firstId, captured.lastId);
-      if (cover === null) return;
       // The budget is measured on what is sent (§5.2).
-      const sent = aiRequest(editor, doc, cover);
+      const sent = aiRequest(editor, doc, captured.range);
       if (sent.length > config.selectionMaxChars) {
         toast.error(t('spaces.document.ai.selectionTooLong'));
         return;
@@ -402,8 +399,8 @@ function anchorBox(editor: ViewedEditor, opened: Opened): DOMRect | null {
   if (view === null) return null;
   // The panel lines up with the text column, under the line it follows.
   const left = view.dom.getBoundingClientRect().left;
-  const last = aiCoverIn(view.state)?.to ?? Number.NaN;
-  if (Number.isFinite(last)) {
+  const last = aiCoverIn(view.state)?.to;
+  if (last !== undefined) {
     // The line of the last selected character: a range ending at the start of
     // a line would otherwise measure the line after it.
     const line = view.coordsAtPos(last, -1);
@@ -897,7 +894,7 @@ function Preview({
     const parse = (): void => {
       timer.current = null;
       const shown = latest.current;
-      const blocks = shown.trim() === '' ? [] : aiAnswer(parser, editor.prosemirrorState.doc, shown, ourPrefix, aiCoverIn(editor.prosemirrorState)).preview;
+      const blocks = aiAnswer(parser, editor.prosemirrorState.doc, shown, ourPrefix, aiCoverIn(editor.prosemirrorState)).preview;
       setHtml(blocks.length === 0 ? '' : parser.blocksToFullHTML(blocks as never));
     };
     if (!streaming) {
