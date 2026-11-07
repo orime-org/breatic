@@ -304,6 +304,22 @@
       },
       "credits_amount": "{credits}",
       "fact_line": "{label}: {value}"
+    },
+    "three_d": {
+      "model_not_offered": "{model} is not a 3D model for {mode}.",
+      "prompt_required": "Text to 3D needs a prompt.",
+      "prompt_not_taken": "{model} generates from pictures and takes no prompt.",
+      "image_count": "{model} takes {max, plural, =0 {no images} =1 {one image} other {{min} to {max} images}}, and this request has {actual}.",
+      "not_a_setting": "{model} has no setting \"{param}\".",
+      "setting_forced": "\"{param}\" cannot be {given} with these settings: the rule {force} sets it to {value}.",
+      "setting_values": "\"{param}\" takes one of {values}, not {value}.",
+      "setting_integer": "\"{param}\" takes a whole number, not {value}.",
+      "setting_bounds": "\"{param}\" takes {min} to {max} with these settings, not {value}.",
+      "setting_too_long": "\"{param}\" takes at most {max} characters, and this one has {length}.",
+      "view_not_found": "View slot {index} ({slot, select, front {front} left {left} back {back} right {right} other {extra}}): {input} is not an image in this Project.",
+      "view_not_image": "View slot {index} ({slot, select, front {front} left {left} back {back} right {right} other {extra}}): this file is {kind, select, video {a video} audio {an audio file} other {a model or another file}}, not an image.",
+      "still_running": "This generation is still finishing and may still produce a result. Try again in a moment.",
+      "has_result": "This generation finished with a result, which is now on the task list."
     }
   },
   "chat": {
@@ -441,7 +457,8 @@
         "other": "Calling {tool}",
         "readTemplate": "Reading the template",
         "requestSpace": "Asking to look at Spaces"
-      }
+      },
+      "proposingSceneGeneration": "Drafting a 3D generation"
     },
     "loadEarlier": "Load earlier messages",
     "conversation": {

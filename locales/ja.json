@@ -304,6 +304,22 @@
       },
       "credits_amount": "{credits} クレジット",
       "fact_line": "{label}：{value}"
+    },
+    "three_d": {
+      "model_not_offered": "{model} は {mode} 用の 3D モデルではありません。",
+      "prompt_required": "テキストから 3D にはプロンプトが必要です。",
+      "prompt_not_taken": "{model} は画像から生成するため、プロンプトを受け付けません。",
+      "image_count": "{model} には{max, plural, =0 {画像は不要です} =1 {画像が 1 枚必要です} other {画像が {min}～{max} 枚必要です}}が、このリクエストには {actual} 枚あります。",
+      "not_a_setting": "{model} には「{param}」という設定はありません。",
+      "setting_forced": "この設定では「{param}」を {given} にできません。ルール {force} により {value} になります。",
+      "setting_values": "「{param}」は {values} のいずれかで、{value} は指定できません。",
+      "setting_integer": "「{param}」は整数で指定してください。{value} は指定できません。",
+      "setting_bounds": "この設定では「{param}」は {min}～{max} の範囲で、{value} は指定できません。",
+      "setting_too_long": "「{param}」は最大 {max} 文字ですが、{length} 文字あります。",
+      "view_not_found": "ビュー {index}（{slot, select, front {正面} left {左} back {背面} right {右} other {余分}}）：{input} はこの Project の画像ではありません。",
+      "view_not_image": "ビュー {index}（{slot, select, front {正面} left {左} back {背面} right {右} other {余分}}）：このファイルは{kind, select, video {動画} audio {音声} other {モデルなどのファイル}}で、画像ではありません。",
+      "still_running": "この生成はまだ終了処理中で、結果が出る可能性があります。しばらくしてからもう一度お試しください。",
+      "has_result": "この生成は結果が出ており、タスク一覧に戻りました。"
     }
   },
   "chat": {
@@ -441,7 +457,8 @@
         "other": "{tool} の実行",
         "readTemplate": "テンプレートの確認",
         "requestSpace": "Space の閲覧依頼"
-      }
+      },
+      "proposingSceneGeneration": "3D 生成の提案をまとめています"
     },
     "loadEarlier": "以前のメッセージを読み込む",
     "conversation": {

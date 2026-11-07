@@ -49,6 +49,17 @@ export interface NodeTaskRow {
   assetId: string | null;
 }
 
+/** A 3D Space's own row (inner#1690, inner#1691), as its list and its actions read it. */
+export interface SceneTaskRow extends NodeTaskRow {
+  /** The AIGC job a generation runs as; null on a model upload. */
+  taskId: string | null;
+  /** Where a generation was started from; null on a model upload. */
+  origin: SceneGenerationOrigin | null;
+}
+
+/** Where a 3D Space's generation was started from: its own dialog, or an agent proposal. */
+export type SceneGenerationOrigin = "space" | "agent";
+
 /**
  * A row as the list a user opens hands it out: the row plus what that task
  * put on the node.
@@ -100,6 +111,30 @@ function rowOf(row: typeof nodeTasks.$inferSelect): NodeTaskRow {
     nodeHistoryId: row.nodeHistoryId,
     assetId: row.assetId,
   };
+}
+
+/**
+ * A stored Space-level row as its reads hand it out.
+ * @param row - The row as selected.
+ * @returns The shared fields, the job and the origin.
+ */
+function sceneRowOf(row: typeof nodeTasks.$inferSelect): SceneTaskRow {
+  return { ...rowOf(row), taskId: row.taskId, origin: row.origin as SceneGenerationOrigin | null };
+}
+
+/**
+ * Read one row as a Space-level row, whatever state it is in.
+ * @param taskId - Which row.
+ * @returns The row, or null when the table holds no row without a node by that id.
+ */
+export async function findSceneRow(taskId: string): Promise<(SceneTaskRow & { deletedAt: Date | null }) | null> {
+  const rows = await db
+    .select()
+    .from(nodeTasks)
+    .where(and(eq(nodeTasks.id, taskId), isNull(nodeTasks.nodeId)))
+    .limit(1);
+  const row = rows[0];
+  return row === undefined ? null : { ...sceneRowOf(row), deletedAt: row.deletedAt };
 }
 
 /**
@@ -439,6 +474,35 @@ export async function insertSceneRow(data: {
 }
 
 /**
+ * Open a 3D Space's generation row (inner#1691): no node, the generate
+ * action, the job it runs as and where it was started from.
+ * @param data - Everything the row needs at birth.
+ * @param data.projectId - Owning project.
+ * @param data.spaceId - The 3D Space whose list it joins.
+ * @param data.startedByUserId - Who submitted it.
+ * @param data.budgetMs - The allowance the deadline is read from.
+ * @param data.label - The cleaned prompt, the front image's name or the model's.
+ * @param data.taskId - The AIGC job.
+ * @param data.origin - The Space's own dialog, or an agent proposal.
+ * @returns The new row's id.
+ */
+export async function insertSceneGenerationRow(data: {
+  projectId: string;
+  spaceId: string;
+  startedByUserId: string;
+  budgetMs: number;
+  label: string;
+  taskId: string;
+  origin: SceneGenerationOrigin;
+}): Promise<string> {
+  const rows = await db
+    .insert(nodeTasks)
+    .values({ ...data, nodeId: null, kind: "generation", action: "generate", status: "running" })
+    .returning({ id: nodeTasks.id });
+  return rows[0]!.id;
+}
+
+/**
  * Move every running row of one 3D Space that outran its budget to `expired`,
  * the Space-level counterpart of {@link harvestExpired}.
  * @param projectId - Owning project.
@@ -469,7 +533,7 @@ export async function harvestExpiredInSpace(projectId: string, spaceId: string):
  * @param spaceId - The Space.
  * @returns Every row not removed.
  */
-export async function listSpace(projectId: string, spaceId: string): Promise<NodeTaskRow[]> {
+export async function listSpace(projectId: string, spaceId: string): Promise<SceneTaskRow[]> {
   const rows = await db
     .select()
     .from(nodeTasks)
@@ -481,8 +545,10 @@ export async function listSpace(projectId: string, spaceId: string): Promise<Nod
         isNull(nodeTasks.deletedAt),
       ),
     )
-    .orderBy(sql`${nodeTasks.startedAt} DESC`);
-  return rows.map(rowOf);
+    // Newest first by when the row was written, which is when it started;
+    // `started_at` is the deadline's clock and is not what the list orders by.
+    .orderBy(sql`${nodeTasks.createdAt} DESC`);
+  return rows.map(sceneRowOf);
 }
 
 /**

@@ -304,6 +304,22 @@
       },
       "credits_amount": "{credits} 크레딧",
       "fact_line": "{label}: {value}"
+    },
+    "three_d": {
+      "model_not_offered": "{model}은(는) {mode}용 3D 모델이 아닙니다.",
+      "prompt_required": "텍스트로 3D 생성에는 프롬프트가 필요합니다.",
+      "prompt_not_taken": "{model}은(는) 이미지로 생성하므로 프롬프트를 받지 않습니다.",
+      "image_count": "{model}에는 {max, plural, =0 {이미지가 필요 없지만} =1 {이미지 1장이 필요하지만} other {이미지 {min}~{max}장이 필요하지만}} 이 요청에는 {actual}장이 있습니다.",
+      "not_a_setting": "{model}에는 \"{param}\" 설정이 없습니다.",
+      "setting_forced": "현재 설정에서는 \"{param}\"을(를) {given}(으)로 할 수 없습니다. 규칙 {force}에 따라 {value}(으)로 설정됩니다.",
+      "setting_values": "\"{param}\"은(는) {values} 중 하나여야 하며 {value}은(는) 쓸 수 없습니다.",
+      "setting_integer": "\"{param}\"은(는) 정수여야 하며 {value}은(는) 쓸 수 없습니다.",
+      "setting_bounds": "현재 설정에서 \"{param}\"의 범위는 {min}~{max}이며 {value}은(는) 쓸 수 없습니다.",
+      "setting_too_long": "\"{param}\"은(는) 최대 {max}자인데 {length}자입니다.",
+      "view_not_found": "뷰 슬롯 {index}({slot, select, front {정면} left {왼쪽} back {뒷면} right {오른쪽} other {초과}}): {input}은(는) 이 Project의 이미지가 아닙니다.",
+      "view_not_image": "뷰 슬롯 {index}({slot, select, front {정면} left {왼쪽} back {뒷면} right {오른쪽} other {초과}}): 이 파일은 {kind, select, video {동영상} audio {오디오} other {모델 등 다른 파일}}이며 이미지가 아닙니다.",
+      "still_running": "이 생성은 아직 마무리 중이며 결과가 나올 수 있습니다. 잠시 후 다시 시도해 주세요.",
+      "has_result": "이 생성은 결과가 나왔으며 작업 목록으로 돌아왔습니다."
     }
   },
   "chat": {
@@ -441,7 +457,8 @@
         "other": "{tool} 실행",
         "readTemplate": "템플릿 확인",
         "requestSpace": "Space 보기 요청"
-      }
+      },
+      "proposingSceneGeneration": "3D 생성 제안을 작성하는 중"
     },
     "loadEarlier": "이전 메시지 불러오기",
     "conversation": {

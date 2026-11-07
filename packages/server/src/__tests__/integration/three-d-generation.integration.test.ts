@@ -62,6 +62,9 @@ initCore({
   PAYMENT_ENABLED: "true",
   STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
   STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
+  // The catalog serves a model only when its provider has a key; nothing here
+  // calls WaveSpeed, since no worker runs behind the queue.
+  WAVESPEED_API_KEY: "unused_by_this_suite",
 });
 loadLocales();
 

@@ -153,6 +153,8 @@ export {
 
 export type { DocumentProposal } from "@shared/types/document-proposal.js";
 export { documentProposalSchema, hasWords, occurrences } from "@shared/types/document-proposal.js";
+export type { SceneGenerationProposal } from "@shared/types/scene-generation-proposal.js";
+export { sceneGenerationProposalSchema } from "@shared/types/scene-generation-proposal.js";
 
 export type {
   ReferenceRefusal,

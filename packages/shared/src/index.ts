@@ -219,6 +219,7 @@ export type {
   ProposalNodeType,
   CanvasProposal,
   DocumentProposal,
+  SceneGenerationProposal,
   ProposalRefused,
   ProposalAnswer,
 } from "@shared/types/index.js";
@@ -251,6 +252,7 @@ export {
   isReferenceMaterial,
   canvasProposalSchema,
   documentProposalSchema,
+  sceneGenerationProposalSchema,
   hasWords,
   occurrences,
   feedsOf,

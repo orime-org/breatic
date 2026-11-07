@@ -995,8 +995,9 @@ export const nodeTasks = pgTable(
     // spaces live in Yjs, not in a table.
     spaceId: uuid("space_id").notNull(),
     // Same: the node lives in the canvas document. Null on a 3D Space's
-    // model upload (inner#1690), which belongs to the Space's own list; 0113
-    // allows that for the scene import action only.
+    // model upload (inner#1690) or generation (inner#1691), which belong to
+    // the Space's own list; 0113 and 0116 allow that for the scene import and
+    // generate actions only.
     nodeId: uuid("node_id"),
 
     kind: varchar("kind", { length: 20 }).notNull(), // 'upload' | 'generation'
@@ -1048,6 +1049,10 @@ export const nodeTasks = pgTable(
     // when a dedup hit opens the row already done, by the settle into `done`,
     // or onto an expired row its result outlived.
     assetId: uuid("asset_id").references(() => studioAssets.id, { onDelete: "restrict" }),
+    // Where a 3D Space's generation was started from (inner#1691): 'space'
+    // (the Space's own dialog) or 'agent' (a proposal card). Set on those rows
+    // only, null on every other row; its CHECK lives in 0116.
+    origin: varchar("origin", { length: 16 }),
 
     ...timestamps,
     // Stamped when the user clears the record. The row stays: the system only
