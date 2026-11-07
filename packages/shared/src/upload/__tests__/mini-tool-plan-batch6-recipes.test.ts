@@ -61,7 +61,7 @@ const transitionStitch = (): Recipe => ({
 const windowShape = { inputId: SOURCE_A, window: { start: 0, end: 50 }, timescale: 25, entries: [entryAt(0, 50)], target: TARGET };
 const erase = (): Recipe => ({ kind: "model_composite", mode: "erase", ...windowShape, result: RESULT, rle: RLE,
   table: { schemaVersion: 1, timescale: 25, runs: [{ start: 0, count: 50, step: 1, duration: 1 }] }, range: { startFrame: 13, frameCount: 25 },
-  grid: { mode: "frames", rate: 25, frameCount: 25 }, matte: { dilate: 4, feather: 4 } });
+  grid: { mode: "frames", rate: 25, frameCount: 25 }, matte: { dilate: 4, feather: 4 }, rleSize: { width: 320, height: 180 } });
 const expand = (): Recipe => ({
   kind: "model_composite", mode: "expand", ...windowShape,
   backgrounds: [{ inputId: BACKGROUNDS[0], window: { start: r(0), end: r(5, 4) } }, { inputId: BACKGROUNDS[1], window: { start: r(1), end: r(2) } }],

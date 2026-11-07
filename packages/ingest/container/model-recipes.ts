@@ -314,8 +314,8 @@ async function eraseComposite(recipe: MiniToolPlanEraseComposite, request: Model
   // Each concat list holds one image format; a blank result is black and a blank mask keeps the source.
   const blank = { result: join(directory, "blank-result.y4m"), mask: join(directory, "blank-mask.y4m") };
   await writeFile(blank.result, y4m(rect.width, rect.height, [new Uint8Array(area).fill(16), new Uint8Array(area).fill(128), new Uint8Array(area).fill(128)]));
-  const maskArea = target.width * target.height;
-  await writeFile(blank.mask, y4m(target.width, target.height, [new Uint8Array(maskArea), new Uint8Array(maskArea), new Uint8Array(maskArea)]));
+  const maskArea = recipe.rleSize.width * recipe.rleSize.height;
+  await writeFile(blank.mask, y4m(recipe.rleSize.width, recipe.rleSize.height, [new Uint8Array(maskArea), new Uint8Array(maskArea), new Uint8Array(maskArea)]));
   const resultList: string[] = [];
   const maskList: string[] = [];
   for (let n = 0; n < count; n += 1) {
@@ -326,10 +326,10 @@ async function eraseComposite(recipe: MiniToolPlanEraseComposite, request: Model
     if (inRange >= 0 && inRange < range.frameCount) {
       result = join(directory, `result-${gridFrameSlot(grid, rangeFrames, inRange)}.y4m`);
       let pixels: Uint8Array;
-      try { pixels = foreground(track[inRange] ?? null, target); } catch { throw new RecipeFailure("tracking_output_mismatch"); }
+      try { pixels = foreground(track[inRange] ?? null, recipe.rleSize); } catch { throw new RecipeFailure("tracking_output_mismatch"); }
       mask = join(directory, `mask-${n}.y4m`);
       // Every plane carries the mask, so colour is blended by the same weight as luma.
-      await writeFile(mask, y4m(target.width, target.height, [pixels, pixels, pixels]));
+      await writeFile(mask, y4m(recipe.rleSize.width, recipe.rleSize.height, [pixels, pixels, pixels]));
     }
     resultList.push(`file '${result}'`, `duration ${duration.toFixed(6)}`);
     maskList.push(`file '${mask}'`, `duration ${duration.toFixed(6)}`);

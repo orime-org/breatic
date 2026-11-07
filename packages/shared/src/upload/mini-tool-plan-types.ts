@@ -149,6 +149,8 @@ export interface MiniToolPlanFrameRange { startFrame: number; frameCount: number
 export type MiniToolPlanEraseComposite = {
   kind: "model_composite"; mode: "erase"; result: string; rle: string; table: VideoPresentationTable; range: MiniToolPlanFrameRange;
   grid: MiniToolPlanModelGrid; matte: { dilate: number; feather: number };
+  /** The RLE's frame size: the tracking clips' coded size, which can differ from this chunk's target by the even rounding. */
+  rleSize: { width: number; height: number };
 } & MiniToolPlanWindowRecipe;
 /** The forward and reversed tracking clips' RLE joined over the range (execution design §10.2). */
 export interface MiniToolPlanRleJoin { kind: "rle_join"; inputs: { inputId: string; order: "forward" | "reverse"; frameCount: number }[]; width: number; height: number }

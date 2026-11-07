@@ -179,18 +179,18 @@ const recipeUnion = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("model_composite"), mode: z.enum(["erase", "expand"]), ...windowRecipe,
     result: inputId.optional(), rle: inputId.optional(), table: presentationTableSchema.optional(), range: windowRef.optional(), grid: modelGrid.optional(),
-    matte: z.strictObject({ dilate: z.number().int().nonnegative(), feather: z.number().int().nonnegative() }).optional(),
+    matte: z.strictObject({ dilate: z.number().int().nonnegative(), feather: z.number().int().nonnegative() }).optional(), rleSize: frameSize.optional(),
     backgrounds: z.array(z.strictObject({ inputId, window: interval, crop: pixelRect.optional() })).optional(),
     ledger: z.array(z.strictObject({ overlap: time, consumed: interval })).optional(),
   }).superRefine((recipe, ctx) => {
     if (recipe.mode === "erase") {
-      if ([recipe.result, recipe.rle, recipe.table, recipe.range, recipe.grid, recipe.matte].some((value) => value === undefined) || recipe.backgrounds !== undefined || recipe.ledger !== undefined) {
+      if ([recipe.result, recipe.rle, recipe.table, recipe.range, recipe.grid, recipe.matte, recipe.rleSize].some((value) => value === undefined) || recipe.backgrounds !== undefined || recipe.ledger !== undefined) {
         ctx.addIssue({ code: "custom", message: "An erase composite names its result, mask, range, grid and matte only" });
       }
       return;
     }
     const { backgrounds, ledger } = recipe;
-    const eraseKeys = [recipe.result, recipe.rle, recipe.table, recipe.range, recipe.grid, recipe.matte].some((value) => value !== undefined);
+    const eraseKeys = [recipe.result, recipe.rle, recipe.table, recipe.range, recipe.grid, recipe.matte, recipe.rleSize].some((value) => value !== undefined);
     if (backgrounds === undefined || ledger === undefined || eraseKeys || backgrounds.length === 0 || ledger.length !== backgrounds.length) {
       ctx.addIssue({ code: "custom", message: "An expand composite names one ledger row per background window" });
       return;

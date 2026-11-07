@@ -24,7 +24,7 @@
  * - `frame_at`: `{ kind, inputId, time, target: { width, height } }` writes the PNG of the frame whose PTS is closest to
  *   `time`, the earlier on a tie.
  * - `model_composite` erase: the window recipe plus `{ mode: "erase", result, rle, table, range, grid, matte: { dilate,
- *   feather } }`; each presented frame in the range takes its grid slot's result frame (the result's own timestamps
+ *   feather }, rleSize }`; each presented frame in the range takes its grid slot's result frame (the result's own timestamps
  *   ignored), blended as source × (1 − m) + result × m with m the frame's RLE mask dilated and feathered; outside the range
  *   the source. A result whose frame count differs from `grid.frameCount` fails with `model_output_mismatch`.
  *
@@ -550,7 +550,8 @@ describe('model_composite erase (execution design §10.4 model grid and composit
    */
   function erase(chunk: { window: { start: number; end: number }; timescale: number; entries: Recipe[] },
     erase: { table: VideoPresentationTable; range: { startFrame: number; frameCount: number }; grid: Recipe; matte?: { dilate: number; feather: number } }): Recipe {
-    return { kind: 'model_composite', mode: 'erase', inputId: SOURCE, ...chunk, target: TARGET, result: RESULT, rle: RLE, table: erase.table, range: erase.range, grid: erase.grid, matte: erase.matte ?? { dilate: 0, feather: 0 } };
+    return { kind: 'model_composite', mode: 'erase', inputId: SOURCE, ...chunk, target: TARGET, result: RESULT, rle: RLE, table: erase.table, range: erase.range, grid: erase.grid,
+      matte: erase.matte ?? { dilate: 0, feather: 0 }, rleSize: { width: W, height: H } };
   }
 
   /**
