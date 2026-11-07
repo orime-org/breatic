@@ -81,7 +81,7 @@ const PREVIEW_URL = 'https://preview.example/web-animation/token/index.html';
 const LIMITS = {
   defaults: SETTINGS,
   assets: { pageSize: 50, pageMax: 100 },
-  webAnimation: { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60 }, aspects: ['16:9', '9:16', '1:1'], playerLoadTimeoutMs: 15000, sourceRefreshIntervalMs: 10000 },
+  webAnimation: { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60, default: 4 }, aspects: ['16:9', '9:16', '1:1'], playerLoadTimeoutMs: 15000, sourceRefreshIntervalMs: 10000 },
 };
 const CONNECTED: SocketState = {
   provider: null, synced: true, hasEverSynced: true, status: 'connected', writeAccess: 'granted', authFailedReason: null,
@@ -262,6 +262,14 @@ describe('track toolbar', () => {
 });
 
 describe('creation dialog', () => {
+  it('opens with the default duration and the first aspect the Timeline limits give', async () => {
+    seed();
+    showTimeline();
+    const dialog = await openCreate();
+    expect(within(dialog).getByTestId('web-animation-duration')).toHaveValue(4);
+    expect(within(dialog).getByTestId('web-animation-aspect')).toHaveTextContent('16:9');
+  });
+
   it('accepts the frozen input once with the document fps, lands the receipt with a placeholder at the playhead and shows the run', async () => {
     seed();
     showTimeline();
