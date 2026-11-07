@@ -90,7 +90,7 @@ export function endingWithNothingRun(stopped: boolean): ToolFailure {
   // that "stopped by the user" cannot be paired with a line about something
   // going wrong.
   return stopped
-    ? { kind: "user_aborted", forModel: NOTHING_OF_IT_RAN, readerKey: FAILURE_LINES.stopped }
+    ? { kind: "user_aborted", forModel: NOTHING_OF_IT_RAN, userKey: FAILURE_LINES.stopped }
     : { kind: "never_ran", forModel: NOTHING_OF_IT_RAN };
 }
 
@@ -125,6 +125,6 @@ export function endingOf(err: unknown): ToolFailure {
     forModel:
       `${said} This failed on our side, not because of the call's arguments. Trying once more may work; ` +
       "if it fails again, tell the user it could not be done.",
-    readerKey: FAILURE_LINES.ourFault,
+    userKey: FAILURE_LINES.ourFault,
   };
 }

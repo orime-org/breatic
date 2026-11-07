@@ -1718,9 +1718,13 @@ export async function runUnderstand(
   // (inner#856): a transcript is every word said, and asking for an answer
   // language makes the model translate.
   const transcribing = isTranscription(params);
+  // A job queued before #1378 was deployed names the locale only under its
+  // old name. Carries the old name until #1387 removes it, in the release
+  // that also runs the rename migration again.
+  const userLocale = params.user_locale ?? params.reader_locale;
   const question = transcribing
-    ? transcribeQuestion(sourceType, params.keep_fillers !== false, params.reader_locale)
-    : understandQuestion(params.prompt, sourceType, params.reader_locale);
+    ? transcribeQuestion(sourceType, params.keep_fillers !== false, userLocale)
+    : understandQuestion(params.prompt, sourceType, userLocale);
 
   /**
    * Record the one call this run made.

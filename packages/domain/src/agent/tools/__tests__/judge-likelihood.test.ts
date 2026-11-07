@@ -150,7 +150,7 @@ async function askAll(abortSignal?: AbortSignal, usage?: UsageRecorder): Promise
  */
 async function failureOf(run: () => Promise<unknown>): Promise<{
   forModel: string;
-  readerKey: string;
+  userKey: string;
 }> {
   let thrown: unknown;
   try {
@@ -162,7 +162,7 @@ async function failureOf(run: () => Promise<unknown>): Promise<{
   expect(carried, "the throw carries a failure rather than being bare").toBeDefined();
   return {
     forModel: carried?.forModel ?? "",
-    readerKey: carried !== undefined && "readerKey" in carried ? carried.readerKey : "",
+    userKey: carried !== undefined && "userKey" in carried ? carried.userKey : "",
   };
 }
 
@@ -190,8 +190,8 @@ describe("judge_likelihood is in the agent's hands", () => {
 
   it("says so rather than throwing bare when a turn reaches it without a key", async () => {
     apiKey = undefined;
-    const { readerKey } = await failureOf(askAll);
-    expect(readerKey).toBe(FAILURE_LINES.unavailable);
+    const { userKey } = await failureOf(askAll);
+    expect(userKey).toBe(FAILURE_LINES.unavailable);
   });
 });
 
@@ -528,8 +528,8 @@ describe("failing says what broke", () => {
 
   it("tells the model which kind of refusal a non-2xx was", async () => {
     httpRequestMock.mockResolvedValueOnce(responseOf({ error: "rate limited" }, 429));
-    const { forModel, readerKey } = await failureOf(askAll);
-    expect(readerKey).toBe(FAILURE_LINES.busy);
+    const { forModel, userKey } = await failureOf(askAll);
+    expect(userKey).toBe(FAILURE_LINES.busy);
     expect(forModel).toContain("429");
     expect(forModel, "a fault on their side, so no rewording reaches it").toContain(
       "Do not repeat",
@@ -539,16 +539,16 @@ describe("failing says what broke", () => {
 
   it("tells the reader the feature is unavailable when our account cannot pay, and the model to stop", async () => {
     httpRequestMock.mockResolvedValueOnce(responseOf({ error: { message: "Insufficient credits" } }, 402));
-    const { forModel, readerKey } = await failureOf(askAll);
-    expect(readerKey).toBe(FAILURE_LINES.unavailable);
+    const { forModel, userKey } = await failureOf(askAll);
+    expect(userKey).toBe(FAILURE_LINES.unavailable);
     expect(forModel).toContain("Do not repeat");
     expect(forModel).not.toContain("different wording");
   });
 
   it("carries a failure when the body is the JSON literal null", async () => {
     httpRequestMock.mockResolvedValueOnce(responseOf(null));
-    const { readerKey } = await failureOf(askAll);
-    expect(readerKey).toBe(FAILURE_LINES.badAnswer);
+    const { userKey } = await failureOf(askAll);
+    expect(userKey).toBe(FAILURE_LINES.badAnswer);
   });
 
   it("lets the model rewrite a request the service would not take", async () => {
@@ -606,8 +606,8 @@ describe("failing says what broke", () => {
     httpRequestMock.mockRejectedValueOnce(
       new Error("http request to https://openrouter.ai/api/alpha/decisions timed out"),
     );
-    const { forModel, readerKey } = await failureOf(askAll);
-    expect(readerKey).toBe(FAILURE_LINES.noConnection);
+    const { forModel, userKey } = await failureOf(askAll);
+    expect(userKey).toBe(FAILURE_LINES.noConnection);
     expect(forModel).not.toContain("openrouter.ai");
   });
 
@@ -620,8 +620,8 @@ describe("failing says what broke", () => {
       controller.abort();
       return Promise.resolve(responseOf({ error: "rate limited" }, 429));
     });
-    const { readerKey } = await failureOf(() => askAll(controller.signal));
-    expect(readerKey).toBe(FAILURE_LINES.stopped);
+    const { userKey } = await failureOf(() => askAll(controller.signal));
+    expect(userKey).toBe(FAILURE_LINES.stopped);
   });
 
   it("holds the body read to the same budget as the deliveries", async () => {
@@ -634,8 +634,8 @@ describe("failing says what broke", () => {
       async () => new Promise((f) => setTimeout(() => f(neverFinishes()), 180)),
     );
     const began = Date.now();
-    const { readerKey } = await failureOf(askAll);
-    expect(readerKey).toBe(FAILURE_LINES.noConnection);
+    const { userKey } = await failureOf(askAll);
+    expect(userKey).toBe(FAILURE_LINES.noConnection);
     expect(Date.now() - began, "one budget, not two").toBeLessThan(320);
   });
 
@@ -651,8 +651,8 @@ describe("failing says what broke", () => {
       controller.abort();
     }, 20);
     const began = Date.now();
-    const { readerKey } = await failureOf(() => askAll(controller.signal));
-    expect(readerKey).toBe(FAILURE_LINES.stopped);
+    const { userKey } = await failureOf(() => askAll(controller.signal));
+    expect(userKey).toBe(FAILURE_LINES.stopped);
     expect(Date.now() - began, "the stop reaches the read, not just the deliveries").toBeLessThan(
       300,
     );
@@ -667,8 +667,8 @@ describe("failing says what broke", () => {
     setTimeout(() => {
       controller.abort();
     }, 20);
-    const { readerKey } = await failureOf(() => askAll(controller.signal));
-    expect(readerKey).toBe(FAILURE_LINES.stopped);
+    const { userKey } = await failureOf(() => askAll(controller.signal));
+    expect(userKey).toBe(FAILURE_LINES.stopped);
   });
 
   it("reports a refusal without waiting out the call for what it said", async () => {
@@ -688,8 +688,8 @@ describe("failing says what broke", () => {
     // (read-within.ts) with the budget unspent, which is neither a stop nor
     // the figure running out.
     httpRequestMock.mockResolvedValueOnce(new Response("", { status: 200 }));
-    const { forModel, readerKey } = await failureOf(askAll);
-    expect(readerKey).toBe(FAILURE_LINES.busy);
+    const { forModel, userKey } = await failureOf(askAll);
+    expect(userKey).toBe(FAILURE_LINES.busy);
     expect(forModel).toContain("while reading the answer");
     expect(forModel, "asking again may get it").toContain("Asking once more");
   });
@@ -760,7 +760,7 @@ describe("failing says what broke", () => {
       controller.abort();
       return Promise.reject(new DOMException("aborted", "AbortError"));
     });
-    const { readerKey } = await failureOf(() => askAll(controller.signal));
-    expect(readerKey).toBe(FAILURE_LINES.stopped);
+    const { userKey } = await failureOf(() => askAll(controller.signal));
+    expect(userKey).toBe(FAILURE_LINES.stopped);
   });
 });

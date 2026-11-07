@@ -84,7 +84,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
               throw carrying(new Error("stopped"), {
                 kind: "user_aborted",
                 forModel: "the user stopped it",
-                readerKey: "chat.tool.unfinished",
+                userKey: "chat.tool.unfinished",
               });
             }
             if (thisCase.toolDoes === "throws with detail") {
@@ -94,7 +94,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
               throw carrying(new Error("the message"), {
                 kind: "tool_failed",
                 forModel: "the reason only the model gets",
-                readerKey: "chat.tool.failure.upstream",
+                userKey: "chat.tool.failure.upstream",
               });
             }
             if (thisCase.toolDoes === "fails, then the turn stops") {
@@ -106,7 +106,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
               throw carrying(new Error("the site answered HTTP 503"), {
                 kind: "tool_failed",
                 forModel: "the site answered HTTP 503; do not fetch it again",
-                readerKey: "chat.tool.failure.upstream",
+                userKey: "chat.tool.failure.upstream",
               });
             }
             if (thisCase.toolDoes === "throws after the stop") {
@@ -400,7 +400,7 @@ describe("how a tool use is recorded when it does not come back", () => {
     const failed = toolPart(parts);
     expect(failed?.failure?.kind).toBe("tool_failed");
     expect(failed?.failure?.forModel).toBe("the reason only the model gets");
-    expect(failed?.failure).toMatchObject({ readerKey: "chat.tool.failure.upstream" });
+    expect(failed?.failure).toMatchObject({ userKey: "chat.tool.failure.upstream" });
   });
 
   it("carries which ending it was, not just the words", async () => {

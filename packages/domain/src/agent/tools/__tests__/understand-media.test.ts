@@ -111,7 +111,7 @@ async function run(
 async function failureOf(call: Promise<unknown>): Promise<{
   kind: string;
   forModel: string;
-  readerKey: string | undefined;
+  userKey: string | undefined;
 }> {
   try {
     await call;
@@ -121,7 +121,7 @@ async function failureOf(call: Promise<unknown>): Promise<{
     return {
       kind: failure.kind,
       forModel: failure.forModel,
-      readerKey: "readerKey" in failure ? failure.readerKey : undefined,
+      userKey: "userKey" in failure ? failure.userKey : undefined,
     };
   }
   throw new Error("the call did not fail");
@@ -454,8 +454,8 @@ describe("understand_media — a call that worked", () => {
       } }) as never,
     );
 
-    const { readerKey } = await failureOf(call);
-    expect(readerKey).toBe("chat.tool.failure.fileTooLarge");
+    const { userKey } = await failureOf(call);
+    expect(userKey).toBe("chat.tool.failure.fileTooLarge");
     expect(saveToStorage).not.toHaveBeenCalled();
     expect(resolveCanonicalMediaSource).toHaveBeenCalledTimes(1);
   });
@@ -635,13 +635,13 @@ describe("understand_media — a call that came back with nothing", () => {
       kind: "video",
       });
 
-    const { forModel, readerKey } = await failureOf(
+    const { forModel, userKey } = await failureOf(
       run({ url: "https://example.com/talk.mp3", question: "Transcribe this word for word." }),
     );
 
     expect(forModel).toContain("content_filter");
     expect(forModel.toLowerCase()).toContain("differently");
-    expect(readerKey).toBe("chat.tool.failure.badAnswer");
+    expect(userKey).toBe("chat.tool.failure.badAnswer");
   });
 });
 
@@ -651,13 +651,13 @@ describe("understand_media — a call that never reached the model", () => {
       new MediaUnavailable("too-large", { bytes: 26_000_000, limit: 20_000_000 }),
     );
 
-    const { forModel, readerKey } = await failureOf(
+    const { forModel, userKey } = await failureOf(
       run({ url: "https://example.com/big.mp4", question: "What is this?" }),
     );
 
     expect(forModel).toContain("26000000");
     expect(forModel).toContain("20000000");
-    expect(readerKey).toBe("chat.tool.failure.fileTooLarge");
+    expect(userKey).toBe("chat.tool.failure.fileTooLarge");
     
   });
 
@@ -679,12 +679,12 @@ describe("understand_media — a call that never reached the model", () => {
       new MediaUnavailable("unreachable", { status: 404, detail: "Not Found" }),
     );
 
-    const { forModel, readerKey } = await failureOf(
+    const { forModel, userKey } = await failureOf(
       run({ url: "https://example.com/gone.mp4", question: "What is this?" }),
     );
 
     expect(forModel).toContain("404");
-    expect(readerKey).toBe("chat.tool.failure.linkUnreachable");
+    expect(userKey).toBe("chat.tool.failure.linkUnreachable");
   });
 
   it("says the download ran out of time", async () => {
@@ -704,7 +704,7 @@ describe("understand_media — a call the service refused", () => {
       new UnderstandRefused(413, "Request body exceeds the provider maximum size", "media"),
     );
 
-    const { forModel, readerKey } = await failureOf(
+    const { forModel, userKey } = await failureOf(
       run({ url: "https://example.com/clip.mp4", question: "What is this?" }),
     );
 
@@ -712,7 +712,7 @@ describe("understand_media — a call the service refused", () => {
     // The move as well as the words: this is the one kind where sending the
     // same file again reaches the same answer.
     expect(forModel).toContain("do not send the same file again");
-    expect(readerKey).toBe("chat.tool.failure.fileTooLarge");
+    expect(userKey).toBe("chat.tool.failure.fileTooLarge");
   });
 
   it("reports the provider's invalid-body refusal without deciding who caused it", async () => {
@@ -721,9 +721,9 @@ describe("understand_media — a call the service refused", () => {
     // their own paths; this branch holds only the provider's reported facts.
     understandMediaAtMock.mockRejectedValue(new UnderstandRefused(400, "Invalid request body", "media"));
 
-    const { forModel, readerKey } = await failureOf(run({ url: "https://example.com/clip.mp4", question: "What is this?" }));
+    const { forModel, userKey } = await failureOf(run({ url: "https://example.com/clip.mp4", question: "What is this?" }));
 
-    expect(readerKey).toBe(FAILURE_LINES.refused);
+    expect(userKey).toBe(FAILURE_LINES.refused);
     expect(forModel).toContain("Invalid request body");
     expect(forModel).not.toMatch(/fault on our side|fault in the file|our fault|not in the file/i);
     expect(forModel).not.toMatch(/put the file somewhere|give another address|rehost/i);
@@ -739,14 +739,14 @@ describe("understand_media — a call the service refused", () => {
       new UnderstandRefused(200, "Gemini blocked the request: SAFETY", "content-filter"),
     );
 
-    const { forModel, readerKey } = await failureOf(
+    const { forModel, userKey } = await failureOf(
       run({ url: "https://example.com/talk.mp3", question: "Transcribe this word for word." }),
     );
 
     expect(forModel).toContain("SAFETY");
     expect(forModel.toLowerCase()).toContain("asking differently");
     expect(forModel).not.toMatch(/do not send/i);
-    expect(readerKey).toBe("chat.tool.failure.declined");
+    expect(userKey).toBe("chat.tool.failure.declined");
   });
 
   it("says nothing about the user's file when the failure is ours", async () => {
@@ -757,13 +757,13 @@ describe("understand_media — a call the service refused", () => {
       new UnderstandRefused(402, "This request requires more credits", "deployment"),
     );
 
-    const { forModel, readerKey } = await failureOf(
+    const { forModel, userKey } = await failureOf(
       run({ url: "https://example.com/talk.mp3", question: "What is this?" }),
     );
 
     expect(forModel).not.toMatch(/would not take|do not send|this media|this file/i);
     expect(forModel.toLowerCase()).toContain("not available");
-    expect(readerKey).toBe("chat.tool.failure.unavailable");
+    expect(userKey).toBe("chat.tool.failure.unavailable");
   });
 
   it("tells the model to move a file the service could not reach", async () => {
@@ -776,14 +776,14 @@ describe("understand_media — a call the service refused", () => {
       new UnderstandRefused(400, "Cannot fetch content", "unfetchable"),
     );
 
-    const { forModel, readerKey } = await failureOf(
+    const { forModel, userKey } = await failureOf(
       run({ url: "https://example.com/dog.jpg", question: "What is this?" }),
     );
 
     expect(forModel).toContain("Cannot fetch content");
     expect(forModel.toLowerCase()).toContain("reach");
     expect(forModel).not.toMatch(/do not send|convert/i);
-    expect(readerKey).toBe("chat.tool.failure.linkUnreachable");
+    expect(userKey).toBe("chat.tool.failure.linkUnreachable");
   });
 
   it("does not call a missing answer a refusal by the model", async () => {
@@ -796,13 +796,13 @@ describe("understand_media — a call the service refused", () => {
       new UnderstandRefused(429, "Rate limit exceeded", "transient"),
     );
 
-    const { forModel, readerKey } = await failureOf(
+    const { forModel, userKey } = await failureOf(
       run({ url: "https://example.com/talk.mp3", question: "What is this?" }),
     );
 
     expect(forModel).not.toMatch(/would not take|do not send/i);
     expect(forModel.toLowerCase()).toContain("again");
-    expect(readerKey).toBe("chat.tool.failure.busy");
+    expect(userKey).toBe("chat.tool.failure.busy");
   });
 });
 
@@ -866,11 +866,11 @@ describe("understand_media — stopping", () => {
       Object.assign(new Error("This operation was aborted"), { name: "AbortError" }),
     );
 
-    const { readerKey } = await failureOf(
+    const { userKey } = await failureOf(
       run({ url: "https://example.com/dog.jpg", question: "What is this?" }, controller.signal),
     );
 
-    expect(readerKey).toBe("chat.tool.unfinished");
+    expect(userKey).toBe("chat.tool.unfinished");
   });
 
   it("passes the turn's signal all the way down", async () => {
@@ -1023,13 +1023,13 @@ describe("understand_media — naming which side failed", () => {
       new Error("http request to https://openrouter.ai/api/v1/chat/completions timed out"),
     );
 
-    const { forModel, readerKey } = await failureOf(
+    const { forModel, userKey } = await failureOf(
       run({ url: "https://example.com/dog.jpg", question: "What is this?" }),
     );
 
     expect(forModel).not.toContain("openrouter");
     expect(forModel).not.toMatch(/that address/i);
-    expect(readerKey).toBe("chat.tool.failure.noConnection");
+    expect(userKey).toBe("chat.tool.failure.noConnection");
   });
 
   it("keeps what our own call threw, and what a passing refusal said, for the turn's log", async () => {
@@ -1090,19 +1090,19 @@ describe("understand_media — what a reader is shown, and what the panel is tol
     );
     expect(
       (await failureOf(run({ url: "https://example.com/a.pdf", question: "What is this?" })))
-        .readerKey,
+        .userKey,
     ).toBe(FAILURE_LINES.unsupportedType);
 
     understandMediaAtMock.mockRejectedValueOnce(new MediaUnavailable("slow"));
     expect(
       (await failureOf(run({ url: "https://example.com/b.mp4", question: "What is this?" })))
-        .readerKey,
+        .userKey,
     ).toBe(FAILURE_LINES.tooSlow);
 
     understandMediaAtMock.mockRejectedValueOnce(new MediaUnavailable("empty"));
     expect(
       (await failureOf(run({ url: "https://example.com/c.mp4", question: "What is this?" })))
-        .readerKey,
+        .userKey,
     ).toBe(FAILURE_LINES.emptyFile);
   });
 
@@ -1118,7 +1118,7 @@ describe("understand_media — what a reader is shown, and what the panel is tol
       call({ url: "https://example.com/b.mp4", question: "What is this?" }),
     );
     expect(refused.kind).toBe("turned_away");
-    expect(refused.readerKey).toBeUndefined();
+    expect(refused.userKey).toBeUndefined();
   });
 
   it("tells the panel which sentence to show while this one runs", () => {
@@ -1136,12 +1136,12 @@ describe("understand_media — what a reader is shown, and what the panel is tol
     // ends in a bare colon and a full stop.
     understandMediaAtMock.mockRejectedValueOnce(new MediaUnavailable("unreachable"));
 
-    const { forModel, readerKey } = await failureOf(
+    const { forModel, userKey } = await failureOf(
       run({ url: "https://example.com/gone.mp4", question: "What is this?" }),
     );
     expect(forModel).toContain("no answer");
     expect(forModel).not.toMatch(/: \.$/);
-    expect(readerKey).toBe(FAILURE_LINES.linkUnreachable);
+    expect(userKey).toBe(FAILURE_LINES.linkUnreachable);
   });
 
   it("says it has no credentials rather than calling the service silent", async () => {
@@ -1150,11 +1150,11 @@ describe("understand_media — what a reader is shown, and what the panel is tol
     // and until now nothing ran it.
     apiKey = "";
 
-    const { forModel, readerKey } = await failureOf(
+    const { forModel, userKey } = await failureOf(
       run({ url: "https://example.com/a.jpg", question: "What is this?" }),
     );
     expect(forModel).toContain("no credentials");
     expect(forModel).toContain("do not try again");
-    expect(readerKey).toBe(FAILURE_LINES.unavailable);
+    expect(userKey).toBe(FAILURE_LINES.unavailable);
   });
 });

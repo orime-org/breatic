@@ -65,7 +65,7 @@ describe("the reasons a reader is shown", () => {
   });
 
   it("put a failure nothing recorded the reason of down to our server", () => {
-    expect(NOTHING_SAID_WHY).toMatchObject({ kind: "tool_failed", readerKey: FAILURE_LINES.ourFault });
+    expect(NOTHING_SAID_WHY).toMatchObject({ kind: "tool_failed", userKey: FAILURE_LINES.ourFault });
   });
 });
 
@@ -76,7 +76,7 @@ describe("a call that never ran", () => {
       forModel: "Never ran.",
     });
     expect(
-      toolFailureOf(errorCarrying({ kind: "never_ran", forModel: "Never ran.", readerKey: FAILURE_LINES.ourFault })),
+      toolFailureOf(errorCarrying({ kind: "never_ran", forModel: "Never ran.", userKey: FAILURE_LINES.ourFault })),
     ).toBeUndefined();
   });
 

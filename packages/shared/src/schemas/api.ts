@@ -578,6 +578,12 @@ export const understandSchema = z.object({
    * this build does not ship names none — the same as a request carrying no
    * locale at all.
    */
+  user_locale: z.string().optional(),
+  /**
+   * The same locale under its pre-#1378 name, sent by a page loaded before
+   * the deploy. Carries the old name until #1387 removes it, in the release
+   * that also runs the rename migration again.
+   */
   reader_locale: z.string().optional(),
   project_id: z.string().uuid(),
   /** Same as taskCreateSchema.space_id (v10 multi-doc). Required. */

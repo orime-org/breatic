@@ -142,14 +142,14 @@ function unavailableFailure(err: MediaUnavailable): Error {
  * Naming the address would send the model to blame a url that was fine, and
  * the endpoint has no business in a conversation.
  * @param cause - What was caught.
- * @param readerKey - Whether the service failed (`busy`) or never answered
+ * @param userKey - Whether the service failed (`busy`) or never answered
  *   at all (`noConnection`).
  * @returns The sentence for the model, and the line a reader is shown.
  */
-function serviceSilent(cause: unknown, readerKey: FailureLine): Error {
+function serviceSilent(cause: unknown, userKey: FailureLine): Error {
   return toolFailed(
     "The media understanding service did not answer. Tell the user to try again shortly.",
-    readerKey,
+    userKey,
     cause,
   );
 }

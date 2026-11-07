@@ -73,7 +73,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
             throw carrying(new Error(FOR_MODEL), {
               kind: "tool_failed",
               forModel: FOR_MODEL,
-              readerKey: FOR_READER,
+              userKey: FOR_READER,
             });
           },
         }),

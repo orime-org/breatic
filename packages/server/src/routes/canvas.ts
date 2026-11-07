@@ -547,9 +547,14 @@ async function startReading(
     // carries and what the browser's format gate judged by.
     source_mime_type: body.source_mime_type,
     // Carried between the two ends that know about it: the browser, which is
-    // where the reader's language is set, and the run, which names that
+    // where the user's language is set, and the run, which names that
     // language to the model. Nothing here reads it.
-    reader_locale: body.reader_locale,
+    user_locale: body.user_locale ?? body.reader_locale,
+    // Under the pre-#1378 name too, for a worker of the previous release
+    // still running while a deploy rolls out. Carries the old name until
+    // #1387 removes it, in the release that also runs the rename migration
+    // again.
+    reader_locale: body.user_locale ?? body.reader_locale,
     ...reading,
   };
 

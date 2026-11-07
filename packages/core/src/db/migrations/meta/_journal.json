@@ -813,6 +813,13 @@
       "when": 1793969932158,
       "tag": "0115_migrate_block_memories",
       "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1794025851972,
+      "tag": "0116_user_named_fields",
+      "breakpoints": true
     }
   ]
 }

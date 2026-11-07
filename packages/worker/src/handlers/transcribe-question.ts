@@ -16,15 +16,15 @@ const FILLERS = "um, uh, er, \u55ef, \u5443, \u90a3\u4e2a, \u5c31\u662f\u8bf4";
  * Build the question one transcription asks.
  * @param sourceType - The medium being transcribed.
  * @param keepFillers - Whether filler words stay as spoken.
- * @param readerLocale - The locale the reader set, when one travelled.
+ * @param userLocale - The locale the reader set, when one travelled.
  * @returns The question.
  */
 export function transcribeQuestion(
   sourceType: string,
   keepFillers: boolean,
-  readerLocale: unknown,
+  userLocale: unknown,
 ): string {
-  const script = readerLocale === "zh-TW" ? "Traditional" : "Simplified";
+  const script = userLocale === "zh-TW" ? "Traditional" : "Simplified";
   const fillers = keepFillers
     ? `Keep filler words (such as ${FILLERS}), repetitions and false starts exactly as spoken.`
     : `Leave out filler words (such as ${FILLERS}), stutters and repeated words, without changing any other word.`;

@@ -250,7 +250,7 @@ describe("read_memory", () => {
 
     expect(await failureOf(call(READ, { ids: [ENTRY_ID] }, mem))).toMatchObject({
       kind: "tool_failed",
-      readerKey: "chat.tool.failure.notMember",
+      userKey: "chat.tool.failure.notMember",
     });
   });
 
@@ -259,7 +259,7 @@ describe("read_memory", () => {
 
     expect(await failureOf(call(READ, { ids: [ENTRY_ID] }, mem))).toMatchObject({
       kind: "tool_failed",
-      readerKey: "chat.tool.failure.ourFault",
+      userKey: "chat.tool.failure.ourFault",
     });
   });
 });

@@ -250,7 +250,7 @@ describe("history on its way to the model", () => {
           failure: {
             kind: "tool_failed",
             forModel: "the site refused the connection",
-            readerKey: "chat.tool.failure.unreachable",
+            userKey: "chat.tool.failure.unreachable",
           },
         },
       ]),
@@ -307,7 +307,7 @@ describe("history on its way to the model", () => {
           failure: {
             kind: "tool_failed",
             forModel: "the site refused the connection",
-            readerKey: "chat.tool.failure.unreachable",
+            userKey: "chat.tool.failure.unreachable",
           },
         },
       ]),
@@ -337,7 +337,7 @@ describe("history on its way to the model", () => {
           failure: {
             kind: "user_aborted",
             forModel: "The user stopped this turn while the tool was still running.",
-            readerKey: "chat.tool.unfinished",
+            userKey: "chat.tool.unfinished",
           },
         },
         { type: "interrupted" },
@@ -428,7 +428,7 @@ describe("history on its way to the model", () => {
           failure: {
             kind: "user_aborted",
             forModel: "stopped",
-            readerKey: "chat.tool.unfinished",
+            userKey: "chat.tool.unfinished",
           },
           argumentsIncomplete: true,
         },

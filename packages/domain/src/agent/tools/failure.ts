@@ -20,16 +20,16 @@ import type { FailureLine, ToolFailure } from "@breatic/shared";
 /**
  * Build the error a tool throws when it failed.
  * @param forModel - The reason, specific and actionable, for the model alone.
- * @param readerKey - Which cause a reader is shown.
+ * @param userKey - Which cause a reader is shown.
  * @param cause - What was caught, when something was. The turn logs the error,
  *   and a reason worded for the model can leave out what the log needs.
  * @returns The error to throw.
  */
-export function toolFailed(forModel: string, readerKey: FailureLine, cause?: unknown): Error {
+export function toolFailed(forModel: string, userKey: FailureLine, cause?: unknown): Error {
   return carrying(new Error(forModel, cause === undefined ? undefined : { cause }), {
     kind: "tool_failed",
     forModel,
-    readerKey,
+    userKey,
   } satisfies ToolFailure);
 }
 
@@ -41,7 +41,7 @@ export interface Failure {
   /** The reason, specific and actionable, for the model alone. */
   readonly forModel: string;
   /** Which cause a reader is shown. */
-  readonly readerKey: FailureLine;
+  readonly userKey: FailureLine;
 }
 
 /**
@@ -52,7 +52,7 @@ export interface Failure {
  * @returns The error to throw.
  */
 export function failedWith(failure: Failure, cause?: unknown): Error {
-  return toolFailed(failure.forModel, failure.readerKey, cause);
+  return toolFailed(failure.forModel, failure.userKey, cause);
 }
 
 /**
@@ -87,7 +87,7 @@ export const STOPPED_BY_USER: ToolFailure = {
   forModel:
     "The turn ended while this tool was still running, so it never returned. " +
     "Do not call it again on your own; if this comes up again, carry on from here.",
-  readerKey: FAILURE_LINES.stopped,
+  userKey: FAILURE_LINES.stopped,
 };
 
 /**
@@ -235,13 +235,13 @@ export function refusalReason(
           "wording of it reaches past this.",
         moves.stop,
       ),
-      readerKey: FAILURE_LINES.busy,
+      userKey: FAILURE_LINES.busy,
     };
   }
 
   const thisRequest: Failure = {
     forModel: reason(`${opening} The service is reachable, so it is this request it would not take.`, moves.rewordOnce),
-    readerKey: FAILURE_LINES.refused,
+    userKey: FAILURE_LINES.refused,
   };
   if (rewordable === true) return thisRequest;
   const ours =
@@ -260,7 +260,7 @@ export function refusalReason(
   if (ours !== null) {
     return {
       forModel: reason(`${opening} ${ours} No wording of the query reaches it.`, moves.stop),
-      readerKey: FAILURE_LINES.unavailable,
+      userKey: FAILURE_LINES.unavailable,
     };
   }
   return thisRequest;
@@ -285,7 +285,7 @@ export function notOurPayloadReason(voice: FailureVoice, query: string): Failure
         "results. That is a fault on their side.",
       nextMovesFor(voice).stop,
     ),
-    readerKey: FAILURE_LINES.badAnswer,
+    userKey: FAILURE_LINES.badAnswer,
   };
 }
 
@@ -308,7 +308,7 @@ export function readFailedReason(voice: FailureVoice, query: string, detail: str
         "The service answered, so it is the body that did not arrive.",
       nextMovesFor(voice).retryOnce,
     ),
-    readerKey: FAILURE_LINES.busy,
+    userKey: FAILURE_LINES.busy,
   };
 }
 
@@ -328,7 +328,7 @@ export function unreachableReason(voice: FailureVoice, query: string, detail: st
         "query would fix.",
       nextMovesFor(voice).stop,
     ),
-    readerKey: FAILURE_LINES.noConnection,
+    userKey: FAILURE_LINES.noConnection,
   };
 }
 

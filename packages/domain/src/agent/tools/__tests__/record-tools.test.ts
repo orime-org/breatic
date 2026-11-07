@@ -127,7 +127,7 @@ describe("the record tools", () => {
 
     expect(await failureOf(call(name, input, recs))).toMatchObject({
       kind: "tool_failed",
-      readerKey: "chat.tool.failure.notMember",
+      userKey: "chat.tool.failure.notMember",
     });
   });
 
@@ -141,7 +141,7 @@ describe("the record tools", () => {
 
     expect(await failureOf(call(name, input, recs))).toMatchObject({
       kind: "tool_failed",
-      readerKey: "chat.tool.failure.ourFault",
+      userKey: "chat.tool.failure.ourFault",
     });
   });
 

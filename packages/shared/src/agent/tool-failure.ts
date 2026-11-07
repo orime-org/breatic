@@ -160,18 +160,18 @@ interface FailureDetail {
  * The kind and the reader's line go together: the line about being stopped
  * belongs to the ending that was a stop, the lines about a failure belong to
  * the ending that was one, and a call turned away carries no line at all.
- * Written as one type with a `readerKey` of its own, the pair
+ * Written as one type with a `userKey` of its own, the pair
  * "stopped by the user" and "could not run" type-checks, and the panel then
  * tells a reader their own button press was something going wrong.
  *
- * `readerKey` is a translation key rather than a sentence because the row
+ * `userKey` is a translation key rather than a sentence because the row
  * outlives the language it was written in: a message stored in one reader's
  * language would still be in that language when a different reader opens the
  * conversation.
  */
 export type ToolFailure =
-  | (FailureDetail & { kind: "tool_failed"; readerKey: FailureLine | LegacyFailureLine })
-  | (FailureDetail & { kind: "user_aborted"; readerKey: StoppedLine })
+  | (FailureDetail & { kind: "tool_failed"; userKey: FailureLine | LegacyFailureLine })
+  | (FailureDetail & { kind: "user_aborted"; userKey: StoppedLine })
   | (FailureDetail & { kind: "turned_away" })
   | (FailureDetail & { kind: "never_ran" });
 
@@ -196,7 +196,7 @@ export function wireLineOf(
 ): FailureLine | LegacyFailureLine | StoppedLine | typeof TURNED_AWAY | typeof NEVER_RAN {
   if (failure.kind === "turned_away") return TURNED_AWAY;
   if (failure.kind === "never_ran") return NEVER_RAN;
-  return failure.readerKey;
+  return failure.userKey;
 }
 
 /**
@@ -216,7 +216,7 @@ export const NOTHING_SAID_WHY: ToolFailure = {
   forModel:
     "This tool call failed, and nothing recorded why. If this step is needed, try it once " +
     "more; if it fails again, tell the user it could not be done.",
-  readerKey: FAILURE_LINES.ourFault,
+  userKey: FAILURE_LINES.ourFault,
 };
 
 /**
@@ -239,25 +239,25 @@ export function toolFailureOf(err: unknown): ToolFailure | undefined {
   if (typeof err !== "object" || err === null) return undefined;
   const carried = (err as Record<string, unknown>)[CARRIED_ON];
   if (typeof carried !== "object" || carried === null) return undefined;
-  const { kind, forModel, readerKey } = carried as Record<string, unknown>;
+  const { kind, forModel, userKey } = carried as Record<string, unknown>;
   if (typeof forModel !== "string") return undefined;
   // The one ending with no line for the reader. Carrying one anyway is a pair
   // that does not belong together, the same as the two checks below.
-  if (kind === "turned_away" || kind === "never_ran") return readerKey === undefined ? { kind, forModel } : undefined;
+  if (kind === "turned_away" || kind === "never_ran") return userKey === undefined ? { kind, forModel } : undefined;
   // Checked against the table rather than merely for being a string. What the
   // table settles is that this key is one of the ones written above, which is
   // the set the locale files are kept in step with; a key from anywhere else
   // renders as itself, and the panel would show `chat.tool.failure.whatever`
   // to whoever met it.
-  if (typeof readerKey !== "string" || !KNOWN_LINES.has(readerKey)) return undefined;
+  if (typeof userKey !== "string" || !KNOWN_LINES.has(userKey)) return undefined;
   // And checked as a pair, which the table alone does not settle: both fields
   // being known says nothing about them belonging together.
   if (kind === "user_aborted") {
-    if (readerKey !== FAILURE_LINES.stopped) return undefined;
-    return { kind, forModel, readerKey };
+    if (userKey !== FAILURE_LINES.stopped) return undefined;
+    return { kind, forModel, userKey };
   }
-  if (kind !== "tool_failed" || readerKey === FAILURE_LINES.stopped) return undefined;
-  return { kind, forModel, readerKey: readerKey as FailureLine | LegacyFailureLine };
+  if (kind !== "tool_failed" || userKey === FAILURE_LINES.stopped) return undefined;
+  return { kind, forModel, userKey: userKey as FailureLine | LegacyFailureLine };
 }
 
 /**

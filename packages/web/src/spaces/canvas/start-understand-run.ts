@@ -299,8 +299,13 @@ function buildReadingRun(
     // file this end just let through.
     ...(source.mimeType !== undefined && { source_mime_type: source.mimeType }),
     // The answer becomes this node's body, and this is the only end that
-    // knows which language the reader set. It travels as the code; the
+    // knows which language the user set. It travels as the code; the
     // sentence is the model's to write, four processes from here.
+    user_locale: getLocale(),
+    // Under the pre-#1378 name too, for a server of the previous release
+    // still answering while a deploy rolls out. Carries the old name until
+    // #1387 removes it, in the release that also runs the rename migration
+    // again.
     reader_locale: getLocale(),
   };
 }

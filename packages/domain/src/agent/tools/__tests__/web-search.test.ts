@@ -473,11 +473,11 @@ describe("web_search says a failure is a failure", () => {
         }),
     );
 
-    const { forModel, readerKey } = await failureFrom(() => run({ query: "breatic" }));
+    const { forModel, userKey } = await failureFrom(() => run({ query: "breatic" }));
 
     expect(forModel).not.toMatch(/could not be reached|unreachable/i);
     expect(forModel).toMatch(/not with results/i);
-    expect(readerKey).toBe("chat.tool.failure.badAnswer");
+    expect(userKey).toBe("chat.tool.failure.badAnswer");
   });
 
   it("does not call an answer it cannot read a search that found nothing", async () => {
@@ -656,11 +656,11 @@ describe("web_search says a failure is a failure", () => {
       throw new Error("http request to https://api.search.brave.com failed after 3 attempts");
     });
 
-    const { readerKey } = await failureFrom(() => run({ query: "breatic" }));
+    const { userKey } = await failureFrom(() => run({ query: "breatic" }));
 
     // A key, not a sentence: the row outlives the language it was stored in.
-    expect(readerKey).toMatch(/^chat\.tool\.failure\./);
-    expect(readerKey).not.toContain("brave");
+    expect(userKey).toMatch(/^chat\.tool\.failure\./);
+    expect(userKey).not.toContain("brave");
   });
 });
 

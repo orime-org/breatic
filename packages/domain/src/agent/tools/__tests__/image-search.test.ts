@@ -796,10 +796,10 @@ describe("search_images: when it cannot run", () => {
       apiKey = "test-key";
       arrange();
 
-      const { readerKey } = await failureFrom(() => run({ query: "q" }));
+      const { userKey } = await failureFrom(() => run({ query: "q" }));
 
       // The way is in the assertion so a red test names which one broke.
-      expect({ way, readerKey }).toEqual({ way, readerKey: line });
+      expect({ way, userKey }).toEqual({ way, userKey: line });
     }
   });
 });

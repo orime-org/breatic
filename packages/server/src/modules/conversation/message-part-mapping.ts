@@ -170,6 +170,22 @@ export function toUiParts(parts: MessagePart[]): UiParts {
 }
 
 /**
+ * A stored failure with its line under the name this release reads.
+ *
+ * Carries the pre-#1378 name until #1387 removes it, in the release that also
+ * runs the rename migration again: a row written before migration 0116, or by
+ * a server of the previous release while a deploy rolls out, keeps the line
+ * under `readerKey`.
+ * @param failure - The failure as the row holds it.
+ * @returns The same failure, its line under `userKey`.
+ */
+function underUserKey(failure: ToolFailure): ToolFailure {
+  if ("userKey" in failure || !("readerKey" in failure)) return failure;
+  const { readerKey, ...rest } = failure as ToolFailure & { readerKey: unknown };
+  return { ...rest, userKey: readerKey } as ToolFailure;
+}
+
+/**
  * One stored part, as the client renders it.
  * @param part - The part as it was written down.
  * @returns The same part in the shape the SDK's client reads.
@@ -206,7 +222,11 @@ function toUiPart(part: MessagePart): UiPart {
     // A row stored before a call that never ran had an ending of its own
     // carries the same reason as one, and reads back as one (inner#1620).
     const failure: ToolFailure | undefined =
-      part.failure?.forModel === NOTHING_OF_IT_RAN ? { kind: "never_ran", forModel: NOTHING_OF_IT_RAN } : part.failure;
+      part.failure?.forModel === NOTHING_OF_IT_RAN
+        ? { kind: "never_ran", forModel: NOTHING_OF_IT_RAN }
+        : part.failure === undefined
+          ? undefined
+          : underUserKey(part.failure);
     return {
       ...base,
       state: "output-error",
