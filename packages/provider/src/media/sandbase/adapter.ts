@@ -209,6 +209,8 @@ export const sandbaseAdapter: MediaAdapter = {
     voice: resellerVoiceClone,
     speak: {
       body: (context) => {
+        // A speak step runs only after the voice step's output or a cached clone gave it a voice id.
+        /* v8 ignore next -- @preserve */
         if (context.voiceId === undefined) throw new Error("No cloned voice to speak with");
         return { text: context.prompt, voice_id: context.voiceId };
       },

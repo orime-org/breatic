@@ -111,6 +111,9 @@ catalogs:
     '@types/ws':
       specifier: ^8.18.1
       version: 8.18.1
+    '@vitest/coverage-v8':
+      specifier: 3.2.7
+      version: 3.2.7
     ai:
       specifier: ^7.0.68
       version: 7.0.68
@@ -670,6 +673,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.1
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 3.2.7(vitest@3.2.7(@types/debug@4.1.13)(@types/node@24.19.1)(jsdom@29.1.1(canvas@3.2.3))(less@4.8.1)(lightningcss@1.32.0)(sass@1.51.0))
       fast-check:
         specifier: 'catalog:'
         version: 4.9.0
@@ -762,7 +768,7 @@ importers:
         specifier: 'catalog:'
         version: 24.19.1
       '@vitest/coverage-v8':
-        specifier: 3.2.7
+        specifier: 'catalog:'
         version: 3.2.7(vitest@3.2.7(@types/debug@4.1.13)(@types/node@24.19.1)(jsdom@29.1.1(canvas@3.2.3))(less@4.8.1)(lightningcss@1.32.0)(sass@1.51.0))
       bullmq:
         specifier: 'catalog:'

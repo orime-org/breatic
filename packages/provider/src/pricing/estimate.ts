@@ -376,6 +376,8 @@ function ruleOf(rules: PricingRules, upstream: string): UpstreamPricing | undefi
  */
 export function parsePricingRules(raw: unknown): PricingRules {
   const parsed = pricingRulesSchema.safeParse(raw);
+  // A failed zod parse always carries an issue; the fallback text is for the type.
+  /* v8 ignore next -- @preserve */
   if (!parsed.success) throw new Error(`Not a model's pricing rules: ${parsed.error.issues[0]?.message ?? "unknown"}`);
   return { model: parsed.data.model, upstreams: parsed.data.upstreams };
 }

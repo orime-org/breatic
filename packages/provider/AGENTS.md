@@ -1,6 +1,6 @@
 # @breatic/provider
 
-The model provider layer: every model call (media generation, understanding, LLM chat, the decisions endpoint) goes through it, and it answers which upstream serves it, how our params become that upstream's fields, what a run is estimated to cost and what it actually cost. These rules apply when you change anything under `packages/provider/`, `config/provider/` or the two `scripts/provider-*.ts` generators.
+The model provider layer: every model call (media generation, understanding, LLM chat, the decisions endpoint) goes through it, and it answers which upstream serves it, how our params become that upstream's fields, what a run is estimated to cost and what it actually cost. These rules apply when you change anything under `packages/provider/`, `config/provider/` or the `scripts/provider-*` generators.
 
 ### It stands alone
 
@@ -41,4 +41,5 @@ The model provider layer: every model call (media generation, understanding, LLM
 ### Tests
 
 - **Upstreams are faked with the loopback server in `src/media/__tests__/fake-upstream.ts` (`hold`, `cut`, `reset`, `hang`) and the LLM fakes in `src/llm/__tests__/llm-harness.ts`; nothing in the test suites calls a real upstream.**
-- **`test/fixtures/*.json` are frozen answers of the code provider replaces, written by `scripts/provider-fixtures.ts`; never edit them by hand.** `scripts/provider-config-migration.ts` writes `config/provider/` from the `config/models/` catalog the same way.
+- **`pnpm test:integration` runs both suites in one run under `vitest.coverage.config.ts`, which fails below 100% coverage of the estimate, the media runner, its adapters and `provider.ts`.** A branch no input can reach (a fallback only the types need) carries `/* v8 ignore next -- @preserve */` under a comment saying why; anything an input can reach gets a test.
+- **`test/fixtures/upstream-*.json` are frozen answers of the code provider replaces, written by `scripts/provider-fixtures.ts`; `three-d-prices.json` and the `upstream-schemas/` and `upstream-prices/` snapshots are what the upstreams state, written by `pnpm provider:prices`; never edit any of them by hand.** `scripts/provider-config-migration.ts` writes `config/provider/` from the `config/models/` catalog the same way.

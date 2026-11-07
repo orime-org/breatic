@@ -202,6 +202,8 @@ async function lookupCost(config: ProviderConfig, options: ProviderOptions, look
     }
     return { state: "known", usd: cost, tokens, source: "billing" };
   } catch (error) {
+    // fetchJson throws only Error instances; the String branch is for the type.
+    /* v8 ignore next -- @preserve */
     return unanswered(error instanceof Error ? error.message : String(error));
   }
 }

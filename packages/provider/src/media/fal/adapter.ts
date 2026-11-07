@@ -152,6 +152,8 @@ async function ask(reach: Reach, _predictionId: string, bounds: RequestBounds, c
     throw error;
   }
   if (context.kind !== "generate") return { state: "done", outputs: [result] };
+  // The configuration load refuses a fal binding without output_field; the fallback is for the type.
+  /* v8 ignore next -- @preserve */
   return { state: "done", outputs: filesAt(result, context.binding.output_field ?? "") };
 }
 
@@ -237,6 +239,8 @@ export const falAdapter: MediaAdapter = {
     voice: resellerVoiceClone,
     speak: {
       body: (context) => {
+        // A speak step runs only after the voice step's output or a cached clone gave it a voice id.
+        /* v8 ignore next -- @preserve */
         if (context.voiceId === undefined) throw new Error("No cloned voice to speak with");
         // fal leaves emotion to MiniMax; WaveSpeed's and SandBase's speech default it to happy. fal normalizes loudness
         // unless told not to, and WaveSpeed's speech is not normalized.

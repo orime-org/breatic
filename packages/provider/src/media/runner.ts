@@ -671,6 +671,8 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     const run = { params: input.params, prompt: input.prompt, durations, placeholders: [], durationsMissing, known: { sourceKeys: planOptions.sourceKeys, clones: planOptions.clones } };
     const candidates = await Promise.all(candidatesOf(config, model, keyOf).map(async (c): Promise<Candidate> => {
       const read = await assess(rules, c.upstream, run);
+      // The rules come from the same configuration as the candidates, so every candidate has one; undefined is for the type.
+      /* v8 ignore next -- @preserve */
       if (read === undefined) return c;
       return "rejected" in read ? { ...c, unsupported: read.rejected } : { ...c, estimate: { usd: read.estimate.usd, atLeast: read.estimate.bound === "at_least" } };
     }));
