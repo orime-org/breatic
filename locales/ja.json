@@ -304,6 +304,16 @@
       },
       "credits_amount": "{credits} クレジット",
       "fact_line": "{label}：{value}"
+    },
+    "referral": {
+      "invalid_code": "この紹介コードは無効です。",
+      "already_bound": "このアカウントには既に紹介コードが登録されています。",
+      "already_paid": "紹介コードは初回のメンバーシップ支払い前にのみ登録できます。",
+      "not_eligible": "エンタープライズアカウントには紹介コードを登録できません。",
+      "program_closed": "プロモーターの申請はまだ受け付けていません。",
+      "terms_changed": "プロモーター規約が更新されました。もう一度お読みのうえお申し込みください。",
+      "application_pending": "審査中の申請がすでにあります。",
+      "already_promoter": "すでにプロモーターです。"
     }
   },
   "chat": {

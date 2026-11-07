@@ -304,6 +304,16 @@
       },
       "credits_amount": "{credits}",
       "fact_line": "{label}: {value}"
+    },
+    "referral": {
+      "invalid_code": "This referral code is not valid.",
+      "already_bound": "This account already has a referral code.",
+      "already_paid": "A referral code can only be added before your first membership payment.",
+      "not_eligible": "Enterprise accounts cannot add a referral code.",
+      "program_closed": "Promoter applications are not open yet.",
+      "terms_changed": "The promoter terms have been updated. Read them again before applying.",
+      "application_pending": "You already have an application under review.",
+      "already_promoter": "You are already a promoter."
     }
   },
   "chat": {

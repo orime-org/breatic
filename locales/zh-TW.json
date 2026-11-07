@@ -304,6 +304,16 @@
       },
       "credits_amount": "{credits} 點",
       "fact_line": "{label}：{value}"
+    },
+    "referral": {
+      "invalid_code": "推廣碼無效。",
+      "already_bound": "這個帳號已經綁定過推廣碼。",
+      "already_paid": "推廣碼只能在第一次付會員費之前填寫。",
+      "not_eligible": "企業版帳號不能綁定推廣碼。",
+      "program_closed": "推廣計畫暫未開放申請。",
+      "terms_changed": "推廣條款已更新，請重新閱讀後再申請。",
+      "application_pending": "你已經有一份申請在審核中。",
+      "already_promoter": "你已經是推廣者。"
     }
   },
   "chat": {

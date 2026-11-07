@@ -304,6 +304,16 @@
       },
       "credits_amount": "{credits} 积分",
       "fact_line": "{label}：{value}"
+    },
+    "referral": {
+      "invalid_code": "推广码无效。",
+      "already_bound": "这个账号已经绑定过推广码。",
+      "already_paid": "推广码只能在第一次付会员费之前填写。",
+      "not_eligible": "企业版账号不能绑定推广码。",
+      "program_closed": "推广计划暂未开放申请。",
+      "terms_changed": "推广条款已更新，请重新阅读后再申请。",
+      "application_pending": "你已经有一份申请在审核中。",
+      "already_promoter": "你已经是推广者。"
     }
   },
   "chat": {

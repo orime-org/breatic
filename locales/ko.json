@@ -304,6 +304,16 @@
       },
       "credits_amount": "{credits} 크레딧",
       "fact_line": "{label}: {value}"
+    },
+    "referral": {
+      "invalid_code": "유효하지 않은 추천 코드입니다.",
+      "already_bound": "이 계정에는 이미 추천 코드가 등록되어 있습니다.",
+      "already_paid": "추천 코드는 첫 멤버십 결제 전에만 등록할 수 있습니다.",
+      "not_eligible": "엔터프라이즈 계정은 추천 코드를 등록할 수 없습니다.",
+      "program_closed": "프로모터 신청은 아직 열리지 않았습니다.",
+      "terms_changed": "프로모터 약관이 업데이트되었습니다. 다시 읽은 후 신청해 주세요.",
+      "application_pending": "이미 심사 중인 신청이 있습니다.",
+      "already_promoter": "이미 프로모터입니다."
     }
   },
   "chat": {
