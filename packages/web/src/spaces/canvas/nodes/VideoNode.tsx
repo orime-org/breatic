@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { classifyVideoSourceLedgerFailure } from '@breatic/shared';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
@@ -86,7 +87,9 @@ function ResolvedNodeVideo(props: MediaPlayerProps & { nodeId: string; projectId
   return <MediaPlayer {...player} videoSource={presentedSource} onVideoBinding={onBinding} onPresentedFrame={onFrame}>
     {failure === null && localFailure === null ? null : <div className='pointer-events-auto absolute inset-0 z-20 grid place-content-center justify-items-center gap-2 bg-card p-3 text-center'>
       <p className='text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.mediaError')}</p>
-      <Button variant='outline' size='sm' className='nodrag nokey' loading={retrying === identity} onClick={() => { void retry(); }}>{t('canvas.miniTool.videoUI.retryPreview')}</Button>
+      {/* A content failure comes out the same on every rerun, so it offers no Retry (design §10.6 failure classes). */}
+      {localFailure === null && failure !== null && classifyVideoSourceLedgerFailure(failure) === 'content' ? null
+        : <Button variant='outline' size='sm' className='nodrag nokey' loading={retrying === identity} onClick={() => { void retry(); }}>{t('canvas.miniTool.videoUI.retryPreview')}</Button>}
     </div>}
   </MediaPlayer>;
 }

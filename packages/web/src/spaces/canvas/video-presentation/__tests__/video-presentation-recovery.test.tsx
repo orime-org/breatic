@@ -147,6 +147,15 @@ describe('approved canonical Retry recovery (inner#1306 Canvas recovery oracle)'
     expect(platform.apiGet).toHaveBeenCalledOnce();
   });
 
+  // §10.6 failure classes: a content failure comes out the same on every rerun, so the node says so and offers no Retry
+  // (approved state copy: Retry under mediaError for temporary failures only).
+  it('the node shows a content failure without Retry', async () => {
+    seed(failedWith('probe_invalid'));
+    mount(<NodeIdContext.Provider value='node'><VideoNode data={{ handling: false, content: input.canonicalURL, width: 160, height: 240, duration: 10 }} /></NodeIdContext.Provider>);
+    expect(await screen.findByText(t('canvas.miniTool.videoUI.mediaError'))).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: t('canvas.miniTool.videoUI.retryPreview') })).toBeNull();
+  });
+
   it('the actual timeline Retry repairs a failed fresh descriptor before rebuilding its decoder', async () => {
     seed(failed);
     mount(timeline());
