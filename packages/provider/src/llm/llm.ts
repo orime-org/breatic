@@ -193,6 +193,23 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
   };
 
   /**
+   * The OpenRouter `provider` object of one call: in cheapest mode, its endpoints cheapest first within the
+   * quantizations the call takes (a cheapest call is ranked by that endpoint, `openrouter_prices`), and for an
+   * understand call the model's backend pin, which is understand's alone.
+   * @param modelId - Our model id.
+   * @param chosen - The caller's mode.
+   * @param pinned - Whether the call is held to the model's backend pin: an understand call is, a prepared call never.
+   * @returns The object, or undefined when it would be empty.
+   */
+  const openRouterRouting = (modelId: string, chosen: Route, pinned: boolean): VendorOptions | undefined => {
+    const routing: VendorOptions = {
+      ...(pinned ? config.llm.openrouter_backends[modelId] : {}),
+      ...(chosen.mode === "cheapest" ? { sort: "price", quantizations: config.llm.openrouter_quantizations } : {}),
+    };
+    return Object.keys(routing).length === 0 ? undefined : routing;
+  };
+
+  /**
    * What a call sends each upstream of its plan, keyed by the SDK name each reads.
    * @param plan - The plan.
    * @param modelId - Our model id.
@@ -204,12 +221,9 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     const merged: Record<string, VendorOptions> = {};
     for (const { upstream } of plan.order) {
       const vendor = vendorOf(kindOf(upstream));
-      // The OpenRouter backend pin is understand's alone, never a prepared call's. A cheapest call is ranked by
-      // OpenRouter's cheapest endpoint of the quantizations it takes (openrouter_prices), so it asks for that one first.
-      const cheapest: VendorOptions = chosen.mode === "cheapest" && kindOf(upstream) === "openrouter"
-        ? { provider: { sort: "price", quantizations: config.llm.openrouter_quantizations } }
-        : {};
-      merged[vendor.sdkName] = { ...optionsFor(vendor, modelId, wants), ...cheapest };
+      // A prepared call is never pinned to a backend: the pin is understand's alone.
+      const provider = kindOf(upstream) === "openrouter" ? openRouterRouting(modelId, chosen, false) : undefined;
+      merged[vendor.sdkName] = { ...optionsFor(vendor, modelId, wants), ...(provider === undefined ? {} : { provider }) };
     }
     return merged;
   };
@@ -418,7 +432,8 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
             answering = c.upstream;
             const decl = config.upstreams[c.upstream]!;
             const adapter = understandAdapterOf(decl.kind);
-            const pin = config.llm.openrouter_backends[request.model];
+            // Held to the model's backend pin, which is understand's alone, and in cheapest mode sorted by price as a prepared call is.
+            const provider = vendorOf(decl.kind).gateway ? openRouterRouting(request.model, chosen, true) : undefined;
             let answered;
             try {
               answered = await adapter.ask({
@@ -428,9 +443,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
                 question,
                 media: request.media,
                 maxOutputTokens: request.maxOutputTokens,
-                ...(vendorOf(decl.kind).gateway && pin !== undefined ? { backend: pin } : {}),
-                // Ranked at OpenRouter's cheapest endpoint (openrouter_prices), so it asks for that one first, as a prepared call does.
-                ...(chosen.mode === "cheapest" && decl.kind === "openrouter" ? { cheapest: { sort: "price", quantizations: config.llm.openrouter_quantizations } } : {}),
+                ...(provider === undefined ? {} : { provider }),
                 deadlineAt: request.deadlineAt,
                 signal,
                 inlineMaxBytes: config.llm.gemini_inline_max_bytes,

@@ -147,6 +147,9 @@ models:
       - when: duration < 4 or duration > 30 or duration != $floor(duration)
         reason: "Seedance 2.5 duration: integer, supports [4, 30] or -1"
         source: https://docs.byteplus.com/en/docs/ModelArk/1520757
+      - when: resolution = "4k"
+        reason: "Seedance 2.5 resolution: Default 720p; supports 480p, 720p, and 1080p"
+        source: https://docs.byteplus.com/en/docs/ModelArk/1520757
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -370,8 +373,6 @@ models:
             reason: fal prompt maxLength 2500
           - when: $exists(prompt) and $exists(multi_prompt)
             reason: "fal prompt: Either prompt or multi_prompt must be provided, but not both"
-          - when: $not($exists(prompt) or $exists(multi_prompt))
-            reason: "fal prompt: Either prompt or multi_prompt must be provided"
           - when: $length(negative_prompt) > 2500
             reason: fal negative_prompt maxLength 2500
         pricing:
@@ -574,6 +575,9 @@ models:
       - when: duration < 4 or duration > 30 or duration != $floor(duration)
         reason: "Seedance 2.5 duration: integer, [4, 30] or -1"
         source: https://docs.byteplus.com/en/docs/ModelArk/1520757
+      - when: resolution = "4k"
+        reason: "Seedance 2.5 resolution: Default 720p; supports 480p, 720p, and 1080p"
+        source: https://docs.byteplus.com/en/docs/ModelArk/1520757
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -749,8 +753,6 @@ models:
             reason: fal prompt maxLength 2500
           - when: $exists(prompt) and $exists(multi_prompt)
             reason: "fal prompt: Either prompt or multi_prompt must be provided, but not both"
-          - when: $not($exists(prompt) or $exists(multi_prompt))
-            reason: "fal prompt: Either prompt or multi_prompt must be provided"
         pricing:
           kind: formula
           base_price: 420000
@@ -782,8 +784,6 @@ models:
         rejects:
           - when: $length(prompt) > 2500
             reason: SandBase prompt maxLength 2500
-          - when: $not($exists(prompt))
-            reason: "SandBase prompt: required"
         pricing:
           kind: formula
           base_price: 420000
@@ -1276,6 +1276,9 @@ models:
       - when: duration < 4 or duration > 30 or duration != $floor(duration)
         reason: "Seedance 2.5 duration: [4, 30] or -1, integer"
         source: https://docs.byteplus.com/en/docs/ModelArk/seedance-2-5
+      - when: resolution = "4k"
+        reason: "Seedance 2.5 resolution: Default 720p; supports 480p, 720p, and 1080p"
+        source: https://docs.byteplus.com/en/docs/ModelArk/1520757
     upstreams:
       - upstream: wavespeed
         weight: 1

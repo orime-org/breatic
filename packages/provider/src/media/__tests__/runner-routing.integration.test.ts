@@ -129,12 +129,21 @@ describe("a run is sent only where its input can go (critical path)", () => {
         fc.tuple(...NAMES.map(() => fc.option(fc.integer({ min: 10, max: 12 }), { nil: undefined }))).filter((o) => new Set(o.filter((w) => w !== undefined)).size === o.filter((w) => w !== undefined).length),
         // Before which sends the process restarts, the ticket read back by a new provider instance.
         fc.array(fc.boolean(), { maxLength: 4 }),
-        async (shipped, keyed, limits, prices, params, audioSeconds, answers, route, overrides, restarts) => {
+        // The model vendor's own audio limit, checked on every upstream before any binding's: none, or the longest clip it takes.
+        fc.option(fc.integer({ min: 1, max: 30 }), { nil: null }),
+        async (shipped, keyed, limits, prices, params, audioSeconds, answers, route, overrides, restarts, vendorMax) => {
           const weights = NAMES.map((_, i) => overrides[i] ?? shipped[i]!);
           const overridden = Object.fromEntries(NAMES.flatMap((n, i) => (overrides[i] === undefined ? [] : [[n, overrides[i]]])));
           const config: ProviderConfigInput = {
             upstreams: Object.fromEntries(NAMES.map((n) => [n, { kind: KINDS[n], base_url: fakes[n].url, key_env: ENVS[n], ...(n === "fal" ? { billing_url: `${fakes[n].url}/v1` } : {}) }])),
-            media: { models: { m: { upstreams: NAMES.map((n, i) => binding(n, shipped[i]!, limits[i]!, prices[i]!)) } } },
+            media: {
+              models: {
+                m: {
+                  ...(vendorMax === null ? {} : { rejects: [{ when: `get_duration(audio) > ${vendorMax}`, reason: "vendor audio limit", source: "https://vendor.example/limits" }] }),
+                  upstreams: NAMES.map((n, i) => binding(n, shipped[i]!, limits[i]!, prices[i]!)),
+                },
+              },
+            },
             ...(Object.keys(overridden).length === 0 ? {} : { routing: { models: { m: { weights: overridden } } } }),
           };
           const keys = Object.fromEntries(NAMES.flatMap((n, i) => (keyed[i] ? [[ENVS[n], "key"]] : [])));
@@ -184,6 +193,22 @@ describe("a run is sent only where its input can go (critical path)", () => {
           }
 
           const estimate = await estimateCost(rules, provider.availability("m"), prepared, route);
+          if (vendorMax !== null && params.audio !== null && audioSeconds > vendorMax) {
+            // Past the vendor's limit no upstream takes the run: nothing is sent, and each configured upstream the route
+            // reads refuses it, with the vendor's reason unless a value it cannot take was found first.
+            expect(expected).toEqual([]);
+            expect(submitted).toEqual([]);
+            expect(answer.state).toBe("failed");
+            const reason = (answer as Extract<MediaAnswer, { state: "failed" }>).reason;
+            expect(reason).toBeInstanceOf(NoUpstreamAvailable);
+            const read = NAMES.filter((n) => (route.mode !== "upstream" || route.upstream === n) && keyed[NAMES.indexOf(n)]!);
+            for (const n of read) {
+              const own = (reason as NoUpstreamAvailable).reasons.find((r) => r.upstream === n);
+              expect(own, n).toEqual(refusal.get(n) !== undefined && "param" in refusal.get(n)! ? expect.objectContaining({ kind: "unsupported_input", param: expect.any(String) }) : { upstream: n, kind: "unsupported_input", reason: "vendor audio limit" });
+            }
+            expect(estimate).toBeNull();
+            return;
+          }
           if (expected.length === 0) {
             // No upstream can take it: nothing is sent, and each configured upstream that refuses the input says so.
             expect(submitted).toEqual([]);

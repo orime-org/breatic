@@ -16,9 +16,10 @@ const pricing = (base: number): Record<string, unknown> => ({ kind: "formula", b
  * maps two voices, SandBase drops web search unless it is off.
  * @param prices - Each upstream's flat price, in millionths of a dollar: WaveSpeed, fal, SandBase.
  * @param configured - Which upstreams have a key.
+ * @param vendorMax - The longest audio clip the model's vendor takes, as the model's own reject; null for none.
  * @returns The provider.
  */
-function bound(prices: readonly number[] = [300, 100, 200], configured: readonly boolean[] = [true, true, true]): ReturnType<typeof createProvider> {
+function bound(prices: readonly number[] = [300, 100, 200], configured: readonly boolean[] = [true, true, true], vendorMax: number | null = null): ReturnType<typeof createProvider> {
   const names = ["wavespeed", "fal", "sandbase"];
   return createProvider({
     config: {
@@ -30,6 +31,7 @@ function bound(prices: readonly number[] = [300, 100, 200], configured: readonly
       media: {
         models: {
           m: {
+            ...(vendorMax === null ? {} : { rejects: [{ when: `get_duration(audio) > ${vendorMax}`, reason: "vendor audio limit", source: "https://vendor.example/limits" }] }),
             upstreams: [
               { upstream: "wavespeed", weight: 1, model_id: "m", params: { duration: { field: "duration" }, voice_id: { field: "voice" }, web: { field: "web" } }, pricing: pricing(prices[0]!) },
               {
@@ -146,21 +148,24 @@ describe("estimates skip an upstream that cannot take the run", () => {
     expect(await estimateCost(p.pricingRules("m"), p.availability("m"), run({ duration: 15 }), { mode: "upstream", upstream: "fal" })).toBeNull();
   });
 
-  it("property: the estimate's upstream is the first one the route would try", async () => {
+  it("property: the estimate's upstream is the first one the route would try, the model vendor's limits included", async () => {
     const valueArb = fc.record({ duration: fc.constantFrom(5, 10, 15, null), voice_id: fc.constantFrom("Alicia", "Warren", null), web: fc.constantFrom(true, false, null) });
     const flags = fc.array(fc.boolean(), { minLength: 3, maxLength: 3 });
     const prices = fc.array(fc.integer({ min: 0, max: 1000 }), { minLength: 3, maxLength: 3 });
-    await fc.assert(fc.asyncProperty(valueArb, flags, prices, fc.constantFrom("default", "cheapest"), async (params, configured, cost, mode) => {
-      const p = bound(cost, configured);
+    const vendorMaxArb = fc.option(fc.integer({ min: 1, max: 30 }), { nil: null });
+    const clipArb = fc.option(fc.integer({ min: 1, max: 40 }), { nil: null });
+    await fc.assert(fc.asyncProperty(valueArb, flags, prices, fc.constantFrom("default", "cheapest"), vendorMaxArb, clipArb, async (params, configured, cost, mode, vendorMax, clip) => {
+      const p = bound(cost, configured, vendorMax);
       const rules = p.pricingRules("m");
-      const estimate = await estimateCost(rules, p.availability("m"), run(params), { mode });
-      const order = await orderByPrice(rules, p.availability("m"), run(params));
+      const input = clip === null ? run(params) : { ...run({ ...params, audio: "https://a/a.mp3" }), durations: { audio: [clip] } };
+      const estimate = await estimateCost(rules, p.availability("m"), input, { mode });
+      const order = await orderByPrice(rules, p.availability("m"), input);
       const candidates: Candidate[] = await Promise.all(p.availability("m").upstreams.map(async (u) => {
         const priced = order.find((e) => e.upstream === u.upstream);
         return {
           ...u,
           estimate: priced === undefined ? undefined : { usd: priced.usd, atLeast: priced.bound === "at_least" },
-          unsupported: await rejectedInput(rules, u.upstream, run(params)),
+          unsupported: await rejectedInput(rules, u.upstream, input),
         };
       }));
       let first: string | undefined;
@@ -170,6 +175,7 @@ describe("estimates skip an upstream that cannot take the run", () => {
         first = undefined;
       }
       expect(estimate?.upstream).toBe(first);
+      if (vendorMax !== null && clip !== null && clip > vendorMax) expect(estimate).toBeNull();
     }));
   });
 });

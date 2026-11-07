@@ -47,12 +47,13 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { parse, parseDocument, type Document } from "yaml";
-import { OPENROUTER_QUANTIZATIONS, type ProviderConfigInput } from "../packages/provider/src/config/schema.js";
+import { parseProviderConfig, type ProviderConfigInput } from "../packages/provider/src/config/schema.js";
 import { snapshotOf, type SchemaSnapshot } from "../packages/provider/src/config/upstream-schema.js";
 import { buildBody } from "../packages/provider/src/media/body.js";
 import { assess } from "../packages/provider/src/pricing/estimate.js";
 import { priceUsd } from "../packages/provider/src/pricing/evaluate.js";
 import { createProvider } from "../packages/provider/src/provider.js";
+import { servedDocuments } from "./provider-endpoint-docs.mjs";
 import { openRouterPrices } from "./provider-llm-prices.mjs";
 import { priceFactDrift, statedPrice } from "./provider-price-drift.mjs";
 import { yamlText } from "./provider-yaml.mjs";
@@ -240,8 +241,12 @@ async function syncWaveSpeed(upstream: string, list: typeof bindings): Promise<v
     if (threeD !== undefined) {
       docs.get(modality)!.setIn(["models", model, "upstreams", index, "pricing"], { kind: "formula", base_price: threeD.base_price, formula: threeD.formula, discount_rate: 100 });
       for (const inputs of threeD.samples) {
-        const answer = await json(`${WAVESPEED}/model/price`, { method: "POST", headers, body: JSON.stringify({ model_id: binding.model_id, inputs }) });
-        const usd = statedPrice(answer);
+        let usd: number | string;
+        try {
+          usd = statedPrice(await json(`${WAVESPEED}/model/price`, { method: "POST", headers, body: JSON.stringify({ model_id: binding.model_id, inputs }) }));
+        } catch (error) {
+          usd = `not priced (${(error as Error).message.slice(0, 120)})`;
+        }
         const local = await priceUsd({ basePrice: threeD.base_price, formula: threeD.formula, discountRate: 100 }, inputs, {});
         const line = `${model} ${JSON.stringify(inputs)}: WaveSpeed ${usd}, local ${local}`;
         process.stdout.write(`${line}\n`);
@@ -321,9 +326,11 @@ async function syncFal(upstream: string, list: typeof bindings): Promise<void> {
   if (key === undefined) return;
   let written = 0;
   for (const { modality, model, index, binding } of list) {
-    for (const endpoint of [binding.model_id, ...(binding.extra_steps ?? []).map((s) => s.endpoint)]) {
+    const endpoints = [binding.model_id, ...(binding.extra_steps ?? []).map((s) => s.endpoint)];
+    const read = await servedDocuments(model, endpoints, (endpoint) => json(`${FAL_OPENAPI}?endpoint_id=${endpoint}`, {}, { absentOn404: true }), "fal no longer serves");
+    problems.push(...read.problems);
+    for (const [endpoint, doc] of read.served) {
       const source = `${FAL_OPENAPI}?endpoint_id=${endpoint}`;
-      const doc = await json(source);
       const input = at(doc, "paths", `/${endpoint}`, "post", "requestBody", "content", "application/json", "schema");
       const output = at(doc, "paths", `/${endpoint}/requests/{request_id}`, "get", "responses", "200", "content", "application/json", "schema");
       if (input === undefined) {
@@ -369,9 +376,11 @@ async function syncSandBase(upstream: string, list: typeof bindings): Promise<vo
   }
   let written = 0;
   for (const { model, binding } of list) {
-    for (const endpoint of [binding.model_id, ...(binding.extra_steps ?? []).map((s) => s.endpoint)]) {
+    const endpoints = [binding.model_id, ...(binding.extra_steps ?? []).map((s) => s.endpoint)];
+    const read = await servedDocuments(model, endpoints, (endpoint) => json(`${SANDBASE_MODELS}/${endpoint}`, { headers: { Authorization: `Bearer ${key}` } }, { absentOn404: true }), "SandBase no longer lists");
+    problems.push(...read.problems);
+    for (const [endpoint, answer] of read.served) {
       const source = `${SANDBASE_MODELS}/${endpoint}`;
-      const answer = await json(source, { headers: { Authorization: `Bearer ${key}` } });
       const doc = at(answer, "unified_schema");
       const input = at(doc, "paths", "/v1/run", "post", "requestBody", "content", "application/json", "schema");
       if (input === undefined) {
@@ -394,18 +403,14 @@ async function syncSandBase(upstream: string, list: typeof bindings): Promise<vo
  * of its `prices` and in their order, keeping the file's comments; a model given no price is a problem.
  * OpenRouter's id for a model is `vendor_ids[model].openrouter` when set, else ours; its price is its cheapest
  * standard-tier endpoint's, among its `openrouter_backends` pin's providers when it is pinned.
+ * @throws {ProviderConfigError} When `llm.yaml` is not a valid LLM configuration.
  * @throws {Error} When OpenRouter's endpoints list answers other than 2xx or 404.
  */
 async function syncOpenRouterPrices(): Promise<void> {
+  // Values are read through the schema, as createProvider reads them; the file is written back through `doc`, comments kept.
   const doc = parseDocument(readFileSync(LLM, "utf8"));
-  const llm = doc.toJS() as {
-    prices?: Record<string, unknown>;
-    vendor_ids?: Record<string, Record<string, string>>;
-    openrouter_quantizations?: string[];
-    openrouter_backends?: Record<string, { only?: string[] }>;
-  };
-  const ids = new Map(Object.keys(llm.prices ?? {}).map((model) => [model, llm.vendor_ids?.[model]?.openrouter ?? model]));
-  const pins = new Map(Object.entries(llm.openrouter_backends ?? {}).flatMap(([model, { only }]) => (only === undefined ? [] : [[model, only] as const])));
+  const { llm } = parseProviderConfig({ upstreams: upstreams as ProviderConfigInput["upstreams"], media: { models: {} }, llm: doc.toJS() as ProviderConfigInput["llm"] });
+  const ids = new Map(Object.keys(llm.prices).map((model) => [model, llm.vendor_ids[model]?.openrouter ?? model]));
   type Endpoint = { tag?: unknown; service_tier?: unknown; quantization?: unknown; pricing?: { prompt?: unknown; completion?: unknown } };
   const endpoints = new Map<string, Endpoint[]>();
   for (const id of new Set(ids.values())) {
@@ -413,7 +418,7 @@ async function syncOpenRouterPrices(): Promise<void> {
     const answer = await json(`${OPENROUTER_MODELS}/${id}/endpoints`, {}, { absentOn404: true });
     if (answer !== undefined) endpoints.set(id, at(answer, "data", "endpoints") as Endpoint[]);
   }
-  const { prices, problems: unpriced } = openRouterPrices(endpoints, ids, llm.openrouter_quantizations ?? OPENROUTER_QUANTIZATIONS, pins);
+  const { prices, problems: unpriced } = openRouterPrices(endpoints, ids, llm.openrouter_quantizations, llm.openrouter_backends);
   problems.push(...unpriced);
   doc.set("openrouter_prices", doc.createNode(prices));
   const text = yamlText(doc, { lineWidth: 0 });

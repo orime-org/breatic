@@ -24,7 +24,7 @@ The model provider layer: every model call (media generation, understanding, LLM
 
 ### Vendor limits live on the model
 
-**A model vendor's input limits are written once, as the model's `rejects` in `config/provider/media/*.yaml` (our param names, the prompt as `prompt`, the vendor's words and the vendor page as `source`); a binding's `rejects` hold only what that reseller enforces beyond the vendor.** Each reseller forwards to the vendor, so a limit copied per binding drifts and a reseller that misses it sends runs the vendor refuses. Whether a param is filled at all stays the application's check at submit: a model-level reject would blank the estimate before the user has typed. Check: is the limit the vendor's, or only this reseller's? The vendor's goes on the model, whatever the reseller's schema says.
+**A model vendor's input limits are written once, as the model's `rejects` in `config/provider/media/*.yaml` (our param names, the prompt as `prompt`, the vendor's words and the vendor page as `source`); a binding's `rejects` hold only what that reseller enforces beyond the vendor.** Each reseller forwards to the vendor, so a limit copied per binding drifts and a reseller that misses it sends runs the vendor refuses. Whether a param is filled at all is never a reject, at the model or a binding, and stays the application's check at submit: such a reject would blank the estimate before the user has typed. Check: is the limit the vendor's, or only this reseller's? The vendor's goes on the model, whatever the reseller's schema says.
 
 ### Moving to the next upstream
 

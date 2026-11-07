@@ -140,8 +140,13 @@ const llmPriceSchema = z.strictObject({
 /** Gemini's inline request limit by default: the video-understanding page's 20 MB, the stricter of its two docs. */
 const GEMINI_INLINE_MAX_BYTES = 20_000_000;
 
-/** OpenRouter's quantization levels of 8 bits and more, and `unknown` (an official endpoint names none): 4- and 6-bit endpoints serve a coarser model. */
-export const OPENROUTER_QUANTIZATIONS: readonly string[] = ["int8", "fp8", "mxfp8", "fp16", "bf16", "fp32", "unknown"];
+/**
+ * OpenRouter's quantization levels, the only values its `provider.quantizations` takes (an unknown level answers 400
+ * `expected one of "int4"|...|"unknown"`, measured 2026-11-07).
+ */
+const openRouterQuantization = z.enum(["int4", "int8", "fp4", "mxfp4", "nvfp4", "fp6", "fp8", "mxfp8", "fp16", "bf16", "fp32", "unknown"]);
+/** The levels of 8 bits and more, and `unknown` (an official endpoint names none): 4- and 6-bit endpoints serve a coarser model. */
+const OPENROUTER_QUANTIZATIONS: readonly z.infer<typeof openRouterQuantization>[] = ["int8", "fp8", "mxfp8", "fp16", "bf16", "fp32", "unknown"];
 /** How often an uploaded Gemini file is asked about by default, in ms. */
 const GEMINI_FILE_POLL_MS = 5_000;
 
@@ -155,7 +160,7 @@ const llmSchema = z.strictObject({
   /** OpenRouter's token prices in USD per million tokens, by our model id: its cheapest endpoint at a quantization `openrouter_quantizations` lists, as `pnpm provider:prices` writes them. */
   openrouter_prices: z.record(z.string(), llmPriceSchema).optional(),
   /** The quantizations a cheapest call takes on OpenRouter (its `provider.quantizations`). */
-  openrouter_quantizations: z.array(z.string().min(1)).min(1).default([...OPENROUTER_QUANTIZATIONS]),
+  openrouter_quantizations: z.array(openRouterQuantization).min(1).default([...OPENROUTER_QUANTIZATIONS]),
   /** The request size past which Gemini takes media through its Files API, in bytes. */
   gemini_inline_max_bytes: z.number().int().positive().default(GEMINI_INLINE_MAX_BYTES),
   /** How often an uploaded Gemini file's state is asked about, in ms. */

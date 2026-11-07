@@ -331,6 +331,13 @@ describe("deployment overrides of LLM routes", () => {
   };
   const order = (list: readonly { upstreams: readonly { upstream: string }[] }[]): string[] => list[0]!.upstreams.map((u) => u.upstream);
 
+  it("refuses an OpenRouter quantization level OpenRouter does not have, naming where", () => {
+    // A misspelled level, as a hand-edited llm.yaml would carry it.
+    const config: ProviderConfigInput = { upstreams: llmUpstreams, media: { models: {} }, llm: { ...llm, openrouter_quantizations: ["fp8", "fp-8"] } as unknown as ProviderConfigInput["llm"] };
+    expect(() => createProvider({ config, keyOf: () => undefined, llmMaxRetries: 0, cleanText: (t) => t })).toThrow(/llm\.openrouter_quantizations\.1/);
+    expect(parseProviderConfig({ ...config, llm: { ...llm, openrouter_quantizations: ["int4", "nvfp4", "unknown"] } }).llm.openrouter_quantizations).toEqual(["int4", "nvfp4", "unknown"]);
+  });
+
   it("applies an llm override to the chat routes only", () => {
     const config = parseProviderConfig({ upstreams: llmUpstreams, media: { models: {} }, llm, routing: { llm: { "google/": { weights: { google: 1, openrouter: 0 } } } } });
     expect(order(config.llm.routes)).toEqual(["openrouter", "google"]);

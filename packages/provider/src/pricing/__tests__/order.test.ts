@@ -14,15 +14,17 @@ const NAMES = ["up_a", "up_b", "up_c"] as const;
  * A provider whose one model is bound to three upstreams at flat prices.
  * @param prices - Each upstream's price, in millionths of a dollar.
  * @param configured - Which upstreams have a key.
+ * @param vendorMax - The longest audio clip the model's vendor takes, as the model's own reject; null for none.
  * @returns The provider.
  */
-function priced(prices: readonly number[], configured: readonly boolean[] = [true, true, true]): ReturnType<typeof createProvider> {
+function priced(prices: readonly number[], configured: readonly boolean[] = [true, true, true], vendorMax: number | null = null): ReturnType<typeof createProvider> {
   return createProvider({
     config: {
       upstreams: Object.fromEntries(NAMES.map((n) => [n, { kind: "wavespeed", base_url: "https://x.example", key_env: `${n.toUpperCase()}_KEY` }])),
       media: {
         models: {
           m: {
+            ...(vendorMax === null ? {} : { rejects: [{ when: `get_duration(audio) > ${vendorMax}`, reason: "vendor audio limit", source: "https://vendor.example/limits" }] }),
             upstreams: NAMES.map((upstream, i) => ({
               upstream,
               weight: i + 1,
@@ -72,12 +74,17 @@ describe("orderByPrice and estimateCost", () => {
     }));
   });
 
-  it("property: the browser's estimate equals the server's for every route", async () => {
-    await fc.assert(fc.asyncProperty(pricesArb, configuredArb, fc.constantFrom(...NAMES), async (prices, configured, named) => {
-      const p = priced(prices, configured);
+  it("property: the browser's estimate equals the server's for every route, the model vendor's limits included", async () => {
+    const vendorMaxArb = fc.option(fc.integer({ min: 1, max: 30 }), { nil: null });
+    const clipArb = fc.option(fc.integer({ min: 1, max: 40 }), { nil: null });
+    await fc.assert(fc.asyncProperty(pricesArb, configuredArb, fc.constantFrom(...NAMES), vendorMaxArb, clipArb, async (prices, configured, named, vendorMax, clip) => {
+      const p = priced(prices, configured, vendorMax);
+      const run: EstimateInput = clip === null ? input : { ...input, params: { audio: "https://a/a.mp3" }, durations: { audio: [clip] } };
       for (const route of [{ mode: "default" as const }, { mode: "cheapest" as const }, { mode: "upstream" as const, upstream: named }]) {
         const rules = parsePricingRules(JSON.parse(JSON.stringify(p.pricingRules("m"))) as unknown);
-        expect(await estimateCost(rules, p.availability("m"), input, route)).toEqual(await p.estimate("m", input, route));
+        const server = await p.estimate("m", run, route);
+        expect(await estimateCost(rules, p.availability("m"), run, route)).toEqual(server);
+        if (vendorMax !== null && clip !== null && clip > vendorMax) expect(server).toBeNull();
       }
     }));
   });

@@ -297,7 +297,7 @@ function fieldNamer(rule: UpstreamPricing): (param: string) => string {
  * @param fieldOf - The field each of our params goes under (an upstream's `fieldNamer`); our own names when left out.
  * @returns The fields and the clip lengths.
  */
-function upstreamRun(input: EstimateInput, fieldOf: (param: string) => string = (param) => param): { fields: Record<string, unknown>; durations: Record<string, readonly number[]> } {
+function runIn(input: EstimateInput, fieldOf: (param: string) => string = (param) => param): { fields: Record<string, unknown>; durations: Record<string, readonly number[]> } {
   const fields: Record<string, unknown> = {};
   for (const [param, value] of Object.entries(input.params)) if (isPresent(value)) fields[fieldOf(param)] = value;
   const durations: Record<string, readonly number[]> = {};
@@ -309,14 +309,14 @@ function upstreamRun(input: EstimateInput, fieldOf: (param: string) => string = 
  * What one upstream would charge for a run, and how sure that is; the prompt is priced as it is sent.
  * @param rule - The upstream's pricing.
  * @param input - The prepared run.
- * @param run - The run in the upstream's field names (`upstreamRun`); its prompt field is set here.
+ * @param run - The run in the upstream's field names (`runIn`); its prompt field is set here.
  * @param run.fields - The fields.
  * @param run.durations - The clip lengths.
  * @returns The estimate.
  * @throws {jsonata.JsonataError} When a formula is not valid JSONata or fails to evaluate (a plain object, not an Error instance).
  * @throws {Error} When a formula gives no finite total_price for this run.
  */
-async function estimateOn(rule: UpstreamPricing, input: EstimateInput, { fields, durations }: ReturnType<typeof upstreamRun>): Promise<Estimate> {
+async function estimateOn(rule: UpstreamPricing, input: EstimateInput, { fields, durations }: ReturnType<typeof runIn>): Promise<Estimate> {
   const fieldOf = fieldNamer(rule);
   const formulas = [rule.pricing.formula, ...rule.steps.map((s) => s.pricing?.formula ?? "")];
   let unknown = input.placeholders.some((p) => reads(formulas, fieldOf(p)))
@@ -374,7 +374,7 @@ async function estimateOn(rule: UpstreamPricing, input: EstimateInput, { fields,
  * @param read - The run in the names they read.
  * @returns Its reason, or its reason and the evaluator's message when it cannot be evaluated; undefined when none holds.
  */
-async function firstHeld(rejects: readonly Reject[], read: ReturnType<typeof upstreamRun>): Promise<RejectedInput | undefined> {
+async function firstHeld(rejects: readonly Reject[], read: ReturnType<typeof runIn>): Promise<RejectedInput | undefined> {
   for (const { when, reason } of rejects) {
     try {
       if (await holds(when, read.fields, read.durations)) return { reason };
@@ -386,7 +386,7 @@ async function firstHeld(rejects: readonly Reject[], read: ReturnType<typeof ups
 }
 
 /**
- * The rules of each upstream, by name.
+ * One upstream's rule among a model's.
  * @param rules - A model's pricing rules.
  * @param upstream - The upstream.
  * @returns Its rule, if the model is priced there.
@@ -425,15 +425,11 @@ async function assessed(rule: UpstreamPricing, input: EstimateInput, vendor: rea
   }
   const written = input.prompt === "" ? "" : mentionsWritten(rule.mentions, input.prompt);
   // The vendor's limits read our names, the upstream's own its fields; the vendor's are checked first.
-  let hit: RejectedInput | undefined;
-  if (vendor.length > 0) {
-    const ours = upstreamRun(input);
-    if (written !== "") ours.fields.prompt = written;
-    hit = await firstHeld(vendor, ours);
-  }
-  const run = upstreamRun(input, fieldNamer(rule));
+  const ours = runIn(input);
+  if (written !== "") ours.fields.prompt = written;
+  const run = runIn(input, fieldNamer(rule));
   if (rule.prompt_field !== undefined && written !== "") run.fields[rule.prompt_field] = written;
-  hit ??= await firstHeld(rule.rejects ?? [], run);
+  const hit = (await firstHeld(vendor, ours)) ?? (await firstHeld(rule.rejects ?? [], run));
   if (hit !== undefined) return { rejected: hit };
   try {
     return { estimate: await estimateOn(rule, input, run) };

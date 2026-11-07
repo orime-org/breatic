@@ -36,10 +36,8 @@ export interface UnderstandCall {
   question: string;
   media: { bytes: Uint8Array; contentType: string }[];
   maxOutputTokens: number;
-  /** OpenRouter's backend pin for the model, when it has one. */
-  backend?: { only: string[]; allow_fallbacks: boolean };
-  /** For a cheapest call through OpenRouter: try its endpoints cheapest first, within these quantizations. */
-  cheapest?: { sort: "price"; quantizations: readonly string[] };
+  /** OpenRouter's `provider` object for the call, sent as given: the model's backend pin and, for a cheapest call, the price sort. */
+  provider?: Record<string, unknown>;
   deadlineAt: number;
   signal: AbortSignal;
   /** The size past which Gemini takes media through its Files API, in bytes. */

@@ -711,6 +711,16 @@ describe.each(cases)("$model on $binding.upstream", ({ model, binding }) => {
     expect(await rejectedInput(provider.pricingRules(model), binding.upstream, sampleRun(base, SAMPLE_TEXT)), JSON.stringify(base)).toBeUndefined();
   });
 
+  it("refuses no run for an empty prompt that it takes once the prompt is filled, by a reject at either level", async () => {
+    // Whether the prompt is filled is the application's check at submit: a reject on it blanks the estimate before the user has typed.
+    const rules = provider.pricingRules(model);
+    const base = await takenRun(model, binding, snapshot);
+    const empty = await rejectedInput(rules, binding.upstream, sampleRun(base, ""));
+    const filled = await rejectedInput(rules, binding.upstream, sampleRun(base, SAMPLE_TEXT));
+    const blanked = empty !== undefined && "reason" in empty && filled === undefined ? `${model} on ${binding.upstream}: ${empty.reason}` : undefined;
+    expect(blanked).toBeUndefined();
+  });
+
   it("writes every param, and every field of its list items, into a field the upstream has", () => {
     const unknown: string[] = [];
     for (const [name, bound] of Object.entries(binding.params ?? {})) {

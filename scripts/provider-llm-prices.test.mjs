@@ -59,9 +59,9 @@ test("leaves out a service-tier endpoint, which a price-sorted call never reache
   assert.deepEqual(openRouterPrices(endpoints, new Map([["m", "m"]]), TAKEN).prices, { m: { input_cache_miss_per_mtok: 0.3, output_per_mtok: 2.5 } });
 });
 
-test("ranks a pinned model only over the endpoints of the providers it is pinned to", () => {
+test("ranks a pinned model only over the endpoints of the providers it is pinned to, the pin read as llm.yaml writes it", () => {
   const endpoints = new Map([["m", [endpoint("google-ai-studio", "0.0000001", "0.000001"), endpoint("google-vertex-x", "0.0000002", "0.000002"), endpoint("google-vertex/us", "0.0000004", "0.000004"), endpoint("google-vertex", "0.0000003", "0.000003")]]]);
-  const { prices, problems } = openRouterPrices(endpoints, new Map([["m", "m"]]), TAKEN, new Map([["m", ["google-vertex"]]]));
+  const { prices, problems } = openRouterPrices(endpoints, new Map([["m", "m"]]), TAKEN, { m: { only: ["google-vertex"], allow_fallbacks: false } });
   assert.deepEqual(prices, { m: { input_cache_miss_per_mtok: 0.3, output_per_mtok: 3 } });
   assert.deepEqual(problems, []);
 });

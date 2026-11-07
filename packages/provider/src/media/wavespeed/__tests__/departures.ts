@@ -59,6 +59,13 @@ const shotsOffTotal = (run: Run): boolean => {
 };
 
 /**
+ * Whether a Seedance 2.5 run asks for 4K, which ByteDance's Seedance 2.5 does not output.
+ * @param run - The run.
+ * @returns True when it does.
+ */
+const seedance4k = (run: Run): boolean => run.params.resolution === "4k";
+
+/**
  * Runs outside a limit the model's vendor states, by model, in the vendor's words: the model's own `rejects` refuse
  * them on every upstream. Today's code estimated them on WaveSpeed.
  */
@@ -71,6 +78,10 @@ export const OUTSIDE_VENDOR: Readonly<Record<string, (run: Run) => boolean>> = {
   // Kling: "sum of all shot durations must equal the total video duration".
   "kling-v3.0-4k-text-to-video": shotsOffTotal,
   "kling-video-o3-4k-image-to-video": shotsOffTotal,
+  // ByteDance: "Dreamina Seedance 2.5: Default 720p; supports 480p, 720p, and 1080p".
+  "seedance-2.5-text-to-video": seedance4k,
+  "seedance-2.5-image-to-video": seedance4k,
+  "seedance-2.5-video-extend": seedance4k,
   // MiniMax: "Audio duration: at least 10 seconds, no longer than 5 minutes".
   "minimax-voice-clone": (r) => (r.durations?.audio ?? []).some((s) => s < 10 || s > 300),
 };

@@ -23,7 +23,7 @@ models:
         source: https://platform.mureka.ai/docs/api/operations/post-v1-song-generate.html
       - when: $length(prompt) > 2000
         reason: "Mureka song/easy-generate prompt: maximum 2000 characters"
-        source: https://platform.mureka.ai/docs/assets/chunks/theme.M7F0Joug.js
+        source: https://platform.mureka.ai/docs/api/operations/post-v1-song-easy-generate.html
       - when: $length(lyrics) > 5000
         reason: "Mureka song/generate lyrics: maximum 5000 characters"
         source: https://platform.mureka.ai/docs/api/operations/post-v1-song-generate.html
@@ -35,7 +35,7 @@ models:
         source: https://platform.mureka.ai/docs/api/operations/post-v1-files-upload.html
       - when: get_duration(vocal, min=15, max=1000000, total=1000000) > get_duration(vocal)
         reason: "Mureka song/vocal-clone file: supported vocal duration range is [15,30] seconds"
-        source: https://platform.mureka.ai/docs/assets/chunks/theme.M7F0Joug.js
+        source: https://platform.mureka.ai/docs/api/operations/post-v1-song-vocal-clone.html
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -129,8 +129,6 @@ models:
               formula: ""
               discount_rate: 100
         rejects:
-          - when: $not($exists(prompt) or $exists(lyrics))
-            reason: "fal prompt: Required when lyrics is omitted"
           - when: get_duration(vocal_id) > 30
             reason: "fal mureka/api/voice/clone audio: up to 30 seconds (Mureka trims past 30)"
         pricing:
@@ -404,6 +402,9 @@ models:
       - when: append_duration > 57
         reason: "Mirelo sfx-1.6 extend append_duration_ms: max 57000"
         source: https://mirelo.ai/api-docs.md
+      - when: get_duration(audio) + append_duration > 60
+        reason: "Mirelo extend: your source must be at least 3 seconds long, and the result is capped at 60 seconds"
+        source: https://api.mirelo.ai/v3/openapi.json
       - when: $length(prompt) > 5000
         reason: Mirelo sfx-1.6 max_prompt_chars 5000
         source: https://mirelo.ai/api-docs.md
@@ -424,11 +425,6 @@ models:
             field: double_output
           num_samples:
             field: num_samples
-        rejects:
-          - when: get_duration(audio_url) > 59
-            reason: "fal audio_url: The prefix duration must be 3–59 seconds"
-          - when: get_duration(audio_url) + append_duration > 60
-            reason: "fal audio_url: the total output (prefix + append_duration) is capped at 60 seconds"
         pricing:
           kind: formula
           base_price: 10000

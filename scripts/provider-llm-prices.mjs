@@ -9,8 +9,9 @@
  * the cheapest such endpoint OpenRouter lists for the model
  * (`GET https://openrouter.ai/api/v1/models/{author}/{slug}/endpoints`). A service-tier endpoint (flex,
  * priority, fast) is reached only through `:floor`, `:nitro` or `service_tier`, never by `sort: "price"`
- * (OpenRouter's provider-selection docs), so it is not ranked; a model pinned to providers
- * (`openrouter_backends[model].only`) is ranked only over their endpoints, the ones its call can reach.
+ * (OpenRouter's provider-selection docs), so it is not ranked. A model pinned to providers
+ * (`openrouter_backends[model].only`) is ranked over their endpoints, the ones an understand call is held to; a
+ * prepared call is not pinned, so it is priced at that or less.
  */
 
 /**
@@ -42,10 +43,10 @@ function pinnedTo(tag, only) {
  * @param {ReadonlyMap<string, readonly { tag?: unknown; service_tier?: unknown; quantization?: unknown; pricing?: { prompt?: unknown; completion?: unknown } }[]>} endpoints - The endpoints OpenRouter lists, by OpenRouter's model id; a model it does not list is absent.
  * @param {ReadonlyMap<string, string>} ids - Our model id to the id OpenRouter lists it under.
  * @param {readonly string[]} quantizations - The quantizations a cheapest call takes; an endpoint naming none is `unknown`.
- * @param {ReadonlyMap<string, readonly string[]>} [pins] - Our model id to the providers `openrouter_backends` pins it to.
+ * @param {Readonly<Record<string, { only: readonly string[]; allow_fallbacks: boolean }>>} [backends] - `openrouter_backends` as llm.yaml writes it: by our model id, the providers it is pinned to.
  * @returns {{ prices: Record<string, { input_cache_miss_per_mtok: number; output_per_mtok: number }>; problems: string[] }} The prices by our model id, and a problem for each model given no price.
  */
-export function openRouterPrices(endpoints, ids, quantizations, pins = new Map()) {
+export function openRouterPrices(endpoints, ids, quantizations, backends = {}) {
   /** @type {Record<string, { input_cache_miss_per_mtok: number; output_per_mtok: number }>} */
   const prices = {};
   /** @type {string[]} */
@@ -57,7 +58,7 @@ export function openRouterPrices(endpoints, ids, quantizations, pins = new Map()
       continue;
     }
     const fixed = listed
-      .filter((e) => e.service_tier == null && pinnedTo(e.tag, pins.get(ours)))
+      .filter((e) => e.service_tier == null && pinnedTo(e.tag, backends[ours]?.only))
       .filter((e) => quantizations.includes(typeof e.quantization === "string" ? e.quantization : "unknown"))
       .map((e) => ({ input: perMtok(e.pricing?.prompt), output: perMtok(e.pricing?.completion) }))
       .filter((p) => p.input !== undefined && p.output !== undefined)

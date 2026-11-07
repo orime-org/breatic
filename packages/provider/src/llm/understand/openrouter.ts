@@ -102,7 +102,7 @@ export const openRouterUnderstand: UnderstandAdapter = {
       model: call.modelId,
       max_tokens: call.maxOutputTokens,
       messages: [{ role: "user", content }],
-      ...(call.backend === undefined && call.cheapest === undefined ? {} : { provider: { ...call.backend, ...call.cheapest } }),
+      ...(call.provider === undefined ? {} : { provider: call.provider }),
     };
     return exchange(
       {
