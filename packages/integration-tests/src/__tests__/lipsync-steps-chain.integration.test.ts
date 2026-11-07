@@ -11,7 +11,9 @@
  * `/jobs` boundary and the stored full ledger, faked at `fetch` (every job done at once unless a case scripts it).
  *
  * What is asserted, all at those boundaries or in SQL:
- * - track: SAM3's `rle_url` is fetched into the derived key `${stepKeys.track}:${attemptId}` (the step's
+ * - track (execution design §10.2): the anchor at frame 12 of the used frames [0, 50) gives the shared `prepare:fwd` over
+ *   [12, 50) and `prepare:rev` over [0, 12] reversed; each person tracks both clips with its box on their frame 0, each
+ *   SAM3 `rle_url` is fetched into the derived key `${stepKeys["track:fwd" | "track:rev"]}:${attemptId}` (the step's
  *   `MiniToolStepAttempt.attemptId`), pinned on the run's execution pin, with no `studio_assets` row (D21-1).
  * - faces, clip, stem, composite: standard-4 container jobs with the §7.17 recipes (shapes of §97 D20-1), their job ids
  *   built from the step key and an attempt ordinal and their outputs at `videoPresentationWorkKeyFor(sourceKey, jobId)`
@@ -35,11 +37,11 @@ import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import { createPgClient, getStorageAdapter, initCore, loadLocales } from "@breatic/core";
 import type * as coreModule from "@breatic/core";
-import { lipsyncSharedStepKeys, miniToolStepStateSchema, presentationPinService, taskRepo, upstreamStepRepo } from "@breatic/domain";
+import { lipsyncPersonStepKeys, lipsyncSharedStepKeys, miniToolStepStateSchema, presentationPinService, taskRepo, upstreamStepRepo } from "@breatic/domain";
 import type * as sharedModule from "@breatic/shared";
 import type * as domainModule from "@breatic/domain";
 import { isUploadableMediaType, sniffMimeType, UploadHttpError, verifyUploadTicket, videoPresentationWorkKeyFor } from "@breatic/shared";
-import { lipsyncFailureReasonSchema, plannedStageJobs } from "@breatic/shared/mini-tools";
+import { lipsyncFailureReasonSchema, plannedStageJobs, trackingClips } from "@breatic/shared/mini-tools";
 import type * as wavespeedModule from "@worker/providers/wavespeed.js";
 import { HttpStatusError, UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
@@ -101,6 +103,8 @@ const PEOPLE = ["person-1", "person-3"] as const;
 type Person = (typeof PEOPLE)[number];
 const BOX_X: Record<number, Person> = { 80: "person-1", 200: "person-3" };
 const LAYOUT = { preparation: [{ start: 0, end: 50 }], persons: 2, composite: [{ start: 0, end: 25 }, { start: 25, end: 50 }] };
+// Both people's anchor is frame 12 of the used frames [0, 50): a forward clip [12, 50) and a reversed one [0, 12].
+const CLIPS = trackingClips({ start: 0, end: 50 }, 12);
 
 type Exact = { numerator: string; denominator: string };
 /**
@@ -134,8 +138,8 @@ function configure(): void {
  */
 function done(request: Job): Record<string, unknown> {
   // The Worker measures each written output by its bytes and fails the job when that differs from the planned type
-  // (ingest job-write.ts); a faces table is JSON text.
-  if (request.outputs.some((output) => output.recipe.kind === "lipsync_faces" && output.contentType !== jsonType)) {
+  // (ingest job-write.ts); a faces table and a joined RLE are JSON text.
+  if (request.outputs.some((output) => (output.recipe.kind === "lipsync_faces" || output.recipe.kind === "rle_join") && output.contentType !== jsonType)) {
     return { schemaVersion: 2, state: "failed", reason: "internal", outputs: [], usage: { wallMs: 1000, cpuUsec: 2000000 } };
   }
   return { schemaVersion: 2, state: "done", usage: { wallMs: 1000, cpuUsec: 2000000 }, outputs: request.outputs.map((output) => ({
@@ -180,8 +184,9 @@ beforeEach(() => {
     if (model === TRACKER) {
       // The provider reads the endpoint's field names: the renamed ones when a case renames them (LU01).
       const person = BOX_X[(((outside.rename ? body.boxes : body.box_prompts) as { x_min: number }[])[0]!).x_min]!;
+      const direction = directionOfClip(String(outside.rename ? body.source_video : body.video));
       if (resume.storedTaskId === null) await resume.persistTaskId(id);
-      return { taskId: id, outputs: [{ rle_url: `https://provider.example.test/rle/${person}.json`, video_url: `https://provider.example.test/preview/${person}.mp4` }] };
+      return { taskId: id, outputs: [{ rle_url: `https://provider.example.test/rle/${person}-${direction}.json`, video_url: `https://provider.example.test/preview/${person}.mp4` }] };
     }
     const person = personOfClip(String(outside.rename ? body.input_video : body.video));
     if (person !== null && genFault[person] !== undefined) throw genFault[person];
@@ -214,12 +219,22 @@ function personOfClip(url: string): Person | null {
 }
 
 /**
+ * The tracking clip whose preparation wrote the object at a URL.
+ * @param url - A public URL.
+ * @returns The clip's direction, or "unknown".
+ */
+function directionOfClip(url: string): string {
+  const job = submitted.find((candidate) => candidate.outputs[0]?.recipe.kind === "prepare_model_input" && publicUrl(candidate.outputs[0].storageKey) === url);
+  return String(job?.outputs[0]?.recipe.order ?? "unknown");
+}
+
+/**
  * The person a per-person container job belongs to, by the person's frozen step keys in its job id.
  * @param job - The job.
  * @returns The person, or null for a shared job.
  */
 function personOfJob(job: Job): Person | null {
-  for (const person of PEOPLE) for (const kind of ["faces", "clip", "stem"]) if (job.jobId.includes(lipsyncStepKey(PLAN, person, kind as "faces"))) return person;
+  for (const person of PEOPLE) for (const kind of ["track_join", "faces", "clip", "stem"]) if (job.jobId.includes(lipsyncStepKey(PLAN, person, kind as "faces"))) return person;
   return null;
 }
 
@@ -258,14 +273,14 @@ async function seed(overrides: Record<string, unknown> = {}): Promise<Fixture> {
     persons: [
       { personId: "person-1", detectionNumber: 1, anchor: { frameIndex: 12, pts: 0.48 }, anchorFaceBox: { x: 0.25, y: 0.2, width: 0.2, height: 0.3 } },
       { personId: "person-3", detectionNumber: 3, anchor: { frameIndex: 12, pts: 0.48 }, anchorFaceBox: { x: 0.625, y: 0.4, width: 0.125, height: 0.2 } },
-    ].map((person) => ({ ...person, stepKeys: Object.fromEntries((["track", "faces", "clip", "stem", "gen"] as const).map((kind) => [kind, lipsyncStepKey(PLAN, person.personId, kind)])) })),
+    ].map((person) => ({ ...person, stepKeys: lipsyncPersonStepKeys(PLAN, person, CLIPS) })),
     tracking: { model: "sam3-video-rle" }, cropSize: 512,
     container: { containerClass: "MiniToolContainerStd4", precheckSeconds: 300, size: { instance_type: "standard-4", vcpu: 4, memory_gib: 12, disk_gb: 20 },
       prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
       limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, startSeconds: 3, encode: { crf: 18, preset: "medium" }, chunkRetries: 2 },
     layout: LAYOUT, stageJobs: plannedStageJobs(LAYOUT),
     // Frozen like admission freezes them (DD §7.1 steps row; §97 D25-5).
-    sharedStepKeys: lipsyncSharedStepKeys(PLAN, LAYOUT.composite.length),
+    sharedStepKeys: lipsyncSharedStepKeys(PLAN, LAYOUT.composite.length, CLIPS),
     ...overrides,
   } as Fixture["execution"];
   await pg`INSERT INTO tasks (id,user_id,project_id,space_id,task_type,mode,source,status,model,params,result)
@@ -351,15 +366,26 @@ async function attemptOf(f: Fixture, endpoint: string, match: (body: Record<stri
 }
 
 /**
- * A person's derived RLE key: the track step key and the track attempt's id.
+ * A person's derived RLE key of one tracking clip: that track step's key and its attempt's id.
  * @param f - The fixture.
+ * @param person - The person.
+ * @param direction - The clip.
+ * @returns The key.
+ */
+async function rleKey(f: Fixture, person: Person, direction: "fwd" | "rev"): Promise<string> {
+  const x = Number(Object.entries(BOX_X).find(([, who]) => who === person)![0]);
+  const order = direction === "fwd" ? "forward" : "reverse";
+  const attempt = await attemptOf(f, TRACKER, (body) => (body.box_prompts as { x_min: number }[])[0]!.x_min === x && directionOfClip(String(body.video)) === order);
+  return lipsyncObjectKey(lipsyncStepKey(PLAN, person, `track:${direction}`), attempt);
+}
+
+/**
+ * A person's joined RLE: the output of its track_join job.
  * @param person - The person.
  * @returns The key.
  */
-async function rleKey(f: Fixture, person: Person): Promise<string> {
-  const x = Number(Object.entries(BOX_X).find(([, who]) => who === person)![0]);
-  const attempt = await attemptOf(f, TRACKER, (body) => (body.box_prompts as { x_min: number }[])[0]!.x_min === x);
-  return lipsyncObjectKey(lipsyncStepKey(PLAN, person, "track"), attempt);
+function joinedKey(person: Person): string {
+  return personJob("rle_join", person).outputs[0]!.storageKey;
 }
 
 /**
@@ -375,22 +401,53 @@ function personJob(kind: string, person: Person): Job {
 }
 
 describe("lip-sync step bodies after track submits (§97 D21; execution design §9.1–§9.3; DD §7.2)", () => {
-  it("LC01 fetches each person's SAM3 RLE link into ${track step key}:${attemptId}, pins it and registers no asset", async () => {
+  it("LC00 prepares the shared forward and reversed clips once and tracks each on its frame 0 for every person (§10.2)", async () => {
+    const f = await seed(); await drive(f);
+    const shared = f.execution.sharedStepKeys as Record<string, string>;
+    const clipJob = (order: string): Job => {
+      const found = jobsOf("prepare_model_input").filter((job) => job.outputs[0]!.recipe.order === order);
+      expect(found, `the ${order} clip`).toHaveLength(1);
+      return found[0]!;
+    };
+    const [forward, reverse] = [clipJob("forward"), clipJob("reverse")];
+    expect(forward.jobId).toContain(shared["prepare:fwd"]);
+    expect(reverse.jobId).toContain(shared["prepare:rev"]);
+    expect(forward.outputs[0]!.recipe.window).toEqual({ start: 12, end: 50 });
+    expect(reverse.outputs[0]!.recipe.window).toEqual({ start: 0, end: 13 });
+    const tracks = outside.runPrediction.mock.calls.filter((call) => call[1] === TRACKER).map((call) => call[2] as { video: string; box_prompts: { frame_index: number; x_min: number }[] });
+    expect(tracks).toHaveLength(4);
+    for (const person of PEOPLE) for (const job of [forward, reverse]) {
+      const x = Number(Object.entries(BOX_X).find(([, who]) => who === person)![0]);
+      const mine = tracks.filter((body) => body.video === publicUrl(job.outputs[0]!.storageKey) && body.box_prompts[0]!.x_min === x);
+      expect(mine.map((body) => body.box_prompts[0]!.frame_index), `${person} on the ${String(job.outputs[0]!.recipe.order)} clip`).toEqual([0]);
+    }
+  });
+
+  it("LC01 fetches each clip's SAM3 RLE link into ${track step key}:${attemptId}, pins it, and joins both for faces", async () => {
     const f = await seed(); await drive(f);
     for (const person of PEOPLE) {
-      const key = await rleKey(f, person);
-      expect(outside.fetchUrl.mock.calls.map((call) => call[0])).toContain(`https://provider.example.test/rle/${person}.json`);
-      expect(await pinned(f.execution.taskId)).toContain(key);
-      expect(await assetsAt([key])).toBe(0);
-      // The faces step reads that object (§7.17 lipsync_faces row).
+      const keys = { fwd: await rleKey(f, person, "fwd"), rev: await rleKey(f, person, "rev") };
+      for (const [direction, key] of Object.entries(keys)) {
+        expect(outside.fetchUrl.mock.calls.map((call) => call[0])).toContain(`https://provider.example.test/rle/${person}-${direction === "fwd" ? "forward" : "reverse"}.json`);
+        expect(await pinned(f.execution.taskId)).toContain(key);
+        expect(await assetsAt([key])).toBe(0);
+      }
+      const join = personJob("rle_join", person);
+      expect(join.jobId).toContain(f.execution.persons.find((p) => p.personId === person)!.stepKeys.track_join);
+      const recipe = join.outputs[0]!.recipe as { inputs: { inputId: string; order: string; frameCount: number }[] };
+      expect(recipe.inputs.map((input) => ({ key: bound(join, input.inputId), order: input.order, frameCount: input.frameCount })).sort((a, b) => a.order.localeCompare(b.order)))
+        .toEqual([{ key: keys.fwd, order: "forward", frameCount: 38 }, { key: keys.rev, order: "reverse", frameCount: 13 }]);
+      expect(join.outputs[0]).toMatchObject({ contentType: jsonType });
+      expect(await pinned(f.execution.taskId)).toContain(joinedKey(person));
+      // The faces step reads the joined object (§7.17 lipsync_faces row).
       const faces = personJob("lipsync_faces", person);
-      expect(bound(faces, faces.outputs[0]!.recipe.track)).toBe(key);
+      expect(bound(faces, faces.outputs[0]!.recipe.track)).toBe(joinedKey(person));
     }
   });
 
   it("LC02 runs one lipsync_faces job per person on the prepared video and the person's RLE, keyed by its step key, output pinned", async () => {
     const f = await seed(); await drive(f);
-    const preparedKey = submitted.find((job) => job.outputs[0]?.recipe.kind === "prepare_model_input")?.outputs[0]?.storageKey;
+    const preparedKey = submitted.find((job) => job.outputs[0]?.recipe.kind === "prepare_model_input" && job.outputs[0].recipe.order === undefined)?.outputs[0]?.storageKey;
     expect(preparedKey).toBeDefined();
     for (const person of PEOPLE) {
       const job = personJob("lipsync_faces", person);
@@ -416,7 +473,7 @@ describe("lip-sync step bodies after track submits (§97 D21; execution design �
       expect(stem.jobId).toContain(keys.stem);
       const c = clip.outputs[0]!.recipe;
       expect(bound(clip, c.faces)).toBe(faces.outputs[0]!.storageKey);
-      expect(bound(clip, c.track)).toBe(await rleKey(f, person));
+      expect(bound(clip, c.track)).toBe(joinedKey(person));
       expect(c).toMatchObject({ cropSize: 512, timeline: { duration: 2, videoDuration: 3.84, syncMode: "cut_off" } });
       expect(clip.outputs[0]).toMatchObject({ storageKey: videoPresentationWorkKeyFor(SOURCE_KEY, clip.jobId), contentType: "video/mp4" });
       // Times are exact rationals, as every recipe carries them (§97 D20-1 lipsync_stem shape).
@@ -534,7 +591,7 @@ describe("a lip-sync retry reuses the done steps by their frozen keys (§97 D21-
     // Person 1's own steps: a generate step whose body is person 1's (its track box or its person video), or a container
     // step whose own job id carries one of person 1's step keys. Composite and stitch jobs read person 1's objects as inputs
     // and are shared steps, so they are not counted here.
-    const person1Keys = (["track", "faces", "clip", "stem", "gen"] as const).map((kind) => lipsyncStepKey(PLAN, "person-1", kind));
+    const person1Keys = Object.values(original.execution.persons.find((person) => person.personId === "person-1")!.stepKeys);
     const person1Steps = steps.filter((step) => {
       const body = step.output.miniToolStep === undefined ? null : miniToolStepStateSchema.parse(step.output.miniToolStep).requestBody as { video?: string; box_prompts?: { x_min: number }[] } | null;
       const jobId = (step.output.miniToolPlanJob as { jobId?: string } | undefined)?.jobId ?? "";
@@ -594,7 +651,7 @@ describe("lip-sync request bodies follow the model yaml's upstream names (§97 D
     const track = outside.runPrediction.mock.calls.find((call) => call[1] === TRACKER)![2] as Record<string, unknown>;
     expect(Object.keys(track).sort()).toEqual(["boxes", "mask_preview", "prompt", "source_video"]);
     expect(track.mask_preview).toBe(false);
-    expect((track.boxes as Record<string, unknown>[])[0]).toMatchObject({ frame_index: 12, object_id: 1 });
+    expect((track.boxes as Record<string, unknown>[])[0]).toMatchObject({ frame_index: 0, object_id: 1 });
     const gen = outside.runPrediction.mock.calls.find((call) => call[1] === GENERATOR)![2] as Record<string, unknown>;
     expect(Object.keys(gen).sort()).toEqual(["input_audio", "input_video", "mode"]);
     expect(gen.mode).toBe("cut_off");

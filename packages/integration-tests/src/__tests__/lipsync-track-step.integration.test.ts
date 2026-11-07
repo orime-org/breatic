@@ -8,7 +8,8 @@
  * Real PostgreSQL task, step, attempt and identity boundaries; WaveSpeed `runPrediction` and the ingest `/jobs` boundary
  * (faked at `fetch`, every job done at once) are the controlled external IO, as in remove-background-execution. The step
  * runs through the runner's seam `runLipSyncStep(execution, { kind, personId }, userId, deadlineAt)`
- * (`lipsync-step-run.ts`, §97 D18-2): the shared `prepare` step first, then each person's `track`.
+ * (`lipsync-step-run.ts`, §97 D18-2): the shared `prepare` and `prepare:fwd` steps first, then each person's `track:fwd`
+ * (execution design §10.2: the anchor at frame 12 of [0, 50) tracks the forward clip [12, 50) from its frame 0).
  *
  * What the design fixes and this file asserts: each referenced person gets its own `generate` step to the tracking model
  * (`tracking.model`, catalog `sam3-video-rle`, provider `wavespeed-ai/sam3-video-rle`), on the prepared video of the used
@@ -26,14 +27,13 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import { createPgClient, getStorageAdapter, initCore, loadLocales } from "@breatic/core";
-import { lipsyncSharedStepKeys, miniToolStepStateSchema, taskRepo, upstreamStepRepo } from "@breatic/domain";
-import { plannedStageJobs } from "@breatic/shared/mini-tools";
+import { lipsyncPersonStepKeys, lipsyncSharedStepKeys, miniToolStepStateSchema, taskRepo, upstreamStepRepo } from "@breatic/domain";
+import { plannedStageJobs, trackingClips } from "@breatic/shared/mini-tools";
 import type * as wavespeedModule from "@worker/providers/wavespeed.js";
 import { HttpStatusError } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { runLipSyncStep } from "@worker/handlers/mini-tool/lipsync-step-run.js";
-import { lipsyncStepKey } from "@worker/handlers/mini-tool/lipsync-steps.js";
 import { seedStudioFixture } from "@server/__tests__/integration/studio-credit-fixtures.js";
 import { fakeIngestJobs, INGEST_ENV, type IngestJobsFake } from "./ingest-jobs-fake.js";
 
@@ -58,6 +58,7 @@ const PERSONS = [
 ];
 const PIXEL_BOXES = { "person-1": { x_min: 80, y_min: 36, x_max: 144, y_max: 90 }, "person-3": { x_min: 200, y_min: 72, x_max: 240, y_max: 108 } };
 const LAYOUT = { preparation: [{ start: 0, end: 50 }], persons: 2, composite: [{ start: 0, end: 50 }] };
+const CLIPS = trackingClips({ start: 0, end: 50 }, 12);
 
 let pg: ReturnType<typeof createPgClient>;
 let publicUrl: (key: string) => string;
@@ -99,14 +100,13 @@ async function seed(): Promise<Fixture> {
       { dialogueId: "row-2", personId: "person-3", audioInputId: randomUUID(), startTime: 0.5, duration: 1.5 },
     ],
     // DD §7.1 persons row (§97 D21-6): each person's step keys are frozen with it.
-    persons: PERSONS.map((person) => ({ ...person, stepKeys: Object.fromEntries((["track", "faces", "clip", "stem", "gen"] as const)
-      .map((kind) => [kind, lipsyncStepKey("d".repeat(64), person.personId, kind)])) })), tracking: { model: "sam3-video-rle" }, cropSize: 512,
+    persons: PERSONS.map((person) => ({ ...person, stepKeys: lipsyncPersonStepKeys("d".repeat(64), person, CLIPS) })), tracking: { model: "sam3-video-rle" }, cropSize: 512,
     container: { containerClass: "MiniToolContainerStd4", precheckSeconds: 300, size: { instance_type: "standard-4", vcpu: 4, memory_gib: 12, disk_gb: 20 },
       prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
       limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, startSeconds: 3, encode: { crf: 18, preset: "medium" }, chunkRetries: 2 },
     layout: LAYOUT, stageJobs: plannedStageJobs(LAYOUT),
     // Frozen like admission freezes them (DD §7.1 steps row; §97 D25-5).
-    sharedStepKeys: lipsyncSharedStepKeys("d".repeat(64), LAYOUT.composite.length),
+    sharedStepKeys: lipsyncSharedStepKeys("d".repeat(64), LAYOUT.composite.length, CLIPS),
   };
   await pg`INSERT INTO tasks (id,user_id,project_id,space_id,task_type,mode,source,status,model,params,result)
     VALUES (${taskId},${target.userId},${target.projectId},${spaceId},'video','append','mini_tool','running',${execution.model},${pg.json({ miniToolExecution: execution })},${pg.json({})})`;
@@ -116,23 +116,35 @@ async function seed(): Promise<Fixture> {
 }
 
 /**
- * Run the shared prepare step until it is done.
+ * Run a shared step until it is done.
  * @param f - The fixture.
- * @returns The storage key of the prepared video: the output of the last preparation job submitted.
- * @throws {Error} When the preparation does not finish in four pickups.
+ * @param kind - The step.
+ * @returns The storage key the last job submitted wrote.
+ * @throws {Error} When the step does not finish in four pickups.
  */
-async function prepared(f: Fixture): Promise<string> {
+async function sharedDone(f: Fixture, kind: "prepare" | "prepare:fwd"): Promise<string> {
   for (let pickup = 0; pickup < 4; pickup += 1) {
-    const outcome = await runLipSyncStep(f.execution, { kind: "prepare", personId: null }, f.userId, f.deadlineAt)
+    const outcome = await runLipSyncStep(f.execution, { kind, personId: null }, f.userId, f.deadlineAt)
       .catch((error: unknown) => { if (error instanceof StillRunning) return { state: "running" as const }; throw error; });
     if (outcome.state === "done") {
       const last = jobs.submitted.at(-1) as { outputs: { storageKey: string }[] } | undefined;
-      if (last === undefined) throw new Error("The preparation submitted no job");
+      if (last === undefined) throw new Error(`${kind} submitted no job`);
       return last.outputs[0]!.storageKey;
     }
     expect(outcome.state).toBe("running");
   }
-  throw new Error("The preparation never finished");
+  throw new Error(`${kind} never finished`);
+}
+
+/**
+ * Run the shared preparations the forward track needs.
+ * @param f - The fixture.
+ * @returns The storage key of the forward clip.
+ * @throws {Error} When a preparation does not finish.
+ */
+async function prepared(f: Fixture): Promise<string> {
+  await sharedDone(f, "prepare");
+  return sharedDone(f, "prepare:fwd");
 }
 
 /**
@@ -145,7 +157,7 @@ async function trackSteps(f: Fixture): Promise<Awaited<ReturnType<typeof upstrea
 }
 
 describe("the lip-sync track step (§97; execution design §9.1, §9.3; DD §7.2 row 2)", () => {
-  it("TK01 submits one SAM3 prediction on the prepared video with the person's anchor box, after storing its submit intent", async () => {
+  it("TK01 submits one SAM3 prediction on the forward clip with the person's anchor box on its frame 0, after storing its submit intent", async () => {
     const f = await seed(); const key = await prepared(f);
     let observed = false;
     runPrediction.mockImplementation(async (_connection, model, body, resume) => {
@@ -154,7 +166,7 @@ describe("the lip-sync track step (§97; execution design §9.1, §9.3; DD §7.2
       const prompts = body.box_prompts as Record<string, unknown>[];
       expect(prompts).toHaveLength(1);
       // §97 D21-4: one person per request, so object_id 1; the RLE is used, not the preview, so apply_mask false; the box picks the person, so the text prompt only names the class and there is no point prompt.
-      expect(prompts[0]).toEqual({ frame_index: 12, object_id: 1, ...PIXEL_BOXES["person-1"] });
+      expect(prompts[0]).toEqual({ frame_index: 0, object_id: 1, ...PIXEL_BOXES["person-1"] });
       expect(body).toEqual({ video: publicUrl(key), prompt: "person", box_prompts: prompts, apply_mask: false });
       // beginMiniToolStepAttempt came first: one unresolved attempt holding exactly this body.
       const [step] = await trackSteps(f);
@@ -167,7 +179,7 @@ describe("the lip-sync track step (§97; execution design §9.1, §9.3; DD §7.2
       observed = true;
       throw new StillRunning(Date.now() + 1000);
     });
-    expect(await runLipSyncStep(f.execution, { kind: "track", personId: "person-1" }, f.userId, f.deadlineAt)).toEqual({ state: "running" });
+    expect(await runLipSyncStep(f.execution, { kind: "track:fwd", personId: "person-1" }, f.userId, f.deadlineAt)).toEqual({ state: "running" });
     expect(observed).toBe(true);
     const steps = await trackSteps(f);
     expect(steps).toHaveLength(1);
@@ -177,7 +189,7 @@ describe("the lip-sync track step (§97; execution design §9.1, §9.3; DD §7.2
   it("TK02 gives each referenced person its own tracking step and prompt", async () => {
     const f = await seed(); await prepared(f);
     runPrediction.mockImplementation(async (_connection, _model, _body, resume) => { await resume.persistTaskId(randomUUID()); throw new StillRunning(Date.now() + 1000); });
-    for (const person of PERSONS) await runLipSyncStep(f.execution, { kind: "track", personId: person.personId }, f.userId, f.deadlineAt);
+    for (const person of PERSONS) await runLipSyncStep(f.execution, { kind: "track:fwd", personId: person.personId }, f.userId, f.deadlineAt);
     expect(runPrediction).toHaveBeenCalledTimes(2);
     const prompts = runPrediction.mock.calls.map((call) => (call[2].box_prompts as Record<string, unknown>[]));
     expect(prompts.map((list) => list.length)).toEqual([1, 1]);
@@ -190,12 +202,12 @@ describe("the lip-sync track step (§97; execution design §9.1, §9.3; DD §7.2
   it("TK03 a later pickup of a submitted track asks only for its stored prediction and opens no second attempt", async () => {
     const f = await seed(); await prepared(f);
     runPrediction.mockImplementationOnce(async (_connection, _model, _body, resume) => { await resume.persistTaskId(PREDICTION); throw new StillRunning(Date.now() + 1000); });
-    await runLipSyncStep(f.execution, { kind: "track", personId: "person-1" }, f.userId, f.deadlineAt);
+    await runLipSyncStep(f.execution, { kind: "track:fwd", personId: "person-1" }, f.userId, f.deadlineAt);
     runPrediction.mockImplementationOnce(async (_connection, _model, _body, resume) => {
       expect(resume.storedTaskId).toBe(PREDICTION);
       throw new StillRunning(Date.now() + 1000);
     });
-    expect(await runLipSyncStep(f.execution, { kind: "track", personId: "person-1" }, f.userId, f.deadlineAt)).toEqual({ state: "running" });
+    expect(await runLipSyncStep(f.execution, { kind: "track:fwd", personId: "person-1" }, f.userId, f.deadlineAt)).toEqual({ state: "running" });
     expect(runPrediction).toHaveBeenCalledTimes(2);
     const [step] = await trackSteps(f);
     expect(miniToolStepStateSchema.parse(step!.output.miniToolStep).attempts).toHaveLength(1);
@@ -207,6 +219,6 @@ describe("the lip-sync track step (§97; execution design §9.1, §9.3; DD §7.2
   ] as const)("TK04 %s", async (_name, status, category) => {
     const f = await seed(); await prepared(f);
     runPrediction.mockRejectedValue(new HttpStatusError("wavespeed", status, "fixture refusal"));
-    expect(await runLipSyncStep(f.execution, { kind: "track", personId: "person-1" }, f.userId, f.deadlineAt)).toEqual({ state: "failed", step: "track", category });
+    expect(await runLipSyncStep(f.execution, { kind: "track:fwd", personId: "person-1" }, f.userId, f.deadlineAt)).toEqual({ state: "failed", step: "track", category });
   });
 });
