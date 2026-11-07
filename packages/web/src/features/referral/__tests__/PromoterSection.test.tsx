@@ -52,10 +52,11 @@ function setup(view: AccountReferral): void {
 /**
  * A server refusal.
  * @param reason - The refusal code.
+ * @param details - Other fields of the error body.
  * @returns The exception.
  */
-function refusal409(reason: string, extra: Record<string, unknown> = {}): ApiException {
-  return Object.assign(new ApiException({ status: 409, message: `refused ${reason}`, fromServer: true, reason }), extra);
+function refusal409(reason: string, details: Record<string, unknown> = {}): ApiException {
+  return new ApiException({ status: 409, message: `refused ${reason}`, fromServer: true, reason, details: { reason, ...details } });
 }
 
 /**
@@ -173,7 +174,7 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
   });
 
   it('unticks the terms and says they changed when the version moved on', async () => {
-    api.apply.mockRejectedValue(refusal409('terms_changed', {}));
+    api.apply.mockRejectedValueOnce(refusal409('terms_changed', { termsVersion: '2026-12-01' }));
     const user = userEvent.setup();
     setup(OPEN);
     await user.click(await screen.findByRole('button', { name: 'Apply to become a promoter' }));
@@ -183,6 +184,13 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
     expect(await screen.findByText('The promoter terms have been updated. Read them again, then agree.')).toBeInTheDocument();
     expect(screen.getByRole('checkbox')).not.toBeChecked();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    // Agreeing again agrees to the version the answer named, whatever the panel last read.
+    api.apply.mockResolvedValueOnce({ ...OPEN, promoter: { state: 'pending', submittedAt: '2026-11-07T10:00:00.000Z' } });
+    await user.click(screen.getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: 'Submit application' }));
+    await waitFor(() => expect(api.apply).toHaveBeenCalledTimes(2));
+    expect(api.apply.mock.calls[1]![0]).toMatchObject({ termsVersion: '2026-12-01' });
   });
 
   it('closes, toasts and reads the section again when an application is already under review', async () => {

@@ -59,6 +59,9 @@ export function PromoterApplyDialog({
   const [agreed, setAgreed] = React.useState(false);
   const [errors, setErrors] = React.useState<FieldErrors>({});
   const [termsNotice, setTermsNotice] = React.useState(false);
+  // The version a terms_changed answer named; agreeing again agrees to it.
+  const [answeredTerms, setAnsweredTerms] = React.useState<string | null>(null);
+  const agreedTerms = answeredTerms ?? termsVersion;
   const pressing = useRunning(APPLY_INTENT) !== undefined;
   const countries = React.useMemo(() => countryOptions(getLocale()), []);
 
@@ -73,7 +76,7 @@ export function PromoterApplyDialog({
     if (Object.keys(next).length > 0) return;
     void runOnce(APPLY_INTENT, {
       scope: 'referral',
-      prepare: (): PromoterApplicationForm => ({ country, channels: filled, plan: plan.trim(), termsVersion }),
+      prepare: (): PromoterApplicationForm => ({ country, channels: filled, plan: plan.trim(), termsVersion: agreedTerms }),
       send: (key, body: PromoterApplicationForm) => referralApi.apply(body, key),
       onDone: (answer: AccountReferral): undefined => {
         client.setQueryData(referralQueryKey(userId), answer);
@@ -83,6 +86,8 @@ export function PromoterApplyDialog({
       },
       onFailure: (err) => {
         if (err instanceof ApiException && err.reason === 'terms_changed') {
+          const named = err.details?.termsVersion;
+          if (typeof named === 'string') setAnsweredTerms(named);
           setAgreed(false);
           setTermsNotice(true);
           void client.invalidateQueries({ queryKey: referralQueryKey(userId) });
@@ -95,7 +100,7 @@ export function PromoterApplyDialog({
         }
       },
     });
-  }, [channels, country, plan, agreed, termsVersion, t, client, userId, onOpenChange]);
+  }, [channels, country, plan, agreed, agreedTerms, t, client, userId, onOpenChange]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
