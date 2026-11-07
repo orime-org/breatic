@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { eq } from "drizzle-orm";
-import { db, referralBindings } from "@breatic/core";
+import { db, referralBindings, referralCodes } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 
 export type ReferralSource = "signup_link" | "signup_typed" | "later";
@@ -42,4 +42,20 @@ export async function insertBinding(
   tx: DbTx,
 ): Promise<void> {
   await tx.insert(referralBindings).values(input);
+}
+
+/**
+ * Reads the code text an account carries, whatever the code's status now.
+ * @param userId - The account.
+ * @param tx - The caller's transaction, if any.
+ * @returns The stored-form code, or null when the account carries none.
+ */
+export async function findBoundCode(userId: string, tx?: DbTx): Promise<string | null> {
+  const rows = await (tx ?? db)
+    .select({ code: referralCodes.code })
+    .from(referralBindings)
+    .innerJoin(referralCodes, eq(referralCodes.id, referralBindings.referralCodeId))
+    .where(eq(referralBindings.userId, userId))
+    .limit(1);
+  return rows[0]?.code ?? null;
 }
