@@ -8,8 +8,8 @@ index 1b605255570e06461334376e5ef25efd69bb9549..cb1bfe8eba0932670c506717caa8154b
  function prefersReducedMotion() {
 -  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
 -  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-+  // breatic: motion is part of the product (packages/web/AGENTS.md, user
-+  // 2026-07-03); the reveal paces every reader alike.
++  // breatic: motion is part of the product, every user gets the same reveal
++  // (packages/web/AGENTS.md#locked-colours-and-motion).
 +  return false;
  }
  function useSmoothText(fullText, options = {}) {
@@ -24,8 +24,8 @@ index 34b3ba38ff877efb84c5ca4833ab6aa8cfda7dea..ba46a63fc07fa0b37484ee4238b84ce4
  function prefersReducedMotion() {
 -  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
 -  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-+  // breatic: motion is part of the product (packages/web/AGENTS.md, user
-+  // 2026-07-03); the reveal paces every reader alike.
++  // breatic: motion is part of the product, every user gets the same reveal
++  // (packages/web/AGENTS.md#locked-colours-and-motion).
 +  return false;
  }
  function useSmoothText(fullText, options = {}) {
