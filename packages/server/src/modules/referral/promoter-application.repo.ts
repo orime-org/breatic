@@ -48,6 +48,7 @@ export async function findLatestApplication(userId: string, tx?: DbTx): Promise<
  * @param input.channels - Where they will promote, 1–10 entries.
  * @param input.plan - How they will promote.
  * @param input.termsVersion - The promoter terms they agreed to.
+ * @param tx - The caller's transaction, when it holds the applicant's account lock.
  * @returns True when the application was filed.
  */
 export async function insertPendingApplication(input: {
@@ -56,13 +57,28 @@ export async function insertPendingApplication(input: {
   channels: string[];
   plan: string;
   termsVersion: string;
-}): Promise<boolean> {
-  const rows = await db
+}, tx?: DbTx): Promise<boolean> {
+  const rows = await (tx ?? db)
     .insert(promoterApplications)
     .values({ ...input, status: "pending", termsAcceptedAt: sql`now()` })
     .onConflictDoNothing()
     .returning({ id: promoterApplications.id });
   return rows.length > 0;
+}
+
+/**
+ * Who filed an application; the applicant never changes, so no lock is needed to read it.
+ * @param id - The application.
+ * @param tx - The decision's transaction.
+ * @returns The applicant, or null when there is no such live application.
+ */
+export async function findApplicant(id: string, tx: DbTx): Promise<string | null> {
+  const rows = await tx
+    .select({ userId: promoterApplications.userId })
+    .from(promoterApplications)
+    .where(and(eq(promoterApplications.id, id), isNull(promoterApplications.deletedAt)))
+    .limit(1);
+  return rows[0]?.userId ?? null;
 }
 
 /**

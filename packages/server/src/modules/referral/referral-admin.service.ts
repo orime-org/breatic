@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { db, decodeActivityCursor } from "@breatic/core";
+import { db, decodeActivityCursor, lockAccountRow } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import type { CreditPage } from "@breatic/shared";
 import {
   decideApplication,
+  findApplicant,
   findApplicationDetail,
   listApplications,
   lockApplication,
@@ -106,6 +107,11 @@ async function issueCode(
  */
 export async function approve(applicationId: string, body: { reason: string; code?: string }, req: WriteRequest): Promise<Answer> {
   return runOnce(req, "approve", applicationId, body, async (tx) => {
+    // The applicant's account lock first, as an application takes it: a
+    // submit cannot then file a second application around this approval.
+    const applicant = await findApplicant(applicationId, tx);
+    if (applicant === null) return null;
+    await lockAccountRow(applicant, tx);
     const application = await lockApplication(applicationId, tx);
     if (application === null) return null;
     if (application.status !== "pending") return { status: "refused", code: "not_pending" };
