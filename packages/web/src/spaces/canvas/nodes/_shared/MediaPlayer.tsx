@@ -422,7 +422,8 @@ export function MediaPlayer({
     const original = videoSource ? presentedSizeOf(videoSource.presentation) : size;
     const loadingOwner = snapshot?.status !== 'ready';
     return <div className={cn('@container relative', original === undefined && 'min-h-48')} data-testid='media-player' style={original === undefined ? undefined : { aspectRatio: `${original.width}/${original.height}` }}>
-      <VideoPresentationSurface source={videoSource ?? null} active={active} onBinding={acceptBinding} onPresentedFrame={acceptFrame}>
+      {/* A surface without a source has no aspect ratio of its own, so it takes the player's box to show the cover. */}
+      <VideoPresentationSurface source={videoSource ?? null} active={active} onBinding={acceptBinding} onPresentedFrame={acceptFrame} className={videoSource ? undefined : 'absolute inset-0'}>
         {loadingOwner && shownPoster ? <img src={shownPoster} alt='' className='pointer-events-none absolute inset-0 h-full w-full object-contain' /> : null}
         {loadingOwner && !posterLoaded ? <Skeleton data-testid='media-skeleton' className='pointer-events-none absolute inset-0 rounded-none' /> : null}
         {placedControls}

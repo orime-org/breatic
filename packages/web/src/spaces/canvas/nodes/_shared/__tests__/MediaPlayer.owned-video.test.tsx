@@ -122,6 +122,14 @@ describe('canonical owned video in the existing player', () => {
     expect(screen.getByTestId('seek').getAttribute('data-disabled')).not.toBeNull();
   });
 
+  it('fills the player box with the cover while the presentation is not known yet', () => {
+    const view = render(<MediaPlayer modality='video' src={source.canonicalURL} videoSource={null} poster='https://assets.example.test/cover.jpg' size={{ width: 320, height: 180 }} />);
+    const surface = view.container.querySelector('[data-video-presentation]')!;
+    // Without a source the surface has no aspect ratio of its own; it takes the player's box, which the node's size sets.
+    expect(surface.className.split(' ')).toEqual(expect.arrayContaining(['absolute', 'inset-0']));
+    expect(surface.querySelector('img')?.getAttribute('src')).toBeTruthy();
+  });
+
   it('releases StrictMode resources and inactive displays without accepting disposed frames', () => {
     const frames = vi.fn();
     const view = render(<React.StrictMode><MediaPlayer modality='video' src={source.canonicalURL} videoSource={source} active onPresentedFrame={frames} /></React.StrictMode>);
