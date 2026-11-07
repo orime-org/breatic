@@ -800,7 +800,7 @@ function textBody(...lines: string[]): unknown {
 }
 
 /**
- * Pastes clipboard text into the body as a reader's paste does.
+ * Pastes clipboard text into the body as a user's paste does.
  * @param p - The page.
  * @param text - The clipboard's plain text.
  */
@@ -997,8 +997,8 @@ test('words typed just before a paste stay when the paste is undone (inner#1351 
 });
 
 // A paste the table hook takes is a step of its own, apart from the words
-// typed on either side, with the reader's own Cmd+V: a browser runs
-// microtasks between the listeners of an event the reader caused.
+// typed on either side, with the user's own Cmd+V: a browser runs
+// microtasks between the listeners of an event the user caused.
 test('a table pasted into a cell with the keyboard is undone apart from the words typed around it (inner#1351 A6)', async () => {
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await openFreshDocument(page);
@@ -1056,7 +1056,7 @@ test('a web table with a picture in a cell and a srcset picture paste in with bo
 });
 
 // A picture in the middle of a sentence and two pictures in one figure are
-// each read into a pending block, in the reader's own browser.
+// each read into a pending block, in the user's own browser.
 test('a picture in a sentence and a figure of two pictures paste in as three pending pictures (inner#1351 A5)', async () => {
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await openFreshDocument(page);

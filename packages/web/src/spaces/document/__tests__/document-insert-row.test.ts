@@ -4,7 +4,7 @@
 /**
  * #113 acceptance A7: the row the handle menu's insert-below command makes.
  *
- * It has to land where the reader is pointing — under the pressed row and
+ * It has to land where the user is pointing — under the pressed row and
  * before anything indented under it — and carry that row's own quoting.
  */
 
@@ -88,7 +88,7 @@ describe('the row insert-below makes', () => {
 
     // `insertBlocks(…, 'after')` would put it below the whole subtree —
     // `insertBlocks.ts:41-42` advances by the container's `nodeSize`, which
-    // holds the children — landing it three rows from where the reader
+    // holds the children — landing it three rows from where the user
     // pointed.
     expect(shape(editor.document)).toEqual([
       ['parent', ['', 'first child', 'second child']],

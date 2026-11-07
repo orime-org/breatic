@@ -7,10 +7,10 @@
  * Gemini reads its script either in one voice or as a dialogue between named
  * speakers, and ignores the voice once speakers are given. Its yaml says so
  * with `replaces` on `speakers`; the panel offers the two as a switch, and
- * only the side the reader is on goes to the upstream.
+ * only the side the user is on goes to the upstream.
  *
  * Which side that is lives in the model's own param record under
- * {@link STAND_IN_ON}, so leaving the dialogue keeps the speakers the reader
+ * {@link STAND_IN_ON}, so leaving the dialogue keeps the speakers the user
  * wrote (the approved demo: switching back to a single voice keeps them, and
  * they are simply not sent).
  */

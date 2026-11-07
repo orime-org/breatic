@@ -59,7 +59,7 @@ export const ALIGN_ITEMS: readonly AlignItem[] = [
  * alignment reaches none of them — this lands on the left row's icon, the way
  * CKEditor 5 binds its opener to the command's value and falls back to the
  * writing direction's default (`alignmentui.ts`). Naming one of the covered
- * alignments instead would tell the reader the whole range is where that one
+ * alignments instead would tell the user the whole range is where that one
  * block is.
  * @param face - What the range reads as.
  * @returns The icon to draw.

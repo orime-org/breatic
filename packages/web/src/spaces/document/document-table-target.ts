@@ -7,7 +7,7 @@
  * A menu stays open while the document changes under it — a collaborator
  * typing above the table, adding a row, deleting one — so the cell is held as
  * a position in plugin state and carried through every transaction: the
- * reader's own edits by mapping, the way ProseMirror maps decorations, and
+ * user's own edits by mapping, the way ProseMirror maps decorations, and
  * changes that come in through Yjs by the element the cell is bound to
  * (`document-table-cell-name.ts`). When the cell itself is deleted the target
  * is cleared, and the menu has nothing left to act on. The plugin's `apply` is
@@ -15,8 +15,8 @@
  *
  * A menu also names the cells it acts on (its row, its column, or the cell
  * button's one cell), and the plugin marks them while the menu is open, in the
- * look of selected cells, so the reader sees what the commands will reach (the confirmed demo's flow, step
- * five). The reader's own selection is left as it was.
+ * look of selected cells, so the user sees what the commands will reach (the confirmed demo's flow, step
+ * five). The user's own selection is left as it was.
  */
 
 import { createExtension } from '@blocknote/core';

@@ -219,7 +219,7 @@ export function CreditsTab({ slug }: CreditsTabProps): React.JSX.Element {
     enabled: hasNextPage && !isFetchingNextPage,
     onReachEnd: loadMore,
     itemCount: ledgerRows.length,
-    // A page that did not arrive stops the watcher until the reader scrolls
+    // A page that did not arrive stops the watcher until the user scrolls
     // again; without it an end already in view asks for the same page back to
     // back for as long as the failure lasts.
     //

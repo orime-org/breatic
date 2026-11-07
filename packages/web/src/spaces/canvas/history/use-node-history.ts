@@ -66,7 +66,7 @@ export interface UseNodeHistory {
  * Two things bring the list up to date, and between them they cover the two
  * ways a row appears without this hook seeing it.
  *
- * Opening the panel fetches (`refetchOnMount: 'always'`): the reader is asking
+ * Opening the panel fetches (`refetchOnMount: 'always'`): the user is asking
  * to see the list now, and the client holds pages for 30s — long enough for a
  * run that landed while the panel was shut to be missing from them.
  *
@@ -77,7 +77,7 @@ export interface UseNodeHistory {
  * never on the loaded data, so it fires once per run and never in a
  * refetch → new-data → effect-reruns loop (spec §4, Gate-1 R2 fix). Counting
  * settled runs rather than watching the node's content is what makes this the
- * same for every modality: a text node's words are written by the reader too,
+ * same for every modality: a text node's words are written by the user too,
  * and a keystroke is not a new row.
  * @param nodeId - The host node id, or null when no history panel is open.
  * @param projectId - Project the node belongs to.

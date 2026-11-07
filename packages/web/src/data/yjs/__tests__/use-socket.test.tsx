@@ -269,7 +269,7 @@ describe('useSocket — attach a doc to the shared socket via the manager', () =
   });
 
   it('does not call it a disconnect when collab closes the document to re-check it', () => {
-    // The registry re-sends the token right away; showing the reader a
+    // The registry re-sends the token right away; showing the user a
     // disconnect in the meantime would flash the banner on every archive,
     // restore and role change.
     const doc = new Y.Doc();

@@ -5,14 +5,14 @@
  * The chat column keeping up with a turn, measured in a browser.
  *
  * Three of the things reported against this panel are about the column
- * moving under the reader, and none of them can be settled anywhere but in a
+ * moving under the user, and none of them can be settled anywhere but in a
  * browser: they turn on real layout, on a wheel a real mouse turns, and on a
  * turn that is still being written.
  *
  * A turn each, and they are not the same turn twice: what a turn found is
  * drawn only once it has stopped writing (`MessageBubble` gates the asset row
  * on `running`), so the two cases about the end staying in view watch a turn
- * end -- while the two about a reader scrolling up need one still going, or
+ * end -- while the two about a user scrolling up need one still going, or
  * there is nothing to be carried off by.
  *
  * The turns are real, so the model decides what it writes and the search
@@ -87,7 +87,7 @@ test.afterEach(async () => {
  * A turn of its own for the case that reads what a finished one leaves: the
  * distance to the end means nothing on a column with nothing in it, and the
  * column has to be long enough that losing room to the composer could move
- * the reader off the end.
+ * the user off the end.
  * @param p - The page to run the turn in.
  */
 async function aFinishedTurn(p: Page): Promise<void> {
@@ -111,11 +111,11 @@ async function aFinishedTurn(p: Page): Promise<void> {
 /**
  * Run a turn, and take the column off its end while it is still arriving.
  *
- * What the way back is offered for: a reader who is up there with chunks
+ * What the way back is offered for: a user who is up there with chunks
  * still landing.
  * @param p - The page to run the turn in.
  */
-async function aReaderWhoWentUpMidTurn(p: Page): Promise<void> {
+async function aUserWhoWentUpMidTurn(p: Page): Promise<void> {
   await ask(
     p,
     'Write thirty numbered paragraphs about the history of neon signage, each at least four sentences long.',
@@ -148,17 +148,17 @@ test('the end of a turn is in view the moment it finishes @needs-model @needs-se
   // Finishing is the moment the column jumps: the row of squares and the
   // actions under the turn are both drawn only once it has stopped writing,
   // so several hundred pixels appear in one frame. A column that had stopped
-  // following leaves the reader looking at the middle of the turn, with the
+  // following leaves the user looking at the middle of the turn, with the
   // copy button for it off the bottom -- which is the report this fixes.
   await expect(page.getByTestId('asset-row').first()).toBeVisible({ timeout: 180_000 });
   expect(await distanceFromEnd(page)).toBeLessThan(80);
 });
 
-test('a reader at the end keeps it when their composer takes the room @needs-model', async () => {
+test('a user at the end keeps it when their composer takes the room @needs-model', async () => {
   // Losing room moves the end away without moving the column: scrollTop stays
   // legal, nothing is clamped, no scroll event is raised, and the content box
   // did not change either. Measured on the running app before this was
-  // handled: eight lines grew the composer by 137px and left the reader 137px
+  // handled: eight lines grew the composer by 137px and left the user 137px
   // above the end of the reply, with no way back offered.
   test.setTimeout(240_000);
   await aFinishedTurn(page);
@@ -178,7 +178,7 @@ test('a reader at the end keeps it when their composer takes the room @needs-mod
   await composer.fill('');
 });
 
-test('a reader who takes the column mid-turn keeps it, and hands it back at the end @needs-model', async () => {
+test('a user who takes the column mid-turn keeps it, and hands it back at the end @needs-model', async () => {
   // Its own turn, and one with nothing to search for, so it is still being
   // written when the wheel arrives. A turn that has finished cannot carry
   // anyone off, and a case that wheels on one is asserting nothing.
@@ -219,7 +219,7 @@ test('a reader who takes the column mid-turn keeps it, and hands it back at the 
     return viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight > 100;
   }, undefined, { timeout: 10_000 });
 
-  // Anything that fights the reader for the scroller shows up as the distance
+  // Anything that fights the user for the scroller shows up as the distance
   // closing again over the seconds that follow, while chunks keep landing.
   await page.waitForTimeout(3_000);
   expect(await distanceFromEnd(page)).toBeGreaterThan(100);
@@ -227,7 +227,7 @@ test('a reader who takes the column mid-turn keeps it, and hands it back at the 
   // And the way back is offered while they are up there.
   await expect(page.getByTestId('back-to-latest')).toBeVisible({ timeout: 10_000 });
 
-  // The other way a reader takes the column: a press on the track, which
+  // The other way a user takes the column: a press on the track, which
   // writes scrollTop once and raises one scroll event. Only a browser has the
   // real rail, the real thumb and the real geometry that decides which of the
   // two a press is.
@@ -272,7 +272,7 @@ test('a reader who takes the column mid-turn keeps it, and hands it back at the 
   expect(await distanceFromEnd(page)).toBeGreaterThan(100);
 
   // And handing it back, which has to work in the frames a chunk lands in --
-  // mid-turn that is every frame. A reader who scrolls down to the end again
+  // mid-turn that is every frame. A user who scrolls down to the end again
   // gets a column that stays there.
   await list.hover();
   for (let push = 0; push < 6; push += 1) await page.mouse.wheel(0, 2_000);
@@ -305,7 +305,7 @@ test('a reader who takes the column mid-turn keeps it, and hands it back at the 
 
   // A small move is still a move, and the way back is offered for it. Ten
   // pixels is under half a line and well inside the bands other columns treat
-  // as near enough to the end to finish the trip on the reader's behalf.
+  // as near enough to the end to finish the trip on the user's behalf.
   await page.mouse.wheel(0, -10);
   await expect(page.getByTestId('back-to-latest')).toBeVisible({ timeout: 10_000 });
   expect(await distanceFromEnd(page)).toBeGreaterThan(0);
@@ -337,13 +337,13 @@ test('a reader who takes the column mid-turn keeps it, and hands it back at the 
 
 test('the way back takes the column to the newest message and steps aside @needs-model', async () => {
   test.setTimeout(240_000);
-  await aReaderWhoWentUpMidTurn(page);
+  await aUserWhoWentUpMidTurn(page);
 
   const back = page.getByTestId('back-to-latest');
   await expect(back).toBeVisible({ timeout: 20_000 });
   await back.click();
 
-  // Gone the moment it is pressed: the reader is on their way to the end, and
+  // Gone the moment it is pressed: the user is on their way to the end, and
   // an offer to go there is no longer an offer.
   await expect(back).toBeHidden({ timeout: 20_000 });
 

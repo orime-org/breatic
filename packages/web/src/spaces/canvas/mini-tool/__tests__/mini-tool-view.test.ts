@@ -101,7 +101,7 @@ describe('resolvedParams', () => {
     });
   });
 
-  it('sends the size tier the reader picked', () => {
+  it('sends the size tier the user picked', () => {
     expect(
       resolvedParams(tool('image.upscale'), upscaler, { target_megapixels: '8K' }, { width: 1024, height: 1536 }),
     ).toEqual({ target_megapixels: 44.74, creativity: 0 });
@@ -365,7 +365,7 @@ describe('the markup tool', () => {
 });
 
 describe('BLOCKING_REFUSALS', () => {
-  it('disables Execute for the reasons the reader fixes in the panel', () => {
+  it('disables Execute for the reasons the user fixes in the panel', () => {
     expect([...BLOCKING_REFUSALS].sort()).toEqual([
       'adjustNeutral',
       'drawingEmpty',

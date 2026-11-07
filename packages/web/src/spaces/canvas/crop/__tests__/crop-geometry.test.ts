@@ -79,7 +79,7 @@ describe('fractions of the shown box', () => {
 });
 
 describe('handleScale', () => {
-  // The handles are what the reader drags, so they hold their screen size at
+  // The handles are what the user drags, so they hold their screen size at
   // every zoom (user 2026-10-07); there is no floor as the node name has.
   it('cancels the zoom at every zoom', () => {
     for (const zoom of [0.1, 0.25, 0.5, 1, 2, 4]) {

@@ -45,7 +45,7 @@ The ingest Worker on Cloudflare. The browser sends file bytes straight to it; it
 
 ## Failures
 
-**Every failure goes through `noteFailure` in `src/error-monitoring.ts`; never `console.error` a new failure directly.** It always logs and reports by default; pass `userInput: true` only when the reader's own input caused it (an unreachable link they gave, a part whose sender stopped mid-body, stored bytes of a type we refuse). Check: do we need to fix this failure? Caused by the reader's input → `userInput: true`; anything else → report.
+**Every failure goes through `noteFailure` in `src/error-monitoring.ts`; never `console.error` a new failure directly.** It always logs and reports by default; pass `userInput: true` only when the user's own input caused it (an unreachable link they gave, a part whose sender stopped mid-body, stored bytes of a type we refuse). Check: do we need to fix this failure? Caused by the user's input → `userInput: true`; anything else → report.
 
 **Keep "reading the source failed" apart from "writing R2 failed": the first is the sender's side, the second is ours.** `writeStreamAsParts` throws `SourceReadError` for the first.
 

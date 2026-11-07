@@ -340,7 +340,7 @@ describe("the url ingest job — when the transfer lands", () => {
 });
 
 describe("the url ingest job — what it logs when it does not land", () => {
-  /** A refusal of the reader's own link is a warning; one on our side stays an error. */
+  /** A refusal of the user's own link is a warning; one on our side stays an error. */
   const LEVELS: [number, string, "warn" | "error"][] = [
     [502, "source_unreachable", "warn"],
     [415, "unsupported_type", "warn"],
@@ -399,7 +399,7 @@ describe("the url ingest job — when it does not", () => {
 
   // The Worker answers 500 for anything its own route threw, and a deployment
   // missing a binding answers 500 too. Neither is the source, and reading a
-  // missing name as "no answer arrived" points the reader at a third party.
+  // missing name as "no answer arrived" points the user at a third party.
   it("says the Worker refused when it answered without naming a reason", async () => {
     const job = await submitted();
     workerAnswers(new Response("no", { status: 500 }));

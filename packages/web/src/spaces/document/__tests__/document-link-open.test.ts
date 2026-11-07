@@ -46,7 +46,7 @@ function open(content: unknown[]): ReturnType<typeof buildDocumentEditor> {
 }
 
 /**
- * Presses the anchor at the given index the way a reader does.
+ * Presses the anchor at the given index the way a user does.
  * @param editor - The editor.
  * @param index - Which anchor, in document order.
  */
@@ -147,7 +147,7 @@ describe('pressing a link in the body', () => {
 
   it('opens the one that was pressed when two links touch', () => {
     // `ONE` ends where `TWO` opens, so both runs answer to one position. The
-    // anchor the reader pressed is what decides which address opens.
+    // anchor the user pressed is what decides which address opens.
     const opened = vi.spyOn(window, 'open').mockReturnValue(null);
     const editor = open([
       link('ONE', 'https://one.example/'),

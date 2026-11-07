@@ -35,7 +35,7 @@ function holdScrollPositions(from: HTMLElement): () => void {
 /**
  * Give a textarea exactly the height of what is written in it.
  *
- * The reason is whose scrollbar the reader sees. A textarea left to scroll
+ * The reason is whose scrollbar the user sees. A textarea left to scroll
  * itself draws the browser's, which is a different shape in every engine, and
  * the app owns every visible scroller through `ScrollArea` (`index.css`, the
  * scrollbar section). A box that is always as tall as its content never

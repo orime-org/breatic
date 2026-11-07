@@ -63,7 +63,7 @@ export class StreamRefusedError extends Error {
    * @param status - The HTTP status the server answered with
    * @param message - What to tell the user, from the server when it said
    * @param fromServer - The message came out of our own envelope, which is
-   *   what makes it a sentence written for this reader rather than one this
+   *   what makes it a sentence written for this user rather than one this
    *   file supplied because the refusal needed to carry something
    */
   constructor(

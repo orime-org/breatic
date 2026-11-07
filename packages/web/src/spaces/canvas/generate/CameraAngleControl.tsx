@@ -123,7 +123,7 @@ function samePose(a: CameraAngle, b: CameraAngle): boolean {
 }
 
 /**
- * Whether the reader asked for less motion.
+ * Whether the user asked for less motion.
  * @returns True under prefers-reduced-motion.
  */
 function prefersReducedMotion(): boolean {

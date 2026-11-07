@@ -708,8 +708,8 @@ function putAtSelection(editor: Editor, kept: Slice, lines: Rows, options: PutOp
     if (selection instanceof CellSelection) return putBlocksInCells(view, content.rows);
   }
   // One line of words goes into the line as its words, on the selection as
-  // the reader made it; more lines go by the placement, which keeps the
-  // reader's line its own type (§5.4.3).
+  // the user made it; more lines go by the placement, which keeps the
+  // user's line its own type (§5.4.3).
   const words = isOneLine(lines);
   if (selection instanceof NodeSelection && !selection.node.isInline) return words ? putWords(view, pasted[0]!, options.byPaste) : replaceBlock(view, transformedRows().rows, selection);
   // A gap cursor stands between blocks: its words are a block of their own,

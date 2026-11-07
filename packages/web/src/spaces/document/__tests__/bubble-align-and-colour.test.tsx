@@ -11,7 +11,7 @@
  * reads the selection rather than a value written into the markup.
  *
  * The marks matter as much as the presses. A panel that always draws "default"
- * as the one in force tells the reader their red text is not red.
+ * as the one in force tells the user their red text is not red.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';

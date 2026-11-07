@@ -151,7 +151,7 @@ describe('the strip follows the row, not the snapshot (A9)', () => {
   });
 });
 
-describe('the strip keeps its face through what the reader started', () => {
+describe('the strip keeps its face through what the user started', () => {
   it('stays the grip through a drag that leaves the row empty, then ends it', () => {
     const editor = openOver([{ type: 'paragraph', content: 'x' }], 0);
     render(<DocumentBlockHandle />);
@@ -278,7 +278,7 @@ describe('delete is greyed only on the document\'s only block (A12)', () => {
 });
 
 describe('the strip beside a selected block (inner#1127)', () => {
-  it('stays on a picture the reader clicked, which selects it whole', async () => {
+  it('stays on a picture the user clicked, which selects it whole', async () => {
     const { NodeSelection } = await import('@tiptap/pm/state');
     const editor = openOver(
       [

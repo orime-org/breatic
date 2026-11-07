@@ -353,7 +353,7 @@ test('picking the carried-object transition places two scene pictures for the fi
   await expect(notes).toHaveCount(2);
   await expect(notes.nth(0)).toContainText('First frame');
   await expect(notes.nth(1)).toContainText('End frame');
-  // The frames stay empty until the reader picks the generated scenes in.
+  // The frames stay empty until the user picks the generated scenes in.
   await expect(page.getByTestId('generate-video-tool-first-frame')).toBeVisible();
   await expect(page.getByTestId('generate-video-tool-end-frame')).toBeVisible();
   await expect(page.getByTestId('generate-video-first-frame-thumbnail')).toHaveCount(0);

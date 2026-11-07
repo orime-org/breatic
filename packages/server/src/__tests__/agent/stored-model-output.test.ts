@@ -125,7 +125,7 @@ describe("what a success part stores for the model", () => {
       toolName: "rendering",
       input: {},
       status: "error",
-      failure: { kind: "tool_failed", forModel: "it broke", readerKey: "chat.tool.failure.generic" },
+      failure: { kind: "tool_failed", forModel: "it broke", userKey: "chat.tool.failure.generic" },
     };
     const text: MessagePart = { type: "text", text: "hello" };
 

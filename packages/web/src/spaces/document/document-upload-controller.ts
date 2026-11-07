@@ -12,7 +12,7 @@
  * peer, pasted as a copy, moved.
  *
  * The write is a Yjs transaction under {@link UPLOAD_WRITE_ORIGIN}, which no
- * UndoManager tracks, so it is never undone and never splits the reader's
+ * UndoManager tracks, so it is never undone and never splits the user's
  * undo steps. It runs from a microtask, outside every Yjs transaction and the
  * sync binding's mutex: a write nested in the transaction that brought the
  * block in reaches Yjs but not the local editor view.

@@ -99,7 +99,7 @@ test('draws each indent level further right than the one above it', async () => 
 
   const boxes = await blockBoxes(page);
   expect(boxes.map((box) => box.text)).toEqual(['top', 'deep', 'deeper']);
-  // A reader who presses Tab has to see the block move. The step itself is
+  // A user who presses Tab has to see the block move. The step itself is
   // whatever the editor's own stylesheet sets; what this pins is that each
   // level starts further right than the one above it.
   expect(boxes[1]!.left).toBeGreaterThan(boxes[0]!.left);
@@ -137,7 +137,7 @@ test('nudges the block Tab could not move', async () => {
   }, EDITOR);
 
   // Nothing above it to nest under, so the document is unchanged and the
-  // reader is told (user 2026-09-08).
+  // user is told (user 2026-09-08).
   expect(nudge.marked).toBe(true);
   expect(nudge.animations).toBe(1);
   expect(nudge.duration).toBe('260ms');
@@ -393,7 +393,7 @@ test('draws nothing around a node-selected block (A15)', async () => {
   // row it carries, and the drop has not happened yet.
   //
   // WHAT IT PINS, AND WHAT IT DOES NOT. It pins the promise — a row carrying a
-  // node selection shows the reader nothing. It does NOT exercise the rules
+  // node selection shows the user nothing. It does NOT exercise the rules
   // that turn the library's own marker off: measured 2026-09-18, the class
   // lands here on `div.bn-block-outer`, while every one of the library's four
   // marker selectors wants it on (or inside) a `.bn-block-content`, so on this
@@ -888,7 +888,7 @@ test('draws every block marker in the palette blue (#964)', async () => {
     };
   }, EDITOR);
 
-  // A marker tells the reader what shape a block is, and told it in the text's
+  // A marker tells the user what shape a block is, and told it in the text's
   // own colour it says nothing at a glance (user 2026-09-08).
   for (const kind of ['heading', 'ordered', 'bullet'] as const) {
     expect(seen[kind].marker, kind).toBe(seen.blue);
@@ -1104,7 +1104,7 @@ test('draws a bullet at one size whatever it nests under (#964)', async () => {
 
   // The two circles are drawn into a 7px box and the square into a 6px one, so
   // the square starts a pixel further in to put its RIGHT edge where theirs is
-  // — which is the edge a reader reads the gap from (user 2026-09-08).
+  // — which is the edge a user reads the gap from (user 2026-09-08).
   expect(shapes[0]!.position, 'the disc sits at the gutter edge').toBe(
     '0% 50%',
   );

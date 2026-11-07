@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * A proposal carrying the reader's material (inner#1315): a source node that
+ * A proposal carrying the user's material (inner#1315): a source node that
  * lands holding a picture, video or sound from our storage, and the slots a
  * generation fills straight from such nodes through `fills`.
  *
@@ -48,7 +48,7 @@ const FACTS: ReadonlyMap<string, MaterialFacts> = new Map<string, MaterialFacts>
 /**
  * A source node holding material.
  * @param type - Its kind.
- * @param name - What the reader sees.
+ * @param name - What the user sees.
  * @param material - The address it holds.
  * @returns The node.
  */
@@ -108,7 +108,7 @@ function refusal(proposal: CanvasProposal): string {
   return verdict.reason;
 }
 
-describe("a talking head filled from the reader's uploads (A1)", () => {
+describe("a talking head filled from the user's uploads (A1)", () => {
   /**
    * The group, built once the catalog is loaded.
    * @returns The proposal.
@@ -140,7 +140,7 @@ describe("a slot a node of its kind cannot be wired into (A2)", () => {
 });
 
 describe("material wired into the reference pool (A3)", () => {
-  it("stands with the ref that @s it for the reader", () => {
+  it("stands with the ref that @s it for the user", () => {
     const proposal = group(
       [
         held("image", "Found photo", SAVED),
@@ -380,6 +380,6 @@ describe("where the description sends the model to learn what material is on the
     const description = String(makeProposeCanvasAction().description);
 
     expect(description).not.toContain("you cannot see their canvas");
-    expect(description).toContain("The Space the reader has open");
+    expect(description).toContain("The Space the user has open");
   });
 });

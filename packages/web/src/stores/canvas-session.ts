@@ -8,7 +8,7 @@
  *
  * Every open Space tab that has been on screen keeps its canvas mounted,
  * hidden while another tab is shown, so several canvases live at once and each keeps its own session: a panel open on one
- * canvas is still open when the reader comes back to it, and nothing one
+ * canvas is still open when the user comes back to it, and nothing one
  * canvas does reaches another. Everything inside a canvas reaches its store
  * by the canvas's Space id (`useCanvasSession` in `canvas-context.tsx`), and so
  * does the chrome outside it (the left menu reads the active Space's).
@@ -60,7 +60,7 @@ import { createSpaceRegistry } from '@web/stores/space-registry';
  * DOM, and a draft held in that component went with it -- measured on a real
  * board, two screens away and back left the box closed and half a reply gone,
  * with nothing said about it. The node is still in the document the whole
- * time, so what the reader is writing has to outlive the element as well.
+ * time, so what the user is writing has to outlive the element as well.
  *
  * Same reason the crop marquee's target sits in `CanvasSpace` rather than in
  * the node being cropped (#1782 adversarial round 8).
@@ -155,7 +155,7 @@ export interface PickSession {
   purpose: PickPurpose;
   /**
    * How many files the slot being filled holds, for a slot holding several
-   * (inner#826): the pick keeps going until the slot is full or the reader
+   * (inner#826): the pick keeps going until the slot is full or the user
    * exits. Absent for every one-file slot, whose pick ends on the first click.
    */
   capacity?: number;
@@ -180,11 +180,11 @@ export interface MiniToolDraft {
    * the box and source pixels with it, the same size the export crops in.
    */
   readonly sourceSize: { readonly width: number; readonly height: number } | null;
-  /** What the reader has drawn; null on a tool without a drawing (inner#1302 §6.1). */
+  /** What the user has drawn; null on a tool without a drawing (inner#1302 §6.1). */
   readonly drawing: DrawingDraft | null;
   /** The expand frame and its ratio; null on a tool that does not expand (inner#1303 §6.3). */
   readonly expand: ExpandDraft | null;
-  /** What the reader has marked up; null on a tool that is not markup (inner#1303 §6.2). */
+  /** What the user has marked up; null on a tool that is not markup (inner#1303 §6.2). */
   readonly mark: MarkDraft | null;
   /**
    * Run was pressed and what it makes in the browser (a browser tool's file,
@@ -435,7 +435,7 @@ export interface CanvasSessionState {
    *
    * The fifth node-anchored panel in the same exclusive slot, and the reason
    * "one sticky open at a time" needs no rule of its own. Local only: which
-   * note this reader has open never goes into the document.
+   * note this user has open never goes into the document.
    */
   openAnnotationPanel: (nodeId: string) => void;
   /** Open the transcribe panel on an audio or video node (inner#856). */
@@ -450,7 +450,7 @@ export interface CanvasSessionState {
   closePanelOn: (nodeId: string, kind: NonNullable<CanvasSessionState['panelKind']>) => void;
   /**
    * The text node being written in, or null. Here rather than on the node:
-   * one text node per canvas is written in at a time, and the reader who comes
+   * one text node per canvas is written in at a time, and the user who comes
    * back to a hidden Space is still writing (inner#1235 A13).
    */
   editingTextNode: string | null;
@@ -746,7 +746,7 @@ export function createCanvasSessionStore(): CanvasSessionStore {
               sourceSize: null,
               drawing,
               expand: s.miniTool.expand === null ? null : castDraft(EMPTY_EXPAND),
-              // The tool, colour and size stay as the reader set them; what was drawn goes.
+              // The tool, colour and size stay as the user set them; what was drawn goes.
               mark:
                 s.miniTool.mark === null
                   ? null

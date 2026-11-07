@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * #905 验收 A1 · A4 · A5 · A6 · A8: the two slots, used the way a reader uses
+ * #905 验收 A1 · A4 · A5 · A6 · A8: the two slots, used the way a user uses
  * them.
  *
  * A6 is why this file exists rather than only the jsdom cases. What a coloured
@@ -210,7 +210,7 @@ async function setTheme(p: Page, theme: 'light' | 'dark'): Promise<void> {
     .toBe(theme === 'dark' ? DARK_RED : LIGHT_RED);
 }
 
-test('aligns the line the reader selected, and draws the row it is on', async () => {
+test('aligns the line the user selected, and draws the row it is on', async () => {
   await openFreshDocument(page);
   await typeAndSelect(page, 'a line to move about', ALIGN);
 

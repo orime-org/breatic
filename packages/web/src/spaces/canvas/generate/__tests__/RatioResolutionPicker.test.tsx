@@ -57,7 +57,7 @@ describe('RatioResolutionPicker — ratio + resolution from the current model pa
   });
 
   it('says on the trigger what each of the model\'s own controls stands on', () => {
-    // User 2026-09-29: the pill shows every value the reader would send.
+    // User 2026-09-29: the pill shows every value the user would send.
     const own = model({
       aspect_ratio: { ...RATIO, values: ['auto', '1:1'], default: 'auto' },
       resolution: RESOLUTION,

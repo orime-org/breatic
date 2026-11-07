@@ -249,7 +249,7 @@ const ScrollBar = React.forwardRef<
   // how an empty document Space came to show a bar on hover: the pointer gate
   // kept `scrollable`, the opacity did not, so a scroller with nothing to
   // scroll stayed invisible to clicks while still painting a bar over content
-  // the reader cannot move (user 2026-08-29).
+  // the user cannot move (user 2026-08-29).
   const showing = scrollable && revealed;
   /**
    * Scale-aware drag takeover (#1773 round-5, user-reported jump). Radix's

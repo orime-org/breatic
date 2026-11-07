@@ -23,7 +23,7 @@ export interface TrayItem {
    * picked from disk.
    */
   id: string;
-  /** What the reader sees it called. */
+  /** What the user sees it called. */
   name: string;
   /** What kind of thing it is. */
   type: ChatAttachedChip['type'];
@@ -46,7 +46,7 @@ export interface AttachmentLimits {
 /** What adding a batch came to. */
 export type AddOutcome = 'added' | 'full' | 'too_long';
 
-/** What the reader is told about an attempt to attach or send that did not go in. */
+/** What the user is told about an attempt to attach or send that did not go in. */
 export type TrayNotice =
   | { key: 'full'; limit: number }
   | { key: 'tooLong' }
@@ -131,7 +131,7 @@ function trayOf(conversationId: string): readonly TrayItem[] {
  * An item already in the list keeps its place and takes the new snapshot:
  * attaching a node again after editing it sends what it says now. The rest go
  * in together only if the list then still fits both limits; a batch that
- * partly went in would leave the reader to work out which part. A refused
+ * partly went in would leave the user to work out which part. A refused
  * batch is told in a toast.
  * @param conversationId - The conversation it is attached in.
  * @param batch - The items, in order.
@@ -270,7 +270,7 @@ function forget(conversationIds: readonly string[]): void {
 /**
  * The sentence an attempt that did not go in is told with.
  * @param notice - What happened.
- * @returns The sentence, in the reader's language.
+ * @returns The sentence, in the user's language.
  */
 export function trayNoticeText(notice: TrayNotice): string {
   switch (notice.key) {
@@ -292,7 +292,7 @@ export function trayNoticeText(notice: TrayNotice): string {
 }
 
 /**
- * Tell the reader an attempt to attach or send did not go in.
+ * Tell the user an attempt to attach or send did not go in.
  *
  * A toast, said at the moment it happens (inner#1530): every writer -- the
  * attach button, the canvas adding to the Agent, a send held for its limits

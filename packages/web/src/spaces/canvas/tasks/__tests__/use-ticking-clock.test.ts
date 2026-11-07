@@ -5,7 +5,7 @@
  * The clock behind a running task's two counters (#186 §7.3).
  *
  * Elapsed and remaining are derived every second from what the server
- * decided, so the reader needs a clock that moves. Nothing else on the panel
+ * decided, so the user needs a clock that moves. Nothing else on the panel
  * does, so it stops the moment no row is counting.
  */
 
@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 describe('useTickingClock', () => {
-  it('starts at the reader’s clock', () => {
+  it('starts at the user’s clock', () => {
     const { result } = renderHook(() => useTickingClock(true));
 
     expect(result.current).toBe(Date.parse('2026-09-04T10:00:00.000Z'));

@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The model the reader picks in the chat panel (#1363).
+ * The model the member picks in the chat panel (#1363).
  *
  * Each conversation keeps its own model, server side; a new conversation
- * starts on the model the reader last picked, and so does a conversation from
+ * starts on the model the member last picked, and so does a conversation from
  * before the picker until its next message writes one. A pick is checked like
- * a rename: this reader's conversation, in this Project, not deleted. A model
+ * a rename: this member's conversation, in this Project, not deleted. A model
  * the deployment no longer lists is refused when sent (422, the code every
  * refused value gets here), and skipped when read.
  */
@@ -64,7 +64,7 @@ const OPUS = { id: "anthropic/claude-opus-5.5", name: "Claude Opus 5.5" };
 let seq = 0;
 
 /** A signed-in member with a Project. */
-interface Reader {
+interface Member {
   userId: string;
   projectId: string;
   cookie: string;
@@ -74,7 +74,7 @@ interface Reader {
  * Seed a signed-in owner with a project.
  * @returns Their ids and session cookie.
  */
-async function seedReader(): Promise<Reader> {
+async function seedMember(): Promise<Member> {
   const tag = `cmp-${seq++}-${Date.now().toString(36)}`;
   const [user] = await sql<{ id: string }[]>`
     INSERT INTO users (email, email_verified) VALUES (${`${tag}@example.com`}, true) RETURNING id
@@ -97,19 +97,19 @@ async function seedReader(): Promise<Reader> {
 }
 
 /**
- * Call the API as a reader.
- * @param reader - Who.
+ * Call the API as a member.
+ * @param member - Who.
  * @param method - The method.
  * @param path - The path under /api/v1.
  * @param body - The JSON body, when there is one.
  * @returns The response.
  */
-async function call(reader: Reader, method: string, path: string, body?: unknown): Promise<Response> {
+async function call(member: Member, method: string, path: string, body?: unknown): Promise<Response> {
   return app.request(`/api/v1${path}`, {
     method,
     headers: {
       "Content-Type": "application/json",
-      Cookie: reader.cookie,
+      Cookie: member.cookie,
       "Idempotency-Key": crypto.randomUUID(),
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -117,55 +117,55 @@ async function call(reader: Reader, method: string, path: string, body?: unknown
 }
 
 /**
- * Open chat in the reader's Project.
- * @param reader - Who.
+ * Open chat in the member's Project.
+ * @param member - Who.
  * @returns The current conversation as the open answers it.
  */
-async function open(reader: Reader): Promise<{ id: string; agentModel: { id: string; name: string } }> {
-  const res = await call(reader, "POST", "/chat/open", { project_id: reader.projectId });
+async function open(member: Member): Promise<{ id: string; agentModel: { id: string; name: string } }> {
+  const res = await call(member, "POST", "/chat/open", { project_id: member.projectId });
   const body = (await res.json()) as { data: { current: { conversation: { id: string; agentModel: { id: string; name: string } } } } };
   return body.data.current.conversation;
 }
 
 /**
- * Start another conversation in the reader's Project.
- * @param reader - Who.
+ * Start another conversation in the member's Project.
+ * @param member - Who.
  * @returns It, as the create answers it.
  */
-async function createConversation(reader: Reader): Promise<{ id: string; agentModel: { id: string; name: string } }> {
-  const res = await call(reader, "POST", "/chat/conversations", { project_id: reader.projectId });
+async function createConversation(member: Member): Promise<{ id: string; agentModel: { id: string; name: string } }> {
+  const res = await call(member, "POST", "/chat/conversations", { project_id: member.projectId });
   return ((await res.json()) as { data: { id: string; agentModel: { id: string; name: string } } }).data;
 }
 
 /**
  * Pick a model in a conversation.
- * @param reader - Who.
+ * @param member - Who.
  * @param conversationId - Which conversation.
  * @param model - The model id.
  * @param projectId - The Project named in the body.
  * @returns The response.
  */
-async function pick(reader: Reader, conversationId: string, model: string, projectId = reader.projectId): Promise<Response> {
-  return call(reader, "PUT", `/chat/conversations/${conversationId}/model`, { project_id: projectId, model });
+async function pick(member: Member, conversationId: string, model: string, projectId = member.projectId): Promise<Response> {
+  return call(member, "PUT", `/chat/conversations/${conversationId}/model`, { project_id: projectId, model });
 }
 
 /**
  * The two stored picks.
- * @param reader - Whose.
+ * @param member - Whose.
  * @param conversationId - Which conversation.
- * @returns The conversation's model and the reader's last pick.
+ * @returns The conversation's model and the member's last pick.
  */
-async function stored(reader: Reader, conversationId: string): Promise<{ conversation: string | null; user: string | null }> {
+async function stored(member: Member, conversationId: string): Promise<{ conversation: string | null; user: string | null }> {
   const [c] = await sql<{ agent_model: string | null }[]>`SELECT agent_model FROM conversations WHERE id = ${conversationId}`;
-  const [u] = await sql<{ agent_model: string | null }[]>`SELECT agent_model FROM users WHERE id = ${reader.userId}`;
+  const [u] = await sql<{ agent_model: string | null }[]>`SELECT agent_model FROM users WHERE id = ${member.userId}`;
   return { conversation: c!.agent_model, user: u!.agent_model };
 }
 
 describe("GET /chat/models", () => {
-  it("lists the models the reader can pick, in order, and the one a new conversation starts on", async () => {
-    const reader = await seedReader();
+  it("lists the models the member can pick, in order, and the one a new conversation starts on", async () => {
+    const member = await seedMember();
 
-    const res = await call(reader, "GET", "/chat/models");
+    const res = await call(member, "GET", "/chat/models");
     const body = (await res.json()) as { data: { models: unknown; lastUsed: string } };
 
     expect(res.status).toBe(200);
@@ -176,63 +176,63 @@ describe("GET /chat/models", () => {
 
 describe("each conversation keeps its own model", () => {
   it("starts the first conversation on the default and writes it down", async () => {
-    const reader = await seedReader();
+    const member = await seedMember();
 
-    const first = await open(reader);
+    const first = await open(member);
 
     expect(first.agentModel).toEqual(DEEPSEEK);
-    expect((await stored(reader, first.id)).conversation).toBe(DEEPSEEK.id);
+    expect((await stored(member, first.id)).conversation).toBe(DEEPSEEK.id);
   });
 
   it("keeps a pick to its conversation, records it as the last pick, and starts the next conversation on it", async () => {
-    const reader = await seedReader();
-    const first = await open(reader);
+    const member = await seedMember();
+    const first = await open(member);
 
-    const res = await pick(reader, first.id, SONNET.id);
-    const second = await createConversation(reader);
-    await pick(reader, second.id, OPUS.id);
-    const firstAgain = (await (await call(reader, "GET", `/chat/conversations/${first.id}`)).json()) as {
+    const res = await pick(member, first.id, SONNET.id);
+    const second = await createConversation(member);
+    await pick(member, second.id, OPUS.id);
+    const firstAgain = (await (await call(member, "GET", `/chat/conversations/${first.id}`)).json()) as {
       data: { conversation: { agentModel: { id: string } } };
     };
 
     expect(res.status).toBe(200);
     expect(second.agentModel).toEqual(SONNET);
     expect(firstAgain.data.conversation.agentModel).toEqual(SONNET);
-    expect(await stored(reader, first.id)).toEqual({ conversation: SONNET.id, user: OPUS.id });
-    expect((await stored(reader, second.id)).conversation).toBe(OPUS.id);
+    expect(await stored(member, first.id)).toEqual({ conversation: SONNET.id, user: OPUS.id });
+    expect((await stored(member, second.id)).conversation).toBe(OPUS.id);
   });
 
   it("starts the conversation the open creates on the last pick, and writes it down", async () => {
-    const reader = await seedReader();
-    const first = await open(reader);
-    await pick(reader, first.id, OPUS.id);
+    const member = await seedMember();
+    const first = await open(member);
+    await pick(member, first.id, OPUS.id);
     await sql`UPDATE conversations SET deleted_at = now() WHERE id = ${first.id}`;
 
-    const created = await open(reader);
+    const created = await open(member);
 
     expect(created.id).not.toBe(first.id);
     expect(created.agentModel).toEqual(OPUS);
-    expect((await stored(reader, created.id)).conversation).toBe(OPUS.id);
+    expect((await stored(member, created.id)).conversation).toBe(OPUS.id);
   });
 
   it("starts a conversation from before the picker on the last pick, until its next message writes one", async () => {
-    const reader = await seedReader();
-    const first = await open(reader);
-    await pick(reader, first.id, OPUS.id);
+    const member = await seedMember();
+    const first = await open(member);
+    await pick(member, first.id, OPUS.id);
     await sql`UPDATE conversations SET agent_model = NULL WHERE id = ${first.id}`;
 
-    const reopened = await open(reader);
+    const reopened = await open(member);
 
     expect(reopened.agentModel).toEqual(OPUS);
   });
 
   it("skips a stored model the deployment no longer lists", async () => {
-    const reader = await seedReader();
-    const first = await open(reader);
+    const member = await seedMember();
+    const first = await open(member);
     await sql`UPDATE conversations SET agent_model = 'retired/model' WHERE id = ${first.id}`;
-    await sql`UPDATE users SET agent_model = 'retired/model' WHERE id = ${reader.userId}`;
+    await sql`UPDATE users SET agent_model = 'retired/model' WHERE id = ${member.userId}`;
 
-    const reopened = await open(reader);
+    const reopened = await open(member);
 
     expect(reopened.agentModel).toEqual(DEEPSEEK);
   });
@@ -240,41 +240,41 @@ describe("each conversation keeps its own model", () => {
 
 describe("PUT /chat/conversations/:id/model", () => {
   it("refuses a model the deployment does not list, and writes nothing", async () => {
-    const reader = await seedReader();
-    const first = await open(reader);
+    const member = await seedMember();
+    const first = await open(member);
 
-    const res = await pick(reader, first.id, "retired/model");
+    const res = await pick(member, first.id, "retired/model");
 
     expect(res.status).toBe(422);
-    expect(await stored(reader, first.id)).toEqual({ conversation: DEEPSEEK.id, user: null });
+    expect(await stored(member, first.id)).toEqual({ conversation: DEEPSEEK.id, user: null });
   });
 
   it("answers 404 for someone else's conversation, another Project's, and a deleted one", async () => {
-    const reader = await seedReader();
-    const stranger = await seedReader();
+    const member = await seedMember();
+    const stranger = await seedMember();
     const theirs = await open(stranger);
-    const mine = await open(reader);
-    const other = await seedReader();
+    const mine = await open(member);
+    const other = await seedMember();
     await sql`
-      INSERT INTO project_members (project_id, user_id, role, added_by) VALUES (${other.projectId}, ${reader.userId}, 'editor', null)
+      INSERT INTO project_members (project_id, user_id, role, added_by) VALUES (${other.projectId}, ${member.userId}, 'editor', null)
     `;
-    const deleted = await createConversation(reader);
+    const deleted = await createConversation(member);
     await sql`UPDATE conversations SET deleted_at = now() WHERE id = ${deleted.id}`;
 
-    expect((await pick(reader, theirs.id, SONNET.id)).status).toBe(404);
-    expect((await pick(reader, mine.id, SONNET.id, other.projectId)).status).toBe(404);
-    expect((await pick(reader, deleted.id, SONNET.id)).status).toBe(404);
+    expect((await pick(member, theirs.id, SONNET.id)).status).toBe(404);
+    expect((await pick(member, mine.id, SONNET.id, other.projectId)).status).toBe(404);
+    expect((await pick(member, deleted.id, SONNET.id)).status).toBe(404);
     expect((await stored(stranger, theirs.id)).conversation).toBe(DEEPSEEK.id);
   });
 });
 
 describe("POST /chat/message with a model", () => {
-  it("refuses a model the deployment does not list, with the reader's sentence, and stores no message", async () => {
-    const reader = await seedReader();
-    const first = await open(reader);
+  it("refuses a model the deployment does not list, with the member's sentence, and stores no message", async () => {
+    const member = await seedMember();
+    const first = await open(member);
 
-    const res = await call(reader, "POST", "/chat/message", {
-      project_id: reader.projectId,
+    const res = await call(member, "POST", "/chat/message", {
+      project_id: member.projectId,
       conversation_id: first.id,
       message: "hello",
       model: "retired/model",
@@ -290,63 +290,63 @@ describe("POST /chat/message with a model", () => {
   });
 
   it("writes the model it is answered by into the conversation before the turn runs", async () => {
-    const reader = await seedReader();
-    const first = await open(reader);
+    const member = await seedMember();
+    const first = await open(member);
     await sql`UPDATE conversations SET agent_model = NULL WHERE id = ${first.id}`;
 
-    const res = await call(reader, "POST", "/chat/message", {
-      project_id: reader.projectId,
+    const res = await call(member, "POST", "/chat/message", {
+      project_id: member.projectId,
       conversation_id: first.id,
       message: "hello",
       model: SONNET.id,
     });
     await res.text();
 
-    expect((await stored(reader, first.id)).conversation).toBe(SONNET.id);
+    expect((await stored(member, first.id)).conversation).toBe(SONNET.id);
   });
 
   it("runs on the model the message carries and leaves a listed pick of the conversation as it is", async () => {
     const { conversationService } = await import("@server/modules");
-    const reader = await seedReader();
-    const first = await open(reader);
+    const member = await seedMember();
+    const first = await open(member);
     // A page whose pick is still being saved sends with the model it showed.
-    const read = await conversationService.assertWritable(first.id, reader.userId, reader.projectId);
-    await pick(reader, first.id, OPUS.id);
+    const read = await conversationService.assertWritable(first.id, member.userId, member.projectId);
+    await pick(member, first.id, OPUS.id);
 
-    const answeredBy = await conversationService.modelForMessage(read, reader.userId, SONNET.id);
+    const answeredBy = await conversationService.modelForMessage(read, member.userId, SONNET.id);
 
     expect(answeredBy).toBe(SONNET.id);
-    expect(await stored(reader, first.id)).toEqual({ conversation: OPUS.id, user: OPUS.id });
+    expect(await stored(member, first.id)).toEqual({ conversation: OPUS.id, user: OPUS.id });
   });
 
   it.each([null, "retired/model"])("leaves a pick saved after the message read a stored %s as it is", async (storedModel) => {
     const { conversationService } = await import("@server/modules");
-    const reader = await seedReader();
-    const first = await open(reader);
+    const member = await seedMember();
+    const first = await open(member);
     await sql`UPDATE conversations SET agent_model = ${storedModel} WHERE id = ${first.id}`;
-    const read = await conversationService.assertWritable(first.id, reader.userId, reader.projectId);
-    await pick(reader, first.id, OPUS.id);
+    const read = await conversationService.assertWritable(first.id, member.userId, member.projectId);
+    await pick(member, first.id, OPUS.id);
 
-    const answeredBy = await conversationService.modelForMessage(read, reader.userId, SONNET.id);
+    const answeredBy = await conversationService.modelForMessage(read, member.userId, SONNET.id);
 
     expect(answeredBy).toBe(SONNET.id);
-    expect(await stored(reader, first.id)).toEqual({ conversation: OPUS.id, user: OPUS.id });
+    expect(await stored(member, first.id)).toEqual({ conversation: OPUS.id, user: OPUS.id });
   });
 
   it("writes the model it is answered by over a stored one the deployment no longer lists", async () => {
     const { conversationService } = await import("@server/modules");
-    const reader = await seedReader();
-    const first = await open(reader);
+    const member = await seedMember();
+    const first = await open(member);
     await sql`UPDATE conversations SET agent_model = 'retired/model' WHERE id = ${first.id}`;
 
     const answeredBy = await conversationService.modelForMessage(
-      await conversationService.assertWritable(first.id, reader.userId, reader.projectId),
-      reader.userId,
+      await conversationService.assertWritable(first.id, member.userId, member.projectId),
+      member.userId,
       SONNET.id,
     );
 
     expect(answeredBy).toBe(SONNET.id);
-    expect((await stored(reader, first.id)).conversation).toBe(SONNET.id);
+    expect((await stored(member, first.id)).conversation).toBe(SONNET.id);
   });
 });
 
@@ -374,21 +374,21 @@ describe("a turn resumed by an answer to its card", () => {
 
   it("runs on the model the turn started on, whatever the picker shows now", async () => {
     const { conversationService } = await import("@server/modules");
-    const reader = await seedReader();
-    const first = await open(reader);
+    const member = await seedMember();
+    const first = await open(member);
     const toolCallId = await pausedAt(first.id, OPUS.id);
-    await pick(reader, first.id, SONNET.id);
+    await pick(member, first.id, SONNET.id);
 
-    expect(await conversationService.modelForResume(await conversationService.assertWritable(first.id, reader.userId, reader.projectId), reader.userId, toolCallId)).toBe(OPUS.id);
+    expect(await conversationService.modelForResume(await conversationService.assertWritable(first.id, member.userId, member.projectId), member.userId, toolCallId)).toBe(OPUS.id);
   });
 
   it("runs on the conversation's model when the one it started on is no longer listed, and does not refuse", async () => {
     const { conversationService } = await import("@server/modules");
-    const reader = await seedReader();
-    const first = await open(reader);
+    const member = await seedMember();
+    const first = await open(member);
     const toolCallId = await pausedAt(first.id, "retired/model");
-    await pick(reader, first.id, SONNET.id);
+    await pick(member, first.id, SONNET.id);
 
-    expect(await conversationService.modelForResume(await conversationService.assertWritable(first.id, reader.userId, reader.projectId), reader.userId, toolCallId)).toBe(SONNET.id);
+    expect(await conversationService.modelForResume(await conversationService.assertWritable(first.id, member.userId, member.projectId), member.userId, toolCallId)).toBe(SONNET.id);
   });
 });

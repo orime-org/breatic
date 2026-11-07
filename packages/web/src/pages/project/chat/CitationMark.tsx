@@ -35,7 +35,7 @@ interface CitationMarkProps {
  * A marker where a claim is written, standing for the page it came from.
  *
  * A ring with the number in it and nothing else. Drawing the site's own icon
- * would mean fetching it from that site, and that fetch hands the reader's
+ * would mean fetching it from that site, and that fetch hands the user's
  * address to whoever the reply happened to cite; a number owes nobody a
  * request. The card on hover is where the title goes -- a number alone does
  * not say enough to decide whether to follow it.
@@ -70,7 +70,7 @@ export const CitationMark = React.memo(function CitationMark({
           {index}
         </a>
       </HoverCardTrigger>
-      {/* The gap is measured from the edge the reader sees. Nothing wraps the
+      {/* The gap is measured from the edge the user sees. Nothing wraps the
           marker, so the trigger's own edge is that edge. */}
       <HoverCardContent
         data-testid='source-hover-card'

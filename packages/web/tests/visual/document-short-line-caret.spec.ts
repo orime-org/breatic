@@ -4,7 +4,7 @@
 /**
  * Pressing in the room to the right of a line whose text is short.
  *
- * A reader drags across a short line to select it, and on a bulleted item that
+ * A user drags across a short line to select it, and on a bulleted item that
  * used to select nothing — the moment the pointer passed the end of the text,
  * the selection collapsed back to the start of the line. The same fault shows
  * up in one click: pressing out to the right of a bulleted item put the caret

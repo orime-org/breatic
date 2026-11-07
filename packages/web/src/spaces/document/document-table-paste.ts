@@ -12,7 +12,7 @@
  * placeholder cells until a command on the table evens it.
  *
  * Here every rowspan is cut to the rows below it and every row is filled at
- * its end to the widest row, the shape the reader saw on the page; a table
+ * its end to the widest row, the shape the user saw on the page; a table
  * holding no cell at all goes, since ProseMirror builds no table from it. The
  * paste and the drop both do it while the HTML is made ready to read
  * (`document-paste-read.ts`).

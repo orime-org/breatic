@@ -286,7 +286,7 @@ function destroyAccountTransport(): void {
  * A collaboration WebSocket dialled the way the shared one is, at the same
  * address and with the same framing.
  *
- * Outside the shared socket's lifecycle: a read of Spaces the reader has not
+ * Outside the shared socket's lifecycle: a read of Spaces the user has not
  * opened (inner#1552) owns one of these, attaches its providers to it
  * explicitly (a provider handed a socket does not attach itself) and destroys
  * it when the read ends, so the tab's documents never share it.

@@ -9,7 +9,7 @@
  * medium put in is judged by its own address (§5.4.4): under our public
  * prefix it stays; an outside address the ingest Worker can fetch, or a
  * `data:` or `blob:` one the browser can read, becomes a pending block whose
- * upload brings it into storage; anything else is left out and the reader is
+ * upload brings it into storage; anything else is left out and the user is
  * told how many were. A pending block copied from a body keeps its upload id.
  * While our prefix is not known yet, every medium whose address can reach
  * storage becomes pending, and its upload sorts ours from outside once the

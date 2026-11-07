@@ -11,7 +11,7 @@
  * resolves the block at `selection.anchor`, which is the end the drag started
  * from, so a backwards drag asked about one block and acted on another.
  *
- * WHEN TAB CANNOT MOVE A BLOCK, THE READER IS TOLD. A block already as deep as
+ * WHEN TAB CANNOT MOVE A BLOCK, THE USER IS TOLD. A block already as deep as
  * it can go took the key and did nothing, and there was no way to tell that
  * from a press that missed (user 2026-09-08). The topmost block of the
  * selection is marked `data-tab-blocked` and the stylesheet animates it.
@@ -21,7 +21,7 @@
  * in a browser, the `.bn-block-outer` the attribute landed on reported
  * `isConnected: false` in the very next task — ProseMirror had already
  * replaced it — so no rule ever reached it, `getAnimations()` came back empty,
- * and the reader saw nothing. A decoration is re-applied to whatever element
+ * and the user saw nothing. A decoration is re-applied to whatever element
  * currently stands for that block, which is what surviving a redraw means.
  * jsdom has no such redraw, so the five cases below passed against the broken
  * version too; the probe that caught it drives a real browser.
@@ -39,7 +39,7 @@
  *
  * The key is claimed either way. An unclaimed Tab is one the browser answers,
  * and the browser answers it by moving focus out of the editor: measured,
- * focus went from the editor to `BODY` and the next characters the reader
+ * focus went from the editor to `BODY` and the next characters the user
  * typed reached nothing. BlockNote's own source says the same —
  * upstream's `KeyboardShortcutsExtension.ts`, "Always returning true for tab key
  * presses ensures they're not captured by the browser. Otherwise, they blur
@@ -89,7 +89,7 @@ interface TabEditor {
  * block. Blocks nest inside one another, so the containers reached on the way
  * down to the caret are its ANCESTORS — a block indented once had the nudge
  * drawn on the top-level block holding it, and the animation started from the
- * left edge of the body rather than from the line the reader was on (user
+ * left edge of the body rather than from the line the user was on (user
  * 2026-09-08).
  *
  * A position rather than an element: the element is whatever currently draws
@@ -98,7 +98,7 @@ interface TabEditor {
  * A WHOLE-DOCUMENT SELECTION HAS NO SUCH RANGE, and it is two presses of the
  * platform's select-all away. Its `$from` sits at depth zero, whose parent is
  * the doc rather than a `blockGroup`, so the predicate matches nothing and
- * `blockRange` comes back null — the press was claimed and the reader was
+ * `blockRange` comes back null — the press was claimed and the user was
  * told nothing (measured in a browser: `[data-tab-blocked]` came back empty
  * while the same press one block down drew the nudge). The block Tab would
  * have moved is still the document's first, which is exactly the one
@@ -134,7 +134,7 @@ function nudgePlugin(): Plugin<number | null> {
         const asked = tr.getMeta(nudgeKey) as number | null | undefined;
         if (asked !== undefined) return asked;
         // A changed document takes the mark off. What it marks is a block that
-        // could not move, and an edit means the reader has moved on; carrying
+        // could not move, and an edit means the user has moved on; carrying
         // the position across changes that may have removed the block is more
         // than a 260ms animation is worth.
         return tr.docChanged ? null : previous;
@@ -170,7 +170,7 @@ export const documentTabExtension = createExtension(() => {
    *
    * A second press while one is still running leaves it running: re-applying
    * the same decoration sets the same attribute on the same element, which
-   * restarts nothing, and the reader pressing again inside 260ms is already
+   * restarts nothing, and the user pressing again inside 260ms is already
    * watching the answer to the first press.
    * @param view - The editor view the selection belongs to.
    */

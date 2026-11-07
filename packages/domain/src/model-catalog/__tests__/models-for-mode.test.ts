@@ -147,7 +147,7 @@ describe("facts the catalog carries that change what to propose", () => {
 
   it("keeps the cap on how much prompt a model takes", () => {
     // One tts model states a per-request cap and the other states none; the
-    // panel refuses the submit past it, so a reader choosing between them on
+    // panel refuses the submit past it, so a user choosing between them on
     // script length has nothing to choose with unless the answer says.
     const answer = modelsForMode("audio", "tts");
     if (!answer.available) throw new Error("tts has models");
@@ -192,7 +192,7 @@ describe("facts the catalog carries that change what to propose", () => {
 
   it("carries the name the picker shows beside the name a node stores", () => {
     // The picker renders display_name and never the id, so an answer carrying
-    // only the id asks the reader to map "kling-o3-pro" onto "Kling O3 Pro".
+    // only the id asks the user to map "kling-o3-pro" onto "Kling O3 Pro".
     const answer = modelsForMode("image", "t2i");
     if (!answer.available) throw new Error("t2i has models");
     for (const model of answer.models) {
@@ -230,7 +230,7 @@ describe("facts the catalog carries that change what to propose", () => {
 
   it("says when the panel draws no control for a parameter", () => {
     // `output_format` is pinned on several image models and no panel offers
-    // it: the run takes the default, and a reader told to set it has nothing
+    // it: the run takes the default, and a user told to set it has nothing
     // to set.
     const answer = modelsForMode("image", "i2i");
     if (!answer.available) throw new Error("i2i has models");
@@ -253,7 +253,7 @@ describe("facts the catalog carries that change what to propose", () => {
 
   it("offers the values the picker lists for a range it expands", () => {
     // The picker walks an unstepped range one whole step at a time, so a
-    // reader told only the two ends asks for a value in between.
+    // user told only the two ends asks for a value in between.
     const answer = modelsForMode("video", "t2v");
     if (!answer.available) throw new Error("t2v has models");
     const durations = answer.models
@@ -278,7 +278,7 @@ describe("facts the catalog carries that change what to propose", () => {
 
 describe("the gate a parameter reports", () => {
   it("names something that mode or that model has", () => {
-    // A gate tells the reader to turn a switch on first, and names another
+    // A gate tells the user to turn a switch on first, and names another
     // parameter of the same model. Naming anything else sends them after a
     // control that is not on their screen.
     let seen = 0;

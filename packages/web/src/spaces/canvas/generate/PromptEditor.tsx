@@ -60,7 +60,7 @@ export interface PromptEditorHandle {
    */
   serializePrompt: (tokens?: MentionTokens) => string | null;
   /**
-   * Inserts plain text at the caret the reader last left in this editor, or
+   * Inserts plain text at the caret the user last left in this editor, or
    * at the end when they never put one here. A popover opening takes focus
    * away, so "has a caret" means "was focused since this editor was built",
    * and the selection ProseMirror keeps through the blur is where it goes.
@@ -69,7 +69,7 @@ export interface PromptEditorHandle {
    */
   insertText: (text: string) => void;
   /**
-   * Puts the caret in this editor: back where the reader last left it, or at
+   * Puts the caret in this editor: back where the user last left it, or at
    * the end when they never put one here. Any focus counts as a placed caret
    * from then on, so a caret dropped at the start would draw every later
    * insert to the start.
@@ -111,7 +111,7 @@ const keptOf = new WeakMap<
     wiring: PromptWiring;
     caretProvider: Pick<HocuspocusProvider, 'awareness'> | null;
     mentionEmptyLabel: string;
-    /** Whether the reader has put a caret in this editor since it was built. */
+    /** Whether the user has put a caret in this editor since it was built. */
     caretPlaced: boolean;
     hadFocus: boolean;
     returning: boolean;

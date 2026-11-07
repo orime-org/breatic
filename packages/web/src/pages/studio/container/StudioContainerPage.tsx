@@ -121,7 +121,7 @@ export default function StudioContainerPage(): React.JSX.Element {
   const createProject = useCreateProject(studios);
   // The address is the tab. Holding it in component state instead made every
   // tab the same address: a link could only ever say "that studio", a refresh
-  // dropped the reader back on Projects, and Back skipped past the switches
+  // dropped the user back on Projects, and Back skipped past the switches
   // the user had made. So the segment is read here rather than mirrored — one
   // value, no chance of the page and the address bar disagreeing.
   const tab = studioTabFromParam(tabParam);

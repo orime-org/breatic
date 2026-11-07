@@ -46,7 +46,7 @@ interface PromptGroupProps {
   items: readonly PromptGroupItem[];
   /** The open prompt's id. */
   value: string;
-  /** The reader opened another prompt. */
+  /** The user opened another prompt. */
   onValueChange: (id: string) => void;
   /** Classes for the list. */
   className?: string;
@@ -65,7 +65,7 @@ interface PromptGroupProps {
  * @param root0 - Component props.
  * @param root0.items - The prompts.
  * @param root0.value - The open prompt.
- * @param root0.onValueChange - Called with a prompt the reader opened.
+ * @param root0.onValueChange - Called with a prompt the user opened.
  * @param root0.className - Classes for the list.
  * @param root0.itemClassName - Classes for each prompt.
  * @param root0.openItemClassName - Classes added to the open prompt.

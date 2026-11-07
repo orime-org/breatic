@@ -93,7 +93,7 @@ describe('ModelParamControls', () => {
     expect(onChange).toHaveBeenCalledWith({ quality: 'xhigh' });
   });
 
-  it('writes the text once the reader leaves the box, not on every key', async () => {
+  it('writes the text once the user leaves the box, not on every key', async () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     const onChange = vi.fn();
     render(<ModelParamControls mode='t2i' model={MIXED} value={{}} onChange={onChange} />);
@@ -153,7 +153,7 @@ describe('ModelParamControls', () => {
       expect(screen.getByTestId('generate-param-speakers-add')).toBeDisabled();
     });
 
-    it('writes an edited field when the reader leaves the box, and removes an entry', async () => {
+    it('writes an edited field when the user leaves the box, and removes an entry', async () => {
       vi.spyOn(document, 'hasFocus').mockReturnValue(true);
       const onChange = vi.fn();
       render(<ModelParamControls mode='t2i' model={SPEAKERS} value={ONE} onChange={onChange} />);

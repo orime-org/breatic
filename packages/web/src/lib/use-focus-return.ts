@@ -24,7 +24,7 @@ export interface FocusReturn {
  * page and focus with it. Put back a task later, the way an editor's own
  * autofocus waits: a mount undone straight away (Strict Mode) moves the
  * element out of the page again, and focus put in before that would be lost
- * and read as the reader leaving.
+ * and read as the user leaving.
  * @param memo - Where the answer is kept, or undefined when there is nothing
  *   to put the caret back into.
  * @param hasFocus - Whether the caret is in the element now.

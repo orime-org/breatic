@@ -146,7 +146,7 @@ describe("a failed run that is the last word", () => {
     expect(mockSettleTaskForNode).toHaveBeenCalledTimes(2);
   });
 
-  // A feed row that names its node is one the reader can open from. The
+  // A feed row that names its node is one the user can open from. The
   // handler's exits disagreed on this: one passed the id, two did not, so
   // the same single-node failure landed pinned or unpinned depending on
   // which way out the run took.

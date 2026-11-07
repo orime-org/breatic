@@ -107,7 +107,7 @@ function select(editor: Editor, from: number, to = from): void {
 }
 
 /**
- * The reader's copy of a range of this body, as the clipboard holds it.
+ * The user's copy of a range of this body, as the clipboard holds it.
  * @param editor - The editor.
  * @param from - Where it starts.
  * @param to - Where it ends.
@@ -141,7 +141,7 @@ function dropFormats(editor: Editor, at: number, formats: Readonly<Record<string
 }
 
 /**
- * Drags a range of the body to a point, the way a reader's drag inside the body does.
+ * Drags a range of the body to a point, the way a user's drag inside the body does.
  * @param editor - The editor.
  * @param from - Where the dragged range starts.
  * @param to - Where it ends.

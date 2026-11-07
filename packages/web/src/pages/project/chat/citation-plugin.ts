@@ -21,11 +21,11 @@ import type { Element, Root, RootContent, Text } from 'hast';
 const MARKER = /\[(\d{1,3})\]/g;
 
 /**
- * Elements whose text is not prose the model wrote for the reader.
+ * Elements whose text is not prose the model wrote for the user.
  *
  * `math` covers the whole MathML subtree KaTeX renders beside the visible
  * formula, whose `annotation` holds the LaTeX the model wrote -- the source a
- * reader copies a formula to get. A formula containing `[1]` would otherwise
+ * user copies a formula to get. A formula containing `[1]` would otherwise
  * have that source rewritten, and the chip spliced into a subtree KaTeX
  * clips out of sight.
  */

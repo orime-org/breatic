@@ -71,7 +71,7 @@ function loadedTable(): LoadedTable {
   cursors.push(cursor);
   const handle = getDocumentEditor(doc, 'project-p/document-loaded-table', {
     caretProvider: { awareness: cursor },
-    readWho: () => ({ role: 'editor', viewerId: 'reader-1' }),
+    readWho: () => ({ role: 'editor', viewerId: 'user-1' }),
     editable: true,
   });
   return { handle, doc, tree, bytes: Y.encodeStateAsUpdate(doc) };

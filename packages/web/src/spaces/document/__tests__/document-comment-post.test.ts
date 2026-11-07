@@ -11,13 +11,13 @@
  * current selection, which the block entry has no way to hand a range to.
  *
  * Writing it ourselves is what makes the two entries one operation: the
- * bubble bar opens the draft on the reader's selection, the block handle on
+ * bubble bar opens the draft on the user's selection, the block handle on
  * `selectionOverBlockContent`, and from here they are identical (A2).
  *
  * The range comes from the draft plugin at the moment of posting, not from
  * the caller: the plugin is what has carried it across every edit since the
  * draft opened, and a peer's deletion can arrive between React rendering the
- * composer and the reader pressing post.
+ * composer and the user pressing post.
  *
  * TDD: red because `postComment` does not exist yet.
  */
@@ -173,7 +173,7 @@ describe('postComment', () => {
     // Creating a thread is a round trip. The words can go during it, and the
     // thread is already made by then — §9.2's S3 is this shape exactly:
     // unresolved, with nothing in the body to point at. Dropping the thread
-    // instead would lose what the reader wrote.
+    // instead would lose what the user wrote.
     const { editor, doc } = open();
     const run = firstRun(editor);
     const range = { from: run.from, to: run.from + 5 };

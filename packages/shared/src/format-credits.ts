@@ -4,7 +4,7 @@
 import { ceilCreditMicroToCent, parseCreditDecimal, quantizeQuotedCredits } from "@shared/credit-amount.js";
 
 /**
- * A credit amount written for a reader.
+ * A credit amount written for a user.
  *
  * A run is charged in part-credits, so they are kept, to at most two
  * decimals, rounded up the way a charge is (a debit away from zero); digits

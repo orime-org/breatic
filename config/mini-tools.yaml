@@ -1,7 +1,7 @@
 # Mini-tools that run in the media container (inner#888 §8, §9).
 #
 # Each container operation names the container class it runs in and the
-# seconds the credit precheck holds the reader to. The precheck is a floor, not
+# seconds the credit precheck holds the user to. The precheck is a floor, not
 # the bill: a run is charged for the seconds it actually used, priced below.
 # How long a run may take is the node task budget (config/node-tasks.yaml),
 # the one ceiling every task has.

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Taking the reader's answer to a Space request (inner#1552).
+ * Taking the user's answer to a Space request (inner#1552).
  *
  * The answer is held to the request it answers, and the call is settled with
  * two things kept apart: what the card draws (`output`), a summary per Space

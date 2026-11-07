@@ -302,7 +302,7 @@ describe('ProjectPage — a failed Space RPC always says so', () => {
     expect(toast.error).not.toHaveBeenCalled();
   });
 
-  it('a create refused for the Space cap warns with the cap in one line, in the reader language', async () => {
+  it('a create refused for the Space cap warns with the cap in one line, in the user language', async () => {
     sendSpaceRpcMock.mockResolvedValue({
       id: 'r1',
       ok: false,
@@ -338,7 +338,7 @@ describe('ProjectPage — a failed Space RPC always says so', () => {
     ]);
   });
 
-  it('never shows the server message to the reader', async () => {
+  it('never shows the server message to the user', async () => {
     sendSpaceRpcMock.mockResolvedValue({
       id: 'r1',
       ok: false,

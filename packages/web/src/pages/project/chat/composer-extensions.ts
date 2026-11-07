@@ -45,7 +45,7 @@ export const ATTACHMENTS_CHANGED_META = 'composerAttachmentsChanged';
 let measuring = false;
 
 /**
- * The length the reader will see once the box has applied an edit and
+ * The length the user will see once the box has applied an edit and
  * everything its rules add after it: ProseMirror refuses or keeps a
  * transaction before those follow-ups exist, so the edit is applied aside to
  * measure them.
@@ -189,8 +189,8 @@ function composerRules(wiring: ComposerWiring): AnyExtension {
             },
           },
           // Refuses an edit that would take the words past the limit, as the
-          // reader counts them once the box has settled it (the spaces kept
-          // around a block included). Writes the reader did not make are let
+          // user counts them once the box has settled it (the spaces kept
+          // around a block included). Writes the user did not make are let
           // through; an edit that shortens is always fine. A batch of text --
           // a paste, a drop from outside, an input method's composition -- comes
           // in whole and is cut afterwards.

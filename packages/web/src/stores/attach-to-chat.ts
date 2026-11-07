@@ -43,7 +43,7 @@ export async function openTray(projectId: string): Promise<Tray | undefined> {
 /**
  * Hand items to the agent: from the canvas, a document or a paste.
  *
- * The agent column is brought back into view so the reader sees them arrive.
+ * The agent column is brought back into view so the user sees them arrive.
  * The batch goes in whole or not at all, and what stopped it is told in a
  * toast.
  * @param projectId - The project the items come from.

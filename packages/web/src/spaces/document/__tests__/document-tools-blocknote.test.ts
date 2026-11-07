@@ -228,7 +228,7 @@ const PLACEMENTS: readonly Placement[] = [
   },
   {
     // A whole block selected rather than a range inside one. `Mod`-clicking a
-    // paragraph is how a reader gets here: `prosemirror-view` builds a
+    // paragraph is how a user gets here: `prosemirror-view` builds a
     // `NodeSelection` when the platform's select-node modifier is held. The
     // selection then sits OUTSIDE the block's content, which is a shape none
     // of the caret-in-a-textblock placements above reaches.
@@ -338,7 +338,7 @@ describe('a selection only half of which carries the style', () => {
 
   it('reads as off, whichever half carries it', () => {
     // A reading that took the marks at one end alone would answer differently
-    // on the same half-bold paragraph depending on which way the reader
+    // on the same half-bold paragraph depending on which way the user
     // dragged.
     for (const block of [HALF_BOLD, BOLD_HALF]) {
       const editor = open(block);
@@ -555,7 +555,7 @@ describe('the button and the press read the same predicate', () => {
     // shortcuts branch on — counts any inline node carrying marks. The two
     // would then answer opposite on one selection: the button says on and
     // clears the line, the shortcut says off and adds to the break alone,
-    // changing nothing the reader can see.
+    // changing nothing the user can see.
     const editor = lineWithABreak();
     const state = editor.prosemirrorState;
 
@@ -609,11 +609,11 @@ describe('the button and the press read the same predicate', () => {
     expect(inlineShape(editor).join(' ')).toBe(before);
   });
 
-  it('greys every tool over a lone break, which carries no style a reader sees', () => {
+  it('greys every tool over a lone break, which carries no style a user sees', () => {
     // A hard break renders as a line wrap and nothing else — bold, a colour or
     // a fill on it is invisible, and Yjs drops it besides (a non-text inline
     // node is mapped by its attributes alone). So a press there would do
-    // nothing the reader can see or keep, and R7 asks for a grey control.
+    // nothing the user can see or keep, and R7 asks for a grey control.
     const editor = open({ type: 'paragraph', content: 'abcdef' });
     const view = editor.prosemirrorView!;
     view.dispatch(

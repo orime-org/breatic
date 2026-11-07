@@ -4,7 +4,7 @@
 /**
  * A note in the prompt box (inner#977): on an orange ground and named as a
  * note, on a line of its own at the top, deletable, never something the
- * reader can type or paste into being, and drawn as selected the way a
+ * user can type or paste into being, and drawn as selected the way a
  * selected mention is.
  */
 
@@ -82,7 +82,7 @@ function noteElement(e: Editor): HTMLElement {
   return found;
 }
 
-describe('a note the reader did not get from us', () => {
+describe('a note the user did not get from us', () => {
   it('cannot be typed', () => {
     const e = withNote('She walks.');
     e.commands.insertContentAt(e.state.doc.content.size - 1, '(💡 make it rain)');

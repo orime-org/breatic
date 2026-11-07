@@ -130,19 +130,19 @@ export function updateFor(
  * A text selection is put back at the end, for the reasons under
  * `keepSelection`. That matters more in the second form than the first: the
  * block handle acts on the row the pointer is over, which is rarely the row
- * the reader is typing in, so their caret has to come back untouched (#113
+ * the user is typing in, so their caret has to come back untouched (#113
  * A5). The target range never becomes the editor's selection — it is built for
  * this transaction and read straight away.
  * PRESSING A ROW A BLOCK ALREADY IS cancels it — that is what a menu showing
  * a tick means, and both menus that show one run this. An INSERT means the
- * reader asked for that kind of row and nothing else, so the same press there
+ * user asked for that kind of row and nothing else, so the same press there
  * has to set rather than cancel: the row insert-below makes inherits the quote
  * of the row it was made under (`insertRowForMenu`), and choosing "Quote" on
  * it was taking the quote straight back off — measured, the new row came back
  * `quoted: false`.
  * @param editor - The editor.
  * @param id - Which row.
- * @param overBlockId - Act on this block instead of the reader's selection.
+ * @param overBlockId - Act on this block instead of the user's selection.
  * @param cancels - Whether pressing what the block already is takes it off.
  * Defaults to true, which is what a menu with a tick asks for.
  * @throws {Error} When no block carries that id.
@@ -227,7 +227,7 @@ function selectionBefore(tr: Transaction): SelectionBefore {
  * `updateBlockTr` replaces the node it changes, and a replacement collapses
  * whatever selection sat inside it — measured, a press over three selected
  * paragraphs left the selection empty, which takes the bar off screen
- * (`SelectionBubbleBar`'s `isWarranted` wants text in it) and leaves the reader
+ * (`SelectionBubbleBar`'s `isWarranted` wants text in it) and leaves the user
  * selecting the same text again to press a second row.
  *
  * The other selection kinds map themselves: an `AllSelection` maps to an

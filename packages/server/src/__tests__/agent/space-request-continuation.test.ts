@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The segment of a turn that resumes after the reader answers a Space request
+ * The segment of a turn that resumes after the user answers a Space request
  * (inner#1552).
  *
  * It resumes the turn that asked, the way an answered questionnaire does. The
@@ -51,7 +51,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     ...base,
     ASK_USER: actual.ASK_USER,
     REQUEST_SPACE_CONTENT: actual.REQUEST_SPACE_CONTENT,
-    AWAITS_READER: actual.AWAITS_READER,
+    AWAITS_USER: actual.AWAITS_USER,
     streamTextRetry: actual.streamTextRetry,
     buildAgentConfig: () => ({ modelId: "test", instructions: { base: "system" }, tools: {} }),
     finalizeTurn: actual.finalizeTurn,
@@ -69,7 +69,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
-  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
+  addUserMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
   setUserForModel: vi.fn(async () => undefined),
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
@@ -95,7 +95,7 @@ const WHOLE = {
   groups_not_listed: 0,
 };
 
-/** The result the reader shared, in full. */
+/** The result the user shared, in full. */
 const FULL = {
   spaces: [{ id: "c1", name: "Cast", kind: "canvas", state: "read", content: "THE CAST LIST: Ada, Ben", total_chars: 23, detail: WHOLE }],
 };

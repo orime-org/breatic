@@ -4,11 +4,11 @@
 /**
  * The card that turns an agent's proposal into one press (#229).
  *
- * The reader it exists for does not know the canvas, so the card has to answer
+ * The user it exists for does not know the canvas, so the card has to answer
  * everything before the press: what gets built and what is left for them
  * afterwards. Pressing posts the group to the canvas, which is
  * the only thing with a viewport to place it in -- and when no canvas is open
- * there is nobody holding that mailbox, which the reader has to be told rather
+ * there is nobody holding that mailbox, which the user has to be told rather
  * than left pressing a button that does nothing.
  */
 
@@ -134,7 +134,7 @@ afterEach(() => {
 });
 
 describe('what the card says before it is pressed', () => {
-  it('names each node it would build, marking the one the reader fills in', () => {
+  it('names each node it would build, marking the one the user fills in', () => {
     listModels.mockResolvedValue(CATALOG);
     renderCard();
 
@@ -153,7 +153,7 @@ describe('what the card says before it is pressed', () => {
   it('draws an arrow only where the group is actually wired', () => {
     // The arrow says the node on its left feeds the one on its right. A mode
     // whose material is picked in a toolbar slot has no edge and no wiring to
-    // do, and an arrow there tells the reader to connect something that
+    // do, and an arrow there tells the user to connect something that
     // cannot be connected.
     listModels.mockResolvedValue(CATALOG);
     renderCard(true, PAIR);
@@ -164,7 +164,7 @@ describe('what the card says before it is pressed', () => {
     expect(screen.queryByTestId('proposal-arrow')).toBeNull();
   });
 
-  it('says what is left for the reader, taken from the prompt marks', () => {
+  it('says what is left for the user, taken from the prompt marks', () => {
     listModels.mockResolvedValue(CATALOG);
     renderCard();
 
@@ -173,8 +173,8 @@ describe('what the card says before it is pressed', () => {
     ).toBeTruthy();
   });
 
-  it('tells the reader where the prompt the agent wrote is found', () => {
-    // The prompt lives in the generation panel, and a reader new to the canvas
+  it('tells the user where the prompt the agent wrote is found', () => {
+    // The prompt lives in the generation panel, and a user new to the canvas
     // does not know a right-click opens it (#289).
     listModels.mockResolvedValue(CATALOG);
     renderCard();
@@ -208,7 +208,7 @@ describe('what the card says before it is pressed', () => {
   });
 
   it('names the model the way the panel will name it', async () => {
-    // The reader this card exists for has never seen a model id. One press
+    // The user this card exists for has never seen a model id. One press
     // later the picker in the panel says "Some Model", and a card that said
     // "some-model" left them matching two names for one thing.
     listModels.mockResolvedValue(CATALOG);
@@ -232,7 +232,7 @@ describe('what the card says before it is pressed', () => {
 });
 
 describe('a flow that is more than one thing', () => {
-  /** Copy standing beside a generation, with a place the reader rewrites. */
+  /** Copy standing beside a generation, with a place the user rewrites. */
   const COPY: CanvasProposal = {
     nodes: [
       {
@@ -253,7 +253,7 @@ describe('a flow that is more than one thing', () => {
   };
 
   it('draws the words in full, beside what gets generated', () => {
-    // The reader judges this version here. Given a title they would have to
+    // The user judges this version here. Given a title they would have to
     // place it, read it, and undo a node they never wanted.
     listModels.mockResolvedValue(CATALOG);
     renderCard(true, COPY);
@@ -266,7 +266,7 @@ describe('a flow that is more than one thing', () => {
 
   it('names the node each body of words belongs to', () => {
     // The to-dos under the card carry node names, and with two bodies drawn
-    // one above the other an unnamed body leaves the reader matching an
+    // one above the other an unnamed body leaves the user matching an
     // instruction against whichever text they guess it is about.
     listModels.mockResolvedValue(CATALOG);
     const second = COPY.nodes[0] as ProposalNode;
@@ -311,7 +311,7 @@ describe('a flow that is more than one thing', () => {
   });
 
   it('names the node a lone to-do belongs to when the group holds more', () => {
-    // Two nodes on screen and one line under them. Unheaded, the reader
+    // Two nodes on screen and one line under them. Unheaded, the user
     // cannot tell which of the two it is about; a proposal of one node needs
     // no header, because there is nothing to tell it apart from.
     listModels.mockResolvedValue(CATALOG);
@@ -391,7 +391,7 @@ describe('a flow that is more than one thing', () => {
     // material in before pressing Generate -- different moments, different
     // places, and the node name is what tells them apart. The second is
     // headed by the generation, which is the only one reading that empty
-    // node and the panel the reader is standing at.
+    // node and the panel the user is standing at.
     expect(groups[0]?.textContent).toContain('Your copy');
     expect(groups[1]?.textContent).toContain('On white');
   });
@@ -435,7 +435,7 @@ describe('pressing it', () => {
     expect(screen.getByTestId<HTMLButtonElement>('proposal-use').disabled).toBe(false);
   });
 
-  it('tells the reader to open a canvas when none is listening, and posts nothing', async () => {
+  it('tells the user to open a canvas when none is listening, and posts nothing', async () => {
     listModels.mockResolvedValue(CATALOG);
     renderCard(false);
 
@@ -506,7 +506,7 @@ describe('a proposal made from a template (inner#1345)', () => {
     expect(words.indexOf('Split the grid into panels')).toBeLessThan(words.indexOf('Turn the panels into a video'));
   });
 
-  it('draws the guide after what is left to do first, so the card reads in the order the reader acts', () => {
+  it('draws the guide after what is left to do first, so the card reads in the order the user acts', () => {
     setLocaleMessages('en', EN_WITH_FIXTURE as Record<string, unknown>);
     listModels.mockResolvedValue(CATALOG);
     const guide = templateGuideNode(STEPPED, 1);
@@ -522,7 +522,7 @@ describe('a proposal made from a template (inner#1345)', () => {
     expect(guideWords!.textContent).toContain('Split the grid into panels');
   });
 
-  it('draws a resource node’s chip as filled, not as a node the reader fills in', () => {
+  it('draws a resource node’s chip as filled, not as a node the user fills in', () => {
     listModels.mockResolvedValue(CATALOG);
     const resource = {
       role: 'source',

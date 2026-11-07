@@ -5,7 +5,7 @@
  * The clock behind a running task's elapsed time (#186 §7.3).
  *
  * The number is derived from the instant the server opened the task, so all
- * the reader's clock does is decide how current it looks. Nothing is judged
+ * the user's clock does is decide how current it looks. Nothing is judged
  * from it.
  */
 

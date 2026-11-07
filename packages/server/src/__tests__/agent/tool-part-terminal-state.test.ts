@@ -84,7 +84,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
               throw carrying(new Error("stopped"), {
                 kind: "user_aborted",
                 forModel: "the user stopped it",
-                readerKey: "chat.tool.unfinished",
+                userKey: "chat.tool.unfinished",
               });
             }
             if (thisCase.toolDoes === "throws with detail") {
@@ -94,7 +94,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
               throw carrying(new Error("the message"), {
                 kind: "tool_failed",
                 forModel: "the reason only the model gets",
-                readerKey: "chat.tool.failure.upstream",
+                userKey: "chat.tool.failure.upstream",
               });
             }
             if (thisCase.toolDoes === "fails, then the turn stops") {
@@ -106,7 +106,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
               throw carrying(new Error("the site answered HTTP 503"), {
                 kind: "tool_failed",
                 forModel: "the site answered HTTP 503; do not fetch it again",
-                readerKey: "chat.tool.failure.upstream",
+                userKey: "chat.tool.failure.upstream",
               });
             }
             if (thisCase.toolDoes === "throws after the stop") {
@@ -170,7 +170,7 @@ const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
-  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
+  addUserMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
   getMessages,
 }));
 // The turn asks the conversation what it is called, so it can say so in the
@@ -400,7 +400,7 @@ describe("how a tool use is recorded when it does not come back", () => {
     const failed = toolPart(parts);
     expect(failed?.failure?.kind).toBe("tool_failed");
     expect(failed?.failure?.forModel).toBe("the reason only the model gets");
-    expect(failed?.failure).toMatchObject({ readerKey: "chat.tool.failure.upstream" });
+    expect(failed?.failure).toMatchObject({ userKey: "chat.tool.failure.upstream" });
   });
 
   it("carries which ending it was, not just the words", async () => {
@@ -423,7 +423,7 @@ describe("how a tool use is recorded when it does not come back", () => {
     expect(part?.failure?.forModel).toContain("503");
   });
 
-  it("puts the reader's line on the wire, not a sentence in one language", async () => {
+  it("puts the user's line on the wire, not a sentence in one language", async () => {
     // Until the turn is stored and read back, the wire is all the panel has.
     // The SDK's default fills this field with one fixed English sentence,
     // which is neither translatable nor specific.
@@ -486,7 +486,7 @@ describe("how a tool use is recorded when it does not come back", () => {
     expect(part?.status).toBe("error");
     expect(part?.failure?.forModel).toMatch(/never run|nothing was attempted/i);
     expect(part?.failure?.forModel).not.toMatch(/still running/i);
-    // The reader stopped it, so the panel says stopped rather than failed.
+    // The user stopped it, so the panel says stopped rather than failed.
     expect(part?.failure?.kind).toBe("user_aborted");
     // And what keeps that sentence away from the model: a call caught with
     // half its arguments sent is marked as such and left out of the history.
@@ -544,7 +544,7 @@ describe("how a tool use is recorded when it does not come back", () => {
   it("records a refused call as turned away when the turn is stopped before its step ends", async () => {
     // The SDK refuses the call as soon as it is parsed, then the model goes on
     // writing; the stop lands before the step ends, so `onStepFinish` never
-    // runs. Stored as a failure, a reload would draw a failed line the reader
+    // runs. Stored as a failure, a reload would draw a failed line the user
     // never saw while it happened.
     thisCase.parts = [
       { ...asksForTheTool, input: JSON.stringify({ url: 5 }) },

@@ -260,17 +260,17 @@ describe('whether the body holds the focus', () => {
     expect(focus.bodyHolds(view.state)).toBe(true);
   });
 
-  it('has no reader selection while it does not hold', () => {
+  it('has no user selection while it does not hold', () => {
     const { editor, scroller } = open(TEXT);
     const view = editor.prosemirrorView!;
     selectWords(editor);
-    expect(focus.readerSelection(view.state)?.from).toBe(3);
+    expect(focus.userSelection(view.state)?.from).toBe(3);
 
     act(() => {
       scroller.focus();
     });
 
-    expect(focus.readerSelection(view.state)).toBeNull();
+    expect(focus.userSelection(view.state)).toBeNull();
   });
 
   it('tells the page each time it changes, for the parts drawn outside the editor', () => {

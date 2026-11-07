@@ -66,7 +66,7 @@ export interface SignupCodeMailInput {
 }
 
 /**
- * Build the mail that carries a sign-up code. It has no button: the reader
+ * Build the mail that carries a sign-up code. It has no button: the user
  * types the code into the page they signed up on.
  * @param input - The language and address, the code, and its lifetime.
  * @returns The laid-out mail (to / subject / html / text) for `sendMail`.

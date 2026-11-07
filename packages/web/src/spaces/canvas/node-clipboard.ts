@@ -92,7 +92,7 @@ export interface ClipboardPayload {
   version: typeof CLIPBOARD_VERSION;
   /** Where it was copied; absent for a picture copied in the chat column. */
   source?: ClipboardSource;
-  /** The ids the reader actually selected; the Agent card is named from them. */
+  /** The ids the user actually selected; the Agent card is named from them. */
   picked: string[];
   nodes: ClipboardNode[];
   /** Edges between copied nodes, and from an uncopied node into a copied one. */
@@ -116,7 +116,7 @@ export interface CaptureNode {
  * `parentId`); a lone member keeps `parentId` so a duplicate can rejoin its
  * Group; members are emitted once. Each node carries its whole stored data;
  * stickies are captured for the Agent box and skipped by the canvas clone.
- * @param targetIds - The ids the reader selected or right-clicked.
+ * @param targetIds - The ids the user selected or right-clicked.
  * @param allNodes - All canvas nodes (to resolve members and absolute positions).
  * @param dataOf - Reads a node's stored data snapshot.
  * @param allEdges - All canvas edges.

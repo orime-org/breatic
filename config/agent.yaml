@@ -7,8 +7,8 @@
 max_tool_iterations: 40
 
 # ── Models ────────────────────────────────────────────────
-# The models the reader can pick in the chat panel, in the order shown. Each
-# conversation keeps its own pick; a new conversation starts on the reader's
+# The models the user can pick in the chat panel, in the order shown. Each
+# conversation keeps its own pick; a new conversation starts on the user's
 # last pick. Names are shown as written.
 chat_models:
   - id: deepseek/deepseek-v4.1-flash-1017
@@ -18,7 +18,7 @@ chat_models:
   - id: anthropic/claude-opus-5.5
     name: Claude Opus 5.5
 
-# The model for a conversation and a reader with no pick yet. Must be one of
+# The model for a conversation and a user with no pick yet. Must be one of
 # chat_models.
 default_model: deepseek/deepseek-v4.1-flash-1017
 
@@ -42,13 +42,13 @@ agent_picture_concurrency: 4
 understand_media_max_items: 10
 
 # Model used for memory consolidation (folding old turns into memory entries).
-# One fixed model, whatever main model the reader picked.
+# One fixed model, whatever main model the user picked.
 consolidation_model: deepseek/deepseek-v4.1-flash-1017
 
 # How long a cached prompt prefix lives (5m or 1h), for the models that cache
 # only when asked (Claude). A write costs 1.25x the input price at 5m and 2x at
 # 1h; a read costs a small fraction of it. The lifetime counts from the start
-# of the last request that read or wrote it, and a reader often takes longer
+# of the last request that read or wrote it, and a user often takes longer
 # than five minutes to answer, so chat keeps it for an hour. Through
 # OpenRouter, a gap over 10 minutes also needs the request to land on the same
 # provider again: its sticky session expires after 10 minutes without calls.
@@ -60,7 +60,7 @@ prompt_cache_ttl: 1h
 conversation_title_max_chars: 60
 
 # How many conversations one page of the history list holds. The list asks for
-# the next page when the reader reaches the bottom of this one, so this is a
+# the next page when the user reaches the bottom of this one, so this is a
 # round-trip size rather than a ceiling: there is no limit on how many
 # conversations a project may have.
 conversation_page_size: 30
@@ -99,7 +99,7 @@ max_output_tokens: 16384
 
 # How long the words of one turn's question may be, in characters.
 #
-# The browser draws a lower line (10,000) and says so as the reader types;
+# The browser draws a lower line (10,000) and says so as the user types;
 # this one is where a client cannot skip it.
 user_message_max_chars: 15000
 

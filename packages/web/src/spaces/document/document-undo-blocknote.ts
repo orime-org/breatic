@@ -183,7 +183,7 @@ export function createDocumentUndo(doc: Y.Doc): DocumentUndo {
  * so it is named false instead of passed over: a transaction that only moves
  * comment highlights. A comment is withdrawn from the card that holds it, so
  * Cmd+Z is not the way back from one, and the library's own `orphan` rewrites
- * are not the reader's doing at all — {@link isCommentMarkWrite} carries both
+ * are not the user's doing at all — {@link isCommentMarkWrite} carries both
  * halves of that reasoning. Passing over would not help: the marker would
  * keep the `true` their last real edit left, and the highlight write would be
  * captured anyway.
@@ -235,7 +235,7 @@ const OWN_STEP_EVENTS = ['paste', 'drop'] as const;
  * and the view adds its own before it builds plugin views
  * (`prosemirror-view` `initInput`, then `updatePluginViews`). A microtask
  * queued at the start would not do: a browser runs microtasks after each
- * listener of an event the reader caused, before ProseMirror's.
+ * listener of an event the user caused, before ProseMirror's.
  *
  * A marked insert is closed before the edit reaches Yjs — state apply runs
  * before the sync plugin's view update writes the edit through — and again

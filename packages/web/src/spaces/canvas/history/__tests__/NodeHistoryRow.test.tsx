@@ -126,10 +126,10 @@ describe('NodeHistoryRow (#1619)', () => {
   });
 
   // A cause this product knows travels as a code and becomes a sentence
-  // where the reader's language is. The task list beside this panel has
-  // always done that; a row here printing the identifier shows the reader
+  // where the user's language is. The task list beside this panel has
+  // always done that; a row here printing the identifier shows the user
   // `understand_over_cap` in every language.
-  it('says a cause this product knows in the reader language', () => {
+  it('says a cause this product knows in the user language', () => {
     renderRow(entry({ status: 'failed', errorMessage: 'understand_over_cap' }));
     expect(
       screen.getByText('canvas.task.failure.understand_over_cap'),
@@ -310,7 +310,7 @@ describe('a text node’s rows (#2175)', () => {
     expect(row.querySelector('svg.lucide-file-text')).not.toBeNull();
   });
 
-  // The words themselves are the preview: an icon tells the reader nothing
+  // The words themselves are the preview: an icon tells the user nothing
   // about which of several reads this row is.
   it('previews the words the row holds', () => {
     vi.useFakeTimers();
@@ -325,9 +325,9 @@ describe('a text node’s rows (#2175)', () => {
     expect(card.textContent).toContain('A red bicycle against a wall.');
   });
 
-  // A row a reader asked to keep is neither of the two the chip knew: nothing
+  // A row a user asked to keep is neither of the two the chip knew: nothing
   // generated it and nobody uploaded it — they typed it and said keep this.
-  it('states Snapshot on a row the reader asked to keep', () => {
+  it('states Snapshot on a row the user asked to keep', () => {
     renderRow(
       entry({ entryType: 'snapshot', status: 'success', content: 'kept' }),
       'text',

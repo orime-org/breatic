@@ -159,7 +159,7 @@ export const CANVAS_UNDO = Symbol('canvas-undo');
 
 /**
  * Marks a canvas transaction that took back everything it wrote, so the undo
- * manager leaves it out: it changed nothing the reader could undo, and as a
+ * manager leaves it out: it changed nothing the user could undo, and as a
  * step it would cost them a press of undo that does nothing and the redo they
  * had before it.
  */
@@ -230,7 +230,7 @@ export function createCanvasUndoManager(doc: Y.Doc): Y.UndoManager {
  * An undo manager that records one batch of canvas writes so the batch can be
  * taken back whole when it fails part way: new nodes and edges, and every
  * change to nodes and groups already there. Its own undo runs under an origin
- * the canvas undo manager does not track, so the reader's history keeps no
+ * the canvas undo manager does not track, so the user's history keeps no
  * trace of it. Destroy it once the batch has settled.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space the batch writes.
@@ -367,7 +367,7 @@ const writeOrigins = new WeakMap<Y.Doc, WriteOrigins>();
  *
  * Kept by the document rather than by the view of it: a Space switched away
  * from keeps its canvas with its effects taken down (inner#1235), and what a
- * peer does in that time is what the reader is told about when they come
+ * peer does in that time is what the user is told about when they come
  * back. Observed first, before any view subscribes, so a view reading it
  * from its own handler sees the write that handler is about.
  * @param doc - The canvas document.
@@ -388,7 +388,7 @@ function writeOriginsOf(doc: Y.Doc): WriteOrigins {
         // gone because a peer removed it — so a note a peer puts back is no
         // longer one of them. Undo is the way back from a delete (#1881
         // section 8.3 asks for no confirm dialog because of it), so a note
-        // that goes and returns is ordinary; left named, the reader's own
+        // that goes and returns is ordinary; left named, the user's own
         // later delete of it comes back to them as somebody else's.
         if (change.action === 'delete') origins.deletedByPeer.add(id);
         else origins.deletedByPeer.delete(id);
@@ -1111,7 +1111,7 @@ export function setNodeSlotValue(
 /**
  * Adds one file to a slot that holds several (inner#826: style images). The
  * list is one value, so it is read and written in one transaction; when two
- * readers append at the same moment, each writes a whole list and Yjs keeps
+ * users append at the same moment, each writes a whole list and Yjs keeps
  * one of them, the same one on every client, so one of the two appends is
  * lost.
  * @param projectId - Project the canvas space belongs to.
@@ -1698,7 +1698,7 @@ export function setNodeExtractedText(
  *   image / audio pass null, and a cover URL written onto them would be a
  *   phantom asset reference the asset-GC treats as live (Gate-1 R4 HIGH).
  * - Leaves the node's tasks alone. A node's tasks are the server's to move
- *   (#186 §3.3), and a restore is the reader choosing which result the node
+ *   (#186 §3.3), and a restore is the user choosing which result the node
  *   shows — the later write wins, as it does between two finished tasks.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.

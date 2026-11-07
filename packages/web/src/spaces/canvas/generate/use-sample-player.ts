@@ -22,7 +22,7 @@ export function useSamplePlayer(): SamplePlayer {
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = React.useState<string | null>(null);
   // Which attempt is the current one. `play()` settles whenever it settles,
-  // and a rejection from an attempt the reader has already moved on from must
+  // and a rejection from an attempt the user has already moved on from must
   // not darken the button of the sample now on the speakers.
   const attemptRef = React.useRef(0);
 

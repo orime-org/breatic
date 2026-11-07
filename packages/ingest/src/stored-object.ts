@@ -191,7 +191,7 @@ class OverCeiling extends Error {
  * @param key - The key to write at.
  * @param body - What the container sent.
  * @param opts - How to store it.
- * @param opts.contentType - What a reader will be served.
+ * @param opts.contentType - What a user will be served.
  * @param opts.customMetadata - What to store beside the bytes.
  * @param opts.partSize - The size of every part but the last.
  * @param opts.maxBytes - The most the object may weigh.
@@ -289,7 +289,7 @@ export async function writeStreamedObject(
  * @param bucket - The bucket to write to.
  * @param storageKey - The key to write at.
  * @param bytes - What to store.
- * @param contentType - What a reader will be served.
+ * @param contentType - What a user will be served.
  * @param customMetadata - What to store beside the bytes, for a later read to
  *   take back off the object.
  * @returns The hash and the size of the stored object.

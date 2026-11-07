@@ -62,7 +62,7 @@ vi.mock("@server/agent/prepare-pictures.js", () => ({
 }));
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage: h.add,
-  addReaderMessage: async (id: string, message: Record<string, unknown>) => ({ turnIndex: await h.add(id, message), closedAsks: [] }),
+  addUserMessage: async (id: string, message: Record<string, unknown>) => ({ turnIndex: await h.add(id, message), closedAsks: [] }),
   setUserForModel: h.setUser,
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));

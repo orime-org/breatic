@@ -44,7 +44,7 @@ export interface CommentEntryView {
   readonly id: string;
   /** Who wrote it, or null while the store has no entry for them. */
   readonly author: string | null;
-  /** Their account id, for deciding what this reader may do to it. */
+  /** Their account id, for deciding what this user may do to it. */
   readonly authorId: string;
   /** Their picture, or null while there is none to show. */
   readonly avatarUrl: string | null;

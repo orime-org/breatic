@@ -269,7 +269,7 @@ export interface StudioLotView {
  *
  * `unbilled` is a run that drew on no purchase: every run on a deployment
  * that charges nobody, and the runs that reached no pool where it does
- * charge. It cost this account nothing, and it is still something the reader
+ * charge. It cost this account nothing, and it is still something the user
  * did.
  */
 export type CreditLedgerKind = "generation" | "debt_repayment" | "unbilled";
@@ -376,14 +376,14 @@ export interface StudioCreditSummary {
   /** What this studio can spend of this account's money. */
   spendable: CreditDecimal;
   /**
-   * What it owes, or null when the reader no longer administers it.
+   * What it owes, or null when the user no longer administers it.
    *
    * Reported beside `spendable` rather than subtracted from it: a debt
    * belongs to the studio and is caused by everyone generating in it, so
    * taking it off a per-account figure makes two funders each lose all of it.
    *
    * It belongs to the studio, not to whoever spent there. The row itself
-   * stays for anyone who ever spent in it — that history is the reader's own
+   * stays for anyone who ever spent in it — that history is the user's own
    * — but this figure is the studio's, it keeps moving as the people still
    * inside generate, and only an admin can act on it by pointing a purchase
    * at it.

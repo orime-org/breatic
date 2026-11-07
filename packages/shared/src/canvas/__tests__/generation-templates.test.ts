@@ -192,7 +192,7 @@ const NEVER_OFFERED_UNASKED = ['retro-found-footage', 'pov-continuous-shot', 'fi
  * The template nodes a generate node's words carry a note for, counted the
  * way the agent's check counts them (domain `notesAsked`): each generate node
  * wired into its pool, empty until it is generated, and each node wired into
- * one of its slots, which the reader picks there.
+ * one of its slots, which the user picks there.
  * @param template - The template.
  * @param key - The node.
  * @returns Their keys.
@@ -343,7 +343,7 @@ describe('generation templates', () => {
     }
   });
 
-  it('writes the prompt in the reader’s language', () => {
+  it('writes the prompt in the user’s language', () => {
     const grid = byId('storyboard-grid-25');
     if (!grid) throw new Error('grid template missing');
     const anchor = anchorOf(grid);
@@ -389,7 +389,7 @@ describe('creative goals and triggers', () => {
     expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'social-hooks']);
   });
 
-  it('gives every template a known goal and words the reader asks for it with, and words for when to offer it unless it has none', () => {
+  it('gives every template a known goal and words the user asks for it with, and words for when to offer it unless it has none', () => {
     const goals: Record<string, string> = {
       ...Object.fromEntries(SOCIAL_HOOKS.map((id) => [id, 'social-hooks'])),
       'storyboard-grid-25': 'comics-storyboards',
@@ -590,7 +590,7 @@ describe('generation template registry checks', () => {
 });
 
 describe('social hook templates (inner#1816)', () => {
-  it('feeds each its reader inputs and wires the carried object through two scenes into the first and last frame', () => {
+  it('feeds each its user inputs and wires the carried object through two scenes into the first and last frame', () => {
     const expected: Record<string, { inputs: Array<{ key: string; type: string; feeds: readonly string[] }>; edges: GenerationTemplate['edges'] }> = {
       'pet-selfie-vlog': { inputs: [{ key: 'pet', type: 'image', feeds: ['result'] }], edges: [] },
       'phone-vlog-realism': { inputs: [{ key: 'person', type: 'image', feeds: ['result'] }], edges: [] },
@@ -792,8 +792,8 @@ describe('character template layouts (inner#1846)', () => {
   });
 
   it('tells the agent what to do when a face drifts and what to look for after an orbit', () => {
-    expect(byId('identity-locked-sequence')?.agentNote).toContain('if the reader says the face drifted, shorten it to 5 to 6 seconds, re-split the three timecodes to fit, and tighten the sentence that says it is the same person in all three shots');
-    expect(byId('character-showcase-orbit')?.agentNote).toContain('when the reader comes back with the result, check that it shows different sides of the character, not the character turning round');
+    expect(byId('identity-locked-sequence')?.agentNote).toContain('if the user says the face drifted, shorten it to 5 to 6 seconds, re-split the three timecodes to fit, and tighten the sentence that says it is the same person in all three shots');
+    expect(byId('character-showcase-orbit')?.agentNote).toContain('when the user comes back with the result, check that it shows different sides of the character, not the character turning round');
   });
 
   it('keeps the inheritance list, the unseen-parts rule and the 180-degree orbit in every language', () => {

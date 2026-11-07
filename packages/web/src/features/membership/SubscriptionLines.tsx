@@ -128,7 +128,7 @@ function noticeKeyFor(state: SubscriptionSummary['state']): string | null {
 }
 
 /**
- * Formats an ISO date in the language the reader picked in our switcher.
+ * Formats an ISO date in the language the user picked in our switcher.
  *
  * `getLocale()` rather than the runtime default: passing `undefined` here
  * takes the browser's or the operating system's language, which is not the

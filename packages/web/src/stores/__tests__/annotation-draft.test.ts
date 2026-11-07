@@ -87,7 +87,7 @@ describe('the annotation draft, before anything reaches Yjs', () => {
   });
 
   it('keeps a reply and an edit on blur — the sticky they live in is what ends them', () => {
-    // Both live inside a sticky the reader opened and can close (§8.7.3), so
+    // Both live inside a sticky the user opened and can close (§8.7.3), so
     // the sticky's own open and close is what their life hangs on. Measured
     // before this: a press on the note's own words, to select one, threw away
     // a reply that had been typed but not posted.

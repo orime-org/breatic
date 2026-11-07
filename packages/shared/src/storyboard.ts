@@ -112,7 +112,7 @@ function writeShots(template: string, shots: readonly StoryboardShotInput[]): st
       const end = start + shot.duration;
       const line = template
         // Function replacements: a string one reads `$&`, `$$` and the like
-        // in the reader's words as patterns.
+        // in the user's words as patterns.
         .replaceAll("{n}", () => String(index + 1))
         .replaceAll("{start}", () => String(start))
         .replaceAll("{end}", () => String(end))

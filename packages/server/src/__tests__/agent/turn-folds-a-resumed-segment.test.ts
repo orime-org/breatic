@@ -9,7 +9,7 @@
  * The resumed segment reads its own turn as history, so a fold there may take
  * only the turns before it. A fold changes the memory in the system prompt,
  * so every thinking block replayed after it -- the paused step's included --
- * goes out stripped, signature and all. And the reader's message is laid out
+ * goes out stripped, signature and all. And the user's message is laid out
  * again: an open Space that went as "unchanged" pointed at a full copy the
  * fold may just have taken, so the reassembled message carries it in full and
  * replaces what was kept of the message.
@@ -49,7 +49,7 @@ vi.mock("@server/agent/turn-context.js", async () => (await import("../helpers/o
 vi.mock("@server/agent/memory-consolidator.js", async () => (await import("../helpers/overflow-turn.js")).overflowConsolidator());
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
-/** The Space the reader has open throughout. */
+/** The Space the user has open throughout. */
 const OPEN = { id: "s1", name: "Board", kind: "timeline", state: "loaded", content: "SPACE-BODY-1234", total_chars: 15 } as const;
 const SPACE = { spaces: [], current_space: OPEN };
 
@@ -83,7 +83,7 @@ function earlierTurns(size: number): void {
 }
 
 /**
- * Run turn 3 to a questionnaire, and settle the reader's answer into the row
+ * Run turn 3 to a questionnaire, and settle the user's answer into the row
  * that asked, the way the route does before resuming.
  * @throws {Error} When the turn stored no reply.
  */
@@ -164,7 +164,7 @@ describe("a fold in the segment resumed after a questionnaire", () => {
 });
 
 describe("a fold in a turn opened by a message", () => {
-  it("resends the reader's message laid out again and writes it as the turn's user_for_model", async () => {
+  it("resends the user's message laid out again and writes it as the turn's user_for_model", async () => {
     earlierTurns(30_000);
     world.script = [{ reject: h1() }, answers("ok")];
 

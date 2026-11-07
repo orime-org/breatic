@@ -16,7 +16,7 @@ import { Button } from '@web/components/ui/button';
  * ScrollArea scrolls on wheel, and dragging the panel never moves the node
  * behind it.
  *
- * The width, the frame and the header live here because a reader moving
+ * The width, the frame and the header live here because a user moving
  * between two panels on the same canvas is reading one thing: a panel that
  * closes with a 24px key next to one that closes with a 28px key reads as two
  * different products (visual adversary, 2026-09-09; user picked 24).

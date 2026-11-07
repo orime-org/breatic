@@ -84,7 +84,7 @@ import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
  * Says a control was pressed before anyone wrote the command behind it.
  *
  * The console rather than the screen: these controls look and behave the way
- * the demo draws them, and the product is not launched, so a reader is not
+ * the demo draws them, and the product is not launched, so a user is not
  * told anything (user 2026-08-26). Whoever is holding the browser open sees
  * which command they reached.
  * @param what - The control that was pressed.

@@ -133,14 +133,14 @@ describe('resolving the people named on a sticky', () => {
     expect(result.current).toBe(first);
   });
 
-  it('tries again when the reader comes back to the tab', async () => {
+  it('tries again when the user comes back to the tab', async () => {
     // The whole board goes nameless together when this one request fails, and
     // nothing else on the page asks for these names, so without another go
     // the board stays that way for as long as it is open. Coming back to the
     // tab is the cheapest moment to have one.
     //
     // The app's default is off (`QueryClientProvider`), which suits data a
-    // reader can ask for again; there is no asking for this one.
+    // user can ask for again; there is no asking for this one.
     vi.mocked(usersApi.getByIds).mockRejectedValueOnce(new Error('offline'));
     const { result } = run(['u1']);
     await waitFor(() =>

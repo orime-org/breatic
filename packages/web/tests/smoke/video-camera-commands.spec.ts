@@ -5,7 +5,7 @@
  * Camera commands on MiniMax H3: the picker sits in the settings
  * row, keeps opposite directions and Static shot apart, previews each command
  * in a pane at the top, and writes the picks as one bracket at the
- * caret the reader left -- in the prompt, or in the shot box in the multi-shot
+ * caret the user left -- in the prompt, or in the shot box in the multi-shot
  * mode -- which the submit carries.
  *
  * The submit is stubbed: whether H3 acts on the commands was measured on real

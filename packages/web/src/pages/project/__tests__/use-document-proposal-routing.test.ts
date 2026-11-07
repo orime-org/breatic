@@ -119,7 +119,7 @@ describe('a pressed document card', () => {
     expect(toast.error).toHaveBeenCalledWith('Could not insert. Try again.');
   });
 
-  it('keeps a landing press waiting when the reader switches away from its document', () => {
+  it('keeps a landing press waiting when the user switches away from its document', () => {
     const { rerender } = run({ spaces: [DOC, CANVAS], openIds: ['c1', 'd1'], activeId: 'd1', ready: true });
     act(() => {
       useDocumentProposals.getState().start(proposal('p1'), 'write');
@@ -144,7 +144,7 @@ describe('a pressed document card', () => {
   });
 });
 
-describe('a locate or View press whose document the reader leaves (inner#1646)', () => {
+describe('a locate or View press whose document the user leaves (inner#1646)', () => {
   const pending = (): ReturnType<typeof useDocumentProposals.getState>['pending'] => useDocumentProposals.getState().pending;
 
   /**
@@ -158,7 +158,7 @@ describe('a locate or View press whose document the reader leaves (inner#1646)',
     });
   }
 
-  it.each(['locate', 'view'] as const)('ends a %s quietly once its document was in front and the reader switched away', (action) => {
+  it.each(['locate', 'view'] as const)('ends a %s quietly once its document was in front and the user switched away', (action) => {
     const { open, rerender } = run({ spaces: [DOC, CANVAS], openIds: ['c1'], activeId: 'c1', ready: true });
     press(action);
     expect(open.mock.calls).toEqual([['d1']]);
@@ -177,7 +177,7 @@ describe('a locate or View press whose document the reader leaves (inner#1646)',
     expect(toast.error).not.toHaveBeenCalled();
   });
 
-  it.each(['locate', 'view'] as const)('ends a %s quietly when it was pressed with the document in front and the reader switched away', (action) => {
+  it.each(['locate', 'view'] as const)('ends a %s quietly when it was pressed with the document in front and the user switched away', (action) => {
     const { rerender } = run({ spaces: [DOC, CANVAS], openIds: ['c1', 'd1'], activeId: 'd1', ready: true });
     press(action);
 
@@ -188,7 +188,7 @@ describe('a locate or View press whose document the reader leaves (inner#1646)',
     expect(toast.error).not.toHaveBeenCalled();
   });
 
-  it.each(['locate', 'view'] as const)('ends a %s quietly when the reader closes its document\'s tab', (action) => {
+  it.each(['locate', 'view'] as const)('ends a %s quietly when the user closes its document\'s tab', (action) => {
     const { rerender } = run({ spaces: [DOC, CANVAS], openIds: ['c1', 'd1'], activeId: 'd1', ready: true });
     press(action);
 

@@ -3,7 +3,7 @@
 
 import type { GenerationTemplate } from "@shared/canvas/generation-templates.js";
 
-/** A phone selfie vlog the reader's pet takes over, ending with its nose on the lens. */
+/** A phone selfie vlog the user's pet takes over, ending with its nose on the lens. */
 export const PET_SELFIE_VLOG: GenerationTemplate = {
   id: "pet-selfie-vlog",
   anchor: "result",
@@ -16,10 +16,10 @@ export const PET_SELFIE_VLOG: GenerationTemplate = {
   ],
   steps: [],
   agentNote:
-    "a 10-second vertical phone selfie vlog in which the reader's pet walks in, steals the shot and ends with its nose filling the lens; exactly one animal, its real way of moving",
+    "a 10-second vertical phone selfie vlog in which the user's pet walks in, steals the shot and ends with its nose filling the lens; exactly one animal, its real way of moving",
   goal: "social-hooks",
   triggers: {
     asks: ["a pet video", "a video of my dog or cat", "a funny vlog with my pet"],
-    offerWhen: ["the reader adds a photo of their pet"],
+    offerWhen: ["the user adds a photo of their pet"],
   },
 };

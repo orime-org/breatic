@@ -16,7 +16,7 @@ export const FISHEYE_CLONE_POV: GenerationTemplate = {
   ],
   steps: [],
   agentNote:
-    "a 4:5 phone photo taken with the 0.5x ultra-wide lens from above, a place the reader names filled with about 12 clones of the reader's subject in different poses",
+    "a 4:5 phone photo taken with the 0.5x ultra-wide lens from above, a place the user names filled with about 12 clones of the user's subject in different poses",
   goal: "social-hooks",
   triggers: {
     asks: ["clones of me", "a fisheye shot", "many copies of the same person"],

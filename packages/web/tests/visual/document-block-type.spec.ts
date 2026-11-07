@@ -433,7 +433,7 @@ async function selectBlockAt(p: Page, selector: string): Promise<void> {
  * A selection reaches the browser before the editor reads it, and everything
  * a cell does next asks the EDITOR what is selected. Acting too early gets the
  * range the previous cell left: `Mod-a` calls it the first tier already taken
- * and goes up to the document, and a menu row runs against blocks the reader
+ * and goes up to the document, and a menu row runs against blocks the user
  * is no longer on. The bar is drawn from the editor's own selection, so its
  * leaving is the editor saying the range is gone.
  * @param p - The page.

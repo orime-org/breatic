@@ -72,7 +72,7 @@ describe('whenBlurLeaves', () => {
   });
 
   it('leaves when its Space stays on screen though the box was taken off it', async () => {
-    // A node deleted, or culled out of view, while the reader was in it.
+    // A node deleted, or culled out of view, while the user was in it.
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     outlet('s1');
     const leave = vi.fn();
