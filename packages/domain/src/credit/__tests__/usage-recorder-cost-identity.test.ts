@@ -13,7 +13,7 @@ import { createUsageRecorder, type UsageRow } from "@domain/credit/usage-recorde
 
 const PRICING = {
   models: {},
-  services: { brave_web_search: { per_request: 0.005 } },
+  services: { brave_web_search: { per_request: 0.005 }, brave_image_search: { per_request: 0.005 } },
 };
 
 const TIMELINE_USAGE = {

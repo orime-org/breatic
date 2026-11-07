@@ -24,7 +24,6 @@ const request = {
   manifestKey: "web-animation/p/40000000-0000-4000-8000-000000000001/manifest.json",
   fontSetVersion: 1,
   maxPackageBytes: 5_000_000,
-  costCeilingUsd: 0.5,
   maxTokens: 32_000,
   callTimeoutMs: 300_000,
   model: "deepseek/deepseek-v4.1-flash-1017",
@@ -48,8 +47,12 @@ describe("webAnimationJobRequestSchema", () => {
     expect(webAnimationJobRequestSchema.safeParse({ ...request, containerClass: "MiniToolContainerStd1" }).success).toBe(false);
   });
 
+  it("carries no spend ceiling: a run is bounded by its deadline and one model call at a time", () => {
+    expect(webAnimationJobRequestSchema.parse({ ...request, costCeilingUsd: 0.5 })).toEqual(request);
+  });
+
   it("requires every limit the ingest Worker cannot read from yaml", () => {
-    for (const field of ["maxPackageBytes", "costCeilingUsd", "maxTokens", "callTimeoutMs", "fontSetVersion", "model"] as const) {
+    for (const field of ["maxPackageBytes", "maxTokens", "callTimeoutMs", "fontSetVersion", "model"] as const) {
       const { [field]: _dropped, ...rest } = request;
       expect(webAnimationJobRequestSchema.safeParse(rest).success, field).toBe(false);
     }

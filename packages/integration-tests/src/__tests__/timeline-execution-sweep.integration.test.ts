@@ -5,19 +5,29 @@
  * The worker's Timeline sweep and failed-job handler (inner#1711 design §5.2; acceptance V1, V2).
  *
  * `sweepTimelineExecutions(queue)` runs on a schedule over executions that have not ended. An awaiting-landing row
- * past its original deadline expires and one whose Space is gone fails as `target_unavailable`, each releasing its
- * hold. A queued row whose dispatch time has come, and every running or cancelling row, must have a live job in the
+ * past its original deadline expires; nothing was held at acceptance, so nothing is released. A deleted Space gets no
+ * handling of its own, as with canvas tasks (deleting a Space is a restorable soft delete): its awaiting-landing row
+ * is left alone until that same deadline. A queued row whose dispatch time has come, and every running or cancelling
+ * row, must have a live job in the
  * `timeline` queue under its execution id: a missing, failed or completed job is removed and added again, because the
  * default retention would otherwise keep the old job id occupied.
  *
  * `reportTimelineJobFailed(queue, jobId, failedReason)` is the queue's `QueueEvents` 'failed' handler: a job that used
- * up its retries is only logged; the row, its hold and its container are left for the sweep and the original
- * deadline to finish.
+ * up its retries is only logged; the row and its container are left for the sweep and the original deadline to
+ * finish.
  *
- * Real database, Yjs database and Redis; the real `timeline` queue. Nothing here may call the ingest Worker.
+ * Real database, Yjs database and Redis; the real `timeline` queue. Nothing here may call the ingest Worker. Only the
+ * credit engine's hold release is a double, so a release can be seen.
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
+
+const release = vi.hoisted(() => vi.fn(async (_referenceId: string): Promise<void> => {}));
+
+vi.mock("@breatic/domain", async (importOriginal) => {
+  const actual = await importOriginal<typeof DomainModule>();
+  return { ...actual, creditHoldService: { ...actual.creditHoldService, releaseHold: release } };
+});
 
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
@@ -30,6 +40,7 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
+import type * as DomainModule from "@breatic/domain";
 import type { Job, Queue } from "bullmq";
 import { createPgClient, createQueue, createWorker, env, getStreamRedis, initCore, loadLocales, type Redis } from "@breatic/core";
 import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-sweep.js";
@@ -37,7 +48,7 @@ import { reportTimelineJobFailed } from "@worker/handlers/timeline/timeline-fail
 import {
   captureErrorLogs,
   deleteSpace,
-  holdStatus,
+  holdsFor,
   read,
   seedExecution,
   type ExecutionFixture,
@@ -69,6 +80,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   signals.length = 0;
   network.mockClear();
+  release.mockReset();
   vi.stubGlobal("fetch", network);
   // The sweep reads every open row; rows other suites left open would crowd this suite's out of a batch.
   await sql`
@@ -151,24 +163,37 @@ async function signalsFor(fx: ExecutionFixture): Promise<Record<string, unknown>
 
 const WAITING = ["waiting", "delayed", "prioritized"];
 
+/**
+ * Assert no hold exists for the execution and none was released: acceptance held nothing.
+ * @param fx - The execution.
+ */
+async function expectNothingHeld(fx: ExecutionFixture): Promise<void> {
+  expect(release.mock.calls.filter(([referenceId]) => referenceId === fx.execution.id)).toEqual([]);
+  expect(await holdsFor(sql, fx.execution.id)).toEqual([]);
+}
+
 describe("sweeping rows that never landed", () => {
-  it("expires an awaiting-landing row past its original deadline, releases its hold and signals the Space", async () => {
+  it("expires an awaiting-landing row past its original deadline, releasing nothing, and signals the Space", async () => {
     const fx = await seed("awaiting_landing", { late: true });
     await sweepTimelineExecutions(queue);
     expect(await read(fx.execution.id)).toMatchObject({ status: "expired", fence: null });
-    expect(await holdStatus(sql, fx.execution.id)).toBe("released");
+    await expectNothingHeld(fx);
     expect(await liveJob(fx.execution.id)).toBeNull();
     expect(await signalsFor(fx)).toEqual([
       { type: "project-space-tasks:changed", projectId: fx.projectId, spaceId: fx.spaceId, ts: expect.any(Number) },
     ]);
   });
 
-  it("fails an awaiting-landing row whose Space was deleted as target_unavailable and releases its hold", async () => {
+  it("leaves an awaiting-landing row whose Space was deleted alone until its original deadline, then expires it", async () => {
     const fx = await seed("awaiting_landing");
     await deleteSpace(fx.projectId, fx.spaceId);
     await sweepTimelineExecutions(queue);
-    expect(await read(fx.execution.id)).toMatchObject({ status: "failed", failureReason: "target_unavailable" });
-    expect(await holdStatus(sql, fx.execution.id)).toBe("released");
+    expect(await read(fx.execution.id)).toEqual(fx.execution);
+    expect(await signalsFor(fx)).toEqual([]);
+    await sql`UPDATE timeline_executions SET deadline_at = now() - interval '1 minute' WHERE id = ${fx.execution.id}`;
+    await sweepTimelineExecutions(queue);
+    expect(await read(fx.execution.id)).toMatchObject({ status: "expired", failureReason: null, fence: null });
+    await expectNothingHeld(fx);
   });
 
   it("leaves an awaiting-landing row in its Space and within its deadline alone", async () => {
@@ -177,7 +202,7 @@ describe("sweeping rows that never landed", () => {
     await sweepTimelineExecutions(queue);
     expect((await read(late.execution.id)).status).toBe("expired");
     expect(await read(fx.execution.id)).toEqual(fx.execution);
-    expect(await holdStatus(sql, fx.execution.id)).toBe("held");
+    await expectNothingHeld(fx);
     expect(await liveJob(fx.execution.id)).toBeNull();
   });
 
@@ -253,7 +278,7 @@ describe("sweeping rows that should have a job", () => {
 });
 
 describe("a timeline job that used up its retries", () => {
-  it("is only logged: the row, its fence, its hold and its container are left as they were", async () => {
+  it("is only logged: the row, its fence and its container are left as they were", async () => {
     const fx = await seed("running");
     await finishedJob(fx.execution.id, "failed");
     await reportTimelineJobFailed(queue, fx.execution.id, "handler gave up");
@@ -261,7 +286,7 @@ describe("a timeline job that used up its retries", () => {
       expect.objectContaining({ executionId: fx.execution.id, attempt: fx.execution.attempt }),
     ]);
     expect(await read(fx.execution.id)).toEqual(fx.execution);
-    expect(await holdStatus(sql, fx.execution.id)).toBe("held");
+    await expectNothingHeld(fx);
     expect(network).not.toHaveBeenCalled();
   });
 

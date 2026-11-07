@@ -9,20 +9,26 @@
  * job before submitting it, submits the fixed `timeline:<executionId>` job, and throws `StillRunning` while the job
  * runs. Only a terminal report settles: each completed call is a usage row under `timeline:<executionId>:<seq>`, an
  * interrupted or cut-off call a zero row marked missing, an upstream error no row, the container one row; then the
- * `billed_at` gate decides whether this writer charges or only releases the hold. The job lock is re-checked before
- * the source insert, the usage, the charge and the terminal transition.
+ * `billed_at` gate decides whether this writer charges actual use. Acceptance held no credits, so no path releases a
+ * hold and no charge names one; the run has no spend ceiling of its own. The job lock is re-checked before the source
+ * insert, the usage, the charge and the terminal transition.
  *
  * Real database and Yjs database; the ingest Worker is a stand-in on `INGEST_BASE_URL`, the Manifest is served from
- * a stubbed storage read, and only the credit engine's charge is a double, so it can be counted.
+ * a stubbed storage read, and only the credit engine's charge and hold release are doubles, so they can be counted.
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 
 const charge = vi.hoisted(() => vi.fn(async (_input: Record<string, unknown>): Promise<Record<string, unknown>> => ({})));
+const release = vi.hoisted(() => vi.fn(async (_referenceId: string): Promise<void> => {}));
 
 vi.mock("@breatic/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof DomainModule>();
-  return { ...actual, creditLotService: { ...actual.creditLotService, chargeForGeneration: charge } };
+  return {
+    ...actual,
+    creditLotService: { ...actual.creditLotService, chargeForGeneration: charge },
+    creditHoldService: { ...actual.creditHoldService, releaseHold: release },
+  };
 });
 
 vi.mock("ai", () => ({
@@ -48,7 +54,7 @@ import {
   captureErrorLogs,
   expectedSource,
   featureDisabled,
-  holdStatus,
+  holdsFor,
   installFakeIngest,
   isWaiting,
   jobFor,
@@ -79,6 +85,7 @@ beforeAll(() => {
 beforeEach(() => {
   charge.mockReset();
   charge.mockImplementation(async () => ({ billed: true, charged: "0", shortfall: "0", studioId: null }));
+  release.mockReset();
 });
 
 afterEach(async () => {
@@ -165,8 +172,17 @@ async function expectedCharge(fx: ExecutionFixture): Promise<Record<string, unkn
     actorUserId: fx.userId,
     amount: toChargeCredits(rows.reduce((sum, row) => sum + row.credits, 0)),
     referenceId: fx.execution.id,
-    releaseHold: fx.execution.id,
   });
+}
+
+/**
+ * Assert no hold exists for the execution, none was released and no charge names one: acceptance held nothing.
+ * @param fx - The execution.
+ */
+async function expectNothingHeld(fx: ExecutionFixture): Promise<void> {
+  expect(chargesFor(fx.execution.id).filter((input) => "releaseHold" in input)).toEqual([]);
+  expect(release.mock.calls.filter(([referenceId]) => referenceId === fx.execution.id)).toEqual([]);
+  expect(await holdsFor(sql, fx.execution.id)).toEqual([]);
 }
 
 describe("picking up a queued execution", () => {
@@ -182,6 +198,8 @@ describe("picking up a queued execution", () => {
     expect(row.steps).toContainEqual(expect.objectContaining({ jobId, containerClass: WEB_ANIMATION_CONTAINER_CLASS, deadlineAt }));
     expect(ingest.calls.map((call) => call.route)).toEqual(["read", "submit"]);
     const config = getTimelineConfig().web_animation;
+    // The raw body, not a parse of it: the request carries no spend ceiling, and a parse would strip one.
+    expect(ingest.calls[1]!.body).not.toHaveProperty("costCeilingUsd");
     const submitted = webAnimationJobRequestSchema.parse(ingest.calls[1]!.body);
     expect(submitted).toEqual({
       containerClass: WEB_ANIMATION_CONTAINER_CLASS,
@@ -195,7 +213,6 @@ describe("picking up a queued execution", () => {
       manifestKey: fx.manifestKey,
       fontSetVersion: config.font_set_version,
       maxPackageBytes: config.max_package_bytes,
-      costCeilingUsd: config.reserve_credits / (100 * env.CREDIT_MULTIPLIER),
       maxTokens: config.max_tokens,
       callTimeoutMs: config.call_timeout_ms,
       model: config.model,
@@ -241,7 +258,7 @@ describe("picking up a running execution again", () => {
     expect(ingest.calls.map((call) => call.route)).toEqual(["read"]);
     expect(await usageRows(sql, fx.execution.id)).toEqual([]);
     expect(chargesFor(fx.execution.id)).toEqual([]);
-    expect(await holdStatus(sql, fx.execution.id)).toBe("held");
+    await expectNothingHeld(fx);
   });
 
   it("submits again on the next pickup after the Worker answered 503", async () => {
@@ -250,7 +267,7 @@ describe("picking up a running execution again", () => {
     ingest.submit = () => new Response("container unavailable", { status: 503 });
     await pickUp(fx);
     expect((await read(fx.execution.id)).status).toBe("running");
-    expect(await holdStatus(sql, fx.execution.id)).toBe("held");
+    await expectNothingHeld(fx);
     ingest.submit = () => json(report(fx, "running", { calls: [], outputs: [] }));
     await pickUp(fx);
     const submits = ingest.calls.filter((call) => call.route === "submit");
@@ -274,9 +291,10 @@ describe("picking up a cancelling execution", () => {
     expect(ingest.calls.filter((call) => call.route === "submit")).toEqual([]);
     expect((await usageRows(sql, fx.execution.id)).filter((r) => r.source === "model")).toEqual(modelRows(fx.execution.id));
     expect(chargesFor(fx.execution.id)).toEqual([await expectedCharge(fx)]);
+    await expectNothingHeld(fx);
   });
 
-  it("acknowledges a cancel that reached the Worker before any submit, releasing the hold and charging nothing", async () => {
+  it("acknowledges a cancel that reached the Worker before any submit, charging and releasing nothing", async () => {
     const fx = await seed("cancelling");
     const ingest = installFakeIngest(fx);
     const before = report(fx, "cancelled_before_submit", { calls: [], container: null });
@@ -287,7 +305,7 @@ describe("picking up a cancelling execution", () => {
     expect(ingest.calls.filter((call) => call.route === "submit")).toEqual([]);
     expect(await usageRows(sql, fx.execution.id)).toEqual([]);
     expect(chargesFor(fx.execution.id)).toEqual([]);
-    expect(await holdStatus(sql, fx.execution.id)).toBe("released");
+    await expectNothingHeld(fx);
   });
 });
 
@@ -313,6 +331,7 @@ describe("settling a terminal report", () => {
     const amount = toChargeCredits(rows.reduce((sum, r) => sum + r.credits, 0));
     expect(Number(row.billedCredits)).toBe(amount);
     expect(row.billedAt).not.toBeNull();
+    await expectNothingHeld(fx);
     expect(errorLogs()).toContainEqual(
       expect.objectContaining({ executionId: fx.execution.id, seq: 3, generationId: "gen-3", outcome: "interrupted" }),
     );
@@ -321,9 +340,9 @@ describe("settling a terminal report", () => {
   it("settles a failed report, recording a call the crash cut off at zero, and fails with the report's reason", async () => {
     const fx = await seed("running");
     const ingest = installFakeIngest(fx);
-    ingest.read = () => json(report(fx, "failed", { calls: [CALLS.completed, CALLS.cutOff], failureReason: "budget_exhausted" }));
+    ingest.read = () => json(report(fx, "failed", { calls: [CALLS.completed, CALLS.cutOff] }));
     await pickUp(fx);
-    expect(await read(fx.execution.id)).toMatchObject({ status: "failed", failureReason: "budget_exhausted", resultSourceVersionId: null });
+    expect(await read(fx.execution.id)).toMatchObject({ status: "failed", failureReason: "dsh_failed", resultSourceVersionId: null });
     const models = (await usageRows(sql, fx.execution.id)).filter((r) => r.source === "model");
     expect(models.map((r) => [r.cost_identity, r.cost_source, r.cost_usd])).toEqual([
       [`timeline:${fx.execution.id}:1`, "provider", 0.0125],
@@ -331,6 +350,7 @@ describe("settling a terminal report", () => {
     ]);
     expect(await sourceRows(sql, fx.execution.id)).toEqual([]);
     expect(chargesFor(fx.execution.id)).toEqual([await expectedCharge(fx)]);
+    await expectNothingHeld(fx);
   });
 
   it("fails a done report whose Manifest does not match the accepted input, still settling what it spent", async () => {
@@ -343,9 +363,10 @@ describe("settling a terminal report", () => {
     expect(await sourceRows(sql, fx.execution.id)).toEqual([]);
     expect((await usageRows(sql, fx.execution.id)).filter((r) => r.source === "model")).toEqual(modelRows(fx.execution.id));
     expect(chargesFor(fx.execution.id)).toEqual([await expectedCharge(fx)]);
+    await expectNothingHeld(fx);
   });
 
-  it("only releases the hold when another writer already set billed_at", async () => {
+  it("charges and releases nothing when another writer already set billed_at", async () => {
     const fx = await seed("running");
     const ingest = installFakeIngest(fx);
     ingest.read = () => json(report(fx, "done"));
@@ -354,7 +375,7 @@ describe("settling a terminal report", () => {
     await pickUp(fx);
     expect((await read(fx.execution.id)).status).toBe("succeeded");
     expect(chargesFor(fx.execution.id)).toEqual([]);
-    expect(await holdStatus(sql, fx.execution.id)).toBe("released");
+    await expectNothingHeld(fx);
   });
 
   it("finishes a run whose earlier writer charged and lost its lock, without a second charge or row", async () => {
@@ -370,7 +391,7 @@ describe("settling a terminal report", () => {
     expect(chargesFor(fx.execution.id)).toHaveLength(1);
     expect(await usageRows(sql, fx.execution.id)).toEqual(rowsAfterFirst);
     expect(await sourceRows(sql, fx.execution.id)).toHaveLength(1);
-    expect(await holdStatus(sql, fx.execution.id)).toBe("released");
+    await expectNothingHeld(fx);
   });
 
   it("charges at most once however up to four writers of one terminal report interleave", async () => {
@@ -428,7 +449,7 @@ describe("the job lock", () => {
 
 describe("an ingest Worker without web-animation execution", () => {
   /**
-   * Assert the row ended as not available here, with its hold released and nothing charged.
+   * Assert the row ended as not available here, with nothing charged or released.
    * @param fx - The execution.
    * @param status - The terminal status the matrix gives this row.
    */
@@ -438,7 +459,7 @@ describe("an ingest Worker without web-animation execution", () => {
     if (status === "failed") expect(row.failureReason).toBe("feature_disabled");
     expect(chargesFor(fx.execution.id)).toEqual([]);
     expect(await usageRows(sql, fx.execution.id)).toEqual([]);
-    expect(await holdStatus(sql, fx.execution.id)).toBe("released");
+    await expectNothingHeld(fx);
   }
 
   it("fails the execution as feature_disabled when the submit answers 501", async () => {
@@ -480,6 +501,7 @@ describe("the original deadline", () => {
     expect((await read(fx.execution.id)).status).toBe("expired");
     expect((await usageRows(sql, fx.execution.id)).filter((r) => r.source === "model")).toEqual(modelRows(fx.execution.id));
     expect(chargesFor(fx.execution.id)).toEqual([await expectedCharge(fx)]);
+    await expectNothingHeld(fx);
   });
 
   it("cancels a job still running two polls past the deadline and settles nothing yet", async () => {
@@ -505,7 +527,7 @@ describe("the original deadline", () => {
     expect(await read(fx.execution.id)).toMatchObject({ status: "running", attempt: 2 });
   });
 
-  it("expires a queued execution past its deadline without submitting, releasing its hold", async () => {
+  it("expires a queued execution past its deadline without submitting, releasing nothing", async () => {
     const fx = await seed("queued");
     await sql`UPDATE timeline_executions SET deadline_at = now() - interval '1 hour' WHERE id = ${fx.execution.id}`;
     const ingest = installFakeIngest(fx);
@@ -513,6 +535,6 @@ describe("the original deadline", () => {
     expect((await read(fx.execution.id)).status).toBe("expired");
     expect(ingest.calls.filter((call) => call.route === "submit")).toEqual([]);
     expect(chargesFor(fx.execution.id)).toEqual([]);
-    expect(await holdStatus(sql, fx.execution.id)).toBe("released");
+    await expectNothingHeld(fx);
   });
 });

@@ -107,7 +107,7 @@ async function read(id: string): Promise<TimelineExecution> {
 }
 
 type Setup = "awaiting_landing" | "queued" | "running" | "cancelling" | "succeeded" | "failed" | "cancelled" | "expired";
-type EventName = "land" | "targetGone" | "claim" | "retry" | "success" | "failure" | "cancel" | "cancelAck" | "deadline";
+type EventName = "land" | "claim" | "retry" | "success" | "failure" | "cancel" | "cancelAck" | "deadline";
 
 /**
  * Drive a fresh execution into a state through the writer itself.
@@ -144,7 +144,6 @@ async function reach(state: Setup): Promise<TimelineExecution> {
 function eventFor(name: EventName, row: TimelineExecution): TimelineExecutionEvent {
   switch (name) {
     case "land": return { type: "land", inputHash: row.inputHash };
-    case "targetGone": return { type: "targetGone" };
     case "claim": return { type: "claim" };
     case "retry": return { type: "retry" };
     case "success": return { type: "success", fence: row.fence, resultSourceVersionId: randomUUID() };
@@ -160,18 +159,18 @@ const S = {
   OK: "succeeded", F: "failed", X: "cancelled", E: "expired",
 } as const satisfies Record<string, TimelineExecutionStatus>;
 
-// Rows: current state. Columns: land, targetGone, claim, retry, success, failure, cancel, cancelAck, deadline.
+// Rows: current state. Columns: land, claim, retry, success, failure, cancel, cancelAck, deadline.
 const MATRIX: Record<Setup, readonly TimelineExecutionStatus[]> = {
-  awaiting_landing: [S.Q, S.F, S.AL, S.AL, S.AL, S.AL, S.X, S.AL, S.E],
-  queued: [S.Q, S.Q, S.R, S.Q, S.Q, S.F, S.X, S.Q, S.E],
-  running: [S.R, S.R, S.R, S.R, S.OK, S.F, S.C, S.R, S.E],
-  cancelling: [S.C, S.C, S.C, S.C, S.X, S.X, S.C, S.X, S.E],
-  succeeded: [S.OK, S.OK, S.OK, S.OK, S.OK, S.OK, S.OK, S.OK, S.OK],
-  failed: [S.F, S.F, S.F, S.F, S.F, S.F, S.F, S.F, S.F],
-  cancelled: [S.X, S.X, S.X, S.X, S.X, S.X, S.X, S.X, S.X],
-  expired: [S.E, S.E, S.E, S.E, S.E, S.E, S.E, S.E, S.E],
+  awaiting_landing: [S.Q, S.AL, S.AL, S.AL, S.AL, S.X, S.AL, S.E],
+  queued: [S.Q, S.R, S.Q, S.Q, S.F, S.X, S.Q, S.E],
+  running: [S.R, S.R, S.R, S.OK, S.F, S.C, S.R, S.E],
+  cancelling: [S.C, S.C, S.C, S.X, S.X, S.C, S.X, S.E],
+  succeeded: [S.OK, S.OK, S.OK, S.OK, S.OK, S.OK, S.OK, S.OK],
+  failed: [S.F, S.F, S.F, S.F, S.F, S.F, S.F, S.F],
+  cancelled: [S.X, S.X, S.X, S.X, S.X, S.X, S.X, S.X],
+  expired: [S.E, S.E, S.E, S.E, S.E, S.E, S.E, S.E],
 };
-const EVENTS: readonly EventName[] = ["land", "targetGone", "claim", "retry", "success", "failure", "cancel", "cancelAck", "deadline"];
+const EVENTS: readonly EventName[] = ["land", "claim", "retry", "success", "failure", "cancel", "cancelAck", "deadline"];
 
 describe("timeline_executions table", () => {
   it("stores every column the design lists, with soft delete", async () => {
@@ -266,14 +265,8 @@ describe("timelineExecutionRepo.transition — fence, deadline and payloads", ()
     expect(await read(running.id)).toMatchObject({ status: "succeeded", resultSourceVersionId: sourceVersionId, fence: null });
 
     const other = await reach("running");
-    await timelineExecutionRepo.transition({ id: other.id, event: { type: "failure", fence: other.fence, reason: "budget_exhausted" } });
-    expect(await read(other.id)).toMatchObject({ status: "failed", failureReason: "budget_exhausted" });
-  });
-
-  it("fails a landing whose Space is gone with a readable reason", async () => {
-    const row = await accept();
-    await timelineExecutionRepo.transition({ id: row.id, event: { type: "targetGone" } });
-    expect(await read(row.id)).toMatchObject({ status: "failed", failureReason: "target_unavailable" });
+    await timelineExecutionRepo.transition({ id: other.id, event: { type: "failure", fence: other.fence, reason: "dsh_failed" } });
+    expect(await read(other.id)).toMatchObject({ status: "failed", failureReason: "dsh_failed" });
   });
 
   it("refuses a landing receipt whose input hash differs from the accepted input", async () => {

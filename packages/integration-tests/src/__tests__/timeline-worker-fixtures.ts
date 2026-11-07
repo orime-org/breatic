@@ -3,8 +3,8 @@
 
 /**
  * Fixtures for the Timeline execution worker suites (inner#1711 design §5.2, §5.3): a Project whose meta document
- * lists one Timeline Space, an accepted execution moved into the state a case starts from, its credit hold, a stand-in
- * for the ingest Worker's job routes, and the reports and Manifest a web-animation job produces.
+ * lists one Timeline Space, an accepted execution moved into the state a case starts from (acceptance holds no
+ * credits), a stand-in for the ingest Worker's job routes, and the reports and Manifest a web-animation job produces.
  */
 
 import { randomUUID } from "node:crypto";
@@ -76,7 +76,8 @@ export async function deleteSpace(projectId: string, spaceId: string): Promise<v
 }
 
 /**
- * Accept an execution in a fresh Project, hold its credits and move it to the state the case starts from.
+ * Accept an execution in a fresh Project, as acceptance does with no credit hold, and move it to the state the case
+ * starts from.
  * @param sql - The suite's own connection.
  * @param state - Where the execution starts.
  * @returns The fixture.
@@ -103,10 +104,6 @@ export async function seedExecution(sql: Sql, state: StartState): Promise<Execut
     deadlineAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
   });
   if (inserted === null) throw new Error("Fixture execution conflicted");
-  await sql`
-    INSERT INTO credit_holds (studio_id, actor_user_id, reference_id, amount, expires_at)
-    VALUES (${studioId}, ${userId}, ${inserted.id}, 50, now() + interval '2 hours')
-  `;
   const step = async (event: Parameters<typeof timelineExecutionRepo.transition>[0]["event"]): Promise<TimelineExecution> => {
     const result = await timelineExecutionRepo.transition({ id: inserted.id, event });
     if (!result.applied) throw new Error(`Fixture step ${event.type} refused`);
@@ -144,14 +141,14 @@ export async function read(id: string): Promise<TimelineExecution> {
 }
 
 /**
- * The status of an execution's credit hold.
+ * The credit holds keyed by an execution; an execution never has one.
  * @param sql - The suite's own connection.
- * @param executionId - The execution the hold is keyed by.
- * @returns `held` or `released`.
+ * @param executionId - The execution.
+ * @returns The statuses of the holds found.
  */
-export async function holdStatus(sql: Sql, executionId: string): Promise<string> {
-  const [row] = await sql<{ status: string }[]>`SELECT status FROM credit_holds WHERE reference_id = ${executionId}`;
-  return row!.status;
+export async function holdsFor(sql: Sql, executionId: string): Promise<string[]> {
+  const rows = await sql<{ status: string }[]>`SELECT status FROM credit_holds WHERE reference_id = ${executionId}`;
+  return rows.map((row) => row.status);
 }
 
 /** A usage row as these suites compare it. */

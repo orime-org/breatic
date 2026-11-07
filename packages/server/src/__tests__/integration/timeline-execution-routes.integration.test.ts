@@ -4,13 +4,15 @@
 /**
  * The Timeline execution HTTP surface (inner#1711 design §3.4, §4, §5.1; acceptance V1, V2, V4).
  *
- * `POST /timeline/executions` admits a web-animation execution: an action already accepted answers its own row (or
- * 409 when the input differs) and holds nothing; a new one holds its credits under the new execution id, then writes
- * the execution and this Project's grant in one transaction, and every failure after the hold releases it. The read
- * routes answer through the grant rows, so a duplicated Project can resolve and preview what its source made while
- * its execution list stays its own. Cancel ends a row nothing has started and releases its hold.
+ * `POST /timeline/executions` admits a web-animation execution as an Agent chat turn is admitted: a balance above
+ * zero is all it needs, and no credits are held (settlement later charges actual use and may take the balance below
+ * zero). An action already accepted answers its own row (or 409 when the input differs); a new one writes the
+ * execution and this Project's grant in one transaction. The read routes answer through the grant rows, so a
+ * duplicated Project can resolve and preview what its source made while its execution list stays its own. Cancel
+ * ends a row nothing has started; there is nothing to release.
  *
- * Driven through the real app, database and Redis with payments on, so holds are real `credit_holds` rows.
+ * Driven through the real app, database and Redis with payments on, so a credit hold, were one written, would be a
+ * real `credit_holds` row.
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, inject, vi } from "vitest";
@@ -43,7 +45,7 @@ import {
   type Redis,
 } from "@breatic/core";
 import { webAnimationSourceRepo } from "@breatic/domain";
-import { ceilToCreditCent, extractPromptText, readSignedPayload, t } from "@breatic/shared";
+import { extractPromptText, readSignedPayload, t } from "@breatic/shared";
 import { decodePreviewToken } from "@breatic/shared/space-content";
 import type { TimelineExecution } from "@breatic/shared";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
@@ -219,7 +221,7 @@ async function grantedProjects(executionId: string): Promise<string[]> {
 }
 
 /**
- * Insert an execution straight through the repository, with no hold or grant.
+ * Insert an execution straight through the repository, with no grant.
  * @param projectId - Its Project.
  * @param spaceId - Its Space.
  * @param actorUserId - Who accepted it.
@@ -309,10 +311,8 @@ async function expectNotFound(res: Response): Promise<void> {
   expect(await res.json()).toEqual({ error: { code: 404, message: t("server.error.not_found") } });
 }
 
-const RESERVE = (): number => ceilToCreditCent(getTimelineConfig().web_animation.reserve_credits);
-
 describe("POST /timeline/executions", () => {
-  it("accepts a new action: holds its credits under the execution id and writes the row and this Project's grant", async () => {
+  it("accepts a new action: writes the row and this Project's grant and holds no credits", async () => {
     const fx = await seedProject();
     const body = createBody(fx);
     const before = Date.now();
@@ -338,7 +338,14 @@ describe("POST /timeline/executions", () => {
     expect(Date.parse(data.deadlineAt)).toBeLessThanOrEqual(Date.now() + budget + 1);
     expect(await timelineExecutionRepo.findById(data.id)).toEqual(data);
     expect(await grantedProjects(data.id)).toEqual([fx.projectId]);
-    expect(await holdsOf(fx.studioId)).toEqual([{ reference_id: data.id, status: "held", amount: RESERVE() }]);
+    expect(await holdsOf(fx.studioId)).toEqual([]);
+  });
+
+  it("accepts with any balance above zero, however little of a run it would cover, holding nothing", async () => {
+    const fx = await seedProject(1);
+    const row = await accepted(fx);
+    expect(row.status).toBe("awaiting_landing");
+    expect(await holdsOf(fx.studioId)).toEqual([]);
   });
 
   it("keeps the document's frame rate in the frozen input", async () => {
@@ -355,7 +362,7 @@ describe("POST /timeline/executions", () => {
     expect(row.input).toMatchObject({ prompt: extractPromptText(raw) });
   });
 
-  it("answers an action already accepted with the same input with its original row, holding nothing more", async () => {
+  it("answers an action already accepted with the same input with its original row, holding nothing", async () => {
     const fx = await seedProject();
     const body = createBody(fx);
     const first = await accept(fx.editor.cookie, body);
@@ -364,20 +371,20 @@ describe("POST /timeline/executions", () => {
     const again = await accept(fx.editor.cookie, body);
     expect(again.status, await again.clone().text()).toBe(200);
     expect(((await again.json()) as { data: TimelineExecution }).data).toEqual(original);
-    expect(await holdsOf(fx.studioId)).toEqual([{ reference_id: original.id, status: "held", amount: RESERVE() }]);
+    expect(await holdsOf(fx.studioId)).toEqual([]);
     const [{ count } = { count: -1 }] = await sql<{ count: number }[]>`
       SELECT count(*)::int AS count FROM timeline_executions WHERE project_id = ${fx.projectId} AND action_id = ${String(body.actionId)}
     `;
     expect(count).toBe(1);
   });
 
-  it("refuses an action already accepted with a different input with 409, holding nothing more", async () => {
+  it("refuses an action already accepted with a different input with 409, holding nothing", async () => {
     const fx = await seedProject();
     const body = createBody(fx);
     const original = ((await (await accept(fx.editor.cookie, body)).json()) as { data: TimelineExecution }).data;
     const changed = await accept(fx.editor.cookie, { ...body, prompt: "A blue circle" });
     expect(changed.status).toBe(409);
-    expect(await holdsOf(fx.studioId)).toEqual([{ reference_id: original.id, status: "held", amount: RESERVE() }]);
+    expect(await holdsOf(fx.studioId)).toEqual([]);
     expect(await timelineExecutionRepo.findById(original.id)).toEqual(original);
   });
 
@@ -392,7 +399,7 @@ describe("POST /timeline/executions", () => {
     expect(count).toBe(0);
   });
 
-  it("refuses a studio without credits with the readable 402 and leaves no row, grant or hold", async () => {
+  it("refuses a studio with a zero balance with the readable 402 and leaves no row, grant or hold", async () => {
     const fx = await seedProject(0);
     const res = await accept(fx.editor.cookie, createBody(fx));
     expect(res.status).toBe(402);
@@ -402,7 +409,7 @@ describe("POST /timeline/executions", () => {
     expect(count).toBe(0);
   });
 
-  it("releases the hold and leaves no execution when the accepting transaction fails after the hold", async () => {
+  it("leaves no execution and no hold when the accepting transaction fails", async () => {
     const fx = await seedProject();
     await sql.unsafe(`
       CREATE OR REPLACE FUNCTION timeline_grant_refused_for_test() RETURNS trigger AS $$
@@ -419,13 +426,12 @@ describe("POST /timeline/executions", () => {
       await sql.unsafe("DROP TRIGGER IF EXISTS timeline_grant_refused_for_test ON timeline_execution_grants");
       await sql.unsafe("DROP FUNCTION IF EXISTS timeline_grant_refused_for_test()");
     }
-    const holds = await holdsOf(fx.studioId);
-    expect(holds.map((hold) => hold.status)).toEqual(["released"]);
+    expect(await holdsOf(fx.studioId)).toEqual([]);
     const [{ count } = { count: -1 }] = await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM timeline_executions WHERE project_id = ${fx.projectId}`;
     expect(count).toBe(0);
   });
 
-  it("answers 409 and releases its own hold when a concurrent accept of the same action with another input commits first", async () => {
+  it("answers 409 and holds nothing when a concurrent accept of the same action with another input commits first", async () => {
     const fx = await seedProject();
     const body = createBody(fx);
     const gate = postgres(inject("DATABASE_URL"), { max: 1, prepare: false, connection: { application_name: `${APP}-gate` } });
@@ -455,9 +461,7 @@ describe("POST /timeline/executions", () => {
       release();
       await gate.end({ timeout: 1 });
     }
-    const holds = await holdsOf(fx.studioId);
-    expect(holds.map((hold) => hold.status)).toEqual(["released"]);
-    expect(holds[0]!.reference_id).not.toBe(competitorId);
+    expect(await holdsOf(fx.studioId)).toEqual([]);
     const rows = await sql<{ id: string }[]>`SELECT id FROM timeline_executions WHERE project_id = ${fx.projectId}`;
     expect(rows).toEqual([{ id: competitorId }]);
   });
@@ -583,7 +587,7 @@ describe("POST /timeline/executions/:id/cancel", () => {
   }
 
   it.each(["awaiting_landing", "queued"] as const)(
-    "cancels a %s execution, releases its hold and signals the Space once",
+"cancels a %s execution, with no hold to release, and signals the Space once",
     async (state) => {
       const fx = await seedProject();
       const row = await accepted(fx);
@@ -593,14 +597,14 @@ describe("POST /timeline/executions/:id/cancel", () => {
       expect(res.status, await res.clone().text()).toBe(200);
       expect(((await res.json()) as { data: TimelineExecution }).data).toMatchObject({ id: row.id, status: "cancelled" });
       expect((await timelineExecutionRepo.findById(row.id))?.status).toBe("cancelled");
-      expect(await holdsOf(fx.studioId)).toEqual([{ reference_id: row.id, status: "released", amount: RESERVE() }]);
+      expect(await holdsOf(fx.studioId)).toEqual([]);
       expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual([
         { type: "project-space-tasks:changed", projectId: fx.projectId, spaceId: fx.spaceId, ts: expect.any(Number) },
       ]);
     },
   );
 
-  it("moves a running execution to cancelling, keeping its attempt's fence and its hold", async () => {
+  it("moves a running execution to cancelling, keeping its attempt's fence", async () => {
     const fx = await seedProject();
     const row = await accepted(fx);
     await step(row.id, { type: "land", inputHash: row.inputHash });
@@ -608,7 +612,7 @@ describe("POST /timeline/executions/:id/cancel", () => {
     const res = await cancel(fx.editor.cookie, row.id);
     expect(res.status).toBe(200);
     expect(((await res.json()) as { data: TimelineExecution }).data).toMatchObject({ status: "cancelling", fence: running.fence, attempt: 1 });
-    expect(await holdsOf(fx.studioId)).toEqual([{ reference_id: row.id, status: "held", amount: RESERVE() }]);
+    expect(await holdsOf(fx.studioId)).toEqual([]);
   });
 
   it("answers a terminal execution with its row unchanged and signals nothing", async () => {
@@ -625,12 +629,12 @@ describe("POST /timeline/executions/:id/cancel", () => {
     expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual([]);
   });
 
-  it("refuses a viewer with 403 and leaves the row and hold in place", async () => {
+  it("refuses a viewer with 403 and leaves the row in place", async () => {
     const fx = await seedProject();
     const row = await accepted(fx);
     expect((await cancel(fx.viewer.cookie, row.id)).status).toBe(403);
     expect(await timelineExecutionRepo.findById(row.id)).toEqual(row);
-    expect(await holdsOf(fx.studioId)).toEqual([{ reference_id: row.id, status: "held", amount: RESERVE() }]);
+    expect(await holdsOf(fx.studioId)).toEqual([]);
   });
 });
 
