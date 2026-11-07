@@ -171,7 +171,7 @@ describe("a first call over the window (A2)", () => {
     await sendMessage();
 
     const resent = world.prompts[1] ?? [];
-    expect(systemOf(resent)).toContain("## Conversation Memory\nMEMORY-THROUGH-1");
+    expect(systemOf(resent)).toContain("## Conversation So Far\n\nMEMORY-THROUGH-1");
     expect(JSON.stringify(resent)).not.toContain("TURN-1-REPLY");
     expect(JSON.stringify(resent)).toContain("TURN-2-REPLY");
   });
@@ -454,7 +454,7 @@ describe("another tab folding first", () => {
     expect(world.folds).toHaveLength(1);
     expect(contextReads()).toBe(2);
     expect(world.prompts).toHaveLength(2);
-    expect(systemOf(world.prompts[1])).toContain("## Conversation Memory\nMEMORY-THROUGH-1");
+    expect(systemOf(world.prompts[1])).toContain("## Conversation So Far\n\nMEMORY-THROUGH-1");
     expect(count(chunks, "error")).toBe(0);
     expect(stored()).toContainEqual({ type: "text", text: "after the other tab" });
   });

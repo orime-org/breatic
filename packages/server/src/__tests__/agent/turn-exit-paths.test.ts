@@ -44,7 +44,7 @@ const thisCase = vi.hoisted(() => ({
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { projectMemory: "", conversationMemory: "" },
+    memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
     history: [],
   })),
 }));
@@ -221,6 +221,7 @@ describe("what a plain chat turn hands the model", () => {
     const names = (called?.tools ?? []).map((t) => t.name).sort();
     expect(names).toEqual([
       "ask_user",
+      "delete_memory",
       "get_canvas_capabilities",
       "get_generation_template",
       "get_product_guide",
@@ -229,9 +230,11 @@ describe("what a plain chat turn hands the model", () => {
       "propose_canvas_action",
       "propose_document_edit",
       "read_conversation",
+      "read_memory",
       "read_node_history",
       "request_space_content",
       "save_image",
+      "save_memory",
       "search_conversations",
       "search_images",
       "web_search",

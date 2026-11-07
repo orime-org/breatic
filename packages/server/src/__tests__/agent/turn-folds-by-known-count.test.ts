@@ -74,7 +74,7 @@ type Rows = Array<MessageData & { forModel: unknown }>;
  * @param first - What the model does in the first turn.
  * @param options - How the stored rows or the conversation change in between.
  * @param options.edit - Change the rows the first turn left.
- * @param options.memory - The conversation memory the second turn reads.
+ * @param options.memory - The progress note the second turn reads.
  * @param options.stopDuringTool - The reader stops the first turn while its tool runs.
  * @param options.window - The main model's window, when not {@link WINDOW}.
  * @returns How many folds the second turn ran, and what it sent first.
@@ -127,7 +127,7 @@ describe("at the start of a turn", () => {
     expect(turn.folds).toBe(1);
     expect(turn.foldedBeforeFirstCall).toBe(true);
     expect(turn.watermarks).toEqual([1]);
-    expect(turn.firstSystem).toContain("## Conversation Memory\nMEMORY-THROUGH-1");
+    expect(turn.firstSystem).toContain("## Conversation So Far\n\nMEMORY-THROUGH-1");
   });
 
   it("sizes an overflow of the first call by the newest reply's provider count", async () => {
@@ -273,7 +273,7 @@ describe("in the middle of a turn", () => {
 
     expect(world.events.filter((e) => e !== "context")).toEqual(["call", "tool", "fold", "call"]);
     expect(world.toolRuns).toBe(1);
-    expect(systemOf(world.prompts[1])).toContain("## Conversation Memory\nMEMORY-THROUGH-1");
+    expect(systemOf(world.prompts[1])).toContain("## Conversation So Far\n\nMEMORY-THROUGH-1");
     expect(toolPairsOf(world.prompts[1] ?? [])).toEqual({ calls: ["c1"], results: ["c1"] });
     const stored = world.replies.at(-1)?.message.parts ?? [];
     expect(stored).toContainEqual({ type: "text", text: "done" });

@@ -177,6 +177,7 @@
       "references_too_many": "添付の参照が多すぎます。1 件のメッセージにつき最大 {limit, number} 回までです。このメッセージには {actual, number} 回あります。",
       "ask_not_found": "この会話にこの質問カードはありません。",
       "ask_already_answered": "この質問カードにはすでに回答済みです。",
+      "model_unavailable": "選択したモデルは利用できなくなりました。",
       "answer_mismatch": "これらの回答はカードの質問と合いません。"
     },
     "mail": {
@@ -306,6 +307,11 @@
     }
   },
   "chat": {
+    "modelPicker": {
+      "label": "モデル",
+      "listFailed": "モデル一覧を読み込めませんでした",
+      "saveFailed": "モデルの選択を保存できませんでした"
+    },
     "composer": {
       "chipsAria": "選択された chips",
       "placeholder": "質問するか、Canvas 上のものを渡してください…",
@@ -410,6 +416,9 @@
       "readingConversation": "会話を確認中",
       "readingNodeHistory": "ノードの履歴を確認中",
       "readingActivity": "Project アクティビティを確認中",
+      "savingMemory": "メモリに保存中",
+      "deletingMemory": "メモリから削除中",
+      "readingMemory": "メモリを確認中",
       "running": "{tool} を実行中",
       "step": {
         "webSearch": "「{query}」の検索",
@@ -426,6 +435,9 @@
         "readConversation": "会話の確認",
         "readNodeHistory": "ノードの履歴の確認",
         "readActivity": "Project アクティビティの確認",
+        "saveMemory": "メモリへの保存",
+        "deleteMemory": "メモリからの削除",
+        "readMemory": "メモリの確認",
         "other": "{tool} の実行",
         "readTemplate": "テンプレートの確認",
         "requestSpace": "Space の閲覧依頼"

@@ -110,3 +110,19 @@ export const LIST_PROJECT_ACTIVITY = "list_project_activity";
 
 /** The four record tools' names, the one list every place that treats them alike reads. */
 export const RECORD_TOOL_NAMES = [SEARCH_CONVERSATIONS, READ_CONVERSATION, READ_NODE_HISTORY, LIST_PROJECT_ACTIVITY] as const;
+
+// The three tools the Agent keeps its own memory with (#1363). Named here
+// because the system prompt's memory protocol says when to use each, and the
+// registry key has to be the same name.
+
+/** Add a memory entry, or replace one. */
+export const SAVE_MEMORY = "save_memory";
+
+/** Delete a memory entry. */
+export const DELETE_MEMORY = "delete_memory";
+
+/** Read memory entries in full, by id or by words. */
+export const READ_MEMORY = "read_memory";
+
+/** The three memory tools' names. */
+export const MEMORY_TOOL_NAMES = [SAVE_MEMORY, DELETE_MEMORY, READ_MEMORY] as const;

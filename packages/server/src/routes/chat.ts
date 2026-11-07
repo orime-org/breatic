@@ -24,6 +24,7 @@ import {
   chatOpenSchema,
   chatCreateConversationSchema,
   chatRenameConversationSchema,
+  chatSetModelSchema,
   chatEarlierMessagesQuerySchema,
   idParamSchema,
   attachmentParamSchema,
@@ -286,6 +287,14 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
   // (inner#1542) or a request to read Spaces (inner#1552). Both are taken,
   // refused and resumed alike; only how the answer is held to the call differs.
   const { answer, shared_spaces: sharedSpaces } = body;
+  // The model is settled before an answer is taken, so nothing about it can
+  // refuse a request after the card's answer is already gone (#1363). A
+  // resumed turn runs on the model it started on.
+  const resumed = answer?.toolCallId ?? sharedSpaces?.toolCallId;
+  const modelId =
+    resumed === undefined
+      ? await conversationService.modelForMessage(conversation, user.id, body.model)
+      : await conversationService.modelForResume(conversation, user.id, resumed);
   const card =
     answer !== undefined
       ? { toolCallId: answer.toolCallId, take: () => conversationService.answerAsk(conversation.id, answer, { userId: user.id, projectId: body.project_id }) }
@@ -317,7 +326,7 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
       c,
       { userId: user.id, conversationId: conversation.id, projectId: body.project_id },
       (signal) =>
-        new MainAgent().answer(card.toolCallId, taken.output, taken.turnIndex, signal, body.time_zone, body),
+        new MainAgent().answer(card.toolCallId, taken.output, taken.turnIndex, signal, body.time_zone, body, modelId),
     );
   }
 
@@ -326,7 +335,7 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
     c,
     { userId: user.id, conversationId: conversation.id, projectId: body.project_id },
     (signal) =>
-      new MainAgent().chat(body.message, signal, body.attached_chips, body.time_zone, body),
+      new MainAgent().chat(body.message, signal, body.attached_chips, body.time_zone, body, modelId),
   );
 });
 
@@ -390,6 +399,38 @@ chat.post(
       user.id,
       projectId,
     );
+    return c.json({ data: conversation });
+  },
+);
+
+/**
+ * `GET /chat/models` — the models the reader can pick in the chat panel, in
+ * order, and the one a new conversation of theirs starts on (#1363).
+ * @param c - Hono context
+ * @returns The list and the starting model's id
+ */
+chat.get("/models", async (c) => {
+  const user = c.get("user");
+  return c.json({ data: await conversationService.listChatModels(user.id) });
+});
+
+/**
+ * `PUT /chat/conversations/:id/model` — pick the model a conversation is
+ * answered by; it becomes the reader's last pick too (#1363).
+ * @param c - Hono context with the conversation id in the path and a
+ *   `project_id` + `model` body
+ * @returns The conversation as it now stands
+ * @throws {AppError} `422` for a model the deployment does not list; `404` if
+ *   the conversation is missing, deleted, someone else's or in another Project
+ */
+chat.put(
+  "/conversations/:id/model",
+  validate("param", idParamSchema),
+  validate("json", chatSetModelSchema),
+  async (c) => {
+    const user = c.get("user");
+    const { project_id: projectId, model } = c.req.valid("json");
+    const conversation = await conversationService.setConversationModel(c.req.param("id"), user.id, projectId, model);
     return c.json({ data: conversation });
   },
 );

@@ -23,7 +23,8 @@ import { toast } from '@web/lib/toast';
 import { chatApi } from '@web/data/api/chat';
 import { getRunning, runOnce, useRunning } from '@web/stores/task-actions-in-flight';
 import { ApiException } from '@web/data/api/types';
-import type { ConversationOnTheWire, OpenChatResult } from '@web/data/api/chat';
+import type { ChatConversationOnTheWire, ConversationOnTheWire, OpenChatResult } from '@web/data/api/chat';
+import type { AgentModelChoice } from '@breatic/shared';
 import {
   evictAllChatSessions,
   evictChatSession,
@@ -69,6 +70,12 @@ export interface ConversationRuntime {
    * name, which is a different sentence from the one it had.
    */
   title: string | null;
+  /**
+   * The model this conversation is answered by (#1363), as the server said
+   * when it was opened, and as the picker set it since. A message is sent
+   * with it.
+   */
+  agentModel: AgentModelChoice;
 }
 
 /** How far opening one project's chat has got. */
@@ -169,6 +176,13 @@ interface ConversationRuntimeState {
    * is what there is.
    */
   sendingByProject: Record<string, true>;
+  /**
+   * How many times the model list was asked for again (#1363): on a send or a
+   * model save the server refused, which is how a page learns a model was
+   * taken off, and on a conversation whose model the page's list lacks. The
+   * model picker fetches the list again when it rises.
+   */
+  modelListAsks: number;
 }
 
 /**
@@ -363,6 +377,7 @@ const useStore = create<ConversationRuntimeState>()(() => ({
   openStatus: {},
   navigatingByProject: {},
   sendingByProject: {},
+  modelListAsks: 0,
 }));
 
 /**
@@ -610,6 +625,7 @@ function adoptConversation(projectId: string, opened: OpenChatResult['current'])
         hasMore: held?.hasMore ?? opened.hasMore,
         oldestLoadedTurn: held ? held.oldestLoadedTurn : oldestTurnOf(opened.messages),
         title: opened.conversation.title ?? null,
+        agentModel: opened.conversation.agentModel,
       },
     },
   }));
@@ -1127,7 +1143,7 @@ export function useStartingNew(projectId: string): boolean {
  * @returns The conversation made, or null when the press was let go unanswered.
  * @throws {unknown} The final failure, when the server refused.
  */
-async function createConversationOnce(projectId: string): Promise<ConversationOnTheWire | null> {
+async function createConversationOnce(projectId: string): Promise<ChatConversationOnTheWire | null> {
   const outcome = await runOnce(newConversationIntent(projectId), {
     scope: 'conversation',
     prepare: () => projectId,
@@ -1172,7 +1188,7 @@ async function startNew(projectId: string): Promise<void> {
         listByProject: {
           ...s.listByProject,
           // At the top, where the list's order puts the most recently used one.
-          [projectId]: [created, ...(s.listByProject[projectId] ?? [])],
+          [projectId]: [{ ...created, agentModel: created.agentModel.id }, ...(s.listByProject[projectId] ?? [])],
         },
         // Never having been answered means the first page never arrived, and
         // this row is then the whole of what the list holds. What came before
@@ -1755,7 +1771,24 @@ export function _resetForTests(): void {
     openStatus: {},
     navigatingByProject: {},
     sendingByProject: {},
+    modelListAsks: 0,
   });
+}
+
+/**
+ * Set the model a conversation is answered by, here only (#1363): the picker
+ * saves a pick itself, and puts the model it shows here when the stored one
+ * is no longer listed.
+ * @param conversationId - The conversation.
+ * @param agentModel - The model.
+ */
+function setAgentModel(conversationId: string, agentModel: AgentModelChoice): void {
+  patchConversation(conversationId, (c) => ({ ...c, agentModel }));
+}
+
+/** Ask for the model list again (#1363); see `modelListAsks`. */
+function askModelListAgain(): void {
+  useStore.setState((s) => ({ modelListAsks: s.modelListAsks + 1 }));
 }
 
 export const useConversationRuntime = useStore;
@@ -1776,4 +1809,6 @@ export const conversationRuntime = {
   remove,
   setDraft,
   draftOf,
+  setAgentModel,
+  askModelListAgain,
 };

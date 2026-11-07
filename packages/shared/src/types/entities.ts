@@ -51,9 +51,24 @@ export interface ConversationEntity {
   projectId: string | null;
   /** Turn index up to which messages have been consolidated into memory. */
   lastConsolidatedTurn: number;
+  /** The Agent model this conversation is answered by, as stored; null before its first pick (#1363). */
+  agentModel: string | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
+}
+
+/** One model the reader can pick in the chat panel (#1363). */
+export interface AgentModelChoice {
+  id: string;
+  /** Shown as written; English. */
+  name: string;
+}
+
+/** A conversation as the chat panel is handed it: with the model it is answered by (#1363). */
+export interface ChatConversation extends Omit<ConversationEntity, "agentModel"> {
+  /** The stored pick when it is still listed, else the reader's last pick, else the deployment's default. */
+  agentModel: AgentModelChoice;
 }
 
 /**
@@ -846,15 +861,40 @@ export interface RecentItem {
   lastOpenedAt: Date;
 }
 
+/** One row of the Agent's memory (#1363): a fact the member's Agent keeps. */
+export interface AgentMemoryEntity {
+  id: string;
+  userId: string;
+  /** The Project it belongs to. */
+  projectId: string | null;
+  /** The conversation it belongs to alone; null for an entry read across the member's conversations in the Project. */
+  conversationId: string | null;
+  /** The conversation it was written in; null for an entry migrated from a Project block. */
+  sourceConversationId: string | null;
+  title: string;
+  content: string;
+  /** Who wrote it: the Agent through its memory tools, a consolidation, or the migration. */
+  origin: "agent" | "consolidation" | "migration";
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+}
+
 /**
- * The two memory layers an LLM prompt carries.
+ * The Agent's memory as one turn's system prompt carries it (#1363).
  *
- * Both are the reader's own: project memory is keyed by member as well as
- * project, and conversation memory by conversation.
+ * All of it is the reader's own: entries of their Project and of this
+ * conversation, and this conversation's progress note.
  */
 export interface MemoryContext {
-  projectMemory: string;
-  conversationMemory: string;
+  /** The index, newest first: one line per entry, up to the configured bound. */
+  entries: Array<{ id: string; title: string }>;
+  /** Entries migrated from an earlier block of memory, carried in full until a consolidation splits them. */
+  migrated: Array<{ id: string; title: string; content: string }>;
+  /** How many entries the index leaves out. */
+  olderCount: number;
+  /** Where this conversation has got to; empty when nothing has been folded yet. */
+  progress: string;
 }
 
 

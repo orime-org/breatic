@@ -177,6 +177,7 @@
       "references_too_many": "引用附件的次數太多。一則訊息最多 {limit, number} 次，這則有 {actual, number} 次。",
       "ask_not_found": "這段對話裡沒有這張問題卡片。",
       "ask_already_answered": "這張問題卡片已經回答過了。",
+      "model_unavailable": "所選模型已無法使用。",
       "answer_mismatch": "這些答案和卡片上的問題對不上。"
     },
     "mail": {
@@ -306,6 +307,11 @@
     }
   },
   "chat": {
+    "modelPicker": {
+      "label": "模型",
+      "listFailed": "模型清單沒有載入",
+      "saveFailed": "選擇的模型沒有儲存，已恢復原來的選擇"
+    },
     "composer": {
       "chipsAria": "已選 chips",
       "placeholder": "問點什麼，或者把 Canvas 上的東西交給我…",
@@ -410,6 +416,9 @@
       "readingConversation": "正在讀對話紀錄",
       "readingNodeHistory": "正在查節點的歷史",
       "readingActivity": "正在查 Project 活動",
+      "savingMemory": "正在記下",
+      "deletingMemory": "正在刪掉這條記憶",
+      "readingMemory": "正在查記憶",
       "running": "正在呼叫 {tool}",
       "step": {
         "webSearch": "搜尋「{query}」",
@@ -426,6 +435,9 @@
         "readConversation": "讀對話紀錄",
         "readNodeHistory": "查節點的歷史",
         "readActivity": "查 Project 活動",
+        "saveMemory": "記下",
+        "deleteMemory": "刪掉記憶",
+        "readMemory": "查記憶",
         "other": "呼叫 {tool}",
         "readTemplate": "讀範本",
         "requestSpace": "請求查看 Space"

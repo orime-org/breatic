@@ -315,6 +315,7 @@ export function ChatPanel({
       </QuestionnaireAnswerContext.Provider>
       <ChatComposer
         conversationId={currentId ?? null}
+        projectId={projectId}
         draft={draft}
         turnPhase={turnPhase}
         navigating={navigating}

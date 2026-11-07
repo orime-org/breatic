@@ -200,6 +200,9 @@ const STEP_KEYS: Readonly<Record<string, string>> = {
   read_conversation: 'chat.tool.step.readConversation',
   read_node_history: 'chat.tool.step.readNodeHistory',
   list_project_activity: 'chat.tool.step.readActivity',
+  save_memory: 'chat.tool.step.saveMemory',
+  delete_memory: 'chat.tool.step.deleteMemory',
+  read_memory: 'chat.tool.step.readMemory',
   request_space_content: 'chat.tool.step.requestSpace',
 };
 

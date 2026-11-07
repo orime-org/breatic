@@ -63,7 +63,7 @@ vi.mock('@web/data/api/assets', async (importOriginal) => {
 
 import { chatApi } from '@web/data/api/chat';
 import { useChatSession } from '@web/pages/project/chat/use-chat-session';
-import { _resetForTests, conversationRuntime } from '@web/stores/conversation-runtime';
+import { _resetForTests, conversationRuntime, useConversationRuntime } from '@web/stores/conversation-runtime';
 import { tell } from '@web/stores/chat-mishaps';
 import { evictAllChatSessions } from '@web/stores/chat-sessions';
 import { stubChatWire, turnOpens } from '@web/test-utils/chat-wire';
@@ -84,7 +84,7 @@ function openChatAnswers(
   vi.mocked(chatApi.openChat).mockResolvedValue({
     conversations: [{ id: conversationId }],
     current: {
-      conversation: { id: conversationId },
+      conversation: { id: conversationId, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       messages: messages.map((m) => ({
         id: m.id,
         role: m.role,
@@ -349,7 +349,7 @@ describe('a turn that failed', () => {
     vi.mocked(chatApi.openChat).mockResolvedValue({
       conversations: [{ id: 'c-1' }],
       current: {
-        conversation: { id: 'c-1' },
+        conversation: { id: 'c-1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
         messages: [
           {
             id: 'm1',
@@ -518,6 +518,41 @@ describe('when the chat never opened', () => {
       expect(wire.sent()).toHaveLength(1);
     });
     expect(wire.sent()[0]).toMatchObject({ conversation_id: 'c-1', message: '还是想问' });
+  });
+});
+
+describe('a send the server refused (#1363)', () => {
+  it('is counted, so the model picker asks for the list again', async () => {
+    const panel = await anOpenPanel();
+    const before = useConversationRuntime.getState().modelListAsks;
+    wire.refuseNext(422, 'The selected model is no longer available.');
+
+    act(() => {
+      void panel.result.current.send('hello');
+    });
+
+    await waitFor(() => {
+      expect(useConversationRuntime.getState().modelListAsks).toBe(before + 1);
+    });
+  });
+
+  it('is counted in a conversation the send itself opened', async () => {
+    vi.mocked(chatApi.openChat).mockRejectedValueOnce(new Error('offline'));
+    const panel = render();
+    await waitFor(() => {
+      expect(panel.result.current.status).toBe('failed');
+    });
+    openChatAnswers([]);
+    const before = useConversationRuntime.getState().modelListAsks;
+    wire.refuseNext(422, 'The selected model is no longer available.');
+
+    act(() => {
+      void panel.result.current.send('hello');
+    });
+
+    await waitFor(() => {
+      expect(useConversationRuntime.getState().modelListAsks).toBe(before + 1);
+    });
   });
 });
 
@@ -707,7 +742,7 @@ describe('the wait for the limits before a send (inner#1413)', () => {
 
   it('sends nothing into the conversation the reader switched to during the wait', async () => {
     vi.mocked(chatApi.readConversation).mockResolvedValue({
-      conversation: { id: 'c-2' },
+      conversation: { id: 'c-2', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       messages: [],
       hasMore: false,
     } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);

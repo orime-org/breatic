@@ -799,6 +799,20 @@
       "when": 1793935852419,
       "tag": "0113_scene_task_rows",
       "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1793969931906,
+      "tag": "0114_agent_memories",
+      "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1793969932158,
+      "tag": "0115_migrate_block_memories",
+      "breakpoints": true
     }
   ]
 }
