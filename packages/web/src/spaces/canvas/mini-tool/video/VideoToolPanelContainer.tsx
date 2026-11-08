@@ -325,15 +325,6 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
   const { tables: inputTables, refs: inputRefs } = useInputPresentations(projectId, toolId === 'video.transitions' && current !== null ? current.inputs : NO_INPUTS);
   const [invalidFields, setInvalidFields] = React.useState<ReadonlySet<string>>(new Set());
   const refs = useAnalysisRefs(projectId, spaceId, nodeId);
-  // The model and transitions footers show the server's quote of the planned request the Run sends (§97 D26-1, D27-1).
-  const quoted = toolId === 'video.lip-sync' || toolId === 'video.transitions' || toolId === 'video.remove-bg';
-  const quoteFacts = React.useMemo((): PlannedVideoFacts | null => {
-    if (!quoted || current === null) return null;
-    if (toolId !== 'video.transitions') return presentation?.presentationRef === undefined ? null : { projectId, spaceId, presentationRef: presentation.presentationRef, analysisRefs: refs };
-    const byInput = current.inputs.map((input) => [input.inputId, inputRefs.get(input.inputId)] as const);
-    return byInput.some(([, ref]) => ref === undefined) ? null : { projectId, spaceId, presentationRef: Object.fromEntries(byInput), analysisRefs: refs } as PlannedVideoFacts;
-  }, [quoted, current, toolId, presentation?.presentationRef, inputRefs, projectId, spaceId, refs]);
-  const quote = usePlannedVideoQuote(toolId, quoted ? current : null, quoteFacts);
   const queryClient = useQueryClient();
   const analysisReadings = useQueries({ queries: refs.filter((reference) => reference.toolId === toolId && reference.draftId === current?.draftId).map((reference) => ({ ...miniToolAnalysisQuery(reference.analysisRunId), refetchOnMount: 'always' as const })), combine: analysisRecords });
   const records = analysisReadings.records;
@@ -341,6 +332,21 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
   const dependencyKey = current === null ? '' : canonicalMiniToolValue({ draftId: current.draftId, source: current.source, params: dependencyParams, profile: latestMiniToolAnalysis(records)?.analysisInput.profile ?? null });
   const [selection, setSelection] = React.useState<{ key: string; records: MiniToolAnalysisRecord[] }>({ key: '', records: [] });
   const matchingRecords = React.useMemo(() => selection.key === dependencyKey ? selection.records : [], [selection, dependencyKey]);
+  // An erase runs on the tracking made for the current selection, the one its Run waits for and its box follows (§10.3).
+  const tracking = toolId === 'video.erase' ? latestMiniToolAnalysis(matchingRecords.filter((record) => record.kind === 'tracked_mask' && record.status === 'completed' && !record.artifactUnavailable)) ?? undefined : undefined;
+  // Every footer but the free tools' shows the server's quote of the planned request the Run sends (§97 D26-1, D27-1).
+  const quoted = toolId !== 'video.extract-frames' && toolId !== 'video.split';
+  const quoteFacts = React.useMemo((): PlannedVideoFacts | null => {
+    if (!quoted || current === null) return null;
+    if (toolId === 'video.erase') {
+      return presentation?.presentationRef === undefined || tracking === undefined ? null
+        : { projectId, spaceId, presentationRef: presentation.presentationRef, analysisRefs: refs.filter((reference) => reference.analysisRunId === tracking.analysisRunId) };
+    }
+    if (toolId !== 'video.transitions') return presentation?.presentationRef === undefined ? null : { projectId, spaceId, presentationRef: presentation.presentationRef, analysisRefs: refs };
+    const byInput = current.inputs.map((input) => [input.inputId, inputRefs.get(input.inputId)] as const);
+    return byInput.some(([, ref]) => ref === undefined) ? null : { projectId, spaceId, presentationRef: Object.fromEntries(byInput), analysisRefs: refs } as PlannedVideoFacts;
+  }, [quoted, current, toolId, presentation?.presentationRef, inputRefs, projectId, spaceId, refs, tracking]);
+  const quote = usePlannedVideoQuote(toolId, quoted ? current : null, quoteFacts);
   const counts = 'taskCounts' in node.data ? node.data.taskCounts : undefined;
   const settled = (counts?.done ?? 0) + (counts?.failed ?? 0) + (counts?.expired ?? 0);
   const seenSettled = React.useRef(settled);
@@ -471,7 +477,7 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
   useEscapeInSpace(pick === null && !timelineOpen, close);
   const spec = miniToolById(toolId);
   // The box following the tracked object on the presented frame, from the tracking made for this selection (§10.3).
-  const trackedBox = useTrackedBox(toolId === 'video.erase' ? latestMiniToolAnalysis(matchingRecords.filter((record) => record.kind === 'tracked_mask' && record.status === 'completed' && !record.artifactUnavailable)) ?? undefined : undefined,
+  const trackedBox = useTrackedBox(tracking,
     presentation?.frameTable ?? null, toolId === 'video.erase' && current !== null ? (current as VideoToolDraftById['video.erase']).params.range : null, presentedTimeOf(presentation));
   if (spec === undefined) return null;
   if (current === null || source === null || current.source.canonicalURL !== source.canonicalURL) return <NodePanelMount nodeId={nodeId}><div className='nowheel nodrag rounded-overlay border border-border bg-popover p-3'><p className='text-xs'>{t(reading.state === 'unsupported' || reading.state === 'invalid' ? 'canvas.miniTool.videoUI.unsupportedDraft' : current !== null && source !== null ? 'canvas.miniTool.videoUI.sourceChanged' : 'canvas.miniTool.videoUI.sourceUnavailable')}</p>{source === null || disabled ? null : <Button variant='outline' size='sm' onClick={() => { store.getState().endPick(); store.getState().resetMiniToolSource(source.canonicalURL, {}); clearVideoToolDraft(doc, nodeId, toolId); commitVideoToolDraft(doc, nodeId, toolId, createVideoToolDraft(toolId, source)); }}>{t(current !== null && source !== null ? 'canvas.miniTool.videoUI.useCurrentSource' : 'canvas.miniTool.videoUI.rebuildDraft')}</Button>}</div></NodePanelMount>;
@@ -479,7 +485,7 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
   const validSource = presentation?.status === 'ready' && presentation.sourceURL === source.canonicalURL && (toolId === 'video.remove-bg' || presentation.frameTable !== null && (presentation.panelState === undefined || presentation.panelState === 'usable'));
   const visiblePeople = latestMiniToolAnalysis(matchingRecords.filter((record) => record.kind === 'people' && record.status === 'completed' && !record.artifactUnavailable))?.result;
   const hasDialogue = toolId !== 'video.lip-sync' || (current as VideoToolDraftById['video.lip-sync']).params.dialogues.length > 0 && (current as VideoToolDraftById['video.lip-sync']).params.dialogues.every((row) => row.audioInputId !== null && visiblePeople?.kind === 'people' && row.analysisRunId === visiblePeople.analysisRunId && visiblePeople.people.some((person) => person.personId === row.personId));
-  const readyTool = toolId === 'video.expand' ? isExpanded((current as VideoToolDraftById['video.expand']).params.frame, current.source.mediaInfo) : toolId === 'video.erase' ? matchingRecords.some((record) => record.kind === 'tracked_mask' && record.status === 'completed' && !record.artifactUnavailable) : toolId === 'video.transitions' ? (current as VideoToolDraftById['video.transitions']).params.clips.length === 2 : true;
+  const readyTool = toolId === 'video.expand' ? isExpanded((current as VideoToolDraftById['video.expand']).params.frame, current.source.mediaInfo) : toolId === 'video.erase' ? tracking !== undefined : toolId === 'video.transitions' ? (current as VideoToolDraftById['video.transitions']).params.clips.length === 2 : true;
   const selectedTime = presentedTimeOf(presentation);
   const needsCurrent = toolId === 'video.extract-frames' && (current as VideoToolDraftById['video.extract-frames']).params.mode === 'current';
   const canRun = !readOnly && (!needsCurrent || selectedTime !== null) && validSource && invalidFields.size === 0 && hasDialogue && readyTool && onRunVideo !== undefined;
