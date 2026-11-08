@@ -14,8 +14,8 @@
  *   called; the provider's temporary link is fetched by the ingest Worker into `${stepKey}:${attemptId}` (§97 D21-1),
  *   recorded with the step result and appended to the run's execution pin in that transaction, with no asset row.
  * - track_join, faces, clip, stem, composite: standard-4 container jobs with the §7.17 recipes; the job id is
- *   `${taskId}:${stepKey}:a${attempt}`, the output key `videoPresentationWorkKeyFor(sourceKey, jobId)` (§97 D21-2), pinned
- *   with the run; retried up to the frozen `chunkRetries`.
+ *   `${taskId}:${stepKey}:a${attempt}`, the output key `stepWorkKey(sourceKey, jobId, contentType)` (the work key plus the
+ *   type's extension; §97 D21-2), pinned with the run; retried up to the frozen `chunkRetries`.
  * - stitch: one registered job over the composite chunks with every person's stem summed (§97 D22-3).
  * - a retry finds each done step of the original run by its frozen step key and reuses its object (§97 D21-6).
  */
