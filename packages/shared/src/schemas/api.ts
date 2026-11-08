@@ -57,6 +57,15 @@ const attributionField = z.unknown().optional();
  */
 export const REFERRAL_CODE_INPUT_MAX = 40;
 
+/** How many channels a promoter application lists (inner#1868 §7). */
+export const PROMOTER_CHANNELS_MAX = 10;
+
+/** The longest one channel of a promoter application may be. */
+export const PROMOTER_CHANNEL_INPUT_MAX = 200;
+
+/** The longest the promotion plan of a promoter application may be. */
+export const PROMOTER_PLAN_INPUT_MAX = 2000;
+
 /** Where a sign-up's referral code came from: a share link, or typed by the user. */
 export const SIGNUP_REFERRAL_SOURCES = ["signup_link", "signup_typed"] as const;
 export type SignupReferralSource = (typeof SIGNUP_REFERRAL_SOURCES)[number];

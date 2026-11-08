@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ExternalLink, Plus, Trash2 } from 'lucide-react';
-import { getLocale } from '@breatic/shared';
+import { getLocale, PROMOTER_CHANNEL_INPUT_MAX, PROMOTER_CHANNELS_MAX, PROMOTER_PLAN_INPUT_MAX } from '@breatic/shared';
 import { referralApi, type AccountReferral, type PromoterApplicationForm } from '@web/data/api/referral';
 import { ApiException } from '@web/data/api/types';
 import { Button } from '@web/components/ui/button';
@@ -33,7 +33,6 @@ import {
 } from '@web/stores/referral-forms';
 
 const APPLY_INTENT = 'referral:apply';
-const MAX_CHANNELS = 10;
 
 interface FieldErrors {
   country?: string;
@@ -143,7 +142,7 @@ export function PromoterApplyDialog({
                   <div key={i} className='flex gap-2'>
                     <Input
                       autoComplete='off'
-                      maxLength={200}
+                      maxLength={PROMOTER_CHANNEL_INPUT_MAX}
                       value={channel}
                       placeholder={i === 0 ? t('membership.promoter.channelPlaceholder') : undefined}
                       aria-invalid={!!errors.channels || undefined}
@@ -161,7 +160,7 @@ export function PromoterApplyDialog({
                     ) : null}
                   </div>
                 ))}
-                {channels.length < MAX_CHANNELS ? (
+                {channels.length < PROMOTER_CHANNELS_MAX ? (
                   <Button type='button' variant='link' size='compact' className='w-fit gap-1 px-0 text-xs text-muted-foreground'
                     icon={<Plus className='h-3 w-3' />} onClick={() => editApplication({ channels: [...getReferralForms().apply.channels, ''] })}>
                     {t('membership.promoter.addChannel')}
@@ -175,7 +174,7 @@ export function PromoterApplyDialog({
                 <Textarea
                   id='promoter-plan'
                   rows={4}
-                  maxLength={2000}
+                  maxLength={PROMOTER_PLAN_INPUT_MAX}
                   value={plan}
                   placeholder={t('membership.promoter.planPlaceholder')}
                   aria-invalid={!!errors.plan || undefined}
