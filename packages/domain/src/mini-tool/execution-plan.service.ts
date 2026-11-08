@@ -95,6 +95,7 @@ const storedPlanSchema = z.union([
     asyncRejection: z.strictObject({ path: z.string().min(1), equals: z.json() }), matte: z.strictObject({ dilate: index, feather: index }),
     modelCredits: z.number().nonnegative(), composite: frameWindows, stageJobs,
     stepKeys: z.record(z.string().regex(/^(prepare|mask|generate|composite:\d+|stitch)$/), fingerprint), container: runContainer,
+    stepCredits: z.record(z.string().regex(/^(prepare|mask|generate|composite:\d+|stitch)$/), z.number().nonnegative()),
   }),
   // An expand run (execution design §10.5).
   z.strictObject({ ...common, ...frozenToolInput, tool: z.literal("video.expand"),
@@ -103,6 +104,7 @@ const storedPlanSchema = z.union([
     prompt: z.string().min(1), seed: index, modelFps: z.number().int().positive(), modelCredits: z.number().nonnegative(),
     windows: z.array(z.strictObject({ span: z.strictObject({ start: z.number().nonnegative(), end: z.number().positive() }), duration: z.union([z.literal(5), z.literal(10)]) })).min(1),
     composite: frameWindows, stageJobs, stepKeys: z.record(z.string().regex(/^((window|window_mask|condition|generate|composite):\d+|stitch)$/), fingerprint), container: runContainer,
+    stepCredits: z.record(z.string().regex(/^((window|window_mask|condition|generate|composite):\d+|stitch)$/), z.number().nonnegative()),
   }),
 ]);
 

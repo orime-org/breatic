@@ -22,14 +22,15 @@ import * as core from "@breatic/core";
 import * as shared from "@breatic/shared";
 import * as miniTools from "@breatic/shared/mini-tools";
 import { fingerprintMiniToolAnalysisInput, miniToolAnalysisRecordSchema, presentationFrameAt, projectMiniToolAnalysisInput, type VideoPresentationTable } from "@breatic/shared/mini-tools";
-import { estimateTaskCredits, miniToolFrozenAnalysisSchema } from "@breatic/domain";
+import { creditHoldService, estimateTaskCredits, miniToolExecutionService, miniToolFrozenAnalysisSchema } from "@breatic/domain";
+import { appendExecutionPinObjects } from "@domain/presentation/presentation-pin.repo.js";
 import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "./studio-credit-fixtures.js";
 import { presentedSource, REMOVAL_ENCODING, REMOVAL_PLAN, REMOVAL_TABLE, type PresentedSource } from "./presentation-fixtures.js";
 
 type Range = { start: number; end: number };
 type Frame = { x: number; y: number; width: number; height: number };
 interface Fixture extends StudioFixture { body: Record<string, unknown> & { run_id: string; draft: { draftId: string; source: { nodeId: string; canonicalURL: string }; params: Record<string, unknown> }; analysis_refs: unknown[]; outputs: { nodeId: string }[] }; analysisRunId?: string }
-interface Plan extends Record<string, unknown> { tool: string; credits: number; modelCredits?: number }
+interface Plan extends Record<string, unknown> { tool: string; credits: number; modelCredits?: number; stepKeys?: Record<string, string>; stepCredits?: Record<string, number> }
 
 const outside = vi.hoisted(() => ({ snapshots: new Map<string, unknown>(), bodies: new Map<string, string>(), ingest: vi.fn(), config: vi.fn() }));
 vi.mock("@breatic/core", async (original) => ({ ...await original<typeof core>(), getMiniToolsConfig: outside.config }));
@@ -314,5 +315,71 @@ describe("expand fresh admission (execution design §10.5)", () => {
 
   it("EX05 refuses a transparent source", async () => {
     await refused(await seedExpand(WIDER, { transparent: true }), "server.mini_tool.transparentSource");
+  });
+});
+
+// Execution design §10.4 and §10.5 quote rows: admission freezes a quote per step (generate is the model's price, each
+// container step its own share), the run's quote is their sum, and a retry holds only the steps not done on the original
+// chain. A done step is one whose object the original's execution pin holds, as the worker pins it in the transaction that
+// records the step (§7.15); the retry reuses exactly those (§7.11 retry row).
+describe("erase and expand retry quote (execution design §10.4, §10.5 quote rows)", () => {
+  /** The sum of credit figures, settled to the cent. @param values - The figures. @returns The sum. */
+  const sum = (values: number[]): number => Math.round(values.reduce((total, value) => total + value, 0) * 100) / 100;
+
+  /**
+   * Admit, mark `done` steps done as the worker leaves them, end the run failed on `reason`, and retry its output.
+   * @param f - The fixture.
+   * @param done - The step names done on the original.
+   * @param reason - The original's failure reason.
+   * @returns The original's and the retry's frozen plans and the retry's hold.
+   * @throws {Error} On admission, completion or fixture SQL failure.
+   */
+  async function retryAfter(f: Fixture, done: (keys: Record<string, string>) => string[], reason: Record<string, unknown>): Promise<{ original: Plan; retried: Plan; hold: number }> {
+    const original = await accept(f);
+    const id = f.body.run_id;
+    const keys = original.stepKeys!;
+    await miniToolExecutionService.startMiniToolExecution(id, `retry-quote-${id}`);
+    const sourceKey = String(original.sourceKey);
+    // Container outputs carry `<task>:<stepKey>:a<n>` in their work key; a generate object is `<stepKey>:<attempt>` (§97 D17-6).
+    const objects = done(keys).map((step) => (step.startsWith("generate") ? `${keys[step]}:${randomUUID()}` : `${sourceKey}.${id}:${keys[step]}:a1.mp4`));
+    await core.db.transaction(async (tx) => appendExecutionPinObjects(id, objects, tx));
+    const error = z.record(z.string(), z.json()).parse(reason);
+    const outputs = original.outputs as { outputIndex: number; nodeId: string; recipe: { kind: "erase" | "expand" } }[];
+    await miniToolExecutionService.finishMiniToolExecution(id, { planFingerprint: String(original.planFingerprint), expectedVersion: 0, consumptionSet: "uncertain",
+      error, outputs: outputs.map((output) => ({ ...output, late: false, result: { status: "failed", error } })) });
+    await pg`UPDATE node_tasks SET status='failed',settled_at=clock_timestamp() WHERE task_id=${id}`;
+    await creditHoldService.releaseHold(id);
+    const retry = { tool: f.body.tool, project_id: f.body.project_id, space_id: f.body.space_id, run_id: randomUUID(), retry: { runId: id, outputIndexes: [0] } };
+    const response = await post(f, retry);
+    expect(response.status, await response.clone().text()).toBe(201);
+    const [row] = await pg<{ params: { miniToolExecution: Plan } }[]>`SELECT params FROM tasks WHERE id=${retry.run_id}`;
+    const [hold] = await pg<{ amount: number }[]>`SELECT amount::float8 FROM credit_holds WHERE reference_id=${retry.run_id}`;
+    return { original, retried: row!.params.miniToolExecution, hold: hold!.amount };
+  }
+
+  it("RQ01 an erase freezes one quote per step summing to its quote, and its retry after a done generate holds only composite and stitch", async () => {
+    const f = await seedErase({ start: 1, end: 4 });
+    const { original, retried, hold } = await retryAfter(f, () => ["prepare", "mask", "generate"], { kind: "erase", step: "composite", category: "failed" });
+    const steps = original.stepCredits!;
+    expect(Object.keys(steps)).toEqual(Object.keys(original.stepKeys!));
+    expect(steps.generate).toBe(original.modelCredits);
+    expect(original.credits).toBe(sum(Object.values(steps)));
+    const remaining = sum(Object.entries(steps).filter(([step]) => step.startsWith("composite:") || step === "stitch").map(([, credits]) => credits));
+    expect(retried.credits).toBe(remaining);
+    expect(hold).toBe(remaining);
+    expect(retried.credits).toBeLessThan(original.credits);
+  });
+
+  it("RQ02 an expand freezes each window's VACE price and container jobs, and its retry after a done first window holds only what is left", async () => {
+    const f = await seedExpand({ x: -0.25, y: 0, width: 1.5, height: 1 });
+    const { original, retried, hold } = await retryAfter(f, () => ["window:0", "window_mask:0", "generate:0"], { kind: "expand", windows: [], shared: { step: "composite", category: "failed" } });
+    const steps = original.stepCredits!;
+    expect(Object.keys(steps)).toEqual(Object.keys(original.stepKeys!));
+    expect(sum(Object.entries(steps).filter(([step]) => step.startsWith("generate:")).map(([, credits]) => credits))).toBe(original.modelCredits);
+    expect(original.credits).toBe(sum(Object.values(steps)));
+    const remaining = sum(Object.entries(steps).filter(([step]) => !["window:0", "window_mask:0", "generate:0"].includes(step)).map(([, credits]) => credits));
+    expect(retried.credits).toBe(remaining);
+    expect(hold).toBe(remaining);
+    expect(retried.credits).toBeLessThan(original.credits);
   });
 });

@@ -77,11 +77,15 @@ export type AcceptedMiniToolExecution = ExecutionPlan & (TransitionsExecution | 
     asyncRejection: { path: string; equals: unknown }; matte: { dilate: number; feather: number }; modelCredits: number;
     /** The composite chunks over the whole presentation and the frozen step keys (§10.4 steps row, §10.7). */
     composite: FrameWindow[]; stageJobs: MiniToolStageJobs[]; stepKeys: Record<string, string>;
+    /** Each step's frozen quote, by step name (§10.4 quote row): a retry holds those not done on the original chain. */
+    stepCredits: Record<string, number>;
     container: MiniToolContainerPolicy & { startSeconds: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; chunkRetries: number } }
   | ({ tool: "video.expand";
     /** The even target layout (§10.5 geometry row), the resolved prompt, the frozen seed and the windows on the presentation. */
     layout: VideoExpandLayout; prompt: string; seed: number; windows: ModelWindow[]; modelFps: number; modelCredits: number;
     composite: FrameWindow[]; stageJobs: MiniToolStageJobs[]; stepKeys: Record<string, string>;
+    /** Each step's frozen quote, by step name (§10.5 quote row): a retry holds those not done on the original chain. */
+    stepCredits: Record<string, number>;
     container: MiniToolContainerPolicy & { startSeconds: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; chunkRetries: number } } & ExpandBox)
 )));
 /**
@@ -159,6 +163,33 @@ function containerPolicy(containerClass: string, precheckSeconds: number, config
 function containerCredits(policy: MiniToolContainerPolicy, plannedSeconds: number): number {
   const usd = containerCostUsd({ wallMs: Math.max(policy.precheckSeconds, plannedSeconds) * 1000, cpuUsec: null }, policy.size, policy.prices);
   return Math.max(ceilToCreditCent(creditsForUsd(usd, env.CREDIT_MULTIPLIER)), MIN_TASK_CREDIT_COST);
+}
+
+/**
+ * A model run's quote frozen per step (execution design §10.4, §10.5 quote rows): a model step is its price, a container
+ * step its share of the one container quote rule (§5.4), the run's precheck floor spread over the container steps by their
+ * planned seconds, so the shares add up to the rule's whole.
+ * @param policy - The frozen container policy.
+ * @param steps - Each step in order with its model credits or its planned container seconds.
+ * @returns Each step's credits, by step name, in order.
+ * @throws {Error} When pricing facts are invalid.
+ */
+function stepQuote(policy: MiniToolContainerPolicy, steps: readonly (readonly [string, { credits: number } | { seconds: number }])[]): Record<string, number> {
+  const planned = steps.reduce((total, [, step]) => total + ("seconds" in step ? step.seconds : 0), 0);
+  const scale = planned > 0 ? Math.max(policy.precheckSeconds, planned) / planned : 0;
+  return Object.fromEntries(steps.map(([name, step]) => [name, "credits" in step ? step.credits
+    : ceilToCreditCent(creditsForUsd(containerCostUsd({ wallMs: step.seconds * scale * 1000, cpuUsec: null }, policy.size, policy.prices), env.CREDIT_MULTIPLIER))]));
+}
+
+/**
+ * The sum of frozen step quotes, settled to the cent: what a retry holds for the steps it still runs (§10.4, §10.5 quote
+ * rows), as a removal retry holds its frozen model part alone.
+ * @param credits - The steps' credits.
+ * @returns The credits.
+ * @throws {RangeError} When a figure is negative or not finite.
+ */
+function stepsCredits(credits: readonly number[]): number {
+  return ceilToCreditCent(credits.reduce((total, value) => total + value, 0));
 }
 
 /**
@@ -559,20 +590,25 @@ async function prepareErase(request: Extract<MiniToolPlannedRequest, { tool: "vi
   const frameSeconds = 2 * decode + encode;
   const composite = compositeChunks(ledger, frameSeconds, config);
   const { duration } = ledger.plan.display;
-  const seconds = estimateVideoJobSeconds(spanWork(ledger, first, count), rates) + rates.startSeconds + grid.frameCount * encode
-    + videoPresentationKeyframeFlags(ledger).length * frameSeconds + rates.startSeconds * composite.length
-    + estimateAudioEncodeSeconds(Number(duration.numerator) / Number(duration.denominator), { startSeconds: rates.startSeconds, aacEncodeSecondsPerSecond: config.encoding.encoder.aac_encode_seconds_per_second });
   const stageJobs = plannedStageJobs({ preparation: [{ start: first, end: first + count }], composite });
   assertWithinParallelCap(stageJobs, config);
   const container = runContainer(settings, config);
+  // One quote per step (§10.4 quote row): Bria for generate; prepare, mask, each composite chunk and stitch their container work.
+  const stepCredits = stepQuote(container, [
+    ["prepare", { seconds: estimateVideoJobSeconds(spanWork(ledger, first, count), rates) }],
+    ["mask", { seconds: rates.startSeconds + grid.frameCount * encode }],
+    ["generate", { credits: modelCredits }],
+    ...composite.map((chunk, k) => [`composite:${k}`, { seconds: rates.startSeconds + (chunk.end - chunk.start) * frameSeconds }] as const),
+    ["stitch", { seconds: estimateAudioEncodeSeconds(Number(duration.numerator) / Number(duration.denominator),
+      { startSeconds: rates.startSeconds, aacEncodeSecondsPerSecond: config.encoding.encoder.aac_encode_seconds_per_second }) }],
+  ]);
   const plan = { ...common, tool: request.tool, binding, sourceKey, presentationRef: request.presentation_ref, ledgerReceipts: { source: receipt },
     versionIds: { source: versionId }, model: settings.model.name, tracking, range: { start: first, end: first + count }, grid,
-    asyncRejection: settings.model.async_rejection, matte: settings.matte, modelCredits, composite, stageJobs, container,
-    credits: modelCredits + containerCredits(container, seconds) };
+    asyncRejection: settings.model.async_rejection, matte: settings.matte, modelCredits, composite, stageJobs, container, stepCredits,
+    credits: Math.max(stepsCredits(Object.values(stepCredits)), MIN_TASK_CREDIT_COST) };
   // Step keys are frozen over the plan's fingerprint before them, as lip-sync's are (§10.7), so a retry finds every done step.
   const keyed = await hashMiniToolValue(plan);
-  const steps = ["prepare", "mask", "generate", ...composite.map((_chunk, k) => `composite:${k}`), "stitch"];
-  return { ...plan, stepKeys: Object.fromEntries(steps.map((step) => [step, lipsyncStepKey(keyed, null, step)])) };
+  return { ...plan, stepKeys: Object.fromEntries(Object.keys(stepCredits).map((step) => [step, lipsyncStepKey(keyed, null, step)])) };
 }
 
 /**
@@ -603,32 +639,38 @@ async function prepareExpand(request: Extract<MiniToolPlannedRequest, { tool: "v
     const frame = presentationFrameAt(table, at);
     return { start: frame.pts, end: frame.displayEnd };
   }), settings.model.max_window_seconds, settings.model.overlap_seconds);
-  let modelCredits = 0;
-  for (const window of windows) modelCredits += await estimateTaskCredits(settings.model.name, { params: { duration: window.duration }, durations: { video: [window.duration] }, sources: ["video"] });
+  const prices: number[] = [];
+  for (const window of windows) prices.push(await estimateTaskCredits(settings.model.name, { params: { duration: window.duration }, durations: { video: [window.duration] }, sources: ["video"] }));
+  const modelCredits = prices.reduce((total, price) => total + price, 0);
   const rates = encoderRates(config);
   const decode = decodePixelSeconds(ledger, rates);
   const standard = box.frame.width * box.frame.height;
-  // Each window renders its grid in the standard frame and its mask, and a later window takes one condition frame (§10.5).
-  const windowSeconds = windows.reduce((total, window, k) => {
-    const frames = settings.model.model_fps * window.duration;
-    return total + 2 * rates.startSeconds + frames * (display.width * display.height * decode + 2 * standard / rates.encodePixelsPerSecond)
-      + (k > 0 ? rates.startSeconds + standard * decode : 0);
-  }, 0);
   // A composite frame decodes the source and up to two overlapping backgrounds, and encodes the target.
   const frameSeconds = (display.width * display.height + 2 * standard) * decode + layout.width * layout.height / rates.encodePixelsPerSecond;
   const composite = compositeChunks(ledger, frameSeconds, config);
-  const seconds = windowSeconds + count * frameSeconds + rates.startSeconds * composite.length
-    + estimateAudioEncodeSeconds(videoSeconds, { startSeconds: rates.startSeconds, aacEncodeSecondsPerSecond: config.encoding.encoder.aac_encode_seconds_per_second });
   const stageJobs = plannedStageJobs({ preparation: [], composite });
   assertWithinParallelCap(stageJobs, config);
   const container = runContainer(settings, config);
+  // One quote per step (§10.5 quote row): each window renders its grid in the standard frame and its mask, a later window
+  // takes one condition frame, and its VACE price; then each composite chunk and the stitch.
+  const stepCredits = stepQuote(container, [
+    ...windows.flatMap((window, k) => {
+      const frames = settings.model.model_fps * window.duration;
+      return [
+        [`window:${k}`, { seconds: rates.startSeconds + frames * (display.width * display.height * decode + standard / rates.encodePixelsPerSecond) }],
+        [`window_mask:${k}`, { seconds: rates.startSeconds + frames * standard / rates.encodePixelsPerSecond }],
+        ...(k > 0 ? [[`condition:${k}`, { seconds: rates.startSeconds + standard * decode }] as const] : []),
+        [`generate:${k}`, { credits: prices[k]! }],
+      ] as const;
+    }),
+    ...composite.map((chunk, k) => [`composite:${k}`, { seconds: rates.startSeconds + (chunk.end - chunk.start) * frameSeconds }] as const),
+    ["stitch", { seconds: estimateAudioEncodeSeconds(videoSeconds, { startSeconds: rates.startSeconds, aacEncodeSecondsPerSecond: config.encoding.encoder.aac_encode_seconds_per_second }) }],
+  ]);
   const plan = { ...common, tool: request.tool, binding, sourceKey, presentationRef: request.presentation_ref, ledgerReceipts: { source: receipt },
     versionIds: { source: versionId }, model: settings.model.name, layout, ...box, prompt, seed: randomInt(0, 2 ** 31 - 1), windows,
-    modelFps: settings.model.model_fps, modelCredits, composite, stageJobs, container, credits: modelCredits + containerCredits(container, seconds) };
+    modelFps: settings.model.model_fps, modelCredits, composite, stageJobs, container, stepCredits, credits: Math.max(stepsCredits(Object.values(stepCredits)), MIN_TASK_CREDIT_COST) };
   const keyed = await hashMiniToolValue(plan);
-  const steps = [...windows.flatMap((_window, k) => [`window:${k}`, `window_mask:${k}`, ...(k > 0 ? [`condition:${k}`] : []), `generate:${k}`]),
-    ...composite.map((_chunk, k) => `composite:${k}`), "stitch"];
-  return { ...plan, stepKeys: Object.fromEntries(steps.map((step) => [step, lipsyncStepKey(keyed, null, step)])) };
+  return { ...plan, stepKeys: Object.fromEntries(Object.keys(stepCredits).map((step) => [step, lipsyncStepKey(keyed, null, step)])) };
 }
 
 /**
@@ -940,15 +982,20 @@ async function claimRetry(request: MiniToolExecutionRetryRequest, userId: string
       return claim;
     }
     if (frozen.tool === "video.lip-sync" || frozen.tool === "video.erase" || frozen.tool === "video.expand") {
-      // The same frozen plan and quote with the original's frozen step keys, so the retry reuses every done step and its
-      // object (§97 D21-6, DD §7.1, frames-split §7.11 retry row).
-      const claim = await claimPrepared({ ...frozen, ...retried }, request, userId, fingerprint, tx);
+      // The same frozen plan with the original's frozen step keys, so the retry reuses every done step and its object
+      // (§97 D21-6, DD §7.1, frames-split §7.11 retry row). A done step's object is on the original's execution pin, which
+      // also holds every earlier run's of the chain (§7.15); an erase or expand retry holds only the frozen quotes of the
+      // steps not done there (§10.4, §10.5 quote rows), a lip-sync retry its frozen quote.
+      const held = await presentationPinService.heldExecutionObjects(original.id, tx);
+      const credits = frozen.tool === "video.lip-sync" ? frozen.credits
+        : stepsCredits(Object.entries(frozen.stepCredits).filter(([step]) => !held.some((key) => key.includes(frozen.stepKeys[step]!))).map(([, value]) => value));
+      const claim = await claimPrepared({ ...frozen, ...retried, credits }, request, userId, fingerprint, tx);
       if (claim.inserted) {
         // The reused preparation and step objects stay pinned by the retry once the original stops being retryable (§7.15).
         for (const held of await presentationPinService.heldPrepared(original.id, tx)) {
           await presentationPinService.acquire({ holderKind: "prepared", holderId: request.run_id, toolInputId: held.toolInputId, preparedKey: held.preparedKey, objectKeys: [held.preparedKey] }, tx);
         }
-        await pinRepo.appendExecutionPinObjects(request.run_id, await presentationPinService.heldExecutionObjects(original.id, tx), tx);
+        await pinRepo.appendExecutionPinObjects(request.run_id, held, tx);
         await releaseTakenOver(original.id, record, tx);
       }
       return claim;
