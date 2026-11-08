@@ -207,17 +207,23 @@ describe('DocumentOutline', () => {
 
   /**
    * Renders the chrome at a wide Space and fills the document; the editor
-   * keeps content only once the chrome has mounted it.
+   * keeps content only once the chrome has mounted it. The chrome sits in an
+   * Activity, the way a Space tab is shown and hidden.
    * @param blocks - The document, in block JSON.
    * @param props - Further props for the chrome.
+   * @returns A switch that shows or hides the Space.
    */
-  function renderWith(blocks: readonly unknown[], props: { readOnly?: boolean } = {}): void {
-    render(<DocumentEditor handle={opened.handle} {...props} />);
+  function renderWith(blocks: readonly unknown[], props: { readOnly?: boolean } = {}): (mode: 'visible' | 'hidden') => void {
+    const ui = (mode: 'visible' | 'hidden'): React.JSX.Element => (
+      <React.Activity mode={mode}><DocumentEditor handle={opened.handle} {...props} /></React.Activity>
+    );
+    const { rerender } = render(ui('visible'));
     fill(opened.handle, blocks);
     resizeTo(1440);
     // On the body's viewport itself: a prototype stub is shadowed by any
     // `scrollTo` another file left on a closer prototype in the shared document.
     Object.defineProperty(bodyViewport(), 'scrollTo', { configurable: true, value: scrollTo });
+    return (mode) => rerender(ui(mode));
   }
 
   describe('A6 — follows the document', () => {
@@ -245,12 +251,8 @@ describe('DocumentOutline', () => {
     });
 
     it('has a collaborator’s heading added while the Space was hidden once it shows again', async () => {
-      const { rerender } = render(
-        <React.Activity mode='visible'><DocumentEditor handle={opened.handle} /></React.Activity>,
-      );
-      fill(opened.handle, [h('a', 1, 'Mine')]);
-      resizeTo(1440);
-      rerender(<React.Activity mode='hidden'><DocumentEditor handle={opened.handle} /></React.Activity>);
+      const show = renderWith([h('a', 1, 'Mine')]);
+      show('hidden');
 
       const remote = new Y.Doc();
       Y.applyUpdate(remote, Y.encodeStateAsUpdate(opened.doc));
@@ -258,7 +260,7 @@ describe('DocumentOutline', () => {
       act(() => theirs.insertBlocks([h('t', 2, 'While hidden')] as never, theirs.document.at(-1)!, 'after'));
       act(() => Y.applyUpdate(opened.doc, Y.encodeStateAsUpdate(remote)));
 
-      rerender(<React.Activity mode='visible'><DocumentEditor handle={opened.handle} /></React.Activity>);
+      show('visible');
       await waitFor(() => expect(rowTexts()).toEqual(['Mine', 'While hidden']));
     });
   });
@@ -502,11 +504,9 @@ describe('DocumentOutline', () => {
        * @returns The body's viewport.
        */
       function layOutFour(): HTMLElement {
+        layOut();
         const viewport = bodyViewport();
-        placeAt(viewport, 100);
         Object.defineProperty(viewport, 'scrollHeight', { configurable: true, value: 1000 });
-        Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 800 });
-        viewport.scrollTop = 0;
         for (const [text, top] of Object.entries(LINES)) placeAt(lineOf(text), top);
         return viewport;
       }
@@ -515,13 +515,67 @@ describe('DocumentOutline', () => {
        * Moves the body to a scroll position and runs that frame.
        * @param viewport - The body's viewport.
        * @param top - The new scrollTop.
+       * @param above - How much content above the headings has grown.
        * @returns Once the frame has run.
        */
-      async function frameAt(viewport: HTMLElement, top: number): Promise<void> {
+      async function frameAt(viewport: HTMLElement, top: number, above = 0): Promise<void> {
         viewport.scrollTop = top;
-        for (const [text, line] of Object.entries(LINES)) placeAt(lineOf(text), line - top);
+        for (const [text, line] of Object.entries(LINES)) placeAt(lineOf(text), line + above - top);
         await scrolled(viewport);
       }
+
+      /**
+       * Grows the content above the headings mid-jump, the way an image without
+       * a stored size does once it loads: the body gets taller, scroll anchoring
+       * moves scrollTop by the growth, and the size observers fire.
+       * @param viewport - The body's viewport.
+       * @param top - scrollTop before the growth.
+       * @param growth - How much taller the content gets.
+       * @returns Once the frame after the growth has run.
+       */
+      async function growAbove(viewport: HTMLElement, top: number, growth: number): Promise<void> {
+        Object.defineProperty(viewport, 'scrollHeight', { configurable: true, value: 1000 + growth });
+        viewport.scrollTop = top + growth;
+        for (const [text, line] of Object.entries(LINES)) placeAt(lineOf(text), line - top);
+        resizeTo(1440);
+        await scrolled(viewport);
+      }
+
+      it('aims again when content above grows mid-jump, and pins the clicked heading at the new end', async () => {
+        renderWith(FOUR);
+        const viewport = layOutFour();
+
+        fireEvent.click(row('Two'));
+        await frameAt(viewport, 100);
+        await growAbove(viewport, 100, 300);
+        expect(scrollTo).toHaveBeenLastCalledWith({ top: 500, behavior: 'smooth' });
+
+        await frameAt(viewport, 450, 300);
+        await frameAt(viewport, 500, 300);
+        expect(itemOf('Two')).toHaveClass('bg-accent-strong');
+      });
+
+      it('aims again at a heading short of the end when content above grows mid-jump', async () => {
+        renderWith(FOUR);
+        const viewport = layOutFour();
+
+        fireEvent.click(row('Mid'));
+        expect(scrollTo).toHaveBeenLastCalledWith({ top: 104, behavior: 'smooth' });
+        await frameAt(viewport, 50);
+        await growAbove(viewport, 50, 300);
+        expect(scrollTo).toHaveBeenLastCalledWith({ top: 404, behavior: 'smooth' });
+      });
+
+      it('leaves the scroll alone when the body changes height after a jump has arrived', async () => {
+        renderWith(FOUR);
+        const viewport = layOutFour();
+
+        fireEvent.click(row('Mid'));
+        await frameAt(viewport, 104);
+        scrollTo.mockClear();
+        await growAbove(viewport, 104, 300);
+        expect(scrollTo).not.toHaveBeenCalled();
+      });
 
       it('follows the body while it scrolls and settles on the clicked heading at the end', async () => {
         renderWith(FOUR);
@@ -577,18 +631,13 @@ describe('DocumentOutline', () => {
       });
 
       it('stops waiting once the Space is hidden', async () => {
-        const { rerender } = render(
-          <React.Activity mode='visible'><DocumentEditor handle={opened.handle} /></React.Activity>,
-        );
-        fill(opened.handle, FOUR);
-        resizeTo(1440);
-        Object.defineProperty(bodyViewport(), 'scrollTo', { configurable: true, value: scrollTo });
+        const show = renderWith(FOUR);
         const viewport = layOutFour();
 
         fireEvent.click(row('Two'));
         await frameAt(viewport, 100);
-        rerender(<React.Activity mode='hidden'><DocumentEditor handle={opened.handle} /></React.Activity>);
-        rerender(<React.Activity mode='visible'><DocumentEditor handle={opened.handle} /></React.Activity>);
+        show('hidden');
+        show('visible');
         await frameAt(viewport, 200);
         expect(itemOf('Three')).toHaveClass('bg-accent-strong');
       });

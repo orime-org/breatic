@@ -103,7 +103,7 @@ async function highlighted(p: Page): Promise<string | null> {
 
 /**
  * Follows a jump's smooth scroll frame by frame until the body has held still
- * for five frames, then one more frame for the highlight to be computed.
+ * for five frames.
  * @param p - The page.
  * @returns The highlighted row and the body's scrollTop in every frame.
  */
@@ -118,7 +118,7 @@ async function scrollSettled(p: Page): Promise<{ highlights: (string | null)[]; 
       highlights.push(item?.querySelector('[data-testid="doc-outline-row"]')?.textContent ?? null);
       still = tops.length > 0 && tops[tops.length - 1] === vp.scrollTop ? still + 1 : 0;
       tops.push(vp.scrollTop);
-      if (still >= 5) requestAnimationFrame(() => resolve({ highlights, tops }));
+      if (still >= 5) resolve({ highlights, tops });
       else requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
@@ -204,7 +204,7 @@ test('a jump scrolls smoothly, the highlight passing the headings on the way and
   await row(page, 'Two one one').click();
   const { highlights, tops } = await scrollSettled(page);
   expect(new Set(tops).size).toBeGreaterThan(2);
-  expect(highlights.filter((h) => h !== 'One' && h !== 'Two one one')).not.toEqual([]);
+  expect(highlights.some((h) => h !== null && h !== 'One' && h !== 'Two one one')).toBe(true);
   // Too little follows "Two one one" for its landing: the body stops at its
   // end, the heading lower down, and the highlight still settles on it.
   const end = await page.evaluate((viewport) => {
@@ -214,6 +214,38 @@ test('a jump scrolls smoothly, the highlight passing the headings on the way and
   expect(Math.abs(tops.at(-1)! - end)).toBeLessThanOrEqual(2);
   expect(await lineBelowTop(page, 'Two one one')).toBeGreaterThan(16 + 2);
   expect(highlights.at(-1)).toBe('Two one one');
+});
+
+test('a jump aims again when the body above grows mid-scroll, and still ends on the clicked heading', async () => {
+  await openWith(page, DOCUMENT);
+  await page.evaluate((viewport) => document.querySelector(viewport)!.scrollTo({ top: 0, behavior: 'instant' }), VIEWPORT);
+  await expect.poll(() => highlighted(page)).toBe('One');
+
+  await row(page, 'Tail b').click();
+  // Twelve frames in, 300px appears above what is in view, as an image
+  // without a stored size does once it loads.
+  await page.evaluate((viewport) => new Promise<void>((resolve) => {
+    let n = 0;
+    const tick = (): void => {
+      n += 1;
+      if (n < 12) {
+        requestAnimationFrame(tick);
+        return;
+      }
+      const spacer = document.createElement('div');
+      spacer.style.height = '300px';
+      document.querySelector(viewport)!.firstElementChild!.prepend(spacer);
+      resolve();
+    };
+    requestAnimationFrame(tick);
+  }), VIEWPORT);
+  const { tops } = await scrollSettled(page);
+  const end = await page.evaluate((viewport) => {
+    const vp = document.querySelector(viewport)!;
+    return vp.scrollHeight - vp.clientHeight;
+  }, VIEWPORT);
+  expect(Math.abs(tops.at(-1)! - end)).toBeLessThanOrEqual(2);
+  expect(await highlighted(page)).toBe('Tail b');
 });
 
 test('a row reads from after its arrow column, indented by level, and only the one being read is medium weight', async () => {
