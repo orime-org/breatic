@@ -5,13 +5,16 @@ import * as Y from 'yjs';
 import { z } from 'zod';
 
 import {
-  SCENE_FORMAT_VERSION, SceneObjectSchema, SceneObjectValuesSchema, getSceneRootMap,
-  type SceneEditableField, type SceneModel, type SceneObject, type SceneObjectValues,
+  SCENE_FORMAT_VERSION, SCENE_POSE_KEY_PREFIX, SceneObjectSchema, SceneObjectValuesSchema, ScenePoseSchema,
+  expandScenePose, gatherScenePose, getSceneRootMap,
+  type SceneEditableField, type SceneModel, type SceneObject, type SceneObjectValues, type ScenePose,
 } from '@breatic/shared';
 
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 
-const PATCH_SCHEMA = SceneObjectValuesSchema.pick({ name: true, position: true, rotation: true, scale: true })
+// A gesture draft carries the pose it previews; a `patch` command writes only
+// the transform fields and the name, and a pose is written by `pose` commands.
+const PATCH_SCHEMA = SceneObjectValuesSchema.pick({ name: true, position: true, rotation: true, scale: true, pose: true })
   .partial().extend({ id: z.string().uuid() }).strict();
 
 export type ScenePatch = z.infer<typeof PATCH_SCHEMA>;
@@ -20,7 +23,8 @@ export type SceneCommand =
   | { type: 'patch'; patches: readonly ScenePatch[] }
   | { type: 'delete'; ids: readonly string[] }
   | { type: 'lock'; ids: readonly string[]; locked: boolean }
-  | { type: 'duplicate'; copies: readonly { sourceId: string; id: string }[] };
+  | { type: 'duplicate'; copies: readonly { sourceId: string; id: string }[] }
+  | { type: 'pose'; id: string; set: Readonly<Record<string, readonly number[]>>; clear: readonly string[] | 'all' };
 
 export type SceneCommandFailure = 'readOnly' | 'unsupported' | 'invalid' | 'locked' | 'missing' | 'duplicate';
 export type SceneCommandResult = { ok: true; ids: readonly string[] } | { ok: false; reason: SceneCommandFailure };
@@ -34,7 +38,10 @@ export interface SceneDocumentSnapshot {
 
 interface SceneWrite { id: string; field: SceneEditableField; value: unknown }
 interface SceneCreation { id: string; values: SceneObjectValues }
-type ScenePlan = { ok: true; ids: readonly string[]; creates: SceneCreation[]; writes: SceneWrite[]; deletes: string[] }
+/** One flat pose key on a record: written with a value, deleted without one. */
+interface ScenePoseWrite { id: string; key: string; value?: readonly number[] }
+type ScenePlan = { ok: true; ids: readonly string[]; creates: SceneCreation[]; writes: SceneWrite[]; deletes: string[];
+  poseWrites: ScenePoseWrite[] }
   | { ok: false; reason: SceneCommandFailure };
 
 /**
@@ -62,7 +69,7 @@ function readRecord(id: string, value: unknown): SceneObject {
   const model = SceneObjectValuesSchema.shape.model.parse(value.get('model'));
   const stored: Record<string, unknown> = {};
   value.forEach((item: unknown, key: string) => { stored[key] = item; });
-  return SceneObjectSchema.parse({ ...editableDefaults(model), ...stored, model, id });
+  return SceneObjectSchema.parse({ ...editableDefaults(model), ...gatherScenePose(stored), model, id });
 }
 
 /**
@@ -151,7 +158,7 @@ export function planSceneCommand(doc: Y.Doc, command: SceneCommand, canEdit: boo
   if (scene.status !== 'ready') return { ok: false, reason: 'unsupported' };
   const byId = new Map(scene.objects.map((object) => [object.id, object]));
   const invalidIds = new Set(scene.invalidObjects.map((object) => object.id));
-  const plan: Extract<ScenePlan, { ok: true }> = { ok: true, ids: [], creates: [], writes: [], deletes: [] };
+  const plan: Extract<ScenePlan, { ok: true }> = { ok: true, ids: [], creates: [], writes: [], deletes: [], poseWrites: [] };
 
   if (command.type === 'create' || command.type === 'duplicate') {
     const requested = command.type === 'create' ? command.objects.map((object) => object.id) : command.copies.map((copy) => copy.id);
@@ -176,6 +183,28 @@ export function planSceneCommand(doc: Y.Doc, command: SceneCommand, canEdit: boo
       plan.creates.push({ id, values });
     }
     plan.ids = requested;
+    return plan;
+  }
+
+  if (command.type === 'pose') {
+    const object = byId.get(command.id);
+    if (!object) return { ok: false, reason: invalidIds.has(command.id) ? 'invalid' : 'missing' };
+    if (object.locked) return { ok: false, reason: 'locked' };
+    const set = ScenePoseSchema.safeParse(command.set);
+    if (!set.success || (command.clear !== 'all' && !command.clear.every((key) => typeof key === 'string'))) {
+      return { ok: false, reason: 'invalid' };
+    }
+    const current: ScenePose = object.pose ?? {};
+    const cleared = (command.clear === 'all' ? Object.keys(current) : command.clear)
+      .filter((key) => key in current && !(key in set.data));
+    const next: Record<string, readonly number[]> = { ...current, ...set.data };
+    cleared.forEach((key) => { delete next[key]; });
+    if (!ScenePoseSchema.safeParse(next).success) return { ok: false, reason: 'invalid' };
+    for (const [key, value] of Object.entries(set.data)) {
+      if (JSON.stringify(current[key]) !== JSON.stringify(value)) plan.poseWrites.push({ id: command.id, key, value });
+    }
+    cleared.forEach((key) => plan.poseWrites.push({ id: command.id, key }));
+    plan.ids = [command.id];
     return plan;
   }
 
@@ -214,12 +243,23 @@ export function planSceneCommand(doc: Y.Doc, command: SceneCommand, canEdit: boo
 export function applySceneCommand(doc: Y.Doc, command: SceneCommand, origin: symbol, canEdit: boolean): SceneCommandResult {
   const plan = planSceneCommand(doc, command, canEdit);
   if (!plan.ok) return plan;
+  // A command that changes nothing leaves no transaction, so no empty undo item.
+  if (plan.creates.length + plan.writes.length + plan.deletes.length + plan.poseWrites.length === 0) {
+    return { ok: true, ids: plan.ids };
+  }
   const objects = doc.getMap<unknown>('objects');
   doc.transact(() => {
     for (const creation of plan.creates) {
-      objects.set(creation.id, new Y.Map<unknown>(Object.entries(creation.values)));
+      const { pose, ...values } = creation.values;
+      objects.set(creation.id, new Y.Map<unknown>(Object.entries({ ...values, ...expandScenePose(pose ?? {}) })));
     }
     for (const write of plan.writes) (objects.get(write.id) as Y.Map<unknown>).set(write.field, write.value);
+    for (const write of plan.poseWrites) {
+      const record = objects.get(write.id) as Y.Map<unknown>;
+      const key = `${SCENE_POSE_KEY_PREFIX}${write.key}`;
+      if (write.value === undefined) record.delete(key);
+      else record.set(key, write.value);
+    }
     for (const id of plan.deletes) objects.delete(id);
   }, origin);
   return { ok: true, ids: plan.ids };

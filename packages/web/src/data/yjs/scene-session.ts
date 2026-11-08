@@ -5,12 +5,13 @@ import type * as Y from 'yjs';
 import { z } from 'zod';
 import type { Awareness } from 'y-protocols/awareness';
 
-import { SceneObjectSchema, type SceneObject } from '@breatic/shared';
+import { SceneObjectSchema, type SceneObject, type ScenePose } from '@breatic/shared';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import {
   applySceneCommand, createSceneHistory, readSceneDocument,
   type SceneCommand, type SceneCommandResult, type SceneDocumentSnapshot, type ScenePatch,
 } from '@web/data/yjs/scene-document';
+import { PRESENCE_WRITE_INTERVAL_MS, createPublishThrottle } from '@web/lib/publish-throttle';
 import { userPaletteColor } from '@web/lib/user-color';
 import type { WriteAccess } from '@web/data/yjs/use-socket';
 
@@ -59,6 +60,10 @@ export class SceneSession {
     writeAccess: 'unknown', refused: false, awareness: null };
   private selectedIds: string[] = [];
   private gesture: ScenePatch[] | null = null;
+  /** Each gesture target's committed pose when the drag began; a release writes only bones this drag changed. */
+  private gestureStartPoses = new Map<string, ScenePose>();
+  /** Drag previews reach awareness at most once per frame and per interval, as the canvas publishes its own. */
+  private readonly previewPublish = createPublishThrottle(() => this.publishNow(), PRESENCE_WRITE_INTERVAL_MS);
   private cancelRevision = 0;
   private visible = false;
   private focused = false;
@@ -195,8 +200,21 @@ export class SceneSession {
     awareness.setLocalState(Object.keys(uploads).length === 0 ? rest : { ...rest, sceneUploads: uploads });
   }
 
-  /** Publish one complete presence snapshot; ineligible views withdraw synchronously. */
+  /**
+   * Publish presence: a drag preview through the throttle, anything else (selection,
+   * a withdrawal, an ineligible view) at once, dropping a preview still waiting.
+   */
   private publishPresence(): void {
+    if (this.gesture !== null && !this.destroyed) {
+      this.previewPublish.schedule();
+      return;
+    }
+    this.previewPublish.cancel();
+    this.publishNow();
+  }
+
+  /** Publish one complete presence snapshot; ineligible views withdraw synchronously. */
+  private publishNow(): void {
     const awareness = this.environment.awareness;
     if (!awareness) return;
     const eligible = this.visible && this.focused && this.environment.connected && !this.destroyed;
@@ -283,6 +301,8 @@ export class SceneSession {
       return false;
     }
     this.gesture = this.selectedIds.map((id) => ({ id }));
+    this.gestureStartPoses = new Map(this.snapshot.objects
+      .filter((object) => this.selectedIds.includes(object.id)).map((object) => [object.id, object.pose ?? {}]));
     this.refresh();
     return true;
   }
@@ -309,13 +329,33 @@ export class SceneSession {
 
   /**
    * Finish through one exit; cancellation never creates a document transaction.
+   * A commit first publishes the final value past the throttle, then writes the
+   * document, then withdraws the gesture, so a collaborator's model never steps
+   * back to the start value in between (canvas #2010).
    * @param commit - Whether to apply the completed draft as one command.
    */
   endGesture(commit: boolean): void {
     const gesture = this.gesture;
+    const startPoses = this.gestureStartPoses;
+    this.previewPublish.cancel();
+    if (!commit || !gesture) {
+      this.clearGesture();
+      this.refresh();
+      return;
+    }
+    this.publishNow();
+    const transforms = gesture.map(({ pose: _pose, ...transform }) => transform)
+      .filter((transform) => Object.keys(transform).length > 1);
+    const poses = gesture.flatMap((patch) => (patch.pose ? [poseChange(patch.id, startPoses.get(patch.id) ?? {}, patch.pose)] : []))
+      .filter((command) => Object.keys(command.set).length + command.clear.length > 0);
+    // The gesture stays published while the document is written: the undo stack
+    // refreshes this session inside the transaction, before the document update
+    // goes out, and a withdrawal there would reach collaborators first.
+    if (transforms.length > 0) this.execute({ type: 'patch', patches: transforms });
+    poses.forEach((command) => this.execute(command));
+    this.previewPublish.cancel();
     this.clearGesture();
     this.refresh();
-    if (commit && gesture) this.execute({ type: 'patch', patches: gesture });
   }
 
   /**
@@ -345,6 +385,7 @@ export class SceneSession {
   /** Detach all owned listeners once the manager releases this document. */
   destroy(): void {
     if (this.destroyed) return;
+    this.previewPublish.cancel();
     this.clearGesture();
     this.visible = false;
     this.publishPresence();
@@ -355,6 +396,20 @@ export class SceneSession {
     this.listeners.clear();
   }
 
+}
+
+/**
+ * The pose command for the bones one joint drag changed, compared with the pose
+ * the drag started from; bones another member committed meanwhile are left alone.
+ * @param id - The posed object.
+ * @param start - Its committed pose when the drag began.
+ * @param draft - The pose the drag ended with.
+ * @returns The bones to set and the bones the drag removed.
+ */
+function poseChange(id: string, start: ScenePose, draft: ScenePose): Extract<SceneCommand, { type: 'pose' }> {
+  const set = Object.fromEntries(Object.entries(draft).filter(([key, value]) => JSON.stringify(start[key]) !== JSON.stringify(value)));
+  const clear = Object.keys(start).filter((key) => !(key in draft));
+  return { type: 'pose', id, set, clear };
 }
 
 const sessions = createDocScopedCache<SceneSession>(

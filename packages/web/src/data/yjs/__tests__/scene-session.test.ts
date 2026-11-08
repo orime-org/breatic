@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { SCENE_FORMAT_VERSION } from '@breatic/shared';
 import { Awareness } from 'y-protocols/awareness';
@@ -15,6 +15,7 @@ const OBJECT = { id: ID, name: 'Figure', model: { kind: 'builtin' as const, id: 
   scale: [1, 1, 1] as [number, number, number], locked: false };
 
 describe('scene session lifecycle', () => {
+  afterEach(() => { vi.useRealTimers(); });
   it('preserves an unsupported objects root without constructing an editable scene', async () => {
     const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
     doc.getText('objects').insert(0, 'invalid original objects root');
@@ -79,6 +80,7 @@ describe('scene session lifecycle', () => {
   });
 
   it('withdraws cancelled gestures immediately and republishes selection after focus returns', () => {
+    vi.useFakeTimers();
     const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
     applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol(), true);
     const awareness = new Awareness(doc);
@@ -86,7 +88,9 @@ describe('scene session lifecycle', () => {
     session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness });
     session.setVisible(true); session.setFocused(true); session.select(ID, false); session.beginGesture();
     session.previewGesture([{ id: ID, position: [3, 0, 0] }]);
-    expect(awareness.getLocalState()?.scenePresence.gesture).toHaveLength(1);
+    // Drag previews are throttled (inner#1692 section 5.4); the withdrawal below is not.
+    vi.advanceTimersByTime(1000);
+    expect(awareness.getLocalState()?.scenePresence.gesture).toEqual([{ ...OBJECT, position: [3, 0, 0] }]);
     session.setFocused(false);
     expect(awareness.getLocalState()?.scenePresence).toEqual({ selectedIds: [], gesture: null });
     session.setFocused(true);
