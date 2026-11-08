@@ -29,13 +29,14 @@ describe("Google's understand answers at the edges of their shape", () => {
   });
 
   it("counts each usage field it is not given as none, thoughts within the output", () => {
-    expect(googleUnderstand.billing({ usageMetadata: {} }).usage).toMatchObject({ inputTokens: 0, outputTokens: 0, outputTokenDetails: { reasoningTokens: 0 } });
+    expect(googleUnderstand.billing({ usageMetadata: { promptTokenCount: 0 } }).usage).toMatchObject({ inputTokens: 0, outputTokens: 0, outputTokenDetails: { reasoningTokens: 0 } });
+    expect(googleUnderstand.billing({ usageMetadata: { candidatesTokenCount: 2 } }).usage).toMatchObject({ inputTokens: 0, outputTokens: 2, outputTokenDetails: { reasoningTokens: 0 } });
     expect(googleUnderstand.billing({ usageMetadata: { promptTokenCount: 10, cachedContentTokenCount: 4, candidatesTokenCount: 6, thoughtsTokenCount: 3 } }).usage)
       .toMatchObject({ inputTokens: 10, inputTokenDetails: { cacheReadTokens: 4 }, outputTokens: 9, outputTokenDetails: { reasoningTokens: 3 } });
   });
 
   it("costs an answer without usage it can read as missing", () => {
-    for (const body of [null, {}, { usageMetadata: { promptTokenCount: "ten" } }]) {
+    for (const body of [null, {}, { usageMetadata: {} }, { usageMetadata: { totalTokenCount: 40 } }, { usageMetadata: { promptTokenCount: "ten" } }]) {
       expect(googleUnderstand.billing(body)).toMatchObject({ missing: expect.any(String) });
     }
   });

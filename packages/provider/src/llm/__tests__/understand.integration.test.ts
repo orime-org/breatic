@@ -425,6 +425,11 @@ describe("reading Gemini's answer against one typed structure", () => {
     expect(answer.costs).toEqual([expect.objectContaining({ state: "missing" })]);
   });
 
+  it("costs an answer whose usage carries no token count as missing, never a known $0", async () => {
+    const answer = await googleAnswering({ ...GENERATE_CONTENT_REPLY, usageMetadata: {} }) as { costs: unknown[] };
+    expect(answer.costs).toEqual([expect.objectContaining({ state: "missing" })]);
+  });
+
   it("costs an answer whose token counts are not numbers as missing", async () => {
     const answer = await googleAnswering({ ...GENERATE_CONTENT_REPLY, usageMetadata: { promptTokenCount: "11", candidatesTokenCount: 3 } }) as { costs: unknown[] };
     expect(answer.costs).toEqual([expect.objectContaining({ state: "missing" })]);
@@ -516,6 +521,14 @@ describe("understand in cheapest mode", () => {
   it("asks OpenRouter for the cheapest endpoint of an unpinned model", async () => {
     await cheaperOnOpenRouter().llm.understand({ ...question(), model: "google/gemini-2.5-flash" }, { mode: "cheapest" });
     expect(posted(fakes.openrouter)[0]?.provider).toEqual({ sort: "price", quantizations });
+  });
+
+  it("leaves unknown out of the quantizations of a model one of whose OpenRouter endpoints states a level", async () => {
+    const config = llmConfig(fakes);
+    config.llm!.openrouter_prices = { "google/gemini-2.5-flash": { input_cache_miss_per_mtok: 0.1, output_per_mtok: 1, states_quantization: true } };
+    const provider = createProvider({ config, keyOf: (name) => (keys as Record<string, string>)[name], llmMaxRetries: 0, cleanText: (t) => t });
+    await provider.llm.understand({ ...question(), model: "google/gemini-2.5-flash" }, { mode: "cheapest" });
+    expect(posted(fakes.openrouter)[0]?.provider).toEqual({ sort: "price", quantizations: quantizations.filter((q) => q !== "unknown") });
   });
 
   it("sends only the backend pin in default mode", async () => {

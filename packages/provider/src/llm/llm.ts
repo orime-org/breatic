@@ -8,7 +8,7 @@
  */
 
 import type { JSONValue, SystemModelMessage } from "ai";
-import { candidateOf, hasKey, ProviderConfigError, type LlmPrice, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
+import { candidateOf, hasKey, openRouterLevels, ProviderConfigError, type LlmPrice, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
 import type { Cost, TokenBuckets } from "@provider/cost.js";
 import { z } from "zod";
 import { BilledAnswerLost, NoUpstreamAvailable, UnderstandInterrupted, UpstreamRequestRejected } from "@provider/errors.js";
@@ -236,7 +236,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
 
   /**
    * The OpenRouter `provider` object of one call: in cheapest mode, its endpoints cheapest first within the
-   * quantizations the call takes (a cheapest call is ranked by that endpoint, `openrouter_prices`), and for an
+   * model's quantizations (`openRouterLevels`; a cheapest call is ranked by that endpoint, `openrouter_prices`), and for an
    * understand call the model's backend pin, which is understand's alone.
    * @param upstream - The upstream the call goes to; only an OpenRouter one gets the object.
    * @param modelId - Our model id.
@@ -248,7 +248,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     if (kindOf(upstream) !== "openrouter") return undefined;
     const routing: VendorOptions = {
       ...(pinned ? config.llm.openrouter_backends[modelId] : {}),
-      ...(chosen.mode === "cheapest" ? { sort: "price", quantizations: config.llm.openrouter_quantizations } : {}),
+      ...(chosen.mode === "cheapest" ? { sort: "price", quantizations: openRouterLevels(config.llm.openrouter_quantizations, config.llm.openrouter_prices[modelId]?.states_quantization === true) } : {}),
     };
     return Object.keys(routing).length === 0 ? undefined : routing;
   };

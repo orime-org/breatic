@@ -5,8 +5,9 @@
  * How `scripts/provider-prices.ts` reads OpenRouter's token prices into `openrouter_prices` in
  * `config/provider/llm.yaml`, so a cheapest LLM call ranks OpenRouter beside the direct upstream
  * (inner#1743). A cheapest call asks OpenRouter to try its endpoints cheapest first (`provider.sort`
- * "price", within the quantizations `openrouter_quantizations` lists), so the price written is that of
- * the cheapest such endpoint OpenRouter lists for the model
+ * "price", within the model's levels: the quantizations `openrouter_quantizations` lists, `unknown` left out when one of
+ * the model's endpoints states a level, which `states_quantization` beside its price records), so the price written is
+ * that of the cheapest such endpoint OpenRouter lists for the model
  * (`GET https://openrouter.ai/api/v1/models/{author}/{slug}/endpoints`). A service-tier endpoint (flex,
  * priority, fast) is reached only through `:floor`, `:nitro` or `service_tier`, never by `sort: "price"`
  * (OpenRouter's provider-selection docs), so it is not ranked. A model pinned to providers
@@ -42,15 +43,17 @@ function pinnedTo(tag, only) {
 
 /**
  * Our models' OpenRouter token prices: per model, its cheapest standard-tier endpoint with a fixed price, a
- * quantization a cheapest call takes and, for a pinned model, a pinned provider, by input then output.
+ * quantization among the model's levels and, for a pinned model, a pinned provider, by input then output; a model one
+ * of whose endpoints states a level other than `unknown` is marked `states_quantization`.
  * @param {ReadonlyMap<string, readonly { tag?: unknown; service_tier?: unknown; quantization?: unknown; pricing?: { prompt?: unknown; completion?: unknown } }[]>} endpoints - The endpoints OpenRouter lists, by OpenRouter's model id; a model it does not list is absent.
  * @param {ReadonlyMap<string, string>} ids - Our model id to the id OpenRouter lists it under.
  * @param {readonly string[]} quantizations - The quantizations a cheapest call takes; an endpoint naming none is `unknown`.
+ * @param {(quantizations: readonly string[], statesQuantization: boolean) => readonly string[]} levels - A model's levels, `openRouterLevels` of the provider's schema.
  * @param {Readonly<Record<string, { only: readonly string[]; allow_fallbacks: boolean }>>} [backends] - `openrouter_backends` as llm.yaml writes it: by our model id, the providers it is pinned to.
- * @returns {{ prices: Record<string, { input_cache_miss_per_mtok: number; output_per_mtok: number }>; problems: string[] }} The prices by our model id, and a problem for each model given no price.
+ * @returns {{ prices: Record<string, { input_cache_miss_per_mtok: number; output_per_mtok: number; states_quantization?: true }>; problems: string[] }} The prices by our model id, and a problem for each model given no price.
  */
-export function openRouterPrices(endpoints, ids, quantizations, backends = {}) {
-  /** @type {Record<string, { input_cache_miss_per_mtok: number; output_per_mtok: number }>} */
+export function openRouterPrices(endpoints, ids, quantizations, levels, backends = {}) {
+  /** @type {Record<string, { input_cache_miss_per_mtok: number; output_per_mtok: number; states_quantization?: true }>} */
   const prices = {};
   /** @type {string[]} */
   const problems = [];
@@ -60,9 +63,11 @@ export function openRouterPrices(endpoints, ids, quantizations, backends = {}) {
       problems.push(`${ours}: OpenRouter lists no endpoint of ${theirs}`);
       continue;
     }
+    const states = listed.some((e) => typeof e.quantization === "string" && e.quantization !== "unknown");
+    const taken = levels(quantizations, states);
     const fixed = listed
       .filter((e) => e.service_tier == null && pinnedTo(e.tag, backends[ours]?.only))
-      .filter((e) => quantizations.includes(typeof e.quantization === "string" ? e.quantization : "unknown"))
+      .filter((e) => taken.includes(typeof e.quantization === "string" ? e.quantization : "unknown"))
       .map((e) => ({ input: perMtok(e.pricing?.prompt), output: perMtok(e.pricing?.completion) }))
       .filter((p) => p.input !== undefined && p.output !== undefined)
       .sort((a, b) => a.input - b.input || a.output - b.output);
@@ -70,7 +75,7 @@ export function openRouterPrices(endpoints, ids, quantizations, backends = {}) {
       problems.push(`${ours}: none of the ${listed.length} endpoints of ${theirs} states a fixed token price at the standard tier, a quantization a cheapest call takes and a provider it is pinned to`);
       continue;
     }
-    prices[ours] = { input_cache_miss_per_mtok: fixed[0].input, output_per_mtok: fixed[0].output };
+    prices[ours] = { input_cache_miss_per_mtok: fixed[0].input, output_per_mtok: fixed[0].output, ...(states ? { states_quantization: true } : {}) };
   }
   return { prices, problems };
 }
@@ -114,15 +119,16 @@ export function directPriceChangeNotices(prices, now) {
  * set to the run's moment, its comments kept: for
  * every model of its `prices`, in their order, read under `vendor_ids[model].openrouter` when set, within the
  * quantizations and backend pins the file's values hold once read through `parse`, the schema createProvider reads it
- * with (its defaults filled).
+ * with (its defaults filled), each model's levels read through `levels`, as its calls read them.
  * @param {string} text - The file as it is.
  * @param {(raw: unknown) => { prices: Record<string, readonly { from?: string; off_peak?: { holidays?: readonly string[] } }[]>; vendor_ids: Record<string, Record<string, string>>; openrouter_quantizations: readonly string[]; openrouter_backends: Record<string, { only: readonly string[]; allow_fallbacks: boolean }> }} parse - Reads the file's values as createProvider does.
+ * @param {(quantizations: readonly string[], statesQuantization: boolean) => readonly string[]} levels - A model's levels, `openRouterLevels` of the provider's schema.
  * @param {(id: string) => Promise<readonly object[] | undefined>} fetchEndpoints - OpenRouter's endpoints of one model by its id there; undefined when it lists none (404).
  * @param {number} [now] - The run's moment, in epoch ms: when OpenRouter's prices are read, and for `offPeakHolidayProblems` and `directPriceChangeNotices`.
  * @returns {Promise<{ text: string; priced: number; asked: number; problems: string[]; notices: string[] }>} The file's new text, how many models were priced of how many asked, a problem for each model given no price or whose off-peak holidays run out, and a notice for each model whose direct price changes later.
  * @throws {Error} When `parse` refuses the file, or a read fails other than with a 404.
  */
-export async function syncedLlmYaml(text, parse, fetchEndpoints, now = Date.now()) {
+export async function syncedLlmYaml(text, parse, levels, fetchEndpoints, now = Date.now()) {
   const doc = parseDocument(text);
   const llm = parse(doc.toJS());
   const ids = new Map(Object.keys(llm.prices).map((model) => [model, llm.vendor_ids[model]?.openrouter ?? model]));
@@ -131,7 +137,7 @@ export async function syncedLlmYaml(text, parse, fetchEndpoints, now = Date.now(
     const listed = await fetchEndpoints(id);
     if (listed !== undefined) endpoints.set(id, listed);
   }
-  const { prices, problems } = openRouterPrices(endpoints, ids, llm.openrouter_quantizations, llm.openrouter_backends);
+  const { prices, problems } = openRouterPrices(endpoints, ids, llm.openrouter_quantizations, levels, llm.openrouter_backends);
   doc.set("openrouter_prices", doc.createNode(prices));
   doc.set("openrouter_prices_at", new Date(now).toISOString());
   return {

@@ -49,7 +49,7 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { parse, parseDocument, type Document } from "yaml";
-import { parseProviderConfig, type ProviderConfigInput } from "../packages/provider/src/config/schema.js";
+import { openRouterLevels, parseProviderConfig, type ProviderConfigInput } from "../packages/provider/src/config/schema.js";
 import { snapshotOf, type SchemaSnapshot } from "../packages/provider/src/config/upstream-schema.js";
 import { buildBody } from "../packages/provider/src/media/body.js";
 import { assess } from "../packages/provider/src/pricing/estimate.js";
@@ -396,7 +396,10 @@ async function syncSandBase(upstream: string, list: typeof bindings): Promise<vo
  * Write OpenRouter's token prices into `openrouter_prices` of `config/provider/llm.yaml`, for every model
  * of its `prices` and in their order, keeping the file's comments; a model given no price is a problem.
  * OpenRouter's id for a model is `vendor_ids[model].openrouter` when set, else ours; its price is its cheapest
- * standard-tier endpoint's, among its `openrouter_backends` pin's providers when it is pinned.
+ * standard-tier endpoint's, among its `openrouter_backends` pin's providers when it is pinned, at the model's levels
+ * (`openRouterLevels`), marked `states_quantization` when one of its endpoints states a level. It stamps
+ * `openrouter_prices_at` with the moment the prices were read, and prints a notice for each model whose direct price
+ * changes later.
  * @throws {ProviderConfigError} When `llm.yaml` is not a valid LLM configuration.
  * @throws {Error} When OpenRouter's endpoints list answers other than 2xx or 404.
  */
@@ -406,11 +409,12 @@ async function syncOpenRouterPrices(): Promise<void> {
   const synced = await syncedLlmYaml(
     before,
     (raw) => parseProviderConfig({ upstreams: upstreams as ProviderConfigInput["upstreams"], media: { models: {} }, llm: raw as ProviderConfigInput["llm"] }).llm,
+    openRouterLevels,
     // A model OpenRouter does not list answers 404; openRouterPrices names it.
     async (id) => at(await json(`${OPENROUTER_MODELS}/${id}/endpoints`, {}, { absentOn404: true }), "data", "endpoints") as object[] | undefined,
   );
   problems.push(...synced.problems);
-  if (synced.text !== before) writeFileSync(LLM, synced.text);
+  writeFileSync(LLM, synced.text);
   process.stdout.write(`openrouter: ${synced.priced} of ${synced.asked} token prices written\n${synced.notices.map((n) => `  ${n}\n`).join("")}`);
 }
 

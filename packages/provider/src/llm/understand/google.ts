@@ -50,13 +50,16 @@ const generatedSchema = z.looseObject({
   promptFeedback: z.looseObject({ blockReason: z.string().nullish() }).nullish(),
 });
 
-/** The answer's usage; an answer without one it can read is costed as missing. */
+/**
+ * The answer's usage, refused when it carries neither an input nor an output count, so an answer that reports no counts
+ * is costed as missing, never a known $0; one count alone is read, the other as none.
+ */
 const usageSchema = z.looseObject({
   promptTokenCount: z.number().optional(),
   cachedContentTokenCount: z.number().optional(),
   candidatesTokenCount: z.number().optional(),
   thoughtsTokenCount: z.number().optional(),
-});
+}).refine((u) => u.promptTokenCount !== undefined || u.candidatesTokenCount !== undefined);
 
 /**
  * Gemini's finish reason in the AI SDK's words.

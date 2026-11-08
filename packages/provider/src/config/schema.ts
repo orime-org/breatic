@@ -169,8 +169,30 @@ const GEMINI_INLINE_MAX_BYTES = 20_000_000;
  * `expected one of "int4"|...|"unknown"`, measured 2026-11-07).
  */
 const openRouterQuantization = z.enum(["int4", "int8", "fp4", "mxfp4", "nvfp4", "fp6", "fp8", "mxfp8", "fp16", "bf16", "fp32", "unknown"]);
-/** The levels of 8 bits and more, and `unknown` (an official endpoint names none): 4- and 6-bit endpoints serve a coarser model. */
+/**
+ * The levels of 8 bits and more, and `unknown`: 4- and 6-bit endpoints serve a coarser model. OpenRouter defines `unknown`
+ * only as "Unknown", so a model takes it only when none of its endpoints states a level (`openRouterLevels`), as a
+ * closed-weight model's own and its cloud partners' endpoints state none.
+ */
 const OPENROUTER_QUANTIZATIONS: readonly z.infer<typeof openRouterQuantization>[] = ["int8", "fp8", "mxfp8", "fp16", "bf16", "fp32", "unknown"];
+
+/**
+ * The quantizations a cheapest OpenRouter call of one model takes: `openrouter_quantizations`, without `unknown` when one of
+ * the model's endpoints states a level, since an endpoint that states none could then be a coarser host's.
+ * @param quantizations - `openrouter_quantizations`.
+ * @param statesQuantization - Whether one of the model's OpenRouter endpoints states a level (`states_quantization`).
+ * @returns The levels the model's call takes.
+ */
+export function openRouterLevels<T extends string>(quantizations: T[], statesQuantization: boolean): T[] {
+  return statesQuantization ? quantizations.filter((q) => q !== "unknown") : quantizations;
+}
+
+/**
+ * One OpenRouter token price, its cheapest endpoint's at the model's levels, with `states_quantization` when one of the
+ * model's endpoints states a level, so its calls leave `unknown` out (`openRouterLevels`).
+ */
+const openRouterPriceSchema = llmPriceSchema.extend({ states_quantization: z.literal(true).optional() });
+
 /** How often an uploaded Gemini file is asked about by default, in ms. */
 const GEMINI_FILE_POLL_MS = 5_000;
 
@@ -189,8 +211,12 @@ const llmSchema = z.strictObject({
     z.tuple([directPriceSchema], directPriceSchema.extend({ from: z.iso.datetime() }))
       .refine(([, ...later]) => later.every((entry, i) => i === 0 || Date.parse(entry.from) > Date.parse(later[i - 1]!.from)), { message: "the from dates of its direct prices do not ascend", when: (payload) => payload.issues.length === 0 }),
   ).optional(),
-  /** OpenRouter's token prices in USD per million tokens, by our model id: its cheapest endpoint at a quantization `openrouter_quantizations` lists, as `pnpm provider:prices` writes them. */
-  openrouter_prices: z.record(z.string(), llmPriceSchema).optional(),
+  /**
+   * OpenRouter's token prices in USD per million tokens, by our model id, as `pnpm provider:prices` writes them: its
+   * cheapest endpoint at a quantization `openrouter_quantizations` lists, `unknown` taken only when none of the model's
+   * endpoints states a level; `states_quantization` marks a model one of whose endpoints does.
+   */
+  openrouter_prices: z.record(z.string(), openRouterPriceSchema).optional(),
   /**
    * When `openrouter_prices` was read, an ISO 8601 UTC time `pnpm provider:prices` writes: a direct price that took effect
    * after it is not ranked against them.
