@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { eraseFailureReasonSchema, expandFailureReasonSchema, modelFailureRetryable, plannedFailureRetryable } from "../model-failure-reason.js";
+import * as miniTools from "../index.js";
 import { MINI_TOOL_RETRY_TOOLS, miniToolExecutionRetryRequestSchema } from "../planned-request-schema.js";
 
 // Execution design §10.4 and §10.5 failure paragraphs: an erase fails at one step with one category; an expand lists every
@@ -62,5 +63,20 @@ describe("erase and expand failure reasons (execution design §10.4, §10.5)", (
     expect(plannedFailureRetryable("video.transitions", { code: "mini_tool_failed" })).toBe(false);
     expect(MINI_TOOL_RETRY_TOOLS).not.toContain("video.transitions");
     expect(miniToolExecutionRetryRequestSchema.shape.tool.options).toEqual([...MINI_TOOL_RETRY_TOOLS]);
+  });
+
+  // frames-split §7.15 可重试结束: a failed output can be retried when it failed for a reason a retry can clear and no
+  // admitted retry has taken it over; the node row, the failure block and the host panel ask this one question.
+  it.each([
+    ["a failed split output", "video.split", { result: { status: "failed", error: { code: "mini_tool_failed" } } }, true],
+    ["a failed output a retry took over", "video.split", { result: { status: "failed", error: { code: "mini_tool_failed" } }, takenOver: true }, false],
+    ["an output still running", "video.split", { result: null }, false],
+    ["a registered output", "video.split", { result: { status: "registered" } }, false],
+    ["a lip-sync person without a face", "video.lip-sync", { result: { status: "failed", error: { kind: "lipsync", persons: [{ personId: "p", detectionNumber: 1, step: "faces", category: "no_face" }], shared: null } } }, false],
+    ["an erase timing out", "video.erase", { result: { status: "failed", error: { kind: "erase", step: "mask", category: "timeout" } }, takenOver: false }, true],
+    ["a failed transitions output", "video.transitions", { result: { status: "failed", error: { code: "mini_tool_failed" } } }, false],
+  ] as const)("FR06 plannedOutputRetryable from the mini-tools entry: %s is retryable: %s", (_name, tool, output, retryable) => {
+    const api = miniTools as unknown as { plannedOutputRetryable: (tool: string, output: unknown) => boolean };
+    expect(api.plannedOutputRetryable(tool, output)).toBe(retryable);
   });
 });

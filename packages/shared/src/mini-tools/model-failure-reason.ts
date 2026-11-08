@@ -5,6 +5,7 @@ import { z } from "zod";
 import { modelRunRetryable } from "@shared/mini-tools/model-run-retryable.js";
 import { lipsyncFailureReasonSchema, lipsyncFailureRetryable } from "@shared/mini-tools/lipsync-plan.js";
 import { MINI_TOOL_RETRY_TOOLS } from "@shared/mini-tools/planned-request-schema.js";
+import type { MiniToolExecutionOutput } from "@shared/mini-tools/execution-record.js";
 
 /** One erase failure (execution design §10.4): the step that failed and why. */
 export const eraseFailureReasonSchema = z.strictObject({
@@ -54,4 +55,16 @@ export function plannedFailureRetryable(tool: string, error: unknown): boolean {
   if (lipsyncFailureReasonSchema.safeParse(error).success) return lipsyncFailureRetryable(error);
   if (eraseFailureReasonSchema.safeParse(error).success || expandFailureReasonSchema.safeParse(error).success) return modelFailureRetryable(error);
   return true;
+}
+
+/**
+ * Whether one output of a planned run can be retried now (frames-split §7.15 end of retryability): it failed, no admitted
+ * retry has taken it over, and its failure is one a retry can clear (`plannedFailureRetryable`).
+ * @param tool - The run's tool.
+ * @param output - The run's output.
+ * @returns True when the output offers a retry.
+ * @throws {never} Never.
+ */
+export function plannedOutputRetryable(tool: string, output: Pick<MiniToolExecutionOutput, "result" | "takenOver">): boolean {
+  return output.result?.status === "failed" && output.takenOver !== true && plannedFailureRetryable(tool, output.result.error);
 }
