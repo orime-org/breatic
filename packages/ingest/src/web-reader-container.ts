@@ -147,7 +147,9 @@ export class WebReaderContainer extends Container {
     if (this.destroyed) return;
     this.destroyed = true;
     // A failed destroy leaves a container running until its own timeout.
-    await this.destroy().catch((err: unknown) => noteFailure("ingest_web_reader_destroy_failed", {}, err));
+    await this.destroy().catch((err: unknown) =>
+      noteFailure("ingest_web_reader_destroy_failed", { containerId: this.ctx.id.toString() }, err),
+    );
   }
 }
 
