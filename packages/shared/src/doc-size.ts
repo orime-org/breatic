@@ -35,8 +35,6 @@ export type DocSizeStatus = z.infer<typeof DocSizeStatusSchema>;
 export interface UpdateShape {
   /** The update carries no struct group: it only deletes. */
   pureDelete: boolean;
-  /** The update's length less its delete set; 0 for a pure delete. */
-  structBytes: number;
   /** Delete range ends falling inside a live item, which splits it. */
   splitEndpoints: number;
   /** Delete ranges ending past the store's clock of their client (they pend). */
@@ -49,15 +47,10 @@ export interface UpdateShape {
   wholeTypesOnly: boolean;
 }
 
-/**
- * The encoded length of a varuint.
- * @param n - A non-negative integer.
- * @returns Bytes.
- */
-function varUintLength(n: number): number {
-  let length = 1;
-  for (let v = n; v > 0x7f; v = Math.floor(v / 128)) length += 1;
-  return length;
+/** One delete range. */
+interface Range {
+  clock: number;
+  len: number;
 }
 
 /**
@@ -70,8 +63,30 @@ function startsWithZero(update: Uint8Array): boolean {
 }
 
 /**
+ * A client's delete ranges sorted by clock with overlapping and adjacent ones
+ * merged, as yjs's `sortAndMergeDeleteSet` does; the input is not changed.
+ * @param ranges - The ranges as the update wrote them.
+ * @returns New, disjoint ranges in clock order.
+ */
+function sortAndMerge(ranges: readonly Range[]): Range[] {
+  const sorted = ranges.map((r) => ({ clock: r.clock, len: r.len })).sort((a, b) => a.clock - b.clock);
+  const merged: Range[] = [];
+  for (const r of sorted) {
+    const last = merged[merged.length - 1];
+    if (last !== undefined && last.clock + last.len >= r.clock) {
+      last.len = Math.max(last.len, r.clock + r.len - last.clock);
+    } else {
+      merged.push(r);
+    }
+  }
+  return merged;
+}
+
+/**
  * Read an update against a struct store and count the facts the size cap
- * judges it by (design 4.1). The store is only read.
+ * judges it by (design 4.1). Each client's ranges are sorted and merged
+ * first, so every covered struct is visited once however the ranges overlap.
+ * The store is only read.
  * @param update - A V1 update.
  * @param store - The struct store of the document it would be applied to.
  * @returns The update's shape.
@@ -79,29 +94,43 @@ function startsWithZero(update: Uint8Array): boolean {
  */
 export function updateShape(update: Uint8Array, store: Y.Doc["store"]): UpdateShape {
   const { ds } = Y.decodeUpdate(update);
-  const pureDelete = startsWithZero(update);
-  let dsLength = varUintLength(ds.clients.size);
   let splitEndpoints = 0;
   let beyondClockRanges = 0;
   let wholeTypesOnly = true;
 
+  const mergedByClient = new Map<number, Range[]>();
+  ds.clients.forEach((ranges, client) => {
+    const state = Y.getState(store, client);
+    for (const range of ranges) if (range.clock + range.len > state) beyondClockRanges += 1;
+    mergedByClient.set(client, sortAndMerge(ranges));
+  });
+
   /**
    * Whether this update deletes the given item whole.
    * @param item - A type item.
-   * @returns True when one delete range covers it.
+   * @returns True when one merged delete range covers it.
    */
-  const deletedWhole = (item: Y.Item): boolean =>
-    (ds.clients.get(item.id.client) ?? []).some((r) => r.clock <= item.id.clock && item.id.clock + item.length <= r.clock + r.len);
+  const deletedWhole = (item: Y.Item): boolean => {
+    const ranges = mergedByClient.get(item.id.client) ?? [];
+    let lo = 0;
+    let hi = ranges.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const r = ranges[mid];
+      if (r === undefined) break;
+      if (r.clock > item.id.clock) hi = mid - 1;
+      else if (r.clock + r.len <= item.id.clock) lo = mid + 1;
+      else return item.id.clock + item.length <= r.clock + r.len;
+    }
+    return false;
+  };
 
-  ds.clients.forEach((ranges, client) => {
-    dsLength += varUintLength(client) + varUintLength(ranges.length);
+  mergedByClient.forEach((ranges, client) => {
     const structs = store.clients.get(client) ?? [];
     const state = Y.getState(store, client);
     for (const range of ranges) {
-      dsLength += varUintLength(range.clock) + varUintLength(range.len);
-      const end = range.clock + range.len;
-      if (end > state) beyondClockRanges += 1;
       if (range.clock >= state) continue;
+      const end = range.clock + range.len;
       let i = Y.findIndexSS(structs, range.clock);
       const head = structs[i];
       if (head !== undefined && !head.deleted && head.id.clock < range.clock) splitEndpoints += 1;
@@ -120,13 +149,7 @@ export function updateShape(update: Uint8Array, store: Y.Doc["store"]): UpdateSh
     }
   });
 
-  return {
-    pureDelete,
-    structBytes: pureDelete ? 0 : update.byteLength - dsLength,
-    splitEndpoints,
-    beyondClockRanges,
-    wholeTypesOnly,
-  };
+  return { pureDelete: startsWithZero(update), splitEndpoints, beyondClockRanges, wholeTypesOnly };
 }
 
 /**
