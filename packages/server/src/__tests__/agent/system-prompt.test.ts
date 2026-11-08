@@ -551,6 +551,12 @@ describe("what the prompt says per medium (breatic#1361)", () => {
     expect(reach).toContain("a timeline holds video clips");
   });
 
+  it("keeps Video trial shots short unless the user named the length, and on a fast model", () => {
+    const para = paragraphs().get("Video") ?? "";
+    expect(para).toContain("trial shots short unless they named the length, and on a fast model;");
+    expect(para).not.toContain("trial shots short and on a fast model");
+  });
+
   // The template guard: a new Space type or a new model medium has to be
   // given a paragraph here, or this fails. The table is written out rather
   // than derived so adding a type forces someone to decide where it goes.
