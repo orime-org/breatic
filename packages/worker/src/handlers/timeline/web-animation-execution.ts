@@ -190,7 +190,8 @@ async function take(row: TimelineExecution): Promise<TimelineExecution | null> {
     return claimed.applied ? claimed.row : take(claimed.row);
   }
   if (row.status === "running") {
-    const retried = await move(row, { type: "retry" });
+    // A new attempt changes nothing the user sees, so it does not signal the Space; a phase change does.
+    const retried = await timelineExecutionRepo.transition({ id: row.id, event: { type: "retry" } });
     return retried.applied ? retried.row : take(retried.row);
   }
   return row.status === "cancelling" ? row : null;

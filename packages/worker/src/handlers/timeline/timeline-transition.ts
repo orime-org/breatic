@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Moving a Timeline execution from the worker (inner#1711 design §5.2): every applied transition signals the Space's
- * task list.
+ * Moving a Timeline execution from the worker (inner#1711 design §5.2): every transition applied through {@link move}
+ * signals the Space's task list. A pickup's retry is the one transition written without it, since a new attempt
+ * changes nothing the user sees.
  */
 
 import { logger, publishSpaceTasksChanged, timelineExecutionRepo, type TimelineExecutionEvent, type TimelineExecutionTransition } from "@breatic/core";
