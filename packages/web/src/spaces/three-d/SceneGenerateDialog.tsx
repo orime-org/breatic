@@ -336,6 +336,7 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
       <Input ref={fileInput} data-testid='scene-generate-view-file-input' type='file' accept={SCENE_VIEW_ACCEPT} onChange={fileChosen} className='hidden' />
     </fieldset>
     <PanelRunFooter
+      divided={false}
       leading={<div className='flex min-w-0 items-center gap-3'>
         <ModePill value={mode} options={MODE_OPTIONS} onChange={selectMode} triggerTestId='scene-generate-mode' disabled={submitting} />
         {entry === undefined ? null : <span data-testid='scene-generate-model' className='truncate text-xs text-muted-foreground'>{entry.display_name}</span>}
