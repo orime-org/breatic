@@ -47,6 +47,17 @@ interface DocumentOutlineProps {
   commentsOpen: boolean;
 }
 
+/** A jump on its way to a heading at the body's end, pinned once it gets there. */
+interface PendingPin {
+  id: string;
+  /** The scrollTop the jump scrolls to. */
+  target: number;
+  /** How far from the target the jump set off. */
+  start: number;
+  /** The nearest the body has come to the target so far. */
+  closest: number;
+}
+
 /** One row on screen: an entry and how deep it hangs. */
 interface Row {
   entry: OutlineEntry;
@@ -274,6 +285,12 @@ export const DocumentOutline = React.memo(function DocumentOutline({
 
   const [reading, setReading] = React.useState<string | null>(null);
   const pinned = React.useRef<string | null>(null);
+  const pending = React.useRef<PendingPin | null>(null);
+  // Hiding the Space runs every effect's cleanup; the highlight effect also
+  // re-runs on any outline change, which must not drop a wait mid-scroll.
+  React.useEffect(() => () => {
+    pending.current = null;
+  }, []);
   React.useEffect(() => {
     if (viewport === null) return undefined;
     const ids = [...ancestors.keys()];
@@ -285,6 +302,21 @@ export const DocumentOutline = React.memo(function DocumentOutline({
      */
     const compute = (): void => {
       frame = 0;
+      const wait = pending.current;
+      if (wait !== null) {
+        const distance = Math.abs(viewport.scrollTop - wait.target);
+        if (atEnd(viewport)) {
+          pinned.current = wait.id;
+          pending.current = null;
+        } else if (distance < wait.closest) {
+          wait.closest = distance;
+        } else if (distance > wait.closest && wait.closest < wait.start) {
+          // Moving away after closing in is the user taking over. The first
+          // frames may still carry the body's earlier momentum away from the
+          // landing (a smooth scroll that retargets keeps its velocity).
+          pending.current = null;
+        }
+      }
       if (pinned.current !== null && ancestors.has(pinned.current) && atEnd(viewport)) {
         setReading(pinned.current);
         return;
@@ -342,18 +374,30 @@ export const DocumentOutline = React.memo(function DocumentOutline({
     if (viewport === null) return;
     const line = headingLine(viewport, id);
     if (line === null) return;
-    const want = viewport.scrollTop + line.getBoundingClientRect().top - viewport.getBoundingClientRect().top - LANDING;
-    const target = Math.max(0, Math.min(viewport.scrollHeight - viewport.clientHeight, want));
-    viewport.scrollTo({ top: target, behavior: 'instant' });
-    // A jump that ends at the body's end (a body too short to scroll always
-    // is) can leave the heading short of the landing, where the reading rule
-    // picks another, so the clicked heading holds until the body leaves the
-    // end; scroll anchoring keeps it there when content above grows.
-    pinned.current = atEnd(viewport) ? id : null;
-    setReading(id);
+    // The caret goes in before the measuring: a browser that scrolls a new
+    // selection into view does so first, and the smooth scroll carries on from there.
     if (!readOnly) {
       editor.setTextCursorPosition(id, 'start');
       viewOf(editor)?.dom.focus({ preventScroll: true });
+    }
+    const end = viewport.scrollHeight - viewport.clientHeight;
+    const from = viewport.scrollTop;
+    const want = from + line.getBoundingClientRect().top - viewport.getBoundingClientRect().top - LANDING;
+    const target = Math.max(0, Math.min(end, want));
+    viewport.scrollTo({ top: target, behavior: 'smooth' });
+    // On the way the highlight follows the body. A jump that ends at the
+    // body's end (a body too short to scroll always is) can leave the heading
+    // short of the landing, where the reading rule picks another, so the
+    // clicked heading holds from the frame the body reaches the end until it
+    // leaves it; scroll anchoring keeps it there when content above grows.
+    const distance = Math.abs(target - from);
+    pending.current = null;
+    if (distance < 1) {
+      pinned.current = atEnd(viewport) ? id : null;
+      setReading(id);
+    } else {
+      pinned.current = null;
+      if (target >= end - 2) pending.current = { id, target, start: distance, closest: distance };
     }
     if (floating) setTucked(true);
   }, [viewport, readOnly, editor, floating]);
