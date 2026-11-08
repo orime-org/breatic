@@ -174,6 +174,23 @@ web_search_max_tokens: 8192
 # the transport's backoff between deliveries.
 web_search_timeout_ms: 10000
 
+# web_fetch (inner#1664): one call reads 1 to web_fetch_max_urls pages in one
+# container, which the ingest Worker starts for that call alone.
+# How many pages one call may name. Measured on standard-2: 20 pages in 41.7 s.
+web_fetch_max_urls: 20
+# How long one call may take in all, cold start included, in milliseconds.
+web_fetch_timeout_ms: 90000
+# How long one page may take to open, in milliseconds (the slowest measured: 29 s).
+web_fetch_page_timeout_ms: 30000
+# How long a page may keep loading after its document arrives, in milliseconds.
+web_fetch_settle_ms: 8000
+# How many pages one container opens at once.
+web_fetch_concurrency: 6
+# How many characters of page text one call hands the model, shared by its pages.
+web_fetch_max_chars: 80000
+# The largest PDF a page may be, in bytes (20 MiB).
+web_fetch_max_bytes: 20971520
+
 # How long ONE LEG of a search_images may take, in milliseconds.
 # Read the same way as the figure above: the transport may deliver a request up
 # to three times and each delivery gets this figure, and the body read that

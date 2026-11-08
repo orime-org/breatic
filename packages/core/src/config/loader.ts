@@ -284,6 +284,20 @@ const agentConfigSchema = z.object({
    * configuration yet at that point.
    */
   image_search_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(10000),
+  /** How many pages one `web_fetch` call may name (inner#1664). */
+  web_fetch_max_urls: z.number().int().min(1).max(50).default(20),
+  /** How long one `web_fetch` call may take in all, cold start included, in milliseconds. */
+  web_fetch_timeout_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(90000),
+  /** How long one page may take to open, in milliseconds. */
+  web_fetch_page_timeout_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(30000),
+  /** How long a page may keep loading after its document arrives, in milliseconds. */
+  web_fetch_settle_ms: z.number().int().min(0).max(MAX_TIMER_MS).default(8000),
+  /** How many pages one container opens at once. */
+  web_fetch_concurrency: z.number().int().min(1).max(20).default(6),
+  /** How many characters of page text one call hands the model, shared by its pages. */
+  web_fetch_max_chars: z.number().int().min(1000).max(400000).default(80000),
+  /** The largest PDF a page may be, in bytes. */
+  web_fetch_max_bytes: z.number().int().min(1).default(20971520),
   /** Native picture support override and public model catalog cache timing. */
   main_model_sees_pictures: z.enum(["auto", "yes", "no"]).default("auto"),
   model_catalog_timeout_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(1000),
