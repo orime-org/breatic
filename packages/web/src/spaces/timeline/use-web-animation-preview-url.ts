@@ -37,7 +37,7 @@ function requestAddress(projectId: string, sourceVersionId: string, fresh: boole
   const current = sharedAddresses.get(id);
   if (!fresh && current !== undefined && now < current.sentAt + windowMs) return current.answer;
   // A shared request serves later mounts too, so leaving the one that sent it does not abort it.
-  const entry: SharedAddress = { sentAt: now, answer: timelineApi.previewUrl(projectId, sourceVersionId, new AbortController().signal) };
+  const entry: SharedAddress = { sentAt: now, answer: timelineApi.previewUrl(projectId, sourceVersionId) };
   sharedAddresses.set(id, entry);
   // A refused request is not shared; the next mount asks again.
   entry.answer.catch(() => { if (sharedAddresses.get(id) === entry) sharedAddresses.delete(id); });
