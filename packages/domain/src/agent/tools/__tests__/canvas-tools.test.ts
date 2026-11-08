@@ -26,6 +26,7 @@ import {
   restoreProcessEnv,
   useEnvWithKeys,
 } from "@domain/model-catalog/__tests__/catalog-env.js";
+import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
 
 beforeEach(() => {
   restoreProcessEnv();
@@ -223,6 +224,40 @@ describe("list_generation_models", () => {
       }
     ).safeParse({ nodeType: "image", mode: "t2i", model: "sneaked-in" });
     expect(parsed.success).toBe(false);
+  });
+});
+
+describe("list_generation_models priced at the params a step will use (breatic#1361)", () => {
+  /** Settings a later step of a plan would send, which the t2i models price differently from their defaults. */
+  const PARAMS = { resolution: "4k" };
+
+  it("takes the params to price at", () => {
+    const parsed = (
+      canvasToolInput(generationModels) as {
+        safeParse: (input: unknown) => { success: boolean };
+      }
+    ).safeParse({ nodeType: "image", mode: "t2i", params: PARAMS });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("prices each model at the params given", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i", params: PARAMS });
+    if (!answer.available) throw new Error("t2i has models");
+    let differs = 0;
+    for (const model of answer.models) {
+      const atParams = await estimateModelCredits(model.name, { params: PARAMS });
+      const atDefaults = await estimateModelCredits(model.name, { params: {} });
+      if (atParams?.credits !== atDefaults?.credits) differs += 1;
+      expect(model.price, model.name).toEqual(atParams);
+    }
+    // Guards the case itself: a price at the defaults would otherwise pass.
+    expect(differs).toBeGreaterThan(0);
+  });
+
+  it("prices each model at its defaults when no params are given, as before", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
+    if (!answer.available) throw new Error("t2i has models");
+    for (const model of answer.models) expect(model.price, model.name).toEqual(await estimateModelCredits(model.name, { params: {} }));
   });
 });
 

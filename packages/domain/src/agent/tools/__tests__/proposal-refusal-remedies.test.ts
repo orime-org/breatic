@@ -448,7 +448,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     meets: group([{ ...CHARACTER_DESIGN, prompt: [{ text: "A full-body character design of a fox girl in a red coat, in " }, CHARACTER_STYLE, { text: "." }] }, CHARACTER_SHEET], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     states: [
       `"Character design" still holds template "character-design-from-text"'s blanks "${CHARACTER_STYLE.slot.label}".`,
-      'On node 0 ("Character design"), write each one from what the user said, or ask them or choose it as your working rules say, and send the words in its place.',
+      'On node 0 ("Character design"), write each one from what the user said, or ask them, make takes first, or choose it, as your working rules say, and send the words in its place.',
     ],
     absent: ["who the character is"],
     fix: group([CHARACTER_DESIGN, CHARACTER_SHEET], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),

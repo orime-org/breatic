@@ -123,8 +123,10 @@ describe("templates in proposals", () => {
     setLocale("en");
   });
 
-  // inner#1816: a template the plan gives no case for offering unasked says none.
-  it("says when to offer a template unasked only for one that has such a case", () => {
+  // inner#1816: a template the plan gives no case for offering says none.
+  // breatic#1361: it says when the template also fits; when to suggest it is
+  // the working rules' call, so nothing here offers it unasked.
+  it("says when a template also fits only for one that has such a case", () => {
     const lines = String(makeProposeCanvasAction().description ?? "").split(" | ");
     /**
      * The index line of one template.
@@ -133,8 +135,8 @@ describe("templates in proposals", () => {
      */
     const lineOf = (id: string): string | undefined => lines.find((line) => line.includes(`${id} (social-hooks,`));
     for (const id of ["pet-selfie-vlog", "retro-found-footage"]) expect(lineOf(id), `${id} indexed`).toBeDefined();
-    expect(lineOf("pet-selfie-vlog")).toContain("Offer it unasked when");
-    expect(lineOf("retro-found-footage")).not.toContain("Offer it unasked when");
+    expect(lineOf("pet-selfie-vlog")).toContain("It also fits when");
+    expect(lineOf("retro-found-footage")).not.toContain("It also fits when");
   });
 
   it("indexes the registry it is given and no other", () => {

@@ -485,9 +485,12 @@ describe("what the guide says", () => {
     );
   });
 
-  it("says the user is an editor, since people who can only view get no chat", () => {
+  it("says the user is an editor, since people who can only view get no chat, in the tool's description every call carries", () => {
     expect(webSource("pages/project/ProjectPage.tsx")).toContain("collapsed || isViewer ? null");
-    expect(renderProductGuide()).toMatch(/^You are talking to someone who can edit this project/);
+    const description: unknown = productGuide.description;
+    expect(typeof description === "string" ? description.replace(/\s+/g, " ") : "").toContain(
+      "You are talking to someone who can edit this project: people who can only view it do not get this chat.",
+    );
   });
 
   it("says only a list's own shortcut turns it back to plain text", () => {
