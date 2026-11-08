@@ -59,7 +59,7 @@ export const askUserOptionSchema = z
 export const askUserQuestionSchema = z
   .object({
     header: line(12).describe("A short label for the question, up to 12 characters, shown after the number the card gives it; no number of its own"),
-    question: line(200).describe("The question, in one line, with no number: the card numbers it"),
+    question: line(200).describe("The question, in one line, with no number: the card numbers it. Say in it, in a few words, what the answer decides."),
     multiSelect: z.boolean().default(false).describe("Whether the user may pick more than one option"),
     options: z
       .array(askUserOptionSchema)
