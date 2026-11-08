@@ -11,8 +11,10 @@
  * it lands on the same vertical line as every other switch regardless of how
  * wide the state word beside it happens to be.
  *
- * The whole row is the `<label>`, so the name is part of the hit target rather
- * than something to aim past. The state word is what says which way the switch
+ * Only the switch itself throws it (inner#1691): a row laid out wide leaves
+ * empty space between the name and the switch, and a click there, such as one
+ * closing an open menu, must not change a setting. The name labels the switch
+ * through `aria-labelledby`. The state word is what says which way the switch
  * is thrown: the track alone carries no word, so an off switch and a disabled
  * control look alike (contrast measured 2026-09-06: track against the popover
  * ground is 1.36:1, under SC 1.4.11's 3:1).
@@ -63,18 +65,11 @@ export function ParamToggleRow({
   onLocked,
 }: ParamToggleRowProps): React.JSX.Element {
   const t = useTranslation();
+  const nameId = React.useId();
   return (
-    <label
-      className={cn(
-        'flex cursor-pointer items-center justify-between gap-3',
-        className,
-      )}
-    >
-      <span className='text-xs font-medium text-muted-foreground'>{label}</span>
+    <div className={cn('flex items-center justify-between gap-3', className)}>
+      <span id={nameId} className='text-xs font-medium text-muted-foreground'>{label}</span>
       <span className='flex items-center gap-2'>
-        {/* The row is the switch's label, so its text is the switch's name.
-            Holding the state word out of that keeps the name the param's name
-            and nothing else — the switch already carries its own state. */}
         <span aria-hidden='true' className='text-xs text-muted-foreground'>
           {checked
             ? t('canvas.generatePanel.switchOn')
@@ -82,6 +77,7 @@ export function ParamToggleRow({
         </span>
         <Switch
           id={id}
+          aria-labelledby={nameId}
           checked={checked}
           onCheckedChange={onLocked === undefined ? onCheckedChange : onLocked}
           aria-disabled={onLocked === undefined ? undefined : true}
@@ -89,6 +85,6 @@ export function ParamToggleRow({
           data-testid={id}
         />
       </span>
-    </label>
+    </div>
   );
 }
