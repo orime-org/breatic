@@ -201,7 +201,9 @@ const recipeUnion = z.discriminatedUnion("kind", [
   }),
   // The lip-sync steps (§7.17 lipsync rows, §97 D20-1): every object is a bound input named by its inputId.
   z.strictObject({ kind: z.literal("lipsync_faces"), inputId, track: inputId, profile }),
-  z.strictObject({ kind: z.literal("lipsync_clip"), inputId, faces: inputId, track: inputId, cropSize, timeline: lipsyncTimeline, table: presentationTableSchema }),
+  // The clip is encoded at the plan's frozen container encode, as the composite's target is.
+  z.strictObject({ kind: z.literal("lipsync_clip"), inputId, faces: inputId, track: inputId, cropSize, timeline: lipsyncTimeline, table: presentationTableSchema,
+    encode: z.strictObject({ crf: z.number().int().min(0).max(51), preset: x264PresetSchema }) }),
   z.strictObject({ kind: z.literal("lipsync_stem"), rows: z.array(z.strictObject({ inputId, startTime: time })).min(1), duration: positiveTime }),
   z.strictObject({
     kind: z.literal("lipsync_composite"), ...windowRecipe, timeline: lipsyncTimeline, table: presentationTableSchema,
@@ -209,6 +211,8 @@ const recipeUnion = z.discriminatedUnion("kind", [
     // The plan's frozen raw disk budget: a chunk whose source goes back decodes its source window to a raw file within it
     // (execution design paragraph before §9.4).
     rawDiskBytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    // The plan's frozen face feather: each face's edge is feathered over this fraction of its shorter side (DD §7.2 step 6).
+    feather: z.number().min(0).max(1),
   }),
 ]);
 /**

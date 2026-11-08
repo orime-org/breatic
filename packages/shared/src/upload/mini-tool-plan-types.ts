@@ -181,6 +181,8 @@ export interface MiniToolPlanLipsyncFaces { kind: "lipsync_faces"; inputId: stri
 /** One person's face clip on the result timeline (§7.17 lipsync_clip row): each result frame's source face, cropped and fitted. */
 export interface MiniToolPlanLipsyncClip {
   kind: "lipsync_clip"; inputId: string; faces: string; track: string; cropSize: number; timeline: LipsyncTimeline; table: VideoPresentationTable;
+  /** The plan's frozen container encode. */
+  encode: { crf: number; preset: MiniToolPlanTarget["preset"] };
 }
 /** One person's dialogue stem (§7.17 lipsync_stem row): each row placed at its start and summed, `duration` long. */
 export interface MiniToolPlanLipsyncStem { kind: "lipsync_stem"; rows: { inputId: string; startTime: MiniToolPlanExact }[]; duration: MiniToolPlanExact }
@@ -190,6 +192,8 @@ export type MiniToolPlanLipsyncComposite = {
   persons: { result: string; faces: string; track: string; cropSize: number }[];
   /** The plan's frozen raw disk budget, which a chunk's raw source window stays within when its source goes back. */
   rawDiskBytes: number;
+  /** The plan's frozen face feather, as a fraction of each face's shorter side. */
+  feather: number;
 } & MiniToolPlanWindowRecipe;
 
 /**

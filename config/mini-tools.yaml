@@ -49,6 +49,8 @@ executions:
       max_duration_seconds: 600
     max_people: 2
     max_dialogues: 8
+    # The composite feathers each face's edge over this fraction of the face's shorter side.
+    face_feather: 0.1
   # Encode chunks and the stitch run on standard-4; the overlap window renders on the GL image at the same size.
   video.transitions:
     container_class: "MiniToolContainerStd4"

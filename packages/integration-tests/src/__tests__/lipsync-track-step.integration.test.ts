@@ -100,7 +100,7 @@ async function seed(): Promise<Fixture> {
       { dialogueId: "row-2", personId: "person-3", audioInputId: randomUUID(), startTime: 0.5, duration: 1.5 },
     ],
     // DD §7.1 persons row (§97 D21-6): each person's step keys are frozen with it.
-    persons: PERSONS.map((person) => ({ ...person, stepKeys: lipsyncPersonStepKeys("d".repeat(64), person, CLIPS) })), tracking: { model: "sam3-video-rle" }, cropSize: 512,
+    persons: PERSONS.map((person) => ({ ...person, stepKeys: lipsyncPersonStepKeys("d".repeat(64), person, CLIPS) })), tracking: { model: "sam3-video-rle" }, cropSize: 512, faceFeather: 0.1,
     container: { containerClass: "MiniToolContainerStd4", precheckSeconds: 300, size: { instance_type: "standard-4", vcpu: 4, memory_gib: 12, disk_gb: 20 },
       prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
       limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, startSeconds: 3, encode: { crf: 18, preset: "medium" }, chunkRetries: 2,

@@ -299,7 +299,7 @@ async function personStep(execution: LipSync, kind: LipSyncPersonStep, personId:
           { inputId: inputOf(FACES, 0), storageKey: await objectOf(execution, personId, "faces", userId, deadlineAt) },
           { inputId: inputOf(TRACK, 0), storageKey: await objectOf(execution, personId, "track_join", userId, deadlineAt) }];
         return { recipe: { kind: "lipsync_clip", inputId: PREPARED, faces: inputOf(FACES, 0), track: inputOf(TRACK, 0), cropSize: execution.cropSize,
-          timeline: execution.timeline, table: ledger.plan.presentation }, inputs };
+          timeline: execution.timeline, table: ledger.plan.presentation, encode: execution.container.encode }, inputs };
       }, () => ({ failed: "failed" }), deadlineAt);
     case "stem":
       return personContainer(execution, keyOf(keys, "stem"), "audio/mp4", async () => {
@@ -358,7 +358,7 @@ async function composite(execution: LipSync, userId: string, deadlineAt: number)
           return { recipe: { kind: "lipsync_composite", inputId: SOURCE_INPUT_ID, window: { start: window.start, end: window.end }, timescale: ledger.plan.presentation.timescale,
             entries: windowEntries(ledger, lipsyncChunkSourceWindow(execution.timeline, ledger.plan.presentation, window)), target: { ...target, format: undefined },
             timeline: execution.timeline, table: ledger.plan.presentation, persons: persons.map((person) => ({ ...person.ids, cropSize: execution.cropSize })),
-            rawDiskBytes: execution.container.rawDiskBytes },
+            rawDiskBytes: execution.container.rawDiskBytes, feather: execution.faceFeather },
           inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }, ...persons.flatMap((person) => (["result", "faces", "track"] as const)
             .map((role) => ({ inputId: person.ids[role], storageKey: person.keys[role] })))] };
         } }, deadlineAt);

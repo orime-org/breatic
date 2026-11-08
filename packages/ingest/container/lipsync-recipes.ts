@@ -51,10 +51,6 @@ interface Picture { width: number; height: number; y: Uint8Array; u: Uint8Array;
 /** A transform table row. */
 type FaceRect = MiniToolPlanPixelRect | null;
 
-// A clip or face crop is an intermediate model input: x264 at the quality the presentation carriers use.
-const CLIP_ENCODE = { crf: 18, preset: "medium" } as const;
-// The face's feathered edge, as a fraction of its shorter side (DD §7.2 step 6: feather(face) ∩ tracked foreground).
-const FEATHER = 0.1;
 const BLACK_Y = 16;
 const NEUTRAL_C = 128;
 
@@ -469,7 +465,7 @@ async function writeClip(recipe: MiniToolPlanLipsyncClip, request: LipsyncRecipe
   let [decode, encode]: [PlanPipe | null, (PlanPipe & { stdin: Writable }) | null] = [null, null];
   try {
     encode = startEncode({ width: recipe.cropSize, height: recipe.cropSize, alpha: false }, { clock: grid.clock, tick: grid.step, end: grid.end },
-      { width: recipe.cropSize, height: recipe.cropSize, displayRect: null, colorMatrix: "bt709", toneMap: "none", alpha: "none", ...CLIP_ENCODE, format: "mp4-h264" }, request.output, run);
+      { width: recipe.cropSize, height: recipe.cropSize, displayRect: null, colorMatrix: "bt709", toneMap: "none", alpha: "none", ...recipe.encode, format: "mp4-h264" }, request.output, run);
     decode = startDecode(["-hide_banner", "-loglevel", "error", "-nostdin", "-protocol_whitelist", "file", "-i", video, "-map", "0:v:0", "-frames:v", String(highest + 1)], false, run);
     const frames = frameStream(decode, width, height, false);
     let position = -1;
@@ -534,19 +530,21 @@ interface CompositePerson { faces: FaceRect[]; track: (string | null)[]; decode:
 /**
  * Lay one person's generated face back onto a frame (§7.17 lipsync_composite row, DD §7.2 step 6): each picture pixel in the
  * face rectangle takes the result inverse-transformed through the crop fit, weighted by the face's feathered edge times
- * the person's tracked foreground; the alpha plane is left as the source has it.
+ * the person's tracked foreground; the alpha plane is left as the source has it. The edge is feathered over `fraction` of
+ * the face's shorter side, at least one pixel.
  * @param frame - The picture, changed in place.
  * @param rect - The face rectangle in picture pixels.
  * @param mask - The foreground mask in prepared pixels.
  * @param area - Where the prepared video sits in the frame.
  * @param result - The person's result frame.
  * @param size - The crop side.
+ * @param fraction - The plan's frozen face feather, a fraction of the face's shorter side.
  * @returns Nothing.
  * @throws {never} Never.
  */
-function layFace(frame: Picture, rect: MiniToolPlanPixelRect, mask: Uint8Array, area: MiniToolPlanPixelRect, result: Picture, size: number): void {
+function layFace(frame: Picture, rect: MiniToolPlanPixelRect, mask: Uint8Array, area: MiniToolPlanPixelRect, result: Picture, size: number, fraction: number): void {
   const f = fit(rect, size);
-  const feather = Math.max(1, Math.min(rect.width, rect.height) * FEATHER);
+  const feather = Math.max(1, Math.min(rect.width, rect.height) * fraction);
   const weights = new Float32Array(frame.width * frame.height);
   const x0 = Math.max(0, rect.x);
   const y0 = Math.max(0, rect.y);
@@ -682,7 +680,7 @@ async function writeComposite(recipe: MiniToolPlanLipsyncComposite, request: Lip
         if (result === null) { person.results = null; continue; }
         const rect = person.faces[s] ?? null;
         const mask = maskAt(person.track, s, placed);
-        if (rect !== null && mask !== null) layFace(frame, rect, mask, placed, result, person.cropSize);
+        if (rect !== null && mask !== null) layFace(frame, rect, mask, placed, result, person.cropSize, recipe.feather);
       }
       await writePicture(encode.stdin, frame, encode.done);
     }

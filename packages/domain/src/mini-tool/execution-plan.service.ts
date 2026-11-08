@@ -82,7 +82,7 @@ const storedPlanSchema = z.union([
       stepKeys: z.strictObject({ "track:fwd": fingerprint.optional(), "track:rev": fingerprint.optional(), track_join: fingerprint, faces: fingerprint,
         clip: fingerprint, stem: fingerprint, gen: fingerprint }) })).min(1),
     sharedStepKeys: z.record(z.string().regex(/^(prepare:fwd|prepare:rev|composite:\d+|stitch)$/), fingerprint),
-    tracking: z.strictObject({ model: z.string().min(1) }), cropSize: z.number().int().positive(),
+    tracking: z.strictObject({ model: z.string().min(1) }), cropSize: z.number().int().positive(), faceFeather: z.number().min(0).max(1),
     layout: z.strictObject({ preparation: frameWindows, persons: z.number().int().positive(), composite: frameWindows }), stageJobs,
     container: z.strictObject({ ...container, startSeconds: z.number().nonnegative().finite(),
       encode: z.strictObject({ crf: z.number().int().min(0).max(51), preset: x264PresetSchema }), chunkRetries: index,

@@ -36,7 +36,7 @@ type SyncMode = "cut_off" | "silence" | "loop" | "bounce" | "remap";
 interface LipSyncModel { name: string; schema_fingerprint: string; min_duration_seconds: number; max_duration_seconds: number; crop_size: number; accepts_sync_mode: boolean }
 interface LipSyncExecution {
   container_class: string; precheck_seconds: number; max_outputs: number; max_outputs_per_job: number; models: LipSyncModel[];
-  tracking: { model: string; min_duration_seconds: number; max_duration_seconds: number }; max_people: number; max_dialogues: number;
+  tracking: { model: string; min_duration_seconds: number; max_duration_seconds: number }; max_people: number; max_dialogues: number; face_feather: number;
 }
 interface Row { dialogueId: string; personId: string; analysisRunId: string; audioInputId: string; startTime: number }
 interface Body {
@@ -108,7 +108,7 @@ function lipSyncConfig(): LipSyncExecution {
       { name: SYNC, schema_fingerprint: SYNC_FINGERPRINT, min_duration_seconds: 1, max_duration_seconds: 300, crop_size: 512, accepts_sync_mode: true },
       { name: NO_SYNC_MODE, schema_fingerprint: NO_SYNC_MODE_FINGERPRINT, min_duration_seconds: 1, max_duration_seconds: 15, crop_size: 512, accepts_sync_mode: false },
     ],
-    tracking: { model: TRACKER, min_duration_seconds: 1, max_duration_seconds: 600 }, max_people: 2, max_dialogues: 8 };
+    tracking: { model: TRACKER, min_duration_seconds: 1, max_duration_seconds: 600 }, max_people: 2, max_dialogues: 8, face_feather: 0.2 };
 }
 
 beforeAll(async () => {
@@ -641,6 +641,8 @@ describe("lip-sync composite chunks span segments within the frozen raw disk bud
     const container = frozen.container as { rawDiskBytes?: number };
     expect(container.rawDiskBytes).toBe(Math.floor(settings.classes.MiniToolContainerStd4!.disk_gb * 1e9 * settings.encoding.raw_disk_share));
     expect(frozen.stageJobs).toEqual(miniTools.plannedStageJobs(frozen.layout!));
+    // The composite's face feather is frozen beside the disk budget (DD §7.2 step 6).
+    expect((frozen as { faceFeather?: number }).faceFeather).toBe(lipSync.face_feather);
   });
 });
 

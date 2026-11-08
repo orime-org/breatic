@@ -64,6 +64,8 @@ export type AcceptedMiniToolExecution = ExecutionPlan & (TransitionsExecution | 
   | { tool: "video.lip-sync"; generator: LipSyncGenerator; timeline: LipsyncTimeline; usedRange: { start: 0; end: number };
     /** The rows with their registered audio durations, the people they name and the tracking model (DD §7.1). */
     dialogues: VideoExecutionDialogue[]; persons: LipSyncPerson[]; tracking: { model: string }; cropSize: number;
+    /** The composite's face feather, a fraction of each face's shorter side, frozen from config/mini-tools.yaml (DD §7.2 step 6). */
+    faceFeather: number;
     /** The container stages (frames-split §5.4) and their job counts, frozen beside each other as split freezes them (§97 D12-1). */
     layout: LipsyncExecutionLayout; stageJobs: MiniToolStageJobs[];
     /** The shared steps' frozen keys: `composite:<k>` per chunk and `stitch` (DD §7.1). */
@@ -512,6 +514,7 @@ async function prepareLipSync(request: Extract<MiniToolPlannedRequest, { tool: "
     encode: { crf: config.presentation.crf, preset: config.presentation.preset }, chunkRetries: config.encoding.chunk_retries, rawDiskBytes };
   const plan = { ...common, tool: request.tool, binding, sourceKey, presentationRef: request.presentation_ref, ledgerReceipts: { source: receipt },
     versionIds: { source: versionId }, model: model.name, container, layout, stageJobs, timeline, usedRange, dialogues, persons, cropSize: model.crop_size,
+    faceFeather: settings.face_feather,
     tracking: { model: settings.tracking.model },
     generator: { backend: "wavespeed-crop" as const, modelId: model.name, schemaFingerprint: model.schema_fingerprint, providerSyncMode: model.accepts_sync_mode ? "cut_off" as const : null },
     credits: persons.length * (generation + tracking) + containerCredits(container, seconds) };

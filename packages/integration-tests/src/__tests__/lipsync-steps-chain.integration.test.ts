@@ -35,7 +35,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
-import { createPgClient, getStorageAdapter, initCore, loadLocales } from "@breatic/core";
+import { createPgClient, getMiniToolsConfig, getStorageAdapter, initCore, loadLocales } from "@breatic/core";
 import type * as coreModule from "@breatic/core";
 import { lipsyncPersonStepKeys, lipsyncSharedStepKeys, miniToolStepStateSchema, presentationPinService, taskRepo, upstreamStepRepo } from "@breatic/domain";
 import type * as sharedModule from "@breatic/shared";
@@ -80,13 +80,15 @@ vi.mock("@breatic/core", async (original) => {
     Reflect.set(config.executions, "video.lip-sync", { container_class: "MiniToolContainerStd4", precheck_seconds: 300, max_outputs: 1, max_outputs_per_job: 1,
       models: [{ name: "sync-lipsync-3", schema_fingerprint: "1".repeat(64), min_duration_seconds: 1, max_duration_seconds: 300, crop_size: 512, accepts_sync_mode: true,
         async_rejection: outside.config.rejection }],
-      tracking: { model: "sam3-video-rle", min_duration_seconds: 1, max_duration_seconds: 600 }, max_people: 2, max_dialogues: 8 });
+      tracking: { model: "sam3-video-rle", min_duration_seconds: 1, max_duration_seconds: 600 }, max_people: 2, max_dialogues: 8, face_feather: 0.1 });
     return config;
   } };
 });
 
 // The budget the fixture's plan froze at admission: half of standard-4's 20 GB disk.
 const FROZEN_RAW_DISK_BYTES = 10_000_000_000;
+// The face feather the fixture's plan froze, unlike today's configured one.
+const FROZEN_FACE_FEATHER = 0.3;
 type LipSync = (execution: unknown, userId: string, deadlineAt: number) => Promise<{ results: Map<number, Record<string, unknown>>; waiting: boolean }>;
 const RUNNER = "@worker/handlers/mini-tool/run-lip-sync.js";
 /** The real runner, loaded by name. @returns It. */
@@ -279,7 +281,7 @@ async function seed(overrides: Record<string, unknown> = {}): Promise<Fixture> {
       { personId: "person-1", detectionNumber: 1, anchor: { frameIndex: 12, pts: 0.48 }, anchorFaceBox: { x: 0.25, y: 0.2, width: 0.2, height: 0.3 } },
       { personId: "person-3", detectionNumber: 3, anchor: { frameIndex: 12, pts: 0.48 }, anchorFaceBox: { x: 0.625, y: 0.4, width: 0.125, height: 0.2 } },
     ].map((person) => ({ ...person, stepKeys: lipsyncPersonStepKeys(PLAN, person, CLIPS) })),
-    tracking: { model: "sam3-video-rle" }, cropSize: 512,
+    tracking: { model: "sam3-video-rle" }, cropSize: 512, faceFeather: FROZEN_FACE_FEATHER,
     container: { containerClass: "MiniToolContainerStd4", precheckSeconds: 300, size: { instance_type: "standard-4", vcpu: 4, memory_gib: 12, disk_gb: 20 },
       prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
       limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, startSeconds: 3, encode: { crf: 18, preset: "medium" }, chunkRetries: 2,
@@ -483,6 +485,8 @@ describe("lip-sync step bodies after track submits (§97 D21; execution design �
       // The clip streams its frames and carries no disk budget (execution design paragraph before §9.4).
       expect(c).toMatchObject({ cropSize: 512, timeline: { duration: 2, videoDuration: 3.84, syncMode: "cut_off" } });
       expect(c).not.toHaveProperty("rawBytes");
+      // The clip is encoded at the plan's frozen container encode, as the composite's target is.
+      expect(c).toMatchObject({ encode: (f.execution.container as { encode: unknown }).encode });
       expect(clip.outputs[0]).toMatchObject({ storageKey: `${videoPresentationWorkKeyFor(SOURCE_KEY, clip.jobId)}.mp4`, contentType: "video/mp4" });
       // Times are exact rationals, as every recipe carries them (§97 D20-1 lipsync_stem shape).
       const s = stem.outputs[0]!.recipe as { rows: { inputId: string; startTime: Exact }[]; duration: Exact };
@@ -551,6 +555,14 @@ describe("lip-sync step bodies after track submits (§97 D21; execution design �
     const composites = jobsOf("lipsync_composite");
     expect(composites.length).toBeGreaterThan(0);
     for (const job of composites) expect((job.outputs[0]!.recipe as { rawDiskBytes?: number }).rawDiskBytes).toBe(FROZEN_RAW_DISK_BYTES);
+  });
+
+  it("LC06d gives every composite chunk the face feather the plan froze, not today's configured one (DD §7.2 step 6)", async () => {
+    const f = await seed(); await drive(f);
+    const composites = jobsOf("lipsync_composite");
+    expect(composites.length).toBeGreaterThan(0);
+    expect(getMiniToolsConfig().executions["video.lip-sync"]?.face_feather).not.toBe(FROZEN_FACE_FEATHER);
+    for (const job of composites) expect((job.outputs[0]!.recipe as { feather?: number }).feather).toBe(FROZEN_FACE_FEATHER);
   });
 
   it("LC06b decodes in each composite chunk only the source frames it shows (execution design paragraph before §9.4)", async () => {

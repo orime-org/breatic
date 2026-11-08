@@ -131,3 +131,36 @@ describe("the GL class's render rate (§97 D26-2)", () => {
     expect(miniToolsConfigSchema.safeParse(withRate(rate)).success).toBe(false);
   });
 });
+
+// The lip-sync composite feathers each face's edge by a fraction of its shorter side (multi-person lip-sync DD §7.2 step 6);
+// the fraction is configured under the lip-sync block and frozen into a run's plan at admission.
+describe("the lip-sync face feather", () => {
+  /**
+   * The configured snapshot with the lip-sync block's face feather set, or removed.
+   * @param feather - The fraction, or undefined to leave it out.
+   * @returns The config.
+   */
+  const withFeather = (feather: unknown): Record<string, unknown> => {
+    const config = structuredClone(getMiniToolsConfig()) as unknown as Record<string, unknown> & { executions: Record<string, Record<string, unknown>> };
+    const lipSync = config.executions["video.lip-sync"]!;
+    delete lipSync.face_feather;
+    if (feather !== undefined) lipSync.face_feather = feather;
+    return config;
+  };
+  /**
+   * The parsed face feather.
+   * @param config - The config.
+   * @returns The lip-sync block's face feather.
+   */
+  const featherOf = (config: Record<string, unknown>): unknown =>
+    (miniToolsConfigSchema.parse(config).executions["video.lip-sync"] as unknown as Record<string, unknown>).face_feather;
+
+  it("LFF01 defaults to a tenth of the face's shorter side and keeps a configured fraction", () => {
+    expect(featherOf(withFeather(undefined))).toBe(0.1);
+    expect(featherOf(withFeather(0.25))).toBe(0.25);
+  });
+
+  it.each([-0.1, 1.5, "0.1"])("LFF02 refuses a face feather of %s", (feather) => {
+    expect(miniToolsConfigSchema.safeParse(withFeather(feather)).success).toBe(false);
+  });
+});

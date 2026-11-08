@@ -69,6 +69,9 @@ const lipSyncSchema = containerExecutionSchema.extend({
   tracking: z.strictObject({ model: z.string().min(1), ...durationRange }).refine((tracking) => tracking.max_duration_seconds > tracking.min_duration_seconds),
   max_people: z.number().int().positive(),
   max_dialogues: z.number().int().positive(),
+  // The composite's feathered face edge, as a fraction of the face's shorter side (DD §7.2 step 6: feather(face) ∩ tracked
+  // foreground); frozen into a run's plan at admission.
+  face_feather: z.number().min(0).max(1).default(0.1),
 });
 
 // Chunked encoding (design §5.4): encode jobs run only on standard-4, so the encoder's rates are configured once, for it.

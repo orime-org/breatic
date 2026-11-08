@@ -253,3 +253,26 @@ describe("the lip-sync faces container failures (§97 D17-7, D18-3)", () => {
     expect(miniToolPlanJobReportSchema.safeParse(report).success).toBe(true);
   });
 });
+
+// The lip-sync clip and composite carry their plan's frozen encode and face feather (execution design §9.2, §9.3): the clip
+// is encoded at the plan's container encode, as the composite's target is, and the composite feathers each face's edge by
+// the fraction admission froze from config/mini-tools.yaml.
+describe("the lip-sync clip encode and composite feather", () => {
+  const TABLE = { schemaVersion: 1, timescale: 25, runs: [{ start: 0, count: 50, step: 1, duration: 1 }] };
+  const TIMELINE = { duration: 2, videoDuration: 2, syncMode: "cut_off" };
+  const clip = (): Recipe => ({ kind: "lipsync_clip", inputId: SOURCE_A, faces: SOURCE_B, track: RLE, cropSize: 512, timeline: TIMELINE, table: TABLE, encode: { crf: 18, preset: "medium" } });
+  const composite = (): Recipe => ({ kind: "lipsync_composite", ...windowShape, timeline: TIMELINE, table: TABLE,
+    persons: [{ result: RESULT, faces: SOURCE_B, track: RLE, cropSize: 512 }], rawDiskBytes: 1_000_000, feather: 0.1 });
+
+  it.each([
+    ["without an encode", { encode: undefined }], ["with a crf above 51", { "encode.crf": 52 }], ["with an unknown preset", { "encode.preset": "fastest" }],
+  ])("LR01 refuses a clip %s", (_name, edits) => {
+    refuses(clip(), changed(clip(), edits));
+  });
+
+  it.each([
+    ["without a feather", { feather: undefined }], ["with a negative feather", { feather: -0.1 }], ["with a feather above 1", { feather: 1.5 }],
+  ])("LR02 refuses a composite %s", (_name, edits) => {
+    refuses(composite(), changed(composite(), edits));
+  });
+});
