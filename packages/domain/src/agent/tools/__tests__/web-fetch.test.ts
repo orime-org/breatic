@@ -506,6 +506,47 @@ describe("a page the reader cut at its byte cap (plan §9 S)", () => {
 });
 
 describe("where a slice is cut (plan §13.2 row 9)", () => {
+  // Plan §15 rows 1 and 2: the cut moves only when a link crosses it, to that
+  // link's end, whatever characters the link holds; text with no link across
+  // the cut is cut at the share.
+  it("moves a cut that falls inside a link holding Chinese to the link's end", async () => {
+    const link = "https://zh.wikipedia.org/wiki/\u5317\u4eac\u5e02";
+    const before = `${"word ".repeat(13)}see `;
+    // The cut falls right after the first Chinese character of the link.
+    expect(before.length + "https://zh.wikipedia.org/wiki/".length + 1).toBe(100);
+    const full = `${before}${link} and then the rest of the page goes on for a good while longer than this.`;
+
+    const answer = await fetchWith(turn(), { pages: [{ url: A }] }, reader({ [A]: okPage(full) }));
+
+    const end = before.length + link.length;
+    expect(answer.pages[0]!.text?.endsWith(link)).toBe(true);
+    expect(answer.pages[0]).toMatchObject({ start: 0, end, next_start: end });
+    expect(answer.pages[0]!.links).toContain(link);
+  });
+
+  it("cuts twenty pages of minified JSON exactly at their shares, within web_fetch_max_chars", async () => {
+    fetchConfig.web_fetch_max_chars = 80_000;
+    const urls = Array.from({ length: 20 }, (_, i) => `https://json${String(i)}.example/data`);
+    const json = JSON.stringify({
+      items: Array.from({ length: 600 }, (_, i) => ({ id: i, name: `item${String(i)}`, tags: ["a", "b"], ok: true })),
+    });
+    expect(json).not.toMatch(/\s/);
+    expect(json.length).toBeGreaterThan(8_000);
+
+    const answer = await fetchWith(
+      turn(),
+      { pages: urls.map((url) => ({ url })) },
+      reader(Object.fromEntries(urls.map((url) => [url, okPage(json)]))),
+    );
+
+    const share = Math.floor(80_000 / 20);
+    for (const page of answer.pages) {
+      expect(page).toMatchObject({ status: "ok", start: 0, end: share, next_start: share });
+      expect(page.text).toHaveLength(share);
+    }
+    expect(answer.pages.reduce((sum, page) => sum + (page.text?.length ?? 0), 0)).toBeLessThanOrEqual(80_000);
+  });
+
   // Plan §14 row 5: the cut moves only across ASCII non-space characters, so
   // a page of Chinese with no spaces is cut where its share ends.
   it("cuts twenty pages of Chinese with no spaces exactly at their shares, within web_fetch_max_chars", async () => {

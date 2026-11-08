@@ -1,12 +1,17 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 // Run inside the built page reader image (inner#1664), offline: a local origin
-// serves an article, a redirect to it, a two-page PDF, a missing page and the
-// pages of plan §9 rows T and W (a CSP page, an XML page, an empty app shell, a
-// page its script writes, a download past the size limit, a page that never
-// stops running), a plain-text file, a JSON file and a PDF download sent with a
-// type other than application/pdf, and the service in /app/server.mjs reads them with its own
-// browser.
+// serves samples and the service in /app/server.mjs reads them with its own
+// browser. The samples: an article, a redirect to it, a two-page PDF, a missing
+// page; a CSP page, an XML page, an empty app shell, a page its script writes,
+// a download past the size limit, a page that never stops running; a
+// plain-text file, a GBK text, a JSON file, a PDF download sent as
+// application/x-pdf, a PDF sent as text/plain; a PNG with no type, UTF-8 text
+// with no charset, an RSS feed, a CSV download, a latin1 CSV with no charset, a
+// JavaScript file; a 503 and a 403 that arrive as downloads; an HTML page that
+// declares a length past the limit; two articles that go on to a large
+// download after they load (by script and by meta refresh); and a malformed
+// request to the service itself.
 //   docker run --rm --network none -v "$PWD/scripts/ingest-web-reader-smoke.mjs:/tmp/web-reader-smoke.mjs:ro" \
 //     --entrypoint node <image> /tmp/web-reader-smoke.mjs
 import assert from 'node:assert/strict';
@@ -81,6 +86,15 @@ const RENDERED = `<!doctype html><html><head><title>Rendered</title></head><body
     '${'Each line of this story is plain text worth keeping. '.repeat(8)}</p></article>';
 });</script></body></html>`;
 // Its parser never reaches the end of the head.
+// Plan section 15 rows 4 and 7: an article that, once it has loaded, sends
+// the browser on to a large download; the article is what is read.
+const LEAVING_PARAGRAPH = 'The harbour master posts the evening tide times on the board beside the ferry gate.';
+const LEAVING_BODY = `<article><h2>Before the download</h2><p>${LEAVING_PARAGRAPH} ` +
+  `${'Each line of this story is plain text worth keeping. '.repeat(8)}</p></article>`;
+const LEAVES_BY_SCRIPT = `<!doctype html><html><head><title>Leaves by script</title></head><body>${LEAVING_BODY}` +
+  "<script>setTimeout(() => { location.href = '/big.bin'; }, 50);</script></body></html>";
+const LEAVES_BY_REFRESH = '<!doctype html><html><head><title>Leaves by refresh</title>' +
+  `<meta http-equiv="refresh" content="0;url=/big.bin"></head><body>${LEAVING_BODY}</body></html>`;
 const BUSY = '<!doctype html><html><head><title>Busy</title><script>for (;;) {}</script></head><body><p>Never shown</p></body></html>';
 // Markdown-looking text a plain-text file holds, which must come back unescaped.
 const PLAIN_LINES = ['# Install', '* run `pnpm i`', '/\\d+/'];
@@ -111,11 +125,6 @@ const MAX_BYTES = 20 * 1024 * 1024;
 const CHUNK = Buffer.alloc(1024 * 1024);
 
 /**
- * Send a 30 MiB download slowly, a mebibyte every half second, so that
- * reading it whole would take 15 s: only a reader that stops at the declared
- * length answers quickly.
- */
-/**
  * Send an HTML page that declares a length past the limit, slowly, so that
  * only a reader that stops at the declared length answers quickly.
  */
@@ -129,6 +138,11 @@ async function sendBigPage(res) {
   res.end();
 }
 
+/**
+ * Send a 30 MiB download slowly, a mebibyte every half second, so that
+ * reading it whole would take 15 s: only a reader that stops at the declared
+ * length answers quickly.
+ */
 async function sendBigDownload(res) {
   res.writeHead(200, {
     'content-type': 'application/octet-stream',
@@ -150,6 +164,8 @@ const origin = createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-security-policy': "script-src 'self'" }).end(CSP_ARTICLE);
   } else if (req.url === '/notes.xml') res.writeHead(200, { 'content-type': 'application/xml' }).end(XML);
   else if (req.url === '/shell') res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(SHELL);
+  else if (req.url === '/leaves-by-script') res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(LEAVES_BY_SCRIPT);
+  else if (req.url === '/leaves-by-refresh') res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(LEAVES_BY_REFRESH);
   else if (req.url === '/rendered') res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(RENDERED);
   else if (req.url === '/busy') res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(BUSY);
   else if (req.url === '/big.bin') void sendBigDownload(res);
@@ -237,7 +253,7 @@ try {
   assert.equal(missing.status, 'unreachable', 'missing page: unreachable');
   assert.equal(missing.httpStatus, 404);
 
-  // Plan §9 rows N, F, Q: a page whose policy forbids inline scripts, a
+  // Plan section 9 rows N, F, Q: a page whose policy forbids inline scripts, a
   // document with no body, an app shell with nothing to read, and a page its
   // own script writes once the document is parsed.
   const { body: kinds } = await read(['/csp', '/notes.xml', '/shell', '/rendered']);
@@ -276,14 +292,23 @@ try {
   const binaryWords = binaryPdf.text.replace(/\s+/g, ' ');
   for (const line of PDF_PAGES) assert.ok(binaryWords.includes(line), `pdf sent as text: "${line}" read`);
 
-  // Plan §9 row K: a download whose declared length is past the limit ends
+  // Plan section 9 row K: a download whose declared length is past the limit ends
   // at its headers, long before the 15 s the whole file would take.
   const big = await read(['/big.bin'], { maxBytes: MAX_BYTES });
   assert.equal(big.body.pages[0].status, 'too_large', `big download: too_large, got ${big.body.pages[0].status}`);
   assert.ok(big.ms < 5000, `big download: answered in ${big.ms} ms, not after reading it whole`);
 
-  // Plan §9 row O: a page that never stops running ends at its own page
+  // Plan section 9 row O: a page that never stops running ends at its own page
   // timeout, not at the call's deadline a minute away.
+  // Plan section 15 rows 4 and 7: the size check applies only while the page
+  // itself is arriving; a download the page starts after it loaded leaves the
+  // article as it was read.
+  const { body: leaving } = await read(['/leaves-by-script', '/leaves-by-refresh'], { maxBytes: MAX_BYTES });
+  for (const [label, page] of [['by script', leaving.pages[0]], ['by refresh', leaving.pages[1]]]) {
+    assert.equal(page.status, 'ok', `article that leaves ${label}: read, got ${page.status}`);
+    assert.ok(page.text.replace(/\s+/g, ' ').includes(LEAVING_PARAGRAPH), `article that leaves ${label}: its text kept`);
+  }
+
   const busy = await read(['/busy'], { pageTimeoutMs: 3000 });
   assert.equal(busy.body.pages[0].status, 'too_slow', `busy page: too_slow, got ${busy.body.pages[0].status}`);
   assert.ok(busy.ms < 6000, `busy page: answered in ${busy.ms} ms`);
@@ -335,7 +360,8 @@ try {
   console.log('Web reader smoke passed: article to Markdown, redirect followed, two-page PDF read, 404 unreachable, ' +
     'CSP page, XML page, empty app shell, script-written page, plain text, GBK text, JSON, x-pdf download, ' +
     'PDF sent as text, PNG with no type, UTF-8 text with no charset, RSS feed, CSV download, oversized download, ' +
-    'busy page, the service\'s own 500, latin1 CSV, JavaScript, failure downloads and an oversized HTML page.');
+    'busy page, the service\'s own 500, latin1 CSV, JavaScript, failure downloads, an oversized HTML page and ' +
+    'two articles that leave for a download.');
   process.exit(0);
 } catch (error) {
   console.error(error);
