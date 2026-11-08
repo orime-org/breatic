@@ -58,12 +58,15 @@ const proposeDocumentEdit = makeProposeDocumentEdit();
  * gets `NO_TOOL_CONTEXT`, which vouches for no media address at all.
  */
 export type ToolContext = AskUserContext & ToolPictureContext & RequestSpaceContentContext & {
-  /** Whether a link is one the conversation holds, which is all `web_fetch` reads (inner#1664). */
-  pageUrlAllowed?: (url: string) => boolean;
+  /**
+   * The spelling the conversation recorded for a link, or undefined when it
+   * does not hold it; `web_fetch` reads only those, in that spelling (inner#1664).
+   */
+  pageUrlFor?: (url: string) => string | undefined;
 };
 
 /** The context a tool gets when its caller has none: no media is vouched for. */
-export const NO_TOOL_CONTEXT: ToolContext = { mediaUrlAllowed: () => false, pageUrlAllowed: () => false };
+export const NO_TOOL_CONTEXT: ToolContext = { mediaUrlAllowed: () => false, pageUrlFor: () => undefined };
 
 /**
  * Complete mapping of tool name to tool instance.
