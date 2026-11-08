@@ -220,8 +220,6 @@ export type {
   ProposalNodeType,
   CanvasProposal,
   DocumentProposal,
-  SceneGenerationAnswer,
-  SceneGenerationBody,
   SceneGenerationOrigin,
   SceneGenerationProposal,
   ProposalRefused,
@@ -258,7 +256,6 @@ export {
   canvasProposalSchema,
   documentProposalSchema,
   SCENE_GENERATION_ORIGINS,
-  sceneGenerationBodySchema,
   sceneGenerationProposalSchema,
   hasWords,
   occurrences,
@@ -351,6 +348,7 @@ export {
   CONVERSATION_TITLE_MAX_CHARS,
   PROJECT_NAME_MAX_CHARS,
   projectNameSchema,
+  sceneGenerationBodySchema,
 } from "@shared/schemas/index.js";
 
 export type {
@@ -386,6 +384,8 @@ export type {
   ChatCreateConversationInput,
   ChatRenameConversationInput,
   ChatSetModelInput,
+  SceneGenerationAnswer,
+  SceneGenerationBody,
 } from "@shared/schemas/index.js";
 
 export {

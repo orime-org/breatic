@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The shapes of a 3D generation (inner#1691): what the 3D Space's dialog
- * submits, what the server answers, and what the agent proposes.
+ * What the agent proposes for a 3D generation (inner#1691), and where a
+ * generation was started. The dialog's request and the server's answer are
+ * HTTP shapes, in `schemas/api.ts`.
  *
  * The agent's tool answers with a proposal; the card in the chat column draws it, and
  * the 3D Space in front opens its generate dialog filled with it. It names no
@@ -43,28 +44,3 @@ export const sceneGenerationProposalSchema = z.object({
 
 /** A whole proposal, as {@link sceneGenerationProposalSchema} describes it. */
 export type SceneGenerationProposal = z.infer<typeof sceneGenerationProposalSchema>;
-
-/** What the generation dialog submits. */
-export const sceneGenerationBodySchema = z.object({
-  mode: z.enum(THREE_D_GENERATION_MODES),
-  /** `tasks.model` is varchar(100). */
-  model: z.string().min(1).max(100),
-  prompt: z.string().max(8192).optional(),
-  // The settings, `negative_prompt` among them; each is judged against the
-  // model's own declarations, so the shape here only bounds the values.
-  params: z.record(z.string().max(64), z.union([z.string().max(8192), z.number(), z.boolean(), z.null()])),
-  // The views in front, left, back, right order. How many the model takes is
-  // its rule, said with its name when broken; the cap here only bounds work.
-  image_asset_ids: z.array(z.string().uuid()).max(16).optional(),
-  origin: z.enum(SCENE_GENERATION_ORIGINS),
-});
-
-/** A submission, as {@link sceneGenerationBodySchema} describes it. */
-export type SceneGenerationBody = z.infer<typeof sceneGenerationBodySchema>;
-
-/** What a submission answers: the task, its row, and whether the job was queued. */
-export interface SceneGenerationAnswer {
-  task_id: string;
-  row_id: string;
-  status: "pending" | "failed";
-}
