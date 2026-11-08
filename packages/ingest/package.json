@@ -8,7 +8,7 @@
     "deploy:worker": "pnpm --filter @breatic/shared build && wrangler deploy --env production",
     "test": "vitest run",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p container/tsconfig.json"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p container/tsconfig.json && tsc --noEmit -p web-reader/tsconfig.json"
   },
   "dependencies": {
     "@breatic/shared": "workspace:*",

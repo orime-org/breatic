@@ -40,6 +40,7 @@ import {
 } from "@breatic/shared";
 import * as Sentry from "@sentry/cloudflare";
 import { fromOurBackend } from "@ingest/backend-secret.js";
+import { readPages, type WebReaderEnv } from "@ingest/web-reader-route.js";
 import { JOB_PATH, readJob, submitJob, type JobsEnv } from "@ingest/jobs/routes.js";
 import {
   LONG_MEDIA_JOB_PATH,
@@ -98,6 +99,7 @@ export { MediaContainer } from "@ingest/media-container.js";
 export { MiniToolContainerStd1, MiniToolContainerStd4 } from "@ingest/jobs/mini-tool-container.js";
 export { LongMediaContainer } from "@ingest/jobs/long-media-container.js";
 export { LongMediaJobTestObject } from "@ingest/jobs/long-media-container.js";
+export { WebReaderContainer } from "@ingest/web-reader-container.js";
 
 /**
  * `/uploads/{uploadId}/parts/{n}`. The part number is captured as digits so
@@ -121,7 +123,7 @@ const ALLOWED_METHODS = "PUT, OPTIONS";
 const COMPLETE_PATH = /^\/uploads\/([^/]+)\/complete$/;
 
 /** What wrangler binds into the Worker. */
-export interface Env extends MediaEnv, MonitoringEnv, JobsEnv, LongMediaRoutesEnv {
+export interface Env extends MediaEnv, MonitoringEnv, JobsEnv, LongMediaRoutesEnv, WebReaderEnv {
   BUCKET: R2Bucket;
   /** Signs the ticket we verify, and authenticates what we send back. */
   INGEST_SHARED_SECRET: string;
@@ -148,6 +150,7 @@ const REQUIRED_SETTINGS = [
   "MINI_TOOL_STD1",
   "MINI_TOOL_STD4",
   "LONG_MEDIA",
+  "WEB_READER",
 ] as const;
 
 /**
@@ -1455,6 +1458,10 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   if (request.method === "POST" && pathname === "/jobs") {
     return submitJob(request, env);
+  }
+
+  if (request.method === "POST" && pathname === "/read-pages") {
+    return readPages(request, env);
   }
 
   if (request.method === "POST" && pathname === "/long-media/jobs") {

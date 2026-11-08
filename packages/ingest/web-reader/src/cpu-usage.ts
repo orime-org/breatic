@@ -1,15 +1,15 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-/** The CPU time the reader's container used (inner#1664). */
+/** The CPU time the container used, as its cgroup reports it (inner#1664). */
 
 /**
- * The `usage_usec` a cgroup v2 `cpu.stat` file reports.
- * @param cpuStat - The file's contents.
- * @returns Microseconds, or null when the line is missing or unreadable.
- * @throws {Error} Always, until implemented.
+ * The `usage_usec` line of a cgroup v2 `cpu.stat`.
+ * @param cpuStat - The file's text.
+ * @returns The microseconds of CPU used, or null when the file does not say.
+ * @throws {never} Never.
  */
 export function cpuUsecOf(cpuStat: string): number | null {
-  void cpuStat;
-  throw new Error("not implemented: cpuUsecOf");
+  const found = /^usage_usec (\d+)$/m.exec(cpuStat);
+  return found === null ? null : Number(found[1]);
 }

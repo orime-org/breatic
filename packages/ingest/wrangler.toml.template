@@ -20,8 +20,11 @@ compatibility_date = "2026-03-10"
 # `AsyncLocalStorage`, which needs this flag. The SDK is imported whether or not
 # a DSN is set, so a copy of this file without the flag does not start: bundling
 # only warns, and then the runtime refuses to load the Worker with
-# `No such module "node:async_hooks"`. Flags inherit into `[env.production]`.
-compatibility_flags = ["nodejs_compat"]
+# `No such module "node:async_hooks"`. `/read-pages` reads the request's signal
+# to stop the page reader when its caller goes, which needs
+# `enable_request_signal` before the 2026-11-17 compatibility date. Flags
+# inherit into `[env.production]`.
+compatibility_flags = ["nodejs_compat", "enable_request_signal"]
 
 # The bucket the browser's bytes land in. Bound directly rather than reached
 # over the S3 API: a binding needs no credentials in the Worker, and reading an
@@ -144,6 +147,25 @@ name = "LONG_MEDIA"
 class_name = "LongMediaContainer"
 
 [exports.LongMediaContainer]
+type = "durable-object"
+storage = "sqlite"
+
+# The page reader web_fetch runs (inner#1664): a Chromium headless shell, one
+# instance per call, destroyed when the call ends. standard-2 read 20 pages in
+# 41.7 s where standard-1 ran out of time.
+[[containers]]
+class_name = "WebReaderContainer"
+image = "./web-reader/Dockerfile"
+image_build_context = "../.."
+instance_type = "standard-2"
+max_instances = <how many page reads may run at once; start at 10>
+image_vars = { DEV_COPY = "<the same name as in the MediaContainer block>" }
+
+[[durable_objects.bindings]]
+name = "WEB_READER"
+class_name = "WebReaderContainer"
+
+[exports.WebReaderContainer]
 type = "durable-object"
 storage = "sqlite"
 
@@ -292,5 +314,20 @@ name = "LONG_MEDIA"
 class_name = "LongMediaContainer"
 
 [env.production.exports.LongMediaContainer]
+type = "durable-object"
+storage = "sqlite"
+
+[[env.production.containers]]
+class_name = "WebReaderContainer"
+image = "./web-reader/Dockerfile"
+image_build_context = "../.."
+instance_type = "standard-2"
+max_instances = 10
+
+[[env.production.durable_objects.bindings]]
+name = "WEB_READER"
+class_name = "WebReaderContainer"
+
+[env.production.exports.WebReaderContainer]
 type = "durable-object"
 storage = "sqlite"
