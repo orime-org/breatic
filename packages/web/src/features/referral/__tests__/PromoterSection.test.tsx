@@ -334,7 +334,7 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
   });
 
   it('closes the application of a rejected applicant when applications close', async () => {
-    const rejected: AccountReferral = { ...OPEN, promoter: { state: 'rejected', note: null } };
+    const rejected: AccountReferral = { ...OPEN, promoter: { state: 'rejected', decidedAt: '2026-11-07T08:00:00.000Z', note: null } };
     const user = userEvent.setup();
     api.get.mockResolvedValue(rejected);
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
