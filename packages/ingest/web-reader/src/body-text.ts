@@ -107,8 +107,27 @@ export function recoverUtf8(text: string, contentType: string | null, characterS
 }
 
 /**
+ * The text of a file whose response named no charset: by its byte order mark
+ * (UTF-8, UTF-16LE, UTF-16BE), else as strict UTF-8, else as windows-1252,
+ * the WHATWG fallback, which maps every byte.
+ * @param bytes - The file.
+ * @returns The text.
+ */
+function textWithoutCharset(bytes: Uint8Array): string {
+  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) return new TextDecoder("utf-8").decode(bytes);
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return new TextDecoder("utf-16le").decode(bytes);
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return new TextDecoder("utf-16be").decode(bytes);
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder("windows-1252").decode(bytes);
+  }
+}
+
+/**
  * A downloaded file's text, when its response names a text type: decoded in
- * the charset it names, UTF-8 when it names none or one there is no decoder for.
+ * the charset it names (UTF-8 when there is no decoder for it), or, when it
+ * names none, as `textWithoutCharset` reads it.
  * @param bytes - The file.
  * @param contentType - The response's `content-type` header, or null.
  * @returns The text, or null when the type is not text.
@@ -116,9 +135,11 @@ export function recoverUtf8(text: string, contentType: string | null, characterS
  */
 export function textOfDownload(bytes: Uint8Array, contentType: string | null): string | null {
   if (contentType === null || !isTextType(mediaTypeOf(contentType))) return null;
+  const charset = charsetOf(contentType);
+  if (charset === undefined) return textWithoutCharset(bytes);
   let decoder: TextDecoder;
   try {
-    decoder = new TextDecoder(charsetOf(contentType) ?? "utf-8");
+    decoder = new TextDecoder(charset);
   } catch (err) {
     if (!(err instanceof RangeError)) throw err;
     decoder = new TextDecoder("utf-8");
