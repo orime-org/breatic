@@ -68,7 +68,8 @@ export class WebReaderContainer extends Container {
     });
     let starting: Promise<void> | undefined;
     try {
-      await this.schedule(new Date(request.deadlineAt + DESTROY_MARGIN_MS), "expireRead", {});
+      // A stop while the destroy is being scheduled ends the read here, before any start.
+      await Promise.race([this.schedule(new Date(request.deadlineAt + DESTROY_MARGIN_MS), "expireRead", {}), ended]);
       const startedAt = Date.now();
       // Waits until the service listens on `defaultPort`, so the read is not sent to a closed port.
       starting = this.startAndWaitForPorts();
