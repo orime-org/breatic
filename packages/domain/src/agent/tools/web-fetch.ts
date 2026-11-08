@@ -178,6 +178,24 @@ function failedLine(page: FetchedPage): string {
 }
 
 /**
+ * The lines of a call's failed pages, one per page: a page asked again in the
+ * call ended the same way and is named once.
+ * @param failed - The failed pages, in the order asked.
+ * @returns The lines.
+ */
+function failedLines(failed: readonly FetchedPage[]): string {
+  const named = new Set<string>();
+  return failed
+    .flatMap((page) => {
+      const key = pageLinkKey(page.url);
+      if (named.has(key)) return [];
+      named.add(key);
+      return [failedLine(page)];
+    })
+    .join("\n");
+}
+
+/**
  * One label line of a block, or none when the page has no value for it.
  * @param name - The label.
  * @param value - The value.
@@ -244,7 +262,7 @@ export function renderFetchForModel(answer: FetchAnswer): string {
       ...read.map(renderPage),
     );
   }
-  if (failed.length > 0) parts.push(`\nNot read:\n${failed.map(failedLine).join("\n")}`);
+  if (failed.length > 0) parts.push(`\nNot read:\n${failedLines(failed)}`);
   return parts.join("\n");
 }
 
@@ -508,7 +526,7 @@ export function makeFetchTool(numbers: CitationNumbers, pageUrlFor: (url: string
       });
 
       if (readCount === 0) {
-        const said = `None of these pages could be read:\n${pages.map(failedLine).join("\n")}`;
+        const said = `None of these pages could be read:\n${failedLines(pages.filter((_, i) => isFirst(i)))}`;
         const statuses = new Set(
           pages.flatMap((page) =>
             page.status === "not_in_conversation" ? [] : [page.status as keyof typeof USER_LINE],
