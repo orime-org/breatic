@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Which of a canvas node's fields an over-limit canvas keeps (inner#1413).
@@ -16,12 +16,12 @@ import type { CanvasNodeFields, ParamDescriptor } from '@breatic/shared';
 import type { NodeView } from '@web/data/yjs/node-view';
 import { nodeNameOf } from '@web/spaces/canvas/attach-nodes';
 
-/** What a field is to the reader: who the node is, what it points at, what it says, or none of these. */
+/** What a field is to the user: who the node is, what it points at, what it says, or none of these. */
 export type FieldClass = 'identity' | 'reference' | 'content' | 'other';
 
 /**
  * How a node field is kept. Besides a class: `byKind` when the same key means
- * different things on different kinds; `idle` for what the reader picked,
+ * different things on different kinds; `idle` for what the user picked,
  * kept only when nothing would run; `perMode` for a text stored once per
  * mode, kept for the mode in effect; `shots` for the multi-shot mode's shots;
  * `each` for an array whose elements are judged by {@link ARRAY_FIELD_RULES}.
@@ -113,7 +113,7 @@ export const ARRAY_FIELD_RULES: Readonly<Record<'shots' | 'replies' | 'focusImag
   attachments: { id: 'identity', url: 'reference', name: 'content', mimeType: 'other', size: 'other', uploadedAt: 'other' },
 };
 
-/** A text the reader wrote, and where it sits in a slim entry. */
+/** A text the user wrote, and where it sits in a slim entry. */
 export interface TextAt {
   readonly path: ReadonlyArray<string | number>;
   readonly text: string;
@@ -197,7 +197,7 @@ function nameOf(type: string, data: Record<string, unknown>): string {
 
 /**
  * The run settings as a slim entry keeps them: a free text, and the text
- * fields of each entry of a list, are what the reader wrote; everything else
+ * fields of each entry of a list, are what the user wrote; everything else
  * is a choice and goes whole.
  * @param params - The settings.
  * @param descriptors - What the model says each setting is, when known.

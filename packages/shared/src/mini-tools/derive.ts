@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What the web, the server and the worker read off the registry (inner#888
@@ -31,7 +31,7 @@ export interface MiniToolSnapshot {
   readonly source: { readonly url: string; readonly duration?: number };
   readonly slots: Readonly<Record<string, MiniToolSlotValue | readonly MiniToolSlotValue[] | undefined>>;
   /**
-   * Where what the reader drew was uploaded: a mask tool's mask, sent beside
+   * Where what the user drew was uploaded: a mask tool's mask, sent beside
    * the source, or a sketch tool's composite, sent in place of it.
    */
   readonly drawing?: { readonly mask: string } | { readonly image: string };
@@ -194,7 +194,7 @@ export interface SizeTierOption {
   readonly usable: boolean;
 }
 
-/** The tier picked when the reader has not chosen one. */
+/** The tier picked when the user has not chosen one. */
 const DEFAULT_SIZE_TIER = "4K";
 
 /**
@@ -234,7 +234,7 @@ export function tieredParamKeys(spec: MiniToolSpec): string[] {
 }
 
 /**
- * The tier a run takes when the reader has not picked one: 4K when it can be
+ * The tier a run takes when the user has not picked one: 4K when it can be
  * used, otherwise the first that can.
  * @param options - The tiers on the source.
  * @returns The tier's label, or undefined when none enlarges the source.

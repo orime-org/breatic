@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import {
   applyTabMove,
@@ -26,11 +26,11 @@ export interface TabState {
   /** The tab whose Space the page is showing, null only when the strip is empty. */
   activeId: string | null;
   /**
-   * Whether this strip is the reader's own doing, and so worth storing.
+   * Whether this strip is the user's own doing, and so worth storing.
    *
    * False for a strip that changed because Spaces arrived or left: dropping
    * the tab of a Space somebody deleted is not a choice, and storing what it
-   * leaves behind would record an empty strip as "the reader closed every
+   * leaves behind would record an empty strip as "the user closed every
    * tab". The record then answers the next visit with an empty strip, where
    * the rule for a list whose Spaces are all gone is the newest Space
    * (user 2026-09-16). Leaving the record alone keeps the deleted ids in it,
@@ -128,7 +128,7 @@ function restoredOpenIds(
  * opened, because a Space somebody else created is not a tab of mine.
  *
  * A strip emptied this way stays empty for the rest of the visit, and so does
- * one the account emptied before it left: refilling it in front of the reader
+ * one the account emptied before it left: refilling it in front of the user
  * would take back a choice they made, and an empty tab bar costs a click on
  * the drawer. What the two leave behind differs — see `persist`.
  * @param state - The state as it stands.

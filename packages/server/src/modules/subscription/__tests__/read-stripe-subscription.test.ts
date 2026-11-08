@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Reading a Stripe subscription into the row we store (#106 section 5.2 and
@@ -17,7 +17,7 @@
  * lookup answers both.
  *
  * An unpaid upgrade and an unpaid renewal both leave an open invoice, and the
- * two owe the reader different sentences.
+ * two owe the user different sentences.
  *
  * What Stripe charges is compared against what our own price list says. The
  * two are meant to be the same figure; a price id pasted into the wrong slot,
@@ -294,5 +294,26 @@ describe("readStripeSubscription — a price that disagrees with ours", () => {
     );
     expect(read.ok).toBe(false);
     expect(!read.ok && read.reason === "priceDisagreement" && read.actual.cents).toBeNull();
+  });
+});
+
+describe("readStripeSubscription — the first invoice's amount (inner#1868 §6)", () => {
+  it("reads what the first invoice charged before tax", () => {
+    const read = readStripeSubscription(
+      stripeSub({ latest_invoice: { status: "paid", billing_reason: "subscription_create", total_excluding_tax: 1599 } }),
+      "u-1",
+    );
+    expect(read.ok && read.firstInvoiceAmountCents).toBe(1599);
+  });
+
+  it.each([
+    ["an upgrade invoice", { status: "paid", billing_reason: "subscription_update", total_excluding_tax: 4200 }],
+    ["a renewal invoice", { status: "paid", billing_reason: "subscription_cycle", total_excluding_tax: 1999 }],
+    ["a first invoice with no amount", { status: "paid", billing_reason: "subscription_create", total_excluding_tax: null }],
+    ["an unexpanded invoice", "in_123"],
+    ["no invoice", null],
+  ])("has no first-invoice amount for %s", (_label, latest) => {
+    const read = readStripeSubscription(stripeSub({ latest_invoice: latest }), "u-1");
+    expect(read.ok && read.firstInvoiceAmountCents).toBeNull();
   });
 });

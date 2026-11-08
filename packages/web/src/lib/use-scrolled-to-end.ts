@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 
@@ -13,7 +13,7 @@ interface ScrolledToEndOptions {
    *
    * Read only to notice that it changed. Coming into view happens once, and a
    * page that does not fill the window leaves the end in view for good -- no
-   * second crossing, so nothing more is ever asked for and the reader has
+   * second crossing, so nothing more is ever asked for and the user has
    * nothing left to scroll. A fresh watcher reports where things stand as it
    * starts, so rebuilding it when rows arrive is what asks again while the end
    * is still there. It stops on its own: the last page turns `enabled` off.
@@ -25,7 +25,7 @@ interface ScrolledToEndOptions {
    * Changes what is watched, not just when. An end already in view stays in
    * view when an attempt fails -- nothing moved -- so a watcher for it would
    * report the same thing the instant it started, and asking again would be
-   * the failure's own doing rather than the reader's. While this is true the
+   * the failure's own doing rather than the user's. While this is true the
    * end is not watched at all; a scroll toward the end is.
    */
   failed?: boolean;
@@ -45,7 +45,7 @@ interface ScrolledToEndRefs {
 }
 
 /**
- * Ask for more as the reader reaches the end of a scrolling list.
+ * Ask for more as the user reaches the end of a scrolling list.
  *
  * What is watched is an element after the last row coming into view, not a
  * scroll offset: an offset has to be compared against a height, and the height
@@ -101,7 +101,7 @@ export function useScrolledToEnd({
     if (failed) {
       let last = viewport.scrollTop;
       /**
-       * The reader has moved toward the end, which is them asking again.
+       * The user has moved toward the end, which is them asking again.
        * Moving back is not: it is also what the browser does on its own when
        * the failure row comes in shorter than the rows it replaces.
        */
@@ -134,7 +134,7 @@ export function useScrolledToEnd({
 /**
  * How far before the end of the list to start fetching the next page.
  *
- * Enough that the rows usually arrive before the reader reaches where they go,
+ * Enough that the rows usually arrive before the user reaches where they go,
  * and not so much that a list barely taller than its window asks for more the
  * moment it is opened.
  */

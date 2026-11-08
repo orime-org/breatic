@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The button on the top-right corner of the cell the pointer is over (inner#1126
@@ -50,7 +50,7 @@ import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { viewOf } from '@web/spaces/document/document-editor-view';
 
 /**
- * Puts the button on the top-right corner of the part of its cell the reader
+ * Puts the button on the top-right corner of the part of its cell the user
  * can see. The cell's clipping ancestors — the table's scroll frame, the
  * body's scroll area — can cut it; the button follows the cut edge in, and is
  * hidden when the visible part has no room for it.
@@ -183,7 +183,7 @@ export function DocumentTableCellButton({
               aria-label={t('spaces.document.table.cellMenu')}
               data-testid='doc-table-cell-button'
               className='flex size-5 items-center justify-center rounded-chrome-sm border border-border bg-popover [&_svg]:size-3'
-              // The caret stays where the reader left it: a press here does not
+              // The caret stays where the user left it: a press here does not
               // take the focus from the body.
               onMouseDown={(event) => {
                 event.preventDefault();

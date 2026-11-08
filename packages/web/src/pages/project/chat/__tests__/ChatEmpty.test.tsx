@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -75,7 +75,7 @@ describe('ChatEmpty', () => {
     expect(line.className).toContain('text-balance');
   });
 
-  it('marks the capability line with the reader language so it breaks between phrases', () => {
+  it('marks the capability line with the user language so it breaks between phrases', () => {
     render(<ChatEmpty />);
     const line = screen.getByText(/I can find material/);
     expect(line).toHaveAttribute('lang', 'en');

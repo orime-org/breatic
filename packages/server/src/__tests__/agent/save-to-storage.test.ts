@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The agent's save, as the server runs it (inner#1315): the gates the canvas
@@ -15,11 +15,11 @@ import type * as DomainModule from "@breatic/domain";
 const checkRateLimit = vi.fn();
 const assertAccess = vi.fn();
 const assertStorageAllowance = vi.fn();
-const transferReaderUrlToStorage = vi.fn();
+const transferUserUrlToStorage = vi.fn();
 const noteIngestSideEffects = vi.fn();
 const log = { warn: vi.fn(), error: vi.fn(), info: vi.fn() };
 
-class ReaderUrlTransferError extends Error {
+class UserUrlTransferError extends Error {
   constructor(
     readonly reason: string,
     readonly reported?: string,
@@ -36,7 +36,7 @@ vi.mock("@breatic/core", async (importOriginal) => ({
 }));
 vi.mock("@breatic/domain", async (importOriginal) => ({
   ...(await importOriginal<typeof DomainModule>()),
-  backendUploadService: { transferReaderUrlToStorage, ReaderUrlTransferError },
+  backendUploadService: { transferUserUrlToStorage, UserUrlTransferError },
 }));
 vi.mock("@server/config/rate-limits.js", () => ({ getRateLimit: () => ({ max: 30, windowSeconds: 60 }) }));
 vi.mock("@server/modules/project/project.service.js", () => ({ assertAccess }));
@@ -66,7 +66,7 @@ beforeEach(() => {
   checkRateLimit.mockResolvedValue({ allowed: true });
   assertAccess.mockResolvedValue(undefined);
   assertStorageAllowance.mockResolvedValue(undefined);
-  transferReaderUrlToStorage.mockResolvedValue(STORED);
+  transferUserUrlToStorage.mockResolvedValue(STORED);
 });
 
 const save = saveToStorageFor({ projectId: "p1", userId: "u1" });
@@ -94,16 +94,16 @@ describe("saveToStorageFor", () => {
     expect(checkRateLimit).toHaveBeenCalledWith(expect.anything(), [{ key: "ingest-url:u1", max: 30, windowSeconds: 60 }]);
     expect(assertAccess).toHaveBeenCalledWith("p1", "u1", "editor");
     expect(assertStorageAllowance).toHaveBeenCalledWith("p1", "upload");
-    expect(transferReaderUrlToStorage).toHaveBeenCalledWith(LINK, { projectId: "p1", actingUserId: "u1" }, stop.signal);
+    expect(transferUserUrlToStorage).toHaveBeenCalledWith(LINK, { projectId: "p1", actingUserId: "u1" }, stop.signal);
     expect(noteIngestSideEffects).toHaveBeenCalledWith(STORED.storageKey, STORED);
     expect(saved).toEqual({ url: STORED.fileUrl, mimeType: "image/jpeg", width: 500, height: 375 });
-    const order = [checkRateLimit, assertAccess, assertStorageAllowance, transferReaderUrlToStorage].map(
+    const order = [checkRateLimit, assertAccess, assertStorageAllowance, transferUserUrlToStorage].map(
       (fn) => fn.mock.invocationCallOrder[0] ?? 0,
     );
     expect(order).toEqual([...order].sort((a, b) => a - b));
   });
 
-  it("logs a gate failing on our side as an error, with the turn's project and reader, and rethrows it", async () => {
+  it("logs a gate failing on our side as an error, with the turn's project and user, and rethrows it", async () => {
     const down = new Error("db down");
     assertAccess.mockRejectedValue(down);
 
@@ -119,10 +119,10 @@ describe("saveToStorageFor", () => {
     expect(err).toBeInstanceOf(SaveRefused);
     expect((err as InstanceType<typeof SaveRefused>).kind).toBe("rate_limited");
     expect(log.warn).toHaveBeenCalledWith(expect.objectContaining({ action: "ingest-url", key: "u1" }), "rate_limit_hit");
-    expect(transferReaderUrlToStorage).not.toHaveBeenCalled();
+    expect(transferUserUrlToStorage).not.toHaveBeenCalled();
   });
 
-  it.each([403, 404])("refuses a reader with no edit access (%s)", async (status) => {
+  it.each([403, 404])("refuses a user with no edit access (%s)", async (status) => {
     assertAccess.mockRejectedValue(new AppError(status, "no"));
 
     const err = await refusalOf(save(LINK));
@@ -136,11 +136,11 @@ describe("saveToStorageFor", () => {
     const err = await refusalOf(save(LINK));
 
     expect((err as InstanceType<typeof SaveRefused>).kind).toBe("storage_full");
-    expect(transferReaderUrlToStorage).not.toHaveBeenCalled();
+    expect(transferUserUrlToStorage).not.toHaveBeenCalled();
   });
 
-  it("refuses a link that did not land, at warn for the reader's own link", async () => {
-    transferReaderUrlToStorage.mockRejectedValue(new ReaderUrlTransferError("source_unreachable"));
+  it("refuses a link that did not land, at warn for the user's own link", async () => {
+    transferUserUrlToStorage.mockRejectedValue(new UserUrlTransferError("source_unreachable"));
 
     const err = await refusalOf(save(LINK));
 
@@ -151,8 +151,8 @@ describe("saveToStorageFor", () => {
 
   // No answer from the Worker is the Worker or the line to it going away (inner#1367).
   it("lets no answer from the Worker through as a failure on our side", async () => {
-    const failure = new ReaderUrlTransferError(INGEST_NO_ANSWER);
-    transferReaderUrlToStorage.mockRejectedValue(failure);
+    const failure = new UserUrlTransferError(INGEST_NO_ANSWER);
+    transferUserUrlToStorage.mockRejectedValue(failure);
 
     const err = await refusalOf(save(LINK));
 
@@ -161,8 +161,8 @@ describe("saveToStorageFor", () => {
   });
 
   it("logs a failure on our side as an error and lets it through, never as a refusal of the link", async () => {
-    const failure = new ReaderUrlTransferError("store_failed");
-    transferReaderUrlToStorage.mockRejectedValue(failure);
+    const failure = new UserUrlTransferError("store_failed");
+    transferUserUrlToStorage.mockRejectedValue(failure);
 
     const err = await refusalOf(save(LINK));
 
@@ -172,7 +172,7 @@ describe("saveToStorageFor", () => {
   });
 
   it("logs the type the Worker reported with a failure over it", async () => {
-    transferReaderUrlToStorage.mockRejectedValue(new ReaderUrlTransferError("type_not_reported", "text/html"));
+    transferUserUrlToStorage.mockRejectedValue(new UserUrlTransferError("type_not_reported", "text/html"));
 
     await refusalOf(save(LINK));
 
@@ -181,7 +181,7 @@ describe("saveToStorageFor", () => {
 
   it("logs anything else as an error and rethrows it", async () => {
     const boom = new Error("db down");
-    transferReaderUrlToStorage.mockRejectedValue(boom);
+    transferUserUrlToStorage.mockRejectedValue(boom);
 
     const err = await refusalOf(save(LINK));
 
@@ -193,7 +193,7 @@ describe("saveToStorageFor", () => {
     const stop = new AbortController();
     stop.abort();
     const aborted = new DOMException("aborted", "AbortError");
-    transferReaderUrlToStorage.mockRejectedValue(aborted);
+    transferUserUrlToStorage.mockRejectedValue(aborted);
 
     const err = await refusalOf(save(LINK, stop.signal));
 

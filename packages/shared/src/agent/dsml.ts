@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * DSML markup taken out of an Agent reply.
@@ -8,7 +8,7 @@
  * are not valid JSON the provider cannot turn the block into a call, so it
  * hands the markup back as reply text next to a call whose arguments are
  * `{}`. That call is rejected and the model retries; the markup is only
- * noise a reader should not see, and it would be stored and sent back to the
+ * noise a user should not see, and it would be stored and sent back to the
  * model with the rest of the reply.
  *
  * The block always closes the model's message, so everything from its opener

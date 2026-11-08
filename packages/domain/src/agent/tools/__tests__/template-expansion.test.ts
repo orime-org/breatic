@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A proposed node naming a template and one of its keys starts from that
@@ -57,6 +57,10 @@ function expandTemplate(node: ProposalNode & { template: Tag }, at: NodeLabel, t
   const place = templatePlace(tag, rest, templates);
   return "ok" in place ? place : expandAt(place, rest, at);
 }
+
+/** The pool sentence of a node asked for shots, and of one asked for a prompt. */
+const SHOTS_POOL = " Each node the shots @ goes into the pool. ";
+const PROMPT_POOL = " Each node the prompt @s goes into the pool. ";
 
 const SHEET_ANCHOR: Tag = { id: "fixture-sheet" };
 const SKETCH: Tag = { id: "fixture-sheet", key: "sketch" };
@@ -134,9 +138,14 @@ describe("expandTemplate", () => {
     expect(reason).not.toContain("📎");
   });
 
-  it("refuses a multi_shot generate node with no shots as sending no prompt", () => {
+  it("asks a multi_shot generate node with no shots for its shots", () => {
     const out = expandTemplate({ role: "generate", type: "video", name: "Clip", template: { id: "fixture-shots" } }, AT, FIXTURES);
     expect(out).toMatchObject({ ok: false, refusal: "template-no-prompt" });
+    const reason = out.ok ? "" : out.reason;
+    expect(reason).toContain("sends no shots");
+    expect(reason).toContain("write the shots.");
+    expect(reason).toContain(SHOTS_POOL);
+    expect(reason).not.toContain("prompt @s");
   });
 
   it("takes a multi_shot generate node's shots as its prompt", () => {
@@ -146,6 +155,51 @@ describe("expandTemplate", () => {
       ok: true,
       node: { role: "generate", type: "video", name: "Clip", mode: "multi_shot", model: SHOT_MODEL, params: {}, shots },
     });
+  });
+
+  it("asks a shot-list template's node the agent moved to another mode for a prompt, not shots", () => {
+    const out = expandTemplate({ role: "generate", type: "video", name: "Clip", template: { id: "vertical-15s-quick-tip" }, mode: "t2v" }, AT);
+    expect(out).toMatchObject({ ok: false, refusal: "template-no-prompt" });
+    const reason = out.ok ? "" : out.reason;
+    expect(reason).toContain("sends no prompt");
+    expect(reason).not.toContain("sends no shots");
+    expect(reason).toContain("write a prompt.");
+    expect(reason).not.toContain("write the shots.");
+    // The mode moved off the template's, so no pool sentence follows.
+    expect(reason).not.toContain("goes into the pool");
+  });
+
+  it("asks a shot-list template's node that keeps multi_shot for its shots, its pool sentence about the shots", () => {
+    const out = expandTemplate({ role: "generate", type: "video", name: "Clip", template: { id: "vertical-15s-quick-tip" } }, AT);
+    expect(out).toMatchObject({ ok: false, refusal: "template-no-prompt" });
+    const reason = out.ok ? "" : out.reason;
+    expect(reason).toContain("sends no shots");
+    expect(reason).toContain("write the shots.");
+    expect(reason).toContain(SHOTS_POOL);
+    expect(reason).not.toContain("sends no prompt");
+    expect(reason).not.toContain("write a prompt.");
+    expect(reason).not.toContain("prompt @s");
+  });
+
+  it("asks a template node without shots that the agent moved to multi_shot for shots, not a prompt", () => {
+    const out = expandTemplate({ role: "generate", type: "video", name: "Clip", template: { id: "game-ui-livestream" }, mode: "multi_shot" }, AT);
+    expect(out).toMatchObject({ ok: false, refusal: "template-no-prompt" });
+    const reason = out.ok ? "" : out.reason;
+    expect(reason).toContain("sends no shots");
+    expect(reason).not.toContain("sends no prompt");
+    expect(reason).toContain("write the shots.");
+    expect(reason).not.toContain("write a prompt.");
+    expect(reason).not.toContain("prompt @s");
+  });
+
+  it("asks a template node without shots that keeps its mode for a prompt, its pool sentence about the prompt", () => {
+    const out = expandTemplate({ role: "generate", type: "video", name: "Clip", template: { id: "game-ui-livestream" } }, AT);
+    expect(out).toMatchObject({ ok: false, refusal: "template-no-prompt" });
+    const reason = out.ok ? "" : out.reason;
+    expect(reason).toContain("sends no prompt");
+    expect(reason).toContain("write a prompt.");
+    expect(reason).toContain(PROMPT_POOL);
+    expect(reason).not.toContain("the shots @");
   });
 
   it("refuses a template the registry it is given does not have, naming the ones it does", () => {

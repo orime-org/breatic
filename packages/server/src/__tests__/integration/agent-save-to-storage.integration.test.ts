@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The agent's save against the real gates and ledger (inner#1315).
@@ -340,7 +340,7 @@ describe("the agent's save — when the link does not land", () => {
       (e: unknown) => e,
     );
 
-    expect(err).toBeInstanceOf(backendUploadService.ReaderUrlTransferError);
+    expect(err).toBeInstanceOf(backendUploadService.UserUrlTransferError);
     expect(err).toMatchObject({ reason: "store_failed" });
     expect((await grantsOf(projectId))[0]!.voided_at).not.toBeNull();
   });

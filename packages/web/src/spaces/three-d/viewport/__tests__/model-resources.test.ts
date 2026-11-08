@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, expect, it, vi } from 'vitest';
-import { Bone, BoxGeometry, Group, Mesh, MeshStandardMaterial, Skeleton, SkinnedMesh, Texture } from 'three';
-import { ModelResourceCache } from '@web/spaces/three-d/viewport/model-resources';
+import { Bone, BoxGeometry, BufferGeometry, Group, InstancedMesh, LineBasicMaterial, LineSegments, Mesh, MeshStandardMaterial, Points, Skeleton, SkinnedMesh, Texture } from 'three';
+import { ModelResourceCache, acquireMeasured } from '@web/spaces/three-d/viewport/model-resources';
 
 /** Make a real Three model whose ownership can be inspected.
  * @throws {never} Never.
@@ -54,6 +54,47 @@ describe('scene model resource ownership (inner#1689)', () => {
     expect(templateDispose).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    ['line', (): LineSegments | Points => new LineSegments(new BufferGeometry(), new LineBasicMaterial())],
+    ['point', (): LineSegments | Points => new Points(new BufferGeometry(), new LineBasicMaterial())],
+  ] as const)('gives copies their own %s material and releases its geometry at the last holder', async (_kind, create) => {
+    const root = new Group();
+    const primitive = create();
+    root.add(primitive);
+    const geometryDispose = vi.spyOn(primitive.geometry, 'dispose');
+    const templateDispose = vi.spyOn(primitive.material as LineBasicMaterial, 'dispose');
+    const cache = new ModelResourceCache(vi.fn().mockResolvedValue(root));
+    const a = cache.acquire({ kind: 'asset', assetId: 'lines' });
+    const b = cache.acquire({ kind: 'asset', assetId: 'lines' });
+    const [first, second] = await Promise.all([a.ready, b.ready]);
+    const firstPrimitive = first.children[0] as LineSegments | Points;
+    expect(firstPrimitive.material).not.toBe((second.children[0] as LineSegments | Points).material);
+    const firstDispose = vi.spyOn(firstPrimitive.material as LineBasicMaterial, 'dispose');
+    a.release();
+    expect(firstDispose).toHaveBeenCalledTimes(1);
+    expect(templateDispose).toHaveBeenCalledTimes(0);
+    b.release();
+    expect(geometryDispose).toHaveBeenCalledTimes(1);
+    expect(templateDispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the per-instance buffers of instanced meshes with each copy and with the template', async () => {
+    const root = new Group();
+    const template = new InstancedMesh(new BoxGeometry(), new MeshStandardMaterial(), 3);
+    root.add(template);
+    const templateDisposed = vi.fn();
+    template.addEventListener('dispose', templateDisposed);
+    const cache = new ModelResourceCache(vi.fn().mockResolvedValue(root));
+    const lease = cache.acquire({ kind: 'asset', assetId: 'forest' });
+    const copy = (await lease.ready).children[0] as InstancedMesh;
+    expect(copy.instanceMatrix).not.toBe(template.instanceMatrix);
+    const copyDisposed = vi.fn();
+    copy.addEventListener('dispose', copyDisposed);
+    lease.release();
+    expect(copyDisposed).toHaveBeenCalledTimes(1);
+    expect(templateDisposed).toHaveBeenCalledTimes(1);
+  });
+
   it('releases a late model instead of attaching it after its holder left', async () => {
     const root = model();
     const dispose = vi.spyOn(mesh(root).geometry, 'dispose');
@@ -101,6 +142,43 @@ describe('scene model resource ownership (inner#1689)', () => {
     expect(load).toHaveBeenCalledTimes(2);
     cache.dispose();
     retried.release();
+  });
+
+
+  it('measures a placement from the shared template, and the viewport reuses it without loading again', async () => {
+    const root = model();
+    root.children[0]!.position.set(2, 0.5, -1);
+    const geometryDispose = vi.spyOn(mesh(root).geometry, 'dispose');
+    const load = vi.fn().mockResolvedValue(root);
+    const cache = new ModelResourceCache(load);
+    const placing = acquireMeasured(cache, { kind: 'asset', assetId: 'model' });
+    await expect(placing.bounds).resolves.toEqual({ center: [2, 0.5, -1], min: [1.5, 0, -1.5] });
+    const viewport = cache.acquire({ kind: 'asset', assetId: 'model' });
+    placing.release();
+    await viewport.ready;
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(geometryDispose).not.toHaveBeenCalled();
+    viewport.release();
+    expect(geometryDispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases a placement still held when the viewport goes away', async () => {
+    const root = model();
+    const geometryDispose = vi.spyOn(mesh(root).geometry, 'dispose');
+    const cache = new ModelResourceCache(vi.fn().mockResolvedValue(root));
+    const placing = acquireMeasured(cache, { kind: 'asset', assetId: 'model' });
+    await placing.bounds;
+    cache.dispose();
+    expect(geometryDispose).toHaveBeenCalledTimes(1);
+    placing.release();
+    expect(geometryDispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects the placement of a model that cannot load', async () => {
+    const cache = new ModelResourceCache(vi.fn().mockRejectedValue(new Error('unreachable')));
+    const placing = acquireMeasured(cache, { kind: 'asset', assetId: 'model' });
+    await expect(placing.bounds).rejects.toThrow('unreachable');
+    placing.release();
   });
 
 });

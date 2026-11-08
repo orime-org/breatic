@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The face a link shows when there is nothing to type: its address, and the
@@ -20,8 +20,8 @@ import { isLinkAddressFollowable } from '@web/spaces/document/document-link';
  * The address line and the two buttons beside it.
  * @param props - The address to show and what the two presses do.
  * @param props.href - The address, as stored on the link.
- * @param props.onEdit - Run when the reader asks to change the address.
- * @param props.onRemove - Run when the reader asks to take the link off.
+ * @param props.onEdit - Run when the user asks to change the address.
+ * @param props.onRemove - Run when the user asks to take the link off.
  * @returns The row.
  */
 export function DocumentLinkRead({

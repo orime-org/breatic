@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * inner#1126 A17: a table with a row short of cells stays short until a
@@ -295,7 +295,18 @@ describe('dragging a line of a table with a missing cell (A7, A17)', () => {
     startTableDrag(view, 'column', cellOf(editor, 'a2'));
     const cell = view.nodeDOM(cellOf(editor, 'b2')) as Element;
     cell.dispatchEvent(new MouseEvent('dragover', { bubbles: true, cancelable: true, clientX: 205, clientY: 10 }));
-    cell.dispatchEvent(new MouseEvent('drop', { bubbles: true, cancelable: true, clientX: 205, clientY: 10 }));
+    const errors: unknown[] = [];
+    const onError = (event: ErrorEvent): void => {
+      errors.push(event.error);
+      event.preventDefault();
+    };
+    window.addEventListener('error', onError);
+    try {
+      cell.dispatchEvent(new MouseEvent('drop', { bubbles: true, cancelable: true, clientX: 205, clientY: 10 }));
+    } finally {
+      window.removeEventListener('error', onError);
+    }
+    expect(errors).toEqual([]);
 
     expect(grid(editor)[1]).toEqual(['b2', 'a2', 'c2']);
   });

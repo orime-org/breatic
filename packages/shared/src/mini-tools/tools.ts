@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Every mini-tool, in the order each modality's Tools submenu lists them
@@ -711,19 +711,5 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     ],
     sourceParam: "audio",
     sourceMany: false,
-  },
-  {
-    id: "audio.extend",
-    source: "audio",
-    run: { kind: "model", model: "sfx-1.6-extend-audio" },
-    labelKey: key("audio.extend", "label"),
-    guide: "continues the sound past its end with a part you describe",
-    icon: "Timer",
-    params: [{ key: "append_duration" }, { key: "ambience" }, { key: "double_output" }],
-    slots: [],
-    outputs: [{ modality: "audio", namePrefix: "EXTEND" }],
-    sourceParam: "audio",
-    sourceMany: false,
-    prompt: { placeholderKey: key("audio.extend", "prompt") },
   },
 ];

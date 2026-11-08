@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * That a filled slot's hover preview is actually WIRED (#1946).
@@ -17,7 +17,9 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { RenderResult } from '@testing-library/react';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { screen, fireEvent, act } from '@testing-library/react';
+
+import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
 import { AudioLines } from 'lucide-react';
 
 import { SlotTool } from '@web/spaces/canvas/generate/generate-tools';
@@ -67,7 +69,7 @@ async function hoverSlot(
   overrides: Partial<React.ComponentProps<typeof SlotTool>> = {},
 ): Promise<HTMLElement> {
   vi.useFakeTimers({ shouldAdvanceTime: true });
-  render(slotTree(overrides));
+  renderWithTooltips(slotTree(overrides));
   const btn = screen.getByTestId('slot');
   fireEvent.pointerEnter(btn);
   await act(async () => {
@@ -157,7 +159,7 @@ describe('SlotTool — the card answers the pointer, never restored focus', () =
     // only on pointer-leave or blur, so a card opened this way sits over the
     // canvas with the pointer nowhere near it until something else takes focus.
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    render(slotTree({ pick: { kind: 'audio', url: 'https://cdn/voice.m4a' } }));
+    renderWithTooltips(slotTree({ pick: { kind: 'audio', url: 'https://cdn/voice.m4a' } }));
 
     screen.getByTestId('slot').focus();
     await act(async () => {
@@ -169,7 +171,7 @@ describe('SlotTool — the card answers the pointer, never restored focus', () =
 
   it('stays shut on a focused empty slot too', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    render(slotTree({}));
+    renderWithTooltips(slotTree({}));
 
     screen.getByTestId('slot').focus();
     await act(async () => {
@@ -185,7 +187,7 @@ describe('SlotTool — nothing pops on a slot the pointer has left', () => {
 
   it('stays shut after a filled slot is hovered, left, and then cleared', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    const view = render(slotTree({ pick: AUDIO }));
+    const view = renderWithTooltips(slotTree({ pick: AUDIO }));
     const btn = screen.getByTestId('slot');
 
     // The gesture this change exists for: hovering a filled slot to preview it.
@@ -201,7 +203,7 @@ describe('SlotTool — nothing pops on a slot the pointer has left', () => {
 
   it('stays shut after an empty slot is hovered, left, filled, and cleared', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    const view = render(slotTree({}));
+    const view = renderWithTooltips(slotTree({}));
     const btn = screen.getByTestId('slot');
 
     await mouseOver(btn);

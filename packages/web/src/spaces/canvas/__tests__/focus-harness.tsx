@@ -1,7 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
-import { act, fireEvent, render } from '@testing-library/react';
+import { act, fireEvent } from '@testing-library/react';
+
+import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi } from 'vitest';
 import type * as React from 'react';
@@ -67,7 +69,7 @@ export function renderSpace(): () => void {
       <CanvasSpace projectId='p' spaceId='s' readOnly={false} />
     </QueryClientProvider>
   );
-  const r = render(tree());
+  const r = renderWithTooltips(tree());
   return () => {
     act(() => r.rerender(tree()));
   };

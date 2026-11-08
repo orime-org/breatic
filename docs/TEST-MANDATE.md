@@ -47,7 +47,7 @@
 
 `pnpm --filter @breatic/web test:smoke` 不需要任何事先配置。两档默认用 4 个 worker 并行跑(`playwright.config.ts` 的 `WORKERS`,`--workers` 可覆盖),每个 worker 按它的 `parallelIndex`(下称槽位)用自己的一对账号 A / B 和它们的 project:setup 按本轮的 worker 数逐个槽位准备，缺账号的槽位由 `scripts/seed-smoke-account.ts` 直接建账号(调服务端注册接口背后的 `authService.register`,不经 `POST /auth/register`,不占注册限流),再登录、建 studio 和 project,凭据和登录状态写进 `playwright/.auth/`(已 gitignore,`accounts.json` 按槽位分，登录状态是 `<槽位>-a.json` / `<槽位>-b.json`)。第一次跑和数据库被清空之后跑走同一条路。**只对本机**——setup 会建账号、会归档 project,所以它拒绝对着 localhost 以外的地址跑。spec 和 helper 一律从 `tests/helpers/slot.ts` 取 `test`,它打开的页面默认登录成本槽位的 A;从 `playwright/test` 直接取 `test` 会被 ESLint 拦下。
 
-服务端开着邮件时，测注册的那几条 spec(`email-case`、`signup-code`、`trial-credits`)要读寄到 Mailpit 的验证码，所以跑 smoke 的那套服务用 `pnpm dev:mailpit` 起：它起 Mailpit 并把服务端的 SMTP 指过去。用 `pnpm dev` 起的服务按 `.env` 里的发信方式寄信,Mailpit 开着也收不到。
+服务端开着邮件时，测注册的那几条 spec(`email-case`、`signup-code`、`trial-credits`、`referral-signup`)要读寄到 Mailpit 的验证码，所以跑 smoke 的那套服务用 `pnpm dev:mailpit` 起：它起 Mailpit 并把服务端的 SMTP 指过去。用 `pnpm dev` 起的服务按 `.env` 里的发信方式寄信,Mailpit 开着也收不到。
 
 同一套服务同一时间只跑一轮 playwright(见 2.3 末尾)。一轮里的几个 worker 各用各的账号，互不干扰。
 
@@ -76,6 +76,8 @@
 | `pnpm --filter @breatic/web test:consent` | `tests/consent/`:`playwright.consent.config.ts` 把前端按不带和带厂商变量各构建一份、用 `vite preview` 起服务，带 `@no-vendors` 标签的用例跑前一份、其余跑后一份;后端用本地已起的 server,CI 的 `consent-network-audit` 作业由它自己起 |
 
 子门用 1 个 worker 跑，全部落在槽位 0:生成类用例要花积分，买过积分包的是槽位 0 的账号，其余槽位的新账号只有试用积分(`config/pricing.yaml` 的 `trial_grant`)。
+
+**打付费模型的用例用最低成本的设置:同一模式里能验证这条用例的最便宜的模型，最低的分辨率和画质、最短的时长、最少的张数，用不到的附加项(如生成音频)关掉。** 这些用例要证明的是链路跑得通，结果的画质和长短不影响判定，多花的钱什么也没多验。只有用例验的正是某个设置本身(4k 输出能落盘、某个时长的计费、某个模型的专属能力)才用那个值，并在那一行旁边写明它验的是什么。判定题:**这条用例的断言，换成最低档还成立吗?** 成立就用最低档。
 
 **每个 PR 跑这次改动相关的 smoke 和 visual,不跑全套。** 范围按任务分支相对主分支的全部 diff 定。开跑前先列一张表:改动文件 → 运行时变没变 → 哪条 spec 的哪一步走到它，以及那一步在改动前后看到的结果有什么不同。表先给决策人看过再开跑。判据:
 

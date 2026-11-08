@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The voices a tts model offers (#1960).
@@ -27,7 +27,7 @@ export interface Voice {
   previewUrl?: string;
   /**
    * Samples by the value of the model's language param, for a voice that
-   * speaks whichever language the reader picks (Gemini's, #2156). Read before
+   * speaks whichever language the user picks (Gemini's, #2156). Read before
    * {@link Voice.previewUrl}, which stays the sample for any other value.
    */
   previewUrls?: Record<string, string>;

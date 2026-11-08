@@ -1,0 +1,206 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+import { imageDimensionsFromData } from 'image-dimensions';
+import type { SceneImportLimits } from '@breatic/shared';
+import type { ModelPackage } from '@web/spaces/three-d/model-package';
+import { loadedImageUri, readModelResource, resolveModelDependency } from '@web/spaces/three-d/model-package';
+import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
+import { loadedResources, loadedResourcesInEveryBrowser } from '@web/spaces/three-d/model-loaded-resources';
+import type { GltfDocument } from '@web/spaces/three-d/model-package';
+
+const KTX2_IDENTIFIER = [0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a];
+
+/** Everything one image check reads: the model, its decoded data URIs and the image's location for failures. */
+interface ImageRead {
+  model: ModelPackage;
+  /** Data URIs decoded during this validation; images that share an embedded buffer decode it once. */
+  decoded: Map<string, Uint8Array<ArrayBuffer>>;
+  location: string;
+}
+
+/**
+ * Resolve an image view within both the actual and declared buffer bounds.
+ * @param read - The model, the decoded data URIs and the image location.
+ * @param index - Image's declared bufferView index.
+ * @returns The original image byte view.
+ * @throws {ModelImportError} When an index, offset or declared range is invalid.
+ */
+function readImageView(read: ImageRead, index: number): Uint8Array<ArrayBuffer> {
+  const { model, location } = read;
+  const view = Number.isSafeInteger(index) && index >= 0 ? model.json.bufferViews?.[index] : undefined;
+  if (!view || !Number.isSafeInteger(view.buffer) || view.buffer < 0) throw new ModelImportError('invalid', 'Invalid model image buffer view', { detail: location });
+  const buffer = model.json.buffers?.[view.buffer];
+  if (!buffer || buffer.byteLength === undefined || !Number.isSafeInteger(buffer.byteLength) || buffer.byteLength < 0) {
+    throw new ModelImportError('invalid', 'Invalid model image buffer', { detail: location });
+  }
+  const offset = view.byteOffset ?? 0;
+  if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(view.byteLength) || view.byteLength <= 0
+    || offset > buffer.byteLength || view.byteLength > buffer.byteLength - offset) {
+    throw new ModelImportError('invalid', 'Model image view exceeds its declared buffer', { detail: location });
+  }
+  // inspectModelFiles established that every loaded buffer is readable and as long as declared.
+  return readModelResource(model, buffer.uri, location, read.decoded).subarray(offset, offset + view.byteLength);
+}
+
+/** An image's declared pixel dimensions. */
+export interface ImageSize {
+  width: number;
+  height: number;
+  /** A KTX2 image's declared mip levels, bounded by its full chain; absent for other images. */
+  levels?: number;
+}
+
+/**
+ * Read one image's declared dimensions and hold them to the edge budget.
+ * @param read - The model, the decoded data URIs and the image location.
+ * @param image - The glTF image declaration.
+ * @param limits - The texture dimension budget for this image.
+ * @returns The image's declared dimensions.
+ * @throws {ModelImportError} When the image is invalid or exceeds its dimension budget.
+ */
+function checkImage(read: ImageRead, image: NonNullable<ModelPackage['json']['images']>[number], limits: SceneImportLimits): ImageSize {
+  const { location } = read;
+  const uri = loadedImageUri(image);
+  const bytes = uri !== undefined ? readModelResource(read.model, uri, read.location, read.decoded)
+    : image.bufferView !== undefined ? readImageView(read, image.bufferView) : undefined;
+  if (!bytes) throw new ModelImportError('invalid', 'Model image has no source', { detail: location });
+  let dimensions: ImageSize | undefined;
+  if (KTX2_IDENTIFIER.every((value, index) => bytes[index] === value)) {
+    if (bytes.byteLength < 80) throw new ModelImportError('invalid', 'Truncated KTX2 image header', { detail: location });
+    const header = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    // KHR_texture_basisu admits only Basis Universal (vkFormat 0) 2D textures: no depth, at most one layer, one face.
+    if (header.getUint32(12, true) !== 0 || header.getUint32(28, true) !== 0 || header.getUint32(32, true) > 1 || header.getUint32(36, true) !== 1) {
+      throw new ModelImportError('invalid', 'Model KTX2 image is not a Basis Universal 2D texture', { detail: location });
+    }
+    const width = header.getUint32(20, true);
+    const height = header.getUint32(24, true);
+    const chain = Math.floor(Math.log2(Math.max(width, height, 1))) + 1;
+    dimensions = { width, height, levels: Math.min(Math.max(header.getUint32(40, true), 1), chain) };
+  } else dimensions = imageDimensionsFromData(bytes);
+  if (!dimensions || dimensions.width <= 0 || dimensions.height <= 0) throw new ModelImportError('invalid', 'Invalid model image metadata', { detail: location });
+  const edge = Math.max(dimensions.width, dimensions.height);
+  if (edge > limits.maxTextureEdge) {
+    throw new ModelImportError('budget', 'Model texture exceeds its configured dimension budget', { detail: location,
+      budget: { limit: 'textureEdge', allowed: limits.maxTextureEdge, actual: edge } });
+  }
+  return dimensions;
+}
+
+/**
+ * Check the dimensions of the images GLTFLoader decodes in any browser that can open the model, before the browser decodes their pixels.
+ * Every such image is held to the configured edge; the images this browser decodes are also held to this device's texture limit.
+ * A failure names the image by its file path, or by its index when the image is embedded.
+ * @param model - Checked original glTF resources.
+ * @param limits - Configured texture dimension budget, shared by every collaborator.
+ * @param deviceMaxEdge - The largest texture edge this device uploads; the configured edge when there is no device limit.
+ * @returns The declared dimensions of every checked image, by image index.
+ * @throws {ModelImportError} When an image is invalid or exceeds its dimension budget.
+ */
+export function validateModelTextureMetadata(model: ModelPackage, limits: SceneImportLimits, deviceMaxEdge = limits.maxTextureEdge): Map<number, ImageSize> {
+  const decoded = new Map<string, Uint8Array<ArrayBuffer>>();
+  const local = loadedResources(model.json, model.support).images;
+  const deviceLimits = { ...limits, maxTextureEdge: Math.min(limits.maxTextureEdge, deviceMaxEdge) };
+  // loadedResources lists only images that exist.
+  const sizes = new Map<number, ImageSize>();
+  for (const index of new Set(loadedResourcesInEveryBrowser(model.json).flatMap((resources) => [...resources.images]))) {
+    sizes.set(index, checkImage({ model, decoded, location: imageLocation(model, index) }, model.json.images![index], local.has(index) ? deviceLimits : limits));
+  }
+  return sizes;
+}
+
+/** GLTFLoader's WEBGL_FILTERS and WEBGL_WRAPPINGS tables, which it reads by property name for both filters. */
+const FILTERS: Readonly<Record<string, number>> = { 9728: 1, 9729: 1, 9984: 1, 9985: 1, 9986: 1, 9987: 1 };
+const WRAPPINGS: Readonly<Record<string, number>> = { 33071: 1, 33648: 1, 10497: 1 };
+
+/**
+ * Resolve a sampler value the way GLTFLoader looks it up in its filter or wrap table, inherited property names included.
+ * @param value - The declared sampler value.
+ * @param table - The table GLTFLoader reads.
+ * @param fallback - GLTFLoader's default when the lookup is falsy.
+ * @returns The resolved key.
+ * @throws {never} Never.
+ */
+function lookup(value: unknown, table: Readonly<Record<string, number>>, fallback: string): string {
+  return table[String(value)] ? String(value) : fallback;
+}
+
+/**
+ * Count the bytes a texture uploads with every mip level it carries or generates.
+ * Uncompressed images upload RGBA; KTX2 images count the largest desktop Basis transcode (ASTC 4x4, BC7, BC6H, ETC2 RGBA and BC3 all
+ * take 16 bytes per 4x4 block), so every device reaches the same verdict. A device with none of those formats decodes to RGBA and
+ * uploads more than this estimate.
+ * @param size - The texture's declared dimensions and, for KTX2, its declared levels.
+ * @param mipmaps - Whether an uncompressed texture generates mipmaps.
+ * @returns The byte count.
+ * @throws {never} Never.
+ */
+function uploadBytes(size: ImageSize, mipmaps: boolean): number {
+  let { width, height } = size;
+  const levels = size.levels ?? (mipmaps ? Math.floor(Math.log2(Math.max(width, height))) + 1 : 1);
+  let total = 0;
+  for (let level = 0; level < levels; level++) {
+    total += size.levels === undefined ? width * height * 4 : Math.ceil(width / 4) * Math.ceil(height / 4) * 16;
+    width = Math.max(1, Math.floor(width / 2));
+    height = Math.max(1, Math.floor(height / 2));
+  }
+  return total;
+}
+
+/**
+ * Hold the texture bytes every browser that can open the model uploads to the cumulative budget, from the declarations alone,
+ * so import and every later open reach the same verdict on every device.
+ * GLTFLoader caches one texture per image file and sampler index, whose source is the image of whichever texture requests it first,
+ * and shares one source per image index; WebGLRenderer uploads a source once per filter and wrap combination, so texture transforms
+ * and second UV sets clone a texture without another upload. A cached texture whose entries name different images counts its largest.
+ * @param json - The checked glTF document.
+ * @param sizes - The declared dimensions of every image any browser decodes, from validateModelTextureMetadata.
+ * @param limits - Configured cumulative texture budget.
+ * @throws {ModelImportError} When the textures any browser uploads exceed the cumulative budget.
+ */
+export function validateModelTextureBytes(json: GltfDocument, sizes: ReadonlyMap<number, ImageSize>, limits: SceneImportLimits): void {
+  const { textures, samplers } = json as { textures?: ({ sampler?: unknown } | null)[] | null; samplers?: Record<string, Record<string, unknown> | null> | null };
+  // ponytail: an image used as colour and as data through a cloned texture uploads once per colour space and is counted once;
+  // count per material slot colour space if such models exceed the budget on devices.
+  // ponytail: a cached texture whose entries name different images counts as its own upload of the largest, even when GLTFLoader
+  // takes the source of an image another texture already uploads, so such a model can be refused although it fits;
+  // follow GLTFLoader's request order if such models are refused near the budget.
+  const total = Math.max(...loadedResourcesInEveryBrowser(json).map((resources) => {
+    const cached = new Map<string, { sampler: unknown; images: Set<number> }>();
+    for (const { texture, image } of resources.textures) {
+      // inspectModelFiles refused every used texture that names no image.
+      if (image === undefined) continue;
+      const declared = json.images![image]!;
+      const sampler = textures?.[texture]?.sampler;
+      const key = `${declared.uri || declared.bufferView}:${sampler}`;
+      const entry = cached.get(key) ?? { sampler, images: new Set<number>() };
+      entry.images.add(image);
+      cached.set(key, entry);
+    }
+    const uploads = new Map<string, number>();
+    for (const [key, { sampler: index, images }] of cached) {
+      const sampler = (samplers || {})[String(index)] || {};
+      const min = lookup(sampler.minFilter, FILTERS, '9987');
+      const source = images.size === 1 ? `image ${[...images][0]}` : `texture ${key}`;
+      uploads.set([source, lookup(sampler.magFilter, FILTERS, '9729'), min, lookup(sampler.wrapS, WRAPPINGS, '10497'), lookup(sampler.wrapT, WRAPPINGS, '10497')].join(),
+        Math.max(...[...images].map((image) => uploadBytes(sizes.get(image)!, min !== '9728' && min !== '9729'))));
+    }
+    return [...uploads.values()].reduce((sum, bytes) => sum + bytes, 0);
+  }));
+  if (total > limits.maxTextureBytes) {
+    throw new ModelImportError('budget', 'Model textures exceed the configured cumulative budget', { detail: '',
+      budget: { limit: 'textureBytes', allowed: limits.maxTextureBytes, actual: total } });
+  }
+}
+
+/**
+ * Name an image for the user: its path when it is a file, otherwise its index.
+ * @param model - Checked original glTF resources.
+ * @param index - The image's index.
+ * @returns The resolved file path, or `images[N]` for embedded images.
+ * @throws {ModelImportError} When the image URI is malformed.
+ */
+export function imageLocation(model: ModelPackage, index: number): string {
+  const uri = loadedImageUri(model.json.images?.[index]);
+  return uri !== undefined && !uri.startsWith('data:') ? resolveModelDependency(model.entry, uri) : `images[${index}]`;
+}

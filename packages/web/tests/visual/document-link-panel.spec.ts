@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Where the link panel and the link toolbar are drawn, and what they carry.
@@ -200,7 +200,7 @@ test('link: scrolling the target away clips the panel and keeps the draft', asyn
   // makes the browser take focus away, and an address half typed into a field
   // that has lost focus is lost silently. Measured in Chromium: a clipped
   // field keeps focus and keeps its value, and the caret carries on where it
-  // was when the reader scrolls back.
+  // was when the user scrolls back.
   await openFreshDocument(page);
   await typeLongBody(page);
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home');
@@ -246,7 +246,7 @@ test('link: scrolling the target away clips the panel and keeps the draft', asyn
   expect(scrolledAway.aboveTheBody).toBe(true);
   // Clipped, so nothing of it is at its own centre any more.
   expect(scrolledAway.reachableAtItsCentre).toBe(false);
-  // Out of sight, and still holding everything the reader put into it.
+  // Out of sight, and still holding everything the user put into it.
   await expect(input).toBeFocused();
   await expect(input).toHaveValue('a.example/half');
 
@@ -260,7 +260,7 @@ test('link: scrolling the target away clips the panel and keeps the draft', asyn
 });
 
 test('link: the bar steps aside for the panel and stays away after it', async ({ page }) => {
-  // Two rules in one pass, because they are one pass for the reader: the bar
+  // Two rules in one pass, because they are one pass for the user: the bar
   // goes as the panel opens, and it does not come back when the panel closes,
   // because closing drops the selection. Held rather than caught mid-flight —
   // the bar has a 250ms debounce on selection changes, so a bar that is merely
@@ -374,7 +374,7 @@ test('link: opening lands in the field, closing hands the caret back', async ({ 
 });
 
 test('link: the toolbar comes up over the link the caret is in', async ({ page }) => {
-  // Acceptance A6. The caret route — which is also where the reader is left
+  // Acceptance A6. The caret route — which is also where the user is left
   // once a press has opened the address in the other tab.
   await openFreshDocument(page);
   await page.keyboard.type('reach this link');
@@ -673,7 +673,7 @@ test('link: the panel keeps its place while a co-editor types', async ({ page, b
     );
 
     // The peer's text has to be in this document, and the line has to have
-    // moved because of it rather than because a second reader arrived.
+    // moved because of it rather than because a second user arrived.
     await expect(
       page.locator(`${DOCUMENT_EDITOR}`),
     ).toContainText('push everything below it down the page', { timeout: 15_000 });
@@ -700,7 +700,7 @@ test('link: the toolbar keeps its link while a co-editor styles it', async ({ pa
   // The caret sits in the link the confirm just wrote, which raises the
   // toolbar by the caret route. One line up takes it out and records nothing;
   // Escape would leave the caret where it is and write a dismissal, and a link
-  // the reader dismissed with their caret inside it stays away from the hand.
+  // the user dismissed with their caret inside it stays away from the hand.
   await page.keyboard.press('ArrowUp');
   await page.mouse.move(20, 20);
   await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
@@ -855,7 +855,7 @@ test('link: the pointer knows a link a style has split in two', async ({ page })
   // toolbar by the caret route. One line down takes it out and records
   // nothing; one line up would not, because this link starts where its line
   // does. Escape would leave the caret where it is and write a dismissal, and
-  // a link the reader dismissed with their caret inside it stays away from
+  // a link the user dismissed with their caret inside it stays away from
   // the hand.
   await page.keyboard.press('ArrowDown');
   await page.mouse.move(20, 20);
@@ -886,7 +886,7 @@ test('link: the toolbar opens against the link a co-editor just moved', async ({
   // The caret sits in the link the confirm just wrote, which raises the
   // toolbar by the caret route. One line up takes it out and records nothing;
   // Escape would leave the caret where it is and write a dismissal, and a link
-  // the reader dismissed with their caret inside it stays away from the hand.
+  // the user dismissed with their caret inside it stays away from the hand.
   await page.keyboard.press('ArrowUp');
   await page.mouse.move(20, 20);
   await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
@@ -979,7 +979,7 @@ test('link: the trailing edge of a link that touches another one', async ({ page
   // toolbar by the caret route. One line down takes it out and records
   // nothing; one line up would not, because this link starts where its line
   // does. Escape would leave the caret where it is and write a dismissal, and
-  // a link the reader dismissed with their caret inside it stays away from
+  // a link the user dismissed with their caret inside it stays away from
   // the hand.
   await page.keyboard.press('ArrowDown');
   await page.mouse.move(20, 20);
@@ -998,7 +998,7 @@ test('link: the trailing edge of a link that touches another one', async ({ page
   // toolbar by the caret route. One line down takes it out and records
   // nothing; one line up would not, because this link starts where its line
   // does. Escape would leave the caret where it is and write a dismissal, and
-  // a link the reader dismissed with their caret inside it stays away from
+  // a link the user dismissed with their caret inside it stays away from
   // the hand.
   await page.keyboard.press('ArrowDown');
   await page.mouse.move(20, 20);
@@ -1048,7 +1048,7 @@ test('link: the toolbar comes up while a co-editor is typing', async ({ page, br
   // The caret sits in the link the confirm just wrote, which raises the
   // toolbar by the caret route. One line up takes it out and records nothing;
   // Escape would leave the caret where it is and write a dismissal, and a link
-  // the reader dismissed with their caret inside it stays away from the hand.
+  // the user dismissed with their caret inside it stays away from the hand.
   await page.keyboard.press('ArrowUp');
   await page.mouse.move(20, 20);
   await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
@@ -1121,7 +1121,7 @@ test('link: a dismissal holds while a co-editor writes ahead of the link', async
   // The caret sits in the link the confirm just wrote, which raises the
   // toolbar by the caret route. One line up takes it out and records nothing;
   // Escape would leave the caret where it is and write a dismissal, and a link
-  // the reader dismissed with their caret inside it stays away from the hand.
+  // the user dismissed with their caret inside it stays away from the hand.
   await page.keyboard.press('ArrowUp');
   await page.mouse.move(20, 20);
   await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
@@ -1231,7 +1231,7 @@ test('link: two touching links each answer for themselves', async ({ page }) => 
   // to the next with no sample landing off either, so nothing else ends the
   // neighbour's toolbar. Measured before the fix: the toolbar stood over `bar`
   // for as long as the pointer rested on `foo`, and Remove would have stripped
-  // `bar` — the link the reader was not pointing at.
+  // `bar` — the link the user was not pointing at.
   await openFreshDocument(page);
   await page.keyboard.type('foobar tail');
   await page.keyboard.press('Enter');
@@ -1383,7 +1383,7 @@ test('link: a keystroke inside the link the caret is in leaves the pointer its o
   );
 });
 
-test('link: the toolbar stands while the reader writes under the hand', async ({ page }) => {
+test('link: the toolbar stands while the user writes under the hand', async ({ page }) => {
   // A5 against the pointer route. The toolbar over a link the hand is resting
   // on goes when the hand leaves, and a keystroke is not the hand leaving.
   // Measured before the fix: the first character typed took the toolbar away,
@@ -1413,7 +1413,7 @@ test('link: the toolbar stands while the reader writes under the hand', async ({
     'https://a.example/stands',
     { timeout: 8_000 },
   );
-  // The reader carries on writing, on the line their caret was parked on. The
+  // The user carries on writing, on the line their caret was parked on. The
   // hand has not moved.
   await page.keyboard.type('yz');
   await page.waitForTimeout(700);
@@ -1425,7 +1425,7 @@ test('link: the toolbar stands while the reader writes under the hand', async ({
 
 test('link: a dismissal holds while the caret is parked in another link', async ({ page }) => {
   // A4. Escape takes the toolbar away without the hand moving, and what the
-  // reader dismissed covers the link their caret is parked in as well —
+  // user dismissed covers the link their caret is parked in as well —
   // otherwise the next character anyone types raises the toolbar over that
   // one, seconds after they asked for no toolbar.
   await openFreshDocument(page);

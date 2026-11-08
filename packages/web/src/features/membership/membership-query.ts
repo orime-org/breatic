@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What every account's membership answer is cached under. Invalidating it
@@ -10,11 +10,9 @@ export const MEMBERSHIP_QUERY_ROOT = ['account', 'membership'] as const;
 /**
  * The cache key the membership panel's answer lives under.
  *
- * Keyed on the account, the way the notification inbox is. Without it, one
- * account's tier and storage figures sit in the cache under a name the next
- * account signing in on this tab matches exactly — and the client is a module
- * singleton that a client-side sign-out never clears, so the second person
- * would read the first one's billing figures.
+ * Keyed on the account, the way the notification inbox is; the provider also
+ * empties the whole cache when the signed-in account changes
+ * (`QueryClientProvider`).
  * @param userId - The signed-in account, or null before it is known.
  * @returns The query key.
  */

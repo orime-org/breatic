@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The model every reading runs on (user 2026-09-19: the reader presses
+ * The model every reading runs on (user 2026-09-19: the user presses
  * Understand, nobody picks a model). Here because both ends name it: the
  * server opens the task row under this id and the task list shows the name
  * beside it. Which backend serves it stays with the domain.

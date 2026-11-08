@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The params picking a generation template in a panel puts on each of its
  * generate nodes (inner#977, inner#1345): the anchor and every upstream
  * generation it reuses.
  *
- * The same kind of write as the reader picking the node's model by hand
+ * The same kind of write as the user picking the node's model by hand
  * (`resolveModelSwitch`), with the template params laid over that model's
  * record first: every other model keeps its own record (#1948). The prompts
  * come from the template's expansion.

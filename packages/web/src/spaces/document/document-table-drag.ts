@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Dragging a table's row or column to another place in the table (inner#1126
@@ -11,7 +11,7 @@
  * edit; it is never started, so its drop handling has nothing to act on.
  *
  * The cell the drag started on is held in plugin state and carried through
- * every change — the reader's own by mapping, a change through Yjs by the
+ * every change — the user's own by mapping, a change through Yjs by the
  * element the cell is bound to (`document-table-cell-name.ts`) — so a row
  * someone else adds above it during the drag does not move a different row;
  * when that cell goes, the drag is given up. The drop
@@ -247,7 +247,7 @@ function shownRange(view: EditorView, drag: Drag): [number, number] | null {
 }
 
 /**
- * The gap the pointer of a drag event is over, among the edges the reader
+ * The gap the pointer of a drag event is over, among the edges the user
  * sees. The line is drawn at this gap and a drop lands at it, so with no edge
  * shown — the table scrolled out of view, a column wider than its frame —
  * there is neither.

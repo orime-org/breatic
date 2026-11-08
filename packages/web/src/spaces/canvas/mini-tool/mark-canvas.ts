@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The markup canvas on the node (inner#1303 §6.2), as a controller over one
  * Fabric canvas. The draft's object list is the only copy of what is drawn:
- * the reader's gestures are written back to it, one step each, and a change
+ * the user's gestures are written back to it, one step each, and a change
  * made elsewhere (undo, redo, clear, a source reset) is reconciled onto the
  * canvas object by object, dropping a text edit it changed first.
  *
@@ -546,7 +546,7 @@ export class MarkCanvasController {
   }
 
   /**
-   * Note a text the reader went into, to compare against on leaving.
+   * Note a text the user went into, to compare against on leaving.
    * @param target - The text.
    */
   private onEditEntered(target: IText): void {

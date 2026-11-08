@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /** Retained-object checks shared by signed preview and approval requests. */
 import { logger, type MaintenanceStorage } from "@breatic/core";

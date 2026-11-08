@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { afterEach, describe, expect, it } from "vitest";
 import * as Y from "yjs";
@@ -55,17 +55,17 @@ describe("scene document initialization", () => {
     const doc = new Y.Doc();
     fixtureDocuments.push(doc);
     Y.applyUpdate(doc, encodeInitialSpaceContent("3d"));
-    expect(doc.getMap("scene").toJSON()).toEqual({ formatVersion: 1 });
+    expect(doc.getMap("scene").toJSON()).toEqual({ formatVersion: 2 });
     expect(doc.getMap("objects").toJSON()).toEqual({});
     expect(doc.share.has("content")).toBe(false);
   });
 
-  it("seeds version one and exactly the two scene roots", () => {
+  it("seeds version two and exactly the two scene roots", () => {
     const doc = new Y.Doc();
     initialize(doc);
-    expect((shared as unknown as Record<string, unknown>).SCENE_FORMAT_VERSION).toBe(1);
+    expect((shared as unknown as Record<string, unknown>).SCENE_FORMAT_VERSION).toBe(2);
     expect([...doc.share.keys()].sort()).toEqual(["objects", "scene"]);
-    expect(doc.getMap("scene").toJSON()).toEqual({ formatVersion: 1 });
+    expect(doc.getMap("scene").toJSON()).toEqual({ formatVersion: 2 });
     expect(doc.getMap("objects").toJSON()).toEqual({});
     doc.destroy();
   });
@@ -76,7 +76,7 @@ describe("scene document initialization", () => {
     const restored = new Y.Doc();
     Y.applyUpdate(restored, Y.encodeStateAsUpdate(source));
     initialize(restored);
-    expect(restored.getMap("scene").toJSON()).toEqual({ formatVersion: 1 });
+    expect(restored.getMap("scene").toJSON()).toEqual({ formatVersion: 2 });
     expect(restored.getMap("objects").toJSON()).toEqual({});
     expect([...restored.share.keys()].sort()).toEqual(["objects", "scene"]);
     source.destroy(); restored.destroy();
@@ -131,7 +131,7 @@ describe("scene document initialization", () => {
     left.getMap("objects").set("left", { name: "Left" });
     expect(left.getMap("objects").toJSON()).toEqual({ left: { name: "Left" } });
     expect(right.getMap("objects").toJSON()).toEqual({});
-    expect(right.getMap("scene").toJSON()).toEqual({ formatVersion: 1 });
+    expect(right.getMap("scene").toJSON()).toEqual({ formatVersion: 2 });
     left.destroy(); right.destroy();
   });
 });

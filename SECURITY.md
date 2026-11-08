@@ -72,8 +72,8 @@ receive security fixes.
   integrated with Breatic — please report to the respective provider
 - **User-deployed self-hosted instances** — report to the operator of
   that instance
-- **User-generated content** produced through Breatic — governed by
-  [LICENSE Clause 5](./LICENSE)
+- **User-generated content** produced through Breatic — see
+  [Generated content](./README.md#generated-content)
 - **Social engineering** of Breatic contributors, maintainers, or
   team members
 - **Physical attacks** on Orime, Inc. or any infrastructure

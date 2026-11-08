@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Text mini-tool route - SSE streaming AI text operations.
@@ -11,26 +11,104 @@
 
 import { newId } from "@breatic/shared";
 import { Hono } from "hono";
+import type { StreamingApi } from "hono/utils/stream";
 import { streamUntilClientLeaves } from "@server/utils/sse-stream.js";
 import { validate } from "@server/middleware/validate.js";
-import {
-  idempotencyKeyHeaderSchema,
-  textToolSchema,
-} from "@server/routes/schemas.js";
+import { rateLimitFor } from "@server/middleware/rate-limit.js";
+import { textToolSchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { textToolService } from "@server/modules";
-import { logger } from "@breatic/core";
+import { precheckCredits, projectService, textToolService } from "@server/modules";
+import { getTextToolsConfig } from "@server/config/text-tools.js";
+import { SMALLEST_CREDIT } from "@breatic/domain";
+import { ForbiddenError, NotFoundError, ValidationError, logger } from "@breatic/core";
+import { t, TEXT_TOOL_INSTRUCTIONS_MAX } from "@breatic/shared";
 
 const textTools = new Hono<{ Variables: AuthVariables }>();
 
 textTools.use(requireAuth);
 
+/** Fields that pick from a fixed list rather than carry words. */
+const CHOICE_FIELDS = new Set(["language", "style"]);
+
+/**
+ * Every character a request asks the model to read, whichever free-text
+ * fields hold them.
+ * @param params - The request's fields.
+ * @returns Their total length.
+ */
+function wordsIn(params: Record<string, unknown>): number {
+  return Object.entries(params).reduce<number>((total, [field, value]) => {
+    if (CHOICE_FIELDS.has(field)) return total;
+    if (typeof value === "string") return total + value.length;
+    if (Array.isArray(value)) return total + value.reduce<number>((sum, item) => sum + (typeof item === "string" ? item.length : 0), 0);
+    return total;
+  }, 0);
+}
+
+/**
+ * Refuse a selection, a document, or a request as a whole longer than the
+ * budgets in `config/text-tools.yaml`. The numbers live in the yaml alone, so
+ * the check runs here rather than in the request schema (the same split as
+ * chat's `assertSayable`). The whole request may hold no more than the two
+ * budgets and the longest custom instruction together, whichever fields the
+ * words are in: as much as the dialog can send, and no more.
+ * @param params - The request's fields.
+ * @throws {ValidationError} When anything is over its budget.
+ */
+function assertWithinBudgets(params: Record<string, unknown>): void {
+  const { selection_max_chars, context_max_chars } = getTextToolsConfig();
+  const selection = typeof params.selection === "string" ? params.selection : undefined;
+  const document = typeof params.document === "string" ? params.document : undefined;
+  if (selection !== undefined && selection.length > selection_max_chars) {
+    throw new ValidationError(
+      t("server.text_tool.selection_too_long", { limit: selection_max_chars, actual: selection.length }),
+    );
+  }
+  if (document !== undefined && document.length > context_max_chars) {
+    throw new ValidationError(
+      t("server.text_tool.document_too_long", { limit: context_max_chars, actual: document.length }),
+    );
+  }
+  const total = wordsIn(params);
+  const most = selection_max_chars + context_max_chars + TEXT_TOOL_INSTRUCTIONS_MAX;
+  if (total > most) {
+    throw new ValidationError(t("server.text_tool.document_too_long", { limit: most, actual: total }));
+  }
+}
+
+/**
+ * Write one server-sent event.
+ * @param s - The stream.
+ * @param event - The event name.
+ * @param data - Its payload, sent as JSON so newlines inside text survive the frame.
+ * @returns When the frame is written.
+ */
+async function writeEvent(s: StreamingApi, event: string, data: unknown): Promise<void> {
+  await s.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
+/**
+ * `GET /mini-tools/text/config` - the budgets the browser windows its
+ * request to and the pace it shows the answer at, from
+ * `config/text-tools.yaml`.
+ */
+textTools.get("/config", (c) => {
+  const { selection_max_chars, context_max_chars, reveal_chars_per_second } = getTextToolsConfig();
+  return c.json({
+    data: {
+      selectionMaxChars: selection_max_chars,
+      contextMaxChars: context_max_chars,
+      revealCharsPerSecond: reveal_chars_per_second,
+    },
+  });
+});
+
 /**
  * `POST /mini-tools/text` - execute a text AI tool with streaming output.
  *
  * Returns an SSE stream with events:
- * - `text_delta` - incremental text chunk
+ * - `text_delta` - `{ text }`, an incremental text chunk
  * - `done` - generation complete, includes token count and credits used
  * - `aborted` - user cancelled, includes consumed tokens and credits
  * - `error` - tool execution failed
@@ -38,74 +116,69 @@ textTools.use(requireAuth);
 textTools.post(
   "/",
   validate("json", textToolSchema),
-  validate("header", idempotencyKeyHeaderSchema),
+  rateLimitFor("text-tool", "user"),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
+    const { tool, project_id: projectId, ...params } = body;
 
-    const { tool, ...params } = body;
+    // Cross-tenant guard: the project in the body must be one this user may
+    // write to, the same check chat makes before a turn.
+    try {
+      await projectService.assertAccess(projectId, user.id, "editor");
+    } catch (err) {
+      if (err instanceof NotFoundError || err instanceof ForbiddenError) {
+        logger.warn({ userId: user.id, projectId, tool }, "text_tool_forbidden");
+      }
+      throw err;
+    }
+    try {
+      assertWithinBudgets(params);
+    } catch (err) {
+      logger.warn({ userId: user.id, projectId, tool }, "text_tool_over_budget");
+      throw err;
+    }
+    await precheckCredits(projectId, user.id, SMALLEST_CREDIT);
 
-    // Idempotency: the client may send `Idempotency-Key` (per RFC draft,
-    // matches what Stripe/Square expect). When set, a retry of the same
-    // request records its usage exactly once. When absent, we fall back
-    // to a server-generated UUID - each retry then becomes a separate
-    // logical charge, which is acceptable since text tools re-generate
-    // content on every call.
-    //
-    // Read from the validated header rather than from the raw request, so
-    // the value that reaches the charge is the one the schema passed.
-    const idempotencyKey = c.req.valid("header")["idempotency-key"] ?? newId();
-
+    // The key a run is recorded and charged under is minted here for every
+    // request. A key from the client would let the same key be sent again,
+    // and the charge for a key already billed is skipped.
+    const operationKey = newId();
+    let ended = false;
     return streamUntilClientLeaves(c, async (s, stopped) => {
       for await (const event of textToolService.executeTextTool(
         user.id,
+        projectId,
         tool,
         params,
         stopped,
-        idempotencyKey,
+        operationKey,
       )) {
         if (event.type === "text_delta") {
-          // Text deltas: plain text, no JSON wrapper
-          await s.write(`event: text_delta\ndata: ${event.text}\n\n`);
-        } else {
-          // done/aborted/error: JSON with metadata
-          await s.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+          await writeEvent(s, "text_delta", { text: event.text });
+          continue;
         }
-
-        // Audit log moved from text-tool.service.ts per
-        // AGENTS.md#library-packages-do-not-log (2026-05-27 PR
-        // `feat/2026-05-27-collab-infra-resilience`).
-        if (event.type === "done") {
-          logger.info(
-            {
-              userId: user.id,
-              tool,
-              tokens: event.tokens,
-              creditsUsed: event.creditsUsed,
-            },
-            "text_tool_completed",
-          );
-        } else if (event.type === "aborted") {
-          logger.info(
-            {
-              userId: user.id,
-              tool,
-              tokens: event.tokens,
-              creditsUsed: event.creditsUsed,
-            },
-            "text_tool_aborted",
-          );
-        } else if (event.type === "error") {
-          logger.error(
-            { err: event.err, userId: user.id, tool },
-            "text_tool_error",
-          );
+        ended = true;
+        if (event.type === "error") {
+          // The cause stays in the log; the user is told the run failed.
+          await writeEvent(s, "error", { type: "error", message: t("server.text_tool.failed") });
+          logger.error({ err: event.err, userId: user.id, projectId, tool }, "text_tool_error");
+          continue;
         }
+        await writeEvent(s, event.type, event);
+        logger.info(
+          { userId: user.id, projectId, tool, tokens: event.tokens, creditsUsed: event.creditsUsed },
+          event.type === "done" ? "text_tool_completed" : "text_tool_aborted",
+        );
       }
-    }, async (err) => {
-      // A throw from the run itself bypasses the app's error handler: without
-      // this callback hono only prints it to the console.
-      logger.error({ err, userId: user.id, tool }, "text_tool_stream_failed");
+    }, async (err, s) => {
+      // A throw from the run itself bypasses the app's error handler: log it,
+      // and end the stream with an error event so the client is not left
+      // waiting for one.
+      logger.error({ err, userId: user.id, projectId, tool }, "text_tool_stream_failed");
+      if (!ended && !s.closed) {
+        await writeEvent(s, "error", { type: "error", message: t("server.text_tool.failed") });
+      }
     });
   },
 );

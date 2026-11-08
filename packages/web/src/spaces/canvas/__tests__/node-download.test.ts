@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #2108 — which nodes offer Download, and what it hands over.
  *
- * The rule under test is the reader's: a node showing content can be
+ * The rule under test is the user's: a node showing content can be
  * downloaded, an empty frame cannot. These pin
  * both halves of the answer at once, since the menu item's presence and its
  * target come from the same call.

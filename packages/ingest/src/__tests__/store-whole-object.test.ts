@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Storing bytes the Worker already holds (#209 + #210, design §4.2).
@@ -48,7 +48,7 @@ describe("storing an object whose bytes we hold", () => {
     expect(measured.sizeBytes).toBe(PNG.byteLength);
   });
 
-  it("stores the content type, which is what a reader is served", async () => {
+  it("stores the content type, which is what a user is served", async () => {
     const key = "image/2026-09-10/whole_typed.png";
 
     await storeWholeObject(env.BUCKET, key, PNG, "image/png");

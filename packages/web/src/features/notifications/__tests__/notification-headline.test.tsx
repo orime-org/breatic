@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -74,7 +74,7 @@ describe('notificationHeadline', () => {
     const projLink = screen.getByRole('link', { name: 'My Project' });
     expect(projLink).toHaveAttribute('href', '/project/my-proj-proj-9');
 
-    // Both links open in a NEW tab so the reader keeps their place in the bell
+    // Both links open in a NEW tab so the user keeps their place in the bell
     // (the popover stays open); `noopener noreferrer` for the cross-tab handoff.
     expect(actorLink).toHaveAttribute('target', '_blank');
     expect(actorLink).toHaveAttribute('rel', 'noopener noreferrer');
@@ -197,7 +197,7 @@ describe('notificationHeadline', () => {
     // Rows written before the period existed carry no `toPeriod`. Composing
     // the key from an empty string produced `membership.period.`, which
     // resolves to nothing, and an unresolved key is rendered verbatim — so
-    // the reader was shown a key name in the middle of a sentence.
+    // the user was shown a key name in the middle of a sentence.
     const tt = fakeT({
       'notifications.headline.membershipUpgradeIncomplete':
         'payment for your move to {tier} {period} was not completed',

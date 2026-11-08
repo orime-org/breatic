@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Landing an Agent's document proposal (inner#1509, design §5.4 · §5.5).
  *
- * When the reader presses a card, the proposal is checked against the
+ * When the user presses a card, the proposal is checked against the
  * document as it stands -- the block still there, its words still the ones
- * proposed on -- and written: a comment through the same function a reader's
+ * proposed on -- and written: a comment through the same function a user's
  * own comment goes through, off the undo stack like theirs; a rewrite or an
  * insert as one BlockNote write, one undo step, whose new blocks take ids
  * derived from the proposal.
@@ -54,7 +54,7 @@ type Landable = Pick<DocumentEditorHandle, 'editor' | 'undoManager'>;
  * @param id - The block id.
  * @returns The block's node (a `blockContainer`, or a table's own node) and where it starts, or null.
  */
-function blockById(doc: ProseMirrorNode, id: string): { node: ProseMirrorNode; pos: number } | null {
+export function blockById(doc: ProseMirrorNode, id: string): { node: ProseMirrorNode; pos: number } | null {
   let found: { node: ProseMirrorNode; pos: number } | null = null;
   doc.descendants((node, pos) => {
     if (found !== null) return false;
@@ -91,20 +91,29 @@ function rangesOf(doc: ProseMirrorNode, blockId: string, start: number, end: num
 }
 
 /**
+ * Where a comment's quote is in the body, read only.
+ * @param doc - The body.
+ * @param blockId - The block.
+ * @param quote - The words.
+ * @returns One range per run of text the words cover, or null when the block is gone or they no longer appear once.
+ */
+function quoteRanges(doc: ProseMirrorNode, blockId: string, quote: string): Array<{ from: number; to: number }> | null {
+  const block = blockById(doc, blockId);
+  if (block === null) return null;
+  const text = blockPlainText(block.node);
+  if (occurrences(text, quote) !== 1) return null;
+  const at = text.indexOf(quote);
+  return rangesOf(doc, blockId, at, at + quote.length);
+}
+
+/**
  * Where a comment's quote is, once it still appears once in its block.
  * @param blockId - The block.
  * @param quote - The words.
  * @returns The aim for {@link commentOn}.
  */
 function quoteAim(blockId: string, quote: string): CommentAim {
-  return (state) => {
-    const block = blockById(state.doc, blockId);
-    if (block === null) return null;
-    const text = blockPlainText(block.node);
-    if (occurrences(text, quote) !== 1) return null;
-    const at = text.indexOf(quote);
-    return rangesOf(state.doc, blockId, at, at + quote.length);
-  };
+  return (state) => quoteRanges(state.doc, blockId, quote);
 }
 
 /**
@@ -188,20 +197,66 @@ export function landedAt(handle: Pick<Landable, 'editor'>, proposal: DocumentPro
  * @param proposal - The proposal.
  * @returns The outcome to report, or null when it can land.
  */
-function blockProblem(handle: Landable, proposal: DocumentProposal): 'blockGone' | 'changed' | null {
+function blockProblem(handle: Pick<Landable, 'editor'>, proposal: DocumentProposal): 'blockGone' | 'changed' | null {
   if (proposal.blockId === null) return null;
-  const block = blockById(handle.editor.prosemirrorState.doc, proposal.blockId);
+  const { doc } = handle.editor.prosemirrorState;
+  const block = blockById(doc, proposal.blockId);
   if (block === null) return 'blockGone';
   if (blockPlainText(block.node) !== proposal.original) return 'changed';
-  if (proposal.quote !== undefined && quoteAim(proposal.blockId, proposal.quote)(handle.editor.prosemirrorState) === null) {
-    return 'changed';
-  }
+  if (proposal.quote !== undefined && quoteRanges(doc, proposal.blockId, proposal.quote) === null) return 'changed';
   return null;
 }
 
 /**
+ * What a locate press points at (inner#1646): the block a rewrite replaces or
+ * an insert goes after, a comment's quoted words in its block, or the end of
+ * the document (`blockId` null). Only what to find is kept; where it is, is
+ * read from the document each time it is drawn.
+ */
+export type SourceTarget = Readonly<{ how: 'source'; blockId: string | null; quote?: string }>;
+
+/**
+ * Where a proposal points in the document as it is now, writing nothing. The
+ * passage is still shown when it changed since the proposal, with the same
+ * check a press makes before it writes, so `changed` means a press would be
+ * refused.
+ * @param handle - The document.
+ * @param proposal - The proposal.
+ * @returns What to show and whether the passage changed, or that it is gone.
+ */
+export function sourceAt(
+  handle: Pick<Landable, 'editor'>,
+  proposal: DocumentProposal,
+): { outcome: 'located' | 'changed'; target: SourceTarget } | { outcome: 'blockGone' } {
+  const problem = blockProblem(handle, proposal);
+  if (problem === 'blockGone') return { outcome: 'blockGone' };
+  return { outcome: problem ?? 'located', target: { how: 'source', blockId: proposal.blockId, quote: proposal.quote } };
+}
+
+/**
+ * Where a located target is in the body now: its block, and a comment's quoted
+ * words while they still appear once there (otherwise the block itself). The
+ * end is the last block, which is where an insert at the end goes.
+ * @param doc - The body.
+ * @param target - What was located.
+ * @returns The block and the words' ranges, or null when the block is gone.
+ */
+export function sourceSpot(
+  doc: ProseMirrorNode,
+  target: SourceTarget,
+): { blockId: string; ranges: Array<{ from: number; to: number }> | null } | null {
+  if (target.blockId === null) {
+    const last = doc.firstChild?.lastChild;
+    return last === null || last === undefined ? null : { blockId: String(last.attrs.id), ranges: null };
+  }
+  if (blockById(doc, target.blockId) === null) return null;
+  const ranges = target.quote === undefined ? null : quoteRanges(doc, target.blockId, target.quote);
+  return { blockId: target.blockId, ranges: ranges === null || ranges.length === 0 ? null : ranges };
+}
+
+/**
  * The parts of a rewrite that go into a comment made from it: those whose
- * words are not only blanks, the rule a reader's own comment is sent by.
+ * words are not only blanks, the rule a user's own comment is sent by.
  * @param blocks - The rewrite's blocks.
  * @returns The blocks with words.
  */
@@ -243,15 +298,63 @@ function withinBodyLevels(blocks: readonly WrittenBlock[]): WrittenBlock[] {
 }
 
 /**
- * Prepares only new payload data, leaving target checks for synchronous commit.
- * @param proposal - The proposal.
+ * Markdown read into the blocks a write puts into the body: outside media
+ * left out the way a paste leaves them out, headings brought within the
+ * body's levels. Only new payload data; target checks wait for the
+ * synchronous commit.
+ * @param markdown - What is about to be written.
  * @returns Its filtered blocks and omitted media count.
  * @throws {Error} If Markdown parsing fails.
  */
-async function prepareBlocks(proposal: DocumentProposal): Promise<{ blocks: WrittenBlock[]; leftOut: number }> {
-  const parsed = await markdownBlocks(proposal.body);
-  const { blocks: kept, count } = ownMediaOnly(parsed.map((b) => b.block as WrittenBlock), await ourMediaPrefixReady());
+async function prepareWrittenBlocks(markdown: string): Promise<{ blocks: WrittenBlock[]; leftOut: number }> {
+  const parsed = await markdownBlocks(markdown);
+  return keepWritable(parsed.map((b) => b.block as WrittenBlock), await ourMediaPrefixReady());
+}
+
+/**
+ * What of some parsed blocks may be written into the body: our own media
+ * only, headings within the body's levels.
+ * @param blocks - The parsed blocks.
+ * @param ourPrefix - Where our own media live, or null when not known.
+ * @returns The blocks kept, and how many outside media were left out.
+ */
+export function keepWritable(blocks: readonly WrittenBlock[], ourPrefix: string | null): { blocks: WrittenBlock[]; leftOut: number } {
+  const { blocks: kept, count } = ownMediaOnly(blocks, ourPrefix);
   return { blocks: withinBodyLevels(kept), leftOut: count };
+}
+
+/** What `stopCapturing` is called on: the body's undo manager. */
+export interface UndoBoundary {
+  stopCapturing: () => void;
+}
+
+/**
+ * Runs one write into the body as an undo step of its own, apart from the
+ * typing just before and just after it.
+ * @param undoManager - The body's undo manager, or null for a body with none.
+ * @param write - The write.
+ * @throws {Error} Whatever the write throws.
+ */
+export function asOneUndoStep(undoManager: UndoBoundary | null, write: () => void): void {
+  undoManager?.stopCapturing();
+  try {
+    write();
+  } finally {
+    undoManager?.stopCapturing();
+  }
+}
+
+/**
+ * Why a write may not commit now, read from the lifecycle and the connection.
+ * @param admission - The current lifecycle and connection permission.
+ * @param editor - The body's editor.
+ * @returns `failed` while the lifecycle no longer admits the write or the
+ *   connection has not said whether it may write, `readOnly` when it may not, or null when the write may commit.
+ */
+export function writeRefusal(admission: ProposalAdmission, editor: Landable['editor']): 'failed' | 'readOnly' | null {
+  if (!admission.available || admission.writeAccess === 'unknown') return 'failed';
+  if (admission.writeAccess === 'denied' || !editor.isEditable) return 'readOnly';
+  return null;
 }
 
 /**
@@ -268,8 +371,7 @@ function landBlocks(handle: Landable, proposal: DocumentProposal, blocks: readon
   const doc = editor.prosemirrorState.doc;
   const written = proposalBlocks(blocks, doc, blockInTableCell(doc, targetId), proposal.proposalId);
   if (written.length === 0) return;
-  undoManager.stopCapturing();
-  try {
+  asOneUndoStep(undoManager, () => {
     if (proposal.kind === 'rewrite') {
       editor.replaceBlocks([targetId], written as never);
     } else if (proposal.blockId !== null) {
@@ -280,9 +382,7 @@ function landBlocks(handle: Landable, proposal: DocumentProposal, blocks: readon
       if (empty) editor.replaceBlocks([targetId], written as never);
       else editor.insertBlocks(written as never, targetId, 'after');
     }
-  } finally {
-    undoManager.stopCapturing();
-  }
+  });
 }
 
 /**
@@ -302,19 +402,19 @@ function currentResult(
   if (!admission.available) return { outcome: 'failed' };
   const already = landedAt(handle, proposal);
   if (already !== null) return { outcome: 'applied', ...already };
-  if (admission.writeAccess === 'unknown') return { outcome: 'failed' };
-  if (admission.writeAccess === 'denied' || !handle.editor.isEditable) return { outcome: 'readOnly' };
+  const refusal = writeRefusal(admission, handle.editor);
+  if (refusal !== null) return { outcome: refusal };
   const problem = blockProblem(handle, proposal);
   return problem === null ? null : { outcome: problem };
 }
 
 /**
- * Lands a proposal the reader pressed, after checking it still fits.
+ * Lands a proposal the user pressed, after checking it still fits.
  * @param handle - The document, mounted.
  * @param proposal - The proposal.
  * @param action - Whether to put it on as a comment or write it into the body.
  * @param readAdmission - Reads current lifecycle and write admission synchronously.
- * @returns How it ended, and the block to show the reader when it landed.
+ * @returns How it ended, and the block to show the user when it landed.
  * @throws {Error} If preparation, comment creation or an atomic block write fails.
  */
 export async function landProposal(
@@ -339,7 +439,7 @@ export async function landProposal(
     const result = currentResult(handle, proposal, readAdmission);
     return result ?? { outcome: 'changed' };
   }
-  const prepared = await prepareBlocks(proposal);
+  const prepared = await prepareWrittenBlocks(proposal.body);
   const ready = currentResult(handle, proposal, readAdmission);
   if (ready !== null) return ready;
   const leftOut = prepared.leftOut;

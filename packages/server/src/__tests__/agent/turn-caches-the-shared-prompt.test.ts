@@ -1,15 +1,15 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a turn sends as its system prompt, for a model that caches only where
  * it is told to.
  *
- * The base prompt, which every conversation shares, and the project's memory,
- * which one user's conversations in the project share, each end in a cache mark of
- * their own, so a new conversation's first call reads what an earlier
- * conversation in the same request locale wrote; this conversation's memory
- * follows unmarked.
+ * The base prompt, which every conversation shares, and the memory entries,
+ * which one user's conversations in the project share while their entries
+ * read the same, each end in a cache mark of their own, so a new
+ * conversation's first call reads what an earlier conversation in the same
+ * request locale wrote; this conversation's progress note follows unmarked.
  */
 import { describe, expect, it, vi } from "vitest";
 import type * as CoreModule from "@breatic/core";
@@ -20,7 +20,7 @@ const modelSays = vi.hoisted(() => ({ parts: [] as unknown[], prompts: [] as unk
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { projectMemory: "", conversationMemory: "" },
+    memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
     history: [],
   })),
 }));
@@ -58,7 +58,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage: vi.fn(async () => 7),
-  addReaderMessage: vi.fn(async () => ({ turnIndex: 7, closedAsks: [] })),
+  addUserMessage: vi.fn(async () => ({ turnIndex: 7, closedAsks: [] })),
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({

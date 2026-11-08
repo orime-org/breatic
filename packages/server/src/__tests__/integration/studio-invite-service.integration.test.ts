@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Integration test: studioInvite.service handshake against real PostgreSQL.
@@ -367,7 +367,7 @@ describe("declineInvite / revokeInvite", () => {
 
 // The member ceiling itself moved to config/membership.yaml, keyed by the
 // tier of the studio's current admin (task #87). Its cases — both check
-// points, the copy each reader gets, concurrency, and a confirm against a
+// points, the copy each user gets, concurrency, and a confirm against a
 // deleted studio — live in `member-quota.integration.test.ts`, which can seed
 // accounts on chosen tiers. What stays here is the handshake.
 

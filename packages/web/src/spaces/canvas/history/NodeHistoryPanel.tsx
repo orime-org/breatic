@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { History, Loader2, RotateCw } from 'lucide-react';
 import * as React from 'react';
@@ -90,7 +90,7 @@ export const NodeHistoryPanel = React.memo(function NodeHistoryPanel({
     enabled: hasNextPage && !isFetchingNextPage,
     onReachEnd: onLoadMore,
   });
-  // Scrolled to once, when the focused row first renders; the reader's own
+  // Scrolled to once, when the focused row first renders; the user's own
   // scrolling after that is theirs.
   const viewportRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 
@@ -15,11 +15,11 @@ export interface DraftBoxProps {
 }
 
 /**
- * A text box whose value is written when the reader leaves it or presses
+ * A text box whose value is written when the user leaves it or presses
  * Enter, so each edit is one canvas undo step. The Enter that confirms an IME
- * word is not the reader finishing.
+ * word is not the user finishing.
  *
- * Its Space hidden by a switch of Space is not the reader leaving: the words
+ * Its Space hidden by a switch of Space is not the user leaving: the words
  * typed so far stay in the box (inner#1235 A13).
  * @param held - The value the node holds.
  * @param onCommit - Called with a changed value.

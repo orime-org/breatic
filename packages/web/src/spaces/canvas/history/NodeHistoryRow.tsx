@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import {
   AlertCircle,
@@ -21,6 +21,7 @@ import {
   HoverPreview,
   type HoverPreviewKind,
 } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
+import type { MediaFullscreenSource } from '@web/spaces/canvas/nodes/_shared/MediaFullscreen';
 import { failureSentence } from '@web/spaces/canvas/failure-sentence';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import {
@@ -49,7 +50,7 @@ export const HISTORY_MODALITIES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * What the type chip says a row IS. A read a reader asked to keep is neither
+ * What the type chip says a row IS. A read a user asked to keep is neither
  * of the other two: nothing generated it and nobody uploaded it.
  */
 const TYPE_LABEL: Record<NodeHistoryEntry['entryType'], string> = {
@@ -83,7 +84,7 @@ export interface NodeHistoryRowProps {
   isCurrent: boolean;
   /**
    * Whether a task row's View opened the history at this entry (inner#888
-   * §7.7): the row is outlined so the reader sees which result it meant.
+   * §7.7): the row is outlined so the user sees which result it meant.
    */
   isFocused: boolean;
   /**
@@ -121,6 +122,8 @@ interface RowPreview {
   text?: string;
   /** Video cover (video only); ignored for image / audio / text. */
   poster?: string;
+  /** What full screen shows, when not the preview itself. */
+  fullscreen?: MediaFullscreenSource;
 }
 
 /**
@@ -141,7 +144,12 @@ function previewFor(
   if (modality === 'image') {
     // The big image reuses the thumbnail treatment (thumbnailUrl ?? content),
     // unchanged from the pre-migration static preview.
-    return { kind: 'image', src: entry.thumbnailUrl ?? entry.content };
+    // Full screen shows the original (inner#1844).
+    return {
+      kind: 'image',
+      src: entry.thumbnailUrl ?? entry.content,
+      fullscreen: { kind: 'image', src: entry.content },
+    };
   }
   if (modality === 'video') {
     // The playable element takes the video URL (`content`), not the cover — the
@@ -153,7 +161,7 @@ function previewFor(
     };
   }
   // A text row's content IS the preview: an icon says nothing about which of
-  // several reads this row is, and the words are what the reader is choosing
+  // several reads this row is, and the words are what the user is choosing
   // between.
   if (modality === 'text') return { kind: 'text', text: entry.content };
   return { kind: 'audio', src: entry.content }; // audio
@@ -252,6 +260,7 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
           src={preview.src}
           text={preview.text}
           poster={preview.poster}
+          fullscreen={preview.fullscreen}
           alt=''
           followCanvas
         >
@@ -286,7 +295,7 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
             }
           >
             {/* A cause this product knows becomes a sentence where the
-                reader's language is, through the one gate the task list
+                user's language is, through the one gate the task list
                 beside this panel reads by. */}
             {failed
               ? failureSentence(entry.errorMessage, t, mediumOf(modality))

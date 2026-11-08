@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { CanvasNodeFields, NodeType } from '@breatic/shared';
 import * as Y from 'yjs';
@@ -143,7 +143,7 @@ describe('restoring onto a text node (#2175)', () => {
 
   // A text node's words live in the shared body the editor binds to; its
   // `content` is retired (#1774). Written to the plain field they would sync
-  // and never be shown — the node would look empty right after the reader
+  // and never be shown — the node would look empty right after the user
   // picked a row to go back to.
   it('puts the words where the node reads them', () => {
     addNode(PID, SID, fields('text'));

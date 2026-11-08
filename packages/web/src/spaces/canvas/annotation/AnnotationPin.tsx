@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A collapsed annotation: a 28px bubble with the face of whoever raised it,
  * its tail tip on the point it was left at.
  *
  * This is what a note is almost all of the time (#1881 §8.7) — the sticky is
- * what the reader gets when they open it. The face is fixed on the AUTHOR
+ * what the user gets when they open it. The face is fixed on the AUTHOR
  * rather than on whoever replied last, which would change with every reply and
  * leave the same pin wearing a different person each time; A11 names the
  * author on the sticky for the same reason.
@@ -112,7 +112,7 @@ export function AnnotationPin(props: AnnotationPinProps): React.JSX.Element {
         {replyCount === 0 ? null : (
           // Outside the pin's own edge, top right: on it, it would sit over
           // the face. It answers "has anybody picked this up", which is what
-          // decides whether the reader opens the note at all.
+          // decides whether the user opens the note at all.
           <span
             className='absolute -right-1.5 -top-1.5 min-w-[15px] rounded-full bg-foreground px-1 text-2xs font-semibold leading-[15px] text-background'
             data-testid='annotation-pin-count'

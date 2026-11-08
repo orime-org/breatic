@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What the selection says about a style, for the controls that draw it.
@@ -65,7 +65,7 @@ export function markTypeOf(
 /**
  * Walks the text the selection covers that the style could land on.
  *
- * TEXT, and nothing else. A style is a thing a reader sees, and the other two
+ * TEXT, and nothing else. A style is a thing a user sees, and the other two
  * inline nodes this schema holds — `hardBreak` and `unsupportedInline` — show
  * none of it: a break is a line wrap, bold or coloured or not. Yjs agrees, and
  * more strongly: `y-prosemirror` maps a non-text inline node by its attributes
@@ -84,7 +84,7 @@ export function markTypeOf(
  *   rather than a caret, the stretch of it the selection covers; return false
  *   to stop the walk.
  * @param range - The range to walk, where the caller names one. Left out, it
- *   is the reader's own selection, caret branch included.
+ *   is the user's own selection, caret branch included.
  * @returns Whether anything was reached at all.
  */
 function eachReachable(
@@ -98,13 +98,13 @@ function eachReachable(
     // AN EXPLICIT RANGE THAT IS EMPTY COVERS NO RUN. The block handle stands a
     // block in for a selection over its content, and an empty block's content
     // range has `from === to` — there is nothing in it to style, and the
-    // answer is "nothing reached". The reader's own caret is a different
+    // answer is "nothing reached". The user's own caret is a different
     // thing: its whole effect is the mark the next character will carry, which
     // is what the branch below reads. Telling the two apart matters because
-    // the handle is on screen only while the reader holds no selection
+    // the handle is on screen only while the user holds no selection
     // (`DocumentBlockHandle.tsx`'s `holdsSelection` guard), so this caret branch is
     // exactly where a
-    // block-scoped read would land and answer about the reader instead.
+    // block-scoped read would land and answer about the user instead.
     if (range !== undefined) {
       return false;
     }
@@ -123,7 +123,7 @@ function eachReachable(
  *
  * A block-scoped reading needs no editor state: the schema comes from the
  * document's own type and the range is handed in. Keeping it free of state is
- * what makes it structurally unable to answer about the reader's caret.
+ * what makes it structurally unable to answer about the user's caret.
  * @param doc - The document.
  * @param selection - The range to walk.
  * @param mark - The style's mark type.
@@ -219,7 +219,7 @@ export function firstRunValueOver<T>(
  *   one style, and marking a range changes no position, so the steps of
  *   several styles compose into one without mapping.
  * @param range - The range to write over, where the caller names one. Left
- *   out, it is the reader's own selection.
+ *   out, it is the user's own selection.
  */
 export function styleTheRuns(
   state: EditorState,
@@ -318,9 +318,9 @@ export function reachesAnyRun(state: EditorState, mark: MarkType): boolean {
  * The block handle's form of a command reads this: it stands a row in for a
  * range rather than dispatching a selection, so there is no state to ask.
  * Being free of state is also what makes it structurally unable to answer
- * about the reader's caret, which is elsewhere while the handle is on screen.
+ * about the user's caret, which is elsewhere while the handle is on screen.
  * @param doc - The document.
- * @param over - The range standing for the row, or the reader's selection.
+ * @param over - The range standing for the row, or the user's selection.
  * @param mark - The mark type a press would write.
  * @returns Whether a press would reach any run at all.
  */

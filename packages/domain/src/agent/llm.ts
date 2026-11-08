@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Which provider a model call reaches, and how that provider is spoken to.
@@ -78,7 +78,16 @@ export interface CallWants {
    * sticky sessions": sticky sessions expire after 10 minutes of inactivity).
    */
   session?: string;
+  /**
+   * How long the model thinks, on the routes that take a level (OpenRouter
+   * `reasoning.effort`, Google `thinkingLevel`). Read only with `thinking`
+   * on; without it each route asks for its own default depth.
+   */
+  thinkingLevel?: ThinkingLevel;
 }
+
+/** A thinking depth a caller can ask for by name. */
+export type ThinkingLevel = "low" | "medium" | "high";
 
 /** One provider: how to reach it, and how it is spoken to. */
 interface Route {
@@ -96,7 +105,12 @@ interface Route {
   /** The provider, built on first use and kept. */
   provider: () => (modelId: string) => LanguageModel;
   /** How this provider is told to reason for a model, and how it is told not to. */
-  reasoning: { on: (modelString: string | undefined) => ProviderOptionsFor; off: ProviderOptionsFor };
+  reasoning: {
+    on: (modelString: string | undefined) => ProviderOptionsFor;
+    off: ProviderOptionsFor;
+    /** How this provider is told a named depth, on the providers that take one. */
+    at?: (level: ThinkingLevel) => ProviderOptionsFor;
+  };
   /**
    * How this provider is told to cache the prompt prefix for a model, or
    * nothing when it caches a repeated prefix on its own.
@@ -204,6 +218,9 @@ export const DIRECT_ROUTES: readonly DirectRoute[] = [
       // about what comes back. Gemini 2.5 Flash and its like accept 0.
       on: () => ({ thinkingConfig: { thinkingBudget: -1, includeThoughts: true } }),
       off: { thinkingConfig: { thinkingBudget: 0 } },
+      // Gemini 3 takes a named level in place of a budget (Google's Gemini 3.8
+      // migration guide: replace thinking_budget with thinking_level).
+      at: (level) => ({ thinkingConfig: { thinkingLevel: level, includeThoughts: true } }),
     },
     vendorId: asWritten,
     cache: cachesOnItsOwn,
@@ -246,6 +263,7 @@ export const FALLBACK_ROUTE: Route = {
     // turns `xhigh` into `high`; `max` is the level the direct route asks for.
     on: (modelString) => ({ reasoning: { effort: modelString?.startsWith("deepseek/") ? "max" : "high" } }),
     off: { reasoning: { effort: "none" } },
+    at: (level) => ({ reasoning: { effort: level } }),
   },
   // OpenRouter turns a request-level `cache_control` into Anthropic's
   // automatic caching; the other models it reaches cache a repeated prefix on
@@ -343,7 +361,9 @@ export function callOptionsFor(modelString: string | undefined, wants: CallWants
   // `{ type: "disabled" }` with a 400, falls to the adaptive thinking it
   // cannot leave (Anthropic thinking docs, "Configuring thinking").
   const reasoning = wants.thinking
-    ? route.reasoning.on(modelString)
+    ? wants.thinkingLevel !== undefined && route.reasoning.at
+      ? route.reasoning.at(wants.thinkingLevel)
+      : route.reasoning.on(modelString)
     : isClaude(modelString)
       ? {}
       : route.reasoning.off;
@@ -367,12 +387,12 @@ export function callOptionsFor(modelString: string | undefined, wants: CallWants
  * does not write entries for any earlier position"). The entry a mark writes
  * covers the tools before the system prompt, so the mark after the base
  * prompt writes an entry every conversation in that locale reads, the one after the
- * project's memory an entry the same user's other conversations in that
- * project read. Where nothing is marked, the prompt goes whole, as one
- * message.
+ * memory entries an entry the same user's other conversations in that project
+ * read while their entries read the same. Where nothing is marked, the prompt
+ * goes whole, as one message.
  * @param modelString - Model identifier, or undefined for the fallback.
- * @param parts - The base prompt, the project's memory and this
- *   conversation's memory, the last two when there are any.
+ * @param parts - The base prompt, the memory entries (there whenever the
+ *   caller has memory) and this conversation's progress note, when it has one.
  * @param cache - How long to cache, or false when the call does not cache.
  * @returns The system messages, in order.
  * @throws {never} Never.

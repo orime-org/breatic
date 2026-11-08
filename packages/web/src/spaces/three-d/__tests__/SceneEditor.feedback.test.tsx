@@ -1,5 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
+
+import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 
 import * as React from 'react';
 import * as Y from 'yjs';
@@ -7,7 +9,7 @@ import { Unlock } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { t, type SceneObject } from '@breatic/shared';
+import { t, SCENE_FORMAT_VERSION, type SceneObject } from '@breatic/shared';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-document';
@@ -15,12 +17,15 @@ import { SceneSession } from '@web/data/yjs/scene-session';
 import SceneEditor from '@web/spaces/three-d/SceneEditor';
 import type * as ToastModule from '@web/lib/toast';
 import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 
 const { reportError, viewportInputs } = vi.hoisted(() => ({ reportError: vi.fn(), viewportInputs: vi.fn() }));
 
-vi.mock('@web/data/api/scene', () => ({
-  getSceneControls: vi.fn(async () => ({ scaleSensitivity: 1 })),
-  resolveSceneAsset: vi.fn(async () => ({ url: 'https://example.invalid/model.glb', mimeType: 'model/gltf-binary' })),
+vi.mock('@web/data/api/scene', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/scene')>()),
+  listSpaceTasks: vi.fn(async () => ({ serverNow: new Date().toISOString(), tasks: [] })),
+  getSceneControls: vi.fn(async () => ({ scaleSensitivity: 1, import: IMPORT_LIMITS })),
+  resolveSceneAsset: vi.fn(async () => ({ url: 'https://example.invalid/model.glb', mimeType: 'model/gltf-binary', sizeBytes: 100 })),
 }));
 vi.mock('@web/spaces/three-d/viewport/SceneViewport', () => ({
   default: (props: SceneViewportProps): React.JSX.Element => { viewportInputs(props); return <div data-testid='scene-viewport-boundary' />; },
@@ -37,7 +42,7 @@ vi.mock('@web/lib/toast', async (importOriginal) => {
 const ID = '11111111-1111-4111-8111-111111111111';
 const OBJECT: SceneObject = {
   id: ID, name: 'Figure', model: { kind: 'builtin', id: 'figure' },
-  position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false, exists: true,
+  position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false,
 };
 const CONNECTION = { status: 'connected', synced: true } as const;
 const PEERS = [] as const;
@@ -61,7 +66,7 @@ function BoundEditor({ session }: { session: SceneSession }): React.JSX.Element 
  */
 function fixture(): { doc: Y.Doc; session: SceneSession; client: QueryClient } {
   const doc = new Y.Doc();
-  doc.getMap('scene').set('formatVersion', 1);
+  doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
   const created = applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol('shared-create'), true);
   const locked = applySceneCommand(doc, { type: 'lock', ids: [ID], locked: true }, Symbol('shared-lock'), true);
   if (!created.ok || !locked.ok) throw new Error('The scene feedback fixture must contain one locked object');
@@ -147,5 +152,19 @@ describe('scene command failure feedback (inner#1724)', () => {
     await screen.findByTestId('scene-viewport-boundary');
     expect(reportError).toHaveBeenCalledTimes(1);
     expect(readSceneDocument(doc).objects).toEqual([{ ...OBJECT, locked: true }]);
+  });
+});
+
+describe('registered model load failures (inner#1690)', () => {
+  it('states why a model could not load and offers Retry only when retrying can help', async () => {
+    const { session, client } = fixture();
+    render(editorTree(session, client, 'visible'));
+    await screen.findByTestId('scene-viewport-boundary');
+    const props = viewportInputs.mock.calls.at(-1)![0] as SceneViewportProps;
+    act(() => { props.onModelStateChange?.(ID, 'failed', new ModelImportError('invalid', 'Model texture could not be decoded', { detail: 'textures/wood.png' })); });
+    expect(await screen.findByText('textures/wood.png')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: t('spaces.threeD.retry') })).toBeNull();
+    act(() => { props.onModelStateChange?.(ID, 'failed', new Error('Scene model request failed (503)')); });
+    expect(await screen.findByRole('button', { name: t('spaces.threeD.retry') })).toBeInTheDocument();
   });
 });

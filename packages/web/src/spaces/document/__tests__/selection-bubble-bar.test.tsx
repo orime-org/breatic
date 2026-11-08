@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The selection bubble bar (task #112, step 4 of the menu system).
@@ -112,7 +112,7 @@ function mount(editor: HarnessEditor, readOnly = false): void {
  * Whether the bar is on screen right now, read from the document.
  *
  * When the bar does not belong on screen the component does not render it, so
- * querying for the element IS the thing the reader sees. How the middleware is
+ * querying for the element IS the thing the user sees. How the middleware is
  * configured is a local argument to `useFloating`, neither readable nor worth
  * reading — the behaviour it produces is pinned by items G1 through G3.
  * @returns True while the bar is in the document.
@@ -165,7 +165,7 @@ function anchorRectOf(
 /**
  * Where the bar sits vertically right now, read from its own positioning style.
  *
- * This is the only outlet "where the bar is" has towards the reader: however
+ * This is the only outlet "where the bar is" has towards the user: however
  * the anchor is computed, it ends up in this number.
  *
  * Vertical only: every element's `clientWidth` is zero in jsdom, so the
@@ -210,7 +210,7 @@ const SELECTION_BOX = new DOMRect(137, 0, 400, 20);
  * `Range.prototype.getBoundingClientRect = ...` and leaving it, as this once
  * did, leaks into every file that runs after: `vitest.setup.ts` assigns with
  * `??=`, which is a no-op against a function already there, and
- * `vitest.config.ts` runs `forks` with `singleFork`, so one jsdom environment
+ * `vitest.config.mts` runs `forks` with `singleFork`, so one jsdom environment
  * — one `Range.prototype` — serves the whole package. Measured: files running
  * after this one saw `createRange()` return the 137 by 400 pinned here, and
  * `reference-mention-caret.ts` sizes a drag image off exactly that.
@@ -263,11 +263,11 @@ describe('the selection bubble bar', () => {
     );
   });
 
-  // A4: the order the demo draws, read straight off the DOM. Asserted as the
-  // whole sequence rather than a few neighbours — a control landing in the
-  // wrong group is exactly what this has to catch, and pairwise checks let it
-  // through.
-  it('lays the controls out in the order the demo draws', async () => {
+  // A4: the order the bar is drawn in (user 2026-11-08: comment alone at the
+  // far right), read straight off the DOM. Asserted as the whole sequence
+  // rather than a few neighbours — a control landing in the wrong group is
+  // exactly what this has to catch, and pairwise checks let it through.
+  it('lays the controls out in their groups, comment last', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 0, 5);
@@ -293,9 +293,10 @@ describe('the selection bubble bar', () => {
       'doc-bubble-tool-link',
       'doc-bubble-tool-code',
       'doc-bubble-color',
-      'doc-bubble-tool-comment',
       'doc-bubble-sep-ai',
       'doc-bubble-ai',
+      'doc-bubble-sep-comment',
+      'doc-bubble-tool-comment',
     ]);
   });
 
@@ -311,9 +312,9 @@ describe('the selection bubble bar', () => {
     const bar = document.querySelector('[data-testid="doc-selection-bubble-bar"]')!;
     const seps = bar.querySelectorAll('[role="separator"]');
 
-    // Five groups, four rules (the demo's note): block type | alignment | B I S U |
-    // link code colour comment | AI.
-    expect(seps).toHaveLength(4);
+    // Six groups, five rules: block type | alignment | B I S U | link code
+    // colour | AI | comment (add to Agent needs a project, absent here).
+    expect(seps).toHaveLength(5);
     for (const sep of seps) {
       expect(sep.getAttribute('aria-orientation')).toBe('vertical');
     }
@@ -582,7 +583,7 @@ describe('the selection bubble bar', () => {
         selectTextRange(editor, 1, 11);
       });
       // The selection spans the visible area entirely: its start above, its
-      // released end below. No third "line the reader can see right now" is
+      // released end below. No third "line the user can see right now" is
       // hunted for — that branch was the common source of five in-scope
       // findings across the first six adversarial rounds. The anchor is handed
       // over as computed, and the scroller's own overflow clips whatever falls
@@ -683,7 +684,7 @@ describe('the selection bubble bar', () => {
      * Whether the bar is on screen right now.
      *
      * Queries the document for the element: when the bar does not belong on
-     * screen the component does not render it, so this IS the thing the reader
+     * screen the component does not render it, so this IS the thing the user
      * sees.
      * @returns Whether it is there.
      */
@@ -720,7 +721,7 @@ describe('the selection bubble bar', () => {
       // The horizontal coordinate comes from the pointer too, not from the
       // selection's box: a select-all has no "left edge of the selection", and
       // the box drawn around the whole document has the body column's left
-      // edge, which says nothing about where the reader is looking.
+      // edge, which says nothing about where the user is looking.
       expect(rect?.left).toBe(420);
     });
 
@@ -848,7 +849,7 @@ describe('the selection bubble bar', () => {
       });
       expect(shouldShowNow()).toBe(false);
 
-      // The editor loses focus — the reader is typing somewhere else.
+      // The editor loses focus — the user is typing somewhere else.
       act(() => {
         viewOf(editor)!.dom.blur();
       });
@@ -856,7 +857,7 @@ describe('the selection bubble bar', () => {
       // The pointer comes back into the body. This path has to ask "does the
       // editor hold the focus" too, through the same `isWarranted` rather than
       // a list of its own: it used to carry a shorter list, and the bar would
-      // float over the body while the reader typed in another field.
+      // float over the body while the user typed in another field.
       moveMouseTo(420, 250);
 
       expect(barOnScreen()).toBe(false);
@@ -1008,7 +1009,7 @@ describe('the selection bubble bar', () => {
       await selectWithFocus(editor, 0, 3);
       pinViewport(VIEWPORT);
 
-      // The pointer is inside the body, but the reader is elsewhere and the
+      // The pointer is inside the body, but the user is elsewhere and the
       // editor holds no focus.
       moveMouseTo(420, 250);
       act(() => {
@@ -1043,7 +1044,7 @@ describe('the selection bubble bar', () => {
       });
       expect(shouldShowNow()).toBe(false);
 
-      // The reader switches away and the editor loses focus while the pointer
+      // The user switches away and the editor loses focus while the pointer
       // crosses the body. `isWarranted` stops `remember` from pinning.
       act(() => {
         viewOf(editor)!.dom.blur();
@@ -1065,7 +1066,7 @@ describe('the selection bubble bar', () => {
       });
       remote.destroy();
 
-      // The pointer has long since left and the reader is back (focus
+      // The pointer has long since left and the user is back (focus
       // returns, the selection is unchanged). The bar must not come up on that
       // stale point.
       moveMouseTo(700, 380);
@@ -1497,7 +1498,7 @@ describe('the selection bubble bar', () => {
     // "they agree" while saying nothing at all.
     const dark = Array.from(
       document.querySelectorAll<HTMLButtonElement>('[data-testid^="doc-bubble-tool-"]'),
-    ).filter((b) => b.disabled).length;
+    ).filter((b) => b.getAttribute('aria-disabled') === 'true').length;
     expect(dark > 0).toBe(hasDark);
 
     // Only what is left on the bar. The three in `BLOCK_TOOLS` live in the
@@ -1508,7 +1509,7 @@ describe('the selection bubble bar', () => {
         `[data-testid="doc-bubble-tool-${tool.id}"]`,
       );
       expect(button).not.toBeNull();
-      expect(`${tool.id}:${String(button?.disabled)}`).toBe(
+      expect(`${tool.id}:${String(button?.getAttribute('aria-disabled') === 'true')}`).toBe(
         `${tool.id}:${String(!tool.canRun(editor))}`,
       );
     }

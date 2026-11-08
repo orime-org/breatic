@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The nine rows of the block type menu: what each one is called and drawn as.
@@ -45,7 +45,7 @@ export interface BlockTypeItem {
  *
  * `h3` is already 17px against a 15px paragraph and a fourth has nowhere to
  * sit; Notion and Feishu stop at three for the same reason. The schema reads
- * this to narrow BlockNote's six, so the levels a reader can reach by typing
+ * this to narrow BlockNote's six, so the levels a user can reach by typing
  * `### `, by `Mod-Alt-N` and by this menu are one list.
  *
  * Widening it needs a rule in `index.css` for the new level FIRST — preflight

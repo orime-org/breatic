@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The project page sending each pressed document card to its document
@@ -11,12 +11,29 @@
  * are reported here. Judged only once the project's Spaces have arrived: an
  * unsynced project reads as one with no Spaces, and every card would look
  * like it was for a document that is gone.
+ *
+ * A locate or "View" press only shows the user a place, so once the user
+ * leaves its document -- switches to another Space after the document came to
+ * the front, or closes its tab -- it ends quietly (inner#1646). A hidden
+ * document Space runs no effects, so nothing else would end it.
  */
 
 import * as React from 'react';
 
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
-import { useDocumentProposals } from '@web/stores/document-proposals';
+import { useDocumentProposals, type PendingDocumentProposal } from '@web/stores/document-proposals';
+
+/** Whether a routed card's document has been in front since it was opened for it. */
+type Routed = 'opened' | 'front';
+
+/**
+ * Whether a press only shows the user a place, writing nothing.
+ * @param waiting - The press.
+ * @returns True for a locate or "View" press.
+ */
+function showsOnly(waiting: PendingDocumentProposal): boolean {
+  return waiting.action === 'locate' || waiting.action === 'view';
+}
 
 /**
  * Sends pressed document cards to their documents.
@@ -36,7 +53,7 @@ export function useDocumentProposalRouting(
   const pending = useDocumentProposals((s) => s.pending);
   // Cards whose document has been opened for them: from here on, their tab
   // going away is a card the document will never take up.
-  const routed = React.useRef(new Set<string>());
+  const routed = React.useRef(new Map<string, Routed>());
 
   React.useEffect(() => {
     if (!ready) return;
@@ -45,15 +62,20 @@ export function useDocumentProposalRouting(
       if (waiting === undefined) continue;
       const { proposalId, spaceId } = waiting.proposal;
       const space = spaces.find((s) => s.id === spaceId);
+      const was = routed.current.get(proposalId);
       if (space?.type !== 'document') {
         report(proposalId, 'spaceGone');
-      } else if (!routed.current.has(proposalId)) {
-        routed.current.add(proposalId);
+      } else if (was === undefined) {
+        routed.current.set(proposalId, activeId === spaceId ? 'front' : 'opened');
         if (activeId !== spaceId) open(spaceId);
       } else if (!openIds.includes(spaceId)) {
-        report(proposalId, 'failed');
+        report(proposalId, showsOnly(waiting) ? 'left' : 'failed');
+      } else if (activeId === spaceId) {
+        routed.current.set(proposalId, 'front');
+      } else if (was === 'front' && showsOnly(waiting)) {
+        report(proposalId, 'left');
       }
     }
-    for (const id of routed.current) if (pending[id] === undefined) routed.current.delete(id);
+    for (const id of routed.current.keys()) if (pending[id] === undefined) routed.current.delete(id);
   }, [activeId, open, openIds, pending, ready, spaces]);
 }

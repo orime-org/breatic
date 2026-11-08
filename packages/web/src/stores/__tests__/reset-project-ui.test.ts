@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -9,6 +9,7 @@ import { useConversationRuntime, _resetForTests } from '@web/stores/conversation
 import { resetProjectUiStores } from '@web/stores/reset-project-ui';
 import { useUIStore } from '@web/stores/ui';
 import { canvasSessions } from '@web/stores/canvas-session';
+import { toast } from '@web/lib/toast';
 
 /**
  * #1771 — leaving a project must clear its per-user UI session state so re-entry
@@ -66,11 +67,43 @@ describe('resetProjectUiStores (#1771)', () => {
   });
 
   /**
+   * The 3D proposal mailbox belongs to this project: leaving forgets both the
+   * 3D Space that was receiving and a proposal it had not taken yet, without a
+   * toast, so nothing opens a dialog in the next project (inner#1691, design
+   * §6.2 · §8.5).
+   */
+  it('forgets the 3D proposal receiver and the proposal not yet taken, saying nothing', async () => {
+    // Imported by a runtime path so the store's absence fails this case alone,
+    // leaving the cases above running.
+    const storePath = '@web/stores/scene-proposals';
+    const { useSceneProposals } = (await import(/* @vite-ignore */ storePath)) as typeof import('@web/stores/scene-proposals');
+    useSceneProposals.getState().setListening(true);
+    useSceneProposals.getState().request({
+      source: 'agent',
+      origin: 'agent',
+      mode: 't23d',
+      prompt: 'A wooden chair',
+      params: { texture: true, negative_prompt: '' },
+      images: [],
+    });
+    expect(useSceneProposals.getState().listening).toBe(true);
+    expect(useSceneProposals.getState().incoming).not.toBeNull();
+    const warning = vi.spyOn(toast, 'warning');
+
+    resetProjectUiStores('project-1');
+
+    expect(useSceneProposals.getState().listening).toBe(false);
+    expect(useSceneProposals.getState().incoming).toBeNull();
+    expect(warning).not.toHaveBeenCalled();
+    warning.mockRestore();
+  });
+
+  /**
    * The conversation runtime is not one of the four above: what it holds is a
    * turn that may be running and a list of messages, neither of which is
    * panel state. It is torn down from the same place because leaving is the
    * same act -- and because this one line is the only thing that stops a turn
-   * for a project the reader has walked away from. What the runtime does when
+   * for a project the user has walked away from. What the runtime does when
    * it is told to is pinned in its own file; what is pinned here is that it
    * gets told at all.
    */
@@ -92,6 +125,7 @@ describe('resetProjectUiStores (#1771)', () => {
           messages: [],
           hasMore: false,
           oldestLoadedTurn: 1,
+          agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' },
           title: null,
         },
       },

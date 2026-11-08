@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Writes the provider package's configuration from today's catalog
  * (inner#1743), so the provider tests can prove the move changes
- * nothing: every catalog and 3D model bound to WaveSpeed at weight 1 with the
+ * nothing: every catalog model bound to WaveSpeed at weight 1 with the
  * upstream fields, value spellings, extra steps and pricing the catalog
  * declares today (where WaveSpeed's own schema departs from them, the
  * `WAVESPEED` table below), WaveSpeed's upstream from `config/models/<modality>/providers.yaml`,
@@ -45,7 +45,6 @@ interface RawModel {
   name: string;
   takes_prompt?: boolean;
   prompt_upstream?: string;
-  cost_per_call?: number;
   params?: Record<string, RawParam>;
   providers?: { name: string; model_id: string; pricing?: RawPricing }[];
   extra_steps?: RawStep[];
@@ -180,7 +179,7 @@ function current<T>(path: string): T | undefined {
 function write(path: string, header: string, content: unknown): void {
   const out = resolve(ROOT, "config/provider", path);
   mkdirSync(dirname(out), { recursive: true });
-  const body = content === null ? "" : yamlText(new Document(content), { lineWidth: 0 });
+  const body = content === null ? "" : yamlText(new Document(content, { aliasDuplicateObjects: false }), { lineWidth: 0 });
   writeFileSync(out, `${header.trim().split("\n").map((line) => `# ${line}`.trimEnd()).join("\n")}\n\n${body}`);
 }
 
@@ -229,13 +228,12 @@ const describe = {
 };
 
 /**
- * One model's WaveSpeed binding, without `pricing` when the catalog has no WaveSpeed contract for it.
+ * One model's WaveSpeed binding.
  * @param model - The catalog entry.
- * @param threeD - Whether it is a 3D model, whose family passes every param through.
  * @returns The binding.
- * @throws {Error} When the model has no WaveSpeed provider.
+ * @throws {Error} When the model has no WaveSpeed provider or no price.
  */
-function bindingOf(model: RawModel, threeD: boolean): Record<string, unknown> {
+function bindingOf(model: RawModel): Record<string, unknown> {
   const provider = model.providers?.find((p) => p.name === "wavespeed");
   if (provider === undefined) throw new Error(`${model.name} has no WaveSpeed provider`);
   const skipped = new Set(APP_PARAMS[model.name] ?? []);
@@ -257,7 +255,7 @@ function bindingOf(model: RawModel, threeD: boolean): Record<string, unknown> {
       continue;
     }
     const transform = TRANSFORMS[model.name]?.[name];
-    const field = threeD ? name : (spec.upstream ?? name);
+    const field = spec.upstream ?? name;
     const refused = facts.refuses?.[name];
     params[name] = {
       field: facts.renames?.[field] ?? field,
@@ -281,30 +279,21 @@ function bindingOf(model: RawModel, threeD: boolean): Record<string, unknown> {
       pricing: pricingOf(step.pricing),
     };
   });
+  const pricing = provider.pricing;
+  if (pricing === undefined) throw new Error(`${model.name} has no price`);
   return {
     upstream: "wavespeed",
     weight: 1,
     model_id: facts.modelId ?? provider.model_id,
-    // Today's 3D path sends the prompt on every call, "" when there is none, and drops only null params.
-    ...(threeD ? { ...(facts.noPrompt ? {} : { prompt_field: "prompt" }), send_empty: true } : model.takes_prompt === true ? { prompt_field: model.prompt_upstream ?? "prompt" } : {}),
+    ...(model.takes_prompt === true ? { prompt_field: model.prompt_upstream ?? "prompt" } : {}),
     ...(Object.keys(params).length === 0 ? {} : { params }),
     ...(Object.keys(drops).length === 0 ? {} : { drops }),
     ...(steps.length === 0 ? {} : { extra_steps: steps }),
     ...(model.reused_by === undefined ? {} : { reused_by: model.reused_by }),
     ...(Object.keys(mentions).length === 0 ? {} : { mentions }),
     ...(facts.rejects === undefined ? {} : { rejects: facts.rejects }),
-    ...(provider.pricing === undefined ? {} : { pricing: pricingOf(provider.pricing) }),
+    pricing: pricingOf(pricing),
   };
-}
-
-/**
- * The flat price a model without a WaveSpeed contract stands in with until `pnpm provider:prices`
- * writes its real one: 3D models carry only a per-call credit figure (cents).
- * @param model - The catalog entry.
- * @returns The rule, or undefined when the model has no such figure.
- */
-function placeholderOf(model: RawModel): Record<string, unknown> | undefined {
-  return model.cost_per_call === undefined ? undefined : pricingOf({ base_price: model.cost_per_call * 10_000, formula: "", discount_rate: 100 });
 }
 
 const MEDIA_HEADER = `
@@ -340,21 +329,18 @@ const sources: [string, string[]][] = [
   ["video", ["config/models/video/models.yaml"]],
   ["audio", ["config/models/audio/models.yaml"]],
   ["tts", ["config/models/tts/models.yaml"]],
-  ["three_d", ["config/models/three_d/meshy.yaml", "config/models/three_d/hunyuan3d.yaml"]],
+  ["three_d", ["config/models/three_d/models.yaml"]],
 ];
 for (const [modality, files] of sources) {
   const models: Record<string, { upstreams: Record<string, unknown>[] }> = {};
-  const placeholders: Record<string, unknown> = {};
   for (const file of files) {
     for (const model of yaml<{ models: RawModel[] }>(file).models) {
       // An empty list makes the merge remove the WaveSpeed binding the model had.
-      models[model.name] = { upstreams: WAVESPEED[model.name]?.delisted ? [] : [bindingOf(model, modality === "three_d")] };
-      const placeholder = placeholderOf(model);
-      if (placeholder !== undefined) placeholders[model.name] = placeholder;
+      models[model.name] = { upstreams: WAVESPEED[model.name]?.delisted ? [] : [bindingOf(model)] };
     }
   }
   const path = `media/${modality}.yaml`;
-  const merged = mergeMediaModels(current<{ models: typeof models }>(path)?.models, models, placeholders);
+  const merged = mergeMediaModels(current<{ models: typeof models }>(path)?.models, models, {});
   write(path, MEDIA_HEADER.replace("{modality}", modality.replace("_", " ")), { models: merged });
 }
 

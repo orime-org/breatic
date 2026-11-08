@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Sending bytes to the ingest Worker (#173 design §4.2, #181 lane ②, #206
@@ -726,8 +726,8 @@ describe('handing the Worker a URL to fetch', () => {
     expect(optionsOf(0).replaySafe).toBe(false);
   });
 
-  // A caller with a reader watching (the agent's save, inner#1315) stops the
-  // transfer when the reader stops the turn, besides the deadline.
+  // A caller with a user watching (the agent's save, inner#1315) stops the
+  // transfer when the user stops the turn, besides the deadline.
   it("stops the transfer when the caller's signal is raised", async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
     const stop = new AbortController();

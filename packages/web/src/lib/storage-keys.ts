@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Central registry of every browser-persisted (localStorage and
@@ -43,7 +43,7 @@ export const STORAGE_KEYS = {
    * whether the Agent panel is open. See `project-tabs-storage`.
    */
   projectTabs: 'breatic.projectTabs',
-  /** Per account, Project and Space: the reader's personal 3D observation view. */
+  /** Per account, Project and Space: the user's personal 3D observation view. */
   sceneViews: 'breatic.sceneViews',
   /**
    * Per account: the Agent column width, the Studio rail sections, the canvas
@@ -67,6 +67,8 @@ export const STORAGE_KEYS = {
    * (inner#1442 §4.5). See `data/analytics/attribution`.
    */
   attribution: 'breatic.attribution',
+  /** The referral code from a share link, kept only while cookies are accepted (inner#1868). */
+  referralCode: 'breatic.referralCode',
 } as const;
 
 /** Union of every valid persisted key value. */

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What the model was given for a tool call is written down with the turn.
@@ -125,7 +125,7 @@ describe("what a success part stores for the model", () => {
       toolName: "rendering",
       input: {},
       status: "error",
-      failure: { kind: "tool_failed", forModel: "it broke", readerKey: "chat.tool.failure.generic" },
+      failure: { kind: "tool_failed", forModel: "it broke", userKey: "chat.tool.failure.generic" },
     };
     const text: MessagePart = { type: "text", text: "hello" };
 

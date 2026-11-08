@@ -1,13 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * A proposal that carries the reader's material (inner#1315).
+ * A proposal that carries the user's material (inner#1315).
  *
- * What the reader handed the agent -- a file attached in the chat, or a
+ * What the user handed the agent -- a file attached in the chat, or a
  * picture the agent found and saved -- lands on the canvas inside the nodes,
  * and the generation it is meant for has it in its slots, or wired into its
- * reference pool and @'d in its prompt for the reader. One press, and the
+ * reference pool and @'d in its prompt for the user. One press, and the
  * next thing is Generate.
  *
  * The turns are real, so the model decides what to propose. A run where it
@@ -51,13 +51,13 @@ async function toolsUsed(p: Page): Promise<string[]> {
 /**
  * Send one message and wait for the turn to finish.
  * @param p - The signed-in page.
- * @param words - What the reader asks.
+ * @param words - What the user asks.
  */
 async function ask(p: Page, words: string): Promise<void> {
   const composer = p.getByTestId('chat-composer-box');
   await composer.fill(words);
   // Attachments still uploading hold the send back; a press before then is
-  // ignored, so wait for the button the reader would see light up.
+  // ignored, so wait for the button the user would see light up.
   const send = p.getByTestId('chat-composer-send');
   await expect(send).toBeEnabled({ timeout: 60_000 });
   await send.click();
@@ -84,7 +84,7 @@ async function catchSubmit(p: Page): Promise<() => Record<string, unknown> | und
 }
 
 /**
- * Scroll the canvas the way a reader does when a placed panel lands under the
+ * Scroll the canvas the way a user does when a placed panel lands under the
  * canvas controls and the minimap (inner#854), so its Generate is in reach.
  * @param p - The signed-in page.
  */
@@ -113,7 +113,7 @@ test('lands an attached portrait and voice in a talking head, both slots filled 
   test.setTimeout(480_000);
   const fixtures = join(__dirname, '../fixtures');
   // Files chosen before the composer can take them are dropped without a
-  // word; a reader cannot press the button until then either.
+  // word; a user cannot press the button until then either.
   await expect(page.getByTestId('chat-composer-attach')).toBeEnabled({ timeout: 20_000 });
   await page
     .getByTestId('chat-composer-file-input')
@@ -211,7 +211,7 @@ test('saves a found picture and wires it into an image-to-image pool @needs-mode
   const src = (await picture.getAttribute('src')) ?? '';
   expect(src, 'the picture is a file we hold, not the address it was found at').not.toBe('');
   await expect(space.locator('.react-flow__edge')).toHaveCount(1, { timeout: 20_000 });
-  // And it is @'d in the prompt, the way the reader would have @'d it.
+  // And it is @'d in the prompt, the way the user would have @'d it.
   await expect(page.getByTestId('generate-prompt-editor').locator('[data-reference-mention]')).toHaveCount(1, {
     timeout: 20_000,
   });

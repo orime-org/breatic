@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * What a proposal card says before the reader presses it (#229, design §5.5).
+ * What a proposal card says before the user presses it (#229, design §5.5).
  *
  * The card has to answer three things in the space of a chat column: what gets
- * built, which model it runs on, and what is left for the reader afterwards.
+ * built, which model it runs on, and what is left for the user afterwards.
  * All three are read off the proposal; the catalog only supplies the model's
  * display name.
  */
@@ -16,7 +16,7 @@ import type { CanvasProposal, ModelCatalog, ProposalNode } from '@breatic/shared
 /** What one node contributes to the little shape drawn on the card. */
 export interface ShapeChip {
   label: string;
-  /** True for a node the reader still has to fill in, drawn as an outline. */
+  /** True for a node the user still has to fill in, drawn as an outline. */
   empty: boolean;
 }
 
@@ -25,7 +25,7 @@ export interface ShapeChip {
  *
  * Drawn side by side, with an arrow between one layer and the next. Nodes of
  * one layer never feed each other -- three angles off one photo are three
- * things the reader gets, not a chain of three.
+ * things the user gets, not a chain of three.
  */
 export type ShapeLayer = ShapeChip[];
 
@@ -40,7 +40,7 @@ export type ShapeLayer = ShapeChip[];
 export type ShapeGroup = ShapeLayer[];
 
 /**
- * What some nodes still ask of the reader, under their own names.
+ * What some nodes still ask of the user, under their own names.
  *
  * More than one name when several nodes ask for the same thing in the same
  * words: three angles each wanting a ratio picked is one line of instruction,
@@ -52,7 +52,7 @@ export interface NodeTodos {
 }
 
 /**
- * The two lines that tell the reader where a generation's setup is found.
+ * The two lines that tell the user where a generation's setup is found.
  *
  * Passed in rather than looked up here, so this file stays free of the
  * translation layer and the card decides the words.
@@ -68,7 +68,7 @@ export interface PanelLines {
  * The nodes already holding their words, in the order they were proposed.
  *
  * The card draws them out in full. The words are in hand before anything is
- * placed, and a reader who wants another version says so in the chat -- with a
+ * placed, and a user who wants another version says so in the chat -- with a
  * title alone they would have to place the node, read it, and then undo
  * something they never wanted.
  *
@@ -134,7 +134,7 @@ export function shapeOf(proposal: CanvasProposal): ShapeGroup[] {
   const run = runsOf(proposal);
   const groups = new Map<number, Map<number, ShapeChip[]>>();
   proposal.nodes.forEach((node, at) => {
-    // A template's resource lands holding the template's file: we fill it, not the reader.
+    // A template's resource lands holding the template's file: we fill it, not the user.
     const chip = { label: node.name, empty: node.role === 'source' && node.material === undefined && node.resource === undefined };
     const depth = layer[at] ?? 0;
     const home = groups.get(run[at] ?? at) ?? new Map<number, ShapeChip[]>();
@@ -177,7 +177,7 @@ function runsOf(proposal: CanvasProposal): number[] {
 }
 
 /**
- * The lines saying what the reader still has to do, in prompt order.
+ * The lines saying what the user still has to do, in prompt order.
  *
  * One per marked spot, which is what makes them line up with the marks in the
  * prompt itself: the mark says what goes in that place, the line here says
@@ -186,20 +186,20 @@ function runsOf(proposal: CanvasProposal): number[] {
  * one group.
  *
  * Every generation ends with one more line saying where its setup is found:
- * what the agent wrote lives in the generation panel, and a reader new to the
+ * what the agent wrote lives in the generation panel, and a user new to the
  * canvas does not know a right-click opens it (#289).
  * @param proposal - The proposal the card draws.
- * @param lines - The words for that last line, in the reader's language.
+ * @param lines - The words for that last line, in the user's language.
  * @returns One group per node that asks for anything, in the proposal's order.
  * @throws {never} Never.
  */
 export function todosOf(proposal: CanvasProposal, lines: PanelLines): NodeTodos[] {
-  // Each mark's line goes under the node whose words carry it: the reader
+  // Each mark's line goes under the node whose words carry it: the user
   // acts on it there, by hand.
   const notes = new Map<number, string[]>();
   proposal.nodes.forEach((node, at) => {
     const held: string[] = [];
-    // The main prompt and then each shot, in the order the reader reads them.
+    // The main prompt and then each shot, in the order the user reads them.
     for (const segment of proposalMarkSegments(node)) {
       const slot = segment.slot;
       if (!slot) continue;
@@ -208,7 +208,7 @@ export function todosOf(proposal: CanvasProposal, lines: PanelLines): NodeTodos[
     }
     if (node.role === 'generate') {
       // A model drawing no prompt box shows nothing the agent wrote, so saying
-      // the prompt is written would send the reader looking for a box that is
+      // the prompt is written would send the user looking for a box that is
       // not there. The check has already answered which kind this is.
       const writtenPrompt = node.takesPrompt !== false && proposalMarkSegments(node).length > 0;
       held.push(writtenPrompt ? lines.prompt : lines.settings);
@@ -258,7 +258,7 @@ function entryOf(
 /**
  * What to call the model on the card.
  *
- * The name the picker will put on screen one press later, so the reader is
+ * The name the picker will put on screen one press later, so the user is
  * not left matching an id against the words in front of them. Until the
  * catalog lands, and for a model it does not carry, the id stands in -- the
  * note beside it is written about a particular model and needs one named.

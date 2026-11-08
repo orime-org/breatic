@@ -1,11 +1,16 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /** Shared Zod schemas for API request validation. */
 export {
   normalizeEmail,
   emailSchema,
   registerSchema,
+  REFERRAL_CODE_INPUT_MAX,
+  PROMOTER_CHANNELS_MAX,
+  PROMOTER_CHANNEL_INPUT_MAX,
+  PROMOTER_PLAN_INPUT_MAX,
+  SIGNUP_REFERRAL_SOURCES,
   signupVerifySchema,
   SIGNUP_CODE_REGEX,
   setupStudioSchema,
@@ -17,6 +22,9 @@ export {
   loginSchema,
   googleAuthSchema,
   chatMessageSchema,
+  spaceRequestInputSchema,
+  sharedSpaceSchema,
+  spaceRequestAnswerSchema,
   chatAttachedChipSchema,
   taskCreateSchema,
   understandSchema,
@@ -38,14 +46,19 @@ export {
   chatEarlierMessagesQuerySchema,
   chatCreateConversationSchema,
   chatRenameConversationSchema,
+  chatSetModelSchema,
   CHAT_MESSAGE_MAX_CHARS,
   PROJECT_NAME_MAX_CHARS,
   projectNameSchema,
   CONVERSATION_TITLE_MAX_CHARS,
+  sceneGenerationBodySchema,
 } from "@shared/schemas/api.js";
 
 export type {
+  SceneGenerationAnswer,
+  SceneGenerationBody,
   RegisterInput,
+  SignupReferralSource,
   SignupVerifyInput,
   SetupStudioInput,
   CreateTeamStudioInput,
@@ -53,6 +66,9 @@ export type {
   LoginInput,
   ChatMessageInput,
   ChatSpaceContext,
+  SpaceRequestInput,
+  SharedSpace,
+  SpaceRequestAnswer,
   ChatAttachedChip,
   ChatSpace,
   ChatCurrentSpace,
@@ -73,4 +89,5 @@ export type {
   ChatConversationsQueryInput,
   ChatCreateConversationInput,
   ChatRenameConversationInput,
+  ChatSetModelInput,
 } from "@shared/schemas/api.js";

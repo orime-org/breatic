@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a note looks like on the board, and what the board does under a
@@ -484,7 +484,7 @@ test('the pin holds its size while the board shrinks under it', async ({ page })
   // The board a case starts on is empty, so this one puts the note it works
   // on there first.
   await landANote(page);
-  // A22 / §8.7.2: a reader zooms out to see which notes still need answering,
+  // A22 / §8.7.2: a user zooms out to see which notes still need answering,
   // so the pin cannot shrink with the board. Measured rather than reasoned:
   // the size lives on the node's own box, which is what xyflow measures, and
   // the only way to know the two agree is to look at the screen.

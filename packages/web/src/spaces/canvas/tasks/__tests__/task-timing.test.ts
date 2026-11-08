@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a running task's row counts (#186 §7.3): the time since the instant
@@ -20,7 +20,7 @@ describe('elapsedMs', () => {
     expect(elapsedMs(started, startedMs + 90 * SECOND)).toBe(90 * SECOND);
   });
 
-  it('reads zero on a reader whose clock is behind the server', () => {
+  it('reads zero on a user whose clock is behind the server', () => {
     // Nothing is judged from this number, so a clock a few seconds behind
     // shows a stopped counter rather than a negative one.
     expect(elapsedMs(started, startedMs - 5 * SECOND)).toBe(0);

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The refund window — the one arithmetic both the confirmation email and the
@@ -111,7 +111,7 @@ describe("whether a purchase is still inside the window", () => {
     ).toBe(false);
   });
 
-  it("reads the days in UTC, not wherever the reader is", () => {
+  it("reads the days in UTC, not wherever the user is", () => {
     // 09-01 08:00 in UTC+8 is 09-01 00:00 UTC — shut. The same instant read as
     // a local date would still say 08-31 in half the world.
     expect(

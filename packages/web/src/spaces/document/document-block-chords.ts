@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The nine chords, bound to what the nine rows do.
@@ -56,7 +56,7 @@ const OVERRIDDEN = ['paragraph-shortcuts', 'heading-shortcuts'];
  * involved: an ordered item is `numberedListItem`, and the same thing on a
  * heading is the `numbered` prop. Measured before these were routed here:
  * `# ` on an ordered item dropped the number the menu row keeps, and `1. ` on
- * a heading was refused outright, leaving the reader looking at the "1. " they
+ * a heading was refused outright, leaving the user looking at the "1. " they
  * typed.
  *
  * The list patterns were lifted from the block specs BlockNote ships, whose

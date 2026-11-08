@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * One mailbox is one account (#288): every way an address comes in —
@@ -53,7 +53,7 @@ afterAll(async () => {
   await sql?.end({ timeout: 5 });
 });
 
-/** A fresh lower-case address and the same address as a reader might type it. */
+/** A fresh lower-case address and the same address as a user might type it. */
 function addressPair(): { stored: string; typed: string } {
   const stored = `case-${crypto.randomUUID()}@example.test`;
   return { stored, typed: `  ${stored.toUpperCase()} ` };

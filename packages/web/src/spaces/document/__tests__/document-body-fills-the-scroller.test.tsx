@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The chain that carries the body and the panel to the bottom (#18, A4 · A18).
@@ -18,7 +18,8 @@
  * jsdom computes none.
  */
 
-import { render, screen, waitFor, renderHook, act } from '@testing-library/react';
+import { screen, waitFor, renderHook, act } from '@testing-library/react';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as Y from 'yjs';

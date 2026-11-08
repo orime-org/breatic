@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The judgement table shared by the preview and the two endpoints that
@@ -11,6 +11,7 @@
  * never shows "will refund" for a request the endpoint would then refuse.
  */
 
+import { parseCreditDecimal } from "@breatic/shared";
 import type { CreditLotLifecycle } from "@breatic/shared";
 import type { AttentionReason, OperationResult } from "@server/modules/credit-refund/operation.repo.js";
 import {
@@ -36,7 +37,7 @@ export interface AssessOperation {
 /** The facts the table reads, as one endpoint receives them. */
 export interface AssessInput {
   kind: RefundCreateKind;
-  lot: { lifecycle: CreditLotLifecycle; remainingCredits: number; ledgerSum: number };
+  lot: { lifecycle: CreditLotLifecycle; remainingCredits: string; ledgerSum: string };
   payment: { status: string; stripePaymentIntentId: string | null; paidCents: number } | null;
   ops: readonly AssessOperation[];
   refunds: readonly RefundCopy[];
@@ -98,7 +99,7 @@ function judge(input: AssessInput, fromPreview: boolean): AssessResult {
     kind === "approve" &&
     (payment.status !== "completed" ||
       payment.stripePaymentIntentId === null ||
-      lot.remainingCredits !== lot.ledgerSum)
+      parseCreditDecimal(lot.remainingCredits) !== parseCreditDecimal(lot.ledgerSum))
   ) {
     return LOT_STATE_CHANGED;
   }
@@ -221,7 +222,7 @@ export type OneShotKind = "reject" | "settle" | "send_back" | "resolve_outside" 
 /** The facts a one-shot disposition is judged on, and what its request sent. */
 export interface OneShotInput {
   kind: OneShotKind;
-  lot: { lifecycle: CreditLotLifecycle; remainingCredits: number };
+  lot: { lifecycle: CreditLotLifecycle; remainingCredits: string };
   paidCents: number;
   ops: readonly AssessOperation[];
   refunds: readonly RefundCopy[];
@@ -254,7 +255,7 @@ export function assessOneShot(input: OneShotInput): OneShotResult {
   const { kind, lot, refunds, ops } = input;
   const unresolved = input.unresolvedFailedRefunds;
   if (!ONE_SHOT_LIFECYCLES[kind].includes(lot.lifecycle)) return LOT_STATE_CHANGED;
-  if (kind === "reject" && lot.remainingCredits <= 0) return LOT_STATE_CHANGED;
+  if (kind === "reject" && parseCreditDecimal(lot.remainingCredits) <= 0n) return LOT_STATE_CHANGED;
   if (ops.some(isInFlight)) return IN_PROGRESS;
   // A lot Stripe once refused is a failed refund to answer for; sending it
   // back would let a reject tell the buyer the approved ask was turned down.

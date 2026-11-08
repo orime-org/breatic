@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Why the ingest Worker refused, in a token the caller can act on (#207
@@ -84,7 +84,7 @@ export type IngestFailureCode = (typeof INGEST_FAILURE_CODES)[number];
  *
  * The Worker's own refusals plus the four a caller authors when the Worker
  * said nothing usable. It exists so the table that turns codes into what a
- * reader is told can be held against the whole set rather than against a list
+ * user is told can be held against the whole set rather than against a list
  * somebody typed out beside it.
  */
 export const INGEST_SETTLEMENT_CODES = [

@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The camera poses Qwen Image Multiple Angles is trained on: 8 azimuths, 4
  * elevations and 3 distances. WaveSpeed rounds any angle it is sent to the
  * nearest of these (wavespeed.ai/docs/docs-api/wavespeed-ai/qwen-image-edit-multiple-angles),
- * so a value off the grid shows the reader a pose the model never makes.
+ * so a value off the grid shows the user a pose the model never makes.
  *
  * Azimuth is measured on the subject's own side: 90 is the subject's right.
  */

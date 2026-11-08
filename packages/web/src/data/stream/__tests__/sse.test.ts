@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The two streaming endpoints have to carry and honour the user's language
@@ -174,10 +174,10 @@ describe('when the server answers with an envelope instead of a stream', () => {
 
   /**
    * Whoever shows this refusal has to know whether the sentence in it was
-   * written for the reader. Ours was: it came out of our envelope, through
+   * written for the user. Ours was: it came out of our envelope, through
    * `t()`, in their language. The generic one below is this file's own
    * fallback -- it exists so the refusal has something to carry, not because
-   * anybody wrote it about this reader's request. Passed off as the server's
+   * anybody wrote it about this user's request. Passed off as the server's
    * answer it becomes a sentence our server never said.
    * @param response - What the server answered with.
    * @returns The refusal it produced.

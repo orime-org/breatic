@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Every message carries the time zone the reader's browser reports, so the
+ * Every message carries the time zone the user's browser reports, so the
  * agent can say what time it is where they are.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

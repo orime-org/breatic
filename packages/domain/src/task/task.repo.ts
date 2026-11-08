@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Task repository — data access for the tasks table.
@@ -7,10 +7,22 @@
  * Handles task lifecycle tracking with conditional timestamp updates.
  */
 
-import { and, eq, desc, isNull, sql } from "drizzle-orm";
-import { db } from "@breatic/core";
+import { and, eq, desc, inArray, isNull, sql } from "drizzle-orm";
+import { db, type DbTx } from "@breatic/core";
 import { tasks } from "@breatic/core";
 import type { GenerationSource, TaskEntity } from "@breatic/shared";
+
+/**
+ * Resolve one bounded set of task provenance without guessing from producers.
+ * @param ids - The captured generation-task identities.
+ * @returns Live task rows in immutable-id order.
+ * @throws {Error} When the database read fails.
+ */
+export async function findLiveTasksByIds(ids: readonly string[]): Promise<TaskEntity[]> {
+  if (ids.length === 0) return [];
+  const rows = await db.select().from(tasks).where(and(inArray(tasks.id, [...new Set(ids)]), isNull(tasks.deletedAt))).orderBy(tasks.id);
+  return rows.map(toEntity);
+}
 
 /**
  * Convert a Drizzle row to a TaskEntity.
@@ -110,6 +122,7 @@ export async function softDeleteTask(id: string): Promise<void> {
  * @param data.model - Model identifier to run the task with, if applicable.
  * @param data.source - Which lane opened this task; defaults to `"task"`.
  * @param data.id - The row's id, when the caller held credits under it first.
+ * @param tx - Optional transaction shared with activity admission.
  * @returns The created `TaskEntity`.
  */
 export async function createTask(data: {
@@ -132,8 +145,8 @@ export async function createTask(data: {
    * canvas route holds the run's credits under it first (inner#1611).
    */
   id?: string;
-}): Promise<TaskEntity> {
-  const rows = await db
+}, tx?: DbTx): Promise<TaskEntity> {
+  const rows = await (tx ?? db)
     .insert(tasks)
     .values({
       ...(data.id === undefined ? {} : { id: data.id }),

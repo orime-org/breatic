@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 
@@ -19,14 +19,14 @@ import { useReturnFocus } from '@web/lib/overlay-focus';
  * sources that shares the component. The cap is what lets the two of them
  * shrink: both fill the box with `flex-1 min-h-0` and scroll or contain
  * inside, so on a short window the box stays whole and the footer stays put
- * rather than the overlay having to scroll the reader down to it.
+ * rather than the overlay having to scroll the user down to it.
  */
 const BOX_SIZE = 'h-[560px] max-h-[calc(100vh-2rem)] w-[520px]';
 
 interface ReplyBoxProps {
   /** Whether the box is up. */
   open: boolean;
-  /** Called when the reader shuts it -- Escape, the backdrop, or the button. */
+  /** Called when the user shuts it -- Escape, the backdrop, or the button. */
   onOpenChange: (open: boolean) => void;
   /** What the box is showing. */
   title: React.ReactNode;
@@ -43,7 +43,7 @@ interface ReplyBoxProps {
 /**
  * A box for the things a reply found.
  *
- * One size whatever the agent column is doing: what the reader opened it from
+ * One size whatever the agent column is doing: what the user opened it from
  * is in that column, and the thing they opened it to look at is not -- a
  * picture at full size and a list of addresses each want the room they want.
  * That is the whole of the visual difference from the project's ordinary
@@ -54,7 +54,7 @@ interface ReplyBoxProps {
  * that half, which is why the size is not the only thing passed down.
  * @param root0 - The component props.
  * @param root0.open - Whether the box is up.
- * @param root0.onOpenChange - Called when the reader shuts it.
+ * @param root0.onOpenChange - Called when the user shuts it.
  * @param root0.title - What the box is showing.
  * @param root0.testId - Marks the box for the tests.
  * @param root0.children - The body.

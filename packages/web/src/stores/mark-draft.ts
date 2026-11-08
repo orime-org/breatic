@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The markup tool's draft (inner#1303 §6.2). The object list is the only copy
  * of what is drawn; the canvas on the node renders from it and writes the
- * reader's gestures back. Positions are shares of the source, as a drawing's
+ * user's gestures back. Positions are shares of the source, as a drawing's
  * are, so one list draws the preview at the node's size and the export at the
  * source's. Size is the brush slider's value, taken against the source's
  * shorter side: a stroke is size/400 of it and a text's font size/100 of it

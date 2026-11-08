@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #904 验收 A4 · A4b · A6 · C2: what pressing a row does to the blocks under
@@ -395,7 +395,7 @@ describe('which rows the menu offers', () => {
 
 describe('one press, one transaction', () => {
   // Undo granularity. A press that lands as two transactions takes two
-  // presses of undo to walk back, and the reader pressed once.
+  // presses of undo to walk back, and the user pressed once.
   /**
    * Opens a flat body and counts the transactions one press dispatches.
    * @param blocks - The body.
@@ -452,9 +452,9 @@ describe('one press, one transaction', () => {
 });
 
 describe('the selection a press leaves behind', () => {
-  // The reader's own selection comes back at the end. A press that collapses
+  // The user's own selection comes back at the end. A press that collapses
   // it takes the bar off screen with it (`SelectionBubbleBar`'s `isWarranted`
-  // wants text in the selection), so the reader would have to select the same
+  // wants text in the selection), so the user would have to select the same
   // text again before pressing a second row.
   /**
    * Opens the given blocks with everything selected.
@@ -512,7 +512,7 @@ describe('the selection a press leaves behind', () => {
 
 describe('a stored heading below level three', () => {
   // Level 4 to 6 are not offered — the menu names three — but a document
-  // written elsewhere can carry one, and the reader can put the caret in it
+  // written elsewhere can carry one, and the user can put the caret in it
   // and press a row. What that renders as is #920; that it does not throw, and
   // that nothing touches the level until a row IS pressed, is here.
   /**
@@ -654,7 +654,7 @@ describe('the selection a press hands back', () => {
     expect(editor.prosemirrorState.selection).toBeInstanceOf(AllSelection);
   });
 
-  it('keeps both ends over the blocks the reader had selected', () => {
+  it('keeps both ends over the blocks the user had selected', () => {
     // A code block holds no marks, so the first block's inline content is
     // replaced outright. Mapping the near end forward walks it past that
     // replacement and out of the selection.

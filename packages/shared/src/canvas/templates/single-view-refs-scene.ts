@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { GenerationTemplate } from "@shared/canvas/generation-templates.js";
 
@@ -33,7 +33,7 @@ export const SINGLE_VIEW_REFS_SCENE: GenerationTemplate = {
   triggers: {
     asks: ["keep my character the same in a video", "the same person acting in one scene"],
     offerWhen: [
-      "the reader has one photo of a person and wants a video in which that person turns, walks or is seen from other angles",
+      "the user has one photo of a person and wants a video in which that person turns, walks or is seen from other angles",
     ],
   },
 };

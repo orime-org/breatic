@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Creating and removing the Space a smoke run works in.
@@ -24,7 +24,7 @@ import { dirname } from 'node:path';
 
 import { expect, type Locator, type Page } from 'playwright/test';
 
-export type SpaceKind = 'canvas' | 'document' | '3d';
+export type SpaceKind = 'canvas' | 'document' | '3d' | 'timeline';
 
 /**
  * The Space on screen, as a selector. Every open tab keeps its Space in the

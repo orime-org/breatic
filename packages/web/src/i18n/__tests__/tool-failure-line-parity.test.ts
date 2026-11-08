@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, expect, it } from 'vitest';
 import { FAILURE_LINES } from '@breatic/shared';
@@ -43,7 +43,7 @@ describe('工具失败的那一行，五个语种都有', () => {
 });
 
 describe('each cause reads differently in every language (inner#1620)', () => {
-  // A reader is told which cause it was, so two causes that read the same
+  // A user is told which cause it was, so two causes that read the same
   // would be one cause on screen.
   it.each(LOCALE_CATALOGS)('%s', (_tag, catalog) => {
     const shown = LINE_KEYS.map((key) => readPath(catalog, key));

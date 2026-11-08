@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import * as React from 'react';
@@ -178,7 +178,7 @@ describe('which notes a peer deleted (#1881)', () => {
     // confirm dialog because of it), so a note that was removed and restored
     // is an ordinary sight. The question this answers is "is the note that is
     // on the board right now gone because a peer removed it" — and a note
-    // that is on the board is not gone. Left naming it, the reader's own
+    // that is on the board is not gone. Left naming it, the user's own
     // delete of that note later comes back to them as somebody else's.
     const p = 'proj-restored';
     const s = 'space-restored';

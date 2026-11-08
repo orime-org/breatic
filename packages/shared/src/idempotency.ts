@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Run-once requests — the contract the server and the browser both read.
@@ -21,6 +21,7 @@ export const IDEMPOTENCY_SCOPES = [
   "membership",
   "project",
   "credits-checkout",
+  "referral",
 ] as const;
 
 /** One of the run-once requests. */
@@ -47,6 +48,7 @@ export const IDEMPOTENCY_RETENTION_SECONDS: Readonly<Record<IdempotencyScope, nu
   membership: DAY_SECONDS,
   project: DAY_SECONDS,
   "credits-checkout": 2 * 60 * 60,
+  referral: DAY_SECONDS,
 };
 
 /**

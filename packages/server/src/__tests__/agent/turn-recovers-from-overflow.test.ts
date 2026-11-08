@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A call the provider turns away as over its context window is folded for
@@ -9,7 +9,7 @@
  * The rejections are H1 and H2 verbatim: what OpenRouter returned on
  * 2026-10-25 for a first request and for a second step after a tool ran.
  * Neither carries usage, and the step it ends has no output, so what the
- * reader sees is one reply: the waiting dot, "consolidating memory", and the
+ * user sees is one reply: the waiting dot, "consolidating memory", and the
  * answer -- never the error.
  *
  * Window 1,048,576 (the probe's), output reserve 16,384, keep line 2,000,000,
@@ -171,7 +171,7 @@ describe("a first call over the window (A2)", () => {
     await sendMessage();
 
     const resent = world.prompts[1] ?? [];
-    expect(systemOf(resent)).toContain("## Conversation Memory\nMEMORY-THROUGH-1");
+    expect(systemOf(resent)).toContain("## Conversation So Far\n\nMEMORY-THROUGH-1");
     expect(JSON.stringify(resent)).not.toContain("TURN-1-REPLY");
     expect(JSON.stringify(resent)).toContain("TURN-2-REPLY");
   });
@@ -397,7 +397,7 @@ describe("a precheck fold that touched nothing (A5)", () => {
   });
 });
 
-describe("the reader stopping during a fold", () => {
+describe("the user stopping during a fold", () => {
   it.each([
     ["an overflow fold", (): void => {
       history(2, 30_000);
@@ -422,7 +422,7 @@ describe("the reader stopping during a fold", () => {
     expect(stored()).toContainEqual({ type: "interrupted" });
   });
 
-  it("does not say how long it thought live when the reader stops an overflow fold, as on any stop", async () => {
+  it("does not say how long it thought live when the user stops an overflow fold, as on any stop", async () => {
     history(2, 30_000);
     world.foldOutcomes = ["aborted"];
     world.script = [callsFetch("c1", 311, 50, true), { reject: h1() }, answers("never asked for")];
@@ -454,7 +454,7 @@ describe("another tab folding first", () => {
     expect(world.folds).toHaveLength(1);
     expect(contextReads()).toBe(2);
     expect(world.prompts).toHaveLength(2);
-    expect(systemOf(world.prompts[1])).toContain("## Conversation Memory\nMEMORY-THROUGH-1");
+    expect(systemOf(world.prompts[1])).toContain("## Conversation So Far\n\nMEMORY-THROUGH-1");
     expect(count(chunks, "error")).toBe(0);
     expect(stored()).toContainEqual({ type: "text", text: "after the other tab" });
   });

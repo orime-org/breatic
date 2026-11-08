@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The rows the block handle menu holds, in the order it holds them.
@@ -65,7 +65,7 @@ export interface BlockMenuRow {
  * other rows keep the icon this table gives them, because none of them
  * has a reading to show — "duplicate" and "delete" look the same whatever
  * block is under the pointer, and the type row's face would have to repeat
- * what the reader can already see in the body.
+ * what the user can already see in the body.
  */
 export const BLOCK_MENU_ROWS: readonly BlockMenuRow[] = [
   {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi } from 'vitest';
 
@@ -117,8 +117,8 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
       hash: HASH,
       nodeId: 'n1',
       spaceId: 's1',
-    });
-    expect(deps.sendToIngest).toHaveBeenCalledWith(file, TICKET, CFG);
+    }, undefined);
+    expect(deps.sendToIngest).toHaveBeenCalledWith(file, TICKET, CFG, undefined, undefined);
     expect(deps.onFailure).not.toHaveBeenCalled();
   });
 
@@ -177,7 +177,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
 
     await runMediaUpload(file, { projectId: 'p1', derived: true }, deps);
 
-    expect(deps.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey);
+    expect(deps.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey, undefined);
     expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith({
       fileUrl: 'https://cdn/p.png',
       assetId: 'asset-new',
@@ -280,7 +280,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
       size: file.size,
       hash: HASH,
       purpose: 'studio_avatar',
-    });
+    }, undefined);
   });
 
   // No hash, no upload (user decision 2026-07-26): the ledger keys on content,
@@ -390,6 +390,19 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'storage' });
   });
 
+  // The server refuses a file over the cap when the browser could not check
+  // it first (the upload config was not read yet); sending it again changes
+  // nothing (inner#1351 design §5.3).
+  it('names a file the server refused as over the cap as too large', async () => {
+    const deps = makeUploadDeps({
+      requestTicket: vi.fn().mockRejectedValue(apiError(413)),
+    });
+
+    await runMediaUpload(file, context, deps);
+
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'tooLarge' });
+  });
+
   it('names a rate limit at once, asking for the ticket only one time', async () => {
     const requestTicket = vi.fn().mockRejectedValue(apiError(429));
     const deps = makeUploadDeps({ requestTicket });
@@ -429,7 +442,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
       size: file.size,
       hash: HASH,
       derived: true,
-    });
+    }, undefined);
   });
 });
 
@@ -456,7 +469,7 @@ describe('uploadMedia — the pipeline wired to the real network, as a promise',
       height: 480,
     });
     expect(assetsApi.requestUploadTicket).toHaveBeenCalledWith(
-      expect.objectContaining({ projectId: 'p1', derived: true, hash: HASH }),
+      expect.objectContaining({ projectId: 'p1', derived: true, hash: HASH }), undefined,
     );
   });
 

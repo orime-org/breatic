@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What the registration behind a material address says (inner#1315).
  *
- * An agent's proposal hands the reader's material over by address. Whether an
+ * An agent's proposal hands the user's material over by address. Whether an
  * address is ours, belongs to this studio and is still live, and what numbers
  * a node holding it lands with, are all answered by the ledger row registered
  * under the key that address names.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a page carries across the reload Update starts, and only that reload.
@@ -65,6 +65,31 @@ describe('saving across an update', () => {
     reloadForUpdate();
     unload();
     expect(JSON.parse(sessionStorage.getItem(KEY) ?? 'null')).toEqual({ a: 1 });
+  });
+});
+
+// inner#1729: Update shows it is working until the page goes. A press after
+// it means the page stayed (the leave prompt was cancelled), so it stops.
+describe('the pending update', () => {
+  it('is pending from Update until the next press', async () => {
+    const { isUpdatePending, reloadForUpdate } = await freshModule();
+    expect(isUpdatePending()).toBe(false);
+    reloadForUpdate();
+    expect(isUpdatePending()).toBe(true);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(isUpdatePending()).toBe(false);
+  });
+
+  it('tells its subscribers each time it changes', async () => {
+    const { reloadForUpdate, subscribeUpdatePending } = await freshModule();
+    const heard = vi.fn();
+    const stop = subscribeUpdatePending(heard);
+    reloadForUpdate();
+    window.dispatchEvent(new Event('pointerdown'));
+    expect(heard).toHaveBeenCalledTimes(2);
+    stop();
+    reloadForUpdate();
+    expect(heard).toHaveBeenCalledTimes(2);
   });
 });
 

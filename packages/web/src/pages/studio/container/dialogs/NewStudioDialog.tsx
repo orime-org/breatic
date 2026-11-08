@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -86,7 +86,7 @@ export function NewStudioDialog({
   };
 
   /**
-   * Put a refused create where the reader will look for it: a slug taken in
+   * Put a refused create where the user will look for it: a slug taken in
    * the meantime on the slug line while the dialog is open, anything else
    * under the form.
    * @param err - What the create threw.

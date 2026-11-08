@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { z } from 'zod';
 
@@ -9,7 +9,8 @@ import { STORAGE_KEYS } from '@web/lib/storage-keys';
 /**
  * Interface preferences that belong to an account rather than to a project:
  * the Agent column width, the Studio rail sections, the canvas minimap and
- * snap. Two people share a browser often enough to matter, so the record is
+ * snap, the Timeline magnet, snap and linkage switches, and whether the
+ * document heading outline is shown. Two people share a browser often enough to matter, so the record is
  * keyed by account id and each account reads only its own entry.
  *
  * This module is the only place the key is read or written, through
@@ -34,6 +35,14 @@ export interface UserPreferences {
   railCollapsed: RailCollapsed;
   minimapVisible: boolean;
   snapToGrid: boolean;
+  /** Timeline main-track magnet for this user's edits. */
+  timelineMagnet: boolean;
+  /** Timeline auto snap while dragging. */
+  timelineSnap: boolean;
+  /** Timeline linkage of clips above a moved main-track clip. */
+  timelineLinkage: boolean;
+  /** Whether the heading outline beside a document body is shown. */
+  documentOutlineVisible: boolean;
 }
 
 /** What an account that has stored nothing sees. */
@@ -42,6 +51,10 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   railCollapsed: { personal: false, mine: false, joined: false },
   minimapVisible: true,
   snapToGrid: false,
+  timelineMagnet: true,
+  timelineSnap: true,
+  timelineLinkage: true,
+  documentOutlineVisible: true,
 };
 
 // `.catch` also answers for a missing field, since `undefined` fails each
@@ -57,6 +70,10 @@ const preferencesSchema = z.object({
     .catch(DEFAULT_USER_PREFERENCES.railCollapsed),
   minimapVisible: z.boolean().catch(true),
   snapToGrid: z.boolean().catch(false),
+  timelineMagnet: z.boolean().catch(true),
+  timelineSnap: z.boolean().catch(true),
+  timelineLinkage: z.boolean().catch(true),
+  documentOutlineVisible: z.boolean().catch(true),
 });
 
 /**

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Collab server YAML configuration loader.
@@ -114,6 +114,10 @@ const collabConfigSchema = z.object({
   document_schema: z
     .object({ force_publish: z.boolean().default(false) })
     .default({ force_publish: false }),
+  // How long one instance holds the lock under which it converts a
+  // document's stored tables (inner#1619 design 5.8). It is never released,
+  // only expires, and has to outlast the store interval by far.
+  doc_table_migrate_lock_ms: z.number().int().positive().default(300_000),
 }).superRefine((cfg, ctx) => {
   // One account may hold one full message; the budget must leave room for
   // another member's full message beside it.

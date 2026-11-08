@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * inner#1126 A5: what the table entry's menu runs on the table under the
- * pointer, leaving the reader's own caret where it was.
+ * pointer, leaving the user's own caret where it was.
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -116,7 +116,7 @@ function tableOf(editor: Editor): PressedBlock {
 }
 
 describe('indenting a table off its entry', () => {
-  it('nests it under the block above and leaves the reader where they were', () => {
+  it('nests it under the block above and leaves the user where they were', () => {
     const editor = open([{ type: 'paragraph', content: 'above' }, table(['a', 'b', 'c', 'd'])]);
     caretIn(editor, 'above', 2);
     const id = tableOf(editor).id;

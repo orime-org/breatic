@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a stored asset is called, read off the address it is stored at.
@@ -17,7 +17,7 @@
  *
  * The last segment of the path, which for our own keys is
  * `{epoch}_{uuid}{ext}` — minted by `storageKey` and unique to this object.
- * Percent-escapes come off: an address carries the escaped form and a reader
+ * Percent-escapes come off: an address carries the escaped form and a user
  * is looking at a name.
  * @param url - The address the asset is stored at.
  * @returns The name, or null when the address has no path segment to read.

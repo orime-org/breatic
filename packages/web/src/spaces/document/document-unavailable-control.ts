@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * How a control that cannot be used right now is drawn.
@@ -8,7 +8,7 @@
  * this selection, and a block handle row whose command reaches nothing on this
  * row — the colour panel over a row with no words in it, for one. What they
  * must not do is look usable: a control that reads as available and answers a
- * press with nothing tells the reader it is broken (user 2026-08-23).
+ * press with nothing tells the user it is broken (user 2026-08-23).
  *
  * The treatment is dimmed, a cursor that says so, and the hover highlight
  * switched off. `aria-disabled` goes on the element itself at each call site,
@@ -30,7 +30,7 @@
  * how the entry can be focused — see {@link UNAVAILABLE}. An entry the
  * keyboard can reach and the pointer cannot needs this one: its `:focus` only
  * ever comes from an arrow key, and that is the one mark saying where the
- * reader is.
+ * user is.
  */
 export const UNAVAILABLE_KEYBOARD_FOCUS_ONLY =
   'hover:bg-transparent hover:text-current cursor-not-allowed opacity-50';

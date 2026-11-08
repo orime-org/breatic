@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Data access for `credit_lots` and `credit_ledger` (task #11).
@@ -543,7 +543,7 @@ export async function studiosWithDebtFrom(
  * @param userId - The account reading.
  * @returns A condition on `credit_ledger.studio_id`.
  */
-export function administeredByReader(userId: string): SQL {
+export function administeredByUser(userId: string): SQL {
   return sql`EXISTS (
     SELECT 1 FROM ${studioMembers}
     WHERE ${studioMembers.studioId} = ${creditLedger.studioId}
@@ -1075,15 +1075,16 @@ export interface LotContext {
 }
 
 /**
- * One account's purchases, newest first, one keyset page at a time.
+ * One account's credit lots, newest first, one keyset page at a time.
  *
- * Keyset rather than offset: a purchase landing while someone pages would
+ * A lot arriving while someone pages would
  * shift every later row down by one under an offset, which shows a row twice
  * and hides another.
- * @param userId - Whose purchases to list.
+ * @param userId - Whose credit lots to list.
  * @param limit - How many rows to return.
  * @param cursor - The `(created_at, id)` of the previous page's last row.
- * @param lifecycle - Narrow to one state; omit for every purchase.
+ * @param lifecycle - Narrow to one state; omit for every lot.
+ * @param lotId - Narrow to this one lot when projecting a designation reply.
  * @returns The page, newest first.
  */
 export async function listLotsByUser(
@@ -1091,6 +1092,7 @@ export async function listLotsByUser(
   limit: number,
   cursor: ActivityCursor | null,
   lifecycle?: CreditLotLifecycle,
+  lotId?: string,
 ): Promise<(CreditLotEntity & LotContext & { cursorAt: string })[]> {
   const at = cursor ? sql`${cursor.createdAt}::timestamptz` : null;
   const rows = await db
@@ -1154,6 +1156,7 @@ export async function listLotsByUser(
     .where(
       and(
         eq(creditLots.userId, userId),
+        lotId === undefined ? undefined : eq(creditLots.id, lotId),
         isNull(creditLots.deletedAt),
         // Three sections read this list and each wants its own subset: assign
         // takes the active ones, refunds sorts by refund state, purchases take
@@ -1313,7 +1316,7 @@ export async function listLedgerByPayer(
       //
       // `unbilled` is every row of a deployment that charges nobody, and the
       // runs that reached no pool where it does charge. The line stays: this
-      // list answers "what did I use", and a run the reader started is part
+      // list answers "what did I use", and a run the user started is part
       // of that answer whether or not it cost him.
       kind: sql<CreditLedgerKind>`CASE
         WHEN BOOL_AND(${creditLedger.lotId} IS NULL) THEN 'unbilled'
@@ -1342,14 +1345,14 @@ export async function listLedgerByPayer(
         // empty it while the cursor still says there is more.
         inArray(creditLedger.entryType, SPENDING_ENTRY_TYPES),
         // Two branches, and the first is the one easy to lose. A run that
-        // belongs to no studio is one the reader made themselves — the text
+        // belongs to no studio is one the user made themselves — the text
         // tools carry no project, and a project deleted mid-task leaves the
         // same shape — so it is theirs to see. The rest is narrowed to what
         // they administer: paying for a run does not make somebody else's
         // studio, its projects and its output theirs to read.
         or(
           isNull(creditLedger.studioId),
-          administeredByReader(payerUserId),
+          administeredByUser(payerUserId),
         ),
         studioId ? eq(creditLedger.studioId, studioId) : undefined,
       ),
@@ -1544,7 +1547,7 @@ export async function sumSpentByStudio(
         // The administering half of the same test the ledger list applies.
         // Its other half — a run belonging to no studio — has no line here:
         // this answers one line per studio, and such a run was in none.
-        administeredByReader(payerUserId),
+        administeredByUser(payerUserId),
       ),
     )
     .groupBy(

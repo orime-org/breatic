@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A style lives on text, whichever control put it there.
  *
- * The rule is the document's, not any one control's: a node the reader cannot
+ * The rule is the document's, not any one control's: a node the user cannot
  * see a style on carries none. `hardBreak` is a line wrap, bold or not;
  * `unsupportedInline` stands in for vocabulary this build cannot draw. Yjs
  * agrees and more strongly — `y-prosemirror` maps a non-text inline node by
@@ -20,7 +20,7 @@
  *
  * The cost of not holding it is not the invisible mark. It is what the mark
  * does next: it survives undo, the bar cannot reach it (every tool greys over
- * a lone break), and the reader's next character inherits it — into Yjs, where
+ * a lone break), and the user's next character inherits it — into Yjs, where
  * every peer sees a bold letter on a line the writer just un-bolded.
  */
 
@@ -273,7 +273,7 @@ describe('typing where a break interrupts a styled line', () => {
   });
 
   it('reads back past a run of bare nodes, not just the nearest one', () => {
-    // Two breaks in a row is the empty line a reader makes by pressing
+    // Two breaks in a row is the empty line a user makes by pressing
     // Shift+Enter twice. The style still comes from the text before them.
     const { editor } = openBrokenLine();
     const second = breakAt(editor) + 1;
@@ -302,7 +302,7 @@ describe('typing where a break interrupts a styled line', () => {
   it('takes what is behind the break, not what is ahead of it', () => {
     // Style only the first half of the line. The two sides now disagree, and
     // the answer is the one behind — which is what `marks` reads and what a
-    // reader who just styled that half expects the next character to join.
+    // user who just styled that half expects the next character to join.
     const { editor } = openBrokenLine();
     select(editor, 3, breakAt(editor));
     MARK_TOOLS.find((tool) => tool.id === 'bold')!.run(editor);
@@ -437,7 +437,7 @@ describe('what the caret reads is what ProseMirror reads, one node further back'
   });
 });
 
-describe('the editor a reader actually gets', () => {
+describe('the editor a user actually gets', () => {
   afterEach(() => {
     _resetDocumentEditorCacheForTests();
   });

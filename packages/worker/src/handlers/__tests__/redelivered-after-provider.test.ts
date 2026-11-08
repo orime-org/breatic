@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What the node says when a job comes back after the provider was called.
@@ -7,10 +7,10 @@
  * The queue can hand the same job over twice — a worker that called the
  * provider and died before billing leaves a task with a result URL and no
  * charge. Policy is to stop there rather than call the provider again, and
- * the run has to end somewhere the reader can see.
+ * the run has to end somewhere the user can see.
  *
  * Where it ends is a node's history row, which is read in whatever language
- * the reader set. So what lands there is one of our causes, not the sentence
+ * the user set. So what lands there is one of our causes, not the sentence
  * an operator would want: which part of the queue did what is the log's to
  * say, and the log already says it.
  *
@@ -111,8 +111,8 @@ describe("a job redelivered after the provider was already called", () => {
     });
   });
 
-  // A cause travels as a code and becomes a sentence where the reader is.
-  // An operator's sentence stored here reaches every reader in one language
+  // A cause travels as a code and becomes a sentence where the user is.
+  // An operator's sentence stored here reaches every user in one language
   // and tells them nothing they can act on — resending is what they do next,
   // which is exactly what `internal` says.
   it("leaves the node a cause this product knows, not an operator sentence", async () => {

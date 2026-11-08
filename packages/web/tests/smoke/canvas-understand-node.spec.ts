@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Reading a node, and keeping what the reading said (#2175).
@@ -202,7 +202,7 @@ test('Snapshot writes a row the history panel hands back @needs-internet', async
   const rows = page.getByTestId('node-history-row');
   await expect(rows.first()).toBeVisible({ timeout: 20_000 });
   // The chip says what the row IS, and this one is neither generated nor
-  // uploaded — the reader asked for it to be kept.
+  // uploaded — the user asked for it to be kept.
   await expect(rows.first()).toContainText('Snapshot');
 });
 

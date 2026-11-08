@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a local mini-tool answers with (#209 + #210).
@@ -35,6 +35,7 @@ describe("an output built from the row its bytes registered as", () => {
   it("carries the cover and what the ledger settled, not just the URL", () => {
     expect(storedAsOutput(STORED)).toEqual({
       url: STORED.fileUrl,
+      asset_id: STORED.assetId,
       cover_url: STORED.coverUrl,
       width: 1920,
       height: 1080,

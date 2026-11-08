@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { Loader2, Lock, X } from 'lucide-react';
 import * as React from 'react';
@@ -61,7 +61,7 @@ interface SpaceTabProps {
 export const SPACE_TAB_MAX_WIDTH = 160;
 
 /**
- * Keeps a press on a tab from moving focus onto it while the reader is working
+ * Keeps a press on a tab from moving focus onto it while the user is working
  * inside a Space, so the caret is still there when that Space is shown again.
  * Focus anywhere else leaves with the press as usual: a tab or project name
  * being renamed is saved when it loses focus.
@@ -207,7 +207,7 @@ export function SpaceTab({
       aria-selected={active}
       onClick={editing ? undefined : onActivate}
       // Pressing a tab switches Space without taking focus from a Space, as a
-      // browser's or an editor's tab strip does: whatever the reader was
+      // browser's or an editor's tab strip does: whatever the user was
       // writing in keeps the caret until its Space is hidden, so switching
       // back finds them still writing. Not while renaming this tab, where the
       // press places the caret in the name.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { Clipboard } from 'lucide-react';
 import * as React from 'react';
@@ -16,6 +16,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import type { CreatableNodeType } from '@web/spaces/canvas/node-factory';
 import { CreatableNodeMenuItems } from '@web/spaces/canvas/nodes/_shared/CreatableNodeMenuItems';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
+import { CANVAS_KEY_SHORTCUTS } from '@web/spaces/canvas/shortcuts/canvas-shortcuts';
 
 interface CanvasContextMenuProps {
   /** Whether the menu is open (driven by the canvas's right-click handler). */
@@ -78,7 +79,7 @@ export const CanvasContextMenu = React.memo(function CanvasContextMenu({
               <Clipboard className='mr-2 h-4 w-4' aria-hidden='true' />
               {t('canvas.contextMenu.paste')}
               <DropdownMenuShortcut>
-                {formatShortcut({ mod: true, key: 'V' })}
+                {formatShortcut(CANVAS_KEY_SHORTCUTS.paste)}
               </DropdownMenuShortcut>
             </DropdownMenuItem>
           </>

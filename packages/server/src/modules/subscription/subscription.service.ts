@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The four things a person can do to their membership (task #106, §7, §6.5.3).
@@ -19,7 +19,7 @@
  *
  * A scheduled cancellation is cleared AFTER the plan change, never before.
  * Neither order can be atomic, so the one to take is the one whose failure the
- * reader can see and undo: the upgrade is in force and the end date is still
+ * user can see and undo: the upgrade is in force and the end date is still
  * showing beside a resume button. The other order fails silently in the
  * direction of charging somebody who asked to stop.
  */
@@ -61,7 +61,15 @@ import { getStripeClient } from "@server/infra/stripe.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
 import { applySubscriptionWrite } from "@server/modules/subscription/apply-subscription.js";
 import { readStripeSubscription } from "@server/modules/subscription/read-stripe-subscription.js";
+import { ensureFirstPeriodCoupon } from "@server/modules/referral/referral-coupon.js";
+import { firstPeriodDiscount } from "@server/modules/referral/referral.service.js";
 import { sendMembershipEndedMail } from "@server/modules/subscription/settle-tier.js";
+
+/** A Stripe answer as stored, and what its first invoice charged before tax when that was the invoice read. */
+export interface StoredAnswer {
+  write: SubscriptionWrite;
+  firstInvoiceAmountCents: number | null;
+}
 
 /** Where a checkout ends up, and whether it needs paying. */
 export interface CheckoutStart {
@@ -104,7 +112,7 @@ async function readSituation(
  * @param input.referenceId - Identifies the change in the tier ledger.
  * @param input.logContext - Fields the caller adds to the log line when the
  *   answer cannot be read.
- * @returns The snapshot stored, or null when the answer was not stored.
+ * @returns The snapshot stored with its first invoice's amount, or null when the answer was not stored.
  * @throws {Error} if the database fails.
  */
 async function storeAnswer(input: {
@@ -113,7 +121,7 @@ async function storeAnswer(input: {
   observedAt: Date;
   referenceId: string;
   logContext?: Record<string, unknown>;
-}): Promise<SubscriptionWrite | null> {
+}): Promise<StoredAnswer | null> {
   const read = readStripeSubscription(input.subscription, input.userId, input.observedAt);
   if (!read.ok) {
     logger.error(
@@ -127,8 +135,8 @@ async function storeAnswer(input: {
     );
     return null;
   }
-  await writeSnapshot(input.userId, read.write, input.referenceId, input.subscription.metadata);
-  return read.write;
+  await writeSnapshot(input.userId, read.write, input.referenceId, input.subscription.metadata, read.firstInvoiceAmountCents);
+  return { write: read.write, firstInvoiceAmountCents: read.firstInvoiceAmountCents };
 }
 
 /**
@@ -138,6 +146,7 @@ async function storeAnswer(input: {
  * @param write - The snapshot.
  * @param referenceId - Identifies the change in the tier ledger.
  * @param metadata - The Stripe subscription's metadata, holding the checkout snapshot.
+ * @param firstInvoiceAmountCents - What the first invoice charged before tax, for the start report.
  * @throws {Error} if the database fails.
  */
 async function writeSnapshot(
@@ -145,6 +154,7 @@ async function writeSnapshot(
   write: SubscriptionWrite,
   referenceId: string,
   metadata: Record<string, unknown>,
+  firstInvoiceAmountCents: number | null,
 ): Promise<void> {
   const applied = await db.transaction((tx) =>
     applySubscriptionWrite({ userId, write, referenceId, tx }),
@@ -152,7 +162,7 @@ async function writeSnapshot(
   // After the commit: an email about a change that then rolled back cannot be
   // recalled.
   if (applied.endedFrom) await sendMembershipEndedMail(userId, applied.endedFrom);
-  if (applied.started) reportSubscriptionStarted(write, metadata);
+  if (applied.started) reportSubscriptionStarted(write, metadata, firstInvoiceAmountCents);
 }
 
 /**
@@ -255,31 +265,63 @@ export async function startCheckout(input: {
 
   const customerId = await ensureCustomer(input.userId);
   const snapshot = await takeCheckoutSnapshot(input.userId);
-  const session = await getStripeClient().checkout.sessions.create({
-    mode: "subscription",
-    customer: customerId,
-    // No expires_at: Stripe's default lifetime of 24 hours is the most it
-    // accepts, and the last re-send of this press (inner#1490) arrives before
-    // it runs out.
-    line_items: [
-      {
-        price: getSubscriptionPlan(input.tier, input.period).stripePriceId,
-        quantity: 1,
+  /**
+   * Opens the hosted page, with the first-period coupon when the account has a code's discount.
+   * @param referral - The discount, or null for full price.
+   * @returns The session Stripe made.
+   */
+  const open = async (referral: Awaited<ReturnType<typeof firstPeriodDiscount>>): Promise<Stripe.Checkout.Session> => {
+    // The code on the subscription is for reference only (inner#1868 §6).
+    const discounts = referral ? [{ coupon: await ensureFirstPeriodCoupon(referral.percent) }] : undefined;
+    return getStripeClient().checkout.sessions.create({
+      mode: "subscription",
+      customer: customerId,
+      // No expires_at: Stripe's default lifetime of 24 hours is the most it
+      // accepts, and the last re-send of this press (inner#1490) arrives before
+      // it runs out.
+      line_items: [
+        {
+          price: getSubscriptionPlan(input.tier, input.period).stripePriceId,
+          quantity: 1,
+        },
+      ],
+      // Reaches the subscription object, which is what events carry. Top-level
+      // metadata and `client_reference_id` stop at the Session. The subscribing
+      // browser's consent and ad click ride here for the same reason (inner#1442 §4.4.5).
+      subscription_data: {
+        // Flexible billing credits the unused time of a plan at the price last
+        // billed, discount included, so upgrading within a referred first
+        // period credits what was paid (inner#1868 §6, sandbox 2026-11-07).
+        billing_mode: { type: "flexible" },
+        metadata: {
+          userId: input.userId,
+          ...toStripeMetadata(snapshot),
+          ...(referral ? { referralCode: referral.code } : {}),
+        },
       },
-    ],
-    // Reaches the subscription object, which is what events carry. Top-level
-    // metadata and `client_reference_id` stop at the Session. The subscribing
-    // browser's consent and ad click ride here for the same reason (inner#1442 §4.4.5).
-    subscription_data: { metadata: { userId: input.userId, ...toStripeMetadata(snapshot) } },
-    client_reference_id: input.userId,
-    // The subscription keeps this, so renewals and upgrade invoices are taxed
-    // too. Checkout taxes on the address stored on the customer, which starts
-    // with none and may be stale for a returning buyer; writing the billing
-    // address typed here back to it is what makes the tax follow that address.
-    automatic_tax: { enabled: true },
-    customer_update: { address: "auto" },
-    ...returnUrls(input.returnUrl),
-  });
+      ...(discounts ? { discounts } : {}),
+      client_reference_id: input.userId,
+      // The subscription keeps this, so renewals and upgrade invoices are taxed
+      // too. Checkout taxes on the address stored on the customer, which starts
+      // with none and may be stale for a returning buyer; writing the billing
+      // address typed here back to it is what makes the tax follow that address.
+      automatic_tax: { enabled: true },
+      customer_update: { address: "auto" },
+      ...returnUrls(input.returnUrl),
+    });
+  };
+
+  // A referred account that never paid gets its code's first-period coupon.
+  const referral = await firstPeriodDiscount(input.userId);
+  let session = await open(referral);
+  if (referral === null) {
+    // A backfill expires the account's open pages once, after it commits; a
+    // page still being made then is not among them. Reading again after the
+    // page exists sees any such binding, and the buyer gets a page with it.
+    // The full-price page's URL never leaves this function.
+    const late = await firstPeriodDiscount(input.userId);
+    if (late !== null) session = await open(late);
+  }
 
   if (!session.url) {
     throw new Error(`Stripe returned a checkout session with no URL`);
@@ -298,7 +340,7 @@ export async function startCheckout(input: {
  * stored `observedAt` keeps from winning.
  * @param userId - The account the buyer is signed in as.
  * @param sessionId - The Checkout Session the return address named.
- * @returns The subscription as stored.
+ * @returns The subscription as stored, with what its first invoice charged.
  * @throws {NotFoundError} if the session is not a membership checkout of this
  *   account's, or Stripe has no such session.
  * @throws {AppError} `503` if the session holds no subscription yet, or holds
@@ -309,7 +351,7 @@ export async function startCheckout(input: {
 export async function confirmCheckout(
   userId: string,
   sessionId: string,
-): Promise<SubscriptionWrite> {
+): Promise<StoredAnswer> {
   // Stamped before the call: the moment that decides which of two writers
   // holds the newer view is when each of them asked.
   const observedAt = new Date();
@@ -446,7 +488,7 @@ function itemToReplace(record: StoredSubscription): string {
  * The one irreversible call on this path, so it asks Stripe first rather than
  * acting on the stored row. That row is a snapshot from whichever wrote it
  * last, the webhook or one of our own calls to Stripe, and one of the ways it goes
- * out of date is the one that matters most here: the reader paid. The panel hands an account in this state a
+ * out of date is the one that matters most here: the user paid. The panel hands an account in this state a
  * payment link that opens in a NEW tab, so the tab they came from keeps
  * showing the old state and never refetches on focus; paying there and coming
  * back to press a tier button is a path we laid out ourselves. Cancelling on
@@ -664,11 +706,11 @@ export async function changePlan(input: {
   if (stored === null) {
     // Stripe took the change and what came back does not agree with our price
     // list. Reporting "applied" here is the one answer that cannot be taken
-    // back: the reader is told their plan changed while the row still holds
+    // back: the user is told their plan changed while the row still holds
     // the old one, and nothing later contradicts it.
     throw new AppError(500, t("server.membership.change_unconfirmed"));
   }
-  const pending = stored.hasPendingUpdate;
+  const pending = stored.write.hasPendingUpdate;
 
   if (situation === "cancelling") {
     const withdrawnAt = new Date();
@@ -688,7 +730,7 @@ export async function changePlan(input: {
 
   return {
     status: pending ? "pendingPayment" : "applied",
-    payableInvoiceUrl: stored.payableInvoiceUrl,
+    payableInvoiceUrl: stored.write.payableInvoiceUrl,
   };
 }
 
@@ -700,7 +742,7 @@ export async function changePlan(input: {
  * while the upgrade never happened: the account keeps renewing, nobody asked
  * for that, and nothing says so. After it, a failure leaves the upgrade in
  * force and the cancellation still scheduled — which the panel already draws
- * as an end date beside a "resume" button, so the reader can see it and undo
+ * as an end date beside a "resume" button, so the user can see it and undo
  * it themselves. Neither ordering can be atomic, so the one whose failure is
  * visible and reversible is the one to take.
  *
@@ -708,7 +750,7 @@ export async function changePlan(input: {
  * button is itself the statement "I am not leaving" — it is the only thing
  * that button says, and the panel offers it in this state on purpose (design
  * section 13, S3). Skipping it while the difference is still unpaid looked
- * careful and was not: the reader then pays the invoice, the upgrade applies,
+ * careful and was not: the user then pays the invoice, the upgrade applies,
  * and the scheduled ending is still there, so the plan they just paid more to
  * keep ends at the period boundary anyway.
  * @param subscriptionId - The subscription at Stripe.

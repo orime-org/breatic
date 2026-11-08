@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Pressing a highlight names every thread under it (#18, A20).
@@ -7,16 +7,16 @@
  * Two comments may overlap — `excludes: ""` on the mark is what allows it —
  * and the library's own click handler cannot reach the second one: it takes
  * `node.marks.find(...)`, the first match, and selects that single thread
- * (`comments/extension.ts:261-263`). So the reader pressing a doubly
+ * (`comments/extension.ts:261-263`). So the user pressing a doubly
  * commented run would silently get one of the two, with no way to tell which
  * or to reach the other.
  *
- * The design settles on naming all of them and letting the reader pick, which
+ * The design settles on naming all of them and letting the user pick, which
  * is what three implementations do (ProseMirror's own `commentsAt` returns a
  * list, Lexical activates every id, CKEditor's `activeAnnotations` is a set);
  * no vendor's help pages answer the question at all.
  *
- * `orphan` is read, as the library's own handler reads it: what a reader can
+ * `orphan` is read, as the library's own handler reads it: what a user can
  * press is what is drawn for them. That attribute is true for a thread that
  * is resolved, withdrawn or gone (`extension.ts:138-142`), and the stylesheet
  * paints no colour for such a mark — so those words look like any others and

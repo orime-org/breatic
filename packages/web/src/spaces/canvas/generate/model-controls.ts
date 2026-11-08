@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The controls only one model has (#2156, design §12).
@@ -9,7 +9,8 @@
  * named on screen from the locales by its param name
  * (`canvas.generatePanel.param.<name>`); its shape comes from the
  * declaration: `values` is a row of options (a true/false pair is a switch),
- * `min`/`max` is a slider, `type: text` is a text box. The `label` is what
+ * `min`/`max` is a slider, `type: text` is a text box, `type: integer` a
+ * whole-number box that may be left blank (inner#1691). The `label` is what
  * marks a param as one of these. A list of entries (`type: items`) is a list
  * editor whose rows follow the entry's `fields`. A param declared for some
  * modes only is drawn in those modes only, so every reader names the mode.
@@ -43,6 +44,7 @@ export type ModelControl =
   | { kind: 'choice'; name: string; options: ParamOption[] }
   | { kind: 'range'; name: string; min: number; max: number; step: number; stops?: SliderStop[]; display?: 'percent' }
   | { kind: 'text'; name: string }
+  | { kind: 'integer'; name: string }
   | { kind: 'items'; name: string; max: number | undefined; fields: ItemFieldControl[] }
   | { kind: 'cameraAngle'; name: 'camera_angle'; params: CameraAngleParams }
   | { kind: 'lightAngle'; name: 'light_angle'; params: AngleParams }
@@ -124,6 +126,7 @@ function controlFor(name: string, spec: ParamDescriptor): ModelControl | undefin
     return { kind: 'items', name, max: spec.max_items, fields };
   }
   if (spec.type === 'text') return { kind: 'text', name };
+  if (spec.type === 'integer') return { kind: 'integer', name };
   const values = spec.values;
   if (values && values.length > 0) {
     if (values.every((v) => typeof v === 'boolean')) return { kind: 'toggle', name };
@@ -266,13 +269,18 @@ export function ownControlValues(
  * What the model's own controls stand on, as the settings pill shows it: a
  * choice by its option's name, a range by its step's `value_labels` name or
  * else its number, a switch by its name
- * while it is on, a text box or a list by its name while it holds something,
+ * while it is on (and, given `offText`, a switch on by default by its name
+ * and `offText` while it is off), a text box or a list by its name while it holds something,
  * a camera pose by the names of its azimuth, elevation and distance.
  * @param model - The active model.
  * @param mode - The mode the panel is in.
  * @param params - What the node holds for it, with the model's defaults resolved in.
  * @param nameOf - A param's name on screen.
  * @param include - Which controls to summarise; all of them when absent.
+ * @param named - Joins a choice's or a range's name to its value, for a
+ *   summary drawn away from the controls; the value alone when absent.
+ * @param offText - With `named`, what a switch that is on by default but
+ *   turned off says, so the summary shows it is off.
  * @returns One part per control that has something to show, in declared order.
  */
 export function ownControlSummary(
@@ -281,6 +289,8 @@ export function ownControlSummary(
   params: Readonly<Record<string, unknown>>,
   nameOf: (name: string) => string,
   include?: (control: ModelControl) => boolean,
+  named?: (name: string, value: string) => string,
+  offText?: string,
 ): string[] {
   const parts: string[] = [];
   for (const control of modelControls(model, mode)) {
@@ -294,12 +304,13 @@ export function ownControlSummary(
       continue;
     }
     const shown = params[control.name];
-    if (control.kind === 'choice' && (typeof shown === 'string' || typeof shown === 'number')) {
-      parts.push(optionLabel(model.params[control.name] ?? {}, shown));
-    } else if (control.kind === 'range' && typeof shown === 'number') {
-      parts.push(optionLabel(model.params[control.name] ?? {}, shown));
+    if ((control.kind === 'choice' && (typeof shown === 'string' || typeof shown === 'number')) || (control.kind === 'range' && typeof shown === 'number')) {
+      const value = optionLabel(model.params[control.name] ?? {}, shown);
+      parts.push(named ? named(nameOf(control.name), value) : value);
     } else if (control.kind === 'toggle' && shown === true) {
       parts.push(nameOf(control.name));
+    } else if (control.kind === 'toggle' && shown === false && named && offText !== undefined && model.params[control.name]?.default === true) {
+      parts.push(named(nameOf(control.name), offText));
     } else if (control.kind === 'text' && typeof shown === 'string' && shown.trim() !== '') {
       parts.push(nameOf(control.name));
     } else if (control.kind === 'items' && Array.isArray(shown) && shown.length > 0) {

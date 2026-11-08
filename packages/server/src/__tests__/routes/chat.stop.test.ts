@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The first ring of the stop chain: the route notices the client leaving.
@@ -47,6 +47,8 @@ vi.mock("@server/modules", async (importOriginal) => {
     conversationService: {
       ...base.conversationService,
       assertWritable: vi.fn().mockResolvedValue({ id: "conv-1" }),
+      modelForMessage: vi.fn().mockResolvedValue("test"),
+      modelForResume: vi.fn().mockResolvedValue("test"),
       getConversation: vi.fn().mockResolvedValue({ id: "conv-1", lastConsolidatedTurn: 0 }),
       getMessagesForLlm: vi.fn().mockResolvedValue([]),
     },

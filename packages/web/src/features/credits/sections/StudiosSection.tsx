@@ -1,5 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
+
+import { parseCreditDecimal } from '@breatic/shared';
 
 import * as React from 'react';
 import type { CreditOverview, StudioCreditSummary } from '@breatic/shared';
@@ -132,11 +134,11 @@ const StudioRow = React.memo(function StudioRow({ studio, billing }: StudioRowPr
               ? '—'
               : formatCreditAmount(studio.spendable)}
           </span>
-          {/* A debt is the studio's, and null here says this reader no longer
+          {/* A debt is the studio's, and null here says this user no longer
               administers it. What they spent stays either way: that is their
               own history. */}
           <span className='block text-xs text-muted-foreground'>
-            {studio.debt !== null && studio.debt > 0
+            {studio.debt !== null && parseCreditDecimal(studio.debt) > 0n
               ? t('credits.debtAndSpent', {
                 debt: formatCreditAmount(studio.debt),
                 spent,

@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The three marks a prompt carries for the reader (inner#977): a reference
+ * The three marks a prompt carries for the user (inner#977): a reference
  * they @ by hand, words they fill in, and a note that is never sent. A
  * template's prompt lives in the locale files written with them.
  */
@@ -25,7 +25,7 @@ afterEach(() => {
 });
 
 describe("a reference mark read back", () => {
-  it("gives the label without the words markText asked the reader with, in every language", () => {
+  it("gives the label without the words markText asked the user with, in every language", () => {
     const slot = { kind: "asset" as const, label: "the character photo", note: "the character photo" };
     expect(markedSegments(`Use ${markText(slot)} now`)).toEqual([{ text: "Use " }, { slot }, { text: " now" }]);
     setLocale("zh-CN");
@@ -42,7 +42,7 @@ describe("a reference mark read back", () => {
 });
 
 describe("markText", () => {
-  it("asks the reader to @ a reference, in their language", () => {
+  it("asks the user to @ a reference, in their language", () => {
     expect(markText({ kind: "asset", label: "character photo", note: "x" })).toBe("[📎 Use @ to pick character photo]");
     setLocale("zh-CN");
     expect(markText({ kind: "asset", label: "角色参考图", note: "x" })).toBe("[📎 请用 @ 选择 角色参考图]");

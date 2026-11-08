@@ -1,8 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { render, renderHook, screen, fireEvent } from '@testing-library/react';
+import { renderHook, screen, fireEvent } from '@testing-library/react';
+
+import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
 import userEvent from '@testing-library/user-event';
 
 import { resetPreviewRecords, usePreviewWidth } from '@web/lib/preview-src';
@@ -30,7 +32,7 @@ function fireImageLoad(img: HTMLElement, width: number, height: number): void {
 
 describe('ImageNode', () => {
   it('renders placeholder when no url', () => {
-    render(<ImageNode data={{ handling: false }} />);
+    renderWithTooltips(<ImageNode data={{ handling: false }} />);
     expect(screen.getByTestId('node-placeholder')).toBeInTheDocument();
   });
 
@@ -38,13 +40,13 @@ describe('ImageNode', () => {
   // will have; until the picture arrives it holds that shape, and it shows no
   // pixel size for a picture that is not there.
   it('holds the planned shape and shows no pixel size while it waits for its picture', () => {
-    render(<ImageNode data={{ handling: false, width: 1600, height: 400 }} />);
+    renderWithTooltips(<ImageNode data={{ handling: false, width: 1600, height: 400 }} />);
     expect(screen.getByTestId('node-content-empty').style.aspectRatio).toBe('1600 / 400');
     expect(screen.queryByTestId('node-resolution-badge')).toBeNull();
   });
 
   it('renders the image when url is present', () => {
-    render(
+    renderWithTooltips(
       <ImageNode
         data={{ content: 'https://e.com/x.jpg', handling: false }}
       />,
@@ -59,7 +61,7 @@ describe('ImageNode', () => {
   // reading as a boundary (user 2026-07-29). The hover preview card already
   // insets its image by 4px (`HoverCardContent`'s `p-1`); this matches it.
   it('insets the image from the shell border', () => {
-    render(
+    renderWithTooltips(
       <ImageNode
         data={{ content: 'https://e.com/x.jpg', handling: false }}
       />,
@@ -70,7 +72,7 @@ describe('ImageNode', () => {
   });
 
   it('keeps showing its image while a task runs on it', () => {
-    render(
+    renderWithTooltips(
       <ImageNode
         data={{ content: 'https://e.com/x', handling: true }}
       />,
@@ -81,7 +83,7 @@ describe('ImageNode', () => {
   it('DOUBLE-clicking placeholder fires onActivate (opens upload); a single click does not', async () => {
     const user = userEvent.setup();
     const onActivate = vi.fn();
-    render(
+    renderWithTooltips(
       <ImageNode
         data={{ handling: false }}
         onActivate={onActivate}
@@ -99,7 +101,7 @@ describe('ImageNode', () => {
   // eager <img> would start fetching every image in the space on load. Native
   // lazy loading defers offscreen fetches to viewport proximity.
   it('the image is viewport-lazy and decodes off the main thread (#1772)', () => {
-    render(
+    renderWithTooltips(
       <ImageNode
         data={{ handling: false, content: 'https://e.com/x.jpg' }}
       />,
@@ -110,7 +112,7 @@ describe('ImageNode', () => {
   });
 
   it('the shell clips the filled image - no corner gap (#1550 follow-up)', () => {
-    render(
+    renderWithTooltips(
       <ImageNode
         data={{ handling: false, content: 'blob:img' }}
       />,
@@ -135,7 +137,7 @@ describe('ImageNode', () => {
   // #1616: non-empty image nodes show their pixel resolution top-right once the
   // image loads; read from the DOM (naturalWidth/Height), no data-model field.
   it('shows the resolution badge after the image loads (#1616)', () => {
-    render(
+    renderWithTooltips(
       <ImageNode
         data={{ handling: false, content: 'https://e.com/x.jpg' }}
       />,
@@ -147,12 +149,12 @@ describe('ImageNode', () => {
   });
 
   it('empty image node shows no resolution badge (#1616)', () => {
-    render(<ImageNode data={{ handling: false }} />);
+    renderWithTooltips(<ImageNode data={{ handling: false }} />);
     expect(screen.queryByTestId('node-resolution-badge')).toBeNull();
   });
 
   it('no badge before the image loads — broken/loading src (#1616)', () => {
-    render(
+    renderWithTooltips(
       <ImageNode
         data={{ handling: false, content: 'https://e.com/x.jpg' }}
       />,
@@ -165,7 +167,7 @@ describe('ImageNode', () => {
   // for the browser to decode the image. Two nodes on the same asset show the
   // same number, and a node that has not scrolled into view shows one at all.
   it('shows the resolution the node already carries, before any load (#209)', () => {
-    render(
+    renderWithTooltips(
       <ImageNode
         data={{
           handling: false,
@@ -181,7 +183,7 @@ describe('ImageNode', () => {
   });
 
   it('still measures the DOM when the node carries no numbers (#209)', () => {
-    render(
+    renderWithTooltips(
       <ImageNode
         data={{ handling: false, content: 'https://e.com/x.jpg' }}
       />,
@@ -194,7 +196,7 @@ describe('ImageNode', () => {
   });
 
   it('ignores a lone dimension, which describes no frame (#209)', () => {
-    render(
+    renderWithTooltips(
       <ImageNode
         data={{
           handling: false,
@@ -207,7 +209,7 @@ describe('ImageNode', () => {
   });
 
   it('keeps the ledger numbers when the decoded image disagrees (#209)', () => {
-    render(
+    renderWithTooltips(
       <ImageNode
         data={{
           handling: false,
@@ -219,7 +221,7 @@ describe('ImageNode', () => {
     );
     // Both were measured over the same bytes, so a disagreement means the
     // browser is showing something else — a re-encoded variant, a proxy. The
-    // ledger is what every other reader of this asset sees.
+    // ledger is what every other user of this asset sees.
     fireImageLoad(screen.getByTestId('image-node-img'), 800, 600);
     expect(screen.getByTestId('node-resolution-badge')).toHaveTextContent(
       '1920×1080',
@@ -227,7 +229,7 @@ describe('ImageNode', () => {
   });
 
   it('resets the badge when the content URL changes (no stale value) (#1616)', () => {
-    const { rerender } = render(
+    const { rerender } = renderWithTooltips(
       <ImageNode
         data={{ handling: false, content: 'https://e.com/a.jpg' }}
       />,
@@ -251,7 +253,7 @@ describe('ImageNode', () => {
   // (user 2026-09-06), so the badge describes what is actually shown and
   // stays with it.
   it('keeps the badge on the image it is describing through a task (#1616)', () => {
-    const { rerender } = render(
+    const { rerender } = renderWithTooltips(
       <ImageNode
         data={{ handling: false, content: 'https://e.com/x.jpg' }}
       />,
@@ -277,7 +279,7 @@ describe('ImageNode orientation preview', () => {
    * @param id - The node's id.
    */
   function mountNode(id: string): void {
-    render(
+    renderWithTooltips(
       <NodeIdContext.Provider value={id}>
         <ImageNode data={{ handling: false, content: 'https://e.com/x.jpg', width: 1600, height: 1000 }} />
       </NodeIdContext.Provider>,
@@ -311,7 +313,7 @@ describe('ImageNode with a stored image', () => {
 
   it('shows the preview when it knows the image size', () => {
     resetPreviewRecords();
-    render(
+    renderWithTooltips(
       <ImageNode
         data={{ content: STORED, width: 4096, height: 2048, handling: false }}
       />,
@@ -328,7 +330,7 @@ describe('ImageNode with a stored image', () => {
   // follows the preview the container actually wrote (inner#1320 round 5).
   it('records how wide its preview is once the preview loads', () => {
     resetPreviewRecords();
-    render(
+    renderWithTooltips(
       <ImageNode
         data={{ content: STORED, width: 1080, height: 64800, handling: false }}
       />,
@@ -342,7 +344,7 @@ describe('ImageNode with a stored image', () => {
 
   it('keeps the original size on the badge after the preview loads', () => {
     resetPreviewRecords();
-    render(
+    renderWithTooltips(
       <ImageNode
         data={{ content: STORED, width: 4096, height: 2048, handling: false }}
       />,
@@ -354,7 +356,7 @@ describe('ImageNode with a stored image', () => {
 
   it('shows the original and measures it when it knows no size', () => {
     resetPreviewRecords();
-    render(<ImageNode data={{ content: STORED, handling: false }} />);
+    renderWithTooltips(<ImageNode data={{ content: STORED, handling: false }} />);
     const img = screen.getByTestId('image-node-img');
 
     expect(img.getAttribute('src')).toBe(STORED);
@@ -365,7 +367,7 @@ describe('ImageNode with a stored image', () => {
 
   it('falls back to the original when the preview is missing', () => {
     resetPreviewRecords();
-    render(
+    renderWithTooltips(
       <ImageNode
         data={{ content: STORED, width: 4096, height: 2048, handling: false }}
       />,
@@ -396,14 +398,14 @@ describe('ImageNode zoomed past its preview (inner#1320)', () => {
 
   it('shows only the preview while the canvas is not zoomed past it', () => {
     resetPreviewRecords();
-    render(zoomed(false));
+    renderWithTooltips(zoomed(false));
 
     expect(screen.queryByTestId('image-node-original')).toBeNull();
   });
 
   it('lays the original over the preview and shows it once it loads', () => {
     resetPreviewRecords();
-    render(zoomed(true));
+    renderWithTooltips(zoomed(true));
     const original = screen.getByTestId('image-node-original');
 
     expect(original.getAttribute('src')).toBe(STORED);
@@ -418,7 +420,7 @@ describe('ImageNode zoomed past its preview (inner#1320)', () => {
   // inner#1472: the stretched preview is not shown while the original loads.
   it('hides the preview behind a skeleton until the original loads', () => {
     resetPreviewRecords();
-    const { rerender } = render(zoomed(false));
+    const { rerender } = renderWithTooltips(zoomed(false));
     fireImageLoad(screen.getByTestId('image-node-img'), 576, 288);
     expect(screen.queryByTestId('image-node-skeleton')).toBeNull();
 
@@ -432,7 +434,7 @@ describe('ImageNode zoomed past its preview (inner#1320)', () => {
 
   it('goes back to the preview when the original fails', () => {
     resetPreviewRecords();
-    render(zoomed(true));
+    renderWithTooltips(zoomed(true));
     fireImageLoad(screen.getByTestId('image-node-img'), 576, 288);
     fireEvent.error(screen.getByTestId('image-node-original'));
 
@@ -443,7 +445,7 @@ describe('ImageNode zoomed past its preview (inner#1320)', () => {
 
   it('keeps the original after the canvas zooms back out', () => {
     resetPreviewRecords();
-    const { rerender } = render(zoomed(true));
+    const { rerender } = renderWithTooltips(zoomed(true));
     rerender(zoomed(false));
 
     expect(screen.getByTestId('image-node-original').getAttribute('src')).toBe(STORED);
@@ -451,7 +453,7 @@ describe('ImageNode zoomed past its preview (inner#1320)', () => {
 
   it('shows the preview of a new image after zooming back out', () => {
     resetPreviewRecords();
-    const { rerender } = render(zoomed(true));
+    const { rerender } = renderWithTooltips(zoomed(true));
     rerender(zoomed(false));
     const next = `https://resource-dev.breatic.cc/image/2026-09-30/2_${UUID}.png`;
     rerender(
@@ -466,7 +468,7 @@ describe('ImageNode zoomed past its preview (inner#1320)', () => {
 
   it('lays nothing over an image already showing its original', () => {
     resetPreviewRecords();
-    render(
+    renderWithTooltips(
       <NodeZoomedPastPreviewContext.Provider value>
         <ImageNode data={{ content: STORED, handling: false }} />
       </NodeZoomedPastPreviewContext.Provider>,
@@ -482,7 +484,7 @@ describe('ImageNode while its picture loads (inner#1320)', () => {
 
   it('covers the reserved box with a skeleton until the picture loads', () => {
     resetPreviewRecords();
-    render(
+    renderWithTooltips(
       <ImageNode
         data={{ content: STORED, width: 4096, height: 2048, handling: false }}
       />,
@@ -495,7 +497,7 @@ describe('ImageNode while its picture loads (inner#1320)', () => {
 
   it('keeps the skeleton through a missing preview and drops it when the original loads', () => {
     resetPreviewRecords();
-    render(
+    renderWithTooltips(
       <ImageNode
         data={{ content: STORED, width: 4096, height: 2048, handling: false }}
       />,
@@ -509,7 +511,7 @@ describe('ImageNode while its picture loads (inner#1320)', () => {
 
   it('drops the skeleton when the original itself fails', () => {
     resetPreviewRecords();
-    render(<ImageNode data={{ content: STORED, handling: false }} />);
+    renderWithTooltips(<ImageNode data={{ content: STORED, handling: false }} />);
     fireEvent.error(screen.getByTestId('image-node-img'));
 
     expect(screen.queryByTestId('image-node-skeleton')).toBeNull();
@@ -517,7 +519,7 @@ describe('ImageNode while its picture loads (inner#1320)', () => {
 
   it('gives a node of unknown size the empty node footprint while it loads', () => {
     resetPreviewRecords();
-    render(<ImageNode data={{ content: STORED, handling: false }} />);
+    renderWithTooltips(<ImageNode data={{ content: STORED, handling: false }} />);
 
     expect(screen.getByTestId('image-node-skeleton').className).toContain('aspect-[3/2]');
   });
@@ -526,7 +528,7 @@ describe('ImageNode while its picture loads (inner#1320)', () => {
   // half-decoded picture neither shows through it nor pushes it down.
   it('hides a loading picture under the skeleton', () => {
     resetPreviewRecords();
-    render(
+    renderWithTooltips(
       <ImageNode
         data={{ content: STORED, width: 4096, height: 2048, handling: false }}
       />,
@@ -539,7 +541,7 @@ describe('ImageNode while its picture loads (inner#1320)', () => {
 
   it('takes a loading picture of unknown size out of the flow, so only the skeleton sizes the node', () => {
     resetPreviewRecords();
-    render(<ImageNode data={{ content: STORED, handling: false }} />);
+    renderWithTooltips(<ImageNode data={{ content: STORED, handling: false }} />);
     const img = screen.getByTestId('image-node-img');
     expect(img.className).toContain('absolute');
     expect(img.className).toContain('opacity-0');

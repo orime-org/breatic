@@ -7,10 +7,13 @@ import { visualizer } from 'rollup-plugin-visualizer';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { resolveDevPort } from './dev-ports.mjs';
 import { resolveProxyTargets } from './proxy-targets.mjs';
+import { everyLocaleMessages } from './every-locale-messages.mjs';
 
 // need to add breatic Index to serve
 // import sirv from 'sirv'
 // const breaticIndex = path.resolve(__dirname, './breatic');
+
+const LOCALES_DIR = path.resolve(__dirname, '../../locales');
 
 export default defineConfig(({ command, mode }) => {
   // Load .env from the monorepo root (shared by backend + frontend). The third
@@ -43,6 +46,11 @@ export default defineConfig(({ command, mode }) => {
       // literal, so a build without one drops the analytics code entirely.
       '__ANALYTICS_CONFIGURED__': JSON.stringify(
         Boolean(env.VITE_AMPLITUDE_API_KEY?.trim() || env.VITE_GOOGLE_ADS_TAG_ID?.trim()),
+      ),
+      // The keys `tInEveryLocale` reads back in every language, which the
+      // entry carries beside the one catalog a user downloads (#1374).
+      '__EVERY_LOCALE_MESSAGES__': JSON.stringify(
+        everyLocaleMessages(LOCALES_DIR),
       ),
     },
     plugins: [
@@ -108,7 +116,7 @@ export default defineConfig(({ command, mode }) => {
     resolve: {
       alias: {
         '@web': path.resolve(__dirname, './src'),
-        '@locales': path.resolve(__dirname, '../../locales'),
+        '@locales': LOCALES_DIR,
       },
     },
     // No optimizeDeps.exclude: the only entry here was @ffmpeg/ffmpeg and
@@ -122,7 +130,7 @@ export default defineConfig(({ command, mode }) => {
       // worker is constructed — the first upload of the session. Vite then
       // finds a new dependency, re-bundles, and reloads the page ("optimized
       // dependencies changed. reloading"), which lands on the tab-close guard
-      // while that very upload is in flight and asks the reader whether to
+      // while that very upload is in flight and asks the user whether to
       // leave. Naming it here has it pre-bundled at server start instead.
       include: ['hash-wasm'],
     },
@@ -198,6 +206,24 @@ export default defineConfig(({ command, mode }) => {
             if (/[\\/]src[\\/]app[\\/]route-imports\./.test(id)) {
               return 'route-imports';
             }
+            // The eager scene owner and lazy model readers share this error contract and its wording; neither module imports anything at runtime.
+            if (/[\\/]src[\\/]spaces[\\/]three-d[\\/]model-import-(errors|error-text)\.ts$/.test(id)) {
+              return 'model-import-errors';
+            }
+            // Shared overlay code and icons stay independent of the route that opens them.
+            if (/[\\/]src[\\/]lib[\\/]overlay-focus\.ts$/.test(id)
+              || /[\\/]node_modules[\\/]lucide-react[\\/]dist[\\/]esm[\\/]icons[\\/](upload|triangle-alert|folder-open)\.m?js$/.test(id)) {
+              return 'overlay-shared';
+            }
+            // Each non-English catalog is its own `import()` chunk under a
+            // fixed name, which `verify-chunks.mjs` reads: Vite's JSON modules
+            // leave no `sources` in the sourcemap to recognise them by.
+            const locale = id.startsWith(LOCALES_DIR)
+              ? /^[\\/]([\w-]+)\.json$/.exec(id.slice(LOCALES_DIR.length))?.[1]
+              : undefined;
+            if (locale !== undefined && locale !== 'en') {
+              return `locale-${locale}`;
+            }
             if (!id.includes('node_modules')) return;
             if (
               /[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(
@@ -216,7 +242,7 @@ export default defineConfig(({ command, mode }) => {
               return 'xlsx';
             }
             // Split only what a page chunk alone reaches. A group that shared
-            // code also touches is pulled into every reader's first load:
+            // code also touches is pulled into every user's first load:
             // splitting @tiptap/prosemirror/@blocknote measured the login
             // page up from 1,066,370 to 2,191,307 bytes, and the AI SDK
             // pushed 68,940 of its own onto it. These three are reached from

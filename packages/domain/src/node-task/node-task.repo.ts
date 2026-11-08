@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Data access for `node_tasks` (#186).
@@ -12,9 +12,9 @@
  */
 
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { db } from "@breatic/core";
+import { db, type DbTx } from "@breatic/core";
 import { nodeHistory, nodeTasks } from "@breatic/core";
-import type { NodeTaskAction } from "@breatic/shared";
+import type { NodeTaskAction, SceneGenerationOrigin } from "@breatic/shared";
 
 /** The four states a task can be in, and the four numbers the node shows. */
 export type NodeTaskStatus = "running" | "done" | "failed" | "expired";
@@ -32,7 +32,8 @@ export interface NodeTaskRow {
   id: string;
   projectId: string;
   spaceId: string;
-  nodeId: string;
+  /** Null on a 3D Space's own row (inner#1690), which no node carries. */
+  nodeId: string | null;
   kind: string;
   action: NodeTaskAction;
   status: NodeTaskStatus;
@@ -44,6 +45,16 @@ export interface NodeTaskRow {
   label: string;
   errorMessage: string | null;
   nodeHistoryId: string | null;
+  /** The registered model a Space-level row holds; null everywhere else. */
+  assetId: string | null;
+}
+
+/** A 3D Space's own row (inner#1690, inner#1691), as its list and its actions read it. */
+export interface SceneTaskRow extends NodeTaskRow {
+  /** The AIGC job a generation runs as; null on a model upload. */
+  taskId: string | null;
+  /** Where a generation was started from; null on a model upload. */
+  origin: SceneGenerationOrigin | null;
 }
 
 /**
@@ -95,7 +106,32 @@ function rowOf(row: typeof nodeTasks.$inferSelect): NodeTaskRow {
     label: row.label,
     errorMessage: row.errorMessage,
     nodeHistoryId: row.nodeHistoryId,
+    assetId: row.assetId,
   };
+}
+
+/**
+ * A stored Space-level row as its reads hand it out.
+ * @param row - The row as selected.
+ * @returns The shared fields, the job and the origin.
+ */
+function sceneRowOf(row: typeof nodeTasks.$inferSelect): SceneTaskRow {
+  return { ...rowOf(row), taskId: row.taskId, origin: row.origin as SceneGenerationOrigin | null };
+}
+
+/**
+ * Read one row as a Space-level row, whatever state it is in.
+ * @param taskId - Which row.
+ * @returns The row, or null when the table holds no row without a node by that id.
+ */
+export async function findSceneRow(taskId: string): Promise<(SceneTaskRow & { deletedAt: Date | null }) | null> {
+  const rows = await db
+    .select()
+    .from(nodeTasks)
+    .where(and(eq(nodeTasks.id, taskId), isNull(nodeTasks.nodeId)))
+    .limit(1);
+  const row = rows[0];
+  return row === undefined ? null : { ...sceneRowOf(row), deletedAt: row.deletedAt };
 }
 
 /**
@@ -111,6 +147,7 @@ function rowOf(row: typeof nodeTasks.$inferSelect): NodeTaskRow {
  * @param data.label - Filename or model name, what the user reads.
  * @param data.taskId - The AIGC job; absent on uploads.
  * @param data.storageKey - The upload grant; absent on generations.
+ * @param tx - Optional transaction shared with the upload grant.
  * @returns The new row's id.
  */
 export async function insertRunning(data: {
@@ -124,8 +161,8 @@ export async function insertRunning(data: {
   label: string;
   taskId?: string;
   storageKey?: string;
-}): Promise<string> {
-  const rows = await db
+}, tx?: DbTx): Promise<string> {
+  const rows = await (tx ?? db)
     .insert(nodeTasks)
     .values({ ...data, status: "running" })
     .returning({ id: nodeTasks.id });
@@ -138,13 +175,14 @@ export async function insertRunning(data: {
  * @param status - Where it lands.
  * @param fields - The result pointer or the reason, whichever applies.
  * @param fields.nodeHistoryId - The history row holding the result.
+ * @param fields.assetId - The registered model a Space-level row lands with.
  * @param fields.errorMessage - Why it failed or timed out.
  * @returns True when this call is the one that moved it.
  */
 export async function settleRunning(
   taskId: string,
   status: Exclude<NodeTaskStatus, "running">,
-  fields: { nodeHistoryId?: string; errorMessage?: string },
+  fields: { nodeHistoryId?: string; assetId?: string; errorMessage?: string },
 ): Promise<boolean> {
   const rows = await db
     .update(nodeTasks)
@@ -323,13 +361,15 @@ export async function findByTaskAndNode(
  * a number that is either current or stale cannot drift per entry.
  * @param projectId - Owning project.
  * @param nodeId - The node.
+ * @param tx - Optional transaction reading its own newly opened row.
  * @returns The four counts, zeros included.
  */
 export async function countsFor(
   projectId: string,
   nodeId: string,
+  tx?: DbTx,
 ): Promise<NodeTaskCounts> {
-  const rows = await db
+  const rows = await (tx ?? db)
     .select({ status: nodeTasks.status, n: sql<string>`count(*)` })
     .from(nodeTasks)
     .where(
@@ -390,4 +430,170 @@ export async function listLive(
     mimeType: history?.mimeType ?? null,
     size: history?.sizeBytes ?? null,
   }));
+}
+
+/**
+ * Open a 3D Space's own row (inner#1690): no node, the scene import action.
+ * A dedup hit opens it already `done`, holding the asset it matched.
+ * @param data - Everything the row needs at birth.
+ * @param data.projectId - Owning project.
+ * @param data.spaceId - The 3D Space whose list it joins.
+ * @param data.startedByUserId - Who started it.
+ * @param data.budgetMs - The allowance the deadline is read from.
+ * @param data.label - The model name the user gave.
+ * @param data.storageKey - The upload grant; absent on a dedup hit.
+ * @param data.assetId - The matched asset, on a dedup hit only.
+ * @param tx - Optional transaction shared with the upload grant.
+ * @returns The new row's id.
+ */
+export async function insertSceneRow(data: {
+  projectId: string;
+  spaceId: string;
+  startedByUserId: string;
+  budgetMs: number;
+  label: string;
+  storageKey?: string;
+  assetId?: string;
+}, tx?: DbTx): Promise<string> {
+  const settled = data.assetId !== undefined;
+  const rows = await (tx ?? db)
+    .insert(nodeTasks)
+    .values({
+      ...data,
+      nodeId: null,
+      kind: "upload",
+      action: "scene_import",
+      status: settled ? "done" : "running",
+      ...(settled && { settledAt: sql`now()` }),
+    })
+    .returning({ id: nodeTasks.id });
+  return rows[0]!.id;
+}
+
+/**
+ * Open a 3D Space's generation row (inner#1691): no node, the generate
+ * action, the job it runs as and where it was started from.
+ * @param data - Everything the row needs at birth.
+ * @param data.projectId - Owning project.
+ * @param data.spaceId - The 3D Space whose list it joins.
+ * @param data.startedByUserId - Who submitted it.
+ * @param data.budgetMs - The allowance the deadline is read from.
+ * @param data.label - The cleaned prompt, the front image's name or the model's.
+ * @param data.taskId - The AIGC job.
+ * @param data.origin - The Space's own dialog, or an agent proposal.
+ * @returns The new row's id.
+ */
+export async function insertSceneGenerationRow(data: {
+  projectId: string;
+  spaceId: string;
+  startedByUserId: string;
+  budgetMs: number;
+  label: string;
+  taskId: string;
+  origin: SceneGenerationOrigin;
+}): Promise<string> {
+  const rows = await db
+    .insert(nodeTasks)
+    .values({ ...data, nodeId: null, kind: "generation", action: "generate", status: "running" })
+    .returning({ id: nodeTasks.id });
+  return rows[0]!.id;
+}
+
+/**
+ * Move every running row of one 3D Space that outran its budget to `expired`,
+ * the Space-level counterpart of {@link harvestExpired}.
+ * @param projectId - Owning project.
+ * @param spaceId - The Space whose list is being read.
+ * @returns How many rows this call moved.
+ */
+export async function harvestExpiredInSpace(projectId: string, spaceId: string): Promise<number> {
+  const rows = await db
+    .update(nodeTasks)
+    .set({ status: "expired", errorMessage: "expired", settledAt: sql`now()` })
+    .where(
+      and(
+        eq(nodeTasks.projectId, projectId),
+        eq(nodeTasks.spaceId, spaceId),
+        isNull(nodeTasks.nodeId),
+        isNull(nodeTasks.deletedAt),
+        eq(nodeTasks.status, "running"),
+        sql`${nodeTasks.startedAt} + (${nodeTasks.budgetMs} * interval '1 millisecond') < now()`,
+      ),
+    )
+    .returning({ id: nodeTasks.id });
+  return rows.length;
+}
+
+/**
+ * List a 3D Space's live rows, newest first.
+ * @param projectId - Owning project.
+ * @param spaceId - The Space.
+ * @returns Every row not removed.
+ */
+export async function listSpace(projectId: string, spaceId: string): Promise<SceneTaskRow[]> {
+  const rows = await db
+    .select()
+    .from(nodeTasks)
+    .where(
+      and(
+        eq(nodeTasks.projectId, projectId),
+        eq(nodeTasks.spaceId, spaceId),
+        isNull(nodeTasks.nodeId),
+        isNull(nodeTasks.deletedAt),
+      ),
+    )
+    // Newest first by when the row was written, which is when it started;
+    // `started_at` is the deadline's clock and is not what the list orders by.
+    .orderBy(sql`${nodeTasks.createdAt} DESC`);
+  return rows.map(sceneRowOf);
+}
+
+/**
+ * Give a Space-level row the result that arrived after it expired.
+ *
+ * Only an expired row the user has not removed and that holds nothing yet
+ * takes it: a failed row ended before any result, and a row that already
+ * holds one keeps it.
+ * @param taskId - Which task.
+ * @param assetId - The registered model.
+ * @returns True when this call wrote it.
+ */
+export async function attachAsset(taskId: string, assetId: string): Promise<boolean> {
+  const rows = await db
+    .update(nodeTasks)
+    .set({ assetId })
+    .where(
+      and(
+        eq(nodeTasks.id, taskId),
+        isNull(nodeTasks.nodeId),
+        eq(nodeTasks.status, "expired"),
+        isNull(nodeTasks.deletedAt),
+        isNull(nodeTasks.assetId),
+      ),
+    )
+    .returning({ id: nodeTasks.id });
+  return rows.length === 1;
+}
+
+/**
+ * Hide a Space-level row at a user's request: a failed row, or an expired one
+ * that holds no result. A row holding a model stays, because the list is the
+ * Space's reusable models.
+ * @param taskId - Which task.
+ * @returns True when this call hid it.
+ */
+export async function softDeleteSceneTask(taskId: string): Promise<boolean> {
+  const rows = await db
+    .update(nodeTasks)
+    .set({ deletedAt: new Date() })
+    .where(
+      and(
+        eq(nodeTasks.id, taskId),
+        isNull(nodeTasks.nodeId),
+        isNull(nodeTasks.deletedAt),
+        sql`(${nodeTasks.status} = 'failed' OR (${nodeTasks.status} = 'expired' AND ${nodeTasks.assetId} IS NULL))`,
+      ),
+    )
+    .returning({ id: nodeTasks.id });
+  return rows.length === 1;
 }

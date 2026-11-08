@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a conversation is called, and the two routes that write its record.
@@ -288,7 +288,7 @@ describe("A conversation takes its name from the first thing said in it", () => 
 
   it("tells the client the name on the turn's own stream", async () => {
     // Without this the list and the header go on showing the placeholder
-    // until the reader leaves the project and comes back.
+    // until the user leaves the project and comes back.
     const { projectId, cookie } = await seedProject();
     const conversationId = await openAndGetId(projectId, cookie);
 
@@ -493,7 +493,7 @@ describe("a name whose characters do not fit in one code unit each", () => {
     // 存的时候还有一道按列宽的裁剪,而它数的是 UTF-16 码元 —— 一个 emoji 占两个。
     // 命名那一步按码点裁到上限之内,码元数却可能是它的两倍,于是这道裁剪落在一对
     // 代理项中间,存进去的是一个替换字符,而首句命名(nameIfUnnamed)只在名字
-    // 为空时写一次 —— 读者要摆脱它,只能自己去改名。
+    // 为空时写一次 —— 用户要摆脱它,只能自己去改名。
     const { projectId, cookie } = await seedProject();
     const id = await openAndGetId(projectId, cookie);
     const repo = await import("@server/modules/conversation/conversation.repo.js");

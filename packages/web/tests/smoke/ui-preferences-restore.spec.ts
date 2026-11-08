@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Interface preferences a reader adjusts come back after a reload and belong
+ * Interface preferences a user adjusts come back after a reload and belong
  * to the account that set them, measured in a browser.
  *
  * The questions need a real reload: whether the Agent column ever mounts
@@ -244,7 +244,7 @@ test('another account in the same browser gets its own preferences', async ({ pa
   await expect(toggle(page, /minimap/i)).toHaveAttribute('aria-pressed', 'false');
 });
 
-test('a browser that refuses to store still lets the reader toggle everything', async ({ page }) => {
+test('a browser that refuses to store still lets the user toggle everything', async ({ page }) => {
   await page.addInitScript(() => {
     Storage.prototype.setItem = (): void => {
       throw new DOMException('quota', 'QuotaExceededError');

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Slug validation for the create dialogs (spec §3.12 / URL design §5.7).
@@ -103,7 +103,7 @@ export function validateItemSlug(value: string): SlugError {
 }
 
 /**
- * A project or collection slug made from its name, for when the reader leaves
+ * A project or collection slug made from its name, for when the user leaves
  * the slug empty (inner#1463). Only Latin letters and digits carry over, with
  * accents dropped; the item's id is what finds it, so a name with none of
  * those (all Chinese, emoji) gets the plain fallback word.

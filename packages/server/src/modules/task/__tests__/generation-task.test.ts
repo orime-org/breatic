@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Opening the task rows a generation leaves on its target nodes (#186, §4.2).
@@ -39,6 +39,8 @@ vi.mock("@breatic/domain", () => ({
   nodeTaskService: { open },
   emitNodeTaskCounts: emit,
 }));
+
+vi.mock("@server/modules/project/project.service.js", () => ({ assertAccess: vi.fn() }));
 
 vi.mock("@breatic/core", async () => {
   // The real AppError, because what this suite asserts about a refused run is

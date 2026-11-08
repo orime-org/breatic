@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Hono application factory.
@@ -31,7 +31,10 @@ import { modelsRoute } from "@server/routes/models.js";
 import { assetsRoute } from "@server/routes/assets.js";
 import { accountRoute } from "@server/routes/account.js";
 import { subscriptionRoute } from "@server/routes/subscription.js";
+import { referralRoute } from "@server/routes/referral.js";
 import { activitiesRoute } from "@server/routes/activities.js";
+import { projectAssetsRoute } from "@server/routes/project-assets.js";
+import { threeDTasksRoute } from "@server/routes/three-d-tasks.js";
 import { membersRoute } from "@server/routes/members.js";
 import { usersRoute } from "@server/routes/users.js";
 import { studiosRoute, studioRoute } from "@server/routes/studios.js";
@@ -104,8 +107,11 @@ export function createApp(): Hono {
   app.route("/api/v1/models", modelsRoute);
   app.route("/api/v1/assets", assetsRoute);
   app.route("/api/v1/account/subscription", subscriptionRoute);
+  app.route("/api/v1/account/referral", referralRoute);
   app.route("/api/v1/account", accountRoute);
   app.route("/api/v1/projects", activitiesRoute);
+  app.route("/api/v1/projects", projectAssetsRoute);
+  app.route("/api/v1/projects", threeDTasksRoute);
 
   return app;
 }

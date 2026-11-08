@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A drag preview draws the dragged content the way the body draws it
@@ -311,7 +311,7 @@ test.beforeEach(async ({ browser }) => {
     DataTransfer.prototype.setDragImage = function (el: Element, x: number, y: number) {
       // Ours alone: a row drag hands the browser BlockNote's preview first and
       // ours over it in the same dragstart.
-      if (el.classList.contains('doc-drag-preview')) {
+      if (el.classList.contains('drag-image')) {
         const copy = el.cloneNode(true) as Element;
         document.body.append(copy);
         kept.push(copy);

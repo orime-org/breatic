@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Unit tests for handlers/failed-job-cleanup.ts (#1569 hole ②).
@@ -20,10 +20,13 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 const mockPublishNodeEvent = vi.hoisted(() => vi.fn());
 const mockSettleTaskForNode = vi.hoisted(() => vi.fn());
 const mockReleaseHold = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => undefined));
+const mockSettleSceneRowById = vi.hoisted(() => vi.fn());
+const mockPublishSpaceTasksChanged = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => undefined));
 
 vi.mock("@breatic/core", () => ({
   publishNodeEvent: mockPublishNodeEvent,
   publishActivityNew: vi.fn(),
+  publishSpaceTasksChanged: mockPublishSpaceTasksChanged,
   projectActivitiesRepo: {
     insertGenerationFailedIfAbsent: vi.fn(),
     upsertGenerationSucceeded: vi.fn(),
@@ -49,6 +52,10 @@ vi.mock("@breatic/domain", async () => ({
     "@domain/canvas-node/node-state-events.js",
   )),
   settleTaskForNode: mockSettleTaskForNode,
+  sceneTaskService: {
+    generationOutcome: (await import("@domain/node-task/scene-task.service.js")).generationOutcome,
+    settleById: mockSettleSceneRowById,
+  },
   creditHoldService: { releaseHold: mockReleaseHold },
   taskService: {
     getByIdInternal: vi.fn(),
@@ -414,6 +421,108 @@ describe("reclaimFailedJobById (#1580 #6 cross-process QueueEvents handler)", ()
     expect(
       await reclaimFailedJobById({ getJob }, streamRedis, "j", "boom"),
     ).toBe(0);
+    expect(mockSettleTaskForNode).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A 3D Space's generation row is settled by the crash net too (inner#1691,
+ * design section 5). The job names the row by `sceneRowId` and targets no
+ * node, so a billed result lands on that row as done with its asset, and an
+ * unbilled death settles it as failed.
+ */
+describe("cleanupFailedJobNodes for a 3D Space generation (inner#1691)", () => {
+  const ROW = {
+    id: "row-1",
+    projectId: "p1",
+    spaceId: "s1",
+    nodeId: null,
+    kind: "generation",
+    action: "generate",
+    status: "running",
+    startedByUserId: "u1",
+    startedAt: new Date(1_700_000_000_000),
+    settledAt: null,
+    budgetMs: 7_200_000,
+    label: "a wooden chair",
+    errorMessage: null,
+    nodeHistoryId: null,
+    assetId: null,
+  };
+
+  /**
+   * A finally-failed 3D generation job.
+   * @returns The job.
+   */
+  function sceneJob(): { data: TaskJobData; finishedOn?: number } {
+    return jobWith({
+      taskType: "three_d",
+      model: "tripo-h3.1-t23d",
+      projectId: "p1",
+      spaceId: "s1",
+      targetNodeIds: [],
+      sceneRowId: "row-1",
+    });
+  }
+
+  beforeEach(() => {
+    mockSettleTaskForNode.mockReset();
+    mockSettleSceneRowById.mockReset();
+    mockPublishSpaceTasksChanged.mockClear();
+    vi.mocked(taskService.getByIdInternal).mockReset();
+    vi.mocked(projectActivitiesRepo.upsertGenerationSucceeded).mockReset();
+    vi.mocked(projectActivitiesRepo.insertGenerationFailedIfAbsent).mockReset();
+    mockSettleSceneRowById.mockResolvedValue({ row: ROW, applied: true, assetWritten: true });
+  });
+
+  it("settles a billed result on the row as done and records a success, not a failure", async () => {
+    vi.mocked(taskService.getByIdInternal).mockResolvedValue({
+      id: "t1",
+      userId: "u1",
+      taskType: "three_d",
+      billedAt: new Date(),
+      billedCredits: 0.24,
+      durationMs: 1000,
+      params: {},
+      result: {
+        model: "tripo-h3.1-t23d",
+        cost: 0.24,
+        outputs: [{ url: "https://x/out.glb", asset_id: "asset-glb" }],
+      },
+    } as never);
+
+    await cleanupFailedJobNodes(streamRedis, sceneJob(), "job stalled more than allowable limit");
+
+    expect(mockSettleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "done", assetId: "asset-glb" });
+    expect(mockPublishSpaceTasksChanged).toHaveBeenCalledWith("p1", "s1");
+    expect(vi.mocked(projectActivitiesRepo.upsertGenerationSucceeded)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(projectActivitiesRepo.upsertGenerationSucceeded).mock.calls[0]![0]).toMatchObject({
+      projectId: "p1",
+      type: "generation:succeeded",
+      spaceId: "s1",
+      nodeId: null,
+      taskId: "t1",
+      payload: { fileUrl: "https://x/out.glb", credits: 0.24, outputCount: 1 },
+    });
+    expect(vi.mocked(projectActivitiesRepo.insertGenerationFailedIfAbsent)).not.toHaveBeenCalled();
+    expect(mockSettleTaskForNode).not.toHaveBeenCalled();
+  });
+
+  it("settles an unbilled death on the row as failed with a stored cause", async () => {
+    vi.mocked(taskService.getByIdInternal).mockResolvedValue({
+      id: "t1",
+      userId: "u1",
+      taskType: "three_d",
+      billedAt: null,
+      params: {},
+      result: null,
+    } as never);
+
+    await cleanupFailedJobNodes(streamRedis, sceneJob(), "job stalled more than allowable limit");
+
+    expect(mockSettleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "failed", errorMessage: "internal" });
+    expect(mockPublishSpaceTasksChanged).toHaveBeenCalledWith("p1", "s1");
+    expect(vi.mocked(projectActivitiesRepo.upsertGenerationSucceeded)).not.toHaveBeenCalled();
     expect(mockSettleTaskForNode).not.toHaveBeenCalled();
   });
 });

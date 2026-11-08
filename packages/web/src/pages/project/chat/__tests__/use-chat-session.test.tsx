@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * 面板从这一个地方读它要画的东西。
@@ -27,7 +27,7 @@ import type * as AssetsApiModule from '@web/data/api/assets';
 vi.mock('@web/data/api/chat', async (importOriginal) => ({
   ...(await importOriginal<typeof ChatApiModule>()),
   chatApi: {
-    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 })),
+    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000 })),
     openChat: vi.fn(),
     messagesBefore: vi.fn(),
     readConversation: vi.fn(),
@@ -63,7 +63,7 @@ vi.mock('@web/data/api/assets', async (importOriginal) => {
 
 import { chatApi } from '@web/data/api/chat';
 import { useChatSession } from '@web/pages/project/chat/use-chat-session';
-import { _resetForTests, conversationRuntime } from '@web/stores/conversation-runtime';
+import { _resetForTests, conversationRuntime, useConversationRuntime } from '@web/stores/conversation-runtime';
 import { tell } from '@web/stores/chat-mishaps';
 import { evictAllChatSessions } from '@web/stores/chat-sessions';
 import { stubChatWire, turnOpens } from '@web/test-utils/chat-wire';
@@ -84,7 +84,7 @@ function openChatAnswers(
   vi.mocked(chatApi.openChat).mockResolvedValue({
     conversations: [{ id: conversationId }],
     current: {
-      conversation: { id: conversationId },
+      conversation: { id: conversationId, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       messages: messages.map((m) => ({
         id: m.id,
         role: m.role,
@@ -262,7 +262,7 @@ describe('a reply as the panel draws it', () => {
     await waitFor(() => {
       expect(panel.result.current.messages.at(-1)?.thinking).toBe('先想想要什么风格');
     });
-    // 思考和正文是两样东西,面板分开画。混进正文里读者会看到模型的草稿。
+    // 思考和正文是两样东西,面板分开画。混进正文里用户会看到模型的草稿。
     expect(panel.result.current.messages.at(-1)?.content).toBe('好的');
   });
 
@@ -349,7 +349,7 @@ describe('a turn that failed', () => {
     vi.mocked(chatApi.openChat).mockResolvedValue({
       conversations: [{ id: 'c-1' }],
       current: {
-        conversation: { id: 'c-1' },
+        conversation: { id: 'c-1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
         messages: [
           {
             id: 'm1',
@@ -369,7 +369,7 @@ describe('a turn that failed', () => {
   });
 });
 
-describe('a turn the reader stopped', () => {
+describe('a turn the user stopped', () => {
   it('marks the reply the way the server records it', async () => {
     const panel = await anOpenPanel();
     await aReplyStartsArriving(panel);
@@ -425,7 +425,7 @@ describe('what the panel says went wrong (inner#1530)', () => {
     expect(toastSpy.error).not.toHaveBeenCalled();
   });
 
-  it('says it anyway when the reader did it on purpose', async () => {
+  it('says it anyway when the user did it on purpose', async () => {
     await anOpenPanel();
 
     act(() => {
@@ -448,7 +448,7 @@ describe('what the panel says went wrong (inner#1530)', () => {
     expect(toastSpy.error).toHaveBeenCalledWith(t('chat.error.network'));
   });
 
-  it('is not held for a reader who was not looking', async () => {
+  it('is not held for a user who was not looking', async () => {
     const panel = await anOpenPanel();
     panel.unmount();
 
@@ -502,7 +502,7 @@ describe('when the chat never opened', () => {
     expect(panel.result.current.currentId).toBeUndefined();
   });
 
-  it('starts a conversation when the reader sends anyway', async () => {
+  it('starts a conversation when the user sends anyway', async () => {
     vi.mocked(chatApi.openChat).mockRejectedValueOnce(new Error('offline'));
     const panel = render();
     await waitFor(() => {
@@ -518,6 +518,41 @@ describe('when the chat never opened', () => {
       expect(wire.sent()).toHaveLength(1);
     });
     expect(wire.sent()[0]).toMatchObject({ conversation_id: 'c-1', message: '还是想问' });
+  });
+});
+
+describe('a send the server refused (#1363)', () => {
+  it('is counted, so the model picker asks for the list again', async () => {
+    const panel = await anOpenPanel();
+    const before = useConversationRuntime.getState().modelListAsks;
+    wire.refuseNext(422, 'The selected model is no longer available.');
+
+    act(() => {
+      void panel.result.current.send('hello');
+    });
+
+    await waitFor(() => {
+      expect(useConversationRuntime.getState().modelListAsks).toBe(before + 1);
+    });
+  });
+
+  it('is counted in a conversation the send itself opened', async () => {
+    vi.mocked(chatApi.openChat).mockRejectedValueOnce(new Error('offline'));
+    const panel = render();
+    await waitFor(() => {
+      expect(panel.result.current.status).toBe('failed');
+    });
+    openChatAnswers([]);
+    const before = useConversationRuntime.getState().modelListAsks;
+    wire.refuseNext(422, 'The selected model is no longer available.');
+
+    act(() => {
+      void panel.result.current.send('hello');
+    });
+
+    await waitFor(() => {
+      expect(useConversationRuntime.getState().modelListAsks).toBe(before + 1);
+    });
   });
 });
 
@@ -557,6 +592,7 @@ describe('the Spaces a message carries (inner#1413)', () => {
       attachmentMaxItems: 10,
       currentSpaceMaxChars: 16,
       spaceListMaxItems: 2,
+      spaceReadTimeoutMs: 20_000,
     });
     const panel = renderHook(() => useChatSession('p-1', () => read));
     await waitFor(() => {
@@ -623,6 +659,7 @@ describe('the wait for the limits before a send (inner#1413)', () => {
         attachmentMaxItems: 10,
         currentSpaceMaxChars: 100_000,
         spaceListMaxItems: 200,
+        spaceReadTimeoutMs: 20_000,
       });
     });
     await waitFor(() => {
@@ -653,6 +690,7 @@ describe('the wait for the limits before a send (inner#1413)', () => {
         attachmentMaxItems: 10,
         currentSpaceMaxChars: 100_000,
         spaceListMaxItems: 200,
+        spaceReadTimeoutMs: 20_000,
       });
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
@@ -683,13 +721,14 @@ describe('the wait for the limits before a send (inner#1413)', () => {
           attachmentMaxItems: 10,
           currentSpaceMaxChars: 100_000,
           spaceListMaxItems: 200,
+          spaceReadTimeoutMs: 20_000,
         });
         await new Promise((resolve) => setTimeout(resolve, 50));
       });
     };
   }
 
-  it('sends nothing once the reader has left the project during the wait', async () => {
+  it('sends nothing once the user has left the project during the wait', async () => {
     const answerTheLimits = await pressWhileTheLimitsAreRead();
 
     act(() => {
@@ -701,9 +740,9 @@ describe('the wait for the limits before a send (inner#1413)', () => {
     expect(chatApi.openChat).toHaveBeenCalledTimes(1);
   });
 
-  it('sends nothing into the conversation the reader switched to during the wait', async () => {
+  it('sends nothing into the conversation the user switched to during the wait', async () => {
     vi.mocked(chatApi.readConversation).mockResolvedValue({
-      conversation: { id: 'c-2' },
+      conversation: { id: 'c-2', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       messages: [],
       hasMore: false,
     } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);

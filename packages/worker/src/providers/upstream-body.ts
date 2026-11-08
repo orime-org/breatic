@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The request body one WaveSpeed endpoint receives, built from the model's own
@@ -44,7 +44,7 @@ export function upstreamBody(
     if (isPresent(value) && value !== spec.absent_value) sent.set(name, value);
   }
   // A param that stands in for another says the same thing a second way, and
-  // the endpoint ignores one of them; only the one the reader filled goes.
+  // the endpoint ignores one of them; only the one the user filled goes.
   const replaced = new Set(
     [...sent.keys()].map((name) => entry.params?.[name]?.replaces).filter((name) => typeof name === "string"),
   );

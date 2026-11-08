@@ -1,5 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
+
+import type { CreditDecimal } from '@breatic/shared';
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -56,9 +58,9 @@ vi.mock('@web/data/api/credits', () => ({
  */
 function overview(over: Partial<CreditOverview> = {}): CreditOverview {
   return {
-    assignedCredits: 3640,
-    unassignedCredits: 1790,
-    underRefundCredits: 0,
+    assignedCredits: '3640.000000' as CreditDecimal,
+    unassignedCredits: '1790.000000' as CreditDecimal,
+    underRefundCredits: '0.000000' as CreditDecimal,
     billing: true,
     studios: [],
     ...over,
@@ -409,7 +411,7 @@ describe('StudioAccountMenu', () => {
       expect(confirmMock).not.toHaveBeenCalled();
     });
 
-    it('says nothing when the reader pressed back on Stripe', async () => {
+    it('says nothing when the user pressed back on Stripe', async () => {
       // Choosing not to buy is not an outcome to report. Telling somebody
       // they cancelled, right after they cancelled, is noise.
       useCurrentUserStore.getState().setUser(ALEX);
@@ -518,7 +520,7 @@ describe('StudioAccountMenu', () => {
       // refund is asked about, with nothing on screen saying where they went.
       const user = userEvent.setup();
       useCurrentUserStore.getState().setUser(ALEX);
-      overviewMock.mockResolvedValue(overview({ underRefundCredits: 500 }));
+      overviewMock.mockResolvedValue(overview({ underRefundCredits: '500.000000' as CreditDecimal }));
       setup();
       await openMenu(user);
 
@@ -543,7 +545,7 @@ describe('StudioAccountMenu', () => {
     });
 
     it('says so when the read fails, rather than leaving the row blank', async () => {
-      // Whether the request lands is not ours to promise; whether the reader
+      // Whether the request lands is not ours to promise; whether the user
       // knows it did not is. A blank row here reads the same as the one a
       // deployment that does not bill shows.
       const user = userEvent.setup();
@@ -558,9 +560,9 @@ describe('StudioAccountMenu', () => {
     });
 
     it('keeps one account’s figure away from the next one to sign in', async () => {
-      // The query client is a module singleton that a sign-out never clears,
-      // so a key without the account would hand the second reader the first
-      // one's figures out of cache.
+      // This client is not wrapped in the app's provider, which also empties
+      // the cache on an account change, so the key alone keeps the second
+      // user away from the first one's figures here.
       const user = userEvent.setup();
       // One client across both sign-ins, which is what the app has: it is
       // created once at module scope and outlives every session on this tab.
@@ -586,7 +588,7 @@ describe('StudioAccountMenu', () => {
 
       first.unmount();
       useCurrentUserStore.getState().setUser({ ...ALEX, id: 'u2', name: 'Bo' });
-      // Held open, so what the second reader sees is whatever the cache had
+      // Held open, so what the second user sees is whatever the cache had
       // for them — nothing, unless the key forgot whose money it is.
       let answer: (o: CreditOverview) => void = () => {};
       overviewMock.mockImplementationOnce(
@@ -599,7 +601,7 @@ describe('StudioAccountMenu', () => {
       await openMenu(user);
       expect(creditsTrailing()).toBe('');
 
-      answer(overview({ assignedCredits: 12, unassignedCredits: 0 }));
+      answer(overview({ assignedCredits: '12.000000' as CreditDecimal, unassignedCredits: '0.000000' as CreditDecimal }));
       await waitFor(() => {
         expect(creditsTrailing()).toBe('12');
       });
@@ -620,7 +622,7 @@ describe('StudioAccountMenu', () => {
       });
       await user.keyboard('{Escape}');
 
-      overviewMock.mockResolvedValue(overview({ assignedCredits: 40, unassignedCredits: 0 }));
+      overviewMock.mockResolvedValue(overview({ assignedCredits: '40.000000' as CreditDecimal, unassignedCredits: '0.000000' as CreditDecimal }));
       await openMenu(user);
       await waitFor(() => {
         expect(creditsTrailing()).toBe('40');
@@ -637,11 +639,11 @@ describe('StudioAccountMenu', () => {
     });
 
     it('says nothing but the word when a later read fails, not the stale figure', async () => {
-      // The menu reads on open, so a reader who opens it twice can have a
+      // The menu reads on open, so a user who opens it twice can have a
       // figure in hand from the first time and a failed read the second. A
       // figure that has gone stale looks exactly like one that is current,
       // and the overlay reads the same query, so it would say the same thing
-      // the moment the reader opened it.
+      // the moment the user opened it.
       const user = userEvent.setup();
       useCurrentUserStore.getState().setUser(ALEX);
       overviewMock.mockResolvedValueOnce(overview());
@@ -669,9 +671,9 @@ describe('StudioAccountMenu', () => {
       useCurrentUserStore.getState().setUser(ALEX);
       overviewMock.mockResolvedValue(
         overview({
-          assignedCredits: 0,
-          unassignedCredits: 0,
-          underRefundCredits: 0,
+          assignedCredits: '0.000000' as CreditDecimal,
+          unassignedCredits: '0.000000' as CreditDecimal,
+          underRefundCredits: '0.000000' as CreditDecimal,
           billing: false,
         }),
       );

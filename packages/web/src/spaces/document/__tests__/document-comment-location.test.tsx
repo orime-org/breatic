@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Agent View reaches the real comment selection and final sidebar consumer
@@ -12,15 +12,8 @@
  */
 
 import * as React from 'react';
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  renderHook,
-  screen,
-  waitFor,
-} from '@testing-library/react';
+import { act, cleanup, fireEvent, renderHook, screen, waitFor } from '@testing-library/react';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TextSelection } from '@tiptap/pm/state';
@@ -221,7 +214,7 @@ describe('an explicit Agent comment View', () => {
 
   it('repeats the final reveal for a fresh View of the same selected thread', async () => {
     const { proposal, threadId } = await fixture();
-    const viewport = document.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!;
+    const viewport = document.querySelector<HTMLElement>('.doc-body-scroller [data-radix-scroll-area-viewport]')!;
     vi.spyOn(handle.editor.prosemirrorView!, 'coordsAtPos').mockReturnValue({
       top: 600, bottom: 620, left: 0, right: 10,
     });
@@ -248,7 +241,7 @@ describe('an explicit Agent comment View', () => {
     expect(selectedThreadsIn(handle.editor.prosemirrorState)).toEqual([threadId]);
   });
 
-  it('does not restore an old View selection after the reader opens a draft', async () => {
+  it('does not restore an old View selection after the user opens a draft', async () => {
     const { proposal, rerender } = await fixture();
     await view(proposal);
     await screen.findByTestId('doc-comment-card');
@@ -267,7 +260,7 @@ describe('an explicit Agent comment View', () => {
     expect(screen.getByTestId('doc-comment-draft-input')).toHaveValue('Unsent thought');
   });
 
-  it('keeps the panel closed after the reader closes a viewed comment', async () => {
+  it('keeps the panel closed after the user closes a viewed comment', async () => {
     const { proposal, rerender } = await fixture();
     await view(proposal);
     await screen.findByTestId('doc-comment-card');

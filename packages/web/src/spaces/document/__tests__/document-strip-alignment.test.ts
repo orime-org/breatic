@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #113 A2: the strip stands on the middle of the row's FIRST line.
@@ -45,7 +45,7 @@ describe('where the strip stands', () => {
       STRIP,
     );
     expect(offset).toBeCloseTo(207.69 + 12 - 12 - 173.69, 2);
-    // And it is that gap that the reader saw as the strip standing too high:
+    // And it is that gap that the user saw as the strip standing too high:
     // without it the strip would be a whole heading's margin above the words.
     expect(offset).toBeGreaterThan(30);
   });

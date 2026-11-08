@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { readTaskFailure, uploadableFormatList } from '@breatic/shared';
 
@@ -33,13 +33,13 @@ export function refusalClause(about: {
 }
 
 /**
- * What a failed run is told to the reader.
+ * What a failed run is told to the user.
  *
  * A cause this product knows travels as a code and becomes a sentence here,
- * where the reader's language is. Anything else is what some provider said
+ * where the user's language is. Anything else is what some provider said
  * about its own failure, and it travels as itself.
  *
- * One home, because the same failure reaches the reader two ways: on the
+ * One home, because the same failure reaches the user two ways: on the
  * node's task list and in its history. A reading is the first kind of run to
  * store codes rather than a provider's prose, so a surface printing the
  * stored text raw shows `understand_over_cap` in every language.
@@ -48,7 +48,7 @@ export function refusalClause(about: {
  * refuse first — the ceiling, and the file's own name and format. A node
  * restored from history carries neither type nor size, so those gates stay
  * silent about it and the run is what refuses; this row is then the only
- * place the reader is told, and it says as much as the toast would have.
+ * place the user is told, and it says as much as the toast would have.
  *
  * A refusal names the file it happened to and the format it was in rather
  * than the formats a gate takes (user 2026-09-20). Both travel with the

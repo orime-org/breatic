@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * `@` in the chat box, in a real browser: canvas text pasted in becomes an
@@ -269,4 +269,52 @@ test('removing the attachment takes its block out of the words', async ({ page }
 
   await expect(page.getByTestId('chat-reference')).toHaveCount(0);
   await expect(box).toHaveText(/^look at/);
+});
+
+test('dragging plain words hands the browser the shared drag image, at full strength (inner#1515)', async ({ page }) => {
+  const box = page.getByTestId('chat-composer-box');
+  await box.click();
+  await page.keyboard.type('alpha beta gamma');
+  await expect(box).toHaveText('alpha beta gamma');
+  // Each element handed to setDragImage, read as it is handed over.
+  await page.evaluate(() => {
+    const seen: Array<{ classes: string; position: string; text: string; opacity: string[]; root: Element }> = [];
+    (window as unknown as { __dragImages: typeof seen }).__dragImages = seen;
+    const original = DataTransfer.prototype.setDragImage;
+    DataTransfer.prototype.setDragImage = function (el: Element, x: number, y: number) {
+      seen.push({
+        classes: el.className,
+        position: getComputedStyle(el).position,
+        text: el.textContent ?? '',
+        opacity: [el, ...el.querySelectorAll('*')].map((node) => getComputedStyle(node).opacity).filter((o) => o !== '1'),
+        root: el,
+      });
+      original.call(this, el, x, y);
+    };
+  });
+  const word = await box.evaluate((element) => {
+    const text = element.querySelector('p')!.firstChild!;
+    const range = document.createRange();
+    range.setStart(text, 6);
+    range.setEnd(text, 10);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, end: element.getBoundingClientRect().right - 8 };
+  });
+  await page.mouse.dblclick(word.x, word.y);
+  // A press within 500 ms of the double click would count as its third click
+  // (prosemirror-view `handlers.mousedown`) and select the whole line.
+  await page.waitForTimeout(600);
+  await page.mouse.move(word.x, word.y);
+  await page.mouse.down();
+  // Chromium on macOS starts a drag of selected words only after a 150 ms hold
+  // (`kTextDragDelay`); a quicker move extends the selection instead.
+  await page.waitForTimeout(300);
+  await page.mouse.move(word.end, word.y, { steps: 8 });
+  await page.mouse.up();
+
+  const images = await page.evaluate(() =>
+    (window as unknown as { __dragImages: Array<{ classes: string; position: string; text: string; opacity: string[]; root: Element }> })
+      .__dragImages.map(({ root, ...seen }) => ({ ...seen, onPage: root.isConnected })),
+  );
+  expect(images).toEqual([{ classes: 'drag-image', position: 'fixed', text: 'beta', opacity: [], onPage: false }]);
 });

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Content arriving into the body keeps its comments only when it was moved
@@ -26,7 +26,7 @@
  * both copies and every word between them.
  *
  * DRAGGED CONTENT KEEPS ITS COMMENTS, because a drag is one continuous act
- * the reader watches from start to finish: the same words, in a new place,
+ * the user watches from start to finish: the same words, in a new place,
  * and what was said about them still applies (user 2026-09-23). Dragging away
  * part of a commented run leaves both halves carrying the comment — the half
  * that moved brings its marks along, the half left behind was never touched —
@@ -104,6 +104,26 @@ export function stripCommentMarks(slice: Slice, schema: Schema): Slice {
   return new Slice(rebuild(slice.content), slice.openStart, slice.openEnd);
 }
 
+/** The drop a placement is putting as its paste, while it does. */
+let landing: 'move' | 'copy' | null = null;
+
+/**
+ * Runs the placement of a drag within the body, which puts the drop as its
+ * paste with no drag in flight, so the content it pastes lands as that drop
+ * would: a move with its comments and row ids, a copy without either.
+ * @param moved - Whether the drop moves the content.
+ * @param put - Puts the content.
+ * @returns What `put` returns.
+ */
+export function landingAsDrop<T>(moved: boolean, put: () => T): T {
+  landing = moved ? 'move' : 'copy';
+  try {
+    return put();
+  } finally {
+    landing = null;
+  }
+}
+
 /** What this needs of the view: the schema, and whether a drag is in flight. */
 interface LandingView {
   /** The editor state, for the schema the slice was parsed against. */
@@ -113,16 +133,18 @@ interface LandingView {
 }
 
 /**
- * Rebuilds a slice with no row ids. The editor fills an id that is null with
- * a new one (BlockNote's `UniqueID`, `appendTransaction`).
+ * Rebuilds a slice with no row ids, or none of those a test picks. The editor
+ * fills an id that is null with a new one (BlockNote's `UniqueID`,
+ * `appendTransaction`).
  * @param slice - The slice about to be inserted.
- * @returns The same content and open depths, every row's id null.
+ * @param drops - Which ids go; every one when left out.
+ * @returns The same content and open depths, those rows' ids null.
  */
-function withoutRowIds(slice: Slice): Slice {
+export function withoutRowIds(slice: Slice, drops: (id: unknown) => boolean = () => true): Slice {
   /**
-   * Rebuilds one fragment, clearing ids at every depth.
+   * Rebuilds one fragment, clearing the picked ids at every depth.
    * @param fragment - The fragment to rebuild.
-   * @returns The fragment with no ids.
+   * @returns The fragment, those ids null.
    */
   const rebuild = (fragment: Fragment): Fragment => {
     const out: PMNode[] = [];
@@ -131,7 +153,7 @@ function withoutRowIds(slice: Slice): Slice {
         out.push(child);
         return;
       }
-      const attrs = 'id' in child.attrs ? { ...child.attrs, id: null } : child.attrs;
+      const attrs = 'id' in child.attrs && drops(child.attrs['id']) ? { ...child.attrs, id: null } : child.attrs;
       out.push(child.type.create(attrs, rebuild(child.content), child.marks));
     });
     return Fragment.fromArray(out);
@@ -154,6 +176,7 @@ export function landingSlice(
   view: LandingView,
   dropCopies: boolean,
 ): Slice {
+  if (landing !== null) return landing === 'move' ? slice : withoutRowIds(stripCommentMarks(slice, view.state.schema));
   if (view.dragging === null) {
     return stripCommentMarks(slice, view.state.schema);
   }
@@ -231,3 +254,20 @@ export const documentCommentPasteExtension = createExtension(() => ({
   key: 'document-comment-paste',
   prosemirrorPlugins: [commentPastePlugin()],
 }));
+
+/**
+ * A moved slice without the row ids a document still holds: a line the move
+ * took only part of stays where it was under its own id, and the part that
+ * moved lands under a new one, so no two rows share an id.
+ * @param slice - The moved content.
+ * @param doc - The document after the move took its source away.
+ * @returns The slice.
+ */
+export function withoutRowIdsIn(slice: Slice, doc: PMNode): Slice {
+  const held = new Set<unknown>();
+  doc.descendants((node) => {
+    if (node.attrs['id'] !== undefined && node.attrs['id'] !== null) held.add(node.attrs['id']);
+    return true;
+  });
+  return withoutRowIds(slice, (id) => held.has(id));
+}

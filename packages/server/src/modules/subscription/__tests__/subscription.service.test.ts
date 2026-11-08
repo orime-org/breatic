@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * 订阅的四条用户动作（#106 §7、§6.5.3）。
@@ -78,6 +78,14 @@ vi.mock("@server/modules/subscription/settle-tier.js", () => ({
   sendMembershipEndedMail,
 }));
 
+const { firstPeriodDiscount, ensureFirstPeriodCoupon } = vi.hoisted(() => ({
+  firstPeriodDiscount: vi.fn(),
+  ensureFirstPeriodCoupon: vi.fn(),
+}));
+
+vi.mock("@server/modules/referral/referral.service.js", () => ({ firstPeriodDiscount }));
+vi.mock("@server/modules/referral/referral-coupon.js", () => ({ ensureFirstPeriodCoupon }));
+
 vi.mock("@server/modules/auth/user.repo.js", () => ({
   getUserById: vi.fn(),
   getStripeCustomerId: vi.fn(),
@@ -127,6 +135,52 @@ beforeEach(() => {
   } as never);
   stripe.checkout.sessions.create.mockResolvedValue({
     url: "https://checkout.example/s",
+  });
+  firstPeriodDiscount.mockResolvedValue(null);
+});
+
+describe("startCheckout — referral first-period discount (inner#1868)", () => {
+  const start = (): Promise<unknown> =>
+    service.startCheckout({ userId: USER, tier: "pro", period: "month", returnUrl: RETURN_URL });
+
+  it("puts the referral coupon on the session and the code on the subscription when the account qualifies", async () => {
+    situationIs("none");
+    firstPeriodDiscount.mockResolvedValue({ code: "ALICE", percent: 20 });
+    ensureFirstPeriodCoupon.mockResolvedValue("referral-first-period-20");
+    await start();
+    expect(ensureFirstPeriodCoupon).toHaveBeenCalledWith(20);
+    const call = stripe.checkout.sessions.create.mock.calls[0]?.[0];
+    expect(call.discounts).toEqual([{ coupon: "referral-first-period-20" }]);
+    expect(call.subscription_data.metadata.referralCode).toBe("ALICE");
+    expect(call.subscription_data.metadata.userId).toBe(USER);
+  });
+
+  it("bills the subscription in flexible mode, so an upgrade in the first period credits what was paid", async () => {
+    // Sandbox, 2026-11-07: a Pro month paid at 1599 of 1999 and upgraded halfway
+    // credited -800 ("Unused time on PRO Monthly (with 20.0% off)") in flexible mode.
+    situationIs("none");
+    firstPeriodDiscount.mockResolvedValue({ code: "ALICE", percent: 20 });
+    ensureFirstPeriodCoupon.mockResolvedValue("referral-first-period-20");
+    await start();
+    const call = stripe.checkout.sessions.create.mock.calls[0]?.[0];
+    expect(call.subscription_data.billing_mode).toEqual({ type: "flexible" });
+  });
+
+  it("sends no discount and no code when the account does not qualify", async () => {
+    situationIs("none");
+    await start();
+    expect(ensureFirstPeriodCoupon).not.toHaveBeenCalled();
+    const call = stripe.checkout.sessions.create.mock.calls[0]?.[0];
+    expect(call).not.toHaveProperty("discounts");
+    expect(call.subscription_data.metadata).not.toHaveProperty("referralCode");
+  });
+
+  it("opens no checkout page when the coupon cannot be had", async () => {
+    situationIs("none");
+    firstPeriodDiscount.mockResolvedValue({ code: "ALICE", percent: 20 });
+    ensureFirstPeriodCoupon.mockRejectedValue(new Error("coupon mismatch"));
+    await expect(start()).rejects.toThrow("coupon mismatch");
+    expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
   });
 });
 
@@ -268,6 +322,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
         customer: "cus_1",
         line_items: [{ price: "price_team_month", quantity: 1 }],
         subscription_data: {
+          billing_mode: { type: "flexible" },
           // The subscribing browser's consent rides along (inner#1442 §4.4.5).
           metadata: {
             userId: USER,
@@ -725,7 +780,7 @@ describe("the period reaches Stripe on both paths (#253 A7, A8)", () => {
     for (const period of ["month", "year"] as const) {
       it(`checks out ${tier} over ${period} with that combination's own price`, async () => {
         // A tier is sold over two prices now, and only one of them is the one
-        // the reader pressed. Sending either half of the pair without the
+        // the user pressed. Sending either half of the pair without the
         // other bills a period nobody chose.
         situationIs("none");
         await service.startCheckout({
@@ -808,7 +863,7 @@ describe("the period reaches Stripe on both paths (#253 A7, A8)", () => {
 
   it("refuses to report a change Stripe priced differently from our list", async () => {
     // Stripe took the change and billed something our price list does not
-    // sell. "Applied" is the one answer that cannot be taken back: the reader
+    // sell. "Applied" is the one answer that cannot be taken back: the user
     // is told their plan changed while the row still holds the old one, and
     // nothing afterwards contradicts it.
     situationIs("active", holding("pro", "month"));
@@ -1292,6 +1347,42 @@ describe("confirmCheckout — a Stripe failure is logged where it is answered (#
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({ userId: USER, sessionId: "cs_down" }),
       "subscription_confirm_failed",
+    );
+  });
+});
+
+describe("confirmCheckout — the first conversion reports what the first invoice charged (inner#1868 §6)", () => {
+  it("reports and returns the discounted first-invoice amount before tax", async () => {
+    situationIs("none");
+    applySubscriptionWrite.mockResolvedValue({ tier: "pro", endedFrom: null, started: true });
+    stripe.checkout.sessions.retrieve.mockResolvedValueOnce({
+      mode: "subscription",
+      client_reference_id: USER,
+      subscription: {
+        id: "sub_first",
+        status: "active",
+        cancel_at_period_end: false,
+        pending_update: null,
+        metadata: {},
+        items: {
+          data: [{
+            id: "si_1",
+            current_period_end: 1_789_000_000,
+            price: { id: "price_pro_month", unit_amount: 1999, currency: "usd", recurring: { interval: "month" } },
+          }],
+        },
+        latest_invoice: { status: "paid", billing_reason: "subscription_create", total_excluding_tax: 1599 },
+      },
+    });
+
+    const stored = await service.confirmCheckout(USER, "cs_first");
+
+    expect(stored.firstInvoiceAmountCents).toBe(1599);
+    expect(stored.write.stripeSubscriptionId).toBe("sub_first");
+    expect(trackServerEvent).toHaveBeenCalledWith(
+      "subscription_started",
+      expect.objectContaining({ properties: expect.objectContaining({ amount_cents: 1599 }) }),
+      expect.anything(),
     );
   });
 });

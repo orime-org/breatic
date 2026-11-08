@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What the colour cells do, and which one reads as the one in force.
@@ -162,7 +162,7 @@ describe('which colour cell reads as the one in force', () => {
 describe('what a colour press covers', () => {
   it('colours the whitespace a drag picked up', () => {
     // The selection is the range. A space carries a colour like any other
-    // character, so one the reader highlighted gets the colour.
+    // character, so one the user highlighted gets the colour.
     const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
     select(editor, 3, 9);
 
@@ -321,7 +321,7 @@ describe('what the panel counts as reachable', () => {
   });
 
   it('is unavailable over a lone break', () => {
-    // The bare shape a reader meets first: a hard break shows no colour and
+    // The bare shape a user meets first: a hard break shows no colour and
     // Yjs keeps none on it, so every cell would be a press with nothing behind.
     const editor = open([{ type: 'paragraph', content: 'abcdef' }]);
     const view = editor.prosemirrorView!;
@@ -392,7 +392,7 @@ describe('the range the panel reads is the range a press covers', () => {
   it('names the hue where a drag picked up the trailing space', () => {
     // A drag that overshoots the coloured word onto the plain space after it.
     // The press covers that space too, and the panel opens on the first run —
-    // so it goes on naming red, the hue the reader set a moment ago.
+    // so it goes on naming red, the hue the user set a moment ago.
     const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
     select(editor, 3, 8);
     setColour(editor, 'textColor', 'red');
@@ -477,7 +477,7 @@ describe('the range the panel reads is the range a press covers', () => {
 
   it('still names the hue where the trailing space carries no colour', () => {
     // The case the reading covers the whole selection has to keep: an
-    // uncoloured space is not something the reader is asking about.
+    // uncoloured space is not something the user is asking about.
     const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
     select(editor, 3, 8);
     setColour(editor, 'textColor', 'red');

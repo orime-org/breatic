@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * How many members a studio may hold, and how many collaborators a project may
@@ -23,7 +23,7 @@
  *      is not a decision when two confirms do it at once — both count, both see
  *      room, both insert. Block one measured this shape on a `pro` account:
  *      three simultaneous requests left two rows behind.
- *   2. **The two readers get different sentences.** The invitee cannot raise
+ *   2. **The two users get different sentences.** The invitee cannot raise
  *      anyone's tier, so the accept-side refusal must not tell them to upgrade.
  *   3. **A confirm cannot land a live member row on a dead entity.** The
  *      entity may be soft-deleted between sending and accepting.
@@ -433,7 +433,7 @@ describe("project collaborator cap — invite time (the early hint)", () => {
     ).rejects.toMatchObject({ statusCode: 409 });
   });
 
-  it("names this tier's number without claiming it is the reader's plan", async () => {
+  it("names this tier's number without claiming it is the user's plan", async () => {
     // The inviter can be the project's owner or a maintainer rather than the
     // studio's admin, so the sentence talks about the project, not "your plan".
     const admin = await insertUser("base");

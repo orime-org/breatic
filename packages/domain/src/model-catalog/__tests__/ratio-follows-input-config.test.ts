@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The output shape of a model that works from an input image (#2156).
@@ -8,7 +8,7 @@
  * image it was given: the edit and image-to-video schemas say so for two of
  * them, and a real run on 2026-09-29 showed it for the other three (a 3:4
  * input came back 3:4, two 9:16 frames came back 9:16). A fixed ratio as the
- * default would reshape the reader's picture, so each one starts on "auto" and
+ * default would reshape the user's picture, so each one starts on "auto" and
  * sends nothing for it.
  */
 

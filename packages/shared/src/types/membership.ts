@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Membership tiers (ratified 2026-07-30).
@@ -199,7 +199,7 @@ export interface MembershipOffer {
  *
  * Read by both ends. The panel draws an entrance only where this says yes and
  * the server accepts a change only where this says yes, so an entrance the
- * reader can press is one the server will take.
+ * user can press is one the server will take.
  * @param from - What the account holds now.
  * @param from.tier - Which tier is held, `base` included: it has a position
  *   on the price list, which is what this compares.
@@ -437,7 +437,7 @@ export interface AccountMembership {
 /** Which card is being drawn: a comparable tier, or the local sales card. */
 export type MembershipCard = ComparableMembershipTier | "enterprise";
 
-/** What a card offers the reader. */
+/** What a card offers the user. */
 export type CardAction =
   | "blank"
   | "current"

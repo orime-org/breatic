@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * ProseMirror plugin that keeps reference chips wrapped in real spaces, makes
@@ -70,6 +70,7 @@ import {
 } from '@web/features/reference-mention/reference-mention-whitespace';
 import { ySyncPluginKey } from '@web/features/collab-editor/collab-plugin-keys';
 import { dispatchMachineEdit } from '@web/features/reference-mention/reference-mention-local-input';
+import { setSelectionDragImage } from '@web/features/drag-image/selection-drag-image';
 
 /**
  * A recorded selection range.
@@ -297,73 +298,6 @@ function normalizeSelection(
   return newState.tr
     .setSelection(TextSelection.create(newState.doc, snapped))
     .setMeta('addToHistory', false);
-}
-
-/**
- * Gives a chip-bearing drag a mouse-following drag image on EVERY browser.
- * tiptap's NodeView.onDragStart only sets one when React receives the event —
- * true in Chrome (the Text-node target routes into React) but never in Safari,
- * so a chip drag showed no ghost there (user 2026-07-14). Cloning the dragged
- * range's rendered DOM keeps single- and multi-chip drags consistent across
- * browsers; plain-text drags keep the browser's native ghost. Best-effort: any
- * failure silently falls back to the native ghost (a visual enhancement, not a
- * business error).
- * @param view - The editor view.
- * @param event - The dragstart event.
- */
-function setChipDragImage(view: EditorView, event: Event): void {
-  const dt = (event as DragEvent).dataTransfer;
-  if (!dt || typeof dt.setDragImage !== 'function') return;
-  const sel = view.state.selection;
-  if (sel.empty) return;
-  let hasChip = false;
-  view.state.doc.nodesBetween(sel.from, sel.to, (n) => {
-    if (isChip(n)) hasChip = true;
-  });
-  if (!hasChip) return;
-  try {
-    const range = document.createRange();
-    const fromDom = view.domAtPos(sel.from);
-    const toDom = view.domAtPos(sel.to);
-    range.setStart(fromDom.node, fromDom.offset);
-    range.setEnd(toDom.node, toDom.offset);
-    // Mirror the native selection-snapshot semantics (user 2026-07-14: the
-    // Safari-style ghost is the standard): keep the dragged content's own
-    // line layout (same width/font as the source, so soft-wraps reproduce)
-    // and anchor the image at the press point's offset INSIDE the content —
-    // never pin the pointer to the first character.
-    const rect = range.getBoundingClientRect();
-    const editorStyle = getComputedStyle(view.dom);
-    const ghost = document.createElement('div');
-    ghost.style.cssText =
-      'position:absolute;top:-9999px;left:-9999px;pointer-events:none;';
-    ghost.style.width = `${Math.ceil(rect.width)}px`;
-    // At full strength: each browser shows the image the way it shows its
-    // own drag ghost, as it does for a block dragged without a selection.
-    const inner = document.createElement('div');
-    inner.style.whiteSpace = 'pre-wrap';
-    // Font LONGHANDS, never the shorthand: Chrome's computed `font` is often
-    // the EMPTY string (unrepresentable sub-property combos), which left the
-    // ghost inheriting the body's 16px — the ghost text rendered larger than
-    // the 13px source (user 2026-07-14; Safari returns a full shorthand).
-    inner.style.fontFamily = editorStyle.fontFamily;
-    inner.style.fontSize = editorStyle.fontSize;
-    inner.style.fontWeight = editorStyle.fontWeight;
-    inner.style.lineHeight = editorStyle.lineHeight;
-    inner.style.color = editorStyle.color;
-    inner.appendChild(range.cloneContents());
-    ghost.appendChild(inner);
-    document.body.appendChild(ghost);
-    const pointer = event as DragEvent;
-    const offsetX = Math.max(0, pointer.clientX - rect.left);
-    const offsetY = Math.max(0, pointer.clientY - rect.top);
-    dt.setDragImage(ghost, offsetX, offsetY);
-    setTimeout(() => {
-      ghost.remove();
-    }, 0);
-  } catch {
-    // Native ghost stays — the enhancement must never break the drag.
-  }
 }
 
 /**
@@ -614,7 +548,7 @@ export function createReferenceMentionCaret(): Plugin {
               ? null
               : recordFromRange(view.state, sel.from, sel.to),
           });
-          setChipDragImage(view, event);
+          setSelectionDragImage(view, event);
           return false;
         },
         dragover: (view, event): boolean => {

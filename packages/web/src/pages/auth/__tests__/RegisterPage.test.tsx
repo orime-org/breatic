@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type * as MockModule0 from '@web/data/api/auth';
 
@@ -23,7 +23,7 @@ vi.mock('@web/data/api/auth', async () => {
     );
   return {
     ...actual,
-    authApi: { ...actual.authApi, register: vi.fn(), verifySignupCode: vi.fn(), resendSignupCode: vi.fn() },
+    authApi: { ...actual.authApi, options: vi.fn(), register: vi.fn(), verifySignupCode: vi.fn(), resendSignupCode: vi.fn() },
   };
 });
 
@@ -54,11 +54,13 @@ function refusal(status: number, message: string, retryAfterSeconds?: number): A
   return new ApiException({ status, message, fromServer: true, retryAfterSeconds });
 }
 
-/** Fill the form and submit it. */
+/** Fill the form and submit it, once the page has read whether it takes a referral code. */
 async function submitForm(user: ReturnType<typeof userEvent.setup>): Promise<void> {
   await user.type(screen.getByLabelText('Email'), 'foo@bar.com');
   await user.type(screen.getByLabelText('Password'), 'supersecret');
-  await user.click(screen.getByRole('button', { name: 'Create account' }));
+  const create = screen.getByRole('button', { name: 'Create account' });
+  await waitFor(() => expect(create).toBeEnabled());
+  await user.click(create);
 }
 
 beforeEach(() => {
@@ -69,6 +71,8 @@ beforeEach(() => {
     loading: false,
     bootstrapped: true,
   });
+  // The page holds Create account until it knows whether it takes a referral code.
+  vi.mocked(authApi.options).mockResolvedValue({ emailVerification: true, referralEnabled: true });
 });
 
 afterEach(() => {
@@ -378,7 +382,7 @@ describe('RegisterPage with email (code step, #287)', () => {
     expect(screen.getByRole('button', { name: 'Create account' })).toBeInTheDocument();
   });
 
-  it('goes back to the form with what was typed when the reader changes the email', async () => {
+  it('goes back to the form with what was typed when the user changes the email', async () => {
     vi.mocked(authApi.register).mockResolvedValueOnce(CODE_SENT);
     const user = userEvent.setup();
     setup();

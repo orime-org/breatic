@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 
@@ -15,7 +15,7 @@ import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canv
  * The slot list follows the mode and the model, and either can change under a
  * running pick, locally or by a collaborator. The slot then stops rendering
  * while the canvas keeps offering candidates for it, so the pick ends and the
- * reader is told, worded by who made the change.
+ * user is told, worded by who made the change.
  * @param nodeId - The node whose panel is open.
  * @param slots - The slots the panel draws now.
  * @param getLastWriteWasLocal - Reads whether this client made the newest write.

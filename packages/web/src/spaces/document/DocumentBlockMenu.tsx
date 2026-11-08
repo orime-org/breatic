@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The rows of the block handle menu, and what each one runs: the seven of a
  * block's grip, or the six of a table's entry.
  *
- * Every row acts on the block the pointer is over, never on the reader's
+ * Every row acts on the block the pointer is over, never on the user's
  * selection (A5) — which is why each command here is handed that block's id
  * and why none of them moves the caret.
  *
@@ -82,7 +82,7 @@ import { attachToChat } from '@web/stores/attach-to-chat';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
 import {
   insertBelow,
-  mediaGapBelow,
+  insertMediaBelow,
   type InsertChoice,
 } from '@web/spaces/document/document-insert-row';
 import { useDocumentMediaPick } from '@web/spaces/document/DocumentMediaPicker';
@@ -156,10 +156,10 @@ function sameFaces(a: StyleFaces, b: StyleFaces): boolean {
  * What the two style rows read off the hovered block.
  *
  * Both readings walk the block's own content rather than the editor's state,
- * and that is not a refinement: the handle is on screen only while the reader
+ * and that is not a refinement: the handle is on screen only while the user
  * holds no selection (`DocumentBlockHandle.tsx`'s `holdsSelection` guard), so a
  * state-based reading
- * would answer about the reader's caret on every single press.
+ * would answer about the user's caret on every single press.
  * @param editor - The editor to read from.
  * @param blockId - The block the pointer is over.
  * @returns What each row draws and whether it can act.
@@ -224,10 +224,10 @@ export function DocumentBlockMenu({
   /**
    * The range standing for this row, read off the document as it is now.
    *
-   * Built and handed to the command without being dispatched, so the reader's
+   * Built and handed to the command without being dispatched, so the user's
    * own caret, selection and stored marks stay where they were
    * (`document-hovered-block.ts`). Read at press time for the reason
-   * {@link rowNow} is: the menu stays open however long the reader takes.
+   * {@link rowNow} is: the menu stays open however long the user takes.
    * @returns The range, or undefined once the row is gone.
    */
   const rangeNow = React.useCallback((): Selection | undefined => {
@@ -275,16 +275,19 @@ export function DocumentBlockMenu({
   );
 
   // The media entries: the files land under this row once they are chosen
-  // (inner#1127 A1). Absent where nothing picks — a body with no uploader.
+  // (inner#1127 A1). Absent where nothing picks — a body with nowhere to
+  // upload to.
   const mediaPick = useDocumentMediaPick();
   const onInsertMediaBelow = React.useMemo(
     () =>
       mediaPick === null
         ? undefined
         : (kind: MediaBlockType): void => {
-          mediaPick(kind, () => {
+          mediaPick(kind, (blocks) => {
             const live = rowNow();
-            return live === undefined ? null : mediaGapBelow(editor, live);
+            if (live === undefined) return false;
+            insertMediaBelow(editor, live, blocks);
+            return true;
           });
           close();
         },
@@ -294,7 +297,7 @@ export function DocumentBlockMenu({
   /**
    * Runs one row and closes the menu.
    *
-   * Nothing is the right answer to a command whose subject is gone: the reader
+   * Nothing is the right answer to a command whose subject is gone: the user
    * sees the menu close and the row stay gone, which is what they are looking
    * at anyway.
    * @param row - The row that was pressed.
@@ -483,7 +486,7 @@ export function DocumentBlockMenu({
 
         if (row.id === 'comment') {
           // Acts on the whole row, which `selectionOverBlockContent` turns
-          // into a range without dispatching a selection — the reader's caret
+          // into a range without dispatching a selection — the user's caret
           // is elsewhere and stays there (A2).
           //
           // A row with no words in it covers no run, so there is nothing for

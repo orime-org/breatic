@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Panel thumbnails retain the service's source URLs so preview and canvas
@@ -37,7 +37,7 @@ import type { AgentPictureOutput } from "@domain/agent/project-agent-request.js"
 /**
  * How this tool names what it does, in the sentences it fails with.
  *
- * Distinct from `web_search`'s throughout. A reader told "search is
+ * Distinct from `web_search`'s throughout. A user told "search is
  * unavailable" because an image search failed is told something false about a
  * capability that is working.
  */

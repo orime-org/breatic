@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Conversation service — business logic for conversations and messages.
@@ -12,10 +12,13 @@ import * as conversationRepo from "@server/modules/conversation/conversation.rep
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import * as projectService from "@server/modules/project/project.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import { answersMismatch, readQuestionnaire, t } from "@breatic/shared";
-import { db, NotFoundError, ForbiddenError, getAgentConfig } from "@breatic/core";
-import type { AskUserAnswer, ConversationEntity, MessageData } from "@breatic/shared";
-import { askResultForModel } from "@server/agent/ask-result.js";
+import * as userRepo from "@server/modules/auth/user.repo.js";
+import { answersMismatch, readQuestionnaire, spaceRequestInputSchema, t } from "@breatic/shared";
+import { spaceAnswerMismatch } from "@server/modules/conversation/space-answer-mismatch.js";
+import { db, NotFoundError, ForbiddenError, getAgentConfig, ValidationError } from "@breatic/core";
+import { ASK_USER, REQUEST_SPACE_CONTENT } from "@breatic/domain";
+import type { AgentModelChoice, AskUserAnswer, ChatConversation, ConversationEntity, MessageData, SpaceRequestAnswer } from "@breatic/shared";
+import { askResultForModel, cardOutputOf, type SpaceRequestResult } from "@server/agent/ask-result.js";
 
 /**
  * Validate that a conversation exists and belongs to the given user.
@@ -89,13 +92,14 @@ export async function openChat(
   /** The list goes on past the page above, and the next one is a request away. */
   hasMoreConversations: boolean;
   current: {
-    conversation: ConversationEntity;
+    conversation: ChatConversation;
     messages: MessageData[];
     /** The conversation reaches back further than these messages do. */
     hasMore: boolean;
   };
 }> {
   await projectService.assertAccess(projectId, userId, "editor");
+  const userModel = await userRepo.getAgentModel(userId);
 
   // Two locks, each covering a race the other cannot see, taken in this order
   // everywhere. Nothing else in the codebase takes the advisory lock, so no
@@ -126,7 +130,8 @@ export async function openChat(
       throw new NotFoundError(t("server.error.not_found"));
     }
 
-    const created = await conversationRepo.createConversation(userId, tx);
+    // A new conversation starts on the model the user last picked.
+    const created = await conversationRepo.createConversation(userId, resolveAgentModel(null, userModel).id, tx);
     await conversationRepo.setProjectId(created.id, projectId, tx);
     return { ...created, projectId };
   });
@@ -144,7 +149,7 @@ export async function openChat(
     conversations: listed.conversations,
     hasMoreConversations: listed.hasMore,
     current: {
-      conversation,
+      conversation: { ...conversation, agentModel: resolveAgentModel(conversation.agentModel, userModel) },
       messages: page.messages,
       // Said here rather than left for the client to discover, because the
       // only way to discover it is to ask for a page that may well be empty.
@@ -184,7 +189,7 @@ function titleFromMessage(said: string, limit: number): string | null {
  * Called once per turn, and it answers rather than returning nothing so the
  * turn can tell the client the name in the same breath as it confirms the
  * message landed. Without that the list and the header go on showing the
- * placeholder until the reader leaves the project and comes back.
+ * placeholder until the user leaves the project and comes back.
  *
  * Having no name is a column holding null, not a column holding a particular
  * string. Two things follow. A conversation the owner named before saying
@@ -226,7 +231,7 @@ export async function titleForTurn(
  *
  * That distinction is what keeps "a conversation is only ever created
  * automatically in one place" true. The rule guards against an id that no
- * longer resolves quietly turning into a new conversation while the reader
+ * longer resolves quietly turning into a new conversation while the user
  * believes they are still in the old one; a deliberate press is not that.
  *
  * Access is judged as a WRITE, same as opening: a member who may only read
@@ -248,8 +253,10 @@ export async function titleForTurn(
 export async function createConversation(
   userId: string,
   projectId: string,
-): Promise<ConversationEntity> {
+): Promise<ChatConversation> {
   await projectService.assertAccess(projectId, userId, "editor");
+  // A new conversation starts on the model the user last picked.
+  const model = resolveAgentModel(null, await userRepo.getAgentModel(userId));
 
   return db.transaction(async (tx) => {
     // Same reason as in `openChat`: without holding the project row, this
@@ -261,9 +268,9 @@ export async function createConversation(
       throw new NotFoundError(t("server.error.not_found"));
     }
 
-    const created = await conversationRepo.createConversation(userId, tx);
+    const created = await conversationRepo.createConversation(userId, model.id, tx);
     await conversationRepo.setProjectId(created.id, projectId, tx);
-    return { ...created, projectId };
+    return { ...created, projectId, agentModel: model };
   });
 }
 
@@ -385,13 +392,17 @@ export async function getWithMessages(
   conversationId: string,
   userId: string,
 ): Promise<{
-  conversation: ConversationEntity;
+  conversation: ChatConversation;
   messages: MessageData[];
   hasMore: boolean;
 }> {
   const conversation = await validateOwnership(conversationId, userId);
-  const page = await messageRepo.getMessages(conversationId);
-  return { conversation, messages: page.messages, hasMore: page.hasMore };
+  const [page, userModel] = await Promise.all([messageRepo.getMessages(conversationId), userRepo.getAgentModel(userId)]);
+  return {
+    conversation: { ...conversation, agentModel: resolveAgentModel(conversation.agentModel, userModel) },
+    messages: page.messages,
+    hasMore: page.hasMore,
+  };
 }
 
 /**
@@ -455,7 +466,7 @@ export async function deleteConversation(
 }
 
 /**
- * Take the reader's answer to the questionnaire the agent is waiting on
+ * Take the user's answer to the questionnaire the agent is waiting on
  * (inner#1542), once.
  *
  * The answer is held to the questions as they were asked, and the call is
@@ -463,6 +474,7 @@ export async function deleteConversation(
  * message written instead, the first one in is the one that counts.
  * @param conversationId - The conversation, already checked writable by the caller.
  * @param answer - What the browser sent.
+ * @param actor - Trusted account and Project admitting this answer.
  * @returns How it went: answered (with the turn to resume), already settled,
  *   not fitting the questions, or no such card.
  * @throws {NotFoundError} if the conversation is gone.
@@ -470,6 +482,7 @@ export async function deleteConversation(
 export async function answerAsk(
   conversationId: string,
   answer: AskUserAnswer,
+  actor?: messageRepo.AnswerActor,
 ): Promise<messageRepo.AnswerOutcome> {
   return messageRepo.answerWaitingAsk(conversationId, answer.toolCallId, (input) => {
     const asked = readQuestionnaire(input);
@@ -477,6 +490,158 @@ export async function answerAsk(
     const reason = answersMismatch(asked.questions, answer.answers);
     if (reason !== null) return { reason };
     const result = { answers: answer.answers };
-    return { output: result, forModel: askResultForModel(answer.toolCallId, result) };
+    return { output: result, forModel: askResultForModel(answer.toolCallId, result, ASK_USER) };
+  }, actor);
+}
+
+/**
+ * Take the user's answer to the request to read Spaces the agent is waiting
+ * on (inner#1552), once.
+ *
+ * Held to the request as it was made, and settled only while the call still
+ * waits, as `answerAsk` is. The card keeps a summary per Space; the full
+ * result, content included, goes only to the model's copy.
+ * @param conversationId - The conversation, already checked writable by the caller.
+ * @param answer - What the browser sent.
+ * @param actor - Trusted account and Project admitting this answer.
+ * @returns How it went: answered (with the turn to resume), already settled,
+ *   not fitting the request, or no such card.
+ * @throws {NotFoundError} if the conversation is gone.
+ */
+export async function answerSpaceRequest(
+  conversationId: string,
+  answer: SpaceRequestAnswer,
+  actor?: messageRepo.AnswerActor,
+): Promise<messageRepo.AnswerOutcome> {
+  return messageRepo.answerWaitingAsk(conversationId, answer.toolCallId, (input) => {
+    const asked = spaceRequestInputSchema.safeParse(input);
+    if (!asked.success) return { reason: "The call is not a request to read Spaces." };
+    const reason = spaceAnswerMismatch(asked.data, answer);
+    if (reason !== null) return { reason };
+    const result: SpaceRequestResult = answer.decision === "shared" ? { spaces: answer.spaces } : { declined: true };
+    return { output: cardOutputOf(result), forModel: askResultForModel(answer.toolCallId, result, REQUEST_SPACE_CONTENT) };
+  }, actor);
+}
+
+// ── The model a conversation is answered by (#1363) ──────────────────
+
+/**
+ * The model by this id, when the deployment lists it.
+ * @param id - The model id, or null.
+ * @returns It, or undefined when it is not listed.
+ * @throws {never} Never.
+ */
+function listedModel(id: string | null): AgentModelChoice | undefined {
+  if (id === null) return undefined;
+  const found = getAgentConfig().chat_models.find((m) => m.id === id);
+  return found === undefined ? undefined : { id: found.id, name: found.name };
+}
+
+/**
+ * The model a conversation is answered by: its own pick while the deployment
+ * lists it, else the user's last pick while listed, else the default.
+ * @param conversationModel - The conversation's stored pick.
+ * @param userModel - The user's last pick.
+ * @returns The model.
+ * @throws {never} Never; the config guarantees the default is listed.
+ */
+export function resolveAgentModel(conversationModel: string | null, userModel: string | null): AgentModelChoice {
+  const fallback = listedModel(getAgentConfig().default_model);
+  return listedModel(conversationModel) ?? listedModel(userModel) ?? (fallback as AgentModelChoice);
+}
+
+/**
+ * The models the user can pick, in order, and the one a new conversation
+ * of theirs starts on.
+ * @param userId - The user.
+ * @returns The list and the id of the starting model.
+ */
+export async function listChatModels(userId: string): Promise<{ models: AgentModelChoice[]; lastUsed: string }> {
+  const models = getAgentConfig().chat_models.map(({ id, name }) => ({ id, name }));
+  return { models, lastUsed: resolveAgentModel(null, await userRepo.getAgentModel(userId)).id };
+}
+
+/**
+ * The model the deployment lists by this id, or the refusal the user reads.
+ * @param model - The model id the client sent.
+ * @returns It.
+ * @throws {ValidationError} When the deployment does not list it.
+ */
+function assertListed(model: string): AgentModelChoice {
+  const found = listedModel(model);
+  if (found === undefined) throw new ValidationError(t("server.chat.model_unavailable"));
+  return found;
+}
+
+/**
+ * Pick the model a conversation is answered by; it becomes the user's last
+ * pick too.
+ *
+ * Checked like a rename: the conversation id came from the client, so it has
+ * to be this user's, in this Project, and live.
+ * @param conversationId - The conversation, as the client named it.
+ * @param userId - The user.
+ * @param projectId - The Project the request claims to be in.
+ * @param model - The model id.
+ * @returns The conversation as it now stands.
+ * @throws {ValidationError} When the deployment does not list the model.
+ * @throws {NotFoundError} When the conversation is missing, deleted, someone else's or in another Project.
+ * @throws {ForbiddenError} When the user may only read the Project.
+ */
+export async function setConversationModel(
+  conversationId: string,
+  userId: string,
+  projectId: string,
+  model: string,
+): Promise<ChatConversation> {
+  const picked = assertListed(model);
+  await projectService.assertAccess(projectId, userId, "editor");
+  const conversation = await assertWritable(conversationId, userId, projectId);
+  await db.transaction(async (tx) => {
+    await conversationRepo.setAgentModel(conversationId, picked.id, { tx });
+    await userRepo.setAgentModel(userId, picked.id, tx);
   });
+  return { ...conversation, agentModel: picked };
+}
+
+/**
+ * The model a new message is answered by. The conversation's model is the
+ * user's pick, written by the pick alone; a message writes it only where
+ * the conversation has none the deployment lists, and only while it still holds
+ * what was read. A message from a page whose pick is still being saved carries
+ * the model it showed, and must not undo that pick.
+ * @param conversation - The conversation, already checked writable.
+ * @param userId - The user.
+ * @param requested - The model the page sent; absent from a page that predates the picker.
+ * @returns The model id.
+ * @throws {ValidationError} When the page sent a model the deployment no longer lists.
+ */
+export async function modelForMessage(
+  conversation: ConversationEntity,
+  userId: string,
+  requested: string | undefined,
+): Promise<string> {
+  const model =
+    requested === undefined
+      ? resolveAgentModel(conversation.agentModel, await userRepo.getAgentModel(userId))
+      : assertListed(requested);
+  if (listedModel(conversation.agentModel) === undefined) {
+    await conversationRepo.setAgentModel(conversation.id, model.id, { ifStill: { agentModel: conversation.agentModel } });
+  }
+  return model.id;
+}
+
+/**
+ * The model a turn resumed by an answer to its card runs on: the one the turn
+ * started on, while the deployment still lists it, else the conversation's
+ * own by the usual order, written into the conversation. Never a refusal: the
+ * answer must be able to resume the turn.
+ * @param conversation - The conversation, already checked writable.
+ * @param userId - The user.
+ * @param toolCallId - The call being answered.
+ * @returns The model id.
+ */
+export async function modelForResume(conversation: ConversationEntity, userId: string, toolCallId: string): Promise<string> {
+  const started = listedModel((await messageRepo.getReplyModelId(conversation.id, toolCallId)) ?? null);
+  return started?.id ?? modelForMessage(conversation, userId, undefined);
 }

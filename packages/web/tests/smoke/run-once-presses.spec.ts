@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * One press, one execution, and the waiting survives closing what was pressed
@@ -7,7 +7,7 @@
  *
  * Seven buttons send a request the server runs once per `Idempotency-Key`.
  * Each press is held outside the panel, dialog or column it was made in, so a
- * reader who closes that and opens it again finds the button still waiting,
+ * user who closes that and opens it again finds the button still waiting,
  * and pressing it again sends nothing. What no jsdom test reaches is the real
  * panel unmounting and mounting again around a request still on the wire.
  *

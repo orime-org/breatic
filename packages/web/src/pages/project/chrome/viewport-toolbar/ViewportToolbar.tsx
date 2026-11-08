@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 import {
@@ -25,7 +25,7 @@ import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { useTranslation } from '@web/i18n/use-translation';
 
 /**
- * The presets the reader picks from, between the ends the canvas allows. The
+ * The presets the user picks from, between the ends the canvas allows. The
  * box clamps what they type to those same ends, so a number it accepts is one
  * the canvas will hold.
  */

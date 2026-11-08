@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The panel down the right-hand side, and the way in (#18, A4 · A5 · A9 ·
  * A13 · A15 · A18).
  *
- * One rule governs when it appears: the reader opens it. A comment arriving
+ * One rule governs when it appears: the user opens it. A comment arriving
  * from a peer while they are typing moves nothing on screen — it marks the
  * `⋯` button and waits (§5). That is the rule Gate 1 was opened over: a panel
  * that shows itself pushes the body sideways under a caret somebody is using.
@@ -17,14 +17,8 @@
  * TDD: red because neither the menu row nor the panel exists yet.
  */
 
-import {
-  render,
-  screen,
-  waitFor,
-  renderHook,
-  act,
-  fireEvent,
-} from '@testing-library/react';
+import { screen, waitFor, renderHook, act, fireEvent } from '@testing-library/react';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';
@@ -118,7 +112,7 @@ describe('the comment panel', () => {
     // One case takes the right to write away mid-draft. Both props move
     // together, the way they do in the product: `readOnly` is what decides
     // whether the chrome carrying the notice is mounted at all, and it turns
-    // over on the same change that makes the reader a viewer (A22).
+    // over on the same change that makes the user a viewer (A22).
     asRole = (next) => {
       rendered.rerender(
         <DocumentEditor
@@ -203,14 +197,14 @@ describe('the comment panel', () => {
     return at.segments.map(({ from, to }) => doc.textBetween(from, to)).join('');
   }
 
-  /** Puts the focus somewhere the reader could have put it: the body. */
+  /** Puts the focus somewhere the user could have put it: the body. */
   async function clickTheBody(): Promise<void> {
     await userEvent.click(handle.editor.prosemirrorView!.dom);
   }
 
   /**
    * Where each line's text starts, in body order.
-   * @param state - The editor state to read; the reader's own by default.
+   * @param state - The editor state to read; the user's own by default.
    * @returns One position per run of text.
    */
   function lineStarts(
@@ -226,7 +220,7 @@ describe('the comment panel', () => {
 
   /**
    * A second editor over a copy of the body, whose every change comes in to
-   * the reader's the way a co-editor's does. Its own editor makes the changes,
+   * the user's the way a co-editor's does. Its own editor makes the changes,
    * so a block split or joined is rebuilt in the shared document exactly as a
    * peer's would be.
    * @returns The peer's editor.
@@ -267,7 +261,7 @@ describe('the comment panel', () => {
 
   /**
    * Presses a key in the given editor with the caret at a position.
-   * @param editor - The editor, the reader's or a peer's.
+   * @param editor - The editor, the user's or a peer's.
    * @param at - Where the caret is.
    * @param key - The key.
    */
@@ -288,7 +282,7 @@ describe('the comment panel', () => {
     });
   }
 
-  /** The body's lines as the reader's editor has them. */
+  /** The body's lines as the user's editor has them. */
   function lines(): readonly string[] {
     return handle.editor.document.map((block) =>
       (block.content as unknown as readonly { text: string }[])
@@ -381,7 +375,7 @@ describe('the comment panel', () => {
     await user.click(await screen.findByTestId('doc-doc-menu-comments'));
   }
 
-  it('stays away until the reader opens it', () => {
+  it('stays away until the user opens it', () => {
     show();
     expect(screen.queryByTestId('doc-comment-rail')).toBeNull();
   });
@@ -418,7 +412,7 @@ describe('the comment panel', () => {
   });
 
   it('does not open itself when a comment arrives', async () => {
-    // A15: the reader is typing and a peer comments. Nothing on screen may
+    // A15: the user is typing and a peer comments. Nothing on screen may
     // move — the body would shift sideways under the caret.
     show();
 
@@ -459,7 +453,7 @@ describe('the comment panel', () => {
     expect(await screen.findByText('the whole point')).toBeInTheDocument();
   });
 
-  it('marks the card whose highlight the reader pressed', async () => {
+  it('marks the card whose highlight the user pressed', async () => {
     // A6: pressing a highlight opens that comment. With the panel open, "open"
     // is the card being marked and brought into view.
     show();
@@ -529,7 +523,7 @@ describe('the comment panel', () => {
   });
 
   it('marks both where two comments cover the same words', async () => {
-    // A20: the reader picks, so both are marked rather than one guessed at.
+    // A20: the user picks, so both are marked rather than one guessed at.
     show();
     await comment(0, 11, 'the wider one');
     await comment(6, 19, 'the other one');
@@ -555,7 +549,7 @@ describe('the comment panel', () => {
 
   it('takes a settled thread out of the open filter', async () => {
     // A9: the card is read again behind "all", and the open filter is what a
-    // reader has left to work through.
+    // user has left to work through.
     show();
     await comment(0, 5, 'about alpha');
     await pressCommentsRow();
@@ -678,7 +672,7 @@ describe('the comment panel', () => {
     });
 
     await userEvent.click(screen.getByTestId('doc-comment-resolve'));
-    // The paint is redrawn on the next thing the reader does in the body.
+    // The paint is redrawn on the next thing the user does in the body.
     // Measured 2026-09-23: it came back deep, one press after settling.
     act(() => {
       selectThreads(handle.editor, []);
@@ -772,7 +766,7 @@ describe('the comment panel', () => {
 
   it('keeps a half-written reply while its thread is settled and reopened', async () => {
     // The reply lived in the card's own state, so a thread settled by a peer
-    // took the reader's unsent words with it when the card unmounted.
+    // took the user's unsent words with it when the card unmounted.
     show();
     await comment(0, 5, 'about alpha');
     await pressCommentsRow();
@@ -813,8 +807,8 @@ describe('the comment panel', () => {
     ).toHaveValue('half written');
   });
 
-  it('drops a half-written reply when the reader closes the panel', async () => {
-    // Closing the panel is the reader's own doing, unlike a tab switch
+  it('drops a half-written reply when the user closes the panel', async () => {
+    // Closing the panel is the user's own doing, unlike a tab switch
     // (design §9.6).
     show();
     await comment(0, 5, 'about alpha');
@@ -835,7 +829,7 @@ describe('the comment panel', () => {
   it('says the filter is empty rather than the document', async () => {
     // A9: with the one comment settled, the open filter has nothing in it
     // while the document still holds a thread to read behind "all". Saying
-    // "no comments yet" there sends the reader looking for something to
+    // "no comments yet" there sends the user looking for something to
     // press, and the thing they want is one filter away.
     show();
     await comment(0, 5, 'about alpha');
@@ -935,7 +929,7 @@ describe('the comment panel', () => {
   });
 
   it('offers its controls on one of two overlapping threads, not both', async () => {
-    // A20: pressing where two comments overlap lists both so the reader can
+    // A20: pressing where two comments overlap lists both so the user can
     // pick. Opening both puts two reply boxes on screen at once and neither
     // of them is the one they meant.
     show();
@@ -1012,7 +1006,7 @@ describe('the comment panel', () => {
       ).toBe('alpha');
     });
 
-    it('keeps its quote in step with the words as the reader edits them', async () => {
+    it('keeps its quote in step with the words as the user edits them', async () => {
       // A same-length rewrite leaves the range where it was, so only a
       // reading of the body catches it.
       show();
@@ -1032,7 +1026,7 @@ describe('the comment panel', () => {
       });
     });
 
-    it('carries no button until the reader writes something', async () => {
+    it('carries no button until the user writes something', async () => {
       // A29. The reply box answers the same way, and for the same reason: a
       // control that would send nothing has no business being on screen.
       show();
@@ -1078,7 +1072,7 @@ describe('the comment panel', () => {
     });
 
     it('lets an empty draft go on a press in the body, and keeps the rail', async () => {
-      // A30. The rail stays because opening it was the reader's own doing.
+      // A30. The rail stays because opening it was the user's own doing.
       show();
       aimDraft(0, 5);
       await screen.findByTestId('doc-comment-draft-card');
@@ -1106,7 +1100,7 @@ describe('the comment panel', () => {
 
     it('keeps an empty draft on a press inside the card, off the box', async () => {
       // The card's own padding is the draft; a browser drops the focus to the
-      // page on that press, which must not read as the reader leaving.
+      // page on that press, which must not read as the user leaving.
       show();
       aimDraft(0, 5);
       const card = await screen.findByTestId('doc-comment-draft-card');
@@ -1121,8 +1115,8 @@ describe('the comment panel', () => {
 
     it('keeps an empty draft when the focus moves without a press', async () => {
       // A menu handing the focus back to the body as it closes (the block
-      // handle's comment entry does exactly this), or the reader switching
-      // windows: neither is the reader pressing somewhere else.
+      // handle's comment entry does exactly this), or the user switching
+      // windows: neither is the user pressing somewhere else.
       show();
       aimDraft(0, 5);
       await screen.findByTestId('doc-comment-draft-card');
@@ -1164,7 +1158,7 @@ describe('the comment panel', () => {
       expect(draftPaint()?.textContent).toBe('bravo');
     });
 
-    it('keeps its place when the reader undoes an edit elsewhere', async () => {
+    it('keeps its place when the user undoes an edit elsewhere', async () => {
       // An undo comes back through Yjs as well, as one replacement of the
       // whole body.
       show();
@@ -1187,7 +1181,7 @@ describe('the comment panel', () => {
     });
 
     it('leaves out what a peer types right after its words', async () => {
-      // Words typed against the end are not the ones the reader chose.
+      // Words typed against the end are not the ones the user chose.
       show();
       aimDraft(6, 11);
       await screen.findByTestId('doc-comment-draft-card');
@@ -1199,8 +1193,8 @@ describe('the comment panel', () => {
       expect(draftPaint()?.textContent).toBe('bravo');
     });
 
-    it('keeps out what the reader typed after its words when a peer edits', async () => {
-      // The reader's own typing and a later peer edit must agree on the range:
+    it('keeps out what the user typed after its words when a peer edits', async () => {
+      // The user's own typing and a later peer edit must agree on the range:
       // the peer edit carries it from where it is now.
       show();
       aimDraft(6, 11);
@@ -1218,7 +1212,7 @@ describe('the comment panel', () => {
       expect(draftPaint()?.textContent).toBe('bravo');
     });
 
-    it('keeps its words when the reader turns their line into a heading', async () => {
+    it('keeps its words when the user turns their line into a heading', async () => {
       // Changing the block's type makes new text underneath the same words; a
       // later peer edit must not read that as the words being deleted.
       show();
@@ -1241,7 +1235,7 @@ describe('the comment panel', () => {
       expect(screen.getByTestId('doc-comment-draft-input')).toHaveValue('half');
     });
 
-    it('keeps its range when the reader deletes its last word\'s last letter and a peer edits', async () => {
+    it('keeps its range when the user deletes its last word\'s last letter and a peer edits', async () => {
       // The end names the last letter it covers; losing that letter shortens
       // the range, it does not reach into the words after it.
       show();
@@ -1275,8 +1269,8 @@ describe('the comment panel', () => {
       expect(aimedWords()).toBe('bravo charlie');
     });
 
-    it('keeps to its words when the reader empties the second line of it and a peer edits', async () => {
-      // The reader's own deletion leaves the end at the start of the next
+    it('keeps to its words when the user empties the second line of it and a peer edits', async () => {
+      // The user's own deletion leaves the end at the start of the next
       // line; the next peer edit must still see only the first line's words.
       show('editor', ['alpha bravo charlie', 'delta echo foxtrot']);
       const [first, second] = lineStarts();
@@ -1495,7 +1489,7 @@ describe('the comment panel', () => {
         expect(aimedWords()).toBe('ravo');
       });
 
-      it('takes the reader\'s own undo and stays on its words', async () => {
+      it('takes the user\'s own undo and stays on its words', async () => {
         show('editor', ['one', 'alpha bravo charlie', 'three']);
         handle.undoManager.stopCapturing();
         act(() => {
@@ -1571,7 +1565,7 @@ describe('the comment panel', () => {
       });
     });
 
-    describe('when the reader undoes a deletion at its edge', () => {
+    describe('when the user undoes a deletion at its edge', () => {
       it.each([
         ['its first letters', 6, 8],
         ['its last letters', 9, 11],
@@ -1619,7 +1613,7 @@ describe('the comment panel', () => {
         expect(aimedWords()).toBe('bravo');
       });
 
-      it('takes back what the reader typed over its last letters on a redo', async () => {
+      it('takes back what the user typed over its last letters on a redo', async () => {
         show();
         aimDraft(6, 11);
         await screen.findByTestId('doc-comment-draft-card');
@@ -1644,7 +1638,7 @@ describe('the comment panel', () => {
       it.each([
         ['before its words', 6],
         ['inside its words', 8],
-      ] as const)('covers its words again when the reader undoes a split %s', async (_what, at) => {
+      ] as const)('covers its words again when the user undoes a split %s', async (_what, at) => {
         show();
         aimDraft(6, 11);
         await screen.findByTestId('doc-comment-draft-card');
@@ -1661,7 +1655,7 @@ describe('the comment panel', () => {
         expect(aimedWords()).toBe('bravo');
       });
 
-      it('covers a whole line again when the reader undoes deleting it', async () => {
+      it('covers a whole line again when the user undoes deleting it', async () => {
         show('editor', ['aa0 xx', 'bb1 yy', 'cc2 zz']);
         const [s0, s1] = lineStarts();
         aimAt(s0! + 4, s1! + 3);
@@ -1700,7 +1694,7 @@ describe('the comment panel', () => {
         expect(aimedWords()).toBe('charlie');
       });
 
-      it('shrinks again when the reader redoes the deletion', async () => {
+      it('shrinks again when the user redoes the deletion', async () => {
         show();
         aimDraft(6, 11);
         await screen.findByTestId('doc-comment-draft-card');
@@ -1752,7 +1746,7 @@ describe('the comment panel', () => {
         // so the undo takes back the split and what was typed with it.
         ['the split and the typing made with it', true],
       ])(
-        'says so and keeps what was written when the reader undoes %s it was aimed after',
+        'says so and keeps what was written when the user undoes %s it was aimed after',
         async (_what, typing) => {
           // The undo writes the joined line as new letters, which leaves only
           // the text to find the words by (A21).
@@ -1783,7 +1777,7 @@ describe('the comment panel', () => {
         },
       );
 
-      it('says so and keeps what was written when the reader redoes a split it was aimed before', async () => {
+      it('says so and keeps what was written when the user redoes a split it was aimed before', async () => {
         show();
         handle.undoManager.stopCapturing();
         await pressIn(handle, firstRun().from + 6, 'Enter');
@@ -1806,7 +1800,7 @@ describe('the comment panel', () => {
         expect(await screen.findByTestId('doc-comment-draft-input')).toHaveValue('half');
       });
 
-      it('stays on words it was aimed at after a move, when the reader undoes the move', async () => {
+      it('stays on words it was aimed at after a move, when the user undoes the move', async () => {
         show('editor', ['w', 'bravo charlie', 'z']);
         handle.undoManager.stopCapturing();
         act(() => {
@@ -1827,7 +1821,7 @@ describe('the comment panel', () => {
         expect(aimedWords()).toBe('bravo');
       });
 
-      it('stays on its words when a peer moved its line between the reader\'s edit and the undo', async () => {
+      it('stays on its words when a peer moved its line between the user\'s edit and the undo', async () => {
         show('editor', ['w', 'alpha bravo', 'z']);
         const second = lineStarts()[1]!;
         aimAt(second + 6, second + 11);
@@ -1853,7 +1847,7 @@ describe('the comment panel', () => {
         expect(aimedWords()).toBe('bravo');
       });
 
-      it('stays on its two lines when a peer moved another line across them between the reader\'s edit and the undo', async () => {
+      it('stays on its two lines when a peer moved another line across them between the user\'s edit and the undo', async () => {
         show('editor', ['alpha bravo', 'charlie delta', 'echo', 'z']);
         const [first, second] = lineStarts();
         aimAt(first! + 6, second! + 7);
@@ -2018,11 +2012,11 @@ describe('the comment panel', () => {
     });
 
     it.each([
-      // [which line the reader moves, which arrow, the words it covers after]
+      // [which line the user moves, which arrow, the words it covers after]
       ['its last line down past another', 2, 'ArrowDown', 'bravoechocharlie'],
       ['its first line up past another', 1, 'ArrowUp', 'bravozerocharlie'],
     ] as const)(
-      'keeps each end on its own line when the reader moves %s',
+      'keeps each end on its own line when the user moves %s',
       async (_what, row, key, words) => {
         // A move takes the line out and puts the same line back; each end
         // follows its own line, and whatever lies between them is the range.
@@ -2047,7 +2041,7 @@ describe('the comment panel', () => {
       },
     );
 
-    it('says so when the reader moves its last line above its first', async () => {
+    it('says so when the user moves its last line above its first', async () => {
       show('editor', ['alpha bravo', 'charlie delta']);
       const [first, second] = lineStarts();
       aimAt(first! + 6, second! + 7);
@@ -2074,7 +2068,7 @@ describe('the comment panel', () => {
       ).toBeInTheDocument();
     });
 
-    it('keeps each end on its own line when the reader drags its last line down', async () => {
+    it('keeps each end on its own line when the user drags its last line down', async () => {
       show('editor', ['alpha bravo', 'charlie delta', 'echo']);
       const [first, second] = lineStarts();
       aimAt(first! + 6, second! + 7);
@@ -2115,7 +2109,7 @@ describe('the comment panel', () => {
       expect(aimedWords()).toBe('bravoechocharlie');
     });
 
-    it('stays on its words when the reader moves the line they are on', async () => {
+    it('stays on its words when the user moves the line they are on', async () => {
       show('editor', ['alpha bravo', 'charlie delta']);
       aimDraft(6, 11);
       await screen.findByTestId('doc-comment-draft-card');
@@ -2140,7 +2134,7 @@ describe('the comment panel', () => {
       expect(aimedWords()).toBe('bravo');
     });
 
-    it('stays on its words when the reader undoes moving another line across them', async () => {
+    it('stays on its words when the user undoes moving another line across them', async () => {
       show('editor', ['w', 'bravo charlie', 'z']);
       aimAt(lineStarts()[1]!, lineStarts()[1]! + 5);
       await screen.findByTestId('doc-comment-draft-card');
@@ -2174,7 +2168,7 @@ describe('the comment panel', () => {
       expect(aimedWords()).toBe('carrying');
     });
 
-    it('stays on its words when the reader presses Enter at the start of their line and undoes it', async () => {
+    it('stays on its words when the user presses Enter at the start of their line and undoes it', async () => {
       show('editor', ['one', 'two carrying three']);
       const second = lineStarts()[1]!;
       aimAt(second + 4, second + 12);
@@ -2192,7 +2186,7 @@ describe('the comment panel', () => {
       expect(aimedWords()).toBe('carrying');
     });
 
-    it('stays on its words when the reader undoes typing in their line and moving it, made together', async () => {
+    it('stays on its words when the user undoes typing in their line and moving it, made together', async () => {
       show('editor', ['alpha bravo', 'charlie delta']);
       aimDraft(6, 11);
       await screen.findByTestId('doc-comment-draft-card');
@@ -2273,7 +2267,7 @@ describe('the comment panel', () => {
 
     it('says so when a peer presses Enter before its words in their line', async () => {
       // The peer's editor writes the second half, words and all, as new
-      // letters in a new row; the reader's own selection comes back empty
+      // letters in a new row; the user's own selection comes back empty
       // from the same change (y-prosemirror #204).
       show('editor', ['one', 'alpha bravo charlie', 'three']);
       const second = lineStarts()[1]!;
@@ -2290,7 +2284,7 @@ describe('the comment panel', () => {
     });
 
     it('stays on what is left when a peer deletes its last letter and undoes it', async () => {
-      // A peer's undo reaches the reader as new letters; Yjs follows undone
+      // A peer's undo reaches the user as new letters; Yjs follows undone
       // deletions only in the document that did the undo (yjs#638).
       show();
       aimDraft(6, 11);
@@ -2330,7 +2324,7 @@ describe('the comment panel', () => {
       expect(aimedWords()).toBe('cat');
     });
 
-    it('shrinks when the reader undoes words they typed that it starts on', async () => {
+    it('shrinks when the user undoes words they typed that it starts on', async () => {
       // Undoing is deleting those words, the way pressing Backspace over them
       // would be: the rest of its words stay.
       show('editor', ['alpha bravo']);
@@ -2384,7 +2378,7 @@ describe('the comment panel', () => {
 
     it('posts what was written after a Space tab switch', async () => {
       // The draft is one thing kept by the editor, so the card mounted again
-      // over it is the same draft: Save sends what the reader wrote.
+      // over it is the same draft: Save sends what the user wrote.
       show();
       aimDraft(6, 11);
       await screen.findByTestId('doc-comment-draft-card');
@@ -2442,7 +2436,7 @@ describe('the comment panel', () => {
     });
 
     it('leaves another card being read after a tab switch', async () => {
-      // The card being read changes when the reader presses one, not when the
+      // The card being read changes when the user presses one, not when the
       // panel is mounted again.
       show();
       await comment(0, 5, 'about alpha');
@@ -2561,7 +2555,7 @@ describe('the comment panel', () => {
       expect([box.selectionStart, box.selectionEnd]).toEqual([4, 4]);
     });
 
-    it('leaves the caret where the reader puts it while they write', async () => {
+    it('leaves the caret where the user puts it while they write', async () => {
       show();
       aimDraft(0, 5);
       await screen.findByTestId('doc-comment-draft-card');
@@ -2827,7 +2821,7 @@ describe('the comment panel', () => {
     it('says so when the thread cannot be opened', async () => {
       // The store asks its auth before writing, and the words may be gone by
       // the time the press lands. Whether that happens is not ours to
-      // promise; whether the reader is told is.
+      // promise; whether the user is told is.
       show();
       aimDraft(0, 5);
       await screen.findByTestId('doc-comment-draft-card');
@@ -2849,7 +2843,7 @@ describe('the comment panel', () => {
 
     it('keeps the words when the thread cannot be opened', async () => {
       // The reply box answers the same refusal by keeping what was typed, and
-      // this is the one write that carries the reader's only copy of it.
+      // this is the one write that carries the user's only copy of it.
       show();
       aimDraft(0, 5);
       await screen.findByTestId('doc-comment-draft-card');
@@ -2876,7 +2870,7 @@ describe('the comment panel', () => {
       // `postComment` answers null when there is no range left to aim at,
       // which means what a refusal means: nothing was written. Closing on it
       // takes the card away before the effect watching the range can raise
-      // A21's notice, so the reader is left with no comment and no account.
+      // A21's notice, so the user is left with no comment and no account.
       show();
       aimDraft(0, 5);
       await screen.findByTestId('doc-comment-draft-card');
@@ -2946,7 +2940,7 @@ describe('the comment panel', () => {
     });
 
     it('closes on Escape with nothing typed', async () => {
-      // A reader who presses the entry and changes their mind before typing.
+      // A user who presses the entry and changes their mind before typing.
       // Discarding and saving differ here: a save on blank words leaves the
       // draft alone, so the card would stay.
       show();
@@ -3000,7 +2994,7 @@ describe('the comment panel', () => {
     });
 
     it('says so when the words it was aimed at are deleted', async () => {
-      // A21. The card outlives its range for exactly this: the reader is owed
+      // A21. The card outlives its range for exactly this: the user is owed
       // an account of a closing that was not their doing.
       show();
       const run = firstRun();
@@ -3024,7 +3018,7 @@ describe('the comment panel', () => {
       expect(screen.queryByTestId('doc-comment-draft-input')).toBeNull();
     });
 
-    it('takes that notice away when the reader is done with it', async () => {
+    it('takes that notice away when the user is done with it', async () => {
       // Nothing else can: the range is already gone, so the two gestures the
       // card otherwise closes on have nothing left to clear.
       show();
@@ -3048,7 +3042,7 @@ describe('the comment panel', () => {
       });
     });
 
-    it('says so when the reader loses the right to write mid-draft', async () => {
+    it('says so when the user loses the right to write mid-draft', async () => {
       // A22. The same debt as A21, from the other direction.
       show('editor');
       aimDraft(0, 5);

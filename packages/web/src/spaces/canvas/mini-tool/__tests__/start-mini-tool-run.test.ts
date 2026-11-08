@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * One press of Run (inner#888 §7.5): what is built, what is sent, and what
@@ -416,7 +416,7 @@ describe('startMiniToolRun', () => {
     expectAllFailed({ key: 'canvas.miniTool.panel.sourceGone' });
   });
 
-  // inner#1302 §6.5: a reader who closed the panel and opened another keeps its selection.
+  // inner#1302 §6.5: a user who closed the panel and opened another keeps its selection.
   it('builds the nodes without selecting them once the panel was opened again', async () => {
     const run = press({ stillOpen: () => false });
     await startMiniToolRun(run);

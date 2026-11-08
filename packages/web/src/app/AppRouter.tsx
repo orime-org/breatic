@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 import { captureException } from '@sentry/react';
@@ -23,7 +23,7 @@ interface AppRouterProps {
  * and not only on the first mount. Left undefined, the router wraps its state
  * updates in `React.startTransition`, and React holds already revealed content
  * on screen for the length of a suspended transition — so following a link
- * would leave the reader on the page they were leaving until the next chunk
+ * would leave the user on the page they were leaving until the next chunk
  * arrived.
  * @param root0 - The component props.
  * @param root0.router - The data router to render.

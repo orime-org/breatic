@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #905 验收 A6: what a coloured run of text renders as.
@@ -19,7 +19,7 @@
  * layers `theme, base, components, utilities`, so a later layer beats an
  * earlier one whatever the specificity and ours clear it.
  *
- * What the reader actually sees is A6's browser half.
+ * What the user actually sees is A6's browser half.
  */
 
 import { readFileSync } from 'node:fs';

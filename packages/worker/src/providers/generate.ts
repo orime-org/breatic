@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * One generation for any catalog model (#2156). Every image, video, audio
@@ -12,6 +12,7 @@
  * about the model: the catalog entry, the family, and param validation.
  */
 
+import { checkParamCombination, resolveParams, type ResolvableModel } from "@breatic/shared";
 import { getFullModelConfig } from "@breatic/domain";
 import type { FullModelEntry } from "@breatic/domain";
 
@@ -20,8 +21,8 @@ import minimaxSpeech from "@worker/providers/families/minimax-speech.js";
 import nanoBanana from "@worker/providers/families/nano-banana.js";
 import nanoBananaRelight from "@worker/providers/families/nano-banana-relight.js";
 
-/** The catalog modalities this path serves (3D keeps its own). */
-export type CatalogModality = "image" | "video" | "audio" | "tts";
+/** The catalog modalities this path serves. */
+export type CatalogModality = "image" | "video" | "audio" | "tts" | "three_d";
 
 /** What one generation produced. */
 export interface GenerationResult {
@@ -51,17 +52,26 @@ export function entryOf(modality: CatalogModality, modelName: string): FullModel
 }
 
 /**
- * Validate and fill defaults for a catalog model's params.
+ * Validate a catalog model's params and resolve them the way every reader
+ * does (inner#1691): defaults filled, forced values applied, what a
+ * condition switches off dropped.
  * @param modality - The model's modality.
  * @param modelName - Model name (required).
  * @param params - User-provided parameters to validate.
- * @returns Tuple of [resolvedModelName, cleanedParams].
- * @throws {Error} when the model is not in the catalog.
+ * @returns Tuple of [resolvedModelName, resolvedParams].
+ * @throws {Error} when the model is not in the catalog, or a text param is
+ *   longer than its cap once cleaned.
  */
 export function validateModelParams(
   modality: CatalogModality,
   modelName: string | undefined,
   params?: Record<string, unknown>,
 ): [string, Record<string, unknown>] {
-  return validateParams(modality, modelName, params);
+  const [name, cleaned] = validateParams(modality, modelName, params);
+  const model = entryOf(modality, name) as unknown as ResolvableModel;
+  const tooLong = checkParamCombination(model, cleaned).find((v) => v.rule === "max_length");
+  if (tooLong?.rule === "max_length") {
+    throw new Error(`${tooLong.param} is ${tooLong.length} characters once cleaned; ${name} takes at most ${tooLong.max}`);
+  }
+  return [name, resolveParams(model, cleaned)];
 }

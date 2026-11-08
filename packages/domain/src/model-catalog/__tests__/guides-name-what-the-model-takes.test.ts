@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What the catalog's own prose is allowed to claim (#261).
  *
  * Two answers quote a sentence of it whole -- a mode's description and a
  * model's guide -- while everything around them is built from the panel
- * tables and filtered against what this deployment can reach. A reader picks
+ * tables and filtered against what this deployment can reach. A user picks
  * a mode and then a model off those two sentences, so a source they name that
  * the mode has not, or a capability they sell that nothing here can set, is a
  * choice made on a promise nothing keeps.
@@ -24,13 +24,13 @@ import { entriesForNode, getCanvasCapabilities, modelsForMode } from "../mode-ca
 import { restoreProcessEnv, useFullCatalog } from "./catalog-env.js";
 
 /**
- * Whether this mode gives a reader somewhere to set a parameter.
+ * Whether this mode gives a user somewhere to set a parameter.
  *
  * A parameter saying it has no control runs at whatever the upstream defaults
  * to, and one narrowed to other modes of the same model is not drawn here.
  * @param spec - What the model declares about it.
  * @param mode - The mode being asked about.
- * @returns True when a reader on this mode can reach it.
+ * @returns True when a user on this mode can reach it.
  */
 function reachable(spec: ParamDescriptor | undefined, mode: string): boolean {
   if (spec === undefined || spec.fill === undefined || spec.fill === "none") return false;
@@ -41,7 +41,7 @@ function reachable(spec: ParamDescriptor | undefined, mode: string): boolean {
  * The places this mode collects material, across every model offering it.
  * @param nodeType - The generation node.
  * @param mode - The mode being asked about.
- * @returns The parameter names a reader fills by pointing at a node.
+ * @returns The parameter names a user fills by pointing at a node.
  */
 function slotsOffered(nodeType: GenerationNodeType, mode: string): string[] {
   const names = new Set<string>();
@@ -155,11 +155,11 @@ describe("a model's guide", () => {
     const broken = new Set<string>();
     let read = 0;
     // Per mode, not per node: a guide is read where the answer prints it, and
-    // both the set a superlative is measured against and the sources a reader
+    // both the set a superlative is measured against and the sources a user
     // can point at belong to the one mode they asked about. A node's buckets
     // also hold entries no generation mode offers -- the upscalers and the
     // background remover sit in the image bucket -- and measuring "cheapest"
-    // against those measures it against models the reader never sees.
+    // against those measures it against models the user never sees.
     for (const { nodeType, modes } of getCanvasCapabilities()) {
       const byName = new Map(entriesForNode(nodeType).map((e) => [e.name, e]));
       for (const { mode } of modes) {

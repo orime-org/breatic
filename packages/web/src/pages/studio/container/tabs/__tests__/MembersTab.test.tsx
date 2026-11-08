@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
@@ -532,7 +532,7 @@ describe('MembersTab — joined date', () => {
     else process.env['TZ'] = REAL_TZ;
   });
 
-  it('shows the day the member joined in the timezone of the reader', () => {
+  it('shows the day the member joined in the timezone of the user', () => {
     // 23:00 UTC on 2 April is already 3 April in Shanghai.
     process.env['TZ'] = 'Asia/Shanghai';
     renderTab(

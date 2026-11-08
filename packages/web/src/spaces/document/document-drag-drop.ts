@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The extension that answers a dropped row (A11, design §8).
@@ -13,9 +13,10 @@
  * and neither says which row the drag came from — the payload is HTML. The
  * handle tells this extension at dragstart instead, through `rowIsFlying`.
  *
- * A TEXT DRAG IS NOT THIS. When the reader drags a selected word,
- * `view.dragging` is ProseMirror's own and no row was picked up, so this
- * declines and ProseMirror's own handling runs as it always did (A19).
+ * A TEXT DRAG IS NOT A ROW. When the user drags a selection,
+ * `view.dragging` is ProseMirror's own and no row was picked up: the drop is
+ * put as its paste at the drop point (`dropAsPaste`), and a drag its paste
+ * would put nothing of changes nothing (A19).
  */
 
 import { createExtension } from '@blocknote/core';
@@ -23,16 +24,17 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 
 import {
   restoreAfterRowDrag,
-  type ReaderPlace,
+  type UserPlace,
 } from '@web/spaces/document/document-drag-selection';
 import { moveRowTo } from '@web/spaces/document/document-drag-move';
+import { dropAsPaste } from '@web/spaces/document/document-drop-as-paste';
 
 /** What the drag in flight picked up, if it picked up a row at all. */
 interface RowInFlight {
   /** The row being carried. */
   readonly blockId: string;
-  /** Where the reader was when they reached for the handle. */
-  readonly place: ReaderPlace | undefined;
+  /** Where the user was when they reached for the handle. */
+  readonly place: UserPlace | undefined;
 }
 
 let flying: RowInFlight | undefined;
@@ -43,14 +45,14 @@ let flying: RowInFlight | undefined;
  * Module state rather than plugin state: the handle is a React component
  * outside the editor, and one drag is in flight at a time — the browser has
  * one drag at a time, and a second editor on the page has its own plugin
- * instance reading this same answer, which is correct since the reader is
+ * instance reading this same answer, which is correct since the user is
  * dragging the one row.
  * @param blockId - The row that was picked up.
- * @param place - Where the reader's own selection was, if it was a text one.
+ * @param place - Where the user's own selection was, if it was a text one.
  */
 export function rowIsFlying(
   blockId: string,
-  place: ReaderPlace | undefined,
+  place: UserPlace | undefined,
 ): void {
   flying = { blockId, place };
 }
@@ -71,10 +73,11 @@ export function rowInFlight(): boolean {
 }
 
 /**
- * The extension that writes a dropped row from the document, not the payload.
+ * The extension that writes a dropped row from the document, not the payload,
+ * and puts any other drag within the body as its paste at the drop point.
  * @returns The extension, for the assembly to register.
  */
-export const documentDragDropExtension = createExtension(() => ({
+export const documentDragDropExtension = createExtension(({ editor }) => ({
   key: 'document-drag-drop',
   prosemirrorPlugins: [
     new Plugin({
@@ -93,24 +96,26 @@ export const documentDragDropExtension = createExtension(() => ({
          * leaves the document as it is.
          * @param view - The view the drop happened in.
          * @param event - The drop.
+         * @param slice - The dragged content, as ProseMirror hands it over.
+         * @param moved - Whether the drop moves it, read from the keys at the drop.
          * @returns True when this handled the drop.
          */
-        handleDrop: (view, event) => {
+        handleDrop: (view, event, slice, moved) => {
           const row = flying;
-          if (row === undefined) return false;
+          if (row === undefined) return dropAsPaste(editor, view, event, slice, moved);
           // The browser fires `dragend` after `drop`, so the flag is cleared
           // here as well: a drop that this declines must not leave the next
           // text drag looking like a row drag.
           flying = undefined;
           event.preventDefault();
 
-          // The reader's own place goes back BEFORE the move, because an undo
+          // The user's own place goes back BEFORE the move, because an undo
           // item records the selection from before the change that made it
           // (`y-prosemirror/src/plugins/undo-plugin.js`: `prevSel` is read off
           // `oldState` and handed to `stack-item-added`). With the node
           // selection `blockDragStart` leaves on the row still standing, Cmd+Z
           // brought the row back node-selected, with the bubble bar over a row
-          // the reader never selected — reported 2026-09-18. A
+          // the user never selected — reported 2026-09-18. A
           // selection-only transaction writes nothing to the
           // document, so it adds no undo item of its own.
           restoreAfterRowDrag(view, row.place, row.blockId);

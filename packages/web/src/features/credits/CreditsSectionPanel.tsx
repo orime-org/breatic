@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 import type { CreditsSectionId } from '@web/features/credits/credits-sections';
@@ -19,7 +19,7 @@ import { useCurrentUserStore } from '@web/stores/current-user';
 
 /** Which section to show. */
 interface CreditsSectionPanelProps {
-  /** The section the reader picked. */
+  /** The section the user picked. */
   section: CreditsSectionId;
 }
 
@@ -31,7 +31,7 @@ interface CreditsSectionPanelProps {
  * a single row's worth of totals that would otherwise be re-read on every
  * click of the index.
  * @param props - Which section to show.
- * @param props.section - The section the reader picked.
+ * @param props.section - The section the user picked.
  * @returns The section.
  */
 export function CreditsSectionPanel({

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -112,6 +112,15 @@ describe('CameraPicker — the camera panel the params popover opens (#1788, #22
       />,
     );
     fireEvent.click(screen.getByTestId('generate-camera-toggle'));
+    expect(onChange).toHaveBeenCalledWith({ enable_camera: true });
+  });
+
+  it('throws the master switch only from the switch itself, never from its state word', () => {
+    const onChange = vi.fn();
+    render(<CameraPicker model={FULL} value={{ enable_camera: false }} onChange={onChange} />);
+    fireEvent.click(screen.getByText('Off'));
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('switch', { name: 'Camera' }));
     expect(onChange).toHaveBeenCalledWith({ enable_camera: true });
   });
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The agent column: its header, its chat, and the scrim over both.
@@ -85,7 +85,7 @@ describe('when the conversations cannot be read', () => {
     expect(within(column).getByTestId('agent-col-header')).toBeInTheDocument();
   });
 
-  it('does not greet the reader as if this were a new conversation underneath', async () => {
+  it('does not greet the user as if this were a new conversation underneath', async () => {
     // 立项要修的就是这个:打不开的时候,面板长得跟「这是条新会话,说点什么吧」
     // 一模一样。蒙版是 86% 半透的,底下那句问候语会隔着一层露出来,读作「这里
     // 什么都没有」,而实情是「没读到」。
@@ -119,7 +119,7 @@ describe('when the conversations cannot be read', () => {
     expect(header.closest('[inert]')).not.toBeNull();
   });
 
-  it('gives the reader one thing to do about it', async () => {
+  it('gives the user one thing to do about it', async () => {
     vi.mocked(chatApi.openChat).mockRejectedValue(new Error('offline'));
     renderColumn();
     await screen.findByTestId('chat-unreachable');
@@ -130,7 +130,7 @@ describe('when the conversations cannot be read', () => {
     expect(chatApi.openChat).toHaveBeenCalled();
   });
 
-  it('says what went wrong in the language the reader is reading', async () => {
+  it('says what went wrong in the language the user is reading', async () => {
     vi.mocked(chatApi.openChat).mockRejectedValue(new Error('offline'));
     renderColumn();
 
@@ -243,7 +243,7 @@ describe('a history sheet left open when the list goes unreadable', () => {
 
   it('puts the column out of reach behind the scrim, and Escape brings it back', async () => {
     // E2:抽屉是模态的,遮罩挡住后面、后面点不到 —— 包括打开它的那个按钮。
-    // 所以「再按一次关掉」这条路在模态下不存在,读者的出路是遮罩、Escape 和
+    // 所以「再按一次关掉」这条路在模态下不存在,用户的出路是遮罩、Escape 和
     // 抽屉自己的关闭键。这条钉的是两半:按钮真的够不着,以及够不着之后仍有出路。
     renderColumn();
 
@@ -260,7 +260,7 @@ describe('a history sheet left open when the list goes unreadable', () => {
     await waitFor(() =>
       expect(screen.queryByTestId('conversation-history-sheet')).toBeNull(),
     );
-    // 模态把焦点关在抽屉里，所以关掉之后必须交还 —— 否则键盘读者按完 Escape
+    // 模态把焦点关在抽屉里，所以关掉之后必须交还 —— 否则键盘用户按完 Escape
     // 要从头 Tab 回这个按钮。Radix 只把焦点交给它自己的 Trigger，而这个抽屉
     // 是从状态开的、没有 Trigger。
     expect(document.activeElement).toBe(screen.getByTestId('open-conversation-history'));

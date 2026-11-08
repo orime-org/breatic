@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #916 acceptance C4 and D1 to D5: what the toolbar's two faces do.
  *
- * The toolbar drives itself now, so these cases reach it the way a reader
+ * The toolbar drives itself now, so these cases reach it the way a user
  * does — by putting the caret in a link — rather than by handing a component
  * the link to show. The pointer route's GEOMETRY belongs to the smoke run: it
  * resolves the pointer's coordinates to a position and then asks whether the
@@ -85,7 +85,7 @@ function openToolbar(options?: {
   document.body.appendChild(root);
   editor.mount(root);
   mounted.push(editor);
-  // A reader working in the body: the body holds the focus, which the caret
+  // A user working in the body: the body holds the focus, which the caret
   // needs before it raises anything (inner#1127 A20).
   editor.prosemirrorView!.dom.focus();
   editor.replaceBlocks(editor.document, [
@@ -267,7 +267,7 @@ describe('pressing edit on the toolbar', () => {
     expect(screen.getByTestId('doc-link-input')).toHaveValue(HREF);
   });
 
-  it('draws the link as selected, so the reader sees which one is changing', async () => {
+  it('draws the link as selected, so the user sees which one is changing', async () => {
     const { editor } = openToolbar();
     await screen.findByTestId('doc-link-toolbar');
 
@@ -276,9 +276,9 @@ describe('pressing edit on the toolbar', () => {
     expect(markedText(editor)).toBe('our docs');
   });
 
-  it('leaves the reader s caret alone', async () => {
+  it('leaves the user s caret alone', async () => {
     // What the toolbar is about is held by a handle. The caret was standing in
-    // for that handle, and moving it was what took the reader's place away.
+    // for that handle, and moving it was what took the user's place away.
     const { editor, range } = openToolbar();
     await screen.findByTestId('doc-link-toolbar');
     const before = editor.prosemirrorState.selection.from;
@@ -356,7 +356,7 @@ describe('confirming a new address', () => {
   it('writes onto a link a peer shifted while the field was up', async () => {
     // The handle resolves to the link as it stands when Confirm is pressed, so
     // a deletion that moved the link out from under the positions the field
-    // opened with still lands on the run the reader was looking at.
+    // opened with still lands on the run the user was looking at.
     const { editor, doc } = openToolbar();
     await screen.findByTestId('doc-link-toolbar');
     await userEvent.click(screen.getByTestId('doc-link-edit'));
@@ -406,10 +406,10 @@ describe('confirming a new address', () => {
   });
 
   it('keeps the field when a peer s edit puts the caret on the link s boundary', async () => {
-    // The reader is typing an address. A co-editor deletes one character of
+    // The user is typing an address. A co-editor deletes one character of
     // the link, which survives — and the caret, one character in, lands on its
     // leading boundary, where `linkAtCaret` answers with no link at all. The
-    // field belongs to the link the reader opened it over, not to wherever
+    // field belongs to the link the user opened it over, not to wherever
     // the caret has been pushed.
     const { editor, doc } = openToolbar();
     await screen.findByTestId('doc-link-toolbar');
@@ -462,7 +462,7 @@ describe('pressing remove with the focus on its button', () => {
 
 describe('dismissing the field', () => {
   it('takes the whole toolbar away on Escape', async () => {
-    // D2b. Leaving the field is the reader done with this link for now, the
+    // D2b. Leaving the field is the user done with this link for now, the
     // same answer confirming gives.
     openToolbar();
     await screen.findByTestId('doc-link-toolbar');
@@ -536,7 +536,7 @@ describe('a co-editor writing under the toolbar', () => {
   it('hands the editor the focus when they delete the link being edited', async () => {
     // The field has the focus to be typed into. Removing a focused element
     // drops the focus on the body, where keystrokes reach nothing at all —
-    // the reader has to click back into the document to carry on.
+    // the user has to click back into the document to carry on.
     const { editor, doc } = openToolbar();
     await screen.findByTestId('doc-link-toolbar');
     await userEvent.click(screen.getByTestId('doc-link-edit'));
@@ -556,7 +556,7 @@ describe('a co-editor writing under the toolbar', () => {
     // `link-gone` × `form`. Letting go of the link has to take the face and
     // the draft with it: what comes back over the NEXT link is otherwise the
     // field, carrying an address typed for a link that no longer exists, one
-    // Enter away from being written onto a link the reader never opened.
+    // Enter away from being written onto a link the user never opened.
     const { editor, doc, range, secondLink } = openToolbar();
     await screen.findByTestId('doc-link-toolbar');
     await userEvent.click(screen.getByTestId('doc-link-edit'));
@@ -585,12 +585,12 @@ describe('a co-editor writing under the toolbar', () => {
   });
 });
 
-describe('a toolbar the reader dismissed', () => {
+describe('a toolbar the user dismissed', () => {
   it('stays away while the caret is still in the link', async () => {
     // `remote-change` × `closed`. Every edit in the document re-asks what link
     // the caret is on, and the caret has not moved — so without the dismissal
     // standing, a co-editor typing anywhere puts the toolbar straight back
-    // over text the reader took it away from.
+    // over text the user took it away from.
     const { doc } = openToolbar();
     await screen.findByTestId('doc-link-toolbar');
     fireEvent.keyDown(document, { key: 'Escape' });

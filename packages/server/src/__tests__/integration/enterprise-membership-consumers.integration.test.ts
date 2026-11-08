@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /** Persisted enterprise information exercised through the actual consumer services. */
 import { randomUUID } from "node:crypto";

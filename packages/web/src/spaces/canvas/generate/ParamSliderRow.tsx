@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 
@@ -62,7 +62,7 @@ interface ParamSliderRowProps {
  * ({@link useSliderGesture}).
  * @param root0 - Props.
  * @param root0.name - The param name.
- * @param root0.label - The param's name as the reader reads it.
+ * @param root0.label - The param's name as the user reads it.
  * @param root0.min - The range's floor.
  * @param root0.max - The range's ceiling.
  * @param root0.step - The range's increment.

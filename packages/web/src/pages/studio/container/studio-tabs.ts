@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type {
   StudioRole,
@@ -70,7 +70,7 @@ export const DEFAULT_STUDIO_TAB: StudioTabKey = 'projects';
  * The default section has ONE address, the studio's own. A spelled-out
  * `/projects` is not a second one: {@link isAddressableTabSegment} refuses it
  * and the container sends it back here, so the strip's first link can never
- * point away from the page its reader is already on.
+ * point away from the page its user is already on.
  * @param slug - The studio.
  * @param tab - The section.
  * @returns The path to that section.

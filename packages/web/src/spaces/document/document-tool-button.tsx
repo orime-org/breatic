@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * One command, rendered as a toggle — and the definition its carrier reads.
@@ -26,8 +26,10 @@ import type { BlockNoteEditor } from '@blocknote/core';
 import type { Bold } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
 import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
+import { UNAVAILABLE } from '@web/spaces/document/document-unavailable-control';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { useTranslation } from '@web/i18n/use-translation';
 
@@ -95,6 +97,24 @@ export interface ToolDef {
 }
 
 /**
+ * A toolbar button that shows its name on hover (breatic#1184). The name is
+ * drawn through a portal: the bars sit inside the body's scroller, which would
+ * cut it off at its edge.
+ * @param props - The button.
+ * @param props.name - What the button does, the words of its `aria-label`.
+ * @param props.children - The button itself.
+ * @returns The button with its name on hover.
+ */
+export function HoverName({ name, children }: { name: string; children: React.ReactElement }): React.JSX.Element {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent portal>{name}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/**
  * The answer for a tool that is always on the bar.
  * @returns True.
  */
@@ -123,26 +143,32 @@ export const ToolButton = React.memo(function ToolButton({
   const available = useEditorSnapshot(editor, tool.canRun);
   const shown = useEditorSnapshot(editor, tool.shownWhen ?? alwaysShown);
   const projectId = useDocumentProjectId();
-  const state = { active, available };
   const Icon = tool.Icon;
   if (!shown || (tool.needsProject === true && projectId === null)) return null;
+  const name = t(tool.labelKey);
   return (
-    <Button
-      variant='ghost'
-      size='icon'
-      aria-label={t(tool.labelKey)}
-      aria-pressed={state.active}
-      disabled={!state.available}
-      onClick={() => tool.run(editor, projectId)}
-      data-testid={`doc-bubble-tool-${tool.id}`}
-      // The bar stays out of the tab order entirely (ruling §5.2): it floats
-      // over the body, and anything floating over the body that takes focus
-      // collides with the body's own focus. The keyboard route to these
-      // commands is their shortcuts.
-      tabIndex={-1}
-      className={cn(BUBBLE_ICON_BUTTON_SIZE, state.active && PRESSED_CLASS)}
-    >
-      <Icon className='h-4 w-4' />
-    </Button>
+    <HoverName name={name}>
+      <Button
+        variant='ghost'
+        size='icon'
+        aria-label={name}
+        aria-pressed={active}
+        // Greyed the way the bar's slots are, so the name still shows on
+        // hover: an HTML-disabled button receives no pointer events.
+        aria-disabled={available ? undefined : true}
+        onClick={() => {
+          if (available) tool.run(editor, projectId);
+        }}
+        data-testid={`doc-bubble-tool-${tool.id}`}
+        // The bar stays out of the tab order entirely (ruling §5.2): it floats
+        // over the body, and anything floating over the body that takes focus
+        // collides with the body's own focus. The keyboard route to these
+        // commands is their shortcuts.
+        tabIndex={-1}
+        className={cn(BUBBLE_ICON_BUTTON_SIZE, active && PRESSED_CLASS, !available && UNAVAILABLE)}
+      >
+        <Icon className='h-4 w-4' />
+      </Button>
+    </HoverName>
   );
 });

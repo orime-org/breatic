@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Turning a byte count into something a person reads.
  *
  * The membership panel shows one, whose ceilings arrive exactly as
- * `config/membership.yaml` holds them; the canvas tells a reader how large a
+ * `config/membership.yaml` holds them; the canvas tells a user how large a
  * file is against the ceiling a run will take; and the server says the same
  * ceiling when it refuses the run (inner#1305). Every one of those numbers is
  * binary, and the browser and the server must print it alike.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Where a model call goes, who gets charged for it, and how each vendor is
@@ -386,6 +386,93 @@ describe("callOptionsFor", () => {
     expect(callOptionsFor(undefined, { thinking: true, cache: false }).providerOptions).toEqual({
       openrouter: { reasoning: { effort: "high" } },
     });
+  });
+});
+
+/**
+ * A caller that names how hard the model should think (inner#1860: the text
+ * tools run Gemini 3.8 Flash at `low`, from `config/text-tools.yaml`).
+ *
+ * Gemini 3 takes a level, not a budget (Google, "Gemini thinking": use
+ * `thinkingLevel` for Gemini 3, `thinkingBudget` for 2.5; sending both is an
+ * error), and OpenRouter takes the same word as `reasoning.effort`.
+ */
+describe("a thinking level the caller names", () => {
+  const LEVELS = ["low", "medium", "high"] as const;
+
+  it.each(LEVELS)("asks OpenRouter for effort %s", async (level) => {
+    keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
+    const { callOptionsFor } = await freshLlm();
+
+    const { providerOptions } = callOptionsFor("google/gemini-3.8-flash", {
+      thinking: true,
+      cache: false,
+      thinkingLevel: level,
+    });
+
+    expect(providerOptions).toEqual({ openrouter: { reasoning: { effort: level } } });
+    expect((await callWith("google/gemini-3.8-flash", providerOptions)).body.reasoning).toEqual({ effort: level });
+  });
+
+  it.each(LEVELS)("asks Google directly for thinking level %s and no budget", async (level) => {
+    keys.current = { GOOGLE_API_KEY: "k" };
+    const { callOptionsFor } = await freshLlm();
+
+    const { providerOptions } = callOptionsFor("google/gemini-3.8-flash", {
+      thinking: true,
+      cache: false,
+      thinkingLevel: level,
+    });
+
+    const google = providerOptions?.google as { thinkingConfig?: Record<string, unknown> } | undefined;
+    expect(google?.thinkingConfig).toMatchObject({ thinkingLevel: level });
+    expect(google?.thinkingConfig).not.toHaveProperty("thinkingBudget");
+    const sent = (await callWith("google/gemini-3.8-flash", providerOptions)).body as {
+      generationConfig?: { thinkingConfig?: Record<string, unknown> };
+    };
+    expect(sent.generationConfig?.thinkingConfig).toMatchObject({ thinkingLevel: level });
+    expect(sent.generationConfig?.thinkingConfig).not.toHaveProperty("thinkingBudget");
+  });
+});
+
+/**
+ * What every existing caller gets, captured before the thinking level was
+ * added (inner#1860), so a call that names no level is answered exactly as
+ * before: serialised with key order, every route, both reasoning directions,
+ * every cache setting, with and without a temperature and a session.
+ */
+describe("a call that names no thinking level", () => {
+  it("is answered byte for byte as before", async () => {
+    const cases: { model: string | undefined; keys: Record<string, string> }[] = [
+      ...SPELLINGS.map((s) => ({ model: s.model, keys: { [s.key]: "k" } })),
+      { model: "google/gemini-3.8-flash", keys: { GOOGLE_API_KEY: "k" } },
+      { model: "google/gemini-3.8-flash", keys: { OPENROUTER_API_KEY: "k" } },
+      { model: "anthropic/claude-opus-5.5", keys: { OPENROUTER_API_KEY: "k" } },
+      { model: "deepseek/deepseek-v4.1-flash-1017", keys: { OPENROUTER_API_KEY: "k" } },
+      { model: undefined, keys: { OPENROUTER_API_KEY: "k" } },
+    ];
+    const seenOptions: Record<string, string> = {};
+    for (const { model, keys: held } of cases) {
+      keys.current = held;
+      const { callOptionsFor } = await freshLlm();
+      for (const thinking of [true, false]) {
+        for (const cache of [false, "5m", "1h"] as const) {
+          for (const temperature of [undefined, 0.3]) {
+            for (const session of [undefined, "conv-1"]) {
+              const wants = {
+                thinking,
+                cache,
+                ...(temperature === undefined ? {} : { temperature }),
+                ...(session === undefined ? {} : { session }),
+              };
+              const label = `${model ?? "(none)"} via ${Object.keys(held).join(",")} ${JSON.stringify(wants)}`;
+              seenOptions[label] = JSON.stringify(callOptionsFor(model, wants));
+            }
+          }
+        }
+      }
+    }
+    expect(seenOptions).toMatchSnapshot();
   });
 });
 

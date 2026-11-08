@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The tab strip's layout, measured in a browser.
@@ -685,11 +685,11 @@ test('leaves the rail no way to be seen once nothing is left to scroll', async (
   expect(seen.filter((f) => f.scrollable === 'false' && f.opacity > 0.02)).toEqual([]);
 });
 
-test('scrolling the strip leaves the page where the reader put it', async () => {
+test('scrolling the strip leaves the page where the user put it', async () => {
   // NARROW is below the project page's floor, so the page itself scrolls
   // sideways. Every scroller between a tab and the document moves when the
   // strip brings a tab into view through `scrollIntoView`, and the page is
-  // one of them — a reader who had scrolled it lost that place on every
+  // one of them — a user who had scrolled it lost that place on every
   // arrow click.
   const read = (): Promise<{ page: number; strip: number; canScroll: boolean }> =>
     page.evaluate(() => {

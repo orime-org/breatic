@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Drizzle ORM schema definitions for all database tables.
@@ -13,6 +13,7 @@ import {
   pgTable,
   uuid,
   varchar,
+  char,
   text,
   boolean,
   doublePrecision,
@@ -34,6 +35,7 @@ import {
 // still being defined at the point the reference is written.
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type {
+  AccountActivityKind,
   Attribution,
   ConsentRecord,
   ConsentSnapshot,
@@ -41,10 +43,11 @@ import type {
   RequestFailedReason,
 } from "@breatic/shared";
 import type { AdsConversionJob } from "@core/ads/ads-types.js";
+import type { CreditGrantResult, CreditGrantWrite } from "@core/credit/credit-grant-contract.js";
 import type { EnterpriseMembershipResult, EnterpriseMembershipWrite } from "@core/auth/enterprise-membership-contract.js";
 import type { ReclaimScope, ReclaimDecision, ReclaimControlDecision, ReclaimItemResult, ReclaimRun } from "@core/maintenance/types.js";
 import { PROJECT_NAME_MAX_CHARS, STRIPE_WEBHOOK_RESULTS } from "@breatic/shared";
-import type { StripeWebhookResult } from "@breatic/shared";
+import type { SignupReferralSource, StripeWebhookResult } from "@breatic/shared";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -106,12 +109,14 @@ export const users = pgTable(
     // Enterprise validity is read alongside this raw tier. Ordinary paid
     // validity is interpreted from subscription facts.
     //
-    // Credits are yet another leg and live in `credit_lots`, one row per
-    // purchase, never on the
-    // account row.
+    // Credits live in `credit_lots`, one row per funding source.
     membershipTier: varchar("membership_tier", { length: 16 })
       .default("base")
       .notNull(),
+    // The Agent model this account last picked (0114, #1363). Only a new
+    // conversation reads it, as its starting model; each conversation keeps
+    // its own pick in `conversations.agent_model`. Null until the first pick.
+    agentModel: varchar("agent_model", { length: 100 }),
     // Recovery code (GitHub backup-codes pattern, PR-a 2026-05-26):
     // bcrypt-hashed single-use code shown once at registration so users
     // can reset their password without an SMTP backend (self-host
@@ -281,11 +286,8 @@ export const projects = pgTable(
     // URL slug for /project/{slug}-{uuid}. Format-validated app-side, NOT
     // unique (same-name projects disambiguate by uuid; URL design §5.7).
     slug: varchar("slug", { length: 120 }).notNull(),
-    // Initial Space type seeded on first open (B.2). varchar with NO check
-    // constraint — same pattern as studio_members.role, so adding 3d/plan
-    // later is a zero-migration change. Canvas is the only editable type
-    // today; document/timeline are stored + seeded but disabled in the
-    // create picker until their editors ship.
+    // Initial Space type seeded on first open. Stored as a varchar;
+    // accepted Space types are validated by the shared schema.
     initialSpaceType: varchar("initial_space_type", { length: 16 })
       .default("canvas")
       .notNull(),
@@ -466,7 +468,7 @@ export const conversations = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    // Null while the conversation has no name of its own. What the reader
+    // Null while the conversation has no name of its own. What the user
     // sees in that case is decided where their language is known, which is
     // not here.
     title: varchar("title", { length: 200 }),
@@ -474,6 +476,9 @@ export const conversations = pgTable(
       onDelete: "set null",
     }),
     lastConsolidatedTurn: integer("last_consolidated_turn").default(0).notNull(),
+    // The Agent model this conversation is answered by (0114, #1363). Null
+    // for a conversation from before the picker until its next message.
+    agentModel: varchar("agent_model", { length: 100 }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
@@ -883,7 +888,7 @@ export const studioUpstreamClones = pgTable(
  * Per-node content timeline.
  *
  * Records every content change on a canvas node: successful/failed
- * AIGC generations, user uploads, and the copies a reader asks to keep.
+ * AIGC generations, user uploads, and the copies a user asks to keep.
  * Queried by frontend to show version history and support restore. Node
  * soft-deletes don't cascade - history is preserved until the project is
  * deleted.
@@ -990,13 +995,16 @@ export const nodeTasks = pgTable(
     // Rides the event so collab can name the document. Not a foreign key:
     // spaces live in Yjs, not in a table.
     spaceId: uuid("space_id").notNull(),
-    // Same: the node lives in the canvas document.
-    nodeId: uuid("node_id").notNull(),
+    // Same: the node lives in the canvas document. Null on a 3D Space's
+    // model upload (inner#1690) or generation (inner#1691), which belong to
+    // the Space's own list; 0113 and 0117 allow that for the scene import and
+    // generate actions only.
+    nodeId: uuid("node_id"),
 
     kind: varchar("kind", { length: 20 }).notNull(), // 'upload' | 'generation'
     // What the row's first line names: 'upload' | 'generate' | 'understand'
-    // | 'mini_tool' (inner#888) | 'transcribe' (inner#856). Its CHECK lives in
-    // 0092, widened in 0101.
+    // | 'mini_tool' (inner#888) | 'transcribe' (inner#856) | 'scene_import'
+    // (inner#1690). Its CHECK lives in 0092, widened in 0101 and 0113.
     action: varchar("action", { length: 20 }).notNull(),
     // 'running' | 'done' | 'failed' | 'expired'
     status: varchar("status", { length: 20 }).notNull(),
@@ -1038,6 +1046,14 @@ export const nodeTasks = pgTable(
     taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
     // The upload grant this task was opened for; null on generations.
     storageKey: text("storage_key"),
+    // The registered model a Space-level row holds (inner#1690): written once,
+    // when a dedup hit opens the row already done, by the settle into `done`,
+    // or onto an expired row its result outlived.
+    assetId: uuid("asset_id").references(() => studioAssets.id, { onDelete: "restrict" }),
+    // Where a 3D Space's generation was started from (inner#1691): 'space'
+    // (the Space's own dialog) or 'agent' (a proposal card). Set on those rows
+    // only, null on every other row; its CHECK lives in 0117.
+    origin: varchar("origin", { length: 16 }),
 
     ...timestamps,
     // Stamped when the user clears the record. The row stays: the system only
@@ -1058,6 +1074,10 @@ export const nodeTasks = pgTable(
     index("node_tasks_job_node_idx")
       .on(table.taskId, table.nodeId)
       .where(sql`${table.taskId} IS NOT NULL`),
+    // A Space's own list.
+    index("node_tasks_space_live_idx")
+      .on(table.projectId, table.spaceId, table.startedAt)
+      .where(sql`${table.nodeId} IS NULL AND ${table.deletedAt} IS NULL`),
   ],
 );
 
@@ -1140,6 +1160,98 @@ export const creditSources = pgTable(
   },
   (table) => [unique("credit_sources_id_kind_key").on(table.id, table.kind)],
 );
+
+/** Immutable original decisions retain absent logical accounts and their request keys. */
+export const creditGrantOperations = pgTable("credit_grant_operations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  key: text("key").notNull().unique(),
+  requestHash: varchar("request_hash", { length: 64 }).notNull(),
+  targetUserId: uuid("target_user_id").notNull(),
+  requestedBy: uuid("requested_by").notNull(),
+  requestBody: jsonb("request_body").$type<CreditGrantWrite>().notNull(),
+  result: jsonb("result").$type<CreditGrantResult>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** One promoter application; partial unique indexes and CHECKs live in 0118 (inner#1868). */
+export const promoterApplications = pgTable("promoter_applications", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  status: text("status").$type<"pending" | "approved" | "rejected">().notNull(),
+  country: char("country", { length: 2 }).notNull(),
+  channels: jsonb("channels").$type<string[]>().notNull(),
+  plan: text("plan").notNull(),
+  termsVersion: varchar("terms_version", { length: 32 }).notNull(),
+  termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }).notNull(),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  decidedBy: varchar("decided_by", { length: 64 }),
+  decisionReason: text("decision_reason"),
+  applicantNote: text("applicant_note"),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  ...timestamps,
+});
+
+/** An approved promoter's code; stored upper-case, never deleted because bindings point at it. */
+export const referralCodes = pgTable("referral_codes", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  code: varchar("code", { length: 20 }).notNull().unique(),
+  promoterId: uuid("promoter_id").notNull().unique().references(() => users.id, { onDelete: "restrict" }),
+  applicationId: uuid("application_id").notNull().unique().references(() => promoterApplications.id, { onDelete: "restrict" }),
+  status: text("status").$type<"active" | "disabled" | "removed">().default("active").notNull(),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
+  ...timestamps,
+});
+
+/** The one code an account carries, written once and kept for commission. */
+export const referralBindings = pgTable("referral_bindings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().unique().references(() => users.id, { onDelete: "restrict" }),
+  referralCodeId: uuid("referral_code_id").notNull().references(() => referralCodes.id, { onDelete: "restrict" }),
+  source: text("source").$type<SignupReferralSource | "later">().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Every back-office referral write under its idempotency key, with its original answer. */
+export const referralOperations = pgTable("referral_operations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  key: text("key").notNull().unique(),
+  kind: text("kind").$type<"approve" | "reject" | "disable" | "enable" | "remove">().notNull(),
+  targetId: uuid("target_id").notNull(),
+  requestHash: varchar("request_hash", { length: 64 }).notNull(),
+  requestedBy: varchar("requested_by", { length: 64 }).notNull(),
+  requestBody: jsonb("request_body").$type<Record<string, unknown>>().notNull(),
+  result: jsonb("result").$type<{ status: "applied" | "refused" } & Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Compensation evidence outlives its lot; kind and deferred operation FK live in 0109. */
+export const creditCompensations = pgTable("credit_compensations", {
+  id: uuid("id").primaryKey(),
+  sourceKind: varchar("source_kind", { length: 16 }).default("compensation").notNull(),
+  targetUserId: uuid("target_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  personalStudioId: uuid("personal_studio_id").notNull().references(() => studios.id, { onDelete: "restrict" }),
+  credits: numeric("credits", { precision: 20, scale: 6 }).notNull(),
+  reason: text("reason").notNull(),
+  operationKey: text("operation_key").notNull().unique(),
+  requestedBy: uuid("requested_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [foreignKey({ name: "credit_compensations_source_fk", columns: [table.id, table.sourceKind], foreignColumns: [creditSources.id, creditSources.kind] }).onDelete("restrict")]);
+
+/** Registration claims and operator gifts retain distinct, immutable provenance. */
+export const creditGifts = pgTable("credit_gifts", {
+  id: uuid("id").primaryKey(),
+  sourceKind: varchar("source_kind", { length: 16 }).default("gift").notNull(),
+  origin: varchar("origin", { length: 16 }).notNull(),
+  targetUserId: uuid("target_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  personalStudioId: uuid("personal_studio_id").notNull().references(() => studios.id, { onDelete: "restrict" }),
+  credits: numeric("credits", { precision: 20, scale: 6 }).notNull(),
+  /** Explicit confirmation of a pre-existing manual gift, never a new funding instruction. */
+  legacyConfirmation: jsonb("legacy_confirmation").$type<Record<string, unknown>>(),
+  reason: text("reason"),
+  operationKey: text("operation_key").unique(),
+  requestedBy: uuid("requested_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [foreignKey({ name: "credit_gifts_source_fk", columns: [table.id, table.sourceKind], foreignColumns: [creditSources.id, creditSources.kind] }).onDelete("restrict")]);
 
 export const payments = pgTable(
   "payments",
@@ -2036,12 +2148,10 @@ export const memoryHistoryEntries = pgTable(
 // ── 11. Project Memories ─────────────────────────────────────────────
 
 /**
- * What one member's agent has summarised about one project.
- *
- * Keyed by member as well as project: the content is written by reading that
- * member's own conversations, so a row shared across a project hands what one
- * person's agent learned to the next person's system prompt, and the next
- * consolidation overwrites it.
+ * The block of memory each member's agent kept about one project before
+ * memory entries (#1363). Migration 0115 copied every row into
+ * `agent_memories` word for word; nothing reads or writes this table now, and
+ * it stays as that migration's source.
  */
 export const projectMemories = pgTable(
   "project_memories",
@@ -2063,6 +2173,47 @@ export const projectMemories = pgTable(
       table.userId,
       table.projectId,
     ),
+  ],
+);
+
+// ── 11b. Agent Memories ──────────────────────────────────────────────
+
+/**
+ * The Agent's memory, one fact per row (0114, #1363).
+ *
+ * A row with no conversation belongs to the member's Project and is read in
+ * every conversation of theirs there; a row with one belongs to that
+ * conversation alone. `origin` says who wrote it: the Agent through its
+ * memory tools, a consolidation, or the migration that carried each earlier
+ * block of memory over word for word. The scope rule (a conversation or a
+ * Project, at least one) and the three origins are CHECK constraints written
+ * in 0114 only.
+ */
+export const agentMemories = pgTable(
+  "agent_memories",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "restrict" }),
+    conversationId: uuid("conversation_id").references(() => conversations.id, { onDelete: "restrict" }),
+    sourceConversationId: uuid("source_conversation_id").references(() => conversations.id, {
+      onDelete: "restrict",
+    }),
+    title: varchar("title", { length: 200 }).notNull(),
+    content: text("content").notNull(),
+    origin: varchar("origin", { length: 20 }).notNull(),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("agent_memories_project_idx")
+      .on(table.userId, table.projectId, desc(table.updatedAt))
+      .where(sql`${table.deletedAt} IS NULL AND ${table.conversationId} IS NULL`),
+    index("agent_memories_conversation_idx")
+      .on(table.conversationId, desc(table.updatedAt))
+      .where(sql`${table.deletedAt} IS NULL AND ${table.conversationId} IS NOT NULL`),
   ],
 );
 
@@ -2792,7 +2943,7 @@ export const studioAssets = pgTable(
      * a video's first-class cover asset — a normal row that counts toward
      * storage, kind judged from the cover itself) | 'project_cover' /
      * 'studio_avatar' (a picture uploaded to be a project's cover or a
-     * studio's avatar) | 'agent' (a link the chat agent saved for the reader,
+     * studio's avatar) | 'agent' (a link the chat agent saved for the user,
      * inner#1315; usually a picture, but the row keeps whatever uploadable
      * type the link held). A dedup hit keeps the first uploader's value, so this
      * does not say what a row is used as. varchar, no schema change.
@@ -2869,6 +3020,23 @@ export const studioAssets = pgTable(
     // key, WHERE deleted_at IS NULL) lives in the migration - Drizzle's
     // builder does not emit partial unique indexes (same note as
     // project_activities / project_invitations).
+  ],
+);
+
+/** Long-lived Project media membership, separate from upload credentials. */
+export const projectAssetRefs = pgTable(
+  "project_asset_refs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "restrict" }),
+    assetId: uuid("asset_id").notNull().references(() => studioAssets.id, { onDelete: "restrict" }),
+    displayName: text("display_name"),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("project_asset_refs_live_key").on(table.projectId, table.assetId).where(sql`${table.deletedAt} IS NULL`),
+    index("project_asset_refs_page_idx").on(table.projectId, table.createdAt.desc(), table.id.desc()).where(sql`${table.deletedAt} IS NULL`),
   ],
 );
 
@@ -3218,3 +3386,36 @@ export const storageReclaimAttempts = pgTable("storage_reclaim_attempts", {
  result: jsonb("result").$type<ReclaimItemResult>().notNull(),
  ...timestamps, deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
+
+// ── Account interaction history and collection coverage ──────────────
+export const accountActivityEvents = pgTable("account_activity_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "restrict" }),
+  kind: text("kind").$type<AccountActivityKind>().notNull(),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).defaultNow().notNull(),
+  visitId: uuid("visit_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, (table) => [
+  uniqueIndex("account_activity_user_visit_idx").on(table.userId, table.visitId),
+  index("account_activity_user_time_idx").on(table.userId, table.occurredAt),
+  index("account_activity_time_user_idx").on(table.occurredAt, table.userId),
+  check("account_activity_kind_check", sql`${table.kind} IN ('project_access','generation_started','project_action','agent_started','project_edit')`),
+  check("account_activity_project_check", sql`${table.kind} NOT IN ('project_access','project_edit') OR ${table.projectId} IS NOT NULL`),
+  check("account_activity_visit_check", sql`(${table.kind} = 'project_access') = (${table.visitId} IS NOT NULL)`),
+]);
+
+export const accountActivityCoverage = pgTable("account_activity_coverage", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  version: integer("version").notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+  endedAt: timestamp("ended_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, (table) => [
+  uniqueIndex("account_activity_coverage_open_idx").on(table.version).where(sql`${table.endedAt} IS NULL`),
+  index("account_activity_coverage_version_time_idx").on(table.version, table.startedAt),
+  check("account_activity_coverage_version_check", sql`${table.version} > 0`),
+  check("account_activity_coverage_interval_check", sql`${table.endedAt} IS NULL OR ${table.endedAt} > ${table.startedAt}`),
+]);

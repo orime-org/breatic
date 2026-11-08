@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Shared API envelope + error types (mirrors backend `AppError`).
@@ -28,7 +28,7 @@ export interface ApiError {
    * False when it is the library's -- which happens whenever something other
    * than our server answers, a gateway timing out being the ordinary case.
    * That sentence is written in English, for a developer, and names transport
-   * details; anything about to show a message to a reader has to be able to
+   * details; anything about to show a message to a user has to be able to
    * tell the two apart. The SSE transport makes the same distinction.
    *
    * Optional because tests build this shape by hand; absent reads as false,
@@ -46,6 +46,8 @@ export interface ApiError {
   idempotencyStatus?: 'done' | 'in_progress';
   /** The server's `error.reason`, when it marked the refusal. */
   reason?: string;
+  /** Every field of the server's `error` body, for refusals that carry more than a reason. */
+  details?: Readonly<Record<string, unknown>>;
   /** No answer arrived at all: the request never reached a server, or the reply was lost. */
   network?: boolean;
 }
@@ -65,6 +67,8 @@ export class ApiException extends Error {
   readonly idempotencyStatus?: 'done' | 'in_progress';
   /** The server's `error.reason`, when it marked the refusal. */
   readonly reason?: string;
+  /** Every field of the server's `error` body, for refusals that carry more than a reason. */
+  readonly details?: Readonly<Record<string, unknown>>;
   /** No answer arrived at all. */
   readonly network: boolean;
 
@@ -81,6 +85,7 @@ export class ApiException extends Error {
     this.retryAfterSeconds = error.retryAfterSeconds;
     this.idempotencyStatus = error.idempotencyStatus;
     this.reason = error.reason;
+    this.details = error.details;
     this.network = error.network === true;
   }
 }

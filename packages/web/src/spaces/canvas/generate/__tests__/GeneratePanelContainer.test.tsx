@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /** The canvas hands the panels a getter; these trees answer 'this client'. */
 const LAST_WRITE_LOCAL = (): boolean => true;
@@ -388,7 +388,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
 
   // A Space switched away from is hidden, and showing it again runs every
   // effect once more (inner#1235). The mode did not change across that, so a
-  // focus pick the reader left running in t2i is still theirs when they come
+  // focus pick the user left running in t2i is still theirs when they come
   // back, the way a reference or style pick is.
   it('keeps a focus pick running in t2i across a hide and a show', async () => {
     const listSpy = vi
@@ -460,7 +460,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
   });
 
   // A style pick outlives its slot when the model changes to one without a
-  // style slot (inner#826): the canvas would keep writing pictures the reader
+  // style slot (inner#826): the canvas would keep writing pictures the user
   // cannot see, and a later switch back would send and bill them.
   it('ends a running style pick when the model changes to one without a style slot', async () => {
     const styled: ModelEntry = {
@@ -1663,7 +1663,7 @@ describe('GeneratePanelContainer — picking a template (inner#977)', () => {
     canvasSessions.of('s').setState({ panelHostId: null, panelKind: null, pickSession: null });
   });
 
-  it('hands placing the template mode, model, params and prompt, @ing the wired-in image, and reminds the reader', async () => {
+  it('hands placing the template mode, model, params and prompt, @ing the wired-in image, and reminds the user', async () => {
     const listSpy = vi
       .spyOn(modelsApi, 'list')
       .mockResolvedValue(imageCatalog([T2I_MODEL, TEMPLATE_MODEL]));
@@ -1717,7 +1717,7 @@ describe('GeneratePanelContainer — picking a template (inner#977)', () => {
     });
     const words = (proposal.nodes[0]?.prompt ?? []).map((seg) => seg.text ?? '').join('');
     expect(words).toContain('storyboard grid of exactly 5 rows');
-    // The picture wired in is @'d for the reader (inner#1345 A3), not left to them.
+    // The picture wired in is @'d for the user (inner#1345 A3), not left to them.
     const refs = (proposal.nodes[0]?.prompt ?? []).flatMap((seg) => (seg.ref === undefined ? [] : [seg.ref]));
     expect(refs).toHaveLength(1);
     expect(existing.get(refs[0] ?? -1)).toMatchObject({
@@ -1727,7 +1727,7 @@ describe('GeneratePanelContainer — picking a template (inner#977)', () => {
     // Nothing new, so nothing new is wired.
     expect(proposal.nodes).toHaveLength(existing.size);
     expect(proposal.edges).toEqual([]);
-    // `{✏️ the story}` is still the reader's to write.
+    // `{✏️ the story}` is still the user's to write.
     expect(toast.info).toHaveBeenCalledWith(en.canvas.generatePanel.editProposalMarks, expect.anything());
     listSpy.mockRestore();
   });

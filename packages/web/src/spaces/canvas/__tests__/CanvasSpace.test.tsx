@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -1851,7 +1851,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         fireEvent.keyDown(prompt, { key: 'Escape' });
       });
       expect(canvasSessions.of('s').getState().pickSession).toBeNull();
-      // The reader is mid-sentence in that box; ending the pick is theirs to
+      // The user is mid-sentence in that box; ending the pick is theirs to
       // ask for, the caret is not.
       expect(document.activeElement).toBe(prompt);
     } finally {
@@ -3249,6 +3249,27 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(generate.getAttribute('aria-disabled')).not.toBe('true');
   });
 
+  it('offers extractable document types when opening a text node upload picker', () => {
+    mockUseCanvasSpace.mockReturnValue(mockSpace({
+      nodes: [{ id: 'text-upload', type: 'text', position: { x: 0, y: 0 }, data: { handling: false } }],
+    }));
+    const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => undefined);
+    try {
+      renderSpace();
+      const node = document.querySelector('.react-flow__node');
+      if (node === null) throw new Error('Text node was not rendered');
+      fireEvent.contextMenu(node);
+      fireEvent.click(screen.getByTestId('node-menu-upload'));
+      expect(click).toHaveBeenCalledTimes(1);
+      const input = screen.getByTestId('canvas-upload-input') as HTMLInputElement;
+      const offered = input.accept.split(',');
+      expect(offered).not.toContain('.doc');
+      expect(offered).toEqual(expect.arrayContaining(['.txt', '.md', '.pdf', '.docx', '.xls', '.xlsx', 'text/*']));
+    } finally {
+      click.mockRestore();
+    }
+  });
+
   // ---- Node-state gate: upload refused on a LOCKED node (bug 4) ----
   // Right-click Upload and the empty-node double-click both funnel through
   // activateNodeUpload; the gate there refuses a locked node before popping the
@@ -3394,7 +3415,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
    * Right-click one node and report whether Download was usable.
    *
    * The item is on the menu either way; what changes is whether it is
-   * disabled, which is how the reader is told this node has nothing to take.
+   * disabled, which is how the user is told this node has nothing to take.
    * @param typed - The node's type and view.
    * @returns Whether the download item was enabled.
    */
@@ -3908,7 +3929,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     });
 
     /**
-     * Attaches an element holding words, standing in for a place the reader
+     * Attaches an element holding words, standing in for a place the user
      * can put the caret or drag across.
      * @param region - The `data-region` to wrap it in, or null for an overlay
      * or the top bar, both of which pass through no region.
@@ -3927,7 +3948,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
 
     /**
      * Puts focus on a fresh control inside `region`, standing in for where the
-     * reader last clicked. A copy event's target follows the selection rather
+     * user last clicked. A copy event's target follows the selection rather
      * than focus, so this is the thing the gate reads.
      * @param region - The `data-region` to wrap it in, or null for an overlay
      * or the top bar, both of which pass through no region.
@@ -4168,7 +4189,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         expect(copyAndRead()).toContain('__breatic_canvas_nodes__:');
       });
 
-      // Words the reader dragged across are the ones they asked for, wherever
+      // Words the user dragged across are the ones they asked for, wherever
       // they sit — either region, or an overlay and the top bar, which sit in
       // none. None of those is "copy the nodes".
       it.each([
@@ -4182,7 +4203,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         expect(copyAndRead(words)).toBe('');
       });
 
-      // Dragging across a picture selects something the reader asked for
+      // Dragging across a picture selects something the user asked for
       // while `toString()` stays empty, so what counts is whether the
       // selection is collapsed.
       it('copy leaves the clipboard alone for a picture dragged across', () => {
@@ -4210,7 +4231,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         expect(copyAndRead(words)).toContain('__breatic_canvas_nodes__:');
       });
 
-      // A tool drawing on its node takes the reader's attention there; copy,
+      // A tool drawing on its node takes the user's attention there; copy,
       // paste and duplicate would act on the host or its neighbours instead
       // and close the panel (inner#1303 §6.6). The clipboard events are fired
       // by the physical key, so this holds on every keyboard layout.
@@ -4585,9 +4606,9 @@ describe('onLocateSource absolute-position contract (item 7 grouped source)', ()
     expect(locate).not.toMatch(/setCenter\(\s*node\.position\.x/);
   });
 
-  // Locate keeps the reader's zoom, so the slide is a straight one: the
+  // Locate keeps the user's zoom, so the slide is a straight one: the
   // default 'smooth' path zooms out and back in on the way.
-  it('slides in a straight line at the reader zoom', () => {
+  it('slides in a straight line at the user zoom', () => {
     expect(locate).toContain('interpolate: \'linear\'');
   });
 });
@@ -4614,7 +4635,7 @@ describe('what opening a tool on a node does to the camera and its layers', () =
     expect(inspect).toContain('whenDecoded(picture, step)');
   });
 
-  // The wait can outlast the panel: a step after the reader closed the adjust
+  // The wait can outlast the panel: a step after the user closed the adjust
   // or moved to another node moves nothing.
   it('zooms only while the adjust is still open on that node', () => {
     const step = inspect.slice(inspect.indexOf('const step'));
@@ -4629,7 +4650,7 @@ describe('what opening a tool on a node does to the camera and its layers', () =
   });
 });
 
-// What one reading leaves the reader looking at (#2175, inner#856). The node
+// What one reading leaves the user looking at (#2175, inner#856). The node
 // it builds lands a whole node-step to the right of the one being read, which
 // on a canvas scrolled near its right edge is outside the viewport — and a
 // press whose only effect is off-screen reads as a press that did nothing.
@@ -4667,7 +4688,7 @@ describe('what an Understand or Transcribe press leaves on screen', () => {
     expect(transcribe).toContain('startTranscribeRun({ ...run, keepFillers })');
   });
 
-  // The pan keeps the reader's zoom, so it slides in a straight line; the
+  // The pan keeps the user's zoom, so it slides in a straight line; the
   // default 'smooth' path zooms out and back in on the way.
   it('moves to where viewportForBuilt says, in a straight line', () => {
     expect(framing).toContain('viewportForBuilt(');
@@ -4675,7 +4696,7 @@ describe('what an Understand or Transcribe press leaves on screen', () => {
     expect(framing).toContain('interpolate: \'linear\'');
   });
 
-  // Both boxes are read where the reader is looking right now: the source
+  // Both boxes are read where the user is looking right now: the source
   // from ReactFlow's own store, which folds in every parent offset, and the
   // viewport from the live transform. A grouped source read off
   // `node.position` would be measured a whole group-origin away.
@@ -4851,7 +4872,7 @@ describe('placing a note (#1881)', () => {
 
   it('hands Escape to the armed tool first, then to the open sticky', () => {
     // Two modes on this canvas take Escape and they are stacked: the tool the
-    // reader picked up most recently sits over the note they opened earlier,
+    // user picked up most recently sits over the note they opened earlier,
     // so the press puts the tool down and the next one collapses the note.
     // Both ask `useEscapeInSpace` for the same press, and it hands the press
     // to every listener that wants it — measured on a board with both
@@ -4986,7 +5007,7 @@ describe('placing a note (#1881)', () => {
   it('covers the board while the tool is armed, and only then', () => {
     // The comment-bubble pointer is scoped by this class (index.css). Without
     // the layer the board looks exactly the same armed as not, and nothing
-    // tells the reader their next click drops a note.
+    // tells the user their next click drops a note.
     mockUseCanvasSpace.mockReturnValue(mockSpace());
     renderSpace();
     const layer = (): Element | null =>
@@ -5312,7 +5333,7 @@ describe('the camera this Space is left on (#2165)', () => {
   // The canvas frames a Space it has nothing stored for, and that framing is
   // queued until the nodes have measured. Leaving inside that window used to
   // store the untouched identity transform, which reads back as a camera the
-  // reader chose and turns the framing off for good. Measured in a browser:
+  // user chose and turns the framing off for good. Measured in a browser:
   // the window is 118ms on a Space with 61 nodes.
   it('stores nothing when the canvas is left before it has framed anything', () => {
     seedStrip(null);
@@ -5340,9 +5361,9 @@ describe('the camera this Space is left on (#2165)', () => {
     expect(storedCamera()).toBeNull();
   });
 
-  // The other half: a Space the reader has a camera for opens on it, and
+  // The other half: a Space the user has a camera for opens on it, and
   // leaving without touching anything leaves that camera as it was.
-  it('leaves a stored camera alone when the reader does not move it', () => {
+  it('leaves a stored camera alone when the user does not move it', () => {
     seedStrip({ x: -120, y: -80, zoom: 1.5 });
     mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [] }));
     const client = new QueryClient({
@@ -5356,11 +5377,11 @@ describe('the camera this Space is left on (#2165)', () => {
     view.unmount();
     expect(storedCamera()).toEqual({ x: -120, y: -80, zoom: 1.5 });
   });
-  // The other direction, which the two above cannot see: a camera the reader
+  // The other direction, which the two above cannot see: a camera the user
   // placed reaches the record. `onMove` is what opens the gate, and the library
   // reports it from the second event of a scroll onwards
   // (@xyflow/system `createPanOnScrollHandler`), so the pan here is two.
-  it('stores the camera once the reader has moved it', async () => {
+  it('stores the camera once the user has moved it', async () => {
     seedStrip(null);
     mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [] }));
     const client = new QueryClient({

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as Shared from "@breatic/shared";
@@ -23,14 +23,14 @@ vi.mock("@breatic/core", () => ({
 }));
 vi.mock("@breatic/domain", async () => {
   const { createAgentPicturePreparer } = await import("@domain/agent/prepare-agent-pictures.js");
-  const { readerUrlSchema } = await import("@domain/asset/source-url.js");
+  const { userUrlSchema } = await import("@domain/asset/source-url.js");
   return {
     assetRepo: { findLiveByKeyInStudio: h.live },
     createAgentPicturePreparer: (callbacks: AgentPicturePreparation): PrepareAgentPictures => {
       h.callbacks = callbacks;
       return createAgentPicturePreparer(callbacks);
     },
-    readerUrlSchema,
+    userUrlSchema,
     SaveRefused: class extends Error {
       constructor(readonly kind: string, readonly reason?: string) { super(kind); }
     },

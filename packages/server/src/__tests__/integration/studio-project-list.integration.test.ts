@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The studio project list's sorts and pages against a real Postgres (inner#1020).
@@ -149,7 +149,7 @@ async function bigStudio(): Promise<Fixture> {
  * @param viewer - Who is looking.
  * @param archived - Which list.
  * @param sort - The sort.
- * @param locale - The reader's interface language.
+ * @param locale - The user's interface language.
  * @returns Every id in the order the pages returned them, and the totals seen.
  */
 async function walk(
@@ -225,7 +225,7 @@ describe("studio project list — every page together is the sorted list, once e
     expect(ids.slice(80).every((id) => neverOpened.has(id))).toBe(true);
   });
 
-  it("sorts names case-insensitively for an English reader", async () => {
+  it("sorts names case-insensitively for an English user", async () => {
     const f = await bigStudio();
     const page = await projectService.listByStudioForViewer(f.studioId, f.admin, {
       archived: false,

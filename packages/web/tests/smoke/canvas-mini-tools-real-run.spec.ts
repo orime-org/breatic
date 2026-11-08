@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Every batch-one mini-tool run once for real (inner#888 A11, A12): the model
@@ -13,10 +13,16 @@
  *
  * The media with people in it — `portrait.jpg` (a face), `driving.mp4` (a
  * person moving) and `speech.mp3` (a few seconds of speech) — are fixtures,
- * made with our own generators. The rest are drawn by ffmpeg as the run
- * starts: `song.mp3` (that speech over a tone), `short720.mp4` (a clip with
- * sound), `silent.mp4` (no audio stream), `shaky.mp4` (a moving crop of
- * ffmpeg's animated test pattern) and `long1080.mp4` (60 s of 1080p with sound).
+ * made with our own generators; the run cuts the sound to 3.9 s and the
+ * movement to 3 s, the least the talking head, motion and animate models bill.
+ * The rest are drawn by ffmpeg as the run starts: `song.mp3` (that speech over
+ * a tone), `short720.mp4` (8 s with sound, for the container tools),
+ * `brief720.mp4` (2 s with sound) and `low360.mp4` (3 s of 640x360 with sound),
+ * the model tools' sources at the length they bill least for, `silent.mp4` (no
+ * audio stream), `shaky.mp4` (a moving crop of ffmpeg's animated test pattern)
+ * and `long1080.mp4` (60 s of 1080p with sound).
+ *
+ * Every model run is set to its cheapest settings (docs/TEST-MANDATE.md 2.2).
  */
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -63,9 +69,13 @@ function prepareMedia(): string {
     '-i', join(FIXTURES, 'portrait.jpg'),
     '-vf', `drawbox=x=0:y=0:w=1:h=1:color=0x${colour}:thickness=fill`, '-q:v', '3', join(dir, 'portrait.jpg'),
   );
-  for (const file of ['driving.mp4', 'speech.mp3']) {
-    ffmpeg('-i', join(FIXTURES, file), '-c', 'copy', ...mark, join(dir, file));
-  }
+  // The talking head bills at least 4 s of sound; 3.9 keeps a cut on an mp3 frame under it.
+  ffmpeg('-i', join(FIXTURES, 'speech.mp3'), '-t', '3.9', '-c', 'copy', ...mark, join(dir, 'speech.mp3'));
+  // Motion and animate bill at least 3 s; re-encoded, since a copied cut ends on a later keyframe.
+  ffmpeg(
+    '-i', join(FIXTURES, 'driving.mp4'), '-t', '3',
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', ...mark, join(dir, 'driving.mp4'),
+  );
   const pattern = (size: string, seconds: number): string[] => [
     '-f', 'lavfi', '-i', `testsrc2=size=${size}:rate=25:duration=${String(seconds)}`,
   ];
@@ -78,6 +88,8 @@ function prepareMedia(): string {
     '-filter_complex', 'amix=inputs=2:duration=longest', ...mark, join(dir, 'song.mp3'),
   );
   ffmpeg(...pattern('1280x720', 8), ...tone(8), ...mp4, join(dir, 'short720.mp4'));
+  ffmpeg(...pattern('1280x720', 2), ...tone(2), ...mp4, join(dir, 'brief720.mp4'));
+  ffmpeg(...pattern('640x360', 3), ...tone(3), ...mp4, join(dir, 'low360.mp4'));
   ffmpeg(...pattern('1280x720', 5), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', ...mark, join(dir, 'silent.mp4'));
   ffmpeg(
     ...pattern('1440x864', 6), ...tone(6),
@@ -106,8 +118,12 @@ interface Run {
   source: string;
   slots?: Record<string, string>;
   prompt?: string;
-  /** A slider moved by key before Run, for a tool that holds Run back at its defaults. */
-  keys?: { slider: string; key: string; times: number };
+  /** Options clicked before Run, by test id. */
+  clicks?: string[];
+  /** Switches turned off before Run, by test id. */
+  off?: string[];
+  /** Sliders moved by key before Run. */
+  keys?: { slider: string; key: string; times: number }[];
   /** Result nodes the run builds. */
   outputs: number;
   /** Set when the run must fail instead, with the task row's cause. */
@@ -221,9 +237,15 @@ async function start(run: Run): Promise<void> {
     await visibleSpace(page).locator(`.react-flow__node[data-id="${sources.get(file)!}"]`).click();
   }
   if (run.prompt !== undefined) await page.getByTestId('mini-tool-prompt').fill(run.prompt);
-  if (run.keys !== undefined) {
-    const thumb = page.getByTestId(run.keys.slider).getByRole('slider');
-    for (let i = 0; i < run.keys.times; i += 1) await thumb.press(run.keys.key);
+  for (const id of run.clicks ?? []) await page.getByTestId(id).click();
+  for (const id of run.off ?? []) {
+    const toggle = page.getByTestId(id);
+    if ((await toggle.getAttribute('data-state')) === 'checked') await toggle.click();
+    await expect(toggle).toHaveAttribute('data-state', 'unchecked');
+  }
+  for (const keys of run.keys ?? []) {
+    const thumb = page.getByTestId(keys.slider).getByRole('slider');
+    for (let i = 0; i < keys.times; i += 1) await thumb.press(keys.key);
   }
   const before = new Set((await documentNodes()).map((n) => n.id));
   await page.getByTestId('mini-tool-run').click();
@@ -276,20 +298,30 @@ function jitter(url: string): number {
 
 const RUNS: Run[] = [
   { label: 'remove background', tool: 'image.remove-bg', source: 'portrait.jpg', outputs: 1 },
-  { label: 'upscale image', tool: 'image.upscale', source: 'portrait.jpg', outputs: 1 },
-  { label: 'talking head', tool: 'image.digital-human', source: 'portrait.jpg', slots: { audio: 'speech.mp3' }, prompt: 'Calm, friendly, looking at the camera', outputs: 1 },
-  { label: 'upscale video', tool: 'video.upscale', source: 'short720.mp4', outputs: 1 },
-  { label: 'interpolate', tool: 'video.interpolate', source: 'short720.mp4', outputs: 1 },
-  { label: 'extend video', tool: 'video.extend', source: 'short720.mp4', prompt: 'The pattern keeps scrolling', outputs: 1 },
-  { label: 'edit video', tool: 'video.edit', source: 'short720.mp4', prompt: 'Make the colours warmer', outputs: 1 },
+  { label: 'upscale image', tool: 'image.upscale', source: 'portrait.jpg', clicks: ['mini-tool-size-target_megapixels-2K'], outputs: 1 },
+  {
+    label: 'talking head', tool: 'image.digital-human', source: 'portrait.jpg', slots: { audio: 'speech.mp3' },
+    prompt: 'Calm, friendly, looking at the camera', clicks: ['generate-param-resolution-option-480p'], outputs: 1,
+  },
+  { label: 'upscale video', tool: 'video.upscale', source: 'low360.mp4', clicks: ['generate-param-target_resolution-option-720p'], outputs: 1 },
+  { label: 'interpolate', tool: 'video.interpolate', source: 'brief720.mp4', outputs: 1 },
+  {
+    label: 'extend video', tool: 'video.extend', source: 'brief720.mp4', prompt: 'The pattern keeps scrolling',
+    clicks: ['generate-param-resolution-option-480p'], off: ['generate-param-generate_audio-toggle'],
+    keys: [{ slider: 'generate-param-duration-slider', key: 'Home', times: 1 }], outputs: 1,
+  },
+  {
+    label: 'edit video', tool: 'video.edit', source: 'brief720.mp4', prompt: 'Make the colours warmer',
+    clicks: ['generate-param-resolution-option-480p'], off: ['generate-param-generate_audio-toggle'],
+    keys: [{ slider: 'generate-param-duration-slider', key: 'Home', times: 1 }], outputs: 1,
+  },
   { label: 'motion transfer', tool: 'video.motion', source: 'driving.mp4', slots: { character: 'portrait.jpg' }, prompt: 'A man dancing', outputs: 1 },
   { label: 'animate', tool: 'video.animate', source: 'driving.mp4', slots: { character: 'portrait.jpg' }, prompt: 'A man in a plain room', outputs: 1 },
   { label: 'separate vocals', tool: 'audio.separate', source: 'song.mp3', outputs: 2 },
-  { label: 'extend audio', tool: 'audio.extend', source: 'speech.mp3', prompt: 'Soft room tone', outputs: 1 },
   { label: 'crop video', tool: 'video.crop', source: 'short720.mp4', outputs: 1 },
   { label: 'speed', tool: 'video.speed', source: 'short720.mp4', outputs: 1 },
   { label: 'cut', tool: 'video.cut', source: 'short720.mp4', outputs: 1 },
-  { label: 'adjust', tool: 'video.adjust', source: 'short720.mp4', keys: { slider: 'mini-tool-adjust-exposure-slider', key: 'ArrowRight', times: 10 }, outputs: 1 },
+  { label: 'adjust', tool: 'video.adjust', source: 'short720.mp4', keys: [{ slider: 'mini-tool-adjust-exposure-slider', key: 'ArrowRight', times: 10 }], outputs: 1 },
   { label: 'denoise', tool: 'video.audio-denoise', source: 'short720.mp4', outputs: 1 },
   { label: 'stabilize', tool: 'video.stabilize', source: 'shaky.mp4', outputs: 1 },
   { label: 'hdr', tool: 'video.hdr', source: 'short720.mp4', outputs: 1 },
@@ -313,7 +345,10 @@ test.afterAll(async () => {
 test('every tool runs to a result, and the silent denoise fails as such @needs-model @needs-ingest @needs-ffmpeg @needs-internet', async () => {
   // The sources upload here, under this case's budget: through the local
   // ingest Worker each part crosses to R2, which outlasts a hook's budget.
-  for (const file of ['speech.mp3', 'portrait.jpg', 'driving.mp4', 'song.mp3', 'short720.mp4', 'silent.mp4', 'shaky.mp4', 'long1080.mp4']) {
+  for (const file of [
+    'speech.mp3', 'portrait.jpg', 'driving.mp4', 'song.mp3', 'short720.mp4', 'brief720.mp4', 'low360.mp4',
+    'silent.mp4', 'shaky.mp4', 'long1080.mp4',
+  ]) {
     sources.set(file, await upload(file));
   }
   await page.getByRole('button', { name: 'Fit to viewport' }).click();

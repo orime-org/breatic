@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 
 // A node's upload hears its ending from the page's status list; these tests stop at the send.
 vi.mock('@web/data/upload/upload-status', () => ({ waitForUploadEnding: () => new Promise(() => undefined) }));
 
-import { isUploadableMediaType } from '@breatic/shared';
+import { isUploadableMediaType, uploadableSpellings } from '@breatic/shared';
 
 import {
   isReportableAssetUrl,
@@ -24,6 +24,17 @@ import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';
 
 describe('uploadAcceptFor — what the picker offers', () => {
+  it('offers every supported media type and alias when selecting all media', () => {
+    const offered = uploadAcceptFor('all').split(',');
+    expect([...offered].sort()).toEqual([...uploadableSpellings()].sort());
+    expect(offered).not.toContain('image/*');
+    expect(offered).not.toContain('video/*');
+    expect(offered).not.toContain('audio/*');
+    for (const type of offered) {
+      expect(checkFileAdmission({ type, size: 10 }, 100)).toBeNull();
+    }
+  });
+
   // The picker and the admission gate answer the same question, so a type the
   // picker shows and the gate refuses is an offer we withdraw the moment it is
   // taken. Derived from the one list rather than typed out beside it.
@@ -239,7 +250,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     const deps = makeDeps({ tag: { source: 'mini_tool', toolName: 'image-rotate' } });
     await fillNodeFromFile('n1', new File(['x'], 'p.png', { type: 'image/png' }), 'image', 'p1', deps);
     expect(deps.requestTicket).toHaveBeenCalledWith(
-      expect.objectContaining({ source: 'mini_tool', toolName: 'image-rotate', nodeId: 'n1' }),
+      expect.objectContaining({ source: 'mini_tool', toolName: 'image-rotate', nodeId: 'n1' }), undefined,
     );
   });
 

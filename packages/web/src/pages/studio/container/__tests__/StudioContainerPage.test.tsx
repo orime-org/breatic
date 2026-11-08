@@ -1,5 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
+
+import type * as ProjectsApiModule from '@web/data/api/projects';
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -22,14 +24,14 @@ vi.mock('@web/data/api/studios', () => ({
 }));
 vi.mock('@web/data/api/credits', () => ({
   fetchStudioCredits: vi.fn().mockResolvedValue({
-    spendable: 4910,
+    spendable: '4910.000000',
     lots: [],
     ledger: { items: [], nextCursor: null },
   }),
 }));
 
 vi.mock('@web/data/api/projects', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@web/data/api/projects')>()),
+  ...(await importOriginal<typeof ProjectsApiModule>()),
   projectsApi: { create: vi.fn() },
 }));
 import { studiosApi } from '@web/data/api/studios';
@@ -273,7 +275,7 @@ describe('StudioContainerPage', () => {
     await screen.findByText('Real Studio Project');
     await user.click(screen.getByRole('button', { name: 'New project' }));
     await user.type(screen.getByLabelText('Name'), 'Fresh');
-    // The slug follows the name until the reader writes their own.
+    // The slug follows the name until the user writes their own.
     await user.clear(screen.getByLabelText(/^Slug/));
     await user.type(screen.getByLabelText(/^Slug/), 'fresh-proj');
     await user.click(screen.getByRole('button', { name: 'Create' }));
@@ -407,7 +409,7 @@ describe('StudioContainerPage', () => {
 
   it('puts the section the address names ON the page, not just in the strip', async () => {
     // The strip and the panel are two halves and only the second one is what
-    // the reader came for. Asserting the strip alone let the whole Settings
+    // the user came for. Asserting the strip alone let the whole Settings
     // panel be deleted with every test still green — /studio/{slug}/settings
     // and the account menu would both land on a page with no avatar editor and
     // no slug editor, and nothing would have said so.

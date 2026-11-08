@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect } from 'vitest';
 
@@ -26,7 +26,7 @@ const reading = (over: Partial<Parameters<typeof readScroll>[0]>): Parameters<ty
 describe('the two tolerances', () => {
   it('gives the end the room a column under browser zoom needs', () => {
     // "Is the column flush with its end." The sweep behind this number lives
-    // in scroll-reading.ts, next to the constant. A reader who scrolls back
+    // in scroll-reading.ts, next to the constant. A user who scrolls back
     // down to the end has to be recognised as having done so, or the column
     // stays theirs forever and the way back never goes away.
     expect(AT_END_EPSILON_PX).toBe(4);
@@ -34,9 +34,9 @@ describe('the two tolerances', () => {
 
   it('keeps the write tolerance at the fraction of a pixel it exists for', () => {
     // "Was this position ours." Only the fraction a write comes back off by,
-    // and it has to stay well under the smallest move a reader can make: a
+    // and it has to stay well under the smallest move a user can make: a
     // two-pixel turn of the wheel, measured on a real turn, has to read as the
-    // reader rather than as our own write coming home.
+    // user rather than as our own write coming home.
     expect(OWN_WRITE_EPSILON_PX).toBe(1);
   });
 });
@@ -55,22 +55,22 @@ describe('readScroll', () => {
       ).toBeNull();
     });
 
-    it('hears a reader whose nudge is smaller than the room the end gets', () => {
+    it('hears a user whose nudge is smaller than the room the end gets', () => {
       // The end's tolerance is several pixels wide, and a wheel's smallest
       // nudge fits inside it. Reading a position by that tolerance would take
-      // this reader's three pixels for our own write coming home and leave the
+      // this user's three pixels for our own write coming home and leave the
       // column following while they meant to stop it.
       //
-      expect(readScroll(reading({ top: 1497, lastTop: 1500, written: 1500 }))).toBe('readerMovedUp');
+      expect(readScroll(reading({ top: 1497, lastTop: 1500, written: 1500 }))).toBe('userMovedUp');
     });
 
-    it('hears a reader who moved in the same frame we wrote', () => {
+    it('hears a user who moved in the same frame we wrote', () => {
       // Measured mid-turn (probe reading 8): the column was written to 5220 and
       // the single scroll event for that frame reported 5000, the wheel having
       // landed after the write.
       expect(
         readScroll({ top: 5000, lastTop: 5180, end: 5260, lastEnd: 5220, written: 5220 }),
-      ).toBe('readerMovedUp');
+      ).toBe('userMovedUp');
     });
 
     it('says nothing about probe reading 7, where a clamp came to rest far from the end', () => {
@@ -104,67 +104,67 @@ describe('readScroll', () => {
     });
 
     it('says nothing about an anchored column when content above it got shorter', () => {
-      // Scroll anchoring holds the row a reader is looking at still while
+      // Scroll anchoring holds the row a user is looking at still while
       // heights change above it, which moves the column without anyone
       // touching it. Unlike a clamp it does not come to rest on the end, so a
-      // reading that asked where it landed took this for the reader and ended
+      // reading that asked where it landed took this for the user and ended
       // the journey to the newest message half way.
       expect(
         readScroll({ top: 1200, lastTop: 1500, end: 1700, lastEnd: 2000, written: undefined }),
       ).toBeNull();
     });
 
-    it('takes the smallest nudge a reader can make while the end holds still', () => {
+    it('takes the smallest nudge a user can make while the end holds still', () => {
       // Measured on a running turn: two-pixel wheel turns, fifteen of them,
       // moved the column not at all while the reply was arriving. A trackpad
       // opens a slow two-finger scroll at about this size, and the sixth
       // complaint is this exact gesture doing nothing.
       //
       // Nothing here obliges the browser to move the column: the end is where
-      // it was. So this is the reader, however small the move.
+      // it was. So this is the user, however small the move.
       expect(
         readScroll({ top: END - 2, lastTop: END, end: END, lastEnd: END, written: undefined }),
-      ).toBe('readerMovedUp');
+      ).toBe('userMovedUp');
     });
 
-    it('takes a reader who moved up while the end was growing under them', () => {
+    it('takes a user who moved up while the end was growing under them', () => {
       // Content arriving below pushes the end further away, which can never
-      // move a column upward. So this one was moved by the reader.
+      // move a column upward. So this one was moved by the user.
       expect(
         readScroll({ top: 1800, lastTop: 2060, end: END, lastEnd: 1900, written: undefined }),
-      ).toBe('readerMovedUp');
+      ).toBe('userMovedUp');
     });
   });
 
-  describe('what the reader did', () => {
+  describe('what the user did', () => {
     it('reads a move up', () => {
-      expect(readScroll(reading({ top: 1200, lastTop: END }))).toBe('readerMovedUp');
+      expect(readScroll(reading({ top: 1200, lastTop: END }))).toBe('userMovedUp');
     });
 
     it('reads a move down that stops short of the end', () => {
-      expect(readScroll(reading({ top: 1500, lastTop: 1200 }))).toBe('readerMovedDownShort');
+      expect(readScroll(reading({ top: 1500, lastTop: 1200 }))).toBe('userMovedDownShort');
     });
 
     it('reads a move down that reaches the end', () => {
-      expect(readScroll(reading({ top: END, lastTop: 1200 }))).toBe('readerMovedDownToEnd');
+      expect(readScroll(reading({ top: END, lastTop: 1200 }))).toBe('userMovedDownToEnd');
     });
 
     it('counts the epsilon as having reached the end', () => {
       expect(readScroll(reading({ top: END - AT_END_EPSILON_PX, lastTop: 1200 }))).toBe(
-        'readerMovedDownToEnd',
+        'userMovedDownToEnd',
       );
     });
 
-    it('takes a reader who reached the physical end under zoom as having reached it', () => {
+    it('takes a user who reached the physical end under zoom as having reached it', () => {
       // Two pixels is the worst a real Chromium left between a column's own
-      // end and the furthest it would scroll. The reader here did everything
+      // end and the furthest it would scroll. The user here did everything
       // they could: the column will not go down another pixel.
-      expect(readScroll(reading({ top: END - 2, lastTop: 1200 }))).toBe('readerMovedDownToEnd');
+      expect(readScroll(reading({ top: END - 2, lastTop: 1200 }))).toBe('userMovedDownToEnd');
     });
 
     it('counts one pixel past the epsilon as short of it', () => {
       expect(readScroll(reading({ top: END - AT_END_EPSILON_PX - 1, lastTop: 1200 }))).toBe(
-        'readerMovedDownShort',
+        'userMovedDownShort',
       );
     });
 

@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Container mini-tool loader (inner#888 §8, §9).
  *
  * Reads `config/mini-tools.yaml`: which container class each operation runs
- * in, how long it may run, what the precheck holds the reader to, and the
+ * in, how long it may run, what the precheck holds the user to, and the
  * published prices a run's seconds are charged at.
  */
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * One output of a generation, as it is written down (#209 + #210).
@@ -21,6 +21,11 @@ import type { StoredAsset } from "@breatic/domain";
  */
 export interface PersistedOutput {
   url?: string;
+  /**
+   * The asset the file registered as (inner#1691): a 3D Space's row holds
+   * the asset, and a billed run delivered again settles it from here.
+   */
+  asset_id?: string;
   /**
    * The text a read answered with, for a run that produces no file.
    *
@@ -54,6 +59,7 @@ export function storedAsOutput(
 ): PersistedOutput & { url: string } {
   return {
     url: stored.fileUrl,
+    asset_id: stored.assetId,
     // Absent rather than null when there is none, so a caller spreading this
     // over an output that already carries one does not blank it.
     ...(stored.coverUrl !== null && { cover_url: stored.coverUrl }),

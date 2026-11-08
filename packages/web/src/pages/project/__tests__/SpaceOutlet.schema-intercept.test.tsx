@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * 拦截的作用域：它盖住这个 project 里**每一个** document space，而画布和
@@ -16,21 +16,32 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as React from 'react';
-import { render, screen } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
+import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
+import * as Y from 'yjs';
 import {
   DOCUMENT_SCHEMA,
   DOCUMENT_SCHEMA_META_KEY,
   DOCUMENT_SCHEMA_VERSION,
+  encodeInitialSpaceContent,
 } from '@breatic/shared';
 
 import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
-import { docName, getDoc } from '@web/data/yjs/manager';
+import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
+import { SpaceConnectionContext } from '@web/data/yjs/space-connection';
+import type { SocketState } from '@web/data/yjs/use-socket';
 
 const PROJECT = 'p-intercept';
+const queryClients: QueryClient[] = [];
+const SYNCED: SocketState = {
+  provider: null, synced: true, hasEverSynced: true, status: 'connected', writeAccess: 'granted', authFailedReason: null,
+};
 
 afterEach(() => {
   // 把发布过的那份清掉，免得漏进别的用例。
-  getDoc(docName.projectMeta(PROJECT)).getMap(DOCUMENT_SCHEMA_META_KEY).clear();
+  cleanup();
+  for (const client of queryClients.splice(0)) client.clear();
+  _resetForTests();
 });
 
 /**
@@ -48,20 +59,23 @@ function publishDifferentSchema(): void {
 }
 
 /**
- * Mounts the outlet with a query client around it, the way the real app does
- * (`App.tsx` wraps everything in one).
+ * Mounts the outlet with a query client and the tooltip provider around it,
+ * the way the real app does (`App.tsx` wraps everything in both).
  *
  * Takes the element rather than its props, so every call site keeps writing
  * the props it means and this only owns the wrapper. A fresh client per mount
  * keeps one test's cached catalog out of the next one's gate — a constraint
  * that lives in one place here instead of being restated at every call.
  * @param element - The outlet to mount, with whatever props the case needs.
+ * @param connection - The Timeline tab's actual content-connection facts.
  * @returns The render result.
  */
-function renderOutlet(element: React.JSX.Element): ReturnType<typeof render> {
-  return render(
-    <QueryClientProvider client={new QueryClient()}>
-      {element}
+function renderOutlet(element: React.JSX.Element, connection?: SocketState): ReturnType<typeof renderWithTooltips> {
+  const client = new QueryClient();
+  queryClients.push(client);
+  return renderWithTooltips(
+    <QueryClientProvider client={client}>
+      {connection === undefined ? element : <SpaceConnectionContext.Provider value={connection}>{element}</SpaceConnectionContext.Provider>}
     </QueryClientProvider>,
   );
 }
@@ -114,10 +128,18 @@ describe('服务器那份跟我不一样时', () => {
 
   it('时间轴也照常', () => {
     publishDifferentSchema();
+    const doc = getDoc(docName.timelineSpace(PROJECT, 's4'));
+    Y.applyUpdate(doc, encodeInitialSpaceContent('timeline', { width: 1920, height: 1080, fps: { num: 24, den: 1 } }), 'server');
+    const before = Y.encodeStateAsUpdate(doc);
 
-    renderOutlet(<SpaceOutlet projectId={PROJECT} spaceId='s4' type='timeline' />);
+    renderOutlet(<SpaceOutlet projectId={PROJECT} spaceId='s4' type='timeline' />, SYNCED);
 
     expect(screen.getByTestId('timeline-space-empty')).toBeInTheDocument();
+    expect(screen.getByTestId('timeline-space')).toHaveAttribute('data-project-id', PROJECT);
+    expect(screen.getByTestId('timeline-space')).toHaveAttribute('data-space-id', 's4');
+    expect(screen.queryByTestId('document-schema-outdated')).toBe(null);
+    expect(screen.queryByTestId('timeline-space-loading')).toBe(null);
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
 });
 

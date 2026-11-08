@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -13,7 +13,17 @@ vi.mock('@web/data/deployment/use-app-update', () => ({ useAppUpdate: () => rele
 const stale = vi.hoisted(() => ({ value: false }));
 vi.mock('@web/data/deployment/stale-release', () => ({ useStaleRelease: () => stale.value }));
 const reloadForUpdate = vi.hoisted(() => vi.fn());
-vi.mock('@web/stores/reload-for-update', () => ({ reloadForUpdate }));
+// The real pending state, with the reload itself counted: jsdom only reports it.
+vi.mock('@web/stores/reload-for-update', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@web/stores/reload-for-update')>();
+  return {
+    ...real,
+    reloadForUpdate: (): void => {
+      reloadForUpdate();
+      real.reloadForUpdate();
+    },
+  };
+});
 
 beforeEach(() => {
   release.version = 'next';
@@ -21,6 +31,9 @@ beforeEach(() => {
   release.dismiss.mockReset();
   stale.value = false;
   reloadForUpdate.mockReset();
+  // Leave no Update pending from the test before; jsdom reports the reload it cannot do.
+  window.dispatchEvent(new Event('pointerdown'));
+  vi.spyOn(console, 'error').mockImplementation(() => undefined);
   useSpaceOperationsStore.setState({ operations: {} });
 });
 const renderNotice = (status: 'connected' | 'disconnected' | 'authFailed' = 'connected') =>
@@ -67,6 +80,19 @@ describe('Project update notice', () => {
     expect(reloadForUpdate).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('alertdialog')).toBeInTheDocument();
     expect(release.dismiss).not.toHaveBeenCalled();
+  });
+
+  // inner#1729: the page stays while the next one loads, so Update shows it is working.
+  it('spins on Update until a later press shows the page stayed', async () => {
+    const user = userEvent.setup();
+    renderNotice();
+    const update = screen.getByTestId('project-update-refresh');
+    await user.click(update);
+    expect(update).toHaveAttribute('aria-busy', 'true');
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    });
+    expect(update).not.toHaveAttribute('aria-busy');
   });
 
   it('warns about operations from every Space while keeping Update available', () => {

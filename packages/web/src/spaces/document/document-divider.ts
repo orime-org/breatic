@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The divider's name, and the `---` rule that places one.
  *
  * The rule, like the handle menu's Divider entry (`insertRowForMenu` with the
  * divider as its lead), leaves the caret on the line right under the new
- * divider, so whatever the reader types next is a line of its own (user
+ * divider, so whatever the user types next is a line of its own (user
  * 2026-09-30).
  *
  * `---` at the head of a line puts the divider ABOVE that line and leaves the
@@ -43,7 +43,7 @@ const DASHES = /^---$/;
  * divider — the dead end the probe measured (reading 1).
  *
  * The match is on the text BEFORE the caret. What follows the caret on that
- * line is the reader's line and stays it.
+ * line is the user's line and stays it.
  */
 const dividerRule = new InputRule(DASHES, (state, _match, start, end) => {
   const $start = state.doc.resolve(start);

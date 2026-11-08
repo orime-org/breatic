@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Every option in the model picker draws its vendor's mark (#2156).
  *
- * The unit test walks the catalog yaml; this one reads the picker the reader
+ * The unit test walks the catalog yaml; this one reads the picker the user
  * opens, on each of the three generation panels, through the catalog a
  * running server serves.
  *

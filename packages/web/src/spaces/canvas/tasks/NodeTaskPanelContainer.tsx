@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Mounts the open node's task list beside it (#186 §7.1).
@@ -54,7 +54,7 @@ export interface NodeTaskPanelContainerProps {
   projectId: string;
   /** Space the nodes live in, for addressing this session's retry stash. */
   spaceId: string;
-  /** Whether this reader may write; a read-only row carries no buttons. */
+  /** Whether this user may write; a read-only row carries no buttons. */
   readOnly: boolean;
   /**
    * Send one task's stashed File again as a new task. Returns the upload's
@@ -74,10 +74,10 @@ interface OpenNodeTaskPanelProps extends NodeTaskPanelContainerProps {
  * @param props - The panel inputs.
  * @param props.nodeId - The node whose tasks these are.
  * @param props.nodes - The canvas's nodes, for the host's counts and existence.
- * @param props.status - Which state the reader asked for.
+ * @param props.status - Which state the user asked for.
  * @param props.projectId - Project the node belongs to.
  * @param props.spaceId - Space the node lives in.
- * @param props.readOnly - Whether this reader may write.
+ * @param props.readOnly - Whether this user may write.
  * @param props.onRetry - Send one task's stashed File again.
  * @returns The anchored panel, or null once its host node is gone.
  */
@@ -136,7 +136,7 @@ function OpenNodeTaskPanel({
     queryKey,
     queryFn: () => canvasApi.listNodeTasks(nodeId, projectId, spaceId),
     // The key is the counts themselves, and those come back around: a task
-    // finishes, the reader clears it, and the next upload puts the node back
+    // finishes, the user clears it, and the next upload puts the node back
     // where it began. Cached, that repeat would show the task that was cleared
     // — running, counting up, with no button to get rid of it — and the read
     // that harvests (§4.6) would never reach the server.
@@ -168,7 +168,7 @@ function OpenNodeTaskPanel({
   const reload = React.useCallback((): void => {
     void query.refetch();
   }, [query]);
-  // A late result lives in the node's history only; the reader restores it
+  // A late result lives in the node's history only; the user restores it
   // from there (inner#888 §7.7).
   const view = React.useCallback(
     (taskId: string): void => {
@@ -189,7 +189,7 @@ function OpenNodeTaskPanel({
     [onRetry, nodeId, projectId, spaceId],
   );
   // Finish and Clear are the same request (§7.4). The row leaves this list as
-  // soon as the server takes it — the list is this reader's own fetch, not the
+  // soon as the server takes it — the list is this user's own fetch, not the
   // shared document. The node's counts wait for the event that follows.
   const dismiss = React.useCallback(
     (taskId: string): void => {
@@ -261,7 +261,7 @@ function OpenNodeTaskPanel({
  * @param props - The panel inputs.
  * @param props.projectId - Project the nodes belong to.
  * @param props.spaceId - Space the nodes live in.
- * @param props.readOnly - Whether this reader may write.
+ * @param props.readOnly - Whether this user may write.
  * @param props.onRetry - Send one task's stashed File again.
  * @returns The open task list, or null when another panel or none is open.
  */

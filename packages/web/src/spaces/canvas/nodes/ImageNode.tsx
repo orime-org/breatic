@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 
@@ -9,6 +9,7 @@ import { cn } from '@web/lib/utils';
 import { usePreviewSrc } from '@web/lib/preview-src';
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
+import { useMediaFullscreen } from '@web/spaces/canvas/nodes/_shared/use-media-fullscreen';
 import { NodeMediaInset } from '@web/spaces/canvas/nodes/_shared/NodeMediaInset';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
 import { useZoomedPastPreview } from '@web/spaces/canvas/nodes/_shared/preview-zoom';
@@ -44,6 +45,7 @@ export const ImageNode = React.memo(function ImageNode({
   onRename,
 }: ImageNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.content);
+  const fullscreen = useMediaFullscreen({ name: data.name ?? '', currentSrc: data.content });
   const { resolution, setResolution } = useNodeResolution(data.content, data.width, data.height);
   // A rotate & flip panel open on this node previews its result on the
   // picture itself (inner#888 §7.4); nothing is written until Run.
@@ -96,7 +98,15 @@ export const ImageNode = React.memo(function ImageNode({
           <NodePlaceholder modality='image' onActivate={onActivate} />
         }
         content={
-          <NodeMediaInset>
+          <NodeMediaInset
+            onFullscreen={() =>
+              fullscreen.open({
+                kind: 'image',
+                src: data.content ?? '',
+                size: knowsSize ? { width: data.width!, height: data.height! } : undefined,
+              })
+            }
+          >
             <div
               className='relative transition-transform duration-200'
               style={preview === undefined ? undefined : { transform: preview }}
@@ -164,6 +174,7 @@ export const ImageNode = React.memo(function ImageNode({
                 />
               ) : null}
             </div>
+            {fullscreen.layer}
           </NodeMediaInset>
         }
       />

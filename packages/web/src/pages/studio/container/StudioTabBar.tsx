@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type * as React from 'react';
 import { Link } from 'react-router-dom';
@@ -50,7 +50,7 @@ const LINK_BASE =
 
 /**
  * The studio container's section strip (spec §2.2) — each section a link to
- * its own address. Which ones are on offer depends on the reader: Credits is
+ * its own address. Which ones are on offer depends on the user: Credits is
  * the studio admin's alone, so everyone else sees five.
  *
  * LINKS, NOT A TABLIST, and the difference is not cosmetic. The ARIA tabs
@@ -100,7 +100,7 @@ export function StudioTabBar({
           <Link
             key={tab.key}
             to={studioTabPath(slug, tab.key)}
-            // `aria-current` rather than a selected state: the reader is not
+            // `aria-current` rather than a selected state: the user is not
             // choosing among options, they are somewhere, and this says where.
             aria-current={isCurrent ? 'page' : undefined}
             // `cn` and not a template literal. Both halves of each pair are

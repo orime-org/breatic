@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { validFocusImages } from '@web/data/focus-images';
 import {
@@ -17,7 +17,6 @@ import {
   type UploadFailure,
 } from '@web/data/upload/media-upload';
 import { allSlotSpecs, readSlotPicks } from '@web/spaces/canvas/generate/slots';
-import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
 import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
 import { useUploadMarksStore, type UploadMarkMessage } from '@web/stores/upload-marks';
 
@@ -27,7 +26,8 @@ import { useUploadMarksStore, type UploadMarkMessage } from '@web/stores/upload-
  * file's MIME type to the canvas node it becomes. Media files (image / audio / video)
  * become a media node whose content the server writes through Yjs; every
  * non-media file becomes a text node whose content is read or extracted
- * locally (see `text-extract`), so no file is ever rejected.
+ * locally (see `text-extract`). Admission is checked separately by
+ * `checkFileAdmission`.
  */
 
 /** How an uploaded file maps onto the canvas. */
@@ -70,15 +70,15 @@ export type FileRejection = 'empty' | 'tooLarge' | 'unsupportedType';
  * Derived from the same list the admission gate asks, aliases and all: the
  * picker and the gate answer the same question, so a format shown here and
  * refused there is an offer withdrawn the moment somebody takes it, and one the
- * gate takes but the picker omits is a file the reader cannot select. A family
+ * gate takes but the picker omits is a file the user cannot select. A family
  * wildcard does the first — `image/*` shows HEIC, GIF and AVIF, none of which a
  * model can be given.
- * @param modality - Which kind of node is being filled.
+ * @param modality - One media kind, or all supported media.
  * @returns A comma-separated `accept` value.
  */
-export function uploadAcceptFor(modality: 'image' | 'video' | 'audio'): string {
+export function uploadAcceptFor(modality: 'image' | 'video' | 'audio' | 'all'): string {
   return uploadableSpellings()
-    .filter((type) => type.startsWith(`${modality}/`))
+    .filter((type) => modality === 'all' || type.startsWith(`${modality}/`))
     .join(',');
 }
 
@@ -164,7 +164,7 @@ export interface FillNodeDeps {
    * row and is said on the node itself (inner#1303 §6.7).
    *
    * Every reason needs something only the caller can do — pick or clear the
-   * Retry stash, and say the remedy in the reader's own language — and what
+   * Retry stash, and say the remedy in the user's own language — and what
    * each one needs differs: a hashing refusal must not be stashed (retrying on
    * this page hits the same broken worker) and a full account must not be
    * either (nobody frees storage in the seconds a retry takes), while an
@@ -190,7 +190,7 @@ export interface FillNodeDeps {
   /** The space the node lives in, which rides the ticket and keys its mark. */
   spaceId: string;
   /**
-   * The upload mark the caller began on the node when the reader asked for
+   * The upload mark the caller began on the node when the user asked for
    * this fill (inner#1303 §6.7); this fill ends it.
    */
   markOp: string;
@@ -388,7 +388,7 @@ export interface AssetNodeLike {
 function slotUrls(data: unknown): string[] {
   const bag = data as Record<string, unknown> | undefined;
   const urls: string[] = [];
-  for (const spec of allSlotSpecs() as SlotSpec[]) {
+  for (const spec of allSlotSpecs()) {
     for (const pick of readSlotPicks(spec, bag?.[spec.field])) {
       urls.push(pick.url);
       if (pick.thumbnail && pick.thumbnail !== pick.url) urls.push(pick.thumbnail);

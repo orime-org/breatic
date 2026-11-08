@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Taking the user's prompt out of a task's params (#1966).
@@ -81,6 +81,13 @@ export function takePromptAndValidate(
   validateParams: ValidateParams,
 ): [string, string, Record<string, unknown>] {
   const [prompt, promptless] = takePromptOutOfParams(params);
+  // A 3D generation's negative prompt is typed beside its prompt (inner#1691)
+  // and stays in the bag, since the vendor reads it as a declared param.
+  // Cleaned BEFORE validation, unlike the lyrics below: its length bound is
+  // judged on the text that is sent.
+  if (typeof promptless.negative_prompt === "string") {
+    promptless.negative_prompt = extractPromptText(promptless.negative_prompt);
+  }
   const [resolvedModel, validated] = validateParams(model, promptless);
   // The lyrics are the second thing a user types into a rich-text editor on
   // the way to a provider (#1960), and the mandate that every AIGC prompt is

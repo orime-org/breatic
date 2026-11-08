@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -148,6 +148,12 @@ const REMOVED_DEAD_KEYS: readonly string[] = [
   'spaces.readonly.document.title',
   'spaces.readonly.timeline.title',
   'spaces.readonly.timeline.description',
+  // The 3D generation dialog replaced its placeholder, whose disabled prompt
+  // and reference picker read these (inner#1691).
+  'spaces.threeD.generationDev',
+  'spaces.threeD.prompt',
+  'spaces.threeD.reference',
+  'spaces.threeD.chooseReference',
 ];
 
 describe('frozen product terms (#1336)', () => {

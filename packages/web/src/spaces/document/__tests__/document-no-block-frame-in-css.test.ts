@@ -1,19 +1,19 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * This Space draws no frame around a node-selected block (user 2026-09-18).
  *
  * The frame was added 2026-08-16 for A5 of the selection design, because
  * Cmd-clicking a block node-selected it and nothing showed. That gesture was
- * removed on 2026-09-18 (A11.3), so nothing a reader does makes a selection
+ * removed on 2026-09-18 (A11.3), so nothing a user does makes a selection
  * for it to draw. What was left were the selections the machinery makes for
  * its own reasons — the one `blockDragStart` puts on a row it carries, and the
  * one ProseMirror falls back to when a modifier-click LANDS ON A LINK in a
  * read-only body (this Space declines those presses so BlockNote's link
  * handler can take them, and that handler declines in turn while the body is
  * not editable — `clickHandler.ts:26-28` — leaving nobody to answer) — and
- * both of those painted a frame around a block the reader never selected. The
+ * both of those painted a frame around a block the user never selected. The
  * display logic is gone rather than each path being chased.
  *
  * A STYLESHEET ASSERTION, because the path the remaining rules answer cannot

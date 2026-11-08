@@ -1,13 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The questionnaire the agent puts to the reader, and the answer that comes
+ * The questionnaire the agent puts to the user, and the answer that comes
  * back.
  *
  * Shared because three places read one shape: the tool that takes the model's
  * call, the card that draws it in the browser, and the route that takes the
- * reader's answer and checks it against the questions it answers.
+ * user's answer and checks it against the questions it answers.
  */
 import { z } from "zod";
 
@@ -20,7 +20,7 @@ import { z } from "zod";
 const ONE_LINE = /^[^\n\r\u2028\u2029]+$/;
 
 /**
- * One line of what the reader will read: not blank, and one line.
+ * One line of what the user will read: not blank, and one line.
  * @param max - How many characters this line may run to.
  * @returns A schema accepting one such line no longer than that.
  */
@@ -32,7 +32,7 @@ const ASK_USER_MAX_QUESTIONS = 4;
 /** How many options one question offers. */
 const ASK_USER_MAX_OPTIONS = 5;
 
-/** How long the reader's own words on one question's "Other" line may be. */
+/** How long the user's own words on one question's "Other" line may be. */
 export const ASK_USER_OTHER_MAX_CHARS = 500;
 
 /** A picture, a sound or a clip shown on an option. */
@@ -60,12 +60,12 @@ export const askUserQuestionSchema = z
   .object({
     header: line(12).describe("A short label for the question, up to 12 characters, shown after the number the card gives it; no number of its own"),
     question: line(200).describe("The question, in one line, with no number: the card numbers it"),
-    multiSelect: z.boolean().default(false).describe("Whether the reader may pick more than one option"),
+    multiSelect: z.boolean().default(false).describe("Whether the user may pick more than one option"),
     options: z
       .array(askUserOptionSchema)
       .max(ASK_USER_MAX_OPTIONS)
       .default([])
-      .describe("Up to five options; none makes it an open question answered in the reader's own words"),
+      .describe("Up to five options; none makes it an open question answered in the user's own words"),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -111,19 +111,19 @@ export type AskUserInput = z.infer<typeof askUserInputSchema>;
 /** One question, as it is stored and drawn. */
 export type AskUserQuestion = AskUserInput["questions"][number];
 
-/** The reader's answer to one question. */
+/** The user's answer to one question. */
 export const askUserAnswerItemSchema = z
   .object({
     /** Which question, counting from zero in the order they were asked. */
     index: z.number().int().min(0).max(ASK_USER_MAX_QUESTIONS - 1),
     /** The labels of the options picked. */
     selected: z.array(z.string()).max(ASK_USER_MAX_OPTIONS),
-    /** What the reader wrote on the question's "Other" line. */
+    /** What the user wrote on the question's "Other" line. */
     other: z.string().trim().min(1).max(ASK_USER_OTHER_MAX_CHARS).optional(),
   })
   .strict();
 
-/** The reader's answers to one card, as the browser sends them. */
+/** The user's answers to one card, as the browser sends them. */
 export const askUserAnswerSchema = z
   .object({
     toolCallId: z.string().min(1).max(200),
@@ -131,12 +131,12 @@ export const askUserAnswerSchema = z
   })
   .strict();
 
-/** The reader's answers to one card. */
+/** The user's answers to one card. */
 export type AskUserAnswer = z.infer<typeof askUserAnswerSchema>;
 
 /**
  * What a questionnaire call ends with: the answers given on the card, or word
- * that the reader wrote a message instead.
+ * that the user wrote a message instead.
  */
 export type AskUserResult =
   | { answers: AskUserAnswer["answers"] }
@@ -150,7 +150,7 @@ export type AskUserResult =
  * picks only options that question offers, picks one at most where only one
  * may be picked, and that at least one question is answered.
  * @param questions - The questions as they were asked.
- * @param answers - What the reader sent.
+ * @param answers - What the user sent.
  * @returns Why the answers do not fit, or null when they do.
  */
 export function answersMismatch(

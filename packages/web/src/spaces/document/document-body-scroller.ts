@@ -1,15 +1,19 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The class that names the body's scroll container.
  *
- * One definition because three different kinds of code depend on it: the
- * stylesheet paints the scrollbar through it and hangs the entry's layout
- * variables on it (`--doc-entry-*`, `--doc-body-gutter`), and
- * `SelectionBubbleBar` walks up from the scroller to find the viewport it
- * portals itself into. Left as a literal in those places, renaming it while
- * restyling the scrollbar would put the bar at the end of the body and leave
- * the entry with no sizes at all.
+ * One definition because the stylesheet and the tests both reach the body
+ * through it: `index.css` stretches the wrapper around the body to fill the
+ * scroller (`:has(.doc-body-editor)`), and tests find the body's viewport by
+ * it, apart from the heading outline's own scroller beside it.
  */
 export const BODY_SCROLLER_CLASS = 'doc-body-scroller';
+
+/**
+ * The class on the row that holds the scroller and the heading outline beside
+ * it, where the whole-document entry's layout variables are set
+ * (`BODY_ROW_VARS`, `document-columns.ts`).
+ */
+export const BODY_ROW_CLASS = 'doc-body-row';

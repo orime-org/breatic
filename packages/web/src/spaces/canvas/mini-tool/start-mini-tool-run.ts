@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * One press of a mini-tool's Run, from the snapshot to the request or upload
  * (inner#888 §7.5), on the pattern of Understand: the result nodes and their
  * edges are written before anything is asked of the server, because they are
- * the reader's content; what the run does then lands on their task rows.
+ * the user's content; what the run does then lands on their task rows.
  */
 
 import { newId, t } from '@breatic/shared';
@@ -46,7 +46,7 @@ import { useUploadMarksStore, type UploadMarkMessage } from '@web/stores/upload-
 /** The node a tool reads, as the canvas holds it. */
 export interface MiniToolSourceNode {
   id: string;
-  /** What the reader calls it; the result nodes are named after it. */
+  /** What the user calls it; the result nodes are named after it. */
   name: string | undefined;
   /** Its stored position, group-relative when it sits in one. */
   position: { x: number; y: number };
@@ -58,7 +58,7 @@ export interface MiniToolSourceNode {
 }
 
 /**
- * What the reader made on the node, copied out at the press (inner#1303 §5):
+ * What the user made on the node, copied out at the press (inner#1303 §5):
  * a drawing tool's strokes, an expand tool's frame with the source's pixel
  * size it was measured against, or markup's objects.
  */
@@ -113,7 +113,7 @@ export interface MiniToolRun {
   fillUpload: (nodeId: string, file: File, modality: CreatableNodeType, tag: MiniToolUploadTag, markOp: string) => void;
   /** Upload a browser tool's files into their nodes in one batch, tagged with the tool, each carrying on its node's operation. */
   fillUploads: (entries: { nodeId: string; file: File; markOp: string }[], tag: MiniToolUploadTag) => void;
-  /** What the reader made on the node, copied out at the press. */
+  /** What the user made on the node, copied out at the press. */
   capture?: MiniToolCapture | undefined;
   /** Make a drawing tool's images from the source and the drawing. */
   exportDrawing: (url: string, kind: DrawingKind, ops: readonly DrawOp[]) => Promise<DrawingExport>;
@@ -357,7 +357,7 @@ type Settle = (message?: UploadMarkMessage) => void;
 
 /**
  * What a refused or unreached request says on the nodes: the server's
- * sentence when it gave one, already in the reader's language; a request
+ * sentence when it gave one, already in the user's language; a request
  * refused as too large by a proxy with no sentence of ours says why
  * (inner#1006); a request that never arrived has none.
  * @param err - What the send rejected with.

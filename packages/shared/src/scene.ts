@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { z } from 'zod';
 
@@ -25,15 +25,17 @@ export const SceneModelSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('asset'), assetId: z.string().uuid() }).strict(),
 ]);
 
+/** The longest name a scene object holds. */
+export const SCENE_OBJECT_NAME_MAX = 256;
+
 /** Plain scene values shared by the collaboration projection and renderer. */
 export const SceneObjectValuesSchema = z.object({
-  name: z.string().trim().min(1).max(256),
+  name: z.string().trim().min(1).max(SCENE_OBJECT_NAME_MAX),
   model: SceneModelSchema,
   position: SceneVectorSchema,
   rotation: SceneRotationSchema,
   scale: SceneScaleSchema,
   locked: z.boolean(),
-  exists: z.boolean(),
 }).strict();
 
 /** A projected object combines its stable document key with plain values. */
@@ -45,6 +47,35 @@ export type SceneModel = z.infer<typeof SceneModelSchema>;
 export type SceneObjectValues = z.infer<typeof SceneObjectValuesSchema>;
 export type SceneObject = z.infer<typeof SceneObjectSchema>;
 
-/** The existing arrays created together with every stable object record. */
-export const SCENE_EDITABLE_FIELDS = ['name', 'position', 'rotation', 'scale', 'locked', 'exists'] as const;
-export type SceneEditableField = typeof SCENE_EDITABLE_FIELDS[number];
+/** Record keys that commands overwrite after creation; `model` is fixed at creation. */
+export type SceneEditableField = Exclude<keyof SceneObjectValues, 'model'>;
+
+/** Configured import budgets carried by the readable Project API. */
+export interface SceneImportLimits {
+  maxInputBytes: number;
+  maxExpandedBytes: number;
+  maxArtifactBytes: number;
+  maxFiles: number;
+  maxEntryJsonBytes: number;
+  decoderWorkerLimit: number;
+  maxTextureEdge: number;
+  maxTextureBytes: number;
+}
+
+/** Configured scene controls and import budgets, served through the readable Project API. */
+export interface SceneControlsConfig {
+  scaleSensitivity: number;
+  import: SceneImportLimits;
+  /** Shortest gap between two upload-progress updates shared with the Space's members. */
+  progressPublishMs: number;
+}
+
+/**
+ * Identify the registered containers that carry a complete scene model.
+ * @param value - A reduced MIME essence from an upload or the asset ledger.
+ * @returns Whether the container is a GLB or a versioned model ZIP.
+ * @throws {never} Never.
+ */
+export function isSceneModelMediaType(value: string): boolean {
+  return value === 'model/gltf-binary' || value === 'application/zip';
+}

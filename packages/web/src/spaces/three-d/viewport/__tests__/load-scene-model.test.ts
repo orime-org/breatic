@@ -1,11 +1,15 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { httpRequest } from '@breatic/shared';
+import type * as SharedModule from '@breatic/shared';
+import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import { disposeModelTemplate, loadSceneModel } from '@web/spaces/three-d/viewport/model-resources';
 
-vi.mock('@breatic/shared', () => ({ httpRequest: vi.fn() }));
+vi.mock('@breatic/shared', async (importOriginal) => ({ ...await importOriginal<typeof SharedModule>(), httpRequest: vi.fn() }));
+// jsdom never decodes the format probe images; the browser under test decodes WebP and AVIF.
+vi.mock('@web/spaces/three-d/model-texture-format', () => ({ detectTextureFormatSupport: vi.fn(async () => ({ webp: true, avif: true })) }));
 
 /** Encode the glTF 2 binary container around a real minimal scene.
  * @throws {never} Never.
@@ -31,9 +35,9 @@ describe('registered GLB placement transport (inner#1689)', () => {
 
   it('resolves an asset id, uses shared HTTP and parses with the installed GLTFLoader', async () => {
     vi.mocked(httpRequest).mockResolvedValue(new Response(glb()));
-    const resolve = vi.fn().mockResolvedValue({ url: 'https://assets.example/model.glb', mimeType: 'model/gltf-binary' });
+    const resolve = vi.fn().mockResolvedValue({ url: 'https://assets.example/model.glb', mimeType: 'model/gltf-binary', sizeBytes: glb().byteLength });
     const signal = new AbortController().signal;
-    const root = await loadSceneModel({ kind: 'asset', assetId: 'registered' }, signal, resolve, '#888888');
+    const root = await loadSceneModel({ kind: 'asset', assetId: 'registered' }, signal, resolve, '#888888', IMPORT_LIMITS);
     expect(resolve).toHaveBeenCalledWith('registered', signal);
     expect(httpRequest).toHaveBeenCalledWith('https://assets.example/model.glb', { method: 'GET' }, { replaySafe: true, signal });
     expect(root.children.map((child) => child.name)).toEqual(['registered-model']);
@@ -44,25 +48,25 @@ describe('registered GLB placement transport (inner#1689)', () => {
     const abort = new AbortController();
     const resolve = vi.fn().mockImplementation(async () => {
       abort.abort();
-      return { url: 'https://assets.example/model.glb', mimeType: 'model/gltf-binary' };
+      return { url: 'https://assets.example/model.glb', mimeType: 'model/gltf-binary', sizeBytes: glb().byteLength };
     });
-    await expect(loadSceneModel({ kind: 'asset', assetId: 'registered' }, abort.signal, resolve, '#888888')).rejects.toMatchObject({ name: 'AbortError' });
+    await expect(loadSceneModel({ kind: 'asset', assetId: 'registered' }, abort.signal, resolve, '#888888', IMPORT_LIMITS)).rejects.toMatchObject({ name: 'AbortError' });
     expect(httpRequest).toHaveBeenCalledTimes(0);
   });
 
   it('rejects unsupported types before transfer and malformed binary containers before parsing', async () => {
     const signal = new AbortController().signal;
-    const resolve = vi.fn().mockResolvedValue({ url: 'https://assets.example/model.glb', mimeType: 'model/gltf+json' });
-    await expect(loadSceneModel({ kind: 'asset', assetId: 'registered' }, signal, resolve, '#888888')).rejects.toThrow('unsupported model type');
+    const resolve = vi.fn().mockResolvedValue({ url: 'https://assets.example/model.glb', mimeType: 'model/gltf+json', sizeBytes: glb().byteLength });
+    await expect(loadSceneModel({ kind: 'asset', assetId: 'registered' }, signal, resolve, '#888888', IMPORT_LIMITS)).rejects.toThrow('unsupported model type');
     expect(httpRequest).toHaveBeenCalledTimes(0);
-    resolve.mockResolvedValue({ url: 'https://assets.example/model.glb', mimeType: 'model/gltf-binary' });
+    resolve.mockResolvedValue({ url: 'https://assets.example/model.glb', mimeType: 'model/gltf-binary', sizeBytes: glb().byteLength });
     vi.mocked(httpRequest).mockResolvedValue(new Response(new Uint8Array([1, 2, 3, 4])));
-    await expect(loadSceneModel({ kind: 'asset', assetId: 'registered' }, signal, resolve, '#888888')).rejects.toThrow('not a binary glTF');
+    await expect(loadSceneModel({ kind: 'asset', assetId: 'registered' }, signal, resolve, '#888888', IMPORT_LIMITS)).rejects.toThrow('not a binary glTF');
   });
 
   it('builds the project-owned sources without accessing a remote asset', async () => {
     const resolve = vi.fn();
-    const root = await loadSceneModel({ kind: 'builtin', id: 'figure' }, new AbortController().signal, resolve, '#888888');
+    const root = await loadSceneModel({ kind: 'builtin', id: 'figure' }, new AbortController().signal, resolve, '#888888', IMPORT_LIMITS);
     expect(root.children).toHaveLength(9);
     expect(resolve).toHaveBeenCalledTimes(0);
     expect(httpRequest).toHaveBeenCalledTimes(0);

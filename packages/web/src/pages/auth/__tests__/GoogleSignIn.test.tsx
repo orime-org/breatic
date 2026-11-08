@@ -1,11 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { ReactElement } from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Sentry from '@sentry/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
 import LoginPage from '../LoginPage';
 import type * as AuthModule from '@web/data/api/auth';
 import { authApi } from '@web/data/api/auth';
@@ -19,8 +21,21 @@ vi.mock('@web/data/api/auth', async (original) => ({
   authApi: { google: vi.fn(), login: vi.fn() },
 }));
 
+/**
+ * Provides the query client with the deployment options already read, so the
+ * page renders in its final state: payments off, no referral row.
+ * @param props - The children.
+ * @param props.children - The page under test.
+ * @returns The wrapped page.
+ */
+function QueryWrapper({ children }: { children: ReactNode }): ReactElement {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(['auth', 'options'], { emailVerification: false, referralEnabled: false });
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+}
+
 function setup() {
-  const view = render(<MemoryRouter><LoginPage /></MemoryRouter>);
+  const view = render(<MemoryRouter><LoginPage /></MemoryRouter>, { wrapper: QueryWrapper });
   const script = document.querySelector('script[src^="https://accounts.google.com/gsi/client"]');
   expect(script).not.toBeNull();
   act(() => { script?.dispatchEvent(new Event('load')); });
@@ -52,7 +67,7 @@ describe('official Google login', () => {
     const error = new TypeError('undefined is not an object (evaluating \'a.contentType\')');
     sdk.renderButton.mockImplementationOnce(() => { throw error; });
     vi.mocked(authApi.login).mockRejectedValue(new Error('Synthetic login rejection'));
-    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    render(<MemoryRouter><LoginPage /></MemoryRouter>, { wrapper: QueryWrapper });
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'test@example.invalid' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'test-password' } });
     fireEvent.load(document.querySelector('script[src^="https://accounts.google.com/gsi/client"]')!);
@@ -120,7 +135,7 @@ describe('official Google login', () => {
   });
 
   it('shows a script error while leaving email sign-in usable', () => {
-    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    render(<MemoryRouter><LoginPage /></MemoryRouter>, { wrapper: QueryWrapper });
     fireEvent.error(document.querySelector('script[src^="https://accounts.google.com/gsi/client"]')!);
     expect(screen.getByRole('alert')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled();
@@ -138,7 +153,7 @@ describe('official Google login', () => {
 
   it('does not load Google when no client ID is configured', () => {
     vi.stubGlobal('__GOOGLE_CLIENT_ID__', '');
-    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    render(<MemoryRouter><LoginPage /></MemoryRouter>, { wrapper: QueryWrapper });
     expect(document.querySelector('script[src^="https://accounts.google.com/gsi/client"]')).toBeNull();
     expect(sdk.renderButton).not.toHaveBeenCalled();
   });
@@ -182,6 +197,7 @@ describe('Google invitation destination', () => {
           <Route path='/studio' element={<GoogleDestinationProbe />} />
         </Routes>
       </MemoryRouter>,
+      { wrapper: QueryWrapper },
     );
     const script = document.querySelector('script[src^="https://accounts.google.com/gsi/client"]');
     if (!script) throw new Error('The Google sign-in script was not mounted.');

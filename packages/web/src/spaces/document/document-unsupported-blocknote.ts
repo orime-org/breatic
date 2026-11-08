@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Stand-ins for vocabulary this build does not know.
@@ -225,7 +225,7 @@ const LABELLED = new Set([UNSUPPORTED_BLOCK, UNSUPPORTED_INLINE]);
  * The label decorations for every stand-in in the document.
  *
  * A stand-in holds nothing this build can draw, so without a label it renders
- * as an empty box and the reader has no way to know something is there.
+ * as an empty box and the user has no way to know something is there.
  *
  * The text travels as a `data-label` DECORATION painted by index.css through
  * `content: attr(data-label)`, rather than as text baked into `renderHTML`.

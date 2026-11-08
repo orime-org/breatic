@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The Agent's comment, rewrite and insert for a document land when the reader
+ * The Agent's comment, rewrite and insert for a document land when the user
  * presses their card (inner#1509).
  *
  * The chat answer is served here, so no model is involved. It is built from
@@ -177,9 +177,9 @@ test('a comment lands on the quoted words, marked as from the Agent', async () =
   await answerWith(onSecondBlock({ kind: 'comment', quote: 'her bags packed', body: 'Why is she leaving?' }));
 
   const card = await askForTheCard();
-  await card.getByRole('button').first().click();
+  await card.getByRole('button', { name: 'Add comment' }).click();
 
-  // Shown the way a comment the reader wrote is: the panel opens on its card.
+  // Shown the way a comment the user wrote is: the panel opens on its card.
   await expect(card).toHaveAttribute('data-state', 'applied');
   const rail = visibleSpace(page).getByTestId('doc-comment-rail');
   await expect(rail).toBeVisible();
@@ -187,7 +187,7 @@ test('a comment lands on the quoted words, marked as from the Agent', async () =
   await expect(rail.getByTestId('doc-comment-from-agent')).toBeVisible();
   await expect(rail.getByText('Why is she leaving?')).toBeVisible();
 
-  // "View" opens it on the card again once the reader has closed it.
+  // "View" opens it on the card again once the user has closed it.
   await rail.getByTestId('doc-comment-rail-close').click();
   await expect(rail).toHaveCount(0);
   await card.getByRole('button').click();
@@ -200,7 +200,7 @@ test('a manual comment filter survives a real Space switch after an Agent View',
   await sendTheOpenSpace();
   await answerWith(onSecondBlock({ kind: 'comment', quote: 'her bags packed', body: 'Why is she leaving?' }));
   const card = await askForTheCard();
-  await card.getByRole('button').first().click();
+  await card.getByRole('button', { name: 'Add comment' }).click();
   await expect(card).toHaveAttribute('data-state', 'applied');
   const rail = visibleSpace(page).getByTestId('doc-comment-rail');
   await expect(rail.getByTestId('doc-comment-rail-filter-all')).toHaveAttribute('aria-pressed', 'true');
@@ -278,7 +278,7 @@ test('a comment in a column of a wide table scrolled out of view is scrolled int
     };
   });
   const comment = await askForTheCard();
-  await comment.getByRole('button').first().click();
+  await comment.getByRole('button', { name: 'Add comment' }).click();
 
   await expect(comment).toHaveAttribute('data-state', 'applied');
   await expect.poll(commentInTable).toEqual({ overflows: true, scrolled: expect.any(Number), inside: true });
@@ -293,7 +293,7 @@ test('a comment in a column of a wide table scrolled out of view is scrolled int
   await expect.poll(async () => (await commentInTable()).inside).toBe(true);
 
   // Settled marks remain a valid landing. Explicit View prepares All before
-  // membership cleanup, then a later manual filter remains the reader's.
+  // membership cleanup, then a later manual filter remains the user's.
   const selectedRail = visibleSpace(page).getByTestId('doc-comment-rail');
   await selectedRail.getByTestId('doc-comment-resolve').click();
   await selectedRail.getByTestId('doc-comment-rail-filter-open').click();
@@ -327,7 +327,7 @@ test('a comment in a column of a wide table scrolled out of view is scrolled int
     for (const frame of document.querySelectorAll<HTMLElement>('.doc-table-scroller [data-radix-scroll-area-viewport]')) frame.scrollLeft = frame.scrollWidth;
   });
   expect((await commentInTable('MIDCELL')).inside).toBe(false);
-  await middle.getByRole('button').first().click();
+  await middle.getByRole('button', { name: 'Add comment' }).click();
   await expect(middle).toHaveAttribute('data-state', 'applied');
   await expect.poll(() => commentInTable('MIDCELL')).toEqual({ overflows: true, scrolled: expect.any(Number), inside: true });
   expect(await page.locator('.doc-table-overflow-edge[data-overflow-edge="left"]').first().getAttribute('data-on')).toBe('');
@@ -459,7 +459,7 @@ test('a comment card brought up from the bottom of the window stops as far above
 
   const card = await askForTheCard();
   await page.locator(`${DOCUMENT_EDITOR} p`).last().scrollIntoViewIfNeeded();
-  await card.getByRole('button').first().click();
+  await card.getByRole('button', { name: 'Add comment' }).click();
 
   const shown = visibleSpace(page).getByTestId('doc-comment-rail').getByTestId('doc-comment-card');
   await expect(shown).toHaveAttribute('data-selected', 'true');
@@ -588,4 +588,166 @@ test('a card whose document was deleted says so in a toast and writes nothing', 
 
   await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'This Document has been deleted.' })).toBeVisible();
   await expect(card).toHaveAttribute('data-state', 'idle');
+});
+
+/** A table taller than the window and wider than the body column: its last row ends with `DEEPCELL`. */
+const LONG_WIDE_TABLE = [
+  `| ${Array.from({ length: 8 }, (_, i) => `Column ${String(i + 1)}`).join(' | ')} |`,
+  `|${' --- |'.repeat(8)}`,
+  ...Array.from({ length: 30 }, (_, row) =>
+    `| ${Array.from({ length: 8 }, (_, col) => (row === 29 && col === 7 ? 'DEEPCELL' : `r${String(row + 1)}c${String(col + 1)} ${'a'.repeat(24)}`)).join(' | ')} |`),
+].join('\n');
+
+/**
+ * Where some words, the outline and their frames are on screen.
+ * @param word - Words in one text node of the open document.
+ * @returns The words' box, the outline's box, the body's scroller and the table's sideways frame around them.
+ */
+async function locatedGeometry(word: string): Promise<{ words: DOMRect | null; mark: DOMRect | null; body: DOMRect | null; table: DOMRect | null }> {
+  return page.evaluate((w) => {
+    const space = [...document.querySelectorAll<HTMLElement>('[data-testid="document-space"]')].find((s) => s.offsetParent !== null);
+    const walker = space === undefined ? null : document.createTreeWalker(space, NodeFilter.SHOW_TEXT);
+    let text: Text | null = null;
+    while (walker !== null && text === null) {
+      const next = walker.nextNode() as Text | null;
+      if (next === null) break;
+      if (next.data.includes(w)) text = next;
+    }
+    const range = document.createRange();
+    if (text !== null) {
+      const at = text.data.indexOf(w);
+      range.setStart(text, at);
+      range.setEnd(text, at + w.length);
+    }
+    const box = (el: Element | null | undefined): DOMRect | null => el === null || el === undefined ? null : el.getBoundingClientRect();
+    return {
+      words: text === null ? null : range.getBoundingClientRect(),
+      mark: box(space?.querySelector('[data-testid="document-proposal-landed"]')),
+      body: box(space?.querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')),
+      table: box(text?.parentElement?.closest('.doc-table-frame')?.querySelector('[data-radix-scroll-area-viewport]')),
+    };
+  }, word).then((g) => ({
+    words: g.words === null ? null : ({ ...g.words } as DOMRect),
+    mark: g.mark === null ? null : ({ ...g.mark } as DOMRect),
+    body: g.body === null ? null : ({ ...g.body } as DOMRect),
+    table: g.table === null ? null : ({ ...g.table } as DOMRect),
+  }));
+}
+
+/** How many comment marks the open document's body holds. */
+async function commentMarks(): Promise<number> {
+  return page.locator(`${DOCUMENT_EDITOR} .bn-thread-mark`).count();
+}
+
+test('Locate brings a comment\'s quoted words in a long, wide table into view and outlines only them, writing nothing (inner#1646)', async () => {
+  const docId = await openDocumentWithText();
+  await sendTheOpenSpace();
+  await answerWith((blocks, spaceId) => ({ ...onSecondBlock({})(blocks, spaceId), kind: 'insert', body: LONG_WIDE_TABLE }));
+  const insert = await askForTheCard();
+  await insert.getByRole('button', { name: 'Insert' }).click();
+  await expect(insert).toHaveAttribute('data-state', 'applied');
+
+  await page.unroute('**/chat/message');
+  await answerWith((blocks, spaceId) => {
+    const table = blocks.find((b) => b.type === 'docTable')!;
+    return { ...onSecondBlock({})(blocks, spaceId), kind: 'comment', blockId: table.id, original: table.text, blockType: 'docTable', quote: 'DEEPCELL', body: 'Hold this shot longer.' };
+  });
+  const card = await askForTheCard();
+  // Start from the top of the body with the table scrolled to its first column.
+  await page.evaluate(() => {
+    for (const frame of document.querySelectorAll<HTMLElement>('[data-radix-scroll-area-viewport]')) {
+      frame.scrollTop = 0;
+      frame.scrollLeft = 0;
+    }
+  });
+  const steps = await undoStack(docId);
+  const before = await paragraphs();
+
+  await card.getByRole('button', { name: 'Locate' }).click();
+
+  await expect.poll(async () => {
+    const g = await locatedGeometry('DEEPCELL');
+    if (g.words === null || g.mark === null || g.body === null || g.table === null) return 'missing';
+    const inTable = g.words.left >= g.table.left && g.words.right <= g.table.right;
+    const inBody = g.words.top >= g.body.top && g.words.bottom <= g.body.bottom;
+    const outlined = g.mark.left <= g.words.left && g.mark.right >= g.words.right && g.mark.top <= g.words.top && g.mark.bottom >= g.words.bottom;
+    const onlyTheWords = g.mark.width < g.table.width / 2;
+    return { inTable, inBody, outlined, onlyTheWords };
+  }, { timeout: 10_000 }).toEqual({ inTable: true, inBody: true, outlined: true, onlyTheWords: true });
+  const shot = test.info().outputPath('locate-wide-table.png');
+  await page.screenshot({ path: shot });
+  await test.info().attach('locate-wide-table.png', { path: shot, contentType: 'image/png' });
+
+  await expect(card).toHaveAttribute('data-state', 'idle');
+  expect(await commentMarks()).toBe(0);
+  expect(await undoStack(docId)).toBe(steps);
+  expect(await paragraphs()).toEqual(before);
+
+  // Still a choice to make: the comment lands on those words.
+  await card.getByRole('button', { name: 'Add comment' }).click();
+  await expect(card).toHaveAttribute('data-state', 'applied');
+  await expect(page.locator(`${DOCUMENT_EDITOR} .bn-thread-mark`).filter({ hasText: 'DEEPCELL' })).toHaveCount(1);
+});
+
+/** Words that make the second paragraph run over several lines in the body column. */
+const LONG_TAIL = ' She stands in the hallway with her coat on, the taxi waiting outside, and neither of them says the thing they both came to say before the door closes.';
+
+test('Locate on a rewrite opens its document from another Space and outlines the passage, writing nothing (inner#1646)', async () => {
+  const docId = await openDocumentWithText();
+  // A passage of several lines, so the outline can be told apart from its last line alone.
+  await page.keyboard.type(LONG_TAIL);
+  await sendTheOpenSpace();
+  await answerWith(onSecondBlock({ kind: 'rewrite', body: 'He opens the door. Her bags are packed.' }));
+  const card = await askForTheCard();
+  const steps = await undoStack(docId);
+  created.push(await createSpace(page, 'canvas', `doc-locate-canvas-${String(Date.now())}`));
+  await expect(visibleSpace(page).getByTestId('document-space')).toHaveCount(0);
+
+  await card.getByRole('button', { name: 'Locate' }).click();
+
+  await expect(visibleSpace(page).getByTestId('document-space')).toHaveAttribute('data-space-id', docId);
+  const mark = visibleSpace(page).getByTestId('document-proposal-landed');
+  await expect(mark).toBeVisible();
+  const box = await mark.boundingBox();
+  const words = await page.locator(`${DOCUMENT_EDITOR} p`).last().boundingBox();
+  const above = await page.locator(`${DOCUMENT_EDITOR} p`).first().boundingBox();
+  expect(box !== null && words !== null && above !== null).toBe(true);
+  expect(words!.height).toBeGreaterThan(above!.height * 1.5);
+  expect(box!.x).toBeLessThan(words!.x);
+  expect(box!.y).toBeLessThanOrEqual(words!.y);
+  expect(box!.x + box!.width).toBeGreaterThanOrEqual(words!.x + words!.width);
+  expect(box!.y + box!.height).toBeGreaterThan(words!.y + words!.height);
+  // Only this passage: the outline starts below the middle of the one above it.
+  expect(box!.y).toBeGreaterThan(above!.y + above!.height / 2);
+  await expect(card).toHaveAttribute('data-state', 'idle');
+  expect(await paragraphs()).toEqual(['Scene two opens.', `He pushes the door open and sees her bags packed.${LONG_TAIL}`]);
+  expect(await undoStack(docId)).toBe(steps);
+
+  await card.getByRole('button', { name: 'Replace' }).click();
+  await expect(card).toHaveAttribute('data-state', 'applied');
+  await expect.poll(paragraphs).toEqual(['Scene two opens.', 'He opens the door. Her bags are packed.']);
+});
+
+test('Locate on a passage deleted after the proposal says so and writes nothing (inner#1646)', async () => {
+  const docId = await openDocumentWithText();
+  await sendTheOpenSpace();
+  await answerWith(onSecondBlock({ kind: 'rewrite', body: 'Something else.' }));
+  const card = await askForTheCard();
+  const url = await liveModuleUrl(page, 'spaces/document/document-editor-cache.ts');
+  const name = `project-${projectIdOf(page.url())}/document-${docId}`;
+  await page.evaluate(async ([u, n]) => {
+    type Handle = { editor: { document: Array<{ id: string }>; removeBlocks: (ids: string[]) => void } };
+    const mod = (await import(u)) as { peekDocumentEditor: (key: string) => Handle | undefined };
+    const editor = mod.peekDocumentEditor(n)!.editor;
+    editor.removeBlocks([editor.document[1]!.id]);
+  }, [url, name] as const);
+  const steps = await undoStack(docId);
+
+  await card.getByRole('button', { name: 'Locate' }).click();
+
+  await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'This passage has been deleted.' })).toBeVisible();
+  await expect(card).toHaveAttribute('data-state', 'idle');
+  await expect(card.getByRole('button', { name: 'Locate' })).not.toHaveAttribute('aria-busy', 'true');
+  await expect(visibleSpace(page).getByTestId('document-proposal-landed')).toHaveCount(0);
+  expect(await undoStack(docId)).toBe(steps);
 });

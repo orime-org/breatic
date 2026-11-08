@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The sign-up routes with an email backend enabled (#287): register answers
@@ -108,7 +108,7 @@ describe("GET /auth/options", () => {
   it("tells the page that sign-up needs a code", async () => {
     const res = await app.request("/api/v1/auth/options");
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ data: { emailVerification: true } });
+    expect(await res.json()).toEqual({ data: { emailVerification: true, referralEnabled: expect.any(Boolean) } });
   });
 });
 

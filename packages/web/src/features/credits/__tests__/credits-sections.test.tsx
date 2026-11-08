@@ -1,5 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
+
+import type { CreditDecimal } from '@breatic/shared';
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -131,9 +133,9 @@ function studio(over: Partial<StudioCreditSummary> = {}): StudioCreditSummary {
     studioName: 'Orime Studio',
     studioSlug: 'orime',
     deleted: false,
-    spendable: 2400,
-    debt: 0,
-    spent: 1280,
+    spendable: '2400.000000' as CreditDecimal,
+    debt: '0.000000' as CreditDecimal,
+    spent: '1280.000000' as CreditDecimal,
     lotCount: 1,
     ...over,
   };
@@ -146,9 +148,9 @@ function studio(over: Partial<StudioCreditSummary> = {}): StudioCreditSummary {
  */
 function overview(over: Partial<CreditOverview> = {}): CreditOverview {
   return {
-    assignedCredits: 3640,
-    unassignedCredits: 1790,
-    underRefundCredits: 0,
+    assignedCredits: '3640.000000' as CreditDecimal,
+    unassignedCredits: '1790.000000' as CreditDecimal,
+    underRefundCredits: '0.000000' as CreditDecimal,
     billing: true,
     studios: [studio()],
     ...over,
@@ -164,8 +166,8 @@ function lot(over: Partial<CreditLotView> = {}): CreditLotView {
   const base = {
     id: 'l1',
     sourceKind: 'payment' as CreditLotView['sourceKind'],
-    purchasedCredits: 4550,
-    remainingCredits: 2400,
+    purchasedCredits: '4550.000000' as CreditDecimal,
+    remainingCredits: '2400.000000' as CreditDecimal,
     designatedStudioId: 's1' as string | null,
     designatedStudioName: 'Orime Studio' as string | null,
     paidCents: 5000,
@@ -191,14 +193,14 @@ function lot(over: Partial<CreditLotView> = {}): CreditLotView {
 function purchase(over: Partial<PurchaseRow> = {}): PurchaseRow {
   return {
     rowId: 'p1',
-    sourceKind: 'payment' as PurchaseRow['sourceKind'],
-    paymentId: 'p1' as string | null,
-    amountCents: 5000 as number | null,
+    sourceKind: 'payment',
+    paymentId: 'p1',
+    amountCents: 5000,
     totalCents: 5000,
     taxCents: 0,
     currency: 'usd',
-    creditsGranted: 4550,
-    remainingCredits: 2400,
+    creditsGranted: '4550.000000' as CreditDecimal,
+    remainingCredits: '2400.000000' as CreditDecimal,
     lifecycle: 'active',
     designatedStudioId: 's1',
     designatedStudioName: 'Orime Studio',
@@ -226,7 +228,7 @@ function entry(over: Partial<CreditLedgerView> = {}): CreditLedgerView {
     model: 'seedream-4.0',
     provider: 'volcengine',
     kind: 'generation' as const,
-    amount: -120,
+    amount: '-120.000000' as CreditDecimal,
     createdAt: '2026-08-22T10:00:00.000Z',
     ...over,
   };
@@ -329,7 +331,7 @@ describe('the credits overlay, section by section', () => {
     });
 
     it('gives the split a line per studio, and none for credits at no studio', async () => {
-      fetchCreditOverview.mockResolvedValue(overview({ underRefundCredits: 500 }));
+      fetchCreditOverview.mockResolvedValue(overview({ underRefundCredits: '500.000000' as CreditDecimal }));
       await openOn('overview');
       const body = await panel();
 
@@ -341,7 +343,7 @@ describe('the credits overlay, section by section', () => {
 
     it('drops the split when every credit is at no studio', async () => {
       fetchCreditOverview.mockResolvedValue(
-        overview({ assignedCredits: 0, studios: [] }),
+        overview({ assignedCredits: '0.000000' as CreditDecimal, studios: [] }),
       );
       await openOn('overview');
       const body = await panel();
@@ -352,7 +354,7 @@ describe('the credits overlay, section by section', () => {
 
     it('drops the split when there is nothing, and says what to do instead', async () => {
       fetchCreditOverview.mockResolvedValue(
-        overview({ assignedCredits: 0, unassignedCredits: 0, studios: [] }),
+        overview({ assignedCredits: '0.000000' as CreditDecimal, unassignedCredits: '0.000000' as CreditDecimal, studios: [] }),
       );
       await openOn('overview');
       const body = await panel();
@@ -376,7 +378,7 @@ describe('the credits overlay, section by section', () => {
       await openOn('lots');
       const body = await panel();
 
-      // What was paid leads: it is the figure a reader checks against a
+      // What was paid leads: it is the figure a user checks against a
       // statement.
       expect(body).toHaveTextContent('$50.00');
       expect(body).toHaveTextContent('2026-08-21');
@@ -406,7 +408,7 @@ describe('the credits overlay, section by section', () => {
     it('leaves a purchase under refund without that instruction', async () => {
       // Asking for a refund detaches it from every studio and bars it from
       // being pointed anywhere. Telling this row to go and assign it asks the
-      // reader to do something the server refuses.
+      // user to do something the server refuses.
       paymentHistory.mockResolvedValue({
         items: [
           purchase(),
@@ -425,7 +427,7 @@ describe('the credits overlay, section by section', () => {
       expect(body).not.toHaveTextContent(/use Assign on the left/);
     });
 
-    // "Unassigned" is what this panel teaches the reader to act on — assign
+    // "Unassigned" is what this panel teaches the user to act on — assign
     // it to a Studio and it becomes spendable. On a purchase under refund
     // that reading is wrong twice over: the detachment is the refund's doing,
     // and the assign screen will not offer it.
@@ -457,7 +459,7 @@ describe('the credits overlay, section by section', () => {
           purchase({
             paymentId: 'p5',
             lifecycle: 'depleted',
-            remainingCredits: 0,
+            remainingCredits: '0.000000' as CreditDecimal,
             designatedStudioId: 's1',
             designatedStudioName: 'Orime Studio',
           }),
@@ -501,7 +503,7 @@ describe('the credits overlay, section by section', () => {
 
       const rows = body.querySelectorAll('tbody tr');
       expect(rows).toHaveLength(1);
-      const row = rows[0]!;
+      const row = rows[0];
       expect(row).toHaveTextContent('2026-08-22');
       expect(row).toHaveTextContent('Lin');
       expect(row).toHaveTextContent('Orime Studio');
@@ -518,7 +520,7 @@ describe('the credits overlay, section by section', () => {
         items: [
           entry({
             kind: 'debt_repayment',
-            amount: -70,
+            amount: '-70.000000' as CreditDecimal,
             projectName: null,
             model: null,
           }),
@@ -627,16 +629,16 @@ describe('the credits overlay, section by section', () => {
 
       const viewport = body.querySelector(
         '[data-radix-scroll-area-viewport]',
-      ) as HTMLElement | null;
+      );
       expect(viewport).not.toBeNull();
       const heading = body.querySelector('h2');
       expect(heading).not.toBeNull();
-      expect(viewport!.contains(heading!)).toBe(false);
+      expect(viewport!.contains(heading)).toBe(false);
     });
 
     it('starts a section at the top of its own list', async () => {
       // Each section brings its own scroller, so an offset left in one cannot
-      // drop the reader into the middle of the next — where the sentinel may
+      // drop the user into the middle of the next — where the sentinel may
       // already be in view, asking for a page nobody scrolled to.
       const user = await openOn('ledger');
       const first = (await panel()).querySelector(
@@ -661,8 +663,8 @@ describe('the credits overlay, section by section', () => {
     it('marks a run that drew on no purchase, and leaves the rest unmarked', async () => {
       fetchCreditLedger.mockResolvedValue({
         items: [
-          entry({ id: 'u1', kind: 'unbilled', amount: -42 }),
-          entry({ id: 'g1', kind: 'generation', amount: -12 }),
+          entry({ id: 'u1', kind: 'unbilled', amount: '-42.000000' as CreditDecimal }),
+          entry({ id: 'g1', kind: 'generation', amount: '-12.000000' as CreditDecimal }),
         ],
         nextCursor: null,
       });
@@ -670,11 +672,11 @@ describe('the credits overlay, section by section', () => {
       const body = await panel();
 
       const rows = [...body.querySelectorAll('tbody tr')];
-      expect(rows[0]!.querySelector('td:last-child')).toHaveTextContent(
+      expect(rows[0].querySelector('td:last-child')).toHaveTextContent(
         /Not charged/i,
       );
       // 真扣到包的那一行不带这个词，否则这个词什么也没说。
-      expect(rows[1]!.querySelector('td:last-child')).not.toHaveTextContent(
+      expect(rows[1].querySelector('td:last-child')).not.toHaveTextContent(
         /Not charged/i,
       );
     });
@@ -683,7 +685,7 @@ describe('the credits overlay, section by section', () => {
       fetchCreditLots.mockResolvedValue({
         items: [
           lot({
-            remainingCredits: 880,
+            remainingCredits: '880.000000' as CreditDecimal,
             paidCents: 1120,
             currency: 'usd',
             designatedStudioId: null,
@@ -750,7 +752,7 @@ describe('the credits overlay, section by section', () => {
       expect(body).toHaveTextContent(/Could not load this page/i);
     });
 
-    it('stops the watcher after a failed page until the reader scrolls again', async () => {
+    it('stops the watcher after a failed page until the user scrolls again', async () => {
       paymentHistory
         .mockResolvedValueOnce({ items: [purchase()], nextCursor: 'c2' })
         .mockRejectedValueOnce(new Error('nope'));
@@ -762,7 +764,7 @@ describe('the credits overlay, section by section', () => {
         expect(paymentHistory).toHaveBeenCalledTimes(2);
       });
       // No retry of its own accord, and the first page stays: replacing what
-      // the reader has already seen with a failure loses more than the
+      // the user has already seen with a failure loses more than the
       // failure did.
       await new Promise((r) => setTimeout(r, 60));
       expect(paymentHistory).toHaveBeenCalledTimes(2);
@@ -775,9 +777,9 @@ describe('the credits overlay, section by section', () => {
   });
 
   describe('per studio', () => {
-    it('reports four things a row: spendable, debt, spent, purchases pointed there', async () => {
+    it('reports four things a row: spendable, debt, spent, credit packs pointed there', async () => {
       fetchCreditOverview.mockResolvedValue(
-        overview({ studios: [studio({ debt: 120 })] }),
+        overview({ studios: [studio({ debt: '120.000000' as CreditDecimal })] }),
       );
       await openOn('studios');
       const body = await panel();
@@ -785,14 +787,14 @@ describe('the credits overlay, section by section', () => {
       expect(body).toHaveTextContent('2,400');
       expect(body).toHaveTextContent('owes 120');
       expect(body).toHaveTextContent('spent 1,280');
-      expect(body).toHaveTextContent('1 purchase assigned to it');
+      expect(body).toHaveTextContent('1 credit pack assigned to it');
     });
 
-    it('withholds the debt from a reader who no longer administers it', async () => {
+    it('withholds the debt from a user who no longer administers it', async () => {
       // 欠账是 studio 自己的数，只有 admin 能拿它做决定。服务端在这种情形
       // 下发的是 null，这一行要说得出「不是零、是没有」。
       fetchCreditOverview.mockResolvedValue(
-        overview({ studios: [studio({ debt: null, spent: 640 })] }),
+        overview({ studios: [studio({ debt: null, spent: '640.000000' as CreditDecimal })] }),
       );
       await openOn('studios');
       const body = await panel();
@@ -803,7 +805,7 @@ describe('the credits overlay, section by section', () => {
 
     it('keeps a deleted studio\'s name and adds a badge', async () => {
       // The row is kept so the spending can say where it went. Replacing the
-      // name with "deleted studio" erases it a second time — the reader can
+      // name with "deleted studio" erases it a second time — the user can
       // no longer tell which one it was.
       fetchCreditOverview.mockResolvedValue(
         overview({
@@ -812,8 +814,8 @@ describe('the credits overlay, section by section', () => {
               studioId: 's3',
               studioName: 'Design squad',
               deleted: true,
-              spendable: 0,
-              spent: 880,
+              spendable: '0.000000' as CreditDecimal,
+              spent: '880.000000' as CreditDecimal,
               lotCount: 0,
             }),
           ],
@@ -834,8 +836,8 @@ describe('the credits overlay, section by section', () => {
               studioId: 's3',
               studioName: '',
               deleted: true,
-              spendable: 0,
-              spent: 880,
+              spendable: '0.000000' as CreditDecimal,
+              spent: '880.000000' as CreditDecimal,
               lotCount: 0,
             }),
           ],
@@ -952,7 +954,7 @@ describe('the credits overlay, section by section', () => {
     });
 
     it('shows a skeleton while the first read is in flight', async () => {
-      // Held unresolved: this is the moment the reader sees.
+      // Held unresolved: this is the moment the user sees.
       paymentHistory.mockReturnValue(new Promise(() => {}));
       await openOn('lots');
 
@@ -961,7 +963,7 @@ describe('the credits overlay, section by section', () => {
       ).toBeInTheDocument();
     });
 
-    it('asks again with the cursor once the reader reaches the end', async () => {
+    it('asks again with the cursor once the user reaches the end', async () => {
       paymentHistory
         .mockResolvedValueOnce({ items: [purchase()], nextCursor: 'cursor-2' })
         .mockResolvedValueOnce({
@@ -1092,7 +1094,7 @@ describe('the credits overlay, section by section', () => {
       // A purchase pointed at a team, and the account demoted there since.
       // The options answer "where may it go"; the picker shows "where is it
       // now". With the second outside the first, Radix matches nothing and
-      // the cell reads empty, leaving the reader unable to find the money.
+      // the cell reads empty, leaving the user unable to find the money.
       fetchCreditLots.mockResolvedValue({
         items: [
           lot({ designatedStudioId: 's9', designatedStudioName: 'Ex team' }),
@@ -1123,7 +1125,7 @@ describe('the credits overlay, section by section', () => {
 
     // The server writes a sentence for the one refusal this screen can earn —
     // the purchase moved into the refund flow while the list was open — and it
-    // is the only true thing there is to say. "Try again" sends the reader
+    // is the only true thing there is to say. "Try again" sends the user
     // back to an action that can never succeed.
     it('says what the server said when a repoint is refused', async () => {
       fetchCreditLots.mockResolvedValue({
@@ -1211,9 +1213,9 @@ describe('the credits overlay, section by section', () => {
       // on the screen says where it went.
       fetchCreditOverview.mockResolvedValue(
         overview({
-          assignedCredits: 100,
-          unassignedCredits: 40,
-          underRefundCredits: 25,
+          assignedCredits: '100.000000' as CreditDecimal,
+          unassignedCredits: '40.000000' as CreditDecimal,
+          underRefundCredits: '25.000000' as CreditDecimal,
         }),
       );
       await openOn('overview');
@@ -1225,7 +1227,7 @@ describe('the credits overlay, section by section', () => {
 
     it('leaves the figure out when nothing is under refund', async () => {
       fetchCreditOverview.mockResolvedValue(
-        overview({ underRefundCredits: 0 }),
+        overview({ underRefundCredits: '0.000000' as CreditDecimal }),
       );
       await openOn('overview');
       const body = await panel();
@@ -1316,10 +1318,10 @@ describe('the credits overlay, section by section', () => {
         expect(fetchCreditOverview).toHaveBeenCalled();
       });
       // A refused ask leaves the confirmation open for another try; the
-      // reader backs out of it to move on.
+      // user backs out of it to move on.
       expect(screen.getByRole('alertdialog')).toBeInTheDocument();
       await user.click(within(dialog).getByRole('button', { name: /cancel/i }));
-      // The history is not, so it was marked stale: the reader going back to
+      // The history is not, so it was marked stale: the user going back to
       // it gets the row as it now stands rather than the thirty-second-old
       // answer saying the pack is theirs to spend.
       await user.click(document.getElementById('credits-tab-lots')!);
@@ -1386,7 +1388,7 @@ describe('the credits overlay, section by section', () => {
 
     // The terms are the only place this screen states the rule, so a screen
     // that could not read them says so. Silence there reads as "this screen
-    // has no terms", and the reader is left to work out from the rows alone
+    // has no terms", and the user is left to work out from the rows alone
     // why one carries a button and the next does not.
     it('says so when the refund terms could not be read', async () => {
       paymentTiers.mockRejectedValue(new Error('nope'));
@@ -1495,7 +1497,7 @@ describe('the credits overlay, section by section', () => {
           items: [
             lot({
               id: 'spent',
-              remainingCredits: 818,
+              remainingCredits: '818.000000' as CreditDecimal,
               everSpent: true,
               designatedStudioId: null,
             }),
@@ -1519,8 +1521,8 @@ describe('the credits overlay, section by section', () => {
           items: [
             lot({
               id: 'empty',
-              purchasedCredits: 4550,
-              remainingCredits: 0,
+              purchasedCredits: '4550.000000' as CreditDecimal,
+              remainingCredits: '0.000000' as CreditDecimal,
               everSpent: true,
               lifecycle: 'depleted',
               designatedStudioId: null,
@@ -1541,7 +1543,7 @@ describe('the credits overlay, section by section', () => {
       });
 
       it('leads the right column with the balance and the left with where it points', async () => {
-        // One figure, one place, on all three screens: a reader switching
+        // One figure, one place, on all three screens: a user switching
         // between them reads the balance off the same corner every time.
         // What this screen is about goes under it, and the line under the
         // name says where the purchase points.

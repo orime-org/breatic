@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -21,7 +21,7 @@ vi.mock('@web/data/api/auth', async () => {
 
 /**
  * Render the reset page at the given entry, with the two places it can leave for.
- * @param entry - The URL the reader arrived at.
+ * @param entry - The URL the user arrived at.
  * @returns The render result.
  */
 function setup(entry: string): ReturnType<typeof render> {

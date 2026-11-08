@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a reply says about how it ended, and what it offers afterwards.
  *
  * The line that says nothing came back has to mean it: a turn whose last act
  * was to show what it found produced something, and it is drawn directly
- * above that line. And the copy on a reader's own message appears on hover --
+ * above that line. And the copy on a user's own message appears on hover --
  * appears, rather than being there all along at zero opacity, which reserves
  * a strip under every message and leaves a control that can be pressed and
  * tabbed to with nothing visible there.
@@ -101,7 +101,7 @@ describe('the line that says nothing came back', () => {
   });
 });
 
-describe('the copy on a reader\'s own message', () => {
+describe('the copy on a user\'s own message', () => {
   it('cannot be pressed until it is hovered', () => {
     // The line is there whether or not the copy is showing; the copy itself
     // is what waits. Transparent alone would leave a blank that copies when
@@ -144,7 +144,7 @@ describe('the copy on a reader\'s own message', () => {
     expect(actions.className).toMatch(/\bmt-3\b/);
   });
 
-  it('says when the message was sent, in the reader\'s own day', () => {
+  it('says when the message was sent, in the user\'s own day', () => {
     render(
       <MessageBubble
         message={{
@@ -157,7 +157,7 @@ describe('the copy on a reader\'s own message', () => {
     );
 
     const stamp = screen.getByTestId('turn-sent-at');
-    // Whatever the reader's locale writes, it is the local reading of that
+    // Whatever the user's locale writes, it is the local reading of that
     // instant rather than the string that arrived.
     expect(stamp.textContent).toBe(
       new Date('2026-09-05T02:30:00.000Z').toLocaleString(undefined, {
@@ -182,7 +182,7 @@ describe('the copy on a reader\'s own message', () => {
   });
 });
 
-describe('the time on a reader\'s own message', () => {
+describe('the time on a user\'s own message', () => {
   const own = {
     id: 'm',
     role: 'user',
@@ -192,7 +192,7 @@ describe('the time on a reader\'s own message', () => {
 
   it('waits for hover the way the copy beside it does', () => {
     // 一条线上的两样东西同时出现、同时消失；时间一直亮着而复制要等悬停，
-    // 读者看到的是半条线。
+    // 用户看到的是半条线。
     render(<MessageBubble message={own} />);
 
     const stamp = screen.getByTestId('turn-sent-at');
@@ -291,7 +291,7 @@ describe('what pressing copy says back', () => {
     expect(label.className).not.toMatch(/-translate-x-1\/2/);
   });
 
-  it('hugs the other edge under a reader\'s own message', async () => {
+  it('hugs the other edge under a user\'s own message', async () => {
     render(<MessageBubble message={{ id: 'm', role: 'user', content: '找参考图' }} />);
 
     await press();
@@ -300,7 +300,7 @@ describe('what pressing copy says back', () => {
     expect(label.className).toMatch(/\bright-0\b/);
   });
 
-  it('answers the same way under a reader\'s own message', async () => {
+  it('answers the same way under a user\'s own message', async () => {
     render(<MessageBubble message={{ id: 'm', role: 'user', content: '找参考图' }} />);
 
     await press();

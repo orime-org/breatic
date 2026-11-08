@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * inner#1126 §5.0, A17: the cell a table menu was opened on follows every
  * change to the document, so the command lands on the row, column or cell the
- * reader chose; when that cell is gone the target is gone too.
+ * user chose; when that cell is gone the target is gone too.
  */
 
 import { afterEach, describe, expect, it } from 'vitest';

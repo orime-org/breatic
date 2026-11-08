@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Every tool takes the cancellation signal the SDK offers it.
@@ -59,6 +59,7 @@ describe("tools accept the cancellation signal", () => {
     // makes the author of a new tool stop here and read why the arity matters.
     expect(registeredTools().map(([name]) => name).sort()).toEqual([
       "ask_user",
+      "delete_memory",
       "get_canvas_capabilities",
       "get_generation_template",
       "get_product_guide",
@@ -67,9 +68,13 @@ describe("tools accept the cancellation signal", () => {
       "list_project_activity",
       "propose_canvas_action",
       "propose_document_edit",
+      "propose_scene_generation",
       "read_conversation",
+      "read_memory",
       "read_node_history",
+      "request_space_content",
       "save_image",
+      "save_memory",
       "search_conversations",
       "search_images",
       "understand_media",
@@ -77,11 +82,13 @@ describe("tools accept the cancellation signal", () => {
     ]);
   });
 
-  it("has one tool with nothing to run, the question that waits for the reader", () => {
-    // ask_user has no `execute`: a call to it is answered by the reader in a
-    // later request, so there is no work in this turn to cancel.
+  it("has two tools with nothing to run, the cards that wait for the user", () => {
+    // ask_user and request_space_content have no `execute`: a call to either
+    // is answered by the user in a later request, so there is no work in
+    // this turn to cancel.
     expect(registeredTools().filter(([, execute]) => execute === undefined).map(([name]) => name)).toEqual([
       "ask_user",
+      "request_space_content",
     ]);
   });
 

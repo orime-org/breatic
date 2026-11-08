@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * How a proposed flow arranges itself on the canvas (#263).
  *
  * The arrangement is the only thing on screen that says which node feeds
- * which: a reader looking at three nodes in a row reads them as three steps,
+ * which: a user looking at three nodes in a row reads them as three steps,
  * and one photo feeding three angles is not three steps. So the cases below
  * ask where the nodes end up relative to each other, never for the pixels.
  */
@@ -19,10 +19,10 @@ import { GENERATE_PANEL_WIDTH_PX } from '@web/spaces/canvas/generate/panel-width
 
 const AT = { x: 1000, y: 500 };
 
-/** An empty node waiting for the reader's material. */
+/** An empty node waiting for the user's material. */
 const empty = (name: string): ProposalNode => ({ role: 'source', type: 'image', name });
 
-/** A node waiting for the reader to press Generate. */
+/** A node waiting for the user to press Generate. */
 const generates = (name: string): ProposalNode => ({
   role: 'generate',
   type: 'image',
@@ -51,7 +51,7 @@ const flow = (
 });
 
 describe('where one node lands', () => {
-  it('sits centred on the point the reader was looking at', () => {
+  it('sits centred on the point the user was looking at', () => {
     const [only] = planFlowLayout(flow([generates('Result')]), AT);
     if (!only) throw new Error('nothing was placed');
 
@@ -92,6 +92,23 @@ describe('where a flow lays itself out', () => {
     expect(two.y).toBeLessThan(three.y);
     expect(one.y + one.height).toBeLessThanOrEqual(two.y);
     expect(two.y + two.height).toBeLessThanOrEqual(three.y);
+  });
+
+  it('stacks a column in the order it is given, and in proposal order without one', () => {
+    const column = flow(
+      [empty('Yours'), generates('One'), generates('Two'), generates('Three')],
+      [
+        [0, 1],
+        [0, 2],
+        [0, 3],
+      ],
+    );
+    const ordered = planFlowLayout(column, AT, [0, 2, 3, 1]);
+    expect(ordered[3]!.y).toBeLessThan(ordered[1]!.y);
+    expect(ordered[1]!.y).toBeLessThan(ordered[2]!.y);
+    const plain = planFlowLayout(column, AT);
+    expect(plain[1]!.y).toBeLessThan(plain[2]!.y);
+    expect(plain[2]!.y).toBeLessThan(plain[3]!.y);
   });
 
   it('keeps a node carrying eleven lines clear of the one under it', () => {

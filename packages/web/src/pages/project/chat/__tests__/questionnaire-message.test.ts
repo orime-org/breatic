@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A questionnaire, as the panel reads it off a message (inner#1542).
  *
  * The card is drawn from the `ask_user` call and the server's mark naming it
- * as the card the reader is shown. Once the reader answers on the card, the
+ * as the card the user is shown. Once the user answers on the card, the
  * turn resumes in the same message, so the message is split where the asking
  * segment ended: the card above, what the turn went on to say below.
  */
@@ -40,7 +40,7 @@ function ask(toolCallId: string, state: string, extra: Record<string, unknown> =
 }
 
 /**
- * The mark naming the card the reader is shown.
+ * The mark naming the card the user is shown.
  * @param toolCallId - The call.
  * @returns The part.
  */
@@ -49,20 +49,20 @@ function awaiting(toolCallId: string): Record<string, unknown> {
 }
 
 describe('the card a message draws', () => {
-  it('waits for the reader when the server named it', () => {
+  it('waits for the user when the server named it', () => {
     const view = toChatMessage(reply([{ type: 'text', text: 'Two things first.' }, ask('ask-1', 'input-available'), awaiting('ask-1')]));
 
     expect(view.questionnaires).toEqual([{ toolCallId: 'ask-1', questions: QUESTIONS, state: 'awaiting' }]);
     expect(view.toolCalls?.[0]).toMatchObject({ status: 'pending' });
   });
 
-  it('shows the answers once the reader submitted them', () => {
+  it('shows the answers once the user submitted them', () => {
     const view = toChatMessage(reply([ask('ask-1', 'output-available', { output: { answers: ANSWERS } })]));
 
     expect(view.questionnaires).toEqual([{ toolCallId: 'ask-1', questions: QUESTIONS, state: 'answered', answers: ANSWERS }]);
   });
 
-  it('says the reader replied in the chat when they wrote a message instead', () => {
+  it('says the user replied in the chat when they wrote a message instead', () => {
     const view = toChatMessage(reply([ask('ask-1', 'output-available', { output: { repliedInChat: true } })]));
 
     expect(view.questionnaires).toEqual([{ toolCallId: 'ask-1', questions: QUESTIONS, state: 'replied' }]);
@@ -90,7 +90,7 @@ describe('the card a message draws', () => {
   });
 });
 
-describe('a reply resumed after the reader answered on the card', () => {
+describe('a reply resumed after the user answered on the card', () => {
   it('is split where the asking segment ended, the card above and the rest below', () => {
     const live = reply([
       { type: 'text', text: 'Two things first.' },
@@ -171,7 +171,7 @@ describe('a turn drawn as more than one reply', () => {
     expect(resumed?.copyText).toBe('Two things first.\n\nHere is the plan.');
   });
 
-  it('leaves replies the reader\'s messages separate untouched', () => {
+  it('leaves replies the user\'s messages separate untouched', () => {
     const views = [said('u1', 'user', 'a'), said('a1', 'assistant', 'one'), said('u2', 'user', 'b'), said('a2', 'assistant', 'two')];
 
     expect(joinContinued(views)).toEqual(views);

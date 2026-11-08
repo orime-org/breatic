@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Where the reader's attention goes once a flow is placed (#263): what is
+ * Where the user's attention goes once a flow is placed (#263): what is
  * selected and whether a panel opens -- and the answer turns on how many
  * things in the flow are waiting to be generated.
  */
@@ -12,7 +12,7 @@ import type { CanvasProposal, ProposalNode } from '@breatic/shared';
 
 import { whatToFocus } from '@web/spaces/canvas/lib/after-placing';
 
-/** A node waiting for the reader to press Generate. */
+/** A node waiting for the user to press Generate. */
 const generates = (name: string): ProposalNode => ({
   role: 'generate',
   type: 'image',
@@ -37,7 +37,7 @@ const flow = (nodes: ProposalNode[]): CanvasProposal => ({
   rationale: '',
 });
 
-describe('what the canvas puts the reader on', () => {
+describe('what the canvas puts the user on', () => {
   it('opens the one panel there is, so they read the prompt just written', () => {
     const proposal = flow([written('Copy'), generates('Result')]);
 
@@ -64,7 +64,7 @@ describe('what the canvas puts the reader on', () => {
 
   it('points at nothing when nothing in the flow generates', () => {
     // The check turns this shape away before a card is drawn, so reaching
-    // here means a payload came in some other way. Leaving the reader's
+    // here means a payload came in some other way. Leaving the user's
     // selection alone beats pointing them at a guess.
     const proposal = flow([written('Copy')]);
 

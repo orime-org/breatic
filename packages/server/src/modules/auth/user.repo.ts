@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * User repository — data access for the users table.
@@ -135,6 +135,7 @@ export async function getHashedPassword(userId: string): Promise<string | null> 
  * @param data.locale - The account's language: the one the sign-up request was negotiated in
  * @param data.emailVerified - Whether the address was proven at sign-up (a matched sign-up code)
  * @param data.attribution - Campaign source to keep, already cleared when the browser gave no consent
+ * @param tx - The transaction that also binds a referral code, when there is one
  * @returns The created UserEntity
  * @throws {z.ZodError} if `config/membership.yaml` is malformed — the file is
  *   read on first use and on a fresh server this is often that first use, so
@@ -147,8 +148,8 @@ export async function createUser(data: {
   locale: string;
   emailVerified?: boolean;
   attribution?: Attribution | null;
-}): Promise<UserEntity> {
-  const rows = await db
+}, tx?: DbTx): Promise<UserEntity> {
+  const rows = await (tx ?? db)
     .insert(users)
     .values({
       email: normalizeEmail(data.email),
@@ -217,6 +218,33 @@ export async function setStripeCustomerId(
   await db
     .update(users)
     .set({ stripeCustomerId, updatedAt: new Date() })
+    .where(eq(users.id, userId));
+}
+
+/**
+ * The Agent model an account last picked (#1363); a new conversation starts on it.
+ * @param userId - The account.
+ * @returns The model, or null before the first pick.
+ */
+export async function getAgentModel(userId: string): Promise<string | null> {
+  const rows = await db
+    .select({ agentModel: users.agentModel })
+    .from(users)
+    .where(and(eq(users.id, userId), isNull(users.deletedAt)))
+    .limit(1);
+  return rows[0]?.agentModel ?? null;
+}
+
+/**
+ * Record the Agent model an account last picked (#1363).
+ * @param userId - The account.
+ * @param agentModel - The model.
+ * @param tx - The transaction to run inside, when the caller has one.
+ */
+export async function setAgentModel(userId: string, agentModel: string, tx?: DbTx): Promise<void> {
+  await (tx ?? db)
+    .update(users)
+    .set({ agentModel, updatedAt: new Date() })
     .where(eq(users.id, userId));
 }
 
@@ -329,5 +357,19 @@ export async function linkGoogleIdentity(userId: string, googleId: string): Prom
   const rows = await db.update(users).set({ googleId, updatedAt: new Date() })
     .where(and(eq(users.id, userId), isNull(users.deletedAt), or(isNull(users.googleId), eq(users.googleId, googleId))))
     .returning();
+  return rows[0] ? toEntity(rows[0]) : null;
+}
+
+
+/**
+ * Lock the grant account without blocking foreign-key key-share checks.
+ * @param userId - The target product account UUID.
+ * @param tx - The transaction holding the identity and funding locks.
+ * @returns The current active account, or null after erasure or absence.
+ * @throws {Error} When the account lock cannot be acquired.
+ */
+export async function lockGrantAccount(userId: string, tx: DbTx): Promise<UserEntity | null> {
+  const rows = await tx.select().from(users)
+    .where(and(eq(users.id, userId), isNull(users.deletedAt))).for("no key update").limit(1);
   return rows[0] ? toEntity(rows[0]) : null;
 }

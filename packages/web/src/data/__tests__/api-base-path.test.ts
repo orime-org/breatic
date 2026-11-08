@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Every API request to our own backend is built on one prefix. (Locally
@@ -78,7 +78,7 @@ describe('the API prefix has one definition', () => {
 
   it('the text mini-tool stream opens under it', async () => {
     await textToolsApi.stream(
-      { toolId: 'polish', document: 'text' },
+      { tool: 'polish', project_id: 'p-1', selection: 'text', document: 'text' },
       { onEvent: () => undefined },
     );
     expect(lastStreamUrl()).toBe(`${API_BASE_PATH}/mini-tools/text`);

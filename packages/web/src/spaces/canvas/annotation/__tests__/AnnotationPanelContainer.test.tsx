@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render } from '@testing-library/react';
@@ -179,7 +179,7 @@ describe('a note that goes missing under an open sticky', () => {
     // A deletion is the board LOSING a note it was showing, which is why this
     // draws it first and takes it away second. The text is asserted, not just
     // the count: the reply's "this reply was deleted" sits one identifier away
-    // in the same namespace, and telling a reader whose whole note went that a
+    // in the same namespace, and telling a user whose whole note went that a
     // reply went points at something that did not happen.
     holdADraft('typing');
     const view = mount(NODES, ['n1']);
@@ -218,7 +218,7 @@ describe('a note that goes missing under an open sticky', () => {
 
   it('stays quiet when the held draft is only a notice nobody dismissed', () => {
     // A dropped reply leaves a closed draft behind so the sticky can say what
-    // happened until the reader waves it away. Nobody is writing in it.
+    // happened until the user waves it away. Nobody is writing in it.
     holdADraft('closed');
     const view = mount(NODES, ['n1']);
     view.rerender(tree([], ['n1']));
@@ -261,7 +261,7 @@ describe('Escape, as the sticky answers it', () => {
 
   it('leaves it open while an IME is composing', () => {
     // The press is dismissing a candidate window. Measured before this: the
-    // sticky collapsed under the reader mid-word.
+    // sticky collapsed under the user mid-word.
     mount();
     fireEvent.keyDown(document.body, { key: 'Escape', isComposing: true });
     expect(stillOpen()).toBe(true);
@@ -271,7 +271,7 @@ describe('Escape, as the sticky answers it', () => {
 
   it('leaves it open when the agent column owns the keyboard', () => {
     // Two regions share this window, and a press belongs to the one the
-    // reader is working in. Measured before this: Escape in the chat composer
+    // user is working in. Measured before this: Escape in the chat composer
     // collapsed a note on the canvas behind it.
     mount();
     useUIStore.setState({ activeRegion: 'agent' });
@@ -306,7 +306,7 @@ describe('Escape, as the sticky answers it', () => {
 
   it('leaves it open while the note tool is armed, which the press is for', () => {
     // Two modes on this canvas take Escape and they are stacked: the tool the
-    // reader just picked up sits over the note they opened earlier, so the
+    // user just picked up sits over the note they opened earlier, so the
     // press puts the tool down and the next one collapses the note. Measured
     // before this, with both listening: one press did both.
     canvasSessions.of('s1').getState().startAnnotationPlacement();
@@ -319,7 +319,7 @@ describe('Escape, as the sticky answers it', () => {
 describe('what a sticky closing does to the box that was open', () => {
   it('keeps a reply nobody has posted yet', () => {
     // User 2026-09-15: a reply is kept, full stop — closing the panel is not
-    // the reader saying they do not want it. Reopening the pin draws it as it
+    // the user saying they do not want it. Reopening the pin draws it as it
     // was, with Post and Cancel still on it.
     holdADraft('typing', 'reply');
     const view = mount();
@@ -357,7 +357,7 @@ describe('what a sticky closing does to the box that was open', () => {
   });
 
   it('ends a rewrite, which reopens as the entry rather than a box', () => {
-    // User 2026-09-15: a rewrite goes with the panel, and the reader opens it
+    // User 2026-09-15: a rewrite goes with the panel, and the user opens it
     // again from the entry's own menu. It reads what the entry says NOW, so a
     // collaborator's newer body is what the next rewrite starts from.
     holdADraft('typing', 'edit');
@@ -369,7 +369,7 @@ describe('what a sticky closing does to the box that was open', () => {
 
   it('keeps it while the sticky stays open', () => {
     // A caret leaving the box is not a close, so a reply half typed is still
-    // there when the reader clicks back into it (`annotation-draft.ts`, the
+    // there when the user clicks back into it (`annotation-draft.ts`, the
     // 'blur' case).
     holdADraft('typing');
     const view = mount();

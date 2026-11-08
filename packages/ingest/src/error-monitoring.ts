@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Where every failure this Worker answers for is written down, and what it
@@ -7,9 +7,9 @@
  *
  * One outlet, so a failure added later is reported without anyone having to
  * remember to: each one goes to the log, and each one also goes to Sentry
- * unless its caller says it came from the reader's own input — a link they
+ * unless its caller says it came from the user's own input — a link they
  * handed us that we cannot take, or bytes of a kind we do not store. Those are
- * answered with a reason the reader can act on and are nothing for us to fix.
+ * answered with a reason the user can act on and are nothing for us to fix.
  */
 
 import * as Sentry from "@sentry/cloudflare";
@@ -87,7 +87,7 @@ export function monitoringOptions(env: MonitoringEnv): MonitoringOptions {
 
 /** How a caller describes the failure it is writing down. */
 export interface FailureKind {
-  /** The reader's own input caused it; it is logged and not reported. */
+  /** The user's own input caused it; it is logged and not reported. */
   userInput?: boolean;
   /**
    * Report every occurrence as its own event, still grouped as one issue.
@@ -110,7 +110,7 @@ export interface FailureKind {
  * @param label - What failed, as one searchable token.
  * @param ctx - The key, ids and status that name this attempt.
  * @param err - The error that said so, when there was one.
- * @param kind - Whether the reader's own input caused it, and whether each
+ * @param kind - Whether the user's own input caused it, and whether each
  *   occurrence is its own event.
  */
 export function noteFailure(
@@ -140,7 +140,7 @@ export function noteFailure(
  * Turn a rejected promise into null, writing down what it was.
  * @param label - What failed, as one searchable token.
  * @param ctx - The key and ids that name this attempt.
- * @param kind - Whether the reader's own input caused it.
+ * @param kind - Whether the user's own input caused it.
  * @returns A catch handler answering null.
  */
 export function noted(

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /** Loaded layout tables keep their content DOM while React mounts their chrome. */
 
@@ -71,7 +71,7 @@ function loadedTable(): LoadedTable {
   cursors.push(cursor);
   const handle = getDocumentEditor(doc, 'project-p/document-loaded-table', {
     caretProvider: { awareness: cursor },
-    readWho: () => ({ role: 'editor', viewerId: 'reader-1' }),
+    readWho: () => ({ role: 'editor', viewerId: 'user-1' }),
     editable: true,
   });
   return { handle, doc, tree, bytes: Y.encodeStateAsUpdate(doc) };

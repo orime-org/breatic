@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Chat routes — conversational AI with SSE streaming.
@@ -8,6 +8,7 @@
  * Streaming responses use Server-Sent Events via Hono's streaming helper.
  */
 
+import { accountActivityRepo } from "@breatic/core";
 import { reportCollaboratorFirstAction } from "@breatic/core";
 import { Hono } from "hono";
 import type { Context } from "hono";
@@ -23,6 +24,7 @@ import {
   chatOpenSchema,
   chatCreateConversationSchema,
   chatRenameConversationSchema,
+  chatSetModelSchema,
   chatEarlierMessagesQuerySchema,
   idParamSchema,
   attachmentParamSchema,
@@ -40,7 +42,7 @@ import { toUiMessages } from "@server/modules/conversation/message-part-mapping.
 import type { UIMessageChunk } from "ai";
 import { runWithContext, logger, getAgentConfig, NotFoundError, ValidationError } from "@breatic/core";
 import { attachmentSection, messageLength, referenceCount, t } from "@breatic/shared";
-import type { ChatAttachedChip, ChatSpaceContext } from "@breatic/shared";
+import type { ChatAttachedChip, ChatSpaceContext, SpaceRequestAnswer } from "@breatic/shared";
 
 /**
  * Refuse a message whose words, attachments or Spaces are past their limits.
@@ -51,22 +53,25 @@ import type { ChatAttachedChip, ChatSpaceContext } from "@breatic/shared";
  * into what may be typed.
  *
  * Refused rather than trimmed. A silently shortened question leaves the
- * reader unable to see what went missing, reading an answer to something they
+ * user unable to see what went missing, reading an answer to something they
  * did not ask.
  *
  * The Spaces are cut to their limits by the browser, so only a client that
- * skipped that reaches these two.
+ * skipped that reaches these checks.
  * @param message - What the user typed.
  * @param chips - What the user attached.
- * @param space - The project's Spaces and the one the reader has open.
+ * @param space - The project's Spaces and the one the user has open.
+ * @param shared - The user's answer to a request to read Spaces, if this is one.
  * @throws {AppError} With 422 when the words, the number of references, the
  *   number of attached items, the attachments' length, the open Space's
- *   content or its blocks' text, or the number of Spaces listed is over its limit.
+ *   content or its blocks' text, a shared Space's content, or the number of
+ *   Spaces listed is over its limit.
  */
 function assertSayable(
   message: string,
   chips: readonly ChatAttachedChip[],
   space: ChatSpaceContext,
+  shared: SpaceRequestAnswer | undefined,
 ): void {
   const {
     user_message_max_chars,
@@ -77,7 +82,7 @@ function assertSayable(
     space_list_max_items,
   } = getAgentConfig();
   // Measured the way the box shows it: a reference is the one block the
-  // reader sees, not the longer marker it is written as.
+  // user sees, not the longer marker it is written as.
   const said = messageLength(chips, message);
   if (said > user_message_max_chars) {
     throw new ValidationError(
@@ -117,6 +122,15 @@ function assertSayable(
     throw new ValidationError(
       t("server.chat.current_space_too_long", { limit: current_space_max_chars, actual: content }),
     );
+  }
+  // Each Space the user shared is read and cut the way the open one is
+  // (inner#1552), so each is held to the same limit.
+  for (const one of shared?.decision === "shared" ? shared.spaces : []) {
+    if (one.state === "read" && one.content.length > current_space_max_chars) {
+      throw new ValidationError(
+        t("server.chat.shared_space_too_long", { name: one.name, limit: current_space_max_chars, actual: one.content.length }),
+      );
+    }
   }
 }
 
@@ -178,7 +192,7 @@ async function streamTurn(
       void s.write(frame({ type: "data-heartbeat", transient: true, data: {} }));
     };
     // Once as soon as there is a socket to say it on, before the schedule
-    // starts. The reader's browser began counting at the press, and the
+    // starts. The user's browser began counting at the press, and the
     // network and the two checks before this made no sound on that clock; a
     // first beat one whole interval later spends the client's whole budget
     // on the work this turn does before it can speak, and a turn that is
@@ -212,7 +226,7 @@ async function streamTurn(
         },
         "chat_turn_failed",
       );
-      // What the client does with this is show one line and let the reader
+      // What the client does with this is show one line and let the user
       // press send again. The sentence is not read: the browser writes its own.
       await s.write(
         frame({ type: "error", errorText: "The turn could not be run." }),
@@ -258,7 +272,7 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
     body.project_id,
   );
 
-  assertSayable(body.message, body.attached_chips, body);
+  assertSayable(body.message, body.attached_chips, body, body.shared_spaces);
 
   // A turn needs a balance above zero to start (#296). Payments off: no check.
   // Checked before an answer is taken, so a refused answer leaves the card
@@ -269,10 +283,29 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
   // §4.8). Reported alongside the turn; it never rejects.
   void reportCollaboratorFirstAction({ projectId: body.project_id, userId: user.id, action: "agent" });
 
-  // An answer to a questionnaire resumes the turn that asked (inner#1542).
-  const answer = body.answer;
-  if (answer !== undefined) {
-    const taken = await conversationService.answerAsk(conversation.id, answer);
+  // An answer to a card resumes the turn that asked: a questionnaire's
+  // (inner#1542) or a request to read Spaces (inner#1552). Both are taken,
+  // refused and resumed alike; only how the answer is held to the call differs.
+  const { answer, shared_spaces: sharedSpaces } = body;
+  // The model is settled before an answer is taken, so nothing about it can
+  // refuse a request after the card's answer is already gone (#1363). A
+  // resumed turn runs on the model it started on.
+  const resumed = answer?.toolCallId ?? sharedSpaces?.toolCallId;
+  const modelId =
+    resumed === undefined
+      ? await conversationService.modelForMessage(conversation, user.id, body.model)
+      : await conversationService.modelForResume(conversation, user.id, resumed);
+  const card =
+    answer !== undefined
+      ? { toolCallId: answer.toolCallId, take: () => conversationService.answerAsk(conversation.id, answer, { userId: user.id, projectId: body.project_id }) }
+      : sharedSpaces !== undefined
+        ? {
+          toolCallId: sharedSpaces.toolCallId,
+          take: () => conversationService.answerSpaceRequest(conversation.id, sharedSpaces, { userId: user.id, projectId: body.project_id }),
+        }
+        : undefined;
+  if (card !== undefined) {
+    const taken = await card.take();
     if (taken.kind === "missing") throw new NotFoundError(t("server.chat.ask_not_found"));
     if (taken.kind === "mismatch") {
       logger.warn({ userId: user.id, conversationId: conversation.id, reason: taken.reason }, "chat_answer_mismatch");
@@ -293,15 +326,16 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
       c,
       { userId: user.id, conversationId: conversation.id, projectId: body.project_id },
       (signal) =>
-        new MainAgent().answer(answer.toolCallId, { answers: answer.answers }, taken.turnIndex, signal, body.time_zone, body),
+        new MainAgent().answer(card.toolCallId, taken.output, taken.turnIndex, signal, body.time_zone, body, modelId),
     );
   }
 
+  await accountActivityRepo.recordActivity({ userId: user.id, projectId: body.project_id, kind: "agent_started" });
   return streamTurn(
     c,
     { userId: user.id, conversationId: conversation.id, projectId: body.project_id },
     (signal) =>
-      new MainAgent().chat(body.message, signal, body.attached_chips, body.time_zone, body),
+      new MainAgent().chat(body.message, signal, body.attached_chips, body.time_zone, body, modelId),
   );
 });
 
@@ -365,6 +399,38 @@ chat.post(
       user.id,
       projectId,
     );
+    return c.json({ data: conversation });
+  },
+);
+
+/**
+ * `GET /chat/models` — the models the user can pick in the chat panel, in
+ * order, and the one a new conversation of theirs starts on (#1363).
+ * @param c - Hono context
+ * @returns The list and the starting model's id
+ */
+chat.get("/models", async (c) => {
+  const user = c.get("user");
+  return c.json({ data: await conversationService.listChatModels(user.id) });
+});
+
+/**
+ * `PUT /chat/conversations/:id/model` — pick the model a conversation is
+ * answered by; it becomes the user's last pick too (#1363).
+ * @param c - Hono context with the conversation id in the path and a
+ *   `project_id` + `model` body
+ * @returns The conversation as it now stands
+ * @throws {AppError} `422` for a model the deployment does not list; `404` if
+ *   the conversation is missing, deleted, someone else's or in another Project
+ */
+chat.put(
+  "/conversations/:id/model",
+  validate("param", idParamSchema),
+  validate("json", chatSetModelSchema),
+  async (c) => {
+    const user = c.get("user");
+    const { project_id: projectId, model } = c.req.valid("json");
+    const conversation = await conversationService.setConversationModel(c.req.param("id"), user.id, projectId, model);
     return c.json({ data: conversation });
   },
 );
@@ -443,7 +509,7 @@ chat.get("/conversations/:id", validate("param", idParamSchema), async (c) => {
  *
  * How a conversation longer than one page is read: the client holds the
  * newest page from `/chat/open` and asks for what comes before it, turn by
- * turn, as the reader scrolls back.
+ * turn, as the user scrolls back.
  * @param c - Hono context with conversation ID param and `before_turn` query
  * @returns That page, oldest first, and whether anything is older still
  * @throws {AppError} `404` if not found, `403` if not the owner
@@ -521,7 +587,8 @@ chat.delete(
  * `GET /chat/stream-config` — the chat knobs a browser needs, from
  * `config/agent.yaml`: how often a stream says it is alive, how long the
  * attachments on one message may be and how many there may be, and how much
- * of the reader's Spaces one message may carry. The browser checks
+ * of the user's Spaces one message may carry, and how long reading one Space
+ * the Agent asked for may take. The browser checks
  * attachments against those before sending and cuts the Spaces to them, so it
  * measures against the same limits the server enforces.
  *
@@ -548,6 +615,7 @@ chat.get("/stream-config", (c) => {
       attachmentMaxItems: config.attachment_max_items,
       currentSpaceMaxChars: config.current_space_max_chars,
       spaceListMaxItems: config.space_list_max_items,
+      spaceReadTimeoutMs: config.space_read_timeout_ms,
     },
   });
 });

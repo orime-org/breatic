@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A turn folds before a call only when the provider's own count says the
@@ -13,9 +13,12 @@
  * turn replays. Inside a turn it is the previous step's, and a fold voids it
  * until the next call reports again.
  *
+ * The line is the lower of `fold_trigger_tokens` and that room (inner#1879).
  * The window here is 200,000 and the output reserve 16,384, so the line is a
- * known count of 183,616. Every "does not fold" case runs its positive twin in
- * the same test, so it cannot pass on a turn that never folds at all.
+ * known count of 183,616; the last block runs a 1,000,000 window, where the
+ * trigger of 750,000 is the lower. Every "does not fold" case runs its
+ * positive twin in the same test, so it cannot pass on a turn that never
+ * folds at all.
  */
 
 import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -71,16 +74,17 @@ type Rows = Array<MessageData & { forModel: unknown }>;
  * @param first - What the model does in the first turn.
  * @param options - How the stored rows or the conversation change in between.
  * @param options.edit - Change the rows the first turn left.
- * @param options.memory - The conversation memory the second turn reads.
- * @param options.stopDuringTool - The reader stops the first turn while its tool runs.
+ * @param options.memory - The progress note the second turn reads.
+ * @param options.stopDuringTool - The user stops the first turn while its tool runs.
+ * @param options.window - The main model's window, when not {@link WINDOW}.
  * @returns How many folds the second turn ran, and what it sent first.
  */
 async function nextTurnAfter(
   first: ScriptedCall[],
-  options: { edit?: (rows: Rows) => void; memory?: string; stopDuringTool?: boolean } = {},
+  options: { edit?: (rows: Rows) => void; memory?: string; stopDuringTool?: boolean; window?: number } = {},
 ): Promise<{ folds: number; watermarks: number[]; firstSystem: string; foldedBeforeFirstCall: boolean }> {
   resetWorld();
-  world.window = WINDOW;
+  world.window = options.window ?? WINDOW;
   world.script = first;
   if (options.stopDuringTool === true) world.duringTool = () => world.controller.abort();
   await sendMessage("first");
@@ -123,7 +127,7 @@ describe("at the start of a turn", () => {
     expect(turn.folds).toBe(1);
     expect(turn.foldedBeforeFirstCall).toBe(true);
     expect(turn.watermarks).toEqual([1]);
-    expect(turn.firstSystem).toContain("## Conversation Memory\nMEMORY-THROUGH-1");
+    expect(turn.firstSystem).toContain("## Conversation So Far\n\nMEMORY-THROUGH-1");
   });
 
   it("sizes an overflow of the first call by the newest reply's provider count", async () => {
@@ -220,7 +224,7 @@ describe("at the start of a turn", () => {
   it("reads the count of a newest row that stopped at a questionnaire", async () => {
     const turn = await nextTurnAfter([asks("ask-1", LINE, 10)], {
       edit: (rows) => {
-        // The reader wrote a message instead of answering; the repository
+        // The user wrote a message instead of answering; the repository
         // settles the card in the row that asked.
         const kept = replyKept(rows) as { messages: unknown[] };
         kept.messages.push(askResultForModel("ask-1", { repliedInChat: true }));
@@ -231,7 +235,7 @@ describe("at the start of a turn", () => {
     expect(turn.foldedBeforeFirstCall).toBe(true);
   });
 
-  it("reads the count of a newest row the reader stopped after its call reported", async () => {
+  it("reads the count of a newest row the user stopped after its call reported", async () => {
     const turn = await nextTurnAfter([callsFetch("c1", LINE, 10)], { stopDuringTool: true });
 
     expect(world.replies[0]?.message.parts).toContainEqual({ type: "interrupted" });
@@ -269,7 +273,7 @@ describe("in the middle of a turn", () => {
 
     expect(world.events.filter((e) => e !== "context")).toEqual(["call", "tool", "fold", "call"]);
     expect(world.toolRuns).toBe(1);
-    expect(systemOf(world.prompts[1])).toContain("## Conversation Memory\nMEMORY-THROUGH-1");
+    expect(systemOf(world.prompts[1])).toContain("## Conversation So Far\n\nMEMORY-THROUGH-1");
     expect(toolPairsOf(world.prompts[1] ?? [])).toEqual({ calls: ["c1"], results: ["c1"] });
     const stored = world.replies.at(-1)?.message.parts ?? [];
     expect(stored).toContainEqual({ type: "text", text: "done" });
@@ -304,5 +308,53 @@ describe("in the middle of a turn", () => {
     expect(world.events.filter((e) => e !== "context")).toEqual(["call", "tool", "fold", "call", "tool", "fold", "call"]);
     expect(world.folds.map((f) => f.watermarkBefore)).toEqual([0, 1]);
     expect(toolPairsOf(world.prompts[2] ?? [])).toEqual({ calls: ["c1", "c2"], results: ["c1", "c2"] });
+  });
+});
+
+describe("when the window leaves more room than the trigger line", () => {
+  /** A window whose room, 983,616, is above the trigger. */
+  const BIG_WINDOW = 1_000_000;
+  /** `fold_trigger_tokens`: the known count that folds before the next call. */
+  const TRIGGER = 750_000;
+
+  it("folds at the start of a turn once the newest reply's count reaches the trigger, and not one token under it", async () => {
+    const under = await nextTurnAfter([answers("first answer", TRIGGER - 616, 615)], { window: BIG_WINDOW });
+    const at = await nextTurnAfter([answers("first answer", TRIGGER - 616, 616)], { window: BIG_WINDOW });
+
+    expect(under.folds).toBe(0);
+    expect(at.folds).toBe(1);
+    expect(at.foldedBeforeFirstCall).toBe(true);
+  });
+
+  it("folds before the next call in the middle of a turn once the previous call's count reaches the trigger", async () => {
+    const history = [...plainTurn(1, 10_000), ...plainTurn(2, 10_000), ...plainTurn(3, 10_000)];
+    const run = async (output: number): Promise<number> => {
+      resetWorld();
+      world.window = BIG_WINDOW;
+      world.history = history;
+      world.nextTurn = 4;
+      world.script = [callsFetch("c1", TRIGGER - 600, output), answers("done")];
+      await sendMessage();
+      return world.folds.length;
+    };
+
+    expect(await run(599)).toBe(0);
+    expect(await run(600)).toBe(1);
+    expect(world.events.filter((e) => e !== "context")).toEqual(["call", "tool", "fold", "call"]);
+  });
+
+  it("reads the trigger from the agent config", async () => {
+    const shipped = await nextTurnAfter([answers("first answer", 600_000, 10)], { window: BIG_WINDOW });
+    resetWorld();
+    world.window = BIG_WINDOW;
+    world.config.fold_trigger_tokens = 600_000;
+    world.script = [answers("first answer", 600_000, 10)];
+    await sendMessage("first");
+    world.history = rowsOf(1);
+    world.script = [answers("second")];
+    await sendMessage("second");
+
+    expect(shipped.folds).toBe(0);
+    expect(world.folds).toHaveLength(1);
   });
 });

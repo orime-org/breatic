@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What to do when Stripe tells us a subscription changed (task #106, §8).
@@ -314,7 +314,7 @@ export async function handleSubscriptionEvent(
   // After the commit, never inside it: an email about a change that then rolls
   // back cannot be recalled, and a send failure must not fail the webhook.
   if (endedFrom) await sendMembershipEndedMail(userId, endedFrom);
-  if (started) reportSubscriptionStarted(write, subscription.metadata);
+  if (started) reportSubscriptionStarted(write, subscription.metadata, read.firstInvoiceAmountCents);
 
   return outcome;
 }

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * 订阅路由本身（#106 §7）—— 它拦什么、放什么。
@@ -166,7 +166,7 @@ describe("订阅路由 — 把请求翻译成业务调用", () => {
 
   it("refuses a request that names no period before the service sees it", async () => {
     // A tier has two prices. Without this half the service would have to
-    // pick one, and neither of them is the one the reader pressed. Stopping
+    // pick one, and neither of them is the one the user pressed. Stopping
     // it here is what keeps a default period from existing at all.
     const res = await post("/checkout", {
       tier: "pro",
@@ -214,7 +214,7 @@ describe("POST /confirm — the return from a membership checkout (#307 A5–A7)
 
   it("confirms the named session for the signed-in account and answers with the panel", async () => {
     // Not active yet, so no ad conversion rides along (inner#1442 §4.9).
-    service.confirmCheckout.mockResolvedValue({ stripeSubscriptionId: "sub_1", status: "incomplete", tier: "pro", period: "month" });
+    service.confirmCheckout.mockResolvedValue({ write: { stripeSubscriptionId: "sub_1", status: "incomplete", tier: "pro", period: "month" }, firstInvoiceAmountCents: null });
     conversionOf.mockReturnValue(null);
     membership.readAccountMembership.mockResolvedValue({ tier: "pro" });
 
@@ -226,7 +226,7 @@ describe("POST /confirm — the return from a membership checkout (#307 A5–A7)
   });
 
   it("hands back the ad conversion of an active subscription only while ads are allowed", async () => {
-    service.confirmCheckout.mockResolvedValue({ stripeSubscriptionId: "sub_1", status: "active", tier: "pro", period: "month" });
+    service.confirmCheckout.mockResolvedValue({ write: { stripeSubscriptionId: "sub_1", status: "active", tier: "pro", period: "month" }, firstInvoiceAmountCents: null });
     membership.readAccountMembership.mockResolvedValue({ tier: "pro" });
     conversionOf.mockReturnValue({ transactionId: "sub:sub_1", amountCents: 1700, currency: "usd" });
 
@@ -240,8 +240,17 @@ describe("POST /confirm — the return from a membership checkout (#307 A5–A7)
     expect(refused.data.conversion).toBeNull();
   });
 
+  it("builds the conversion from the stored write and the first invoice's amount (inner#1868)", async () => {
+    const write = { stripeSubscriptionId: "sub_1", status: "active", tier: "pro", period: "month" };
+    service.confirmCheckout.mockResolvedValue({ write, firstInvoiceAmountCents: 1599 });
+    membership.readAccountMembership.mockResolvedValue({ tier: "pro" });
+    conversionOf.mockReturnValue(null);
+    await post("/confirm", { session_id: "cs_1" });
+    expect(conversionOf).toHaveBeenCalledWith(write, 1599);
+  });
+
   it("still confirms a paid subscription when the ads consent lookup fails, with no conversion", async () => {
-    service.confirmCheckout.mockResolvedValue({ stripeSubscriptionId: "sub_1", status: "active", tier: "pro", period: "month" });
+    service.confirmCheckout.mockResolvedValue({ write: { stripeSubscriptionId: "sub_1", status: "active", tier: "pro", period: "month" }, firstInvoiceAmountCents: null });
     membership.readAccountMembership.mockResolvedValue({ tier: "pro" });
     conversionOf.mockReturnValue({ transactionId: "sub:sub_1", amountCents: 1700, currency: "usd" });
     adsAllowedFor.mockRejectedValueOnce(new Error("database down"));

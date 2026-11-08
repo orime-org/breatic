@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Alignment and colour off the block handle, end to end (task #995).
@@ -157,7 +157,7 @@ async function bodyOf(p: Page): Promise<
 }
 
 /**
- * Which row the reader's own caret is in, off the browser's own selection.
+ * Which row the user's own caret is in, off the browser's own selection.
  * @param p - The page to read.
  * @returns The row index, or -1 where the caret is outside the body.
  */
@@ -222,17 +222,17 @@ test('a greyed row does not open, by pointer or by keyboard', async () => {
   await page.waitForTimeout(400);
   await expect(page.getByTestId('doc-block-align-left')).toHaveCount(0);
 
-  // And a press where a reader would press. Through `page.mouse` rather than
+  // And a press where a user would press. Through `page.mouse` rather than
   // `locator.click`: Playwright reads `aria-disabled` as "not enabled" and
   // waits for the row to become actionable, which it never does, so the call
   // would time out without ever pressing.
   await pressAt(page, 'doc-block-row-align');
   await expect(page.getByTestId('doc-block-align-left')).toHaveCount(0);
 
-  // The keyboard walks down to the colour row the way a reader does — a
+  // The keyboard walks down to the colour row the way a user does — a
   // greyed row stays reachable, which is what `aria-disabled` rather than
   // Radix's `disabled` buys — and the key Radix opens a submenu with does
-  // nothing there. The pointer goes off the menu first, as a reader's hand
+  // nothing there. The pointer goes off the menu first, as a user's hand
   // does when they take to the keys, so the walk starts from the menu itself.
   // From an item the menu moves the focus a task after the key (Radix's roving
   // focus does it in a timeout), so each step is read once the focus has moved.
@@ -261,18 +261,18 @@ test('a greyed row does not open, by pointer or by keyboard', async () => {
   await expect(page.getByTestId('doc-block-row-blockType')).toHaveCount(0);
 });
 
-test('both rows act on the hovered row, leaving the reader where they are', async () => {
+test('both rows act on the hovered row, leaving the user where they are', async () => {
   await openBody(page);
 
-  // The reader's caret stays in the code block throughout; the presses below
-  // are aimed at the first row. The handle is only on screen while the reader
+  // The user's caret stays in the code block throughout; the presses below
+  // are aimed at the first row. The handle is only on screen while the user
   // holds no selection, so this is every press, not an edge case.
   await page.locator(ROW).nth(ROWS.codeBlock).click();
   expect(await caretRow(page)).toBe(ROWS.codeBlock);
 
   await openMenuOver(page, ROWS.paragraph);
   await page.getByTestId('doc-block-row-align').click();
-  // The row the block is on, read off that block rather than off the reader.
+  // The row the block is on, read off that block rather than off the user.
   await expect(page.getByTestId('doc-block-align-left')).toHaveAttribute(
     'data-ticked',
     'true',

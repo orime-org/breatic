@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Tool registry — maps tool names to AI SDK tool definitions.
@@ -8,11 +8,14 @@ import type { Tool } from "ai";
 import { env } from "@breatic/core";
 
 import { makeAskUserTool, type AskUserContext } from "@domain/agent/tools/ask-user.js";
+import { makeRequestSpaceContentTool, type RequestSpaceContentContext } from "@domain/agent/tools/request-space-content.js";
 import { makeSaveImageTool } from "@domain/agent/tools/save-image.js";
 import { recordTools, makeReadNodeHistoryTool } from "@domain/agent/tools/record-tools.js";
+import { memoryTools } from "@domain/agent/tools/memory-tools.js";
 import type { ToolPictureContext } from "@domain/agent/prepare-agent-pictures.js";
 import {
   ASK_USER,
+  REQUEST_SPACE_CONTENT,
   GET_CANVAS_CAPABILITIES,
   GET_GENERATION_TEMPLATE,
   GET_PRODUCT_GUIDE,
@@ -21,9 +24,14 @@ import {
   LIST_PROJECT_ACTIVITY,
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
+  PROPOSE_SCENE_GENERATION,
   READ_CONVERSATION,
   READ_NODE_HISTORY,
   RECORD_TOOL_NAMES,
+  MEMORY_TOOL_NAMES,
+  SAVE_MEMORY,
+  DELETE_MEMORY,
+  READ_MEMORY,
   SAVE_IMAGE,
   UNDERSTAND_MEDIA,
   SEARCH_CONVERSATIONS,
@@ -37,10 +45,14 @@ import { getGenerationTemplate } from "@domain/agent/tools/get-generation-templa
 import { productGuide } from "@domain/agent/tools/product-guide.js";
 import { proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
 import { makeProposeDocumentEdit } from "@domain/agent/tools/propose-document-edit.js";
+import { makeProposeSceneGeneration } from "@domain/agent/tools/propose-scene-generation.js";
 import { judgeLikelihood } from "@domain/agent/tools/judge-likelihood.js";
 
 /** The document proposal tool; it holds nothing between calls. */
 const proposeDocumentEdit = makeProposeDocumentEdit();
+
+/** The 3D generation proposal tool; it holds nothing between calls. */
+const proposeSceneGeneration = makeProposeSceneGeneration();
 
 /**
  * What a turn knows that a tool needs when it is built.
@@ -48,7 +60,7 @@ const proposeDocumentEdit = makeProposeDocumentEdit();
  * Optional at every build site: a tool built without it (a test, a probe)
  * gets `NO_TOOL_CONTEXT`, which vouches for no media address at all.
  */
-export type ToolContext = AskUserContext & ToolPictureContext;
+export type ToolContext = AskUserContext & ToolPictureContext & RequestSpaceContentContext;
 
 /** The context a tool gets when its caller has none: no media is vouched for. */
 export const NO_TOOL_CONTEXT: ToolContext = { mediaUrlAllowed: () => false };
@@ -74,6 +86,7 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   // wait for an answer read the same one, so there is no second spelling of
   // it to keep in step.
   [ASK_USER]: (context = NO_TOOL_CONTEXT) => makeAskUserTool(context),
+  [REQUEST_SPACE_CONTENT]: (context = NO_TOOL_CONTEXT) => makeRequestSpaceContentTool(context),
   // Searches for pictures and answers with the row the panel draws. It does
   // work of its own, so it is not one of the interaction tools below, even
   // though the panel is what draws its answer.
@@ -89,6 +102,8 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   [PROPOSE_CANVAS_ACTION]: () => proposeCanvasAction,
   // Holds nothing between calls, so one object serves every turn.
   [PROPOSE_DOCUMENT_EDIT]: () => proposeDocumentEdit,
+  // Holds nothing between calls, so one object serves every turn.
+  [PROPOSE_SCENE_GENERATION]: () => proposeSceneGeneration,
   // Built per turn: it holds whether a save is running, so one turn saves one
   // picture at a time.
   [SAVE_IMAGE]: () => makeSaveImageTool(),
@@ -100,27 +115,36 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   [READ_CONVERSATION]: () => recordTools[READ_CONVERSATION],
   [READ_NODE_HISTORY]: (context = NO_TOOL_CONTEXT) => makeReadNodeHistoryTool(context),
   [LIST_PROJECT_ACTIVITY]: () => recordTools[LIST_PROJECT_ACTIVITY],
+  // The Agent's own memory, through the turn's execution context. Stateless,
+  // so one object serves every turn.
+  [SAVE_MEMORY]: () => memoryTools[SAVE_MEMORY],
+  [DELETE_MEMORY]: () => memoryTools[DELETE_MEMORY],
+  [READ_MEMORY]: () => memoryTools[READ_MEMORY],
 } as const;
 
 /**
  * The tools that do work on their own, in a stable order.
  *
  * Narrower than `TOOL_MAP`: the canvas tools below are about the spaces in
- * front of the reader, so they are kept apart.
+ * front of the user, so they are kept apart.
  */
 export const BASELINE_TOOLS: readonly string[] = [
   "web_search",
   "search_images",
   UNDERSTAND_MEDIA,
   ASK_USER,
+  REQUEST_SPACE_CONTENT,
   JUDGE_LIKELIHOOD,
   // The user's own records: about the project, not the Space in front of
   // them, so offered whatever is open.
   ...RECORD_TOOL_NAMES,
+  // The Agent's own memory: about the user and the Project, offered on every
+  // turn.
+  ...MEMORY_TOOL_NAMES,
 ];
 
 /**
- * The tools that describe the spaces the reader is looking at.
+ * The tools that describe the spaces the user is looking at.
  *
  * What makes a tool belong here is that its answer is about the product in
  * front of someone, which is why the search tools are not in it even though
@@ -133,11 +157,16 @@ export const CANVAS_TOOLS: readonly string[] = [
   GET_GENERATION_TEMPLATE,
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
+  PROPOSE_SCENE_GENERATION,
   SAVE_IMAGE,
 ];
 
+export { makeRequestSpaceContentTool };
+
 export {
   ASK_USER,
+  AWAITS_USER,
+  REQUEST_SPACE_CONTENT,
   GET_CANVAS_CAPABILITIES,
   GET_GENERATION_TEMPLATE,
   GET_PRODUCT_GUIDE,
@@ -145,7 +174,9 @@ export {
   LIST_GENERATION_MODELS,
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
+  PROPOSE_SCENE_GENERATION,
   RECORD_TOOL_NAMES,
+  MEMORY_TOOL_NAMES,
   SAVE_IMAGE,
   UNDERSTAND_MEDIA,
 } from "@domain/agent/tools/tool-names.js";

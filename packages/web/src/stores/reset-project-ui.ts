@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { useCanvasStore } from '@web/stores/canvas';
 import { canvasGraphs } from '@web/stores/canvas-graph';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { conversationRuntime } from '@web/stores/conversation-runtime';
 import { useDocumentProposals } from '@web/stores/document-proposals';
+import { useSceneProposals } from '@web/stores/scene-proposals';
 import { useUIStore } from '@web/stores/ui';
 
 /**
@@ -40,4 +41,7 @@ export function resetProjectUiStores(projectId: string): void {
   canvasGraphs.clear();
   useUIStore.getState().reset();
   useDocumentProposals.getState().reset();
+  // No 3D Space of this project receives any more, and a proposal it had not
+  // taken must not open a dialog in the next one (inner#1691).
+  useSceneProposals.getState().reset();
 }

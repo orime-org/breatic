@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Project routes — CRUD, duplicate, and membership-aware reads.
@@ -13,6 +13,8 @@
  * §13.2): live canvas state lives in Yjs `project-{id}/canvas-{sid}`
  * docs, persisted by the collab service.
  */
+
+import { projectVisitRequestSchema, creditAmountFormatQuerySchema } from "@breatic/shared";
 
 import { Hono } from "hono";
 import { frontendOrigin } from "@server/utils/frontend-origin.js";
@@ -33,9 +35,9 @@ import {
 } from "@server/modules";
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
 import { getSceneConfig, projectAuthService } from "@breatic/core";
-import { NotFoundError } from "@breatic/core";
+import { AppError, logger, NotFoundError } from "@breatic/core";
 import { projectNameSchema, t } from "@breatic/shared";
-import type { ProjectDetail } from "@breatic/shared";
+import type { ProjectDetail, SceneControlsConfig } from "@breatic/shared";
 
 const projects = new Hono<{ Variables: AuthVariables }>();
 
@@ -43,18 +45,36 @@ projects.use(requireAuth);
 
 /**
  * `GET /projects/:id/three-d/config` — scene controls configuration for a Viewer.
- * @returns The scale sensitivity used by the versioned controls adapter.
+ * @returns The configured scene controls and model import budgets, the same for every Project.
  */
 projects.get(
   "/:id/three-d/config",
   validate("param", z.object({ id: z.string().uuid() })),
   requireRoleOnParam("id", "viewer"),
-  (c) => c.json({ data: { scaleSensitivity: getSceneConfig().scale_sensitivity } }),
+  (c) => {
+    const config = getSceneConfig();
+    const limits = config.import;
+    const data: SceneControlsConfig = {
+      scaleSensitivity: config.scale_sensitivity,
+      import: {
+        maxInputBytes: limits.max_input_bytes,
+        maxExpandedBytes: limits.max_expanded_bytes,
+        maxArtifactBytes: limits.max_artifact_bytes,
+        maxFiles: limits.max_files,
+        maxEntryJsonBytes: limits.max_entry_json_bytes,
+        decoderWorkerLimit: limits.decoder_worker_limit,
+        maxTextureEdge: limits.max_texture_edge,
+        maxTextureBytes: limits.max_texture_bytes,
+      },
+      progressPublishMs: limits.progress_publish_ms,
+    };
+    return c.json({ data });
+  },
 );
 
 /**
  * `GET /projects/:id/three-d/assets/:assetId` — resolve a registered scene model.
- * @returns The registered model URL and MIME type in the standard data envelope.
+ * @returns The registered model URL, MIME type and registered size in the standard data envelope.
  */
 projects.get(
   "/:id/three-d/assets/:assetId",
@@ -176,6 +196,7 @@ projects.delete(
     await projectTransferService.withdrawProjectTransfer(
       c.req.param("transferId"),
       c.req.param("id"),
+      c.get("user").id,
     );
     return c.json({ data: { ok: true } });
   },
@@ -247,7 +268,7 @@ projects.get("/:id", async (c) => {
  * @returns `200` with `{ data: { spendable, held, available } }`; `404` when the
  *   caller cannot reach this project, which never leaks its existence
  */
-projects.get("/:id/credits", async (c) => {
+projects.get("/:id/credits", validate("query", creditAmountFormatQuerySchema), async (c) => {
   const user = c.get("user");
   const projectId = c.req.param("id");
   await projectService.assertAccess(projectId, user.id);
@@ -255,22 +276,36 @@ projects.get("/:id/credits", async (c) => {
 });
 
 /**
- * `POST /projects/:id/opened` — record that the caller just opened this
- * project, floating it to the top of their cross-studio "Recent" feed.
+ * `POST /projects/:id/opened` confirms this account's Project entry receipt.
  *
- * A dedicated write endpoint: the `GET /:id` open path writes nothing, while
- * recording an open is an explicit write the project page fires on mount. NOT behind
- * `requireRoleOnParam` — the service access-gates it (`assertAccess('viewer')`,
- * collapsing no-access to a `404` so existence is never leaked) and UPSERTs
- * idempotently, so re-opening just bumps the timestamp in place.
- * @returns `200` with `{ data: { ok: true } }`; `404` when the caller cannot
- *   access the project
+ * First admission checks current viewer access in the service and records the
+ * activity and Recent timestamp together. A stable visit UUID returns its
+ * original account/Project receipt on replay, preserving the Recent order.
+ * @returns `200` with `ok` and the original visit receipt; `404` when first
+ *   admission cannot access the Project.
  */
-projects.post("/:id/opened", async (c) => {
+projects.post("/:id/opened", validate("json", projectVisitRequestSchema), async (c) => {
   const user = c.get("user");
   const id = c.req.param("id");
-  await recentService.recordOpen(id, user.id);
-  return c.json({ data: { ok: true } });
+  const { visit_id } = c.req.valid("json");
+  try {
+    const receipt = await recentService.recordOpen(id, user.id, visit_id);
+    return c.json({ data: { ok: true as const, ...receipt } });
+  } catch (err) {
+    if (!(err instanceof AppError)) logger.error({ err: err instanceof Error && err.cause instanceof Error ? err.cause : err,
+      ctx: { operation: "record_project_visit", userId: user.id, projectId: id, visitId: visit_id } }, "Project visit admission failed");
+    throw err;
+  }
+});
+
+/**
+ * `GET /projects/:id/opened/:visitId` — look up this account's original visit.
+ * @returns A minimal recorded receipt or an unconfirmed binding, never Project data.
+ * @throws {ValidationError} When either route identity is malformed.
+ */
+projects.get("/:id/opened/:visitId", validate("param", z.object({ id: z.uuid(), visitId: z.uuid() })), async (c) => {
+  const { id, visitId } = c.req.valid("param");
+  return c.json({ data: await recentService.lookupOpen(id, c.get("user").id, visitId) });
 });
 
 /**

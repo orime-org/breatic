@@ -171,6 +171,12 @@ prices:
       input_cache_hit_per_mtok: 0.15
       input_cache_miss_per_mtok: 1.5
       output_per_mtok: 7.5
+  anthropic/claude-sonnet-5.5:
+    - input_cache_hit_per_mtok: 0.1
+      input_cache_miss_per_mtok: 2
+      input_cache_write_5m_per_mtok: 2.5
+      input_cache_write_1h_per_mtok: 4
+      output_per_mtok: 10
 gemini_inline_max_bytes: 20000000
 gemini_file_poll_ms: 5000
 openrouter_quantizations:

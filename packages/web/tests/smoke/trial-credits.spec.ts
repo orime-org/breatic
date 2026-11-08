@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Trial credits, as a new account meets them (task #267).
@@ -61,16 +61,17 @@ test.describe('a new account and its trial credits', () => {
     // the deployment charges nobody there is nothing to grant and nothing
     // below has anything to look at, so it is said here rather than failing
     // three assertions later with no reason.
-    const overview = await api.get('/api/v1/credits/overview');
+    const overview = await api.get('/api/v1/credits/overview?amountFormat=decimal-v1');
     expect(overview.ok()).toBe(true);
     const held = (await overview.json()) as {
-      data: { billing: boolean; assignedCredits: number };
+      data: { billing: boolean; assignedCredits: string };
     };
     expect(
       held.data.billing,
       'this stack has payments off, so no trial credits are granted and this case has nothing to read',
     ).toBe(true);
-    const granted = held.data.assignedCredits;
+    // A six-place decimal string; the trial grant is a whole number of credits.
+    const granted = Number(held.data.assignedCredits);
     expect(granted).toBeGreaterThan(0);
 
     // Into the browser as that account.
@@ -83,7 +84,7 @@ test.describe('a new account and its trial credits', () => {
     // they hold never has to open the overlay.
     await avatar.click();
     const menu = page.getByTestId('account-menu');
-    await expect(menu).toContainText(String(granted));
+    await expect(menu).toContainText(new Intl.NumberFormat('en-US').format(granted));
 
     // The acquisition history: one row, naming where the credits came from.
     await menu.getByRole('menuitem', { name: /Credits|积分/ }).click();

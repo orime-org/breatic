@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The list an `@` opens: the rows the reader can pick, arrow keys to move the
+ * The list an `@` opens: the rows the user can pick, arrow keys to move the
  * highlight, Enter or Tab to pick it. Rendered by the suggestion's
  * ReactRenderer and positioned at the caret (see mention-suggestion). What a
  * row looks like is the caller's; the keys and the frame are shared.
@@ -51,10 +51,10 @@ function MentionListInner<T>(
   { items, command, emptyLabel, itemKey, renderItem, query }: MentionListProps<T>,
   ref: React.ForwardedRef<MentionListRef>,
 ): React.JSX.Element {
-  // The highlight is the row the reader moved to, kept by its key: rows that
+  // The highlight is the row the user moved to, kept by its key: rows that
   // come and go around it (an upload finishing, a collaborator's edit, a
   // fresh array for the same rows) leave it where it is. It goes back to the
-  // first row when the reader changes the query, or when its row is gone.
+  // first row when the user changes the query, or when its row is gone.
   const [picked, setPicked] = React.useState<string | null>(null);
   const [pickedUnder, setPickedUnder] = React.useState(query);
   if (pickedUnder !== query) {

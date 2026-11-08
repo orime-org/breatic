@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What one purchase's confirmation says, in the language it was bought in.
@@ -33,6 +33,8 @@
  * — a bare date would leave the buyer guessing which of those they were
  * given.
  */
+
+import { formatCredits } from "@breatic/shared";
 
 import { refundWindowCloses, t } from "@breatic/shared";
 import { getMailLayout, runWithLocale } from "@breatic/core";
@@ -179,13 +181,13 @@ export function renderPurchaseConfirmation(
       value,
     });
     const money = [
-      fact("credits", t("server.purchase_mail.credits_amount", { credits: String(view.creditsGranted) })),
+      fact("credits", t("server.purchase_mail.credits_amount", { credits: formatCredits(view.creditsGranted, locale) })),
       fact("subtotal", formatMoney(view.amountCents, view.currency, locale)),
       fact("tax", formatMoney(view.taxCents ?? 0, view.currency, locale)),
     ];
     const total = fact("total", formatMoney(charged, view.currency, locale));
     const reference = [
-      fact("balance", t("server.purchase_mail.credits_amount", { credits: String(view.balanceCredits) })),
+      fact("balance", t("server.purchase_mail.credits_amount", { credits: formatCredits(view.balanceCredits, locale) })),
       fact("purchased_at", bothZones(paidAt, timeZone, locale)),
       fact("refund_by", bothZones(refundBy, timeZone, locale)),
       fact("order_ref", view.paymentId),

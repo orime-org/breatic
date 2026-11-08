@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 import { Outlet, type RouteObject } from 'react-router-dom';
@@ -27,7 +27,7 @@ export function LoadingBoundary(): React.JSX.Element {
 // `behindLoadingScreen` puts the table on the route's `children` field, so the
 // element carries no children of its own and the gate's walk finds no page
 // under it — indistinguishable from a guard that renders an `Outlet`. Without
-// this property it withholds the whole table from a reader with no session.
+// this property it withholds the whole table from a user with no session.
 LoadingBoundary.rendersEveryChild = true;
 
 /**
@@ -36,7 +36,7 @@ LoadingBoundary.rendersEveryChild = true;
  * The boundary is a route rather than a wrapper around `RouterProvider`
  * because React destroys the effects of whatever a boundary hides: above the
  * provider, its subscription to the router dies for the length of every chunk
- * wait, and a reader who navigates during that wait is not followed. Measured
+ * wait, and a user who navigates during that wait is not followed. Measured
  * on the production build with a chunk that took four seconds and succeeded —
  * Back moved the address bar to /studio while the project page arrived behind
  * it and stayed. As a route the provider is above the boundary and keeps

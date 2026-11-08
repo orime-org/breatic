@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The order a drag produced is the order a reload comes back to (#2165).
  *
- * The strip is painted from the meta document and stored per reader, so the
+ * The strip is painted from the meta document and stored per user, so the
  * question crosses a real drag, the collab document and browser storage, and
  * only a reload of a real page asks it.
  *

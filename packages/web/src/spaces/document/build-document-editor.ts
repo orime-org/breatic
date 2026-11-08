@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The one place a document editor is assembled.
@@ -58,9 +58,11 @@ import { documentTableHandlesExtension } from '@web/spaces/document/document-tab
 import { documentTableCopyExtension } from '@web/spaces/document/document-table-copy';
 import { documentTableSideMenuExtension } from '@web/spaces/document/document-table-side-menu';
 import { documentTableLeaveSelectionExtension } from '@web/spaces/document/document-table-leave-selection';
+import { documentCellContentSelectionExtension } from '@web/spaces/document/document-cell-content-selection';
 import { STRIP_SIZE, TABLE_STRIP_OUTSET } from '@web/spaces/document/document-strip-alignment';
 import { documentTableDragExtension, holdDropLineInTableDrags } from '@web/spaces/document/document-table-drag';
-import { documentPasteHandler } from '@web/spaces/document/document-table-paste';
+import { documentPasteHandler } from '@web/spaces/document/document-paste-html';
+import { canvasPasteHandler, type CanvasPasteSink } from '@web/spaces/document/document-canvas-paste-handler';
 import { documentQuoteInputExtension } from '@web/spaces/document/document-quote-input';
 import { documentSafariImeExtension } from '@web/spaces/document/document-safari-ime';
 import { documentTrailingPressExtension } from '@web/spaces/document/document-trailing-press';
@@ -72,6 +74,7 @@ import {
   type DocumentCommentsOptions,
 } from '@web/spaces/document/document-comment-thread-store';
 import { documentCommentDraftRange } from '@web/spaces/document/document-comment-draft-range';
+import { documentAiRange } from '@web/spaces/document/document-ai-range';
 import { documentCommentPasteExtension } from '@web/spaces/document/document-comment-paste';
 import { documentCommentSelection } from '@web/spaces/document/document-comment-selection';
 import { documentNoNodeClickExtension } from '@web/spaces/document/document-no-node-click';
@@ -85,6 +88,7 @@ import {
   fileDropPosition,
   filesPasteHandler,
   type FilesSink,
+  type PasteHandler,
 } from '@web/spaces/document/document-file-input';
 
 /** What a caller has to supply to open a document. */
@@ -107,10 +111,16 @@ export interface DocumentEditorOptions {
    */
   readonly onFiles?: FilesSink;
   /**
-   * How pasted media are judged (inner#1127 A18). Left out, every pasted
-   * medium is left out.
+   * How pasted media are judged (inner#1351 design §5.4). Left out, every
+   * pasted medium with an address is left out; a pending block copied from a
+   * body is kept.
    */
   readonly media?: PastedMediaOptions;
+  /**
+   * Where a pasted canvas clipboard's uploads start (inner#1351). Left out, a
+   * canvas clipboard pastes as the plain text it is.
+   */
+  readonly onCanvasPaste?: CanvasPasteSink;
 }
 
 /**
@@ -172,6 +182,7 @@ export function buildDocumentEditor(
       documentTableCopyExtension(),
       documentTableSideMenuExtension(),
       documentTableLeaveSelectionExtension(),
+      documentCellContentSelectionExtension(),
       documentTableColumnWidthsExtension(),
       documentTableDragExtension(),
       documentKeyboardMoveExtension(),
@@ -196,6 +207,7 @@ export function buildDocumentEditor(
       commentWiring(options.comments),
       documentCommentPasteExtension(),
       documentCommentDraftRange(),
+      documentAiRange(),
       documentFileDropExtension(options.onFiles),
       documentPastedMediaExtension(options.media),
       ...(options.extensions ?? []),
@@ -215,7 +227,7 @@ export function buildDocumentEditor(
       // store; inside BlockNote only its own Tab and Shift-Tab bindings do,
       // and they decline the key while the toolbar judges it should be on
       // screen — a selection that is non-empty, holds text, and does not
-      // reach into plain content like a code block — so a reader can tab
+      // reach into plain content like a code block — so a user can tab
       // INTO the toolbar.
       'formattingToolbar',
     ],
@@ -244,12 +256,21 @@ export function buildDocumentEditor(
     // level with the table and past its first column's strips, since over its
     // cells the strip belongs to their blocks (inner#1619 design 5.3).
     sideMenu: { hoverMargin: TABLE_STRIP_OUTSET + STRIP_SIZE },
-    pasteHandler:
-      options.onFiles === undefined
-        ? documentPasteHandler
-        : filesPasteHandler(options.onFiles, documentPasteHandler),
+    pasteHandler: pasteChain(options),
     ...collaborative,
   } as never) as BlockNoteEditor<never, never, never>;
+}
+
+/**
+ * The body's paste hooks, in the order a paste is tried (inner#1351 design
+ * §5.1): files, then a canvas clipboard, then everything else.
+ * @param options - The editor's options.
+ * @returns The first hook.
+ */
+function pasteChain(options: DocumentEditorOptions): PasteHandler {
+  const rest =
+    options.onCanvasPaste === undefined ? documentPasteHandler : canvasPasteHandler(options.onCanvasPaste, documentPasteHandler);
+  return options.onFiles === undefined ? rest : filesPasteHandler(options.onFiles, rest);
 }
 
 /**

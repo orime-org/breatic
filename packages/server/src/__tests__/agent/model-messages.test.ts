@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Turning stored history into what the model is given.
@@ -198,7 +198,7 @@ describe("history on its way to the model", () => {
   });
 
   it("says a turn was stopped rather than cut off when it was both", () => {
-    // A reader who presses stop on a turn already at the ceiling leaves both
+    // A user who presses stop on a turn already at the ceiling leaves both
     // marks. What the next turn needs to know is that nobody wants the rest.
     const history = [
       stored("assistant", [
@@ -250,7 +250,7 @@ describe("history on its way to the model", () => {
           failure: {
             kind: "tool_failed",
             forModel: "the site refused the connection",
-            readerKey: "chat.tool.failure.unreachable",
+            userKey: "chat.tool.failure.unreachable",
           },
         },
       ]),
@@ -291,7 +291,7 @@ describe("history on its way to the model", () => {
     expect(output.value).toBe(NOTHING_SAID_WHY.forModel);
   });
 
-  it("keeps the line meant for a reader out of what the model is sent", () => {
+  it("keeps the line meant for a user out of what the model is sent", () => {
     // Two audiences, two fields, and only one of them travels. The key is what
     // the panel translates; the model has no use for it and every string put
     // in front of a model is read as something it was meant to act on.
@@ -307,7 +307,7 @@ describe("history on its way to the model", () => {
           failure: {
             kind: "tool_failed",
             forModel: "the site refused the connection",
-            readerKey: "chat.tool.failure.unreachable",
+            userKey: "chat.tool.failure.unreachable",
           },
         },
       ]),
@@ -337,7 +337,7 @@ describe("history on its way to the model", () => {
           failure: {
             kind: "user_aborted",
             forModel: "The user stopped this turn while the tool was still running.",
-            readerKey: "chat.tool.unfinished",
+            userKey: "chat.tool.unfinished",
           },
         },
         { type: "interrupted" },
@@ -428,7 +428,7 @@ describe("history on its way to the model", () => {
           failure: {
             kind: "user_aborted",
             forModel: "stopped",
-            readerKey: "chat.tool.unfinished",
+            userKey: "chat.tool.unfinished",
           },
           argumentsIncomplete: true,
         },
@@ -678,7 +678,7 @@ describe("a stored reply with DSML markup in its text", () => {
 describe("a questionnaire read back from its parts (inner#1542)", () => {
   const questionnaire = { questions: [{ header: "Ratio", question: "Which ratio?", multiSelect: false, options: [{ label: "16:9" }] }] };
 
-  it("goes back as the call and the reader's answers once it is answered", () => {
+  it("goes back as the call and the user's answers once it is answered", () => {
     const out = toModelMessages([
       stored("assistant", [
         { type: "tool", toolCallId: "ask-1", toolName: "ask_user", input: questionnaire, status: "success", output: { answers: [{ index: 0, selected: ["16:9"] }] } },
@@ -700,7 +700,7 @@ describe("a questionnaire read back from its parts (inner#1542)", () => {
     ]);
   });
 
-  it("goes back with word that the reader wrote a message instead", () => {
+  it("goes back with word that the user wrote a message instead", () => {
     const out = toModelMessages([
       stored("assistant", [
         { type: "tool", toolCallId: "ask-2", toolName: "ask_user", input: questionnaire, status: "success", output: { repliedInChat: true } },

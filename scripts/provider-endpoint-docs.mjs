@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * How `scripts/provider-prices.ts` reads each bound endpoint's document from fal and SandBase (inner#1743): an

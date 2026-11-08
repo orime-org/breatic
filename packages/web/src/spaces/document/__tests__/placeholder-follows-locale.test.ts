@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The document's placeholder must follow a language switch.
@@ -142,7 +142,7 @@ describe('the document placeholder', () => {
   it('keeps the editor, its undo stack and its selection across a switch', async () => {
     // What the language switch must not cost (user 2026-09-02): rebuilding
     // the editor throws away the undo stack, the selection and the IME
-    // composition state, and the reader is mid-sentence when they switch.
+    // composition state, and the user is mid-sentence when they switch.
     const { handle, container } = await openOn('en', 'project-p/document-keep');
     const editorBefore = handle.editor;
 

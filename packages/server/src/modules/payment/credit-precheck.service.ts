@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Credit admission shared by every route that starts paid work (#1580 #7,
  * inner#1611).
  *
  * A run is admitted by holding its estimate (`reserveForRun`): the studio's
- * purchases less its debt less every hold still counted must cover it, and
+ * designated lot balance less its debt less every counted hold must cover it, and
  * the hold stays until the worker charges the run or the run ends. Concurrent
  * runs therefore see each other's estimates instead of the same balance.
  *
@@ -20,7 +20,7 @@
 
 import { AppError, env, getNodeTaskConfig } from "@breatic/core";
 import { assetService, creditHoldService, creditLotService } from "@breatic/domain";
-import { ceilToCreditCent, formatCredits, getActiveLocale, t, type ProjectCreditsView } from "@breatic/shared";
+import { parseCreditDecimal, quantizeQuotedCredits, serializeCreditMicro, ceilToCreditCent, formatCredits, getActiveLocale, t, type ProjectCreditsView } from "@breatic/shared";
 
 /**
  * A run refused because running work holds what it needs, so a lane that
@@ -80,27 +80,27 @@ async function refuse(userId: string, required: number, figures: RefusalFigures)
    * @param credits - The amount.
    * @returns The text.
    */
-  const shown = (credits: number): string => formatCredits(credits, locale);
+  const shown = (credits: number | string): string => formatCredits(credits, locale);
 
-  if (spendable < 0) {
+  if (parseCreditDecimal(spendable) < 0n) {
     const owed = await creditLotService.getStudioDebt(studioId);
     throw new AppError(402, t("server.credit.in_debt", { owed: shown(owed) }));
   }
 
-  if (held > 0 && spendable >= required) {
+  if (parseCreditDecimal(held) > 0n && parseCreditDecimal(spendable) >= quantizeQuotedCredits(required)) {
     const unassigned = await creditLotService.getUnassignedCredits(userId);
     // Still a hold refusal: the sentence points at the step that certainly
     // works, and a lane that stores the cause on its node names the hold.
-    if (unassigned > 0) throw new CreditsHeldError(t("server.credit.unassigned", { available: shown(unassigned) }));
+    if (parseCreditDecimal(unassigned) > 0n) throw new CreditsHeldError(t("server.credit.unassigned", { available: shown(unassigned) }));
     throw new CreditsHeldError(t("server.credit.held_by_running", { held: shown(held), available: shown(available) }));
   }
 
-  if (available > 0) {
+  if (parseCreditDecimal(available) > 0n) {
     throw new AppError(402, t("server.error.insufficient_credits", { required: shown(required), available: shown(available) }));
   }
 
   const unassigned = await creditLotService.getUnassignedCredits(userId);
-  if (unassigned > 0) {
+  if (parseCreditDecimal(unassigned) > 0n) {
     throw new AppError(402, t("server.credit.unassigned", { available: shown(unassigned) }));
   }
 
@@ -110,7 +110,7 @@ async function refuse(userId: string, required: number, figures: RefusalFigures)
   // to top up would be the same mistake the unassigned branch avoids, on a
   // different cause.
   const granted = await creditLotService.getGrantedCredits(userId);
-  if (granted > 0) {
+  if (parseCreditDecimal(granted) > 0n) {
     throw new AppError(402, t("server.credit.granted_elsewhere"));
   }
 
@@ -153,7 +153,7 @@ export async function reserveForRun(
 }
 
 /**
- * Refuse work whose studio's balance (purchases less debt) is below
+ * Refuse work whose Studio's balance (designated lots less debt) is below
  * `required`, holding nothing and leaving running work's holds out of it.
  * Skipped entirely when payments are disabled.
  * @param projectId - The project the work belongs to; its studio pays.
@@ -170,6 +170,6 @@ export async function precheckCredits(
 
   const studioId = await assetService.resolveOwnerStudioId(projectId);
   const spendable = await creditLotService.getSpendableCredits(studioId);
-  if (spendable >= required) return;
-  await refuse(userId, required, { studioId, spendable, held: 0, available: spendable });
+  if (parseCreditDecimal(spendable) >= quantizeQuotedCredits(required)) return;
+  await refuse(userId, required, { studioId, spendable, held: serializeCreditMicro(0n), available: spendable });
 }

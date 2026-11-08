@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 
@@ -57,7 +57,7 @@ export function AgentColumn({ projectId, activeSpace, spaces }: AgentColumnProps
   const arrived = currentId !== undefined;
   // What the server said, when it said anything. The scrim covers the line
   // that would otherwise carry it, so it has to say it itself -- otherwise a
-  // reader who was removed from the project reads "network error" while their
+  // user who was removed from the project reads "network error" while their
   // network is fine, and the sentence that would have told them is underneath.
   const why = useConversationRuntime((s) => s.openFailure[projectId]);
 
@@ -77,7 +77,7 @@ export function AgentColumn({ projectId, activeSpace, spaces }: AgentColumnProps
   }, [projectId]);
 
   // A toggle, not an opener: the button says "conversation history" and the
-  // reader reaches for it again to put the list away.
+  // user reaches for it again to put the list away.
   const toggleHistory = React.useCallback(
     (): void => setHistoryOpen(!historyOpen),
     [historyOpen, setHistoryOpen],
@@ -136,7 +136,7 @@ export function AgentColumn({ projectId, activeSpace, spaces }: AgentColumnProps
           // only a conversation in hand can be said about. Until one arrives
           // the header says nothing -- the same silence the message column
           // keeps, for the same reason: a conversation still on its way may
-          // well have a name, and guessing it has none is a guess the reader
+          // well have a name, and guessing it has none is a guess the user
           // reads as fact.
           conversationNamePlaceholder={arrived ? t('chat.conversation.untitled') : ''}
           onToggleHistory={toggleHistory}
@@ -178,7 +178,7 @@ interface ChatUnreachableProps {
  * A dialog's scrim says something is in front; this says this column is
  * broken.
  * @param root0 - The component props.
- * @param root0.onReload - Called when the reader asks to try again.
+ * @param root0.onReload - Called when the user asks to try again.
  * @param root0.reason - What the server said, if it said anything.
  * @returns The scrim.
  */

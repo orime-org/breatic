@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -564,7 +564,7 @@ function unsetDiffering(model: string, binding: MediaBinding): Unreviewed[] {
   for (const [name, param] of Object.entries(models.get(model) ?? {})) {
     const bound = binding.params?.[name];
     if (bound === undefined || bound.unset !== undefined) continue;
-    // A run carries a param with offered values or a range at a value; one the reader can clear (text, a list) or
+    // A run carries a param with offered values or a range at a value; one the user can clear (text, a list) or
     // one whose default is null can arrive empty, one whose default is its absent value sends nothing, and the field
     // is then unsent unless the binding says what to send.
     const clearable = param.remote_source === undefined && (param.type === "text" || param.type === "list" || param.type === "items" || param.accepts !== undefined);

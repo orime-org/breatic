@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The task list's own lifecycle (#186 §7.1).
  *
- * The list is one reader's fetch; the four counts beside it come off the canvas
+ * The list is one user's fetch; the four counts beside it come off the canvas
  * document and move on their own. So the two can disagree, and what keeps them
  * from disagreeing on screen is when this panel asks again.
  */
@@ -124,7 +124,7 @@ describe('NodeTaskPanelContainer', () => {
     );
   });
 
-  it('closes when the reader clears the last row of the state it is showing', async () => {
+  it('closes when the user clears the last row of the state it is showing', async () => {
     // The count cell that opened this panel is drawn only while that state has
     // a task in it, so clearing the last one takes the cell away. Left open,
     // the panel would sit there saying the generic "nothing here right now"
@@ -194,7 +194,7 @@ describe('NodeTaskPanelContainer', () => {
 describe('NodeTaskPanelContainer, a key that comes back around', () => {
   it('asks the server again when the counts return to a value they already had', async () => {
     // The key is the counts themselves, and those repeat: a task finishes, the
-    // reader clears it, and the next upload puts the node back where it began.
+    // user clears it, and the next upload puts the node back where it began.
     // Served from cache, the list would show the task that was cleared —
     // running, counting up, with no button to get rid of it — and the read
     // that harvests would never reach the server.
@@ -218,7 +218,7 @@ describe('NodeTaskPanelContainer, a key that comes back around', () => {
 describe('NodeTaskPanelContainer, the clock', () => {
   it('runs only for the list that reads it', async () => {
     // The panel holds one state at a time. A running task on the node means
-    // nothing to a reader looking at the failures: no row there reads the
+    // nothing to a user looking at the failures: no row there reads the
     // clock, so nothing should be re-rendering once a second.
     vi.mocked(canvasApi.listNodeTasks).mockResolvedValue([
       {

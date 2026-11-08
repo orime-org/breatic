@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Landing after a trip to Stripe for a membership.
@@ -22,6 +22,7 @@ import { holdsActionableSubscription } from '@breatic/shared';
 
 import { confirmMembershipCheckout } from '@web/data/api/subscription';
 import { membershipQueryKey } from '@web/features/membership/membership-query';
+import { referralQueryKey } from '@web/features/referral/referral-query';
 import { useTranslation } from '@web/i18n/use-translation';
 import { reportConversion } from '@web/data/analytics';
 import { toast } from '@web/lib/toast';
@@ -80,6 +81,8 @@ export function useMembershipCheckoutReturn(): void {
       }
       // Opening the panel next reads the confirmed answer straight away.
       queryClient.setQueryData(membershipQueryKey(userId), membership);
+      // A paid first period ends the referral discount the panel shows (inner#1868 §8).
+      void queryClient.invalidateQueries({ queryKey: referralQueryKey(userId) });
       const { conversion } = membership;
       if (conversion) {
         reportConversion('subscription', conversion.transactionId, {

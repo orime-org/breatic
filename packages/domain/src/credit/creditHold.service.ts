@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Credit holds (inner#1611): what a studio has promised to work that is
@@ -7,7 +7,7 @@
  *
  * An admission that only reads the balance lets every concurrent request see
  * the same credits and pass, and the charges that follow push the studio into
- * debt. Here an admission counts what the purchases hold, less the debt, less
+ * debt. Here an admission counts what the designated lots hold, less the debt, less
  * every hold still counted, and writes its own hold before letting the work
  * start. Admissions and charges on one studio both take the studio's debt
  * lock first, so they queue and each sees what the one before it held.
@@ -19,7 +19,7 @@
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
-import { fromMicroCredits, positionFrom, toChargeMicro, toMicroCredits } from "@domain/credit/credit-math.js";
+import { fromMicroCredits, positionFrom, serializeCreditPosition, toChargeMicro, type CreditPositionMicro } from "@domain/credit/credit-math.js";
 import { db, env } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import type { ProjectCreditsView } from "@breatic/shared";
@@ -47,7 +47,7 @@ export type ReserveOutcome = { ok: true } | ({ ok: false; studioId: string } & P
  * @param tx - The transaction that takes and keeps the lock.
  * @returns Its balance, counted holds and what is left.
  */
-async function lockedPosition(studioId: string, tx: DbTx): Promise<ProjectCreditsView> {
+async function lockedPosition(studioId: string, tx: DbTx): Promise<CreditPositionMicro> {
   const debt = await creditLotRepo.lockDebt(studioId, tx);
   const lots = await creditLotRepo.sumSpendableForStudio(studioId, tx);
   const held = await creditHoldRepo.sumHeldForStudio(studioId, tx);
@@ -76,7 +76,7 @@ export async function reserveCredits(request: HoldRequest): Promise<ReserveOutco
   const amount = toChargeMicro(request.amount);
   return db.transaction(async (tx) => {
     const position = await lockedPosition(studioId, tx);
-    if (toMicroCredits(position.available) < amount) return { ok: false, studioId, ...position };
+    if (position.available < amount) return { ok: false, studioId, ...serializeCreditPosition(position) };
     await creditHoldRepo.insertHold(
       {
         studioId,
@@ -101,7 +101,7 @@ export async function releaseHold(referenceId: string): Promise<void> {
 }
 
 /**
- * A studio's purchases less debt, its counted holds, and what is left, as of
+ * A Studio's designated lot balance less debt, its counted holds, and what is left, as of
  * one instant.
  * @param studioId - The studio.
  * @returns The three figures, in credits.
@@ -114,7 +114,7 @@ export async function getCreditPosition(studioId: string): Promise<ProjectCredit
         creditLotRepo.readDebt(studioId, tx),
         creditHoldRepo.sumHeldForStudio(studioId, tx),
       ]);
-      return positionFrom(lots, debt, held);
+      return serializeCreditPosition(positionFrom(lots, debt, held));
     },
     { isolationLevel: "repeatable read" },
   );

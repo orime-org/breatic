@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { GenerationTemplate } from "@shared/canvas/generation-templates.js";
 
@@ -26,7 +26,7 @@ export const CHARACTER_BIBLE: GenerationTemplate = {
   triggers: {
     asks: ["a character card", "a character sheet or model sheet", "character design reference", "keep my character consistent"],
     offerWhen: [
-      "the reader plans a comic series, a short drama or a music video, or wants one character in two or more pictures or videos, and the canvas has no character sheet for them yet",
+      "the user plans a comic series, a short drama or a music video, or wants one character in two or more pictures or videos, and the canvas has no character sheet for them yet",
     ],
   },
 };

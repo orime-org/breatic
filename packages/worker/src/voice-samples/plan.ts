@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Which voice samples the fixed sample address has to serve, and how each is made
  * (#2156, design §16.4).
  *
  * The keys are the catalog's own (`sample_key`, and `sample_keys` for a voice
- * that speaks whichever language the reader picks). A key names its language
+ * that speaks whichever language the user picks). A key names its language
  * by the path segment after the model — `voice-samples/<model>/<lang>/<voice>.mp3`
  * — and a key with no segment is English. The sentence each language says,
  * and the extra fields a model takes (`extra_body`), come from

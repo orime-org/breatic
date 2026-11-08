@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A proposed edit to the open document (inner#1509): checked against the
- * blocks the reader's browser sent this turn, and refused with what is wrong,
+ * blocks the user's browser sent this turn, and refused with what is wrong,
  * the rule and the facts the agent needs to put it right.
  */
 
@@ -125,7 +125,7 @@ describe("a proposal that holds together", () => {
 });
 
 describe("a refused proposal says what is wrong and the facts to fix it", () => {
-  it("when the reader has no readable document open", () => {
+  it("when the user has no readable document open", () => {
     expect(refusal({ kind: "insert", body: "x", title: "t" }, null)).toMatch(/no document open/i);
   });
 

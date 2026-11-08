@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The panel down the right-hand side of a document (#18, A4 · A9 · A18).
@@ -9,7 +9,7 @@
  * does (design §5, user 2026-09-22). The outline on the left is the same
  * shape and arrives with task #97.
  *
- * NOTHING HERE DECIDES WHEN IT IS ON SCREEN. The reader does — through the
+ * NOTHING HERE DECIDES WHEN IT IS ON SCREEN. The user does — through the
  * whole-document menu, by pressing a highlight in the body, by opening a
  * draft from a comment entry, or with this panel's own close button — and
  * `DocumentEditor` holds that one bit. A comment arriving from a peer marks the `⋯` button and
@@ -79,15 +79,19 @@ import {
 import { useCommentWrite } from '@web/spaces/document/use-comment-write';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { domElementOf } from '@web/spaces/document/document-editor-view';
+import { COMMENT_PANEL_WIDTH } from '@web/spaces/document/document-columns';
+
+/** The panel's width, shared with the heading outline's layout check. */
+const PANEL_WIDTH: React.CSSProperties = { width: COMMENT_PANEL_WIDTH };
 
 interface DocumentCommentRailProps {
   /** The editor whose threads this draws. */
   editor: ToolEditor;
   /** The threads in panel order, read once for the whole Space. */
   rail: CommentRail;
-  /** This reader's role, which decides what the cards offer. */
+  /** This user's role, which decides what the cards offer. */
   myRole: ProjectRole;
-  /** Closes the panel, which only the reader ever does. */
+  /** Closes the panel, which only the user ever does. */
   onClose: () => void;
   /** The body's scroller, which the panel shares; null before it mounts. */
   scroller: HTMLElement | null;
@@ -128,7 +132,7 @@ type CardHandling = Omit<
  * @param root0 - Panel props.
  * @param root0.editor - The editor whose threads this draws.
  * @param root0.rail - The threads in panel order.
- * @param root0.myRole - This reader's role.
+ * @param root0.myRole - This user's role.
  * @param root0.onClose - Closes the panel.
  * @param root0.scroller - The body's scroller, moved to show a new draft card.
  * @returns The panel.
@@ -145,7 +149,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // Who is reading, for the rights each card draws itself with. The store is
   // where every other surface asks the same question.
   const viewerId = useCurrentUserStore((state) => state.user?.id);
-  // Which threads the reader pressed in the body. The panel marks them and
+  // Which threads the user pressed in the body. The panel marks them and
   // brings the first into view, which is A6's half of "the comment opens".
   const selected = React.useSyncExternalStore(
     onSelectedThreadsChange,
@@ -171,7 +175,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   const filter = filterState.filter;
   /**
    * Applies a manual filter without replaying the current viewing command.
-   * @param value - The filter the reader chose.
+   * @param value - The filter the user chose.
    */
   const setFilter = React.useCallback((value: Filter): void => {
     setFilterState((current) => ({ ...current, filter: value }));
@@ -232,9 +236,9 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
 
   // What has been written into each thread's reply box and not sent yet. Kept
   // by the editor rather than by the card or this panel: a card is taken off
-  // the panel by things the reader did not do — a peer settling the thread, a
+  // the panel by things the user did not do — a peer settling the thread, a
   // peer deleting it — and this panel can be mounted again (StrictMode mounts
-  // it twice), while unsent words are the reader's until they send or clear
+  // it twice), while unsent words are the user's until they send or clear
   // them.
   const drafts = React.useSyncExternalStore(onUnsentChange, () =>
     repliesOf(editor),
@@ -460,12 +464,12 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // or above the screen, and a draft's box took the focus without scrolling.
   // Once each time a card comes to be read — and for the draft, once per press
   // of an entry — from where the card is going rather than where a move has
-  // carried it so far; after that the scroll is the reader's (design §9.4.0).
+  // carried it so far; after that the scroll is the user's (design §9.4.0).
   // Computed from the two rectangles, as `scrollTabToEdge` does, with the
   // card's height as it is now: a card read opens up to all of its comments
   // in the same commit, before the observer reports the new height. A card
   // that grows afterwards is shown again at its new height, unless the
-  // reader has scrolled since.
+  // user has scrolled since.
   const revealed = React.useRef<{ key: string | ProposalLocation; height: number; top: number } | null>(null);
   // Only once the card's words are measured, for where it is aimed now: until
   // then the layout holds it at the bottom of the column — which is where a
@@ -658,7 +662,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     setFilter('all');
   }, [setFilter]);
 
-  // Two different nothings, and they send the reader different places: a
+  // Two different nothings, and they send the user different places: a
   // document nobody has commented on wants to know how to start one, while a
   // filter that happens to be empty wants to say so — what they are looking
   // for is one press away, behind "all".
@@ -673,7 +677,8 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     <aside
       ref={aside}
       data-testid='doc-comment-rail'
-      className='flex w-72 flex-none flex-col border-l border-border'
+      className='flex flex-none flex-col border-l border-border'
+      style={PANEL_WIDTH}
     >
       {/* Held at the top while the column scrolls past under it: the panel
           shares the body's scroller, so without this the title and the way
@@ -745,7 +750,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
             {written.map((entry) =>
               'draft' in entry ? (
                 // Placed by the same numbers as the rest, and measured like
-                // them: it grows as the reader writes, and the cards below
+                // them: it grows as the user writes, and the cards below
                 // have to give way (§9.6).
                 <PlacedDraft
                   key={entry.id}
@@ -868,7 +873,7 @@ function PlacedDraft({
     <div
       ref={box}
       className={cn('absolute inset-x-0 rounded-sm', arrived && MOVES)}
-      // The draft is what the reader is working in, so it comes to the front
+      // The draft is what the user is working in, so it comes to the front
       // whenever a settling card would otherwise overlap it.
       style={{ top: `${String(top)}px`, zIndex: 1 }}
       onMouseEnter={() => {
@@ -965,24 +970,24 @@ function PlacedCard({
   }, [card.id, take, giveBack]);
 
   return (
-    // A card is what the reader acts on, and it cannot be a button: an open
+    // A card is what the user acts on, and it cannot be a button: an open
     // one carries its own buttons and its reply box. What this rule asks for
     // beyond focus and a press key is a role, which is screen reader
-    // semantics — not supported by this product (docs/ACCESSIBILITY.md), and
-    // the only part here no other reader gains from.
+    // semantics — not supported by this product (docs/ACCESSIBILITY-BOUNDARY.md), and
+    // the only part here no other user gains from.
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
       ref={box}
       // The move is animated: a card giving way to the one being read should
       // read as giving way rather than as the column jumping under the
-      // reader (user 2026-09-22).
+      // user (user 2026-09-22).
       className={cn(
         'absolute inset-x-0 rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-active-border',
         arrived && MOVES,
       )}
       // The card being read comes to the front. Cards give way to each other
       // by moving, and while one is settling — a reply box opening, a height
-      // not measured yet — they can still overlap; the one the reader is on
+      // not measured yet — they can still overlap; the one the user is on
       // is the one to see whole.
       style={{
         top: `${String(top)}px`,
@@ -1008,7 +1013,7 @@ function PlacedCard({
       }}
       // Reaching a card is what resting a pointer on it is, not what
       // pressing it is: the words go deeper (A24) and the thread stays shut
-      // until the reader says to open it (A7). Opening on arrival would also
+      // until the user says to open it (A7). Opening on arrival would also
       // move the card — reading one makes it the column's pivot — out from
       // under the focus ring the browser had just scrolled to. A card the
       // column pushed up under the header is lifted into view (§9.6.1).

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 
@@ -37,7 +37,7 @@ export const TopBarTextIconButton = React.forwardRef<
       // It renders as a labelled control — callers pass the label as children,
       // and `ThemeToggle` keeps its label screen-reader-only — so the border is
       // set here rather than per caller: an outlined control is the one shape a
-      // reader can tell is pressable, and both switchers should read alike.
+      // user can tell is pressable, and both switchers should read alike.
       variant={null}
       size={null}
       ref={ref}

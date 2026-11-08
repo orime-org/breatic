@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { getLocale, t } from '@breatic/shared';
@@ -63,7 +63,7 @@ export class StreamRefusedError extends Error {
    * @param status - The HTTP status the server answered with
    * @param message - What to tell the user, from the server when it said
    * @param fromServer - The message came out of our own envelope, which is
-   *   what makes it a sentence written for this reader rather than one this
+   *   what makes it a sentence written for this user rather than one this
    *   file supplied because the refusal needed to carry something
    */
   constructor(
@@ -140,8 +140,12 @@ interface SseOptions<TEvent> {
   url: string;
   /** POST body sent with the open request. */
   body?: unknown;
-  /** Parse each `data:` payload into the typed event. */
-  parseEvent: (data: string) => TEvent | null;
+  /**
+   * Parse each `data:` payload into the typed event. The frame's `event:` name
+   * comes alongside it (`message` when the server named none), for a stream
+   * whose payloads say what they are only by that name.
+   */
+  parseEvent: (data: string, event: string) => TEvent | null;
   /** Called for every parsed event. */
   onEvent: (event: TEvent) => void;
   /** Called when the stream closes cleanly. */
@@ -174,7 +178,7 @@ interface SseOptions<TEvent> {
  * @param root0 - SSE connection options.
  * @param root0.url - Endpoint relative to `API_BASE_PATH`, or an absolute URL.
  * @param root0.body - POST body sent with the open request.
- * @param root0.parseEvent - Parses each `data:` payload into a typed event, or null to skip.
+ * @param root0.parseEvent - Parses each `data:` payload, with its frame's event name, into a typed event, or null to skip.
  * @param root0.onEvent - Invoked for every successfully parsed event.
  * @param root0.onClose - Invoked when the stream closes cleanly.
  * @param root0.onError - Invoked on transport / parse / abort error.
@@ -216,7 +220,7 @@ export async function sseStream<TEvent>({
       },
       onmessage(msg) {
         if (!msg.data) return;
-        const parsed = parseEvent(msg.data);
+        const parsed = parseEvent(msg.data, msg.event || 'message');
         if (parsed) onEvent(parsed);
       },
       onclose() {

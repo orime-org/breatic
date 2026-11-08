@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The terms version an account is created under (#302): the schema applies
@@ -16,7 +16,7 @@ import { legalConfigSchema, getLegalConfig } from "@server/config/legal.js";
 
 describe("legal config - schema", () => {
   it("defaults to the terms published on 2026-10-02", () => {
-    expect(legalConfigSchema.parse({})).toEqual({ terms_version: "2026-10-02" });
+    expect(legalConfigSchema.parse({})).toEqual({ terms_version: "2026-10-02", promoter_terms_version: "" });
   });
 
   it("rejects an empty version and one too long for the column", () => {
@@ -29,7 +29,11 @@ describe("legal config - accessor reads config/legal.yaml", () => {
   it("returns the shipped version", () => {
     const shipped = parse(readFileSync(resolve(MONOREPO_ROOT, "config/legal.yaml"), "utf-8")) as {
       terms_version: string;
+      promoter_terms_version: string;
     };
-    expect(getLegalConfig()).toEqual({ terms_version: shipped.terms_version });
+    expect(getLegalConfig()).toEqual({
+      terms_version: shipped.terms_version,
+      promoter_terms_version: shipped.promoter_terms_version,
+    });
   });
 });

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -31,7 +31,7 @@ export function shipped(): ProviderConfigInput {
 }
 
 /** Our catalog's files, below `config/models/`. */
-const CATALOG_FILES = ["image/models.yaml", "video/models.yaml", "audio/models.yaml", "tts/models.yaml", "three_d/meshy.yaml", "three_d/hunyuan3d.yaml"] as const;
+const CATALOG_FILES = ["image/models.yaml", "video/models.yaml", "audio/models.yaml", "tts/models.yaml", "three_d/models.yaml"] as const;
 
 /** One model of our catalog, as the files write it; the fields the provider checks are typed. */
 export type CatalogModel = CatalogShape["models"][number] & {

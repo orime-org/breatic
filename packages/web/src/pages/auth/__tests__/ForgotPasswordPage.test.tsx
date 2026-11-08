@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -27,7 +27,7 @@ describe('ForgotPasswordPage offers only the way that works here', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('offers the reset email and nothing else when email is enabled (A8)', async () => {
-    vi.mocked(authApi.options).mockResolvedValueOnce({ emailVerification: true });
+    vi.mocked(authApi.options).mockResolvedValueOnce({ emailVerification: true, referralEnabled: false });
     setup();
     expect(await screen.findByRole('button', { name: 'Email me a reset link' })).toBeInTheDocument();
     expect(screen.getByLabelText('Email')).toBeInTheDocument();
@@ -36,7 +36,7 @@ describe('ForgotPasswordPage offers only the way that works here', () => {
   });
 
   it('offers the recovery code and nothing else when email is disabled (A10)', async () => {
-    vi.mocked(authApi.options).mockResolvedValueOnce({ emailVerification: false });
+    vi.mocked(authApi.options).mockResolvedValueOnce({ emailVerification: false, referralEnabled: false });
     setup();
     expect(await screen.findByRole('button', { name: /recovery code/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Email me a reset link' })).not.toBeInTheDocument();
@@ -51,7 +51,7 @@ describe('ForgotPasswordPage offers only the way that works here', () => {
   });
 
   it('marks the send button busy while the reset link is being sent, then shows the sent card', async () => {
-    vi.mocked(authApi.options).mockResolvedValueOnce({ emailVerification: true });
+    vi.mocked(authApi.options).mockResolvedValueOnce({ emailVerification: true, referralEnabled: false });
     let answer!: (value: { message: string }) => void;
     vi.mocked(authApi.forgotPassword).mockReturnValueOnce(
       new Promise((resolve) => { answer = resolve; }),
@@ -79,7 +79,7 @@ describe('ForgotPasswordPage offers only the way that works here', () => {
   });
 
   it('clears the busy mark on the send button after a failed send', async () => {
-    vi.mocked(authApi.options).mockResolvedValueOnce({ emailVerification: true });
+    vi.mocked(authApi.options).mockResolvedValueOnce({ emailVerification: true, referralEnabled: false });
     let fail!: (reason: unknown) => void;
     vi.mocked(authApi.forgotPassword).mockReturnValueOnce(
       new Promise((_, reject) => { fail = reject; }),

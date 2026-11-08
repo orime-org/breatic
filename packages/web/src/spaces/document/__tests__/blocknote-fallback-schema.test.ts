@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #904 步骤 4 的前半：the three stand-ins exist in the assembled schema.
@@ -118,7 +118,7 @@ describe('the fallbacks in BlockNote’s own registry', () => {
     // The redraw extension comes along because the label is a decoration and
     // a decoration is recomputed on dispatch — switching language dispatches
     // nothing on its own. The cache registers both, so this pair is what a
-    // reader actually has.
+    // user actually has.
     const editor = buildDocumentEditor({
       fragment: documentBodyFragment(new Y.Doc()),
       extensions: [documentFallbackExtension(), documentLocaleRedrawExtension()],
@@ -230,7 +230,7 @@ describe('the fallbacks in BlockNote’s own registry', () => {
 
   it('shows a localised label on the block, so the gap is visible', () => {
     // The stand-in holds nothing this build can draw, so without a label it
-    // renders as a blank box and the reader has no way to know something is
+    // renders as a blank box and the user has no way to know something is
     // there. index.css paints it through `content: attr(data-label)`.
     const editor = openAroundFallback();
     held.push(editor);

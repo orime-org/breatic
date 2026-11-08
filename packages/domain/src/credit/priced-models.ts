@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Every model the agent can run on has a way to be priced (#296).
@@ -21,13 +21,13 @@ export interface PriceCheckSources {
 }
 
 /**
- * The models the agent's own paths run on: the chat default and memory
- * consolidation.
+ * The models the agent's own paths run on: every model the user can pick
+ * for chat, and memory consolidation.
  * @returns Each model id once.
  */
 export function agentModelIds(): string[] {
   const config = getAgentConfig();
-  return [...new Set([config.default_model, config.consolidation_model])];
+  return [...new Set([...config.chat_models.map((m) => m.id), config.consolidation_model])];
 }
 
 /**

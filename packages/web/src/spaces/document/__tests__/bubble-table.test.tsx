@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * inner#1126 A9 and A10: the bubble bar over table cells — it comes up over
@@ -84,7 +84,7 @@ describe('the bubble bar over selected cells', () => {
     await waitForBar();
 
     expect(screen.getByTestId('doc-bubble-block-type').getAttribute('aria-disabled')).not.toBe('true');
-    expect((screen.getByTestId('doc-bubble-tool-link') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('doc-bubble-tool-link')).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('turns the blocks of every selected cell into the type picked', async () => {

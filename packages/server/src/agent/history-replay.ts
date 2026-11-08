@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Stored logical history, projected for the current request (inner#1549).
@@ -17,7 +17,7 @@
  * Taking a block out changes every byte after it,
  * so the replies made while it was there stop matching too, and the ones made
  * after it was gone still match. Putting it back -- the tools or the system
- * prompt change and change back, as the tools do when the reader switches the
+ * prompt change and change back, as the tools do when the user switches the
  * interface language and switches it back -- does the same to the replies
  * made while it was gone, so the blocks kept need not be one run: after A, B,
  * A, A, the first and third keep theirs and the second does not (Anthropic
@@ -30,12 +30,12 @@
 import { createHash } from "node:crypto";
 import { asSchema } from "ai";
 import type { ModelMessage } from "ai";
-import { ASK_USER, expandAgentPictures, instructionsText, projectAgentRequest } from "@breatic/domain";
+import { ASK_USER, REQUEST_SPACE_CONTENT, expandAgentPictures, instructionsText, projectAgentRequest } from "@breatic/domain";
 import type { AgentPicture, AgentPicturePolicy, ResolvedAgentConfig } from "@breatic/domain";
 import { z } from "zod";
 import type { MessageData } from "@breatic/shared";
 
-import { UNANSWERED_ASK } from "@server/agent/ask-result.js";
+import { UNANSWERED_ASK, UNANSWERED_SPACE_REQUEST } from "@server/agent/ask-result.js";
 import { toModelMessages } from "@server/agent/model-messages.js";
 
 /** A stored message with durable protocol facts, when available. */
@@ -76,6 +76,8 @@ const userForModel = z.object({
 const replyForModel = z.object({
   messages: z.array(sentMessage),
   prefixHash: z.string(),
+  /** The model the turn started on (#1363); absent from rows written before the picker. */
+  modelId: z.string().optional(),
   turnTokens: z.number(),
   endTokens: z.number(),
   /**
@@ -309,6 +311,18 @@ export function replayRows(
 const NO_RESULT = "This call has no result: the turn ended before it did.";
 
 /**
+ * What the model reads for a call left with no result.
+ * @param toolName - The call's tool.
+ * @returns That a card was not answered, for a tool that waits for the
+ *   user; otherwise that the turn ended before the call did.
+ */
+function unansweredNote(toolName: string): string {
+  if (toolName === ASK_USER) return UNANSWERED_ASK;
+  if (toolName === REQUEST_SPACE_CONTENT) return UNANSWERED_SPACE_REQUEST;
+  return NO_RESULT;
+}
+
+/**
  * A row's messages with a result for every tool call in them.
  *
  * A call can be left without one in ordinary use: a questionnaire the user
@@ -333,7 +347,7 @@ function withEveryCallAnswered(messages: readonly ModelMessage[]): ModelMessage[
         type: "tool-result" as const,
         toolCallId,
         toolName,
-        output: { type: "error-text" as const, value: toolName === ASK_USER ? UNANSWERED_ASK : NO_RESULT },
+        output: { type: "error-text" as const, value: unansweredNote(toolName) },
       })),
     });
     open = [];
@@ -380,7 +394,7 @@ export function lastFullSnapshotKey(rows: readonly ReplayRow[], spaceId: string)
   for (let i = rows.length - 1; i >= 0; i -= 1) {
     const row = rows[i];
     if (row === undefined) continue;
-    // A reader's message carries the Space, and so does the message a segment
+    // A user's message carries the Space, and so does the message a segment
     // resumed after a questionnaire opens with.
     const kept = (row.role === "user" ? userForModel : replyForModel).safeParse(row.forModel);
     const sent = kept.success ? kept.data.snapshot : undefined;

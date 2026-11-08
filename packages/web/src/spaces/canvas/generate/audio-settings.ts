@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What the audio panel's voice-and-settings pill holds (#2156, design §16).
@@ -95,7 +95,7 @@ export function hasSettings(model: ModelEntry, mode: string): boolean {
 }
 
 /**
- * How one value of a choice reads in the reader's language: a language named
+ * How one value of a choice reads in the user's language: a language named
  * through its BCP-47 tag, anything else as {@link optionLabel} reads it.
  * @param spec - The param's declaration.
  * @param value - One of its values.
@@ -127,7 +127,7 @@ function languageName(tag: string, locale: string): string | undefined {
     return new Intl.DisplayNames([locale], { type: 'language', languageDisplay: 'standard' }).of(tag);
   } catch {
     // An unknown tag or a runtime without the data: the declared spelling is
-    // what the reader gets instead, which is still the right language.
+    // what the user gets instead, which is still the right language.
     return undefined;
   }
 }

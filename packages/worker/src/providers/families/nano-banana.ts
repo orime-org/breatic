@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Nano Banana 2's camera controls. The endpoint has no camera fields, so the
@@ -44,7 +44,7 @@ function cameraOf(params: Readonly<Record<string, unknown>>): Camera {
 /**
  * The plain structured prompt: the subject, plus a `technical` block when
  * any camera control is set.
- * @param prompt - The reader's description.
+ * @param prompt - The user's description.
  * @param camera - The camera controls.
  * @returns The JSON prompt.
  */
@@ -59,7 +59,7 @@ function plainPrompt(prompt: string, camera: Camera): string {
 
 /**
  * Ask the LLM to rewrite the description into the structured shape.
- * @param prompt - The reader's description.
+ * @param prompt - The user's description.
  * @param camera - The camera controls.
  * @param signal - The run's deadline.
  * @returns The JSON prompt the LLM answered, or undefined when it answered none.
@@ -100,7 +100,7 @@ const nanoBanana: ModelFamily = {
   PREPARE_IS_PAID: true,
   /**
    * Write the camera into the prompt.
-   * @param prompt - The reader's description.
+   * @param prompt - The user's description.
    * @param params - The validated run params.
    * @param signal - The run's deadline.
    * @returns The structured prompt; no extra upstream fields.

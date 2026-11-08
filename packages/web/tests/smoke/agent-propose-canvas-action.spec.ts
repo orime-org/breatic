@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * One press in the chat, a wired group on the canvas (#229).
@@ -9,7 +9,7 @@
  * that the halves are joined -- that a real turn reaches the tool, that the
  * answer survives the trip into a stored message, that the card built from
  * that message posts into a mailbox a canvas is actually holding, and that
- * what comes out the far end is a group the reader can generate from.
+ * what comes out the far end is a group the user can generate from.
  *
  * The turn is real, so the model decides whether to propose. A run where it
  * answers in prose instead is reported as such rather than passed.
@@ -76,7 +76,7 @@ test('proposes a pair of nodes, and one press puts them on the canvas wired @nee
   const composer = page.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
 
-  // Pan away from where the space opened. A reader asking for this has been
+  // Pan away from where the space opened. A user asking for this has been
   // working somewhere, and what lands has to be in front of THEM -- framing
   // the group against a canvas that has not been moved proves nothing.
   const pane = visibleSpace(page).locator('.react-flow__pane');
@@ -90,7 +90,7 @@ test('proposes a pair of nodes, and one press puts them on the canvas wired @nee
   await startNewConversation(page);
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 
-  // Asked the way the reader this feature exists for would ask: what they
+  // Asked the way the user this feature exists for would ask: what they
   // want, in their own words, with no canvas vocabulary in it.
   await composer.fill(
     'I have a product photo and I want it on a plain white background. Set it up for me on the canvas -- do not ask me anything, just propose it.',
@@ -118,7 +118,7 @@ test('proposes a pair of nodes, and one press puts them on the canvas wired @nee
     'an image-to-image proposal is a pair: the empty node and the one that generates',
   ).toBe(2);
 
-  // Where the prompt the agent wrote is found: a reader new to the canvas does
+  // Where the prompt the agent wrote is found: a user new to the canvas does
   // not know a right-click opens the panel (#289). Matched in any of the five
   // languages, because the account's language is not this file's to choose.
   const promptReady = ['en', 'zh-CN', 'zh-TW', 'ja', 'ko'].map(
@@ -195,7 +195,7 @@ test('proposes a pair of nodes, and one press puts them on the canvas wired @nee
   });
   await expect(visibleSpace(page).locator('.react-flow__edge')).toHaveCount(1, { timeout: 20_000 });
 
-  // Every node of the group is on screen. The empty ones are what the reader
+  // Every node of the group is on screen. The empty ones are what the user
   // is being asked to fill, so a group placed where they have to go looking
   // for it is not the one press this feature promises.
   const view = await pane.boundingBox();
@@ -217,7 +217,7 @@ test('proposes a pair of nodes, and one press puts them on the canvas wired @nee
     `every placed node is inside the canvas. Canvas: ${JSON.stringify(view)}`,
   ).toEqual([]);
 
-  // What the reader is left looking at: the node that generates, selected,
+  // What the user is left looking at: the node that generates, selected,
   // with its panel open and the prompt already in the box, the empty node
   // @'d there and a note saying to put their picture in it first
   // (inner#1315).
@@ -305,7 +305,7 @@ async function templatesProposed(p: Page): Promise<string[]> {
 
 /**
  * Whether a placed proposal in the newest stored conversation left a ✏️ mark
- * for the reader to fill.
+ * for the user to fill.
  * @param p - The signed-in page.
  * @returns True when one did.
  */
@@ -333,7 +333,7 @@ async function tweaksProposed(p: Page): Promise<boolean> {
   });
 }
 
-test('starts a storyboard from its template, and reminds the reader of what is theirs to fill @needs-model', async () => {
+test('starts a storyboard from its template, and reminds the user of what is theirs to fill @needs-model', async () => {
   test.setTimeout(240_000);
   const composer = page.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
@@ -411,7 +411,7 @@ test('chains a generated character into a template storyboard, a ref @-ing it @n
   expect(refs).toHaveLength(1);
 });
 
-test('writes the proposal prompt in the language the reader asked in @needs-model', async () => {
+test('writes the proposal prompt in the language the user asked in @needs-model', async () => {
   test.setTimeout(240_000);
   const composer = page.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });

@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The audio equaliser's ten bands, its presets and the ffmpeg filter it runs
  * (inner#1305 §6): the panel's sliders and the container read the same
- * terms, so what the reader set and what is applied cannot drift apart.
+ * terms, so what the user set and what is applied cannot drift apart.
  */
 
 /** Each band's centre, an octave apart. */

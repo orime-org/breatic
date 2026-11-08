@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The mark saying which of the four states a task is in (#186).
@@ -10,9 +10,9 @@
  * and the rest of the difference in blue, the channel the eye weighs least.
  * At the size this mark is drawn the two read as one thing (user 2026-09-06).
  * Shape separates them, and it is also what keeps colour from being the only
- * carrier for a reader who does not see the four apart (WCAG 1.4.1).
+ * carrier for a user who does not see the four apart (WCAG 1.4.1).
  *
- * The state's name stays in the accessible tree, so a reader landing on a row
+ * The state's name stays in the accessible tree, so a user landing on a row
  * rather than on the panel's heading still hears which list they are in.
  *
  * It lives here rather than in `components/ui/` because the twelve places
@@ -65,7 +65,7 @@ export interface TaskStatusDotProps {
 }
 
 /**
- * Render one task's state as a coloured icon carrying its name for readers.
+ * Render one task's state as a coloured icon carrying its name for users.
  *
  * Every state draws the same box, so a row settling does not move the
  * filename beside it.

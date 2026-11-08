@@ -12,7 +12,7 @@ import { resolve } from "node:path";
 export default defineConfig({
   test: {
     // One process for this package instead of one per file — rationale and
-    // measurements in packages/web/vitest.config.ts, where the effect was
+    // measurements in packages/web/vitest.config.mts, where the effect was
     // largest.
     pool: "forks",
     poolOptions: {

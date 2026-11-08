@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { getLocale } from '@breatic/shared';
 
@@ -50,7 +50,7 @@ export function formatRelativeTime(
   if (diff < 30 * day) {
     return t('chat.relative.daysAgo', { count: Math.floor(diff / day) });
   }
-  // The language switch decides, not the browser: a reader who set the app to
+  // The language switch decides, not the browser: a user who set the app to
   // Chinese and gets `8/9/2025` is reading someone else's date order.
   return new Date(then).toLocaleDateString(getLocale());
 }

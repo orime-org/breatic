@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -67,7 +67,7 @@ describe('route table wiring', () => {
     // The gate's answer is the whole of design §6.2 (the preload gate)
     // reaching the walk. Both
     // cases above are about a browser that has never held a session, so a
-    // hard-coded `false` satisfies them while every signed-in reader pays the
+    // hard-coded `false` satisfies them while every signed-in user pays the
     // auth ping and the page chunk one after the other.
     localStorage.setItem(STORAGE_KEYS.sessionSeen, '1');
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -185,12 +185,15 @@ const BGM: ModelEntry = {
   params: {},
 };
 
-/** Reference to music: three audio slots, and lyrics the gateway insists on. */
+/**
+ * Reference to music: three audio slots, and lyrics the gateway insists on.
+ * It serves text to music as well, as `config/models/audio/models.yaml` has it.
+ */
 const A2M: ModelEntry = {
   ...T2M,
   name: 'mureka-v9.5-generate-song',
   display_name: 'Mureka V9.5 Song',
-  mode: 'a2m',
+  mode: ['t2m', 'a2m'],
   params: {
     lyrics: { description: '', default: null, fill: 'editor' },
     song: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true },
@@ -1033,24 +1036,23 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     );
   });
 
-  // The rail row's insert button puts the chip where the writer was last
-  // typing. Both boxes take references, so a button that always aims at the
-  // style box drops the chip into the wrong one whenever the writer is in the
-  // lyrics.
-  it('inserts a rail row into the lyrics box when that is where the caret was', async () => {
+  // The rail row's insert button puts the chip into the box on show (#1201).
+  // Only one of the two is open at a time, and a chip landing in the hidden
+  // one is a chip the writer never sees arrive.
+  it('opens on the style box, with the lyrics as one row', async () => {
+    await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
+    expect(screen.getByTestId('generate-prompt-editor')).toBeVisible();
+    expect(await screen.findByTestId('generate-lyrics-editor')).not.toBeVisible();
+  });
+
+  it('inserts a rail row into the lyrics once their row is opened', async () => {
     const board = textSource('src', 'let the river carry me home');
     await openPanel(
       { mode: 't2m', model: 'minimax-music-3.0' },
       returnsTrue,
       board,
     );
-    const box = await screen.findByTestId('generate-lyrics-editor');
-    // A real focus move: ProseMirror reports focus off the DOM event that
-    // follows it, and a dispatched `focus` alone leaves the document's
-    // activeElement where it was.
-    act(() => {
-      (box.querySelector('.ProseMirror') as HTMLElement).focus();
-    });
+    fireEvent.click(screen.getByTestId('generate-prompt-group-lyrics-toggle'));
     fireEvent.click(screen.getByTestId('generate-ref-insert-e-src'));
 
     // Yjs lower-cases element names when it serializes, so the chip reads as
@@ -1065,10 +1067,7 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     );
   });
 
-  it('inserts a rail row into the style box when that is where the caret was', async () => {
-    // The mirror of the case above. Both boxes take references, so the button
-    // has to follow the caret in both directions; aiming it at either box
-    // unconditionally is wrong half the time.
+  it('inserts a rail row into the open style box, wherever the caret was before', async () => {
     const board = textSource('src', 'let the river carry me home');
     await openPanel(
       { mode: 't2m', model: 'minimax-music-3.0' },
@@ -1076,12 +1075,9 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
       board,
     );
     const lyrics = await screen.findByTestId('generate-lyrics-editor');
-    const style = screen.getByTestId('generate-prompt-editor');
+    // A real focus move into the hidden box: the open one still decides.
     act(() => {
       (lyrics.querySelector('.ProseMirror') as HTMLElement).focus();
-    });
-    act(() => {
-      (style.querySelector('.ProseMirror') as HTMLElement).focus();
     });
     fireEvent.click(screen.getByTestId('generate-ref-insert-e-src'));
 
@@ -1095,20 +1091,63 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     );
   });
 
-  it('still inserts once the box the caret was in goes away', async () => {
-    // The caret was in the lyrics box, and then the box left — a mode switch
-    // takes it away.
-    // The remembered box is gone; the button still has to land the chip.
+  it('puts the caret in the lyrics box when the writer opens it', async () => {
+    await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
+    fireEvent.click(screen.getByTestId('generate-prompt-group-lyrics-toggle'));
+    const lyrics = screen.getByTestId('generate-lyrics-editor');
+    await waitFor(() =>
+      expect(lyrics.contains(document.activeElement)).toBe(true),
+    );
+  });
+
+  it('shows the lyrics row their first line with words, and follows what is typed', async () => {
+    const board = textSource('src', 'let the river carry me home');
+    await openPanel(
+      { mode: 't2m', model: 'minimax-music-3.0' },
+      returnsTrue,
+      board,
+    );
+    act(() => typeLyrics('', 'Walking down the empty street', 'second line'));
+    await waitFor(() =>
+      expect(screen.getByTestId('generate-prompt-group-lyrics-toggle')).toHaveTextContent(
+        'Walking down the empty street',
+      ),
+    );
+    expect(screen.getByTestId('generate-prompt-group-lyrics-toggle')).not.toHaveTextContent('second line');
+  });
+
+  it('opens the style box when the mode switches to another pair of boxes (#1201)', async () => {
+    const view = await openPanel({ mode: 't2m', model: 'mureka-v9.5-generate-song' });
+    fireEvent.click(screen.getByTestId('generate-prompt-group-lyrics-toggle'));
+    expect(screen.getByTestId('generate-lyrics-editor')).toBeVisible();
+
+    view.rerender(panelTree({ mode: 'a2m', model: 'mureka-v9.5-generate-song' }));
+
+    await waitFor(() => expect(screen.getByTestId('generate-prompt-editor')).toBeVisible());
+    expect(screen.getByTestId('generate-lyrics-editor')).not.toBeVisible();
+  });
+
+  it('keeps the lyrics open when the model switches within the mode (#1201)', async () => {
+    const view = await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
+    fireEvent.click(screen.getByTestId('generate-prompt-group-lyrics-toggle'));
+
+    view.rerender(panelTree({ mode: 't2m', model: 'mureka-v9.5-generate-song' }));
+
+    await screen.findByTestId('generate-lyrics-editor');
+    expect(screen.getByTestId('generate-lyrics-editor')).toBeVisible();
+    expect(screen.getByTestId('generate-prompt-editor')).not.toBeVisible();
+  });
+
+  it('still inserts once the open box goes away', async () => {
+    // The lyrics were open, and then the box left: a mode switch takes it
+    // away, and the style box left standing is the one on show.
     const board = textSource('src', 'let the river carry me home');
     const view = await openPanel(
       { mode: 't2m', model: 'minimax-music-3.0' },
       returnsTrue,
       board,
     );
-    const lyrics = await screen.findByTestId('generate-lyrics-editor');
-    act(() => {
-      (lyrics.querySelector('.ProseMirror') as HTMLElement).focus();
-    });
+    fireEvent.click(screen.getByTestId('generate-prompt-group-lyrics-toggle'));
 
     // Re-render on a mode that collects no lyrics. Clicking the mode picker
     // writes to Yjs, and this suite feeds the node in as a prop, so the panel

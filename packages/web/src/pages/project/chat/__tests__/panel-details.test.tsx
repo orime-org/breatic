@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The parts of the panel that are not a message.
  *
  * The skeleton, the list of past conversations, and what an empty
- * conversation says. Each is pinned by what the reader sees rather than by
+ * conversation says. Each is pinned by what the user sees rather than by
  * the classes behind it, except where the class is the measurement: a
  * skeleton bar has no text to assert on, and how tall it is was settled
  * against the drawing.

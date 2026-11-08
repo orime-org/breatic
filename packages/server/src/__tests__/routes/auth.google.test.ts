@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Google OAuth endpoint regression tests.
@@ -123,7 +123,7 @@ describe("POST /auth/google", () => {
     });
     expect(response.status).toBe(200);
     expect(verifyIdTokenMock).toHaveBeenCalledWith({ idToken: 'signed-token', audience: 'test-client.apps.googleusercontent.com' });
-    expect(mocks.authService.loginOrCreateGoogle).toHaveBeenLastCalledWith('subject', email, authority, null);
+    expect(mocks.authService.loginOrCreateGoogle).toHaveBeenLastCalledWith('subject', email, authority, null, undefined);
   });
 
   it('hands the browser\'s campaign source to the sign-in, reduced as the sign-up stores it', async () => {
@@ -137,7 +137,7 @@ describe("POST /auth/google", () => {
     expect(mocks.authService.loginOrCreateGoogle).toHaveBeenLastCalledWith('subject', 'owner@gmail.com', true, {
       first: { utm_source: 'google', landing_page: '/pricing', at },
       last: { utm_source: 'google', at },
-    });
+    }, undefined);
   });
 
   it('normalizes the token email before judging Gmail authority', async () => {
@@ -147,7 +147,7 @@ describe("POST /auth/google", () => {
       body: JSON.stringify({ credential: 'signed-token' }),
     });
     expect(response.status).toBe(200);
-    expect(mocks.authService.loginOrCreateGoogle).toHaveBeenLastCalledWith('subject', 'owner@gmail.com', true, null);
+    expect(mocks.authService.loginOrCreateGoogle).toHaveBeenLastCalledWith('subject', 'owner@gmail.com', true, null, undefined);
   });
 
   /** Sign in successfully and return the parsed user object. */

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { NodeToolbar, Position } from '@xyflow/react';
 import * as React from 'react';
@@ -176,7 +176,7 @@ function OpenNodeHistoryPanel({
   // about (a failure, or a result the history did not hold yet), and
   // this count moving is what says so — the same signal for every modality,
   // where the node's content would not be: a text node's words are written
-  // by the reader too, and a keystroke is not a new row.
+  // by the user too, and a keystroke is not a new row.
   const counts =
     hostNode !== undefined && 'taskCounts' in hostNode.data
       ? hostNode.data.taskCounts

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What the account-level credits overlay needs, and what the endpoints did
@@ -192,7 +192,7 @@ async function loginAs(userId: string): Promise<string> {
  * @returns The endpoint's `data`.
  */
 async function readOverview(cookie: string): Promise<Record<string, unknown>> {
-  const res = await app.request("/api/v1/credits/overview", { headers: { cookie } });
+  const res = await app.request("/api/v1/credits/overview?amountFormat=decimal-v1", { headers: { cookie } });
   expect(res.status).toBe(200);
   const body = (await res.json()) as { data: Record<string, unknown> };
   return body.data;
@@ -208,7 +208,7 @@ async function readLots(
   cookie: string,
   query = "",
 ): Promise<{ items: Record<string, unknown>[]; nextCursor: string | null }> {
-  const res = await app.request(`/api/v1/credits/lots?limit=50${query}`, {
+  const res = await app.request(`/api/v1/credits/lots?amountFormat=decimal-v1&limit=50${query}`, {
     headers: { cookie },
   });
   expect(res.status).toBe(200);
@@ -341,7 +341,7 @@ describe("the ledger is read by payer", () => {
       studioId: fx.studioId,
     });
 
-    const res = await app.request("/api/v1/credits/ledger?limit=50", {
+    const res = await app.request("/api/v1/credits/ledger?amountFormat=decimal-v1&limit=50", {
       headers: { cookie: fx.cookie },
     });
     const body = (await res.json()) as {
@@ -396,7 +396,7 @@ describe("a deleted studio says so on its row", () => {
       provider: "volcengine",
     });
 
-    const res = await app.request("/api/v1/credits/ledger?limit=50", {
+    const res = await app.request("/api/v1/credits/ledger?amountFormat=decimal-v1&limit=50", {
       headers: { cookie: fx.cookie },
     });
     const body = (await res.json()) as {
@@ -409,7 +409,7 @@ describe("a deleted studio says so on its row", () => {
   });
 });
 
-describe("a studio's debt is the studio's, not the reader's", () => {
+describe("a studio's debt is the studio's, not the user's", () => {
   it("withholds it from someone who no longer administers the studio", async () => {
     // A debt is the studio's own figure. It moves as the people inside go on
     // generating, and only an admin can act on it by pointing a purchase
@@ -430,7 +430,7 @@ describe("a studio's debt is the studio's, not the reader's", () => {
     });
 
     const asAdmin = await creditLotService.getOverview(fx.userId);
-    expect(asAdmin.studios.find((s) => s.studioId === fx.studioId)?.debt).toBe(20);
+    expect(asAdmin.studios.find((s) => s.studioId === fx.studioId)?.debt).toBe("20.000000");
 
     // Demoted to maintainer.
     await sql`
@@ -440,7 +440,7 @@ describe("a studio's debt is the studio's, not the reader's", () => {
 
     const after = await creditLotService.getOverview(fx.userId);
     const row = after.studios.find((s) => s.studioId === fx.studioId);
-    // The row is still there — the reader's own purchase points at this
+    // The row is still there — the user's own purchase points at this
     // studio, and every lot they bought is counted somewhere on this panel.
     expect(row).toBeDefined();
     expect(row!.debt).toBeNull();
@@ -459,7 +459,7 @@ describe("the overview reports what is owed and how many purchases point there (
 
     expect(mine).toBeDefined();
     expect(Number(mine!['debt'])).toBe(0);
-    // A count and not a list: what the reader wants to know is whether
+    // A count and not a list: what the user wants to know is whether
     // anything points there.
     expect(Number(mine!['lotCount'])).toBe(2);
   });
@@ -640,7 +640,7 @@ describe("a purchase pointed at a studio that is gone reads as unassigned", () =
 
     // 总览那一侧本来就是这么算的，两处从此说同一句话。
     const data = await readOverview(fx.cookie);
-    expect(data["unassignedCredits"]).toBe(500);
+    expect(data["unassignedCredits"]).toBe("500.000000");
   });
 });
 
@@ -686,7 +686,7 @@ describe("one generation is one ledger row (plan §4.8)", () => {
       provider: "kuaishou",
     });
 
-    const res = await app.request("/api/v1/credits/ledger?limit=50", {
+    const res = await app.request("/api/v1/credits/ledger?amountFormat=decimal-v1&limit=50", {
       headers: { cookie: fx.cookie },
     });
     expect(res.status).toBe(200);
@@ -708,7 +708,7 @@ describe("one generation is one ledger row (plan §4.8)", () => {
     const fx = await seedFixture();
     await seedLot(fx.userId, 500, 1000, fx.studioId);
 
-    const res = await app.request("/api/v1/credits/ledger?limit=50", {
+    const res = await app.request("/api/v1/credits/ledger?amountFormat=decimal-v1&limit=50", {
       headers: { cookie: fx.cookie },
     });
     const body = (await res.json()) as {
@@ -760,7 +760,7 @@ describe("a debt is the studio's and names nobody", () => {
       provider: "volcengine",
     });
 
-    const res = await app.request("/api/v1/credits/ledger?limit=50", {
+    const res = await app.request("/api/v1/credits/ledger?amountFormat=decimal-v1&limit=50", {
       headers: { cookie: fx.cookie },
     });
     const body = (await res.json()) as {
@@ -815,7 +815,7 @@ describe("usage that drew on no purchase is listed and says so", () => {
       provider: "volcengine",
     });
 
-    const res = await app.request("/api/v1/credits/ledger?limit=50", {
+    const res = await app.request("/api/v1/credits/ledger?amountFormat=decimal-v1&limit=50", {
       headers: { cookie: fx.cookie },
     });
     const body = (await res.json()) as {
@@ -829,7 +829,7 @@ describe("usage that drew on no purchase is listed and says so", () => {
     expect(body.data.items).toHaveLength(1);
     expect(body.data.items[0]).toMatchObject({
       kind: "unbilled",
-      amount: -42,
+      amount: "-42.000000",
       model: "seedream-4.0",
     });
   });

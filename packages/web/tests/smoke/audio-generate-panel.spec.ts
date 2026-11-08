@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Trying to generate audio on a canvas node, end to end (#1960 PR1).
@@ -106,7 +106,7 @@ test('text past the model’s limit is refused before anything is sent', async (
 
   await page.getByTestId('generate-audio-execute').click();
 
-  // Named, not merely refused: the reader has to know how much to cut.
+  // Named, not merely refused: the user has to know how much to cut.
   await expect(page.locator('[data-sonner-toast]').first()).toContainText('2,000', { timeout: 10_000 });
 });
 
@@ -281,7 +281,10 @@ test('reference to music: three slots, and any one of them satisfies the gate', 
   // because they are refused ahead of the slots — this model demands them too.
   await page.getByTestId('generate-prompt-editor').click();
   await page.keyboard.type('same mood, slower');
-  await page.getByTestId('generate-lyrics-editor').click();
+  // The lyrics are a row while the style box is open (#1201); opening them
+  // puts the caret in their box.
+  await page.getByTestId('generate-prompt-group-lyrics-toggle').click();
+  await expect(page.getByTestId('generate-lyrics-editor').locator('.ProseMirror')).toBeFocused();
   await page.keyboard.type('same road home');
   await page.getByTestId('generate-audio-execute').click();
   await expect(page.locator('[data-sonner-toast]').first()).toContainText('Pick a song, melody or vocals', {

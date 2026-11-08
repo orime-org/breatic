@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Fitting an open canvas into the limit by level of detail (inner#1413).
@@ -27,7 +27,7 @@ export interface FitNode extends FitParts {
   /** When it was made; with its id, the order nodes are reduced in. */
   createdAt: number;
   group: boolean;
-  /** Whether the reader has it selected on screen; its entry says so. */
+  /** Whether the user has it selected on screen; its entry says so. */
   selected: boolean;
   /** Whether it is reduced last at every step: selected, and not held unchanged by an attachment. */
   last: boolean;
@@ -52,7 +52,7 @@ export interface FittedCanvas {
  * A node as the fit sees it.
  * @param entry - The node as a snapshot hands it over.
  * @param descriptors - The run settings of the model it would run, when known.
- * @param selected - Whether the reader has it selected.
+ * @param selected - Whether the user has it selected.
  * @returns The node.
  */
 export function fitNodeOf(

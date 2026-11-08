@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Application logger (pino) — shared by every backend service
@@ -72,7 +72,7 @@ const NESTED_ERRORS = ["cause", "errors", "lastError"] as const;
  * pino's error serializer, less the request body a failed AI SDK call carries
  * (`APICallError.requestBodyValues`), at every level of wrapping. That body is
  * the whole conversation sent to the model: megabytes per line, written
- * synchronously, and the reader's content in the log file.
+ * synchronously, and the user's content in the log file.
  * @param err - What was logged under `err`.
  * @param seen - The errors being serialized above this one, so a cycle ends.
  * @returns The serialized error, or the value as it came when it is not one.

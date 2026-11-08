@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What the danger zone holds, per studio type and per role.
@@ -200,7 +200,7 @@ describe('DangerZone — leaving the studio', () => {
     expect(confirm).toHaveAttribute('aria-busy', 'true');
     expect(confirm).toHaveAttribute('aria-disabled', 'true');
 
-    // A refused leave: the dialog stays so the reader can press again.
+    // A refused leave: the dialog stays so the user can press again.
     rerender(tree(false, onLeave));
     expect(confirm).not.toHaveAttribute('aria-busy');
     expect(screen.getByTestId('settings-leave-dialog')).toBeInTheDocument();

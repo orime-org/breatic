@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The two carriers a reader opens a comment from (#18, A1 · A2 · A3).
+ * The two carriers a user opens a comment from (#18, A1 · A2 · A3).
  *
  * Both entries already stood in their carriers with nothing behind them, and
- * what these pin is the path a reader takes: press the entry, get the box.
+ * what these pin is the path a user takes: press the entry, get the box.
  * The bubble bar is driven through the mounted editor, so the wiring is under
  * test as well as the command — a `canRun` that answers correctly says
  * nothing about whether a press reaches it.
@@ -72,7 +72,7 @@ function openMenuOver(editor: HarnessEditor, index: number): void {
 }
 
 describe('the bubble bar entry', () => {
-  it('aims a draft at the words the reader selected', async () => {
+  it('aims a draft at the words the user selected', async () => {
     const editor = openSharedBody('<p>alpha bravo charlie</p>');
     mountDocumentEditor(editor);
     focusBody(editor);

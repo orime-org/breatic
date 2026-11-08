@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The items waiting above the chat box, one list per conversation.
@@ -16,7 +16,7 @@ beforeEach(() => {
   toastSpy.warning.mockClear();
 });
 
-import { attachmentSection, setLocale } from '@breatic/shared';
+import { attachmentSection, setLocale, uploadableFormatList } from '@breatic/shared';
 import type { ChatAttachedChip } from '@breatic/shared';
 
 import {
@@ -27,7 +27,7 @@ import {
 } from '@web/stores/chat-attachments';
 
 /**
- * The last warning the reader was shown.
+ * The last warning the user was shown.
  * @returns Its text, or null.
  */
 function lastWarning(): unknown {
@@ -58,6 +58,21 @@ function uploading(id: string): TrayItem {
 
 beforeEach(() => {
   chatAttachments.forget(['c1', 'c2']);
+});
+
+describe('media format refusal notices', () => {
+  it.each(['en', 'zh-CN', 'zh-TW', 'ja', 'ko'] as const)('renders the filename and supported formats in %s', (locale) => {
+    setLocale(locale);
+    try {
+      const formats = uploadableFormatList('image');
+      const message = trayNoticeText({ key: 'unsupportedMedia', filename: 'vector.svg', kind: 'image', formats });
+      expect(message).toContain('vector.svg');
+      expect(message).toContain(formats);
+      expect(message).not.toMatch(/\{(?:filename|formats|kind)\}|undefined|canvas\.upload/);
+    } finally {
+      setLocale('en');
+    }
+  });
 });
 
 describe('adding a batch', () => {

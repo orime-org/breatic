@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The meta doc is read-only for every client — measured against a real
@@ -49,6 +49,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
   const orig = await importOriginal<Record<string, unknown>>();
   return {
     ...orig,
+    accountActivityRepo: { recordActivity: vi.fn(async () => undefined) },
     createLogger: () => ({
       info: vi.fn(),
       warn: vi.fn(),
@@ -89,7 +90,6 @@ import {
   WIRE,
   type LiveClient,
 } from "./helpers/live-hocuspocus.js";
-import type { SeatClaim } from "@collab/services/connection-registry.js";
 
 const PID = "11111111-1111-4111-8111-111111111111";
 const SID = "22222222-2222-4222-9222-222222222222";
@@ -221,7 +221,7 @@ function makeServer(): Hocuspocus {
       // zero (#88), so say the intent with a number nobody reaches.
       resolveConnectionLimit: async (): Promise<number> => 1000,
       countConnections: async (): Promise<number> => 0,
-      claimSeatFrom: async (): Promise<SeatClaim> => ({ outcome: "none" }),
+      hasOwnSeat: async () => "no" as const,
     }),
     onStateless: async ({
       documentName,

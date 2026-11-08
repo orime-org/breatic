@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Where a dragged row lands, and what gets written there (A11, design §8).
@@ -14,7 +14,7 @@
  * goes down, and a drop reads it rather than the document
  * (`prosemirror-view/src/input.ts:788-790`).
  *
- * Measured 2026-09-18 with two pages on one Space: a word the other reader
+ * Measured 2026-09-18 with two pages on one Space: a word the other user
  * typed INTO the dragged row during the flight was gone on both ends after the
  * drop, while a word typed into any other row survived and the row itself
  * moved correctly. The three runs are in design §8.
@@ -33,22 +33,30 @@ import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { dropPoint } from '@tiptap/pm/transform';
 import type { EditorView } from '@tiptap/pm/view';
 
+import { t } from '@breatic/shared';
+
+import { toast } from '@web/lib/toast';
+
 import {
   rowById,
   type RowInDocument,
 } from '@web/spaces/document/document-row-by-id';
 import { cellDepthOf, DOC_TABLE, isTableCell } from '@web/spaces/document/document-table-nodes';
 
+/** Table nodes: ours, and the stored (legacy) one documents from before hold. */
+const TABLES = new Set([DOC_TABLE, 'table']);
+
 /**
- * Whether a carried block is a table or contains one in its children.
- * @param node - The carried block.
- * @returns True when moving it would move a table too.
+ * Whether a row, or a block nested under it, is a table of either kind: a row
+ * holding one is refused in a cell (inner#1312 A14).
+ * @param row - The row: a block container, or a table, which holds its own id.
+ * @returns True when it does.
  */
-function carriesTable(node: PMNode): boolean {
-  if (node.type.name === DOC_TABLE) return true;
+function carriesTable(row: PMNode): boolean {
+  if (TABLES.has(row.type.name)) return true;
   let found = false;
-  node.descendants((child) => {
-    if (child.type.name === DOC_TABLE) found = true;
+  row.descendants((child) => {
+    if (TABLES.has(child.type.name)) found = true;
     return !found;
   });
   return found;
@@ -60,7 +68,9 @@ function carriesTable(node: PMNode): boolean {
  * `dropPoint` is what ProseMirror uses for the same question
  * (`input.ts:802`): it walks outwards from the position until the slice fits,
  * which is what turns a position inside a paragraph into the gap between two
- * blocks.
+ * blocks. It only walks outwards, so the document's two edges (0 and its
+ * size), outside the one group that holds every row, find no gap; they are
+ * the gap before the first row and after the last.
  * @param doc - The document to land in.
  * @param at - The position the pointer is over.
  * @param node - The row being carried.
@@ -68,7 +78,8 @@ function carriesTable(node: PMNode): boolean {
  */
 export function landingFor(doc: PMNode, at: number, node: PMNode): number {
   const carried = new Slice(Fragment.from(node), 0, 0);
-  return dropPoint(doc, at, carried) ?? at;
+  const inGroup = Math.min(Math.max(at, 1), doc.content.size - 1);
+  return dropPoint(doc, inGroup, carried) ?? inGroup;
 }
 
 /**
@@ -77,7 +88,7 @@ export function landingFor(doc: PMNode, at: number, node: PMNode): number {
  * Usually the row itself. When the row is the only child of a NESTED
  * `blockGroup`, that group has to go with it: `BlockGroup.ts:12` is
  * `blockGroupChild+`, so a group left with no children is refilled by the
- * schema with an empty paragraph, and the reader would watch a blank row
+ * schema with an empty paragraph, and the user would watch a blank row
  * appear under the block they dragged out of. The document's own top-level
  * group is exempt — `BlockContainer.ts` puts it at depth 1 and the document
  * requires it, so it stays and the insert below is what keeps it occupied. A
@@ -111,7 +122,7 @@ export function rangeToLift(
  * `dropPoint` answers with a gap, and the gaps at and inside the dragged row's
  * own range are the places it already is. Writing the move anyway would empty
  * the only group a one-row document has — which is what a fresh Space is — and
- * `blockGroupChild+` refills an emptied group with a paragraph, so the reader
+ * `blockGroupChild+` refills an emptied group with a paragraph, so the user
  * would get a second, blank row out of putting a row back where it was
  * (measured 2026-09-18: one row before, two after).
  * @param view - The view to write to.
@@ -124,7 +135,10 @@ export function moveRowTo(view: EditorView, blockId: string, at: number): void {
 
   const landing = landingFor(view.state.doc, at, row.node);
   if (landing >= row.from && landing <= row.to) return;
-  if (cellDepthOf(view.state.doc.resolve(landing)) > 0 && carriesTable(row.node)) return;
+  if (cellDepthOf(view.state.doc.resolve(landing)) > 0 && carriesTable(row.node)) {
+    toast.warning(t('spaces.document.paste.unsupportedInCell'));
+    return;
+  }
 
   const leaving = rangeToLift(view.state.doc, row);
   const tr = view.state.tr;

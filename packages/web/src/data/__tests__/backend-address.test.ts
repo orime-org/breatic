@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 import { afterEach, expect, it, vi } from 'vitest';
 const transports = vi.hoisted(() => ({ socket: vi.fn(), stream: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@hocuspocus/provider', () => ({ HocuspocusProviderWebsocket: class {
@@ -19,7 +19,7 @@ it('uses the configured backend for API and streams', async () => {
   const { textToolsApi } = await import('../api/text-tools');
   expect(request.defaults.baseURL).toBe('https://backend.example.com/api/v1');
   expect(request.defaults.withCredentials).toBe(true);
-  await textToolsApi.stream({ toolId: 'polish', document: 'text' }, { onEvent: () => undefined });
+  await textToolsApi.stream({ tool: 'polish', project_id: 'p-1', selection: 'text', document: 'text' }, { onEvent: () => undefined });
   expect(transports.stream.mock.calls[0]?.[0]).toBe('https://backend.example.com/api/v1/mini-tools/text');
   expect(transports.stream.mock.calls[0]?.[1]).toMatchObject({ credentials: 'include' });
 });

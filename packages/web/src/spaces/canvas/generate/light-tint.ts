@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The light the relight sphere draws (inner#1304): its marker, glow and the
- * lit side of the card take the colour the reader picked, so the choice
+ * lit side of the card take the colour the user picked, so the choice
  * shows on the sphere as it is made. Read off the relight model's own params.
  */
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Chat panel message model — mirrored from the Agent message contract.
@@ -7,7 +7,18 @@
  * regardless of the backend wire schema (data/api/chat.ts adapts).
  */
 
-import type { AskUserAnswer, AskUserQuestion, CanvasProposal, ChatAttachedChip, DocumentProposal, ToolFailureKind } from '@breatic/shared';
+import type {
+  AskUserAnswer,
+  AskUserQuestion,
+  CanvasProposal,
+  ChatAttachedChip,
+  DocumentProposal,
+  SceneGenerationProposal,
+  SharedSpace,
+  SpaceRequestInput,
+  SpaceType,
+  ToolFailureKind,
+} from '@breatic/shared';
 
 export type ChatRole = 'user' | 'assistant' | 'system';
 
@@ -100,9 +111,9 @@ export interface ChatAsset {
 }
 
 /**
- * A questionnaire the agent put to the reader (inner#1542), with where it
+ * A questionnaire the agent put to the user (inner#1542), with where it
  * stands: waiting for an answer, answered on the card, or replied to by a
- * message the reader wrote instead.
+ * message the user wrote instead.
  */
 export interface ChatQuestionnaire {
   /** The `ask_user` call that put it. */
@@ -113,6 +124,37 @@ export interface ChatQuestionnaire {
   state: 'awaiting' | 'answered' | 'replied';
   /** The answers given on the card, once it is answered there. */
   answers?: AskUserAnswer['answers'];
+}
+
+/**
+ * One requested Space as a settled card lists it: what the server stored of
+ * the read, without its content. A Space gone from the project may carry no
+ * name or kind.
+ */
+export interface ChatSharedSpaceSummary {
+  id: string;
+  name?: string;
+  kind?: SpaceType;
+  part?: SharedSpace['part'];
+  state: SharedSpace['state'];
+}
+
+/**
+ * The Agent's request to look at Spaces (inner#1552), with where it stands:
+ * waiting for the user, shared, declined, or replied to by a message the
+ * user wrote instead.
+ */
+export interface ChatSpaceRequest {
+  /** The `request_space_content` call that made it. */
+  toolCallId: string;
+  /** Why the Agent asks. */
+  reason: string;
+  /** The Spaces asked for, each whole or a part, in the order asked. */
+  spaces: SpaceRequestInput['spaces'];
+  /** Where it stands. */
+  state: 'awaiting' | 'shared' | 'declined' | 'replied';
+  /** How each Space was read, once shared. */
+  results?: ChatSharedSpaceSummary[];
 }
 
 /** One tool step that did not finish, as its line says it (inner#1620). */
@@ -152,18 +194,18 @@ export interface ChatMessage {
   /**
    * The prose with a placeholder where each failure line sits, for the
    * renderer alone (inner#1620). Absent when no step failed; `content` stays
-   * what the reader copies.
+   * what the user copies.
    */
   body?: string;
   /** The tool steps that did not finish, in the order `body` places them. */
   failureLines?: ChatFailureLine[];
-  /** What the reader attached to this message, in order. Absent when nothing. */
+  /** What the user attached to this message, in order. Absent when nothing. */
   attachments?: ChatAttachedChip[];
   /**
    * When the message was written down, as an absolute instant.
    *
    * The server's own clock, ISO-formatted, so the panel can say it in the
-   * reader's day. A message this reader has only just sent has none until the
+   * user's day. A message this user has only just sent has none until the
    * conversation comes back with it.
    */
   sentAt?: string;
@@ -204,13 +246,13 @@ export interface ChatMessage {
    * The turn hit the per-call output ceiling, so this stops mid-sentence.
    *
    * Stored like {@link ChatMessage.interrupted}, and kept apart from it: what
-   * ran out is room we set, not the reader's patience.
+   * ran out is room we set, not the user's patience.
    *
    * Only ever `true`; its absence is the ordinary case.
    */
   truncated?: true;
   /**
-   * The failure happened just now, with the reader waiting on this reply.
+   * The failure happened just now, with the user waiting on this reply.
    *
    * It is the difference between living through a failure and reading about
    * one, and only the first is worth announcing — a reply that stops growing
@@ -238,7 +280,7 @@ export interface ChatMessage {
   /**
    * Every page this turn's searches found, each one once.
    *
-   * Pooled across the turn's searches rather than grouped by search: a reader
+   * Pooled across the turn's searches rather than grouped by search: a user
    * scanning where an answer came from wants each publisher once, and only a
    * pooled list can drop the pages two searches both returned. Ordered by
    * first appearance.
@@ -257,14 +299,14 @@ export interface ChatMessage {
    */
   citations?: Record<number, ChatSource>;
   /**
-   * The pictures, clips and tracks this turn put in front of the reader.
+   * The pictures, clips and tracks this turn put in front of the user.
    *
    * Absent, rather than empty, on a turn that found none.
    */
   assets?: ChatAsset[];
   /**
    * The groups of canvas nodes this turn proposed, in the order it proposed
-   * them. Each draws a card the reader can press to place it.
+   * them. Each draws a card the user can press to place it.
    *
    * Rebuilt from the stored tool calls, so a card survives a reload exactly as
    * it was -- and carries no memory of having been pressed, because there is
@@ -272,17 +314,27 @@ export interface ChatMessage {
    */
   proposals?: CanvasProposal[];
   /**
-   * The questionnaires this turn put to the reader, each drawn as a card.
+   * The questionnaires this turn put to the user, each drawn as a card.
    * Absent on a turn that asked nothing; a question stored before the card
    * existed is in the reply's words instead.
    */
   questionnaires?: ChatQuestionnaire[];
   /**
+   * The requests to look at Spaces this turn made (inner#1552), each drawn as
+   * a card. Absent on a turn that asked for none.
+   */
+  spaceRequests?: ChatSpaceRequest[];
+  /**
    * The document edits this turn proposed (inner#1509), each drawn as a card
-   * the reader presses to land it. Rebuilt from the stored tool calls; whether
+   * the user presses to land it. Rebuilt from the stored tool calls; whether
    * one already landed is read off the document.
    */
   documentProposals?: DocumentProposal[];
+  /**
+   * The 3D generations this turn proposed (inner#1691), each drawn as a card
+   * that opens the 3D Space in front's generation dialog filled.
+   */
+  sceneProposals?: SceneGenerationProposal[];
   /**
    * Whether this turn stored a proposal in a shape this build can no longer
    * place (inner#1499). The turn draws one line saying so, with nothing to

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #113 A3: a viewer gets no strip. inner#1126 A18: nor the button on the
@@ -22,7 +22,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, renderHook, screen, waitFor } from '@testing-library/react';
+import { renderHook, screen, waitFor } from '@testing-library/react';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import * as Y from 'yjs';
 
 import { Awareness } from 'y-protocols/awareness';

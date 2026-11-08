@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { cleanup as cleanupAll, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
@@ -112,7 +112,7 @@ describe('MiniToolPanel', () => {
     setLocale('zh-CN');
     try {
       mount();
-      // The two flips name their axis, so the reader tells them apart without the icon.
+      // The two flips name their axis, so the user tells them apart without the icon.
       expect(screen.getByTestId('mini-tool-orient-flipX').textContent).toBe('Flip H');
       expect(screen.getByTestId('mini-tool-orient-flipY').textContent).toBe('Flip V');
       expect(screen.getByTestId('mini-tool-orient-left')).toHaveTextContent('−90°');
@@ -128,7 +128,7 @@ describe('MiniToolPanel', () => {
     expect(props.onParams).toHaveBeenLastCalledWith({ aspect: '1:1', rect: { x: 300, y: 0, w: 1000, h: 1000 } });
   });
 
-  it('shows the full source as the crop until the reader sets one', () => {
+  it('shows the full source as the crop until the user sets one', () => {
     mount({ spec: tool('image.crop'), params: { aspect: 'free', rect: null } });
     expect(screen.getByTestId('mini-tool-rect-w')).toHaveValue('1600');
     expect(screen.getByTestId('mini-tool-rect-h')).toHaveValue('1000');
@@ -366,7 +366,7 @@ describe('MiniToolPanel', () => {
     expect(screen.getByText('00:00.0 – 03:00.0')).toBeInTheDocument();
   });
 
-  // The cut's band is a filmstrip of the source, so the reader sees what each moment shows.
+  // The cut's band is a filmstrip of the source, so the user sees what each moment shows.
   it('lays the source out as a filmstrip on the cut band', () => {
     mount({
       spec: tool('video.cut'),
@@ -575,7 +575,7 @@ describe('the batch-five panels', () => {
     const props = mount({ spec: tool('audio.speed'), params: { rate: 1, keepPitch: true }, source: AUDIO });
     const toggle = screen.getByTestId('mini-tool-param-keepPitch-switch');
     expect(toggle).toHaveAttribute('aria-checked', 'true');
-    expect(toggle.closest('label')).toHaveTextContent('On');
+    expect(toggle.parentElement).toHaveTextContent('On');
     fireEvent.click(toggle);
     expect(props.onParams).toHaveBeenLastCalledWith({ keepPitch: false });
   });

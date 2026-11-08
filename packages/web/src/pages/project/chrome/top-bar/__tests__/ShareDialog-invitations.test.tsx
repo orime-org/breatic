@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type * as MockModule0 from '@web/data/api/project-invitations';
 import type * as MockModule1 from '@web/lib/toast';
@@ -95,7 +95,7 @@ describe('ShareDialog pending invitations', () => {
               archived={false}
               canRename
               canLeave={false}
-              credits={{ status: 'ready', value: 0 }}
+              credits={{ status: 'ready', value: '0.000000' }}
               onRename={vi.fn()}
               members={[]}
             />

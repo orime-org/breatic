@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Every declaration in the catalog has something in the panel that acts on it,
@@ -9,9 +9,9 @@
  * parameter. Drawing it is still the panel's: what the slot is called, which
  * icon it carries, which sentence it refuses with. So a seam runs between the
  * yaml and the code, and a declaration on the wrong side of it fails quietly —
- * a param declaring `fill: canvas` with no slot leaves a reader unable to
+ * a param declaring `fill: canvas` with no slot leaves a user unable to
  * supply material the run needs, and a param declaring `fill: none` while a
- * control is mounted says the run drops a value the reader just set.
+ * control is mounted says the run drops a value the user just set.
  *
  * Twelve cases below make each of those a named failure. Seven read the model
  * layer, one reads back the other way, one reads the translations, and three
@@ -23,10 +23,13 @@
  *
  * Scope: a claim belongs to a generation NODE, so a model is asked about only
  * through the nodes that offer it — its bucket, and a mode that node's picker
- * shows. A model no panel reaches (mini-tool operations, the three_d and
- * understand buckets) has an empty claim set, which is the right answer: there
- * is no panel to draw anything for it, so every one of its params has to say
- * `none`.
+ * shows. The three_d bucket is reached by the 3D Space's generation dialog
+ * instead (inner#1691): its view slots carry the param that accepts images,
+ * the same param the submit route fills, and its settings are drawn by
+ * `modelControls` like a panel's. A model nothing reaches (mini-tool
+ * operations, the understand bucket) has an empty claim set, which is the
+ * right answer: there is nothing to draw anything for it, so every one of its
+ * params has to say `none`.
  */
 
 import { readFileSync, readdirSync } from 'node:fs';
@@ -38,6 +41,7 @@ import {
   PANEL_EDITOR_PARAM,
   REFERENCE_KINDS,
   storyboardSpec,
+  THREE_D_GENERATION_MODES,
 } from '@breatic/shared';
 import type { GenerationNodeType, ModelEntry, ParamDescriptor } from '@breatic/shared';
 import { describe, it, expect } from 'vitest';
@@ -109,7 +113,7 @@ interface DeclaredModel {
 
 /** What one mode declares. */
 interface DeclaredMode {
-  /** The kinds of node a reader has to point at. */
+  /** The kinds of node a user has to point at. */
   sources: string[];
   /** The name every answer about this mode calls it by. */
   label: string;
@@ -223,6 +227,16 @@ function nodesOffering(model: DeclaredModel): GenerationNodeType[] {
 }
 
 /**
+ * Whether the 3D Space's generation dialog serves this model in this mode.
+ * @param model - The model being asked about.
+ * @param mode - One of the modes it serves.
+ * @returns True for a three_d model in a mode the dialog switches between.
+ */
+function sceneDialogServes(model: DeclaredModel, mode: string): boolean {
+  return model.bucket === 'three_d' && (THREE_D_GENERATION_MODES as readonly string[]).includes(mode);
+}
+
+/**
  * Everything a panel would act on for one model in one of its modes.
  *
  * A slot is drawn by a mode, so the answer is per mode: a model declaring a
@@ -249,6 +263,12 @@ function claimsFor(
       controls.add(control.name);
     }
   }
+  if (sceneDialogServes(model, mode)) {
+    for (const [param, spec] of Object.entries(model.params)) if (spec?.accepts === 'image') slots.add(param);
+    for (const control of modelControls({ params: model.params } as unknown as ModelEntry, mode)) {
+      controls.add(control.name);
+    }
+  }
   return { slots, controls };
 }
 
@@ -260,7 +280,7 @@ function claimsFor(
 function offeredModes(model: DeclaredModel): string[] {
   const nodes = nodesOffering(model);
   return model.modes.filter((mode) =>
-    nodes.some((node) => GENERATION_NODE_MODES[node].includes(mode)),
+    nodes.some((node) => GENERATION_NODE_MODES[node].includes(mode)) || sceneDialogServes(model, mode),
   );
 }
 
@@ -320,7 +340,7 @@ function objections(
 ): string[] {
   const found: string[] = [];
   for (const model of MODELS) {
-    const unreached = fill !== 'none' && nodesOffering(model).length === 0;
+    const unreached = fill !== 'none' && offeredModes(model).length === 0;
     for (const [param, spec] of Object.entries(model.params)) {
       if (spec?.fill !== fill) continue;
       const wrong = unreached
@@ -380,7 +400,7 @@ describe('what the catalog declares', () => {
     expect(
       objections('pool', (model, param, spec) => {
         if (!REFERENCE_KINDS.some((kind) => kind === spec.accepts)) {
-          return `declares fill: pool accepting '${String(spec.accepts)}', which the pool does not carry, so no reference a reader adds reaches it`;
+          return `declares fill: pool accepting '${String(spec.accepts)}', which the pool does not carry, so no reference a user adds reaches it`;
         }
         const twin = Object.entries(model.params).find(
           ([other, o]) =>
@@ -398,26 +418,26 @@ describe('what the catalog declares', () => {
       objections('editor', (_model, param) =>
         param === PANEL_EDITOR_PARAM
           ? null
-          : `declares fill: editor while the panel's own box writes '${PANEL_EDITOR_PARAM}', so what a reader types reaches the run under a name this model never declared`,
+          : `declares fill: editor while the panel's own box writes '${PANEL_EDITOR_PARAM}', so what a user types reaches the run under a name this model never declared`,
       ),
     ).toEqual([]);
   });
 
-  it('lets a reader satisfy every condition a param waits on', () => {
+  it('lets a user satisfy every condition a param waits on', () => {
     const found: string[] = [];
     for (const model of MODELS) {
       for (const [param, spec] of Object.entries(model.params)) {
         const gate = spec?.when;
         for (const named of [gate?.source, gate?.flag_on, gate?.flag_off]) {
           // The loader already refuses a gate naming a param this model does
-          // not declare, so what is left to ask is whether the reader can do
+          // not declare, so what is left to ask is whether the user can do
           // anything about the one it names. A gate on a param with no
           // control of its own never opens, and the control it guards is
           // then declared and unreachable at once.
           if (named === undefined) continue;
           if (model.params[named]?.fill !== 'none') continue;
           found.push(
-            `${model.file} ${model.name}.${param}: waits on '${named}', which declares fill: none, so nothing a reader does opens this control`,
+            `${model.file} ${model.name}.${param}: waits on '${named}', which declares fill: none, so nothing a user does opens this control`,
           );
         }
       }
@@ -431,7 +451,7 @@ describe('what the catalog declares', () => {
       // declares, so one offered mode answering for all of them is right here.
       offeredModes(model).some((mode) => claimsFor(model, mode).controls.has(param))
         ? null
-        : 'declares fill: panel and no panel draws a control for it, so a reader cannot set it',
+        : 'declares fill: panel and no panel draws a control for it, so a user cannot set it',
     );
     // The voice picker finds its param by this marker rather than by name, so
     // the two tts models spell the same choice differently and both are drawn.
@@ -465,13 +485,13 @@ describe('what the catalog declares', () => {
   it('leaves every param that says it has no control unclaimed, and says why', () => {
     const claimed = objections('none', (model, param) => {
       // Claimed by ANY offered mode is enough to object: a param saying it has
-      // no control while one mode draws one still drops what a reader sets
+      // no control while one mode draws one still drops what a user sets
       // there.
       if (someModeDrawsSlot(model, param)) {
-        return 'declares fill: none while the panel draws a slot under that name, so material a reader picks is dropped';
+        return 'declares fill: none while the panel draws a slot under that name, so material a user picks is dropped';
       }
       if (offeredModes(model).some((mode) => claimsFor(model, mode).controls.has(param))) {
-        return 'declares fill: none while the panel draws a control under that name, so a value a reader sets is dropped';
+        return 'declares fill: none while the panel draws a control under that name, so a value a user sets is dropped';
       }
       return null;
     });
@@ -507,7 +527,7 @@ describe('what the catalog declares', () => {
 
   it('calls every mode what its picker prints', () => {
     // The mode code is nowhere on screen: the picker renders this string and
-    // nothing else, and `canvas_capabilities` quotes the declared one. Two names for one mode sends a reader looking through the
+    // nothing else, and `canvas_capabilities` quotes the declared one. Two names for one mode sends a user looking through the
     // picker for a row that says what the agent said.
     const declaredModes = everyMode();
     const drawn = [

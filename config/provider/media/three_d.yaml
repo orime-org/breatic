@@ -25,226 +25,142 @@
 # of the price charged (100 is full price).
 
 models:
-  meshy6-t23d:
-    rejects:
-      - when: $length(prompt) > 800
-        reason: "Meshy prompt: up to 800 characters; longer text returns 400"
-        source: https://docs.meshy.ai/en/api/text-to-3d
-      - when: target_polycount < 100 or target_polycount > 300000
-        reason: "Meshy target_polycount: Remesh range 100 to 300000; a value outside the range returns 400"
-        source: https://docs.meshy.ai/en/api/text-to-3d
-      - when: target_polycount != $floor(target_polycount)
-        reason: "Meshy target_polycount: integer"
-        source: https://docs.meshy.ai/en/api/text-to-3d
+  tripo-h3.1-t23d:
     upstreams:
       - upstream: wavespeed
         weight: 1
-        model_id: meshy/v6/text-to-3d
+        model_id: tripo3d/h3.1/text-to-3d
         prompt_field: prompt
-        send_empty: true
         params:
-          topology:
-            field: topology
-          target_polycount:
-            field: target_polycount
-          enable_pbr:
-            field: enable_pbr
-          symmetry_mode:
-            field: symmetry_mode
-          ta_pose:
-            field: pose_mode
+          texture:
+            field: texture
+          pbr:
+            field: pbr
+          texture_quality:
+            field: texture_quality
+          texture_version:
+            field: texture_version
             values:
-              "true": t-pose
-            absent_value: false
-        drops:
-          art_style:
-            all_values: WaveSpeed's schema has no such field; Meshy deprecated art_style (docs.meshy.ai/en/api/text-to-3d)
-        rejects:
-          - when: $length(prompt) > 600
-            reason: WaveSpeed prompt maxLength 600
+              v3.0: v3.0-20250812
+              v3.5: v3.5-20260815
+          delight:
+            field: delight
+          geometry_quality:
+            field: geometry_quality
+          smart_low_poly:
+            field: smart_low_poly
+          generate_parts:
+            field: generate_parts
+          face_limit:
+            field: face_limit
+          auto_size:
+            field: auto_size
+          export_uv:
+            field: export_uv
+          model_seed:
+            field: model_seed
+          texture_seed:
+            field: texture_seed
+          negative_prompt:
+            field: negative_prompt
         pricing:
           kind: formula
-          base_price: 1440000
-          formula: ""
+          base_price: 120000
+          formula: '{"total_price": base_price + (((texture or pbr) and generate_parts != true) ? (texture_quality = "detailed" ? 240000 : (texture_quality = "extreme" ? 360000 : 120000)) : 0) + (geometry_quality = "detailed" ? 240000 : 0) + (smart_low_poly ? 120000 : 0) + (generate_parts ? 240000 : 0)}'
           discount_rate: 100
-      - upstream: fal
-        weight: 2
-        model_id: fal-ai/meshy/v6/text-to-3d
-        prompt_field: prompt
-        output_field: model_glb
+  tripo-h3.1-i23d:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: tripo3d/h3.1/image-to-3d
         params:
-          topology:
-            field: topology
-          target_polycount:
-            field: target_polycount
-          enable_pbr:
-            field: enable_pbr
-          symmetry_mode:
-            field: symmetry_mode
-          ta_pose:
-            field: pose_mode
+          image:
+            field: image
+          texture:
+            field: texture
+          pbr:
+            field: pbr
+          texture_quality:
+            field: texture_quality
+          texture_version:
+            field: texture_version
             values:
-              "true": t-pose
-              "false": ""
-        drops:
-          art_style:
-            all_values: fal has no such field; Meshy deprecated art_style and ignores it (docs.meshy.ai/en/api/text-to-3d, read 2026-11-01)
-        rejects:
-          - when: $length(prompt) > 600
-            reason: fal prompt maxLength 600
+              v3.0: v3.0-20250812
+              v3.5: v3.5-20260815
+          delight:
+            field: delight
+          geometry_quality:
+            field: geometry_quality
+          smart_low_poly:
+            field: smart_low_poly
+          generate_parts:
+            field: generate_parts
+          face_limit:
+            field: face_limit
+          auto_size:
+            field: auto_size
+          export_uv:
+            field: export_uv
+          model_seed:
+            field: model_seed
+          texture_seed:
+            field: texture_seed
+          texture_alignment:
+            field: texture_alignment
+          orientation:
+            field: orientation
+          enable_image_autofix:
+            field: enable_image_autofix
         pricing:
           kind: formula
-          base_price: 800000
-          formula: ""
+          base_price: 240000
+          formula: '{"total_price": base_price + (((texture or pbr) and generate_parts != true) ? (texture_quality = "detailed" ? 240000 : (texture_quality = "extreme" ? 360000 : 120000)) : 0) + (geometry_quality = "detailed" ? 240000 : 0) + (smart_low_poly ? 120000 : 0) + (generate_parts ? 240000 : 0)}'
           discount_rate: 100
-  hunyuan3d-v3:
-    rejects:
-      - when: $length(prompt) > 1024
-        reason: "Tencent Hunyuan3D Pro Prompt: up to 1024 utf-8 characters"
-        source: https://cloud.tencent.com/document/api/1804/123447
-      - when: face_count < 3000 or face_count > 1500000
-        reason: "Tencent Hunyuan3D Pro FaceCount: value range [3000, 1500000]"
-        source: https://cloud.tencent.com/document/api/1804/123447
-      - when: face_count != $floor(face_count)
-        reason: "Tencent Hunyuan3D Pro FaceCount: Integer"
-        source: https://cloud.tencent.com/document/api/1804/123447
+  tripo-h3.1-multiview:
     upstreams:
       - upstream: wavespeed
         weight: 1
-        model_id: wavespeed-ai/hunyuan3d-v3/text-to-3d
-        prompt_field: prompt
-        send_empty: true
+        model_id: tripo3d/h3.1/multiview-to-3d
         params:
-          generate_type:
-            field: generate_type
-            supported:
-              - Normal
-              - Geometry
-          enable_pbr:
-            field: enable_pbr
-          face_count:
-            field: face_count
+          images:
+            field: images
+          texture:
+            field: texture
+          pbr:
+            field: pbr
+          texture_quality:
+            field: texture_quality
+          texture_version:
+            field: texture_version
+            values:
+              v3.0: v3.0-20250812
+              v3.5: v3.5-20260815
+          delight:
+            field: delight
+          geometry_quality:
+            field: geometry_quality
+          smart_low_poly:
+            field: smart_low_poly
+          generate_parts:
+            field: generate_parts
+          face_limit:
+            field: face_limit
+          auto_size:
+            field: auto_size
+          export_uv:
+            field: export_uv
+          model_seed:
+            field: model_seed
+          texture_seed:
+            field: texture_seed
+          texture_alignment:
+            field: texture_alignment
+          orientation:
+            field: orientation
+          enable_image_autofix:
+            field: enable_image_autofix
         pricing:
           kind: formula
-          base_price: 450000
-          formula: '{"total_price": base_price + (generate_type = "Geometry" ? 0 : 180000) + (enable_pbr = true ? 180000 : 0)}'
-          discount_rate: 100
-      - upstream: fal
-        weight: 2
-        model_id: fal-ai/hunyuan3d-v3/text-to-3d
-        prompt_field: prompt
-        output_field: model_glb
-        params:
-          generate_type:
-            field: generate_type
-          enable_pbr:
-            field: enable_pbr
-          face_count:
-            field: face_count
-            absent_value: 500000
-        pricing:
-          kind: formula
-          base_price: 15000
-          formula: '{"total_price": base_price * ((generate_type = "Geometry" ? 15 : generate_type = "LowPoly" ? 30 : 25) + ((enable_pbr = true and $not(generate_type = "Geometry")) ? 10 : 0) + (face_count != 500000 ? 10 : 0))}'
-          discount_rate: 100
-  hunyuan3d-v3-i23d:
-    rejects:
-      - when: face_count < 3000 or face_count > 1500000
-        reason: "Tencent Hunyuan3D Pro FaceCount: value range [3000, 1500000]"
-        source: https://cloud.tencent.com/document/api/1804/123447
-      - when: face_count != $floor(face_count)
-        reason: "Tencent Hunyuan3D Pro FaceCount: Integer"
-        source: https://cloud.tencent.com/document/api/1804/123447
-    upstreams:
-      - upstream: wavespeed
-        weight: 1
-        model_id: wavespeed-ai/hunyuan3d-v3/image-to-3d
-        send_empty: true
-        params:
-          image:
-            field: image
-          back_image:
-            field: back_image
-          left_image:
-            field: left_image
-          right_image:
-            field: right_image
-          generate_type:
-            field: generate_type
-            supported:
-              - Normal
-              - Geometry
-          enable_pbr:
-            field: enable_pbr
-          face_count:
-            field: face_count
-        pricing:
-          kind: formula
-          base_price: 450000
-          formula: '{"total_price": base_price + (generate_type = "Geometry" ? 0 : 180000) + (enable_pbr = true ? 180000 : 0) + ((back_image or left_image or right_image) ? 180000 : 0)}'
-          discount_rate: 100
-      - upstream: fal
-        weight: 2
-        model_id: fal-ai/hunyuan3d-v3/image-to-3d
-        output_field: model_glb
-        params:
-          image:
-            field: input_image_url
-          back_image:
-            field: back_image_url
-          left_image:
-            field: left_image_url
-          right_image:
-            field: right_image_url
-          generate_type:
-            field: generate_type
-          enable_pbr:
-            field: enable_pbr
-          face_count:
-            field: face_count
-            absent_value: 500000
-        pricing:
-          kind: formula
-          base_price: 15000
-          formula: '{"total_price": base_price * ((generate_type = "Geometry" ? 15 : generate_type = "LowPoly" ? 30 : 25) + ((enable_pbr = true and $not(generate_type = "Geometry")) ? 10 : 0) + ((back_image_url or left_image_url or right_image_url) ? 10 : 0) + (face_count != 500000 ? 10 : 0))}'
-          discount_rate: 100
-      - upstream: sandbase
-        weight: 3
-        model_id: tencent/hunyuan-3d/3.0/image-to-3d
-        fixed:
-          mode: async
-        params:
-          image:
-            field: image
-          back_image:
-            field: back_image
-          left_image:
-            field: left_image
-          right_image:
-            field: right_image
-          generate_type:
-            field: generate_type
-          enable_pbr:
-            field: enable_pbr
-          face_count:
-            field: face_count
-            absent_value: 500000
-        pricing:
-          kind: formula
-          base_price: 630000
-          formula: '{"total_price": (generate_type = "LowPoly" ? 720000 : generate_type = "Geometry" ? 450000 : base_price) + ((enable_pbr = true and $not(generate_type = "Geometry")) ? 180000 : 0) + ((back_image or left_image or right_image) ? 180000 : 0)}'
-          discount_rate: 100
-  hunyuan3d-v3.1-rapid:
-    upstreams:
-      - upstream: wavespeed
-        weight: 1
-        model_id: wavespeed-ai/hunyuan-3d-v3.1/image-to-3d-rapid
-        send_empty: true
-        params:
-          image:
-            field: image
-        pricing:
-          kind: formula
-          base_price: 270000
-          formula: ""
+          base_price: 240000
+          formula: '{"total_price": base_price + (((texture or pbr) and generate_parts != true) ? (texture_quality = "detailed" ? 240000 : (texture_quality = "extreme" ? 360000 : 120000)) : 0) + (geometry_quality = "detailed" ? 240000 : 0) + (smart_low_poly ? 120000 : 0) + (generate_parts ? 240000 : 0)}'
           discount_rate: 100

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import axios, {
   type AxiosInstance,
@@ -43,7 +43,8 @@ function createClient(): AxiosInstance {
   // The server negotiates its reply language from `Accept-Language`, which
   // the browser fills from the OS setting. That is not the language the user
   // picked in our switcher — `changeLocale` writes localStorage and swaps the
-  // UI catalog without touching the network. Sending it here is what joins
+  // UI catalog, downloading it first when this page has not loaded it yet, but
+  // never calls our backend. Sending it here is what joins
   // the two, and it is read per request because the user can switch at any
   // time while this singleton lives for the life of the page.
   instance.interceptors.request.use((config) => {
@@ -94,6 +95,7 @@ function normalizeError(err: unknown): ApiError {
       retryAfterSeconds: data?.error?.retryAfterSeconds ?? headerSeconds(err, 'retry-after'),
       idempotencyStatus: idempotencyStatusOf(err),
       reason: data?.error?.reason,
+      details: data?.error,
       network: err.response === undefined,
     };
   }

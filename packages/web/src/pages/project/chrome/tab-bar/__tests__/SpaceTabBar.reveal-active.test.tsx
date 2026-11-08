@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The control that brings the current Space's tab back into view.
@@ -250,7 +250,7 @@ describe('SpaceTabBar — bringing the current tab back into view', () => {
   it('scrolls the strip alone, and only as far as the tab is cut off', async () => {
     // The strip is what moves, not every scroller up to the document: below
     // the project page's width floor the page is one of those, and a click
-    // here would drag what the reader was looking at.
+    // here would drag what the user was looking at.
     const user = userEvent.setup();
     setup();
     const scroller = makeOverflow();
@@ -287,7 +287,7 @@ describe('SpaceTabBar — bringing the current tab back into view', () => {
     // once. Asking for that leaves the control enabled with nothing that can
     // satisfy it, and each click swings the strip from one edge to the other
     // — measured in a browser at 137px of strip and a 160px tab, scrollLeft
-    // going 115, 92, 115, 92. Its start is what a reader needs; that is where
+    // going 115, 92, 115, 92. Its start is what a user needs; that is where
     // the name begins.
     const user = userEvent.setup();
     setup();

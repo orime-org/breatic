@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { useQuery } from '@tanstack/react-query';
 import type { UseQueryResult } from '@tanstack/react-query';
@@ -9,7 +9,7 @@ import { paymentApi } from '@web/data/api/payment';
 import type { PackList } from '@web/data/api/payment';
 
 /**
- * The packs and the refund rule, in the reader's language.
+ * The packs and the refund rule, in the user's language.
  *
  * Three screens read this one answer and share it under one key, which is
  * what makes opening them all ask once. The language is part of that key

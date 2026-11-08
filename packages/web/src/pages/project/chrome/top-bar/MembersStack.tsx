@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { LogOut, Users } from 'lucide-react';
 import * as React from 'react';
@@ -35,7 +35,7 @@ interface MembersStackProps {
    */
   currentUserRole?: MemberRole;
   /**
-   * Leave the project. Given only when the reader may leave (a live
+   * Leave the project. Given only when the user may leave (a live
    * project's editor or viewer); the list then ends with "Leave project"
    * where the owner's ends with "Manage collaborators".
    */
@@ -90,7 +90,7 @@ export const MembersStack = React.forwardRef<
   }, [onLeave]);
 
   // The footer holds one action: "Manage collaborators" for the owner,
-  // "Leave project" for a reader the page lets leave, nothing for anyone else.
+  // "Leave project" for a user the page lets leave, nothing for anyone else.
   const footer = isOwner
     ? {
       onClick: openManage,
@@ -188,7 +188,7 @@ export const MembersStack = React.forwardRef<
             </li>
           ))}
         </ul>
-        {/* No footer at all for a reader without an action: no separator,
+        {/* No footer at all for a user without an action: no separator,
             no padded gap. Removing / role-changing members happens inside
             the manage modal — never inline in the popover. */}
         {footer ? (

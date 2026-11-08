@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #904 验收 C10 and the rendering half of C5: the numbers reach the screen
@@ -122,7 +122,7 @@ describe('the number reaches the screen', () => {
   });
 
   it('numbers a document that already had content when it was opened', () => {
-    // What a reader actually opens: a document that already has content in it,
+    // What a user actually opens: a document that already has content in it,
     // rather than one filled by this same client after mounting.
     const source = new Y.Doc();
     const writer = buildDocumentEditor({

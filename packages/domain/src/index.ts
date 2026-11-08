@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * `@breatic/domain` — AIGC business kernel shared by server + worker.
@@ -70,6 +70,7 @@ export * as assetService from "@domain/asset/asset.service.js";
 export * as assetRepo from "@domain/asset/asset.repo.js";
 export * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
 export * as uploadGrantService from "@domain/asset/upload-grant.service.js";
+export { createBusinessProjectMediaBackfillSources } from "@domain/asset/project-media-backfill.service.js";
 export * as uploadStatusService from "@domain/asset/upload-status.service.js";
 export * as uploadFinishService from "@domain/asset/upload-finish.service.js";
 export {
@@ -82,8 +83,8 @@ export * as backendUploadService from "@domain/asset/backend-upload.service.js";
 export { UploadOpenFailed } from "@domain/asset/upload-open-failure.js";
 export { openContainerOutputs } from "@domain/asset/container-outputs.service.js";
 export * as mediaReadService from "@domain/asset/media-read.service.js";
-export { extFromUrl, labelForUrl, readerUrlSchema, safeExt } from "@domain/asset/source-url.js";
-export { isReaderLinkFault, storedTypeOf, TYPE_UNKNOWN, urlIngestFailureLevel } from "@domain/asset/reader-source.js";
+export { extFromUrl, labelForUrl, userUrlSchema, safeExt } from "@domain/asset/source-url.js";
+export { isUserLinkFault, storedTypeOf, TYPE_UNKNOWN, urlIngestFailureLevel } from "@domain/asset/user-source.js";
 export {
   MEDIA_READ_QUEUE,
   type MediaReadJob,
@@ -115,11 +116,15 @@ export {
   BASELINE_TOOLS,
   TOOL_MAP,
   ASK_USER,
+  AWAITS_USER,
+  REQUEST_SPACE_CONTENT,
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
+  PROPOSE_SCENE_GENERATION,
   SAVE_IMAGE,
   UNDERSTAND_MEDIA,
   RECORD_TOOL_NAMES,
+  MEMORY_TOOL_NAMES,
 } from "@domain/agent/tools/index.js";
 export type { OpenDocument } from "@domain/agent/tools/propose-document-edit.js";
 export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
@@ -138,6 +143,15 @@ export type {
   NodeRecords,
   ActivityPage,
 } from "@domain/agent/tools/project-records.js";
+export { MemoryRefused, countCharacters, memoryContent, memoryTitle } from "@domain/agent/memory-entries.js";
+export type {
+  AgentMemory,
+  MemoryEntry,
+  MemoryOrigin,
+  MemoryRefusalKind,
+  MemoryScope,
+  MemorySearchPage,
+} from "@domain/agent/memory-entries.js";
 export { buildAgentConfig, instructionsForAgentMemory } from "@domain/agent/agent-config.js";
 export {
   createAgentPicturePreparer,
@@ -192,6 +206,14 @@ export type { Voice, VoicePage, VoiceQuery } from "@domain/model-catalog/voice-c
 
 // ── Node tasks (one row per task on a node; the four counts the node shows) ──
 export * as nodeTaskService from "@domain/node-task/node-task.service.js";
+export * as sceneTaskService from "@domain/node-task/scene-task.service.js";
+export type { SceneTaskRow } from "@domain/node-task/node-task.repo.js";
+export { resolveProjectImageInputs, type ProjectImageInput } from "@domain/asset/project-image-inputs.js";
+export {
+  planSceneGeneration,
+  type SceneGenerationPlan,
+  type SceneGenerationProblem,
+} from "@domain/model-catalog/scene-generation.js";
 export { settleTaskForNode } from "@domain/node-task/settle-for-node.js";
 export { failureOutcome } from "@domain/node-task/failure-outcome.js";
 export type {

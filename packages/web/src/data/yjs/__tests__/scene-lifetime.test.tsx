@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/provider';
 import { act, cleanup, render } from '@testing-library/react';
 import * as React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
+import { SCENE_FORMAT_VERSION } from '@breatic/shared';
 import { Awareness } from 'y-protocols/awareness';
 
 import { CollabSocketProvider, _resetCollabSocketForTests } from '@web/data/yjs/collab-socket';
@@ -22,7 +23,7 @@ const OBJECT = {
   id: ID, name: 'Figure', model: { kind: 'builtin' as const, id: 'figure' as const },
   position: [0, 0, 0] as [number, number, number],
   rotation: [0, 0, 0, 1] as [number, number, number, number],
-  scale: [1, 1, 1] as [number, number, number], locked: false, exists: true,
+  scale: [1, 1, 1] as [number, number, number], locked: false,
 };
 const providers: HocuspocusProvider[] = [];
 const sockets: HocuspocusProviderWebsocket[] = [];
@@ -70,7 +71,7 @@ function provider(doc: Y.Doc): HocuspocusProvider {
 /** Seed committed collaborative content and read its real cached editing owner. */
 function fixture(): { doc: Y.Doc; session: SceneSession; connection: SocketState } {
   const doc = getDoc(NAME);
-  doc.getMap('scene').set('formatVersion', 1);
+  doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
   expect(applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol('peer'), true)).toEqual({ ok: true, ids: [ID] });
   return { doc, session: getSceneSession(doc, NAME), connection: {
     provider: provider(doc), status: 'connected', synced: true, hasEverSynced: true,

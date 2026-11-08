@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The open mini-tool panel against the canvas session (inner#888 §7.2): what a
@@ -174,8 +174,8 @@ describe('MiniToolPanelContainer', () => {
     expect(run).not.toHaveAttribute('aria-disabled');
   });
 
-  // A7: nothing to export yet, so nothing is started and the reader is told.
-  it('tells the reader and runs nothing while the source shows nothing', () => {
+  // A7: nothing to export yet, so nothing is started and the user is told.
+  it('tells the user and runs nothing while the source shows nothing', () => {
     const onRun = vi.fn(() => Promise.resolve());
     render(tree(source(''), onRun));
     fireEvent.click(screen.getByTestId('mini-tool-run'));
@@ -446,7 +446,7 @@ describe('MiniToolPanelContainer', () => {
 });
 
 // inner#1305 §7.3: the enhance model's ceilings are said on the press, in the
-// reader's terms, and nothing runs.
+// user's terms, and nothing runs.
 describe('an enhance source past the model\'s ceilings', () => {
   const ENHANCE = {
     name: 'veed-clean-audio',

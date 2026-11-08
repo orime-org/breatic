@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The hard edge on what one turn may say (#148, G2).
@@ -7,11 +7,11 @@
  * Two lines, each drawn where a client cannot skip it: one on what the user
  * typed (the browser stops at ten thousand characters and says so), one on
  * the attached items as the model is sent them. The attachments do not eat
- * into what the reader may type, and a long question does not shrink what
+ * into what the user may type, and a long question does not shrink what
  * may be attached.
  *
  * The refusal is an error rather than a trim. A silently shortened message
- * leaves the reader unable to see what went missing, reading an answer to
+ * leaves the user unable to see what went missing, reading an answer to
  * something they did not ask.
  */
 
@@ -181,7 +181,7 @@ describe("what one turn may send", () => {
   it("admits a message that lands exactly on the limit", async () => {
     // The rule is "past the limit", so the line itself goes through. Without
     // this, an off-by-one refuses a message the browser had just told the
-    // reader was fine.
+    // user was fine.
     const { projectId, conversationId, cookie } = await seedOwner();
 
     const res = await post(
@@ -199,7 +199,7 @@ describe("what one turn may send", () => {
   });
 
   it("counts each reference to an attachment as one character", async () => {
-    // The box counts a reference as the one block the reader sees, so the
+    // The box counts a reference as the one block the user sees, so the
     // server has to as well: the marker it is written as is longer.
     const { projectId, conversationId, cookie } = await seedOwner();
     const attached = chip(1, 10);
@@ -259,7 +259,7 @@ describe("what one turn may send", () => {
 
   it("measures the attachments apart from the words", async () => {
     // Each half is under its own limit, and together they are past the limit
-    // on the words: the attachments do not eat into what the reader may type.
+    // on the words: the attachments do not eat into what the user may type.
     const { projectId, conversationId, cookie } = await seedOwner();
 
     const res = await post(
@@ -331,7 +331,7 @@ describe("what one turn may send", () => {
   });
 });
 
-describe("what one turn may carry of the reader's Spaces (inner#1413)", () => {
+describe("what one turn may carry of the user's Spaces (inner#1413)", () => {
   /** A loaded canvas carries what was done to fit it; these requests are over the limit by length alone. */
   const NO_REDUCTION = {
     selected_total: 0,

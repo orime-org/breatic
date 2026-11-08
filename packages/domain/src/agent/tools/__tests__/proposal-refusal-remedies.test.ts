@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Every refusal the proposal check gives, held to what it says (design 5.10):
@@ -225,7 +225,7 @@ loadLocales();
 const CASES: Record<RefusalId, RefusalCase[]> = {
   "nothing-generates": [{
     meets: { nodes: [EMPTY_PIC], edges: [], rationale: "r" },
-    states: ["Nothing here generates, so a card placed from this leaves the reader nothing to press."],
+    states: ["Nothing here generates, so a card placed from this leaves the user nothing to press."],
   }],
   "nothing-generates-words": [{
     meets: { nodes: [WORDS], edges: [], rationale: "r" },
@@ -364,6 +364,12 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     states: ['node 0 ("Still")', 'node 1 ("Clip")', '"pool"', "its ref and note in a shot"],
     fix: group([STILL, { ...CLIP_ANCHOR, shots: [{ prompt: [GEN_FIRST, { ref: 0 }, { text: " walks along the shore." }], duration: 5 }] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     templates: FIXTURES,
+  }, {
+    // Sent multi_shot with a prompt and no shots: the ref and note still go in a shot, keyed on the sent mode.
+    meets: group([STILL, { ...CLIP_ANCHOR, shots: undefined, prompt: [{ text: "She walks along the shore." }] }]),
+    states: ['node 0 ("Still")', 'node 1 ("Clip")', '"pool"', "its ref and note in a shot"],
+    fix: group([STILL, { ...CLIP_ANCHOR, shots: [{ prompt: [GEN_FIRST, { ref: 0 }, { text: " walks along the shore." }], duration: 5 }] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
+    templates: FIXTURES,
   }],
   "template-resource-material": [{
     // A template's resource lands holding the template's own file.
@@ -404,7 +410,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "template-no-prompt": [{
     meets: group([EMPTY_PIC, { ...EDIT_POOL, prompt: undefined, template: { id: "storyboard-grid-25" }, mode: undefined, model: undefined }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    states: ['"Gen" names template "storyboard-grid-25" and sends no prompt.', 'On node 1 ("Gen"), write a prompt.', "The template's prompt, to rewrite in the reader's language with their story or detail in it:", 'an empty one by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first'],
+    states: ['"Gen" names template "storyboard-grid-25" and sends no prompt.', 'On node 1 ("Gen"), write a prompt.', "The template's prompt, to rewrite in the user's language with their story or detail in it:", 'an empty one by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first'],
     fix: group([EMPTY_PIC, { ...EDIT_POOL, template: { id: "storyboard-grid-25" }, mode: undefined, model: undefined, prompt: [...storyboardSegments(), NOTE] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
   }, {
     // The node settles its own model, which takes no picture: the pool the template's own model has is not its.
@@ -415,7 +421,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }, {
     // A multi_shot generate node naming a template and sending no shots.
     meets: group([STILL, { ...CLIP_ANCHOR, shots: undefined }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    states: ['"Clip" names template "fixture-shots" and sends no prompt.', 'On node 1 ("Clip"), write a prompt.'],
+    states: ['"Clip" names template "fixture-shots" and sends no shots.', 'On node 1 ("Clip"), write the shots.'],
     fix: group([STILL, { ...CLIP_ANCHOR, shots: [{ prompt: [GEN_FIRST, { ref: 0 }, { text: " walks along the shore." }], duration: 5 }] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     templates: FIXTURES,
   }],
@@ -436,7 +442,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "loose-without-note": [{
     meets: group([EMPTY_PIC, gen("video", "talking_head", HEAD, { prompt: undefined })]),
-    states: ['"Pic" goes into no generation, so the reader picks it into a slot in the panel, and a note tells them which.', "carry 0 note(s) beyond those their wired nodes use"],
+    states: ['"Pic" goes into no generation, so the user picks it into a slot in the panel, and a note tells them which.', "carry 0 note(s) beyond those their wired nodes use"],
   }],
   "text-generates": [{
     meets: group([{ role: "generate", type: "text", name: "Copy", prompt: [{ text: "Write it." }] }, DRAW]),
@@ -613,7 +619,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "written-takes-no-mark": [{
     meets: group([{ ...WORDS, prompt: [{ text: "Copy " }, NOTE] }, DRAW]),
-    states: ['"Words" holds words the reader keeps as they are, so it takes no ref or note; it carries the note "Put the picture in Pic first".', 'On node 0 ("Words"), take out every ref and note it carries, the typed ones included, and say what you meant in your own message.'],
+    states: ['"Words" holds words the user keeps as they are, so it takes no ref or note; it carries the note "Put the picture in Pic first".', 'On node 0 ("Words"), take out every ref and note it carries, the typed ones included, and say what you meant in your own message.'],
     fix: group([{ ...WORDS, prompt: [{ text: "Copy " }] }, DRAW]),
   }, {
     meets: group([{ ...WORDS, prompt: [{ text: "Copy " }, NOTE, { text: " and " }, NOTE] }, DRAW]),
@@ -676,7 +682,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "text-source": [{
     meets: group([{ role: "source", type: "text", name: "Copy" }, DRAW]),
-    states: ['"Copy" is an empty text node, which the reader makes in one click; words go on a written node.'],
+    states: ['"Copy" is an empty text node, which the user makes in one click; words go on a written node.'],
   }],
   "source-configured": [{
     meets: group([{ ...EMPTY_PIC, mode: "t2i" }, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
@@ -699,7 +705,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "mark-typed": [{
     meets: group([gen("image", "t2i", T2I, { prompt: [{ text: "Make it {✏️ mood}." }] })]),
-    states: ['"Gen" types 1 mark(s) into its words as text: "{✏️ mood}". A mark works only as a segment of its own, with the text segments kept to plain words: {"slot": {"kind": "tweak", "label": "…", "note": "…"}} for words the reader writes.'],
+    states: ['"Gen" types 1 mark(s) into its words as text: "{✏️ mood}". A mark works only as a segment of its own, with the text segments kept to plain words: {"slot": {"kind": "tweak", "label": "…", "note": "…"}} for words the user writes.'],
   }, {
     // Brackets typed around a ref: quoted as written, the ref inside as the agent sent it.
     meets: group([EMPTY_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit [📎 " }, { ref: 0 }, { text: "] now." }, NOTE] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),

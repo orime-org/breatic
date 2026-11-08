@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The image that follows the pointer while a row, a table line, what is
@@ -20,37 +20,20 @@
  * - It is drawn in the body's styles: its content sits in copies of the
  *   elements it sits in in the body, which lay out and draw nothing of their
  *   own (`document-preview-styles.ts`).
- * - It is scaled down as a whole when a side is longer than 512px, until the
- *   longest is 512px; content no longer than that keeps its own size. Chrome
- *   draws the image in the root element's own space, leaving out the root's
- *   transform (`data_transfer.cc`), so the root takes the scaled size and the
- *   scale sits on the layer inside it.
- *
- * The root is opaque and fixed at the viewport's top left (`index.css`):
- * Firefox and WebKit draw the root's own opacity into the image, and Safari
- * cancels a drag whose image is wholly off screen. The browser takes the image
- * while `dragstart` is dispatched, so the root leaves the page in the next
- * animation frame, before that frame is painted, or at the drag's next event
- * if that comes first (inner#1350 design §4).
+ * - It is put on the page the way every editor's drag image is
+ *   (`lib/drag-image.ts`): at full strength, scaled down as a whole when a
+ *   side is longer than 512px, and off the page once the browser has it.
  */
 
 import type { EditorView } from '@tiptap/pm/view';
 
 import { SCROLLBAR_MARK } from '@web/components/ui/scroll-area';
+import { type DragImageSize, mountDragImage } from '@web/lib/drag-image';
 import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
 import type { DragOrientation } from '@web/spaces/document/document-table-drag';
 import { cellAt, cellsOfScope } from '@web/spaces/document/document-table-run';
 import { QUOTE_RUN_ATTRIBUTES } from '@web/spaces/document/document-decorations';
 import { inPlaceOf } from '@web/spaces/document/document-preview-styles';
-
-/** The longest a drag preview's side may be, in px (user 2026-10-10). */
-export const PREVIEW_LONGEST_SIDE = 512;
-
-/** A natural size, in px. */
-export interface PreviewSize {
-  readonly width: number;
-  readonly height: number;
-}
 
 /** Content copied out of the body for a drag preview, and where it stands there. */
 export interface PlacedContent {
@@ -61,9 +44,6 @@ export interface PlacedContent {
   /** The element it is drawn as wide as; null when the body has none to go by. */
   readonly sizedLike: Element | null;
 }
-
-/** The class `index.css` places and styles every preview by. */
-const PREVIEW_CLASS = 'doc-drag-preview';
 
 /** A scroll frame's scrollbar (`components/ui/scroll-area`). */
 const SCROLLBAR = `[${SCROLLBAR_MARK}]`;
@@ -103,19 +83,6 @@ function rowWithId(id: string): string {
   return `${ROW}[data-id="${id}"], [data-node-type="docTable"][data-id="${id}"]`;
 }
 
-/**
- * The scale that brings a longest side over {@link PREVIEW_LONGEST_SIDE} down to
- * it. It never enlarges: the browser clamps a drag image the same way, shrinking
- * only what is over its limit (Chromium `drag_image.cc` `ClampedImageScale`).
- * @param width - The natural width.
- * @param height - The natural height.
- * @returns The scale, at most 1.
- */
-export function previewScale(width: number, height: number): number {
-  const longest = Math.max(width, height);
-  return longest > PREVIEW_LONGEST_SIDE ? PREVIEW_LONGEST_SIDE / longest : 1;
-}
-
 /** Elements that draw what they hold whatever their style says. */
 const REPLACED = new Set(['img', 'video', 'canvas', 'svg', 'iframe', 'input', 'hr']);
 
@@ -143,7 +110,7 @@ function paintsBox(style: CSSStyleDeclaration): boolean {
  * @param layer - The layer.
  * @returns Its natural size.
  */
-export function measureDrawn(layer: HTMLElement): PreviewSize {
+export function measureDrawn(layer: HTMLElement): DragImageSize {
   const page = layer.ownerDocument;
   const frame = page.defaultView ?? window;
   const box = layer.getBoundingClientRect();
@@ -181,30 +148,6 @@ export function measureDrawn(layer: HTMLElement): PreviewSize {
   return { width, height: Math.max(box.height, layer.scrollHeight) };
 }
 
-/** A drag's events, each dispatched once the browser has taken the image. */
-const DRAG_EVENTS = ['drag', 'dragenter', 'dragover', 'dragleave', 'drop', 'dragend'] as const;
-
-/**
- * Takes a preview off the page once the browser has its image: in the next
- * animation frame, before it is painted, or at the drag's next event if that
- * comes first. Until then the preview's copy of the editor element is on the
- * page, where BlockNote looks for an editor on the drag's events
- * (`SideMenu.ts` `findClosestEditorElement`); the window sees each first, in
- * the capture phase.
- * @param root - The preview's root.
- */
-function leaveOnceTaken(root: HTMLElement): void {
-  const frame = root.ownerDocument.defaultView ?? window;
-  /** Takes the preview off the page, and what would take it off again. */
-  const leave = (): void => {
-    frame.cancelAnimationFrame(next);
-    DRAG_EVENTS.forEach((type) => frame.removeEventListener(type, leave, true));
-    root.remove();
-  };
-  const next = frame.requestAnimationFrame(leave);
-  DRAG_EVENTS.forEach((type) => frame.addEventListener(type, leave, true));
-}
-
 /**
  * Attaches a preview of some content to the page, scaled and in the body's
  * styles, for the `dragstart` being dispatched to hand to `setDragImage`. It
@@ -217,7 +160,7 @@ function leaveOnceTaken(root: HTMLElement): void {
 export function buildDragPreview(
   view: EditorView,
   placed: PlacedContent,
-  measure: (layer: HTMLElement) => PreviewSize = measureDrawn,
+  measure: (layer: HTMLElement) => DragImageSize = measureDrawn,
 ): HTMLElement {
   const page = view.dom.ownerDocument;
   const { content } = placed;
@@ -233,26 +176,10 @@ export function buildDragPreview(
   blocks[blocks.length - 1]?.style.setProperty('--doc-block-drop', '0px');
   const width = placed.sizedLike?.getBoundingClientRect().width ?? 0;
   if (width > 0) content.style.width = `${width}px`;
-  const root = page.createElement('div');
-  root.className = PREVIEW_CLASS;
-  root.style.overflow = 'hidden';
-  const layer = page.createElement('div');
-  layer.style.display = 'inline-block';
-  // On the root's line an inline block sits on the baseline, below the line's
-  // own ascent, and the root, cut to the scaled size, would clip its foot.
-  layer.style.verticalAlign = 'top';
-  layer.style.padding = '0';
-  layer.style.transformOrigin = '0px 0px';
-  layer.append(inPlaceOf(view, content, placed.place));
-  root.append(layer);
-  page.body.append(root);
-  const size = measure(layer);
-  const scale = previewScale(size.width, size.height);
-  root.style.width = `${size.width * scale}px`;
-  root.style.height = `${size.height * scale}px`;
-  layer.style.transform = `scale(${scale})`;
-  leaveOnceTaken(root);
-  return root;
+  // Until it leaves, the preview's copy of the editor element is on the page,
+  // where BlockNote looks for an editor on the drag's events (`SideMenu.ts`
+  // `findClosestEditorElement`).
+  return mountDragImage(page, inPlaceOf(view, content, placed.place), measure).root;
 }
 
 /**

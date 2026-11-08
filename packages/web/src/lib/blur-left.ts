@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Runs `leave` if a blur on a box that ends on blur was the reader leaving it.
+ * Runs `leave` if a blur on a box that ends on blur was the user leaving it.
  *
  * Two blurs are not. Leaving the browser: the whole document loses focus, and
  * coming back should find the box as it was — `relatedTarget` cannot tell that
@@ -14,7 +14,7 @@
  * inside its Space's outlet, and a box can leave the page while its Space
  * stays (its node deleted or scrolled out of view), which is leaving it.
  * @param spaceId - The Space the box belongs to.
- * @param leave - What the box does when the reader leaves it.
+ * @param leave - What the box does when the user leaves it.
  */
 export function whenBlurLeaves(spaceId: string, leave: () => void): void {
   if (!document.hasFocus()) return;

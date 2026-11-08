@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * `transitionOperation` on the "(no row)" line of the disposition table
@@ -653,7 +653,7 @@ describe("(no row) × E1: a lot's dispositions are ordered as they were inserted
     expect(
       assessRefundCreate({
         kind: "retry",
-        lot: { lifecycle: "refunding", remainingCredits: CREDITS, ledgerSum: CREDITS },
+        lot: { lifecycle: "refunding", remainingCredits: String(CREDITS), ledgerSum: String(CREDITS) },
         payment: { status: "completed", stripePaymentIntentId: lot.paymentIntentId, paidCents: PAID_CENTS },
         ops,
         refunds: [],

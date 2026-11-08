@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Which ranges can carry a comment (#18, A2 · A3).
  *
  * Two entries ask this, and they ask it of the same range type. The bubble
- * bar acts on what the reader selected; the block handle acts on the row the
+ * bar acts on what the user selected; the block handle acts on the row the
  * pointer is over, which `selectionOverBlockContent` turns into a selection
  * over that row's own content without dispatching it. So one predicate
  * answers both, and a row's answer cannot drift from a selection's.
@@ -128,7 +128,7 @@ describe('canCommentOver', () => {
 
   it('is no for a row holding only a line break', () => {
     // The range is a character wide and holds no text, which is why the
-    // question goes to the schema rather than to `to > from`. A reader makes
+    // question goes to the schema rather than to `to > from`. A user makes
     // this row by pressing Shift+Enter on an empty one; the same shape is
     // what a table or an image will be once those arrive (#15 · #16 · #17).
     const editor = open();

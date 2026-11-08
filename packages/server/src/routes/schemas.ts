@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * API request schemas — re-exported from `@breatic/shared`.
@@ -14,6 +14,7 @@ export {
   signupVerifySchema,
   setupStudioSchema,
   loginSchema,
+  googleAuthSchema,
   chatMessageSchema,
   taskCreateSchema,
   understandSchema,
@@ -31,30 +32,50 @@ export {
   chatEarlierMessagesQuerySchema,
   chatCreateConversationSchema,
   chatRenameConversationSchema,
+  chatSetModelSchema,
 } from "@breatic/shared";
 
 // ── Server-only schemas (complex discriminated unions) ───────────────
 
 import { z } from "zod";
-import { ARCHIVED_PROJECT_SORTS, LIVE_PROJECT_SORTS } from "@breatic/shared";
+import { creditAmountFormatQuerySchema, ARCHIVED_PROJECT_SORTS, LIVE_PROJECT_SORTS, TEXT_TOOL_INSTRUCTIONS_MAX, TEXT_TOOL_LANGUAGES, TEXT_TOOL_TONES } from "@breatic/shared";
 import { creditLotService } from "@breatic/domain";
 
 // Mini-Tools: Text
+/**
+ * A hard ceiling on any text a text tool receives, against abuse only. The
+ * budgets users actually meet live in `config/text-tools.yaml` and are checked
+ * in the route, so operations can change them without a release.
+ */
+const TEXT_TOOL_HARD_CEILING = 2_000_000;
+
 const textToolBase = z.object({
-  document: z.string().optional(),
-  selection: z.string().optional(),
+  project_id: z.string().uuid(),
+  document: z.string().max(TEXT_TOOL_HARD_CEILING).optional(),
+  selection: z.string().max(TEXT_TOOL_HARD_CEILING).optional(),
   instructions: z.string().optional(),
   node_ids: z.array(z.string()).min(1).optional(),
-  project_id: z.string().optional(),
 });
 
+/** What every document command carries: the selection and the context around it. */
+const onSelection = {
+  document: z.string().max(TEXT_TOOL_HARD_CEILING),
+  selection: z.string().min(1).max(TEXT_TOOL_HARD_CEILING),
+};
+
 export const textToolSchema = z.discriminatedUnion("tool", [
-  textToolBase.extend({ tool: z.literal("polish"), document: z.string(), selection: z.string() }),
-  textToolBase.extend({ tool: z.literal("expand"), document: z.string(), selection: z.string() }),
-  textToolBase.extend({ tool: z.literal("summarize"), document: z.string(), selection: z.string() }),
-  textToolBase.extend({ tool: z.literal("translate"), document: z.string(), selection: z.string(), language: z.string() }),
-  textToolBase.extend({ tool: z.literal("rewrite"), document: z.string(), selection: z.string(), style: z.string().optional() }),
-  textToolBase.extend({ tool: z.literal("continue"), document: z.string(), selection: z.string() }),
+  textToolBase.extend({ tool: z.literal("polish"), ...onSelection }),
+  textToolBase.extend({ tool: z.literal("expand"), ...onSelection }),
+  textToolBase.extend({ tool: z.literal("shorten"), ...onSelection }),
+  textToolBase.extend({ tool: z.literal("summarize"), ...onSelection }),
+  textToolBase.extend({ tool: z.literal("translate"), ...onSelection, language: z.enum(TEXT_TOOL_LANGUAGES) }),
+  textToolBase.extend({ tool: z.literal("rewrite"), ...onSelection, style: z.enum(TEXT_TOOL_TONES).optional() }),
+  textToolBase.extend({
+    tool: z.literal("custom"),
+    ...onSelection,
+    instructions: z.string().trim().min(1).max(TEXT_TOOL_INSTRUCTIONS_MAX),
+  }),
+  textToolBase.extend({ tool: z.literal("continue"), ...onSelection }),
   textToolBase.extend({ tool: z.literal("generate"), instructions: z.string() }),
   textToolBase.extend({ tool: z.literal("character"), name: z.string(), traits: z.string().optional(), context: z.string().optional() }),
   textToolBase.extend({ tool: z.literal("storyboard"), instructions: z.string(), scene_count: z.number().int().optional() }),
@@ -71,7 +92,7 @@ export const textToolSchema = z.discriminatedUnion("tool", [
  * is asked here, at the door, and the answer is a `422` before any of that.
  *
  * Absent is fine — the route then mints a key of its own and each retry is
- * its own charge, which is what a text tool means when it regenerates.
+ * its own charge.
  * Hono lowercases header names, so the key below is the name as it arrives.
  */
 export const idempotencyKeyHeaderSchema = z.object({
@@ -102,7 +123,7 @@ export const attachmentParamSchema = z.object({
  * clamps `limit` against `config/limits.yaml` and treats a malformed cursor
  * as "first page" — a garbage value from the network must not fail the panel.
  */
-export const creditPageQuerySchema = z.object({
+export const creditPageQuerySchema = creditAmountFormatQuerySchema.extend({
   limit: z.string().optional(),
   cursor: z.string().optional(),
 });
@@ -166,3 +187,5 @@ export const designationSchema = z.object({
  * behind it, which anyone can produce as fast as they can send requests.
  */
 export const idParamSchema = z.object({ id: z.string().uuid() });
+
+export { creditAmountFormatQuerySchema } from "@breatic/shared";

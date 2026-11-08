@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Switching Space tabs hides the Space it leaves and shows it again as it was
@@ -140,7 +140,7 @@ async function showSpace(p: Page, spaceId: string): Promise<void> {
 
 test('a canvas keeps its nodes, not rebuilt ones, across a switch', async ({ page }) => {
   // Everything a node holds on screen — a video's position, a panel's scroll —
-  // lives on its elements; the reader comes back to those elements, not new ones.
+  // lives on its elements; the user comes back to those elements, not new ones.
   const projectUrl = await openFreshProject(page);
   await addSpaces(page, 1);
   const [first, second] = (await stripIds(page)) as [string, string];
@@ -218,7 +218,7 @@ test('a text node being written stays open with its caret and undo across a swit
   page,
 }) => {
   // A13: the words are in the document either way; what a switch must not
-  // take is the editor itself — the caret where the reader left it and the
+  // take is the editor itself — the caret where the user left it and the
   // undo that takes back what they just typed.
   const projectUrl = await openFreshProject(page);
   await addSpaces(page, 1);
@@ -276,7 +276,7 @@ test('a prompt being written stays with its caret and undo across a switch', asy
 
 test('a note being written stays open with its words across a switch', async ({ page }) => {
   // A14: the box exists nowhere but on this screen, so hiding the Space must
-  // not read as the reader having left it.
+  // not read as the user having left it.
   await openFreshProject(page);
   await addSpaces(page, 1);
   const [first, second] = (await stripIds(page)) as [string, string];
@@ -301,7 +301,7 @@ test('a note being written stays open with its words across a switch', async ({ 
 });
 
 test('a document being written keeps its caret across a switch', async ({ page }) => {
-  // A1: the reader comes back to the place they were typing, and the next
+  // A1: the user comes back to the place they were typing, and the next
   // keystroke lands there.
   await openFreshProject(page);
   const [doc] = await addSpaces(page, 1, 'document');
@@ -325,7 +325,7 @@ test('a document being written keeps its caret across a switch', async ({ page }
 
 test('a document scrolled down comes back at the same place', async ({ page }) => {
   // A1: hiding a Space takes its scroller out of layout, and a scroller out
-  // of layout reads 0; the reader comes back to the line they left.
+  // of layout reads 0; the user comes back to the line they left.
   await openFreshProject(page);
   const [doc] = await addSpaces(page, 1, 'document');
   // The dialog hands focus back to its button once it has closed; a click in
@@ -354,7 +354,7 @@ test('a document scrolled down comes back at the same place', async ({ page }) =
 
 test('a wide table scrolled sideways comes back at the same place', async ({ page }) => {
   // A1: the document's DOM is put back into its body when the Space is shown
-  // again; a wide table's frame must still be where the reader scrolled it.
+  // again; a wide table's frame must still be where the user scrolled it.
   await openFreshProject(page);
   const [doc] = await addSpaces(page, 1, 'document');
   await expect(page.getByTestId('new-space-button')).toBeFocused();
@@ -442,7 +442,7 @@ test('a document\'s undo history and its controls are all there after a switch',
 });
 
 test('a comment not sent yet is still being written after a switch', async ({ page }) => {
-  // A2: the draft card and its words are where the reader left them.
+  // A2: the draft card and its words are where the user left them.
   const { canvas, doc } = await canvasAndDocument(page);
   await page.keyboard.type('a line to comment on');
   await selectFirstParagraph(page);
@@ -596,7 +596,7 @@ test('a hidden canvas takes no keys and stops what it was playing', async ({ pag
 test('a peer sees the pointer go when the Space is hidden, and their writes are there on return', async ({
   page,
 }) => {
-  // A5: a hidden canvas shows nobody where this reader's pointer is. A6: what
+  // A5: a hidden canvas shows nobody where this user's pointer is. A6: what
   // another person changed in the meantime is on the canvas when it is shown.
   const projectUrl = await openFreshProject(page);
   await addSpaces(page, 1);
@@ -662,9 +662,9 @@ test('the background of the canvas on screen moves with that canvas when another
   await expect.poll(async () => (await grid()).x).not.toBe(before.x);
 });
 
-test('reordering the tabs leaves a document where the reader scrolled it', async ({ page }) => {
+test('reordering the tabs leaves a document where the user scrolled it', async ({ page }) => {
   // A1: dragging a tab to another place on the strip moves the tab, not the
-  // Space's content, which stays scrolled where the reader left it.
+  // Space's content, which stays scrolled where the user left it.
   await openFreshProject(page);
   const [docA, docB] = await addSpaces(page, 2, 'document');
   await expect(page.getByTestId('new-space-button')).toBeFocused();
@@ -847,7 +847,7 @@ test('a tab with a focus crop still uploading cannot be closed', async ({ page }
 test('a panel whose node a collaborator deleted while hidden closes and says so', async ({
   page,
 }) => {
-  // A16: the reader comes back to the panel gone and the reason on screen.
+  // A16: the user comes back to the panel gone and the reason on screen.
   const projectUrl = await openFreshProject(page);
   await addSpaces(page, 1);
   const [first, second] = (await stripIds(page)) as [string, string];
@@ -947,7 +947,7 @@ test('a hidden document shows no floating bar, no caret to others, and takes in 
   page,
 }) => {
   // A5 and A6 for a document: hidden, its bubble bar is off screen and a
-  // collaborator no longer sees this reader's caret; what the collaborator
+  // collaborator no longer sees this user's caret; what the collaborator
   // writes meanwhile is there when it is shown again.
   const projectUrl = await openFreshProject(page);
   const [docA, docB] = await addSpaces(page, 2, 'document');
@@ -956,14 +956,14 @@ test('a hidden document shows no floating bar, no caret to others, and takes in 
   const editor = page.locator(DOCUMENT_EDITOR);
   await expect(editor).toBeVisible({ timeout: 15_000 });
   await editor.click();
-  await page.keyboard.type('the reader was here');
+  await page.keyboard.type('the user was here');
 
   const peer = await page.context().newPage();
   try {
     await peer.goto(projectUrl);
     await peer.locator(`[data-testid="space-tab-${docA!}"]`).click();
     const peerEditor = peer.locator(DOCUMENT_EDITOR);
-    await expect(peerEditor).toContainText('the reader was here', { timeout: 20_000 });
+    await expect(peerEditor).toContainText('the user was here', { timeout: 20_000 });
     const carets = peer.locator(
       `${VISIBLE_SPACE} .collaboration-carets__caret:not(.collaboration-carets__caret--blurred)`,
     );
@@ -990,7 +990,7 @@ test('a hidden document shows no floating bar, no caret to others, and takes in 
 });
 
 test('a node name being typed stays open and unsent across a switch', async ({ page }) => {
-  // A13: renaming is writing too; switching away is not the reader done.
+  // A13: renaming is writing too; switching away is not the user done.
   const projectUrl = await openFreshProject(page);
   await addSpaces(page, 1);
   const [first, second] = (await stripIds(page)) as [string, string];
@@ -1094,7 +1094,7 @@ test('words left selected in a hidden document do not take the canvas copy', asy
   page,
   context,
 }) => {
-  // A3, A5: a selection the reader can no longer see is not theirs; Cmd+C on
+  // A3, A5: a selection the user can no longer see is not theirs; Cmd+C on
   // the shown canvas copies its selected node.
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   const projectUrl = await openFreshProject(page);
@@ -1318,7 +1318,7 @@ test('words selected in a read-only document are still selected after a switch',
   expect(await selected()).toBe('words a viewer selects');
 });
 
-test('the caret goes back into a reply without moving what the reader scrolled to', async ({
+test('the caret goes back into a reply without moving what the user scrolled to', async ({
   page,
 }) => {
   // A1 and A19: with the reply scrolled out of view, coming back keeps the
@@ -1392,7 +1392,7 @@ test('the button on a table cell is on that cell after a switch', async ({ page 
 test('a generation answered while its Space was hidden leaves the panel ready', async ({
   page,
 }) => {
-  // A7: the submit was on its way when the reader switched away; coming back,
+  // A7: the submit was on its way when the user switched away; coming back,
   // the panel is not stuck submitting.
   const projectUrl = await openFreshProject(page);
   await addSpaces(page, 1);

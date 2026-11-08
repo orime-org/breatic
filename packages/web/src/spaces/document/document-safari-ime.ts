@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Keeping an indented block from emptying while an input method holds it.
@@ -10,7 +10,7 @@
  * before it commits a candidate — a `beforeinput`/`input` pair carrying
  * `data: ""`, which Chrome never sends — so the removal lands mid-word, and
  * `prosemirror-view` reads the changed structure back into the document as an
- * extra block. Measured by the reader in Safari (2026-09-08): the row count
+ * extra block. Measured by the user in Safari (2026-09-08): the row count
  * went from 156 to 157 on that `input` event, with the candidate not yet
  * committed.
  *

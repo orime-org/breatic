@@ -1,5 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
+
+import { creditSourceLabelKey } from '@web/features/credits/credit-source-label';
 
 import * as React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -101,7 +103,7 @@ export function AssignSection({
       scrolls={false}
       title={t('credits.section.assign')}
       // The rule holds whatever the list is doing, so it stays on screen
-      // for a reader whose list is empty or still arriving.
+      // for a user whose list is empty or still arriving.
       footer={
         billing ? <Footnote>{t('credits.assignNote')}</Footnote> : undefined
       }
@@ -213,11 +215,11 @@ function AssignRow({
   };
 
   // What the row leads with: a price where somebody paid one, and otherwise
-  // where the credits came from — the one thing about the row a reader
+  // where the credits came from — the one thing about the row a user
   // cannot work out from the rest of it.
   const lead =
     lot.paidCents === null
-      ? t(`credits.source.${lot.sourceKind}`)
+      ? t(creditSourceLabelKey(lot))
       : formatMoney(lot.paidCents, lot.currency ?? 'usd');
 
   // Where it points now, for the row that has no picker to say it. The

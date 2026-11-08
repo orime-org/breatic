@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * BullMQ job handlers for task execution.
@@ -12,6 +12,8 @@
  * Anything else throws.
  */
 
+import { parseCreditDecimal } from "@breatic/shared";
+
 import { DelayedError, type Job } from "bullmq";
 import type { ResumeContext } from "@worker/providers/shared.js";
 import { runContainerJob } from "@worker/handlers/container/run-container-job.js";
@@ -19,12 +21,12 @@ import { assertBeforeDeadline, DeadlinePassed } from "@breatic/shared";
 import { StillRunning } from "@worker/providers/still-running.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
-import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
+import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew, publishSpaceTasksChanged } from "@breatic/core";
 import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
 import { getStorageAdapter, getRawEnvVar, getUnderstandConfig, getAgentConfig } from "@breatic/core";
 import { failureOutcome, taskService, upstreamStepRepo } from "@breatic/domain";
 import { creditHoldService, creditLotService, creditsForUsd, resolveActiveProvider, toChargeCredits } from "@breatic/domain";
-import { modelCatalog, nodeHistoryService } from "@breatic/domain";
+import { modelCatalog, nodeHistoryService, sceneTaskService } from "@breatic/domain";
 import {
   assetRepo,
   assetService,
@@ -48,6 +50,7 @@ import {
 } from "@worker/handlers/understand-failure.js";
 import { storedFailure } from "@worker/handlers/stored-failure.js";
 import { storeBytes, storeFromUrl } from "@worker/handlers/backend-upload.js";
+import { resolveRegisteredProjectMedia } from "@worker/services/project-media.service.js";
 import {
   generationMetadata,
   nodeResultsFrom,
@@ -83,7 +86,7 @@ const AIGC_TASK_TYPES: Record<string, string> = {
   audio: "audio",
   video: "video",
   tts: "tts",
-  three_d: "three-d",
+  three_d: "three_d",
 };
 
 
@@ -129,6 +132,11 @@ export interface TaskJobData {
    */
   targetNodeIds?: string[];
   /**
+   * The 3D Space's own row a 3D generation settles (inner#1691), in place of
+   * a node: the submit route opened it and queues the job with no target node.
+   */
+  sceneRowId?: string;
+  /**
    * Execution mode (spec §10.13 / §10.15). Required — producer (server
    * routes) must always declare intent.
    *
@@ -158,7 +166,7 @@ export interface TaskJobData {
  * shouldRetryJob), and `attemptsMade` counts failed attempts only: a job
  * moved back to delayed and picked up again keeps it. A terminal outcome may
  * only be settled on a terminal attempt: settling a retryable failure marks
- * the row failed while the retry is still to come, and the reader sees that
+ * the row failed while the retry is still to come, and the user sees that
  * failure sitting on a task the next attempt goes on to finish. Defensive: a
  * missing attemptsMade counts as terminal — settling a possibly-early
  * failure is the safer failure mode, since a row this settles is one `settle`
@@ -367,7 +375,7 @@ async function runTaskBody(
   job: Job<TaskJobData>,
   token?: string,
 ): Promise<Record<string, unknown>> {
-  const { taskId, taskType, userId, projectId, spaceId, params, model, source, toolId, sourceKey, targetNodeIds } = job.data;
+  const { taskId, taskType, userId, projectId, spaceId, params, model, source, toolId, sourceKey, targetNodeIds, sceneRowId } = job.data;
   const canvasDocName = resolveCanvasDocName(projectId, spaceId);
 
   const streamRedis = getStreamRedis();
@@ -388,6 +396,7 @@ async function runTaskBody(
     params,
     source,
     toolId,
+    sceneRowId,
   };
   // ─── Re-entry guard ───────────────────────────────────────────────
   // Two cases where BullMQ might redeliver a job we've already touched:
@@ -450,6 +459,10 @@ async function runTaskBody(
         { rethrowOnRecordFailure: true },
       );
     }
+    // The 3D Space's row is settled from the stored output the same way.
+    if (sceneRowId !== undefined) {
+      await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(storedOutputs), { rethrow: true });
+    }
     // #1580-parallel activity-feed fix: a crash between billing and the
     // Stage-4 activity write leaves the feed with no success row (or a
     // crash-net generation:failed one). Re-assert the success row on
@@ -487,8 +500,8 @@ async function runTaskBody(
     await finishFailedRun({
       ...runEnd,
       // The row this lands on is read on a node, in whatever language the
-      // reader set. Which redelivery took which turn is the log's to say
-      // — it says it right above — and what the reader does next is send
+      // user set. Which redelivery took which turn is the log's to say
+      // — it says it right above — and what the user does next is send
       // it again, which is what this code says in their language.
       errorMessage: "internal" satisfies TaskFailureReason,
       settles: true,
@@ -640,7 +653,7 @@ async function runTaskBody(
       outcome: err instanceof DeadlinePassed ? "expired" : "failed",
     });
     // Rethrow to let BullMQ schedule a retry, unless the verdict already
-    // stands: the row is settled and the reader has been told, so another
+    // stands: the row is settled and the user has been told, so another
     // attempt would re-read the media and repeat the same refusal.
     if (!settlesNow) throw err;
     return { failed: true, reason: errorMsg };
@@ -695,8 +708,8 @@ async function runTaskBody(
     await finishFailedRun({
       ...runEnd,
       // Storing what broke would put one English sentence on a row read in
-      // whatever language its reader set. Which part of storing it failed is
-      // the log's to say — it says it right above — and the reader's next
+      // whatever language its user set. Which part of storing it failed is
+      // the log's to say — it says it right above — and the user's next
       // move is to run it again, which is what this code says to them.
       errorMessage: expired
         ? new DeadlinePassed().message
@@ -797,7 +810,7 @@ async function runTaskBody(
         userId,
         taskId,
         taskType,
-        // The credits are what the reader is charged, which is what the row's
+        // The credits are what the user is charged, which is what the row's
         // chip says. The provider reports dollars; the conversion happened
         // where the run was priced, and this is that result.
         metadata: generationMetadata({
@@ -812,6 +825,10 @@ async function runTaskBody(
       nodeResultsFrom(nodeIds, persistedOutputs),
       { rethrowOnRecordFailure: true },
     );
+  }
+  // A 3D generation's result lands on its Space's own row (inner#1691).
+  if (sceneRowId !== undefined) {
+    await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(persistedOutputs), { rethrow: true });
   }
 
   if (projectId) {
@@ -1064,7 +1081,7 @@ export async function recordGenerationForNodes(
     // Stage 3, and a row left unsettled is harvested as `expired` by the next
     // read of the node's list (#196) — which names a deadline that never
     // passed. The cause is one we author, so it travels as a code and becomes
-    // a sentence in the reader's language (§7.1).
+    // a sentence in the user's language (§7.1).
     const ending: Parameters<typeof settleTaskForNode>[2] =
       result === null
         ? {
@@ -1093,6 +1110,45 @@ export async function recordGenerationForNodes(
   }
 }
 
+/**
+ * Settle the 3D Space row a generation names (inner#1691) and tell the
+ * Space's members to refresh its list. The row's own rule decides what moves:
+ * it leaves `running` once, and a success finding it expired still lands.
+ * @param taskId - The run, for the log.
+ * @param sceneRowId - The row the job names.
+ * @param outcome - How the run ended.
+ * @param opts - Failure handling.
+ * @param opts.rethrow - Rethrow a failed read or settle: on a live run that
+ *   was billed, so BullMQ delivers it again and the billed re-entry settles
+ *   the row from the stored output. The vendor is not called again.
+ * @throws {Error} When `rethrow` is set and the row could not be read or settled.
+ */
+export async function settleSceneRow(
+  taskId: string,
+  sceneRowId: string,
+  outcome: sceneTaskService.SceneOutcome,
+  opts: { rethrow?: boolean } = {},
+): Promise<void> {
+  let settled: Awaited<ReturnType<typeof sceneTaskService.settleById>>;
+  try {
+    settled = await sceneTaskService.settleById(sceneRowId, outcome);
+    if (settled === null) {
+      logger.error({ taskId, sceneRowId }, "scene_row_missing");
+      return;
+    }
+  } catch (err) {
+    logger.error({ err, taskId, sceneRowId, outcome: outcome.outcome }, "scene_row_settle_failed");
+    if (opts.rethrow) throw err;
+    return;
+  }
+  const { row } = settled;
+  try {
+    await publishSpaceTasksChanged(row.projectId, row.spaceId);
+  } catch (err) {
+    // The row is settled; a member's list catches up on its next read.
+    logger.error({ err, taskId, sceneRowId, projectId: row.projectId, spaceId: row.spaceId }, "space_tasks_publish_failed");
+  }
+}
 
 // ─── Failure-path helpers ────────────────────────────────────────────
 
@@ -1108,6 +1164,8 @@ export interface FailedRunEnd {
   /** The canvas document the target nodes live in, when they live on one. */
   canvasDocName: string | null | undefined;
   nodeIds: string[];
+  /** The 3D Space's own row the run settles in place of a node (inner#1691). */
+  sceneRowId?: string | undefined;
   userId: string;
   model: string | undefined;
   params: Record<string, unknown>;
@@ -1182,7 +1240,7 @@ export async function settleRunCharge(run: RunCharge): Promise<void> {
       provider: run.provider,
       releaseHold: taskId,
     });
-    if (outcome.shortfall > 0) {
+    if (parseCreditDecimal(outcome.shortfall) > 0n) {
       // The studio's pool ran out mid-flight, or its credits were reassigned
       // while the task ran. The result is already delivered, so what is left
       // uncharged goes to reconciliation.
@@ -1227,7 +1285,7 @@ export async function settleRunCharge(run: RunCharge): Promise<void> {
  * nothing running to finish.
  *
  * The feed row names the node when the run had exactly one, which is what
- * lets a reader open it from the feed.
+ * lets a user open it from the feed.
  *
  * The history, settle and feed surfaces are best-effort: each logs its own
  * failure and the next one is still written. Marking the task failed and
@@ -1268,6 +1326,9 @@ export async function finishFailedRun(end: FailedRunEnd): Promise<void> {
       end.taskId,
       end.outcome ?? "failed",
     );
+  }
+  if (end.sceneRowId !== undefined && end.settles) {
+    await settleSceneRow(end.taskId, end.sceneRowId, { outcome: "failed", errorMessage: end.errorMessage });
   }
   if (end.projectId && end.settles) {
     await recordGenerationActivity({
@@ -1541,35 +1602,42 @@ export async function persistOutputs(
         delete extra.buffer;
         delete extra.contentType;
       }
-    }
-
-    // Lane ③: a provider's temporary link. Anything already in our own bucket
-    // skips it — a local mini-tool's output is ours already, and pulling it
-    // would store a second copy (todo #1615 covers registering those).
-    if (
+    } else if (
       typeof next.url === "string" &&
-      next.url.startsWith("http") &&
-      adapter.keyFromUrl(next.url) === null
+      next.url.startsWith("http")
     ) {
-      const stored = await storeFromUrl(next.url, uploadContext());
-      if (!next.extra) next.extra = {};
-      (next.extra).url_original = next.url;
-      // The registered row's URL, its cover cut in the media container while
-      // this transfer's own finish waited on it, and what that run measured.
-      Object.assign(next, storedAsOutput(stored));
+      if (adapter.keyFromUrl(next.url) === null) {
+        // Lane ③: the ingest Worker pulls a provider's temporary link.
+        const stored = await storeFromUrl(next.url, uploadContext());
+        if (!next.extra) next.extra = {};
+        next.extra.url_original = next.url;
+        Object.assign(next, storedAsOutput(stored));
+      } else if (projectId !== undefined) {
+        // Existing objects are accepted without moving their bytes. The
+        // ledger owns both metadata and the optional eligible video cover.
+        const stored = await resolveRegisteredProjectMedia(projectId, next.url);
+        delete next.cover_url;
+        Object.assign(next, storedAsOutput(stored));
+      }
     }
 
     persisted.push(next);
   }
 
-  // Provider-level extras (non-output fields) may also carry URLs consumers
-  // read. They take lane ③ too, and stay best-effort: none of them is what the
-  // node shows, so a failure keeps the provider's own link rather than failing
-  // a generation that produced its deliverable.
+  // Provider-level extras can also carry media consumers read. Existing owned
+  // objects must be accepted through the Project directory. External links
+  // take lane ③ best-effort, retaining the provider's URL if transfer fails.
   for (const field of EXTRA_URL_FIELDS) {
     const value = extras[field];
     if (typeof value !== "string" || !value.startsWith("http")) continue;
-    if (adapter.keyFromUrl(value) !== null) continue;
+    if (adapter.keyFromUrl(value) !== null) {
+      if (projectId !== undefined) {
+        const stored = await resolveRegisteredProjectMedia(projectId, value);
+        extras[field] = stored.fileUrl;
+        extras[`${field}_original`] = value;
+      }
+      continue;
+    }
     try {
       const stored = await storeFromUrl(value, uploadContext());
       // The canonical, not the key just written: on a dedup hit that key lost
@@ -1708,9 +1776,13 @@ export async function runUnderstand(
   // (inner#856): a transcript is every word said, and asking for an answer
   // language makes the model translate.
   const transcribing = isTranscription(params);
+  // A job queued before #1378 was deployed names the locale only under its
+  // old name. Carries the old name until #1387 removes it, in the release
+  // that also runs the rename migration again.
+  const userLocale = params.user_locale ?? params.reader_locale;
   const question = transcribing
-    ? transcribeQuestion(sourceType, params.keep_fillers !== false, params.reader_locale)
-    : understandQuestion(params.prompt, sourceType, params.reader_locale);
+    ? transcribeQuestion(sourceType, params.keep_fillers !== false, userLocale)
+    : understandQuestion(params.prompt, sourceType, userLocale);
 
   /**
    * Record the one call this run made.
@@ -1837,7 +1909,7 @@ export async function runUnderstand(
   if (transcribing) return [transcriptOf(answer), credits];
 
   // A run that answered nothing finished having put nothing on the node.
-  // Writing it would replace what the reader had with an empty node while
+  // Writing it would replace what the user had with an empty node while
   // the count says the run succeeded, so it fails instead and the row says
   // so. The call was still paid for — the media was the prompt — and its row
   // above says what it cost; a run that fails charges nothing.
@@ -1944,7 +2016,8 @@ async function importProvider(taskType: string): Promise<{
     case "image":
     case "video":
     case "audio":
-    case "tts": {
+    case "tts":
+    case "three_d": {
       const { validateModelParams } = await import("@worker/providers/generate.js");
       const { runCatalogTask } = await import("@worker/providers/run-steps.js");
       const { stepDepsFor } = await import("@worker/handlers/step-deps.js");
@@ -1964,12 +2037,6 @@ async function importProvider(taskType: string): Promise<{
             )),
           };
         },
-      );
-    }
-    case "three-d": {
-      const m = await import("@worker/providers/three-d/index.js");
-      return wrap(m.validateThreeDParams, (prompt, model, params, run) =>
-        m.generateAsync(prompt, model, params, run.resume),
       );
     }
     default: throw new Error(`Unknown AIGC task type: ${taskType}`);

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 
@@ -34,7 +34,7 @@ interface CreditsOverlayProps {
 }
 
 /**
- * The account's credits, over whatever page the reader was on.
+ * The account's credits, over whatever page the user was on.
  *
  * A panel rather than a page, for the reason the membership panel is one:
  * somebody checking their balance is looking something up, not going
@@ -63,7 +63,7 @@ export function CreditsOverlay({
   );
 
   // Whoever opens the overlay may say where to open it. It is applied when
-  // that instruction changes rather than on every render, so a reader who
+  // that instruction changes rather than on every render, so a user who
   // then clicks elsewhere in the index stays where they clicked.
   React.useEffect(() => {
     if (initialSection !== null) setActive(initialSection);
@@ -99,7 +99,7 @@ export function CreditsOverlay({
 interface CreditsIndexProps {
   /** The section currently showing. */
   active: CreditsSectionId;
-  /** Called with the section the reader picked. */
+  /** Called with the section the user picked. */
   onSelect: (id: CreditsSectionId) => void;
 }
 
@@ -117,7 +117,7 @@ interface CreditsIndexProps {
  * fixed on the longest leaves the other four with a band of empty panel.
  * @param props - The active section and the callback.
  * @param props.active - The section currently showing.
- * @param props.onSelect - Called with the section the reader picked.
+ * @param props.onSelect - Called with the section the user picked.
  * @returns The index.
  */
 function CreditsIndex({

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The membership subscription endpoints (task #106, §7).
@@ -152,7 +152,7 @@ subscription.post(
     const stored = await subscriptionService.confirmCheckout(user.id, sessionId);
     logger.info({ userId: user.id, sessionId }, "subscription_checkout_confirmed");
     const membership = await readAccountMembership(user.id);
-    const candidate = subscriptionConversion(stored);
+    const candidate = subscriptionConversion(stored.write, stored.firstInvoiceAmountCents);
     let conversion: typeof candidate = null;
     // The subscription is already confirmed; a failed ads lookup only withholds the conversion.
     try {

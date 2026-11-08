@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Where the nodes of a proposed flow land on the canvas (#263).
@@ -97,7 +97,7 @@ export function textFootprintHeight(text: string): number {
  * How tall a node will be once it is on the canvas.
  *
  * An empty node and one waiting for Generate are the standard footprint. A
- * node holding the reader's picture or video is as tall as it draws at the
+ * node holding the user's picture or video is as tall as it draws at the
  * node's width (inner#1315). A node carrying words is as tall as the words wrap to.
  * @param node - The proposed node.
  * @returns Its height in flow coordinates.
@@ -118,13 +118,14 @@ export function estimateHeight(node: ProposalNode): number {
  * Nodes with nothing feeding them start the flow; every other node sits one
  * layer to the right of the last thing that feeds it. Layers read left to
  * right, the nodes of one layer stack downwards, and the whole arrangement is
- * centred on the point the reader was looking at.
+ * centred on the point the user was looking at.
  * @param proposal - What is being placed.
  * @param centre - The viewport centre, in flow coordinates.
+ * @param order - Each node's rank within its column, top first; the proposal's own order where left out.
  * @returns One footprint per node, in the same order.
  * @throws {never} Never.
  */
-export function planFlowLayout(proposal: CanvasProposal, centre: Spot): Placed[] {
+export function planFlowLayout(proposal: CanvasProposal, centre: Spot, order?: readonly number[]): Placed[] {
   // The same depths the card's little diagram is drawn from. The card splits
   // its chips into runs on top of this, so a node wired to nothing gets a row
   // of its own there; here it stands in the first column beside whatever else
@@ -145,6 +146,13 @@ export function planFlowLayout(proposal: CanvasProposal, centre: Spot): Placed[]
   layer.forEach((at, index) => {
     columns.set(at, [...(columns.get(at) ?? []), index]);
   });
+  /**
+   * A node's place within its column.
+   * @param index - The node.
+   * @returns Its rank, top first.
+   */
+  const rank = (index: number): number => order?.[index] ?? index;
+  for (const members of columns.values()) members.sort((a, b) => rank(a) - rank(b));
 
   // Each column is stacked downwards and then centred on the point, so a
   // column of one sits level with the middle of a column of three.
@@ -294,13 +302,13 @@ const FRAME_PADDING = 0.1;
 
 /**
  * Where to put the camera once a proposal has landed: centred on what was
- * placed, at the reader's zoom while it fits, zoomed out just enough to show
+ * placed, at the user's zoom while it fits, zoomed out just enough to show
  * all of it when it does not, never past the canvas floor.
  * @param bounds - The rect of what landed, in flow coordinates.
  * @param pane - The canvas pane's size in screen pixels.
  * @param pane.width - Its width.
  * @param pane.height - Its height.
- * @param zoom - The reader's zoom now.
+ * @param zoom - The user's zoom now.
  * @returns The viewport to move to.
  * @throws {never} Never.
  */

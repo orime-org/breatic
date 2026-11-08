@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * One task run as its upstream steps (#2156, design §15.1).
@@ -240,7 +240,7 @@ function warnAheadOfPaidCall(ctx: RunTaskContext, step: Step): RunTaskContext {
 /**
  * The request body a generate step submits.
  * @param entry - The model.
- * @param prompt - The reader's prompt.
+ * @param prompt - The user's prompt.
  * @param params - The run's params.
  * @param carried - What earlier steps answered.
  * @param deadlineAt - When the task runs out; a family's own call is cut there.
@@ -270,7 +270,7 @@ async function generateBody(
  * @param resolved - The model's resolved endpoint.
  * @param entry - The model.
  * @param step - The step.
- * @param prompt - The reader's prompt.
+ * @param prompt - The user's prompt.
  * @param params - The run's params.
  * @param carried - What earlier steps answered.
  * @returns What to store as the step's output.
@@ -429,7 +429,7 @@ async function retireGone(deps: StepDeps, ctx: RunTaskContext, carried: Carried,
  * @param deps - Storage.
  * @param ctx - The task.
  * @param modality - The model's modality.
- * @param prompt - The reader's prompt.
+ * @param prompt - The user's prompt.
  * @param modelName - Model name (required).
  * @param params - Validated params.
  * @param outputCount - How many outputs the caller writes to nodes: 1 for a

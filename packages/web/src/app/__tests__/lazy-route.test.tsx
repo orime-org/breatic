@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 import { act, render, screen } from '@testing-library/react';
@@ -202,8 +202,8 @@ describe('lazyRoute', () => {
     expect(reload).not.toHaveBeenCalled();
   });
 
-  it('says the page did not load on the one the reader works in', async () => {
-    // A reader who kept a tab open across a deploy holds an index.html naming
+  it('says the page did not load on the one the user works in', async () => {
+    // A user who kept a tab open across a deploy holds an index.html naming
     // chunks from the previous build. The editing surface is where they were
     // going to work, so it tells them it did not load and hands them the
     // refresh (user 2026-09-18).
@@ -219,7 +219,7 @@ describe('lazyRoute', () => {
 
   it('leaves an ordinary page waiting, and reloads nothing', async () => {
     // These read like any web page: the entry does not arrive, and refreshing
-    // is the reader's to press. Nothing on any route reloads the tab.
+    // is the user's to press. Nothing on any route reloads the tab.
     const reload = watchReload();
     const { lazyRoute } = await freshDocument();
     const Page = lazyRoute(missingChunk());
@@ -237,10 +237,10 @@ describe('lazyRoute', () => {
     expect(screen.getByTestId('waiting')).toBeInTheDocument();
   });
 
-  it('refreshes the page when the reader presses the button', async () => {
+  it('refreshes the page when the user presses the button', async () => {
     // The whole of the recovery is this press. Nothing reloads on its own
     // (user 2026-09-18), so a screen whose button does nothing leaves the
-    // reader with no way out at all.
+    // user with no way out at all.
     const reload = watchReload();
     const { lazyRoute } = await freshDocument();
     const Page = lazyRoute(missingChunk(), { editingSurface: true });
@@ -276,7 +276,7 @@ describe('preloadMatched', () => {
   it('starts the module of every route the address matches', async () => {
     // Nothing the page chunk needs comes out of `/auth/me`, and nothing the
     // index child needs comes out of the layout chunk. Waiting for either is a
-    // chain the reader pays a round trip for, so the modules for the whole
+    // chain the user pays a round trip for, so the modules for the whole
     // matched branch start together.
     const { lazyRoute, preloadMatched } = await freshDocument();
     const layout = vi.fn(async () => ({ default: () => null }));
@@ -303,14 +303,14 @@ describe('preloadMatched', () => {
     expect(child).toHaveBeenCalledTimes(1);
   });
 
-  it('leaves a guarded branch alone for a reader with no session yet', async () => {
+  it('leaves a guarded branch alone for a user with no session yet', async () => {
     // Design §6.2: the judgement is "does this branch have a guarded ancestor",
     // not "does this one element carry a wrapper". A layout route's children
     // render inside its Outlet and carry no wrapper of their own, so asking per
     // element withholds the root of the branch and fetches the leaf — which is
     // what the three /studio entries did. Measured on a 4 Mbps link: opening a
     // shared /project link with no session put the sign-in field on screen
-    // 502 ms later, behind 2.4 MB of canvas the reader never sees.
+    // 502 ms later, behind 2.4 MB of canvas the user never sees.
     const { lazyRoute, preloadMatched } = await freshDocument();
     const layout = vi.fn(async () => ({ default: () => null }));
     const child = vi.fn(async () => ({ default: () => null }));
@@ -334,7 +334,7 @@ describe('preloadMatched', () => {
 
     expect(layout).not.toHaveBeenCalled();
     expect(child).not.toHaveBeenCalled();
-    // A branch the address reaches without passing a guard is the reader's
+    // A branch the address reaches without passing a guard is the user's
     // either way, so it still starts.
     expect(open).toHaveBeenCalledTimes(1);
   });
@@ -350,7 +350,7 @@ describe('preloadMatched', () => {
     //
     // The real `LoadingBoundary` stands here rather than a stub: that one
     // property on that one component is the whole of the open side, and
-    // removing it withholds the entire table from a reader with no remembered
+    // removing it withholds the entire table from a user with no remembered
     // session — every entry, `/login` included.
     const { lazyRoute, preloadMatched } = await freshDocument();
     const gated = vi.fn(async () => ({ default: () => null }));
@@ -386,9 +386,9 @@ describe('preloadMatched', () => {
     }).not.toThrow();
   });
 
-  it('keeps a module that will not load from reaching the reader as an error', async () => {
+  it('keeps a module that will not load from reaching the user as an error', async () => {
     // A preload nobody awaits still rejects, and an unhandled rejection prints
-    // a console error in the reader's browser — and fails this run, which is
+    // a console error in the user's browser — and fails this run, which is
     // what makes the assertion below more than a count.
     //
     // `load` is a plain closure: a `vi.fn` attaches its own handler to whatever

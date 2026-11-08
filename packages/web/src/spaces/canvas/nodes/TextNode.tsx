@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 
@@ -66,7 +66,7 @@ export const TextNode = React.memo(function TextNode({
   const text = useTextBody(projectId, spaceId, nodeId ?? '');
   // Whether this node is being written in is the canvas session's, not this
   // component's: one text node per canvas is written in at a time, and the
-  // reader who comes back to a hidden Space is still writing (inner#1235 A13).
+  // user who comes back to a hidden Space is still writing (inner#1235 A13).
   // The fragment is followed rather than snapshotted — see the hook for why a
   // snapshot goes silent when a concurrent repair replaces the node's body.
   const sessionStore = useCanvasSessionStore();

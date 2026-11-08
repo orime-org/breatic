@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -27,7 +27,7 @@ import { toast } from '@web/lib/toast';
 interface JoinProjectDialogProps {
   projectId: string;
   open: boolean;
-  /** Called with `false` when the dialog closes, by the reader or on a failed read. */
+  /** Called with `false` when the dialog closes, by the user or on a failed read. */
   onOpenChange: (open: boolean) => void;
 }
 
@@ -51,15 +51,15 @@ function messageOf(err: unknown, fallback: string): string {
 }
 
 /**
- * Offered in place of a project the reader is not a member of: ask its owner
+ * Offered in place of a project the user is not a member of: ask its owner
  * to let them in, see that a request is pending, or withdraw it.
  *
  * Opened by a project card click and by a direct link that answered 403. It
  * reads the caller's pending request first and holds the request button until
- * that read is back, so a reader who already asked is shown their request
+ * that read is back, so a user who already asked is shown their request
  * rather than a button the server would refuse.
  * @param props - The project and the open state.
- * @param props.projectId - The project the reader cannot enter.
+ * @param props.projectId - The project the user cannot enter.
  * @param props.open - Whether the dialog is shown.
  * @param props.onOpenChange - Close callback.
  * @returns The dialog.

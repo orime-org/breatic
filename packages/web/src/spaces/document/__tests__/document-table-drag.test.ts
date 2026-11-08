@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * inner#1126 A7 and A17: dragging a row or a column to a gap moves it there,
@@ -152,7 +152,7 @@ describe('moving a row or a column to a gap (A7)', () => {
     ]);
   });
 
-  it('carries the marks on the words and leaves the reader where they were', () => {
+  it('carries the marks on the words and leaves the user where they were', () => {
     const editor = open();
     const view = editor.prosemirrorView!;
     const b1 = cellOf(editor, 'b1') + 3;

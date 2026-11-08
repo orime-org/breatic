@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * After an update reload, the Agent panel comes back to the conversation the
@@ -44,7 +44,7 @@ async function pageAfterUpdate(saved: unknown): Promise<{
  * @returns The answer.
  */
 function conversation(id: string): unknown {
-  return { conversation: { id }, messages: [], hasMore: false };
+  return { conversation: { id, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false };
 }
 
 beforeEach(() => {

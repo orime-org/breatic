@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Uploading through the real path from a smoke spec, and reading back what was
@@ -14,7 +14,7 @@ import { readImageOrientation } from '../../../ingest/src/image-orientation';
 import { VISIBLE_SPACE } from './space';
 
 /**
- * Drop a file onto the visible canvas, the way a reader drags one in.
+ * Drop a file onto the visible canvas, the way a user drags one in.
  * @param target - The page.
  * @param name - The file's name.
  * @param type - Its MIME type.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The one place an agent's three things are decided: model, instructions,
@@ -37,8 +37,13 @@ export interface AgentConfigRequest {
    * application decision.
    */
   basePrompt: string;
-  /** The conversation and project layers, when the caller has any. */
+  /** The turn's memory, when the caller has any. */
   memoryContext?: MemoryContext;
+  /**
+   * The model this turn is answered by, as the route resolved it from the
+   * user's pick (#1363); `default_model` when the caller names none.
+   */
+  modelId?: string;
   /** What the turn knows that a tool needs when it is built. */
   toolContext?: ToolContext;
   /** Stop this turn's wait without cancelling the shared model-directory query. */
@@ -82,7 +87,7 @@ export async function buildAgentConfig(
 ): Promise<ResolvedAgentConfig> {
   const { basePrompt, memoryContext, toolContext } = request;
   const config = getAgentConfig();
-  const modelId = config.default_model;
+  const modelId = request.modelId ?? config.default_model;
   const catalogPolicy = {
     timeoutMs: config.model_catalog_timeout_ms,
     ttlMs: config.model_catalog_ttl_ms,

@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The Enter that accepts a candidate does not also split the block.
  *
- * Reported by the reader (2026-09-08): typing Chinese into the second item of
+ * Reported by the user (2026-09-08): typing Chinese into the second item of
  * a numbered list and pressing Enter to accept the candidate left the pinyin
  * in that item and put the characters in a new one below it.
  *
@@ -24,7 +24,7 @@
  * What closes it: raise a flag on `compositionend` and queue its release from
  * inside that handler, so everything the browser has already queued for the
  * keystroke — the pair of keydowns Chrome reports — runs first and still sees
- * a composition. A press the reader makes afterwards is queued behind the
+ * a composition. A press the user makes afterwards is queued behind the
  * release and splits normally, which the fourth case below holds.
  */
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The bubble bar's shell (task #915).
@@ -207,7 +207,7 @@ describe('the bubble bar shell', () => {
       ).toBeNull();
     });
 
-    // A selection over two block types shows the type of the end the reader
+    // A selection over two block types shows the type of the end the user
     // started from, so the face answers "what am I in" rather than going blank
     // (user 2026-08-27).
     it('shows the anchor end block type when the selection spans two', async () => {
@@ -233,10 +233,10 @@ describe('the bubble bar shell', () => {
       ).toBe('heading-1');
     });
 
-    // A list item holds a paragraph, and the list is what the reader is in.
+    // A list item holds a paragraph, and the list is what the user is in.
     // The face has to say so wherever the other end of the selection reaches:
     // pressing the bullet list row here turns that list OFF, and a face
-    // reading "text" would have just said the reader was not in one.
+    // reading "text" would have just said the user was not in one.
     it.each([
       ['bullet-list', '<h1>a heading</h1><ul><li><p>an item</p></li></ul>', 16],
       ['ordered-list', '<h1>a heading</h1><ol><li><p>an item</p></li></ol>', 16],
@@ -329,7 +329,7 @@ describe('the bubble bar shell', () => {
   // And the bar's record of which menu is open goes with it: `overlayOpenRef`
   // reads that record to decide whether the editor losing the focus should
   // take the bar away, so a record left standing over no menu keeps the bar on
-  // screen after the reader has gone.
+  // screen after the user has gone.
   it('leaves no menu recorded as open once the alignment slot greys out', async () => {
     const editor = openSharedBody('<pre><code>some code</code></pre><p>a paragraph</p>');
     mountDocumentEditor(editor);
@@ -344,7 +344,7 @@ describe('the bubble bar shell', () => {
     });
 
     act(() => {
-      // The real thing a departing reader sends: the bar listens for
+      // The real thing a departing user sends: the bar listens for
       // `focusout` on the body, and jsdom raises it from `blur()`.
       domElementOf(editor)?.blur();
     });
@@ -353,9 +353,9 @@ describe('the bubble bar shell', () => {
     });
   });
 
-  // An open menu is why the bar stays through a blur — the reader is working
+  // An open menu is why the bar stays through a blur — the user is working
   // in it, not gone. Once it closes that reason is spent, and nothing else
-  // arrives to say so: a blur carries no transaction, and the reader who left
+  // arrives to say so: a blur carries no transaction, and the user who left
   // sends no further events.
   it('takes the bar away once the last menu closes after a blur', async () => {
     const editor = openSharedBody('<p>the quick brown fox</p>');
@@ -364,7 +364,7 @@ describe('the bubble bar shell', () => {
     await hoverOpenSlot('doc-bubble-block-type');
 
     act(() => {
-      // The real thing a departing reader sends: the bar listens for
+      // The real thing a departing user sends: the bar listens for
       // `focusout` on the body, and jsdom raises it from `blur()`.
       domElementOf(editor)?.blur();
     });
@@ -382,7 +382,7 @@ describe('the bubble bar shell', () => {
     /**
      * All four look and behave the way the demo draws them, whether or not a
      * command stands behind them. Where none does — the AI slot — a press
-     * reaches the console rather than the reader (user 2026-08-26): the
+     * reaches the console rather than the user (user 2026-08-26): the
      * product is not launched, and whoever has the browser open is the one who
      * needs to know which command they reached.
      *
@@ -408,7 +408,9 @@ describe('the bubble bar shell', () => {
     });
 
     it.each([
-      ['doc-bubble-ai', 'doc-bubble-ai-item-translate'],
+      // Translate opens a second level and reaches the text tool (inner#1860);
+      // the storyboard row still reaches nothing (inner#1130).
+      ['doc-bubble-ai', 'doc-bubble-ai-item-storyboard'],
     ])('says on the console that %s / %s reached no command', async (slot, item) => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
       const editor = openSharedBody('<p>hello world</p>');
@@ -509,7 +511,7 @@ describe('the bubble bar shell', () => {
     });
 
     // A real pointer cannot produce "resting on the slot while the menu is
-    // shut": hovering opened it. So the click a reader makes always lands on
+    // shut": hovering opened it. So the click a user makes always lands on
     // an open menu, and it has to leave the menu standing.
     it('keeps the menu up when the slot is clicked while already open', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
@@ -700,7 +702,7 @@ describe('the bubble bar shell', () => {
     });
 
     // `packages/web/AGENTS.md#keyboard-shortcuts-on-both-platforms` makes
-    // carrying both platforms mandatory, and a hardcoded glyph reads as a chord Windows readers cannot press.
+    // carrying both platforms mandatory, and a hardcoded glyph reads as a chord Windows users cannot press.
     it('spells the shortcuts the Mac way on a Mac', async () => {
       vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
       const editor = openSharedBody('<p>the quick brown fox</p>');
@@ -858,7 +860,7 @@ describe('the bubble bar shell', () => {
       // (§3.2.1). Counting the rows alone leaves the grouping untested: strip
       // every label out and eight ungrouped rows still pass.
       //
-      // Read as the order the reader meets them in, with the count each one
+      // Read as the order the user meets them in, with the count each one
       // introduces — five rewrites, two that produce something new, one other.
       const groups: { label: string; rows: number }[] = [];
       for (const node of menu.children) {

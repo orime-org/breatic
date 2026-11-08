@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The terms version new accounts are created under, from `config/legal.yaml`.
@@ -17,6 +17,8 @@ import { MONOREPO_ROOT } from "@breatic/core";
 /** Schema for `config/legal.yaml`. The length cap is the column's. */
 export const legalConfigSchema = z.object({
   terms_version: z.string().min(1).max(32).default("2026-10-02"),
+  // Empty until the promoter terms are published; applications stay closed.
+  promoter_terms_version: z.string().max(32).default(""),
 });
 
 /** The validated contents of `config/legal.yaml`. */

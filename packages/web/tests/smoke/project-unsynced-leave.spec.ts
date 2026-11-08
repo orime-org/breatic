@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as decoding from 'lib0/decoding';
 import { readFileSync } from 'node:fs';
@@ -70,7 +70,7 @@ async function localizedRefreshChoices(page: Page): Promise<void> {
   const url = await liveModuleUrl(page, 'i18n/locale-bootstrap.ts');
   try {
     for (const locale of ['en', 'zh-CN', 'zh-TW', 'ja', 'ko']) {
-      await page.evaluate(async ({ url: at, locale: next }) => { (await import(at)).changeLocale(next); }, { url, locale });
+      await page.evaluate(async ({ url: at, locale: next }) => { await (await import(at)).changeLocale(next); }, { url, locale });
       for (const theme of ['light', 'dark'] as const) {
         await setTheme(page, theme);
         await page.getByTestId('connection-banner-reload').click();

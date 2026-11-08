@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A copy's name must hold four things at once, in every locale and for any
  * legal source name: it fits the project name limit, it starts with the copy
- * mark, it never ends inside a character the reader sees as one, and it
+ * mark, it never ends inside a character the user sees as one, and it
  * has no whitespace at either end (every rename entry trims, so a name with
  * one would be rewritten the moment someone opened it).
  */

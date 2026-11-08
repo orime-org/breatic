@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * roleUpgradeRequest.service unit tests — the gates, and what each one leaves
@@ -62,6 +62,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
         cb({ marker: "fake-tx" }),
       ),
     },
+    accountActivityRepo: { recordActivity: vi.fn(async () => undefined) },
     projectMembersRepo: {
       getRole: vi.fn(),
       getOwner: vi.fn(),

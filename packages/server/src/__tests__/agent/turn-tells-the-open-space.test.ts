@@ -1,17 +1,17 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A turn tells the model which Spaces the project has and what is in the one
- * the reader has open (inner#1413). Like the clock note, it reaches the model
+ * the user has open (inner#1413). Like the clock note, it reaches the model
  * on this turn's message only and is never stored.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as CoreModule from "@breatic/core";
-import { READER_LANGUAGE_REMINDER, userTurnForModel } from "@server/agent/user-turn.js";
+import { USER_LANGUAGE_REMINDER, userTurnForModel } from "@server/agent/user-turn.js";
 import type { ChatCurrentSpace, ChatSpace, MessageData } from "@breatic/shared";
 import { saying } from "../helpers/model-double.js";
-import { readerClockNote } from "@server/agent/reader-clock.js";
+import { userClockNote } from "@server/agent/user-clock.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 7);
@@ -24,7 +24,7 @@ const modelSays = vi.hoisted(() => ({
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { projectMemory: "", conversationMemory: "" },
+    memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
     history: modelSays.history,
   })),
 }));
@@ -59,7 +59,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
-  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
+  addUserMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
@@ -77,7 +77,7 @@ const open: ChatCurrentSpace = { ...storyboard, state: "loaded", content: "# Sce
 /**
  * Run one turn to its end.
  * @param said - What the user typed.
- * @param current - The Space the reader has open, when it is on.
+ * @param current - The Space the user has open, when it is on.
  */
 async function runOneTurn(said: string, current: ChatCurrentSpace | undefined): Promise<void> {
   modelSays.parts = saying("the reply");
@@ -117,20 +117,20 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("a turn tells the model about the reader's Spaces", () => {
+describe("a turn tells the model about the user's Spaces", () => {
   it("sends the clock note, then the Spaces and the open one, then the words", async () => {
     await runOneTurn("summarise this", open);
 
     expect(userTextsSent().at(-1)).toBe(
-      `${readerClockNote(new Date(), "Asia/Shanghai")}\n\n${userTurnForModel({
+      `${userClockNote(new Date(), "Asia/Shanghai")}\n\n${userTurnForModel({
         chips: [],
         message: "summarise this",
         spaces,
         spaces_total: spaces.length,
         current_space: open,
-      })}\n\n${READER_LANGUAGE_REMINDER}`,
+      })}\n\n${USER_LANGUAGE_REMINDER}`,
     );
-    expect(userTextsSent().at(-1)).toContain('## The Space the reader has open: "Storyboard" (document)');
+    expect(userTextsSent().at(-1)).toContain('## The Space the user has open: "Storyboard" (document)');
   });
 
   it("stores the words without the Spaces", async () => {

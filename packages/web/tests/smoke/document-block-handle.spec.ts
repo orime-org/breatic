@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The block handle and the insert menu end to end (task #113).
@@ -14,6 +14,7 @@
  */
 import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
+import { switchLanguage } from '../helpers/language';
 
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
@@ -82,7 +83,7 @@ async function hoverRow(p: Page, index: number): Promise<void> {
 
 /**
  * Turn the nth row, an empty paragraph, into another block off the plus
- * (#1097) — the way a reader makes an empty heading or list item.
+ * (#1097) — the way a user makes an empty heading or list item.
  * @param p - The page.
  * @param index - Which row, from the top.
  * @param choice - The insert entry's id.
@@ -126,7 +127,7 @@ async function bodyOf(p: Page): Promise<string[]> {
  *
  * One pixel. Measured 2026-09-19 across the four type sizes, the handle's
  * middle lands within 0.28px of the line's, and the line's own middle stands
- * within 0.71px of the middle of the ink the reader compares it against — so a
+ * within 0.71px of the middle of the ink the user compares it against — so a
  * pixel is the whole budget with room to spare. It was 2 until then, and that
  * let a systematic 1.25px lift through at every type size: the handle's
  * wrapper was a block box, which holds an inline-level button on a line
@@ -192,7 +193,7 @@ test('an empty paragraph gets the plus, an empty heading the handle (#1097 A1)',
   await expect(page.getByTestId('doc-block-handle')).toHaveCount(0);
   await expect(page.getByTestId('doc-block-plus')).not.toHaveAttribute('draggable', 'true');
 
-  // Still empty, but now a heading the reader chose: the handle is back.
+  // Still empty, but now a heading the user chose: the handle is back.
   await fillByPlus(page, 1, 'heading-2');
   await page.mouse.move(5, 5);
   await hoverRow(page, 1);
@@ -210,7 +211,7 @@ test('a bulleted row with nothing in it gets the handle', async () => {
   await expect(page.getByTestId('doc-block-handle')).toBeVisible();
 });
 
-test('the strip stays away while the reader has a selection', async () => {
+test('the strip stays away while the user has a selection', async () => {
   // A1, second half (user 2026-09-18): a selection is the bubble bar's to
   // serve, and the two are never on screen together.
   //
@@ -235,7 +236,7 @@ test('the strip stays away while the reader has a selection', async () => {
 });
 
 test('the strip goes away as a drag-selection grows', async () => {
-  // The reader's own gesture (2026-09-18): press in a row, drag upwards, and
+  // The user's own gesture (2026-09-18): press in a row, drag upwards, and
   // carry the pointer out to the left. The strip is there for the row the
   // caret sits in, and it leaves the moment the selection covers anything.
   await openFreshDocument(page);
@@ -502,7 +503,7 @@ test('the handle opens the menu, and Escape hands typing back to the body', asyn
 
   // The menu unmounts a turn before the focus lands back in the body —
   // `react-focus-scope` defers its half to a `setTimeout` — and a keystroke
-  // sent in between goes nowhere. A reader's next key is never that quick;
+  // sent in between goes nowhere. A user's next key is never that quick;
   // this wait is what makes the test as slow as a person.
   await expect(page.locator(EDITOR)).toBeFocused();
   await page.keyboard.type(' more');
@@ -552,7 +553,7 @@ test('the comment row is drawn unusable on a row without words and does nothing 
   // — and the row's own background is the only thing that says so, since the
   // menu item's base class turns the browser's outline off. Measured
   // 2026-09-18 before this: the row read `rgba(0, 0, 0, 0)` under the keyboard
-  // while the other four read `rgba(228, 228, 228, ~1)`, so the reader arrowed
+  // while the other four read `rgba(228, 228, 228, ~1)`, so the user arrowed
   // onto a row and nothing on screen moved.
   //
   // The keys go through the page, not through a constructed `KeyboardEvent`:
@@ -593,7 +594,7 @@ test('the comment row is drawn unusable on a row without words and does nothing 
   // And pressing it leaves the document exactly as it was — the row's own
   // `onSelect` is what has to stop, since Radix would otherwise run it.
   //
-  // `force`, because the press a reader makes really does land: the row is
+  // `force`, because the press a user makes really does land: the row is
   // marked `aria-disabled`, which is a word for assistive software and not the
   // `disabled` attribute, so the browser delivers the click. Playwright's own
   // actionability check reads `aria-disabled` as "not enabled" and would wait
@@ -698,7 +699,7 @@ test('duplicate copies the row as it stands, not as it was hovered', async ({
 test('insert below puts a row of the chosen type under that row', async () => {
   // A7 and A12. The insert menu is the handle menu's own submenu, and a choice
   // is written in one go: a row appears below the hovered one and is already
-  // the type the reader picked.
+  // the type the user picked.
   await openFreshDocument(page);
   await typeLines(page, ['alpha', 'beta']);
 
@@ -715,7 +716,7 @@ test('insert below puts a row of the chosen type under that row', async () => {
   await expect(rows.nth(2)).toHaveText('beta');
   await expect(rows.nth(1)).toHaveAttribute('data-content-type', 'heading');
 
-  // And the reader can type into it straight away.
+  // And the user can type into it straight away.
   await expect(page.locator(EDITOR)).toBeFocused();
   await page.keyboard.type('made it');
   await expect(page.locator(`${EDITOR} h1`)).toHaveText('made it');
@@ -854,7 +855,7 @@ test('the plus follows the line as it is typed into and emptied (#1097 A9)', asy
   await expect(page.getByTestId('doc-block-plus')).toBeVisible();
 });
 
-test('the plus stays away while the reader has a selection (#1097 A7)', async () => {
+test('the plus stays away while the user has a selection (#1097 A7)', async () => {
   await openFreshDocument(page);
   await typeLines(page, ['some words']);
   await page.keyboard.press('Enter');
@@ -873,7 +874,7 @@ test('the plus stays away while the reader has a selection (#1097 A7)', async ()
  * here — measured, it hung until the test timed out — but the three mouse
  * steps do produce a real HTML5 drag, which is what puts BlockNote's own
  * listeners, its drop cursor and ProseMirror's drop handling on the same path
- * a reader's mouse takes.
+ * a user's mouse takes.
  * @param p - The page.
  * @param rowIndex - Which row to drop on, from the top.
  * @throws {Error} When the handle or the target row has no box.
@@ -935,7 +936,7 @@ test('dragging the one row a fresh Space has leaves it one row', async () => {
   // A11. Removing the row emptied the only group the document has, and
   // `BlockGroup.ts:11` is `blockGroupChild+`, so the schema put an empty
   // paragraph back before the row was written again: one row in, two rows out.
-  // A Space opens on exactly this document, so it is the first row a reader
+  // A Space opens on exactly this document, so it is the first row a user
   // can reach for.
   // The one row has words in it: an empty paragraph shows the plus, which
   // does not drag (#1097).
@@ -1079,11 +1080,11 @@ test('a finished drag leaves no selection and the caret where it was', async () 
   // it is still there when the drag ends. Nothing is drawn for one any more
   // (user 2026-09-18), so what this pins is that the selection itself is gone:
   // the bubble bar comes up for any selection that is not empty, and a node
-  // selection is not empty. So the drag hands the reader's place back, the way
+  // selection is not empty. So the drag hands the user's place back, the way
   // every other command off this strip does.
   await openFreshDocument(page);
   await typeLines(page, ['alpha', 'beta', 'gamma']);
-  // The reader is typing in the last row when they reach for the first one.
+  // The user is typing in the last row when they reach for the first one.
   await page.keyboard.type(' end');
 
   await hoverRow(page, 0);
@@ -1101,13 +1102,13 @@ test('a finished drag leaves no selection and the caret where it was', async () 
 
 test('a drag puts the caret back in the row that travelled', async () => {
   // The other half of A11's promise, and the one the case above cannot see:
-  // `handleDrop` puts the reader's place back against the document BEFORE the
+  // `handleDrop` puts the user's place back against the document BEFORE the
   // move, so a caret that was in the dragged row sits inside the range about
   // to be removed. What carries it to where the row ended up is the second
   // restore, in the handle's own `onDragEnd`.
   await openFreshDocument(page);
   await typeLines(page, ['alpha', 'beta', 'gamma']);
-  // The reader is typing in the row they then reach for.
+  // The user is typing in the row they then reach for.
   await page.locator(`${EDITOR} .bn-block-content`).first().click();
   await page.keyboard.press('End');
   await page.keyboard.type(' here');
@@ -1171,7 +1172,7 @@ test('a text drag in the body does not become a block drag', async () => {
 });
 
 test('a selection swept out to the left takes no extra rows', async () => {
-  // The reader's report (2026-09-18). The strip leaves as soon as the
+  // The user's report (2026-09-18). The strip leaves as soon as the
   // selection covers anything, so the gutter the pointer sweeps through is
   // bare — and the selection follows the pointer rather than jumping to the
   // top of the document.
@@ -1216,7 +1217,7 @@ test('typing the trigger character in the body stays plain text', async () => {
 });
 
 test('the block type submenu ticks what the row already is', async () => {
-  // A5's last line. The tick is what tells the reader which kind this row is
+  // A5's last line. The tick is what tells the user which kind this row is
   // before they choose another.
   await openFreshDocument(page);
   await typeLines(page, ['# a heading row']);
@@ -1260,18 +1261,6 @@ test('text dropped in from outside still lands in the body', async () => {
   await expect(page.locator(EDITOR)).toContainText('from elsewhere');
   await expect(page.locator(EDITOR)).toContainText('alpha');
 });
-
-/**
- * Switch the interface language and put it back.
- * @param p - The page.
- * @param code - The locale to switch to.
- */
-async function switchLanguage(p: Page, code: string): Promise<void> {
-  await p.getByTestId('lang-trigger').click();
-  await expect(p.getByTestId('lang-popover')).toBeVisible();
-  await p.getByTestId(`lang-option-${code}`).click();
-  await expect(p.getByTestId('lang-popover')).toHaveCount(0);
-}
 
 test('the menu reads in the language the switch is set to', async () => {
   await openFreshDocument(page);
@@ -1339,7 +1328,7 @@ test('the menu carries the theme’s own surface in dark', async () => {
 test('a drag whose anchors a co-editor removes leaves nothing selected', async ({
   browser,
 }) => {
-  // A11.2. The drag is carried on a node selection, and putting the reader
+  // A11.2. The drag is carried on a node selection, and putting the user
   // back used to be skipped whole when the row either end was anchored to had
   // gone — so the node selection stood, and with it the bubble bar over a row
   // nobody selected (measured 2026-09-18, `bar: true`).
@@ -1373,7 +1362,7 @@ test('a drag whose anchors a co-editor removes leaves nothing selected', async (
     });
 
     // The other page runs the rows together, taking away both the row in
-    // flight and the row the reader's own caret was in.
+    // flight and the row the user's own caret was in.
     await coEditor.locator(`${EDITOR} .bn-block-content`).first().click();
     await coEditor.keyboard.press('Home');
     for (let i = 0; i < 12; i += 1) {
@@ -1437,7 +1426,7 @@ async function closeHandleMenu(p: Page): Promise<void> {
 test('offers the insert rows in the block type menu’s own order', async () => {
   // The two menus name the same blocks, and `document-insert-menu-items.ts`
   // says so in its own first line. Reading the order off one table is what
-  // makes that true: a reader who learns where Code block sits in one menu
+  // makes that true: a user who learns where Code block sits in one menu
   // finds it in the same place in the other.
   await openFreshDocument(page);
   await typeLines(page, ['a row to act on']);

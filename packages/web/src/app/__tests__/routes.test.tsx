@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { configure, getConfig, render, screen } from '@testing-library/react';
@@ -68,7 +68,7 @@ function makeRouter(initialPath: string) {
  *
  * The pages load on demand (task #142), so vitest transforms a page's whole
  * module graph at render time rather than when this file is imported. That is
- * the test runner's cost, not the reader's — a built chunk is already
+ * the test runner's cost, not the user's — a built chunk is already
  * compiled — and under `turbo test`, with every package's suite running at
  * once, it runs past `findBy`'s one-second default.
  */
@@ -140,7 +140,11 @@ describe('routes', () => {
   });
 
   it('/login renders the auth page (title key resolved by i18n)', async () => {
-    render(<AppRouter router={makeRouter('/login')} />);
+    render(
+      <QueryClientProvider>
+        <AppRouter router={makeRouter('/login')} />
+      </QueryClientProvider>,
+    );
     // Default boot locale is English; the title key resolves to "Sign in".
     expect(
       await screen.findByRole('heading', { name: 'Sign in' }),

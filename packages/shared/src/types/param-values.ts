@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The options a generation parameter offers, read off whichever model is
  * active. Read by the image and video panels, by the camera cluster (#1896),
  * and by the answer the agent is given about a model (#261) -- the panel and
- * that answer have to offer the reader the same values.
+ * that answer have to offer the user the same values.
  *
  * A catalog parameter states its allowed values in one of two shapes, and a
  * reader that only understands the first makes the second's group vanish:
@@ -57,6 +57,8 @@ export function paramValues(model: ModelEntry, key: string): ParamOptionValue[] 
   // model.params is trusted (the catalog is sanitized at the API boundary):
   // `values` is a readonly array or undefined, so a truthiness check suffices.
   if (descriptor.values) return [...descriptor.values];
+  // A whole number typed in, not picked: its bounds are not a list of options.
+  if (descriptor.type === 'integer') return [];
 
   return expandRange(descriptor.min, descriptor.max);
 }

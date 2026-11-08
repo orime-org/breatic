@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The two endpoints the task list needs (#186, design §7.4 / §7.5).
@@ -150,7 +150,7 @@ describe("GET /canvas/nodes/:nodeId/tasks", () => {
 
     // The rows and the counts were both in hand before the broadcast was
     // attempted, and the broadcast is a courtesy to whoever else has this
-    // canvas open. Throwing the answer away over it leaves this reader with
+    // canvas open. Throwing the answer away over it leaves this user with
     // nothing, and a refresh hits the same outage.
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: { tasks: unknown[] } };

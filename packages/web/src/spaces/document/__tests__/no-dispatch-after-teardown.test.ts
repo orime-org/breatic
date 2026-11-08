@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #904 验收 A22: closing a document does not leave a transaction in flight.
  *
  * y-prosemirror batches the metas it puts on transactions — a remote user
  * arriving or leaving, a sync state changing — into one pass on the next tick
- * (`lib.js:39`). Between the `setMeta` and that tick a reader can close the
+ * (`lib.js:39`). Between the `setMeta` and that tick a user can close the
  * Space, and the pass then dispatches into an editor that is gone.
  *
  * It means to check for that. `updateMetas` guards on
@@ -16,7 +16,7 @@
  * `prosemirrorView`, which is what its own `destroy()` reads on the first line
  * to make itself idempotent.
  *
- * What reaches the reader is an uncaught `RangeError: Applying a mismatched
+ * What reaches the user is an uncaught `RangeError: Applying a mismatched
  * transaction`, and what reaches CI is a red run: the test runner counts an
  * unhandled rejection as a failure however many cases passed.
  */

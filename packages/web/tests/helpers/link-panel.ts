@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Links in a document body: writing one, the panel that acts on it, and the
@@ -58,7 +58,7 @@ export async function collapseAfterLinking(page: Page): Promise<void> {
 }
 
 /**
- * Reach the `view` state over the body's first link, the way a reader does.
+ * Reach the `view` state over the body's first link, the way a user does.
  *
  * The link's text is dragged over rather than pressed: a press opens the
  * address in a new tab now, and the caret it leaves behind is collapsed, which
@@ -199,7 +199,7 @@ export async function bodyView(
 }
 
 /**
- * Rest the pointer inside one of the body's links, the way a reader does.
+ * Rest the pointer inside one of the body's links, the way a user does.
  *
  * Moved twice: a pointer already sitting still inside a link sends no events
  * at all, and the open countdown starts on a move that lands on one. Arriving

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type * as MockModule0 from "@breatic/core";
 import type * as MockModule1 from "@server/modules/auth/user.repo.js";
@@ -108,7 +108,7 @@ describe("Google invitation claim eligibility", () => {
 
 describe("Verified account invitation compensation", () => {
   it("claims after the verified account has been committed", async () => {
-    const user = await createAccount({ locale: "en", email: "invitee@gmail.com", emailVerified: true });
+    const { user } = await createAccount({ locale: "en", email: "invitee@gmail.com", emailVerified: true });
 
     expect(user).toEqual(account(true));
     expect(mocks.claimEmailInvitations).toHaveBeenCalledWith(user);
@@ -118,7 +118,7 @@ describe("Verified account invitation compensation", () => {
   });
 
   it("leaves an unverified account's mailbox invitations unclaimed", async () => {
-    const user = await createAccount({ locale: "en", email: "invitee@gmail.com", emailVerified: false });
+    const { user } = await createAccount({ locale: "en", email: "invitee@gmail.com", emailVerified: false });
 
     expect(user).toEqual(account(false));
     expect(mocks.claimEmailInvitations).not.toHaveBeenCalled();

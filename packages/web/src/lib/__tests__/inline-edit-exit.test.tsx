@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -129,7 +129,7 @@ describe('useInlineEditExit', () => {
     expect(document.activeElement).toBe(screen.getByTestId('target'));
   });
 
-  it('leaves focus where the reader went when editing ends by leaving the box', () => {
+  it('leaves focus where the user went when editing ends by leaving the box', () => {
     setup();
     const elsewhere = screen.getByTestId('elsewhere');
     act(() => elsewhere.focus());

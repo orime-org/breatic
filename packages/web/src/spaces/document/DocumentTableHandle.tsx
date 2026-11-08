@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A table's row and column handles (inner#1126 A6), placed by
@@ -13,7 +13,7 @@
  * (`cellPos`) is read once, when a menu opens or a drag starts; from then on
  * the held target is what the commands act on.
  *
- * Neither is on screen while the reader holds a selection: the
+ * Neither is on screen while the user holds a selection: the
  * bubble bar serves a selection, the way the block handle steps aside for it.
  */
 

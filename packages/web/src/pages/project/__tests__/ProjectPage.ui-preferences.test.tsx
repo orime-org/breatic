@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What the project page restores from this account's stored preferences
@@ -205,7 +205,7 @@ const PROJECT = {
 
 /**
  * Render the project page with the project already in the query cache, the
- * way it is when the reader comes back to a project opened earlier in the
+ * way it is when the user comes back to a project opened earlier in the
  * session: the page has the data on its very first render.
  */
 function setupCached(): void {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
@@ -61,8 +61,8 @@ test('background node activity leads the tab in five languages and both themes',
     for (const theme of ['light', 'dark'] as const) {
       for (const locale of ['en', 'zh-CN', 'zh-TW', 'ja', 'ko']) {
         await page.evaluate(async ({ at, nextLocale, nextTheme }) => {
-          const i18n = await import(/* @vite-ignore */ at) as { changeLocale: (value: string) => void };
-          i18n.changeLocale(nextLocale);
+          const i18n = await import(/* @vite-ignore */ at) as { changeLocale: (value: string) => Promise<unknown> };
+          await i18n.changeLocale(nextLocale);
           document.documentElement.dataset.theme = nextTheme;
         }, { at: localeAt, nextLocale: locale, nextTheme: theme });
         await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
@@ -98,8 +98,8 @@ test('background node activity leads the tab in five languages and both themes',
   } finally {
     if (localeAt) {
       await page.evaluate(async (at) => {
-        const i18n = await import(/* @vite-ignore */ at) as { changeLocale: (locale: string) => void };
-        i18n.changeLocale('en');
+        const i18n = await import(/* @vite-ignore */ at) as { changeLocale: (locale: string) => Promise<unknown> };
+        await i18n.changeLocale('en');
         document.documentElement.dataset.theme = 'light';
       }, localeAt);
     }

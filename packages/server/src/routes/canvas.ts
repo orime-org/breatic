@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Canvas routes — task management.
@@ -9,7 +9,8 @@
  * via Yjs document sync through the Hocuspocus collab server.
  */
 
-import { randomUUID } from "node:crypto";
+import { tasksQueue } from "@server/modules/task/tasks-queue.js";
+import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
 import { currentConsent } from "@breatic/core";
 import { Hono } from "hono";
 import { validate } from "@server/middleware/validate.js";
@@ -29,12 +30,7 @@ import { requireAuth } from "@server/middleware/auth.js";
 import { acceptTransferBody } from "@server/middleware/transfer-body.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
-import {
-  extFromUrl,
-  labelForUrl,
-  readerUrlSchema,
-  voiceSampleUrl,
-} from "@breatic/domain";
+import { userUrlSchema, voiceSampleUrl } from "@breatic/domain";
 import {
   getCanvasReferencePoolCap,
   getNodeHistoryPageSize,
@@ -47,35 +43,28 @@ import {
   violatesReferenceCountForModel,
 } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
-import { nodeTaskService, ingestReportService } from "@breatic/domain";
+import { nodeTaskService } from "@breatic/domain";
 import {
+  holdRun,
   openGenerationTasks,
   startRowedRun,
 } from "@server/modules/task/generation-task.js";
-import { openUpload } from "@server/modules/asset/upload-opening.js";
-import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
+import { startUrlIngest } from "@server/modules/asset/url-ingest.js";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import { UNDERSTAND_PINS } from "@breatic/domain";
 import {
   assertStorageAllowance,
   pasteAssetsService,
   projectService,
-  reserveForRun,
 } from "@server/modules";
-import {
-  createQueue,
-  defaultJobOpts,
-  getMiniToolsConfig,
-  getNodeTaskConfig,
-  getStorageConfig,
-} from "@breatic/core";
+import { defaultJobOpts, getMiniToolsConfig } from "@breatic/core";
 import {
   ValidationError,
   NotFoundError,
   getUnderstandConfig,
   logger,
 } from "@breatic/core";
-import { t, GENERATION_TEMPLATES, INGEST_NOT_STARTED, extractPromptText } from "@breatic/shared";
+import { t, GENERATION_TEMPLATES, extractPromptText } from "@breatic/shared";
 import { canvasSpaceDocName } from "@breatic/shared";
 import type { UnderstandInput } from "@breatic/shared";
 
@@ -83,16 +72,6 @@ const canvas = new Hono<{ Variables: AuthVariables }>();
 
 canvas.use("*", requireAuth);
 
-const tasksQueue = createQueue("tasks");
-
-/**
- * Pulling a source address into R2 (#207).
- *
- * Its own queue rather than a branch of `tasks`: everything after that queue's
- * dispatch runs unconditionally — recording a provider result, persisting
- * outputs, billing, announcing a generation — and an ingest wants none of it.
- */
-const urlIngestQueue = createQueue("url-ingest");
 
 /**
  * `GET /canvas/limits` — frontend-consumed canvas knobs from
@@ -155,7 +134,7 @@ canvas.get("/limits", (c) => {
  */
 const ingestUrlSchema = z
   .object({
-    url: readerUrlSchema.optional(),
+    url: userUrlSchema.optional(),
     // A file a generation template brings (inner#1345), named by its path
     // under our hosted-resources address; the address is built here.
     template_resource: z.string().min(1).max(512).optional(),
@@ -203,68 +182,13 @@ canvas.post(
     const user = c.get("user");
     const body = c.req.valid("json");
     const url = body.template_resource === undefined ? (body.url as string) : templateResourceUrl(body.template_resource);
-
-    await projectService.assertAccess(body.project_id, user.id, "editor");
-    await assertStorageAllowance(body.project_id, "upload");
-
-    const { upload, ingest } = getStorageConfig();
-    const { key, studioId, taskId } = await openUpload(
-      {
-        projectId: body.project_id,
-        actingUserId: user.id,
-        // The ceiling on what the Worker may write, since nothing here can say
-        // how large the thing behind the address is (design §7.7).
-        declaredSize: upload.max_upload_bytes,
-        taskType: "url",
-        ext: extFromUrl(url),
-        expiresAt: new Date(Date.now() + ingest.ticket_expires_seconds * 1000),
-        context: {
-          nodeId: body.node_id,
-          spaceId: body.space_id,
-          source: "url",
-        },
-      },
-      {
-        // Every task has the same two hours (inner#1367); the transfer is
-        // held to the end of this row.
-        budgetMs: getNodeTaskConfig().default_budget_ms,
-        action: "upload",
-        label: labelForUrl(url),
-      },
-    );
-
-    try {
-      await urlIngestQueue.add(
-        "ingest-url",
-        {
-          storageKey: key,
-          studioId,
-          url,
-          userId: user.id,
-          projectId: body.project_id,
-          spaceId: body.space_id,
-          nodeId: body.node_id,
-        },
-        // One delivery: a dead address stays dead, and the failure path voids
-        // the grant, which a second run would walk straight past.
-        { ...defaultJobOpts(), attempts: 1 },
-      );
-    } catch (err) {
-      // The row above is already on every open canvas. Leaving it there says a
-      // transfer started to everyone watching, for as long as the budget lasts,
-      // while the submitter alone was told it failed.
-      logger.error({ err, key, projectId: body.project_id }, "url_ingest_enqueue_failed");
-      const settled = await ingestReportService.applyIngestReport({
-        storageKey: key,
-        outcome: "aborted",
-        reason: INGEST_NOT_STARTED,
-      });
-      // Settling can fail beside itself, and this is the one caller with no
-      // second chance to notice: the request is about to throw.
-      noteIngestSideEffects(key, settled);
-      throw err;
-    }
-
+    const { taskId } = await startUrlIngest({
+      url,
+      projectId: body.project_id,
+      spaceId: body.space_id,
+      nodeId: body.node_id,
+      userId: user.id,
+    });
     return c.json({ data: { task_id: taskId } }, 201);
   },
 );
@@ -298,72 +222,72 @@ canvas.post(
   // Cross-tenant guard: never trust body.project_id. Without this,
   // any logged-in user who knows a victim project UUID can enqueue
   // a task that writes into that project's canvas node and is billed
-  // to the attacker's own account.
-  await projectService.assertAccess(projectId, user.id, "editor");
-
-  // #1675 execute gate (cross-modality): a model whose modes all need a source
-  // input (image / video / audio) must not be submitted without it (e.g. Nano
-  // Banana Edit needs an image; a video-edit needs a video). Reject BEFORE
-  // enqueue so a doomed submission never creates a task row, burns a worker
-  // slot, or leaves the user waiting for a node that can only fail — the client
-  // gets an immediate 422 instead. This is NOT a billing guard: billing is
-  // post-success (markCompletedAndBill), so a source-less run that reached the
-  // worker would fail and never bill anyway — the gate saves the doomed attempt,
-  // not the credits. Defence in depth behind the Generate panel's frontend gate;
-  // the rule is the same per-mode `sourcesByMode` the frontend reads, applied
-  // here to params.
-  if (violatesSourceRequirementForModel(body.model, body.params)) {
-    // Structured record for security monitoring: a rejection here means the
-    // frontend gate was bypassed (crafted request) or drifted — worth a trace.
-    logger.warn(
-      { userId: user.id, projectId, model: body.model, reason: "missing_source" },
-      "execute_gate_rejected",
-    );
-    throw new ValidationError(
-      t("server.canvas.model_requires_source"),
-    );
-  }
-
-  // #1735 reference-count gate: a submission that over-fills a capped list
-  // param (e.g. more reference images than the model's `max_items`) is rejected
-  // BEFORE enqueue so the user is told, rather than the worker silently
-  // truncating (providers/shared.ts). Same gate location as the source check.
-  const countViolation = violatesReferenceCountForModel(body.model, body.params);
-  if (countViolation) {
-    logger.warn(
-      {
-        userId: user.id,
-        projectId,
-        model: body.model,
-        reason: "too_many_references",
-        field: countViolation.field,
-        limit: countViolation.limit,
-        actual: countViolation.actual,
-      },
-      "execute_gate_rejected",
-    );
-    throw new ValidationError(
-      t("server.canvas.too_many_inputs", { limit: countViolation.limit, actual: countViolation.actual }),
-    );
-  }
-
+  // to the attacker's own account. `holdRun` asks it first.
+  //
   // #1580 #7 / inner#1611: the run is admitted by holding its estimate under
   // the id its task row will carry, BEFORE that row exists, so a refusal
   // leaves nothing behind. From here until the job is queued, every way out
   // releases the hold; once queued, the worker charges or releases it.
-  const taskId = randomUUID();
-  await reserveForRun(
+  const { taskId } = await holdRun({
     projectId,
-    user.id,
-    taskId,
-    await estimateTaskCredits(body.model, {
-      params: body.params,
-      prompt: extractPromptText(body.params.prompt ?? body.params.text),
-    }),
-  );
+    userId: user.id,
+    check: () => {
+      // #1675 execute gate (cross-modality): a model whose modes all need a source
+      // input (image / video / audio) must not be submitted without it (e.g. Nano
+      // Banana Edit needs an image; a video-edit needs a video). Reject BEFORE
+      // enqueue so a doomed submission never creates a task row, burns a worker
+      // slot, or leaves the user waiting for a node that can only fail — the client
+      // gets an immediate 422 instead. This is NOT a billing guard: billing is
+      // post-success (markCompletedAndBill), so a source-less run that reached the
+      // worker would fail and never bill anyway — the gate saves the doomed attempt,
+      // not the credits. Defence in depth behind the Generate panel's frontend gate;
+      // the rule is the same per-mode `sourcesByMode` the frontend reads, applied
+      // here to params.
+      if (violatesSourceRequirementForModel(body.model, body.params)) {
+        // Structured record for security monitoring: a rejection here means the
+        // frontend gate was bypassed (crafted request) or drifted — worth a trace.
+        logger.warn(
+          { userId: user.id, projectId, model: body.model, reason: "missing_source" },
+          "execute_gate_rejected",
+        );
+        throw new ValidationError(
+          t("server.canvas.model_requires_source"),
+        );
+      }
+
+      // #1735 reference-count gate: a submission that over-fills a capped list
+      // param (e.g. more reference images than the model's `max_items`) is rejected
+      // BEFORE enqueue so the user is told, rather than the worker silently
+      // truncating (providers/shared.ts). Same gate location as the source check.
+      const countViolation = violatesReferenceCountForModel(body.model, body.params);
+      if (countViolation) {
+        logger.warn(
+          {
+            userId: user.id,
+            projectId,
+            model: body.model,
+            reason: "too_many_references",
+            field: countViolation.field,
+            limit: countViolation.limit,
+            actual: countViolation.actual,
+          },
+          "execute_gate_rejected",
+        );
+        throw new ValidationError(
+          t("server.canvas.too_many_inputs", { limit: countViolation.limit, actual: countViolation.actual }),
+        );
+      }
+      return Promise.resolve();
+    },
+    credits: () =>
+      estimateTaskCredits(body.model, {
+        params: body.params,
+        prompt: extractPromptText(body.params.prompt ?? body.params.text),
+      }),
+  });
 
   let task: Awaited<ReturnType<typeof taskService.create>>;
-  let job: Awaited<ReturnType<typeof tasksQueue.add>>;
+  let job: Awaited<ReturnType<ReturnType<typeof tasksQueue>["add"]>>;
   try {
     // #89: storage gate, the other soft pre-check. AFTER credits, because
     // refusing for storage tells the studio's admin about it — and a request
@@ -371,7 +295,7 @@ canvas.post(
     // mail about storage.
     await assertStorageAllowance(projectId, "generate");
 
-    task = await taskService.create(
+    task = await admitGeneration(
       user.id,
       projectId,
       spaceId,
@@ -418,7 +342,7 @@ canvas.post(
     // row and writes the result back into `project-{projectId}/canvas-{spaceId}`
     // (v10 multi-doc). The job payload carries spaceId so the worker can
     // compute the canvas-{spaceId} doc name without reloading the task row.
-    job = await tasksQueue.add(
+    job = await tasksQueue().add(
       "execute-task",
       {
         taskId: task.id,
@@ -530,7 +454,7 @@ async function startReading(
   reading: Record<string, unknown>,
 ): Promise<{ taskId: string; status: Awaited<ReturnType<typeof startRowedRun>> }> {
   // A reading runs on one model, pinned (user 2026-09-19). Naming it here is
-  // what puts it on the row the reader sees, in the history row this run
+  // what puts it on the row the user sees, in the history row this run
   // writes, and against the charge — the three places every other modality
   // names the model it ran on.
   const model = UNDERSTAND_PINS.model;
@@ -545,15 +469,20 @@ async function startReading(
     // carries and what the browser's format gate judged by.
     source_mime_type: body.source_mime_type,
     // Carried between the two ends that know about it: the browser, which is
-    // where the reader's language is set, and the run, which names that
+    // where the user's language is set, and the run, which names that
     // language to the model. Nothing here reads it.
-    reader_locale: body.reader_locale,
+    user_locale: body.user_locale ?? body.reader_locale,
+    // Under the pre-#1378 name too, for a worker of the previous release
+    // still running while a deploy rolls out. Carries the old name until
+    // #1387 removes it, in the release that also runs the rename migration
+    // again.
+    reader_locale: body.user_locale ?? body.reader_locale,
     ...reading,
   };
 
   // Understand tasks transcribe / analyze a media URL into a result node;
   // they always produce a new node ('append'), no overwrite semantics.
-  const task = await taskService.create(
+  const task = await admitGeneration(
     userId,
     body.project_id,
     body.space_id,
@@ -580,7 +509,7 @@ async function startReading(
     label: model,
     credits: () => estimateTaskCredits(model, { params }),
     enqueue: () =>
-      tasksQueue.add(
+      tasksQueue().add(
         "execute-task",
         {
           taskId: task.id,
@@ -675,7 +604,7 @@ canvas.get("/tasks", validate("query", paginationSchema), async (c) => {
  * `GET /canvas/nodes/:nodeId/history` — list a node's content history.
  *
  * Returns AIGC generation results (success + failed), user uploads, and
- * the copies a reader asked to keep, ordered by most recent first. Used by
+ * the copies a user asked to keep, ordered by most recent first. Used by
  * the frontend to show version history and support restore.
  * @param c - Hono context, requires `project_id` query param
  * @returns `{ data: { entries: NodeHistoryEntity[], total: number } }`
@@ -730,7 +659,7 @@ canvas.get(
  * four numbers on the node and the rows in this table are not kept in lock
  * step — a dropped `node-task:counts` leaves the node showing a number the
  * table no longer holds, and a node that still reads as running cannot be
- * deleted. This is the way back: the reader who noticed asks for the truth,
+ * deleted. This is the way back: the user who noticed asks for the truth,
  * and everyone's node follows. The space rides in the query because a
  * document is what the counts are published to, and a node with no rows left
  * still has one.
@@ -804,6 +733,10 @@ canvas.delete(
     const { project_id, space_id, node_id } = c.req.valid("query");
 
     const row = await nodeTaskService.findById(taskId);
+    // A 3D Space's own row is cleared through that Space's list.
+    if (row !== null && row.nodeId === null) {
+      throw new NotFoundError(t("server.error.not_found"));
+    }
 
     // Cross-tenant guard. The path holds a task id and nothing else, so the
     // project to check against is read from the row — never from the query,
@@ -865,7 +798,7 @@ canvas.post(
 
     const row = await nodeTaskService.findById(taskId);
     // One answer for both, so the id says nothing back about what it named.
-    if (row === null || row.kind !== "upload") {
+    if (row === null || row.kind !== "upload" || row.nodeId === null) {
       throw new NotFoundError(t("server.error.not_found"));
     }
     await projectService.assertAccess(row.projectId, user.id, "editor");

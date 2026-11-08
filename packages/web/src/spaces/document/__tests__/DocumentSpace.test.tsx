@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { screen, waitFor, act } from '@testing-library/react';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import { Activity } from 'react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
@@ -31,14 +32,14 @@ const socketState = {
 };
 vi.mock('@web/data/yjs/use-socket', () => ({
   useSocket: (): {
-    provider: { awareness: unknown };
+    provider: { awareness: unknown; on: () => void; off: () => void };
     synced: boolean;
     hasEverSynced: boolean;
     status: string;
     writeAccess: string;
     authFailedReason: string | null;
   } => ({
-    provider: { awareness: socketAwareness },
+    provider: { awareness: socketAwareness, on: () => {}, off: () => {} },
     synced: socketState.synced,
     hasEverSynced: socketState.hasEverSynced,
     status: socketState.status,

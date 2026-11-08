@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A modifier-click is a plain click here (user 2026-09-18).
@@ -10,12 +10,12 @@
  * (`:413` hands `this.selectNode` to `handleSingleClick`, which calls
  * `selectClickedNode`). This Space does not offer selecting a block that way:
  * every command that acts on a whole block is on the block handle, and the
- * reader's selection is for text.
+ * user's selection is for text.
  *
  * Measured 2026-09-18 before this: the gesture put a node selection on every
  * row it was tried on — a heading, a paragraph and an empty row — which
  * brought the bubble bar up over rows that had words in them while nothing was
- * selected as far as the reader could tell. (It also drew a frame around the
+ * selected as far as the user could tell. (It also drew a frame around the
  * row; that frame was removed the same day, so the bar is what is left.)
  *
  * WHAT THE CLICK DOES INSTEAD. The caret goes where it landed, which is what
@@ -24,7 +24,7 @@
  * (`input.ts:231-234`), so answering it here settles the gesture.
  *
  * A LINK IS NOT THIS SPACE'S TO ANSWER. Holding the same modifier over a link
- * is how a reader opens one in a new tab, and `handleClick` is the prop the
+ * is how a user opens one in a new tab, and `handleClick` is the prop the
  * link handler is registered on too — whichever plugin answers true first gets
  * `preventDefault` called and the rest are never asked. So a press over a link
  * anchor is declined here and BlockNote's own handler takes it.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #904 验收 B2: the body carries three heading levels, not six.
@@ -11,7 +11,7 @@
  *
  * BlockNote ships six, and its `levels` option is what narrows them: the
  * markdown input rules and the `Mod-Alt-N` shortcuts are both built from that
- * one list, which is both routes a reader has. Left at the default, typing
+ * one list, which is both routes a user has. Left at the default, typing
  * `#### ` produced a level-four heading — a block the menu cannot name and the
  * stylesheet has no rule for, so it read on screen as an ordinary paragraph
  * while being stored as a heading.

@@ -1,19 +1,20 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The params pill of the image and video Generate panels, end to end (#2156).
  *
  * Every param a panel draws stands on a value the catalog declares, the pill
- * says what each one stands on, the params are named in the reader's language
+ * says what each one stands on, the params are named in the user's language
  * and an option's text is never cut (user 2026-09-29).
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:
  *
  *   pnpm --filter @breatic/web test:smoke
  */
-import { expect, type Locator, type Page } from 'playwright/test';
+import { expect, type Locator } from 'playwright/test';
 import { test } from '../helpers/slot';
+import { switchLanguage } from '../helpers/language';
 
 import { openGenerate, seedNode, registerCanvasStage } from '../helpers/audio-panel';
 
@@ -26,18 +27,6 @@ registerCanvasStage();
  */
 async function fits(button: Locator): Promise<boolean> {
   return button.evaluate((el) => el.scrollWidth <= el.clientWidth);
-}
-
-/**
- * Switch the interface language through its menu.
- * @param p - The page.
- * @param code - The locale to switch to.
- */
-async function switchLanguage(p: Page, code: string): Promise<void> {
-  await p.getByTestId('lang-trigger').click();
-  await expect(p.getByTestId('lang-popover')).toBeVisible();
-  await p.getByTestId(`lang-option-${code}`).click();
-  await expect(p.getByTestId('lang-popover')).toHaveCount(0);
 }
 
 test('an image model shows every param it stands on, named from the locales', async ({ page }) => {
@@ -90,7 +79,7 @@ test('a video model names its own params and cuts none of their options', async 
   await expect(page.getByText('Emotion', { exact: true })).toBeVisible();
 });
 
-test('a param is named in the reader\'s language, its options stay as the vendor spells them', async ({ page }) => {
+test('a param is named in the user\'s language, its options stay as the vendor spells them', async ({ page }) => {
   // The interface follows the account language, so the switch goes through
   // the language menu, which records it on the account, and is put back.
   await switchLanguage(page, 'zh-CN');

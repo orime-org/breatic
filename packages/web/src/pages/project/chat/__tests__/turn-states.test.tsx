@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * 一轮对话的三种状态，以及它们各自在屏幕上是什么样。
@@ -78,7 +78,7 @@ function openChatAnswers(messages: Array<Record<string, unknown>>): void {
   vi.mocked(chatApi.openChat).mockResolvedValue({
     conversations: [{ id: 'c-1' }],
     current: {
-      conversation: { id: 'c-1' },
+      conversation: { id: 'c-1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       messages,
       hasMore: false,
     },
@@ -139,6 +139,7 @@ describe('发一条消息', () => {
       conversation_id: 'c-1',
       attached_chips: [],
       time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      model: 'deepseek/deepseek-v4.1-flash-1017',
       spaces: [],
       spaces_total: 0,
     });

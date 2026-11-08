@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * However a turn is put together, it settles up once.
@@ -46,7 +46,7 @@ const modelSays = vi.hoisted(() => ({ parts: [] as unknown[] }));
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { projectMemory: "", conversationMemory: "" },
+    memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
     history: [],
   })),
 }));
@@ -97,7 +97,7 @@ const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
-  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
+  addUserMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
   getMessages,
 }));
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({

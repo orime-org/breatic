@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What the ticket endpoint answers (#173, design §4.2).
@@ -43,12 +43,13 @@ export interface UploadTicket {
 }
 
 /**
- * Where an upload lands, and what a picture is uploaded to become (filed as
- * the asset's source): a project, which may be uploading its cover, or a
- * studio, which uploads nothing but its avatar.
+ * Where an upload lands and what it is for: a project, which may be uploading
+ * its cover (filed as the asset's source) or a 3D scene model (filed as an
+ * ordinary upload with no node), or a studio, which uploads nothing but its
+ * avatar (filed as the asset's source).
  */
 export type UploadTargetParams =
-  | { projectId: string; studioId?: never; purpose?: 'project_cover' }
+  | { projectId: string; studioId?: never; purpose?: 'project_cover' | 'scene_model' }
   | { studioId: string; projectId?: never; purpose: 'studio_avatar' };
 
 /**
@@ -69,6 +70,8 @@ export type UploadContext = UploadTargetParams & {
   toolName?: string;
   /** True for a byproduct, registered without an activity-feed row of its own. */
   derived?: true;
+  /** The name a 3D model is imported under; required with `scene_model`. */
+  label?: string;
 };
 
 /**
@@ -102,6 +105,8 @@ export interface UploadAlreadyStored {
   /** Its pixel size, read off it when it was stored; null when there is none. */
   width: number | null;
   height: number | null;
+  /** A 3D model's task row, opened already holding the model (inner#1690). */
+  taskId?: string;
 }
 
 /**

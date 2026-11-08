@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -778,7 +778,7 @@ describe('PromptEditor — kept across a hidden Space (inner#1235 A13)', () => {
   it('still puts the caret back when the panel unmounts again right after mounting', async () => {
     // A mount undone straight away (Strict Mode) takes the panel down before
     // the caret could go back in; that second take-down must not read as the
-    // reader having left the prompt.
+    // user having left the prompt.
     canvasSessions.of(SPACE).getState().openGeneratePanel('n', 'image');
     const fragment = new Y.Doc().getXmlFragment('prompt');
     const first = render(onCanvas(fragment));

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { GenerationTemplate } from "@shared/canvas/generation-templates.js";
 
@@ -29,7 +29,7 @@ export const STORYBOARD_GRID_25: GenerationTemplate = {
       "plan the shots of my story in one picture",
     ],
     offerWhen: [
-      "the reader wants a video that tells a story in several beats and has not planned its shots yet",
+      "the user wants a video that tells a story in several beats and has not planned its shots yet",
     ],
   },
 };

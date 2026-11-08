@@ -1,12 +1,20 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
+
+import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
+import { MediaFullscreenButton } from '@web/spaces/canvas/nodes/_shared/MediaFullscreenButton';
+import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
+import { ZoomCounterScaled } from '@web/spaces/canvas/nodes/_shared/ZoomCounterScaled';
+import { miniToolOpenOn } from '@web/stores/canvas-session';
 
 /** Props for `NodeMediaInset`. */
 export interface NodeMediaInsetProps {
   /** The media element (image / player) to inset. */
   children: React.ReactNode;
+  /** Opens the media full screen, from a button over its top-right corner. */
+  onFullscreen?: () => void;
 }
 
 /**
@@ -29,16 +37,36 @@ export interface NodeMediaInsetProps {
  * inner arc and opens corner gaps — #1550). Inset by 4px the media no longer
  * reaches those corners at all, so it stays square-cornered and the clip
  * simply never engages, matching the preview card exactly.
+ *
+ * The full-screen button (inner#1844) sits outside whatever transforms the
+ * media and keeps its screen size at any zoom. It is left out while the
+ * canvas is picking, where a press anywhere on the node picks it, and while a
+ * mini-tool is open on the node, whose layer covers the picture.
  * @param root0 - Component props.
  * @param root0.children - The media element to inset.
+ * @param root0.onFullscreen - Opens the media full screen.
  * @returns The media wrapped in the inset box.
  */
 export function NodeMediaInset({
   children,
+  onFullscreen,
 }: NodeMediaInsetProps): React.JSX.Element {
+  const nodeId = React.useContext(NodeIdContext);
+  const mediaFree = useCanvasSession(
+    (s) => s.pickSession === null && miniToolOpenOn(nodeId)(s) === null,
+  );
   return (
     <div data-testid='node-media-inset' className='relative p-1'>
       {children}
+      {onFullscreen && mediaFree ? (
+        // Pinned to the picture's corner; the 6px gap scales with the button,
+        // so neither changes on screen with the zoom.
+        <ZoomCounterScaled className='absolute right-1 top-1 origin-top-right'>
+          <div className='pr-1.5 pt-1.5'>
+            <MediaFullscreenButton onOpen={onFullscreen} />
+          </div>
+        </ZoomCounterScaled>
+      ) : null}
     </div>
   );
 }

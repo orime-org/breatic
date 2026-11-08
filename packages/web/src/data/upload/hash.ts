@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Upload-hash facade (asset slice 2, #1609). Spawns the hashing Web
@@ -25,12 +25,15 @@ interface HashWorkerResult {
  * Hash a file for upload dedup via the hashing Web Worker.
  * @param file - The file about to be uploaded (any size — every file is
  *   hashed; there is no size line).
- * @returns The sha256 hex, or `null` when hashing is unavailable/failed. Never
- *   rejects — but `null` REFUSES the upload (see the module doc): the caller
+ * @param signal - Cancellation belonging to this hash operation.
+ * @returns The sha256 hex, or `null` when hashing is unavailable/failed.
+ *   `null` REFUSES the upload (see the module doc): the caller
  *   stops before asking for a ticket and shows a reload prompt.
+ * @throws {DOMException} When the caller cancels this hash operation.
  */
-export function hashFile(file: File): Promise<string | null> {
-  return new Promise((resolve) => {
+export function hashFile(file: File, signal?: AbortSignal): Promise<string | null> {
+  return new Promise((resolve, reject) => {
+    signal?.throwIfAborted();
     let worker: Worker;
     try {
       worker = new Worker(new URL('./hash-worker.ts', import.meta.url), {
@@ -40,14 +43,31 @@ export function hashFile(file: File): Promise<string | null> {
       resolve(null);
       return;
     }
+    let settled = false;
     /**
      * Resolve once and always reclaim the worker thread.
      * @param value - The hex digest, or null on failure.
+     * @throws {never} Never directly.
      */
     const settle = (value: string | null): void => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener('abort', abort);
       worker.terminate();
       resolve(value);
     };
+    /**
+     * Release this worker without publishing a late hash or failure.
+     * @throws {never} Never directly.
+     */
+    const abort = (): void => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener('abort', abort);
+      worker.terminate();
+      reject(signal?.reason ?? new DOMException('Upload hash cancelled', 'AbortError'));
+    };
+    signal?.addEventListener('abort', abort, { once: true });
     worker.onmessage = (event: MessageEvent<HashWorkerResult>) => {
       settle(typeof event.data.hash === 'string' ? event.data.hash : null);
     };

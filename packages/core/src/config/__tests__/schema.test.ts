@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Tests for {@link parseConfig}'s yjs-DB separation invariant: outside
@@ -281,10 +281,83 @@ describe("agent config — the model a run is sent to", () => {
   it("accepts a model id", async () => {
     const { agentConfigSchemaForTests } = await import("@core/config/loader.js");
     const parsed = agentConfigSchemaForTests.safeParse({
+      chat_models: [{ id: "deepseek/deepseek-v4-pro", name: "DeepSeek V4 Pro" }],
       default_model: "deepseek/deepseek-v4-pro",
       consolidation_model: "anthropic/claude-sonnet-4-6",
     });
     expect(parsed.success).toBe(true);
+  });
+});
+
+// breatic#1363: the user picks the main model from `chat_models`, and a
+// conversation with no pick of its own is answered by `default_model`, so the
+// default has to be one of the models the picker can show.
+describe("agent config — the models the user can pick", () => {
+  it("ships DeepSeek V4.1 Flash, Claude Sonnet 5.5 and Claude Opus 5.5 with DeepSeek as the default", async () => {
+    const { agentConfigSchemaForTests } = await import("@core/config/loader.js");
+    const parsed = agentConfigSchemaForTests.parse({});
+    expect(parsed.chat_models).toEqual([
+      { id: "deepseek/deepseek-v4.1-flash-1017", name: "DeepSeek V4.1 Flash" },
+      { id: "anthropic/claude-sonnet-5.5", name: "Claude Sonnet 5.5" },
+      { id: "anthropic/claude-opus-5.5", name: "Claude Opus 5.5" },
+    ]);
+    expect(parsed.default_model).toBe("deepseek/deepseek-v4.1-flash-1017");
+  });
+
+  it("refuses a default_model the picker does not list", async () => {
+    const { agentConfigSchemaForTests } = await import("@core/config/loader.js");
+    const parsed = agentConfigSchemaForTests.safeParse({
+      chat_models: [{ id: "anthropic/claude-opus-5.5", name: "Claude Opus 5.5" }],
+      default_model: "deepseek/deepseek-v4.1-flash-1017",
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it.each([
+    ["an empty list", []],
+    ["a model listed twice", [
+      { id: "deepseek/deepseek-v4.1-flash-1017", name: "DeepSeek V4.1 Flash" },
+      { id: "deepseek/deepseek-v4.1-flash-1017", name: "DeepSeek again" },
+    ]],
+    ["a half-typed id", [{ id: "deepseek/", name: "DeepSeek" }]],
+    ["a blank name", [{ id: "deepseek/deepseek-v4.1-flash-1017", name: "" }]],
+  ])("refuses chat_models with %s", async (_label, chatModels) => {
+    const { agentConfigSchemaForTests } = await import("@core/config/loader.js");
+    expect(agentConfigSchemaForTests.safeParse({ chat_models: chatModels }).success).toBe(false);
+  });
+});
+
+// breatic#1363: a fold stops short of the keep line by the room the memory it
+// writes may take in the next prompt. Memory is now an index of titles, a
+// progress note; a migrated block is already in what the fold measured.
+describe("agent config — the room a fold holds back for memory", () => {
+  it("counts a full index and the progress note", async () => {
+    const { memoryReserveTokens, MEMORY_TITLE_MAX_CHARS } = await import("@core/config/loader.js");
+    const reserve = memoryReserveTokens({ memory_index_max_entries: 10, memory_progress_max_chars: 500 });
+    expect(MEMORY_TITLE_MAX_CHARS).toBe(120);
+    // Each index line is the full id (36), a separator (3) and the title
+    // (120): 2 × (10 × 159 + 500).
+    expect(reserve).toBe(4180);
+  });
+
+  it("refuses an index so large that the reserve reaches the keep line", async () => {
+    const { agentConfigSchemaForTests } = await import("@core/config/loader.js");
+    const parsed = agentConfigSchemaForTests.safeParse({
+      memory_index_max_entries: 5000,
+      memory_keep_tokens: 300000,
+      fold_trigger_tokens: 750000,
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("accepts the shipped defaults", async () => {
+    const { agentConfigSchemaForTests } = await import("@core/config/loader.js");
+    const parsed = agentConfigSchemaForTests.parse({});
+    expect(parsed.memory_index_max_entries).toBe(200);
+    expect(parsed.memory_progress_max_chars).toBe(2000);
+    expect(parsed.consolidation_entries_max_chars).toBe(60000);
+    expect(parsed.consolidation_answer_attempts).toBe(3);
+    expect(parsed.consolidation_max_operations).toBe(50);
   });
 });
 

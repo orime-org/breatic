@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Cross-tenant ownership enforcement tests.
@@ -28,6 +28,15 @@ vi.mock("@breatic/domain", async () => {
 vi.mock("@server/modules", async (importOriginal) => {
   const { serverModulesMock } = await import("../helpers/mock-core.js");
   return serverModulesMock(importOriginal);
+});
+
+// A generation's admission asks the project service itself (`holdRun`).
+vi.mock("@server/modules/project/project.service.js", async (importOriginal) => {
+  const { mocks: shared } = await import("../helpers/mock-core.js");
+  return {
+    ...(await importOriginal<Record<string, unknown>>()),
+    assertAccess: (...args: unknown[]) => shared.projectService.assertAccess(...args),
+  };
 });
 
 import { createApp } from "../../app.js";

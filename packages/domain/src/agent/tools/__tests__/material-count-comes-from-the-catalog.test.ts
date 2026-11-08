@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The tool counts material off the model's declarations (#269).
@@ -95,7 +95,7 @@ const MODES = [
  * @param type - The node the generation is on.
  * @param mode - The mode it is set to.
  * @param model - The model it names.
- * @param source - The kind of empty node the reader is asked for.
+ * @param source - The kind of empty node the user is asked for.
  * @returns The proposal.
  */
 function onePiece(

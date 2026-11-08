@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A model whose style slot joins its image pool keeps three of the upstream's
- * images for style (inner#826). The pool's cap is what the reader can @, so
+ * images for style (inner#826). The pool's cap is what the user can @, so
  * the cap plus the style slot's has to equal what the upstream takes, or a
  * full pool plus full style slot is refused upstream.
  */

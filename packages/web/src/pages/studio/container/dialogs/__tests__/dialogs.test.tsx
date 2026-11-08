@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi } from 'vitest';
 import { screen, act } from '@testing-library/react';
@@ -34,7 +34,7 @@ vi.mock('@web/pages/studio/container/dialogs/use-create-studio');
 type User = ReturnType<typeof userEvent.setup>;
 
 /**
- * Replace whatever the slug field holds with a value of the reader's own.
+ * Replace whatever the slug field holds with a value of the user's own.
  * @param user - The user-event session.
  * @param value - The slug to type.
  */
@@ -124,7 +124,7 @@ describe('NewItemDialog (spec §3.12)', () => {
     expect(onCreate).toHaveBeenCalledWith({ name: 'Scene Project', slug: 'scene-project', spaceType: '3d' });
   });
 
-  it('submits the trimmed slug the reader typed', async () => {
+  it('submits the trimmed slug the user typed', async () => {
     const onCreate = vi.fn();
     const user = userEvent.setup();
     render(
@@ -210,7 +210,7 @@ describe('NewItemDialog — reasons on press and an optional slug (inner#1652, i
     expect(slugInput()).toHaveValue('');
   });
 
-  it('stops following the name once the reader edits the slug', async () => {
+  it('stops following the name once the user edits the slug', async () => {
     const user = userEvent.setup();
     render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);
     await user.type(screen.getByLabelText('Name'), 'Spring');

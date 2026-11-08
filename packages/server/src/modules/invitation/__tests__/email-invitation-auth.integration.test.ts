@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type * as CoreModule from "@breatic/core";
 
@@ -158,7 +158,7 @@ describe("real authentication claims Project and Studio mailbox invitations", ()
     await expectUnclaimed(pending);
 
     const before = Date.now();
-    const user = await verifySignupCode(started.ticket, deliveredCode(email));
+    const { user } = await verifySignupCode(started.ticket, deliveredCode(email));
     const after = Date.now();
     expect(user).toMatchObject({ email, emailVerified: true });
     const stored = await sql<{ id: string; email_verified: boolean }[]>`
@@ -209,7 +209,7 @@ describe("real authentication claims Project and Studio mailbox invitations", ()
     const fixture = await seedInvitationFixture(sql);
     const password = "verified-invite-password";
     const started = await startSignup({ ticket: null, email: fixture.email, password, locale: "en" });
-    const user = await verifySignupCode(started.ticket, deliveredCode(fixture.email));
+    const { user } = await verifySignupCode(started.ticket, deliveredCode(fixture.email));
     expect(user.emailVerified).toBe(true);
 
     const pending: PendingInvitation[] = [];

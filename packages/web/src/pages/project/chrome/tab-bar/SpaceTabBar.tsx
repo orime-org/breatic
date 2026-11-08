@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import {
   ChevronLeft,
@@ -108,7 +108,7 @@ function visibleSpan(scroller: HTMLElement): Span {
  *
  * `scrollIntoView` moves every scroller between the tab and the document, and
  * once the window is narrower than the project page's floor the page itself is
- * one of them: measured in a browser at 700px, a page the reader had scrolled
+ * one of them: measured in a browser at 700px, a page the user had scrolled
  * to 41 was dragged back to 0 by a single arrow click.
  * @param scroller - The viewport the tabs scroll in.
  * @param tab - The tab to bring into view.
@@ -295,7 +295,7 @@ export function SpaceTabBar({
 }: SpaceTabBarProps): React.JSX.Element {
   const t = useTranslation();
   // Counted off the same meta doc the strip and the drawer read. The server
-  // makes the binding check under its lock; this keeps the reader from
+  // makes the binding check under its lock; this keeps the user from
   // starting what it would refuse.
   const spaceLimitReached = allSpaces.length >= MAX_SPACES_PER_PROJECT;
   const spaceLimitText = t('project.space.error.limit', { max: MAX_SPACES_PER_PROJECT });

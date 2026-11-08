@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A box that takes the focus on arrival does that once: a Space hidden and
- * shown again is not the box arriving, so the caret stays where the reader
+ * shown again is not the box arriving, so the caret stays where the user
  * put it (inner#1235 A1, A19).
  */
 
@@ -37,7 +37,7 @@ function Space({ hidden }: { hidden: boolean }): React.JSX.Element {
 }
 
 describe('DocumentCommentWriteBox in a Space switched away from', () => {
-  it('leaves the caret where the reader put it when shown again', () => {
+  it('leaves the caret where the user put it when shown again', () => {
     const { rerender } = render(<Space hidden={false} />);
     const box = screen.getByTestId('doc-comment-draft-input') as HTMLTextAreaElement;
     act(() => box.setSelectionRange(5, 5));

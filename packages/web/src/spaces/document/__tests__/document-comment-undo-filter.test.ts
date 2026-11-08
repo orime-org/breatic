@@ -1,18 +1,18 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The library's orphan sync stays off the reader's undo stack (#18, A16).
+ * The library's orphan sync stays off the user's undo stack (#18, A16).
  *
  * When a thread is resolved, deleted, or gone, the library walks the body and
  * rewrites every mark carrying that thread id so its `orphan` attribute
  * matches — `updateMarksFromThreads`, called from the thread store's
  * subscription. It goes through `editor.transact` and sets NO meta at all
  * (measured: `comments/extension.ts:130-173` has no `setMeta`), which means it
- * satisfies all three conditions this Space uses for "the reader's own edit":
+ * satisfies all three conditions this Space uses for "the user's own edit":
  * the doc changed, nothing appended it, and it is not the sync binding.
  *
- * So without a fourth condition it lands on the undo stack, and a reader who
+ * So without a fourth condition it lands on the undo stack, and a user who
  * presses Cmd+Z right after a PEER resolved a thread undoes that peer's
  * highlight change instead of their own last edit. §5.1.1 is explicit that
  * machine-derived decorative syncs do not go on the stack.
@@ -20,10 +20,10 @@
  * The predicate reads the transaction's steps rather than guessing from
  * content: every step adds or removes a mark, and the mark is a comment.
  *
- * One answer covers both kinds of write. A reader opening a comment has the
+ * One answer covers both kinds of write. A user opening a comment has the
  * same shape as the library's rewrite, and neither belongs on the undo stack:
  * a comment is withdrawn from the card that holds it, and the library's
- * rewrites were never the reader's doing.
+ * rewrites were never the user's doing.
  */
 
 import { Mark, Slice } from '@tiptap/pm/model';
@@ -101,7 +101,7 @@ describe('isCommentMarkWrite', () => {
     expect(isCommentMarkWrite(tr)).toBe(true);
   });
 
-  it('does not recognise a reader typing', () => {
+  it('does not recognise a user typing', () => {
     const editor = open();
     const { from } = firstRun(editor);
     expect(
@@ -109,7 +109,7 @@ describe('isCommentMarkWrite', () => {
     ).toBe(false);
   });
 
-  it('does not recognise a reader making text bold', () => {
+  it('does not recognise a user making text bold', () => {
     const editor = open();
     const { from, to } = firstRun(editor);
     const bold = editor.prosemirrorState.schema.marks.bold.create(null);
@@ -118,7 +118,7 @@ describe('isCommentMarkWrite', () => {
     ).toBe(false);
   });
 
-  it('recognises a reader opening a comment of their own', () => {
+  it('recognises a user opening a comment of their own', () => {
     // Withdrawing a comment is what the card offers, so undo is not a way
     // back from one either — and this write has the same shape as the
     // library's, so one answer covers both.

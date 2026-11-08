@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * What a reader can do to a thread from its card (#18, A7 · A8 · A9 · A10 ·
+ * What a user can do to a thread from its card (#18, A7 · A8 · A9 · A10 ·
  * A11 · A12 · A17).
  *
  * The rights are `annotationRights`, delivered with canvas annotations, so a
@@ -19,15 +19,8 @@
  * TDD: red because the card has no actions yet.
  */
 
-import {
-  render,
-  screen,
-  waitFor,
-  renderHook,
-  act,
-  cleanup,
-  fireEvent,
-} from '@testing-library/react';
+import { screen, waitFor, renderHook, act, cleanup, fireEvent } from '@testing-library/react';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';
@@ -57,10 +50,10 @@ vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() },
 }));
 
-/** Who the reader is while these cases run. */
+/** Who the user is while these cases run. */
 const ME = 'u1';
 
-describe('what a card lets a reader do', () => {
+describe('what a card lets a user do', () => {
   const NAME = 'project-p/document-comment-actions';
   let doc: Y.Doc;
   let awareness: Awareness;
@@ -185,10 +178,10 @@ describe('what a card lets a reader do', () => {
     expect((await screen.findByTestId('doc-comment-from-agent')).textContent).toBe('from Agent');
   });
 
-  it('marks no comment the reader wrote', async () => {
+  it('marks no comment the user wrote', async () => {
     await open();
-    await comment('the reader wrote this');
-    await screen.findByText('the reader wrote this');
+    await comment('the user wrote this');
+    await screen.findByText('the user wrote this');
 
     expect(screen.queryByTestId('doc-comment-from-agent')).toBeNull();
   });
@@ -271,10 +264,10 @@ describe('what a card lets a reader do', () => {
     ).toBe(0);
   });
 
-  it('keeps its controls until the reader opens the thread', async () => {
+  it('keeps its controls until the user opens the thread', async () => {
     // The panel is a column of threads to read. Every card carrying a reply
     // box and two buttons is a column of controls, and only one of them is
-    // about the thread the reader is on (user 2026-09-22).
+    // about the thread the user is on (user 2026-09-22).
     await open();
     await comment('something to answer');
     await screen.findByTestId('doc-comment-card');
@@ -284,7 +277,7 @@ describe('what a card lets a reader do', () => {
     expect(screen.queryByTestId('doc-comment-delete')).toBeNull();
   });
 
-  it('offers them once the reader opens it', async () => {
+  it('offers them once the user opens it', async () => {
     await open();
     await comment('something to answer');
 
@@ -360,7 +353,7 @@ describe('what a card lets a reader do', () => {
   });
 
   it('keeps the words while an input method is composing them', async () => {
-    // A reader choosing characters presses Enter to pick one, and that press
+    // A user choosing characters presses Enter to pick one, and that press
     // belongs to the IME. `KeyboardEvent.isComposing` is what says so.
     await open();
     await comment('the first thing');
@@ -405,7 +398,7 @@ describe('what a card lets a reader do', () => {
     );
   });
 
-  it('shows every comment once the reader opens it', async () => {
+  it('shows every comment once the user opens it', async () => {
     await open();
     await comment('the first');
     await answer('the second');
@@ -429,7 +422,7 @@ describe('what a card lets a reader do', () => {
   });
 
   it('opens a thread from the keyboard', async () => {
-    // Everything a reader can do to a thread is drawn only once it is open,
+    // Everything a user can do to a thread is drawn only once it is open,
     // and opening it had exactly one route: a pointer press. An unread card
     // holds nothing focusable — measured 2026-09-23: the panel offered the
     // keyboard its two filters and its close button and nothing else — so
@@ -530,7 +523,7 @@ describe('what a card lets a reader do', () => {
     });
   });
 
-  it('shows a lone comment whole once the reader opens it', async () => {
+  it('shows a lone comment whole once the user opens it', async () => {
     await open();
     await comment('x'.repeat(280));
 
@@ -594,7 +587,7 @@ describe('what a card lets a reader do', () => {
   it('says so when a write does not go through', async () => {
     // The store asks its own auth before every write and throws when the
     // answer is no, and a thread a peer settled or deleted throws as well.
-    // Whether that happens is not ours to promise; whether the reader is
+    // Whether that happens is not ours to promise; whether the user is
     // told is.
     await open();
     await comment('about alpha');

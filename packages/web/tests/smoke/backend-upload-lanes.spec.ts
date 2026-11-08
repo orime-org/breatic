@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A generation's own output reaching R2 (#181, lane ③) — the half no unit test
@@ -143,8 +143,13 @@ test('a generated image lands on the node under our own url, not the provider’
         credentials: 'include',
         body: JSON.stringify({
           task_type: 'image',
-          model: 'nano-banana-2',
-          params: { prompt: 'a single small red square on white', node_ids: [node] },
+          model: 'gpt-image-2.5-sunburst-text-to-image',
+          params: {
+            prompt: 'a single small red square on white',
+            quality: 'low',
+            resolution: '1k',
+            node_ids: [node],
+          },
           node_ids: [node],
           project_id: project,
           space_id: space,

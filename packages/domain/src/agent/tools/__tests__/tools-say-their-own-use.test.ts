@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a tool is for, and how to use it, is said in its own description.
@@ -39,7 +39,7 @@ describe("ask_user says how to ask", () => {
     expect(said()).toMatch(/not to fill a pause/i);
   });
 
-  it("says what comes back: the answers, or word that the reader wrote a message instead", () => {
+  it("says what comes back: the answers, or word that the user wrote a message instead", () => {
     expect(said()).toMatch(/the user's answers/i);
     expect(said()).toMatch(/wrote a message instead/i);
     expect(said()).toMatch(/may answer the card or be about something else/i);
@@ -108,7 +108,7 @@ describe("judge_likelihood says when to use it", () => {
     expect(said()).toMatch(/several readings/i);
   });
 
-  it("says where it stops and asking the reader starts", () => {
-    expect(said()).toMatch(/Asking the reader is for what only they know/);
+  it("says where it stops and asking the user starts", () => {
+    expect(said()).toMatch(/Asking the user is for what only they know/);
   });
 });

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Where each card sits down the panel (#18, user 2026-09-22).
@@ -80,7 +80,7 @@ describe('layOutCards', () => {
   });
 
   it('gives the card being read its own anchor', () => {
-    // Three cards that would crowd. `b` is the one the reader opened, so it
+    // Three cards that would crowd. `b` is the one the user opened, so it
     // sits where its words are and the others move out of its way.
     const placed = layOutCards(
       [
@@ -241,7 +241,7 @@ describe('the panel header', () => {
   });
 
   it('holds the card being read itself back from it', () => {
-    // Covering the header would leave the reader unable to see all of the one
+    // Covering the header would leave the user unable to see all of the one
     // card they are reading; below it is the only place left.
     const placed = layOutCards(
       [

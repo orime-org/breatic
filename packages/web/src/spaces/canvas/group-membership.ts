@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Pure node-state set logic for the canvas: which nodes a lock or an in-flight
@@ -251,7 +251,7 @@ export function filterGatedDeletion<
     ...unownedAnnotationIds(allNodes, viewer),
   ]);
   // A Group is the box around its members, so it goes when they go and stays
-  // when any of them stays. Without this the reader who deletes a batch whose
+  // when any of them stays. Without this the user who deletes a batch whose
   // uploads are still running gets the frame taken away and the nodes left
   // loose where it was. Groups do not nest, so one pass covers it.
   for (const node of allNodes) {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
@@ -40,6 +40,10 @@ describe('user preferences storage', () => {
       railCollapsed: { personal: false, mine: false, joined: false },
       minimapVisible: true,
       snapToGrid: false,
+      timelineMagnet: true,
+      timelineSnap: true,
+      timelineLinkage: true,
+      documentOutlineVisible: true,
     });
     expect(DEFAULT_USER_PREFERENCES).toEqual(readUserPreferences(ALICE));
   });
@@ -86,6 +90,7 @@ describe('user preferences storage', () => {
         snapToGrid: true,
         agentColumnWidth: 'wide',
         railCollapsed: { personal: 1, mine: true, joined: false },
+        documentOutlineVisible: 'no',
       },
     });
 
@@ -94,6 +99,29 @@ describe('user preferences storage', () => {
       railCollapsed: { personal: false, mine: true, joined: false },
       minimapVisible: true,
       snapToGrid: true,
+      timelineMagnet: true,
+      timelineSnap: true,
+      timelineLinkage: true,
+      documentOutlineVisible: true,
+    });
+  });
+
+  it('keeps the three Timeline switches per account (inner#1708 E13)', () => {
+    writeUserPreference(ALICE, { timelineMagnet: false, timelineLinkage: false });
+    writeUserPreference(BOB, { timelineSnap: false });
+
+    expect(readUserPreferences(ALICE)).toMatchObject({ timelineMagnet: false, timelineSnap: true, timelineLinkage: false });
+    expect(readUserPreferences(BOB)).toMatchObject({ timelineMagnet: true, timelineSnap: false, timelineLinkage: true });
+    expect(raw()).toEqual({
+      [ALICE]: { timelineMagnet: false, timelineLinkage: false },
+      [BOB]: { timelineSnap: false },
+    });
+  });
+
+  it.each(['no', 0, 1, null, { on: true }])('reads an unusable Timeline switch %s as on', (value) => {
+    seed({ [ALICE]: { timelineMagnet: value, timelineSnap: value, timelineLinkage: value, snapToGrid: true } });
+    expect(readUserPreferences(ALICE)).toMatchObject({
+      timelineMagnet: true, timelineSnap: true, timelineLinkage: true, snapToGrid: true,
     });
   });
 

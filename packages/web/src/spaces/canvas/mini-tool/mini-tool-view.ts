@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a mini-tool panel shows and whether it may run (inner#888 §7), as pure
@@ -283,7 +283,7 @@ export function readsShownSize(spec: MiniToolSpec): boolean {
  * @param input.params - The draft params.
  * @param input.expandFrame - An expand tool's frame.
  * @param input.mark - A markup tool's draft.
- * @returns The first reason in the order the reader would fix them, or null.
+ * @returns The first reason in the order the user would fix them, or null.
  */
 export function miniToolRefusal(input: {
   spec: MiniToolSpec;
@@ -433,7 +433,7 @@ export function rectForAspect(ratio: number, source: SourceSize): CropRect {
 }
 
 /**
- * The rectangle after the reader types one side: a locked ratio moves the
+ * The rectangle after the user types one side: a locked ratio moves the
  * other side, and the rectangle is kept inside the source from where it
  * starts.
  * @param rect - The rectangle now.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { act, renderHook } from '@testing-library/react';
 import { REQUEST_SHAPE_REASON } from '@breatic/shared';
@@ -90,7 +90,7 @@ describe('telling an out-of-date page from a refused request', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('still decides for a release the reader postponed with Later', async () => {
+  it('still decides for a release the user postponed with Later', async () => {
     sessionStorage.setItem('breatic.deferredAppVersions', '["next"]');
     expect(await checkStaleRelease(REQUEST_SHAPE_REASON)).toBe(true);
   });

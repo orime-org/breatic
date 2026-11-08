@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The bar that floats above a selection.
@@ -99,7 +99,8 @@ import {
   INLINE_TOOLS,
 } from '@web/spaces/document/document-tools';
 import { DocumentLinkPopover } from '@web/spaces/document/DocumentLinkPopover';
-import { onEditorSettled } from '@web/spaces/document/use-editor-snapshot';
+import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
+import { onEditorSettled, useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { Separator } from '@web/components/ui/separator';
 import { usePressKeepsFocus } from '@web/lib/use-press-keeps-focus';
 import { cn } from '@web/lib/utils';
@@ -147,23 +148,23 @@ interface BubbleGroup {
     openId: string | null;
     onOpenChange: (id: string, open: boolean) => void;
   }>;
+  /**
+   * Whether the slot belongs on the bar over a selection of table cells. Left
+   * out, it does. A group left with nothing in it stands down, separator and
+   * all.
+   */
+  slotOverCells?: boolean;
 }
 
 /**
- * The controls this carrier shows, grouped the way the demo draws them.
+ * The controls this carrier shows, in six groups split by five separators:
+ * block type | alignment | bold italic strike underline | link inline-code
+ * colour | add to Agent, AI | comment (user 2026-11-08: comment stands alone
+ * at the far right, and the two that hand the words to a model sit together).
  *
- * Five groups split by four separators, the order the demo's own caption gives
- * (`2026-08-21-editor-command-surface.html`, the note under its bar): block
- * type | alignment |
- * bold italic strike underline | link inline-code colour comment | AI.
- *
- * Four of the five hold a slot that opens a menu on hover; the three block
- * commands that used to sit flat in the first group now live inside the block
- * type menu, which is where the demo draws them.
- *
- * Block type, alignment, colour and comment all reach their commands. No AI
- * command does yet: each needs schema or a model call that arrives with its
- * own slice, and the AI slot is drawn the way the demo draws it.
+ * Four groups hold a slot that opens a menu on hover; the three block commands
+ * that used to sit flat in the first group live inside the block type menu,
+ * which is where the demo draws them.
  */
 const BUBBLE_GROUPS: BubbleGroup[] = [
   { key: 'blocks', tools: [], panels: [], slot: BlockTypeSlot },
@@ -174,9 +175,15 @@ const BUBBLE_GROUPS: BubbleGroup[] = [
     tools: INLINE_TOOLS,
     panels: [DocumentLinkPopover],
     slot: ColorSlot,
-    after: [commentTool, addToAgentTool, mergeCellsTool],
+    after: [mergeCellsTool],
   },
-  { key: 'ai', tools: [], panels: [], slot: AiSlot },
+  // The AI commands rewrite words, and a selection of several cells is not
+  // words (inner#1860 design §5.2): Notion offers only its autofill over
+  // cells, Word Copilot rewrites plain paragraphs only. Words selected inside
+  // one cell are an ordinary text selection and keep the menu. Add to Agent
+  // hands over cells as well, so the group stays.
+  { key: 'ai', tools: [addToAgentTool], panels: [], slot: AiSlot, slotOverCells: false },
+  { key: 'comment', tools: [commentTool], panels: [] },
 ];
 
 /** How far from the selection the bar sits, per the ruling's visual spec. */
@@ -188,7 +195,7 @@ const GAP_FROM_SELECTION_PX = 8;
  * One rule covers both ways such a selection gets made, because the head of a
  * selection IS the end the user is moving: dragging with the mouse, the head
  * is where the button came up; extending with the keyboard, it is the edge
- * being pushed. Anchor there whenever the reader can see it, which is always
+ * being pushed. Anchor there whenever the user can see it, which is always
  * true of a drag — the pointer was on screen when it was released. Otherwise
  * fall back to `from`.
  *
@@ -203,7 +210,7 @@ const GAP_FROM_SELECTION_PX = 8;
  * Neither end being on screen is not this function's problem either: the bar
  * is meant to be gone by then, and the scroller's overflow is what takes it.
  * Neither Lexical, Slate, nor ProseMirror's own example hunts for a third
- * line the reader can see.
+ * line the user can see.
  *
  * Lines rather than DOM rectangles, deliberately. `Range.getClientRects()`
  * hands back the BORDER BOX of any element the range wholly contains, so a
@@ -245,7 +252,7 @@ function pickAnchorLine(
  * The live DOM range rather than `posToDOMRect`: that helper takes the min of
  * the two endpoints' x (`@tiptap/core` `dist/index.js:2443`), which over a
  * selection spanning several lines is neither endpoint's line nor the leftmost
- * edge the reader sees — a middle line starting at the block edge is left out
+ * edge the user sees — a middle line starting at the block edge is left out
  * of the sample entirely. The range's own bounding box covers every line.
  *
  * The range is in step with the editor's selection whenever the bar is up:
@@ -529,6 +536,31 @@ function BubbleBar({
   const wasSelectAllRef = React.useRef(
     editor.prosemirrorState.selection instanceof AllSelection,
   );
+  // Which controls the bar carries: a slot that does not act on table cells
+  // stands down while cells are selected, an entry that hands the words to the
+  // project needs a project, and a group left empty goes, separator and all.
+  const overCells = useEditorSnapshot(
+    editor,
+    (current) => current.prosemirrorState.selection instanceof CellSelection,
+  );
+  const projectId = useDocumentProjectId();
+  const groups = React.useMemo(
+    () => BUBBLE_GROUPS.flatMap((group): BubbleGroup[] => {
+      /**
+       * The entries that can be on the bar here.
+       * @param tools - A group's entries.
+       * @returns Those that need no project, and the rest when there is one.
+       */
+      const placed = (tools: ToolDef[]): ToolDef[] =>
+        tools.filter((tool) => tool.needsProject !== true || projectId !== null);
+      const slot = overCells && group.slotOverCells === false ? undefined : group.slot;
+      const tools = placed(group.tools);
+      const after = placed(group.after ?? []);
+      if (slot === undefined && tools.length === 0 && after.length === 0 && group.panels.length === 0) return [];
+      return [{ ...group, slot, tools, after }];
+    }),
+    [overCells, projectId],
+  );
 
   /**
    * The conditions that hold whichever path is asking.
@@ -536,7 +568,7 @@ function BubbleBar({
    * Focus somewhere that counts, a selection that is not empty, text inside
    * it, and an editable editor. Both askers go through this — the transaction
    * path and the mouse-event path below. That path used to carry its own
-   * shorter list and so put the bar up over an editor the reader had already
+   * shorter list and so put the bar up over an editor the user had already
    * left.
    *
    * The text condition asks what the selection HOLDS, not what class it is:
@@ -636,7 +668,7 @@ function BubbleBar({
      *
      * Both acts ride on the transaction rather than on the question "should
      * the bar show". That question is asked again on every later transaction,
-     * so a co-editor's keystroke arriving while the reader's pointer has moved
+     * so a co-editor's keystroke arriving while the user's pointer has moved
      * would answer with wherever it moved to; and its first line returns on an
      * empty selection, which is the one transition the drop has to catch.
      */
@@ -650,9 +682,9 @@ function BubbleBar({
       // editor regaining focus, an undo. Acting on all of them means the pin
       // is made from wherever the pointer last happened to be, at a moment
       // nobody asked about. Measured with a second Y.Doc over the wire: the
-      // reader select-alls with the pointer outside the body (no bar, right),
+      // user select-alls with the pointer outside the body (no bar, right),
       // switches away, the pointer drifts across the text, a co-editor types,
-      // the reader comes back — and the bar appears at a spot they merely
+      // the user comes back — and the bar appears at a spot they merely
       // passed over.
       const became = isAll && !wasSelectAllRef.current;
       wasSelectAllRef.current = isAll;
@@ -747,11 +779,11 @@ function BubbleBar({
       if (!(view.state.selection instanceof AllSelection)) return;
       // `isWarranted` before `pinToPointer`, not after: pinning is a write,
       // and a pin made while no bar is warranted would sit there waiting. The
-      // reader would then get the bar at a place the pointer passed through
+      // user would then get the bar at a place the pointer passed through
       // while they were typing somewhere else entirely.
       if (!isWarranted(view) || !pinToPointer()) return;
       // Straight to the state. This path carries no transaction of its own —
-      // the reader moved the pointer, they did not edit — so there is nothing
+      // the user moved the pointer, they did not edit — so there is nothing
       // for the transaction listener to hear. `pinToPointer` answered true
       // just above, so this bar hangs off the pointer.
       setWarranted(true);
@@ -810,7 +842,7 @@ function BubbleBar({
   /**
    * Step aside while a panel is up.
    *
-   * The panel holds the focus and the reader's attention while it is open, and
+   * The panel holds the focus and the user's attention while it is open, and
    * the two would otherwise be anchored to the same line: measured, a panel
    * that `flip` sent above its target landed on the bar's own pixels.
    *
@@ -844,7 +876,7 @@ function BubbleBar({
   overlayOpenRef.current = overlayOpen;
   // An open overlay is the reason the bar stays through a blur. Once the last
   // one closes that reason is spent, and nothing else arrives to say so: a
-  // blur carries no transaction, and a reader who has left sends no further
+  // blur carries no transaction, and a user who has left sends no further
   // events. So closing the last one is itself a moment to re-ask.
   React.useEffect(() => {
     if (!overlayOpen) setWarranted(shouldShow({ view: viewOf(editor) }));
@@ -863,7 +895,7 @@ function BubbleBar({
   //
   // Same route the link panel takes — a class on the bar, rather than a
   // second condition inside `shouldShow`: what it answers is whether a bar is
-  // warranted at all, and mid-drag it is. The reader has a selection and is
+  // warranted at all, and mid-drag it is. The user has a selection and is
   // still extending it.
   //
   // A delay would judge "the selection stopped moving", which a pause mid-drag
@@ -886,7 +918,7 @@ function BubbleBar({
       setPointerDown(false);
     };
     view.dom.addEventListener('pointerdown', down);
-    // On the root, capturing: readers often drag past the editor before
+    // On the root, capturing: users often drag past the editor before
     // letting go, and a listener on `view.dom` would miss that release and
     // leave the gate shut for good.
     const root = view.root as Document | ShadowRoot;
@@ -991,7 +1023,7 @@ function BubbleBar({
     // Not while the pointer is down. E3 settles the side "as the bar comes
     // up", and D1 keeps the bar off screen for the length of a drag-select, so
     // coming up IS the release. A side taken mid-drag is taken from a line the
-    // reader never saw the bar against: dragging upward there is room above the
+    // user never saw the bar against: dragging upward there is room above the
     // head where the drag starts and none where it ends, and with `flip` gone
     // by then only `shift` acts — which works on the cross axis and leaves the
     // bar hanging over the body's top edge. Measured in a browser: 40px of it
@@ -1032,7 +1064,7 @@ function BubbleBar({
 
   // The question is asked on every transaction, and on focus and blur — the
   // three moments that can change any of `shouldShow`'s terms. Focus and blur
-  // carry no transaction of their own, so a bar left up after the reader
+  // carry no transaction of their own, so a bar left up after the user
   // clicked away would have nothing to take it down.
   React.useEffect(() => {
     /** Re-ask whether the bar belongs on screen, and where it belongs. */
@@ -1118,7 +1150,7 @@ function BubbleBar({
         // A layer of the body, belonging where the selection is.
         {...barMark}
         // Above the whole-document entry. The bar is the transient one, summoned
-        // by a selection the reader just made, and its horizontal position
+        // by a selection the user just made, and its horizontal position
         // follows that selection far enough to reach the entry's corner. The
         // editor shell is `isolate`, so this number is compared against the
         // entry's and nothing else on the page.
@@ -1136,7 +1168,7 @@ function BubbleBar({
             && 'invisible pointer-events-none',
         )}
       >
-        {BUBBLE_GROUPS.map((group, index) => (
+        {groups.map((group, index) => (
           <React.Fragment key={group.key}>
             {index > 0 ? (
               <Separator

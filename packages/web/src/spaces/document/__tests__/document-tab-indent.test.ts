@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #904 验收 C1: Tab indents whatever block the caret is in.
@@ -159,13 +159,13 @@ describe('Tab indents the block the caret is in', () => {
     // BlockNote's own handler returns false when the block is first at its
     // level, and a Tab it does not claim is a Tab the browser answers:
     // measured in a browser, focus moved from the editor to `BODY` and the
-    // next five characters the reader typed reached nothing.
+    // next five characters the user typed reached nothing.
     const editor = openFirst({ type: 'paragraph', content: 'the only block' });
 
     expect(pressTab(editor)).toBe(true);
 
     // Still one block, still at the top level: refusing to indent is right,
-    // and holding the key is what keeps the caret where the reader left it.
+    // and holding the key is what keeps the caret where the user left it.
     expect(blocksOf(editor)).toHaveLength(1);
     expect(blocksOf(editor)[0]?.children).toHaveLength(0);
   });
@@ -330,7 +330,7 @@ describe('Tab says so when a block cannot go any further', () => {
 
   it('marks the block Tab could not move, and no other', () => {
     // The first block has nothing above it to nest under, so the document
-    // comes back unchanged and the reader is told with a nudge — the same
+    // comes back unchanged and the user is told with a nudge — the same
     // press one block down changes the document and says nothing (user
     // 2026-09-08).
     const editor = open({ type: 'paragraph', content: 'second' });
@@ -395,9 +395,9 @@ describe('Tab says so when a block cannot go any further', () => {
   });
 
   it('leaves a running mark alone on a second press', () => {
-    // A reader who cannot indent often presses again. The second press marks
+    // A user who cannot indent often presses again. The second press marks
     // the same block, which sets the same attribute on the same element and
-    // so restarts nothing — and a reader pressing again inside 260ms is
+    // so restarts nothing — and a user pressing again inside 260ms is
     // already watching the answer to the first press.
     const editor = open({ type: 'paragraph', content: 'second' });
     selectAcross(editor, 0, 0);
@@ -412,7 +412,7 @@ describe('Tab says so when a block cannot go any further', () => {
     // Two presses of the platform's select-all reach this selection, and it
     // cannot indent: the range a whole-document selection covers starts at
     // the first block, and `nestBlock` gives up on `startIndex === 0`. So the
-    // reader has to be told, the same as any other press that moves nothing.
+    // user has to be told, the same as any other press that moves nothing.
     //
     // This selection resolves OUTSIDE every block — its `$from` sits at depth
     // zero, whose parent is the doc rather than a `blockGroup` — so the range

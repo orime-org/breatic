@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Zustand store barrel — single import surface for all stores.
@@ -21,6 +21,7 @@ export { useCurrentUserStore } from '@web/stores/current-user';
 export type { CurrentUser, UserRole } from '@web/stores/current-user';
 export { useCanvasStore, isProposalIntent } from '@web/stores/canvas';
 export type { CreateIntent } from '@web/stores/canvas';
+export { useDocumentViewStore } from '@web/stores/document-view';
 export { useProjectStore } from '@web/stores/project';
 export type { ActiveProjectMeta } from '@web/stores/project';
 export { useToastStore } from '@web/stores/toast';

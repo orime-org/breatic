@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Hands a reader copying a reply the formula the model wrote.
+ * Hands a user copying a reply the formula the model wrote.
  *
  * KaTeX draws a formula three times over — MathML for a screen reader, the
  * LaTeX it came from, and the glyphs — so a selection across one serialises
- * two of the three, and the reader gets the formula twice with neither copy
+ * two of the three, and the user gets the formula twice with neither copy
  * readable. Importing this module puts a copy handler on the document that
  * replaces each formula with its own source instead, leaving the MathML in
  * the page where the screen reader still reaches it.
@@ -113,7 +113,7 @@ function replaceFormulaeWithSource(copied: Element): void {
     // The LaTeX KaTeX kept alongside the MathML it built.
     const source = formula.querySelector('annotation')?.textContent ?? '';
     // Read off the formula, which is all a copy of one holds: the block it
-    // stood in is not cloned when the reader drags across the formula alone.
+    // stood in is not cloned when the user drags across the formula alone.
     // KaTeX writes MathML's own way of saying it, and leaves the attribute
     // off an inline formula.
     const onItsOwnLine = formula.querySelector('math')?.getAttribute('display') === 'block';
@@ -142,14 +142,14 @@ document.addEventListener('copy', (event: ClipboardEvent): void => {
   host.style.cssText = 'position:fixed;top:0;left:-9999px';
 
   // Gecko makes a selection of several ranges out of a ctrl-drag, and all of
-  // them are what the reader asked for. Two of them can cut through the same
+  // them are what the user asked for. Two of them can cut through the same
   // formula, which the widening below would then hand over twice, so each one
   // is taken by whichever range reaches it first.
   const taken = new Set<Element>();
   for (let index = 0; index < selection.rangeCount; index += 1) {
-    // A reader who dragged across half a formula meant the formula: half of
+    // A user who dragged across half a formula meant the formula: half of
     // one is neither readable nor valid source. The widening is done on a
-    // copy, so what stays highlighted is what the reader drew.
+    // copy, so what stays highlighted is what the user drew.
     const range = selection.getRangeAt(index).cloneRange();
     const start = formulaAround(range.startContainer);
     const end = formulaAround(range.endContainer);

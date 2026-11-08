@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * One prompt per mode (#2218), and one list of shots per video node.
@@ -145,6 +145,20 @@ describe('one list of shots per video node', () => {
     const last = readShots(PID, SID, 'gen')?.[2]?.id ?? '';
     removeStoryboardShot(PID, SID, 'gen', last, 10);
     expect(durations()).toEqual([3, 7]);
+  });
+
+  it('names the shot it added, so the caller can open that one', () => {
+    addNode(PID, SID, nodeOf('video'));
+    enterStoryboardShots(PID, SID, 'gen', 5);
+    const added = addStoryboardShot(PID, SID, 'gen', 5, 6);
+    expect(added).toBe(readShots(PID, SID, 'gen')?.[2]?.id);
+  });
+
+  it('names no shot when none could be added', () => {
+    addNode(PID, SID, nodeOf('video'));
+    enterStoryboardShots(PID, SID, 'gen', 2);
+    expect(addStoryboardShot(PID, SID, 'gen', 2, 6)).toBeNull();
+    expect(readShots(PID, SID, 'gen')).toHaveLength(2);
   });
 
   it('lands proposed shots in place of the old ones', () => {

@@ -1,9 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Every paid call a chat turn makes leaves a row in `agent_usage_records`,
- * and what the turn is charged is what those rows add up to (#296).
+ * and what the turn is charged is what those rows add up to (#296). A memory
+ * consolidation's calls are recorded and charged the same way, each under its
+ * own key (#1363).
  *
  * Real database and Redis: the rows and the ledger are the thing under test.
  * Payments are on, so the charge reaches a lot and a balance check has
@@ -21,12 +23,24 @@ let cutOffAfter: string | undefined;
 /** When set, a call that ends normally still carries this generation id. */
 let rawId: string | undefined;
 let modelCalls = 0;
+/** When set, every consolidation call answers with this text. */
+let consolidationAnswer: string | undefined;
 
 vi.mock("@breatic/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof DomainModule>();
   const { modelProducing, saying, finishing } = await import("../helpers/model-double.js");
   return {
     ...actual,
+    generateTextRetry: async (...args: Parameters<typeof actual.generateTextRetry>) =>
+      consolidationAnswer === undefined
+        ? actual.generateTextRetry(...args)
+        : {
+          text: consolidationAnswer,
+          finishReason: "stop",
+          usage: { inputTokens: 1_000, inputTokenDetails: { noCacheTokens: 1_000 }, outputTokens: 1_000, outputTokenDetails: {}, totalTokens: 2_000 },
+          providerMetadata: undefined,
+          response: { id: `gen-${crypto.randomBytes(6).toString("hex")}` },
+        },
     resolveProvider: () => provider,
     getModel: () =>
       modelProducing(() => {
@@ -72,6 +86,7 @@ import {
   sessionCookieName,
   loadLocales,
   createQueue,
+  getAgentConfig,
 } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import { ceilToCreditCent } from "@breatic/shared";
@@ -177,7 +192,7 @@ async function seed(credits: number): Promise<{
  * @param seeded - Who sends, and where.
  * @returns The response status.
  */
-async function send(seeded: Awaited<ReturnType<typeof seed>>): Promise<number> {
+async function send(seeded: Awaited<ReturnType<typeof seed>>, model?: string): Promise<number> {
   const res = await app.request("/api/v1/chat/message", {
     method: "POST",
     headers: { Cookie: seeded.cookie, "Content-Type": "application/json" },
@@ -185,6 +200,7 @@ async function send(seeded: Awaited<ReturnType<typeof seed>>): Promise<number> {
       message: "hello",
       project_id: seeded.projectId,
       conversation_id: seeded.conversationId,
+      ...(model === undefined ? {} : { model }),
     }),
   });
   await res.text();
@@ -237,6 +253,59 @@ describe("a chat turn's model calls are recorded and charged at their cost", () 
     expect(row).toMatchObject({ cost_source: "provider" });
     expect(Number(row!.cost_usd)).toBeCloseTo(0.0123, 8);
     expect(Number(row!.credits)).toBeCloseTo(1.23, 6);
+  }, 60_000);
+
+  it("records the model the user picked for the conversation", async () => {
+    provider = "openrouter";
+    finishMetadata = { openrouter: { usage: { cost: 0.0123 } } };
+    const seeded = await seed(100_000);
+    expect(await send(seeded, "anthropic/claude-sonnet-5.5")).toBe(200);
+
+    const rows = await sql<{ model: string }[]>`
+      SELECT model FROM agent_usage_records WHERE actor_user_id = ${seeded.userId}
+    `;
+    expect(rows).toEqual([{ model: "anthropic/claude-sonnet-5.5" }]);
+  }, 60_000);
+});
+
+describe("a memory consolidation's calls are recorded and charged", () => {
+  it("charges every call of two folds from the same watermark, each under its own key", async () => {
+    provider = "deepseek";
+    finishMetadata = undefined;
+    const seeded = await seed(100_000);
+    const { consolidateWindow } = await import("@server/agent/memory-consolidator.js");
+    const window = {
+      userId: seeded.userId,
+      conversationId: seeded.conversationId,
+      projectId: seeded.projectId,
+      turns: [{ turnIndex: 1, messages: [{ role: "user" as const, content: "hello" }] }],
+      watermarkBefore: 0,
+      newWatermark: 1,
+    };
+    consolidationAnswer = "not json at all";
+    try {
+      expect(await consolidateWindow(window)).toBe("failed");
+      expect(await consolidateWindow(window)).toBe("failed");
+    } finally {
+      consolidationAnswer = undefined;
+    }
+
+    const rows = await sql<{ operation_key: string; model: string; credits: string }[]>`
+      SELECT operation_key, model, credits FROM agent_usage_records
+      WHERE actor_user_id = ${seeded.userId} AND feature = 'memory_consolidation'
+    `;
+    const keys = rows.map((row) => row.operation_key);
+    expect(rows).toHaveLength(2 * getAgentConfig().consolidation_answer_attempts);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(new Set(rows.map((row) => row.model))).toEqual(new Set([getAgentConfig().consolidation_model]));
+    const spent = await sql<{ reference_id: string; amount: string }[]>`
+      SELECT reference_id, amount FROM credit_ledger WHERE reference_id IN ${sql(keys)} AND entry_type = 'spend'
+    `;
+    expect(new Set(spent.map((entry) => entry.reference_id))).toEqual(new Set(keys));
+    for (const row of rows) {
+      const charged = spent.filter((entry) => entry.reference_id === row.operation_key).reduce((sum, entry) => sum + Number(entry.amount), 0);
+      expect(charged).toBeCloseTo(-ceilToCreditCent(Number(row.credits)), 6);
+    }
   }, 60_000);
 });
 

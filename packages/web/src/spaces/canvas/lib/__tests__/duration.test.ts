@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * How the canvas writes a duration out.
@@ -80,7 +80,7 @@ describe('formatDuration', () => {
 
 describe('formatSeconds', () => {
   it('carries the hour the same way the task counter does', () => {
-    // The reader sees both on one screen. An hour-long video used to read
+    // The user sees both on one screen. An hour-long video used to read
     // "60:00" here while an hour-old task read "1:00:00".
     expect(formatSeconds(3600)).toBe(formatDuration(HOUR));
     expect(formatSeconds(3600)).toBe('1:00:00');

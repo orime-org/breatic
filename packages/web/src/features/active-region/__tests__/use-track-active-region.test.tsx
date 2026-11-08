@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { renderHook } from '@testing-library/react';
@@ -211,10 +211,10 @@ describe('useTrackActiveRegion', () => {
   // Highlighted words say "these are the ones you are working with". The space
   // being handed the region makes that untrue of any highlight living
   // elsewhere, so those go; a highlight inside the space itself is still the
-  // reader's current one and stays.
+  // user's current one and stays.
   describe('taking the space region drops a highlight that lives elsewhere', () => {
     /**
-     * Highlights an element's words, the way a reader dragging across them
+     * Highlights an element's words, the way a user dragging across them
      * would.
      * @param host - The element whose words get highlighted.
      * @returns The live selection.

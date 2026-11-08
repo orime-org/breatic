@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect } from 'vitest';
 
@@ -439,7 +439,7 @@ describe('filterGatedDeletion — a Group outlives a deletion its members surviv
   it('keeps the Group while a member of it is vetoed', () => {
     // Deleting a Group asks for its members too. `busy` is handling, so it
     // stays — and a Group that still holds a member must stay with it, or the
-    // reader is left with loose nodes where their batch was.
+    // user is left with loose nodes where their batch was.
     const out = filterGatedDeletion(
       [{ id: 'g' }, { id: 'busy' }, { id: 'done' }],
       [],

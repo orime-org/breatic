@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The editor a text node opens when somebody writes in it (#1774).
@@ -27,6 +27,7 @@ import type { HocuspocusProvider } from '@hocuspocus/provider';
 import type * as Y from 'yjs';
 
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
+import { SelectionDragImage } from '@web/features/drag-image/selection-drag-image';
 import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-caret-presence';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import { whenBlurLeaves } from '@web/lib/blur-left';
@@ -117,6 +118,7 @@ export function buildTextNodeExtensions(options: {
       resolveCollaboratorName: collaboratorNames?.resolve,
     }),
     Placeholder.configure({ placeholder }),
+    SelectionDragImage,
   ];
 }
 
@@ -173,7 +175,7 @@ const wiringOf = new WeakMap<
     wiring: EditorWiring;
     fragment: Y.XmlFragment;
     caretProvider: Pick<HocuspocusProvider, 'awareness'> | null;
-    /** The reader is writing here, so the caret goes in on every show. */
+    /** The user is writing here, so the caret goes in on every show. */
     focusReturn: FocusReturn;
   }
 >();
@@ -287,7 +289,7 @@ export function TextNodeEditor({
   React.useEffect(() => {
     if (editor.isEditable !== editable) editor.setEditable(editable);
   }, [editor, editable]);
-  // Back on screen after a switch of Space, the caret goes back in: the reader
+  // Back on screen after a switch of Space, the caret goes back in: the user
   // was writing here when they left.
   useFocusReturn(
     bound?.focusReturn,

@@ -4,7 +4,7 @@
 # Guidelines:
 #   modes.*.label       — the product's name for this mode, in the words the
 #                         picker puts on screen. The mode code is nowhere in
-#                         the panel, so this is the only thing a reader can
+#                         the panel, so this is the only thing a user can
 #                         match an answer against: a name of the catalog's own
 #                         invention names a mode no selector shows. English in
 #                         every locale, the way the pickers hold them.
@@ -13,7 +13,7 @@
 #                         mode reaches, so the sources it names have to be the
 #                         ones the picker offers for this mode: a description
 #                         naming a reference image, a driving video, a portrait
-#                         or a first frame is telling a reader which slots they
+#                         or a first frame is telling a user which slots they
 #                         will be given, and "no media input needed" is telling
 #                         them there are none. Guarded by domain's
 #                         guides-name-what-the-model-takes test, which reads
@@ -160,11 +160,6 @@ audio:
       description: >
         Generate sound effects or ambient audio from a text description.
         Short-form audio clips for Foley, UI sounds, or environmental audio.
-    extend:
-      label: Music Extension
-      description: >
-        Continue an existing audio track with a seamless tail in the same
-        style.
     separate:
       label: Audio Separation
       description: >
@@ -194,12 +189,10 @@ three_d:
     t23d:
       label: Text to 3D
       description: >
-        Generate a 3D model from a text description. Outputs mesh with
-        textures in GLB/FBX/OBJ format. Supports PBR materials, topology
-        control, and polycount targeting.
+        Generate a 3D model (GLB) from a text description, with optional
+        texture and PBR materials, a face limit and low-poly topology.
     i23d:
       label: Image to 3D
       description: >
-        Convert one or more 2D images into a 3D model. Single-image input
-        for quick conversion, multi-view input for higher fidelity. Some
-        models support mask-based object extraction.
+        Turn one picture of an object, or two to four views of it in front,
+        left, back, right order, into a 3D model (GLB).

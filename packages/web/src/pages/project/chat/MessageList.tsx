@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { ArrowDown } from 'lucide-react';
 import * as React from 'react';
@@ -39,19 +39,19 @@ interface MessageListProps {
    */
   skeleton?: boolean;
   /**
-   * How many times the reader has pressed send in this panel.
+   * How many times the user has pressed send in this panel.
    *
-   * Only the fact that it changed is used. Sending is a thing the reader
+   * Only the fact that it changed is used. Sending is a thing the user
    * does, and nothing about the list can stand in for it: the same messages
    * arrive when the server is asked for them again, with different ids and a
-   * reply in the form it was stored — a change with no reader behind it.
+   * reply in the form it was stored — a change with no user behind it.
    */
   sentCount?: number;
   /**
    * Which conversation these messages belong to.
    *
    * Read only to notice that it changed: arriving in another conversation puts
-   * a different exchange in front of the reader, and it starts at its last
+   * a different exchange in front of the user, and it starts at its last
    * word -- wherever they had scrolled to in the one before says nothing about
    * this one.
    */
@@ -81,7 +81,7 @@ function MessageSkeleton(): React.JSX.Element {
         <div key={round} className='mb-3.5'>
           {/* One question, two lines of answer, laid out the way real messages
               are. A stack of blocks reads as "something is blinking", not as a
-              conversation, and a conversation is what the reader is waiting
+              conversation, and a conversation is what the user is waiting
               for. The widths grow group by group so it reads as content rather
               than as three identical cells. */}
           {/* `h-4` is 16px, settled against the drawing (#133): a bar stands
@@ -108,7 +108,7 @@ function MessageSkeleton(): React.JSX.Element {
 
 /**
  * Scrollable message column. Follows a reply as it is written, but only while
- * the reader is at the bottom: once they scroll up, the column stays where
+ * the user is at the bottom: once they scroll up, the column stays where
  * they put it until they come back down. Renders `<ChatEmpty />` when there
  * are no messages yet (new conversation greeting + quick actions).
  * @param root0 - The component props.
@@ -117,7 +117,7 @@ function MessageSkeleton(): React.JSX.Element {
  * @param root0.ready - The conversation has arrived and can be drawn.
  * @param root0.skeleton - The wait is long enough to be worth showing.
  * @param root0.conversationId - Which conversation these messages belong to.
- * @param root0.sentCount - How many times the reader has pressed send.
+ * @param root0.sentCount - How many times the user has pressed send.
  * @param root0.hasEarlier - The conversation reaches back further than this.
  * @param root0.onLoadEarlier - Called to load what comes before these.
  * @param root0.onQuickAction - Called with a quick-action label from the empty state.
@@ -139,7 +139,7 @@ function MessageListInner({
   const t = useTranslation();
   // Who the column belongs to, and everything that follows from it. The
   // scroller and the box the messages are laid out in are handed over below;
-  // what the reader does anywhere else is sent in.
+  // what the user does anywhere else is sent in.
   const column = useFollowColumn();
   const { send } = column;
   const count = messages.length;
@@ -147,7 +147,7 @@ function MessageListInner({
   const empty = ready && count === 0;
 
   // Sending says "show me what happens next"; arriving in another
-  // conversation puts a different exchange in front of the reader. Both end at
+  // conversation puts a different exchange in front of the user. Both end at
   // its last word, and both get there at once: there is nothing to watch
   // travel between two conversations, and the message just sent is held out of
   // the list until the first frame, so there is nothing to follow either.
@@ -158,7 +158,7 @@ function MessageListInner({
     send('conversationSwitched');
   }, [conversationId, send]);
 
-  /** Tell the column the reader opened a thinking block. */
+  /** Tell the column the user opened a thinking block. */
   const thinkingOpened = React.useCallback((): void => {
     send('thinkingOpened');
   }, [send]);
@@ -178,7 +178,7 @@ function MessageListInner({
     void trackEarlier(loadKey, onLoadEarlier());
   }, [send, onLoadEarlier, trackEarlier, loadKey]);
 
-  /** Take the reader back to the newest message and stay there. */
+  /** Take the user back to the newest message and stay there. */
   const backToEnd = React.useCallback((): void => {
     send('wayBackPressed');
   }, [send]);
@@ -234,14 +234,14 @@ function MessageListInner({
                 // list through a render each time a fold starts and ends.
                 consolidating={m.streaming === true ? consolidating : undefined}
                 // Opening a thinking block is the one press in this column
-                // that changes its height, and the reader who made it wants
+                // that changes its height, and the user who made it wants
                 // to read what appeared. Following would take it off the top
                 // of the screen: measured in a browser, a paragraph 247px
                 // down a viewport grown by 400px ended up 153px above it.
                 // Handing the column over rather than skipping this one
                 // growth -- the block is usually opened while a turn is still
                 // being written, and skipping once would let the next chunk
-                // carry the reader off anyway. The way back appears as this
+                // carry the user off anyway. The way back appears as this
                 // runs. Whether this should hand the column over at all is
                 // #254: it answers to no line of the task it belongs to.
                 onThinkingOpen={thinkingOpened}
@@ -252,7 +252,7 @@ function MessageListInner({
       </ScrollArea>
       {/* Over the foot of the column rather than in it: it is a way back, not
           part of the conversation, and a row of its own would push the newest
-          message up every time the reader looked away. */}
+          message up every time the user looked away. */}
       {column.showWayBack ? (
         <Button
           data-testid='back-to-latest'

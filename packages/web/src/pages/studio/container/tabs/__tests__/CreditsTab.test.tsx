@@ -1,5 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
+
+import type { CreditDecimal } from '@breatic/shared';
 
 import type { ReactElement } from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
@@ -32,13 +34,13 @@ vi.mock('@web/lib/use-scrolled-to-end', () => ({
  */
 function credits(over: Partial<StudioCreditsView> = {}): StudioCreditsView {
   return {
-    spendable: 4910,
-    debt: 0,
+    spendable: '4910.000000' as CreditDecimal,
+    debt: '0.000000' as CreditDecimal,
     lots: [
       {
         id: 'lot-1',
-        purchasedCredits: 4550,
-        remainingCredits: 3120,
+        purchasedCredits: '4550.000000' as CreditDecimal,
+        remainingCredits: '3120.000000' as CreditDecimal,
         buyerName: '张伟',
         createdAt: '2026-08-19T00:00:00.000Z',
       },
@@ -54,9 +56,9 @@ function credits(over: Partial<StudioCreditsView> = {}): StudioCreditsView {
           projectName: '夏季广告片',
           model: 'seedance-1.5-pro',
           provider: 'volcengine',
-          charged: -42.5,
-          consumed: -42.5,
-          owed: 0,
+          charged: '-42.500000' as CreditDecimal,
+          consumed: '-42.500000' as CreditDecimal,
+          owed: '0.000000' as CreditDecimal,
           createdAt: '2026-08-21T00:00:00.000Z',
         },
       ],
@@ -119,7 +121,7 @@ describe('CreditsTab', () => {
   it('一分都没有时说清是没指定，不是空表格', async () => {
     // 买了积分却没指定给这个 studio，是新模型下最常见的「为什么是 0」。
     fetchStudioCredits.mockResolvedValue(
-      credits({ spendable: 0, lots: [], ledger: { items: [], nextCursor: null } }),
+      credits({ spendable: '0.000000' as CreditDecimal, lots: [], ledger: { items: [], nextCursor: null } }),
     );
     renderTab(<CreditsTab slug='acme' />);
 
@@ -134,22 +136,22 @@ describe('CreditsTab', () => {
     // what to do next.
     const cases = [
       {
-        head: { spendable: 4910, debt: 0 },
+        head: { spendable: '4910.000000' as CreditDecimal, debt: '0.000000' as CreditDecimal },
         hint: 'Generating in this Studio\'s Projects spends these credits.',
         prompt: null,
       },
       {
-        head: { spendable: 0, debt: 0, lots: [] },
+        head: { spendable: '0.000000' as CreditDecimal, debt: '0.000000' as CreditDecimal, lots: [] },
         hint: 'No credits are assigned to this Studio yet.',
         prompt: 'Credits have to be assigned to a Studio before they can be spent.',
       },
       {
-        head: { spendable: 0, debt: 0 },
+        head: { spendable: '0.000000' as CreditDecimal, debt: '0.000000' as CreditDecimal },
         hint: 'This Studio has spent all of its credits.',
         prompt: 'Assign more credits from your account credits.',
       },
       {
-        head: { spendable: -320, debt: 320 },
+        head: { spendable: '-320.000000' as CreditDecimal, debt: '320.000000' as CreditDecimal },
         hint: 'Credits assigned next will pay off what is owed first.',
         prompt: 'they pay off what is owed first',
       },
@@ -211,7 +213,7 @@ describe('CreditsTab', () => {
     });
     const second = credits({
       ledger: {
-        items: [{ ...credits().ledger.items[0]!, id: 'e2', charged: -8 }],
+        items: [{ ...credits().ledger.items[0], id: 'e2', charged: '-8.000000' as CreditDecimal }],
         nextCursor: null,
       },
     });
@@ -234,7 +236,7 @@ describe('CreditsTab', () => {
   });
   it('下一页没到时说出来，已经读到的照样在', async () => {
     // 失败落在一次翻页上，第一页的可用额、充值记录和已读的流水都还在手里。
-    // 底部那块本来就是给这句话留的位置 —— 空着，读者只看到滚动停住了。
+    // 底部那块本来就是给这句话留的位置 —— 空着，用户只看到滚动停住了。
     const first = credits({
       ledger: { items: credits().ledger.items, nextCursor: 'cursor-1' },
     });
@@ -257,7 +259,7 @@ describe('CreditsTab', () => {
   });
 
   it('下一页失败之后，滚动还能再要一次', async () => {
-    // 这一页没到不是终点。监听要留着，读者再滚一下就是再问一次。
+    // 这一页没到不是终点。监听要留着，用户再滚一下就是再问一次。
     const first = credits({
       ledger: { items: credits().ledger.items, nextCursor: 'cursor-1' },
     });
@@ -308,9 +310,9 @@ describe('CreditsTab', () => {
   it('欠着账时可用额是负数，欠账在充值记录里单独一行', async () => {
     fetchStudioCredits.mockResolvedValue(
       credits({
-        spendable: -320,
-        debt: 320,
-        lots: [{ ...credits().lots![0]!, remainingCredits: 0 }],
+        spendable: '-320.000000' as CreditDecimal,
+        debt: '320.000000' as CreditDecimal,
+        lots: [{ ...credits().lots![0], remainingCredits: '0.000000' as CreditDecimal }],
       }),
     );
     renderTab(<CreditsTab slug='acme' />);
@@ -326,7 +328,7 @@ describe('CreditsTab', () => {
     // 这一块解释的就是上面那个数怎么来的，而这一格最需要解释：屏幕上写着
     // -320，下面得说得出这 -320 是「0 笔减去 320 欠账」。
     fetchStudioCredits.mockResolvedValue(
-      credits({ spendable: -320, debt: 320, lots: [] }),
+      credits({ spendable: '-320.000000' as CreditDecimal, debt: '320.000000' as CreditDecimal, lots: [] }),
     );
     renderTab(<CreditsTab slug='acme' />);
 
@@ -337,7 +339,7 @@ describe('CreditsTab', () => {
   });
 
   it('shows what is left after running tasks\' holds, and the hold as its own row before the total (inner#1611)', async () => {
-    fetchStudioCredits.mockResolvedValue(credits({ spendable: 4910, held: 800, available: 4110 }));
+    fetchStudioCredits.mockResolvedValue(credits({ spendable: '4910.000000' as CreditDecimal, held: '800.000000' as CreditDecimal, available: '4110.000000' as CreditDecimal }));
     renderTab(<CreditsTab slug='acme' />);
 
     expect(await screen.findByTestId('studio-spendable')).toHaveTextContent('4,110');
@@ -351,7 +353,7 @@ describe('CreditsTab', () => {
     // Holds of 45 against a balance of 40 take all 40 of it; a row of -45
     // above a total of 0 would not add up.
     fetchStudioCredits.mockResolvedValue(
-      credits({ spendable: 40, held: 45, available: 0, lots: [{ ...credits().lots![0]!, remainingCredits: 40 }] }),
+      credits({ spendable: '40.000000' as CreditDecimal, held: '45.000000' as CreditDecimal, available: '0.000000' as CreditDecimal, lots: [{ ...credits().lots![0], remainingCredits: '40.000000' as CreditDecimal }] }),
     );
     renderTab(<CreditsTab slug='acme' />);
 
@@ -363,7 +365,7 @@ describe('CreditsTab', () => {
     // Nothing is held out of a zero balance, so nothing will come back: the
     // run that holds is charged into debt when it succeeds.
     fetchStudioCredits.mockResolvedValue(
-      credits({ spendable: 0, held: 30, available: 0, lots: [{ ...credits().lots![0]!, remainingCredits: 0 }] }),
+      credits({ spendable: '0.000000' as CreditDecimal, held: '30.000000' as CreditDecimal, available: '0.000000' as CreditDecimal, lots: [{ ...credits().lots![0], remainingCredits: '0.000000' as CreditDecimal }] }),
     );
     renderTab(<CreditsTab slug='acme' />);
 
@@ -375,7 +377,7 @@ describe('CreditsTab', () => {
   });
 
   it('has no held row while nothing is held', async () => {
-    fetchStudioCredits.mockResolvedValue(credits({ held: 0, available: 4910 }));
+    fetchStudioCredits.mockResolvedValue(credits({ held: '0.000000' as CreditDecimal, available: '4910.000000' as CreditDecimal }));
     renderTab(<CreditsTab slug='acme' />);
 
     await screen.findByTestId('studio-spendable');
@@ -383,7 +385,7 @@ describe('CreditsTab', () => {
   });
 
   it('says the credits are held, not spent, when running tasks hold all of them', async () => {
-    fetchStudioCredits.mockResolvedValue(credits({ spendable: 80, held: 80, available: 0 }));
+    fetchStudioCredits.mockResolvedValue(credits({ spendable: '80.000000' as CreditDecimal, held: '80.000000' as CreditDecimal, available: '0.000000' as CreditDecimal }));
     renderTab(<CreditsTab slug='acme' />);
 
     await screen.findByTestId('studio-spendable');
@@ -404,7 +406,7 @@ describe('CreditsTab', () => {
 
   it('一笔都没有也不欠账时，这一块才是空态', async () => {
     fetchStudioCredits.mockResolvedValue(
-      credits({ spendable: 0, debt: 0, lots: [] }),
+      credits({ spendable: '0.000000' as CreditDecimal, debt: '0.000000' as CreditDecimal, lots: [] }),
     );
     renderTab(<CreditsTab slug='acme' />);
 
@@ -419,10 +421,10 @@ describe('CreditsTab', () => {
         ledger: {
           items: [
             {
-              ...credits().ledger.items[0]!,
-              charged: -30,
-              consumed: -350,
-              owed: -320,
+              ...credits().ledger.items[0],
+              charged: '-30.000000' as CreditDecimal,
+              consumed: '-350.000000' as CreditDecimal,
+              owed: '-320.000000' as CreditDecimal,
             },
           ],
           nextCursor: null,
@@ -446,10 +448,10 @@ describe('CreditsTab', () => {
         ledger: {
           items: [
             {
-              ...credits().ledger.items[0]!,
-              charged: 0,
-              consumed: -42.5,
-              owed: -42.5,
+              ...credits().ledger.items[0],
+              charged: '0.000000' as CreditDecimal,
+              consumed: '-42.500000' as CreditDecimal,
+              owed: '-42.500000' as CreditDecimal,
             },
           ],
           nextCursor: null,
@@ -471,10 +473,10 @@ describe('CreditsTab', () => {
         ledger: {
           items: [
             {
-              ...credits().ledger.items[0]!,
-              charged: 0,
-              consumed: -42.5,
-              owed: 0,
+              ...credits().ledger.items[0],
+              charged: '0.000000' as CreditDecimal,
+              consumed: '-42.500000' as CreditDecimal,
+              owed: '0.000000' as CreditDecimal,
             },
           ],
           nextCursor: null,
@@ -496,15 +498,15 @@ describe('CreditsTab', () => {
         ledger: {
           items: [
             {
-              ...credits().ledger.items[0]!,
+              ...credits().ledger.items[0],
               kind: 'debt_repayment',
               projectId: null,
               projectName: null,
               model: null,
               provider: null,
-              charged: -150,
-              consumed: 0,
-              owed: 0,
+              charged: '-150.000000' as CreditDecimal,
+              consumed: '0.000000' as CreditDecimal,
+              owed: '0.000000' as CreditDecimal,
             },
           ],
           nextCursor: null,

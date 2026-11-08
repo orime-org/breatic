@@ -8,12 +8,11 @@
 #
 # Built from the repository root, which is what puts THIRD-PARTY.md within
 # reach. wrangler resolves the build context against the directory its config
-# sits in and defaults it to this file's own directory, so both `[[containers]]`
-# blocks in wrangler.toml.template carry `image_build_context = "../.."`. A
-# wrangler.toml is each developer's own copy and never enters the repository:
-# one made before 2026-09-13 needs those two lines added, or the first COPY
-# below fails. Every source taken from the context is written from the
-# repository root.
+# sits in and defaults it to this file's own directory, so each top-level and
+# production container block in wrangler.toml.template carries
+# `image_build_context = "../.."`. A wrangler.toml is each developer's own copy;
+# keep that context in every container block. Every source taken from the
+# context is written from the repository root.
 
 # ── Bundle the service into one file ─────────────────────────────────────
 # The official Node image for this stage only: it carries npm, and nothing

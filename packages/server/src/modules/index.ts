@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * `@server` module barrel - server-private domain SERVICES only.
@@ -20,6 +20,9 @@ export * as assetUploadService from "@server/modules/asset/assetUpload.service.j
 export * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
 export * as pasteAssetsService from "@server/modules/asset/pasteAssets.service.js";
 export * as sceneAssetService from "@server/modules/asset/scene-asset.service.js";
+export * as sceneTasksService from "@server/modules/asset/scene-tasks.service.js";
+export * as sceneGenerationService from "@server/modules/asset/scene-generation.service.js";
+export { holdRun } from "@server/modules/task/generation-task.js";
 export * as transferReferenceService from "@server/modules/asset/transfer-reference.service.js";
 export * as authService from "@server/modules/auth/auth.service.js";
 export * as invitationService from "@server/modules/invitation/invitation.service.js";
@@ -47,3 +50,5 @@ export * as stripeWebhookRecordingService from "@server/modules/stripe-webhook/r
 export * as stripeWebhookDispatchService from "@server/modules/stripe-webhook/dispatch.service.js";
 
 export * as maintenanceService from "@server/modules/maintenance/maintenance.service.js";
+
+export * as creditGrantService from "@server/modules/credit-grant/credit-grant.service.js";

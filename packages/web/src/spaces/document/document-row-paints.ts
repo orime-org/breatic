@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The one judgement of whether a block's own content paints anything.
  *
  * The looks-empty hint asks it, so it can offer the words "Start writing…" on a
- * block a reader sees nothing on (user 2026-08-18 settled which types those
+ * block a user sees nothing on (user 2026-08-18 settled which types those
  * are).
  *
  * WHICH TYPES CAN BE INVISIBLE is the whole of the judgement: a paragraph and
@@ -27,12 +27,12 @@ export interface OwnContent {
   readonly quoted: boolean;
   /** Whether it carries a document number, which is drawn before it. */
   readonly numbered: boolean;
-  /** How many of its inline children a reader can see. */
+  /** How many of its inline children a user can see. */
   readonly visibleInlines: number;
 }
 
 /**
- * Whether the reader sees anything of this block's own content.
+ * Whether the user sees anything of this block's own content.
  * @param content - See {@link OwnContent}.
  * @returns True when something is drawn.
  */

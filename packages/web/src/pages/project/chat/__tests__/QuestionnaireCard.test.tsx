@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The questionnaire card (inner#1542).
@@ -42,7 +42,7 @@ afterEach(() => {
 });
 
 /**
- * A card waiting for the reader.
+ * A card waiting for the user.
  * @param onAnswer - Where the answers go.
  * @returns The card's element.
  */
@@ -64,7 +64,7 @@ function question(n: number): HTMLElement {
   return screen.getAllByTestId('questionnaire-question')[n - 1]!;
 }
 
-describe('a card waiting for the reader', () => {
+describe('a card waiting for the user', () => {
   it('numbers its questions from 1 in front of each label', () => {
     waitingCard();
     expect(screen.getAllByTestId('questionnaire-question-label').map((el) => el.textContent)).toEqual([
@@ -164,7 +164,7 @@ describe('a card waiting for the reader', () => {
     expect(within(question(3)).getAllByTestId('questionnaire-tile').map((o) => o.dataset.picked)).toEqual(['false', 'true', 'false']);
   });
 
-  it('asks a question with no options for the reader\'s own words, and one with options for anything else', () => {
+  it('asks a question with no options for the user\'s own words, and one with options for anything else', () => {
     render(
       <QuestionnaireAnswerContext.Provider value={{ answer: vi.fn(), busy: false }}>
         <QuestionnaireCard
@@ -275,14 +275,14 @@ describe('a card already answered', () => {
     expect(screen.queryByTestId('questionnaire-submit')).toBeNull();
   });
 
-  it('says above the summary that these are the reader\'s answers', () => {
+  it('says above the summary that these are the user\'s answers', () => {
     render(
       <QuestionnaireCard questionnaire={{ toolCallId: 'ask-1', questions: QUESTIONS, state: 'answered', answers: [{ index: 0, selected: ['9:16'] }] }} />,
     );
     expect(screen.getByTestId('questionnaire-summary-title')).toHaveTextContent('Your answers');
   });
 
-  it('joins several answers to one question as a list in the reader\'s language', () => {
+  it('joins several answers to one question as a list in the user\'s language', () => {
     render(
       <QuestionnaireCard
         questionnaire={{
@@ -314,7 +314,7 @@ describe('a card already answered', () => {
   });
 });
 
-describe('a card the reader replied to in the chat', () => {
+describe('a card the user replied to in the chat', () => {
   it('is one line until opened, then the questions read-only, and closes again', async () => {
     const user = userEvent.setup();
     render(<QuestionnaireCard questionnaire={{ toolCallId: 'ask-1', questions: QUESTIONS, state: 'replied' }} />);

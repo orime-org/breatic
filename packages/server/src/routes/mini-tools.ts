@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * `POST /mini-tools` — the one entry every server-run mini-tool shares
@@ -9,10 +9,11 @@
  * export uploads like any other file.
  */
 
+import { tasksQueue } from "@server/modules/task/tasks-queue.js";
+import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
 import { currentConsent } from "@breatic/core";
 import { Hono } from "hono";
-import { createQueue, defaultJobOpts } from "@breatic/core";
-import { taskService } from "@breatic/domain";
+import { defaultJobOpts } from "@breatic/core";
 import { miniToolById, miniToolRequestSchema, outputTemplateOf } from "@breatic/shared/mini-tools";
 
 import { requireAuth } from "@server/middleware/auth.js";
@@ -29,7 +30,6 @@ const miniTools = new Hono<{ Variables: AuthVariables }>();
 
 miniTools.use("*", requireAuth);
 
-const tasksQueue = createQueue("tasks");
 
 /**
  * Run one mini-tool onto the result nodes the browser built.
@@ -54,7 +54,7 @@ miniTools.post(
   const run = await prepareRun(spec, body);
 
   const taskType = outputTemplateOf(spec).modality;
-  const task = await taskService.create(
+  const task = await admitGeneration(
     user.id,
     body.project_id,
     body.space_id,
@@ -75,7 +75,7 @@ miniTools.post(
     label: spec.id,
     credits: () => Promise.resolve(run.credits),
     enqueue: () =>
-      tasksQueue.add(
+      tasksQueue().add(
         "execute-mini-tool",
         {
           taskId: task.id,

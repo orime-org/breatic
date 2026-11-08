@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * document space 的词表本身、版本号怎么算出来，以及「我这份跟服务器那份一样
@@ -51,7 +51,7 @@ function parse(
  * `publishedAt` is not earlier than the published one, so a change released
  * under an old date would be refused wherever a newer one is published.
  */
-const RELEASED = { version: "073b3fad62d34da9", publishedAt: "2026-10-18T09:00:00Z" };
+const RELEASED = { version: "bbfda373b2886079", publishedAt: "2026-10-31T04:33:58Z" };
 
 describe("the released vocabulary", () => {
   it("is pinned with its release time: a changed vocabulary needs a later publishedAt", () => {
@@ -250,4 +250,13 @@ describe("判定：meta 里那份就是我这一版吗", () => {
     expect(documentSchemaMatches("aa", { version: 1 })).toBe(false);
     expect(documentSchemaDiffers("aa", { version: 1 })).toBe(false);
   });
+});
+
+describe("pending media blocks", () => {
+  it.each(["image", "video", "audio"] as const)(
+    "%s carries uploadId, the id of the upload it waits for",
+    (node) => {
+      expect(DOCUMENT_SCHEMA.nodes[node]).toContain("uploadId");
+    },
+  );
 });

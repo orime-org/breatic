@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type * as React from 'react';
 import { describe, it, expect, vi } from 'vitest';
@@ -190,7 +190,7 @@ describe('NodeContextMenu', () => {
 
   // #2108: the parent supplies onDownload only for a node whose body is
   // showing an asset. The item is on the menu either way — without a handler
-  // it is disabled, so the reader sees that this node has nothing to take.
+  // it is disabled, so the user sees that this node has nothing to take.
   it('disables the download item when no handler is supplied', () => {
     setup({ target: 'node', onUpload: () => {} });
     expect(screen.getByTestId('node-menu-download')).toHaveAttribute(
@@ -426,14 +426,14 @@ describe('NodeContextMenu', () => {
 
   // #2175: only a text node offers Snapshot. Every other modality's content
   // is an asset that already has a row of its own; words are replaced by the
-  // next keystroke and nothing keeps them unless the reader says so.
+  // next keystroke and nothing keeps them unless the user says so.
   it('leaves Snapshot off a node that is not made of words', () => {
     setup({ target: 'node', onUpload: () => {} });
     expect(screen.queryByTestId('node-menu-snapshot')).toBeNull();
   });
 
   // Same answer Download gives a node showing nothing: the item stays where
-  // the reader expects it, greyed out, rather than disappearing.
+  // the user expects it, greyed out, rather than disappearing.
   it('disables Snapshot on a node saying nothing', () => {
     setup({ target: 'node', onUpload: () => {}, snapshotOffered: true });
     expect(screen.getByTestId('node-menu-snapshot')).toHaveAttribute(

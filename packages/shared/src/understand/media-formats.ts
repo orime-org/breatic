@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Which media the understanding endpoint takes, and what it calls each one.
@@ -59,9 +59,9 @@ export const IMAGE_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * What a reader calls each format, keyed on the subtype these tables use.
+ * What a user calls each format, keyed on the subtype these tables use.
  *
- * The same words `FORMAT_SPELLING` decides for the sentences a reader sees,
+ * The same words `FORMAT_SPELLING` decides for the sentences a user sees,
  * kept separately because the two are asked different questions. That one
  * takes a whole media type, which is what a refusal holds; `names` below
  * walks `AUDIO_FORMATS`' VALUES, which are bare subtypes (`mp3`, `wav`), and
@@ -69,7 +69,7 @@ export const IMAGE_TYPES: ReadonlySet<string> = new Set([
  * them would mean teaching that table to guess a medium for a subtype, and
  * `mp4` is two formats depending on which one it guessed.
  */
-const READER_SPELLING: Readonly<Record<string, string>> = {
+const USER_SPELLING: Readonly<Record<string, string>> = {
   png: "PNG",
   jpeg: "JPG",
   webp: "WebP",
@@ -84,12 +84,12 @@ const READER_SPELLING: Readonly<Record<string, string>> = {
 };
 
 /**
- * The formats in one of these tables, as names a reader could act on.
+ * The formats in one of these tables, as names a user could act on.
  *
- * Derived so that anything telling a reader what to convert to is saying what
+ * Derived so that anything telling a user what to convert to is saying what
  * the table says: written out by hand a list goes on naming two formats the
  * day a third is added, and nothing reports it. The subtype alone, because the
- * name a format travels under here is not always one a reader could act on —
+ * name a format travels under here is not always one a user could act on —
  * this endpoint calls a .mov `video/mov`, and no converter knows that type.
  * @param types - What the endpoint calls each format it takes.
  * @returns The names, e.g. `["MP3", "WAV"]`.
@@ -97,7 +97,7 @@ const READER_SPELLING: Readonly<Record<string, string>> = {
 function names(types: Iterable<string>): readonly string[] {
   return [...new Set(types)].map((type) => {
     const subtype = type.split("/").pop() ?? type;
-    return READER_SPELLING[subtype] ?? subtype;
+    return USER_SPELLING[subtype] ?? subtype;
   });
 }
 
