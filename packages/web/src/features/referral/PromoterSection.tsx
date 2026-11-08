@@ -79,7 +79,8 @@ function PromoterBody({ view }: { view: AccountReferral }): React.JSX.Element {
   );
   const { promoter, program } = view;
   const card = 'flex items-center justify-between gap-4 rounded-content-sm border border-border px-4 py-3';
-  const dialog = <PromoterApplyDialog open={open} onOpenChange={setOpen} termsVersion={program.termsVersion} />;
+  // The form exists only while applications are open; a closed program has no terms to agree to.
+  const dialog = program.open ? <PromoterApplyDialog open={open} onOpenChange={setOpen} termsVersion={program.termsVersion} /> : null;
 
   if (promoter.state === 'approved') {
     const off = promoter.codeStatus !== 'active';

@@ -333,6 +333,22 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
     expect(getReferralForms().apply).toEqual(EMPTY_APPLICATION);
   });
 
+  it('closes the application of a rejected applicant when applications close', async () => {
+    const rejected: AccountReferral = { ...OPEN, promoter: { state: 'rejected', note: null } };
+    const user = userEvent.setup();
+    api.get.mockResolvedValue(rejected);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><PromoterSection /></QueryClientProvider>);
+    await user.click(await screen.findByRole('button', { name: 'Apply again' }));
+    await fillForm(user);
+
+    api.get.mockResolvedValue({ ...rejected, program: { open: false, termsVersion: '' } });
+    await act(async () => { await client.invalidateQueries(); });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.queryByRole('button', { name: 'Apply again' })).toBeNull();
+    expect(api.apply).not.toHaveBeenCalled();
+  });
+
   it('asks for agreement to the terms before sending', async () => {
     const user = userEvent.setup();
     setup(OPEN);
