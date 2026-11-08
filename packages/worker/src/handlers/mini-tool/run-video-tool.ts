@@ -24,7 +24,7 @@ import {
 import { miniToolExecutionOutputSchema, videoContainerJobId, type MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
 import { advanceMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
-import { chunkInputId, FullLedgerInvalid, frameRecipeOf, rangeWindow, readJobLedger, segmentRecipesOf } from "@worker/handlers/video-presentation-recipes.js";
+import { chunkInputId, frameRecipeOf, FullLedgerInvalid, rangeWindow, readJobLedger, segmentRecipesOf, SOURCE_INPUT_ID } from "@worker/handlers/video-presentation-recipes.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 
@@ -40,8 +40,6 @@ type Step = Awaited<ReturnType<typeof upstreamStepRepo.listSteps>>[number];
 
 /** An output result's schema. */
 const miniToolExecutionResultSchema = miniToolExecutionOutputSchema.shape.result.unwrap();
-/** The one input of every tool job: the registered source. */
-const SOURCE_INPUT_ID = "00000000-0000-4000-8000-000000000001";
 
 /**
  * The stored request of a container step, if any.

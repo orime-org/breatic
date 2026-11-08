@@ -23,10 +23,7 @@ import {
 import { videoContainerJobId } from '@breatic/shared/mini-tools';
 import { advanceMiniToolPlanJob } from '@worker/handlers/mini-tool/advance-plan-job.js';
 import { StillRunning } from '@worker/providers/still-running.js';
-import { audioOf, carrierTarget, chunkInputId, FullLedgerInvalid, readJobLedger, windowDuration, windowEntries } from '@worker/handlers/video-presentation-recipes.js';
-
-/** The one input of every presentation sub-job: the registered source. */
-const SOURCE_INPUT_ID = '00000000-0000-4000-8000-000000000001';
+import { audioOf, carrierTarget, chunkInputId, FullLedgerInvalid, readJobLedger, SOURCE_INPUT_ID, windowDuration, windowEntries } from '@worker/handlers/video-presentation-recipes.js';
 
 /** Everything one pickup acts with. */
 interface Pickup {

@@ -22,7 +22,7 @@ import {
   advanceChunks, advanceContainer, advanceGenerate, advanceRegistered, catalogModel, eachSubmitted, exactSeconds, expandFailureReason, modelStepCategory, providerModel, runLedger,
   type ExpandWindowState, type ModelRunAt, type ModelRunPosition, type ModelStepRun,
 } from "@worker/handlers/mini-tool/model-run-steps.js";
-import { audioOf, chunkInputId, segmentTarget, windowDuration, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
+import { audioOf, chunkInputId, segmentTarget, SOURCE_INPUT_ID, windowDuration, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 import { upstreamBody } from "@worker/providers/upstream-body.js";
@@ -31,7 +31,6 @@ type Expand = Extract<AcceptedMiniToolExecution, { tool: "video.expand" }>;
 type WindowStep = ExpandFailureReason["windows"][number]["step"];
 
 /** The input ids the recipes bind their objects under, fixed so a rebuilt request is the same request. */
-const SOURCE = "00000000-0000-4000-8000-000000000001";
 const PREVIOUS = "00000000-0000-4000-8004-000000000000";
 /**
  * A window's background input id.
@@ -112,8 +111,8 @@ export async function runMiniToolExpand(execution: unknown, userId: string, dead
       position.current = { window: k, step: "window" };
       const [input, mask, condition] = await eachSubmitted([
         () => advanceContainer(run, { stepKey: keyOf(plan, `window:${k}`), contentType: "video/mp4", failed: () => ({ failed: "failed", step: "window" }),
-          build: () => Promise.resolve({ recipe: { kind: "model_window", inputId: SOURCE, window: frames, timescale: table.timescale, entries: windowEntries(ledger, frames),
-            target: layer, grid, frame: plan.frame, sourceRoi: plan.sourceRoi, fill: [127, 127, 127], span: spans[k]! }, inputs: [{ inputId: SOURCE, storageKey: plan.sourceKey }] }) }, deadlineAt),
+          build: () => Promise.resolve({ recipe: { kind: "model_window", inputId: SOURCE_INPUT_ID, window: frames, timescale: table.timescale, entries: windowEntries(ledger, frames),
+            target: layer, grid, frame: plan.frame, sourceRoi: plan.sourceRoi, fill: [127, 127, 127], span: spans[k]! }, inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: plan.sourceKey }] }) }, deadlineAt),
         () => advanceContainer(run, { stepKey: keyOf(plan, `window_mask:${k}`), contentType: "video/mp4", failed: () => ({ failed: "failed", step: "window_mask" }),
           build: () => Promise.resolve({ recipe: { kind: "model_window_mask", grid, frame: plan.frame, sourceRoi: plan.sourceRoi, span: spans[k]! }, inputs: [] }) }, deadlineAt),
         ...(k === 0 ? [] : [() => advanceContainer(run, { stepKey: keyOf(plan, `condition:${k}`), contentType: "image/png", failed: () => ({ failed: "failed", step: "condition" }),
@@ -148,17 +147,17 @@ export async function runMiniToolExpand(execution: unknown, userId: string, dead
       const [from, to] = [presentationFrameAt(table, chunk.start).pts, presentationFrameAt(table, chunk.end - 1).displayEnd];
       const shown = plan.windows.flatMap((window, k) => (window.span.start < to && window.span.end > from ? [k] : []));
       return { stepKey: keyOf(plan, `composite:${c}`), contentType: "video/mp4", failed: () => ({ failed: "failed" }),
-        build: () => Promise.resolve({ recipe: { kind: "model_composite" as const, mode: "expand" as const, inputId: SOURCE, window: chunk, timescale: table.timescale,
+        build: () => Promise.resolve({ recipe: { kind: "model_composite" as const, mode: "expand" as const, inputId: SOURCE_INPUT_ID, window: chunk, timescale: table.timescale,
           entries: windowEntries(ledger, chunk), target: { ...output, format: undefined },
           backgrounds: shown.map((k) => ({ inputId: backgroundOf(k), window: spans[k]!, crop: plan.targetRoi })) },
-        inputs: [{ inputId: SOURCE, storageKey: plan.sourceKey }, ...shown.map((k) => ({ inputId: backgroundOf(k), storageKey: results[k]! }))] }) };
+        inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: plan.sourceKey }, ...shown.map((k) => ({ inputId: backgroundOf(k), storageKey: results[k]! }))] }) };
     }), deadlineAt);
     if (!("keys" in chunks)) return fail({ step: "composite", category: "failed" });
     position.current = { shared: "stitch" };
     const written = await advanceRegistered(run, { stepKey: keyOf(plan, "stitch"), namePrefix: "EXPAND", container: output.format === "webm-vp9" ? "webm" : "mp4",
-      build: () => Promise.resolve({ recipe: { kind: "stitch", inputId: SOURCE, target: output, audio: audioOf(ledger),
+      build: () => Promise.resolve({ recipe: { kind: "stitch", inputId: SOURCE_INPUT_ID, target: output, audio: audioOf(ledger),
         chunks: plan.composite.map((window, chunk) => ({ inputId: chunkInputId(chunk), duration: windowDuration(ledger, window) })) },
-      inputs: [{ inputId: SOURCE, storageKey: plan.sourceKey }, ...chunks.keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey }))] }) }, userId, deadlineAt);
+      inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: plan.sourceKey }, ...chunks.keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey }))] }) }, userId, deadlineAt);
     if (written === null) return fail({ step: "stitch", category: "failed" });
     pickup.results.set(0, written);
     return pickup;

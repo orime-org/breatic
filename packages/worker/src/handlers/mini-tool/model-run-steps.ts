@@ -23,7 +23,7 @@ import { advanceMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-
 import { appendStep, stepWorkKey } from "@worker/handlers/mini-tool/prepare-model-input.js";
 import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { registered } from "@worker/handlers/mini-tool/run-video-tool.js";
-import { chunkInputId, FullLedgerInvalid, readJobLedger, windowDuration, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
+import { chunkInputId, FullLedgerInvalid, readJobLedger, SOURCE_INPUT_ID, windowDuration, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
 import { HttpStatusError, UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 import { runPrediction } from "@worker/providers/wavespeed.js";
@@ -581,7 +581,6 @@ export interface ClipStep {
  */
 export async function advanceClip(run: ModelStepRun, planned: ClipStep, deadlineAt: number): Promise<StepEnded> {
   const { ledger, target, clip, order } = planned;
-  const source = "00000000-0000-4000-8000-000000000001";
   /**
    * The job preparing one window of the clip.
    * @param window - The window.
@@ -592,8 +591,8 @@ export async function advanceClip(run: ModelStepRun, planned: ClipStep, deadline
    * @throws {never} Never.
    */
   const prepare = (window: { start: number; end: number }, stepKey: string): ContainerStep => ({ stepKey, contentType: "video/mp4", failed: planned.failed,
-    build: () => Promise.resolve({ recipe: { kind: "prepare_model_input", inputId: source, window, timescale: ledger.plan.presentation.timescale,
-      entries: windowEntries(ledger, window), target, audio: null, order }, inputs: [{ inputId: source, storageKey: run.sourceKey }] }) });
+    build: () => Promise.resolve({ recipe: { kind: "prepare_model_input", inputId: SOURCE_INPUT_ID, window, timescale: ledger.plan.presentation.timescale,
+      entries: windowEntries(ledger, window), target, audio: null, order }, inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: run.sourceKey }] }) });
   // The reverse filter holds every decoded frame of its window, 8-bit 4:2:0 at the target size.
   const most = Math.max(1, Math.floor(getMiniToolsConfig().encoding.reverse_buffer_bytes / (target.width * target.height * 1.5)));
   if (order === "forward" || clip.end - clip.start <= most) return advanceContainer(run, prepare(clip, planned.stepKey), deadlineAt);
@@ -604,7 +603,7 @@ export async function advanceClip(run: ModelStepRun, planned: ClipStep, deadline
   if (!("keys" in chunks)) return chunks;
   const latestFirst = windows.map((window, k) => ({ window, key: chunks.keys[k]! })).reverse();
   return advanceContainer(run, { stepKey: planned.stepKey, contentType: "video/mp4", failed: planned.failed,
-    build: () => Promise.resolve({ recipe: { kind: "stitch", inputId: source, target, audio: null,
+    build: () => Promise.resolve({ recipe: { kind: "stitch", inputId: SOURCE_INPUT_ID, target, audio: null,
       chunks: latestFirst.map((chunk, at) => ({ inputId: chunkInputId(at), duration: windowDuration(ledger, chunk.window) })) },
-    inputs: [{ inputId: source, storageKey: run.sourceKey }, ...latestFirst.map((chunk, at) => ({ inputId: chunkInputId(at), storageKey: chunk.key }))] }) }, deadlineAt);
+    inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: run.sourceKey }, ...latestFirst.map((chunk, at) => ({ inputId: chunkInputId(at), storageKey: chunk.key }))] }) }, deadlineAt);
 }

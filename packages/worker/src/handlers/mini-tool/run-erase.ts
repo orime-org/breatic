@@ -21,7 +21,7 @@ import {
   advanceChunks, advanceContainer, advanceGenerate, advanceRegistered, catalogModel, eraseContainerCategory, modelStepCategory, providerModel, runLedger, type ModelRunAt,
   type ModelRunPosition, type ModelStepRun,
 } from "@worker/handlers/mini-tool/model-run-steps.js";
-import { audioOf, chunkInputId, modelInputTarget, segmentTarget, windowDuration, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
+import { audioOf, chunkInputId, modelInputTarget, segmentTarget, SOURCE_INPUT_ID, windowDuration, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 import { upstreamBody } from "@worker/providers/upstream-body.js";
@@ -30,7 +30,6 @@ type Erase = Extract<AcceptedMiniToolExecution, { tool: "video.erase" }>;
 type Step = EraseFailureReason["step"];
 
 /** The input ids the recipes bind their objects under, fixed so a rebuilt request is the same request. */
-const SOURCE = "00000000-0000-4000-8000-000000000001";
 const RLE = "00000000-0000-4000-8002-000000000000";
 const RESULT = "00000000-0000-4000-8004-000000000000";
 const outputs = z.tuple([z.url()]);
@@ -81,8 +80,8 @@ export async function runMiniToolErase(execution: unknown, userId: string, deadl
     const target = modelInputTarget(ledger, plan.container.encode);
     const range = { startFrame: plan.range.start, frameCount: plan.range.end - plan.range.start };
     const prepared = await advanceContainer(run, { stepKey: keyOf(plan, "prepare"), contentType: "video/mp4", failed: (reason) => ({ failed: eraseContainerCategory(reason) }),
-      build: () => Promise.resolve({ recipe: { kind: "prepare_model_input", inputId: SOURCE, window: plan.range, timescale: table.timescale,
-        entries: windowEntries(ledger, plan.range), target, audio: null, grid: plan.grid }, inputs: [{ inputId: SOURCE, storageKey: plan.sourceKey }] }) }, deadlineAt);
+      build: () => Promise.resolve({ recipe: { kind: "prepare_model_input", inputId: SOURCE_INPUT_ID, window: plan.range, timescale: table.timescale,
+        entries: windowEntries(ledger, plan.range), target, audio: null, grid: plan.grid }, inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: plan.sourceKey }] }) }, deadlineAt);
     if (!("key" in prepared)) return fail("prepare", prepared.failed as EraseFailureReason["category"]);
     position.step = "mask";
     const mask = await advanceContainer(run, { stepKey: keyOf(plan, "mask"), contentType: "video/mp4", failed: (reason) => ({ failed: eraseContainerCategory(reason) }),
@@ -101,15 +100,15 @@ export async function runMiniToolErase(execution: unknown, userId: string, deadl
     const output = segmentTarget(ledger, plan.container.encode);
     const chunks = await advanceChunks(run, plan.composite.map((window, k) => ({ stepKey: keyOf(plan, `composite:${k}`), contentType: "video/mp4",
       failed: (reason) => ({ failed: eraseContainerCategory(reason) }),
-      build: () => Promise.resolve({ recipe: { kind: "model_composite", mode: "erase", inputId: SOURCE, window, timescale: table.timescale, entries: windowEntries(ledger, window),
+      build: () => Promise.resolve({ recipe: { kind: "model_composite", mode: "erase", inputId: SOURCE_INPUT_ID, window, timescale: table.timescale, entries: windowEntries(ledger, window),
         target: { ...output, format: undefined }, result: RESULT, rle: RLE, table, range, grid: plan.grid, matte: plan.matte, rleSize: { width: target.width, height: target.height } },
-      inputs: [{ inputId: SOURCE, storageKey: plan.sourceKey }, { inputId: RESULT, storageKey: result.key }, { inputId: RLE, storageKey: plan.tracking.rleKey }] }) })), deadlineAt);
+      inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: plan.sourceKey }, { inputId: RESULT, storageKey: result.key }, { inputId: RLE, storageKey: plan.tracking.rleKey }] }) })), deadlineAt);
     if (!("keys" in chunks)) return fail("composite", chunks.failed as EraseFailureReason["category"]);
     position.step = "stitch";
     const written = await advanceRegistered(run, { stepKey: keyOf(plan, "stitch"), namePrefix: "ERASE", container: output.format === "webm-vp9" ? "webm" : "mp4",
-      build: () => Promise.resolve({ recipe: { kind: "stitch", inputId: SOURCE, target: output, audio: audioOf(ledger),
+      build: () => Promise.resolve({ recipe: { kind: "stitch", inputId: SOURCE_INPUT_ID, target: output, audio: audioOf(ledger),
         chunks: plan.composite.map((window, chunk) => ({ inputId: chunkInputId(chunk), duration: windowDuration(ledger, window) })) },
-      inputs: [{ inputId: SOURCE, storageKey: plan.sourceKey }, ...chunks.keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey }))] }) }, userId, deadlineAt);
+      inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: plan.sourceKey }, ...chunks.keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey }))] }) }, userId, deadlineAt);
     if (written === null) return fail("stitch", "failed");
     pickup.results.set(0, written);
     return pickup;

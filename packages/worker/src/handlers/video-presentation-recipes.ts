@@ -336,6 +336,9 @@ export function modelInputTarget(ledger: VideoPresentationLedger, encode: { crf:
   return { ...geometry, colorMatrix: plan.colorMatrix, toneMap: plan.output.toneMap, alpha: 'none', crf: encode.crf, preset: encode.preset };
 }
 
+/** The input id every recipe binds the registered source under. */
+export const SOURCE_INPUT_ID = '00000000-0000-4000-8000-000000000001';
+
 /**
  * The input id a stitch binds its chunk under: fixed per chunk index, so a rebuilt request is the same request.
  * @param chunk - The chunk index.

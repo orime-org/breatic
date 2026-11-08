@@ -19,7 +19,7 @@ import { videoContainerJobId, type VideoContainerJobSpec } from "@breatic/shared
 import { advanceMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
-import { audioOf, chunkInputId, FullLedgerInvalid, modelInputTarget, readJobLedger, windowDuration, windowEntries, windowInterval } from "@worker/handlers/video-presentation-recipes.js";
+import { audioOf, chunkInputId, FullLedgerInvalid, modelInputTarget, readJobLedger, SOURCE_INPUT_ID, windowDuration, windowEntries, windowInterval } from "@worker/handlers/video-presentation-recipes.js";
 
 type Removal = Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>;
 /** What a model-input preparation reads of its run: a removal's, or a lip-sync run's used source range (§97 D21). */
@@ -37,9 +37,6 @@ interface Unit {
   final: boolean;
   consumed?: string[];
 }
-
-/** The one input of every preparation job: the registered source. */
-const SOURCE_INPUT_ID = "00000000-0000-4000-8000-000000000001";
 
 /** The file extension of each type a step writes; a model reads an object's type from its link, and VACE fails one without. */
 const EXTENSIONS: Readonly<Record<string, string>> = { "video/mp4": "mp4", "video/webm": "webm", "image/png": "png", "audio/mp4": "m4a", "text/plain": "txt" };

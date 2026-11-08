@@ -33,7 +33,7 @@ import {
 import { appendStep, prepareModelInput, preparedRequest, type PreparingRun } from "@worker/handlers/mini-tool/prepare-model-input.js";
 import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { registered } from "@worker/handlers/mini-tool/run-video-tool.js";
-import { chunkInputId, FullLedgerInvalid, readJobLedger, segmentTarget, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
+import { chunkInputId, FullLedgerInvalid, readJobLedger, segmentTarget, SOURCE_INPUT_ID, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 import { upstreamBody } from "@worker/providers/upstream-body.js";
@@ -57,7 +57,6 @@ type Category = Extract<LipSyncStepOutcome, { state: "failed" }>["category"];
 type Ended = { key: string } | { failed: Category; step?: LipSyncLineStep };
 
 /** The input ids a recipe binds its objects under, fixed per role and index so a rebuilt request is the same request. */
-const SOURCE = "00000000-0000-4000-8000-000000000001";
 const PREPARED = "00000000-0000-4000-8000-000000000002";
 /**
  * A fixed input id for a role and an index.
@@ -359,10 +358,10 @@ async function composite(execution: LipSync, userId: string, deadlineAt: number)
             keys: { result: await objectOf(execution, person.personId, "gen", userId, deadlineAt), faces: await objectOf(execution, person.personId, "faces", userId, deadlineAt),
               track: await objectOf(execution, person.personId, "track_join", userId, deadlineAt) } })));
           const target = segmentTarget(ledger, execution.container.encode);
-          return { recipe: { kind: "lipsync_composite", inputId: SOURCE, window: { start: window.start, end: window.end }, timescale: ledger.plan.presentation.timescale,
+          return { recipe: { kind: "lipsync_composite", inputId: SOURCE_INPUT_ID, window: { start: window.start, end: window.end }, timescale: ledger.plan.presentation.timescale,
             entries: windowEntries(ledger, lipsyncChunkSourceWindow(execution.timeline, ledger.plan.presentation, window)), target: { ...target, format: undefined },
             timeline: execution.timeline, table: ledger.plan.presentation, persons: persons.map((person) => ({ ...person.ids, cropSize: execution.cropSize })) },
-          inputs: [{ inputId: SOURCE, storageKey: execution.sourceKey }, ...persons.flatMap((person) => (["result", "faces", "track"] as const)
+          inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }, ...persons.flatMap((person) => (["result", "faces", "track"] as const)
             .map((role) => ({ inputId: person.ids[role], storageKey: person.keys[role] })))] };
         } }, deadlineAt);
     } catch (error) {
@@ -405,9 +404,9 @@ async function stitch(execution: LipSync, userId: string, deadlineAt: number): P
         outputs: [{ modality: "video", namePrefix: "LIPSYNC", ...(target.format === "webm-vp9" ? { container: "webm" as const } : {}) }] });
       if (grant === undefined) throw new Error("The lip-sync output requires its upload grant");
       request = miniToolPlanJobRequestSchema.parse({ schemaVersion: 2, jobId, containerClass: execution.container.containerClass, deadlineAt, limits: execution.container.limits,
-        inputs: [{ inputId: SOURCE, storageKey: execution.sourceKey }, ...chunks.keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey })),
+        inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }, ...chunks.keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey })),
           ...stems.map((storageKey, at) => ({ inputId: inputOf(STEM, at), storageKey }))],
-        outputs: [{ ...grant, outputIndex: 0, recipe: { kind: "stitch", inputId: SOURCE, target,
+        outputs: [{ ...grant, outputIndex: 0, recipe: { kind: "stitch", inputId: SOURCE_INPUT_ID, target,
           chunks: execution.layout.composite.map((window, chunk) => ({ inputId: chunkInputId(chunk), duration: exact(BigInt((window.end - window.start) * step0), BigInt(table.timescale)) })),
           audio: { kind: "mix", inputs: stems.map((_key, at) => inputOf(STEM, at)) } } }] });
       step = await appendStep(execution.taskId, { kind: "container_job", endpoint: execution.container.containerClass, itemIndex: steps.length });
