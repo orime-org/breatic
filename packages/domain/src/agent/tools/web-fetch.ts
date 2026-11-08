@@ -503,7 +503,6 @@ export function makeFetchTool(numbers: CitationNumbers, pageUrlFor: PageUrlFor):
       if (toRead.length > 0) {
         const startedAt = Date.now();
         let answer: ReadPagesAnswer | undefined;
-        let readFailure: "too_frequent" | "not_read" | undefined;
         try {
           answer = await context.readPages(
             {
@@ -518,7 +517,6 @@ export function makeFetchTool(numbers: CitationNumbers, pageUrlFor: PageUrlFor):
           );
         } catch (err: unknown) {
           const refused = err instanceof ReadPagesRefused;
-          readFailure = refused ? "too_frequent" : "not_read";
           // The container may have run: it is charged for the time the call took,
           // unless the server refused to read, the Worker refused the call (a 4xx)
           // or it said its reader never started.
@@ -545,10 +543,9 @@ export function makeFetchTool(numbers: CitationNumbers, pageUrlFor: PageUrlFor):
               err,
             );
           }
+          for (const url of toRead) outcomes.set(pageLinkKey(url), refused ? "too_frequent" : "not_read");
         }
-        if (answer === undefined) {
-          for (const url of toRead) outcomes.set(pageLinkKey(url), readFailure ?? "not_read");
-        } else {
+        if (answer !== undefined) {
           recordRun(context.usage, answer.usage);
           for (const result of answer.pages) {
             const key = pageLinkKey(result.url);
