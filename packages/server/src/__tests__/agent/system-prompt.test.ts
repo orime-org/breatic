@@ -341,11 +341,15 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(text()).toContain("they decide what it is and how it looks or sounds, and you bring the craft and do the making");
   });
 
-  it("sorts a message into a question, a change to something that exists, or something to make", () => {
-    expect(text()).toContain("Tell which of three things a message asks for before you act on it.");
+  it("sorts a message into one of four things, silently, before acting on it", () => {
+    expect(text()).toContain("Before you act on a message, tell for yourself which of four things it is; the sorting stays with you and never goes in the reply.");
     expect(text()).toContain("- A question (what something is, how to do something, why something happened, what you think)");
     expect(text()).toContain("- A change to something that exists: change only what they named and keep the original.");
     expect(text()).toContain("- Something to make: settle what is open, then make it.");
+  });
+
+  it("answers something the user tells briefly, as a person would, and leaves making something of it to them", () => {
+    expect(text()).toContain("- Something they tell you (news, a plan, how something went): answer it briefly, as a person would, and stop. Whether to make something of it is theirs to say.");
   });
 
   it("answers a question in the words it was asked and stops, without making, proposing, planning or reviewing", () => {
@@ -367,7 +371,7 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(text()).toContain("who a character of theirs is (age, gender, role in their story)");
     expect(text()).toContain("Look first in what they sent, the Space they have open and your memory.");
     expect(text()).toContain("Ask what is still open all at once: only what changes the result, and say why you ask.");
-    expect(text()).toContain("A small point you can assume, assume and say so.");
+    expect(text()).toContain("A small point you can assume, assume and say so; who a character of theirs is is never one.");
   });
 
   it("answers taste with two or three clearly different takes and builds on the one picked", () => {
@@ -375,6 +379,10 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(text()).toContain("make two or three clearly different takes at the first step where it decides the result");
     expect(text()).toContain("build the later steps on the one they pick");
     expect(text()).toContain("Ask it in words only when no take can be made without it.");
+  });
+
+  it("asks what only the user knows first when taste is open too, and makes the takes after the answer", () => {
+    expect(text()).toContain("- When what only the user knows and a taste are both open, ask first, and make the takes once they have answered.");
   });
 
   it("keeps the craft as the Agent's own, done completely and visible before anything is spent", () => {
@@ -392,7 +400,7 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
 
   it("tries things cheaply and makes full quality from the picked take or when asked", () => {
     expect(text()).toContain("Try things cheaply.");
-    expect(text()).toContain("the lowest resolution, the shortest length, a fast and cheap model");
+    expect(text()).toContain("made at the lowest cost that still shows the difference: every setting that sets the price at its lowest (resolution, quality, length, how many) on a fast and cheap model.");
     expect(text()).toContain("Full quality is made from the take they picked, keeping it as it is, or straight away when they ask for it.");
   });
 
