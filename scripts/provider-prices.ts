@@ -32,9 +32,13 @@
  * SandBase's model list).
  * OpenRouter: after the media upstreams, writes `openrouter_prices` in
  * `config/provider/llm.yaml`, OpenRouter's token prices for every model with a
- * direct price there: the cheapest endpoint OpenRouter lists for the model
- * (its public endpoints list, no key), the one a cheapest LLM call is served by,
- * so such a call ranks OpenRouter beside the direct upstream, and it names each
+ * direct price there: the cheapest standard-tier endpoint OpenRouter lists for
+ * the model (its public endpoints list, no key) at the model's levels
+ * (`openRouterLevels`), among its pinned providers when pinned, the one a
+ * cheapest LLM call is served by, so such a call ranks OpenRouter beside the
+ * direct upstream. Beside them it writes `openrouter_states_quantization`, the
+ * models one of whose endpoints states a level, priced or not, and stamps
+ * `openrouter_prices_at` with the moment they were read; it names each
  * direct price whose off-peak holidays list no date in the current year (from 1 December, the next). Last it regenerates
  * `config/provider/upstream-field-names.json`: the upstream field names no
  * catalog param shares, which non-provider code must not spell.
@@ -397,9 +401,9 @@ async function syncSandBase(upstream: string, list: typeof bindings): Promise<vo
  * of its `prices` and in their order, keeping the file's comments; a model given no price is a problem.
  * OpenRouter's id for a model is `vendor_ids[model].openrouter` when set, else ours; its price is its cheapest
  * standard-tier endpoint's, among its `openrouter_backends` pin's providers when it is pinned, at the model's levels
- * (`openRouterLevels`), marked `states_quantization` when one of its endpoints states a level. It stamps
- * `openrouter_prices_at` with the moment the prices were read, and prints a notice for each model whose direct price
- * changes later.
+ * (`openRouterLevels`). It lists in `openrouter_states_quantization` every model one of whose endpoints states a level,
+ * priced or not, stamps `openrouter_prices_at` with the moment the prices were read, and prints a notice for each
+ * model whose direct price changes later.
  * @throws {ProviderConfigError} When `llm.yaml` is not a valid LLM configuration.
  * @throws {Error} When OpenRouter's endpoints list answers other than 2xx or 404.
  */

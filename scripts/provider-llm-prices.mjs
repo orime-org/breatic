@@ -6,8 +6,8 @@
  * `config/provider/llm.yaml`, so a cheapest LLM call ranks OpenRouter beside the direct upstream
  * (inner#1743). A cheapest call asks OpenRouter to try its endpoints cheapest first (`provider.sort`
  * "price", within the model's levels: the quantizations `openrouter_quantizations` lists, `unknown` left out when one of
- * the model's endpoints states a level, which `states_quantization` beside its price records), so the price written is
- * that of the cheapest such endpoint OpenRouter lists for the model
+ * the model's endpoints states a level, which `openrouter_states_quantization` records apart from the prices, priced or
+ * not), so the price written is that of the cheapest such endpoint OpenRouter lists for the model
  * (`GET https://openrouter.ai/api/v1/models/{author}/{slug}/endpoints`). A service-tier endpoint (flex,
  * priority, fast) is reached only through `:floor`, `:nitro` or `service_tier`, never by `sort: "price"`
  * (OpenRouter's provider-selection docs), so it is not ranked. A model pinned to providers
@@ -43,18 +43,20 @@ function pinnedTo(tag, only) {
 
 /**
  * Our models' OpenRouter token prices: per model, its cheapest standard-tier endpoint with a fixed price, a
- * quantization among the model's levels and, for a pinned model, a pinned provider, by input then output; a model one
- * of whose endpoints states a level other than `unknown` is marked `states_quantization`.
+ * quantization among the model's levels and, for a pinned model, a pinned provider, by input then output; and the
+ * models one of whose listed endpoints states a level other than `unknown`, priced or not.
  * @param {ReadonlyMap<string, readonly { tag?: unknown; service_tier?: unknown; quantization?: unknown; pricing?: { prompt?: unknown; completion?: unknown } }[]>} endpoints - The endpoints OpenRouter lists, by OpenRouter's model id; a model it does not list is absent.
  * @param {ReadonlyMap<string, string>} ids - Our model id to the id OpenRouter lists it under.
- * @param {readonly string[]} quantizations - The quantizations a cheapest call takes; an endpoint naming none is `unknown`.
+ * @param {readonly string[]} quantizations - `openrouter_quantizations`, which `levels` narrows per model; an endpoint naming none is `unknown`.
  * @param {(quantizations: readonly string[], statesQuantization: boolean) => readonly string[]} levels - A model's levels, `openRouterLevels` of the provider's schema.
  * @param {Readonly<Record<string, { only: readonly string[]; allow_fallbacks: boolean }>>} [backends] - `openrouter_backends` as llm.yaml writes it: by our model id, the providers it is pinned to.
- * @returns {{ prices: Record<string, { input_cache_miss_per_mtok: number; output_per_mtok: number; states_quantization?: true }>; problems: string[] }} The prices by our model id, and a problem for each model given no price.
+ * @returns {{ prices: Record<string, { input_cache_miss_per_mtok: number; output_per_mtok: number }>; statesQuantization: string[]; problems: string[] }} The prices by our model id, the models that state a level in the order of `ids`, and a problem for each model given no price.
  */
 export function openRouterPrices(endpoints, ids, quantizations, levels, backends = {}) {
-  /** @type {Record<string, { input_cache_miss_per_mtok: number; output_per_mtok: number; states_quantization?: true }>} */
+  /** @type {Record<string, { input_cache_miss_per_mtok: number; output_per_mtok: number }>} */
   const prices = {};
+  /** @type {string[]} */
+  const statesQuantization = [];
   /** @type {string[]} */
   const problems = [];
   for (const [ours, theirs] of ids) {
@@ -64,6 +66,7 @@ export function openRouterPrices(endpoints, ids, quantizations, levels, backends
       continue;
     }
     const states = listed.some((e) => typeof e.quantization === "string" && e.quantization !== "unknown");
+    if (states) statesQuantization.push(ours);
     const taken = levels(quantizations, states);
     const fixed = listed
       .filter((e) => e.service_tier == null && pinnedTo(e.tag, backends[ours]?.only))
@@ -75,9 +78,9 @@ export function openRouterPrices(endpoints, ids, quantizations, levels, backends
       problems.push(`${ours}: none of the ${listed.length} endpoints of ${theirs} states a fixed token price at the standard tier, a quantization a cheapest call takes and a provider it is pinned to`);
       continue;
     }
-    prices[ours] = { input_cache_miss_per_mtok: fixed[0].input, output_per_mtok: fixed[0].output, ...(states ? { states_quantization: true } : {}) };
+    prices[ours] = { input_cache_miss_per_mtok: fixed[0].input, output_per_mtok: fixed[0].output };
   }
-  return { prices, problems };
+  return { prices, statesQuantization, problems };
 }
 
 /**
@@ -115,8 +118,8 @@ export function directPriceChangeNotices(prices, now) {
 }
 
 /**
- * `config/provider/llm.yaml` with `openrouter_prices` rewritten from OpenRouter's endpoints and `openrouter_prices_at`
- * set to the run's moment, its comments kept: for
+ * `config/provider/llm.yaml` with `openrouter_prices` and, right after it, `openrouter_states_quantization` rewritten
+ * from OpenRouter's endpoints and `openrouter_prices_at` set to the run's moment, its comments kept: for
  * every model of its `prices`, in their order, read under `vendor_ids[model].openrouter` when set, within the
  * quantizations and backend pins the file's values hold once read through `parse`, the schema createProvider reads it
  * with (its defaults filled), each model's levels read through `levels`, as its calls read them.
@@ -137,8 +140,15 @@ export async function syncedLlmYaml(text, parse, levels, fetchEndpoints, now = D
     const listed = await fetchEndpoints(id);
     if (listed !== undefined) endpoints.set(id, listed);
   }
-  const { prices, problems } = openRouterPrices(endpoints, ids, llm.openrouter_quantizations, levels, llm.openrouter_backends);
+  const { prices, statesQuantization, problems } = openRouterPrices(endpoints, ids, llm.openrouter_quantizations, levels, llm.openrouter_backends);
   doc.set("openrouter_prices", doc.createNode(prices));
+  if (doc.has("openrouter_states_quantization")) doc.set("openrouter_states_quantization", doc.createNode(statesQuantization));
+  else {
+    // A new key goes right after openrouter_prices rather than at the file's end; a key the file held is a Scalar, one
+    // doc.set added a string, and String() reads both.
+    const items = doc.contents.items;
+    items.splice(items.findIndex((pair) => String(pair.key) === "openrouter_prices") + 1, 0, doc.createPair("openrouter_states_quantization", statesQuantization));
+  }
   doc.set("openrouter_prices_at", new Date(now).toISOString());
   return {
     text: yamlText(doc, { lineWidth: 0 }),

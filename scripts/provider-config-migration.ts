@@ -436,7 +436,8 @@ no cost of their own. openrouter_prices are OpenRouter's token prices for the
 same models, as pnpm provider:prices writes them, so a cheapest call can rank
 OpenRouter beside the direct upstream; both read only the endpoints of the
 quantizations openrouter_quantizations lists, unknown only for a model none
-of whose endpoints states a level (states_quantization marks one that does).
+of whose endpoints states a level. openrouter_states_quantization lists the
+models one of whose endpoints does, priced or not.
 openrouter_prices_at is when they were read: a direct price that took effect
 after it is not ranked against them.
 gemini_inline_max_bytes is the request size past which media goes to Gemini

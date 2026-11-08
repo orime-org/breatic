@@ -248,7 +248,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     if (kindOf(upstream) !== "openrouter") return undefined;
     const routing: VendorOptions = {
       ...(pinned ? config.llm.openrouter_backends[modelId] : {}),
-      ...(chosen.mode === "cheapest" ? { sort: "price", quantizations: openRouterLevels(config.llm.openrouter_quantizations, config.llm.openrouter_prices[modelId]?.states_quantization === true) } : {}),
+      ...(chosen.mode === "cheapest" ? { sort: "price", quantizations: openRouterLevels(config.llm.openrouter_quantizations, config.llm.openrouter_states_quantization.includes(modelId)) } : {}),
     };
     return Object.keys(routing).length === 0 ? undefined : routing;
   };

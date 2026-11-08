@@ -15,18 +15,18 @@ const levels = (quantizations, statesQuantization) => (statesQuantization ? quan
 test("writes the cheapest endpoint's per-token prices as USD per million tokens, by our model id", () => {
   const endpoints = new Map([["deepseek/deepseek-v4-pro", [endpoint("azure/us", "0.00000191", "0.00000383"), endpoint("deepinfra/fp8", "0.0000013", "0.0000026"), endpoint("nebius/fp8", "0.00000175", "0.0000035")]]]);
   const { prices, problems } = openRouterPrices(endpoints, new Map([["deepseek/deepseek-v4-pro", "deepseek/deepseek-v4-pro"]]), TAKEN, levels);
-  assert.deepEqual(prices, { "deepseek/deepseek-v4-pro": { input_cache_miss_per_mtok: 1.3, output_per_mtok: 2.6, states_quantization: true } });
+  assert.deepEqual(prices, { "deepseek/deepseek-v4-pro": { input_cache_miss_per_mtok: 1.3, output_per_mtok: 2.6 } });
   assert.deepEqual(problems, []);
 });
 
 test("breaks a tie on the input price by the output price", () => {
   const endpoints = new Map([["m", [endpoint("a", "0.000001", "0.000004"), endpoint("b", "0.000001", "0.000003")]]]);
-  assert.deepEqual(openRouterPrices(endpoints, new Map([["m", "m"]]), TAKEN, levels).prices, { m: { input_cache_miss_per_mtok: 1, output_per_mtok: 3, states_quantization: true } });
+  assert.deepEqual(openRouterPrices(endpoints, new Map([["m", "m"]]), TAKEN, levels).prices, { m: { input_cache_miss_per_mtok: 1, output_per_mtok: 3 } });
 });
 
 test("reads a model OpenRouter lists under another id by that id", () => {
   const { prices } = openRouterPrices(new Map([["vendor/other-name", [endpoint("x", "0.000001", "0.000002")]]]), new Map([["ours/model", "vendor/other-name"]]), TAKEN, levels);
-  assert.deepEqual(prices, { "ours/model": { input_cache_miss_per_mtok: 1, output_per_mtok: 2, states_quantization: true } });
+  assert.deepEqual(prices, { "ours/model": { input_cache_miss_per_mtok: 1, output_per_mtok: 2 } });
 });
 
 test("names a model OpenRouter does not list, and writes no price for it", () => {
@@ -41,7 +41,7 @@ test("names a model OpenRouter does not list, and writes no price for it", () =>
 test("skips an endpoint without a fixed price, and names a model none of whose endpoints has one", () => {
   for (const bad of ["-1", "abc", "", undefined]) {
     const mixed = openRouterPrices(new Map([["m", [endpoint("free", bad, "0.000002"), endpoint("paid", "0.000003", "0.000004")]]]), new Map([["m", "m"]]), TAKEN, levels);
-    assert.deepEqual(mixed.prices, { m: { input_cache_miss_per_mtok: 3, output_per_mtok: 4, states_quantization: true } }, String(bad));
+    assert.deepEqual(mixed.prices, { m: { input_cache_miss_per_mtok: 3, output_per_mtok: 4 } }, String(bad));
     const none = openRouterPrices(new Map([["m", [endpoint("free", bad, "0.000002")]]]), new Map([["m", "m"]]), TAKEN, levels);
     assert.deepEqual(none.prices, {}, String(bad));
     assert.equal(none.problems.length, 1, String(bad));
@@ -50,33 +50,53 @@ test("skips an endpoint without a fixed price, and names a model none of whose e
 
 test("leaves out an endpoint of a quantization a cheapest call does not take, reading a missing one as unknown", () => {
   const stated = new Map([["m", [endpoint("relace/fp4", "0.000000006", "0.0000005", "fp4"), endpoint("deepinfra/fp8", "0.0000001", "0.0000003")]]]);
-  assert.deepEqual(openRouterPrices(stated, new Map([["m", "m"]]), TAKEN, levels).prices, { m: { input_cache_miss_per_mtok: 0.1, output_per_mtok: 0.3, states_quantization: true } });
+  assert.deepEqual(openRouterPrices(stated, new Map([["m", "m"]]), TAKEN, levels).prices, { m: { input_cache_miss_per_mtok: 0.1, output_per_mtok: 0.3 } });
   const unstated = new Map([["m", [endpoint("other", "0.0000002", "0.0000007", "unknown"), { tag: "official", pricing: { prompt: "0.00000015", completion: "0.0000006" } }]]]);
   assert.deepEqual(openRouterPrices(unstated, new Map([["m", "m"]]), TAKEN, levels).prices, { m: { input_cache_miss_per_mtok: 0.15, output_per_mtok: 0.6 } });
   assert.deepEqual(openRouterPrices(unstated, new Map([["m", "m"]]), ["fp8"], levels).prices, {});
 });
 
-test("drops unknown for a model one of whose endpoints states a level, and says so beside its price", () => {
+test("drops unknown for a model one of whose endpoints states a level, and marks the model apart from its price", () => {
   const endpoints = new Map([["m", [endpoint("particle-ai/us", "0.00000005", "0.0000005", "unknown"), endpoint("morph/fp8", "0.0000001", "0.0000004"), { tag: "official", pricing: { prompt: "0.00000001", completion: "0.0000001" } }]]]);
-  assert.deepEqual(openRouterPrices(endpoints, new Map([["m", "m"]]), TAKEN, levels).prices, { m: { input_cache_miss_per_mtok: 0.1, output_per_mtok: 0.4, states_quantization: true } });
+  const { prices, statesQuantization } = openRouterPrices(endpoints, new Map([["m", "m"]]), TAKEN, levels);
+  assert.deepEqual(prices, { m: { input_cache_miss_per_mtok: 0.1, output_per_mtok: 0.4 } });
+  assert.deepEqual(statesQuantization, ["m"]);
 });
 
-test("takes unknown for a model none of whose endpoints states a level, and writes its price without the mark", () => {
+test("marks a model whose stated endpoints are all outside its levels, though it gets no price", () => {
+  const endpoints = new Map([["m", [endpoint("relace/fp4", "0.000000006", "0.0000005", "fp4"), endpoint("venice", "0.0000001", "0.0000003", "unknown")]]]);
+  const { prices, statesQuantization, problems } = openRouterPrices(endpoints, new Map([["m", "m"]]), TAKEN, levels);
+  assert.deepEqual(prices, {});
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /^m: /);
+  assert.deepEqual(statesQuantization, ["m"]);
+});
+
+test("prices an fp8 endpoint over a cheaper unknown one, and marks the model", () => {
+  const endpoints = new Map([["m", [endpoint("venice", "0.0000001", "0.0000002", "unknown"), endpoint("deepinfra/fp8", "0.0000003", "0.0000006")]]]);
+  const { prices, statesQuantization } = openRouterPrices(endpoints, new Map([["m", "m"]]), TAKEN, levels);
+  assert.deepEqual(prices, { m: { input_cache_miss_per_mtok: 0.3, output_per_mtok: 0.6 } });
+  assert.deepEqual(statesQuantization, ["m"]);
+});
+
+test("takes unknown for a model none of whose endpoints states a level, and leaves it unmarked", () => {
   const endpoints = new Map([["m", [endpoint("anthropic", "0.000005", "0.000025", "unknown"), endpoint("amazon-bedrock", "0.000004", "0.00002", "unknown"), { tag: "google-vertex", pricing: { prompt: "0.0000045", completion: "0.00002" } }]]]);
-  assert.deepEqual(openRouterPrices(endpoints, new Map([["m", "m"]]), TAKEN, levels).prices, { m: { input_cache_miss_per_mtok: 4, output_per_mtok: 20 } });
+  const { prices, statesQuantization } = openRouterPrices(endpoints, new Map([["m", "m"]]), TAKEN, levels);
+  assert.deepEqual(prices, { m: { input_cache_miss_per_mtok: 4, output_per_mtok: 20 } });
+  assert.deepEqual(statesQuantization, []);
 });
 
 test("leaves out a service-tier endpoint, which a price-sorted call never reaches, however cheap", () => {
   const flex = { ...endpoint("google-ai-studio/flex", "0.00000015", "0.00000125"), service_tier: "flex" };
   const standard = { ...endpoint("google-ai-studio", "0.0000003", "0.0000025"), service_tier: null };
   const endpoints = new Map([["m", [flex, standard, endpoint("google-vertex", "0.0000004", "0.000003")]]]);
-  assert.deepEqual(openRouterPrices(endpoints, new Map([["m", "m"]]), TAKEN, levels).prices, { m: { input_cache_miss_per_mtok: 0.3, output_per_mtok: 2.5, states_quantization: true } });
+  assert.deepEqual(openRouterPrices(endpoints, new Map([["m", "m"]]), TAKEN, levels).prices, { m: { input_cache_miss_per_mtok: 0.3, output_per_mtok: 2.5 } });
 });
 
 test("ranks a pinned model only over the endpoints of the providers it is pinned to, the pin read as llm.yaml writes it", () => {
   const endpoints = new Map([["m", [endpoint("google-ai-studio", "0.0000001", "0.000001"), endpoint("google-vertex-x", "0.0000002", "0.000002"), endpoint("google-vertex/us", "0.0000004", "0.000004"), endpoint("google-vertex", "0.0000003", "0.000003")]]]);
   const { prices, problems } = openRouterPrices(endpoints, new Map([["m", "m"]]), TAKEN, levels, { m: { only: ["google-vertex"], allow_fallbacks: false } });
-  assert.deepEqual(prices, { m: { input_cache_miss_per_mtok: 0.3, output_per_mtok: 3, states_quantization: true } });
+  assert.deepEqual(prices, { m: { input_cache_miss_per_mtok: 0.3, output_per_mtok: 3 } });
   assert.deepEqual(problems, []);
 });
 
@@ -95,6 +115,16 @@ test("rewrites openrouter_prices from the values the schema reads, its defaults 
   assert.equal(synced.priced, 1);
   assert.match(synced.text, /^# Where LLM calls go\.\n/);
   assert.match(synced.text, /openrouter_prices:\n  m:\n    input_cache_miss_per_mtok: 1\n    output_per_mtok: 2\n/);
+});
+
+test("writes the models that state a level beside openrouter_prices, in the order of prices, priced or not", async () => {
+  const text = "prices:\n  b:\n    - input_cache_miss_per_mtok: 1\n      output_per_mtok: 2\n  plain:\n    - input_cache_miss_per_mtok: 1\n      output_per_mtok: 2\n  a:\n    - input_cache_miss_per_mtok: 1\n      output_per_mtok: 2\nopenrouter_prices: {}\nopenrouter_prices_at: 2026-01-01T00:00:00.000Z\n";
+  const listed = { b: [endpoint("relace/fp4", "0.0000001", "0.0000002", "fp4")], plain: [endpoint("venice", "0.000001", "0.000002", "unknown")], a: [endpoint("kept/fp8", "0.000001", "0.000002")] };
+  const synced = await syncedLlmYaml(text, (raw) => ({ vendor_ids: {}, openrouter_backends: {}, openrouter_quantizations: TAKEN, ...raw }), levels, async (id) => listed[id]);
+  assert.equal(synced.priced, 2);
+  assert.match(synced.text, /\nopenrouter_states_quantization:\n  - b\n  - a\n/);
+  assert.ok(synced.text.indexOf("openrouter_prices:") < synced.text.indexOf("openrouter_states_quantization:"));
+  assert.ok(synced.text.indexOf("openrouter_states_quantization:") < synced.text.indexOf("openrouter_prices_at:"));
 });
 
 test("writes the moment OpenRouter's prices were read beside them", async () => {

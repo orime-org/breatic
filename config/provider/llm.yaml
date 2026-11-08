@@ -11,7 +11,8 @@
 # same models, as pnpm provider:prices writes them, so a cheapest call can rank
 # OpenRouter beside the direct upstream; both read only the endpoints of the
 # quantizations openrouter_quantizations lists, unknown only for a model none
-# of whose endpoints states a level (states_quantization marks one that does).
+# of whose endpoints states a level. openrouter_states_quantization lists the
+# models one of whose endpoints does, priced or not.
 # openrouter_prices_at is when they were read: a direct price that took effect
 # after it is not ranked against them.
 # gemini_inline_max_bytes is the request size past which media goes to Gemini
@@ -177,13 +178,11 @@ openrouter_quantizations:
   - unknown
 openrouter_prices:
   deepseek/deepseek-v4-pro:
-    input_cache_miss_per_mtok: 0.35152
-    output_per_mtok: 0.70304
-    states_quantization: true
+    input_cache_miss_per_mtok: 0.33124
+    output_per_mtok: 0.66248
   deepseek/deepseek-v4.1-flash-1017:
     input_cache_miss_per_mtok: 0.022
     output_per_mtok: 0.4
-    states_quantization: true
   anthropic/claude-opus-5.5:
     input_cache_miss_per_mtok: 4
     output_per_mtok: 20
@@ -193,4 +192,7 @@ openrouter_prices:
   google/gemini-3.8-flash:
     input_cache_miss_per_mtok: 0.75
     output_per_mtok: 3.75
-openrouter_prices_at: 2026-11-08T08:30:16.801Z
+openrouter_states_quantization:
+  - deepseek/deepseek-v4-pro
+  - deepseek/deepseek-v4.1-flash-1017
+openrouter_prices_at: 2026-11-08T09:29:12.735Z

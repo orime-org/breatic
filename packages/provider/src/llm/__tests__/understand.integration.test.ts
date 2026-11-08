@@ -525,7 +525,8 @@ describe("understand in cheapest mode", () => {
 
   it("leaves unknown out of the quantizations of a model one of whose OpenRouter endpoints states a level", async () => {
     const config = llmConfig(fakes);
-    config.llm!.openrouter_prices = { "google/gemini-2.5-flash": { input_cache_miss_per_mtok: 0.1, output_per_mtok: 1, states_quantization: true } };
+    config.llm!.openrouter_prices = { "google/gemini-2.5-flash": { input_cache_miss_per_mtok: 0.1, output_per_mtok: 1 } };
+    config.llm!.openrouter_states_quantization = ["google/gemini-2.5-flash"];
     const provider = createProvider({ config, keyOf: (name) => (keys as Record<string, string>)[name], llmMaxRetries: 0, cleanText: (t) => t });
     await provider.llm.understand({ ...question(), model: "google/gemini-2.5-flash" }, { mode: "cheapest" });
     expect(posted(fakes.openrouter)[0]?.provider).toEqual({ sort: "price", quantizations: quantizations.filter((q) => q !== "unknown") });

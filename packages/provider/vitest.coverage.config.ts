@@ -4,8 +4,10 @@
 /**
  * Both suites in one run, so the critical paths' coverage counts every test that reaches them: the
  * estimate a run is frozen at and the formula evaluator under it, routing, the media runner and its
- * adapters, and every reader of an actual cost (WaveSpeed's billing, the understand adapters, the LLM
- * switch, the price-table cost of every direct LLM call in llm.ts and the cost lookup in provider.ts). Each of those files must be fully covered, and a failure
+ * adapters, and every reader of an actual cost (WaveSpeed's billing, the understand adapters and the shared
+ * understand exchange in understand/adapter.ts, which stamps the send moment an understand call is priced at and
+ * builds its token buckets, the LLM switch, the price-table cost of every direct LLM call in llm.ts and the cost
+ * lookup in provider.ts). Each of those files must be fully covered, and a failure
  * lists the file and its uncovered lines (AGENTS.md#critical-paths).
  */
 
@@ -32,6 +34,7 @@ export default defineConfig({
         "src/routing/try-in-order.ts",
         "src/llm/llm.ts",
         "src/llm/switching.ts",
+        "src/llm/understand/adapter.ts",
         "src/llm/understand/google.ts",
         "src/llm/understand/openrouter.ts",
         "src/provider.ts",

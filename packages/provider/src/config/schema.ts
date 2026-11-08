@@ -180,18 +180,12 @@ const OPENROUTER_QUANTIZATIONS: readonly z.infer<typeof openRouterQuantization>[
  * The quantizations a cheapest OpenRouter call of one model takes: `openrouter_quantizations`, without `unknown` when one of
  * the model's endpoints states a level, since an endpoint that states none could then be a coarser host's.
  * @param quantizations - `openrouter_quantizations`.
- * @param statesQuantization - Whether one of the model's OpenRouter endpoints states a level (`states_quantization`).
+ * @param statesQuantization - Whether one of the model's OpenRouter endpoints states a level (it is in `openrouter_states_quantization`).
  * @returns The levels the model's call takes.
  */
 export function openRouterLevels<T extends string>(quantizations: T[], statesQuantization: boolean): T[] {
   return statesQuantization ? quantizations.filter((q) => q !== "unknown") : quantizations;
 }
-
-/**
- * One OpenRouter token price, its cheapest endpoint's at the model's levels, with `states_quantization` when one of the
- * model's endpoints states a level, so its calls leave `unknown` out (`openRouterLevels`).
- */
-const openRouterPriceSchema = llmPriceSchema.extend({ states_quantization: z.literal(true).optional() });
 
 /** How often an uploaded Gemini file is asked about by default, in ms. */
 const GEMINI_FILE_POLL_MS = 5_000;
@@ -213,16 +207,26 @@ const llmSchema = z.strictObject({
   ).optional(),
   /**
    * OpenRouter's token prices in USD per million tokens, by our model id, as `pnpm provider:prices` writes them: its
-   * cheapest endpoint at a quantization `openrouter_quantizations` lists, `unknown` taken only when none of the model's
-   * endpoints states a level; `states_quantization` marks a model one of whose endpoints does.
+   * cheapest standard-tier endpoint at the model's levels (`openRouterLevels`). A model none of whose endpoints there
+   * has a fixed price has none.
    */
-  openrouter_prices: z.record(z.string(), openRouterPriceSchema).optional(),
+  openrouter_prices: z.record(z.string(), llmPriceSchema).optional(),
+  /**
+   * Our models one of whose OpenRouter endpoints states a quantization level other than `unknown`, as
+   * `pnpm provider:prices` writes them, priced or not: a fact about the model's endpoints, kept apart from its price so
+   * it holds for a model that cannot be priced. Such a model's cheapest calls take `openrouter_quantizations` without
+   * `unknown` (`openRouterLevels`).
+   */
+  openrouter_states_quantization: z.array(z.string()).optional(),
   /**
    * When `openrouter_prices` was read, an ISO 8601 UTC time `pnpm provider:prices` writes: a direct price that took effect
    * after it is not ranked against them.
    */
   openrouter_prices_at: z.iso.datetime().optional(),
-  /** The quantizations a cheapest call takes on OpenRouter (its `provider.quantizations`). */
+  /**
+   * The quantizations a cheapest OpenRouter call may take, deployment-wide (its `provider.quantizations`); a model in
+   * `openrouter_states_quantization` takes them without `unknown` (`openRouterLevels`).
+   */
   openrouter_quantizations: z.array(openRouterQuantization).min(1).default([...OPENROUTER_QUANTIZATIONS]),
   /** The request size past which Gemini takes media through its Files API, in bytes. */
   gemini_inline_max_bytes: z.number().int().positive().default(GEMINI_INLINE_MAX_BYTES),
@@ -477,6 +481,7 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
     openrouter_backends: raw.llm?.openrouter_backends ?? {},
     prices: raw.llm?.prices ?? {},
     openrouter_prices: raw.llm?.openrouter_prices ?? {},
+    openrouter_states_quantization: raw.llm?.openrouter_states_quantization ?? [],
     openrouter_prices_at: raw.llm?.openrouter_prices_at,
     openrouter_quantizations: raw.llm?.openrouter_quantizations ?? [...OPENROUTER_QUANTIZATIONS],
     gemini_inline_max_bytes: raw.llm?.gemini_inline_max_bytes ?? GEMINI_INLINE_MAX_BYTES,
