@@ -311,7 +311,8 @@ function linksOf(text: string): string[] {
 }
 
 /**
- * The part of a page one call hands over, with the links its own text holds.
+ * The part of a page one call hands over, with the links its own text and
+ * the page's title hold.
  * @param url - The address asked for.
  * @param page - The page in full.
  * @param start - Where the model asked to start.
@@ -338,7 +339,7 @@ function sliceOf(url: string, page: PageInFull, start: number, share: number, in
     end: to,
     next_start: to < total ? to : null,
     text,
-    links: linksOf(text),
+    links: linksOf(`${page.title ?? ""}\n${text}`),
     index,
     ...(page.truncated === true && { truncated: true }),
   };
