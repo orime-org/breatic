@@ -71,8 +71,11 @@ interface ServerDoc {
   /** The phase of each push by its `seq`. */
   pushed: Map<number, 'normal' | 'warning' | 'full'>;
   nextSeq: number;
-  /** Whether the client acknowledged a full push last (`knowsFull`). */
-  knowsFull: boolean;
+  /**
+   * Per connection, whether its last acknowledged push was full (collab's
+   * `knowsFull`); a connection that authenticates again starts without one.
+   */
+  knowsFull: Map<ScriptedWebSocket, boolean>;
 }
 
 /**
@@ -113,8 +116,8 @@ export class ScriptedServer {
   autoConfirm = true;
   /**
    * Refuse like collab: once a connection acknowledged a full push, an
-   * Update that is not a pure deletion closes the document with
-   * `COLLAB_DOCUMENT_TOO_LARGE_REASON` and is not applied.
+   * Update that is not a pure deletion on that connection closes the
+   * document with `COLLAB_DOCUMENT_TOO_LARGE_REASON` and is not applied.
    */
   enforceFull = false;
   /** How many Updates the server refused. */
@@ -134,7 +137,7 @@ export class ScriptedServer {
   private entry(name: string): ServerDoc {
     let found = this.docs.get(name);
     if (found === undefined) {
-      found = { doc: new Y.Doc({ gc: false }), pushed: new Map(), nextSeq: 1, knowsFull: false };
+      found = { doc: new Y.Doc({ gc: false }), pushed: new Map(), nextSeq: 1, knowsFull: new Map() };
       this.docs.set(name, found);
     }
     return found;
@@ -242,6 +245,7 @@ export class ScriptedServer {
     const { name } = frame;
     if (frame.kind === 'auth') {
       this.attached.get(socket)?.add(name);
+      server.knowsFull.delete(socket);
       const scope = this.scopes.get(name) ?? 'read-write';
       this.send(socket, name, (encoder) => {
         encoding.writeVarUint(encoder, 2);
@@ -275,7 +279,7 @@ export class ScriptedServer {
       return;
     }
     if (frame.kind === 'update') {
-      if (this.enforceFull && server.knowsFull && frame.shape === 'S') {
+      if (this.enforceFull && server.knowsFull.get(socket) === true && frame.shape === 'S') {
         this.refusals += 1;
         this.closeDocument(name, COLLAB_DOCUMENT_TOO_LARGE_REASON);
         return;
@@ -299,7 +303,7 @@ export class ScriptedServer {
     }
     if (body.type === 'doc:size-seen' && typeof body.seq === 'number') {
       const phase = server.pushed.get(body.seq);
-      if (phase !== undefined) server.knowsFull = phase === 'full';
+      if (phase !== undefined) server.knowsFull.set(socket, phase === 'full');
     }
   }
 
