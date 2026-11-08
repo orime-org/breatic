@@ -17,7 +17,7 @@
  * words and the language note), so reading all of it is reading the user.
  */
 import type { ModelMessage } from "ai";
-import { pageLinkKey } from "@breatic/shared";
+import { pageLinkKey, webPageUrlSchema } from "@breatic/shared";
 import { pageLinksIn } from "@breatic/domain/page-links";
 
 import { conversationService } from "@server/modules";
@@ -118,13 +118,17 @@ export function makePageLinks(): PageLinks {
   // conversation holds, never what the model added to it.
   const spellings = new Map<string, string>();
   /**
-   * Note links by their key, keeping the first spelling of each.
+   * Note links by their key, keeping the first spelling of each that
+   * web_fetch's own input would take: one it refuses (too long, not http or
+   * https) is never the spelling a link maps to.
    * @param links - The links.
    */
   const add = (links: readonly string[]): void => {
     for (const link of links) {
+      const spelling = /^https?:\/\//i.test(link) ? link : `https://${link}`;
+      if (!webPageUrlSchema.safeParse(spelling).success) continue;
       const key = pageLinkKey(link);
-      if (!spellings.has(key)) spellings.set(key, /^https?:\/\//i.test(link) ? link : `https://${link}`);
+      if (!spellings.has(key)) spellings.set(key, spelling);
     }
   };
   /**
