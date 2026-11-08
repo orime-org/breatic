@@ -85,7 +85,8 @@ const storedPlanSchema = z.union([
     tracking: z.strictObject({ model: z.string().min(1) }), cropSize: z.number().int().positive(),
     layout: z.strictObject({ preparation: frameWindows, persons: z.number().int().positive(), composite: frameWindows }), stageJobs,
     container: z.strictObject({ ...container, startSeconds: z.number().nonnegative().finite(),
-      encode: z.strictObject({ crf: z.number().int().min(0).max(51), preset: x264PresetSchema }), chunkRetries: index }),
+      encode: z.strictObject({ crf: z.number().int().min(0).max(51), preset: x264PresetSchema }), chunkRetries: index,
+      rawDiskBytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }),
   }),
   // An erase run (execution design §10.4).
   z.strictObject({ ...common, ...frozenToolInput, tool: z.literal("video.erase"),

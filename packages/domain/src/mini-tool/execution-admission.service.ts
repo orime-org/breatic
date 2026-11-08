@@ -9,13 +9,13 @@ import {
   type MiniToolPlanTarget, type TaskEntity, type TaskStatusType, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from "@breatic/shared";
 import {
-  batchVideoRunOutputs, presentationFramesIn, canonicalMiniToolValue, fingerprintMiniToolAnalysisInput, miniToolById, planModelWindows, projectMiniToolAnalysisInput, videoExpandLayout, type ModelGrid, type ModelWindow, type VideoExpandLayout, miniToolPlannedRequestSchema, presentationCoveringFrame, presentationFrameAt, trackingClips, plannedFailureRetryable, estimateAudioEncodeSeconds, estimateVideoJobSeconds, lipsyncMonotonicSegments, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
+  batchVideoRunOutputs, presentationFramesIn, canonicalMiniToolValue, fingerprintMiniToolAnalysisInput, miniToolById, planModelWindows, projectMiniToolAnalysisInput, videoExpandLayout, type ModelGrid, type ModelWindow, type VideoExpandLayout, miniToolPlannedRequestSchema, presentationCoveringFrame, presentationFrameAt, trackingClips, plannedFailureRetryable, estimateAudioEncodeSeconds, estimateVideoJobSeconds, lipsyncMonotonicSegments, lipsyncPictureBytes, lipsyncResultSourceFrames, lipsyncSourceSpan, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
   plannedStageJobs, planVideoFrames, planVideoSplit, type FrameWindow, type FramesExecutionLayout, type MiniToolExecutionRequest, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type MiniToolPresentationRef, type MiniToolSourceBinding, type MiniToolStageJobs,
   type LipsyncExecutionLayout, type LipsyncTimeline, type TransitionExecutionLayout, type TransitionOutputProfile, planTransitionChunks, planVideoTimeline, transitionOutputProfile, type VideoEncodeChunk, type VideoEncoderRates, type VideoExecutionDialogue, type VideoJobWork, type VideoPresentationTable,
 } from "@breatic/shared/mini-tools";
 import { prepareVideoRemoveBackground, type PreparedVideoRemoveBackground } from "@domain/mini-tool/remove-background-preparation.service.js";
 import { resolveSource } from "@domain/mini-tool/analysis.service.js";
-import { lipsyncClipRawBytes, lipsyncCompositeChunks, lipSyncDialogues, lipSyncModel, lipSyncPeople, lipsyncPersonStepKeys, lipsyncRawDiskBytes, lipsyncSharedStepKeys, lipsyncStepKey, lipSyncTimeline, type LipSyncGenerator, type LipSyncPerson } from "@domain/mini-tool/lipsync-admission.js";
+import { lipsyncClipCropBytes, lipsyncCompositeChunks, lipSyncDialogues, lipSyncModel, lipSyncPeople, lipsyncPersonStepKeys, lipsyncRawDiskBytes, lipsyncSharedStepKeys, lipsyncStepKey, lipSyncTimeline, type LipSyncGenerator, type LipSyncPerson } from "@domain/mini-tool/lipsync-admission.js";
 import { eraseTracking, expandBox, type EraseTracking, type ExpandBox } from "@domain/mini-tool/erase-expand-admission.js";
 import { assertOpaqueSource, eraseRangeGrid, trackingClipSeconds } from "@domain/mini-tool/tracking-range.js";
 import { selectedToolInput } from "@domain/mini-tool/selected-tool-input.js";
@@ -68,7 +68,8 @@ export type AcceptedMiniToolExecution = ExecutionPlan & (TransitionsExecution | 
     layout: LipsyncExecutionLayout; stageJobs: MiniToolStageJobs[];
     /** The shared steps' frozen keys: `composite:<k>` per chunk and `stitch` (DD §7.1). */
     sharedStepKeys: Record<string, string>;
-    container: MiniToolContainerPolicy & { startSeconds: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; chunkRetries: number } }
+    /** The raw disk budget computed once at admission (execution design paragraph before §9.4); jobs read only this value. */
+    container: MiniToolContainerPolicy & { startSeconds: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; chunkRetries: number; rawDiskBytes: number } }
   | { tool: "video.erase";
     /** The tracking analysis the run reads and its RLE (execution design §10.4 request row). */
     tracking: EraseTracking;
@@ -342,12 +343,14 @@ function preparationLayout(ledger: VideoPresentationLedger, config: MiniToolsCon
 }
 
 /**
- * The lip-sync container work and its stage layout (frames-split §5.4 dispatch, budget and to-be-measured rows; execution design §9.3).
- * The prepared video covers the used source range, chunked like a removal's preparation; each person runs one faces job
- * (the used frames decoded and searched by YuNet), one clip job (decoded, cropped and encoded at the crop size over the
- * result frames) and one stem job (the result length encoded to AAC); the composite decodes the source and every person's
- * result per result frame and encodes the picture, chunked inside each monotonic segment of the result by the chunk share;
- * the stitch encodes the result's audio once.
+ * The lip-sync container work and its stage layout (frames-split §5.4 dispatch, budget and to-be-measured rows; execution design §9.3
+ * and the paragraph before §9.4). The prepared video covers the used source range, chunked like a removal's preparation; each
+ * person runs one faces job (the used frames decoded and searched by YuNet), one clip job (the prepared video decoded once,
+ * forward, to the highest frame the result shows, and cropped and encoded over the result frames) and one stem job (the
+ * result length encoded to AAC); each composite chunk decodes its source window once and every person's result and encodes
+ * the picture over its result frames, chunked by the chunk share across loop and bounce segments, and cut further where its
+ * source goes back and its window's raw frames would not fit the disk budget; the stitch encodes the result's audio once. The
+ * disk budget, the class's disk times `encoding.raw_disk_share`, is computed here once and frozen.
  * @param ledger - The validated full ledger.
  * @param table - The compact table.
  * @param timing - The frozen timeline, the used range and the referenced people's count and crop size.
@@ -359,20 +362,23 @@ function preparationLayout(ledger: VideoPresentationLedger, config: MiniToolsCon
  * @param timing.cropSize - The model's crop side.
  * @param timing.containerClass - The lip-sync jobs' container class, whose disk bounds their raw frames.
  * @param config - The acceptance snapshot.
- * @returns The layout and its planned seconds.
- * @throws {AppError} When one faces, clip, stem, composite or stitch job alone would exceed one chunk share or its raw disk.
+ * @returns The layout, its planned seconds and the frozen raw disk budget.
+ * @throws {AppError} When one faces, clip, stem, composite or stitch job alone would exceed one chunk share, or a clip's crops its raw disk.
  * @throws {RangeError} When the work or the configuration is out of range.
  */
-function lipSyncLayout(ledger: VideoPresentationLedger, table: VideoPresentationTable,
-  timing: { timeline: LipsyncTimeline; usedRange: { start: 0; end: number }; persons: number; cropSize: number; containerClass: string }, config: MiniToolsConfig): { layout: LipsyncExecutionLayout; seconds: number } {
+export function lipSyncLayout(ledger: VideoPresentationLedger, table: VideoPresentationTable,
+  timing: { timeline: LipsyncTimeline; usedRange: { start: 0; end: number }; persons: number; cropSize: number; containerClass: string }, config: MiniToolsConfig):
+  { layout: LipsyncExecutionLayout; seconds: number; rawDiskBytes: number } {
   const rates = encoderRates(config);
   const share = shareSeconds(config);
   const used = presentationFramesIn(table, timing.usedRange).count;
-  const flags = videoPresentationKeyframeFlags(ledger).slice(0, used);
+  const keyframes = videoPresentationKeyframeFlags(ledger);
+  const flags = keyframes.slice(0, used);
   const prepareWork = estimateVideoJobSeconds(spanWork(ledger, 0, used), rates) - rates.startSeconds;
   const preparation = rates.startSeconds + prepareWork <= share ? [{ start: 0, end: used }]
     : planVideoEncodeChunks({ keyframes: flags, frameSeconds: prepareWork / used, targetSeconds: share - rates.startSeconds });
   const { width, height } = ledger.plan.display;
+  const picture = width * height;
   /**
    * Seconds to decode and convert this many source pixels at the source's depth and range.
    * @param pixels - The pixels.
@@ -381,34 +387,45 @@ function lipSyncLayout(ledger: VideoPresentationLedger, table: VideoPresentation
    */
   const decode = (pixels: number): number => pixels / rates.decodeConvertPixelsPerSecond[`${isHdrTransfer(ledger.plan.source.transfer) ? "hdr" : "sdr"}_${ledger.plan.source.bitDepth > 8 ? 10 : 8}bit`];
   const crop = timing.cropSize * timing.cropSize;
-  // The result grid split where the source mapping turns (§97 D23-5): a clip decodes each segment's source frames and
-  // pre-roll once, a reverse segment GOP by GOP forward, so its work equals a forward pass over the same interval.
-  const segments = lipsyncMonotonicSegments(timing.timeline, table, videoPresentationKeyframeFlags(ledger));
-  const resultFrames = segments.at(-1)!.resultEnd;
-  const clipDecoded = segments.reduce((total, segment) => total + segment.sourceEnd - segment.sourceStart + segment.prerollFrames, 0);
+  const sources = lipsyncResultSourceFrames(timing.timeline, table);
+  const resultFrames = sources.length;
+  const highest = sources.reduce((top, frame) => Math.max(top, frame), 0);
   // A stem and the stitch each encode one AAC track over the result; the stitch copies the composite chunks' packets (§97 D24-3).
   const audio = estimateAudioEncodeSeconds(timing.timeline.duration, { startSeconds: rates.startSeconds, aacEncodeSecondsPerSecond: config.encoding.encoder.aac_encode_seconds_per_second });
-  const faces = rates.startSeconds + used * (decode(width * height) + (width * height) / config.encoding.encoder.face_detect_pixels_per_second);
-  const clip = rates.startSeconds + clipDecoded * decode(width * height) + resultFrames * (crop / rates.encodePixelsPerSecond);
-  const compositeFrame = decode(width * height + timing.persons * crop) + (width * height) / rates.encodePixelsPerSecond;
-  // A composite chunk's raw frames also fit its class's disk share, and a clip's crops leave room for a decoded frame
-  // (execution design paragraph before §9.4).
-  const diskBytes = lipsyncRawDiskBytes(config.classes[timing.containerClass]!.disk_gb, config.encoding.raw_disk_share);
-  const frames = { width, height, alpha: ledger.plan.policy.emptyFill === "transparent", persons: timing.persons, cropSize: timing.cropSize };
-  if (lipsyncClipRawBytes(resultFrames, frames) > diskBytes) throw new AppError(400, t("server.mini_tool.lipSyncStepTooLong"));
-  let composite: { start: number; end: number }[];
+  const faces = rates.startSeconds + used * (decode(picture) + picture / config.encoding.encoder.face_detect_pixels_per_second);
+  const clip = rates.startSeconds + (highest + 1) * decode(picture) + resultFrames * (crop / rates.encodePixelsPerSecond);
+  const rawDiskBytes = lipsyncRawDiskBytes(config.classes[timing.containerClass]!.disk_gb, config.encoding.raw_disk_share);
+  if (lipsyncClipCropBytes(sources, timing.cropSize) > rawDiskBytes) throw new AppError(400, t("server.mini_tool.lipSyncStepTooLong"));
+  const prerolls = new Map<string, number>();
+  /**
+   * One composite chunk's job seconds: its source window decoded once from the keyframe before it, every person's result
+   * and the encode over its result frames.
+   * @param window - The chunk's result frames.
+   * @returns The seconds, its start included.
+   * @throws {RangeError} When the window is empty.
+   */
+  const chunkSeconds = (window: FrameWindow): number => {
+    const span = lipsyncSourceSpan(sources, window);
+    const key = `${span.start}:${span.end}`;
+    const preroll = prerolls.get(key) ?? prerollFrames(ledger, span.start, span.end - span.start);
+    prerolls.set(key, preroll);
+    return rates.startSeconds + (span.end - span.start + preroll) * decode(picture) + (window.end - window.start) * (decode(timing.persons * crop) + picture / rates.encodePixelsPerSecond);
+  };
+  const sourceBytes = lipsyncPictureBytes(width, height, ledger.plan.policy.emptyFill === "transparent");
+  let composite: FrameWindow[];
   try {
-    composite = lipsyncCompositeChunks({ timeline: timing.timeline, table, segments, frameSeconds: compositeFrame, targetSeconds: share - rates.startSeconds, frames, diskBytes });
+    composite = lipsyncCompositeChunks({ sources, segments: lipsyncMonotonicSegments(timing.timeline, table, keyframes), seconds: chunkSeconds, shareSeconds: share,
+      rawBytes: (span) => (span.end - span.start) * sourceBytes, diskBytes: rawDiskBytes });
   } catch (error) {
     if (error instanceof RangeError) throw new AppError(400, t("server.mini_tool.lipSyncStepTooLong"));
     throw error;
   }
+  const compositeSeconds = composite.map(chunkSeconds);
   // Every single job fits one share, as every chunk of the preparation does (frames-split §5.4 dispatch row).
-  const longest = Math.max(faces, clip, audio, ...composite.map((chunk) => rates.startSeconds + (chunk.end - chunk.start) * compositeFrame));
-  if (longest > share) throw new AppError(400, t("server.mini_tool.lipSyncStepTooLong"));
+  if (Math.max(faces, clip, audio, ...compositeSeconds) > share) throw new AppError(400, t("server.mini_tool.lipSyncStepTooLong"));
   const seconds = prepareWork + rates.startSeconds * (preparation.length + (preparation.length > 1 ? 1 : 0)) + timing.persons * (faces + clip + audio)
-    + resultFrames * compositeFrame + rates.startSeconds * composite.length + audio;
-  return { layout: { preparation, persons: timing.persons, composite }, seconds };
+    + compositeSeconds.reduce((total, chunk) => total + chunk, 0) + audio;
+  return { layout: { preparation, persons: timing.persons, composite }, seconds, rawDiskBytes };
 }
 
 /**
@@ -478,7 +495,7 @@ async function prepareLipSync(request: Extract<MiniToolPlannedRequest, { tool: "
   const dialogues = await lipSyncDialogues(request);
   const { timeline, usedRange } = lipSyncTimeline(request, table, dialogues, settings, model);
   const generation = await estimateTaskCredits(model.name, { params: {}, durations: { video: [timeline.duration], audio: [timeline.duration] }, sources: ["video", "audio"] });
-  const { layout, seconds: layoutWork } = lipSyncLayout(ledger, table, { timeline, usedRange, persons: persons.length, cropSize: model.crop_size, containerClass: settings.container_class }, config);
+  const { layout, seconds: layoutWork, rawDiskBytes } = lipSyncLayout(ledger, table, { timeline, usedRange, persons: persons.length, cropSize: model.crop_size, containerClass: settings.container_class }, config);
   // Execution design §10.2: the one anchor is tracked on [a, e) and, when a > 0, on [0, a] reversed; each clip is priced
   // over its encoded length, and a clip other than the preparation itself is prepared, and each person's tracks joined.
   const clips = trackingClips({ start: 0, end: layout.preparation.at(-1)!.end }, persons[0]!.anchor.frameIndex);
@@ -492,7 +509,7 @@ async function prepareLipSync(request: Extract<MiniToolPlannedRequest, { tool: "
   const stageJobs = plannedStageJobs(layout);
   assertWithinParallelCap(stageJobs, config);
   const container = { ...containerPolicy(settings.container_class, settings.precheck_seconds, config), startSeconds: config.encoding.encoder.start_seconds,
-    encode: { crf: config.presentation.crf, preset: config.presentation.preset }, chunkRetries: config.encoding.chunk_retries };
+    encode: { crf: config.presentation.crf, preset: config.presentation.preset }, chunkRetries: config.encoding.chunk_retries, rawDiskBytes };
   const plan = { ...common, tool: request.tool, binding, sourceKey, presentationRef: request.presentation_ref, ledgerReceipts: { source: receipt },
     versionIds: { source: versionId }, model: model.name, container, layout, stageJobs, timeline, usedRange, dialogues, persons, cropSize: model.crop_size,
     tracking: { model: settings.tracking.model },

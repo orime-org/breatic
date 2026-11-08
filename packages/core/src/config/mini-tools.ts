@@ -97,8 +97,8 @@ const encodingSchema = z.strictObject({
   // The decoded frames one job may hold to play a clip backwards; a longer reversed tracking clip is reversed in chunks
   // (execution design §10.2).
   reverse_buffer_bytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(encodingDefaults.reverse_buffer_bytes),
-  // The share of a job's instance disk its raw decoded frames may fill; a lip-sync composite chunk is cut and a clip decodes
-  // in segments to stay within it (execution design paragraph before §9.4).
+  // The share of a job's instance disk its raw decoded frames may fill, computed into a lip-sync plan once at admission: a
+  // clip's reused crops and a composite chunk's raw source window stay within it (execution design paragraph before §9.4).
   raw_disk_share: z.number().positive().max(1).default(encodingDefaults.raw_disk_share),
   encoder: z.strictObject({
     container_class: z.literal("MiniToolContainerStd4").default(encoderDefaults.container_class),

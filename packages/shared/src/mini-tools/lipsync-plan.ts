@@ -137,27 +137,3 @@ export function lipsyncMonotonicSegments(timeline: LipsyncTimeline, table: Video
   close(count);
   return segments;
 }
-
-/**
- * Cut composite chunks on the result axis: never across a monotonic segment, each within the chunk share, the fewest per
- * segment, split evenly.
- * @param input - The segments, each result frame's work in seconds and the chunk share in seconds.
- * @param input.segments - The segments in result order.
- * @param input.frameSeconds - One result frame's work.
- * @param input.targetSeconds - The chunk share.
- * @returns Half-open result-frame windows tiling the result.
- * @throws {RangeError} When the work or the share is not positive.
- */
-export function planLipsyncCompositeChunks(input: { segments: readonly Pick<LipsyncMonotonicSegment, "resultStart" | "resultEnd">[]; frameSeconds: number; targetSeconds: number }):
-  { start: number; end: number }[] {
-  const { segments, frameSeconds, targetSeconds } = input;
-  if (!(frameSeconds > 0) || !(targetSeconds > 0)) throw new RangeError("Expected positive work and share");
-  // A frame over the whole share still makes a chunk of one frame; admission refuses a job over its share.
-  const perChunk = Math.max(1, Math.floor(targetSeconds / frameSeconds + 1e-9));
-  return segments.flatMap((segment) => {
-    const length = segment.resultEnd - segment.resultStart;
-    const parts = Math.ceil(length / perChunk);
-    return Array.from({ length: parts }, (_, at) => ({
-      start: segment.resultStart + Math.floor((at * length) / parts), end: segment.resultStart + Math.floor(((at + 1) * length) / parts) }));
-  });
-}

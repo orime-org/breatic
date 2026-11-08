@@ -81,6 +81,8 @@ const FPS = 25;
 // Every video fixture: ten 25 fps frames, so V = 0.4 s; the presentation table of the prepared video and the original.
 const TABLE: VideoPresentationTable = { schemaVersion: 1, timescale: FPS, runs: [{ start: 0, count: 10, step: 1, duration: 1 }] };
 const V = 0.4;
+// A frozen raw disk budget no composite fixture comes near.
+const AMPLE_RAW_DISK_BYTES = 1_000_000_000;
 const ID = {
   video: '10000000-0000-4000-8000-000000000001', track: '10000000-0000-4000-8000-000000000002', faces: '10000000-0000-4000-8000-000000000003',
   audioA: '10000000-0000-4000-8000-0000000000a1', audioB: '10000000-0000-4000-8000-0000000000a2',
@@ -656,7 +658,7 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
    * @returns The recipe.
    */
   function recipe(target: Recipe): Recipe {
-    return { kind: 'lipsync_composite', inputId: ID.video, window: WINDOW, timescale: FPS, entries: [wholeSource()], target, timeline: TIMELINE, table: TABLE,
+    return { kind: 'lipsync_composite', inputId: ID.video, window: WINDOW, timescale: FPS, entries: [wholeSource()], target, timeline: TIMELINE, table: TABLE, rawDiskBytes: AMPLE_RAW_DISK_BYTES,
       persons: [{ result: ID.result1, faces: ID.faces1, track: ID.track1, cropSize: 64 }, { result: ID.result2, faces: ID.faces2, track: ID.track2, cropSize: 64 }] };
   }
 
@@ -730,6 +732,18 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
     // The chunk goes back through the source, so only its union window [6, 10) is decoded to a raw file.
     const outputs = [...vi.mocked(runPlanCommand).mock.calls, ...vi.mocked(startPlanCommand).mock.calls].map(([, args]) => (args as string[]).at(-1)!);
     expect(outputs.filter(output => output.endsWith('.yuv'))).toEqual([expect.stringMatching(/composite-source\.yuv$/)]);
+  });
+
+  // Execution design paragraph before §9.4: the raw source window of a chunk that goes back fits the plan's frozen disk budget;
+  // the container refuses one that does not rather than fill its disk.
+  it('LM05 refuses a chunk that goes back when its raw source window is over the frozen disk budget', async () => {
+    const bounce: LipsyncTimeline = { duration: 0.72, videoDuration: V, syncMode: 'bounce' };
+    const entries = [{ kind: 'source', decodeStart: r(0), clipStart: r(6, 25), displayStart: r(6, 25), displayEnd: r(10, 25), rate: r(1) }];
+    const job = { ...recipe(OPAQUE), timeline: bounce, window: { start: 6, end: 14 }, entries };
+    // Source frames [6, 10) are four 160x96 pictures.
+    expect((await runJob(await inputs('comp-source.mp4'), [{ ...job, rawDiskBytes: 4 * W * H * 1.5 }])).report.ok).toBe(true);
+    const { report } = await runJob(await inputs('comp-source.mp4'), [{ ...job, rawDiskBytes: 4 * W * H * 1.5 - 1 }]);
+    expect([report.ok, report.outputs]).toEqual([false, []]);
   });
 
   // Execution design paragraph before §9.4: a chunk whose source frames never go back streams the source, every person's

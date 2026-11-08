@@ -206,6 +206,9 @@ const recipeUnion = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("lipsync_composite"), ...windowRecipe, timeline: lipsyncTimeline, table: presentationTableSchema,
     persons: z.array(z.strictObject({ result: inputId, faces: inputId, track: inputId, cropSize })).min(1),
+    // The plan's frozen raw disk budget: a chunk whose source goes back decodes its source window to a raw file within it
+    // (execution design paragraph before §9.4).
+    rawDiskBytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   }),
 ]);
 /**

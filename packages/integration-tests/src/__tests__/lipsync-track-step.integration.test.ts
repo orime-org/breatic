@@ -103,7 +103,8 @@ async function seed(): Promise<Fixture> {
     persons: PERSONS.map((person) => ({ ...person, stepKeys: lipsyncPersonStepKeys("d".repeat(64), person, CLIPS) })), tracking: { model: "sam3-video-rle" }, cropSize: 512,
     container: { containerClass: "MiniToolContainerStd4", precheckSeconds: 300, size: { instance_type: "standard-4", vcpu: 4, memory_gib: 12, disk_gb: 20 },
       prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
-      limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, startSeconds: 3, encode: { crf: 18, preset: "medium" }, chunkRetries: 2 },
+      limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, startSeconds: 3, encode: { crf: 18, preset: "medium" }, chunkRetries: 2,
+      rawDiskBytes: 10_000_000_000 },
     layout: LAYOUT, stageJobs: plannedStageJobs(LAYOUT),
     // Frozen like admission freezes them (DD §7.1 steps row; §97 D25-5).
     sharedStepKeys: lipsyncSharedStepKeys("d".repeat(64), LAYOUT.composite.length, CLIPS),

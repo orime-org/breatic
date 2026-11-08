@@ -105,7 +105,8 @@ encoding:
   # stitched latest first. 2 GiB is a sixth of standard-4's 12 GiB.
   reverse_buffer_bytes: 2147483648
   # The share of a job's instance disk (classes.<class>.disk_gb) its raw decoded frames may fill; the rest holds its
-  # downloaded inputs and encoded output. A lip-sync composite chunk is cut, and a clip decodes in segments, to stay within it.
+  # downloaded inputs and encoded output. A lip-sync plan freezes it at admission: a clip's reused crops and a composite
+  # chunk whose source goes back, decoded to a raw file, stay within it; every other frame streams through pipes.
   raw_disk_share: 0.5
   encoder:
     container_class: "MiniToolContainerStd4"

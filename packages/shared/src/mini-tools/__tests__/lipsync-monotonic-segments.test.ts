@@ -6,7 +6,7 @@
  * splits the frozen lip-sync timeline's result-time to source-presentation-time mapping into forward and reverse monotonic
  * segments; each segment's decode work is the source frames it passes plus pre-roll (remap counts every source frame of
  * [0, V); a reverse segment is decoded per GOP forward once and output reversed, its pre-roll counted per GOP); composite
- * chunks are cut on the result axis by monotonic segment and chunk share.
+ * chunks may span segments (lipsync-disk-budget in domain covers their cutting).
  *
  * Shapes chosen here (the design names no function):
  * - `lipsyncMonotonicSegments(timeline, table, keyframes)` returns
@@ -16,7 +16,6 @@
  *   `lipsyncSourceTimeAt`: bounce is forward while u = t mod 2V is in [0, V] and reverse while u is in (V, 2V); loop starts
  *   a new forward segment where t mod V wraps to 0. `keyframes` is the per-presentation-frame keyframe flag list
  *   (`videoPresentationKeyframeFlags`), as `planVideoEncodeChunks` takes it.
- * - `planLipsyncCompositeChunks({ segments, frameSeconds, targetSeconds })` returns half-open result-frame windows.
  * Read from the mini-tools entry by name so this compiles before either exists.
  */
 import fc from "fast-check";
@@ -27,10 +26,8 @@ type Mode = "cut_off" | "silence" | "loop" | "bounce" | "remap";
 type Timeline = { duration: number; videoDuration: number; syncMode: Mode };
 type Table = { schemaVersion: 1; timescale: number; runs: { start: number; count: number; step: number; duration: number }[] };
 type Segment = { resultStart: number; resultEnd: number; sourceStart: number; sourceEnd: number; direction: "forward" | "reverse"; prerollFrames: number };
-type Window = { start: number; end: number };
 const api = miniTools as unknown as {
   lipsyncMonotonicSegments: (timeline: Timeline, table: Table, keyframes: readonly boolean[]) => Segment[];
-  planLipsyncCompositeChunks: (input: { segments: readonly Pick<Segment, "resultStart" | "resultEnd">[]; frameSeconds: number; targetSeconds: number }) => Window[];
   lipsyncSourceFrameAt: (timeline: Timeline, table: Table, t: number) => number;
 };
 
@@ -176,51 +173,5 @@ describe("lip-sync monotonic segments for any timeline (property)", () => {
         expect(segments.length).toBe(timeline.syncMode === "loop" ? Math.ceil(count / frames) : 1);
       }
     }), { numRuns: 300 });
-  });
-});
-
-describe("lip-sync composite chunks on the result axis (frames-split §5.4 待实测 row)", () => {
-  it("CC01 bounce chunks never span a turn and stay within the share", () => {
-    const segments = api.lipsyncMonotonicSegments({ duration: 15, videoDuration: 6, syncMode: "bounce" }, TABLE, KEYS);
-    const chunks = api.planLipsyncCompositeChunks({ segments, frameSeconds: 1, targetSeconds: 20 });
-    const starts = chunks.map((chunk) => chunk.start);
-    expect(starts).toContain(49);
-    expect(starts).toContain(96);
-    // Fewest chunks within 20 frames per segment: 49 → 3, 47 → 3, 24 → 2.
-    expect(chunks).toHaveLength(8);
-    for (const chunk of chunks) expect(chunk.end - chunk.start).toBeLessThanOrEqual(20);
-  });
-
-  it("CC02 a bounce result well within one share still has one chunk per monotonic segment", () => {
-    const segments = api.lipsyncMonotonicSegments({ duration: 15, videoDuration: 6, syncMode: "bounce" }, TABLE, KEYS);
-    expect(api.planLipsyncCompositeChunks({ segments, frameSeconds: 0.001, targetSeconds: 3600 })).toEqual([{ start: 0, end: 49 }, { start: 49, end: 96 }, { start: 96, end: 120 }]);
-  });
-
-  it("CC03 chunks tile the result, each inside one segment, within the share, fewest per segment (property)", () => {
-    fc.assert(fc.property(
-      fc.array(fc.integer({ min: 1, max: 300 }), { minLength: 1, maxLength: 8 }),
-      fc.constantFrom(0.25, 0.5, 1, 2),
-      fc.integer({ min: 1, max: 120 }),
-      (lengths, frameSeconds, perChunk) => {
-        // The share is a whole number of frames, so "nearest to the target" and "within the target" agree.
-        const targetSeconds = frameSeconds * perChunk;
-        const segments: Window[] = [];
-        let at = 0;
-        for (const length of lengths) { segments.push({ start: at, end: at + length }); at += length; }
-        const chunks = api.planLipsyncCompositeChunks({ segments: segments.map((s) => ({ resultStart: s.start, resultEnd: s.end })), frameSeconds, targetSeconds });
-        expect(chunks[0]!.start).toBe(0);
-        expect(chunks.at(-1)!.end).toBe(at);
-        chunks.forEach((chunk, index) => {
-          expect(chunk.end).toBeGreaterThan(chunk.start);
-          if (index > 0) expect(chunk.start).toBe(chunks[index - 1]!.end);
-          expect((chunk.end - chunk.start) * frameSeconds).toBeLessThanOrEqual(targetSeconds);
-        });
-        for (const segment of segments) {
-          const inside = chunks.filter((chunk) => chunk.start >= segment.start && chunk.end <= segment.end);
-          expect(inside.reduce((total, chunk) => total + chunk.end - chunk.start, 0)).toBe(segment.end - segment.start);
-          expect(inside.length).toBe(Math.ceil((segment.end - segment.start) / perChunk));
-        }
-      },
-    ), { numRuns: 300 });
   });
 });

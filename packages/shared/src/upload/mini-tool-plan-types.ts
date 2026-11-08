@@ -188,6 +188,8 @@ export interface MiniToolPlanLipsyncStem { kind: "lipsync_stem"; rows: { inputId
 export type MiniToolPlanLipsyncComposite = {
   kind: "lipsync_composite"; timeline: LipsyncTimeline; table: VideoPresentationTable;
   persons: { result: string; faces: string; track: string; cropSize: number }[];
+  /** The plan's frozen raw disk budget, which a chunk's raw source window stays within when its source goes back. */
+  rawDiskBytes: number;
 } & MiniToolPlanWindowRecipe;
 
 /**

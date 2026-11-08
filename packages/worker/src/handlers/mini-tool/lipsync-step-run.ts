@@ -358,7 +358,8 @@ async function composite(execution: LipSync, userId: string, deadlineAt: number)
           const target = segmentTarget(ledger, execution.container.encode);
           return { recipe: { kind: "lipsync_composite", inputId: SOURCE_INPUT_ID, window: { start: window.start, end: window.end }, timescale: ledger.plan.presentation.timescale,
             entries: windowEntries(ledger, lipsyncChunkSourceWindow(execution.timeline, ledger.plan.presentation, window)), target: { ...target, format: undefined },
-            timeline: execution.timeline, table: ledger.plan.presentation, persons: persons.map((person) => ({ ...person.ids, cropSize: execution.cropSize })) },
+            timeline: execution.timeline, table: ledger.plan.presentation, persons: persons.map((person) => ({ ...person.ids, cropSize: execution.cropSize })),
+            rawDiskBytes: execution.container.rawDiskBytes },
           inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }, ...persons.flatMap((person) => (["result", "faces", "track"] as const)
             .map((role) => ({ inputId: person.ids[role], storageKey: person.keys[role] })))] };
         } }, deadlineAt);

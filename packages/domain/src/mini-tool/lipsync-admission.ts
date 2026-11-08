@@ -11,7 +11,7 @@ import { z } from "zod";
 import { AppError, ValidationError, getStorageAdapter, type MiniToolsConfig } from "@breatic/core";
 import { t } from "@breatic/shared";
 import {
-  lipsyncChunkSourceWindow, lipsyncPictureBytes, lipsyncTimeline, lipsyncUsedSourceRange, planLipsyncCompositeChunks, type LipsyncMonotonicSegment, type TrackingClips, miniToolAnalysisRecordSchema, presentationFrameAt, presentationVideoEnd,
+  lipsyncPictureBytes, lipsyncSourceSpan, lipsyncTimeline, lipsyncUsedSourceRange, type TrackingClips, miniToolAnalysisRecordSchema, presentationFrameAt, presentationVideoEnd,
   type LipsyncTimeline, type MiniToolPlannedRequest, type VideoExecutionDialogue, type VideoPresentationTable,
 } from "@breatic/shared/mini-tools";
 import { miniToolFrozenAnalysisSchema } from "@domain/mini-tool/analysis.service.js";
@@ -192,9 +192,6 @@ export function lipSyncTimeline(request: LipSyncRequest, table: VideoPresentatio
   return { timeline, usedRange };
 }
 
-/** The raw pictures a lip-sync job holds: the picture's size and alpha, the referenced people and their crop side. */
-export interface LipsyncRawFrames { width: number; height: number; alpha: boolean; persons: number; cropSize: number }
-
 /**
  * The disk a lip-sync job's raw decoded frames may fill (execution design paragraph before §9.4): the configured share of
  * its instance class's disk, the rest left to its downloaded inputs and its encoded output.
@@ -208,68 +205,80 @@ export function lipsyncRawDiskBytes(diskGb: number, share: number): number {
 }
 
 /**
- * The raw bytes one composite chunk holds on disk: the source frames it shows, its result frames, and each person's result
- * frames over the window, all decoded at once.
- * @param timeline - The frozen timeline.
- * @param table - The source's presentation table.
- * @param window - The chunk's result frames.
- * @param window.start - The first.
- * @param window.end - The end.
- * @param frames - The pictures.
- * @returns The bytes.
- * @throws {RangeError} When the table has no frame or the window is empty.
- */
-export function lipsyncCompositeRawBytes(timeline: LipsyncTimeline, table: VideoPresentationTable, window: { start: number; end: number }, frames: LipsyncRawFrames): number {
-  const shown = lipsyncChunkSourceWindow(timeline, table, window);
-  const length = window.end - window.start;
-  return (shown.end - shown.start + length) * lipsyncPictureBytes(frames.width, frames.height, frames.alpha) + frames.persons * length * lipsyncPictureBytes(frames.cropSize, frames.cropSize, false);
-}
-
-/**
- * The raw bytes a person's clip holds beside one decoded segment: its result's crops and one prepared frame, the least a
- * segment needs.
- * @param resultFrames - The result frames.
- * @param frames - The pictures.
+ * The crop file a person's clip writes (execution design paragraph before §9.4): one crop for each source frame the result
+ * shows more than once, read back for its later uses.
+ * @param sources - The source frame of each result frame.
+ * @param cropSize - The crop side.
  * @returns The bytes.
  * @throws {never} Never.
  */
-export function lipsyncClipRawBytes(resultFrames: number, frames: LipsyncRawFrames): number {
-  return resultFrames * lipsyncPictureBytes(frames.cropSize, frames.cropSize, false) + lipsyncPictureBytes(frames.width, frames.height, frames.alpha);
+export function lipsyncClipCropBytes(sources: readonly number[], cropSize: number): number {
+  const uses = new Map<number, number>();
+  for (const frame of sources) uses.set(frame, (uses.get(frame) ?? 0) + 1);
+  let reused = 0;
+  for (const count of uses.values()) if (count > 1) reused += 1;
+  return reused * lipsyncPictureBytes(cropSize, cropSize, false);
+}
+
+/** Half-open result frames. */
+type ResultWindow = { start: number; end: number };
+
+/**
+ * Split a window evenly into parts.
+ * @param window - The window.
+ * @param parts - The part count, at most its length.
+ * @returns The parts in order.
+ * @throws {never} Never.
+ */
+function evenParts(window: ResultWindow, parts: number): ResultWindow[] {
+  const length = window.end - window.start;
+  return Array.from({ length: parts }, (_unused, at) => ({ start: window.start + Math.floor((at * length) / parts), end: window.start + Math.floor(((at + 1) * length) / parts) }));
 }
 
 /**
- * The composite chunks (frames-split §5.4; execution design paragraph before §9.4): cut by the time share inside each
- * monotonic segment, then each split evenly into the fewest parts whose raw frames fit the disk budget.
- * @param input - The timeline, table, segments, a frame's work, the share, the pictures and the disk budget.
- * @param input.timeline - The frozen timeline.
- * @param input.table - The source's presentation table.
+ * The composite chunks (frames-split §5.4; execution design paragraph before §9.4): the result split evenly into the fewest
+ * chunks each within the chunk share, across loop and bounce segment boundaries; a chunk whose source frames go back decodes
+ * its union source window to a raw file, so one whose window is over the disk budget is cut at its segment boundaries and
+ * each piece that still goes back is split evenly until its window fits.
+ * @param input - The result's source frames, its monotonic segments, a window's job seconds, the share, a source window's
+ * raw bytes and the disk budget.
+ * @param input.sources - The source frame of each result frame.
  * @param input.segments - The monotonic segments in result order.
- * @param input.frameSeconds - One result frame's work.
- * @param input.targetSeconds - The chunk share in seconds.
- * @param input.frames - The pictures.
+ * @param input.seconds - One chunk's job seconds, its start included.
+ * @param input.shareSeconds - The chunk share.
+ * @param input.rawBytes - The raw bytes of a decoded source window.
  * @param input.diskBytes - The raw disk budget.
  * @returns Half-open result-frame windows tiling the result.
- * @throws {RangeError} When the work or the share is not positive, or one result frame alone is over the budget.
+ * @throws {RangeError} When the result is empty or one result frame alone is over the share.
  */
-export function lipsyncCompositeChunks(input: { timeline: LipsyncTimeline; table: VideoPresentationTable; segments: readonly Pick<LipsyncMonotonicSegment, "resultStart" | "resultEnd">[];
-  frameSeconds: number; targetSeconds: number; frames: LipsyncRawFrames; diskBytes: number }): { start: number; end: number }[] {
-  const { timeline, table, frames, diskBytes } = input;
+export function lipsyncCompositeChunks(input: { sources: readonly number[]; segments: readonly { resultStart: number; resultEnd: number }[];
+  seconds: (window: ResultWindow) => number; shareSeconds: number; rawBytes: (span: ResultWindow) => number; diskBytes: number }): ResultWindow[] {
+  const { sources, segments, seconds, shareSeconds, rawBytes, diskBytes } = input;
+  const whole = { start: 0, end: sources.length };
+  if (whole.end === 0) throw new RangeError("Expected a result frame");
+  // Splitting never lowers the total work, so the whole's seconds over the share is the least chunk count.
+  let timed: ResultWindow[] | null = null;
+  for (let parts = Math.min(whole.end, Math.max(1, Math.ceil(seconds(whole) / shareSeconds))); timed === null && parts <= whole.end; parts += 1) {
+    const windows = evenParts(whole, parts);
+    if (windows.every((window) => seconds(window) <= shareSeconds)) timed = windows;
+  }
+  if (timed === null) throw new RangeError("One lip-sync result frame alone is over the chunk share");
   /**
-   * The raw bytes of a window.
+   * Whether a window streams its source or its raw source window fits the disk.
    * @param window - The window.
-   * @param window.start - Its first result frame.
-   * @param window.end - Its end.
-   * @returns The bytes.
-   * @throws {RangeError} When the window is empty.
+   * @returns True when it fits.
+   * @throws {never} Never.
    */
-  const bytes = (window: { start: number; end: number }): number => lipsyncCompositeRawBytes(timeline, table, window, frames);
-  return planLipsyncCompositeChunks(input).flatMap((chunk) => {
-    const length = chunk.end - chunk.start;
-    for (let parts = Math.min(length, Math.max(1, Math.ceil(bytes(chunk) / diskBytes))); parts <= length; parts += 1) {
-      const windows = Array.from({ length: parts }, (_unused, at) => ({
-        start: chunk.start + Math.floor((at * length) / parts), end: chunk.start + Math.floor(((at + 1) * length) / parts) }));
-      if (windows.every((window) => bytes(window) <= diskBytes)) return windows;
-    }
-    throw new RangeError("One lip-sync result frame alone is over the raw disk budget");
-  });
+  const fits = (window: ResultWindow): boolean => { const span = lipsyncSourceSpan(sources, window); return !span.goesBack || rawBytes(span) <= diskBytes; };
+  // ponytail: an oversized chunk is cut at every segment boundary; merge neighbouring pieces if the chunk count matters.
+  return timed.flatMap((chunk) => fits(chunk) ? [chunk] : segments
+    .map((segment) => ({ start: Math.max(segment.resultStart, chunk.start), end: Math.min(segment.resultEnd, chunk.end) }))
+    .filter((piece) => piece.end > piece.start)
+    .flatMap((piece) => {
+      // A single result frame never goes back, so this ends.
+      for (let parts = 1; ; parts += 1) {
+        const windows = evenParts(piece, parts);
+        if (windows.every(fits)) return windows;
+      }
+    }));
 }

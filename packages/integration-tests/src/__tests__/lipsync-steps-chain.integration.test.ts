@@ -74,6 +74,8 @@ vi.mock("@breatic/core", async (original) => {
   const actual = await original<typeof coreModule>();
   return { ...actual, getMiniToolsConfig: (): ReturnType<typeof actual.getMiniToolsConfig> => {
     const config = structuredClone(actual.getMiniToolsConfig());
+    // Today's share differs from the one the fixture's plan froze, so a job built from live configuration would show it.
+    config.encoding.raw_disk_share = 0.25;
     Reflect.set(config.executions, "video.lip-sync", { container_class: "MiniToolContainerStd4", precheck_seconds: 300, max_outputs: 1, max_outputs_per_job: 1,
       models: [{ name: "sync-lipsync-3", schema_fingerprint: "1".repeat(64), min_duration_seconds: 1, max_duration_seconds: 300, crop_size: 512, accepts_sync_mode: true,
         async_rejection: outside.config.rejection }],
@@ -82,6 +84,8 @@ vi.mock("@breatic/core", async (original) => {
   } };
 });
 
+// The budget the fixture's plan froze at admission: half of standard-4's 20 GB disk.
+const FROZEN_RAW_DISK_BYTES = 10_000_000_000;
 type LipSync = (execution: unknown, userId: string, deadlineAt: number) => Promise<{ results: Map<number, Record<string, unknown>>; waiting: boolean }>;
 const RUNNER = "@worker/handlers/mini-tool/run-lip-sync.js";
 /** The real runner, loaded by name. @returns It. */
@@ -277,7 +281,8 @@ async function seed(overrides: Record<string, unknown> = {}): Promise<Fixture> {
     tracking: { model: "sam3-video-rle" }, cropSize: 512,
     container: { containerClass: "MiniToolContainerStd4", precheckSeconds: 300, size: { instance_type: "standard-4", vcpu: 4, memory_gib: 12, disk_gb: 20 },
       prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
-      limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, startSeconds: 3, encode: { crf: 18, preset: "medium" }, chunkRetries: 2 },
+      limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, startSeconds: 3, encode: { crf: 18, preset: "medium" }, chunkRetries: 2,
+      rawDiskBytes: FROZEN_RAW_DISK_BYTES },
     layout: LAYOUT, stageJobs: plannedStageJobs(LAYOUT),
     // Frozen like admission freezes them (DD §7.1 steps row; §97 D25-5).
     sharedStepKeys: lipsyncSharedStepKeys(PLAN, LAYOUT.composite.length, CLIPS),
@@ -538,6 +543,13 @@ describe("lip-sync step bodies after track submits (§97 D21; execution design �
     expect(jobsOf("lipsync_faces").length).toBeLessThanOrEqual(frozen.get("faces")!);
     expect(jobsOf("lipsync_clip").length + jobsOf("lipsync_stem").length).toBeLessThanOrEqual(frozen.get("clip_stem")!);
     expect(composites.length).toBeLessThanOrEqual(frozen.get("composite")!);
+  });
+
+  it("LC06c gives every composite chunk the raw disk budget the plan froze, not today's configured share (execution design paragraph before §9.4)", async () => {
+    const f = await seed(); await drive(f);
+    const composites = jobsOf("lipsync_composite");
+    expect(composites.length).toBeGreaterThan(0);
+    for (const job of composites) expect((job.outputs[0]!.recipe as { rawDiskBytes?: number }).rawDiskBytes).toBe(FROZEN_RAW_DISK_BYTES);
   });
 
   it("LC06b decodes in each composite chunk only the source frames it shows (execution design paragraph before §9.4)", async () => {

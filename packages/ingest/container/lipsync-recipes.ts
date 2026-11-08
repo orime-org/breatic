@@ -636,7 +636,8 @@ function copyPicture(frame: Picture): Picture {
  * @param request - The files, directory and lifetime.
  * @param run - The lifetime and IO bounds of one command.
  * @returns Nothing once written.
- * @throws {RangeError} When the result frame step is not a whole number of the chunk's ticks, or the source ends early.
+ * @throws {RangeError} When the result frame step is not a whole number of the chunk's ticks, the raw source window is over the
+ * plan's disk budget, or the source ends early.
  * @throws {Error} When decoding, reading or encoding fails.
  */
 async function writeComposite(recipe: MiniToolPlanLipsyncComposite, request: LipsyncRecipeRequest, run: Run): Promise<void> {
@@ -666,6 +667,9 @@ async function writeComposite(recipe: MiniToolPlanLipsyncComposite, request: Lip
       persons.push({ faces, track, decode, results: decode === null ? null : frameStream(decode.stdout!, person.cropSize, person.cropSize, false), cropSize: person.cropSize });
     }
     if (shown.goesBack) {
+      if ((shown.end - shown.start) * lipsyncPictureBytes(target.width, target.height, alpha) > recipe.rawDiskBytes) {
+        throw new RangeError("The lip-sync composite's raw source window is over the plan's disk budget");
+      }
       const file = join(request.directory, "composite-source.yuv");
       await decodeRaw(sourceArgs, alpha, file, run);
       held = await rawFrames(file, target.width, target.height, alpha);

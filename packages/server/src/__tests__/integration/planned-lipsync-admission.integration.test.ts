@@ -621,28 +621,25 @@ describe("lip-sync single job over one chunk share (frames-split §5.4 派发 an
   });
 });
 
-// frames-split §5.4 待实测 row: composite chunks are cut on the result axis by monotonic segment and chunk share, so a
-// bounce result's frozen composite windows never hold both a frame going forward and one coming back, however small the
-// work. Checked through the shared `lipsyncSourceFrameAt` on the source's own table (presentation-fixtures REMOVAL_TABLE).
-describe("lip-sync composite chunks follow monotonic segments (frames-split §5.4 待实测 row)", () => {
-  it("LJ03 freezes a bounce run's composite windows so none spans the reversal", async () => {
+// Execution design paragraph before §9.4: composite chunks are cut by the chunk share and may span loop and bounce segment
+// boundaries; a chunk whose source frames go back decodes its union source window to a raw file, which must fit the raw disk
+// budget computed once at admission and frozen into the plan. Checked through the shared `lipsyncSourceFrameAt` on the
+// source's own table (presentation-fixtures REMOVAL_TABLE).
+describe("lip-sync composite chunks span segments within the frozen raw disk budget (execution design paragraph before §9.4)", () => {
+  it("LJ03 freezes a bounce run whose source window fits the disk as one chunk across the reversal, and freezes the disk budget", async () => {
     // A = max(0 + 3, 3 + 5) = 8 > V: bounce plays [0, V] forward and comes back from V; 1600 result frames of 1/200 s.
     const f = await seed([{ registered: 3, claimed: 3 }, { registered: 5, claimed: 5 }]);
     speak(f, [[0, 0, 0], [1, 1, 3]]); f.body.draft.params.syncMode = "bounce";
     await accept(f);
     const frozen = await plan(f.body.run_id);
     expect(frozen.timeline).toEqual({ duration: 8, videoDuration: V, syncMode: "bounce" });
-    const windows = frozen.layout?.composite ?? [];
-    expect(windows[0]?.start).toBe(0);
-    expect(windows.at(-1)?.end).toBe(1600);
     const table = { schemaVersion: 1 as const, timescale: 200, runs: [{ start: 0, count: 1011, step: 1, duration: 1 }] };
-    for (const [index, window] of windows.entries()) {
-      if (index > 0) expect(window.start).toBe(windows[index - 1]!.end);
-      const shown = Array.from({ length: window.end - window.start }, (_, at) => miniTools.lipsyncSourceFrameAt(frozen.timeline, table, (window.start + at) / 200));
-      const rises = shown.some((frame, at) => at > 0 && frame > shown[at - 1]!);
-      const falls = shown.some((frame, at) => at > 0 && frame < shown[at - 1]!);
-      expect(rises && falls, `composite window [${window.start}, ${window.end}) both rises and falls through the source`).toBe(false);
-    }
+    const shown = Array.from({ length: 1600 }, (_, at) => miniTools.lipsyncSourceFrameAt(frozen.timeline, table, at / 200));
+    expect(shown.some((frame, at) => at > 0 && frame < shown[at - 1]!), "the result goes back through the source").toBe(true);
+    // 1011 frames of 960 × 540 at 4:2:0 are about 0.8 GB, within half of standard-4's 20 GB disk.
+    expect(frozen.layout?.composite).toEqual([{ start: 0, end: 1600 }]);
+    const container = frozen.container as { rawDiskBytes?: number };
+    expect(container.rawDiskBytes).toBe(Math.floor(settings.classes.MiniToolContainerStd4!.disk_gb * 1e9 * settings.encoding.raw_disk_share));
     expect(frozen.stageJobs).toEqual(miniTools.plannedStageJobs(frozen.layout!));
   });
 });
