@@ -458,7 +458,7 @@ export function makeFetchTool(numbers: CitationNumbers, pageUrlFor: (url: string
       const outcomes = new Map<string, ReadPageResult>();
       if (toRead.length > 0) {
         const startedAt = Date.now();
-        let answer: ReadPagesAnswer;
+        let answer: ReadPagesAnswer | undefined;
         try {
           answer = await context.readPages(
             {
@@ -472,32 +472,43 @@ export function makeFetchTool(numbers: CitationNumbers, pageUrlFor: (url: string
             abortSignal,
           );
         } catch (err: unknown) {
-          if (err instanceof ReadPagesRefused) {
+          const refused = err instanceof ReadPagesRefused;
+          // The container may have run: it is charged for the time the call took,
+          // unless the server refused to read, the Worker refused the call (a 4xx)
+          // or it said its reader never started.
+          const noContainer =
+            refused || (err instanceof UploadHttpError && (err.status < 500 || err.code === "reader_not_started"));
+          if (!noContainer) {
+            recordRun(context.usage, { wallMs: Date.now() - startedAt, cpuUsec: null });
+          }
+          if (isStop(err, abortSignal)) throw stoppedByUser();
+          // A page the turn already holds is still handed over; only the pages
+          // this read was for end as busy.
+          const heldInTurn = asked.some((_, i) => stored[i] !== undefined && read.has(keys[i] as string));
+          if (!heldInTurn && refused) {
             throw toolFailed(
               reason("Too many page reads in a short time, so this call was not run.", MOVES.stop),
               FAILURE_LINES.tooFrequent,
               err,
             );
           }
-          // The container may have run: it is charged for the time the call took,
-          // unless the Worker refused the call (a 4xx) or said its reader never started.
-          const noContainer =
-            err instanceof UploadHttpError && (err.status < 500 || err.code === "reader_not_started");
-          if (!noContainer) {
-            recordRun(context.usage, { wallMs: Date.now() - startedAt, cpuUsec: null });
+          if (!heldInTurn) {
+            throw toolFailed(
+              reason("The page reader did not answer, so none of these pages were read.", MOVES.retryOnce),
+              FAILURE_LINES.unavailable,
+              err,
+            );
           }
-          if (isStop(err, abortSignal)) throw stoppedByUser();
-          throw toolFailed(
-            reason("The page reader did not answer, so none of these pages were read.", MOVES.retryOnce),
-            FAILURE_LINES.unavailable,
-            err,
-          );
         }
-        recordRun(context.usage, answer.usage);
-        for (const result of answer.pages) {
-          const key = pageLinkKey(result.url);
-          outcomes.set(key, result);
-          if (result.status === "ok") read.set(key, inFull(result));
+        if (answer === undefined) {
+          for (const url of toRead) outcomes.set(pageLinkKey(url), { url, status: "busy" });
+        } else {
+          recordRun(context.usage, answer.usage);
+          for (const result of answer.pages) {
+            const key = pageLinkKey(result.url);
+            outcomes.set(key, result);
+            if (result.status === "ok") read.set(key, inFull(result));
+          }
         }
       }
 
