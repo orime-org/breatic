@@ -8,7 +8,7 @@
  * The job carries no target node: the row it settles is the Space-level
  * generation row the submit route opened, named by `sceneRowId`. Where a
  * canvas run writes its nodes, this run settles that row through
- * `sceneTaskService.settleGeneration` and tells the Space's members to
+ * `sceneTaskService.settleById` and tells the Space's members to
  * refresh their task list. The row holds the registered asset, so the asset
  * id travels on the persisted output and back out of the stored result when a
  * billed job is delivered again.
@@ -42,8 +42,7 @@ const h = vi.hoisted(() => {
     upsertGenerationSucceeded: vi.fn(),
     insertGenerationFailedIfAbsent: vi.fn(),
     chargeForGeneration: vi.fn(),
-    findSceneRow: vi.fn(),
-    settleGeneration: vi.fn(),
+    settleSceneRowById: vi.fn(),
     publishSpaceTasksChanged: vi.fn(async (_projectId: string, _spaceId: string) => undefined),
   };
 });
@@ -110,7 +109,10 @@ vi.mock("@breatic/domain", async () => ({
   modelCatalog: { getModelCatalog: () => ({ image: [], video: [], audio: [], tts: [], three_d: [] }) },
   nodeHistoryService: { recordGenerationFailure: vi.fn(), recordGenerationSuccess: vi.fn() },
   settleTaskForNode: h.settleTaskForNode,
-  sceneTaskService: { findById: h.findSceneRow, settleGeneration: h.settleGeneration },
+  sceneTaskService: {
+    generationOutcome: (await import("@domain/node-task/scene-task.service.js")).generationOutcome,
+    settleById: h.settleSceneRowById,
+  },
   understandMediaAt: vi.fn(),
   readingLimitsUntil: (await import("@domain/understand/limits-until.js")).readingLimitsUntil,
   MediaUnavailable: class extends Error {},
@@ -200,8 +202,7 @@ beforeEach(() => {
     sizeBytes: 2048,
   }));
   h.chargeForGeneration.mockResolvedValue({ billed: true, charged: 0.24, shortfall: 0, studioId: "studio-1", lotIds: [] });
-  h.findSceneRow.mockResolvedValue(ROW);
-  h.settleGeneration.mockResolvedValue({ row: ROW, applied: true, assetWritten: true });
+  h.settleSceneRowById.mockResolvedValue({ row: ROW, applied: true, assetWritten: true });
 });
 
 describe("a 3D generation on the catalog lane (inner#1691)", () => {
@@ -224,8 +225,7 @@ describe("a 3D generation on the catalog lane (inner#1691)", () => {
     const result = await runTask(sceneJob(), "lock-token");
 
     expect(result).not.toHaveProperty("failed");
-    expect(h.findSceneRow).toHaveBeenCalledWith("row-1");
-    expect(h.settleGeneration).toHaveBeenCalledExactlyOnceWith(ROW, { outcome: "done", assetId: "asset-glb" });
+    expect(h.settleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "done", assetId: "asset-glb" });
     expect(h.publishSpaceTasksChanged).toHaveBeenCalledWith("proj-1", "space-1");
     // A Space row is not a node: nothing is settled on the canvas.
     expect(h.settleTaskForNode).not.toHaveBeenCalled();
@@ -243,13 +243,13 @@ describe("a 3D generation on the catalog lane (inner#1691)", () => {
     // A retryable attempt: the queue runs it again, so the row stays running.
     h.runCatalogTask.mockRejectedValueOnce(new Error("upstream 502"));
     await expect(runTask(sceneJob(0), "lock-token")).rejects.toThrow("upstream 502");
-    expect(h.settleGeneration).not.toHaveBeenCalled();
+    expect(h.settleSceneRowById).not.toHaveBeenCalled();
 
     // Storing the result fails after the vendor returned: the run is over.
     h.resolveRegisteredProjectMedia.mockRejectedValueOnce(new Error("ledger down"));
     await expect(runTask(sceneJob(1), "lock-token")).resolves.toEqual({ failed: true, reason: "persist_failed" });
 
-    expect(h.settleGeneration).toHaveBeenCalledExactlyOnceWith(ROW, { outcome: "failed", errorCode: "internal" });
+    expect(h.settleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "failed", errorMessage: "internal" });
     expect(h.publishSpaceTasksChanged).toHaveBeenCalledWith("proj-1", "space-1");
     expect(h.markCompletedAndBill).not.toHaveBeenCalled();
   });
@@ -264,7 +264,7 @@ describe("a 3D generation on the catalog lane (inner#1691)", () => {
     await runTask(sceneJob(), "lock-token");
 
     expect(h.runCatalogTask).not.toHaveBeenCalled();
-    expect(h.settleGeneration).toHaveBeenCalledExactlyOnceWith(ROW, { outcome: "done", assetId: "asset-glb" });
+    expect(h.settleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "done", assetId: "asset-glb" });
     expect(h.publishSpaceTasksChanged).toHaveBeenCalledWith("proj-1", "space-1");
   });
 });

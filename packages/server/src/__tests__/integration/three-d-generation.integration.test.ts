@@ -38,6 +38,7 @@ vi.mock("@breatic/domain", async (importOriginal: () => Promise<Record<string, u
 });
 
 import crypto from "node:crypto";
+import fc from "fast-check";
 import postgres from "postgres";
 import { Queue } from "bullmq";
 import {
@@ -52,8 +53,8 @@ import {
   env,
   type Redis,
 } from "@breatic/core";
-import { ceilToCreditCent, extractPromptText } from "@breatic/shared";
-import { estimateTaskCredits, nodeTaskService, sceneTaskService } from "@breatic/domain";
+import { ceilToCreditCent, extractPromptText, SCENE_OBJECT_NAME_MAX, SceneObjectValuesSchema } from "@breatic/shared";
+import { estimateTaskCredits, sceneTaskService, taskService } from "@breatic/domain";
 import { seedDesignatedLot } from "@server/__tests__/integration/studio-credit-fixtures.js";
 import type { Hono } from "hono";
 
@@ -736,6 +737,15 @@ describe("the row's label", () => {
     expect((await rowById(answer.row_id)).label).not.toMatch(/</);
   });
 
+  it("cuts a long prompt to what a scene object's name holds, so the model can be placed", async () => {
+    const s = await seedProject();
+    const prompt = `${"灯".repeat(300)} end`;
+    const answer = await admitted(s, textBody({ prompt }));
+    const { label } = await rowById(answer.row_id);
+    expect([...label]).toHaveLength(SCENE_OBJECT_NAME_MAX);
+    expect(SceneObjectValuesSchema.shape.name.safeParse(label).success).toBe(true);
+  });
+
   it("labels an image run by the front image's name in the Project", async () => {
     const s = await seedProject();
     const front = await seedAsset(s, "image", "lamp-front.png");
@@ -761,10 +771,9 @@ interface ListedTask {
   model?: { name: string; displayName: string };
   mode?: string;
   prompt?: string | null;
-  negativePrompt?: string | null;
   params?: Record<string, unknown>;
   inputs?: { assetId: string; url: string }[];
-  errorCode?: string | null;
+  errorMessage?: string | null;
 }
 
 describe("reading the Space's list", () => {
@@ -794,10 +803,9 @@ describe("reading the Space's list", () => {
       model: { name: T23D, displayName: "Tripo H3.1" },
       mode: "t23d",
       prompt: "a red barn lamp",
-      negativePrompt: "blurry",
       inputs: [],
     });
-    expect(textRow.params).toMatchObject(RESOLVED_TEXT_SETTINGS);
+    expect(textRow.params).toEqual({ ...RESOLVED_TEXT_SETTINGS, negative_prompt: "blurry" });
     const viewsRow = data.tasks.find((task) => task.id === views.row_id)!;
     expect(viewsRow).toMatchObject({
       kind: "generation",
@@ -805,7 +813,7 @@ describe("reading the Space's list", () => {
       origin: "agent",
       model: { name: MULTIVIEW, displayName: "Tripo H3.1" },
       mode: "i23d",
-      errorCode: null,
+      errorMessage: null,
       inputs: [
         { assetId: front.assetId, url: front.url },
         { assetId: left.assetId, url: left.url },
@@ -851,6 +859,26 @@ describe("checking a timed-out row against the queue", () => {
     expect(await res.json()).toEqual({ data: { outcome: "has_result" } });
     expect(await rowById(answer.row_id)).toMatchObject({ status: "expired", asset_id: model.assetId });
     expect((await signalsFor(s)).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("answers has_result when the worker charges the run between the check's reads of it", async () => {
+    const s = await seedProject();
+    const answer = await admitted(s);
+    await expire(s, answer.row_id);
+    const model = await seedAsset(s, "file", "lamp.glb");
+    await endJob(answer.task_id);
+    // The worker bills, settles the row and ends the job after the check first read the run.
+    const getJob = vi.spyOn(Queue.prototype, "getJob").mockImplementationOnce(async () => {
+      await markBilledWith(answer.task_id, model);
+      return undefined;
+    });
+    try {
+      const res = await check(s, answer.row_id);
+      expect(await res.json()).toEqual({ data: { outcome: "has_result" } });
+      expect(await rowById(answer.row_id)).toMatchObject({ status: "expired", asset_id: model.assetId });
+    } finally {
+      getJob.mockRestore();
+    }
   });
 
   it("answers ended when the job ended without a charged result", async () => {
@@ -933,7 +961,7 @@ describe("removing a row", () => {
     const done = await admitted(s);
     const late = await admitted(s);
     const model = await seedAsset(s, "file", "lamp.glb");
-    await sceneTaskService.settleGeneration((await nodeTaskService.findById(done.row_id))!, { outcome: "done", assetId: model.assetId });
+    await sceneTaskService.settleById(done.row_id, { outcome: "done", assetId: model.assetId });
     await expire(s, late.row_id);
     await sql`UPDATE node_tasks SET asset_id = ${model.assetId} WHERE id = ${late.row_id}`;
 
@@ -954,12 +982,30 @@ describe("removing a row", () => {
   });
 });
 
-describe("settleGeneration", () => {
+describe("charging a 3D generation", () => {
+  it("charges a run at most once, with the first charge's figure, however many charges race for it", async () => {
+    const s = await seedProject();
+    await fc.assert(
+      fc.asyncProperty(fc.array(fc.integer({ min: 1, max: 5_000 }), { minLength: 2, maxLength: 6 }), async (charges) => {
+        const answer = await admitted(s);
+        const won = await Promise.all(
+          charges.map((credits) => taskService.markCompletedAndBill(answer.task_id, { outputs: [] }, credits / 100, 1)),
+        );
+        expect(won.filter(Boolean)).toHaveLength(1);
+        const [task] = await sql<{ billed_credits: string }[]>`SELECT billed_credits FROM tasks WHERE id = ${answer.task_id}`;
+        expect(Number(task!.billed_credits)).toBe(charges[won.indexOf(true)]! / 100);
+      }),
+      { numRuns: 10 },
+    );
+  });
+});
+
+describe("settling a generation row", () => {
   it("moves a running row to done with the model", async () => {
     const s = await seedProject();
     const answer = await admitted(s);
     const model = await seedAsset(s, "file", "lamp.glb");
-    await sceneTaskService.settleGeneration((await nodeTaskService.findById(answer.row_id))!, { outcome: "done", assetId: model.assetId });
+    await sceneTaskService.settleById(answer.row_id, { outcome: "done", assetId: model.assetId });
     expect(await rowById(answer.row_id)).toMatchObject({ status: "done", asset_id: model.assetId });
   });
 
@@ -968,14 +1014,14 @@ describe("settleGeneration", () => {
     const answer = await admitted(s);
     await expire(s, answer.row_id);
     const model = await seedAsset(s, "file", "lamp.glb");
-    await sceneTaskService.settleGeneration((await nodeTaskService.findById(answer.row_id))!, { outcome: "done", assetId: model.assetId });
+    await sceneTaskService.settleById(answer.row_id, { outcome: "done", assetId: model.assetId });
     expect(await rowById(answer.row_id)).toMatchObject({ status: "expired", asset_id: model.assetId });
   });
 
   it("settles a failure before the deadline as failed with its code", async () => {
     const s = await seedProject();
     const answer = await admitted(s);
-    await sceneTaskService.settleGeneration((await nodeTaskService.findById(answer.row_id))!, { outcome: "failed", errorCode: "no_credits" });
+    await sceneTaskService.settleById(answer.row_id, { outcome: "failed", errorMessage: "no_credits" });
     expect(await rowById(answer.row_id)).toMatchObject({ status: "failed", error_message: "no_credits", asset_id: null });
   });
 
@@ -983,7 +1029,7 @@ describe("settleGeneration", () => {
     const s = await seedProject();
     const answer = await admitted(s);
     await makeOverdue(answer.row_id);
-    await sceneTaskService.settleGeneration((await nodeTaskService.findById(answer.row_id))!, { outcome: "failed", errorCode: "internal" });
+    await sceneTaskService.settleById(answer.row_id, { outcome: "failed", errorMessage: "internal" });
     expect(await rowById(answer.row_id)).toMatchObject({ status: "expired", asset_id: null });
   });
 });

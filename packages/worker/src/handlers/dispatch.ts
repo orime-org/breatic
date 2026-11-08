@@ -461,7 +461,7 @@ async function runTaskBody(
     }
     // The 3D Space's row is settled from the stored output the same way.
     if (sceneRowId !== undefined) {
-      await settleSceneRow(taskId, sceneRowId, sceneOutcomeOf(storedOutputs), { rethrow: true });
+      await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(storedOutputs), { rethrow: true });
     }
     // #1580-parallel activity-feed fix: a crash between billing and the
     // Stage-4 activity write leaves the feed with no success row (or a
@@ -828,7 +828,7 @@ async function runTaskBody(
   }
   // A 3D generation's result lands on its Space's own row (inner#1691).
   if (sceneRowId !== undefined) {
-    await settleSceneRow(taskId, sceneRowId, sceneOutcomeOf(persistedOutputs), { rethrow: true });
+    await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(persistedOutputs), { rethrow: true });
   }
 
   if (projectId) {
@@ -1111,21 +1111,6 @@ export async function recordGenerationForNodes(
 }
 
 /**
- * How a 3D generation's row ends from what the run stored (inner#1691): done
- * with the registered model, or failed when the run came back with nothing.
- * @param outputs - The persisted outputs; the catalog lane writes one.
- * @returns The outcome the row settles with.
- */
-export function sceneOutcomeOf(
-  outputs: readonly PersistedOutput[] | undefined,
-): { outcome: "done"; assetId: string } | { outcome: "failed"; errorCode: string } {
-  // ponytail: the first output is the model, as the catalog lane returns it;
-  // a vendor listing the GLB elsewhere needs a model-level output index (design H4).
-  const assetId = outputs?.[0]?.asset_id;
-  return assetId === undefined ? { outcome: "failed", errorCode: NO_RESULT } : { outcome: "done", assetId };
-}
-
-/**
  * Settle the 3D Space row a generation names (inner#1691) and tell the
  * Space's members to refresh its list. The row's own rule decides what moves:
  * it leaves `running` once, and a success finding it expired still lands.
@@ -1141,22 +1126,22 @@ export function sceneOutcomeOf(
 export async function settleSceneRow(
   taskId: string,
   sceneRowId: string,
-  outcome: { outcome: "done"; assetId: string } | { outcome: "failed"; errorCode: string },
+  outcome: sceneTaskService.SceneOutcome,
   opts: { rethrow?: boolean } = {},
 ): Promise<void> {
-  let row: Awaited<ReturnType<typeof sceneTaskService.findById>>;
+  let settled: Awaited<ReturnType<typeof sceneTaskService.settleById>>;
   try {
-    row = await sceneTaskService.findById(sceneRowId);
-    if (row === null) {
+    settled = await sceneTaskService.settleById(sceneRowId, outcome);
+    if (settled === null) {
       logger.error({ taskId, sceneRowId }, "scene_row_missing");
       return;
     }
-    await sceneTaskService.settleGeneration(row, outcome);
   } catch (err) {
     logger.error({ err, taskId, sceneRowId, outcome: outcome.outcome }, "scene_row_settle_failed");
     if (opts.rethrow) throw err;
     return;
   }
+  const { row } = settled;
   try {
     await publishSpaceTasksChanged(row.projectId, row.spaceId);
   } catch (err) {
@@ -1343,7 +1328,7 @@ export async function finishFailedRun(end: FailedRunEnd): Promise<void> {
     );
   }
   if (end.sceneRowId !== undefined && end.settles) {
-    await settleSceneRow(end.taskId, end.sceneRowId, { outcome: "failed", errorCode: end.errorMessage });
+    await settleSceneRow(end.taskId, end.sceneRowId, { outcome: "failed", errorMessage: end.errorMessage });
   }
   if (end.projectId && end.settles) {
     await recordGenerationActivity({

@@ -20,8 +20,7 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 const mockPublishNodeEvent = vi.hoisted(() => vi.fn());
 const mockSettleTaskForNode = vi.hoisted(() => vi.fn());
 const mockReleaseHold = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => undefined));
-const mockFindSceneRow = vi.hoisted(() => vi.fn());
-const mockSettleGeneration = vi.hoisted(() => vi.fn());
+const mockSettleSceneRowById = vi.hoisted(() => vi.fn());
 const mockPublishSpaceTasksChanged = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => undefined));
 
 vi.mock("@breatic/core", () => ({
@@ -53,7 +52,10 @@ vi.mock("@breatic/domain", async () => ({
     "@domain/canvas-node/node-state-events.js",
   )),
   settleTaskForNode: mockSettleTaskForNode,
-  sceneTaskService: { findById: mockFindSceneRow, settleGeneration: mockSettleGeneration },
+  sceneTaskService: {
+    generationOutcome: (await import("@domain/node-task/scene-task.service.js")).generationOutcome,
+    settleById: mockSettleSceneRowById,
+  },
   creditHoldService: { releaseHold: mockReleaseHold },
   taskService: {
     getByIdInternal: vi.fn(),
@@ -465,14 +467,12 @@ describe("cleanupFailedJobNodes for a 3D Space generation (inner#1691)", () => {
 
   beforeEach(() => {
     mockSettleTaskForNode.mockReset();
-    mockFindSceneRow.mockReset();
-    mockSettleGeneration.mockReset();
+    mockSettleSceneRowById.mockReset();
     mockPublishSpaceTasksChanged.mockClear();
     vi.mocked(taskService.getByIdInternal).mockReset();
     vi.mocked(projectActivitiesRepo.upsertGenerationSucceeded).mockReset();
     vi.mocked(projectActivitiesRepo.insertGenerationFailedIfAbsent).mockReset();
-    mockFindSceneRow.mockResolvedValue(ROW);
-    mockSettleGeneration.mockResolvedValue({ row: ROW, applied: true, assetWritten: true });
+    mockSettleSceneRowById.mockResolvedValue({ row: ROW, applied: true, assetWritten: true });
   });
 
   it("settles a billed result on the row as done and records a success, not a failure", async () => {
@@ -493,8 +493,7 @@ describe("cleanupFailedJobNodes for a 3D Space generation (inner#1691)", () => {
 
     await cleanupFailedJobNodes(streamRedis, sceneJob(), "job stalled more than allowable limit");
 
-    expect(mockFindSceneRow).toHaveBeenCalledWith("row-1");
-    expect(mockSettleGeneration).toHaveBeenCalledExactlyOnceWith(ROW, { outcome: "done", assetId: "asset-glb" });
+    expect(mockSettleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "done", assetId: "asset-glb" });
     expect(mockPublishSpaceTasksChanged).toHaveBeenCalledWith("p1", "s1");
     expect(vi.mocked(projectActivitiesRepo.upsertGenerationSucceeded)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(projectActivitiesRepo.upsertGenerationSucceeded).mock.calls[0]![0]).toMatchObject({
@@ -521,7 +520,7 @@ describe("cleanupFailedJobNodes for a 3D Space generation (inner#1691)", () => {
 
     await cleanupFailedJobNodes(streamRedis, sceneJob(), "job stalled more than allowable limit");
 
-    expect(mockSettleGeneration).toHaveBeenCalledExactlyOnceWith(ROW, { outcome: "failed", errorCode: "internal" });
+    expect(mockSettleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "failed", errorMessage: "internal" });
     expect(mockPublishSpaceTasksChanged).toHaveBeenCalledWith("p1", "s1");
     expect(vi.mocked(projectActivitiesRepo.upsertGenerationSucceeded)).not.toHaveBeenCalled();
     expect(mockSettleTaskForNode).not.toHaveBeenCalled();

@@ -32,11 +32,10 @@ describe("the 3D settings as the agent reads them", () => {
     for (const mode of ["t23d", "i23d"]) {
       for (const model of modelsIn(mode)) {
         expect(model.params.delight?.gate, model.name).toEqual({
-          kind: "flagOn",
-          param: "texture",
+          flag_on: "texture",
           equals: { texture_version: "v3.5" },
         });
-        expect(model.params.texture_quality?.gate, model.name).toEqual({ kind: "flagOn", param: "texture" });
+        expect(model.params.texture_quality?.gate, model.name).toEqual({ flag_on: "texture" });
       }
     }
   });
@@ -49,8 +48,8 @@ describe("the 3D settings as the agent reads them", () => {
           min: 1,
           max: 1_500_000,
           bounds: [
-            { when: { kind: "flagOn", param: "smart_low_poly" }, min: 500, max: 20_000 },
-            { when: { kind: "equals", equals: { geometry_quality: "detailed" } }, max: 2_000_000 },
+            { when: { flag_on: "smart_low_poly" }, min: 500, max: 20_000 },
+            { when: { equals: { geometry_quality: "detailed" } }, max: 2_000_000 },
           ],
         });
       }

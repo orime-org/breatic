@@ -463,6 +463,15 @@ export const AUDIO_GENERATION_MODES = [
  */
 export const THREE_D_GENERATION_MODES = ['t23d', 'i23d'] as const;
 
+/** One of {@link THREE_D_GENERATION_MODES}. */
+export type ThreeDGenerationMode = (typeof THREE_D_GENERATION_MODES)[number];
+
+/** The views of an image-to-3D run, in the order the upstream reads them (inner#1691). */
+export const SCENE_VIEW_SLOTS = ['front', 'left', 'back', 'right'] as const;
+
+/** One of {@link SCENE_VIEW_SLOTS}. */
+export type SceneViewSlot = (typeof SCENE_VIEW_SLOTS)[number];
+
 /** A node type that anchors a Generate panel. */
 export type GenerationNodeType = 'image' | 'video' | 'audio';
 

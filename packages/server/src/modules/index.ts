@@ -22,6 +22,7 @@ export * as pasteAssetsService from "@server/modules/asset/pasteAssets.service.j
 export * as sceneAssetService from "@server/modules/asset/scene-asset.service.js";
 export * as sceneTasksService from "@server/modules/asset/scene-tasks.service.js";
 export * as sceneGenerationService from "@server/modules/asset/scene-generation.service.js";
+export { holdRun } from "@server/modules/task/generation-task.js";
 export * as transferReferenceService from "@server/modules/asset/transfer-reference.service.js";
 export * as authService from "@server/modules/auth/auth.service.js";
 export * as invitationService from "@server/modules/invitation/invitation.service.js";

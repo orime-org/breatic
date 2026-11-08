@@ -10,32 +10,17 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { t } from "@breatic/shared";
+import { sceneGenerationBodySchema, t } from "@breatic/shared";
 import { requireAuth, type AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { runOnce } from "@server/middleware/run-once.js";
 import { validate } from "@server/middleware/validate.js";
 import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
-import { sceneGenerationService, sceneTasksService } from "@server/modules";
-import { holdRun } from "@server/routes/generation-admission.js";
+import { holdRun, sceneGenerationService, sceneTasksService } from "@server/modules";
 
 const threeDTasks = new Hono<{ Variables: AuthVariables }>();
 const spaceParams = z.object({ projectId: z.uuid(), spaceId: z.uuid() });
 const taskParams = spaceParams.extend({ taskId: z.uuid() });
-
-const generationBody = z.object({
-  mode: z.enum(["t23d", "i23d"]),
-  /** `tasks.model` is varchar(100). */
-  model: z.string().min(1).max(100),
-  prompt: z.string().max(8192).optional(),
-  // The settings, `negative_prompt` among them; each is judged against the
-  // model's own declarations, so the shape here only bounds the values.
-  params: z.record(z.string().max(64), z.union([z.string().max(8192), z.number(), z.boolean(), z.null()])),
-  // The views in front, left, back, right order. How many the model takes is
-  // its rule, said with its name when broken; the cap here only bounds work.
-  image_asset_ids: z.array(z.uuid()).max(16).optional(),
-  origin: z.enum(["space", "agent"]),
-});
 
 threeDTasks.post(
   "/:projectId/three-d/:spaceId/generations",
@@ -43,7 +28,7 @@ threeDTasks.post(
   rateLimitFor("generate", "user"),
   validate("header", idempotencyKeyHeaderSchema),
   validate("param", spaceParams),
-  validate("json", generationBody),
+  validate("json", sceneGenerationBodySchema),
   runOnce("generate"),
   async (c) => {
     const { projectId, spaceId } = c.req.valid("param");

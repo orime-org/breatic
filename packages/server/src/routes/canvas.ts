@@ -9,6 +9,7 @@
  * via Yjs document sync through the Hocuspocus collab server.
  */
 
+import { tasksQueue } from "@server/modules/task/tasks-queue.js";
 import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
 import { currentConsent } from "@breatic/core";
 import { Hono } from "hono";
@@ -44,10 +45,10 @@ import {
 import { nodeHistoryService } from "@breatic/domain";
 import { nodeTaskService } from "@breatic/domain";
 import {
+  holdRun,
   openGenerationTasks,
   startRowedRun,
 } from "@server/modules/task/generation-task.js";
-import { holdRun } from "@server/routes/generation-admission.js";
 import { startUrlIngest } from "@server/modules/asset/url-ingest.js";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import { UNDERSTAND_PINS } from "@breatic/domain";
@@ -56,7 +57,7 @@ import {
   pasteAssetsService,
   projectService,
 } from "@server/modules";
-import { createQueue, defaultJobOpts, getMiniToolsConfig } from "@breatic/core";
+import { defaultJobOpts, getMiniToolsConfig } from "@breatic/core";
 import {
   ValidationError,
   NotFoundError,
@@ -71,7 +72,6 @@ const canvas = new Hono<{ Variables: AuthVariables }>();
 
 canvas.use("*", requireAuth);
 
-const tasksQueue = createQueue("tasks");
 
 /**
  * `GET /canvas/limits` — frontend-consumed canvas knobs from
@@ -287,7 +287,7 @@ canvas.post(
   });
 
   let task: Awaited<ReturnType<typeof taskService.create>>;
-  let job: Awaited<ReturnType<typeof tasksQueue.add>>;
+  let job: Awaited<ReturnType<ReturnType<typeof tasksQueue>["add"]>>;
   try {
     // #89: storage gate, the other soft pre-check. AFTER credits, because
     // refusing for storage tells the studio's admin about it — and a request
@@ -342,7 +342,7 @@ canvas.post(
     // row and writes the result back into `project-{projectId}/canvas-{spaceId}`
     // (v10 multi-doc). The job payload carries spaceId so the worker can
     // compute the canvas-{spaceId} doc name without reloading the task row.
-    job = await tasksQueue.add(
+    job = await tasksQueue().add(
       "execute-task",
       {
         taskId: task.id,
@@ -504,7 +504,7 @@ async function startReading(
     label: model,
     credits: () => estimateTaskCredits(model, { params }),
     enqueue: () =>
-      tasksQueue.add(
+      tasksQueue().add(
         "execute-task",
         {
           taskId: task.id,

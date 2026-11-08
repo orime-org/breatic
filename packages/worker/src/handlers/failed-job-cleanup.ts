@@ -36,6 +36,7 @@ import { NO_CONSENT, type TaskFailureReason } from "@breatic/shared";
 import type { getStreamRedis } from "@breatic/core";
 import { logger, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
 import {
+  sceneTaskService,
   taskService,
   settleTaskForNode,
 } from "@breatic/domain";
@@ -49,7 +50,6 @@ import {
   mediaKindForActivity,
   recordGenerationForNodes,
   releaseRunHold,
-  sceneOutcomeOf,
   settleSceneRow,
   type TaskJobData,
 } from "@worker/handlers/dispatch.js";
@@ -177,7 +177,7 @@ export async function cleanupFailedJobNodes(
       logger.error({ err, taskId: job.data.taskId, projectId }, "crash_net_success_activity_failed");
     }
     if (sceneRowId !== undefined) {
-      await settleSceneRow(job.data.taskId, sceneRowId, sceneOutcomeOf(outputs));
+      await settleSceneRow(job.data.taskId, sceneRowId, sceneTaskService.generationOutcome(outputs));
       return 0;
     }
     await recordGenerationForNodes(
@@ -247,7 +247,7 @@ export async function cleanupFailedJobNodes(
   if (!spaceId) return 0;
   if (sceneRowId !== undefined) {
     // The row is read in each member's own language, so it holds our code.
-    await settleSceneRow(job.data.taskId, sceneRowId, { outcome: "failed", errorCode: "internal" satisfies TaskFailureReason });
+    await settleSceneRow(job.data.taskId, sceneRowId, { outcome: "failed", errorMessage: "internal" satisfies TaskFailureReason });
     return 0;
   }
   if (!targetNodeIds || targetNodeIds.length === 0) return 0;

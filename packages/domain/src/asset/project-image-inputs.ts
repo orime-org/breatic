@@ -13,10 +13,9 @@
  */
 
 import { assetRepo, getStorageAdapter, NotFoundError, projectsRepo, ValidationError } from "@breatic/core";
-import { t } from "@breatic/shared";
+import { SCENE_VIEW_SLOTS, t } from "@breatic/shared";
 
 import { findLiveByKeyInStudio } from "@domain/asset/asset.repo.js";
-import { SCENE_VIEW_SLOTS } from "@domain/model-catalog/scene-generation.js";
 
 /** One resolved view. */
 export interface ProjectImageInput {

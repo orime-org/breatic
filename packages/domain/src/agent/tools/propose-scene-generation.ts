@@ -19,11 +19,11 @@ import { tool, type Tool } from "ai";
 import { z } from "zod";
 
 import { AppError } from "@breatic/core";
-import type { ParamViolation, ProposalRefused, SceneGenerationProposal } from "@breatic/shared";
+import { SCENE_VIEW_SLOTS, THREE_D_GENERATION_MODES, type ParamViolation, type ProposalRefused, type SceneGenerationProposal } from "@breatic/shared";
 
 import { resolveProjectImageInputs } from "@domain/asset/project-image-inputs.js";
 import { estimateTaskCredits } from "@domain/model-catalog/model-catalog.js";
-import { planSceneGeneration, SCENE_VIEW_SLOTS, type SceneGenerationProblem } from "@domain/model-catalog/scene-generation.js";
+import { planSceneGeneration, type SceneGenerationProblem } from "@domain/model-catalog/scene-generation.js";
 import { LIST_GENERATION_MODELS } from "@domain/agent/tools/tool-names.js";
 
 /** What the tool answers with: the proposal, or why it was refused. */
@@ -38,7 +38,7 @@ const proposeSceneContextSchema: z.ZodType<ProposeSceneContext> = z.object({ pro
 
 const inputSchema = z
   .object({
-    mode: z.enum(["t23d", "i23d"]).describe("t23d: text to 3D. i23d: picture to 3D."),
+    mode: z.enum(THREE_D_GENERATION_MODES).describe("t23d: text to 3D. i23d: picture to 3D."),
     model: z
       .string()
       .min(1)

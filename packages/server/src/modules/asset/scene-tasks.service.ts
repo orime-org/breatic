@@ -16,6 +16,7 @@ import { ConflictError, ForbiddenError, NotFoundError } from "@breatic/core";
 import {
   modelCatalog,
   nodeTaskService,
+  picturesOf,
   sceneTaskService,
   taskService,
   type SceneGenerationOrigin,
@@ -37,25 +38,23 @@ interface SpaceTaskCommon {
   startedAt: string;
   deadlineAt: string;
   assetId: string | null;
+  /** The `task-failure` code, or the upstream's own words for a failure it gave. */
+  errorMessage: string | null;
 }
 
 /** A model upload, as the panel reads it. */
 export interface SpaceImportWire extends SpaceTaskCommon {
   kind: "import";
-  errorMessage: string | null;
 }
 
 /** A 3D generation, as the panel reads it: what a retry fills the dialog with, and why it failed. */
 export interface SpaceGenerationWire extends SpaceTaskCommon {
   kind: "generation";
-  /** The `task-failure` code, which the panel says in the user's language. */
-  errorCode: string | null;
   origin: SceneGenerationOrigin | null;
   model: { name: string; displayName: string };
   mode: string;
   prompt: string | null;
-  negativePrompt: string | null;
-  /** The resolved settings, without the prompt, the negative prompt or the views. */
+  /** The resolved settings, `negative_prompt` among them, without the prompt or the views. */
   params: Record<string, unknown>;
   /** The views in front, left, back, right order. */
   inputs: Array<{ assetId: string; url: string }>;
@@ -63,9 +62,6 @@ export interface SpaceGenerationWire extends SpaceTaskCommon {
 
 /** One row as the panel reads it. */
 export type SpaceTaskWire = SpaceImportWire | SpaceGenerationWire;
-
-/** The job params that are not settings: said once each, in their own fields. */
-const NOT_SETTINGS = new Set(["prompt", "negative_prompt", "image", "images", "input_asset_ids"]);
 
 /**
  * A generation row's own fields, read from the run it names.
@@ -77,18 +73,23 @@ function generationFields(row: SceneTaskRow, run: TaskEntity | undefined): Omit<
   const params = run?.params ?? {};
   const name = run?.model ?? "";
   const entry = modelCatalog.getModelCatalog().three_d.find((candidate) => candidate.name === name);
+  // The views sit under the param the entry reads them in, as the submission wrote them.
+  const viewParam = entry === undefined ? undefined : picturesOf(entry)?.name;
+  const views = viewParam === undefined ? undefined : params[viewParam];
   const ids = Array.isArray(params.input_asset_ids) ? params.input_asset_ids.filter((id): id is string => typeof id === "string") : [];
-  const urls = Array.isArray(params.images) ? params.images : typeof params.image === "string" ? [params.image] : [];
+  const urls: unknown[] = Array.isArray(views) ? views : [views];
   const entryMode = entry === undefined ? undefined : Array.isArray(entry.mode) ? entry.mode[0] : entry.mode;
+  const notSettings = new Set(["prompt", "input_asset_ids", ...(viewParam === undefined ? [] : [viewParam])]);
   return {
-    errorCode: row.errorMessage,
     origin: row.origin,
     model: { name, displayName: entry?.display_name ?? name },
     mode: entryMode ?? (ids.length > 0 ? "i23d" : "t23d"),
     prompt: typeof params.prompt === "string" ? params.prompt : null,
-    negativePrompt: typeof params.negative_prompt === "string" ? params.negative_prompt : null,
-    params: Object.fromEntries(Object.entries(params).filter(([key]) => !NOT_SETTINGS.has(key))),
-    inputs: ids.map((assetId, index) => ({ assetId, url: typeof urls[index] === "string" ? urls[index] : "" })),
+    params: Object.fromEntries(Object.entries(params).filter(([key]) => !notSettings.has(key))),
+    inputs: ids.map((assetId, index) => {
+      const url = urls[index];
+      return { assetId, url: typeof url === "string" ? url : "" };
+    }),
   };
 }
 
@@ -120,10 +121,11 @@ export async function listSpaceTasks(
         startedAt: row.startedAt.toISOString(),
         deadlineAt: new Date(nodeTaskService.rowDeadline(row)).toISOString(),
         assetId: row.assetId,
+        errorMessage: row.errorMessage,
       };
       return row.action === "generate"
         ? { ...common, kind: "generation", ...generationFields(row, row.taskId === null ? undefined : runs.get(row.taskId)) }
-        : { ...common, kind: "import", errorMessage: row.errorMessage };
+        : { ...common, kind: "import" };
     }),
   };
 }
@@ -146,7 +148,6 @@ async function spaceRow(
   const row = await sceneTaskService.findById(taskId);
   if (
     row === null ||
-    row.nodeId !== null ||
     row.deletedAt !== null ||
     row.projectId !== projectId ||
     row.spaceId !== spaceId ||
@@ -165,27 +166,29 @@ const STILL_RUNNING = new Set(["active", "waiting", "delayed", "prioritized", "w
 
 /**
  * Whether a timed-out generation's job can still produce a result, and when
- * it already has one, land it on the row (design 4.4). The job is read before
- * the run: the worker charges and writes the row before it ends the job, so a
- * job that has ended has its result settled.
+ * it already has one, land it on the row (design 4.4). The outcome is judged
+ * on the run as read after its job is known to have stopped: the worker
+ * charges and settles the row before it ends the job, so a run read then
+ * holds whatever result the job produced.
  * @param row - The generation row, expired and holding nothing.
  * @returns What the check found.
  * @throws {Error} When the queue or the database cannot be read.
  */
 async function checkRun(row: SpaceRow): Promise<GenerationCheck> {
-  const run = row.taskId === null ? null : await taskService.getByIdInternal(row.taskId);
-  if (run === null) return "ended";
-  if (run.arqJobId) {
-    const job = await tasksQueue().getJob(run.arqJobId);
+  if (row.taskId === null) return "ended";
+  const queued = await taskService.getByIdInternal(row.taskId);
+  if (queued === null) return "ended";
+  if (queued.arqJobId) {
+    const job = await tasksQueue().getJob(queued.arqJobId);
     if (job !== undefined && STILL_RUNNING.has(await job.getState())) return "running";
-  } else if (run.status === "pending" || run.status === "running") {
+  } else if (queued.status === "pending" || queued.status === "running") {
     // No job id recorded: nothing can say the job ended, so it may still run.
     return "running";
   }
-  const outputs = (run.result as { outputs?: Array<{ asset_id?: unknown }> } | null)?.outputs;
-  const assetId = outputs?.[0]?.asset_id;
-  if (run.billedAt === null || typeof assetId !== "string") return "ended";
-  const settled = await sceneTaskService.settleGeneration(row, { outcome: "done", assetId });
+  const run = (await taskService.getByIdInternal(row.taskId)) ?? queued;
+  const outcome = sceneTaskService.generationOutcome((run.result as { outputs?: Array<{ asset_id?: unknown }> } | null)?.outputs);
+  if (run.billedAt === null || outcome.outcome === "failed") return "ended";
+  const settled = await sceneTaskService.settle(row, outcome);
   if (settled.assetWritten) await publishSpaceTasksQuietly(row.projectId, row.spaceId);
   return "has_result";
 }

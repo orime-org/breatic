@@ -15,7 +15,6 @@ import {
   PANEL_EDITOR_PARAM,
   paramValues,
   storyboardSpec,
-  type ControlGate,
   type GenerationNodeType,
   type MissingSource,
   type ModelEntry,
@@ -147,13 +146,13 @@ export interface ParamInfo {
    * it gets the control: "not yet" and "not ever" ask different things of
    * them, and {@link ParamInfo.noControl} already says the second.
    */
-  gate?: ControlGate;
+  gate?: ParamGate;
   /**
    * Ranges that replace {@link ParamInfo.min} and {@link ParamInfo.max} while
    * their condition holds: the first that holds wins, and an end it leaves
    * out is the param's own (inner#1691).
    */
-  bounds?: Array<{ when: ControlGate; min?: number; max?: number }>;
+  bounds?: Array<{ when: ParamGate; min?: number; max?: number }>;
   /** What it is set to when nobody chooses. */
   default: unknown;
   /** What it does, on one line. */
@@ -228,7 +227,7 @@ export interface ModelInfo {
    * Values the model forces while their conditions hold, in the order they
    * apply (inner#1691): a value given against one is refused.
    */
-  forces?: Array<{ id: string; when: ControlGate; set: Readonly<Record<string, ParamScalar>>; lock: boolean }>;
+  forces?: Array<{ id: string; when: ParamGate; set: Readonly<Record<string, ParamScalar>>; lock: boolean }>;
 }
 
 /** What one node can do in one mode: the models, or why there are none. */
@@ -391,17 +390,6 @@ function reachedBy(
 }
 
 /**
- * A declared condition, in the shape the answer already carries.
- * @param when - The condition the catalog declares.
- * @returns The gate, or undefined when it says nothing.
- */
-function gateOf(when: ParamGate | undefined): ControlGate | undefined {
-  const equals = when?.equals !== undefined && Object.keys(when.equals).length > 0 ? when.equals : undefined;
-  if (when?.flag_on !== undefined) return { kind: "flagOn", param: when.flag_on, ...(equals ? { equals } : {}) };
-  return equals ? { kind: "equals", equals } : undefined;
-}
-
-/**
  * One parameter of one model, as the agent needs it.
  * @param name - The parameter name.
  * @param spec - What the catalog declares about it.
@@ -421,7 +409,7 @@ function projectParam(
   // Only a control waits on something: material is held to this mode's slots
   // by the projection above. The name a clause gives is a param of this same
   // model, which `assertParamDeclarations` refuses at load time otherwise.
-  const gate = by === "panel" ? gateOf(spec.when) : undefined;
+  const gate = by === "panel" ? spec.when : undefined;
   return {
     ...(spec.type !== undefined ? { type: spec.type } : {}),
     ...(options.length > 0 ? { options } : {}),
@@ -443,7 +431,7 @@ function projectParam(
     ...(spec.bounds !== undefined
       ? {
           bounds: spec.bounds.map((bound) => ({
-            when: gateOf(bound.when) ?? { kind: "equals" as const, equals: {} },
+            when: bound.when,
             ...(bound.min !== undefined ? { min: bound.min } : {}),
             ...(bound.max !== undefined ? { max: bound.max } : {}),
           })),
@@ -611,7 +599,7 @@ function modelsIn(
         ? {
             forces: entry.forces.map((force) => ({
               id: force.id,
-              when: gateOf(force.when) ?? { kind: "equals" as const, equals: {} },
+              when: force.when,
               set: force.set,
               lock: force.lock,
             })),

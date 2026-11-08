@@ -289,12 +289,13 @@ describe("the gate a parameter reports", () => {
         for (const model of answer.models) {
           for (const [name, spec] of Object.entries(model.params)) {
             // inner#1691: only a switch gate names one param to turn on.
-            if (spec.gate === undefined || spec.gate.kind !== "flagOn") continue;
+            const flag = spec.gate?.flag_on;
+            if (flag === undefined) continue;
             seen += 1;
-            const reachable = spec.gate.param in model.params;
+            const reachable = flag in model.params;
             expect(
               reachable,
-              `${nodeType}/${mode} ${model.name}.${name} waits on ${spec.gate.param}`,
+              `${nodeType}/${mode} ${model.name}.${name} waits on ${flag}`,
             ).toBe(true);
           }
         }

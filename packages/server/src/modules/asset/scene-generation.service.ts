@@ -4,7 +4,7 @@
 /**
  * Submitting a 3D generation from a 3D Space (inner#1691 design 4.2).
  *
- * Steps 1 to 5 are the Canvas generation's (the route's `holdRun`): editor
+ * Steps 1 to 5 are the Canvas generation's (`holdRun`): editor
  * access, this submission's checks ({@link checkSubmission}), and its
  * estimate ({@link estimateOf}) held under the new task's id. Then
  * the task, its Space-level row and the job, in that order, following
@@ -17,40 +17,37 @@
 
 import { currentConsent, defaultJobOpts, getNodeTaskConfig, logger, ValidationError } from "@breatic/core";
 import {
-  creditHoldService,
   estimateTaskCredits,
-  nodeTaskService,
   planSceneGeneration,
   resolveProjectImageInputs,
   sceneTaskService,
-  taskService,
   type ProjectImageInput,
   type SceneGenerationOrigin,
   type SceneGenerationPlan,
   type SceneGenerationProblem,
 } from "@breatic/domain";
-import { t, type ParamViolation } from "@breatic/shared";
+import {
+  SCENE_OBJECT_NAME_MAX,
+  t,
+  type ParamViolation,
+  type SceneGenerationAnswer,
+  type ThreeDGenerationMode,
+} from "@breatic/shared";
 import { assertStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
 import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
+import { recordJobId, settleUnqueuedRun } from "@server/modules/task/generation-task.js";
 import { publishSpaceTasksQuietly } from "@server/modules/task/publish-counts.js";
 import { tasksQueue } from "@server/modules/task/tasks-queue.js";
 
 /** A submission, as the route validated it. */
 export interface SceneGenerationSubmission {
-  mode: "t23d" | "i23d";
+  mode: ThreeDGenerationMode;
   model: string;
   prompt?: string;
   params: Record<string, unknown>;
   /** The views in front, left, back, right order. */
   imageAssetIds?: string[];
   origin: SceneGenerationOrigin;
-}
-
-/** What a submission answers: the task, its row, and whether the job was queued. */
-export interface SceneGenerationAnswer {
-  task_id: string;
-  row_id: string;
-  status: "pending" | "failed";
 }
 
 /**
@@ -101,6 +98,16 @@ function problemMessage(problem: SceneGenerationProblem): string {
     case "violation":
       return violationMessage(problem.violation);
   }
+}
+
+/**
+ * A row's label: the text cut to what a scene object's name holds, since
+ * placing the model names the object by it.
+ * @param text - The cleaned prompt, the front view's name or the model's.
+ * @returns The label.
+ */
+function rowLabel(text: string): string {
+  return [...text].slice(0, SCENE_OBJECT_NAME_MAX).join("").trim();
 }
 
 /**
@@ -194,15 +201,13 @@ export async function startSceneGeneration(
   const { taskId } = held;
   const { plan, images } = held.checked;
   const params = jobParams(plan, submission.prompt, images);
-  const label = plan.prompt ?? images[0]?.displayName ?? plan.entry.display_name;
+  const label = rowLabel(plan.prompt ?? images[0]?.displayName ?? plan.entry.display_name);
 
-  let created = false;
   let rowId: string | undefined;
   let queued: { rowId: string; jobId: string | undefined };
   try {
     await assertStorageAllowance(projectId, "generate");
     const task = await admitGeneration(userId, projectId, spaceId, "three_d", "append", params, plan.entry.name, "task", taskId);
-    created = true;
     rowId = await sceneTaskService.openGeneration({
       projectId,
       spaceId,
@@ -237,21 +242,15 @@ export async function startSceneGeneration(
     queued = { rowId, jobId: job.id };
   } catch (err) {
     const opened = rowId;
-    for (const settle of [
-      (): Promise<unknown> => creditHoldService.releaseHold(taskId),
-      (): Promise<unknown> => (created ? taskService.markFailed(taskId, "internal") : Promise.resolve()),
-      async (): Promise<unknown> => {
-        if (opened === undefined) return;
-        const row = await nodeTaskService.findById(opened);
-        if (row !== null) await sceneTaskService.settleGeneration(row, { outcome: "failed", errorCode: "internal" });
+    await settleUnqueuedRun(
+      taskId,
+      projectId,
+      "internal",
+      async () => {
+        if (opened !== undefined) await sceneTaskService.settleById(opened, { outcome: "failed", errorMessage: "internal" });
       },
-    ]) {
-      try {
-        await settle();
-      } catch (settleErr) {
-        logger.error({ err: settleErr, taskId, projectId, spaceId }, "scene_generation_run_settle_failed");
-      }
-    }
+      "scene_generation",
+    );
     logger.error({ err, taskId, projectId, spaceId, model: plan.entry.name }, "scene_generation_run_failed");
     // An open row is the answer: it holds the cause and the list shows it.
     if (opened === undefined) throw err;
@@ -259,13 +258,7 @@ export async function startSceneGeneration(
     return { task_id: taskId, row_id: opened, status: "failed" };
   }
 
-  // The worker's `markRunning` records the id too; this one is for whoever has
-  // to find the job in the queue before it starts.
-  try {
-    await taskService.setJobId(taskId, queued.jobId ?? "");
-  } catch (err) {
-    logger.error({ err, taskId, jobId: queued.jobId, projectId }, "scene_generation_job_id_not_recorded");
-  }
+  await recordJobId(taskId, queued.jobId, projectId, "scene_generation");
   await publishSpaceTasksQuietly(projectId, spaceId);
   return { task_id: taskId, row_id: queued.rowId, status: "pending" };
 }

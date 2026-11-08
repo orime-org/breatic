@@ -66,7 +66,7 @@ export interface AppliedForces {
  * @param params - The params to read.
  * @returns True when it holds.
  */
-function holds(when: ParamGate, params: Readonly<Record<string, unknown>>): boolean {
+export function gateHolds(when: ParamGate, params: Readonly<Record<string, unknown>>): boolean {
   if (when.flag_on !== undefined && params[when.flag_on] !== true) return false;
   return Object.entries(when.equals ?? {}).every(([key, value]) => params[key] === value);
 }
@@ -88,7 +88,7 @@ export function applyForces(
   for (let round = 0; round <= forces.length; round += 1) {
     changedBy = [];
     for (const force of forces) {
-      if (!holds(force.when, out)) continue;
+      if (!gateHolds(force.when, out)) continue;
       for (const [key, value] of Object.entries(force.set)) {
         forcedBy[key] = force;
         if (out[key] === value) continue;
@@ -145,7 +145,7 @@ export function resolveParams(
     dropped = false;
     for (const name of Object.keys(out)) {
       const when = specs[name]?.when;
-      if (when !== undefined && !holds(when, out)) {
+      if (when !== undefined && !gateHolds(when, out)) {
         delete out[name];
         dropped = true;
       }
@@ -162,7 +162,7 @@ export function resolveParams(
  *   taken from the param's own, or the param's own range.
  */
 function boundsOf(spec: ResolvableParam, params: Readonly<Record<string, unknown>>): { min?: number; max?: number } {
-  const found = spec.bounds?.find((bound) => holds(bound.when, params));
+  const found = spec.bounds?.find((bound) => gateHolds(bound.when, params));
   return { min: found?.min ?? spec.min, max: found?.max ?? spec.max };
 }
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The `tasks` queue the 3D Space's services queue and inspect jobs on,
+ * The `tasks` queue the server queues and inspects jobs on,
  * opened on first use: a module that opens it at import needs the core
  * configuration before anything that merely imports it has set it up.
  */

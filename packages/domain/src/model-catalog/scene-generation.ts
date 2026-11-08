@@ -13,6 +13,7 @@
  */
 
 import {
+  SCENE_VIEW_SLOTS,
   checkParamCombination,
   extractPromptText,
   resolveParams,
@@ -21,12 +22,6 @@ import {
 } from "@breatic/shared";
 
 import { getModelCatalog } from "@domain/model-catalog/model-catalog.js";
-
-/** The views of a multi-view run, in the order the upstream reads them. */
-export const SCENE_VIEW_SLOTS = ["front", "left", "back", "right"] as const;
-
-/** One view slot's name. */
-export type SceneViewSlot = (typeof SCENE_VIEW_SLOTS)[number];
 
 /** What a 3D generation asks for, before anything is resolved. */
 export interface SceneGenerationAsk {
@@ -65,7 +60,7 @@ export interface SceneGenerationPlan {
  * @param entry - The 3D catalog entry.
  * @returns The param and its count, or none for an entry that takes no picture.
  */
-function picturesOf(entry: ModelEntry): { name: string; list: boolean; min: number; max: number } | null {
+export function picturesOf(entry: ModelEntry): { name: string; list: boolean; min: number; max: number } | null {
   for (const [name, spec] of Object.entries(entry.params)) {
     if (spec.accepts !== "image") continue;
     if (spec.type !== "list") return { name, list: false, min: 1, max: 1 };

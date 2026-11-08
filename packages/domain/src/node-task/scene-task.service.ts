@@ -13,7 +13,7 @@
  */
 
 import type { DbTx } from "@breatic/core";
-import type { TaskEntity } from "@breatic/shared";
+import type { TaskEntity, TaskFailureReason } from "@breatic/shared";
 import { findLiveTasksByIds } from "@domain/task/task.repo.js";
 import * as repo from "@domain/node-task/node-task.repo.js";
 import { failureOutcome } from "@domain/node-task/failure-outcome.js";
@@ -100,25 +100,31 @@ export async function openGeneration(opts: {
   return repo.insertSceneGenerationRow(opts);
 }
 
+/** How a row ends: done with its model, or failed with a `task-failure` code. */
+export type SceneOutcome = { outcome: "done"; assetId: string } | { outcome: "failed"; errorMessage: string };
+
 /**
- * Record how a 3D generation ended, by the rule a model upload's end follows
- * ({@link settle}): a success finding the row expired still lands its model
- * there, and a failure at or past the deadline lands as `expired`.
- * @param row - The row, read by the caller.
- * @param outcome - What happened.
- * @param outcome.outcome - `done` or `failed`.
- * @param outcome.assetId - The registered model, on success.
- * @param outcome.errorCode - The `task-failure` code, on failure.
- * @returns Where the row stands.
+ * How a 3D generation's row ends from what its run stored (inner#1691): done
+ * with the registered model, or `no_result` when the run came back with none.
+ * @param outputs - The run's persisted outputs; the catalog lane writes one.
+ * @returns The outcome the row settles with.
  */
-export async function settleGeneration(
-  row: NodeTaskRow,
-  outcome: { outcome: "done"; assetId: string } | { outcome: "failed"; errorCode: string },
-): Promise<SceneSettleResult> {
-  return settle(
-    row,
-    outcome.outcome === "done" ? outcome : { outcome: "failed", errorMessage: outcome.errorCode },
-  );
+export function generationOutcome(outputs: readonly { asset_id?: unknown }[] | null | undefined): SceneOutcome {
+  // ponytail: the first output is the model, as the catalog lane returns it;
+  // a vendor listing the GLB elsewhere needs a model-level output index (design H4).
+  const assetId = outputs?.[0]?.asset_id;
+  return typeof assetId === "string" ? { outcome: "done", assetId } : { outcome: "failed", errorMessage: "no_result" satisfies TaskFailureReason };
+}
+
+/**
+ * Settle the row with this id ({@link settle}).
+ * @param rowId - The row.
+ * @param outcome - What happened.
+ * @returns Where the row stands, or null when there is no such row.
+ */
+export async function settleById(rowId: string, outcome: SceneOutcome): Promise<SceneSettleResult | null> {
+  const row = await repo.findSceneRow(rowId);
+  return row === null ? null : settle(row, outcome);
 }
 
 /**
@@ -136,7 +142,7 @@ export async function settleGeneration(
  */
 export async function settle(
   row: NodeTaskRow,
-  outcome: { outcome: "done"; assetId: string } | { outcome: "failed"; errorMessage: string },
+  outcome: SceneOutcome,
 ): Promise<SceneSettleResult> {
   if (outcome.outcome === "done") {
     const applied = await repo.settleRunning(row.id, "done", { assetId: outcome.assetId });

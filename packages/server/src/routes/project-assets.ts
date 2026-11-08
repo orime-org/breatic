@@ -20,7 +20,7 @@ const mediaQuery = z.object({
 projectAssets.get("/:projectId/assets", requireAuth, validate("param", projectParams), validate("query", mediaQuery), async (c) => {
   const { projectId } = c.req.valid("param");
   const { kind, cursor, limit } = c.req.valid("query");
-  const page = await projectAssetReferenceService.listProjectVideos({ projectId, userId: c.get("user").id, kind, cursor, limit });
+  const page = await projectAssetReferenceService.listProjectMedia({ projectId, userId: c.get("user").id, kind, cursor, limit });
   return c.json({ data: page });
 });
 

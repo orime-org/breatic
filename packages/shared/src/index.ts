@@ -75,6 +75,8 @@ export type {
   ModelTier,
   ParamDescriptor,
   ParamGate,
+  ThreeDGenerationMode,
+  SceneViewSlot,
   ParamBound,
   ParamForce,
   ParamScalar,
@@ -207,7 +209,6 @@ export {
   ProjectActivityPageSchema,
   isMemberLeave,
 } from "@shared/types/index.js";
-export type { ControlGate } from "@shared/types/index.js";
 export type { GenerationSource } from "@shared/types/project-activity.js";
 export type { GenerationNodeType } from "@shared/types/index.js";
 export type {
@@ -219,6 +220,8 @@ export type {
   ProposalNodeType,
   CanvasProposal,
   DocumentProposal,
+  SceneGenerationAnswer,
+  SceneGenerationBody,
   SceneGenerationProposal,
   ProposalRefused,
   ProposalAnswer,
@@ -242,6 +245,7 @@ export {
   VIDEO_GENERATION_MODES,
   AUDIO_GENERATION_MODES,
   THREE_D_GENERATION_MODES,
+  SCENE_VIEW_SLOTS,
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   isGenerationNodeType,
@@ -252,6 +256,7 @@ export {
   isReferenceMaterial,
   canvasProposalSchema,
   documentProposalSchema,
+  sceneGenerationBodySchema,
   sceneGenerationProposalSchema,
   hasWords,
   occurrences,
@@ -608,7 +613,7 @@ export {
 // browser at `GET /chat/stream-config`.
 export { SSE_HEARTBEAT_MISSES_ALLOWED } from "@shared/agent/heartbeat.js";
 export { extractPromptText } from "@shared/agent/extract-prompt.js";
-export { applyForces, checkParamCombination, resolveParams } from "@shared/param-resolution.js";
+export { applyForces, checkParamCombination, gateHolds, resolveParams } from "@shared/param-resolution.js";
 export type { AppliedForces, ParamViolation, ResolvableModel, ResolvableParam } from "@shared/param-resolution.js";
 export { stripUnicodeTags } from "@shared/agent/strip-unicode-tags.js";
 export { dsmlBlockStart, dsmlHeldFrom, stripDsml } from "@shared/agent/dsml.js";
@@ -1065,7 +1070,7 @@ export {
   type AttributionTouch,
 } from "@shared/analytics/attribution.js";
 
-export { SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, SceneObjectValuesSchema, SceneObjectSchema, isSceneModelMediaType } from "@shared/scene.js";
+export { SCENE_OBJECT_NAME_MAX, SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, SceneObjectValuesSchema, SceneObjectSchema, isSceneModelMediaType } from "@shared/scene.js";
 export type { SceneVector, SceneRotation, SceneModel, SceneObjectValues, SceneObject, SceneEditableField, SceneImportLimits, SceneControlsConfig } from "@shared/scene.js";
 export { SCENE_FORMAT_VERSION, getSceneRootMap, initializeSceneDocument } from "@shared/scene-version.js";
 

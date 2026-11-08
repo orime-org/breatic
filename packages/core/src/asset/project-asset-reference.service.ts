@@ -24,7 +24,7 @@ export interface RecordProjectAssetReferencesInput {
 export interface ResolveProjectAssetInput { projectId: string; assetId: string; userId: string }
 
 /** A keyset read of one Project's registered videos, or of its images when `kind` says so. */
-export interface ListProjectVideosInput { projectId: string; userId: string; kind?: "image" | "video"; cursor?: string; limit?: number }
+export interface ListProjectMediaInput { projectId: string; userId: string; kind?: "image" | "video"; cursor?: string; limit?: number }
 
 /** Explicit media identities captured from an accepted Space or provider result. */
 export interface ReferenceRegisteredProjectMediaInput { projectId: string; assetIds?: readonly string[]; urls?: readonly string[] }
@@ -298,14 +298,14 @@ export async function resolveProjectAsset(input: ResolveProjectAssetInput): Prom
 }
 
 /**
- * Read one canonical Project-video page (or image page, by `kind`) at PostgreSQL cursor precision.
+ * Read one page of a Project's videos, or of its images by `kind`, at PostgreSQL cursor precision.
  * @param input - The current member, Project and page boundary.
  * @returns The current page and next cursor.
  * @throws {ForbiddenError} When current Project access is absent.
  * @throws {AppError} When the supplied cursor or limit is malformed.
  * @throws {Error} When a database query fails.
  */
-export async function listProjectVideos(input: ListProjectVideosInput): Promise<ProjectAssetPage> {
+export async function listProjectMedia(input: ListProjectMediaInput): Promise<ProjectAssetPage> {
   const studioId = await studioForMember(input.projectId, input.userId);
   const limits = getTimelineConfig().assets;
   const requested = input.limit ?? limits.page_size;
