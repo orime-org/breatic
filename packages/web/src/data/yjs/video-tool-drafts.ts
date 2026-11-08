@@ -19,6 +19,8 @@ import { CANVAS_UNDO, nodeDataMap } from '@web/data/yjs/canvas-space';
 import { SCENE_ANALYSIS_APPLIED_PREFIX } from '@web/data/yjs/canvas-field-keys';
 
 const ANALYSIS_METADATA_WRITE = Symbol('mini-tool-analysis-metadata');
+/** Origin of a draft write the user did not make (the draft a tool opens with, an anchor an automatic analysis freezes), which canvas undo does not track. */
+const DRAFT_SEED_WRITE = Symbol('mini-tool-draft-seed');
 
 /**
  * Applies one accepted scene result without repeating it after parameter undo.
@@ -67,11 +69,13 @@ export function readVideoToolDraft<K extends VideoToolId>(
 }
 
 /**
- * Commits the caller's complete source, parameters and inputs as one undo step.
+ * Commits the caller's complete source, parameters and inputs as one undo step, or, for a write the user did not make, as
+ * none.
  * @param doc - The live canvas document.
  * @param nodeId - The host node.
  * @param toolId - The tool being edited.
  * @param draft - A complete snapshot with its caller-generated revision.
+ * @param undoable - Whether the write is the user's own edit, an undo step; false for a seeded draft or an automatic freeze.
  * @returns Whether the host exists and received the snapshot.
  * @throws {Error} When the snapshot does not match the tool's schema.
  */
@@ -80,11 +84,12 @@ export function commitVideoToolDraft<K extends VideoToolId>(
   nodeId: string,
   toolId: K,
   draft: VideoToolDraftById[K],
+  undoable = true,
 ): boolean {
   const data = nodeDataMap(doc, nodeId);
   if (data === null) return false;
   const parsed = videoToolDraftSchema(toolId).parse(draft);
-  doc.transact(() => data.set(`miniToolDraft:${toolId}`, parsed), CANVAS_UNDO);
+  doc.transact(() => data.set(`miniToolDraft:${toolId}`, parsed), undoable ? CANVAS_UNDO : DRAFT_SEED_WRITE);
   return true;
 }
 

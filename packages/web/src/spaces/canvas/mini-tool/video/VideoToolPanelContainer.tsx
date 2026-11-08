@@ -384,22 +384,24 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
   const initialized = React.useRef(false);
   React.useEffect(() => {
     if (initialized.current) return;
-    if (reading.state === 'absent' && initial !== null && !disabled) { initialized.current = true; commitVideoToolDraft(doc, nodeId, toolId, initial); }
+    // The draft a tool opens with is not the user's edit, so it is no undo step.
+    if (reading.state === 'absent' && initial !== null && !disabled) { initialized.current = true; commitVideoToolDraft(doc, nodeId, toolId, initial, false); }
   }, [reading.state, initial, disabled, doc, nodeId, toolId]);
   /**
    * Rechecks the current gate and publishes one complete atomic edit.
    * @throws {Error} When the changed snapshot fails its tool schema.
    * @param next - The complete next snapshot or sequence.
+   * @param undoable - Whether the edit is the user's own, an undo step; false for one the panel makes by itself.
    * @returns Whether the current authoritative revision accepted the edit.
    */
-  const change = React.useCallback((next: VideoToolDraft): boolean => {
+  const change = React.useCallback((next: VideoToolDraft, undoable = true): boolean => {
     if (readOnly) return false;
     const gate = evaluateNodeGate({ locked: nodeDataMap(doc, nodeId)?.get('locked') === true });
     if (gate !== null) { toast.warning(t(gate.toastKey)); return false; }
     const latest = readVideoToolDraft(doc, nodeId, toolId);
     if (latest.state === 'supported') { if (next.draftId !== latest.draft.draftId || next.revision !== latest.draft.revision) return false; }
     else if (latest.state !== 'absent' || initial === null || next.draftId !== initial.draftId || next.revision !== initial.revision) return false;
-    return commitVideoToolDraft(doc, nodeId, toolId, { ...next, revision: newId() });
+    return commitVideoToolDraft(doc, nodeId, toolId, { ...next, revision: newId() }, undoable);
   }, [readOnly, t, doc, nodeId, toolId, initial]);
   const expanded = current !== null && toolId === 'video.expand' ? current as VideoToolDraftById['video.expand'] : null;
   // An expansion is laid out on the display size admission uses (ledger plan.display), the stored size until it is known.
@@ -446,8 +448,9 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
    * Starts a frozen, idempotent server analysis using the presented source frame.
    * @throws {never} Failures are reported by the press.
    * @param kind - The requested source analysis.
+   * @param undoable - Whether the user pressed it, so the anchor it freezes is an undo step; false for an automatic one.
    */
-  const analyse = React.useCallback((kind: MiniToolAnalysisKind): void => {
+  const analyse = React.useCallback((kind: MiniToolAnalysisKind, undoable = true): void => {
     if (current === null || disabled || presentation?.status !== 'ready' || presentation.frameTable === null || presentation.sourceURL !== current.source.canonicalURL) return;
     const { presentationRef } = presentation;
     if (presentationRef === undefined) return;
@@ -457,7 +460,7 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
     if (kind !== 'scene_cuts' && frame === undefined) return;
     const anchor = frame === undefined ? undefined : { frameIndex: frame.frameIndex, pts: frame.pts };
     const frozen = kind === 'people' && toolId === 'video.lip-sync' ? { ...current, params: { ...(current as VideoToolDraftById['video.lip-sync']).params, anchor: anchor!, dialogues: resetDialoguePeople((current as VideoToolDraftById['video.lip-sync']).params.dialogues) } } : kind === 'tracked_mask' ? { ...current, params: { ...(current as VideoToolDraftById['video.erase']).params, anchor: anchor! } } : current;
-    if (!change(frozen)) return;
+    if (!change(frozen, undoable)) return;
     const held = readVideoToolDraft(doc, nodeId, toolId);
     if (held.state !== 'supported') return;
     const base = { analysisRunId: newId(), projectId, spaceId, hostNodeId: nodeId, draftId: held.draft.draftId, revision: held.draft.revision, source: held.draft.source, presentationRef };
@@ -473,7 +476,7 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
   React.useEffect(() => {
     if (toolId !== 'video.lip-sync' || current === null || disabled || presentation?.status !== 'ready' || presentation.frameTable === null || autoPeople.current === current.draftId || refs.some((reference) => reference.toolId === toolId && reference.draftId === current.draftId)) return;
     autoPeople.current = current.draftId;
-    analyse('people');
+    analyse('people', false);
   }, [toolId, current, disabled, presentation, refs, analyse]);
   React.useEffect(() => {
     if (toolId !== 'video.split' || current === null || disabled) return;

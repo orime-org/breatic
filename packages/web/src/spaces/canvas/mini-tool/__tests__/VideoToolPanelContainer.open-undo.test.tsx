@@ -1,0 +1,73 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+/**
+ * Opening a video tool writes the user nothing to undo: the draft it seeds on a node with none, and the anchor an automatic
+ * lip-sync people analysis freezes, stay off the canvas undo stack, so the user's next undo takes back their own last edit.
+ */
+
+import * as React from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ReactFlowProvider } from '@xyflow/react';
+import { render, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@web/lib/toast', () => ({
+  toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() },
+}));
+vi.mock('@web/spaces/canvas/_shared/NodePanelMount', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  NodePanelMount: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+
+import type { VideoToolId } from '@breatic/shared/mini-tools';
+import { VideoToolPanelContainer, type VideoToolPresentation } from '../video/VideoToolPanelContainer';
+import { CanvasContext } from '../../canvas-context';
+import { addNode, getCanvasUndoManager, type CanvasNodeView } from '@web/data/yjs/canvas-space';
+import { readVideoToolDraft } from '@web/data/yjs/video-tool-drafts';
+import { docName, getDoc, destroyDoc } from '@web/data/yjs/manager';
+import { miniToolAnalysesApi } from '@web/data/api/mini-tool-analyses';
+import { canvasSessions } from '@web/stores/canvas-session';
+import { TooltipProvider } from '@web/components/ui/tooltip';
+
+const projectId = 'open-undo-project'; const spaceId = 'open-undo-space'; const nodeId = '10000000-0000-4000-8000-000000000001';
+const sourceURL = 'https://assets.example.test/canonical.mp4';
+const mediaInfo = { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' };
+const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 125, step: 4, duration: 4 }] };
+const name = docName.canvasSpace(projectId, spaceId);
+
+/**
+ * Mounts a tool panel on a node with no draft, after one undoable edit of the user's.
+ * @param toolId - The tool.
+ * @returns The undo stack's depth before the panel opened.
+ */
+function open(toolId: VideoToolId): number {
+  const doc = getDoc(name);
+  const undo = getCanvasUndoManager(doc, name);
+  addNode(projectId, spaceId, { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { content: sourceURL, name: 'Source', locked: false, createdAt: 0, createdBy: 'test', attachments: [] } });
+  const before = undo.undoStack.length;
+  canvasSessions.of(spaceId).getState().openMiniTool(nodeId, toolId, { sourceContent: sourceURL, params: {} });
+  const presentation = { frameTable, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0,
+    presentationRef: { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } } } as VideoToolPresentation;
+  const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId={toolId} node={node} nodes={[node]} presentation={presentation} onRunVideo={vi.fn()} lipSync={{ models: [], tracking: { minDurationSeconds: 0.5, maxDurationSeconds: 600 } }} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
+  return before;
+}
+
+beforeEach(() => { vi.clearAllMocks(); });
+afterEach(() => { destroyDoc(name); canvasSessions.of(spaceId).getState().closeActivePanel(); vi.restoreAllMocks(); });
+
+describe('opening a video tool leaves the canvas undo stack alone', () => {
+  it('seeds the draft of a node that has none without an undo step', async () => {
+    const before = open('video.split');
+    await waitFor(() => expect(readVideoToolDraft(getDoc(name), nodeId, 'video.split').state).toBe('supported'));
+    expect(getCanvasUndoManager(getDoc(name), name).undoStack).toHaveLength(before);
+  });
+
+  it('freezes the automatic lip-sync people anchor without an undo step', async () => {
+    const start = vi.spyOn(miniToolAnalysesApi, 'start').mockReturnValue(new Promise(() => undefined));
+    const before = open('video.lip-sync');
+    await waitFor(() => expect(start).toHaveBeenCalledOnce());
+    expect(getCanvasUndoManager(getDoc(name), name).undoStack).toHaveLength(before);
+  });
+});
