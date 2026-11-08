@@ -42,6 +42,7 @@ describe("text tool prompts", () => {
     );
     expect(prompt).toContain("a header row, then the delimiter row (| --- | once per column), then one row per shot");
     expect(prompt).toContain("Write the column names, like every cell, in the language of the selected text.");
+    expect(prompt).toContain("Make shots for the selected text only, never for any other part of the document.");
     expect(prompt).toMatch(/respond in the language of the selected text/i);
   });
 
