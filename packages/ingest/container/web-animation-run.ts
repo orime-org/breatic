@@ -251,19 +251,44 @@ function serveCheck(html: string, fontsDir: string): Promise<Server> {
 interface Cdp {
   send: (method: string, params?: Record<string, unknown>, sessionId?: string) => Promise<Record<string, unknown>>;
   on: (method: string, listener: (params: Record<string, unknown>) => void) => void;
+  /** End the connection: every command still waiting, and {@link Cdp.gone}, reject with the reason. */
+  fail: (reason: Error) => void;
+  /** Rejects once the connection ends; it never resolves. Race a wait for an event against it. */
+  gone: Promise<never>;
   close: () => void;
 }
 
 /**
- * Connect to a browser's DevTools endpoint.
+ * Connect to a browser's DevTools endpoint. When the socket closes, every command still waiting rejects at once, as
+ * does every command sent afterwards: a browser that went away answers nothing.
  * @param url - The `ws://` endpoint Chromium printed.
  * @returns The connection.
  */
 function connectCdp(url: string): Promise<Cdp> {
   const socket = new WebSocket(url);
   let next = 0;
+  let ended: Error | undefined;
   const pending = new Map<number, { resolve: (result: Record<string, unknown>) => void; reject: (err: Error) => void }>();
   const listeners = new Map<string, Array<(params: Record<string, unknown>) => void>>();
+  let rejectGone: (err: Error) => void = () => {};
+  const gone = new Promise<never>((_, reject) => {
+    rejectGone = reject;
+  });
+  // Rejecting before anyone races it is expected, not an unhandled failure.
+  gone.catch(() => {});
+  /**
+   * End the connection with a reason, once.
+   * @param reason - Why it ended.
+   */
+  const fail = (reason: Error): void => {
+    if (ended !== undefined) return;
+    ended = reason;
+    for (const waiting of pending.values()) waiting.reject(reason);
+    pending.clear();
+    rejectGone(reason);
+    socket.close();
+  };
+  socket.addEventListener("close", () => fail(new Error("the DevTools connection closed")));
   socket.addEventListener("message", (message) => {
     const data = JSON.parse(String(message.data)) as {
       id?: number; result?: Record<string, unknown>; error?: { message: string }; method?: string; params?: Record<string, unknown>;
@@ -279,11 +304,17 @@ function connectCdp(url: string): Promise<Cdp> {
   });
   const cdp: Cdp = {
     send: (method, params = {}, sessionId) => new Promise((resolve, reject) => {
+      if (ended !== undefined) {
+        reject(ended);
+        return;
+      }
       next += 1;
       pending.set(next, { resolve, reject });
       socket.send(JSON.stringify({ id: next, method, params, ...(sessionId !== undefined && { sessionId }) }));
     }),
     on: (method, listener) => listeners.set(method, [...(listeners.get(method) ?? []), listener]),
+    fail,
+    gone,
     close: () => socket.close(),
   };
   return new Promise((resolve, reject) => {
@@ -339,6 +370,8 @@ async function measureInChromium(html: string, job: WebAnimationRunBody, setting
      * @returns Its result.
      */
     const send = (method: string, params: Record<string, unknown> = {}): Promise<Record<string, unknown>> => cdp.send(method, params, sessionId);
+    // A crashed page answers nothing more; the run fails now instead of waiting for the job's deadline.
+    cdp.on("Inspector.targetCrashed", () => cdp.fail(new Error("the page crashed")));
     const requests: string[] = [];
     cdp.on("Network.requestWillBeSent", (params) => {
       const url = (params["request"] as { url?: unknown } | undefined)?.url;
@@ -348,7 +381,7 @@ async function measureInChromium(html: string, job: WebAnimationRunBody, setting
     for (const domain of ["Network.enable", "Page.enable", "DOM.enable", "CSS.enable"]) await send(domain);
     await send("Emulation.setDeviceMetricsOverride", { width: job.viewport.width, height: job.viewport.height, deviceScaleFactor: 1, mobile: false });
     await send("Page.navigate", { url: CHECK_PAGE });
-    await loaded;
+    await Promise.race([loaded, cdp.gone]);
     /**
      * Evaluate an expression in the page, awaiting a promise it returns.
      * @param expression - The expression.

@@ -37,7 +37,7 @@ beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "web-animation-run-test-"));
   posts.length = 0;
   vi.spyOn(console, "error").mockImplementation(() => {});
-  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  vi.stubGlobal("fetch", async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const body = typeof init?.body === "string" && init.method === "POST" ? (JSON.parse(init.body) as unknown) : null;
     posts.push({ url: String(input), body });
     return new Response(null, { status: 200 });
