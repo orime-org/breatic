@@ -5,11 +5,16 @@
  * The host side of the web-animation frame-ready bridge (inner#1711 design §7.2, §9 preview-instance table); the
  * page side is `WEB_ANIMATION_BRIDGE_SCRIPT` in `@breatic/shared/space-content`.
  *
- * Each visible instance is a `<hyperframes-player>` whose iframe runs the page. The host says `breatic-hello` when
- * it attaches, opens a new session on every `breatic-bridge-ready`, posts `breatic-seek {session, sequence, time}`
- * and counts the instance ready only on a `breatic-frame-ready` from that iframe for the current session and latest
+ * Each instance is a `<hyperframes-player>` whose iframe runs the page. The host says `breatic-hello` when it
+ * attaches, opens a new session on every `breatic-bridge-ready`, posts `breatic-seek {session, sequence, time}` and
+ * counts the instance ready only on a `breatic-frame-ready` from that iframe for the current session and latest
  * sequence. A load of the iframe is a reload; an `error` from the player, or no bridge-ready within the load timeout,
  * fails the instance until a retry.
+ *
+ * An instance has a pool role (§7.4). Only visible instances count in `ready()`, get the frames of play and are
+ * repositioned on a seek, a pause or a start of play. A premounted instance is positioned once per session at the
+ * source time of its target frame; an idle one is sent nothing. A premounted instance turning visible whose last sent
+ * time is the current frame's keeps its state without a new sequence.
  */
 
 import type { TimelineRate, TimelineWebAnimationClip } from '@breatic/shared';
@@ -17,8 +22,17 @@ import type { TimelineRate, TimelineWebAnimationClip } from '@breatic/shared';
 /** The player element the preview mounts: it exposes the iframe its page runs in. */
 export type WebAnimationPlayerElement = HTMLElement & { readonly iframeElement: HTMLIFrameElement | null };
 
-/** One visible web-animation instance: the copy it shows now, its source frame rate and its player. */
-export interface TimelineWebLayer { key: string; clip: TimelineWebAnimationClip; fps: TimelineRate; player: WebAnimationPlayerElement }
+/** One web-animation instance: the copy it serves, its source frame rate, its player and its pool role. */
+export interface TimelineWebLayer {
+  key: string;
+  clip: TimelineWebAnimationClip;
+  fps: TimelineRate;
+  player: WebAnimationPlayerElement;
+  /** Its pool role (inner#1711 design §7.4); absent means visible. */
+  role?: 'visible' | 'premount' | 'idle';
+  /** A premounted instance's target: the copy's first visible frame. */
+  targetFrame?: number;
+}
 
 /** Loading its page, waiting for the latest frame, showing it, or failed until a retry. */
 export type WebInstanceState = 'loading' | 'waiting' | 'ready' | 'failed';
@@ -37,11 +51,11 @@ export interface WebAnimationHostOptions {
 
 /** The instances of one preview. */
 export interface WebAnimationHost {
-  /** Bring the instances to the visible layers: attach new ones, detach gone ones, send a changed mapping. */
+  /** Bring the instances to the layers: attach new ones, detach gone ones, send a changed mapping or role. */
   sync: (layers: readonly TimelineWebLayer[]) => void;
-  /** A seek, a pause, a start of play: every instance gets the current frame under a new sequence. */
+  /** A seek, a pause, a start of play: every visible instance gets the current frame under a new sequence. */
   reposition: () => void;
-  /** A frame during play: the instances covering it get its time under their current sequence, without waiting. */
+  /** A frame during play: the visible instances covering it get its time under their current sequence, without waiting. */
   sendFrame: () => void;
   /** Load a failed instance again. */
   retry: (key: string) => void;
@@ -51,7 +65,7 @@ export interface WebAnimationHost {
   listen: () => () => void;
   /** Every instance's state. */
   states: () => ReadonlyMap<string, WebInstanceState>;
-  /** Whether every instance that has not failed shows the latest frame. */
+  /** Whether every visible instance that has not failed shows the latest frame. */
   ready: () => boolean;
   /** Detach everything. */
   dispose: () => void;
@@ -63,12 +77,24 @@ interface Instance {
   state: WebInstanceState;
   session: number | null;
   sequence: number;
+  /** The source time last sent in the current session; null when none was. */
+  sentTime: number | null;
   timer: ReturnType<typeof setTimeout> | null;
   detach: () => void;
 }
 
 // Sessions are unique across every preview of the page, so a reply can never match another preview's session.
 let lastSession = 0;
+
+/**
+ * A layer's pool role.
+ * @param layer - The layer.
+ * @returns Its role; a layer without one is visible.
+ * @throws {never} Never.
+ */
+function roleOf(layer: TimelineWebLayer): 'visible' | 'premount' | 'idle' {
+  return layer.role ?? 'visible';
+}
 
 /**
  * Whether a layer change moves what the copy shows at a frame.
@@ -120,12 +146,25 @@ export function createWebAnimationHost(options: WebAnimationHostOptions): WebAni
     instance.layer.player.iframeElement?.contentWindow?.postMessage(message, '*');
   };
   /**
-   * Send the current frame under the instance's current sequence.
+   * The source time an instance is to show: the current frame's for a visible one, its target frame's for a premount.
+   * @param instance - The instance.
+   * @returns Seconds on the page's clock.
+   * @throws {never} Never.
+   */
+  const timeOf = (instance: Instance): number => {
+    const { layer } = instance;
+    const frame = roleOf(layer) === 'premount' ? layer.targetFrame ?? options.frame() : options.frame();
+    return webAnimationSourceSeconds(layer, frame, options.timelineFps());
+  };
+  /**
+   * Send the instance's time under its current sequence.
    * @param instance - The instance.
    * @throws {never} Never.
    */
   const sendSeek = (instance: Instance): void => {
-    post(instance, { type: 'breatic-seek', session: instance.session, sequence: instance.sequence, time: webAnimationSourceSeconds(instance.layer, options.frame(), options.timelineFps()) });
+    const time = timeOf(instance);
+    instance.sentTime = time;
+    post(instance, { type: 'breatic-seek', session: instance.session, sequence: instance.sequence, time });
   };
   /**
    * Stop waiting for a bridge-ready.
@@ -156,6 +195,7 @@ export function createWebAnimationHost(options: WebAnimationHostOptions): WebAni
   const load = (instance: Instance): void => {
     instance.state = 'loading';
     instance.session = null;
+    instance.sentTime = null;
     stopTimer(instance);
     const ms = options.loadTimeoutMs();
     if (ms !== undefined) instance.timer = setTimeout(() => fail(instance), ms);
@@ -174,13 +214,23 @@ export function createWebAnimationHost(options: WebAnimationHostOptions): WebAni
     sendSeek(instance);
   };
   /**
+   * Position a premounted instance at its target once per session: a new sequence unless the time last sent in this
+   * session is already the target's, which it then waits for or already shows.
+   * @param instance - The instance.
+   * @throws {never} Never.
+   */
+  const positionPremount = (instance: Instance): void => {
+    if (instance.state === 'failed' || instance.session === null || instance.sentTime === timeOf(instance)) return;
+    bump(instance);
+  };
+  /**
    * Attach to a layer's player.
    * @param layer - The layer.
    * @throws {never} Never.
    */
   const attach = (layer: TimelineWebLayer): void => {
     const iframe = layer.player.iframeElement;
-    const instance: Instance = { layer, state: 'loading', session: null, sequence: 0, timer: null, detach: () => {} };
+    const instance: Instance = { layer, state: 'loading', session: null, sequence: 0, sentTime: null, timer: null, detach: () => {} };
     /** The player reloaded its page. */
     const reloaded = (): void => {
       if (instance.state === 'failed') return;
@@ -211,19 +261,25 @@ export function createWebAnimationHost(options: WebAnimationHostOptions): WebAni
       for (const layer of layers) {
         const instance = instances.get(layer.key);
         if (instance === undefined) { attach(layer); continue; }
-        const moved = mappingChanged(instance.layer, layer);
+        const before = instance.layer;
         instance.layer = layer;
-        if (moved) bump(instance);
+        const role = roleOf(layer);
+        if (role === 'premount') positionPremount(instance);
+        else if (role === 'visible') {
+          // An instance turning visible keeps what it was last sent when that is this frame's time.
+          const moved = roleOf(before) === 'visible' ? mappingChanged(before, layer) : instance.session === null || instance.sentTime !== timeOf(instance);
+          if (moved) bump(instance);
+        }
       }
     },
     reposition() {
-      for (const instance of instances.values()) bump(instance);
+      for (const instance of instances.values()) if (roleOf(instance.layer) === 'visible') bump(instance);
     },
     sendFrame() {
       const frame = options.frame();
       for (const instance of instances.values()) {
         const { clip } = instance.layer;
-        if (instance.session !== null && instance.state !== 'failed' && frame >= clip.startFrame && frame < clip.startFrame + clip.durationFrames) sendSeek(instance);
+        if (roleOf(instance.layer) === 'visible' && instance.session !== null && instance.state !== 'failed' && frame >= clip.startFrame && frame < clip.startFrame + clip.durationFrames) sendSeek(instance);
       }
     },
     retry(key) {
@@ -241,8 +297,10 @@ export function createWebAnimationHost(options: WebAnimationHostOptions): WebAni
           stopTimer(instance);
           lastSession += 1;
           instance.session = lastSession;
+          instance.sentTime = null;
           instance.state = 'waiting';
-          sendSeek(instance);
+          // An idle instance is sent nothing until a copy takes it.
+          if (roleOf(instance.layer) !== 'idle') sendSeek(instance);
           options.onChange();
         } else if (type === 'breatic-frame-ready' && instance.state === 'waiting' && session === instance.session && sequence === instance.sequence) {
           instance.state = 'ready';
@@ -255,7 +313,7 @@ export function createWebAnimationHost(options: WebAnimationHostOptions): WebAni
       return new Map([...instances].map(([key, instance]) => [key, instance.state]));
     },
     ready() {
-      return [...instances.values()].every((instance) => instance.state === 'ready' || instance.state === 'failed');
+      return [...instances.values()].every((instance) => roleOf(instance.layer) !== 'visible' || instance.state === 'ready' || instance.state === 'failed');
     },
     listen() {
       /**

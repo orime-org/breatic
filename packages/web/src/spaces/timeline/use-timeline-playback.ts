@@ -23,7 +23,7 @@ export interface TimelinePlaybackInput {
   media: HTMLVideoElement | null;
   enabled: boolean;
   resourceState: 'loading' | 'ready' | 'failed';
-  /** The visible web-animation instances, bottom-up; an unchanged set keeps its identity. */
+  /** The web-animation instances with their pool roles, visible ones bottom-up; an unchanged set keeps its identity. */
   webLayers?: readonly TimelineWebLayer[];
   /** Whether a visible web-animation copy has not registered its player yet; play waits for it like a loading one. */
   webPending?: boolean;
