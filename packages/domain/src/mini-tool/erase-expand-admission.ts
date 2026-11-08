@@ -8,7 +8,7 @@
  */
 import { AppError, getStorageAdapter } from "@breatic/core";
 import { t } from "@breatic/shared";
-import { miniToolAnalysisRecordSchema, type MiniToolPlannedRequest, type VideoExpandLayout } from "@breatic/shared/mini-tools";
+import { fingerprintMiniToolAnalysisInput, miniToolAnalysisRecordSchema, projectMiniToolAnalysisInput, type MiniToolPlannedRequest, type VideoExpandLayout } from "@breatic/shared/mini-tools";
 import { miniToolFrozenAnalysisSchema } from "@domain/mini-tool/analysis.service.js";
 import * as taskRepo from "@domain/task/task.repo.js";
 
@@ -21,15 +21,16 @@ export interface EraseTracking { analysisRunId: string; rleKey: string }
 
 /**
  * The referenced tracking analysis of an erase (§10.4 request row): completed, live, made for this draft's selection on the
- * same tool input, with its one RLE.
+ * same tool input, with its one RLE. The current selection is projected with the analysis's own frozen profile, as the web
+ * fingerprints it, so a later change of the configured tracking profile does not make a valid tracking stale.
  * @param request - The request.
  * @param projectId - The run's project.
- * @param current - The fingerprint of the current draft's tracking input, projected as the analysis admission projects it.
+ * @param sourceURL - The source's canonical URL.
  * @returns The analysis and its RLE key.
  * @throws {AppError} `trackingRunning` while it runs, `trackingStale` when it is missing, failed or made for another selection.
  * @throws {Error} When the stored analysis or the storage adapter cannot be read.
  */
-export async function eraseTracking(request: EraseRequest, projectId: string, current: string): Promise<EraseTracking> {
+export async function eraseTracking(request: EraseRequest, projectId: string, sourceURL: string): Promise<EraseTracking> {
   const stale = new AppError(400, t("server.mini_tool.trackingStale"));
   const ref = request.analysis_refs[0];
   const task = ref === undefined ? null : await taskRepo.getAnalysisTask(ref.analysisRunId);
@@ -39,7 +40,10 @@ export async function eraseTracking(request: EraseRequest, projectId: string, cu
   const stored = miniToolAnalysisRecordSchema.safeParse((task.result as { analysis?: unknown } | null)?.analysis);
   const result = stored.success ? stored.data.result : null;
   if (task.status !== "completed" || !frozen.success || frozen.data.kind !== "tracked_mask" || result?.kind !== "tracked_mask" || !stored.success || stored.data.artifactUnavailable
-    || frozen.data.inputFingerprint !== ref.inputFingerprint || current !== ref.inputFingerprint
+    || frozen.data.inputFingerprint !== ref.inputFingerprint) throw stale;
+  const current = await fingerprintMiniToolAnalysisInput(projectMiniToolAnalysisInput({ kind: "tracked_mask", source: { canonicalURL: sourceURL },
+    profile: frozen.data.analysisInput.profile, params: request.draft.params }));
+  if (current !== ref.inputFingerprint
     || frozen.data.presentationRef.source.toolInputId !== request.presentation_ref.source.toolInputId) throw stale;
   const rle = result.artifactRefs[0];
   const rleKey = rle === undefined ? null : (await getStorageAdapter()).keyFromUrl(rle.canonicalURL);

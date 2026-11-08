@@ -9,7 +9,7 @@ import {
   type MiniToolPlanTarget, type TaskEntity, type TaskStatusType, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from "@breatic/shared";
 import {
-  batchVideoRunOutputs, presentationFramesIn, canonicalMiniToolValue, fingerprintMiniToolAnalysisInput, miniToolById, planModelWindows, projectMiniToolAnalysisInput, videoExpandLayout, type ModelGrid, type ModelWindow, type VideoExpandLayout, miniToolPlannedRequestSchema, presentationCoveringFrame, presentationFrameAt, trackingClips, plannedFailureRetryable, estimateAudioEncodeSeconds, estimateVideoJobSeconds, lipsyncMonotonicSegments, lipsyncPictureBytes, lipsyncResultSourceFrames, lipsyncSourceSpan, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
+  batchVideoRunOutputs, presentationFramesIn, canonicalMiniToolValue, miniToolById, planModelWindows, videoExpandLayout, type ModelGrid, type ModelWindow, type VideoExpandLayout, miniToolPlannedRequestSchema, presentationCoveringFrame, presentationFrameAt, trackingClips, plannedFailureRetryable, estimateAudioEncodeSeconds, estimateVideoJobSeconds, lipsyncMonotonicSegments, lipsyncPictureBytes, lipsyncResultSourceFrames, lipsyncSourceSpan, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
   plannedStageJobs, planVideoFrames, planVideoSplit, type FrameWindow, type FramesExecutionLayout, type MiniToolExecutionRequest, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type MiniToolPresentationRef, type MiniToolSourceBinding, type MiniToolStageJobs,
   type LipsyncExecutionLayout, type LipsyncTimeline, type TransitionExecutionLayout, type TransitionOutputProfile, planTransitionChunks, planVideoTimeline, transitionOutputProfile, type VideoEncodeChunk, type VideoEncoderRates, type VideoExecutionDialogue, type VideoJobWork, type VideoPresentationTable,
 } from "@breatic/shared/mini-tools";
@@ -605,11 +605,7 @@ async function prepareErase(request: Extract<MiniToolPlannedRequest, { tool: "vi
   const { binding, sourceKey, versionId, receipt, table, ledger } = await modelRunSource(request, config);
   const { params } = request.draft;
   const { first, count, grid } = eraseRangeGrid(table, params.range, params.anchor, settings.model);
-  // The current selection projected exactly as the analysis admission projected it (analysis.service.ts), so a matching
-  // fingerprint means the tracking was made for this selection.
-  const current = await fingerprintMiniToolAnalysisInput(projectMiniToolAnalysisInput({ kind: "tracked_mask", source: { canonicalURL: binding.canonicalURL },
-    profile: config.analyses.tracked_mask.profile, params }));
-  const tracking = await eraseTracking(request, request.project_id, current);
+  const tracking = await eraseTracking(request, request.project_id, binding.canonicalURL);
   const modelCredits = await estimateTaskCredits(settings.model.name, { params: {}, durations: { video: [grid.frameCount / grid.rate] }, sources: ["video"] });
   const rates = encoderRates(config);
   const pixels = ledger.plan.display.width * ledger.plan.display.height;

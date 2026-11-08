@@ -280,6 +280,15 @@ describe("erase fresh admission (execution design §10.4)", () => {
     await refused(f, "server.mini_tool.trackingStale");
   });
 
+  it("EA07 quotes and admits over a tracking made before the configured tracking profile changed", async () => {
+    const f = await seedErase({ start: 1, end: 3 });
+    settings.analyses.tracked_mask.profile = { ...TRACKED_PROFILE, version: "wavespeed-ai/sam3-video-rle-next", params: { ...TRACKED_PROFILE.params, default_prompt: "thing" } };
+    const token = randomBytes(24).toString("hex"); tokens.push(token); await core.setSession(core.getRedis(), token, f.userId);
+    const quote = await app.request("/api/v1/mini-tools/quote", { method: "POST", headers: { "Content-Type": "application/json", Cookie: `${core.sessionCookieName()}=${token}` }, body: JSON.stringify(f.body) });
+    expect({ status: quote.status, body: await quote.text() }).toMatchObject({ status: 200 });
+    await accept(f);
+  });
+
   it("EA06 refuses a transparent source", async () => {
     await refused(await seedErase({ start: 1, end: 3 }, { transparent: true }), "server.mini_tool.transparentSource");
   });
