@@ -453,4 +453,21 @@ describe("a throwing step leaves the run's position at it (execution design §10
     expect(at.position).toMatchObject({ tool: "video.expand", current: { window: 1, step: "generate" },
       windows: expect.arrayContaining([{ windowIndex: 0, state: "done", failure: null }, { windowIndex: 1, state: "submitted", failure: null }]) });
   });
+
+  it.each([
+    ["TP03 an expand whose window_mask job submission is refused stands at window 0's window_mask", "model_window_mask", { window: 0, step: "window_mask" }],
+    ["TP04 an expand whose condition job submission is refused stands at window 1's condition", "frame_at", { window: 1, step: "condition" }],
+  ])("%s", async (_name, kind, current) => {
+    for (const [tool, block] of Object.entries(executions(3))) Reflect.set(settings.executions, tool, block);
+    const original = vi.mocked(globalThis.fetch).getMockImplementation()!;
+    vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
+      const job = init?.method === "POST" && String(input).endsWith("/jobs") ? JSON.parse(String(init.body)) as Job : null;
+      // A permanent refusal: the job boundary throws it rather than waiting it out.
+      if (job?.outputs[0]?.recipe.kind === kind) return new Response("job submission broke", { status: 400 });
+      return original(input, init);
+    });
+    const at: { position: unknown } = { position: null };
+    await expect(admitAndDrive(await seedExpand(), "@worker/handlers/mini-tool/run-expand.js", "runMiniToolExpand", at)).rejects.toThrow("HTTP 400");
+    expect(at.position).toMatchObject({ tool: "video.expand", current });
+  });
 });

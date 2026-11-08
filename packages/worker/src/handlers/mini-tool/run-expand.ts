@@ -108,16 +108,16 @@ export async function runMiniToolExpand(execution: unknown, userId: string, dead
       const frames = { start: first, end: first + Math.max(1, presentationFramesIn(table, { start: presentationFrameAt(table, first).pts, end: window.span.end }).count) };
       const grid = { fps: plan.modelFps, frameCount: plan.modelFps * window.duration };
       const layer: MiniToolPlanTarget = { ...encoded, width: plan.sourceRoi.width, height: plan.sourceRoi.height, displayRect: null, format: undefined };
-      position.current = { window: k, step: "window" };
+      // Each step names itself just before it runs, so a step that throws leaves the run standing at it (§10.5).
       const [input, mask, condition] = await eachSubmitted([
-        () => advanceContainer(run, { stepKey: keyOf(plan, `window:${k}`), contentType: "video/mp4", failed: () => ({ failed: "failed", step: "window" }),
+        () => { position.current = { window: k, step: "window" }; return advanceContainer(run, { stepKey: keyOf(plan, `window:${k}`), contentType: "video/mp4", failed: () => ({ failed: "failed", step: "window" }),
           build: () => Promise.resolve({ recipe: { kind: "model_window", inputId: SOURCE_INPUT_ID, window: frames, timescale: table.timescale, entries: windowEntries(ledger, frames),
-            target: layer, grid, frame: plan.frame, sourceRoi: plan.sourceRoi, fill: [127, 127, 127], span: spans[k]! }, inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: plan.sourceKey }] }) }, deadlineAt),
-        () => advanceContainer(run, { stepKey: keyOf(plan, `window_mask:${k}`), contentType: "video/mp4", failed: () => ({ failed: "failed", step: "window_mask" }),
-          build: () => Promise.resolve({ recipe: { kind: "model_window_mask", grid, frame: plan.frame, sourceRoi: plan.sourceRoi, span: spans[k]! }, inputs: [] }) }, deadlineAt),
-        ...(k === 0 ? [] : [() => advanceContainer(run, { stepKey: keyOf(plan, `condition:${k}`), contentType: "image/png", failed: () => ({ failed: "failed", step: "condition" }),
+            target: layer, grid, frame: plan.frame, sourceRoi: plan.sourceRoi, fill: [127, 127, 127], span: spans[k]! }, inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: plan.sourceKey }] }) }, deadlineAt); },
+        () => { position.current = { window: k, step: "window_mask" }; return advanceContainer(run, { stepKey: keyOf(plan, `window_mask:${k}`), contentType: "video/mp4", failed: () => ({ failed: "failed", step: "window_mask" }),
+          build: () => Promise.resolve({ recipe: { kind: "model_window_mask", grid, frame: plan.frame, sourceRoi: plan.sourceRoi, span: spans[k]! }, inputs: [] }) }, deadlineAt); },
+        ...(k === 0 ? [] : [() => { position.current = { window: k, step: "condition" }; return advanceContainer(run, { stepKey: keyOf(plan, `condition:${k}`), contentType: "image/png", failed: () => ({ failed: "failed", step: "condition" }),
           build: () => Promise.resolve({ recipe: { kind: "frame_at", inputId: PREVIOUS, time: minus(spans[k]!.start, spans[k - 1]!.start), target: plan.frame },
-            inputs: [{ inputId: PREVIOUS, storageKey: results[k - 1]! }] }) }, deadlineAt)]),
+            inputs: [{ inputId: PREVIOUS, storageKey: results[k - 1]! }] }) }, deadlineAt); }]),
       ]);
       for (const ended of [input, mask, condition]) {
         if (ended !== undefined && !("key" in ended)) {
