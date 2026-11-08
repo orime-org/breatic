@@ -22,7 +22,7 @@
 import { z } from "zod";
 import { getMiniToolsConfig, getStorageAdapter, logger } from "@breatic/core";
 import {
-  lipsyncPersonStepKeys, lipsyncRawDiskBytes, openContainerOutputs, upstreamStepRepo, type AcceptedMiniToolExecution, type LipSyncPersonStep, type MiniToolStepJson,
+  lipsyncPersonStepKeys, openContainerOutputs, upstreamStepRepo, type AcceptedMiniToolExecution, type LipSyncPersonStep, type MiniToolStepJson,
 } from "@breatic/domain";
 import { miniToolPlanJobRequestSchema, type MiniToolPlanExact, type MiniToolPlanJobRequest, type MiniToolPlanTarget, type VideoPresentationLedger } from "@breatic/shared";
 import { lipsyncChunkSourceWindow, trackingClips, type MiniToolExecutionRegistered, type TrackingClips } from "@breatic/shared/mini-tools";
@@ -299,10 +299,8 @@ async function personStep(execution: LipSync, kind: LipSyncPersonStep, personId:
         const inputs = [{ inputId: PREPARED, storageKey: (await preparedOf(execution)).outputs[0]!.storageKey },
           { inputId: inputOf(FACES, 0), storageKey: await objectOf(execution, personId, "faces", userId, deadlineAt) },
           { inputId: inputOf(TRACK, 0), storageKey: await objectOf(execution, personId, "track_join", userId, deadlineAt) }];
-        // The clip decodes in segments that keep its raw frames within the frozen class's disk share (paragraph before §9.4).
-        const rawBytes = lipsyncRawDiskBytes(execution.container.size.disk_gb, getMiniToolsConfig().encoding.raw_disk_share);
         return { recipe: { kind: "lipsync_clip", inputId: PREPARED, faces: inputOf(FACES, 0), track: inputOf(TRACK, 0), cropSize: execution.cropSize,
-          timeline: execution.timeline, table: ledger.plan.presentation, rawBytes }, inputs };
+          timeline: execution.timeline, table: ledger.plan.presentation }, inputs };
       }, () => ({ failed: "failed" }), deadlineAt);
     case "stem":
       return personContainer(execution, keyOf(keys, "stem"), "audio/mp4", async () => {

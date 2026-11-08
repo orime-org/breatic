@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { spawn } from "node:child_process";
+import type { Readable, Writable } from "node:stream";
 
 /** A plan program that ran to its end and exited with a non-zero code; a signal is not an exit. */
 export class PlanCommandExit extends Error {
@@ -82,4 +83,58 @@ export async function runPlanCommand(program: string, args: readonly string[], o
   }
   if (firstFailure !== undefined) throw firstFailure;
   return Buffer.concat(stdout, stdoutBytes);
+}
+
+/** A spawned plan program whose stdin or stdout its caller streams; `done` settles once the process has closed. */
+export interface PlanPipe { stdin: Writable | null; stdout: Readable | null; done: Promise<void>; stop(): void }
+
+/**
+ * Start one directly spawned plan program whose stdin or stdout the caller streams (execution design paragraph before
+ * §9.4: lip-sync frames move through pipes, never all at once).
+ * @param program - A repository-selected executable.
+ * @param args - Its owned argument vector.
+ * @param options - The original lifetime and the stderr tail bound.
+ * @param options.signal - The lifetime; aborting kills the program.
+ * @param options.stderrTailBytes - The stderr tail kept for the exit error.
+ * @param pipes - Which of stdin and stdout the caller streams.
+ * @param pipes.stdin - Whether the caller writes its stdin.
+ * @param pipes.stdout - Whether the caller reads its stdout.
+ * @returns The streams, `done` (rejected with PlanCommandExit, an AbortError or the spawn error) and `stop`, which kills it.
+ * @throws {DOMException} When the lifetime is already cancelled.
+ */
+export function startPlanCommand(program: string, args: readonly string[], options: { signal: AbortSignal; stderrTailBytes: number },
+  pipes: { stdin?: boolean; stdout?: boolean }): PlanPipe {
+  if (options.signal.aborted) throw new DOMException("Planned command was cancelled", "AbortError");
+  const child = spawn(program, [...args], { stdio: [pipes.stdin === true ? "pipe" : "ignore", pipes.stdout === true ? "pipe" : "ignore", "pipe"], shell: false });
+  let stderr = Buffer.alloc(0);
+  let failure: unknown;
+  /**
+   * Kill this invocation's own process while it runs.
+   * @throws {never} Never.
+   */
+  const stop = (): void => { if (child.pid !== undefined && child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); };
+  /**
+   * Record the cancellation and stop the process.
+   * @throws {never} Never.
+   */
+  const onAbort = (): void => { failure ??= new DOMException("Planned command was cancelled", "AbortError"); stop(); };
+  child.stderr?.on("data", (chunk: Buffer) => {
+    const limit = options.stderrTailBytes;
+    stderr = Buffer.from(chunk.length >= limit ? chunk.subarray(-limit) : Buffer.concat([stderr, chunk]).subarray(-limit));
+  });
+  child.on("error", (error) => { failure ??= error; });
+  // The caller sees a broken pipe through its own write or read; the exit below carries the cause.
+  child.stdin?.on("error", () => undefined);
+  options.signal.addEventListener("abort", onAbort, { once: true });
+  const done = new Promise<void>((resolve, reject) => {
+    child.once("close", (code, signal) => {
+      options.signal.removeEventListener("abort", onAbort);
+      if (failure !== undefined) reject(failure);
+      else if (code === 0) resolve();
+      else reject(code === null ? new Error(`${program} exited ${signal}: ${stderr.toString("utf8")}`) : new PlanCommandExit(program, code, stderr.toString("utf8")));
+    });
+  });
+  // A caller that stops early awaits `done` after `stop`; until then a rejection is not unhandled.
+  done.catch(() => undefined);
+  return { stdin: child.stdin, stdout: child.stdout, done, stop };
 }

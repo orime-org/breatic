@@ -474,8 +474,9 @@ describe("lip-sync step bodies after track submits (§97 D21; execution design �
       const c = clip.outputs[0]!.recipe;
       expect(bound(clip, c.faces)).toBe(faces.outputs[0]!.storageKey);
       expect(bound(clip, c.track)).toBe(joinedKey(person));
-      // The clip's raw frames fit half the frozen standard-4 disk of 20 GB (execution design paragraph before §9.4).
-      expect(c).toMatchObject({ cropSize: 512, timeline: { duration: 2, videoDuration: 3.84, syncMode: "cut_off" }, rawBytes: 10_000_000_000 });
+      // The clip streams its frames and carries no disk budget (execution design paragraph before §9.4).
+      expect(c).toMatchObject({ cropSize: 512, timeline: { duration: 2, videoDuration: 3.84, syncMode: "cut_off" } });
+      expect(c).not.toHaveProperty("rawBytes");
       expect(clip.outputs[0]).toMatchObject({ storageKey: `${videoPresentationWorkKeyFor(SOURCE_KEY, clip.jobId)}.mp4`, contentType: "video/mp4" });
       // Times are exact rationals, as every recipe carries them (§97 D20-1 lipsync_stem shape).
       const s = stem.outputs[0]!.recipe as { rows: { inputId: string; startTime: Exact }[]; duration: Exact };

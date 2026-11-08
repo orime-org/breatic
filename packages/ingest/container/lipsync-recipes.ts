@@ -12,10 +12,14 @@
  * written to another and encoded by FFmpeg. The tracks and transform tables are in
  * prepared-video pixels; the prepared video presents the original's frames at its picture size (§7.17 lipsync rows).
  */
+import { once } from "node:events";
 import { open, readFile, type FileHandle } from "node:fs/promises";
 import { join } from "node:path";
+import type { Readable, Writable } from "node:stream";
 import { rational } from "@shared/mini-tools/video-presentation-projection.js";
-import { lipsyncChunkSourceWindow, lipsyncPictureBytes, lipsyncSourceFrameAt, type LipsyncTimeline } from "@shared/mini-tools/lipsync-timeline.js";
+import {
+  lipsyncChunkSourceWindow, lipsyncPictureBytes, lipsyncResultSourceFrames, lipsyncSourceFrameAt, type LipsyncTimeline,
+} from "@shared/mini-tools/lipsync-timeline.js";
 import type { VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
 import type {
   MiniToolPlanDetectorProfile, MiniToolPlanLipsyncClip, MiniToolPlanLipsyncComposite, MiniToolPlanLipsyncFaces, MiniToolPlanLipsyncStem, MiniToolPlanPixelRect, MiniToolPlanTarget,
@@ -23,7 +27,7 @@ import type {
 import type { MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { decodeCocoRleMask } from "@shared/mini-tools/coco-rle.js";
 import { readYuNetFaces } from "@ingest/container/analysis-detection.js";
-import { runPlanCommand } from "@ingest/container/plan-command.js";
+import { runPlanCommand, startPlanCommand, type PlanPipe } from "@ingest/container/plan-command.js";
 import {
   BT709_TAGS, RecipeFailure, detect, local, picture, placement, readMediaMetadata, readVideoMetadata, roundTimes, videoOutput, windowGraph, writeJson, type PlanLimits,
 } from "@ingest/container/presentation-recipes.js";
@@ -179,6 +183,22 @@ async function decodeRaw(args: string[], alpha: boolean, file: string, run: Run)
   await runPlanCommand("ffmpeg", [...args, "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", alpha ? "yuva420p" : "yuv420p", file], run);
 }
 
+/**
+ * View one raw 8-bit 4:2:0 picture's bytes as its planes.
+ * @param bytes - The picture's bytes, `lipsyncPictureBytes` long.
+ * @param width - Its width.
+ * @param height - Its height.
+ * @param alpha - Whether it carries an alpha plane.
+ * @returns The picture over the same bytes.
+ * @throws {never} Never.
+ */
+function pictureOf(bytes: Uint8Array, width: number, height: number, alpha: boolean): Picture {
+  const luma = width * height;
+  const chroma = Math.ceil(width / 2) * Math.ceil(height / 2);
+  return { width, height, y: bytes.subarray(0, luma), u: bytes.subarray(luma, luma + chroma), v: bytes.subarray(luma + chroma, luma + 2 * chroma),
+    a: alpha ? bytes.subarray(luma + 2 * chroma, luma * 2 + 2 * chroma) : null };
+}
+
 /** Random access to the frames of a raw file. */
 interface RawFrames { read(index: number): Promise<Picture>; count: number; close(): Promise<void> }
 
@@ -193,7 +213,6 @@ interface RawFrames { read(index: number): Promise<Picture>; count: number; clos
  */
 async function rawFrames(file: string, width: number, height: number, alpha: boolean): Promise<RawFrames> {
   const handle: FileHandle = await open(file, "r");
-  const chroma = Math.ceil(width / 2) * Math.ceil(height / 2);
   const size = lipsyncPictureBytes(width, height, alpha);
   const count = Math.floor((await handle.stat()).size / size);
   return {
@@ -201,12 +220,89 @@ async function rawFrames(file: string, width: number, height: number, alpha: boo
     async read(index: number): Promise<Picture> {
       const bytes = Buffer.alloc(size);
       await handle.read(bytes, 0, size, Math.min(index, count - 1) * size);
-      const luma = width * height;
-      return { width, height, y: bytes.subarray(0, luma), u: bytes.subarray(luma, luma + chroma), v: bytes.subarray(luma + chroma, luma + 2 * chroma),
-        a: alpha ? bytes.subarray(luma + 2 * chroma, size) : null };
+      return pictureOf(bytes, width, height, alpha);
     },
     close: () => handle.close(),
   };
+}
+
+/** The frames of a raw stream in order, one at a time; null once the stream has ended. */
+interface FrameStream { next(): Promise<Picture | null> }
+
+/**
+ * Read a program's raw 8-bit 4:2:0 stdout one frame at a time (execution design paragraph before §9.4): only the frame being
+ * filled and the pipe's current chunk are held.
+ * @param stdout - The stream.
+ * @param width - The frame width.
+ * @param height - The frame height.
+ * @param alpha - Whether each frame carries an alpha plane.
+ * @returns The frames.
+ * @throws {never} Never; `next` throws when the stream ends inside a frame.
+ */
+function frameStream(stdout: Readable, width: number, height: number, alpha: boolean): FrameStream {
+  const chunks = stdout[Symbol.asyncIterator]() as AsyncIterator<Buffer>;
+  const size = lipsyncPictureBytes(width, height, alpha);
+  let pending: Buffer = Buffer.alloc(0);
+  return {
+    async next(): Promise<Picture | null> {
+      const bytes = Buffer.allocUnsafe(size);
+      let filled = 0;
+      while (filled < size) {
+        if (pending.length === 0) {
+          const chunk = await chunks.next();
+          if (chunk.done === true) {
+            if (filled === 0) return null;
+            throw new Error("A raw frame stream ended inside a frame");
+          }
+          pending = chunk.value;
+        }
+        const length = Math.min(size - filled, pending.length);
+        pending.copy(bytes, filled, 0, length);
+        pending = pending.subarray(length);
+        filled += length;
+      }
+      return pictureOf(bytes, width, height, alpha);
+    },
+  };
+}
+
+/**
+ * Start a decode whose raw 8-bit 4:2:0 frames arrive on its stdout.
+ * @param args - The FFmpeg input arguments and the graph or filters that present the frames, ending before the output.
+ * @param alpha - Whether the frames carry alpha.
+ * @param run - The lifetime and IO bounds.
+ * @returns The running decode.
+ * @throws {DOMException} When the lifetime is already cancelled.
+ */
+function startDecode(args: string[], alpha: boolean, run: Run): PlanPipe {
+  return startPlanCommand("ffmpeg", [...args, "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", alpha ? "yuva420p" : "yuv420p", "pipe:1"], run, { stdout: true });
+}
+
+/**
+ * Write one picture's planes to a raw stream, waiting while the reader is behind.
+ * @param stdin - The stream.
+ * @param frame - The picture.
+ * @param done - The reading program's end: it may not end before its input does.
+ * @returns Nothing once the planes are taken.
+ * @throws {Error} When the stream fails or the program ends first.
+ */
+async function writePicture(stdin: Writable, frame: Picture, done: Promise<void>): Promise<void> {
+  for (const plane of [frame.y, frame.u, frame.v, frame.a]) {
+    if (plane === null || stdin.write(plane)) continue;
+    await Promise.race([once(stdin, "drain"), done.then(() => { throw new Error("The encoder ended before its input"); })]);
+  }
+}
+
+/**
+ * Stop a program that may still run and wait for it, its own failure no longer relevant.
+ * @param pipe - The program, or null when it never started.
+ * @returns Nothing once it has closed.
+ * @throws {never} Never.
+ */
+async function settle(pipe: PlanPipe | null): Promise<void> {
+  if (pipe === null) return;
+  pipe.stop();
+  await pipe.done.catch(() => undefined);
 }
 
 /**
@@ -351,16 +447,52 @@ async function encodeRaw(raw: string, frame: { width: number; height: number; al
 }
 
 /**
+ * Start an encode of raw 4:2:0 frames written to its stdin, on a clock, one frame per `tick` ticks from 0, the last ending at `end`.
+ * @param frame - The frames' geometry and whether they carry alpha.
+ * @param frame.width - Their width.
+ * @param frame.height - Their height.
+ * @param frame.alpha - Whether each carries alpha.
+ * @param timing - The clock, the ticks per frame and the end.
+ * @param timing.clock - The timescale.
+ * @param timing.tick - The ticks per frame.
+ * @param timing.end - The end in ticks.
+ * @param target - The encode target.
+ * @param output - The file to write.
+ * @param run - The lifetime and IO bounds.
+ * @returns The running encode.
+ * @throws {DOMException} When the lifetime is already cancelled.
+ */
+function startEncode(frame: { width: number; height: number; alpha: boolean }, timing: { clock: number; tick: number; end: number },
+  target: MiniToolPlanTarget, output: string, run: Run): PlanPipe & { stdin: Writable } {
+  const { video, muxer } = videoOutput(target, BigInt(timing.clock), BigInt(timing.end));
+  const pipe = startPlanCommand("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-f", "rawvideo", "-pix_fmt", frame.alpha ? "yuva420p" : "yuv420p",
+    "-s", `${frame.width}x${frame.height}`, "-framerate", `${timing.clock}/${timing.tick}`, "-i", "pipe:0",
+    "-vf", `settb=1/${timing.clock},setpts=N*${timing.tick},setsar=1,${BT709_TAGS}`, ...video, "-an", ...muxer, output], run, { stdin: true });
+  return pipe as PlanPipe & { stdin: Writable };
+}
+
+/**
+ * Close an encode's input and wait for it to finish writing.
+ * @param encode - The running encode.
+ * @returns Nothing once the output is written.
+ * @throws {Error} When FFmpeg fails.
+ */
+async function finishEncode(encode: PlanPipe & { stdin: Writable }): Promise<void> {
+  encode.stdin.end();
+  await encode.done;
+}
+
+/**
  * Write one person's face clip (§7.17 lipsync_clip row, execution design §9.2): result frame t shows source frame
  * `lipsyncSourceFrameAt(timeline, table, t)` cropped to that frame's face, H.264 of `timeline.duration` on the prepared
- * video's frame rate. The prepared video is decoded in segments that fit `rawBytes` beside the result's raw crops
- * (execution design paragraph before §9.4); a frame outside the segment held decodes the next one, ending at that frame
- * when the frames that follow go back.
+ * video's frame rate. The prepared video is decoded once, forward, on FFmpeg's stdout and each crop goes to the encoder's
+ * stdin as its frame arrives (execution design paragraph before §9.4): the first use of every source frame never goes back
+ * on the result grid, and a frame the result shows again is cropped once into the crop file and read back from it.
  * @param recipe - The clip recipe.
  * @param request - The files, directory and lifetime.
  * @param run - The lifetime and IO bounds of one command.
  * @returns Nothing once written.
- * @throws {RangeError} When the budget holds no source frame beside the result, or a segment decodes no frame.
+ * @throws {RangeError} When a source frame's first use goes back, or the prepared video ends before a frame the result shows.
  * @throws {Error} When decoding, reading or encoding fails.
  */
 async function writeClip(recipe: MiniToolPlanLipsyncClip, request: LipsyncRecipeRequest, run: Run): Promise<void> {
@@ -368,55 +500,52 @@ async function writeClip(recipe: MiniToolPlanLipsyncClip, request: LipsyncRecipe
   const { width, height } = await videoFacts(video, run);
   const [track, faces] = await Promise.all([readTrack(local(request.inputs, recipe.track)), readFaces(local(request.inputs, recipe.faces))]);
   const grid = resultGrid(recipe.timeline, recipe.table);
-  const sources = Array.from({ length: grid.count }, (_unused, k) => lipsyncSourceFrameAt(recipe.timeline, recipe.table, (k * grid.step) / grid.clock));
-  const span = Math.floor((recipe.rawBytes - grid.count * lipsyncPictureBytes(recipe.cropSize, recipe.cropSize, false)) / lipsyncPictureBytes(width, height, false));
-  if (span < 1) throw new RangeError("The lip-sync clip's decode budget holds no source frame beside its result");
-  const source = join(request.directory, "clip-source.yuv");
-  // ponytail: each segment decodes from the video's start and trims; seek to the segment's keyframe if decode time matters.
-  const held: { segment: { start: number; frames: RawFrames } | null } = { segment: null };
-  /**
-   * A source frame from the segment holding it, decoding that segment first when none does.
-   * @param k - The result frame showing it.
-   * @returns The frame.
-   * @throws {RangeError} When the segment decodes no frame.
-   * @throws {Error} When decoding or reading fails.
-   */
-  const frameAt = async (k: number): Promise<Picture> => {
-    const s = sources[k]!;
-    let segment = held.segment;
-    if (segment === null || s < segment.start || s >= segment.start + segment.frames.count) {
-      await segment?.frames.close();
-      held.segment = null;
-      const next = sources[k + 1];
-      const start = next !== undefined && next < s ? Math.max(0, s - span + 1) : s;
-      await decodeRaw(["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file", "-i", video, "-map", "0:v:0",
-        "-vf", `trim=start_frame=${start}:end_frame=${start + span}`], false, source, run);
-      const frames = await rawFrames(source, width, height, false);
-      segment = { start, frames };
-      held.segment = segment;
-      if (frames.count === 0 || s >= start + frames.count) throw new RangeError("The lip-sync clip's segment holds none of its frames");
-    }
-    return segment.frames.read(s - segment.start);
-  };
-  const raw = join(request.directory, "clip-result.yuv");
-  const out = await open(raw, "w");
+  const sources = lipsyncResultSourceFrames(recipe.timeline, recipe.table);
+  const highest = Math.max(...sources);
+  // Each source frame's last use, so a crop is kept in the crop file only when the result shows it again.
+  const lastUse = new Int32Array(highest + 1).fill(-1);
+  sources.forEach((s, k) => { lastUse[s] = k; });
+  const slots = new Int32Array(highest + 1).fill(-1);
+  const cropBytes = lipsyncPictureBytes(recipe.cropSize, recipe.cropSize, false);
+  const crops = await open(join(request.directory, "clip-crops.yuv"), "w+");
+  let [decode, encode]: [PlanPipe | null, (PlanPipe & { stdin: Writable }) | null] = [null, null];
   try {
-    const crops = new Map<number, Picture>();
-    for (let k = 0; k < grid.count; k += 1) {
-      const s = sources[k]!;
-      let crop = crops.get(s);
-      if (crop === undefined) {
-        crop = cropFace(await frameAt(k), faces[s] ?? null, maskAt(track, s, { width, height }), recipe.cropSize);
-        crops.set(s, crop);
+    encode = startEncode({ width: recipe.cropSize, height: recipe.cropSize, alpha: false }, { clock: grid.clock, tick: grid.step, end: grid.end },
+      { width: recipe.cropSize, height: recipe.cropSize, displayRect: null, colorMatrix: "bt709", toneMap: "none", alpha: "none", ...CLIP_ENCODE, format: "mp4-h264" }, request.output, run);
+    decode = startDecode(["-hide_banner", "-loglevel", "error", "-nostdin", "-protocol_whitelist", "file", "-i", video, "-map", "0:v:0", "-frames:v", String(highest + 1)], false, run);
+    const frames = frameStream(decode.stdout!, width, height, false);
+    let position = -1;
+    let stored = 0;
+    for (const [k, s] of sources.entries()) {
+      let crop: Picture;
+      if (slots[s]! >= 0) {
+        const bytes = Buffer.alloc(cropBytes);
+        await crops.read(bytes, 0, cropBytes, slots[s]! * cropBytes);
+        crop = pictureOf(bytes, recipe.cropSize, recipe.cropSize, false);
+      } else {
+        if (s <= position) throw new RangeError("A lip-sync clip's source frame is first used after a later one");
+        let frame: Picture | null = null;
+        while (position < s) {
+          frame = await frames.next();
+          if (frame === null) throw new RangeError("The prepared video ends before a frame the lip-sync clip shows");
+          position += 1;
+        }
+        crop = cropFace(frame!, faces[s] ?? null, maskAt(track, s, { width, height }), recipe.cropSize);
+        if (lastUse[s]! > k) {
+          slots[s] = stored;
+          await crops.write(Buffer.concat([crop.y, crop.u, crop.v]), 0, cropBytes, stored * cropBytes);
+          stored += 1;
+        }
       }
-      await appendPicture(out, crop);
+      await writePicture(encode.stdin, crop, encode.done);
     }
+    if (await frames.next() !== null) throw new RangeError("The prepared video decoded past the frames the lip-sync clip shows");
+    await decode.done;
+    await finishEncode(encode);
   } finally {
-    await out.close();
-    await held.segment?.frames.close();
+    await Promise.all([settle(decode), settle(encode)]);
+    await crops.close();
   }
-  await encodeRaw(raw, { width: recipe.cropSize, height: recipe.cropSize, alpha: false }, { clock: grid.clock, tick: grid.step, end: grid.end },
-    { width: recipe.cropSize, height: recipe.cropSize, displayRect: null, colorMatrix: "bt709", toneMap: "none", alpha: "none", ...CLIP_ENCODE, format: "mp4-h264" }, request.output, run);
 }
 
 /**
