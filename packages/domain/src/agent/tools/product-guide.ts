@@ -1394,6 +1394,7 @@ export function renderProductGuide(): string {
       `The dimmed speech-bubble entry shows ${quoted(t("spaces.threeD.annotationsLater"))} on hover. ` +
       `The keyboard icon at the bottom of the left rail opens ${quoted(t("spaces.threeD.controls"))}, which says ${quoted(t("spaces.threeD.helpBody"))}`,
     `The ${quoted(t("spaces.threeD.generate"))} dialog makes a 3D model; the 3D Space only generates 3D models, and pictures are generated on a Canvas. ` +
+      "It opens in the middle of the screen over the 3D Space, with its title and a one-line description at its top. " +
       `Opened from the rail it starts empty and says ${quoted(t("spaces.threeD.generateDialog.descriptionBlank"))} ` +
       `On top, under ${quoted(t("spaces.threeD.generateDialog.common"))}, are the model's settings both modes share: switches, option rows and number boxes. ` +
       "A setting another choice holds is locked; clicking it shows why in a short message, such as " +
@@ -1409,16 +1410,18 @@ export function renderProductGuide(): string {
       `a slot after it shows a dash whose tooltip says ${quoted(t("spaces.threeD.generateDialog.fillEarlier"))}. ` +
       "A filled slot shows its picture with a small button at its top right, whose menu offers the same two plus " +
       `${quoted(t("spaces.threeD.generateDialog.removeView"))}; removing a view moves the later ones forward. ` +
-      `An upload shows a progress bar in its slot; one that fails empties the slot, which says ${quoted(t("spaces.threeD.generateDialog.uploadFailed"))}. ` +
+      `An upload shows a progress bar in its slot; one that fails stays in its place saying ${quoted(t("spaces.threeD.generateDialog.uploadFailed"))}, ` +
+      "with the plus button and its menu, and the next slot opens only once it is replaced or removed. " +
       `${quoted(t("spaces.threeD.generateDialog.pickProject"))} opens ${quoted(t("spaces.threeD.picker.title"))} with two tabs: ` +
       `${quoted(t("spaces.threeD.picker.project"))} lists this Project's pictures, and ${quoted(t("spaces.threeD.picker.more"))} reads the next page; ` +
       `${quoted(t("spaces.threeD.picker.local"))} takes ${quoted(t("spaces.threeD.picker.formats"))} through ${quoted(t("spaces.threeD.picker.chooseFile"))}, which uploads into the slot. ` +
       "Clicking a picture or choosing a file closes it and fills the slot. " +
-      "The bottom row has the mode switch at the left, Text to 3D or Image to 3D, named in English on every screen; at the right, a star with the credit " +
+      "The bottom row has the mode switch at the left, Text to 3D or Image to 3D, named in English on every screen, followed by the model that runs, Tripo H3.1; at the right, a star with the credit " +
       "estimate and the round button with an upward arrow, which generates. That button is unavailable while a view is uploading, a setting is not accepted, " +
-      "the prompt is empty (Text to 3D) or no view is filled (Image to 3D). While the generation is being submitted the dialog cannot be closed. " +
-      `On the answer it closes and the ${quoted(t("spaces.threeD.tasks"))} panel opens on the new row; a generation that could not start gets its row too, with the reason and Retry. ` +
-      "A refusal, such as too few credits, keeps the dialog open with everything in it and says why in a short message.",
+      "the prompt is empty (Text to 3D), no view is filled or a view's upload failed (Image to 3D). " +
+      `On the answer it closes and the ${quoted(t("spaces.threeD.tasks"))} panel opens on the new row, clearing the panel's filters if they would hide it; a generation that could not start gets its row too, with the reason and Retry. ` +
+      "Closing the dialog while the generation is being submitted lets the submission carry on, and its answer still opens the panel on the new row. " +
+      "A refusal, such as too few credits or a view that is not a picture of this Project, keeps the dialog open with everything in it and says why in a short message.",
     `The floating bar at the bottom right orders ${quoted(t("spaces.threeD.undo"))}, ${quoted(t("spaces.threeD.redo"))}, ` +
       `${quoted(t("spaces.threeD.properties"))}, ${quoted(t("spaces.threeD.objects"))}, ${quoted(t("spaces.threeD.tasks"))} and ` +
       `${quoted(t("spaces.threeD.minimap"))}. The three panel buttons keep their ordinary appearance while open. ` +
@@ -1439,7 +1442,7 @@ export function renderProductGuide(): string {
       "and the panel stays open for the next one; a row that timed out but whose model arrived later has it too. " +
       `A failed row, and a timed-out one with no model, has ${quoted(t("spaces.threeD.taskList.remove"))}; the page that uploaded a failed row also has ` +
       `${quoted(t("spaces.threeD.taskList.retry"))} when sending the same file again could succeed, until that page is reloaded. ` +
-      `A generation row shows its name, ${quoted(t("spaces.threeD.taskList.kindGeneration"))}, the prompt's start or the input pictures as thumbnails (resting the pointer on one previews it), ` +
+      `A generation row shows its name (for Text to 3D, the start of its prompt), ${quoted(t("spaces.threeD.taskList.kindGeneration"))}, for Image to 3D the input pictures as thumbnails (resting the pointer on one previews it), ` +
       `then the model · who started it · ${quoted(t("spaces.threeD.taskList.originSpace"))} or ${quoted(t("spaces.threeD.taskList.originAgent"))} (with a robot icon), and its state: ` +
       `${quoted(t("spaces.threeD.taskList.generating"))}, with the minutes after the first, ${quoted(t("spaces.threeD.taskList.done"))}, ` +
       `${quoted(t("spaces.threeD.taskList.failed"))} with its reason, or ${quoted(t("spaces.threeD.taskList.expired"))}; one whose model arrived after it timed out shows ${quoted(t("spaces.threeD.taskList.done"))}. ` +
@@ -1452,8 +1455,8 @@ export function renderProductGuide(): string {
       `A row holding a model cannot be removed. A Viewer sees the list with no button but ${quoted(t("spaces.threeD.taskList.locate"))}. ` +
       `When there are none it says ${quoted(t("spaces.threeD.taskList.empty"))} The project activity records each import whose file was uploaded, under the model's name; importing a model this studio already has adds no activity entry.`,
     `A 3D generation you propose appears in this chat as a card headed ${quoted(t("chat.sceneProposal.title"))}: your short reason, the mode (Text to 3D or Image to 3D, in English), ` +
-      `the model, the estimated credits, the prompt or the input pictures, the main settings, and ${quoted(t("chat.sceneProposal.open"))}. ` +
-      "The card belongs to no particular Space: pressing it opens the generation dialog in the 3D Space in front, filled with the proposal and saying " +
+      `the model, the estimated credits, the prompt or the input pictures, the main settings (the switches that are on, and each choice after its setting's name), and ${quoted(t("chat.sceneProposal.open"))}. ` +
+      "The card belongs to no particular Space: pressing it opens the generation dialog in the middle of the screen of the 3D Space in front, filled with the proposal and saying " +
       `${quoted(t("spaces.threeD.generateDialog.descriptionAgent"))} The card itself generates nothing; the reader checks the dialog and presses its round button. ` +
       `With no 3D Space in front it shows ${quoted(t("chat.sceneProposal.needScene"))} and opens nothing. ` +
       `While that Space is already submitting a generation, the card, like a generation row's Retry, shows ${quoted(t("spaces.threeD.proposalBusy"))} and changes nothing. ` +

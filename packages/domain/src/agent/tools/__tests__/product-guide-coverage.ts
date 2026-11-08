@@ -1203,6 +1203,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.generatePanel.param.enable_image_autofix": { excluded: REASONS.MODEL_SETTING_NAME },
   "chat.tool.step.proposeScene": { described: /naming the step and why/ },
   "chat.sceneProposal.credits": { excluded: REASONS.FILLS_A_VALUE },
+  "chat.sceneProposal.setting": { described: /each choice after its setting's name/ },
   "studio.container.card.archiveFailed": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "studio.container.card.archived": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "studio.container.card.duplicateFailed": { excluded: REASONS.NOT_ON_THESE_SCREENS },
