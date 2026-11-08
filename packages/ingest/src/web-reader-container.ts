@@ -89,7 +89,11 @@ export class WebReaderContainer extends Container {
         ),
         ended,
       ]);
-      if (!answered.ok) throw new Error(`the page reader answered ${String(answered.status)}`);
+      if (!answered.ok) {
+        // The service's own words, bounded, so on-call can read why.
+        const said = (await Promise.race([answered.text(), ended])).slice(0, 500);
+        throw new Error(`the page reader answered ${String(answered.status)}: ${said}`);
+      }
       const body = readerServiceAnswerSchema.parse(await Promise.race([answered.json(), ended]));
       return { pages: body.pages, usage: { wallMs: Date.now() - startedAt, cpuUsec: body.cpuUsec } };
     } finally {
