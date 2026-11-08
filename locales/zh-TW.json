@@ -2243,6 +2243,18 @@
       "selectedCount": "已選取 {count} 個物件",
       "multiTransform": "使用場景中的控制柄，圍繞選取集合的中心調整變換。",
       "mixed": "混合值",
+      "pose": {
+        "title": "姿勢",
+        "stand": "站立",
+        "sit": "坐下",
+        "lie": "躺下",
+        "walk": "行走",
+        "wave": "揮手",
+        "jointMode": "調整關節",
+        "reset": "恢復預設姿勢",
+        "noSkeleton": "這個模型沒有骨骼，無法擺姿勢。",
+        "humanoidOnly": "預設只適用於人形角色。"
+      },
       "selectObject": "選取物件以編輯屬性。",
       "refused": "與此場景的連線被拒絕了，變更不會被儲存。",
       "retry": "重試",

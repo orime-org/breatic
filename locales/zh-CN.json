@@ -2243,6 +2243,18 @@
       "selectedCount": "已选中 {count} 个对象",
       "multiTransform": "使用场景中的手柄，围绕选中集合的中心调整变换。",
       "mixed": "混合值",
+      "pose": {
+        "title": "姿势",
+        "stand": "站立",
+        "sit": "坐下",
+        "lie": "躺下",
+        "walk": "行走",
+        "wave": "挥手",
+        "jointMode": "调整关节",
+        "reset": "恢复默认姿势",
+        "noSkeleton": "这个模型没有骨骼，不能摆姿势。",
+        "humanoidOnly": "预设只适用于人形角色。"
+      },
       "selectObject": "选择对象以编辑属性。",
       "refused": "与此场景的连接被拒绝了，改动不会被保存。",
       "retry": "重试",

@@ -2243,6 +2243,18 @@
       "selectedCount": "{count} selected",
       "multiTransform": "Use the scene handles to transform the selection around its centre.",
       "mixed": "Mixed",
+      "pose": {
+        "title": "Pose",
+        "stand": "Stand",
+        "sit": "Sit",
+        "lie": "Lie down",
+        "walk": "Walk",
+        "wave": "Wave",
+        "jointMode": "Adjust joints",
+        "reset": "Reset pose",
+        "noSkeleton": "This model has no skeleton and cannot be posed.",
+        "humanoidOnly": "Presets work on humanoid characters only."
+      },
       "selectObject": "Select an object to edit its properties.",
       "refused": "The connection to this scene was refused. Changes will not be saved.",
       "retry": "Retry",

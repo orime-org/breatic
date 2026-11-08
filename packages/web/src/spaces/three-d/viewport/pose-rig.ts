@@ -305,15 +305,24 @@ function restFloor(toModel: Matrix4, meshes: readonly SkinnedMesh[], rig: readon
 const rigs = new WeakMap<Object3D, PoseRig | null>();
 
 /**
- * Pose an instance, building its rig on first use while it is still at rest.
+ * The rig of an instance, built on first use while it is still at rest.
  * @param instance - The model instance.
- * @param pose - The pose; absent means rest.
+ * @returns The rig, or null when the instance has no bones.
  */
-export function applyPose(instance: Object3D, pose: ScenePose | undefined): void {
+export function poseRigOf(instance: Object3D): PoseRig | null {
   let rig = rigs.get(instance);
   if (rig === undefined) {
     rig = createPoseRig(instance);
     rigs.set(instance, rig);
   }
-  rig?.apply(pose ?? {});
+  return rig;
+}
+
+/**
+ * Pose an instance; every pose shown goes through here.
+ * @param instance - The model instance.
+ * @param pose - The pose; absent means rest.
+ */
+export function applyPose(instance: Object3D, pose: ScenePose | undefined): void {
+  poseRigOf(instance)?.apply(pose ?? {});
 }

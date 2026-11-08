@@ -14,6 +14,10 @@ import { SceneField, type SceneFieldDraft } from '@web/spaces/three-d/SceneField
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const owners: Array<{ doc: Y.Doc; session: SceneSession }> = [];
+// Rename does not depend on the pose section, which stays hidden while no skeleton state is known.
+const NO_SKELETON_STATES: ReadonlyMap<string, 'none' | 'humanoid' | 'other'> = new Map();
+/** Joint mode is owned by the editor and unused by rename. */
+function ignoreJointMode(): void {}
 
 /**
  * Subscribe the real inspector to its real document owner.
@@ -36,7 +40,8 @@ function BoundInspector({ session }: { session: SceneSession }): React.JSX.Eleme
   return <div data-testid='scene-right-panel' tabIndex={-1}>
     <SceneInspector spaceId='scene' session={session} snapshot={snapshot} namedPeers={[]} Field={SceneField}
       fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange}
-      readObjects={() => readSceneDocument(session.doc).objects} />
+      readObjects={() => readSceneDocument(session.doc).objects}
+      skeletonStates={NO_SKELETON_STATES} jointMode={false} onJointModeChange={ignoreJointMode} />
     <input autoComplete='off' aria-label='Next field' />
   </div>;
 }

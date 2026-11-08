@@ -1,12 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { Box3, Group, InstancedMesh, SkinnedMesh, Texture, Vector3 } from 'three';
+import { Box3, Group, InstancedMesh, MeshStandardMaterial, SkinnedMesh, Texture, Vector3 } from 'three';
 import type { BufferGeometry, Material, Skeleton, WebGLRenderer } from 'three';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { httpRequest, isSceneModelMediaType } from '@breatic/shared';
 import type { SceneImportLimits, SceneObject } from '@breatic/shared';
 import { createBuiltinModel } from '@web/spaces/three-d/viewport/builtin-models';
+import figureUrl from '@web/spaces/three-d/viewport/assets/figure.glb?url';
 import type { ResolvedSceneAsset } from '@web/spaces/three-d/viewport/scene-viewport-props';
 import type { ModelBounds } from '@web/spaces/three-d/model-import-controller';
 import { inspectModelFiles } from '@web/spaces/three-d/model-package';
@@ -248,7 +249,9 @@ export async function loadSceneModel(
   limits: SceneImportLimits,
   renderer?: WebGLRenderer,
 ): Promise<Group> {
-  if (source.kind === 'builtin') return createBuiltinModel(source.id, builtinColor);
+  if (source.kind === 'builtin') {
+    return source.id === 'box' ? createBuiltinModel('box', builtinColor) : loadBuiltinFigure(signal, builtinColor, limits, renderer);
+  }
   const asset = await resolveAsset(source.assetId, signal);
   if (!isSceneModelMediaType(asset.mimeType)) throw new ModelImportError('unsupported', 'Scene asset has an unsupported model type', { detail: asset.mimeType });
   if (signal.aborted) throw new DOMException('Scene model load cancelled', 'AbortError');
@@ -263,6 +266,31 @@ export async function loadSceneModel(
     ? await readRegisteredModelPackageInWorker(bytes, signal, limits)
     : inspectModelFiles(new Map([['model.glb', bytes]]), 'model.glb', limits, await detectTextureFormatSupport());
   return parseSceneModel(model, signal, limits, renderer);
+}
+
+/**
+ * The built-in figure: the rigged mannequin shipped with the app (inner#1692),
+ * read from its same-origin address and coloured like the other built-ins.
+ * @param signal - Current model lease's cancellation signal.
+ * @param color - The current semantic object colour.
+ * @param limits - Import budgets injected from the Project configuration.
+ * @param renderer - Current device capabilities used for texture decoding.
+ * @returns The figure's template.
+ * @throws {Error} When transferring or parsing the figure fails.
+ */
+async function loadBuiltinFigure(signal: AbortSignal, color: string, limits: SceneImportLimits, renderer?: WebGLRenderer): Promise<Group> {
+  const response = await httpRequest(new URL(figureUrl, location.href).href, { method: 'GET' }, { replaySafe: true, signal });
+  if (!response.ok) throw new Error(`Built-in figure request failed (${response.status})`);
+  const bytes = await readModelBytes(response, limits.maxArtifactBytes, signal);
+  const model = inspectModelFiles(new Map([['model.glb', bytes]]), 'model.glb', limits, await detectTextureFormatSupport());
+  const root = await parseSceneModel(model, signal, limits, renderer);
+  root.traverse((child) => {
+    if (!isDrawable(child)) return;
+    for (const material of Array.isArray(child.material) ? child.material : [child.material]) {
+      if (material instanceof MeshStandardMaterial) material.color.set(color);
+    }
+  });
+  return root;
 }
 
 /**

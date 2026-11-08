@@ -4,6 +4,7 @@
 import { Box3, Color, DoubleSide, type Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, OrthographicCamera, Plane, Raycaster, RingGeometry, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
 import type { SceneObject } from '@breatic/shared';
 import type { ModelResourceCache, SceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
+import { applyPose } from '@web/spaces/three-d/viewport/pose-rig';
 
 /**
  * Fit complete world bounds in a top view with the host's actual aspect ratio.
@@ -136,6 +137,7 @@ export class SceneMiniMapRuntime {
       const root = this.items.get(object.id)?.root;
       if (!root) continue;
       root.position.fromArray(object.position); root.quaternion.fromArray(object.rotation); root.scale.fromArray(object.scale); root.updateMatrixWorld(true);
+      applyPose(root, object.pose);
       if (object.model.kind === 'builtin' && builtin) root.traverse((child) => {
         if (child instanceof Mesh) for (const material of Array.isArray(child.material) ? child.material : [child.material]) {
           if (material instanceof MeshStandardMaterial) material.color.setStyle(builtin);
