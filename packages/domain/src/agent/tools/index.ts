@@ -13,6 +13,7 @@ import { makeSaveImageTool } from "@domain/agent/tools/save-image.js";
 import { recordTools, makeReadNodeHistoryTool } from "@domain/agent/tools/record-tools.js";
 import { memoryTools } from "@domain/agent/tools/memory-tools.js";
 import type { ToolPictureContext } from "@domain/agent/prepare-agent-pictures.js";
+import type { PageUrlFor } from "@domain/agent/tools/web-fetch.js";
 import {
   ASK_USER,
   REQUEST_SPACE_CONTENT,
@@ -60,9 +61,11 @@ const proposeDocumentEdit = makeProposeDocumentEdit();
 export type ToolContext = AskUserContext & ToolPictureContext & RequestSpaceContentContext & {
   /**
    * The spelling the conversation recorded for a link, or undefined when it
-   * does not hold it; `web_fetch` reads only those, in that spelling (inner#1664).
+   * does not hold it; `web_fetch` reads only those, in that spelling
+   * (inner#1664). It may answer asynchronously, so a turn can read what it
+   * looks in only when a link first needs it.
    */
-  pageUrlFor?: (url: string) => string | undefined;
+  pageUrlFor?: PageUrlFor;
 };
 
 /** The context a tool gets when its caller has none: no media is vouched for. */
