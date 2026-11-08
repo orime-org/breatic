@@ -799,6 +799,26 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
     });
   });
 
+  // A person's result is opened at the window by its own packet times: an MP4 with B-frames and no edit list starts at a
+  // non-zero time, which an input seek must not add on top (the `-seek_timestamp` the window graph also uses).
+  it('LM06 a person result whose start time is not 0 still shows its result frame k on result frame k', async () => {
+    await make('person-1-bframes.mp4', ['-f', 'lavfi', '-i', `color=c=black:s=64x64:r=${FPS}:d=0.72,format=yuv420p,geq=lum='50+7*N':cb=150:cr=128`,
+      '-c:v', 'libx264', '-crf', '4', '-bf', '2', '-x264-params', 'b-adapt=0', '-g', '5', '-pix_fmt', 'yuv420p', '-video_track_timescale', String(FPS), '-use_editlist', '0']);
+    const { stdout } = await run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=start_time', '-of', 'csv=p=0', join(dir, 'person-1-bframes.mp4')]);
+    expect(Number(stdout), 'the fixture starts about two frames late').toBeGreaterThan(0.05);
+    const timeline: LipsyncTimeline = { duration: 0.72, videoDuration: V, syncMode: 'cut_off' };
+    const window = { start: 3, end: 9 };
+    const entries = [{ kind: 'source', decodeStart: r(0), clipStart: r(3, 25), displayStart: r(3, 25), displayEnd: r(9, 25), rate: r(1) }];
+    const file = await produce({ ...await inputs('comp-source.mp4'), [ID.result1]: join(dir, 'person-1-bframes.mp4') }, { ...recipe(OPAQUE), timeline, window, entries });
+    const y = await planeFrames(file, 'y');
+    expect(y.frames).toHaveLength(window.end - window.start);
+    y.frames.forEach((frame, j) => {
+      const k = window.start + j;
+      const rect = face1(lipsyncSourceFrameAt(timeline, TABLE, k));
+      if (rect !== null) expect(Math.abs(mean(frame, W, { x: rect.x + 12, y: rect.y + 16, width: 16, height: 16 }) - (50 + 7 * k)), `frame ${j} person 1 shows result frame ${k}`).toBeLessThan(3.5);
+    });
+  });
+
   it('LM02 transparent: VP9 with alpha on the result clock, the source alpha kept everywhere including the faces', async () => {
     const file = await produce(await inputs('comp-alpha.mov'), recipe(STRAIGHT), 'video/webm');
     const all = await streams(file);

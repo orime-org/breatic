@@ -596,7 +596,8 @@ function layFace(frame: Picture, rect: MiniToolPlanPixelRect, mask: Uint8Array, 
 
 /**
  * Where a video's frame starts, for opening it there: midway between that frame's presentation time and the one before, so
- * an accurate seek keeps the frame and drops the earlier ones; null when the video has no such frame.
+ * an accurate seek keeps the frame and drops the earlier ones; null when the video has no such frame. The time is on the
+ * file's own packet clock, so the input is opened with `-seek_timestamp 1`: otherwise FFmpeg adds the stream's start time.
  * @param file - The video.
  * @param frame - The frame, in presentation order.
  * @param run - The lifetime and IO bounds.
@@ -660,7 +661,7 @@ async function writeComposite(recipe: MiniToolPlanLipsyncComposite, request: Lip
     for (const person of recipe.persons) {
       const result = local(request.inputs, person.result);
       const [faces, track, at] = await Promise.all([readFaces(local(request.inputs, person.faces)), readTrack(local(request.inputs, person.track)), seekTo(result, window.start, run)]);
-      const decode = at === null ? null : startDecode(["-hide_banner", "-loglevel", "error", "-nostdin", "-protocol_whitelist", "file", "-ss", String(at), "-i", result,
+      const decode = at === null ? null : startDecode(["-hide_banner", "-loglevel", "error", "-nostdin", "-protocol_whitelist", "file", "-seek_timestamp", "1", "-ss", String(at), "-i", result,
         "-map", "0:v:0", "-frames:v", String(length), "-vf", `scale=${person.cropSize}:${person.cropSize}:out_color_matrix=bt709:out_range=tv`], false, run);
       persons.push({ faces, track, decode, results: decode === null ? null : frameStream(decode.stdout!, person.cropSize, person.cropSize, false), cropSize: person.cropSize });
     }
