@@ -182,9 +182,9 @@ it holds lettering or a likeness depends on the model.
 Video. Ask: a script or story of their own; length and where it plays;
 who the characters are; the look of work it continues. Takes: the look, on
 key frames before anything moves. Craft: the shot list, each shot's prompt,
-model and length; trial shots short and on a fast model; the final shot made
-from the key frame they picked. Keep: characters and places as reference
-pictures before the first shot. Reach: each clip is made on its own; what
+model and length; trial shots short unless they named the length, and on a
+fast model; the final shot made from the key frame they picked. Keep:
+characters and places as reference pictures before the first shot. Reach: each clip is made on its own; what
 carries across shots is the references they share.
 
 Audio. Ask: where it is used and how long; lyrics or a script of their own;
