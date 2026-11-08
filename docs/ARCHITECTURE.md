@@ -286,9 +286,9 @@ The shared `SyncConfirmRequestSchema` and `SyncConfirmedResponseSchema` define t
 | 积分 | 模型工具按 API cost;容器工具按容器报回的用时折算 | 按这次调用的真实花费(OpenRouter 回报的 cost,或直连模型的价格表)扣请求体 `project_id` 所在 studio 的积分;开跑前 `precheckCredits`,停下或出错也按已记录的花费扣 |
 | 并发 | Worker concurrency 控制 | 按用户限流 `text-tool`(`config/rate-limits.yaml`) |
 
-Text 工具(12 个):polish / expand / shorten / summarize / translate / rewrite / custom / continue / generate / character / storyboard / script,模型和思考档位在 `config/text-tools.yaml`。前八个作用在选区上:发 `selection` 和选区周围的 `document`,两者超过 `selection_max_chars` / `context_max_chars` 答 422;回复用选区的语言,translate 和 custom 用请求指定的语言。
+Text 工具(12 个):polish / expand / shorten / summarize / translate / rewrite / custom / continue / generate / character / storyboard / script,模型和思考档位在 `config/text-tools.yaml`。前八个和 storyboard 作用在选区上:发 `selection` 和选区周围的 `document`,两者超过 `selection_max_chars` / `context_max_chars` 答 422;回复用选区的语言,translate 和 custom 用请求指定的语言;storyboard 只回一张八列的 Markdown 分镜表,表头也用选区的语言(inner#1130)。
 
-**document 的 AI 菜单是它的入口**(inner#1860):浮出条的 AI 菜单有润色(polish)、扩写、缩写、翻译(五种语言)、语气(rewrite,五种语气)和自定义指令六项。`document-ai-launch.ts` 按 Plate 的 `captureTextRange` 取范围:一块之内的选区按字,跨块的扩成整块;范围整段转成 Markdown 发出(`document-ai-text.ts`,代码块里的字按代码发、按代码收),结果在 `DocumentAiDialog.tsx` 里按正文自己的 schema 画成预览。按插入放到范围最后一块的下面,按替换像粘贴一样盖住范围(Plate 的 `replaceSelection`:块拍平成「层级 + 块」再按原层级重建),各是一个撤销步骤。对话框开着时范围跟着正文的编辑走(`document-ai-range.ts`,跟未发出的批注共用 `document-local-range.ts`),范围里的字都没了就不能替换。会话的状态和按钮只由 `document-ai-session.ts` 的 reducer 决定。
+**document 的 AI 菜单是它的入口**(inner#1860):浮出条的 AI 菜单有润色(polish)、扩写、缩写、翻译(五种语言)、语气(rewrite,五种语气)、生成分镜表(storyboard,inner#1130)和自定义指令七项。`document-ai-launch.ts` 按 Plate 的 `captureTextRange` 取范围:一块之内的选区按字,跨块的扩成整块;范围整段转成 Markdown 发出(`document-ai-text.ts`,代码块里的字按代码发、按代码收),结果在 `DocumentAiDialog.tsx` 里按正文自己的 schema 画成预览。按插入放到范围最后一块的下面,按替换像粘贴一样盖住范围(Plate 的 `replaceSelection`:块拍平成「层级 + 块」再按原层级重建),各是一个撤销步骤。对话框开着时范围跟着正文的编辑走(`document-ai-range.ts`,跟未发出的批注共用 `document-local-range.ts`),范围里的字都没了就不能替换。会话的状态和按钮只由 `document-ai-session.ts` 的 reducer 决定。预览里的表格跟正文一样套 `DocumentTableScroller` 横向滚动(`frameStaticTable`);分镜表的八列按位置写列宽(`document-ai-shot-list.ts`),写完时预览回到表头。Space tab 隐藏时面板不卸载,预览的滚动位置边滚边记在对话框里,显示时放回。
 
 ### 生成模板
 
