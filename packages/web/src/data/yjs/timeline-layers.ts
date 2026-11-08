@@ -3,7 +3,6 @@
 
 import type { TimelineClip, TimelineDocumentV1, TimelineVideoClip } from '@breatic/shared';
 
-import type { TimelineWebResolution } from '@web/data/yjs/timeline-arrangement';
 import { timelineTrackRank } from '@web/data/yjs/timeline-order';
 
 /**
@@ -48,13 +47,12 @@ export function activeTimelineClipAt(document: TimelineDocumentV1, readyClipIds:
  * hides everything below it, so only the web copies above it stack on it; ties on one rank go by id, as
  * `activeTimelineClipAt` decides.
  * @param document - The current document.
- * @param _web - The resolution of web references; readiness already accounts for it.
  * @param readyClipIds - Clips the arrangement resolved as ready.
  * @param frame - The Timeline frame.
  * @returns The visible clips, bottom-up.
  * @throws {never} Never.
  */
-export function visibleTimelineClipsAt(document: TimelineDocumentV1, _web: TimelineWebResolution, readyClipIds: ReadonlySet<string>, frame: number): TimelineClip[] {
+export function visibleTimelineClipsAt(document: TimelineDocumentV1, readyClipIds: ReadonlySet<string>, frame: number): TimelineClip[] {
   return visibleAt(document, timelineTrackRank(document.tracks), readyClipIds, frame);
 }
 

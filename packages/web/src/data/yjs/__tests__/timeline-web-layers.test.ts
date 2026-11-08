@@ -4,7 +4,7 @@
 /**
  * Stacking web-animation copies with video in the preview (inner#1711 design §7.3).
  *
- * `visibleTimelineClipsAt(document, web, readyIds, frame)` replaces `activeTimelineClipAt`: every ready clip covering
+ * `visibleTimelineClipsAt(document, readyIds, frame)` replaces `activeTimelineClipAt`: every ready clip covering
  * the frame, bottom-up by track rank, keeping 1708's video rule that the highest video hides everything below it, so
  * only web copies above it stack on it. `nextTimelinePlaybackBoundary` counts the start and end of every web copy
  * above the highest visible video.
@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest';
 import type { TimelineClip, TimelineDocumentV1 } from '@breatic/shared';
 import { nextTimelinePlaybackBoundary, visibleTimelineClipsAt } from '@web/data/yjs/timeline-layers';
 import { MAIN, V2, V3, V4, cid, clip, timeline, track } from '@web/data/yjs/__tests__/timeline-document-fixtures';
-import { RESOLUTION, SRC_B, boundTo, webClip } from '@web/data/yjs/__tests__/timeline-web-fixtures';
+import { SRC_B, boundTo, webClip } from '@web/data/yjs/__tests__/timeline-web-fixtures';
 
 const TRACKS = [track(MAIN, 0), track(V2, 1), track(V3, 2), track(V4, 3)];
 
@@ -39,7 +39,7 @@ function stack(clips: TimelineClip[]): { document: TimelineDocumentV1; ready: Se
  */
 function visibleIds(clips: TimelineClip[], frame: number, ready?: Set<string>): string[] {
   const { document, ready: all } = stack(clips);
-  return visibleTimelineClipsAt(document, RESOLUTION, ready ?? all, frame).map((item) => item.id);
+  return visibleTimelineClipsAt(document, ready ?? all, frame).map((item) => item.id);
 }
 
 describe('visibleTimelineClipsAt', () => {

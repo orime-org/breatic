@@ -264,7 +264,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const selected = selectedId === null ? undefined : document.clips[selectedId];
   const selectedAssetId = selected === undefined ? '' : timelineClipSource(document.sources, selected)?.assetId ?? '';
   const selectedResource = useTimelineAsset(projectId, selectedAssetId);
-  const visible = React.useMemo(() => visibleTimelineClipsAt(document, web, readyIds, frame), [document, web, readyIds, frame]);
+  const visible = React.useMemo(() => visibleTimelineClipsAt(document, readyIds, frame), [document, readyIds, frame]);
   const bottom = visible[0];
   const active = bottom?.kind === 'video' ? bottom : null;
   const source = active === null ? null : document.sources[active.sourceId] ?? null;
