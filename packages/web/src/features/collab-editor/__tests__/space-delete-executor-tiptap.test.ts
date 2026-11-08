@@ -13,6 +13,13 @@
  * unit takes a chip together with the spaces it owns, and whose whitespace
  * plugin keeps a space on each side of every chip; the contents below are
  * written with those spaces, as the editor keeps them.
+ *
+ * Round 6 (design 5.3 line 217): a deletion of text inside one `XmlText`
+ * whose paragraph holds only that `XmlText` is let through to y-tiptap while
+ * full (0 plans, counted by a pass-through spy on the executor module); a
+ * chip in the range, or two neighbouring `XmlText`s in the paragraph, goes to
+ * the executor (1 plan). Over the ceiling, deleting part of one `XmlText` is
+ * refused before planning (line 231).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -23,9 +30,15 @@ import type * as Y from 'yjs';
 vi.mock('@web/lib/toast', () => ({
   toast: { warning: vi.fn(), error: vi.fn(), info: vi.fn(), success: vi.fn() },
 }));
+vi.mock('@web/features/collab-editor/space-delete-executor', async (importOriginal) => {
+  const actual = await importOriginal<typeof Executor>();
+  return { ...actual, planSpaceDelete: vi.fn(actual.planSpaceDelete) };
+});
 
 import { changeLocale } from '@web/i18n/locale-bootstrap';
 import { yUndoPluginKey } from '@web/features/collab-editor/collab-plugin-keys';
+import type * as Executor from '@web/features/collab-editor/space-delete-executor';
+import { planSpaceDelete } from '@web/features/collab-editor/space-delete-executor';
 import { REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import { dispatchMachineEdit } from '@web/features/reference-mention/reference-mention-local-input';
 import { planCascadeDeletion } from '@web/features/reference-mention/reference-mention-whitespace';
@@ -117,9 +130,18 @@ function deleteChip(open: OpenTiptap): number {
   return at;
 }
 
+/**
+ * Asserts how many times the filter asked the executor to plan.
+ * @param times - The expected count.
+ */
+function expectPlans(times: number): void {
+  expect(vi.mocked(planSpaceDelete)).toHaveBeenCalledTimes(times);
+}
+
 beforeEach(() => {
   changeLocale('en');
   clearToasts();
+  vi.mocked(planSpaceDelete).mockClear();
 });
 
 afterEach(() => {
@@ -127,7 +149,7 @@ afterEach(() => {
 });
 
 describe('12. the delete executor on the canvas TipTap editors', () => {
-  it('XT-01: text node body in F, deleting text inside a paragraph (D)', async () => {
+  it('XT-01: text node body in F, deleting text inside a paragraph is let through to y-tiptap (D)', async () => {
     const open = openTiptap('textBody', paragraphs('hello world'));
     enterState(CANVAS_NAME, 'F');
     const cap = capture(open.doc);
@@ -136,6 +158,7 @@ describe('12. the delete executor on the canvas TipTap editors', () => {
     press(open.view, 'Backspace');
     await flush();
     expectAccepted(open, cap, { texts: ['helorld'], shape: 'D', start });
+    expectPlans(0);
     await expectUndoRestores(open, ['hello world']);
   });
 
@@ -163,8 +186,9 @@ describe('12. the delete executor on the canvas TipTap editors', () => {
     return { open, cap, start };
   }
 
-  it('XT-03: prompt in F, deleting a chip takes it with its spaces; the text joins up', async () => {
+  it('XT-03: prompt in F, deleting a chip goes to the executor, which takes it with its spaces; the text joins up', async () => {
     const { open, cap, start } = await deleteChipFromPrompt();
+    expectPlans(1);
     // The chip's deletion unit holds its two spaces, which are text: the
     // update deletes the chip element and two characters (D).
     expectAccepted(open, cap, { texts: ['abcd'], shape: 'D', start: start - 1 });
@@ -173,23 +197,31 @@ describe('12. the delete executor on the canvas TipTap editors', () => {
     expect(chipIds(open.view)).toEqual(['a']);
   });
 
-  it('XT-04: after XT-03, a delete across the old seam walks the neighbouring XmlTexts (D)', async () => {
+  it.each([
+    { what: 'a delete across the old seam (bc)', offset: 1, length: 2, texts: ['ad'] },
+    { what: 'deleting b alone', offset: 1, length: 1, texts: ['acd'] },
+    { what: 'deleting c alone', offset: 2, length: 1, texts: ['abd'] },
+  ])('XT-04: after XT-03, $what goes to the executor and is one pure delete (D)', async ({ offset, length, texts }) => {
     const { open } = await deleteChipFromPrompt();
+    vi.mocked(planSpaceDelete).mockClear();
     const cap = capture(open.doc);
-    const start = posOf(open.view.state.doc, 'abcd', 1);
-    select(open.view, start, start + 2);
+    const start = posOf(open.view.state.doc, 'abcd', offset);
+    select(open.view, start, start + length);
     press(open.view, 'Backspace');
     await flush();
-    expectAccepted(open, cap, { texts: ['ad'], shape: 'D', start });
+    expectAccepted(open, cap, { texts, shape: 'D', start });
+    expectPlans(1);
   });
 
-  it('XT-04: after XT-03, selecting all of the paragraph deletes both XmlTexts (R)', async () => {
+  it('XT-04: after XT-03, selecting all of the paragraph goes to the executor and deletes both XmlTexts (R)', async () => {
     const { open } = await deleteChipFromPrompt();
+    vi.mocked(planSpaceDelete).mockClear();
     const cap = capture(open.doc);
     press(open.view, 'a', { mod: true });
     press(open.view, 'Backspace');
     await flush();
     expectAccepted(open, cap, { texts: [''], shape: 'R', start: 1 });
+    expectPlans(1);
   });
 
   it('XT-05: prompt in F, the automatic removal of a chip whose source left the pool goes through the executor, off the undo stack', async () => {
@@ -212,7 +244,7 @@ describe('12. the delete executor on the canvas TipTap editors', () => {
     expectWarnings();
   });
 
-  it('XT-06: prompt in F, the user\'s Backspace goes on the undo stack and comes back after warning', async () => {
+  it('XT-06: prompt in F, the user\'s Backspace is let through to y-tiptap, goes on the undo stack and comes back after warning', async () => {
     const open = openTiptap('prompt', paragraphs('hello world'));
     enterState(CANVAS_NAME, 'F');
     const depth = undoManagerOf(open).undoStack.length;
@@ -222,11 +254,12 @@ describe('12. the delete executor on the canvas TipTap editors', () => {
     backspaceChar(open.view);
     await flush();
     expectAccepted(open, cap, { texts: ['hello worl'], shape: 'D', start: start - 1 });
+    expectPlans(0);
     expect(undoManagerOf(open).undoStack.length).toBe(depth + 1);
     await expectUndoRestores(open, ['hello world']);
   });
 
-  it('XT-07: lyrics in O, deleting one character is refused with the over-ceiling toast', async () => {
+  it('XT-07: lyrics in O, deleting one character is refused with the over-ceiling toast, before any planning', async () => {
     const open = openTiptap('lyrics', paragraphs('la la'));
     enterState(CANVAS_NAME, 'O');
     const cap = capture(open.doc);
@@ -236,6 +269,7 @@ describe('12. the delete executor on the canvas TipTap editors', () => {
     expect(paragraphTexts(open.view.state.doc)).toEqual(['la la']);
     expectUntouched(open.doc, cap);
     expectWarnings(COPY.T_OVER);
+    expectPlans(0);
   });
 
   /**

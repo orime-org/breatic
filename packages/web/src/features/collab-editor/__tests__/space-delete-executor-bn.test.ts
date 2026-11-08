@@ -14,6 +14,13 @@
  * range's start. The body is the production one (`getDocumentEditor`), its
  * content loaded as a remote update (spec 0.1).
  *
+ * Round 6 (design 5.3 line 217): a deletion of text inside one `XmlText`
+ * whose block holds only that `XmlText` is let through to y-prosemirror while
+ * full; X-01, X-02, X-08 (in F), X-11, X-19 and X-20 are such deletions and
+ * assert the planning function ran zero times (a pass-through spy on the
+ * executor module). Over the ceiling, a deletion of part of one `XmlText` is
+ * refused before planning (line 231).
+ *
  * X-30 and X-31 cannot be reached from a real editor and feed the
  * executor's planning function directly (spec answer Q7). Its name and
  * signature are this file's choice, for the implementation to adopt:
@@ -25,24 +32,28 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { AllSelection, NodeSelection, type Transaction } from '@tiptap/pm/state';
+import { NodeSelection, type Transaction } from '@tiptap/pm/state';
 import type * as Y from 'yjs';
 
 vi.mock('@web/lib/toast', () => ({
   toast: { warning: vi.fn(), error: vi.fn(), info: vi.fn(), success: vi.fn() },
 }));
+vi.mock('@web/features/collab-editor/space-delete-executor', async (importOriginal) => {
+  const actual = await importOriginal<typeof Executor>();
+  return { ...actual, planSpaceDelete: vi.fn(actual.planSpaceDelete) };
+});
 
 import { changeLocale } from '@web/i18n/locale-bootstrap';
 import type * as Executor from '@web/features/collab-editor/space-delete-executor';
+import { planSpaceDelete } from '@web/features/collab-editor/space-delete-executor';
 import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';
-import { deleteRow } from '@web/spaces/document/document-handle-commands';
-import { clearDocument } from '@web/spaces/document/document-select-all-guard';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 import {
   COPY,
   DOCUMENT_NAME,
   capture,
   clearToasts,
+  deleteBetween,
   enterState,
   expectBodyInStep,
   expectCaretNear,
@@ -57,6 +68,8 @@ import {
   resetHarness,
   rows,
   select,
+  selectAllAndDelete,
+  sideMenuDelete,
   type BlockInput,
   type Capture,
   type OpenBody,
@@ -88,58 +101,6 @@ function li(text: string, children?: BlockInput[]): BlockInput {
 const IMAGE: BlockInput = { type: 'image', props: { url: 'https://cdn.example/a.png', name: 'a' } };
 const IMAGE_2: BlockInput = { type: 'image', props: { url: 'https://cdn.example/b.png', name: 'b' } };
 
-/**
- * Selects from one needle's offset to another's and presses Backspace.
- * @param body - The open body.
- * @param from - Start needle and offset into it.
- * @param to - End needle and offset into it.
- * @returns The selection's start.
- */
-function deleteBetween(body: OpenBody, from: [string, number], to: [string, number]): number {
-  const a = posOf(body.view.state.doc, from[0], from[1]);
-  const b = posOf(body.view.state.doc, to[0], to[1]);
-  select(body.view, a, b);
-  press(body.view, 'Backspace');
-  return a;
-}
-
-/**
- * Selects the whole document and deletes it the way the body does: Mod-a
- * widens to the whole document on its second tier, Backspace then asks the
- * Space to confirm (`onClearDocumentRequest`), and the confirmation runs
- * `clearDocument`.
- * @param body - The open body.
- * @returns The start of the document's content.
- */
-function selectAllAndDelete(body: OpenBody): number {
-  for (let tier = 0; tier < 3 && !(body.view.state.selection instanceof AllSelection); tier += 1) {
-    press(body.view, 'a', { mod: true });
-  }
-  expect(body.view.state.selection).toBeInstanceOf(AllSelection);
-  let asked = false;
-  const stop = body.handle.onClearDocumentRequest(() => {
-    asked = true;
-  });
-  press(body.view, 'Backspace');
-  stop();
-  expect(asked).toBe(true);
-  clearDocument(body.editor);
-  return 1;
-}
-
-/**
- * Deletes a top-level block from its side menu.
- * @param body - The open body.
- * @param index - The block's index.
- * @returns The position before the block.
- */
-function sideMenuDelete(body: OpenBody, index: number): number {
-  const id = topBlockIds(body.editor)[index];
-  const at = nodesOf(body.view.state.doc, 'blockContainer').find((pos) => body.view.state.doc.nodeAt(pos)!.attrs['id'] === id)!;
-  deleteRow(body.editor, id);
-  return at;
-}
-
 /** One case of the executor template, from the spec's section 11 table. */
 interface Accepted {
   readonly id: string;
@@ -153,6 +114,16 @@ interface Accepted {
   readonly outside: string[];
   /** The case is accepted over the ceiling too (shape R). */
   readonly overCeiling?: boolean;
+  /** Round 6: let through to y-prosemirror (0 plans) or handed to the executor (1 plan). */
+  readonly plans: 0 | 1;
+}
+
+/**
+ * Asserts how many times the filter asked the executor to plan.
+ * @param times - The expected count.
+ */
+function expectPlans(times: number): void {
+  expect(vi.mocked(planSpaceDelete)).toHaveBeenCalledTimes(times);
 }
 
 /**
@@ -213,85 +184,86 @@ async function expectUndoRestores(body: OpenBody, before: Row[]): Promise<void> 
 
 const ACCEPTED: readonly Accepted[] = [
   {
-    id: 'X-01', title: 'deleting text inside a paragraph', blocks: [p('Hello world')],
+    id: 'X-01', title: 'deleting text inside a paragraph is let through to y-prosemirror', blocks: [p('Hello world')],
     op: (body) => deleteBetween(body, ['Hello', 2], ['Hello', 5]),
-    result: [['paragraph', 'He world']], shape: 'D', outside: ['He', ' world'],
+    result: [['paragraph', 'He world']], shape: 'D', outside: ['He', ' world'], plans: 0,
   },
   {
     id: 'X-03', title: 'the side menu deleting the middle block', blocks: [p('a'), p('b'), p('c')],
     op: (body) => sideMenuDelete(body, 1),
-    result: [['paragraph', 'a'], ['paragraph', 'c']], shape: 'R', outside: ['a', 'c'], overCeiling: true,
+    result: [['paragraph', 'a'], ['paragraph', 'c']], shape: 'R', outside: ['a', 'c'], overCeiling: true, plans: 1,
   },
   {
     id: 'X-04', title: 'the side menu deleting a block with a child', blocks: [p('a'), p('b', [p('b1')]), p('c')],
     op: (body) => sideMenuDelete(body, 1),
-    result: [['paragraph', 'a'], ['paragraph', 'c']], shape: 'R', outside: ['a', 'c'], overCeiling: true,
+    result: [['paragraph', 'a'], ['paragraph', 'c']], shape: 'R', outside: ['a', 'c'], overCeiling: true, plans: 1,
   },
   {
     id: 'X-07', title: 'a cross-block selection with text left on both sides keeps the two blocks', blocks: [p('Hello'), p('World')],
     op: (body) => deleteBetween(body, ['Hello', 2], ['World', 2]),
-    result: [['paragraph', 'He'], ['paragraph', 'rld']], shape: 'D', outside: ['He', 'rld'],
+    result: [['paragraph', 'He'], ['paragraph', 'rld']], shape: 'D', outside: ['He', 'rld'], plans: 1,
   },
   {
-    id: 'X-08', title: 'selecting all of a block\'s text deletes its XmlText', blocks: [p('Hello'), p('World')],
+    id: 'X-08', title: 'selecting all of a block\'s text is let through to y-prosemirror, which leaves the XmlText empty (D)', blocks: [p('Hello'), p('World')],
     op: (body) => deleteBetween(body, ['World', 0], ['World', 5]),
-    result: [['paragraph', 'Hello'], ['paragraph', '']], shape: 'R', outside: ['Hello'], overCeiling: true,
+    result: [['paragraph', 'Hello'], ['paragraph', '']], shape: 'D', outside: ['Hello'], plans: 0,
   },
   {
     id: 'X-09', title: 'a cross-block selection emptying the end side deletes the end block', blocks: [p('Hello'), p('World')],
     op: (body) => deleteBetween(body, ['Hello', 2], ['World', 5]),
-    result: [['paragraph', 'He']], shape: 'D', outside: ['He'],
+    result: [['paragraph', 'He']], shape: 'D', outside: ['He'], plans: 1,
   },
   {
     id: 'X-10', title: 'a cross-block selection emptying the start side deletes the start block', blocks: [p('Hello'), p('World')],
     op: (body) => deleteBetween(body, ['Hello', 0], ['World', 2]),
-    result: [['paragraph', 'rld']], shape: 'D', outside: ['rld'],
+    result: [['paragraph', 'rld']], shape: 'D', outside: ['rld'], plans: 1,
   },
   {
     id: 'X-14', title: 'from a parent block into its child (ReplaceAroundStep)', blocks: [p('abc', [p('def')])],
     op: (body) => deleteBetween(body, ['abc', 1], ['def', 2]),
-    result: [['paragraph', 'a', [['paragraph', 'f']]]], shape: 'D', outside: ['a', 'f'],
+    result: [['paragraph', 'a', [['paragraph', 'f']]]], shape: 'D', outside: ['a', 'f'], plans: 1,
   },
   {
     id: 'X-16', title: 'from a child block to the next outer block', blocks: [p('x', [p('child')]), p('outer')],
     op: (body) => deleteBetween(body, ['child', 3], ['outer', 2]),
-    result: [['paragraph', 'x', [['paragraph', 'chi']]], ['paragraph', 'ter']], shape: 'D', outside: ['x', 'chi', 'ter'],
+    result: [['paragraph', 'x', [['paragraph', 'chi']]], ['paragraph', 'ter']], shape: 'D', outside: ['x', 'chi', 'ter'], plans: 1,
   },
   {
     id: 'X-17', title: 'a cross-block delete whose end block has a child keeps the child', blocks: [p('ab'), p('cd', [p('fgh')])],
     op: (body) => deleteBetween(body, ['ab', 1], ['cd', 2]),
-    result: [['paragraph', 'a'], ['paragraph', '', [['paragraph', 'fgh']]]], shape: 'D', outside: ['a', 'fgh'],
+    result: [['paragraph', 'a'], ['paragraph', '', [['paragraph', 'fgh']]]], shape: 'D', outside: ['a', 'fgh'], plans: 1,
   },
   {
-    id: 'X-20', title: 'deleting text in a code block', blocks: [{ type: 'codeBlock', content: 'const x' }],
+    id: 'X-20', title: 'deleting text in a code block is let through to y-prosemirror', blocks: [{ type: 'codeBlock', content: 'const x' }],
     op: (body) => deleteBetween(body, ['const x', 3], ['const x', 5]),
-    result: [['codeBlock', 'con x']], shape: 'D', outside: ['con', ' x'],
+    result: [['codeBlock', 'con x']], shape: 'D', outside: ['con', ' x'], plans: 0,
   },
   {
     id: 'X-21', title: 'selecting all of [image, p x] keeps the first text block, emptied', blocks: [IMAGE, p('x')],
     op: selectAllAndDelete,
-    result: [['paragraph', '']], shape: 'R', outside: [],
+    result: [['paragraph', '']], shape: 'R', outside: [], plans: 1,
   },
   {
     id: 'X-21', title: 'the side menu deleting the image of [image, p x]', blocks: [IMAGE, p('x')],
     op: (body) => sideMenuDelete(body, 0),
-    result: [['paragraph', 'x']], shape: 'R', outside: ['x'],
+    result: [['paragraph', 'x']], shape: 'R', outside: ['x'], plans: 1,
   },
   {
     id: 'X-22', title: 'selecting all of [image, image] keeps the first image as it is', blocks: [IMAGE, IMAGE_2],
     op: selectAllAndDelete,
-    result: [['image', '']], shape: 'R', outside: [],
+    result: [['image', '']], shape: 'R', outside: [], plans: 1,
   },
   {
     id: 'X-23', title: 'selecting all of [image, table] keeps the image', blocks: [IMAGE, tableBlock({ rows: [{ cells: ['v'] }] })],
     op: selectAllAndDelete,
-    result: [['image', '']], shape: 'R', outside: [],
+    result: [['image', '']], shape: 'R', outside: [], plans: 1,
   },
 ];
 
 beforeEach(() => {
   changeLocale('en');
   clearToasts();
+  vi.mocked(planSpaceDelete).mockClear();
 });
 
 afterEach(() => {
@@ -302,16 +274,18 @@ describe('11. the delete executor on the document body, accepted cases', () => {
   it.each(ACCEPTED.map((entry) => [`${entry.id}: in F, ${entry.title}`, entry] as const))('%s', async (_title, entry) => {
     const ran = await run(entry.blocks, 'F', entry.op);
     expectAccepted(ran, entry);
+    expectPlans(entry.plans);
     await expectUndoRestores(ran.body, ran.before);
   });
 
-  it('X-02: a second delete in the same paragraph is accepted too', async () => {
+  it('X-02: a second delete in the same paragraph is let through to y-prosemirror too', async () => {
     const ran = await run([p('Hello world')], 'F', (body) => deleteBetween(body, ['Hello', 2], ['Hello', 5]));
     expectAccepted(ran, { result: [['paragraph', 'He world']], shape: 'D', outside: ['He', ' world'] });
     const second = capture(ran.body.doc);
     const start = deleteBetween(ran.body, ['He world', 1], ['He world', 3]);
     await flush();
     expectAccepted({ body: ran.body, cap: second, start }, { result: [['paragraph', 'Hworld']], shape: 'D', outside: ['H', 'world'] });
+    expectPlans(0);
   });
 
   it.each(['F', 'O'] as const)('X-05: in %s, the side menu deleting the only block empties it and keeps its id', async (code) => {
@@ -331,7 +305,7 @@ describe('11. the delete executor on the document body, accepted cases', () => {
     await expectUndoRestores(ran.body, ran.before);
   });
 
-  it('X-11: deleting across a bold run keeps the marks on what is left', async () => {
+  it('X-11: deleting across a bold run is let through to y-prosemirror and keeps the marks on what is left', async () => {
     const blocks: BlockInput[] = [{
       type: 'paragraph',
       content: [
@@ -342,6 +316,7 @@ describe('11. the delete executor on the document body, accepted cases', () => {
     }];
     const ran = await run(blocks, 'F', (body) => deleteBetween(body, ['plain ', 3], ['bold', 2]));
     expectAccepted(ran, { result: [['paragraph', 'plald tail']], shape: 'D', outside: ['pla', 'ld', ' tail'] });
+    expectPlans(0);
     const doc = ran.body.view.state.doc;
     expect(doc.resolve(posOf(doc, 'ld') + 1).marks().map((mark) => mark.type.name)).toContain('bold');
     expect(doc.resolve(posOf(doc, 'pla') + 1).marks()).toHaveLength(0);
@@ -362,31 +337,37 @@ describe('11. the delete executor on the document body, accepted cases', () => {
     });
   }
 
-  it('X-12: deleting a hard break removes its element (R)', async () => {
+  it('X-12: deleting a hard break is an inline node, handed to the executor, which removes its element (R)', async () => {
     const ran = await deleteHardBreak();
     expectAccepted(ran, { result: [['paragraph', 'abcd']], shape: 'R', outside: ['ab', 'cd'] });
+    expectPlans(1);
     expect(nodesOf(ran.body.view.state.doc, 'hardBreak')).toHaveLength(0);
     await expectUndoRestores(ran.body, ran.before);
   });
 
   it('X-13: after X-12, a delete across the old seam walks the neighbouring XmlTexts (D)', async () => {
     const { body } = await deleteHardBreak();
+    vi.mocked(planSpaceDelete).mockClear();
     const cap = capture(body.doc);
     const start = posOf(body.view.state.doc, 'abcd', 1);
     select(body.view, start, start + 2);
     press(body.view, 'Backspace');
     await flush();
     expectAccepted({ body, cap, start }, { result: [['paragraph', 'ad']], shape: 'D', outside: ['a', 'd'] });
+    // Two neighbouring XmlTexts: y-prosemirror would merge them and write structure.
+    expectPlans(1);
   });
 
   it('X-13: after X-12, selecting all of the paragraph\'s text deletes both XmlTexts (R)', async () => {
     const { body } = await deleteHardBreak();
+    vi.mocked(planSpaceDelete).mockClear();
     const cap = capture(body.doc);
     const start = posOf(body.view.state.doc, 'abcd');
     select(body.view, start, start + 4);
     press(body.view, 'Backspace');
     await flush();
     expectAccepted({ body, cap, start }, { result: [['paragraph', '']], shape: 'R', outside: [] });
+    expectPlans(1);
   });
 
   it('X-15: from a list item into the next item\'s child: the text outside stays, one pure delete, a valid document', async () => {
@@ -425,7 +406,7 @@ describe('11. the delete executor on the document body, accepted cases', () => {
     return nodesOf(doc, 'docTableCell').map((pos) => doc.nodeAt(pos)!.textContent);
   }
 
-  it('X-19: deleting text inside a table cell', async () => {
+  it('X-19: deleting text inside a table cell is let through to y-prosemirror', async () => {
     const ran = await run([tableBlock({ rows: [{ cells: ['abc', 'def'] }] })], 'F', (body) => deleteBetween(body, ['abc', 1], ['abc', 2]));
     const { body, cap } = ran;
     expect(cap.updates).toHaveLength(1);
@@ -434,6 +415,7 @@ describe('11. the delete executor on the document body, accepted cases', () => {
     expectBodyInStep(body);
     expectWarnings();
     expectCaretNear(body.view, ran.start);
+    expectPlans(0);
     enterState(DOCUMENT_NAME, 'W');
     body.editor.undo();
     await flush();
@@ -482,31 +464,33 @@ describe('11. the delete executor on the document body, refused and abandoned ca
     expectWarnings(COPY.T_COMPOUND);
   });
 
-  it('X-26: in O, deleting part of a paragraph\'s text is refused with the over-ceiling toast', async () => {
+  it('X-26: in O, deleting part of a paragraph\'s text is refused with the over-ceiling toast, before any planning', async () => {
     const { body, cap } = await run([p('Hello world')], 'O', (b) => deleteBetween(b, ['Hello', 2], ['Hello', 5]));
     expect(rows(body.view.state.doc)).toEqual([['paragraph', 'Hello world']]);
     expectUntouched(body.doc, cap);
     expectWarnings(COPY.T_OVER);
+    expectPlans(0);
   });
 
-  it('X-28: a peer\'s update arriving before the executor\'s microtask makes it give up', async () => {
-    const body = openBody([p('Hello world')]);
+  it('X-28: a peer\'s update arriving before the executor\'s microtask makes it give up (X-07 input)', async () => {
+    const body = openBody([p('Hello'), p('World')]);
     enterState(DOCUMENT_NAME, 'F');
     const cap = capture(body.doc);
-    deleteBetween(body, ['Hello', 2], ['Hello', 5]);
+    deleteBetween(body, ['Hello', 2], ['World', 2]);
+    expectPlans(1);
     // Synchronously, before the microtask the executor runs in.
     remoteBodyParagraph(body.doc, 'peer');
     await flush();
     expect(cap.shape()).toBe('∅');
     expect(cap.updates).toHaveLength(0);
-    expect(rows(body.view.state.doc)).toEqual([['paragraph', 'Hello world'], ['paragraph', 'peer']]);
+    expect(rows(body.view.state.doc)).toEqual([['paragraph', 'Hello'], ['paragraph', 'World'], ['paragraph', 'peer']]);
     expectBodyInStep(body);
   });
 
-  it.each([
+  const lastWrites: ReadonlyArray<{ last: string; write: (body: OpenBody) => void }> = [
     {
       last: 'a comment mark on Hello',
-      write: (body: OpenBody) => {
+      write: (body) => {
         const from = posOf(body.view.state.doc, 'Hello');
         const mark = body.view.state.schema.marks[COMMENT_MARK].create({ threadId: 'thread-1', orphan: false });
         body.view.dispatch(body.view.state.tr.addMark(from, from + 5, mark));
@@ -514,40 +498,46 @@ describe('11. the delete executor on the document body, refused and abandoned ca
     },
     {
       last: 'a column width written with addToHistory false',
-      write: (body: OpenBody) => {
+      write: (body) => {
         const cell = nodesOf(body.view.state.doc, 'docTableCell')[0];
         body.view.dispatch(body.view.state.tr.setNodeAttribute(cell, 'colwidth', [240]).setMeta('addToHistory', false));
       },
     },
-  ])('X-29: when the last local write before full was $last, the executor\'s delete still goes on the undo stack', async ({ write }) => {
-    const body = openBody([p('Hello world'), tableBlock({ rows: [{ cells: ['v'] }] })]);
-    enterState(DOCUMENT_NAME, 'N');
-    write(body);
-    await flush();
-    enterState(DOCUMENT_NAME, 'F');
-    const depth = body.handle.undoManager.undoStack.length;
-    deleteBetween(body, ['Hello', 2], ['Hello', 5]);
-    await flush();
-    expect(rows(body.view.state.doc)[0]).toEqual(['paragraph', 'He world']);
-    expect(body.handle.undoManager.undoStack.length).toBe(depth + 1);
-    enterState(DOCUMENT_NAME, 'W');
-    body.editor.undo();
-    await flush();
-    expect(rows(body.view.state.doc)[0]).toEqual(['paragraph', 'Hello world']);
-  });
-});
+  ];
+  const deletions: ReadonlyArray<{ how: string; plans: number; run: (body: OpenBody) => void; after: Row[] }> = [
+    {
+      how: '(1) X-07 through the executor', plans: 1,
+      run: (body) => { deleteBetween(body, ['Hello', 2], ['World', 2]); },
+      after: [['paragraph', 'He'], ['paragraph', 'rld']],
+    },
+    {
+      how: '(2) X-01 let through to y-prosemirror', plans: 0,
+      run: (body) => { deleteBetween(body, ['Hello', 2], ['Hello', 5]); },
+      after: [['paragraph', 'He world'], ['paragraph', 'World']],
+    },
+  ];
 
-/**
- * The executor module, loaded when a case needs it so the rest of this file
- * runs before the module exists.
- * @returns The module.
- */
-async function loadExecutor(): Promise<typeof Executor> {
-  // A variable specifier: vite resolves a literal one while transforming the
-  // file and would fail the whole file before the module exists.
-  const specifier = '@web/features/collab-editor/space-delete-executor';
-  return import(/* @vite-ignore */ specifier) as Promise<typeof Executor>;
-}
+  it.each(lastWrites.flatMap((write) => deletions.map((deletion) => ({ ...write, ...deletion }))))(
+    'X-29: when the last local write before full was $last, $how still goes on the undo stack',
+    async ({ write, run: deletion, plans, after }) => {
+      const body = openBody([p('Hello world'), p('World'), tableBlock({ rows: [{ cells: ['v'] }] })]);
+      enterState(DOCUMENT_NAME, 'N');
+      write(body);
+      await flush();
+      enterState(DOCUMENT_NAME, 'F');
+      const depth = body.handle.undoManager.undoStack.length;
+      deletion(body);
+      await flush();
+      expect(rows(body.view.state.doc).slice(0, 2)).toEqual(after);
+      expectPlans(plans);
+      expect(body.handle.undoManager.undoStack.length).toBe(depth + 1);
+      enterState(DOCUMENT_NAME, 'W');
+      body.editor.undo();
+      await flush();
+      expect(rows(body.view.state.doc).slice(0, 2)).toEqual([['paragraph', 'Hello world'], ['paragraph', 'World']]);
+    },
+  );
+});
 
 describe('11. the planning function fed directly', () => {
   /**
@@ -560,7 +550,6 @@ describe('11. the planning function fed directly', () => {
   }
 
   it('X-30: a result that deletes more than ProseMirror\'s own transaction is refused with the compound toast\'s reason', async () => {
-    const { planSpaceDelete } = await loadExecutor();
     // No transaction a real editor builds makes the executor delete more than
     // ProseMirror does, so the comparison is fed a transaction whose own
     // result keeps the hard break the range covers.
@@ -580,7 +569,6 @@ describe('11. the planning function fed directly', () => {
   });
 
   it('X-31: a range the binding cannot locate is refused with the add toast\'s reason and writes nothing', async () => {
-    const { planSpaceDelete } = await loadExecutor();
     const body = openBody([p('Hello world')]);
     enterState(DOCUMENT_NAME, 'F');
     const cap = capture(body.doc);

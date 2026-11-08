@@ -9,6 +9,11 @@
  * toolbar) go through `nextHistoryStep`, which, once the Space is full, runs
  * the step on a copy of the document and judges what it wrote. Every stack
  * entry is made below the limit (no push), then the state is set.
+ *
+ * Round 6: the canvas part of H-19 (every entry runs `runHistoryStep`, and
+ * over the ceiling the same case says T_OVER) and HC-03 (an empty stack is
+ * not tried: no copy of the document, counted as an `encodeStateAsUpdate` of
+ * it with `yjs` mocked passing through).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -18,6 +23,20 @@ import * as Y from 'yjs';
 import type * as React from 'react';
 import type * as SpaceConnectionModule from '@web/data/yjs/space-connection';
 import type { CanvasNodeFields } from '@breatic/shared';
+import type * as YModule from 'yjs';
+import type * as HistoryStepModule from '@web/data/yjs/history-step';
+
+vi.mock('yjs', async (importOriginal) => {
+  const actual = await importOriginal<typeof YModule>();
+  return { ...actual, encodeStateAsUpdate: vi.fn(actual.encodeStateAsUpdate) };
+});
+vi.mock('@web/data/yjs/history-step', async (importOriginal) => {
+  const actual = await importOriginal<typeof HistoryStepModule>();
+  return {
+    ...actual,
+    runHistoryStep: vi.fn((...args: Parameters<typeof actual.runHistoryStep>) => actual.runHistoryStep(...args)),
+  };
+});
 
 vi.mock('@web/data/yjs/collab-failure-report', () => ({ reportCollabFailure: vi.fn() }));
 vi.mock('@web/lib/toast', () => ({
@@ -60,14 +79,17 @@ import {
   useCanvasSpace,
   _resetCanvasUndoCacheForTests,
 } from '@web/data/yjs/canvas-space';
+import { runHistoryStep } from '@web/data/yjs/history-step';
 import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
 import { useCanvasStore, useUIStore } from '@web/stores';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { canvasSessions } from '@web/stores/canvas-session';
 import {
+  copiesOf,
   enterSize,
   localUpdate,
   peerOf,
+  resetCopies,
   spyOnSteps,
   trialKind,
   trialRan,
@@ -353,5 +375,51 @@ describe('H-19 canvas keyboard and toolbar undo and redo all go through the judg
     expect(spies.redo.mock.contexts).not.toContain(board.manager);
     expect(toast.warning).toHaveBeenCalledTimes(1);
     expect(toast.warning).toHaveBeenCalledWith(COPY_V2_EN.T_ADD);
+  });
+});
+
+describe('H-19 (round 6) the canvas undo entries run runHistoryStep', () => {
+  it.each([
+    ['full', P_FULL, COPY_V2_EN.T_ADD],
+    ['over the ceiling', P_OVER, COPY_V2_EN.T_OVER],
+  ] as const)('H-19 useCanvasSpace undo of a deletion %s: runHistoryStep once, refused with its toast, the stacks stay', (_label, fixture, sentence) => {
+    const hook = renderHook(() => useCanvasSpace(PID, SID));
+    const board = openBoard();
+    step(board, () => { removeNode(PID, SID, 't1'); });
+    enter(fixture);
+    vi.mocked(runHistoryStep).mockClear();
+    const before = snapshot(board);
+
+    const update = localUpdate(board.doc, () => { act(() => { hook.result.current.undo(); }); });
+
+    expect(vi.mocked(runHistoryStep)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(runHistoryStep)).toHaveBeenCalledWith(NAME, board.manager, 'undo');
+    expect(update).toBeNull();
+    expect(snapshot(board)).toEqual(before);
+    expect(has(board.doc, 't1')).toBe(false);
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(toast.warning).toHaveBeenCalledWith(sentence);
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+});
+
+describe('HC-03 canvas undo and redo on empty stacks when full', () => {
+  it('HC-03 useCanvasSpace undo() and redo(): no copy, nothing written, no toast', () => {
+    const hook = renderHook(() => useCanvasSpace(PID, SID));
+    const board = openBoard();
+    expect(board.manager.undoStack).toHaveLength(0);
+    expect(board.manager.redoStack).toHaveLength(0);
+    enter(P_FULL);
+    resetCopies();
+
+    const update = localUpdate(board.doc, () => {
+      act(() => { hook.result.current.undo(); });
+      act(() => { hook.result.current.redo(); });
+    });
+
+    expect(copiesOf(board.doc)).toBe(0);
+    expect(update).toBeNull();
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
   });
 });

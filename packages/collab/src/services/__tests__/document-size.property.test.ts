@@ -18,7 +18,8 @@
  * Every judgement below is made on the test side, never by the production
  * `updateShape`: PR-01 decodes the update, PR-02 compares the live items of
  * the server document before and after the apply, PR-03 counts split
- * endpoints on the server's struct store by the design 4.1 definition.
+ * endpoints on the server's struct store by the design 4.1 definition, and
+ * only for updates judged at or past the limit (design 4.2 step 2, round 6).
  *
  * Every property runs with a fixed seed.
  */
@@ -508,7 +509,9 @@ function insideLiveItem(structs: ReadonlyArray<Y.Item | Y.GC>, clock: number): b
 
 /**
  * PR-03's independent count: delete-range endpoints that fall inside a live
- * item of the server store (design 4.1 `splitEndpoints`).
+ * item of the server store (design 4.1 `splitEndpoints`), after each client's
+ * ranges are sorted and overlapping or adjacent ones merged (design 4.1,
+ * round 6).
  * @param update - The V1 update.
  * @param doc - The server document before the update.
  * @returns The endpoint count.
@@ -518,9 +521,15 @@ function testSideSplits(update: Uint8Array, doc: Y.Doc): number {
   Y.decodeUpdate(update).ds.clients.forEach((ranges, client) => {
     const structs = doc.store.clients.get(client);
     if (!structs) return;
-    for (const r of ranges) {
-      if (insideLiveItem(structs, r.clock)) n++;
-      if (insideLiveItem(structs, r.clock + r.len)) n++;
+    const merged: Array<[number, number]> = [];
+    for (const r of [...ranges].sort((a, b) => a.clock - b.clock)) {
+      const last = merged.at(-1);
+      if (last && r.clock <= last[1]) last[1] = Math.max(last[1], r.clock + r.len);
+      else merged.push([r.clock, r.clock + r.len]);
+    }
+    for (const [start, end] of merged) {
+      if (insideLiveItem(structs, start)) n++;
+      if (insideLiveItem(structs, end)) n++;
     }
   });
   return n;
@@ -645,7 +654,7 @@ describe("document size cap properties (v2)", () => {
     expect(judged, "admitted updates judged past the ceiling").toBeGreaterThan(0);
   });
 
-  it("PR-03 in any phase, every admitted update has at most document_size_max_delete_splits split endpoints", async () => {
+  it("PR-03 once current is at or past the limit, every admitted update has at most document_size_max_delete_splits split endpoints", async () => {
     let judged = 0;
     let over = 0;
     await fc.assert(
@@ -657,9 +666,10 @@ describe("document size cap properties (v2)", () => {
           const splits = testSideSplits(u, run.doc);
           if (splits > SPLITS) over++;
           const step = await offer(run, u);
-          if (step.admitted) {
+          // Design 4.2 step 2 (round 6): below the limit the split count is not checked.
+          if (step.admitted && step.current >= D.L) {
             judged++;
-            expect(splits, `admitted ${op.kind} in ${band}`).toBeLessThanOrEqual(SPLITS);
+            expect(splits, `admitted ${op.kind} in ${band} at current ${step.current}`).toBeLessThanOrEqual(SPLITS);
           }
         }
         await close(run);

@@ -4,7 +4,7 @@
 /**
  * `updateShape` read against a real yjs struct store, the one function collab's
  * gate and web's undo trial both judge an update with (inner#1790 v2 spec
- * SH-01 to SH-16).
+ * SH-01 to SH-16, R6-03 and R6-29).
  */
 
 import { describe, expect, it } from "vitest";
@@ -82,6 +82,16 @@ function beyondDs(client: number, clock: number, len: number): Uint8Array {
   return new Uint8Array([0, 1, ...varUint(client), 1, ...varUint(clock), ...varUint(len)]);
 }
 
+/**
+ * A pure-delete update written by hand: no structs, one client, the given ranges in the given order.
+ * @param client - The client the ranges name.
+ * @param ranges - `[clock, len]` pairs.
+ * @returns The V1 update.
+ */
+function dsUpdate(client: number, ranges: ReadonlyArray<readonly [number, number]>): Uint8Array {
+  return new Uint8Array([0, 1, ...varUint(client), ...varUint(ranges.length), ...ranges.flatMap(([clock, len]) => [...varUint(clock), ...varUint(len)])]);
+}
+
 /** The alt2000 fixture of spec 0.3: one root text holding 2000 characters inserted at once. */
 function alt2000(clientID: number): { client: Y.Doc; server: Y.Doc; t: Y.Text } {
   const { client, server } = pair(clientID);
@@ -91,10 +101,10 @@ function alt2000(clientID: number): { client: Y.Doc; server: Y.Doc; t: Y.Text } 
 }
 
 describe("updateShape", () => {
-  it("SH-01 deleting a whole node is a pure delete of whole types with no struct bytes", () => {
+  it("SH-01 deleting a whole node is a pure delete of whole types, with no structBytes key", () => {
     const { client, server } = nodeDoc();
     const { update, store } = capture(client, server, () => client.getMap("nodes").delete("n1"));
-    expect(updateShape(update, store)).toEqual({ pureDelete: true, structBytes: 0, splitEndpoints: 0, beyondClockRanges: 0, wholeTypesOnly: true });
+    expect(updateShape(update, store)).toEqual({ pureDelete: true, splitEndpoints: 0, beyondClockRanges: 0, wholeTypesOnly: true });
   });
 
   it("SH-02 deleting one Map entry holding a plain value counts as a whole entry", () => {
@@ -158,7 +168,8 @@ describe("updateShape", () => {
     const { client, server } = nodeDoc();
     client.getMap("nodes").delete("n1");
     const step2 = Y.encodeStateAsUpdate(client, Y.encodeStateVector(server));
-    expect(updateShape(step2, server.store)).toEqual({ pureDelete: true, structBytes: 0, splitEndpoints: 0, beyondClockRanges: 0, wholeTypesOnly: true });
+    expect(step2.byteLength).toBe(6);
+    expect(updateShape(step2, server.store)).toEqual({ pureDelete: true, splitEndpoints: 0, beyondClockRanges: 0, wholeTypesOnly: true });
   });
 
   it("SH-11 a delete together with a write is not a pure delete", () => {
@@ -170,14 +181,15 @@ describe("updateShape", () => {
     expect(updateShape(update, store).pureDelete).toBe(false);
   });
 
-  it("SH-12 an insert-only update counts its length less the empty delete set", () => {
+  it("SH-12 an insert-only update is not a pure delete and counts no split or beyond-clock range", () => {
     const { client, server } = pair(7);
     const { update, store } = capture(client, server, () => {
       const n2 = new Y.Map<unknown>();
       client.getMap("nodes").set("n2", n2);
       n2.set("name", "abc");
     });
-    expect(updateShape(update, store)).toEqual({ pureDelete: false, structBytes: update.byteLength - 1, splitEndpoints: 0, beyondClockRanges: 0, wholeTypesOnly: true });
+    expect(update.byteLength).toBe(32);
+    expect(updateShape(update, store)).toEqual({ pureDelete: false, splitEndpoints: 0, beyondClockRanges: 0, wholeTypesOnly: true });
   });
 
   it("SH-13 removing an XML attribute counts as deleting a Map entry", () => {
@@ -192,7 +204,7 @@ describe("updateShape", () => {
     const { store } = capture(client, server, () => data.delete("color"));
     // The client's whole delete set now covers the overwritten "x1" name item and the live "color" entry.
     const withOld = Y.encodeStateAsUpdate(client, Y.encodeStateVector(server));
-    expect(updateShape(withOld, store)).toEqual({ pureDelete: true, structBytes: 0, splitEndpoints: 0, beyondClockRanges: 0, wholeTypesOnly: true });
+    expect(updateShape(withOld, store)).toEqual({ pureDelete: true, splitEndpoints: 0, beyondClockRanges: 0, wholeTypesOnly: true });
   });
 
   it("SH-15 a malformed update throws", () => {
@@ -210,5 +222,33 @@ describe("updateShape", () => {
     expect(Y.encodeStateAsUpdate(doc)).toEqual(snapshot);
     expect(store.pendingStructs).toBeNull();
     expect(store.pendingDs).toBeNull();
+  });
+
+  it("R6-03 the result has exactly four keys and no structBytes", () => {
+    const keys = ["beyondClockRanges", "pureDelete", "splitEndpoints", "wholeTypesOnly"];
+    const ins = pair(7);
+    const insert = capture(ins.client, ins.server, () => {
+      const n2 = new Y.Map<unknown>();
+      ins.client.getMap("nodes").set("n2", n2);
+      n2.set("name", "abc");
+    });
+    expect(Object.keys(updateShape(insert.update, insert.store)).sort()).toEqual(keys);
+    const { client, server } = nodeDoc();
+    const del = capture(client, server, () => client.getMap("nodes").delete("n1"));
+    expect(Object.keys(updateShape(del.update, del.store)).sort()).toEqual(keys);
+  });
+
+  it("R6-29 adjacent and duplicate ranges are merged before split endpoints are counted; beyond-clock ranges count as sent", () => {
+    const { server } = alt2000(11);
+    const adjacent = dsUpdate(11, [[10, 1], [11, 1]]);
+    const duplicate = dsUpdate(11, [[10, 2], [10, 2]]);
+    const single = dsUpdate(11, [[10, 2]]);
+    expect([adjacent.byteLength, duplicate.byteLength, single.byteLength]).toEqual([8, 8, 6]);
+    expect(updateShape(adjacent, server.store).splitEndpoints).toBe(2);
+    expect(updateShape(duplicate, server.store).splitEndpoints).toBe(2);
+    expect(updateShape(single, server.store).splitEndpoints).toBe(2);
+    const repeated = dsUpdate(4242, Array.from({ length: 1000 }, () => [100, 1] as const));
+    expect(repeated.byteLength).toBe(2006);
+    expect(updateShape(repeated, server.store).beyondClockRanges).toBe(1000);
   });
 });

@@ -10,6 +10,11 @@
  * Three scopes: a root `Y.Text`, a root `Y.Map`, and an `Y.XmlFragment`
  * nested in a `Y.Map` (the shape of a canvas node's body). A peer replica
  * relays both ways, as the provider does.
+ *
+ * Round 6 (P-01): `nextHistoryStep` returns the kind itself, a real step that
+ * writes nothing is judged `remove`, an empty stack is judged too (without a
+ * trial), and a second judgement with nothing changed in between (the reused
+ * conclusion) must equal the real kind as well.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -35,6 +40,7 @@ import {
   mirrorOf,
   realKind,
   shapeKind,
+  trialFor,
   trialKind,
   type Direction,
   type StepKind,
@@ -180,7 +186,7 @@ afterEach(() => {
 });
 
 describe('P-01 the trial kind equals the real kind', () => {
-  it('P-01 before every undo or redo of a random history, the full-Space trial matches what the real step writes', () => {
+  it('P-01 before every undo or redo of a random history, the full-Space trial and its reused conclusion match what the real step writes', () => {
     fc.assert(fc.property(scopes, history, (scope, ops) => {
       const w = world(scope);
       for (const o of ops) {
@@ -188,13 +194,14 @@ describe('P-01 the trial kind equals the real kind', () => {
           apply(w, o);
           continue;
         }
-        const stack = o.direction === 'undo' ? w.manager.undoStack : w.manager.redoStack;
-        if (stack.length === 0) continue;
         enterSize(NAME, P_FULL);
         const trial = trialKind(w.manager, o.direction);
+        // Nothing changed since: the manager's reused conclusion.
+        const reused = trialKind(w.manager, o.direction);
         // The real step runs on the manager itself, ungated.
         const real = realKind(w.manager, o.direction);
-        expect(trial).toBe(real);
+        expect(trial).toBe(trialFor(real));
+        expect(reused).toBe(trialFor(real));
       }
     }), { numRuns: 1000 });
   });

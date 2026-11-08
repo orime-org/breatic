@@ -210,7 +210,7 @@ describe("a mixed update and the messages queued behind it", () => {
     const lines = refusals(name);
     expect(lines.length).toBeGreaterThanOrEqual(1);
     expect(lines.length).toBeLessThanOrEqual(2);
-    expect(lines[0]).toEqual({ documentName: name, userId: fixture.userId, current: expect.any(Number), limit: S.L, ceiling: S.CEIL, step: "pending" });
+    expect(lines[0]).toEqual({ documentName: name, userId: fixture.userId, current: expect.any(Number), limit: S.L, ceiling: S.CEIL, step: "pending", pendingBefore: expect.anything(), pendingAfter: expect.anything() });
     for (const line of lines.slice(1)) expect(line.step).toBe("after_refusal");
   });
 
@@ -290,7 +290,7 @@ describe("a forged client sending content that pends", () => {
     expect(stored.store.pendingStructs).toBeNull();
     expect(stored.store.pendingDs).toBeNull();
     expect(refusals(name)).toEqual([
-      { documentName: name, userId: fixture.userId, current: expect.any(Number), limit: S.L, ceiling: S.CEIL, step: "pending" },
+      { documentName: name, userId: fixture.userId, current: expect.any(Number), limit: S.L, ceiling: S.CEIL, step: "pending", pendingBefore: expect.anything(), pendingAfter: expect.anything() },
     ]);
   });
 
@@ -312,7 +312,7 @@ describe("a forged client sending content that pends", () => {
     }
     expect(enc(serverDoc(name))).toBe(start);
     expect(refusals(name)).toEqual(Array(30).fill(
-      { documentName: name, userId: fixture.userId, current: expect.any(Number), limit: S.L, ceiling: S.CEIL, step: "pending" },
+      { documentName: name, userId: fixture.userId, current: expect.any(Number), limit: S.L, ceiling: S.CEIL, step: "pending", pendingBefore: expect.anything(), pendingAfter: expect.anything() },
     ));
   });
 });

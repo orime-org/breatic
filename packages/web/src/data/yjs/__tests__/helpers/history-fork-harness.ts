@@ -11,10 +11,16 @@
  * `S` is an add, `D` a delete, `R` a remove, nothing written is no effect).
  * The "trial kind" is what `nextHistoryStep` answers under a full Space.
  *
- * `nextHistoryStep` returns `{ kind, noEffect }`: `noEffect` is true when the
- * trial wrote nothing (the entry still calls `undo()`/`redo()`, spec answer
- * Q8, so its kind is `remove`, which every state but `resyncing` lets
- * through); a trial that throws or cannot find its scope is `{ kind: 'add' }`.
+ * `nextHistoryStep` returns the kind itself (spec section 14, round 6): a step
+ * that writes nothing (an empty stack, a trial that wrote nothing, a scope the
+ * real document deleted) is `remove`, which every state but `resyncing` lets
+ * through, so the entry still calls `undo()`/`redo()` (spec answer Q8); a
+ * trial that throws or cannot find its scope is `add`. Every entry runs the
+ * step through `runHistoryStep`.
+ *
+ * Copies of the document are counted the way spec 21.5 observes them: a file
+ * that mocks `yjs` with `encodeStateAsUpdate` wrapped in `vi.fn` (passing
+ * through) can read how often the real document was encoded (`copiesOf`).
  */
 
 import { vi, type MockInstance } from 'vitest';
@@ -22,8 +28,8 @@ import * as Y from 'yjs';
 import { updateShape } from '@breatic/shared';
 
 import { setDocSize, startDocResync } from '@web/data/yjs/doc-size';
-import { nextHistoryStep } from '@web/data/yjs/history-step';
-import { writeSpaceDoc, type SpaceWriteResult } from '@web/data/yjs/space-write';
+import { nextHistoryStep, runHistoryStep } from '@web/data/yjs/history-step';
+import type { SpaceWriteResult } from '@web/data/yjs/space-write';
 import type { DocSizePushV2 } from '@web/data/yjs/__tests__/helpers/size-v2-fixtures';
 
 /** What one undo or redo does, in the spec's shape vocabulary. */
@@ -122,24 +128,62 @@ export function realKind(manager: Y.UndoManager, direction: Direction): StepKind
  * The trial kind `nextHistoryStep` answers.
  * @param manager - The undo manager.
  * @param direction - Which stack.
- * @returns The kind, or `none` for a step without effect.
+ * @returns The kind; a step without effect is `remove`.
  */
 export function trialKind(manager: Y.UndoManager, direction: Direction): StepKind {
-  const step = nextHistoryStep(manager, direction);
-  if (step.noEffect) return 'none';
-  return step.kind as StepKind;
+  return nextHistoryStep(manager, direction) as StepKind;
 }
 
 /**
- * Runs an undo or redo the way every entry does (design 5.2): judge it, then
- * run it through `writeSpaceDoc` with the judged kind.
+ * The trial kind a real kind must be judged as: a real step that wrote
+ * nothing is judged `remove` (design 5.2, line 204).
+ * @param real - What the real step wrote.
+ * @returns The kind `nextHistoryStep` must answer.
+ */
+export function trialFor(real: StepKind): StepKind {
+  return real === 'none' ? 'remove' : real;
+}
+
+/**
+ * Runs an undo or redo the way every entry does (design 5.2, line 205):
+ * `runHistoryStep` judges it and runs it through `writeSpaceDoc`.
  * @param name - Canonical document name.
  * @param manager - The undo manager.
  * @param direction - Which stack.
  * @returns What `writeSpaceDoc` answered.
  */
 export function gatedStep(name: string, manager: Y.UndoManager, direction: Direction): SpaceWriteResult {
-  return writeSpaceDoc(name, nextHistoryStep(manager, direction), () => { manager[direction](); });
+  return runHistoryStep(name, manager, direction);
+}
+
+/**
+ * The wrapped `encodeStateAsUpdate` of a file that mocks `yjs` (spec 21.5).
+ * @returns Its mock.
+ * @throws {Error} When the calling file did not mock it.
+ */
+function encodeMock(): MockInstance {
+  const encode: unknown = Y.encodeStateAsUpdate;
+  if (!vi.isMockFunction(encode)) throw new Error('mock yjs with encodeStateAsUpdate wrapped in vi.fn to count copies');
+  return encode;
+}
+
+/**
+ * Starts counting copies of documents afresh.
+ * @throws {Error} When the calling file did not mock `yjs`.
+ */
+export function resetCopies(): void {
+  encodeMock().mockClear();
+}
+
+/**
+ * How often a document was encoded since `resetCopies`: each is one copy a
+ * trial made of it (spec 21.5).
+ * @param doc - The real document.
+ * @returns The count.
+ * @throws {Error} When the calling file did not mock `yjs`.
+ */
+export function copiesOf(doc: Y.Doc): number {
+  return encodeMock().mock.calls.filter(([encoded]) => encoded === doc).length;
 }
 
 /** Records which undo managers `undo` and `redo` ran on. */

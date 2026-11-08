@@ -11,12 +11,33 @@
  * the Space is full or over its ceiling, `nextHistoryStep` runs the same step
  * on a `gc: false` copy and judges what it wrote; the step then goes through
  * `writeSpaceDoc` with that kind. The plain-type cases drive it the way every
- * entry does (`gatedStep`: judge, then `writeSpaceDoc`).
+ * entry does (`gatedStep`, which is `runHistoryStep`).
+ *
+ * Round 6 (spec 14 head, H-01, H-14, H-19, 21.5, ST-01): `nextHistoryStep`
+ * returns the kind itself; an empty stack is not tried; a manager reuses its
+ * last conclusion while the top entry, both stack lengths and the real
+ * document's update count are unchanged; every entry runs `runHistoryStep`.
+ * A copy is counted as an `encodeStateAsUpdate` of the real document (`yjs`
+ * mocked passing through).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { SCENE_FORMAT_VERSION, type TimelineVideoSource } from '@breatic/shared';
+import type * as YModule from 'yjs';
+import type * as HistoryStepModule from '@web/data/yjs/history-step';
+
+vi.mock('yjs', async (importOriginal) => {
+  const actual = await importOriginal<typeof YModule>();
+  return { ...actual, encodeStateAsUpdate: vi.fn(actual.encodeStateAsUpdate) };
+});
+vi.mock('@web/data/yjs/history-step', async (importOriginal) => {
+  const actual = await importOriginal<typeof HistoryStepModule>();
+  return {
+    ...actual,
+    runHistoryStep: vi.fn((...args: Parameters<typeof actual.runHistoryStep>) => actual.runHistoryStep(...args)),
+  };
+});
 
 vi.mock('@web/lib/toast', () => ({
   toast: {
@@ -31,13 +52,14 @@ import { toast } from '@web/lib/toast';
 import { changeLocale } from '@web/i18n/locale-bootstrap';
 import { clearAllDocSizes } from '@web/data/yjs/doc-size';
 import { docName, docNameOf, getDoc, _resetForTests } from '@web/data/yjs/manager';
-import { nextHistoryStep } from '@web/data/yjs/history-step';
+import { nextHistoryStep, runHistoryStep } from '@web/data/yjs/history-step';
 import { readTimelineDocument } from '@web/data/yjs/timeline-document';
 import { evictTimelineEditSession, getTimelineEditSession, type TimelineEditSession } from '@web/data/yjs/timeline-edit-session';
 import { readSceneDocument } from '@web/data/yjs/scene-document';
 import { evictSceneSession, getSceneSession, type SceneSession } from '@web/data/yjs/scene-session';
 import { MAIN, OFF, SOURCE, cid, clip, seededDoc, timeline, track } from '@web/data/yjs/__tests__/timeline-document-fixtures';
 import {
+  copiesOf,
   enterResync,
   enterSize,
   gatedStep,
@@ -45,6 +67,7 @@ import {
   peerOf,
   realKind,
   redoneMap,
+  resetCopies,
   spyOnSteps,
   trialKind,
   trialRan,
@@ -134,12 +157,14 @@ describe('H-01 below the limit a step runs as it is, without a copy', () => {
     tracked(p.doc, () => { p.text.delete(6, 5); });
     if (push !== null) enterSize(NAME, push);
     spies.undo.mockClear();
+    resetCopies();
 
     expect(gatedStep(NAME, p.manager, 'undo')).toEqual({ ok: true });
 
+    // Round 6: no copy is observed as no encoding of the real document.
+    expect(copiesOf(p.doc)).toBe(0);
     expect(p.text.toString()).toBe('hello world');
     expect(spies.contexts()).toEqual([p.manager]);
-    expect(trialRan(spies, p.doc)).toBe(false);
     expect(toast.warning).not.toHaveBeenCalled();
     expect(toast.error).not.toHaveBeenCalled();
   });
@@ -245,7 +270,8 @@ describe('H-14 a scope the real document has deleted', () => {
     expect(nodes.has('n1')).toBe(false);
     enterSize(NAME, P_FULL);
 
-    expect(nextHistoryStep(manager, 'undo')).toEqual({ kind: 'remove', noEffect: true });
+    // Round 6: the kind itself; no effect is `remove`.
+    expect(nextHistoryStep(manager, 'undo')).toBe('remove');
     spies.undo.mockClear();
     const before = Y.encodeStateAsUpdate(doc);
 
@@ -269,7 +295,8 @@ describe('H-15 a scope the copy cannot resolve', () => {
     detached.undoStack.push(p.manager.undoStack[0]);
     enterSize(NAME, P_FULL);
 
-    expect(nextHistoryStep(detached, 'undo')).toMatchObject({ kind: 'add', noEffect: false });
+    // Round 6 (spec 14 head): the kind itself; a scope that cannot be found is `add`.
+    expect(nextHistoryStep(detached, 'undo')).toBe('add');
     vi.mocked(toast.warning).mockClear();
     const before = Y.encodeStateAsUpdate(p.doc);
 
@@ -482,5 +509,249 @@ describe('H-22 3D: historyStep when full', () => {
 
     expect(sceneIds(doc)).toEqual([O1]);
     expect(toast.warning).not.toHaveBeenCalled();
+  });
+});
+
+describe('H-19 (round 6) timeline and 3D undo go through runHistoryStep', () => {
+  it.each([
+    ['full', P_FULL, COPY_V2_EN.T_ADD],
+    ['over the ceiling', P_OVER, COPY_V2_EN.T_OVER],
+  ] as const)('H-19 timeline session undo() of a deletion %s: runHistoryStep once, refused with its toast, the step stays', (_label, push, sentence) => {
+    const { doc, session } = timelineAt();
+    expect(session.edit({ operation: 'delete', parameters: { clipId: cid(2) }, placement: OFF }).ok).toBe(true);
+    enterSize(TIMELINE, push);
+    vi.mocked(toast.warning).mockClear();
+    vi.mocked(runHistoryStep).mockClear();
+    const before = Y.encodeStateAsUpdate(doc);
+
+    const update = localUpdate(doc, () => { session.undo(); });
+
+    expect(vi.mocked(runHistoryStep)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(runHistoryStep)).toHaveBeenCalledWith(TIMELINE, expect.any(Y.UndoManager), 'undo');
+    expect(update).toBeNull();
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    expect(session.getSnapshot()).toMatchObject({ canUndo: true, canRedo: false });
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(toast.warning).toHaveBeenCalledWith(sentence);
+  });
+
+  it.each([
+    ['full', P_FULL, COPY_V2_EN.T_ADD],
+    ['over the ceiling', P_OVER, COPY_V2_EN.T_OVER],
+  ] as const)('H-19 3D historyStep(undo) of a delete %s: runHistoryStep once, refused with its toast, the step stays', (_label, push, sentence) => {
+    const { doc, session } = sceneAt();
+    expect(session.execute({ type: 'delete', ids: [O1] }).ok).toBe(true);
+    enterSize(SCENE, push);
+    vi.mocked(toast.warning).mockClear();
+    vi.mocked(runHistoryStep).mockClear();
+    const before = Y.encodeStateAsUpdate(doc);
+
+    const update = localUpdate(doc, () => { session.historyStep('undo'); });
+
+    expect(vi.mocked(runHistoryStep)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(runHistoryStep)).toHaveBeenCalledWith(SCENE, expect.any(Y.UndoManager), 'undo');
+    expect(update).toBeNull();
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    expect(session.getSnapshot().canUndo).toBe(true);
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(toast.warning).toHaveBeenCalledWith(sentence);
+  });
+});
+
+const CANVAS = docName.canvasSpace(PID, SID);
+
+/** A canvas document whose `nodesMap` an undo manager tracks. */
+interface Board {
+  doc: Y.Doc;
+  nodes: Y.Map<unknown>;
+  manager: Y.UndoManager;
+}
+
+/**
+ * The canvas Space document with node `n2` already synced, and an undo
+ * manager over `nodesMap` with empty stacks.
+ * @returns The board.
+ */
+function board(): Board {
+  const doc = getDoc(CANVAS);
+  const nodes = doc.getMap<unknown>('nodesMap');
+  doc.transact(() => { nodes.set('n2', new Y.Map<unknown>([['name', 'two']])); }, 'setup');
+  const manager = new Y.UndoManager(nodes, { trackedOrigins: new Set([TRACKED]), captureTimeout: 0 });
+  return { doc, nodes, manager };
+}
+
+/**
+ * HC-04's history: `n1` set, then deleted, each its own step; undoing the
+ * deletion brings content back (an `add`).
+ * @returns The board.
+ */
+function restoredStepBoard(): Board {
+  const b = board();
+  tracked(b.doc, () => { b.nodes.set('n1', new Y.Map<unknown>([['name', 'one']])); });
+  tracked(b.doc, () => { b.nodes.delete('n1'); });
+  expect(b.manager.undoStack).toHaveLength(2);
+  return b;
+}
+
+describe('HC-01 and HC-02 an empty stack is not tried', () => {
+  it.each(['undo', 'redo'] as const)('HC-01/HC-02 full, empty %s stack: three judgements copy nothing and each answers remove', (direction) => {
+    const b = board();
+    enterSize(CANVAS, P_FULL);
+    resetCopies();
+
+    const kinds = [1, 2, 3].map(() => nextHistoryStep(b.manager, direction));
+
+    expect(copiesOf(b.doc)).toBe(0);
+    expect(kinds).toEqual(['remove', 'remove', 'remove']);
+  });
+});
+
+describe('HC-03 timeline and 3D entries on empty stacks when full', () => {
+  it('HC-03 timeline session undo() and redo(): no copy, nothing written, no toast', () => {
+    const { doc, session } = timelineAt();
+    expect(session.getSnapshot()).toMatchObject({ canUndo: false, canRedo: false });
+    enterSize(TIMELINE, P_FULL);
+    vi.mocked(toast.warning).mockClear();
+    resetCopies();
+
+    const update = localUpdate(doc, () => { session.undo(); session.redo(); });
+
+    expect(copiesOf(doc)).toBe(0);
+    expect(update).toBeNull();
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('HC-03 3D historyStep(undo) and historyStep(redo): no copy, nothing written, no toast', () => {
+    const { doc, session } = sceneAt();
+    expect(session.getSnapshot()).toMatchObject({ canUndo: false, canRedo: false });
+    enterSize(SCENE, P_FULL);
+    vi.mocked(toast.warning).mockClear();
+    resetCopies();
+
+    const update = localUpdate(doc, () => { session.historyStep('undo'); session.historyStep('redo'); });
+
+    expect(copiesOf(doc)).toBe(0);
+    expect(update).toBeNull();
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+});
+
+describe('HC-04 to HC-08 a manager reuses its last conclusion', () => {
+  it('HC-04 three presses on a refused restore: one copy, three refusals each with T_ADD, the stacks stay', () => {
+    const b = restoredStepBoard();
+    enterSize(CANVAS, P_FULL);
+    vi.mocked(toast.warning).mockClear();
+    const before = Y.encodeStateAsUpdate(b.doc);
+    const lengths = stacks(b.manager);
+    resetCopies();
+
+    const results = [1, 2, 3].map(() => gatedStep(CANVAS, b.manager, 'undo'));
+
+    expect(copiesOf(b.doc)).toBe(1);
+    expect(results).toEqual([{ ok: false, reason: 'full' }, { ok: false, reason: 'full' }, { ok: false, reason: 'full' }]);
+    expect(vi.mocked(toast.warning).mock.calls.map(([message]) => message)).toEqual([COPY_V2_EN.T_ADD, COPY_V2_EN.T_ADD, COPY_V2_EN.T_ADD]);
+    expect(stacks(b.manager)).toEqual(lengths);
+    expect(Y.encodeStateAsUpdate(b.doc)).toEqual(before);
+  });
+
+  it('HC-05 a peer update between presses (an unrelated node) makes the second press copy again; still an add', () => {
+    const b = restoredStepBoard();
+    const peer = peerOf(b.doc);
+    enterSize(CANVAS, P_FULL);
+    resetCopies();
+
+    expect(gatedStep(CANVAS, b.manager, 'undo')).toEqual({ ok: false, reason: 'full' });
+    expect(copiesOf(b.doc)).toBe(1);
+    (peer.getMap<unknown>('nodesMap').get('n2') as Y.Map<unknown>).set('name', 'peer');
+    expect((b.nodes.get('n2') as Y.Map<unknown>).get('name')).toBe('peer');
+    expect(nextHistoryStep(b.manager, 'undo')).toBe('add');
+
+    expect(copiesOf(b.doc)).toBe(2);
+  });
+
+  it('HC-06 a local write the manager does not track between presses makes the second press copy again', () => {
+    const b = restoredStepBoard();
+    enterSize(CANVAS, P_FULL);
+    resetCopies();
+
+    expect(gatedStep(CANVAS, b.manager, 'undo')).toEqual({ ok: false, reason: 'full' });
+    b.doc.transact(() => { b.nodes.set('n3', 'untracked'); }, 'untracked');
+    expect(stacks(b.manager)).toEqual([2, 0]);
+    expect(gatedStep(CANVAS, b.manager, 'undo')).toEqual({ ok: false, reason: 'full' });
+
+    expect(copiesOf(b.doc)).toBe(2);
+  });
+
+  it('HC-07 (a) a new tracked step changes the top entry: the next undo copies again', () => {
+    const b = restoredStepBoard();
+    enterSize(CANVAS, P_FULL);
+    resetCopies();
+
+    expect(gatedStep(CANVAS, b.manager, 'undo')).toEqual({ ok: false, reason: 'full' });
+    tracked(b.doc, () => { b.nodes.set('n4', 'x'); });
+    nextHistoryStep(b.manager, 'undo');
+
+    expect(copiesOf(b.doc)).toBe(2);
+  });
+
+  it('HC-07 (b) the redo direction does not reuse the undo conclusion: an empty redo stack answers remove without a copy', () => {
+    const b = restoredStepBoard();
+    enterSize(CANVAS, P_FULL);
+    resetCopies();
+
+    expect(gatedStep(CANVAS, b.manager, 'undo')).toEqual({ ok: false, reason: 'full' });
+    expect(nextHistoryStep(b.manager, 'redo')).toBe('remove');
+
+    expect(copiesOf(b.doc)).toBe(1);
+  });
+
+  it('HC-08 after a refused press, over the ceiling: T_OVER without a copy; then warning: no trial, the undo runs', () => {
+    const b = restoredStepBoard();
+    enterSize(CANVAS, P_FULL);
+    resetCopies();
+    expect(gatedStep(CANVAS, b.manager, 'undo')).toEqual({ ok: false, reason: 'full' });
+    expect(copiesOf(b.doc)).toBe(1);
+
+    enterSize(CANVAS, P_OVER);
+    vi.mocked(toast.warning).mockClear();
+    expect(gatedStep(CANVAS, b.manager, 'undo')).toEqual({ ok: false, reason: 'over_ceiling' });
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(toast.warning).toHaveBeenCalledWith(COPY_V2_EN.T_OVER);
+    expect(copiesOf(b.doc)).toBe(1);
+
+    enterSize(CANVAS, P_WARNING);
+    vi.mocked(toast.warning).mockClear();
+    expect(gatedStep(CANVAS, b.manager, 'undo')).toEqual({ ok: true });
+    expect(copiesOf(b.doc)).toBe(1);
+    expect(b.nodes.has('n1')).toBe(true);
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+});
+
+describe('HC-10 timeline: holding undo on a refused step', () => {
+  it('HC-10 thirty undo() presses after deleting c2 when full copy the document once; the step stays', () => {
+    const { doc, session } = timelineAt();
+    expect(session.edit({ operation: 'delete', parameters: { clipId: cid(2) }, placement: OFF }).ok).toBe(true);
+    enterSize(TIMELINE, P_FULL);
+    const before = Y.encodeStateAsUpdate(doc);
+    resetCopies();
+
+    for (let press = 0; press < 30; press += 1) session.undo();
+
+    expect(copiesOf(doc)).toBe(1);
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    expect(session.getSnapshot()).toMatchObject({ canUndo: true, canRedo: false });
+  });
+});
+
+describe('ST-01 the module surface', () => {
+  it('ST-01 history-step exports runHistoryStep; timeline-document no longer exports timelineSizeName', async () => {
+    const m = await vi.importActual<typeof HistoryStepModule>('@web/data/yjs/history-step');
+    const t = await import('@web/data/yjs/timeline-document');
+
+    expect(typeof m.runHistoryStep).toBe('function');
+    expect('timelineSizeName' in t).toBe(false);
   });
 });

@@ -3,8 +3,8 @@
 
 /**
  * The size record of the document size cap, second version (inner#1790,
- * design 4.1 and 4.3; v2 collab test spec sections 4, 8 and 14: R-01 to
- * R-21, PU-01 to PU-07, X-01, X-02).
+ * design 4.1 and 4.3; v2 collab test spec sections 4, 8, 14 and 14a: R-01
+ * to R-21, PU-01 to PU-07, X-01, X-02, R6-04).
  *
  * Every case boots a fresh module graph and takes the hooks
  * `createCollabServer` hands to the Hocuspocus `Server` (spec 0.4), so the
@@ -35,7 +35,6 @@ import {
   beyondDs,
   capture,
   cost,
-  dsBytes,
   enc,
   mass,
   nodeDoc,
@@ -138,6 +137,8 @@ interface FakeConnection {
 /** The production hooks a case uses. */
 interface Hooks {
   afterLoadDocument: (payload: unknown) => Promise<void>;
+  beforeSync: (payload: unknown) => Promise<void>;
+  afterHandleMessage: (payload: unknown) => Promise<void>;
 }
 
 const { CV, DOC, TD, TL, META, ODD } = NAMES;
@@ -239,7 +240,7 @@ function conn(doc: Document, socketId = "s1"): FakeConnection {
  * @returns The record, or undefined without one.
  */
 function rec(name: string): Rec | undefined {
-  return size.readDocSizeRecord(name) as unknown as Rec | undefined;
+  return size.readDocSizeRecord(name);
 }
 
 /**
@@ -287,6 +288,35 @@ async function at(ms: number): Promise<void> {
  */
 async function settle(): Promise<void> {
   await vi.advanceTimersByTimeAsync(0);
+}
+
+/**
+ * Call the production `beforeSync` for an Update message (spec 0.4 payload).
+ * @param doc - The document.
+ * @param c - The connection.
+ * @param update - The update.
+ * @returns The hook's promise.
+ */
+function beforeSync(doc: Document, c: FakeConnection, update: Uint8Array): Promise<void> {
+  return hooks.beforeSync({
+    clientsCount: doc.getConnectionsCount(),
+    context: c.context,
+    document: doc,
+    documentName: doc.name,
+    connection: c,
+    type: 2,
+    payload: update,
+  });
+}
+
+/**
+ * Call the production `afterHandleMessage` for a connection.
+ * @param doc - The document.
+ * @param c - The connection.
+ * @returns The hook's promise.
+ */
+function afterHandleMessage(doc: Document, c: FakeConnection): Promise<void> {
+  return hooks.afterHandleMessage({ documentName: doc.name, document: doc, connection: c, context: c.context });
 }
 
 /**
@@ -366,7 +396,7 @@ describe("measure and the record (spec section 4)", () => {
     }
   });
 
-  it("R-06 R-07 R-08 admit adds to current and held, a measure keeps held on top, release leaves current", () => {
+  it("R-06 R-07 R-08 admit adds to current and held, a measure keeps held on top, release removes one entry, says so and leaves current", () => {
     const doc = open(CV, smallDoc().src);
     const a = conn(doc, "sa");
     const b = conn(doc, "sb");
@@ -380,7 +410,7 @@ describe("measure and the record (spec section 4)", () => {
     size.recordExact(CV, 1200);
     expect(must(CV)).toMatchObject({ exact: 1200, current: 1550, heldSum: 350 });
     // R-08
-    size.release(CV, a);
+    expect(size.release(CV, a)).toBe(true);
     expect(must(CV)).toMatchObject({ current: 1550, heldSum: 50 });
     size.recordExact(CV, 1400);
     expect(must(CV)).toMatchObject({ exact: 1400, current: 1450, heldSum: 50 });
@@ -396,13 +426,13 @@ describe("measure and the record (spec section 4)", () => {
     expect(must(CV).heldSum).toBe(20);
   });
 
-  it("R-10 release of a connection holding nothing leaves the others' held alone", () => {
+  it("R-10 release of a connection holding nothing returns false and leaves the others' held alone", () => {
     const doc = open(CV, smallDoc().src);
     const a = conn(doc, "sa");
     const b = conn(doc, "sb");
     size.recordExact(CV, 1000);
     size.admit(CV, b, 40);
-    expect(() => size.release(CV, a)).not.toThrow();
+    expect(size.release(CV, a)).toBe(false);
     expect(must(CV).heldSum).toBe(40);
   });
 
@@ -494,15 +524,32 @@ describe("measure and the record (spec section 4)", () => {
     expect(rec(CV)).toBeUndefined();
   });
 
-  it("R-17 admitting schedules no measure", async () => {
-    const doc = open(CV, smallDoc().src);
-    size.recordExact(CV, 1000);
-    await settle();
-    const a = conn(doc);
-    size.admit(CV, a, 50);
-    await at(60_000);
-    expect(must(CV)).toMatchObject({ exact: 1000, current: 1050 });
+  it("R-17 admitting schedules no measure; releasing an unapplied message in afterHandleMessage does, and the measure takes its cost out", async () => {
+    const { src, client } = smallDoc();
+    const doc = await load(CV, src);
+    const m = size.measure(doc);
+    expect(must(CV)).toMatchObject({ exact: m, current: m });
+    const a = conn(doc, "sa");
+    const b = conn(doc, "sb");
+    await at(5000);
+    const u = capture(client, () => client.getText("t").insert(0, "never applied "));
+    const c = cost(u, doc);
+    expect(c).toBe(u.byteLength);
+    await beforeSync(doc, a, u);
+    const admitted = must(CV).current;
+    expect(must(CV)).toMatchObject({ exact: m, heldSum: admitted - m });
+    // Not applied: the activity write threw or the connection turned read-only.
+    await at(10_000);
+    expect(must(CV)).toMatchObject({ exact: m, current: admitted });
     expect(pushes(a)).toHaveLength(0);
+    await afterHandleMessage(doc, a);
+    expect(must(CV).heldSum).toBe(0);
+    await at(12_000);
+    expect(must(CV)).toMatchObject({ exact: m, current: m, heldSum: 0, phase: "normal" });
+    for (const x of [a, b]) {
+      expect(pushes(x)).toEqual([{ type: "doc:size", bytes: m, limit: D.L, ceiling: D.CEIL, phase: "normal" }]);
+    }
+    expect(admitted).toBe(m + c);
   });
 
   it("R-18 every transaction on a loaded document schedules a measure, whatever its origin", async () => {
@@ -543,40 +590,43 @@ describe("measure and the record (spec section 4)", () => {
     expect(must(CV)).toMatchObject({ exact: after, current: after, heldSum: 0 });
   });
 
-  it("R-20 deleting all 500 nodes of a large canvas costs 0 and frees 239 708 bytes", () => {
+  it("R-20 deleting all 500 nodes of a large canvas costs its 4488-byte length, frees 239 708 bytes, and the next measure corrects current", async () => {
     const m = mass(500);
-    const doc = open(CV, m.server);
+    const doc = await load(CV, m.server);
     const a = conn(doc);
     expect(enc(doc)).toBe(247_618);
     const u = capture(m.client, () => {
       for (const key of [...m.nodes.keys()]) m.nodes.delete(key);
     });
-    expect(updateShape(u, doc.store)).toMatchObject({ pureDelete: true, splitEndpoints: 0, beyondClockRanges: 0 });
-    const c = cost(u, doc);
-    expect(c).toBe(0);
+    expect(u.byteLength).toBe(4488);
+    expect(updateShape(u, doc.store)).toMatchObject({ pureDelete: true, splitEndpoints: 0, beyondClockRanges: 0, wholeTypesOnly: true });
+    expect(cost(u, doc)).toBe(4488);
     const before = must(CV).current;
-    size.admit(CV, a, c);
-    expect(must(CV).current).toBe(before);
+    await beforeSync(doc, a, u);
+    expect(must(CV).current).toBe(before + 4488);
     const measured = size.measure(doc);
     Y.applyUpdate(doc, u, { source: "connection", connection: a });
     expect(measured - size.measure(doc)).toBe(239_708);
+    await at(2000);
+    expect(must(CV)).toMatchObject({ exact: size.measure(doc), current: size.measure(doc), heldSum: 0 });
   });
 
-  it("R-21 cost counts struct bytes plus C per split endpoint and per beyond-clock range", () => {
+  it("R-21 cost is the message length plus C per split endpoint and per beyond-clock range", () => {
     const nd = nodeDoc();
     const textCut = capture(nd.client, () => nd.text.delete(2, 3));
-    expect(updateShape(textCut, nd.server.store)).toMatchObject({ pureDelete: true, structBytes: 0, splitEndpoints: 2 });
-    expect(cost(textCut, nd.server)).toBe(2 * C);
+    expect(updateShape(textCut, nd.server.store)).toMatchObject({ pureDelete: true, splitEndpoints: 2 });
+    expect(textCut.byteLength).toBe(6);
+    expect(cost(textCut, nd.server)).toBe(6 + 2 * C);
     const beyond = beyondDs(4242, 100, 1);
-    expect(updateShape(beyond, nd.server.store)).toMatchObject({ pureDelete: true, structBytes: 0, beyondClockRanges: 1 });
-    expect(cost(beyond, nd.server)).toBe(C);
+    expect(updateShape(beyond, nd.server.store)).toMatchObject({ pureDelete: true, beyondClockRanges: 1 });
+    expect(cost(beyond, nd.server)).toBe(7 + C);
     const insert = capture(nd.client, () => {
       const n2 = new Y.Map<unknown>();
       nd.nodes.set("n2", n2);
       n2.set("name", "abc");
     });
-    expect(insert.byteLength - dsBytes(insert)).toBe(31);
-    expect(cost(insert, nd.server)).toBe(insert.byteLength - dsBytes(insert));
+    expect(insert.byteLength).toBe(32);
+    expect(cost(insert, nd.server)).toBe(32);
   });
 });
 
@@ -593,7 +643,7 @@ describe("doc:size pushes (spec section 8)", () => {
     }
   });
 
-  it("PU-02 admit and addApplied inside one phase push nothing", async () => {
+  it("PU-02 admit and addApplied inside one phase, and full below the ceiling, push nothing", async () => {
     const doc = open(CV, smallDoc().src);
     size.recordExact(CV, 1000);
     await settle();
@@ -602,6 +652,15 @@ describe("doc:size pushes (spec section 8)", () => {
     size.addApplied(CV, 10);
     await settle();
     expect(must(CV).current).toBe(1020);
+    expect(pushes(a)).toHaveLength(0);
+    size.release(CV, a);
+    size.recordExact(CV, 10_500_000);
+    await settle();
+    a.sendStateless.mockClear();
+    size.admit(CV, a, 10);
+    size.addApplied(CV, 10);
+    await settle();
+    expect(must(CV)).toMatchObject({ current: 10_500_020, phase: "full" });
     expect(pushes(a)).toHaveLength(0);
   });
 
@@ -662,13 +721,52 @@ describe("doc:size pushes (spec section 8)", () => {
     }
   });
 
-  it("PU-07 over the ceiling the push says full with bytes at or above the ceiling", async () => {
+  it("PU-07 over the ceiling the push says full with bytes at or above the ceiling, also when crossing it from full", async () => {
     const doc = open(CV, smallDoc().src);
     const a = conn(doc);
     size.recordExact(CV, D.CEIL + 10);
     await settle();
     const last = pushes(a).at(-1);
     expect(last).toEqual({ type: "doc:size", bytes: D.CEIL + 10, limit: D.L, ceiling: D.CEIL, phase: "full" });
+    size.recordExact(CV, D.CEIL - 10);
+    await settle();
+    a.sendStateless.mockClear();
+    size.admit(CV, a, 20);
+    expect(pushes(a)).toEqual([{ type: "doc:size", bytes: D.CEIL + 10, limit: D.L, ceiling: D.CEIL, phase: "full" }]);
+  });
+
+  it("R6-04 crossing the hard ceiling pushes even with the phase unchanged; staying over does not; a measure always pushes", async () => {
+    const doc = open(CV, smallDoc().src);
+    const a = conn(doc, "sa");
+    const b = conn(doc, "sb");
+    size.recordExact(CV, 10_746_904);
+    await settle();
+    expect(must(CV).phase).toBe("full");
+    a.sendStateless.mockClear();
+    b.sendStateless.mockClear();
+    /**
+     * The push both connections should have received last, and how many each has.
+     * @param bytes - The pushed size.
+     * @param count - Pushes so far.
+     */
+    const expectBoth = (bytes: number, count: number): void => {
+      for (const c of [a, b]) {
+        expect(pushes(c)).toHaveLength(count);
+        expect(pushes(c).at(-1)).toEqual({ type: "doc:size", bytes, limit: D.L, ceiling: D.CEIL, phase: "full" });
+      }
+    };
+    size.admit(CV, a, 1500);
+    expect(must(CV).current).toBe(10_748_404);
+    expectBoth(10_748_404, 1);
+    size.admit(CV, a, 10);
+    expect(pushes(a)).toHaveLength(1);
+    size.recordExact(CV, 10_600_000);
+    await settle();
+    expect(must(CV).current).toBe(10_601_510);
+    expectBoth(10_601_510, 2);
+    size.admit(CV, a, 200_000);
+    expect(must(CV).current).toBe(10_801_510);
+    expectBoth(10_801_510, 3);
   });
 });
 

@@ -15,6 +15,12 @@
  *
  * Keys go through `view.someProp('handleKeyDown')`. jsdom is not a Mac, so
  * which modifier `Mod` is in this process is read from the keymap.
+ *
+ * Round 6: the body part of H-19 (the body runs `runHistoryStep`; over the
+ * ceiling the same case says T_OVER), HC-03 (an empty stack is not tried) and
+ * HC-10 (holding undo on a refused step copies the document once). A copy is
+ * counted as an `encodeStateAsUpdate` of the document, `yjs` mocked passing
+ * through.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -26,6 +32,20 @@ import { keydownHandler } from '@tiptap/pm/keymap';
 import type { EditorView } from '@tiptap/pm/view';
 import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
+import type * as YModule from 'yjs';
+import type * as HistoryStepModule from '@web/data/yjs/history-step';
+
+vi.mock('yjs', async (importOriginal) => {
+  const actual = await importOriginal<typeof YModule>();
+  return { ...actual, encodeStateAsUpdate: vi.fn(actual.encodeStateAsUpdate) };
+});
+vi.mock('@web/data/yjs/history-step', async (importOriginal) => {
+  const actual = await importOriginal<typeof HistoryStepModule>();
+  return {
+    ...actual,
+    runHistoryStep: vi.fn((...args: Parameters<typeof actual.runHistoryStep>) => actual.runHistoryStep(...args)),
+  };
+});
 
 vi.mock('@web/data/yjs/collab-failure-report', () => ({ reportCollabFailure: vi.fn() }));
 vi.mock('@web/lib/toast', () => ({
@@ -48,10 +68,13 @@ import {
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
 import { attachBodyScroller } from '@web/spaces/document/document-body-press';
+import { runHistoryStep } from '@web/data/yjs/history-step';
 import {
+  copiesOf,
   enterSize,
   kindOf,
   localUpdate,
+  resetCopies,
   spyOnSteps,
   trialKind,
   trialRan,
@@ -593,6 +616,57 @@ describe('H-19 every body key path goes through the judgement', () => {
         }));
       });
     }, COPY_V2_EN.T_ADD);
+    expect(blocks(body)).toEqual(['hello ']);
+  });
+});
+
+describe('H-19 (round 6) the body undo runs runHistoryStep', () => {
+  it.each([
+    ['full', P_FULL, COPY_V2_EN.T_ADD],
+    ['over the ceiling', P_OVER, COPY_V2_EN.T_OVER],
+  ] as const)('H-19 Mod-z of a text deletion %s: runHistoryStep once, refused with its toast, nothing popped', (_label, fixture, sentence) => {
+    const body = openBody(['hello world']);
+    remove(body, textPos(body, 0, 6), textPos(body, 0, 11));
+    enter(fixture);
+    vi.mocked(runHistoryStep).mockClear();
+
+    expectRefused(body, () => { press(body, 'z', { mod: true }); }, sentence);
+
+    expect(vi.mocked(runHistoryStep)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(runHistoryStep)).toHaveBeenCalledWith(NAME, body.handle.undoManager, 'undo');
+    expect(blocks(body)).toEqual(['hello ']);
+  });
+});
+
+describe('HC-03 the body undo on an empty stack when full', () => {
+  it('HC-03 Mod-z (undoCommand) with nothing to undo: no copy, nothing written, no toast', () => {
+    const body = openBody(['hello']);
+    expect(body.handle.undoManager.undoStack).toHaveLength(0);
+    enter(P_FULL);
+    resetCopies();
+
+    const update = localUpdate(body.doc, () => { press(body, 'z', { mod: true }); });
+
+    expect(copiesOf(body.doc)).toBe(0);
+    expect(update).toBeNull();
+    expect(blocks(body)).toEqual(['hello']);
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+});
+
+describe('HC-10 holding undo on a refused body step', () => {
+  it('HC-10 thirty Mod-z presses that would bring deleted text back copy the document once; the stacks stay', () => {
+    const body = openBody(['hello world']);
+    remove(body, textPos(body, 0, 6), textPos(body, 0, 11));
+    enter(P_FULL);
+    const before = snapshot(body);
+    resetCopies();
+
+    for (let i = 0; i < 30; i += 1) press(body, 'z', { mod: true });
+
+    expect(copiesOf(body.doc)).toBe(1);
+    expect(snapshot(body)).toEqual(before);
     expect(blocks(body)).toEqual(['hello ']);
   });
 });

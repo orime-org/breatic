@@ -8,7 +8,8 @@
  * spec's measured values came from.
  *
  * Nothing here computes a judgement the production code makes: `cost` is the
- * design 4.1 formula over the production `updateShape` result, and `enc` is
+ * design 4.1 formula (round 6: the message length plus `C` per event) over
+ * the production `updateShape` result, and `enc` is
  * the encoded size the design names as the exact measure.
  */
 
@@ -65,14 +66,15 @@ export function enc(doc: Y.Doc): number {
 }
 
 /**
- * Design 4.1 cost of an update against a document as it is now.
+ * Design 4.1 cost of an update against a document as it is now (round 6):
+ * the message length plus `C` per split endpoint and per beyond-clock range.
  * @param update - The V1 update.
  * @param doc - The server document before the update.
  * @returns Bytes counted against the record.
  */
 export function cost(update: Uint8Array, doc: Y.Doc): number {
   const s = updateShape(update, doc.store);
-  return s.structBytes + C * (s.splitEndpoints + s.beyondClockRanges);
+  return update.byteLength + C * (s.splitEndpoints + s.beyondClockRanges);
 }
 
 /**
@@ -424,4 +426,105 @@ export function handshakeStep2(server: Y.Doc, client: Y.Doc): Uint8Array {
  */
 export function step1Payload(doc: Y.Doc): Uint8Array {
   return Y.encodeStateVector(doc);
+}
+
+/**
+ * Spec 14a.3: one new node `big` whose `name` holds 40 000 `"y"`, written by
+ * client 0xA synced with `doc` (40 032 bytes on a `fill(doc, 230 000)` document).
+ * @param doc - The server document the writer syncs from.
+ * @returns The V1 update.
+ */
+export function bigNodeUpdate(doc: Y.Doc): Uint8Array {
+  const writer = syncedClient(doc, 0xa);
+  return capture(writer, () => {
+    const big = new Y.Map<unknown>();
+    writer.getMap<Y.Map<unknown>>("nodes").set("big", big);
+    big.set("name", "y".repeat(40_000));
+  });
+}
+
+/** Spec 14a.4: a document of 20 paragraphs and a member's offline deletes in it. */
+export interface OfflineDeletes {
+  /** The author's document: 20 paragraphs of 2000 `"w"` (40 607 bytes encoded). */
+  author: Y.Doc;
+  /**
+   * The member (client 13) synced from `author`, who then deletes one
+   * character at `50 + floor(k / 20) * 60` of paragraph `k % 20` for each `k < n`.
+   * @param n - How many characters the member deletes.
+   * @returns The member's document after the deletes.
+   */
+  memberAfter: (n: number) => Y.Doc;
+}
+
+/**
+ * Spec 14a.4: client 11 builds 20 `paragraph` elements in
+ * `getXmlFragment("document-store")`, each one `XmlText` with 2000 `"w"`
+ * inserted at once.
+ * @returns The author's document and a builder for the member's offline deletes.
+ */
+export function offlineDeletes(): OfflineDeletes {
+  const author = new Y.Doc();
+  author.clientID = 11;
+  const fragment = author.getXmlFragment("document-store");
+  for (let p = 0; p < 20; p++) {
+    const paragraph = new Y.XmlElement("paragraph");
+    const text = new Y.XmlText();
+    text.insert(0, "w".repeat(2000));
+    paragraph.insert(0, [text]);
+    fragment.insert(fragment.length, [paragraph]);
+  }
+  return {
+    author,
+    memberAfter: (n: number): Y.Doc => {
+      const member = syncedClient(author, 13);
+      applyOfflineDeletes(member, n);
+      return member;
+    },
+  };
+}
+
+/**
+ * Spec 14a.4: delete one character at `50 + floor(k / 20) * 60` of paragraph
+ * `k % 20` of `getXmlFragment("document-store")`, for each `k < n`.
+ * @param doc - A copy of the `offlineDeletes` author's document.
+ * @param n - How many characters to delete.
+ */
+export function applyOfflineDeletes(doc: Y.Doc, n: number): void {
+  const f = doc.getXmlFragment("document-store");
+  for (let k = 0; k < n; k++) {
+    const text = (f.get(k % 20) as Y.XmlElement).get(0) as Y.XmlText;
+    text.delete(50 + Math.floor(k / 20) * 60, 1);
+  }
+}
+
+/**
+ * Spec 14a.4: the SyncStep2 a reconnecting member sends,
+ * `Y.encodeStateAsUpdate(member, Y.encodeStateVector(server))`.
+ * @param member - The member's document.
+ * @param server - The server document.
+ * @returns The update.
+ */
+export function reconnectStep2(member: Y.Doc, server: Y.Doc): Uint8Array {
+  return Y.encodeStateAsUpdate(member, Y.encodeStateVector(server));
+}
+
+/**
+ * Read one of the `pendingBefore` / `pendingAfter` values of a step 2a
+ * refusal log (design 4.3, round 6). Answer Q22 gives the pending structs'
+ * and the pending delete set's coverage apart and leaves the key names to the
+ * implementation: the key naming structs is the structs' coverage, the other
+ * key the delete set's.
+ * @param value - The logged value.
+ * @returns Both coverages.
+ * @throws {Error} When the value is not an object of exactly two numbers, one of them named for structs.
+ */
+export function pendingCoverage(value: unknown): { structs: number; ds: number } {
+  if (typeof value !== "object" || value === null) throw new Error(`pending coverage is not an object: ${JSON.stringify(value)}`);
+  const entries = Object.entries(value);
+  const structs = entries.find(([key]) => /struct/i.test(key));
+  const ds = entries.find(([key]) => !/struct/i.test(key));
+  if (entries.length !== 2 || !structs || !ds || typeof structs[1] !== "number" || typeof ds[1] !== "number") {
+    throw new Error(`pending coverage is not two numbers, one for structs: ${JSON.stringify(value)}`);
+  }
+  return { structs: structs[1], ds: ds[1] };
 }

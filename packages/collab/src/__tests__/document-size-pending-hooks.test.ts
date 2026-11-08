@@ -4,8 +4,9 @@
 /**
  * The document size cap, second version (inner#1790): the pending-content
  * refusal (v2 collab test spec section 6, design 4.2 step 2a and 4.3
- * `beforeTransaction` / `afterTransaction`), the lifecycle hooks (section 7)
- * and F-11.
+ * `beforeTransaction` / `afterTransaction`), the lifecycle hooks (section 7),
+ * F-11, and the round 6 cases of spec section 14a that need lifecycle or
+ * transaction hooks (R6-05, R6-07 to R6-09, R6-14 to R6-18, R6-20).
  *
  * Every hook is the one `createCollabServer` hands to the Hocuspocus `Server`
  * (spec 0.4): its constructor is replaced by one that records the
@@ -33,13 +34,19 @@ import { COLLAB_DOCUMENT_TOO_LARGE_REASON, DocSizeStatusSchema, documentBodyFrag
 import {
   D,
   NAMES,
+  S,
+  S_CONFIG,
   beyondDs,
+  bigNodeUpdate,
   capture,
   chunk,
   cost,
   enc,
+  fill,
   fillLegacy,
   legacyDoc,
+  pendingCoverage,
+  pendingSource,
   pendingStructs,
   syncedClient,
 } from "./helpers/document-size-fixtures.js";
@@ -59,8 +66,8 @@ const { serverSpy, logger, collabRedis, overrides, activity, yjsCalls, D_HOISTED
   collabRedis: { on: vi.fn(), publish: vi.fn(async () => 1), set: vi.fn(async (): Promise<string | null> => null) },
   overrides: { current: {} },
   // What the account activity half of `beforeSync` does: `fail` makes it
-  // throw (Hocuspocus then never applies the message).
-  activity: { fail: false },
+  // throw (Hocuspocus then never applies the message); `onCall` runs first.
+  activity: { fail: false, onCall: undefined as undefined | (() => void) },
   // Calls into yjs made through the module this file mocks (spec L-07, P-15).
   yjsCalls: { encodeStateAsUpdate: 0, decode: 0 },
 }));
@@ -150,6 +157,7 @@ vi.mock("@collab/services/connection-registry.js", () => ({
 
 vi.mock("@collab/hooks/account-activity.js", () => ({
   createActivityHook: () => vi.fn(async () => {
+    activity.onCall?.();
     if (activity.fail) throw new Error("activity write failed");
   }),
 }));
@@ -425,24 +433,70 @@ function pendingStructBytes(doc: Y.Doc): number {
   return doc.store.pendingStructs?.update.byteLength ?? 0;
 }
 
+/** The pending coverage of design 4.3 (round 6), structs and delete set apart. */
+interface Coverage {
+  structs: number;
+  ds: number;
+}
+
 /**
  * Expect the step 2a refusal of spec section 6 on connection `c`: closed with
  * the size reason, its `(socket, document)` marked refused, one refusal log
- * line with the 4.2 fields (Q15) and its held cost released.
+ * line with the 4.2 fields plus `pendingBefore` / `pendingAfter` (Q15, LG-02)
+ * and its held cost released.
  * @param doc - The document.
  * @param c - The refused connection.
  * @param expected - `current` at the refusal and the held sum once released.
  * @param expected.current - The record's current size when 2a refused.
  * @param expected.heldSum - The held sum after the release.
+ * @param expected.before - The logged coverage before the transaction, when the case states it.
+ * @param expected.after - The logged coverage after the transaction, when the case states it.
  */
-function expectPendingRefusal(doc: Document, c: FakeConnection, expected: { current: number; heldSum: number }): void {
+function expectPendingRefusal(
+  doc: Document,
+  c: FakeConnection,
+  expected: { current: number; heldSum: number; before?: Coverage; after?: Coverage },
+): void {
   expect(c.close).toHaveBeenCalledTimes(1);
   expect(c.close).toHaveBeenCalledWith(expect.objectContaining({ reason: COLLAB_DOCUMENT_TOO_LARGE_REASON }));
   expect(refusalLogs()).toEqual([
-    { documentName: doc.name, userId: c.context.user.id, current: expected.current, limit: D.L, ceiling: D.CEIL, step: "pending" },
+    {
+      documentName: doc.name, userId: c.context.user.id, current: expected.current, limit: D.L, ceiling: D.CEIL, step: "pending",
+      pendingBefore: expect.anything(), pendingAfter: expect.anything(),
+    },
   ]);
+  const log = refusalLogs()[0] ?? {};
+  if (expected.before) expect(pendingCoverage(log.pendingBefore)).toEqual(expected.before);
+  if (expected.after) expect(pendingCoverage(log.pendingAfter)).toEqual(expected.after);
   expect(rec(doc.name).heldSum).toBe(expected.heldSum);
   expect(w.inbound.isRefused(c.socketId, doc.name)).toBe(true);
+}
+
+/**
+ * Test-side pending structs coverage (design 4.3, round 6): the lengths of
+ * the structs `pendingStructs` holds, `Skip` excluded (Q21).
+ * @param doc - The document.
+ * @returns Clocks covered.
+ */
+function structsCoverage(doc: Y.Doc): number {
+  const p = doc.store.pendingStructs;
+  if (!p) return 0;
+  return Y.decodeUpdateV2(p.update).structs.reduce((sum, st) => sum + (st instanceof Y.Skip ? 0 : st.length), 0);
+}
+
+/**
+ * Test-side pending delete set coverage (design 4.3, round 6): the sum of its ranges' lengths.
+ * @param doc - The document.
+ * @returns Clocks covered.
+ */
+function dsCoverage(doc: Y.Doc): number {
+  const p = doc.store.pendingDs;
+  if (!p) return 0;
+  let n = 0;
+  Y.decodeUpdateV2(p).ds.clients.forEach((ranges) => {
+    for (const r of ranges) n += r.len;
+  });
+  return n;
 }
 
 /**
@@ -490,6 +544,7 @@ beforeEach(() => {
   });
   peers.clear();
   activity.fail = false;
+  activity.onCall = undefined;
   collabRedis.set.mockReset().mockImplementation(async () => null);
 });
 
@@ -503,7 +558,8 @@ describe("section 6: pending content refused by value (design 4.2 step 2a)", () 
     expect(doc.store.pendingStructs).toBeNull();
     expect(doc.store.pendingDs).toBeNull();
     expect(Buffer.from(Y.encodeStateAsUpdate(doc)).equals(Buffer.from(state))).toBe(true);
-    expectPendingRefusal(doc, a, { current: before.current + c, heldSum: before.heldSum });
+    // LG-02: structs coverage 0 -> 2000, pending delete set 0 -> 0.
+    expectPendingRefusal(doc, a, { current: before.current + c, heldSum: before.heldSum, before: { structs: 0, ds: 0 }, after: { structs: 2000, ds: 0 } });
   });
 
   it("P-02 keeps the part of a mixed update that integrates and refuses the part that pends", async () => {
@@ -584,7 +640,8 @@ describe("section 6: pending content refused by value (design 4.2 step 2a)", () 
     const record = rec(CV);
     await send(doc, a, u);
     expect(pendingOf(doc)).toEqual(before);
-    expectPendingRefusal(doc, a, { current: record.current + c, heldSum: record.heldSum });
+    // Round 6: structs coverage 2000 -> 7000 is what refuses it.
+    expectPendingRefusal(doc, a, { current: record.current + c, heldSum: record.heldSum, before: { structs: 2000, ds: 3 }, after: { structs: 7000, ds: 3 } });
   });
 
   it("P-07 restores pending structs yjs grew in place, so the refused characters never reach the document", async () => {
@@ -610,7 +667,9 @@ describe("section 6: pending content refused by value (design 4.2 step 2a)", () 
     await send(doc, a, Y.mergeUpdates([fillLegacy(), chunk(1000, 1900).tail]));
     expect(doc.getText("junk").length).toBe(2005);
     expect(pendingStructBytes(doc)).toBe(1924);
-    expect(pendingStructBytes(doc)).toBeLessThanOrEqual(2024);
+    // Round 6: coverage, not bytes: structs 2000 -> 1900, the delete set's 3 unchanged.
+    expect(structsCoverage(doc)).toBe(1900);
+    expect(dsCoverage(doc)).toBe(3);
     expect(a.close).not.toHaveBeenCalled();
     expect(refusalLogs()).toEqual([]);
   });
@@ -626,7 +685,8 @@ describe("section 6: pending content refused by value (design 4.2 step 2a)", () 
       const c = cost(u, doc);
       const current = rec(CV).current;
       await send(doc, a, u);
-      expect(pendingStructBytes(doc)).toBeLessThanOrEqual(2024);
+      expect(structsCoverage(doc)).toBe(1900);
+      expect(pendingStructBytes(doc)).toBe(1924);
       expect(enc(doc)).toBeGreaterThan(size);
       size = enc(doc);
       // No measure has run (the fake clock stands still), so the record moved by the admitted cost.
@@ -647,7 +707,7 @@ describe("section 6: pending content refused by value (design 4.2 step 2a)", () 
     await send(doc, a, u);
     expect(pendingOf(doc)).toEqual(before);
     expect(doc.getText("junk").length).toBe(2005);
-    expectPendingRefusal(doc, a, { current: record.current + c, heldSum: record.heldSum });
+    expectPendingRefusal(doc, a, { current: record.current + c, heldSum: record.heldSum, before: { structs: 2000, ds: 3 }, after: { structs: 5000, ds: 3 } });
   });
 
   it("P-11 does not refuse an honest member's edit after P-10, and yjs clears the restored pending content without duplicating it", async () => {
@@ -668,7 +728,7 @@ describe("section 6: pending content refused by value (design 4.2 step 2a)", () 
     expect(doc.getText("body").toString()).toBe("!hello world");
   });
 
-  it("P-12 compares the two pending lengths apart: shorter structs but a longer delete set is refused (Q13)", async () => {
+  it("P-12 compares the two pending coverages apart: fewer struct clocks but more delete-set clocks is refused (Q13)", async () => {
     await boot();
     const doc = await load(CV, legacyDoc());
     const before = pendingOf(doc);
@@ -678,7 +738,7 @@ describe("section 6: pending content refused by value (design 4.2 step 2a)", () 
     const record = rec(CV);
     await send(doc, a, u);
     expect(pendingOf(doc)).toEqual(before);
-    expectPendingRefusal(doc, a, { current: record.current + c, heldSum: record.heldSum });
+    expectPendingRefusal(doc, a, { current: record.current + c, heldSum: record.heldSum, before: { structs: 2000, ds: 3 }, after: { structs: 0, ds: 4 } });
   });
 
   it("P-13 does not refuse an update that leaves the pending content as long or shorter", async () => {
@@ -712,25 +772,12 @@ describe("section 6: pending content refused by value (design 4.2 step 2a)", () 
     }
   });
 
-  it("P-15 spends under 1 ms per keystroke in the two listeners with 3 MB of pending structs, decoding nothing", async () => {
+  it("P-15 spends under 1 ms per keystroke in the two listeners with 3 MB of pending structs, decoding nothing while the pending object is unchanged", async () => {
     await boot();
     const doc = stored(CV);
     Y.applyUpdate(doc, bigPending());
-    expect(pendingStructBytes(doc)).toBeGreaterThan(3_000_000);
-    // Time every beforeTransaction / afterTransaction listener production installs.
-    const spent = { ms: 0, decodes: 0, wrapped: new Set<string>() };
-    const realOn = doc.on.bind(doc) as (name: string, f: (...args: unknown[]) => void) => void;
-    (doc as unknown as { on: (name: string, f: (...args: unknown[]) => void) => void }).on = (name, f): void => {
-      if (name !== "beforeTransaction" && name !== "afterTransaction") return realOn(name, f);
-      spent.wrapped.add(name);
-      realOn(name, (...args: unknown[]): void => {
-        const decodes = yjsCalls.decode;
-        const t0 = performance.now();
-        f(...args);
-        spent.ms += performance.now() - t0;
-        spent.decodes += yjsCalls.decode - decodes;
-      });
-    };
+    expect(pendingStructBytes(doc)).toBe(3_191_776);
+    const spent = instrumentListeners(doc);
     await runLoadHook(doc);
     expect([...spent.wrapped].sort()).toEqual(["afterTransaction", "beforeTransaction"]);
     const a = conn(doc);
@@ -739,14 +786,17 @@ describe("section 6: pending content refused by value (design 4.2 step 2a)", () 
     for (let i = 0; i < 20; i++) {
       const u = capture(client, () => client.getText("t").insert(0, "k"));
       await expect(beforeSync(doc, a, SYNC.update, u)).resolves.toBeUndefined();
+      const pendingBefore = doc.store.pendingStructs?.update;
       spent.ms = 0;
       spent.decodes = 0;
       applyFrom(doc, a, u);
+      expect(doc.store.pendingStructs?.update).toBe(pendingBefore);
       expect(spent.ms).toBeLessThan(1);
       expect(spent.decodes).toBe(0);
     }
     expect(a.close).not.toHaveBeenCalled();
-  }, 60_000);
+    expect(refusalLogs()).toEqual([]);
+  }, 120_000);
 
   it("P-16 refuses the next queued Update of a 2a-refused connection at step 0", async () => {
     const { doc, a } = await p01();
@@ -881,7 +931,7 @@ describe("section 7: lifecycle hooks (design 4.3)", () => {
     expect(logger.warn).not.toHaveBeenCalledWith(expect.anything(), "Document exceeds max size limit");
   });
 
-  it("L-08 afterHandleMessage releases the held cost of a message whose activity write threw", async () => {
+  it("L-08 afterHandleMessage releases the held cost of a message whose activity write threw and schedules the measure that takes it out of current", async () => {
     await boot();
     const doc = await load(CV);
     const a = conn(doc);
@@ -893,6 +943,10 @@ describe("section 7: lifecycle hooks (design 4.3)", () => {
     expect(rec(CV).heldSum).toBeGreaterThan(before);
     await afterHandleMessage(doc, a);
     expect(rec(CV).heldSum).toBe(before);
+    a.sendStateless.mockClear();
+    vi.advanceTimersByTime(D_HOISTED.document_size_measure_interval_ms);
+    expect(rec(CV).current).toBe(enc(doc));
+    expect(pushes(a).at(-1)).toMatchObject({ bytes: enc(doc) });
   });
 
   it("L-09 afterHandleMessage releases the held cost of a message skipped because the connection turned read-only", async () => {
@@ -909,9 +963,12 @@ describe("section 7: lifecycle hooks (design 4.3)", () => {
     await afterHandleMessage(doc, a);
     expect(rec(CV).heldSum).toBe(before.heldSum);
     expect(rec(CV).current).toBe(before.current + c);
+    // Round 6: the measure afterHandleMessage scheduled takes the unapplied cost out.
+    vi.advanceTimersByTime(D_HOISTED.document_size_measure_interval_ms);
+    expect(rec(CV).current).toBe(enc(doc));
   });
 
-  it("L-10 a second release after an applied message leaves another connection's held cost alone", async () => {
+  it("L-10 a second release after an applied message returns false and leaves another connection's held cost alone", async () => {
     await boot();
     const doc = await load(CV);
     const a = conn(doc);
@@ -923,6 +980,8 @@ describe("section 7: lifecycle hooks (design 4.3)", () => {
     w.size.admit(CV, b, 40);
     applyFrom(doc, a, u);
     expect(rec(CV).heldSum).toBe(40);
+    // afterTransaction already removed A's entry: a second release removes nothing and says so.
+    expect(w.size.release(CV, a)).toBe(false);
     await afterHandleMessage(doc, a);
     expect(rec(CV).heldSum).toBe(40);
   });
@@ -988,6 +1047,287 @@ describe("section 7: lifecycle hooks (design 4.3)", () => {
     const c = conn(doc);
     await w.hooks.onStateless({ connection: c, documentName: TL, document: doc, payload: JSON.stringify({ type: "sync:confirm", id: randomUUID() }) });
     expect(c.sendStateless).not.toHaveBeenCalled();
+  });
+});
+
+describe("round 6: an admit, onChange or measure that crosses the hard ceiling pushes (spec 14a.2)", () => {
+  it("R6-05 onChange crossing the hard ceiling while already full pushes once; the next change does not", async () => {
+    await boot();
+    const doc = await load(CV);
+    w.size.recordExact(CV, 10_747_000);
+    const a = conn(doc);
+    const b = conn(doc, { socketId: "s2", userId: "u2" });
+    a.sendStateless.mockClear();
+    b.sendStateless.mockClear();
+    const first = updateOfLength(1500, 87);
+    Y.applyUpdate(doc, first, { source: "local" });
+    await change(doc, first, { source: "local" });
+    expect(rec(CV).current).toBe(10_748_500);
+    const crossed = { type: "doc:size", bytes: 10_748_500, limit: D.L, ceiling: D.CEIL, phase: "full" };
+    expect(pushes(a)).toEqual([crossed]);
+    expect(pushes(b)).toEqual([crossed]);
+    const second = updateOfLength(10, 88);
+    Y.applyUpdate(doc, second, { source: "local" });
+    await change(doc, second, { source: "local" });
+    expect(rec(CV).current).toBe(10_748_510);
+    expect(pushes(a)).toEqual([crossed]);
+    expect(pushes(b)).toEqual([crossed]);
+  });
+});
+
+/** How an admitted message ends up not applied (spec 14a.3). */
+type Unapplied = "activity_threw" | "turned_read_only" | "unknown_sync_type";
+
+/**
+ * Spec 14a.3: configuration S, `CV` filled to 229 989 bytes and loaded at
+ * t=0 with connections A and B; at t=5000 A's 40 032-byte new node `big` is
+ * admitted (current 270 021, full) and never applied. After the production
+ * `afterHandleMessage(A)` the next measure takes it out again ("corrected").
+ * @param how - Why Hocuspocus does not apply it.
+ */
+async function unappliedIsCorrected(how: Unapplied): Promise<void> {
+  await boot(S_CONFIG);
+  const src = new Y.Doc();
+  expect(fill(src, 230_000)).toBe(229_989);
+  const doc = await load(CV, src);
+  expect(rec(CV)).toMatchObject({ current: 229_989, phase: "normal" });
+  const a = conn(doc);
+  const b = conn(doc, { socketId: "s2", userId: "u2" });
+  vi.advanceTimersByTime(5000);
+  const big = bigNodeUpdate(doc);
+  expect(big.byteLength).toBe(40_032);
+  a.sendStateless.mockClear();
+  b.sendStateless.mockClear();
+
+  if (how === "activity_threw") {
+    activity.fail = true;
+    await expect(beforeSync(doc, a, SYNC.update, big)).rejects.toThrow("activity write failed");
+  } else if (how === "turned_read_only") {
+    activity.onCall = () => {
+      a.readOnly = true;
+    };
+    await expect(beforeSync(doc, a, SYNC.update, big)).resolves.toBeUndefined();
+  } else {
+    // Design 4.2 step 1 skips only SyncStep1, so an unknown sub-type is judged and admitted.
+    await expect(beforeSync(doc, a, 3, big)).resolves.toBeUndefined();
+  }
+  const admitted = rec(CV).current;
+  expect(rec(CV).phase).toBe("full");
+  const full = { type: "doc:size", bytes: admitted, limit: S.L, ceiling: S.CEIL, phase: "full" };
+  expect(pushes(a)).toEqual([full]);
+  expect(pushes(b)).toEqual([full]);
+
+  await afterHandleMessage(doc, a);
+  expect(rec(CV).heldSum).toBe(0);
+  vi.advanceTimersByTime(S_CONFIG.document_size_measure_interval_ms);
+  expect(rec(CV)).toMatchObject({ exact: 229_989, current: 229_989, phase: "normal", heldSum: 0 });
+  for (const c of [a, b]) {
+    expect(pushes(c).at(-1)).toEqual({ type: "doc:size", bytes: 229_989, limit: S.L, ceiling: S.CEIL, phase: "normal" });
+  }
+  expect(doc.getMap("nodes").has("big")).toBe(false);
+  // Round 6 cost: the message length.
+  expect(admitted).toBe(270_021);
+}
+
+describe("round 6: an admitted message that is never applied is measured out of current (spec 14a.3)", () => {
+  it("R6-07 its activity write threw", async () => {
+    await unappliedIsCorrected("activity_threw");
+  });
+
+  it("R6-08 the connection turned read-only while its activity write ran", async () => {
+    await unappliedIsCorrected("turned_read_only");
+  });
+
+  it("R6-09 it came with an unknown sync sub-type (3)", async () => {
+    await unappliedIsCorrected("unknown_sync_type");
+  });
+});
+
+/**
+ * Spec R6-14: client 1000 types 200 characters one transaction each; client
+ * 2000 deletes clocks 100-199; the server holds the first 100 and the delete
+ * (pending delete set 18 bytes, coverage 100).
+ * @returns The server document and the writer's state at 130 characters.
+ */
+function partlyResolvableDs(): { legacy: Y.Doc; upTo130: Y.Doc } {
+  const x = new Y.Doc();
+  x.clientID = 1000;
+  const snaps: Uint8Array[] = [];
+  for (let i = 0; i < 200; i++) {
+    x.getText("t").insert(i, "a");
+    snaps.push(Y.encodeStateAsUpdate(x));
+  }
+  const deleter = new Y.Doc();
+  deleter.clientID = 2000;
+  Y.applyUpdate(deleter, snaps[199] as Uint8Array);
+  const cut = capture(deleter, () => deleter.getText("t").delete(100, 100));
+  expect(cut.byteLength).toBe(7);
+  const legacy = new Y.Doc();
+  Y.applyUpdate(legacy, snaps[99] as Uint8Array);
+  Y.applyUpdate(legacy, cut);
+  const upTo130 = new Y.Doc();
+  Y.applyUpdate(upTo130, snaps[129] as Uint8Array);
+  return { legacy, upTo130 };
+}
+
+/**
+ * Spec R6-16 `d602`: client 602 inserts 5 characters into `getText("gone")`,
+ * then 10 000 more and deletes those 10 000; the update after the first five
+ * with its delete set replaced by an empty one (one 10 000-long
+ * `ContentDeleted` item, 12 bytes).
+ * @returns The update.
+ * @throws {Error} When the delete set is not the expected tail.
+ */
+function deletedRunWithoutDs(): Uint8Array {
+  const g = new Y.Doc();
+  g.clientID = 602;
+  const t = g.getText("gone");
+  t.insert(0, "aaaaa");
+  const sv = Y.encodeStateVector(g);
+  t.insert(0, "z".repeat(10_000));
+  t.delete(0, 10_000);
+  const full = Y.encodeStateAsUpdate(g, sv);
+  // varuints 1 client, 602, 1 range, clock 5, len 10 000.
+  const dsTail = [1, 0xda, 0x04, 1, 5, 0x90, 0x4e];
+  if (!Buffer.from(full.slice(full.length - 7)).equals(Buffer.from(dsTail))) throw new Error("unexpected delete set tail");
+  return Uint8Array.from([...full.slice(0, full.length - 7), 0]);
+}
+
+/**
+ * Spec R6-17: client 500's source of `legacyDoc` (`pendingStructs(500, 2000)`),
+ * then 500 `"g"` (clocks 2005-2504, withheld) and 100 `"h"` (clocks
+ * 2505-2604); the update of the last 100 only.
+ * @returns The update.
+ */
+function client500After500(): Uint8Array {
+  const e = new Y.Doc();
+  e.clientID = 500;
+  const t = e.getText("junk");
+  for (let i = 0; i < 5; i++) t.insert(0, "a");
+  t.insert(0, "z".repeat(2000));
+  t.insert(0, "g".repeat(500));
+  const sv = Y.encodeStateVector(e);
+  t.insert(0, "h".repeat(100));
+  return Y.encodeStateAsUpdate(e, sv);
+}
+
+describe("round 6: pending content compared by the clocks it covers (spec 14a.5)", () => {
+  it("R6-14 a partly resolved legacy pending delete set grows in bytes but shrinks in coverage, so nothing is refused", async () => {
+    await boot();
+    const { legacy, upTo130 } = partlyResolvableDs();
+    const doc = await load(CV, legacy);
+    expect(doc.store.pendingDs?.byteLength).toBe(18);
+    expect(dsCoverage(doc)).toBe(100);
+    const a = conn(doc);
+    const u = Y.encodeStateAsUpdate(upTo130, Y.encodeStateVector(doc));
+    expect(u.byteLength).toBe(41);
+    await send(doc, a, u);
+    expect(doc.store.pendingDs?.byteLength).toBe(19);
+    expect(dsCoverage(doc)).toBe(70);
+    expect(a.close).not.toHaveBeenCalled();
+    expect(w.inbound.isRefused(a.socketId, CV)).toBe(false);
+    for (let i = 0; i < 3; i++) {
+      const writer = conn(doc, { socketId: `w${i}`, userId: `uw${i}` });
+      const client = syncedClient(doc, 3000 + i);
+      await send(doc, writer, capture(client, () => client.getMap("m").set(`k${i}`, 1)));
+      expect(writer.close).not.toHaveBeenCalled();
+      expect(doc.store.pendingDs?.byteLength).toBe(19);
+    }
+    expect(refusalLogs()).toEqual([]);
+  });
+
+  it("R6-15 a beyond-clock delete raising the pending delete set's coverage from 3 to 8 is refused and logged with both coverages", async () => {
+    await boot();
+    const doc = await load(CV, legacyDoc());
+    const before = pendingOf(doc);
+    const a = conn(doc);
+    const u = beyondDs(4242, 200, 5);
+    const c = cost(u, doc);
+    const record = rec(CV);
+    await send(doc, a, u);
+    expect(pendingOf(doc)).toEqual(before);
+    expect(doc.store.pendingDs?.byteLength).toBe(22);
+    expectPendingRefusal(doc, a, { current: record.current + c, heldSum: record.heldSum, before: { structs: 2000, ds: 3 }, after: { structs: 2000, ds: 8 } });
+  });
+
+  it("R6-16 pending structs that shrink in bytes but grow in coverage (2000 to 10 000) are refused", async () => {
+    await boot();
+    const src = new Y.Doc();
+    src.getText("body").insert(0, "hello");
+    Y.applyUpdate(src, pendingStructs(500, 2000));
+    const doc = await load(CV, src);
+    const before = pendingOf(doc);
+    expect(before.structs?.update.byteLength).toBe(2024);
+    expect(before.structs?.missing).toEqual([[500, 4]]);
+    expect(before.ds).toBeNull();
+    const d602 = deletedRunWithoutDs();
+    expect(d602.byteLength).toBe(12);
+    const u = Y.mergeUpdates([pendingSource(500, 2000).full, d602]);
+    expect(u.byteLength).toBe(2055);
+    const a = conn(doc);
+    const c = cost(u, doc);
+    const record = rec(CV);
+    await send(doc, a, u);
+    expect(pendingOf(doc)).toEqual(before);
+    expect(doc.getText("junk").length).toBe(2005);
+    expectPendingRefusal(doc, a, { current: record.current + c, heldSum: record.heldSum, before: { structs: 2000, ds: 0 }, after: { structs: 10_000, ds: 0 } });
+  });
+
+  it("R6-17 a Skip inside the pending structs is not coverage, so trading 500 clocks for 100 behind a gap is not refused", async () => {
+    await boot();
+    const src = legacyDoc();
+    Y.applyUpdate(src, pendingStructs(501, 500));
+    const doc = await load(CV, src);
+    expect(pendingStructBytes(doc)).toBe(2532);
+    expect(doc.store.pendingStructs?.missing).toEqual(new Map([[500, 4], [501, 4]]));
+    expect(structsCoverage(doc)).toBe(2500);
+    const u = Y.mergeUpdates([pendingSource(501, 500).full, client500After500()]);
+    expect(u.byteLength).toBe(656);
+    const a = conn(doc);
+    await send(doc, a, u);
+    expect(pendingStructBytes(doc)).toBe(2134);
+    expect(structsCoverage(doc)).toBe(2100);
+    expect(a.close).not.toHaveBeenCalled();
+    expect(refusalLogs()).toEqual([]);
+  });
+
+  it("R6-18 keystrokes on a document holding both kinds of pending content decode neither while they are unchanged", async () => {
+    await boot();
+    const doc = stored(CV, legacyDoc());
+    const spent = instrumentListeners(doc);
+    await runLoadHook(doc);
+    const a = conn(doc);
+    const client = syncedClient(doc, 33);
+    for (let i = 0; i < 20; i++) {
+      const u = capture(client, () => client.getText("body").insert(0, "k"));
+      await expect(beforeSync(doc, a, SYNC.update, u)).resolves.toBeUndefined();
+      const structsBefore = doc.store.pendingStructs?.update;
+      spent.decodes = 0;
+      applyFrom(doc, a, u);
+      expect(doc.store.pendingStructs?.update).toBe(structsBefore);
+      expect(doc.store.pendingDs?.byteLength).toBe(22);
+      expect(spent.decodes).toBe(0);
+    }
+    expect(a.close).not.toHaveBeenCalled();
+    expect(refusalLogs()).toEqual([]);
+  });
+});
+
+describe("round 6: no refusal mark for a connection no longer in the document (spec 14a.6)", () => {
+  it("R6-20 a 2a refusal after the connection left the document restores the pending content and logs, but marks nothing", async () => {
+    await boot();
+    const doc = await load(CV);
+    const a = conn(doc);
+    handshake(a.socketId, CV);
+    const u = pendingStructs(777, 2000);
+    const before = rec(CV);
+    await expect(beforeSync(doc, a, SYNC.update, u)).resolves.toBeUndefined();
+    doc.removeConnection(a as unknown as Parameters<Document["removeConnection"]>[0]);
+    applyFrom(doc, a, u);
+    expect(doc.store.pendingStructs).toBeNull();
+    expect(refusalLogs()).toEqual([expect.objectContaining({ step: "pending" })]);
+    expect(rec(CV).heldSum).toBe(before.heldSum);
+    expect(w.inbound.isRefused(a.socketId, CV)).toBe(false);
   });
 });
 
@@ -1117,20 +1457,53 @@ function pendingChain(): { head: Uint8Array; mid: Uint8Array; tail: Uint8Array }
   return { head, mid, tail };
 }
 
+/** What `instrumentListeners` measured. */
+interface ListenerSpend {
+  /** Milliseconds spent in the wrapped listeners since last reset. */
+  ms: number;
+  /** yjs decode calls made inside the wrapped listeners since last reset. */
+  decodes: number;
+  /** The events whose listeners were wrapped. */
+  wrapped: Set<string>;
+}
+
 /**
- * Spec P-15: client 777's `Y.Array`, clock 0 withheld, then 300 000
- * single-item inserts at the front in one transaction; string items, so the
- * stored pending structs pass 3 MB.
+ * Time every `beforeTransaction` / `afterTransaction` listener installed on
+ * the document from now on, and count the yjs decodes made inside them.
+ * @param doc - The document, before the load hook installs its listeners.
+ * @returns The running totals.
+ */
+function instrumentListeners(doc: Document): ListenerSpend {
+  const spent: ListenerSpend = { ms: 0, decodes: 0, wrapped: new Set<string>() };
+  const realOn = doc.on.bind(doc) as (name: string, f: (...args: unknown[]) => void) => void;
+  (doc as unknown as { on: (name: string, f: (...args: unknown[]) => void) => void }).on = (name, f): void => {
+    if (name !== "beforeTransaction" && name !== "afterTransaction") return realOn(name, f);
+    spent.wrapped.add(name);
+    realOn(name, (...args: unknown[]): void => {
+      const decodes = yjsCalls.decode;
+      const t0 = performance.now();
+      f(...args);
+      spent.ms += performance.now() - t0;
+      spent.decodes += yjsCalls.decode - decodes;
+    });
+  };
+  return spent;
+}
+
+/**
+ * Spec P-15 (round 6): client 777's `Y.Array`, clock 0 withheld, then
+ * 800 000 single-item inserts of numbers at the front in one transaction, so
+ * the stored pending structs are 3 191 776 bytes (`spec-r6/collab/p15.mjs`).
  * @returns The update that pends on any document lacking clock 0.
  */
 function bigPending(): Uint8Array {
   const src = new Y.Doc();
   src.clientID = 777;
-  const arr = src.getArray<string>("a");
-  arr.insert(0, ["0"]);
+  const arr = src.getArray<number>("a");
+  arr.insert(0, [0]);
   const sv = Y.encodeStateVector(src);
   src.transact(() => {
-    for (let i = 0; i < 300_000; i++) arr.insert(0, [`item${i}`]);
+    for (let i = 0; i < 800_000; i++) arr.insert(0, [i]);
   });
   const u = Y.encodeStateAsUpdate(src, sv);
   src.destroy();

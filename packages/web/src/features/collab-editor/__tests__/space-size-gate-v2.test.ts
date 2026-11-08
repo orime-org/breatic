@@ -20,6 +20,10 @@ import { NodeSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import * as Y from 'yjs';
 
+vi.mock('@web/features/collab-editor/space-delete-executor', async (importOriginal) => {
+  const actual = await importOriginal<typeof Executor>();
+  return { ...actual, planSpaceDelete: vi.fn(actual.planSpaceDelete) };
+});
 vi.mock('@web/lib/toast', () => ({
   toast: { warning: vi.fn(), error: vi.fn(), info: vi.fn(), success: vi.fn() },
 }));
@@ -28,6 +32,8 @@ import { documentBodyFragment } from '@breatic/shared';
 import { changeLocale } from '@web/i18n/locale-bootstrap';
 import { ySyncPluginKey as yProsemirrorSyncKey } from 'y-prosemirror';
 import { ySyncPluginKey as yTiptapSyncKey } from '@web/features/collab-editor/collab-plugin-keys';
+import type * as Executor from '@web/features/collab-editor/space-delete-executor';
+import { planSpaceDelete } from '@web/features/collab-editor/space-delete-executor';
 import { deleteRow } from '@web/spaces/document/document-handle-commands';
 import { moveRowTo } from '@web/spaces/document/document-drag-move';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
@@ -294,13 +300,17 @@ describe('10.1 states and remote transactions', () => {
     expectWarnings(COPY.T_ADD);
   });
 
-  it.each(EDITORS)('G-04: $label in F, the redraw after an executor write is let through and matches Yjs', async (editor) => {
-    const subject = editor.open(['Hello world']);
+  it.each(EDITORS)('G-04: $label in F, the sync-keyed transaction after an executor write (X-07) is let through and matches Yjs', async (editor) => {
+    // Round 6: a deletion inside one paragraph no longer reaches the
+    // executor, so the case runs X-07, a cross-block deletion it still takes.
+    const subject = editor.open(['Hello', 'World']);
     enterState(editor.name, 'F');
-    selectText(subject.view, 'llo');
+    vi.mocked(planSpaceDelete).mockClear();
+    select(subject.view, posOf(subject.view.state.doc, 'Hello', 2), posOf(subject.view.state.doc, 'World', 2));
     press(subject.view, 'Backspace');
     await flush();
-    expect(subject.view.state.doc.textContent).toBe('He world');
+    expect(vi.mocked(planSpaceDelete)).toHaveBeenCalledTimes(1);
+    expect(subject.view.state.doc.textContent).toBe('Herld');
     subject.inStep();
     expectWarnings();
   });
@@ -310,20 +320,24 @@ describe('10.1 states and remote transactions', () => {
 // 10.2 Step 0: appended transactions.
 
 describe('10.2 step 0, appended transactions', () => {
-  it('G-10: T prompt in F, deleting text beside a chip; the whitespace fix appended after the redraw is dropped silently', async () => {
-    // `ello ` is part of the run before the chip, so the deletion is a text
-    // range (D); the chip then has no space on its left and the whitespace
-    // plugin appends one after the executor's redraw.
+  it('G-10: T prompt in F, deleting the text beside a chip goes to the executor; the whitespace fix appended after it is dropped silently', async () => {
+    // `hello ` is the whole XmlText before the chip; the paragraph's element
+    // holds a chip and a second XmlText as well, so the deletion is not let
+    // through (design line 217) and the executor deletes that XmlText whole
+    // (R). The chip then has no space on its left and the whitespace plugin
+    // appends one.
     const open = openTiptap('prompt', chipParagraph('hello ', CHIP_A, ' world'));
     enterState(CANVAS_NAME, 'F');
+    vi.mocked(planSpaceDelete).mockClear();
     const cap = capture(open.doc);
-    const from = posOf(open.view.state.doc, 'ello ');
-    select(open.view, from, from + 5);
+    const from = posOf(open.view.state.doc, 'hello ');
+    select(open.view, from, from + 6);
     press(open.view, 'Backspace');
     await flush();
+    expect(vi.mocked(planSpaceDelete)).toHaveBeenCalledTimes(1);
     expect(cap.updates).toHaveLength(1);
-    expect(cap.shape()).toBe('D');
-    expect(open.view.state.doc.textContent).toBe('h world');
+    expect(cap.shape()).toBe('R');
+    expect(open.view.state.doc.textContent).toBe(' world');
     expectTiptapInStep(open);
     expectWarnings();
 
@@ -333,7 +347,7 @@ describe('10.2 step 0, appended transactions', () => {
       tail.insert(tail.length, '!');
     });
     await flush();
-    expect(open.view.state.doc.textContent).toBe('h world!');
+    expect(open.view.state.doc.textContent).toBe(' world!');
     expect(cap.updates).toHaveLength(1);
     expectWarnings();
   });

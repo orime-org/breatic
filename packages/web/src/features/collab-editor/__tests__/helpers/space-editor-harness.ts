@@ -17,7 +17,7 @@ import { Editor, type Extensions } from '@tiptap/core';
 import { Paragraph } from '@tiptap/extension-paragraph';
 import { Text } from '@tiptap/extension-text';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { TextSelection, type PluginKey } from '@tiptap/pm/state';
+import { AllSelection, TextSelection, type PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import {
   ySyncPluginKey as bodySyncKey,
@@ -46,6 +46,8 @@ import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-refer
 import { ReferenceMention, referenceMentionContent } from '@web/spaces/canvas/generate/reference-mention';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { deleteRow } from '@web/spaces/document/document-handle-commands';
+import { clearDocument } from '@web/spaces/document/document-select-all-guard';
 import {
   _resetDocumentEditorCacheForTests,
   adoptDocumentEditor,
@@ -478,6 +480,79 @@ export function expectBodyInStep(body: OpenBody): void {
   expect(bodyRootNode(body.fragment, body.view.state.schema).eq(body.view.state.doc)).toBe(true);
 }
 
+/**
+ * A paragraph block.
+ * @param text - Its text, or none.
+ * @param children - Nested blocks.
+ * @returns The block input.
+ */
+export function pBlock(text = '', children?: BlockInput[]): BlockInput {
+  return { type: 'paragraph', ...(text !== '' && { content: text }), ...(children !== undefined && { children }) };
+}
+
+/**
+ * Selects from one needle's offset to another's and presses Backspace.
+ * @param body - The open body.
+ * @param from - Start needle and offset into it.
+ * @param to - End needle and offset into it.
+ * @returns The selection's start.
+ */
+export function deleteBetween(body: OpenBody, from: [string, number], to: [string, number]): number {
+  const a = posOf(body.view.state.doc, from[0], from[1]);
+  const b = posOf(body.view.state.doc, to[0], to[1]);
+  select(body.view, a, b);
+  press(body.view, 'Backspace');
+  return a;
+}
+
+/**
+ * Selects the whole document and deletes it the way the body does: Mod-a
+ * widens to the whole document on its second tier, Backspace then asks the
+ * Space to confirm (`onClearDocumentRequest`), and the confirmation runs
+ * `clearDocument`.
+ * @param body - The open body.
+ * @returns The start of the document's content.
+ */
+export function selectAllAndDelete(body: OpenBody): number {
+  for (let tier = 0; tier < 3 && !(body.view.state.selection instanceof AllSelection); tier += 1) {
+    press(body.view, 'a', { mod: true });
+  }
+  expect(body.view.state.selection).toBeInstanceOf(AllSelection);
+  let asked = false;
+  const stop = body.handle.onClearDocumentRequest(() => {
+    asked = true;
+  });
+  press(body.view, 'Backspace');
+  stop();
+  expect(asked).toBe(true);
+  clearDocument(body.editor);
+  return 1;
+}
+
+/**
+ * Deletes a top-level block from its side menu.
+ * @param body - The open body.
+ * @param index - The block's index.
+ * @returns The position before the block.
+ */
+export function sideMenuDelete(body: OpenBody, index: number): number {
+  const id = topBlockIds(body.editor)[index];
+  const at = nodesOf(body.view.state.doc, 'blockContainer').find((pos) => body.view.state.doc.nodeAt(pos)!.attrs['id'] === id)!;
+  deleteRow(body.editor, id);
+  return at;
+}
+
+/**
+ * Puts the caret inside the n-th empty node of a type.
+ * @param view - The view.
+ * @param type - The node type name.
+ * @param index - Which of the empty ones.
+ */
+export function caretIntoEmpty(view: EditorView, type: string, index = 0): void {
+  const found = nodesOf(view.state.doc, type).filter((pos) => view.state.doc.nodeAt(pos)!.content.size === 0);
+  select(view, found[index] + 1);
+}
+
 // ---------------------------------------------------------------------------
 // The canvas TipTap editors (y-tiptap): text node body, prompt, lyrics.
 
@@ -507,7 +582,7 @@ export interface OpenTiptap {
  * @returns The fragment.
  * @throws {Error} When the node does not hold it.
  */
-function fragmentOf(doc: Y.Doc, kind: TiptapKind): Y.XmlFragment {
+export function fragmentOf(doc: Y.Doc, kind: TiptapKind): Y.XmlFragment {
   const data = doc.getMap<Y.Map<unknown>>(CANVAS_NODES_KEY).get(NODE_ID)?.get('data');
   if (!(data instanceof Y.Map)) throw new Error('node data missing');
   const found = kind === 'textBody' ? data.get('body') : (data.get(kind === 'prompt' ? 'prompts' : 'lyrics') as Y.Map<unknown>).get(MODE);

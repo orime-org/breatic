@@ -7,7 +7,9 @@
  * section 5), the bounds of design 4.2 (section 10), the refusal log fields
  * (section 12), the inbound filter seeing a `beforeSync` refusal (F-10), an
  * unexpected exception in the size judgement (Q8) and a record that failed
- * to be created (Q17). Pending-content and lifecycle cases live in
+ * to be created (Q17), and the round 6 cases of spec section 14a that run
+ * through `beforeSync` (R6-01, R6-02, R6-06, R6-11, R6-12, R6-19, R6-21).
+ * Pending-content and lifecycle cases live in
  * `document-size-pending-hooks.test.ts`.
  *
  * Every hook is the one `createCollabServer` hands to the Hocuspocus `Server`
@@ -41,6 +43,9 @@ import {
   enc,
   handshakeStep2,
   nodeDoc,
+  offlineDeletes,
+  pendingCoverage as coverage,
+  reconnectStep2,
   pendingStructs,
   step1Payload,
   syncedClient,
@@ -161,6 +166,7 @@ interface Hooks {
   beforeSync: (payload: unknown) => Promise<void>;
   afterLoadDocument: (payload: unknown) => Promise<void>;
   receiveFrame: (peer: unknown, message: unknown) => Uint8Array | undefined;
+  onPeerClose: (peer: unknown, event: unknown) => void;
 }
 
 /** A fake Hocuspocus connection (spec 0.4). */
@@ -698,23 +704,23 @@ describe("beforeSync step 3: below the limit", () => {
     const a = conn(doc);
     const b = conn(doc, { socketId: "s2", userId: "u2" });
     const big = insertOnly(doc, 41, 50_000);
-    const s = updateShape(big, doc.store);
     a.sendStateless.mockClear();
     b.sendStateless.mockClear();
 
     const k = await accepts(doc, a, SYNC.update, big);
 
-    expect(k).toBe(s.structBytes);
-    expect(rec(CV).current).toBe(L - 1 + s.structBytes);
+    // Round 6: an insert costs its message length.
+    expect(k).toBe(big.byteLength);
+    expect(rec(CV).current).toBe(L - 1 + big.byteLength);
     expect(rec(CV).phase).toBe("full");
-    const expected = { type: "doc:size", bytes: L - 1 + s.structBytes, limit: L, ceiling: CEIL, phase: "full" };
+    const expected = { type: "doc:size", bytes: L - 1 + big.byteLength, limit: L, ceiling: CEIL, phase: "full" };
     expect(pushes(a)).toEqual([expected]);
     expect(pushes(b)).toEqual([expected]);
   });
 });
 
 describe("beforeSync step 4: between the limit and the hard ceiling", () => {
-  it("G-05 admits pure deletes at the limit; split deletes add structBytes + 64", async () => {
+  it("G-05 admits pure deletes at the limit, adding 6, 70 and 70 (message length plus 32 per split endpoint)", async () => {
     await boot();
     const { nd, src } = combo();
     const doc = await load(CV, src);
@@ -722,15 +728,16 @@ describe("beforeSync step 4: between the limit and the hard ceiling", () => {
     const c = conn(doc);
 
     const sh02 = capture(nd.client, () => nd.data.delete("locked"));
-    expect(await accepts(doc, c, SYNC.update, sh02)).toBe(0);
+    expect(sh02.byteLength).toBe(6);
+    expect(await accepts(doc, c, SYNC.update, sh02)).toBe(6);
     apply(doc, c, sh02);
 
     for (const u of [
       capture(nd.client, () => nd.text.delete(2, 3)), // SH-03
       capture(nd.client, () => nd.focus.delete(1, 1)), // SH-04
     ]) {
-      const s = updateShape(u, doc.store);
-      expect(await accepts(doc, c, SYNC.update, u)).toBe(s.structBytes + 2 * C);
+      expect(u.byteLength).toBe(6);
+      expect(await accepts(doc, c, SYNC.update, u)).toBe(6 + 2 * C);
       apply(doc, c, u);
     }
   });
@@ -800,29 +807,44 @@ describe("beforeSync step 5: at or over the hard ceiling", () => {
 });
 
 describe("beforeSync step 2: split endpoints", () => {
-  it("G-10 refuses 1999 split endpoints while normal with step splits", async () => {
-    await boot();
+  it("G-10 checks split endpoints only from the limit on: 1999 are admitted while normal or warning, refused at full", async () => {
     const { alt, src } = combo();
+    const splits = deleteAt(alt.t, oddIndices());
+    expect(splits.byteLength).toBe(2941);
+    for (const at of [1000, L - 1]) {
+      await boot();
+      const doc = await load(CV, src);
+      setCur(CV, at);
+      const c = conn(doc);
+      expect(await accepts(doc, c, SYNC.update, splits), `current ${at}`).toBe(2941 + 1999 * C);
+      expect(rec(CV).current).toBe(at + 66_909);
+    }
+    await boot();
     const doc = await load(CV, src);
-    setCur(CV, 1000);
+    setCur(CV, L);
     const c = conn(doc);
-    await refuses(doc, c, SYNC.update, deleteAt(alt.t, oddIndices()), "splits");
+    await refuses(doc, c, SYNC.update, splits, "splits");
   });
 
-  it("G-11 admits 1024 split endpoints and refuses 1025", async () => {
-    await boot();
+  it("G-11 at the limit admits 1024 split endpoints and refuses 1025; one byte under the limit admits 1025", async () => {
     const { alt, src } = combo();
-    const doc = await load(CV, src);
-    setCur(CV, 1000);
-    const c = conn(doc);
     const at1024 = deleteAt(alt.t, evenIndices());
-    expect(updateShape(at1024, doc.store).splitEndpoints).toBe(1024);
-    await accepts(doc, c, SYNC.update, at1024);
     // A second alt2000 client with the same structs, so both updates are judged on the same store.
-    const fresh = alt2000();
-    const at1025 = deleteAt(fresh.t, [0, ...evenIndices()]);
+    const at1025 = deleteAt(alt2000().t, [0, ...evenIndices()]);
+
+    await boot();
+    const doc = await load(CV, src);
+    setCur(CV, L);
+    const c = conn(doc);
+    expect(updateShape(at1024, doc.store).splitEndpoints).toBe(1024);
     expect(updateShape(at1025, doc.store).splitEndpoints).toBe(1025);
+    await accepts(doc, c, SYNC.update, at1024);
     await refuses(doc, c, SYNC.update, at1025, "splits");
+
+    await boot();
+    const under = await load(CV, src);
+    setCur(CV, L - 1);
+    await accepts(under, conn(under), SYNC.update, at1025);
   });
 
   it("G-12 refuses too many split endpoints with step splits before steps 4 and 5", async () => {
@@ -840,19 +862,19 @@ describe("beforeSync step 2: split endpoints", () => {
 });
 
 describe("beforeSync: handshakes and concurrent writers", () => {
-  it("G-13 admits a handshake SyncStep2 holding only a delete set at the limit and at the hard ceiling, adding its struct part", async () => {
+  it("G-13 admits a handshake SyncStep2 holding only a delete set at the limit and at the hard ceiling, adding its length (6)", async () => {
     await boot();
     const nd = nodeDoc();
     Y.applyUpdate(nd.server, capture(nd.client, () => nd.nodes.delete("n1")));
     const doc = await load(CV, nd.server);
     const c = conn(doc);
     const step2 = handshakeStep2(doc, nd.client);
-    const s = updateShape(step2, doc.store);
+    expect(step2.byteLength).toBe(6);
     for (const at of [L, CEIL]) {
       setCur(CV, at);
       const before = rec(CV).current;
-      expect(await accepts(doc, c, SYNC.step2, step2)).toBe(s.structBytes);
-      expect(rec(CV).current).toBe(before + s.structBytes);
+      expect(await accepts(doc, c, SYNC.step2, step2)).toBe(6);
+      expect(rec(CV).current).toBe(before + 6);
     }
   });
 
@@ -866,7 +888,7 @@ describe("beforeSync: handshakes and concurrent writers", () => {
     const uA = insertOnly(doc, 61, 2000);
     const uB = insertOnly(doc, 62, 10);
     const kA = cost(uA, doc);
-    expect(updateShape(uA, doc.store).structBytes).toBeGreaterThan(760);
+    expect(kA).toBeGreaterThan(760);
     const hold = deferred();
     activity.hold = hold.promise;
 
@@ -970,7 +992,8 @@ describe("beforeSync: admit and the record", () => {
     const c = conn(doc);
     const heldBefore = rec(CV).heldSum;
     const k = await accepts(doc, c, SYNC.update, capture(nd.client, () => nd.text.delete(2, 3)));
-    expect(k).toBe(2 * C);
+    // Round 6: SH-03 costs its 6 bytes plus 32 per split endpoint.
+    expect(k).toBe(6 + 2 * C);
     w.size.release(CV, asConnection(c));
     expect(rec(CV).heldSum).toBe(heldBefore);
   });
@@ -999,8 +1022,9 @@ describe("beforeSync: admit and the record", () => {
     logger.warn.mockClear();
     apply(doc, c, twoGroups);
 
+    // Round 6 adds pendingBefore / pendingAfter to a step 2a log line (LG-02).
     expect(refusalLogs()).toEqual([
-      [{ documentName: CV, userId: "u1", current, limit: L, ceiling: CEIL, step: "pending" }, REFUSED],
+      [expect.objectContaining({ documentName: CV, userId: "u1", current, limit: L, ceiling: CEIL, step: "pending" }), REFUSED],
     ]);
     expect(c.close).toHaveBeenCalledWith(expect.objectContaining({ reason: COLLAB_DOCUMENT_TOO_LARGE_REASON }));
     expect(doc.store.pendingStructs).toBeNull();
@@ -1009,7 +1033,7 @@ describe("beforeSync: admit and the record", () => {
 });
 
 describe("design 4.2 bounds", () => {
-  it("B-01 a write below the limit adds structBytes + 32 per split endpoint, at most one message + 32 x 1024", async () => {
+  it("B-01 a write below the limit adds exactly its message length plus 32 per split endpoint", async () => {
     await boot();
     const { alt, src } = combo();
     const doc = await load(CV, src);
@@ -1024,26 +1048,36 @@ describe("design 4.2 bounds", () => {
     expect(s.splitEndpoints).toBe(1024);
     expect(s.beyondClockRanges).toBe(0);
     const k = await accepts(doc, c, SYNC.update, u);
-    expect(k).toBe(s.structBytes + C * 1024);
-    expect(k).toBeLessThanOrEqual(u.byteLength + C * 1024);
+    expect(k).toBe(u.byteLength + C * 1024);
   });
 
-  it("B-03 between the limit and the hard ceiling every one-character delete adds 64 until the ceiling, then the next is over_ceiling", async () => {
+  it("B-03 R6-06 between the limit and the hard ceiling each one-character delete adds 70; the one crossing the ceiling pushes at once, the next is over_ceiling", async () => {
     await boot();
     const { alt, src } = combo();
     const doc = await load(CV, src);
-    // 300 deletes of 64 bytes each land exactly on the ceiling.
-    const start = CEIL - 300 * 2 * C;
-    expect(start).toBeGreaterThanOrEqual(L);
-    setCur(CV, start);
-    const c = conn(doc);
-    // Original index 2k sits at index k + 1 once the k - 1 before it are gone.
-    const deletes = Array.from({ length: 301 }, (_, i) => capture(alt.client, () => alt.t.delete(i + 2, 1)));
-    for (const u of deletes.slice(0, 300)) {
-      expect(await accepts(doc, c, SYNC.update, u)).toBe(2 * C);
+    setCur(CV, CEIL - 1000);
+    const a = conn(doc);
+    const b = conn(doc, { socketId: "s2", userId: "u2" });
+    a.sendStateless.mockClear();
+    b.sendStateless.mockClear();
+    // The i-th delete removes original index 1 + 2i: one character, two split endpoints, 6 bytes.
+    const deletes = Array.from({ length: 16 }, (_, i) => capture(alt.client, () => alt.t.delete(1 + i, 1)));
+    for (const [i, u] of deletes.slice(0, 14).entries()) {
+      expect(u.byteLength, `delete ${i + 1}`).toBe(6);
+      expect(await accepts(doc, a, SYNC.update, u)).toBe(6 + 2 * C);
     }
-    expect(rec(CV).current).toBe(CEIL);
-    await refuses(doc, c, SYNC.update, deletes[300] as Uint8Array, "over_ceiling");
+    expect(rec(CV).current).toBe(CEIL - 1000 + 14 * 70);
+    expect(pushes(a)).toEqual([]);
+    expect(pushes(b)).toEqual([]);
+
+    expect(rec(CV).current).toBe(10_747_884);
+    await accepts(doc, a, SYNC.update, deletes[14] as Uint8Array);
+    expect(rec(CV).current).toBe(10_747_954);
+    const crossed = { type: "doc:size", bytes: 10_747_954, limit: L, ceiling: CEIL, phase: "full" };
+    expect(pushes(a)).toEqual([crossed]);
+    expect(pushes(b)).toEqual([crossed]);
+
+    await refuses(doc, a, SYNC.update, deletes[15] as Uint8Array, "over_ceiling");
   });
 
   it("B-04 over the hard ceiling the same whole-node delete is admitted 1000 times and the size stops changing after the first", async () => {
@@ -1065,7 +1099,7 @@ describe("design 4.2 bounds", () => {
 });
 
 describe("refusal log fields", () => {
-  it("LG-01 LG-03 logs one line per refusal with exactly the design 4.2 fields and each step's value", async () => {
+  it("LG-01 LG-03 logs one line per refusal with exactly the design 4.2 fields (plus the pending coverage at 2a) and each step's value", async () => {
     await boot();
     const { nd, alt, src } = combo();
     const doc = await load(CV, src);
@@ -1083,15 +1117,23 @@ describe("refusal log fields", () => {
     expect(Object.keys(lastLog()).sort()).toEqual(fields);
     reauth(c, CV);
 
+    // Round 6: split endpoints are checked from the limit on (G-10 at the limit).
+    setCur(CV, L);
     await refuses(doc, c, SYNC.update, deleteAt(alt.t, oddIndices()), "splits");
     expect(Object.keys(lastLog()).sort()).toEqual(fields);
     reauth(c, CV);
 
+    setCur(CV, 1000);
     const pend = pendingStructs(777, 2000);
     await accepts(doc, c, SYNC.update, pend);
     logger.warn.mockClear();
     apply(doc, c, pend);
     expect(lastLog()).toMatchObject({ step: "pending" });
+    expect(Object.keys(lastLog()).sort()).toEqual([...fields, "pendingAfter", "pendingBefore"].sort());
+    reauth(c, CV);
+
+    setCur(CV, 1000);
+    await refuses(doc, c, SYNC.update, new Uint8Array([1]), "error");
     expect(Object.keys(lastLog()).sort()).toEqual(fields);
     reauth(c, CV);
 
@@ -1114,9 +1156,14 @@ describe("refusal log fields", () => {
     const k = await accepts(doc, c, SYNC.update, pend);
     logger.warn.mockClear();
     apply(doc, c, pend);
-    expect(refusalLogs()).toEqual([
-      [{ documentName: CV, userId: "u7", current: 1000 + k, limit: L, ceiling: CEIL, step: "pending" }, REFUSED],
-    ]);
+    expect(refusalLogs()).toHaveLength(1);
+    const [fields, message] = refusalLogs()[0] as [Record<string, unknown>, string];
+    expect(message).toBe(REFUSED);
+    expect(Object.keys(fields).sort()).toEqual(["ceiling", "current", "documentName", "limit", "pendingAfter", "pendingBefore", "step", "userId"]);
+    expect(fields).toMatchObject({ documentName: CV, userId: "u7", current: 1000 + k, limit: L, ceiling: CEIL, step: "pending" });
+    // P-01: structs coverage 0 -> 2000, pending delete set 0 -> 0 (answer Q22: the two apart, key names the implementation's).
+    expect(coverage(fields.pendingBefore)).toEqual({ structs: 0, ds: 0 });
+    expect(coverage(fields.pendingAfter)).toEqual({ structs: 2000, ds: 0 });
   });
 });
 
@@ -1176,5 +1223,164 @@ describe("first-version steps are gone", () => {
       expect(refusalSteps).not.toContain(old);
     }
     expect(rateLimit).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Expect production `beforeSync` to refuse a message of a connection no longer
+ * in the document (spec 14a.6): the error carries the size reason and one
+ * refusal log is written, but the inbound filter gets no mark, so the
+ * socket's next Update frame of the document passes.
+ * @param doc - The document.
+ * @param c - The connection, already removed from the document.
+ * @param payload - The update.
+ * @param step - The expected refusal step.
+ */
+async function refusesUnmarked(doc: Document, c: FakeConnection, payload: Uint8Array, step: Step): Promise<void> {
+  expect(doc.hasConnection(asConnection(c))).toBe(false);
+  const before = rec(doc.name);
+  logger.warn.mockClear();
+  const err = await beforeSync(doc, c, SYNC.update, payload).then(
+    () => undefined,
+    (e: unknown) => e,
+  );
+  expect(err).toBeInstanceOf(Error);
+  expect((err as { reason?: unknown }).reason).toBe(COLLAB_DOCUMENT_TOO_LARGE_REASON);
+  expect(refusalLogs()).toEqual([
+    [{ documentName: doc.name, userId: c.context.user.id, current: before.current, limit: L, ceiling: CEIL, step }, REFUSED],
+  ]);
+  expect(rec(doc.name)).toEqual(before);
+  expect(w.filter.isRefused(c.socketId, doc.name)).toBe(false);
+}
+
+/**
+ * Spec R6-01: client 9 inserts 50 000 `"a"` one at a time at index 0 of
+ * `getText("t")`, so no two items merge.
+ * @returns The client and its text.
+ */
+function unmergedText(): { client: Y.Doc; t: Y.Text } {
+  const client = new Y.Doc();
+  client.clientID = 9;
+  const t = client.getText("t");
+  for (let i = 0; i < 50_000; i++) t.insert(0, "a");
+  return { client, t };
+}
+
+describe("round 6: cost is the message length plus 32 per event (spec 14a.1)", () => {
+  it("R6-01 a pure delete costs its message length; deleting every other of 50 000 items grows the document less than that, and the next measure corrects it", async () => {
+    const { client, t } = unmergedText();
+    const src = syncedClient(client, 90);
+    expect(enc(src)).toBe(333_494);
+    const cut = capture(client, () => {
+      for (let i = 0; i < 25_000; i++) t.delete(i, 1);
+    });
+    expect(cut.byteLength).toBe(91_750);
+
+    await boot();
+    const doc = await load(CV, src);
+    expect(rec(CV).current).toBe(333_494);
+    const a = conn(doc);
+    expect(updateShape(cut, doc.store)).toMatchObject({ pureDelete: true, splitEndpoints: 0, beyondClockRanges: 0 });
+    expect(await accepts(doc, a, SYNC.update, cut)).toBe(91_750);
+    expect(rec(CV).current).toBe(333_494 + 91_750);
+    apply(doc, a, cut);
+    expect(enc(doc) - 333_494).toBe(66_748);
+    vi.advanceTimersByTime(2000);
+    expect(rec(CV)).toMatchObject({ exact: 400_242, current: 400_242, heldSum: 0 });
+
+    await boot();
+    const full = await load(CV, src);
+    setCur(CV, 10_700_000);
+    const fa = conn(full);
+    const fb = conn(full, { socketId: "s2", userId: "u2" });
+    fa.sendStateless.mockClear();
+    fb.sendStateless.mockClear();
+    expect(await accepts(full, fa, SYNC.update, cut)).toBe(91_750);
+    expect(rec(CV).current).toBe(10_791_750);
+    const crossed = { type: "doc:size", bytes: 10_791_750, limit: L, ceiling: CEIL, phase: "full" };
+    expect(pushes(fa)).toEqual([crossed]);
+    expect(pushes(fb)).toEqual([crossed]);
+  }, 60_000);
+
+  it("R6-02 through beforeSync an insert costs its length and deletes add 32 per split endpoint or beyond-clock range", async () => {
+    await boot();
+    const { nd, alt, src } = combo();
+    const doc = await load(CV, src);
+    setCur(CV, 1000);
+    const c = conn(doc);
+    const sh12u = capture(nd.client, () => {
+      const n2 = new Y.Map<unknown>();
+      nd.nodes.set("n2", n2);
+      n2.set("name", "abc");
+    });
+    const sh03 = capture(nd.client, () => nd.text.delete(2, 3));
+    const sh08 = beyondDs(4242, 100, 1);
+    const sh05 = deleteAt(alt.t, oddIndices());
+    expect([sh12u.byteLength, sh03.byteLength, sh08.byteLength, sh05.byteLength]).toEqual([32, 6, 7, 2941]);
+    const added: number[] = [];
+    for (const u of [sh12u, sh03, sh08, sh05]) {
+      const before = rec(CV).current;
+      await expect(beforeSync(doc, c, SYNC.update, u)).resolves.toBeUndefined();
+      added.push(rec(CV).current - before);
+    }
+    expect(added).toEqual([32, 70, 39, 66_909]);
+  });
+});
+
+describe("round 6: split endpoints are checked only from the limit on (spec 14a.4)", () => {
+  it("R6-11 a reconnecting member's 600 offline deletes (1200 split endpoints) are admitted below the limit and refused from it", async () => {
+    const od = offlineDeletes();
+    const member = od.memberAfter(600);
+    for (const [at, admitted] of [[undefined, true], [L - 1, true], [L, false], [CEIL, false]] as const) {
+      await boot();
+      const doc = await load(DOC, od.author);
+      expect(enc(doc)).toBe(40_607);
+      if (at !== undefined) setCur(DOC, at);
+      const c = conn(doc);
+      const step2 = reconnectStep2(member, doc);
+      expect(step2.byteLength).toBe(2157);
+      expect(updateShape(step2, doc.store)).toMatchObject({ pureDelete: true, splitEndpoints: 1200 });
+      if (admitted) {
+        expect(await accepts(doc, c, SYNC.step2, step2), `current ${at ?? "as loaded"}`).toBe(2157 + 1200 * C);
+        expect(2157 + 1200 * C).toBe(40_557);
+      } else {
+        await refuses(doc, c, SYNC.step2, step2, "splits");
+      }
+    }
+  });
+
+  it("R6-12 at the limit 400 offline deletes (800 split endpoints) are admitted as a pure delete", async () => {
+    const od = offlineDeletes();
+    await boot();
+    const doc = await load(DOC, od.author);
+    setCur(DOC, L);
+    const c = conn(doc);
+    const step2 = reconnectStep2(od.memberAfter(400), doc);
+    expect(step2.byteLength).toBe(1437);
+    expect(updateShape(step2, doc.store).splitEndpoints).toBe(800);
+    expect(await accepts(doc, c, SYNC.step2, step2)).toBe(27_037);
+  });
+});
+
+describe("round 6: no refusal mark for a connection no longer in the document (spec 14a.6)", () => {
+  it("R6-19 refuses a closed, removed connection's insert at full without marking the socket", async () => {
+    await boot();
+    const doc = await load(CV, combo().src);
+    setCur(CV, L);
+    const a = conn(doc);
+    doc.removeConnection(asConnection(a));
+    await refusesUnmarked(doc, a, sh12(doc, 92), "full");
+    expect(updateFramePasses("s1", CV)).toBe(true);
+  });
+
+  it("R6-21 refuses a queued Update after its socket closed without creating a filter record for the socket", async () => {
+    await boot();
+    const doc = await load(CV, combo().src);
+    setCur(CV, L);
+    const a = conn(doc);
+    w.hooks.onPeerClose(peerOf("s1"), {});
+    // Hocuspocus's handleClose runs after onPeerClose and removes the connection.
+    doc.removeConnection(asConnection(a));
+    await refusesUnmarked(doc, a, sh12(doc, 93), "full");
   });
 });
