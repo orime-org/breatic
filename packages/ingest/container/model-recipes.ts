@@ -7,7 +7,6 @@
  */
 import { open, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { decodeCocoRleMask } from "@shared/mini-tools/coco-rle.js";
 import { gridFrameSlot, gridSlotFrame, type ModelGrid } from "@shared/mini-tools/model-grid.js";
 import { presentationRunOffsets, type VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
 import type {
@@ -16,6 +15,7 @@ import type {
 } from "@shared/upload/mini-tool-plan-types.js";
 import type { MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
+import { presentationTimes, readRleTrack, rleForeground } from "@ingest/container/rle-track.js";
 import {
   BT709_TAGS, decodedPicture, local, minus, picture, placement, readVideoMetadata, RecipeFailure, roundTimes, seconds, span, videoOutput, windowGraph,
   type PlanLimits,
@@ -78,34 +78,6 @@ function tableFrames(table: VideoPresentationTable, startFrame: number, count: n
 }
 
 /**
- * Read an RLE track: a JSON array of COCO compressed counts per frame, null for a frame without a mask.
- * @param file - The track.
- * @returns Its entries.
- * @throws {RecipeFailure} When the file is not such an array (`tracking_output_mismatch`).
- */
-async function readTrack(file: string): Promise<(string | null)[]> {
-  let value: unknown;
-  try { value = JSON.parse(await readFile(file, "utf8")); } catch { throw new RecipeFailure("tracking_output_mismatch"); }
-  if (!Array.isArray(value) || !value.every((item) => item === null || typeof item === "string")) throw new RecipeFailure("tracking_output_mismatch");
-  return value as (string | null)[];
-}
-
-/**
- * One frame's mask as gray bytes, 255 on the foreground and 0 elsewhere; all 0 without a mask.
- * @param counts - The frame's counts, or null.
- * @param size - The mask's size.
- * @param size.width - Its width.
- * @param size.height - Its height.
- * @returns The bytes.
- * @throws {RangeError} When the counts do not cover the size.
- */
-function foreground(counts: string | null, size: { width: number; height: number }): Uint8Array {
-  if (counts === null) return new Uint8Array(size.width * size.height);
-  // The decoder writes VOID bytes: foreground 0, background 255.
-  return decodeCocoRleMask({ size: [size.height, size.width], counts }, size).map((value) => (value === 0 ? 255 : 0));
-}
-
-/**
  * Join the forward and reversed tracking clips' RLE over the range (execution design §10.2): the reversed clip back in source
  * order without its anchor frame when a forward clip follows, then the forward clip.
  * @param recipe - The join.
@@ -116,7 +88,7 @@ function foreground(counts: string | null, size: { width: number; height: number
  */
 async function joinTracks(recipe: MiniToolPlanRleJoin, request: ModelRecipeRequest): Promise<void> {
   const tracks = await Promise.all(recipe.inputs.map(async (input) => {
-    const track = await readTrack(local(request.inputs, input.inputId));
+    const track = await readRleTrack(local(request.inputs, input.inputId));
     if (track.length !== input.frameCount) throw new RecipeFailure("tracking_output_mismatch");
     return { order: input.order, track };
   }));
@@ -126,8 +98,7 @@ async function joinTracks(recipe: MiniToolPlanRleJoin, request: ModelRecipeReque
   const joined = [...(forward === undefined ? before : before.slice(0, Math.max(0, before.length - 1))), ...(forward ?? [])];
   let empty = true;
   for (const counts of joined) {
-    let mask: Uint8Array;
-    try { mask = foreground(counts, recipe); } catch { throw new RecipeFailure("tracking_output_mismatch"); }
+    const mask = rleForeground(counts, recipe, 255);
     if (empty && mask.includes(255)) empty = false;
   }
   if (empty) throw new RecipeFailure("empty_foreground");
@@ -167,14 +138,13 @@ function gridTiming(grid: ModelGrid): { filter: string; timing: string[] } {
  * @throws {Error} When FFmpeg fails.
  */
 async function eraseMask(recipe: MiniToolPlanBriaMask, request: ModelRecipeRequest, run: Run): Promise<void> {
-  const track = await readTrack(local(request.inputs, recipe.inputId));
+  const track = await readRleTrack(local(request.inputs, recipe.inputId));
   if (track.length !== recipe.range.frameCount) throw new RecipeFailure("tracking_output_mismatch");
   const frames = tableFrames(recipe.table, recipe.range.startFrame, recipe.range.frameCount);
   const size = recipe.target;
   const raw = Buffer.alloc(size.width * size.height * recipe.grid.frameCount);
   for (let slot = 0; slot < recipe.grid.frameCount; slot += 1) {
-    let mask: Uint8Array;
-    try { mask = foreground(track[gridSlotFrame(recipe.grid, frames, slot)] ?? null, size); } catch { throw new RecipeFailure("tracking_output_mismatch"); }
+    const mask = rleForeground(track[gridSlotFrame(recipe.grid, frames, slot)] ?? null, size, 255);
     raw.set(mask, slot * size.width * size.height);
   }
   const file = join(request.directory, "erase-mask.gray");
@@ -248,9 +218,7 @@ async function windowMask(recipe: MiniToolPlanModelWindowMask, request: ModelRec
  */
 async function frameAt(recipe: MiniToolPlanFrameAt, request: ModelRecipeRequest, run: Run): Promise<void> {
   const source = local(request.inputs, recipe.inputId);
-  const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-select_streams", "v:0", "-show_entries", "packet=pts_time", "-of", "json", source], run)).toString("utf8")) as
-    { packets?: { pts_time?: string }[] };
-  const times = (answer.packets ?? []).map((packet) => Number(packet.pts_time)).filter(Number.isFinite).sort((a, b) => a - b);
+  const times = await presentationTimes(source, run);
   if (times.length === 0) throw new Error("The condition video has no frame");
   const [numerator, denominator] = rational(recipe.time);
   const target = Number(numerator) / Number(denominator);
@@ -317,7 +285,7 @@ async function eraseComposite(recipe: MiniToolPlanEraseComposite, request: Model
       }
     } finally { await resultFile.close(); }
   }
-  const track = await readTrack(local(request.inputs, recipe.rle));
+  const track = await readRleTrack(local(request.inputs, recipe.rle));
   if (track.length !== range.frameCount) throw new RecipeFailure("tracking_output_mismatch");
   // Each concat list holds one image format; a blank result is black and a blank mask keeps the source.
   const blank = { result: join(directory, "blank-result.y4m"), mask: join(directory, "blank-mask.y4m") };
@@ -334,8 +302,7 @@ async function eraseComposite(recipe: MiniToolPlanEraseComposite, request: Model
     let mask = blank.mask;
     if (slot !== undefined) {
       result = join(directory, `result-${slot}.y4m`);
-      let pixels: Uint8Array;
-      try { pixels = foreground(track[inRange] ?? null, recipe.rleSize); } catch { throw new RecipeFailure("tracking_output_mismatch"); }
+      const pixels = rleForeground(track[inRange] ?? null, recipe.rleSize, 255);
       mask = join(directory, `mask-${n}.y4m`);
       // Every plane carries the mask, so colour is blended by the same weight as luma.
       await writeFile(mask, y4m(recipe.rleSize.width, recipe.rleSize.height, [pixels, pixels, pixels]));

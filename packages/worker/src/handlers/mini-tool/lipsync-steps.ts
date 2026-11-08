@@ -85,13 +85,15 @@ export function lipsyncStoppedLines(people: readonly LipsyncPersonState[]): Lips
 }
 
 /**
- * The person line of a failed `lipsync_faces` job (§97 D18-3).
+ * The person line of a failed `lipsync_faces` job (§97 D18-3): a track with no foreground or one the container cannot read
+ * is the track step's, as the join's own `empty_foreground` and `tracking_output_mismatch` are (execution design §10.2).
  * @param reason - The container's failure reason.
  * @returns The step and category to record.
  * @throws {never} Never.
  */
 export function lipsyncFacesFailureLine(reason: string): { step: LipsyncPersonStep; category: LipsyncCategory } {
   if (reason === "empty_foreground") return { step: "track", category: "no_face" };
+  if (reason === "tracking_output_mismatch") return { step: "track", category: "failed" };
   return { step: "faces", category: reason === "no_face" ? "no_face" : "failed" };
 }
 

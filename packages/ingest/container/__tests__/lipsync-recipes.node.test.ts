@@ -471,6 +471,17 @@ describe('lipsync_faces (§7.17 lipsync_faces row; execution design §9.4 no_fac
     expect([report.ok, report.reason, report.outputs]).toEqual([false, 'empty_foreground', []]);
   });
 
+  // The track is read as the tracking recipes read it: a file that is no per-frame counts array, or counts that do not cover
+  // the frame, fails as the tracking output not matching (execution design §10.2).
+  it.each([
+    ['is not an array of counts', '{"frames":[]}'], ['has counts that do not cover the frame', JSON.stringify(Array.from({ length: 10 }, () => '6'))],
+  ] as const)('LF06 fails with tracking_output_mismatch when the track %s', async (_name, content) => {
+    const path = join(dir, 'track-bad.json');
+    await writeFile(path, content);
+    const { report } = await runJob({ [ID.video]: join(dir, 'faces.mp4'), [ID.track]: path }, [recipe()], 'text/plain');
+    expect([report.ok, report.reason, report.outputs]).toEqual([false, 'tracking_output_mismatch', []]);
+  });
+
   it.each([
     ['winner.mp4', [[16, 16, 20, 20], [72, 16, 40, 40]]],
     ['tie.mp4', [[16, 16, 16, 16], [72, 40, 32, 32]]],

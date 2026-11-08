@@ -26,9 +26,9 @@ import type {
   MiniToolPlanDetectorProfile, MiniToolPlanLipsyncClip, MiniToolPlanLipsyncComposite, MiniToolPlanLipsyncFaces, MiniToolPlanLipsyncStem, MiniToolPlanPixelRect, MiniToolPlanTarget,
 } from "@shared/upload/mini-tool-plan-types.js";
 import type { MediaOfOutput } from "@ingest/jobs/container-report.js";
-import { decodeCocoRleMask } from "@shared/mini-tools/coco-rle.js";
 import { readYuNetFaces } from "@ingest/container/analysis-detection.js";
 import { runPlanCommand, startPlanCommand, type PlanPipe } from "@ingest/container/plan-command.js";
+import { presentationTimes, readRleTrack, rleForeground } from "@ingest/container/rle-track.js";
 import {
   BT709_TAGS, RecipeFailure, detect, local, picture, placement, readMediaMetadata, readVideoMetadata, roundTimes, videoOutput, windowGraph, writeJson, type PlanLimits,
 } from "@ingest/container/presentation-recipes.js";
@@ -86,18 +86,6 @@ async function videoFacts(file: string, run: Run): Promise<{ width: number; heig
 }
 
 /**
- * Read a SAM3 track: a JSON array of COCO compressed counts, one per prepared frame in order (§97 D18-3).
- * @param file - The track.
- * @returns Each frame's counts, null where the track has no mask.
- * @throws {TypeError} When the file is not such an array.
- */
-async function readTrack(file: string): Promise<(string | null)[]> {
-  const value: unknown = JSON.parse(await readFile(file, "utf8"));
-  if (!Array.isArray(value) || !value.every((item) => item === null || typeof item === "string")) throw new TypeError("Expected a track of compressed counts per frame");
-  return value as (string | null)[];
-}
-
-/**
  * Decode one frame's foreground mask.
  * @param track - The track.
  * @param frame - The prepared frame.
@@ -105,13 +93,11 @@ async function readTrack(file: string): Promise<(string | null)[]> {
  * @param size.width - Its width.
  * @param size.height - Its height.
  * @returns One byte per pixel, 1 on the person's foreground; null when the frame has no mask.
- * @throws {RangeError} When the counts do not cover the frame.
+ * @throws {RecipeFailure} `tracking_output_mismatch` when the counts do not cover the frame.
  */
 function maskAt(track: readonly (string | null)[], frame: number, size: { width: number; height: number }): Uint8Array | null {
   const counts = track[frame];
-  if (counts === null || counts === undefined) return null;
-  // The decoder writes VOID bytes: foreground 0, background 255.
-  return decodeCocoRleMask({ size: [size.height, size.width], counts }, size).map((value) => (value === 0 ? 1 : 0));
+  return counts === null || counts === undefined ? null : rleForeground(counts, size, 1);
 }
 
 /**
@@ -139,13 +125,14 @@ async function readFaces(file: string): Promise<FaceRect[]> {
  * @param request - The files, directory and lifetime.
  * @param run - The lifetime and IO bounds of one command.
  * @returns Nothing once the table is written.
- * @throws {RecipeFailure} `empty_foreground` when no frame has foreground, `no_face` when no frame has a face in it.
+ * @throws {RecipeFailure} `empty_foreground` when no frame has foreground, `no_face` when no frame has a face in it,
+ * `tracking_output_mismatch` when the track is not a per-frame counts array covering the frame.
  * @throws {Error} When decoding, detection or writing fails.
  */
 async function findFaces(recipe: MiniToolPlanLipsyncFaces, request: LipsyncRecipeRequest, run: Run): Promise<void> {
   const video = local(request.inputs, recipe.inputId);
   const { width, height, frames } = await videoFacts(video, run);
-  const track = await readTrack(local(request.inputs, recipe.track));
+  const track = await readRleTrack(local(request.inputs, recipe.track));
   const answer = await detect("faces", recipe.profile satisfies MiniToolPlanDetectorProfile, { width, height, count: frames,
     args: ["-hide_banner", "-loglevel", "error", "-nostdin", "-protocol_whitelist", "file", "-i", video, "-map", "0:v:0", "-fps_mode", "passthrough", "-pix_fmt", "bgr24", "-f", "rawvideo", "pipe:1"] },
   request.directory, request.signal, request.limits);
@@ -471,7 +458,7 @@ async function finishEncode(encode: PlanPipe & { stdin: Writable }): Promise<voi
 async function writeClip(recipe: MiniToolPlanLipsyncClip, request: LipsyncRecipeRequest, run: Run): Promise<void> {
   const video = local(request.inputs, recipe.inputId);
   const { width, height } = await videoFacts(video, run);
-  const [track, faces] = await Promise.all([readTrack(local(request.inputs, recipe.track)), readFaces(local(request.inputs, recipe.faces))]);
+  const [track, faces] = await Promise.all([readRleTrack(local(request.inputs, recipe.track)), readFaces(local(request.inputs, recipe.faces))]);
   const grid = resultGrid(recipe.timeline, recipe.table);
   const sources = lipsyncResultSourceFrames(recipe.timeline, recipe.table);
   const highest = Math.max(...sources);
@@ -607,8 +594,7 @@ function layFace(frame: Picture, rect: MiniToolPlanPixelRect, mask: Uint8Array, 
  * @throws {Error} When ffprobe fails.
  */
 async function seekTo(file: string, frame: number, run: Run): Promise<number | null> {
-  const times = (await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-select_streams", "v:0", "-show_entries", "packet=pts_time",
-    "-of", "csv=p=0", file], run)).toString("utf8").split("\n").filter((line) => line.trim() !== "").map(Number).filter((time) => Number.isFinite(time)).sort((x, y) => x - y);
+  const times = await presentationTimes(file, run);
   if (frame >= times.length) return null;
   return frame === 0 ? 0 : (times[frame - 1]! + times[frame]!) / 2;
 }
@@ -662,7 +648,7 @@ async function writeComposite(recipe: MiniToolPlanLipsyncComposite, request: Lip
   try {
     for (const person of recipe.persons) {
       const result = local(request.inputs, person.result);
-      const [faces, track, at] = await Promise.all([readFaces(local(request.inputs, person.faces)), readTrack(local(request.inputs, person.track)), seekTo(result, window.start, run)]);
+      const [faces, track, at] = await Promise.all([readFaces(local(request.inputs, person.faces)), readRleTrack(local(request.inputs, person.track)), seekTo(result, window.start, run)]);
       const decode = at === null ? null : startDecode(["-hide_banner", "-loglevel", "error", "-nostdin", "-protocol_whitelist", "file", "-seek_timestamp", "1", "-ss", String(at), "-i", result,
         "-map", "0:v:0", "-frames:v", String(length), "-vf", `scale=${person.cropSize}:${person.cropSize}:out_color_matrix=bt709:out_range=tv`], false, run);
       persons.push({ faces, track, decode, results: decode === null ? null : frameStream(decode, person.cropSize, person.cropSize, false), cropSize: person.cropSize });

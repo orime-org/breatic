@@ -19,8 +19,9 @@
  *   (`track`, `gen`) is not yet submitted gets a `stopped` line on that step and is not submitted; submitted steps settle.
  * - `lipsyncFacesFailureLine(reason)` (§97 D18-3): the person line of a failed `lipsync_faces` job. Its container reports
  *   `empty_foreground` (no tracked foreground over the used range: the track found nobody) → `{ step: "track", category:
- *   "no_face" }`, `no_face` (foreground but no face in any frame) → `{ step: "faces", category: "no_face" }`; any other
- *   container failure → `{ step: "faces", category: "failed" }`.
+ *   "no_face" }`, `no_face` (foreground but no face in any frame) → `{ step: "faces", category: "no_face" }`,
+ *   `tracking_output_mismatch` (the track it reads is malformed, as the join's own mismatch) → `{ step: "track", category:
+ *   "failed" }`; any other container failure → `{ step: "faces", category: "failed" }`.
  * - `lipsyncFailureReason(people, shared)`: the one CommitFail reason of §9.4, a line per person who did not succeed with
  *   its `detectionNumber`, successful people left out, valid under shared `lipsyncFailureReasonSchema`.
  */
@@ -131,6 +132,7 @@ describe("the person line of a failed faces job (§97 D18-3; execution design §
   it.each([
     ["empty_foreground", { step: "track", category: "no_face" }],
     ["no_face", { step: "faces", category: "no_face" }],
+    ["tracking_output_mismatch", { step: "track", category: "failed" }],
     ["tool_failed", { step: "faces", category: "failed" }],
     ["internal", { step: "faces", category: "failed" }],
   ] as const)("FL01 %s", async (reason, line) => {
