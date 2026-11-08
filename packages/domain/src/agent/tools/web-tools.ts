@@ -29,6 +29,6 @@ export function makeWebTools(context?: ToolContext): { web_search: Tool; web_fet
   const numbers = citationNumbers();
   return {
     web_search: makeSearchTools(numbers).web_search,
-    web_fetch: makeFetchTool(numbers, context?.pageUrlFor ?? (() => undefined)),
+    web_fetch: makeFetchTool(numbers, context?.pageUrlFor ?? (async () => undefined)),
   };
 }

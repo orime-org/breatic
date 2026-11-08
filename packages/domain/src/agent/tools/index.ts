@@ -62,14 +62,14 @@ export type ToolContext = AskUserContext & ToolPictureContext & RequestSpaceCont
   /**
    * The spelling the conversation recorded for a link, or undefined when it
    * does not hold it; `web_fetch` reads only those, in that spelling
-   * (inner#1664). It may answer asynchronously, so a turn can read what it
+   * (inner#1664). It answers asynchronously, so a turn can read what it
    * looks in only when a link first needs it.
    */
   pageUrlFor?: PageUrlFor;
 };
 
 /** The context a tool gets when its caller has none: no media is vouched for. */
-export const NO_TOOL_CONTEXT: ToolContext = { mediaUrlAllowed: () => false, pageUrlFor: () => undefined };
+export const NO_TOOL_CONTEXT: ToolContext = { mediaUrlAllowed: () => false, pageUrlFor: async () => undefined };
 
 /**
  * Complete mapping of tool name to tool instance.

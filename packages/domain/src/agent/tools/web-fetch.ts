@@ -44,9 +44,10 @@ import type { FailureVoice } from "@domain/agent/tools/failure.js";
 
 /**
  * The spelling the conversation recorded for a link, or undefined when it
- * does not hold it; the turn may build what it looks in only when asked.
+ * does not hold it; asynchronous, so the turn may build what it looks in only
+ * when asked.
  */
-export type PageUrlFor = (url: string) => Promise<string | undefined> | string | undefined;
+export type PageUrlFor = (url: string) => Promise<string | undefined>;
 
 /** How the server reads pages for one call: rate limited, then sent to the ingest Worker. */
 export type ReadPages = (request: ReadPagesRequest, signal?: AbortSignal) => Promise<ReadPagesAnswer>;
@@ -408,7 +409,7 @@ const DESCRIPTION =
  * This turn's `web_fetch`.
  * @param numbers - The turn's run of citation numbers, shared with `web_search`.
  * @param pageUrlFor - The spelling the conversation recorded for a link, or
- *   undefined when it does not hold it; it may answer asynchronously.
+ *   undefined when it does not hold it.
  * @returns The tool.
  * @throws {never} Never; the tool it returns throws.
  */
@@ -448,7 +449,7 @@ export function makeFetchTool(numbers: CitationNumbers, pageUrlFor: PageUrlFor):
       const config = getAgentConfig();
       // The reader is sent the spelling the conversation recorded, never the
       // model's: a fragment or credentials it added cannot carry data out.
-      const stored = await Promise.all(asked.map(async (page) => pageUrlFor(page.url)));
+      const stored = await Promise.all(asked.map((page) => pageUrlFor(page.url)));
       const keys = asked.map((page, i) => pageLinkKey(stored[i] ?? page.url));
 
       const toRead: string[] = [];
