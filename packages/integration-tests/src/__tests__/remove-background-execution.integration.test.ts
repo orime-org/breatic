@@ -520,6 +520,34 @@ describe("model-input preparation before generate (inner#1306 §90 E3b; design �
     expect(runPrediction.mock.calls[0]![2]).toEqual(resolvedBody(f, `${f.plan.taskId}:prep:0:a1`));
   });
 
+  // frames-split retry row: a retry of a run that never finished preparing is admitted with its own preparation named in
+  // its body (planned-mini-tool-admission A19), so it prepares under its own task and then generates.
+  it("WP11 a retry whose original never finished preparing prepares under its own task, then generate uses that object", async () => {
+    const f = await seed(); completeProvider(); backend(f);
+    // The original's only preparation attempts failed: it has no done preparation to reuse.
+    for (let attempt = 1; attempt <= f.plan.preparation.chunkRetries + 1; attempt += 1) {
+      jobs.scripted.set(`${f.plan.taskId}:prep:0:a${attempt}`, { schemaVersion: 2, state: "failed", outputs: [], reason: "tool_failed", usage: { wallMs: 500, cpuUsec: 1000000 } });
+    }
+    for (let pickup = 0; pickup < 4; pickup += 1) {
+      const ended = await runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false).then(() => false, (error: unknown) => { if (error instanceof StillRunning) return false; return true; });
+      if (ended) break;
+    }
+    expect(runPrediction).not.toHaveBeenCalled();
+    const retry = structuredClone(f.plan) as typeof f.plan & { retry: { runId: string; outputIndexes: number[] } };
+    retry.taskId = randomUUID(); retry.retry = { runId: f.plan.taskId, outputIndexes: [0] };
+    (retry.body as unknown as { video: { job: string } }).video.job = `${retry.taskId}:prep:0`;
+    retry.planFingerprint = await planHash(retry);
+    await pg`INSERT INTO tasks (id,user_id,project_id,space_id,task_type,mode,source,status,model,params,result)
+      VALUES (${retry.taskId},${f.userId},${retry.projectId},${retry.spaceId},'video','append','mini_tool','running',${retry.model},${pg.json({ miniToolExecution: { ...retry } })},${pg.json({})})`;
+    jobs.submitted.length = 0;
+    for (let pickup = 0; pickup < 3 && runPrediction.mock.calls.length === 0; pickup += 1) {
+      await runMiniToolRemoveBackground(retry.taskId, f.deadlineAt, false).catch((error: unknown) => { if (!(error instanceof StillRunning)) throw error; });
+    }
+    expect(jobs.submitted.map((request) => request.jobId)).toEqual([`${retry.taskId}:prep:0:a1`]);
+    expect(runPrediction).toHaveBeenCalledTimes(1);
+    expect(runPrediction.mock.calls[0]![2]).toEqual(resolvedBody({ ...f, plan: retry }, `${retry.taskId}:prep:0:a1`));
+  });
+
   // §91 D3b-9 (design §7.4 Check, §10.6 失败分类): the frozen receipt cannot change within the run, so a full ledger that
   // fails it is a deterministic `source_ledger_invalid` (transient class: a new run freezes the repaired ledger). The run
   // fails at once instead of polling to the two-hour deadline; nothing is prepared and the provider is not reached.

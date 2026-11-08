@@ -390,6 +390,22 @@ describe("planned execution durable admission", () => {
   });
 });
 
+/**
+ * Record that a run finished its model-input preparation: its prepared pin, as the preparation's registration writes it
+ * (design §7.15 prepared row). A removal retry reuses only such a preparation (frames-split retry row).
+ * @param runId - The run that prepared.
+ * @param toolInputId - Its source's tool input.
+ * @param sourceKey - Its source's storage key.
+ * @returns Nothing.
+ * @throws {Error} On fixture SQL failure.
+ */
+async function seedPrepared(runId: string, toolInputId: string, sourceKey: string): Promise<void> {
+  const preparedKey = `${sourceKey}.${runId}:prep:0:a1`;
+  const [pin] = await pg<{ id: string }[]>`INSERT INTO presentation_pins (holder_kind,holder_id,tool_input_id,prepared_key)
+    VALUES ('prepared',${runId},${toolInputId},${preparedKey}) RETURNING id`;
+  await pg`INSERT INTO presentation_pin_objects (pin_id,storage_key) VALUES (${pin!.id},${preparedKey})`;
+}
+
 /** Credits for some standard-4 seconds under the shipped configuration: the one container quote rule (E3-5). @throws {Error} On invalid prices. */
 function std4Credits(seconds: number): number {
   const config = core.getMiniToolsConfig();
@@ -452,7 +468,8 @@ describe("remove-bg model-input preparation at admission (inner#1306 §90 E3b; d
   it("RB-R01 a failed-output retry reuses the frozen params.video reference and preparation without reading the current version or re-preparing", async () => {
     const f = await seed(); const start = startRecorder();
     await acceptMiniToolExecution(f.body, f.userId, start);
-    const original = start.mock.calls[0]![0] as unknown as { body: { video: unknown }; preparation: unknown; presentationRef: unknown; ledgerReceipts: unknown; planFingerprint: string; binding: unknown; outputs: unknown[] };
+    const original = start.mock.calls[0]![0] as unknown as { body: { video: unknown }; preparation: unknown; presentationRef: unknown; ledgerReceipts: unknown; planFingerprint: string; binding: unknown; outputs: unknown[]; sourceKey: string };
+    await seedPrepared(f.body.run_id, f.body.presentation_ref.source.toolInputId, original.sourceKey);
     const record = miniToolExecutionRecordSchema.parse({ schemaVersion: 1, runId: f.body.run_id, status: "failed", planFingerprint: original.planFingerprint,
       resultVersion: 1, sourceBindings: [original.binding], outputs: (original.outputs as Record<string, unknown>[]).map((output) => ({ ...output, late: false,
         result: { status: "failed", error: { code: "provider_failed" } } })), usage: [], billingState: "idle", error: { code: "provider_failed" } });
@@ -471,7 +488,8 @@ describe("remove-bg model-input preparation at admission (inner#1306 §90 E3b; d
   it("RB-R02 a failed-output retry reruns only generate: its quote is the frozen model part alone, without the preparation it does not rerun", async () => {
     const f = await seed(); const start = startRecorder();
     await acceptMiniToolExecution(f.body, f.userId, start);
-    const original = start.mock.calls[0]![0] as unknown as { planFingerprint: string; binding: unknown; outputs: unknown[] };
+    const original = start.mock.calls[0]![0] as unknown as { planFingerprint: string; binding: unknown; outputs: unknown[]; sourceKey: string };
+    await seedPrepared(f.body.run_id, f.body.presentation_ref.source.toolInputId, original.sourceKey);
     const record = miniToolExecutionRecordSchema.parse({ schemaVersion: 1, runId: f.body.run_id, status: "failed", planFingerprint: original.planFingerprint,
       resultVersion: 1, sourceBindings: [original.binding], outputs: (original.outputs as Record<string, unknown>[]).map((output) => ({ ...output, late: false,
         result: { status: "failed", error: { code: "provider_failed" } } })), usage: [], billingState: "idle", error: { code: "provider_failed" } });

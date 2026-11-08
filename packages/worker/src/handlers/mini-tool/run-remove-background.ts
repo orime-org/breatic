@@ -54,7 +54,7 @@ export async function runMiniToolRemoveBackground(
   const found = (await upstreamStepRepo.listSteps(task.id)).find((candidate) => candidate.kind === "generate");
   let body: Record<string, MiniToolStepJson> | null = null;
   if (found?.output.miniToolStep === undefined) {
-    // A failed-output retry names the original run's preparation in its body.
+    // A failed-output retry names the original run's preparation in its body, or its own when the original never finished preparing.
     const prepared = await prepareModelInput(execution, deadlineAt, execution.body.video.job.slice(0, -":prep:0".length));
     body = { ...execution.body, video: (await getStorageAdapter()).publicUrl(prepared) };
   }

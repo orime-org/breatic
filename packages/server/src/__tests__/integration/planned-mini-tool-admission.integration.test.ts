@@ -315,6 +315,11 @@ describe("HTTP press and durable SQL identity remain distinct (A05-A13)", () => 
 describe("existing credit and acknowledgement ownership (A14-A17 / preparation A14-A17)", () => {
   it("A18 a failed-output removal retry holds only the frozen model quote, so a balance of 30 covers it (inner#1306 §90 E3b)", async () => {
     const f = await seed(35); await accepted(f, await post(f)); const plan = (await parent(f)).params.miniToolExecution;
+    // The original finished its preparation, registered with its prepared pin (design §7.15 prepared 行); seeded directly here.
+    const preparedKey = `${plan.sourceKey}.${f.body.run_id}:prep:0:a1`;
+    const [prepared] = await pg<{ id: string }[]>`INSERT INTO presentation_pins (holder_kind,holder_id,tool_input_id,prepared_key)
+      VALUES ('prepared',${f.body.run_id},${f.body.presentation_ref.source.toolInputId},${preparedKey}) RETURNING id`;
+    await pg`INSERT INTO presentation_pin_objects (pin_id,storage_key) VALUES (${prepared!.id},${preparedKey})`;
     const record = miniToolExecutionRecordSchema.parse({ schemaVersion: 1, runId: f.body.run_id, status: "failed", planFingerprint: plan.planFingerprint,
       resultVersion: 1, sourceBindings: [plan.binding], outputs: plan.outputs.map((output) => ({ ...output, late: false, result: { status: "failed", error: { code: "provider_failed" } } })),
       usage: [], billingState: "idle", error: { code: "provider_failed" } });
@@ -328,6 +333,25 @@ describe("existing credit and acknowledgement ownership (A14-A17 / preparation A
     expect({ status: response.status, body: await response.json() }).toEqual({ status: 201, body: { data: { task_id: retry.run_id, status: "pending" } } });
     const held = await pg`SELECT amount::float8,status FROM credit_holds WHERE reference_id=${retry.run_id}`;
     expect([...held]).toEqual([{ amount: 30, status: "held" }]);
+  });
+  it("A19 a removal retry whose original never finished preparing holds the full frozen quote and prepares under its own task (frames-split retry row)", async () => {
+    const f = await seed(35); await accepted(f, await post(f)); const plan = (await parent(f)).params.miniToolExecution;
+    // The original's preparation failed, so it holds no prepared input a retry could reuse.
+    const record = miniToolExecutionRecordSchema.parse({ schemaVersion: 1, runId: f.body.run_id, status: "failed", planFingerprint: plan.planFingerprint,
+      resultVersion: 1, sourceBindings: [plan.binding], outputs: plan.outputs.map((output) => ({ ...output, late: false, result: { status: "failed", error: { code: "mini_tool_failed" } } })),
+      usage: [], billingState: "idle", error: { code: "mini_tool_failed" } });
+    await pg`UPDATE tasks SET status='failed',result=${pg.json(z.json().parse({ miniToolExecution: record }))},completed_at=clock_timestamp() WHERE id=${f.body.run_id}`;
+    await pg`UPDATE node_tasks SET status='failed',settled_at=clock_timestamp() WHERE task_id=${f.body.run_id}`;
+    await creditHoldService.releaseHold(f.body.run_id);
+    const retry = { tool: "video.remove-bg", project_id: f.body.project_id, space_id: f.body.space_id, run_id: randomUUID(), retry: { runId: f.body.run_id, outputIndexes: [0] } };
+    const response = await post(f, retry);
+    expect({ status: response.status, body: await response.json() }).toEqual({ status: 201, body: { data: { task_id: retry.run_id, status: "pending" } } });
+    const held = await pg`SELECT amount::float8,status FROM credit_holds WHERE reference_id=${retry.run_id}`;
+    expect([...held]).toEqual([{ amount: 35, status: "held" }]);
+    const [frozen] = await pg<{ params: { miniToolExecution: { credits: number; body: { video: { job: string } } } } }[]>`SELECT params FROM tasks WHERE id=${retry.run_id}`;
+    expect(frozen!.params.miniToolExecution).toMatchObject({ credits: 35, body: { video: { job: `${retry.run_id}:prep:0` } } });
+    const pins = await pg`SELECT holder_kind FROM presentation_pins WHERE holder_id=${retry.run_id} AND deleted_at IS NULL`;
+    expect([...pins]).toEqual([{ holder_kind: "execution" }]);
   });
   it("E4-RB01 a removal retry pins L and the reused prepared input for itself, and releases the original's pins in its admission (inner#1306 §90 E4-5)", async () => {
     const f = await seed(); await accepted(f, await post(f)); const plan = (await parent(f)).params.miniToolExecution;

@@ -1001,11 +1001,17 @@ async function claimRetry(request: MiniToolExecutionRetryRequest, userId: string
     const { requestFingerprint: _requestFingerprint, planFingerprint: _planFingerprint, ...frozen } = plan.execution;
     const retried = { taskId: request.run_id, outputs, targetNodeIds: outputs.map((output) => output.nodeId), retry: request.retry };
     // A removal retry reuses the original prepared model input and reruns only generate: it quotes the frozen model part alone.
+    // When the original never finished preparing, the retry prepares under its own task and holds the frozen full quote
+    // (frames-split retry row); its body then names its own preparation, which a later retry of it reuses.
     if (frozen.tool === "video.remove-bg") {
-      const claim = await claimPrepared({ ...frozen, ...retried, credits: frozen.modelCredits }, request, userId, fingerprint, tx);
+      const reused = await presentationPinService.heldPrepared(original.id, tx);
+      const own = reused.length === 0
+        ? { credits: frozen.credits, body: { ...frozen.body, video: { ...frozen.body.video, job: `${request.run_id}:prep:0` } } }
+        : { credits: frozen.modelCredits };
+      const claim = await claimPrepared({ ...frozen, ...retried, ...own }, request, userId, fingerprint, tx);
       // The retry reuses the original's prepared input, so it pins that input for itself (§7.15 prepared row).
       if (claim.inserted) {
-        for (const held of await presentationPinService.heldPrepared(original.id, tx)) {
+        for (const held of reused) {
           await presentationPinService.acquire({ holderKind: "prepared", holderId: request.run_id, toolInputId: held.toolInputId, preparedKey: held.preparedKey, objectKeys: [held.preparedKey] }, tx);
         }
         await releaseTakenOver(original.id, record, tx);
