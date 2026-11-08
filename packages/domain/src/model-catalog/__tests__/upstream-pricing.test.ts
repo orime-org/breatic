@@ -25,6 +25,20 @@ interface PriceCase {
 
 const text = (chars: number): string => "x".repeat(chars);
 const urls = (n: number): string[] => Array.from({ length: n }, (_, i) => `u${i}`);
+/**
+ * A Tripo H3.1 request: Standard texture with PBR on Standard geometry, with overrides.
+ * @param over - The fields that differ.
+ * @returns The request fields the formula reads.
+ */
+const tripo = (over: Record<string, unknown>): Record<string, unknown> => ({
+  texture: true,
+  pbr: true,
+  texture_quality: "standard",
+  geometry_quality: "standard",
+  smart_low_poly: false,
+  generate_parts: false,
+  ...over,
+});
 
 const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
   "alibaba/happyhorse-1.1/reference-to-video": [
@@ -198,17 +212,30 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
   ],
   "wavespeed-ai/wan-2.2/animate-2": [{ input: { resolution: "720p", video: "v" }, durations: { video: [10] }, usd: 0.8 }],
   "x-ai/grok-imagine-image-v2.0/text-to-image": [{ input: {}, usd: 0.05 }],
+  // inner#1691: Tripo H3.1's price table, a geometry-only base plus texture by quality and add-ons.
+  "tripo3d/h3.1/text-to-3d": [
+    { input: tripo({ texture: false, pbr: false }), usd: 0.12 },
+    { input: tripo({}), usd: 0.24 },
+    { input: tripo({ texture_quality: "extreme", geometry_quality: "detailed" }), usd: 0.72 },
+  ],
+  "tripo3d/h3.1/image-to-3d": [
+    { input: tripo({ texture: false, pbr: false }), usd: 0.24 },
+    { input: tripo({ texture_quality: "detailed", smart_low_poly: true }), usd: 0.6 },
+  ],
+  "tripo3d/h3.1/multiview-to-3d": [
+    { input: tripo({}), usd: 0.36 },
+    { input: tripo({ texture: false, pbr: false, generate_parts: true }), usd: 0.48 },
+  ],
 };
 
 /**
- * Every WaveSpeed provider entry in the catalog, keyed by its endpoint. 3D is
- * left out: its two models stay as they are and are not part of this catalog.
+ * Every WaveSpeed provider entry in the catalog, keyed by its endpoint.
  *
  * @returns The provider entries by `model_id`.
  */
 function wavespeedEndpoints(): Map<string, FullProviderEndpoint> {
   const byEndpoint = new Map<string, FullProviderEndpoint>();
-  for (const modality of MODALITIES.filter((m) => m !== "three_d")) {
+  for (const modality of MODALITIES) {
     for (const model of getFullModelConfig(modality).models) {
       for (const provider of model.providers ?? []) {
         if (provider.name === "wavespeed") byEndpoint.set(provider.model_id, provider);
@@ -221,7 +248,7 @@ function wavespeedEndpoints(): Map<string, FullProviderEndpoint> {
 describe("WaveSpeed pricing contracts in the catalog", () => {
   const endpoints = wavespeedEndpoints();
 
-  it("covers exactly the 64 endpoints of the finalized catalog", () => {
+  it("covers exactly the 67 endpoints of the finalized catalog", () => {
     expect([...endpoints.keys()].sort()).toEqual(Object.keys(CASES).sort());
   });
 

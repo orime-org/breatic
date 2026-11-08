@@ -21,6 +21,8 @@ import {
   renderGenerationModelsForModel,
   type PricedModelsForMode,
 } from "@domain/agent/tools/generation-models.js";
+import { answerFor } from "@domain/agent/tools/propose-canvas-action.js";
+import { inputSchema as proposalInputSchema } from "@domain/agent/tools/proposal-input.js";
 import {
   allProviderKeyNames,
   restoreProcessEnv,
@@ -567,3 +569,39 @@ describe("what the running turn reads", () => {
 function canvasToolInput(tool: unknown): unknown {
   return (tool as { inputSchema: unknown }).inputSchema;
 }
+
+// The 3D catalog backs the 3D Space alone (inner#1691 design 6.1): its modes
+// and models reach the canvas tools through none of their doors.
+describe("the canvas tools stay closed to the 3D catalog", () => {
+  it("get_canvas_capabilities names no 3D node and no 3D mode", async () => {
+    const answer = await run<CanvasCapabilityAnswer>(canvasCapabilities, {});
+    expect(answer.nodes.map((node) => node.nodeType).filter((type) => !["image", "video", "audio"].includes(type))).toEqual([]);
+    const modes = answer.nodes.flatMap((node) => node.modes.map((mode) => mode.mode));
+    expect(modes.filter((mode) => mode === "t23d" || mode === "i23d")).toEqual([]);
+    expect(renderCapabilitiesForModel(answer)).not.toMatch(/t23d|i23d|tripo/i);
+  });
+
+  it.each(["3d", "three_d"])("propose_canvas_action refuses a %s node at its input", (type) => {
+    const parsed = proposalInputSchema.safeParse({
+      nodes: [{ role: "generate", type, name: "A fox", mode: "t23d", model: "tripo-h3.1-t23d", params: {}, prompt: [{ text: "a red fox" }] }],
+      edges: [],
+      rationale: "A fox model.",
+    });
+    expect(parsed.success).toBe(false);
+    // Refused for the node type and nothing else.
+    expect(parsed.error?.issues.map((issue) => issue.path.join("."))).toEqual(["nodes.0.type"]);
+  });
+
+  it.each([
+    ["t23d", "tripo-h3.1-t23d"],
+    ["t2i", "tripo-h3.1-t23d"],
+    ["i2i", "tripo-h3.1-multiview"],
+  ])("propose_canvas_action refuses an image node set to %s with %s", (mode, model) => {
+    const sent = proposalInputSchema.parse({
+      nodes: [{ role: "generate", type: "image", name: "A fox", mode, model, params: {}, prompt: [{ text: "a red fox" }] }],
+      edges: [],
+      rationale: "A fox model.",
+    });
+    expect(answerFor(sent).placed).toBe(false);
+  });
+});

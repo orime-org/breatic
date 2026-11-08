@@ -442,7 +442,7 @@ describe("Detailed canonical Project media acceptance", () => {
       const resolved = await projectAssetReferenceService.resolveProjectAsset({
         projectId: scope.projectId, userId: scope.ownerId, assetId: media.id,
       });
-      const page = await projectAssetReferenceService.listProjectVideos({ projectId: scope.projectId, userId: scope.ownerId });
+      const page = await projectAssetReferenceService.listProjectMedia({ projectId: scope.projectId, userId: scope.ownerId });
       expect(persisted).toEqual(before.map((entry) => ({ ...entry, display_name: "First upload.mp4" })));
       expect(resolved).toMatchObject({ assetId: media.id, projectReferenceId: before[0]!.id, displayName: "First upload.mp4" });
       expect(page).toEqual({ items: [resolved], nextCursor: null });

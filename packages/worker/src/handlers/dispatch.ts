@@ -21,12 +21,12 @@ import { assertBeforeDeadline, DeadlinePassed } from "@breatic/shared";
 import { StillRunning } from "@worker/providers/still-running.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
-import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
+import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew, publishSpaceTasksChanged } from "@breatic/core";
 import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
 import { getStorageAdapter, getRawEnvVar, getUnderstandConfig, getAgentConfig } from "@breatic/core";
 import { failureOutcome, taskService, upstreamStepRepo } from "@breatic/domain";
 import { creditHoldService, creditLotService, creditsForUsd, resolveActiveProvider, toChargeCredits } from "@breatic/domain";
-import { modelCatalog, nodeHistoryService } from "@breatic/domain";
+import { modelCatalog, nodeHistoryService, sceneTaskService } from "@breatic/domain";
 import {
   assetRepo,
   assetService,
@@ -86,7 +86,7 @@ const AIGC_TASK_TYPES: Record<string, string> = {
   audio: "audio",
   video: "video",
   tts: "tts",
-  three_d: "three-d",
+  three_d: "three_d",
 };
 
 
@@ -131,6 +131,11 @@ export interface TaskJobData {
    * node (understand).
    */
   targetNodeIds?: string[];
+  /**
+   * The 3D Space's own row a 3D generation settles (inner#1691), in place of
+   * a node: the submit route opened it and queues the job with no target node.
+   */
+  sceneRowId?: string;
   /**
    * Execution mode (spec §10.13 / §10.15). Required — producer (server
    * routes) must always declare intent.
@@ -370,7 +375,7 @@ async function runTaskBody(
   job: Job<TaskJobData>,
   token?: string,
 ): Promise<Record<string, unknown>> {
-  const { taskId, taskType, userId, projectId, spaceId, params, model, source, toolId, sourceKey, targetNodeIds } = job.data;
+  const { taskId, taskType, userId, projectId, spaceId, params, model, source, toolId, sourceKey, targetNodeIds, sceneRowId } = job.data;
   const canvasDocName = resolveCanvasDocName(projectId, spaceId);
 
   const streamRedis = getStreamRedis();
@@ -391,6 +396,7 @@ async function runTaskBody(
     params,
     source,
     toolId,
+    sceneRowId,
   };
   // ─── Re-entry guard ───────────────────────────────────────────────
   // Two cases where BullMQ might redeliver a job we've already touched:
@@ -452,6 +458,10 @@ async function runTaskBody(
         nodeResultsFrom(nodeIds, storedOutputs),
         { rethrowOnRecordFailure: true },
       );
+    }
+    // The 3D Space's row is settled from the stored output the same way.
+    if (sceneRowId !== undefined) {
+      await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(storedOutputs), { rethrow: true });
     }
     // #1580-parallel activity-feed fix: a crash between billing and the
     // Stage-4 activity write leaves the feed with no success row (or a
@@ -816,6 +826,10 @@ async function runTaskBody(
       { rethrowOnRecordFailure: true },
     );
   }
+  // A 3D generation's result lands on its Space's own row (inner#1691).
+  if (sceneRowId !== undefined) {
+    await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(persistedOutputs), { rethrow: true });
+  }
 
   if (projectId) {
     await recordGenerationActivity({
@@ -1096,6 +1110,45 @@ export async function recordGenerationForNodes(
   }
 }
 
+/**
+ * Settle the 3D Space row a generation names (inner#1691) and tell the
+ * Space's members to refresh its list. The row's own rule decides what moves:
+ * it leaves `running` once, and a success finding it expired still lands.
+ * @param taskId - The run, for the log.
+ * @param sceneRowId - The row the job names.
+ * @param outcome - How the run ended.
+ * @param opts - Failure handling.
+ * @param opts.rethrow - Rethrow a failed read or settle: on a live run that
+ *   was billed, so BullMQ delivers it again and the billed re-entry settles
+ *   the row from the stored output. The vendor is not called again.
+ * @throws {Error} When `rethrow` is set and the row could not be read or settled.
+ */
+export async function settleSceneRow(
+  taskId: string,
+  sceneRowId: string,
+  outcome: sceneTaskService.SceneOutcome,
+  opts: { rethrow?: boolean } = {},
+): Promise<void> {
+  let settled: Awaited<ReturnType<typeof sceneTaskService.settleById>>;
+  try {
+    settled = await sceneTaskService.settleById(sceneRowId, outcome);
+    if (settled === null) {
+      logger.error({ taskId, sceneRowId }, "scene_row_missing");
+      return;
+    }
+  } catch (err) {
+    logger.error({ err, taskId, sceneRowId, outcome: outcome.outcome }, "scene_row_settle_failed");
+    if (opts.rethrow) throw err;
+    return;
+  }
+  const { row } = settled;
+  try {
+    await publishSpaceTasksChanged(row.projectId, row.spaceId);
+  } catch (err) {
+    // The row is settled; a member's list catches up on its next read.
+    logger.error({ err, taskId, sceneRowId, projectId: row.projectId, spaceId: row.spaceId }, "space_tasks_publish_failed");
+  }
+}
 
 // ─── Failure-path helpers ────────────────────────────────────────────
 
@@ -1111,6 +1164,8 @@ export interface FailedRunEnd {
   /** The canvas document the target nodes live in, when they live on one. */
   canvasDocName: string | null | undefined;
   nodeIds: string[];
+  /** The 3D Space's own row the run settles in place of a node (inner#1691). */
+  sceneRowId?: string | undefined;
   userId: string;
   model: string | undefined;
   params: Record<string, unknown>;
@@ -1271,6 +1326,9 @@ export async function finishFailedRun(end: FailedRunEnd): Promise<void> {
       end.taskId,
       end.outcome ?? "failed",
     );
+  }
+  if (end.sceneRowId !== undefined && end.settles) {
+    await settleSceneRow(end.taskId, end.sceneRowId, { outcome: "failed", errorMessage: end.errorMessage });
   }
   if (end.projectId && end.settles) {
     await recordGenerationActivity({
@@ -1958,7 +2016,8 @@ async function importProvider(taskType: string): Promise<{
     case "image":
     case "video":
     case "audio":
-    case "tts": {
+    case "tts":
+    case "three_d": {
       const { validateModelParams } = await import("@worker/providers/generate.js");
       const { runCatalogTask } = await import("@worker/providers/run-steps.js");
       const { stepDepsFor } = await import("@worker/handlers/step-deps.js");
@@ -1978,12 +2037,6 @@ async function importProvider(taskType: string): Promise<{
             )),
           };
         },
-      );
-    }
-    case "three-d": {
-      const m = await import("@worker/providers/three-d/index.js");
-      return wrap(m.validateThreeDParams, (prompt, model, params, run) =>
-        m.generateAsync(prompt, model, params, run.resume),
       );
     }
     default: throw new Error(`Unknown AIGC task type: ${taskType}`);

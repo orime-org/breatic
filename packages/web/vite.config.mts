@@ -212,7 +212,7 @@ export default defineConfig(({ command, mode }) => {
             }
             // Shared overlay code and icons stay independent of the route that opens them.
             if (/[\\/]src[\\/]lib[\\/]overlay-focus\.ts$/.test(id)
-              || /[\\/]node_modules[\\/]lucide-react[\\/]dist[\\/]esm[\\/]icons[\\/](upload|triangle-alert)\.m?js$/.test(id)) {
+              || /[\\/]node_modules[\\/]lucide-react[\\/]dist[\\/]esm[\\/]icons[\\/](upload|triangle-alert|folder-open)\.m?js$/.test(id)) {
               return 'overlay-shared';
             }
             // Each non-English catalog is its own `import()` chunk under a

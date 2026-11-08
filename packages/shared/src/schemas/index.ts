@@ -51,9 +51,12 @@ export {
   PROJECT_NAME_MAX_CHARS,
   projectNameSchema,
   CONVERSATION_TITLE_MAX_CHARS,
+  sceneGenerationBodySchema,
 } from "@shared/schemas/api.js";
 
 export type {
+  SceneGenerationAnswer,
+  SceneGenerationBody,
   RegisterInput,
   SignupReferralSource,
   SignupVerifyInput,

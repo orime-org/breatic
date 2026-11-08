@@ -10,15 +10,19 @@ import {
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   missingSources,
+  modesOf,
+  THREE_D_GENERATION_MODES,
   modelLabel,
   PANEL_EDITOR_PARAM,
   paramValues,
   storyboardSpec,
-  type ControlGate,
   type GenerationNodeType,
   type MissingSource,
   type ModelEntry,
+  type ParamBound,
   type ParamDescriptor,
+  type ParamForce,
+  type ParamGate,
   type ReferenceKind,
   type StoryboardSpec,
 } from "@breatic/shared";
@@ -144,7 +148,13 @@ export interface ParamInfo {
    * it gets the control: "not yet" and "not ever" ask different things of
    * them, and {@link ParamInfo.noControl} already says the second.
    */
-  gate?: ControlGate;
+  gate?: ParamGate;
+  /**
+   * Ranges that replace {@link ParamInfo.min} and {@link ParamInfo.max} while
+   * their condition holds: the first that holds wins, and an end it leaves
+   * out is the param's own (inner#1691).
+   */
+  bounds?: readonly ParamBound[];
   /** What it is set to when nobody chooses. */
   default: unknown;
   /** What it does, on one line. */
@@ -155,8 +165,11 @@ export interface ParamInfo {
 export interface ModelInfo {
   /** The name a node stores and a proposal names. */
   name: string;
-  /** The kind of generation node it runs on, which decides what the canvas lets wire into it. */
-  nodeType: GenerationNodeType;
+  /**
+   * The kind of generation node it runs on, which decides what the canvas lets
+   * wire into it; `3d` for a model the 3D Space generates with (inner#1691).
+   */
+  nodeType: GenerationNodeType | "3d";
   /**
    * The name the picker puts on screen.
    *
@@ -212,6 +225,11 @@ export interface ModelInfo {
    * declarations the panel and the server's gate read.
    */
   needs: MissingSource[];
+  /**
+   * Values the model forces while their conditions hold, in the order they
+   * apply (inner#1691): a value given against one is refused.
+   */
+  forces?: readonly ParamForce[];
 }
 
 /** What one node can do in one mode: the models, or why there are none. */
@@ -265,19 +283,6 @@ export function usableModes(
   const backed = new Set<string>();
   for (const entry of entries) for (const mode of modesOf(entry)) backed.add(mode);
   return panelModes.filter((mode) => backed.has(mode));
-}
-
-/**
- * The modes one catalog entry declares.
- *
- * The field is one code or several, and the two readers of it have to agree
- * on that and on what an empty code means -- a mode reported as available
- * that the model lookup then matches nothing for renders as no models at all.
- * @param entry - The entry to read.
- * @returns Its modes, with empty codes dropped.
- */
-function modesOf(entry: ModeSource): string[] {
-  return (Array.isArray(entry.mode) ? entry.mode : [entry.mode]).filter(Boolean);
 }
 
 /**
@@ -374,15 +379,6 @@ function reachedBy(
 }
 
 /**
- * One parameter's gate, in the shape the answer already carries.
- * @param spec - What the catalog declares about it.
- * @returns The gate it declares, or undefined when it declares none.
- */
-function gateOf(spec: ParamDescriptor): ControlGate | undefined {
-  return spec.when?.flag_on === undefined ? undefined : { kind: "flagOn", param: spec.when.flag_on };
-}
-
-/**
  * One parameter of one model, as the agent needs it.
  * @param name - The parameter name.
  * @param spec - What the catalog declares about it.
@@ -402,7 +398,7 @@ function projectParam(
   // Only a control waits on something: material is held to this mode's slots
   // by the projection above. The name a clause gives is a param of this same
   // model, which `assertParamDeclarations` refuses at load time otherwise.
-  const gate = by === "panel" ? gateOf(spec) : undefined;
+  const gate = by === "panel" ? spec.when : undefined;
   return {
     ...(spec.type !== undefined ? { type: spec.type } : {}),
     ...(options.length > 0 ? { options } : {}),
@@ -421,6 +417,11 @@ function projectParam(
     ...(by === "nothing" ? { noControl: true as const } : {}),
     ...(spec.fill === "storyboard" ? { fromStoryboard: true as const } : {}),
     ...(gate !== undefined ? { gate } : {}),
+    ...(spec.bounds !== undefined
+      ? {
+          bounds: spec.bounds,
+        }
+      : {}),
     default: spec.default,
     what: oneLine(spec.description ?? ""),
   };
@@ -516,8 +517,35 @@ export function modelsForMode(
   nodeType: GenerationNodeType,
   mode: string,
 ): ModelsForMode {
-  const panelModes = GENERATION_NODE_MODES[nodeType];
-  const entries = entriesForNode(nodeType);
+  return modelsIn(nodeType, GENERATION_NODE_MODES[nodeType], entriesForNode(nodeType), mode);
+}
+
+/**
+ * The models the 3D Space can generate with in one mode (inner#1691).
+ *
+ * The 3D Space has no node: its dialog offers the two modes of
+ * `THREE_D_GENERATION_MODES` and draws from the `three_d` catalog bucket.
+ * @param mode - `t23d` or `i23d`.
+ * @returns The models, or the modes it could ask about instead.
+ */
+export function sceneModelsForMode(mode: string): ModelsForMode {
+  return modelsIn("3d", THREE_D_GENERATION_MODES, getModelCatalog().three_d, mode);
+}
+
+/**
+ * The models one picker offers in one mode, as the agent reads them.
+ * @param nodeType - What the picker belongs to.
+ * @param panelModes - The modes it offers, in display order.
+ * @param entries - The catalog entries it draws on.
+ * @param mode - The mode asked about.
+ * @returns The models, or the modes it could ask about instead.
+ */
+function modelsIn(
+  nodeType: ModelInfo["nodeType"],
+  panelModes: readonly string[],
+  entries: readonly ModelEntry[],
+  mode: string,
+): ModelsForMode {
   const usable = usableModes(panelModes, entries);
   if (!usable.includes(mode)) return { available: false, offered: usable };
   const inMode = entries.filter((entry) => modesOf(entry).includes(mode));
@@ -552,6 +580,11 @@ export function modelsForMode(
       ...(others.length > 0 ? { alsoServes: others } : {}),
       ...(storyboard ? { storyboard } : {}),
       needs: missingSources(entry, mode, {}),
+      ...(entry.forces !== undefined
+        ? {
+            forces: entry.forces,
+          }
+        : {}),
       params: Object.fromEntries(
         reached
           // A carrier field this mode does not use belongs to another mode of

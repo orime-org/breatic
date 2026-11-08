@@ -12,89 +12,142 @@
 # of the price charged (100 is full price).
 
 models:
-  meshy6-t23d:
+  tripo-h3.1-t23d:
     upstreams:
       - upstream: wavespeed
         weight: 1
-        model_id: wavespeed-ai/meshy6/text-to-3d
+        model_id: tripo3d/h3.1/text-to-3d
         prompt_field: prompt
-        send_empty: true
         params:
-          art_style:
-            field: art_style
-          topology:
-            field: topology
-          target_polycount:
-            field: target_polycount
-          enable_pbr:
-            field: enable_pbr
-          symmetry_mode:
-            field: symmetry_mode
-          ta_pose:
-            field: ta_pose
+          texture:
+            field: texture
+          pbr:
+            field: pbr
+          texture_quality:
+            field: texture_quality
+          texture_version:
+            field: texture_version
+            values:
+              v3.0: v3.0-20250812
+              v3.5: v3.5-20260815
+          delight:
+            field: delight
+          geometry_quality:
+            field: geometry_quality
+          smart_low_poly:
+            field: smart_low_poly
+          generate_parts:
+            field: generate_parts
+          face_limit:
+            field: face_limit
+          auto_size:
+            field: auto_size
+          export_uv:
+            field: export_uv
+          model_seed:
+            field: model_seed
+          texture_seed:
+            field: texture_seed
+          negative_prompt:
+            field: negative_prompt
         pricing:
           kind: formula
-          base_price: 800000
-          formula: ""
+          base_price: 120000
+          formula: '{"total_price": base_price + (((texture or pbr) and generate_parts != true) ? (texture_quality = "detailed" ? 240000 : (texture_quality = "extreme" ? 360000 : 120000)) : 0) + (geometry_quality = "detailed" ? 240000 : 0) + (smart_low_poly ? 120000 : 0) + (generate_parts ? 240000 : 0)}'
           discount_rate: 100
-  hunyuan3d-v3:
+  tripo-h3.1-i23d:
     upstreams:
       - upstream: wavespeed
         weight: 1
-        model_id: wavespeed-ai/hunyuan3d-v3/text-to-3d
-        prompt_field: prompt
-        send_empty: true
-        params:
-          generate_type:
-            field: generate_type
-          enable_pbr:
-            field: enable_pbr
-          face_count:
-            field: face_count
-        pricing:
-          kind: formula
-          base_price: 250000
-          formula: ""
-          discount_rate: 100
-  hunyuan3d-v3-i23d:
-    upstreams:
-      - upstream: wavespeed
-        weight: 1
-        model_id: wavespeed-ai/hunyuan3d-v3/image-to-3d
-        prompt_field: prompt
-        send_empty: true
+        model_id: tripo3d/h3.1/image-to-3d
         params:
           image:
             field: image
-          back_image:
-            field: back_image
-          left_image:
-            field: left_image
-          right_image:
-            field: right_image
-          generate_type:
-            field: generate_type
-          enable_pbr:
-            field: enable_pbr
-          face_count:
-            field: face_count
+          texture:
+            field: texture
+          pbr:
+            field: pbr
+          texture_quality:
+            field: texture_quality
+          texture_version:
+            field: texture_version
+            values:
+              v3.0: v3.0-20250812
+              v3.5: v3.5-20260815
+          delight:
+            field: delight
+          geometry_quality:
+            field: geometry_quality
+          smart_low_poly:
+            field: smart_low_poly
+          generate_parts:
+            field: generate_parts
+          face_limit:
+            field: face_limit
+          auto_size:
+            field: auto_size
+          export_uv:
+            field: export_uv
+          model_seed:
+            field: model_seed
+          texture_seed:
+            field: texture_seed
+          texture_alignment:
+            field: texture_alignment
+          orientation:
+            field: orientation
+          enable_image_autofix:
+            field: enable_image_autofix
         pricing:
           kind: formula
-          base_price: 230000
-          formula: ""
+          base_price: 240000
+          formula: '{"total_price": base_price + (((texture or pbr) and generate_parts != true) ? (texture_quality = "detailed" ? 240000 : (texture_quality = "extreme" ? 360000 : 120000)) : 0) + (geometry_quality = "detailed" ? 240000 : 0) + (smart_low_poly ? 120000 : 0) + (generate_parts ? 240000 : 0)}'
           discount_rate: 100
-  hunyuan3d-v3.1-rapid:
+  tripo-h3.1-multiview:
     upstreams:
       - upstream: wavespeed
         weight: 1
-        model_id: wavespeed-ai/hunyuan-3d-v3.1/image-to-3d-rapid
-        prompt_field: prompt
-        send_empty: true
+        model_id: tripo3d/h3.1/multiview-to-3d
         params:
-          image:
-            field: image
+          images:
+            field: images
+          texture:
+            field: texture
+          pbr:
+            field: pbr
+          texture_quality:
+            field: texture_quality
+          texture_version:
+            field: texture_version
+            values:
+              v3.0: v3.0-20250812
+              v3.5: v3.5-20260815
+          delight:
+            field: delight
+          geometry_quality:
+            field: geometry_quality
+          smart_low_poly:
+            field: smart_low_poly
+          generate_parts:
+            field: generate_parts
+          face_limit:
+            field: face_limit
+          auto_size:
+            field: auto_size
+          export_uv:
+            field: export_uv
+          model_seed:
+            field: model_seed
+          texture_seed:
+            field: texture_seed
+          texture_alignment:
+            field: texture_alignment
+          orientation:
+            field: orientation
+          enable_image_autofix:
+            field: enable_image_autofix
         pricing:
           kind: formula
-          base_price: 20000
-          formula: ""
+          base_price: 240000
+          formula: '{"total_price": base_price + (((texture or pbr) and generate_parts != true) ? (texture_quality = "detailed" ? 240000 : (texture_quality = "extreme" ? 360000 : 120000)) : 0) + (geometry_quality = "detailed" ? 240000 : 0) + (smart_low_poly ? 120000 : 0) + (generate_parts ? 240000 : 0)}'
           discount_rate: 100
