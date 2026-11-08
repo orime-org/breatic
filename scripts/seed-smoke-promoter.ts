@@ -4,9 +4,9 @@
 /**
  * Makes an account an approved promoter for the smoke suite (inner#1868).
  *
- * Applications open only once the promoter terms are published, which no
- * local stack does, so the suite files the pending application through the
- * repository and approves it through the same service the back office calls.
+ * Applications are approved in the back office, which the suite does not
+ * run, so the suite files the pending application through the repository and
+ * approves it through the same service the back office calls.
  * The approval does not compare terms versions, so the application carries a
  * placeholder.
  *
