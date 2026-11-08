@@ -16,5 +16,14 @@ export interface TimelineClientLimits {
     aspects: string[];
     playerLoadTimeoutMs: number;
     sourceRefreshIntervalMs: number;
+    /**
+     * How long a signed preview address stays readable; the preview shares one address within it. The server always
+     * sends this and the two below; a client without them shares no address and premounts and keeps no page.
+     */
+    previewTokenTtlMs?: number;
+    /** How far ahead of a web copy's first visible frame the preview loads its page. */
+    premountMs?: number;
+    /** How many loaded preview pages no copy uses are kept for reuse. */
+    idleInstancesMax?: number;
   };
 }

@@ -33,6 +33,10 @@ const webAnimationSchema = z.object({
   preview_token_ttl_ms: positiveInt.default(3_600_000),
   /** How long the preview waits for a page's bridge-ready before it shows the copy unavailable. */
   player_load_timeout_ms: positiveInt.default(15_000),
+  /** How far ahead of a web copy's first visible frame the preview loads its page, hidden (inner#1711 design §7.4). */
+  preview_premount_ms: positiveInt.default(2000),
+  /** How many loaded preview pages no copy uses that the preview keeps for reuse before unloading the oldest. */
+  preview_idle_instances_max: positiveInt.default(8),
   /** How often the worker sweeps executions that have not ended, and how many it reads per sweep. */
   sweep_interval_ms: positiveInt.default(30_000),
   sweep_batch_size: positiveInt.default(200),

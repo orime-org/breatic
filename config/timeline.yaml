@@ -29,6 +29,10 @@ web_animation:
   font_set_version: 3
   preview_token_ttl_ms: 3600000
   player_load_timeout_ms: 15000
+  # The preview loads a web copy's page this far ahead of its first visible frame, hidden.
+  preview_premount_ms: 2000
+  # Loaded preview pages no copy uses that are kept for reuse; beyond this the oldest is unloaded.
+  preview_idle_instances_max: 8
   sweep_interval_ms: 30000
   sweep_batch_size: 200
   poll_interval_ms: 5000

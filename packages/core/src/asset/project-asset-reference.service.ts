@@ -285,6 +285,9 @@ export async function getTimelineLimits(projectId: string, userId: string): Prom
       aspects: Object.keys(config.web_animation.viewports),
       playerLoadTimeoutMs: config.web_animation.player_load_timeout_ms,
       sourceRefreshIntervalMs: config.web_animation.source_refresh_interval_ms,
+      previewTokenTtlMs: config.web_animation.preview_token_ttl_ms,
+      premountMs: config.web_animation.preview_premount_ms,
+      idleInstancesMax: config.web_animation.preview_idle_instances_max,
     },
   };
 }
