@@ -20,6 +20,11 @@ export interface CanvasCapabilityAnswer {
   nodes: NodeCapability[];
 }
 
+/** Where a result's look or sound comes from: the prompt, whatever style it names. */
+const LOOK_NOTE =
+  "Every mode makes the look or sound its prompt names: a picture or video as a 3D render, anime, live action or " +
+  "watercolour, audio in the voice, music or sound described.";
+
 /**
  * What a text node is for, and what pointing a prompt at one does.
  *
@@ -29,11 +34,6 @@ export interface CanvasCapabilityAnswer {
  * out, since they generate nothing — which says where they are not without
  * saying what they are.
  */
-/** Where a result's look or sound comes from: the prompt, whatever style it names. */
-const LOOK_NOTE =
-  "Every mode makes the look or sound its prompt names: a picture or video as a 3D render, anime, live action or " +
-  "watercolour, audio in the voice, music or sound described.";
-
 const TEXT_NODE_NOTE = [
   "text node: holds words and generates nothing, so no mode applies to it.",
   "- A mention names the node rather than copying it: what goes out is whatever that node holds at the moment the user presses Generate, so editing the node changes what every mention of it sends.",

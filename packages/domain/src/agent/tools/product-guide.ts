@@ -784,7 +784,7 @@ export function renderProductGuide(): string {
       "page, not the canvas. Except while nodes are being picked for a panel or a note is being placed, click a " +
       "node to select it and Cmd/Ctrl-click to add or remove one. Cmd/Ctrl+A does not select every node. " +
       "Backspace or Delete, once the space was the last thing clicked and nothing is being typed in (see " +
-      "the chat panel section for handing the keys back from this chat), removes the selected nodes and connections; " +
+      "the Making nodes section for handing the keys back from this chat), removes the selected nodes and connections; " +
       "locked ones, " +
       "ones with tasks still running and notes you may not delete stay, and a message says why. Other people in " +
       "the same space show as named pointers and as name tags on what they have selected.",
@@ -1822,7 +1822,13 @@ export function readSections(names: readonly string[]): string {
       .split(/\n(?=## )/)
       .map((part) => [part.split("\n")[0]?.slice(3) ?? "", part] as const),
   );
-  const text = [...new Set(names)].map((name) => byName.get(name) ?? "").join("\n\n");
+  const text = [...new Set(names)]
+    .map((name) => {
+      const section = byName.get(name);
+      if (section === undefined) throw new Error(`The guide lists "${name}" in its index but renders no such section.`);
+      return section;
+    })
+    .join("\n\n");
   const cap = getAgentConfig().product_guide_max_chars_per_call;
   if (text.length > cap) {
     throw new Error(
