@@ -94,8 +94,6 @@ export type MiniToolPlannedRequest = z.infer<typeof miniToolPlannedRequestSchema
  * these, and a failed output of any other tool (transitions) is never retryable.
  */
 export const MINI_TOOL_RETRY_TOOLS = ["video.remove-bg", "video.extract-frames", "video.split", "video.lip-sync", "video.erase", "video.expand"] as const;
-/** A planned tool that has a retry. */
-export type MiniToolRetryTool = typeof MINI_TOOL_RETRY_TOOLS[number];
 
 /** A new execution reuses only original failed output identities, not current draft inputs. */
 export const miniToolExecutionRetryRequestSchema = z.strictObject({

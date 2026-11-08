@@ -73,14 +73,14 @@ export function deriveVideoToolPanelState(input: VideoToolPanelStateInput): Vide
   return input.tableStatus === 'success' && input.table?.sourceKey === JSON.stringify([input.sourceURL, selected.toolInputId]) ? 'usable' : 'waiting-table';
 }
 
-/** One input's derived state and its reason code, for a panel over several inputs. */
-export interface RankedVideoToolPanelState { state: VideoToolPanelState; reason: string | null }
+/** One input's derived state, for a panel over several inputs. */
+export interface RankedVideoToolPanelState { state: VideoToolPanelState }
 const WORST_FIRST: readonly VideoToolPanelState[] = ['unsupported', 'retryable', 'waiting-presentation', 'waiting-table', 'usable'];
 
 /**
  * The state of a multi-input panel (§7.12, last paragraph): each input is derived on its own and the worst, in the order
- * unsupported, retryable, waiting-presentation, waiting-table, usable, is shown with that input's reason code.
- * @param inputs - Each input's state and reason, at least one, with whatever else the caller keeps beside them.
+ * unsupported, retryable, waiting-presentation, waiting-table, usable, is shown with whatever the caller keeps beside it.
+ * @param inputs - Each input's state, at least one, with whatever else the caller keeps beside it (its Retry).
  * @returns The worst input, the first of equally bad ones.
  * @throws {RangeError} When no input is given.
  */

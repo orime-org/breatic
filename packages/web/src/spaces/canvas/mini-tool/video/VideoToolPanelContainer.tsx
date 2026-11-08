@@ -575,8 +575,8 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
   // The panel shows the worst of the current video and every picked input, the current video first among equals (frames-split
   // §7.12 last paragraph); a current video without source facts counts as usable, as it does alone.
   const hostInputId = toolId === 'video.transitions' ? transitionHostInputId(current as VideoToolDraftById['video.transitions']) : undefined;
-  const shown = worstVideoToolPanelState([{ state: presentation?.panelState ?? 'usable', reason: null, retrying: presentation?.retrying === true, onRetry: presentation?.onRetry },
-    ...(toolId === 'video.transitions' ? current.inputs.filter((input) => input.inputId !== hostInputId).map((input) => ({ state: inputStates.get(input.inputId) ?? 'waiting-presentation', reason: null,
+  const shown = worstVideoToolPanelState([{ state: presentation?.panelState ?? 'usable', retrying: presentation?.retrying === true, onRetry: presentation?.onRetry },
+    ...(toolId === 'video.transitions' ? current.inputs.filter((input) => input.inputId !== hostInputId).map((input) => ({ state: inputStates.get(input.inputId) ?? 'waiting-presentation',
       retrying: repairing.has(input.url), onRetry: (): void => repairInput(input.url) })) : [])]);
   const validSource = presentation?.status === 'ready' && presentation.sourceURL === source.canonicalURL && (toolId === 'video.remove-bg' || presentation.frameTable !== null && shown.state === 'usable');
   const visiblePeople = latestMiniToolAnalysis(matchingRecords.filter((record) => record.kind === 'people' && record.status === 'completed' && !record.artifactUnavailable))?.result;
