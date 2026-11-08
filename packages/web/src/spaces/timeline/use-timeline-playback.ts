@@ -266,8 +266,9 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
         publish('pause', 'paused');
         return;
       }
-      const terminalHold = media !== null && clip !== null && source !== null && media.ended
-        && !awaitingSeek && position.current === clip.startFrame + clip.durationFrames - 1;
+      // An ended element holds its last picture while the clock runs on to the clip's end: its own duration can fall
+      // short of the clip's last frame, which is rounded up from the registered duration.
+      const terminalHold = media !== null && clip !== null && source !== null && media.ended && !awaitingSeek;
       const webReady = host.ready() && latest.current.webPending !== true;
       const next = clip === null || terminalHold ? (webReady ? 'playing' : 'waiting') : resolveTimelineMediaTransport({
         intent: 'play', generationMatches: true, targetReady: !awaitingSeek && resourceState === 'ready' && webReady,
