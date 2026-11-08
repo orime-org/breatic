@@ -140,18 +140,26 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
     if (ended !== null) return { url, status: ended, httpStatus, finalUrl: page.url() };
 
     await page.waitForLoadState("networkidle", { timeout: request.settleMs }).catch(() => undefined);
-    // A document that is not HTML (XML, plain text, JSON) is read as the text
-    // it holds; Readability goes only into HTML, since in any other document
-    // its own source would be read as the page's text.
-    const contentType = await page.evaluate(() => document.contentType);
-    const isHtml = contentType === "text/html" || contentType === "application/xhtml+xml";
-    if (isHtml) await page.addScriptTag({ content: READABILITY }).catch(() => undefined);
-    const evaluated: unknown = await page.evaluate((html: boolean) => {
+    // A document that is not HTML (XML, plain text, JSON) is read as the body
+    // the site sent: what the browser renders of it is not the file.
+    // Chromium hands a text body over already decoded in the charset its
+    // content-type names (re-encoded as UTF-8), so it is read as UTF-8 here;
+    // decoding those bytes in the named charset again garbles every non-UTF-8
+    // page. Readability goes only into HTML.
+    const [contentType, documentTitle] = await page.evaluate(() => [document.contentType, document.title]);
+    if (contentType !== "text/html" && contentType !== "application/xhtml+xml") {
+      const text = await response.text();
+      const finalUrl = page.url();
+      if (text.trim() === "") return { url, status: "empty", httpStatus, finalUrl, title: documentTitle, kind: "html" };
+      return { url, status: "ok", httpStatus, finalUrl, title: documentTitle, kind: "html", text };
+    }
+    await page.addScriptTag({ content: READABILITY }).catch(() => undefined);
+    const evaluated: unknown = await page.evaluate(() => {
       type Parsed = { title?: string | null; content?: string | null } | null;
       const Readability = (globalThis as unknown as { Readability?: new (doc: Document) => { parse(): Parsed } })
         .Readability;
-      // Not HTML, no Readability (the script could not run) or no body: the text as it stands.
-      if (!html || typeof Readability !== "function" || document.body === null) {
+      // No Readability (the script could not run) or no body: the text as it stands.
+      if (typeof Readability !== "function" || document.body === null) {
         return { title: document.title, html: "", text: document.documentElement?.textContent ?? "" };
       }
       let parsed: Parsed = null;
@@ -161,7 +169,7 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
         parsed = null;
       }
       return { title: parsed?.title ?? document.title, html: parsed?.content ?? document.body.innerHTML };
-    }, isHtml);
+    });
     const article = articleOf(evaluated);
     const plain = (evaluated as { text?: unknown } | null)?.text;
     const text = typeof plain === "string" ? plain : toMarkdown(article.html);
