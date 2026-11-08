@@ -703,7 +703,7 @@ async function prepare(request: MiniToolPlannedRequest): Promise<ExecutionProjec
   const deadlineAt = budgetDeadlineFrom(Date.now());
   const config = structuredClone(getMiniToolsConfig());
   const maxOutputs = config.executions[request.tool].max_outputs;
-  if (request.outputs.length > maxOutputs) throw new ValidationError(t("server.mini_tool.foreignSource"));
+  if (request.outputs.length > maxOutputs) throw new ValidationError(t("server.mini_tool.tooManyOutputs", { max: maxOutputs }));
   const { binding, sourceKey } = await resolveSource(request.draft.source);
   const { versionId, receipt } = await selectedToolInput(request.presentation_ref.source, binding, sourceKey, config);
   const limits = { maxBytes: config.presentation.source_ledger.max_bytes };

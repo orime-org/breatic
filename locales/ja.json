@@ -262,6 +262,7 @@
       "sourceTooLong": "このツールは {minutes} 分以内の音声のみ処理できます。",
       "sourceTooLarge": "このツールは {size} 以内のファイルのみ処理できます。",
       "runTooLong": "この動画は1回の実行で処理するには長すぎます（エンコードジョブが {max} 個を超えます）。出力を減らすか短くしてください。",
+      "tooManyOutputs": "1回の実行で作成できる結果は最大 {max} 個です。",
       "lipSyncModelUnavailable": "このリップシンクモデルは利用できません。別のモデルを選んでください。",
       "lipSyncDurationOutOfRange": "このモデルの結果は {min}–{max} 秒である必要があります。",
       "lipSyncTrackingOutOfRange": "人物トラッキングで処理できる動画は {min}–{max} 秒です。",
@@ -1500,6 +1501,7 @@
         "anchorOutsideRange": "範囲内のフレームで選択してください。",
         "expandTooLong": "拡張できるのは {max} 秒以内の動画です。",
         "expandTooLarge": "拡張後の動画の長辺は最大 {max} px です。",
+        "tooManyOutputs": "1回の実行で作成できる結果は最大 {max} 個です。",
         "transparentSource": "このツールは透明部分のある動画には使えません。",
         "trackingFailure": {
           "empty_foreground": "何も追跡されませんでした。選択範囲か説明を変えてください。",

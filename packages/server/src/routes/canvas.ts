@@ -126,7 +126,8 @@ const urlIngestQueue = createQueue("url-ingest");
  * `removeBackgroundModel` and `lipSync`: the models the video panel quotes and
  * offers, from the same executions admission reads (inner#1306). `erase` and
  * `expand`: the limits the panel checks before tracking or running, as admission
- * checks them again (execution design §10.4, §10.5).
+ * checks them again (execution design §10.4, §10.5). `maxOutputs`: the frames and split
+ * `max_outputs`, which the panel checks before creating the nodes (frames-split §10.7).
  * `quoteDebounceMs`: how long a video tool panel's priced inputs hold still before
  * it asks for a quote.
  * @param c - Hono context (auth required, no params)
@@ -148,6 +149,7 @@ canvas.get("/limits", (c) => {
       lipSync: lipSyncChoices(),
       erase: eraseLimits(),
       expand: expandLimits(),
+      maxOutputs: Object.fromEntries((["video.extract-frames", "video.split"] as const).map((tool) => [tool, getMiniToolsConfig().executions[tool]?.max_outputs])),
     },
   });
 });

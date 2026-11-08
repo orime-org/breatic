@@ -262,6 +262,7 @@
       "sourceTooLong": "이 도구는 {minutes}분 이내의 오디오만 처리합니다.",
       "sourceTooLarge": "이 도구는 {size} 이내의 파일만 처리합니다.",
       "runTooLong": "이 동영상은 한 번에 처리하기에 너무 깁니다(인코딩 작업이 {max}개를 넘습니다). 출력 수를 줄이거나 더 짧게 해 주세요.",
+      "tooManyOutputs": "한 번 실행에 결과를 최대 {max}개까지 만들 수 있습니다.",
       "lipSyncModelUnavailable": "이 립싱크 모델은 사용할 수 없습니다. 다른 모델을 선택하세요.",
       "lipSyncDurationOutOfRange": "이 모델의 결과 길이는 {min}–{max}초여야 합니다.",
       "lipSyncTrackingOutOfRange": "인물 추적은 {min}–{max}초 분량의 동영상만 처리합니다.",
@@ -1500,6 +1501,7 @@
         "anchorOutsideRange": "구간 안의 프레임에서 선택하세요.",
         "expandTooLong": "확장은 최대 {max}초 길이의 동영상을 지원합니다.",
         "expandTooLarge": "확장된 동영상의 긴 변은 최대 {max}px입니다.",
+        "tooManyOutputs": "한 번 실행에 결과를 최대 {max}개까지 만들 수 있습니다.",
         "transparentSource": "이 도구는 투명 영역이 있는 동영상을 지원하지 않습니다.",
         "trackingFailure": {
           "empty_foreground": "추적된 대상이 없습니다. 선택 영역이나 설명을 바꾸세요.",

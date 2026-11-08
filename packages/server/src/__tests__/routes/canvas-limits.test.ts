@@ -39,6 +39,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
       waveform_peaks_retry_max_ms: 600_000,
       executions: {
         "video.remove-bg": { model: "remove-bg-from-config", preparation: { container_class: "MiniToolContainerStd4", precheck_seconds: 300 } },
+        "video.split": { container_class: "MiniToolContainerStd4", precheck_seconds: 300, max_outputs: 9, max_outputs_per_job: 8 },
         ...(lipSyncHolder.execution === undefined ? {} : { "video.lip-sync": lipSyncHolder.execution }),
       },
     })),
@@ -150,6 +151,14 @@ describe("GET /canvas/limits", () => {
       maxPeople: 3,
       maxDialogues: 7,
     });
+  });
+
+  // Frames-split design §10.7: the panel refuses more outputs than one run creates before it makes any node.
+  it("serves each configured tool's max_outputs", async () => {
+    const res = await createApp().request("/api/v1/canvas/limits", { headers: AUTH });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { maxOutputs?: Record<string, number> } };
+    expect(body.data.maxOutputs?.["video.split"]).toBe(9);
   });
 
   it("says lip-sync is not offered when the deployment configures none", async () => {

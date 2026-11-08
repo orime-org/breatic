@@ -61,6 +61,8 @@ export interface CanvasLimits {
   erase?: { minSeconds: number; maxSeconds: number; maxGridFps: number } | null;
   /** The expand source and target limits (config `executions.video.expand`), or null where none is offered. */
   expand?: { maxDurationSeconds: number; maxTargetSide: number } | null;
+  /** The most outputs one run creates, per configured planned tool (config `executions[tool].max_outputs`). */
+  maxOutputs?: Partial<Record<string, number>>;
 }
 
 /**

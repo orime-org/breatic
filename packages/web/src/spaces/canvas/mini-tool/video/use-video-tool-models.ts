@@ -36,6 +36,8 @@ export interface VideoToolModels {
   onRetryFailed?: () => void;
   /** How long the priced inputs hold still before the panel asks for a quote (config `quote_debounce_ms`). */
   quoteDebounceMs: number;
+  /** The most outputs one run of this tool creates (config `executions[tool].max_outputs`), absent while unknown. */
+  maxOutputs?: number;
 }
 
 /**
@@ -75,7 +77,7 @@ export function useVideoToolModels(args: { projectId: string; spaceId: string; n
   const t = useTranslation();
   const queryClient = useQueryClient();
   const modelTool = toolId === 'video.lip-sync';
-  const limits = useQuery({ ...canvasLimitsQuery(), enabled: modelTool || toolId === 'video.erase' || toolId === 'video.expand' }).data;
+  const limits = useQuery({ ...canvasLimitsQuery(), enabled: modelTool || toolId === 'video.erase' || toolId === 'video.expand' || toolId === 'video.split' }).data;
   const catalog = useQuery({ ...modelCatalogQuery(), enabled: modelTool }).data;
   const erase = React.useMemo((): EraseLimits | undefined => limits?.erase == null ? undefined
     : { model: { min_seconds: limits.erase.minSeconds, max_seconds: limits.erase.maxSeconds, max_grid_fps: limits.erase.maxGridFps } }, [limits]);
@@ -108,5 +110,6 @@ export function useVideoToolModels(args: { projectId: string; spaceId: string; n
       onFailure: (error) => { toast.error(plannedRunRefusalText(error, t)); },
     });
   }, [failure, spaceId, nodeId, projectId, queryClient, t, failureKey]);
-  return { ...(lipSync === undefined ? {} : { lipSync }), ...(erase === undefined ? {} : { erase }), ...(expand === undefined ? {} : { expand }), lipSyncFailure: failure?.reason ?? null, ...(onRetryFailed === undefined ? {} : { onRetryFailed }), quoteDebounceMs: limits?.quoteDebounceMs ?? 0 };
+  return { ...(lipSync === undefined ? {} : { lipSync }), ...(erase === undefined ? {} : { erase }), ...(expand === undefined ? {} : { expand }), lipSyncFailure: failure?.reason ?? null, ...(onRetryFailed === undefined ? {} : { onRetryFailed }), quoteDebounceMs: limits?.quoteDebounceMs ?? 0,
+    ...(limits?.maxOutputs?.[toolId] === undefined ? {} : { maxOutputs: limits.maxOutputs[toolId] }) };
 }

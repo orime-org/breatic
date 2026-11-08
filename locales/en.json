@@ -262,6 +262,7 @@
       "sourceTooLong": "This tool takes audio up to {minutes} minutes long.",
       "sourceTooLarge": "This tool takes files up to {size}.",
       "runTooLong": "This video is too long to process in one run: it would need more than {max, plural, one {# encoding job} other {# encoding jobs}}. Choose fewer or shorter outputs.",
+      "tooManyOutputs": "One run can create up to {max, plural, one {# result} other {# results}}.",
       "lipSyncModelUnavailable": "This lip-sync model isn't available. Choose another model.",
       "lipSyncDurationOutOfRange": "This model takes a result of {min}–{max} s.",
       "lipSyncTrackingOutOfRange": "Person tracking takes {min}–{max} s of video.",
@@ -1500,6 +1501,7 @@
         "anchorOutsideRange": "Mark the selection on a frame inside the range.",
         "expandTooLong": "Expand takes videos up to {max} s long.",
         "expandTooLarge": "The expanded video can be at most {max} px on its long side.",
+        "tooManyOutputs": "A run can create up to {max, plural, one {# result} other {# results}}.",
         "transparentSource": "This tool doesn't work on videos with transparency.",
         "trackingFailure": {
           "empty_foreground": "Nothing was tracked. Change the selection or the description.",

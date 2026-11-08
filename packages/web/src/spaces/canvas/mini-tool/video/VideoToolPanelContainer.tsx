@@ -9,7 +9,7 @@ import type { VideoToolPanelState } from '@web/spaces/canvas/video-presentation/
 import { useStore } from '@xyflow/react';
 import { useQueries, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { CANVAS_NODES_KEY, newId, type VideoPresentationSourceBinding } from '@breatic/shared';
-import { anchorInTrackingRange, canonicalMiniToolValue, fingerprintMiniToolAnalysisInput, gridSecondsAllowed, modelGrid, presentationFramesIn, videoExpandLayout, lipsyncTimeline, lipsyncUsedSourceRange, planVideoFrames, presentationFrameAt, presentationVideoEnd, type LipsyncFailureReason, projectMiniToolAnalysisInput, videoToolAnalysisRefs, videoToolSourceRefSchema, selectMiniToolAnalyses, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisRequest, type MiniToolPresentationRef, type VideoPresentationTable, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
+import { anchorInTrackingRange, canonicalMiniToolValue, fingerprintMiniToolAnalysisInput, gridSecondsAllowed, modelGrid, presentationFramesIn, videoExpandLayout, lipsyncTimeline, lipsyncUsedSourceRange, planVideoFrames, planVideoSplit, presentationFrameAt, presentationVideoEnd, type LipsyncFailureReason, projectMiniToolAnalysisInput, videoToolAnalysisRefs, videoToolSourceRefSchema, selectMiniToolAnalyses, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisRequest, type MiniToolPresentationRef, type VideoPresentationTable, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
 import { Button } from '@web/components/ui/button';
 import { miniToolAnalysesApi, miniToolAnalysisQuery, latestMiniToolAnalysis } from '@web/data/api/mini-tool-analyses';
 import { docName, getDoc } from '@web/data/yjs/manager';
@@ -114,6 +114,8 @@ export interface VideoToolPanelContainerProps {
   erase?: EraseLimits;
   /** The expand limits (config `executions."video.expand"`). */
   expand?: ExpandLimits;
+  /** The most outputs one run of this tool creates (config `executions[tool].max_outputs`). */
+  maxOutputs?: number;
 }
 
 /**
@@ -320,6 +322,7 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
   const lipSync = props.lipSync ?? models.lipSync;
   const eraseLimits = props.erase ?? models.erase;
   const expandLimits = props.expand ?? models.expand;
+  const maxOutputs = props.maxOutputs ?? models.maxOutputs;
   const lipSyncFailure = props.lipSyncFailure ?? models.lipSyncFailure;
   const onRetryFailed = props.onRetryFailed ?? models.onRetryFailed;
   const [timelineOpen, setTimelineOpen] = React.useState(false);
@@ -500,7 +503,11 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
   const runBlockedReason = !canRun ? undefined
     : toolId === 'video.lip-sync' ? (lipSync !== undefined && presentation.frameTable !== null ? lipSyncRangeBlock(current as VideoToolDraftById['video.lip-sync'], presentation.frameTable, lipSync, t) : undefined)
       : toolId === 'video.erase' ? trackBlockedReason
-        : toolId === 'video.expand' ? expandBlock(current as VideoToolDraftById['video.expand'], expandLimits, transparent, t) : undefined;
+        : toolId === 'video.expand' ? expandBlock(current as VideoToolDraftById['video.expand'], expandLimits, transparent, t)
+          // More planned outputs than one run creates are refused here, before any node is made (frames-split §10.7).
+          : toolId === 'video.split' && maxOutputs !== undefined && presentation.frameTable !== null
+            && planVideoSplit(presentation.frameTable, (current as VideoToolDraftById['video.split']).params.cuts).length > maxOutputs
+            ? t('canvas.miniTool.videoUI.tooManyOutputs', { max: maxOutputs }) : undefined;
   /**
    * Freezes exactly the visible source frame at the press before execution.
    * @returns The press outcome, or undefined when nothing was sent.

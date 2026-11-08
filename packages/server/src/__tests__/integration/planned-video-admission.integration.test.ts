@@ -672,6 +672,16 @@ describe("E3 job layout, parallel cap and quote at admission (inner#1306 §90 E3
     expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
   });
 
+  // Frames-split design §10.7 产物上限: more outputs than the tool's max_outputs are refused with the limit named.
+  it("E3-A08 a split with more outputs than max_outputs is refused naming the limit, with no durable effect", async () => {
+    const f = await seed(); await control(f);
+    (Reflect.get(settings.executions, "video.split") as { max_outputs: number }).max_outputs = 2;
+    const response = await post(f);
+    expect(response.status).toBe(422);
+    expect(((await response.json()) as { error: { message: string } }).error.message).toBe(shared.t("server.mini_tool.tooManyOutputs", { max: 2 }));
+    expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
+  });
+
   it("E3-A02 the same three outputs in one batch fit a cap of one job", async () => {
     const f = await seed();
     settings.encoding.max_parallel_chunks = 1;

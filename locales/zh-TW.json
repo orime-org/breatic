@@ -262,6 +262,7 @@
       "sourceTooLong": "這個工具只處理 {minutes} 分鐘以內的音訊。",
       "sourceTooLarge": "這個工具只處理 {size} 以內的檔案。",
       "runTooLong": "這個影片太長，一次執行處理不了（需要超過 {max} 個編碼作業）。請減少或縮短輸出。",
+      "tooManyOutputs": "一次執行最多產生 {max} 個結果。",
       "lipSyncModelUnavailable": "這個對口型模型無法使用，請換一個模型。",
       "lipSyncDurationOutOfRange": "這個模型的結果時長需在 {min}–{max} 秒之間。",
       "lipSyncTrackingOutOfRange": "人物追蹤只能處理 {min}–{max} 秒的影片。",
@@ -1500,6 +1501,7 @@
         "anchorOutsideRange": "請在區間內的影格上框選。",
         "expandTooLong": "外擴支援最長 {max} 秒的影片。",
         "expandTooLarge": "外擴後的影片長邊最多 {max} 像素。",
+        "tooManyOutputs": "一次執行最多產生 {max} 個結果。",
         "transparentSource": "這個工具不支援含透明背景的影片。",
         "trackingFailure": {
           "empty_foreground": "沒有追蹤到物件。請換一個選取範圍或描述。",

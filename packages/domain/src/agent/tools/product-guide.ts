@@ -1002,7 +1002,8 @@ export function renderProductGuide(): string {
       `In ${quoted(t("canvas.miniTool.video.split.label"))}, ${quoted(t("canvas.miniTool.videoUI.detectScenes"))} ` +
       "finds candidate cut points within this same tool. Drag a cut handle on its filmstrip or edit its seconds " +
       `below; ${quoted(t("canvas.miniTool.videoUI.atCursor"))} adds one at the player cursor, and the bin beside ` +
-      "a cut removes it. The segment count reflects the complete split plan.",
+      "a cut removes it. The segment count reflects the complete split plan; one run makes up to 8 segments, and with " +
+      "more Run says the limit instead of running.",
     `In ${quoted(t("canvas.miniTool.video.transitions.label"))}, the timeline holds two clips: the current video and one ` +
       `video picked under ${quoted(t("canvas.miniTool.videoUI.videoInputs"))}. Open ` +
       `${quoted(t("canvas.miniTool.videoUI.editTimeline"))} and press ${quoted(t("canvas.miniTool.videoUI.swapClips"))} to swap ` +
