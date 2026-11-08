@@ -25,6 +25,7 @@ import { PromoterSection } from '@web/features/referral/PromoterSection';
 import type { AccountReferral } from '@web/data/api/referral';
 import { ApiException } from '@web/data/api/types';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
+import { EMPTY_APPLICATION, getReferralForms, resetReferralFormsForTests } from '@web/stores/referral-forms';
 import { useCurrentUserStore } from '@web/stores';
 
 const OPEN: AccountReferral = {
@@ -81,6 +82,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   resetRunOnceForTests();
+  resetReferralFormsForTests();
 });
 
 describe('the promoter program section (inner#1868 table 12.11)', () => {
@@ -217,7 +219,7 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
     expect(screen.queryByRole('listbox')).toBeNull();
   });
 
-  it('shows the application being sent after the panel is closed and opened again, and tells a refusal that arrives meanwhile', async () => {
+  it('shows the application being sent after the panel is closed and opened again, and the terms change in it', async () => {
     let refuse: (err: unknown) => void = () => undefined;
     api.apply.mockReturnValue(new Promise((_, reject) => { refuse = reject; }));
     const user = userEvent.setup();
@@ -239,7 +241,68 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
     expect(screen.getByRole('checkbox')).toBeChecked();
 
     await act(async () => { refuse(refusal409('terms_changed', { termsVersion: '2026-12-01' })); });
+    expect(await screen.findByText('The promoter terms have been updated. Read them again, then agree.')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox')).not.toBeChecked();
+    expect(screen.getByRole('combobox', { name: 'Country or region' })).toHaveTextContent('Singapore');
+    expect(screen.getByLabelText('How you will promote')).toHaveValue('Tutorials for designers');
+    expect(screen.getByDisplayValue('https://youtube.com/@me')).toBeEnabled();
+    expect(toasts.warning).not.toHaveBeenCalled();
+
+    // Agreeing again on the reopened dialog agrees to the version the answer named.
+    api.apply.mockResolvedValueOnce({ ...OPEN, promoter: { state: 'pending', submittedAt: '2026-11-07T10:00:00.000Z' } });
+    await user.click(screen.getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: 'Submit application' }));
+    await waitFor(() => expect(api.apply).toHaveBeenCalledTimes(2));
+    expect(api.apply.mock.calls[1]![0]).toMatchObject({ termsVersion: '2026-12-01' });
+  });
+
+  it('toasts a terms change that arrives after the dialog was cancelled, and shows it on reopening', async () => {
+    let refuse: (err: unknown) => void = () => undefined;
+    api.apply.mockReturnValue(new Promise((_, reject) => { refuse = reject; }));
+    const user = userEvent.setup();
+    setup(OPEN);
+    await user.click(await screen.findByRole('button', { name: 'Apply to become a promoter' }));
+    await fillForm(user);
+    await user.click(screen.getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: 'Submit application' }));
+    await waitFor(() => expect(api.apply).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    await act(async () => { refuse(refusal409('terms_changed', { termsVersion: '2026-12-01' })); });
     await waitFor(() => expect(toasts.warning).toHaveBeenCalledWith('The promoter terms have been updated. Read them again, then agree.'));
+
+    await user.click(screen.getByRole('button', { name: 'Apply to become a promoter' }));
+    expect(screen.getByText('The promoter terms have been updated. Read them again, then agree.')).toBeInTheDocument();
+    expect(screen.getByLabelText('How you will promote')).toHaveValue('Tutorials for designers');
+    expect(screen.getByRole('checkbox')).not.toBeChecked();
+  });
+
+  it('keeps what was filled in across closing and reopening the panel', async () => {
+    const user = userEvent.setup();
+    api.get.mockResolvedValue(OPEN);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const first = render(<QueryClientProvider client={client}><PromoterSection /></QueryClientProvider>);
+    await user.click(await screen.findByRole('button', { name: 'Apply to become a promoter' }));
+    await fillForm(user);
+    first.unmount();
+
+    render(<QueryClientProvider client={client}><PromoterSection /></QueryClientProvider>);
+    await user.click(await screen.findByRole('button', { name: 'Apply to become a promoter' }));
+    expect(screen.getByRole('combobox', { name: 'Country or region' })).toHaveTextContent('Singapore');
+    expect(screen.getByLabelText('How you will promote')).toHaveValue('Tutorials for designers');
+  });
+
+  it('starts an empty form after an application is filed', async () => {
+    api.apply.mockResolvedValue({ ...OPEN, promoter: { state: 'pending', submittedAt: '2026-11-07T08:00:00.000Z' } });
+    const user = userEvent.setup();
+    setup(OPEN);
+    await user.click(await screen.findByRole('button', { name: 'Apply to become a promoter' }));
+    await fillForm(user);
+    await user.click(screen.getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: 'Submit application' }));
+    await waitFor(() => expect(toasts.success).toHaveBeenCalled());
+    expect(getReferralForms().apply).toEqual(EMPTY_APPLICATION);
   });
 
   it('asks for agreement to the terms before sending', async () => {

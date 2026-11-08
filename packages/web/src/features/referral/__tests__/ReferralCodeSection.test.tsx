@@ -33,6 +33,7 @@ import { membershipQueryKey } from '@web/features/membership/membership-query';
 import type { AccountReferral } from '@web/data/api/referral';
 import { ApiException } from '@web/data/api/types';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
+import { getReferralForms, resetReferralFormsForTests } from '@web/stores/referral-forms';
 import { useCurrentUserStore } from '@web/stores';
 
 const CAN_BIND: AccountReferral = {
@@ -57,6 +58,18 @@ function setup(): void {
 }
 
 /**
+ * Renders the section over the same client, as reopening the panel does.
+ * @returns The render handle.
+ */
+function renderSection(): ReturnType<typeof render> {
+  return render(
+    <QueryClientProvider client={client}>
+      <ReferralCodeSection />
+    </QueryClientProvider>,
+  );
+}
+
+/**
  * A server refusal.
  * @param status - HTTP status.
  * @param reason - The refusal code.
@@ -69,10 +82,12 @@ function refusal(status: number, reason?: string): ApiException {
 beforeEach(() => {
   vi.clearAllMocks();
   carry.code = null;
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   useCurrentUserStore.setState({ user: { id: 'u1' } as never, role: null, loading: false, bootstrapped: true });
 });
 afterEach(() => {
   resetRunOnceForTests();
+  resetReferralFormsForTests();
 });
 
 describe('the referral code section (inner#1868 tables 12.9, 12.10)', () => {
@@ -124,6 +139,7 @@ describe('the referral code section (inner#1868 tables 12.9, 12.10)', () => {
     expect(toasts.success).toHaveBeenCalled();
     expect(carry.forget).toHaveBeenCalled();
     expect(invalidate).toHaveBeenCalledWith(expect.objectContaining({ queryKey: membershipQueryKey('u1') }));
+    expect(getReferralForms().bind).toEqual({ value: null, error: null });
   });
 
   it('locks the field while the code is being sent', async () => {
@@ -136,31 +152,83 @@ describe('the referral code section (inner#1868 tables 12.9, 12.10)', () => {
     await waitFor(() => expect(screen.getByLabelText('Referral code')).toHaveAttribute('readonly'));
   });
 
-  it('shows the code being sent after the panel is closed and opened again, and tells a refusal that arrives meanwhile', async () => {
+  it('shows the code being sent after the panel is closed and opened again, and the refusal under it', async () => {
+    carry.code = 'ABC';
     api.get.mockResolvedValue(CAN_BIND);
     let refuse: (err: unknown) => void = () => undefined;
     api.bind.mockReturnValue(new Promise((_, reject) => { refuse = reject; }));
     const user = userEvent.setup();
-    const first = render(
-      <QueryClientProvider client={(client = new QueryClient({ defaultOptions: { queries: { retry: false } } }))}>
-        <ReferralCodeSection />
-      </QueryClientProvider>,
-    );
+    const first = renderSection();
+    const field = await screen.findByLabelText('Referral code');
+    await user.clear(field);
+    await user.type(field, 'XYZ');
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(api.bind).toHaveBeenCalled());
+    first.unmount();
+
+    renderSection();
+    expect(await screen.findByLabelText('Referral code')).toHaveValue('XYZ');
+    expect(screen.getByLabelText('Referral code')).toHaveAttribute('readonly');
+
+    await act(async () => { refuse(refusal(422, 'invalid_code')); });
+    expect(await screen.findByText('refused invalid_code')).toBeInTheDocument();
+    expect(screen.getByLabelText('Referral code')).toHaveValue('XYZ');
+    expect(screen.getByLabelText('Referral code')).not.toHaveAttribute('readonly');
+    expect(toasts.error).not.toHaveBeenCalled();
+  });
+
+  it('toasts a refusal that arrives while the panel is closed, and shows it under the field on reopening', async () => {
+    api.get.mockResolvedValue(CAN_BIND);
+    let refuse: (err: unknown) => void = () => undefined;
+    api.bind.mockReturnValue(new Promise((_, reject) => { refuse = reject; }));
+    const user = userEvent.setup();
+    const first = renderSection();
     await user.type(await screen.findByLabelText('Referral code'), 'XYZ');
     await user.click(screen.getByRole('button', { name: 'Add' }));
     await waitFor(() => expect(api.bind).toHaveBeenCalled());
     first.unmount();
 
-    render(
-      <QueryClientProvider client={client}>
-        <ReferralCodeSection />
-      </QueryClientProvider>,
-    );
-    expect(await screen.findByLabelText('Referral code')).toHaveValue('XYZ');
-    expect(screen.getByLabelText('Referral code')).toHaveAttribute('readonly');
-
     await act(async () => { refuse(refusal(422, 'invalid_code')); });
     await waitFor(() => expect(toasts.error).toHaveBeenCalledWith('refused invalid_code'));
+
+    renderSection();
+    expect(await screen.findByLabelText('Referral code')).toHaveValue('XYZ');
+    expect(screen.getByText('refused invalid_code')).toBeInTheDocument();
+  });
+
+  it('keeps the code that was sent when a reopened panel gets another final refusal', async () => {
+    carry.code = 'ABC';
+    api.get.mockResolvedValue(CAN_BIND);
+    let refuse: (err: unknown) => void = () => undefined;
+    api.bind.mockReturnValue(new Promise((_, reject) => { refuse = reject; }));
+    const user = userEvent.setup();
+    const first = renderSection();
+    const field = await screen.findByLabelText('Referral code');
+    await user.clear(field);
+    await user.type(field, 'XYZ');
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(api.bind).toHaveBeenCalled());
+    first.unmount();
+
+    renderSection();
+    await screen.findByLabelText('Referral code');
+    await act(async () => { refuse(refusal(403)); });
+    await waitFor(() => expect(toasts.error).toHaveBeenCalledWith('refused 403'));
+    expect(screen.getByLabelText('Referral code')).toHaveValue('XYZ');
+  });
+
+  it('keeps a typed code across closing and reopening the panel', async () => {
+    carry.code = 'ABC';
+    api.get.mockResolvedValue(CAN_BIND);
+    const user = userEvent.setup();
+    const first = renderSection();
+    const field = await screen.findByLabelText('Referral code');
+    await user.clear(field);
+    await user.type(field, 'XYZ');
+    first.unmount();
+
+    renderSection();
+    expect(await screen.findByLabelText('Referral code')).toHaveValue('XYZ');
   });
 
   it('asks for a code instead of sending an empty one', async () => {

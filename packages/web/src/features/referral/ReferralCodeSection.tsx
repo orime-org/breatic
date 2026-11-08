@@ -12,12 +12,18 @@ import { Skeleton } from '@web/components/ui/skeleton';
 import { FieldError } from '@web/components/FieldError';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
-import { useMountedRef } from '@web/lib/use-mounted-ref';
 import { carriedReferralCode, forgetCarriedReferralCode, forgetRefusedReferralCode } from '@web/lib/referral-carry';
 import { membershipQueryKey } from '@web/features/membership/membership-query';
 import { SectionHeading } from '@web/features/membership/SectionHeading';
 import { referralQueryKey, useAccountReferral, zheOf } from '@web/features/referral/referral-query';
 import { runOnce, useRunning } from '@web/stores/task-actions-in-flight';
+import {
+  clearReferralForm,
+  editBind,
+  isReferralFormOnScreen,
+  useReferralForm,
+  useReferralFormOnScreen,
+} from '@web/stores/referral-forms';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
 const BIND_INTENT = 'referral:bind';
@@ -97,26 +103,25 @@ function BindForm({ view }: { view: AccountReferral }): React.JSX.Element {
   const t = useTranslation();
   const client = useQueryClient();
   const userId = useCurrentUserStore((s) => s.user?.id ?? null);
-  const [value, setValue] = React.useState(() => carriedReferralCode() ?? '');
-  const [error, setError] = React.useState<string | null>(null);
-  // A waiting press outlives this form when the panel closes: the code it sends
-  // is what the form shows, and its answer goes to a toast once the form is gone.
-  const running = useRunning(BIND_INTENT);
-  const pressing = running !== undefined;
-  const shown = typeof running === 'string' ? running : value;
-  const mounted = useMountedRef();
+  // The draft and the answer live in the referral forms store: a waiting press
+  // outlives this field when the panel closes.
+  const draft = useReferralForm('bind');
+  const [carried] = React.useState(() => carriedReferralCode() ?? '');
+  const value = draft.value ?? carried;
+  const pressing = useRunning(BIND_INTENT) !== undefined;
+  useReferralFormOnScreen('bind', true);
   const percent = view.firstPeriodDiscountPercent;
   const figure = React.useMemo(() => ({ percent, zhe: zheOf(percent) }), [percent]);
 
   const bind = React.useCallback((): void => {
     const code = value.trim();
     if (code === '') {
-      setError(t('membership.referral.required'));
+      editBind({ error: t('membership.referral.required') });
       return;
     }
+    editBind({ value });
     void runOnce(BIND_INTENT, {
       scope: 'referral',
-      meta: code,
       prepare: () => code,
       send: (key, body: string) => referralApi.bind(body, key),
       onDone: (answer: AccountReferral): undefined => {
@@ -124,14 +129,15 @@ function BindForm({ view }: { view: AccountReferral }): React.JSX.Element {
         // Binding may have expired an open checkout; the membership read follows.
         void client.invalidateQueries({ queryKey: membershipQueryKey(userId) });
         forgetCarriedReferralCode();
+        clearReferralForm('bind');
         toast.success(t('membership.referral.added', figure));
         return undefined;
       },
       onFailure: (err) => {
         if (err instanceof ApiException && err.status === 422 && err.reason === 'invalid_code') {
           forgetRefusedReferralCode(code);
-          if (mounted.current) setError(err.message);
-          else toast.error(err.message);
+          editBind({ error: err.message });
+          if (!isReferralFormOnScreen('bind')) toast.error(err.message);
           return;
         }
         toast.error(err instanceof ApiException ? err.message : t('membership.referral.loadFailed'));
@@ -140,7 +146,7 @@ function BindForm({ view }: { view: AccountReferral }): React.JSX.Element {
         }
       },
     });
-  }, [value, t, client, userId, figure, mounted]);
+  }, [value, t, client, userId, figure]);
 
   return (
     <section className='flex flex-col gap-2'>
@@ -151,17 +157,14 @@ function BindForm({ view }: { view: AccountReferral }): React.JSX.Element {
           <Input
             aria-label={t('membership.referral.heading')}
             autoComplete='off'
-            value={shown}
+            value={value}
             placeholder={t('membership.referral.placeholder')}
             maxLength={REFERRAL_CODE_INPUT_MAX}
             readOnly={pressing}
-            aria-invalid={!!error || undefined}
-            onChange={(e) => {
-              setValue(e.target.value);
-              setError(null);
-            }}
+            aria-invalid={!!draft.error || undefined}
+            onChange={(e) => editBind({ value: e.target.value, error: null })}
           />
-          {error ? <FieldError>{error}</FieldError> : null}
+          {draft.error ? <FieldError>{draft.error}</FieldError> : null}
         </div>
         <Button type='button' variant='outline' loading={pressing} onClick={bind}>
           {t('membership.referral.add')}

@@ -19,11 +19,18 @@ import { FieldError } from '@web/components/FieldError';
 import { useTranslation } from '@web/i18n/use-translation';
 import { PROMOTER_TERMS_URL } from '@web/lib/official-home';
 import { toast } from '@web/lib/toast';
-import { useMountedRef } from '@web/lib/use-mounted-ref';
 import { countryOptions } from '@web/features/referral/countries';
 import { referralQueryKey } from '@web/features/referral/referral-query';
 import { runOnce, useRunning } from '@web/stores/task-actions-in-flight';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import {
+  clearReferralForm,
+  editApplication,
+  getReferralForms,
+  isReferralFormOnScreen,
+  useReferralForm,
+  useReferralFormOnScreen,
+} from '@web/stores/referral-forms';
 
 const APPLY_INTENT = 'referral:apply';
 const MAX_CHANNELS = 10;
@@ -55,25 +62,14 @@ export function PromoterApplyDialog({
   const t = useTranslation();
   const client = useQueryClient();
   const userId = useCurrentUserStore((s) => s.user?.id ?? null);
-  const [country, setCountry] = React.useState('');
-  const [channels, setChannels] = React.useState<string[]>(['']);
-  const [plan, setPlan] = React.useState('');
-  const [agreed, setAgreed] = React.useState(false);
+  // The draft and the answer live in the referral forms store: a waiting press
+  // outlives this dialog when the panel closes.
+  const { country, channels, plan, agreed, termsNotice, answeredTerms } = useReferralForm('apply');
   const [errors, setErrors] = React.useState<FieldErrors>({});
-  const [termsNotice, setTermsNotice] = React.useState(false);
-  // The version a terms_changed answer named; agreeing again agrees to it.
-  const [answeredTerms, setAnsweredTerms] = React.useState<string | null>(null);
+  // Agreeing again after a terms_changed answer agrees to the version it named.
   const agreedTerms = answeredTerms ?? termsVersion;
-  // A waiting press outlives this dialog when the panel closes: the form it
-  // sends is what the dialog shows, and its answer goes to a toast once the dialog is gone.
-  const running = useRunning(APPLY_INTENT);
-  const pressing = running !== undefined;
-  const sent = typeof running === 'object' && running !== null ? (running as PromoterApplicationForm) : null;
-  const shownCountry = sent?.country ?? country;
-  const shownChannels = sent?.channels ?? channels;
-  const shownPlan = sent?.plan ?? plan;
-  const shownAgreed = sent !== null || agreed;
-  const mounted = useMountedRef();
+  const pressing = useRunning(APPLY_INTENT) !== undefined;
+  useReferralFormOnScreen('apply', open);
   const countries = React.useMemo(() => countryOptions(getLocale()), []);
 
   const submit = React.useCallback((): void => {
@@ -88,11 +84,11 @@ export function PromoterApplyDialog({
     const form: PromoterApplicationForm = { country, channels: filled, plan: plan.trim(), termsVersion: agreedTerms };
     void runOnce(APPLY_INTENT, {
       scope: 'referral',
-      meta: form,
       prepare: () => form,
       send: (key, body: PromoterApplicationForm) => referralApi.apply(body, key),
       onDone: (answer: AccountReferral): undefined => {
         client.setQueryData(referralQueryKey(userId), answer);
+        clearReferralForm('apply');
         onOpenChange(false);
         toast.success(t('membership.promoter.submitted'));
         return undefined;
@@ -100,14 +96,9 @@ export function PromoterApplyDialog({
       onFailure: (err) => {
         if (err instanceof ApiException && err.reason === 'terms_changed') {
           void client.invalidateQueries({ queryKey: referralQueryKey(userId) });
-          if (!mounted.current) {
-            toast.warning(t('membership.promoter.termsChanged'));
-            return;
-          }
           const named = err.details?.termsVersion;
-          if (typeof named === 'string') setAnsweredTerms(named);
-          setAgreed(false);
-          setTermsNotice(true);
+          editApplication({ agreed: false, termsNotice: true, ...(typeof named === 'string' ? { answeredTerms: named } : {}) });
+          if (!isReferralFormOnScreen('apply')) toast.warning(t('membership.promoter.termsChanged'));
           return;
         }
         toast.error(err instanceof ApiException ? err.message : t('membership.referral.loadFailed'));
@@ -117,7 +108,7 @@ export function PromoterApplyDialog({
         }
       },
     });
-  }, [channels, country, plan, agreed, agreedTerms, t, client, userId, onOpenChange, mounted]);
+  }, [channels, country, plan, agreed, agreedTerms, t, client, userId, onOpenChange]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -132,7 +123,7 @@ export function PromoterApplyDialog({
             <DialogBody className='gap-4'>
               <div className='flex flex-col gap-1.5'>
                 <Label htmlFor='promoter-country'>{t('membership.promoter.country')}</Label>
-                <Select disabled={pressing} value={shownCountry} onValueChange={(v) => { setCountry(v); setErrors((e) => ({ ...e, country: undefined })); }}>
+                <Select disabled={pressing} value={country} onValueChange={(v) => { editApplication({ country: v }); setErrors((e) => ({ ...e, country: undefined })); }}>
                   <SelectTrigger id='promoter-country' aria-label={t('membership.promoter.country')} aria-invalid={!!errors.country || undefined}>
                     <SelectValue placeholder={t('membership.promoter.countryPlaceholder')} />
                   </SelectTrigger>
@@ -148,7 +139,7 @@ export function PromoterApplyDialog({
                   <Label>{t('membership.promoter.channels')}</Label>
                   <span className='text-xs text-muted-foreground'>{t('membership.promoter.channelsHint')}</span>
                 </div>
-                {shownChannels.map((channel, i) => (
+                {channels.map((channel, i) => (
                   <div key={i} className='flex gap-2'>
                     <Input
                       autoComplete='off'
@@ -158,21 +149,21 @@ export function PromoterApplyDialog({
                       aria-invalid={!!errors.channels || undefined}
                       onChange={(e) => {
                         const value = e.target.value;
-                        setChannels((list) => list.map((c, j) => (j === i ? value : c)));
+                        editApplication({ channels: getReferralForms().apply.channels.map((c, j) => (j === i ? value : c)) });
                         setErrors((er) => ({ ...er, channels: undefined }));
                       }}
                     />
-                    {shownChannels.length > 1 ? (
+                    {channels.length > 1 ? (
                       <Button type='button' variant='ghost' size='icon' aria-label={t('membership.promoter.removeChannel')}
-                        onClick={() => setChannels((list) => list.filter((_, j) => j !== i))}>
+                        onClick={() => editApplication({ channels: getReferralForms().apply.channels.filter((_, j) => j !== i) })}>
                         <Trash2 className='h-3.5 w-3.5' />
                       </Button>
                     ) : null}
                   </div>
                 ))}
-                {shownChannels.length < MAX_CHANNELS ? (
+                {channels.length < MAX_CHANNELS ? (
                   <Button type='button' variant='link' size='compact' className='w-fit gap-1 px-0 text-xs text-muted-foreground'
-                    icon={<Plus className='h-3 w-3' />} onClick={() => setChannels((list) => [...list, ''])}>
+                    icon={<Plus className='h-3 w-3' />} onClick={() => editApplication({ channels: [...getReferralForms().apply.channels, ''] })}>
                     {t('membership.promoter.addChannel')}
                   </Button>
                 ) : null}
@@ -185,10 +176,10 @@ export function PromoterApplyDialog({
                   id='promoter-plan'
                   rows={4}
                   maxLength={2000}
-                  value={shownPlan}
+                  value={plan}
                   placeholder={t('membership.promoter.planPlaceholder')}
                   aria-invalid={!!errors.plan || undefined}
-                  onChange={(e) => { setPlan(e.target.value); setErrors((er) => ({ ...er, plan: undefined })); }}
+                  onChange={(e) => { editApplication({ plan: e.target.value }); setErrors((er) => ({ ...er, plan: undefined })); }}
                 />
                 {errors.plan ? <FieldError>{errors.plan}</FieldError> : null}
               </div>
@@ -197,9 +188,9 @@ export function PromoterApplyDialog({
               <div className='flex flex-col gap-1'>
                 <label className='flex items-start gap-2 text-sm'>
                   <Checkbox
-                    checked={shownAgreed}
+                    checked={agreed}
                     aria-invalid={!!errors.agree || undefined}
-                    onCheckedChange={(v) => { setAgreed(v === true); setTermsNotice(false); setErrors((er) => ({ ...er, agree: undefined })); }}
+                    onCheckedChange={(v) => { editApplication({ agreed: v === true, termsNotice: false }); setErrors((er) => ({ ...er, agree: undefined })); }}
                   />
                   <span>
                     {t('membership.promoter.agreeLead')}{' '}
