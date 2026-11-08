@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { screen, waitFor, act } from '@testing-library/react';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import { Activity } from 'react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
