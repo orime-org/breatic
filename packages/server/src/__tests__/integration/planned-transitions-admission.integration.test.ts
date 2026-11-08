@@ -24,7 +24,7 @@ import type { Queue } from "bullmq";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import * as core from "@breatic/core";
 import * as shared from "@breatic/shared";
-import { containerCostUsd, creditsForUsd, MIN_TASK_CREDIT_COST } from "@breatic/domain";
+import { containerCostUsd, creditsForUsd, MIN_TASK_CREDIT_COST, miniToolExecutionService } from "@breatic/domain";
 import { estimateAudioEncodeSeconds, planTransitionChunks, plannedStageJobs, planVideoTimeline, transitionOutputProfile } from "@breatic/shared/mini-tools";
 import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "./studio-credit-fixtures.js";
 import { presentedSource, REMOVAL_ENCODING, REMOVAL_PLAN, type ToolInputRef } from "./presentation-fixtures.js";
@@ -387,5 +387,30 @@ describe("transition chunks hold what each clip's own frames cost (§97; frames-
     const mergeable = small.slice(1).filter((chunk, at) => cost({ start: small[at]!.start, end: chunk.end }, false) <= share);
     expect({ count: small.length > 0, mergeable }).toEqual({ count: true, mergeable: [] });
     expect(small.length).toBeLessThan(large.length);
+  });
+});
+
+// frames-split §7.15 可重试结束: transitions has no retry, so a failed run can never be taken over and its terminal commit
+// ends its retryability: the execution pins are released there and the ledgers and done chunks they held are registered.
+describe("a failed transitions run releases its pins at the terminal commit (frames-split §7.15)", () => {
+  it("TP01 releases the execution pins and registers the ledgers and the done chunks for reclaim", async () => {
+    const f = await seed();
+    await accept(f);
+    const runId = f.body.run_id;
+    const { execution } = await miniToolExecutionService.startMiniToolExecution(runId, runId);
+    const [pin] = await pg<{ id: string }[]>`SELECT id FROM presentation_pins WHERE holder_kind='execution' AND holder_id=${runId} AND deleted_at IS NULL LIMIT 1`;
+    const chunks = [`video/transitions/work/${runId}:enc:0.mp4`, `video/transitions/work/${runId}:win:0.mp4`];
+    for (const key of chunks) await pg`INSERT INTO presentation_pin_objects (pin_id,storage_key) VALUES (${pin!.id},${key})`;
+    const held = (await pg<{ storage_key: string }[]>`SELECT o.storage_key FROM presentation_pin_objects o JOIN presentation_pins p ON p.id=o.pin_id
+      WHERE p.holder_kind='execution' AND p.holder_id=${runId} AND p.deleted_at IS NULL`).map((row) => row.storage_key).sort();
+    expect(held.filter((key) => key.endsWith(".json"))).toHaveLength(4);
+    const error = { code: "mini_tool_failed" };
+    const plan = execution as unknown as { planFingerprint: string; outputs: { outputIndex: number; nodeId: string; recipe: { kind: "transitions" } }[] };
+    expect((await miniToolExecutionService.finishMiniToolExecution(runId, { planFingerprint: plan.planFingerprint, expectedVersion: 0, consumptionSet: "uncertain", error,
+      outputs: plan.outputs.map((output) => ({ ...output, late: false, result: { status: "failed", error } })) })).record.status).toBe("failed");
+    const [live] = await pg<{ count: number }[]>`SELECT count(*)::int AS count FROM presentation_pins WHERE holder_id=${runId} AND deleted_at IS NULL`;
+    expect(live!.count).toBe(0);
+    const queued = (await pg<{ storage_key: string }[]>`SELECT storage_key FROM storage_reclaim_queue WHERE storage_key=ANY(${held}) AND kind='derived'`).map((row) => row.storage_key).sort();
+    expect(queued).toEqual(held);
   });
 });

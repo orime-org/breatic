@@ -101,9 +101,9 @@ export async function finishMiniToolExecution(taskId: string, completion: MiniTo
       finish: plan.task.status === "pending" || plan.task.status === "running",
     });
     await synchronizeMiniToolDelivery(plan.task, record, tx);
-    // No failed output, or a failure no retry can clear (§9.4, §10.4, §10.5: no_face, model_rejected, a frame count
-    // mismatch): nothing can retry this run, so its pins end with this commit (§7.15 end of retryability).
-    const unretryable = outputs.some((output) => output.result?.status === "failed" && !plannedFailureRetryable(output.result.error));
+    // No failed output, a tool without retry (transitions), or a failure no retry can clear (§9.4, §10.4, §10.5: no_face,
+    // model_rejected, a frame count mismatch): nothing can retry this run, so its pins end with this commit (§7.15 end of retryability).
+    const unretryable = outputs.some((output) => output.result?.status === "failed" && !plannedFailureRetryable(plan.execution.tool, output.result.error));
     if (status === "completed" || unretryable) {
       await presentationPinService.release({ holderKind: "execution", holderId: id }, tx);
       await presentationPinService.release({ holderKind: "prepared", holderId: id }, tx);

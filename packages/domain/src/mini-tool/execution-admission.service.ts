@@ -993,7 +993,7 @@ async function claimRetry(request: MiniToolExecutionRetryRequest, userId: string
     if (record.status === "cancelled" || selected.length !== request.retry.outputIndexes.length
       || selected.some((output) => output.result?.status !== "failed" || output.late
         // A failure no retry can clear (§9.4, §10.4, §10.5) is no retryable slot.
-        || !plannedFailureRetryable(output.result.error))) throw new ValidationError(t("server.mini_tool.foreignSource"));
+        || !plannedFailureRetryable(plan.execution.tool, output.result.error))) throw new ValidationError(t("server.mini_tool.foreignSource"));
     const outputs = plan.execution.outputs.filter((output) => request.retry.outputIndexes.includes(output.outputIndex));
     if (await taskRepo.hasActiveMiniToolExecutionNodes(request.project_id, request.space_id, outputs.map((output) => output.nodeId), tx)) throw new ConflictError(t("server.idempotency.mismatch"));
     const { requestFingerprint: _requestFingerprint, planFingerprint: _planFingerprint, ...frozen } = plan.execution;

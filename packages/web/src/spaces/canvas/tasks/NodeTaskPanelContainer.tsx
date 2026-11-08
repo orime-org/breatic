@@ -211,7 +211,7 @@ function OpenNodeTaskPanel({
     const tool = ROW_RETRY_TOOLS.find((id) => id === entry?.label);
     if (entry?.status !== 'failed' || runId == null || tool === undefined) return null;
     const output = runs[parentRunIds.indexOf(runId)]?.data?.outputs.find((candidate) => candidate.nodeId === nodeId);
-    return output?.result?.status === 'failed' && plannedFailureRetryable(output.result.error) ? { runId, tool, outputIndex: output.outputIndex } : null;
+    return output?.result?.status === 'failed' && plannedFailureRetryable(tool, output.result.error) ? { runId, tool, outputIndex: output.outputIndex } : null;
   }, [entries, runs, parentRunIds, nodeId]);
   const detailOf = React.useCallback((taskId: string): React.ReactNode => {
     const entry = entries.find((candidate) => candidate.id === taskId);
@@ -220,11 +220,11 @@ function OpenNodeTaskPanel({
     if (entry?.label === 'video.erase' || entry?.label === 'video.expand') {
       const tool = entry.label;
       const failure = modelFailures.get(runId);
-      return failure === undefined ? null : <ModelRunFailure reason={failure} disabled={readOnly} retryIntent={plannedRetryIntent(runId)} {...(plannedFailureRetryable(failure) ? { onRetry: () => { void retryFailed(runId, tool); } } : {})} />;
+      return failure === undefined ? null : <ModelRunFailure reason={failure} disabled={readOnly} retryIntent={plannedRetryIntent(runId)} {...(plannedFailureRetryable(tool, failure) ? { onRetry: () => { void retryFailed(runId, tool); } } : {})} />;
     }
     const reason = entry?.label === 'video.lip-sync' ? lipSyncFailures.get(runId) : undefined;
     return reason === undefined ? null
-      : <LipSyncFailure reason={reason} disabled={readOnly} retryIntent={plannedRetryIntent(runId)} {...(plannedFailureRetryable(reason) ? { onRetry: () => { void retryFailed(runId); } } : {})} />;
+      : <LipSyncFailure reason={reason} disabled={readOnly} retryIntent={plannedRetryIntent(runId)} {...(plannedFailureRetryable('video.lip-sync', reason) ? { onRetry: () => { void retryFailed(runId); } } : {})} />;
   }, [entries, lipSyncFailures, modelFailures, readOnly, retryFailed]);
   // Only the running list reads the clock, and only while it has a row: the
   // three settled states show fixed instants.

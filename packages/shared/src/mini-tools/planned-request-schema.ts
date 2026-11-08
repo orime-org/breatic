@@ -89,9 +89,17 @@ export const miniToolPlannedRequestSchema = z.discriminatedUnion("tool", [remova
 /** A fresh planned execution, independent from legacy submissions and failed-output retries. */
 export type MiniToolPlannedRequest = z.infer<typeof miniToolPlannedRequestSchema>;
 
+/**
+ * The planned tools whose failed output can be retried (frames-split §7.15 可重试结束): the retry request takes exactly
+ * these, and a failed output of any other tool (transitions) is never retryable.
+ */
+export const MINI_TOOL_RETRY_TOOLS = ["video.remove-bg", "video.extract-frames", "video.split", "video.lip-sync", "video.erase", "video.expand"] as const;
+/** A planned tool that has a retry. */
+export type MiniToolRetryTool = typeof MINI_TOOL_RETRY_TOOLS[number];
+
 /** A new execution reuses only original failed output identities, not current draft inputs. */
 export const miniToolExecutionRetryRequestSchema = z.strictObject({
-  tool: z.enum(["video.remove-bg", "video.extract-frames", "video.split", "video.lip-sync", "video.erase", "video.expand"]), project_id: z.uuid(), space_id: z.uuid(), run_id: z.uuid(),
+  tool: z.enum(MINI_TOOL_RETRY_TOOLS), project_id: z.uuid(), space_id: z.uuid(), run_id: z.uuid(),
   retry: z.strictObject({ runId: z.uuid(), outputIndexes: z.array(index).min(1).refine((ids) => new Set(ids).size === ids.length) }),
 }).refine((request) => request.run_id !== request.retry.runId, { message: "A retry requires a new execution identity" });
 export type MiniToolExecutionRetryRequest = z.infer<typeof miniToolExecutionRetryRequestSchema>;

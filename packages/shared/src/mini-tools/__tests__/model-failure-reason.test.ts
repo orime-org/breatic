@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { eraseFailureReasonSchema, expandFailureReasonSchema, modelFailureRetryable, plannedFailureRetryable } from "../model-failure-reason.js";
+import { MINI_TOOL_RETRY_TOOLS, miniToolExecutionRetryRequestSchema } from "../planned-request-schema.js";
 
 // Execution design §10.4 and §10.5 failure paragraphs: an erase fails at one step with one category; an expand lists every
 // window that did not succeed and the step outside every window.
@@ -43,14 +44,23 @@ describe("erase and expand failure reasons (execution design §10.4, §10.5)", (
   // The one decision the terminal commit's pin release, retry admission and the node share (§10.5 last paragraph): each
   // planned model run's reason by its own rule, any other failure (a frames or split output) retryable.
   it.each([
-    ["an erase the model rejected", { kind: "erase", step: "generate", category: "model_rejected" }, false],
-    ["an erase timing out", { kind: "erase", step: "expired", category: "timeout" }, true],
-    ["an expand window the model rejected", { kind: "expand", windows: [{ windowIndex: 0, step: "generate", category: "model_rejected" }], shared: null }, false],
-    ["an expand expiring", { kind: "expand", windows: [], shared: { step: "expired", category: "timeout" } }, true],
-    ["a lip-sync person without a face", { kind: "lipsync", persons: [{ personId: "p", detectionNumber: 1, step: "faces", category: "no_face" }], shared: null }, false],
-    ["a lip-sync stitch failing", { kind: "lipsync", persons: [], shared: { step: "stitch", category: "failed" } }, true],
-    ["a frames output failing", { code: "mini_tool_failed" }, true],
-  ] as const)("FR04 plannedFailureRetryable: %s is retryable: %s", (_name, reason, retryable) => {
-    expect(plannedFailureRetryable(reason)).toBe(retryable);
+    ["an erase the model rejected", "video.erase", { kind: "erase", step: "generate", category: "model_rejected" }, false],
+    ["an erase timing out", "video.erase", { kind: "erase", step: "expired", category: "timeout" }, true],
+    ["an expand window the model rejected", "video.expand", { kind: "expand", windows: [{ windowIndex: 0, step: "generate", category: "model_rejected" }], shared: null }, false],
+    ["an expand expiring", "video.expand", { kind: "expand", windows: [], shared: { step: "expired", category: "timeout" } }, true],
+    ["a lip-sync person without a face", "video.lip-sync", { kind: "lipsync", persons: [{ personId: "p", detectionNumber: 1, step: "faces", category: "no_face" }], shared: null }, false],
+    ["a lip-sync stitch failing", "video.lip-sync", { kind: "lipsync", persons: [], shared: { step: "stitch", category: "failed" } }, true],
+    ["a frames output failing", "video.extract-frames", { code: "mini_tool_failed" }, true],
+    ["a split output failing", "video.split", { code: "mini_tool_failed" }, true],
+  ] as const)("FR04 plannedFailureRetryable: %s is retryable: %s", (_name, tool, reason, retryable) => {
+    expect(plannedFailureRetryable(tool, reason)).toBe(retryable);
+  });
+
+  // frames-split §7.15 可重试结束: a tool without retry (transitions) ends retryability at the terminal commit, whatever
+  // its failure; the tools that have a retry are exactly the ones the retry request takes.
+  it("FR05 a transitions failure is never retryable, and the retry request takes exactly the tools that have a retry", () => {
+    expect(plannedFailureRetryable("video.transitions", { code: "mini_tool_failed" })).toBe(false);
+    expect(MINI_TOOL_RETRY_TOOLS).not.toContain("video.transitions");
+    expect(miniToolExecutionRetryRequestSchema.shape.tool.options).toEqual([...MINI_TOOL_RETRY_TOOLS]);
   });
 });
