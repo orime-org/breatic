@@ -1381,7 +1381,8 @@ export function renderProductGuide(): string {
       "if it is refused, for example because the Studio has no credits left, the dialog keeps what you typed and shows why. Usage is charged when the run ends. " +
       "With the switch on, a dashed placeholder clip goes in at the playhead, above the highest video there or on a new top track, and shows the result once it is ready. " +
       `${quoted(t("timeline.webAnimation.executions"))}, next to it, opens the list in the right panel (an X at its top right closes it), with ${quoted(t("timeline.webAnimation.list.completed"))} and ` +
-      `${quoted(t("timeline.webAnimation.list.inProgress"))}. Pressing a row shows its steps, its usage and what you can do with it: ` +
+      `${quoted(t("timeline.webAnimation.list.inProgress"))}. Pressing a row shows its steps, its usage, a preview of a finished result with its own slider ` +
+      `(${quoted(t("timeline.webAnimation.unavailable"))} with ${quoted(t("timeline.retry"))} when it cannot be loaded) and what you can do with it: ` +
       `${quoted(t("timeline.webAnimation.cancel"))} while it runs, ${quoted(t("timeline.webAnimation.addPlaceholder"))} to place its placeholder at the playhead, ` +
       `${quoted(t("timeline.webAnimation.addToTimeline"))} for a finished result, which adds a separate copy at the playhead each time it is pressed, and ` +
       `${quoted(t("timeline.webAnimation.retry"))} after a failure or a cancel, which opens the dialog filled in as before (${quoted(t("timeline.webAnimation.dialog.retryTitle"))}). ` +
