@@ -283,8 +283,8 @@ function y4m(width: number, height: number, planes: readonly Uint8Array[]): Buff
  * @param request - Its files.
  * @param run - The lifetime and IO bounds.
  * @returns Nothing once written.
- * @throws {RecipeFailure} `model_output_mismatch` when the result has another frame count than the grid,
- * `tracking_output_mismatch` when the RLE does not cover the range.
+ * @throws {RecipeFailure} `model_output_mismatch` when a chunk with frames in the range reads a result with another frame
+ * count than the grid, `tracking_output_mismatch` when the RLE does not cover the range.
  * @throws {Error} When FFmpeg fails.
  */
 async function eraseComposite(recipe: MiniToolPlanEraseComposite, request: ModelRecipeRequest, run: Run): Promise<void> {
@@ -293,24 +293,32 @@ async function eraseComposite(recipe: MiniToolPlanEraseComposite, request: Model
   const clock = BigInt(recipe.timescale);
   const directory = request.directory;
   const area = rect.width * rect.height;
-  const decoded = join(directory, "result.yuv");
-  await runPlanCommand("ffmpeg", [...HEAD, "-i", local(request.inputs, recipe.result), "-fps_mode", "passthrough",
-    "-vf", `scale=${rect.width}:${rect.height}:in_color_matrix=bt709:out_color_matrix=bt709:out_range=tv,format=yuv444p`, "-f", "rawvideo", decoded], run);
-  const resultFile = await open(decoded, "r");
-  try {
-    const { size } = await resultFile.stat();
-    if (size !== grid.frameCount * area * 3) throw new RecipeFailure("model_output_mismatch");
-    const frame = Buffer.alloc(area * 3);
-    for (let slot = 0; slot < grid.frameCount; slot += 1) {
-      await resultFile.read(frame, 0, frame.length, slot * frame.length);
-      await writeFile(join(directory, `result-${slot}.y4m`), y4m(rect.width, rect.height, [frame.subarray(0, area), frame.subarray(area, 2 * area), frame.subarray(2 * area)]));
-    }
-  } finally { await resultFile.close(); }
-  const track = await readTrack(local(request.inputs, recipe.rle));
-  if (track.length !== range.frameCount) throw new RecipeFailure("tracking_output_mismatch");
   const rangeFrames = tableFrames(recipe.table, range.startFrame, range.frameCount);
   const count = recipe.window.end - recipe.window.start;
   const chunk = tableFrames(recipe.table, recipe.window.start, count);
+  // The grid slot each of this chunk's frames inside the range shows; a chunk outside the range decodes no result.
+  const slots = new Map<number, number>();
+  for (let n = 0; n < count; n += 1) {
+    const inRange = recipe.window.start + n - range.startFrame;
+    if (inRange >= 0 && inRange < range.frameCount) slots.set(n, gridFrameSlot(grid, rangeFrames, inRange));
+  }
+  if (slots.size > 0) {
+    const decoded = join(directory, "result.yuv");
+    await runPlanCommand("ffmpeg", [...HEAD, "-i", local(request.inputs, recipe.result), "-fps_mode", "passthrough",
+      "-vf", `scale=${rect.width}:${rect.height}:in_color_matrix=bt709:out_color_matrix=bt709:out_range=tv,format=yuv444p`, "-f", "rawvideo", decoded], run);
+    const resultFile = await open(decoded, "r");
+    try {
+      const { size } = await resultFile.stat();
+      if (size !== grid.frameCount * area * 3) throw new RecipeFailure("model_output_mismatch");
+      const frame = Buffer.alloc(area * 3);
+      for (const slot of new Set(slots.values())) {
+        await resultFile.read(frame, 0, frame.length, slot * frame.length);
+        await writeFile(join(directory, `result-${slot}.y4m`), y4m(rect.width, rect.height, [frame.subarray(0, area), frame.subarray(area, 2 * area), frame.subarray(2 * area)]));
+      }
+    } finally { await resultFile.close(); }
+  }
+  const track = await readTrack(local(request.inputs, recipe.rle));
+  if (track.length !== range.frameCount) throw new RecipeFailure("tracking_output_mismatch");
   // Each concat list holds one image format; a blank result is black and a blank mask keeps the source.
   const blank = { result: join(directory, "blank-result.y4m"), mask: join(directory, "blank-mask.y4m") };
   await writeFile(blank.result, y4m(rect.width, rect.height, [new Uint8Array(area).fill(16), new Uint8Array(area).fill(128), new Uint8Array(area).fill(128)]));
@@ -321,10 +329,11 @@ async function eraseComposite(recipe: MiniToolPlanEraseComposite, request: Model
   for (let n = 0; n < count; n += 1) {
     const duration = (n + 1 < count ? chunk[n + 1]!.start : chunk[n]!.end) - chunk[n]!.start;
     const inRange = recipe.window.start + n - range.startFrame;
+    const slot = slots.get(n);
     let result = blank.result;
     let mask = blank.mask;
-    if (inRange >= 0 && inRange < range.frameCount) {
-      result = join(directory, `result-${gridFrameSlot(grid, rangeFrames, inRange)}.y4m`);
+    if (slot !== undefined) {
+      result = join(directory, `result-${slot}.y4m`);
       let pixels: Uint8Array;
       try { pixels = foreground(track[inRange] ?? null, recipe.rleSize); } catch { throw new RecipeFailure("tracking_output_mismatch"); }
       mask = join(directory, `mask-${n}.y4m`);

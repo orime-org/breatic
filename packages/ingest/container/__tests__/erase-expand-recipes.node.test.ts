@@ -655,6 +655,15 @@ describe('model_composite erase (execution design §10.4 model grid and composit
     expect(composed).toHaveLength(50);
     for (let n = 10; n < 20; n += 1) expect(Math.abs(composed[n]! - 230), `frame ${n}`).toBeLessThan(4);
   });
+
+  it('EC08 a chunk outside the range never decodes the result: frames 7..9 keep the source even when the result is unreadable', async () => {
+    const source = join(dir, 'greys25.mp4');
+    const unreadable = join(dir, 'unreadable-result.mp4');
+    await writeFile(unreadable, Buffer.from('not a video'));
+    const file = await produce({ [SOURCE]: source, [RESULT]: unreadable, [RLE]: await rle('ec-left4d.json', Array(4).fill(LEFT)) },
+      erase({ window: { start: 7, end: 10 }, timescale: 25, entries: [span(r(7, 25), r(2, 5))] }, { table: cfr(25, 10), range: { startFrame: 3, frameCount: 4 }, grid: { mode: 'frames', rate: 25, frameCount: 4 } }));
+    await expectErased(file, source, [null, null, null], [7, 8, 9]);
+  });
 });
 
 describe('model_composite expand (execution design §10.5 composite row and failure paragraph)', () => {
