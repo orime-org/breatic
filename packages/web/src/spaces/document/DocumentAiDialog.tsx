@@ -89,6 +89,7 @@ import { useDocumentProjectId } from '@web/spaces/document/document-project-cont
 import { blockById, type ProposalAdmission } from '@web/spaces/document/document-proposal-landing';
 import { ourMediaPrefix, ourMediaPrefixReady } from '@web/spaces/document/document-external-media';
 import { inPlaceOf } from '@web/spaces/document/document-preview-styles';
+import { withShotListWidths } from '@web/spaces/document/document-ai-shot-list';
 import { frameStaticTable } from '@web/spaces/document/document-table-nodes';
 import { onEditorSettled, useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 
@@ -279,7 +280,8 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
         // Written at the press: the original range is cleared as the session
         // closes, right after this. The panel fetched the media prefix as it opened.
         try {
-          const answer = aiAnswer(editor, editor.prosemirrorState, effect.result, ourMediaPrefix(), at.insertBlockId);
+          const read = aiAnswer(editor, editor.prosemirrorState, effect.result, ourMediaPrefix(), at.insertBlockId);
+          const answer = command === 'storyboard' ? withShotListWidths(read) : read;
           told(effect.how === 'insert'
             ? insertAiAnswer({ editor }, at.insertBlockId, answer, admission)
             : replaceAiAnswer({ editor }, answer, admission));
@@ -612,6 +614,7 @@ function AiPanel({
               text={shown}
               streaming={session.state === 'streaming' || !isComplete}
               running={session.state === 'streaming'}
+              shotList={session.command.id === 'storyboard'}
             />
           </>
         )}
@@ -863,6 +866,7 @@ function useOurMediaPrefix(): string | null {
  * @param props.text - The result as far as it is shown yet.
  * @param props.streaming - Whether the text is still growing.
  * @param props.running - Whether the request is still running; the Agent's dot shows until it has drawn words.
+ * @param props.shotList - Whether the answer is a shot list: its columns are sized, and once it is written the preview goes back to its header.
  * @returns The preview.
  */
 function Preview({
@@ -872,6 +876,7 @@ function Preview({
   text,
   streaming,
   running,
+  shotList,
 }: {
   editor: ViewedEditor;
   ourPrefix: string | null;
@@ -879,6 +884,7 @@ function Preview({
   text: string;
   streaming: boolean;
   running: boolean;
+  shotList: boolean;
 }): React.JSX.Element {
   // One parser for the session, made and taken down with the panel.
   const [parser, setParser] = React.useState<ViewedEditor | null>(null);
@@ -906,7 +912,8 @@ function Preview({
     const parse = (): void => {
       timer.current = null;
       const shown = latest.current;
-      const blocks = aiAnswer(parser, editor.prosemirrorState, shown, ourPrefix, insertBlockId).preview;
+      const read = aiAnswer(parser, editor.prosemirrorState, shown, ourPrefix, insertBlockId);
+      const blocks = (shotList ? withShotListWidths(read) : read).preview;
       setHtml(blocks.length === 0 ? '' : parser.blocksToFullHTML(blocks as never));
     };
     if (!streaming) {
@@ -921,11 +928,17 @@ function Preview({
     // While it streams, at most one parse per interval, of whatever has
     // arrived by then.
     timer.current ??= window.setTimeout(parse, PREVIEW_THROTTLE_MS);
-  }, [parser, text, streaming, ourPrefix, insertBlockId, editor]);
+  }, [parser, text, streaming, ourPrefix, insertBlockId, editor, shotList]);
 
   const host = React.useRef<HTMLDivElement>(null);
   const scroller = React.useRef<HTMLDivElement>(null);
+  // Whether the last run was of text still growing, and whether the text has
+  // stopped growing since and is yet to be drawn.
+  const grew = React.useRef(false);
+  const ended = React.useRef(false);
   React.useEffect(() => {
+    if (grew.current && !streaming) ended.current = true;
+    grew.current = streaming;
     const element = host.current;
     if (element === null) return undefined;
     // Every draw puts new frames round the tables; each starts where the
@@ -947,13 +960,17 @@ function Preview({
     // words around it keep the preview's width.
     const frames = [...content.querySelectorAll('table')].map((table, index) => frameStaticTable(table, lefts[index] ?? 0));
     if (streaming) scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
+    // The preview follows a shot list down as it is written, which leaves its
+    // last rows on screen with no column names above them.
+    else if (ended.current && shotList) scroller.current?.scrollTo({ top: 0 });
+    if (!streaming) ended.current = false;
     return () => {
       // React refuses a synchronous unmount while it is rendering.
       queueMicrotask(() => {
         for (const frame of frames) frame.unmount();
       });
     };
-  }, [html, editor, streaming]);
+  }, [html, editor, streaming, shotList]);
 
   return (
     <ScrollArea viewportRef={scroller} className='min-h-16' viewportClassName='max-h-56 px-3 py-2.5'>

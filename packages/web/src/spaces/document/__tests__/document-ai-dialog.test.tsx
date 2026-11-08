@@ -57,6 +57,14 @@ vi.mock('@web/data/yjs/space-connection', async (importOriginal) => {
   };
 });
 
+/** A shot list as the storyboard tool answers: eight columns, a header and two shots. */
+const SHOT_LIST = [
+  '| Shot | Size | Angle | Movement | On screen | Sound | Seconds | Notes |',
+  '| --- | --- | --- | --- | --- | --- | --- | --- |',
+  '| 1 | Wide | Eye level | Static | A girl rides through fog | Bell | 4 | Dawn |',
+  '| 2 | Close-up | Low | Push in | Bread handed over | Thanks | 3 | Warm |',
+].join('\n');
+
 /** Every frame the preview put around a table, and whether it was taken down. */
 const framed = vi.hoisted(() => ({ roots: [] as { unmounted: boolean }[] }));
 
@@ -953,6 +961,88 @@ describe('the preview', () => {
     });
   });
 
+  it('draws a shot list of eight columns at widths that fit what each column holds', async () => {
+    await selected('<p>hello world</p>', 0, 5);
+    await press('storyboard');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+
+    await streams(calls[0]!, [SHOT_LIST], true);
+
+    const preview = screen.getByTestId('doc-ai-preview');
+    await waitFor(() => {
+      expect(preview.querySelectorAll('table col')).toHaveLength(8);
+    });
+    expect([...preview.querySelectorAll<HTMLElement>('table col')].map((col) => col.style.width)).toEqual(
+      ['64px', '88px', '88px', '88px', '220px', '180px', '64px', '140px'],
+    );
+  });
+
+  it('leaves a shot list of another width at the default column width', async () => {
+    await selected('<p>hello world</p>', 0, 5);
+    await press('storyboard');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    await streams(calls[0]!, ['| a | b |\n| --- | --- |\n| 1 | 2 |'], true);
+    const preview = screen.getByTestId('doc-ai-preview');
+    await waitFor(() => {
+      expect(preview.querySelectorAll('table col')).toHaveLength(2);
+    });
+    expect([...preview.querySelectorAll<HTMLElement>('table col')].map((col) => col.style.width)).toEqual(['', '']);
+  });
+
+  it('leaves an eight-column table from another command at the default column width', async () => {
+    const { call } = await polishing();
+    await streams(call, [SHOT_LIST], true);
+    const again = screen.getByTestId('doc-ai-preview');
+    await waitFor(() => {
+      expect(again.querySelectorAll('table col')).toHaveLength(8);
+    });
+    expect([...again.querySelectorAll<HTMLElement>('table col')].every((col) => col.style.width === '')).toBe(true);
+  });
+
+  it('shows a shot list from its header once it is written', async () => {
+    const saved = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTo');
+    const scrollTo = vi.fn();
+    Element.prototype.scrollTo = scrollTo;
+    try {
+      await selected('<p>hello world</p>', 0, 5);
+      await press('storyboard');
+      await waitFor(() => {
+        expect(calls).toHaveLength(1);
+      });
+      await streams(calls[0]!, [SHOT_LIST], true);
+      await waitFor(() => {
+        expect(screen.getByTestId('doc-ai-insert')).toBeInTheDocument();
+      });
+      await waitFor(() => {
+        expect(scrollTo.mock.calls.at(-1)?.[0]).toEqual({ top: 0 });
+      });
+    } finally {
+      if (saved === undefined) delete (Element.prototype as { scrollTo?: unknown }).scrollTo;
+      else Object.defineProperty(Element.prototype, 'scrollTo', saved);
+    }
+  });
+
+  it('leaves the answer of another command where it ended', async () => {
+    const saved = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTo');
+    const scrollTo = vi.fn();
+    Element.prototype.scrollTo = scrollTo;
+    try {
+      const { call } = await polishing();
+      await streams(call, ['Hello.'], true);
+      await waitFor(() => {
+        expect(screen.getByTestId('doc-ai-insert')).toBeInTheDocument();
+      });
+      expect(scrollTo.mock.calls.some(([arg]) => (arg as { top?: number } | undefined)?.top === 0)).toBe(false);
+    } finally {
+      if (saved === undefined) delete (Element.prototype as { scrollTo?: unknown }).scrollTo;
+      else Object.defineProperty(Element.prototype, 'scrollTo', saved);
+    }
+  });
+
   it('reads the answer again for body changes once it is in, never for a caret that only moves', async () => {
     const editor = await selected('<p>hello</p><p>world</p>', 0, 10);
     await press('refine');
@@ -1033,6 +1123,31 @@ describe('pressing replace and insert (A6)', () => {
   });
   afterEach(() => {
     connection.granted = false;
+  });
+
+  it('insert writes a shot list with its column widths', async () => {
+    const editor = await selected('<p>hello world</p>', 0, 5);
+    await press('storyboard');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    await streams(calls[0]!, [SHOT_LIST], true);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-ai-insert')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-ai-insert'));
+    });
+
+    await waitFor(() => {
+      expect((editor.document as unknown as { type: string }[]).some((block) => block.type === 'docTable')).toBe(true);
+    });
+    const table = (editor.document as unknown as { type: string; children: { children: { props: { colwidth?: unknown } }[] }[] }[])
+      .find((block) => block.type === 'docTable')!;
+    expect(table.children.map((row) => row.children.map((cell) => cell.props.colwidth))).toEqual(
+      Array.from({ length: 3 }, () => [[64], [88], [88], [88], [220], [180], [64], [140]]),
+    );
   });
 
   it('replace writes the answer over the selected words', async () => {

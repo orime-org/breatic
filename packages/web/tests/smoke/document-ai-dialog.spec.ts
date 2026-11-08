@@ -351,6 +351,10 @@ test('draft a shot list: the preview scrolls the table sideways in its own frame
   const frame = preview.locator('.doc-table [data-radix-scroll-area-viewport]');
   await expect(frame).toHaveCount(1);
   await expect(preview.locator('table tr').first().locator('td, th')).toHaveCount(8);
+  // Written, it shows from the header row, its columns sized by what they hold.
+  await expect.poll(() => page.evaluate(() => document.querySelector('[data-testid="doc-ai-preview"]')!.closest('[data-radix-scroll-area-viewport]')!.scrollTop)).toBe(0);
+  expect(await preview.locator('table col').evaluateAll((cols) => cols.map((col) => (col as HTMLElement).style.width)))
+    .toEqual(['64px', '88px', '88px', '88px', '220px', '180px', '64px', '140px']);
   const sizes = await page.evaluate(() => {
     const host = document.querySelector('[data-testid="doc-ai-preview"]')!;
     const outer = host.closest<HTMLElement>('[data-radix-scroll-area-viewport]')!;
