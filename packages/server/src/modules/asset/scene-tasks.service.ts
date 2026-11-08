@@ -18,10 +18,9 @@ import {
   nodeTaskService,
   sceneTaskService,
   taskService,
-  type SceneGenerationOrigin,
   type SceneTaskRow,
 } from "@breatic/domain";
-import { modesOf, picturesOf, t, type TaskEntity } from "@breatic/shared";
+import { modesOf, picturesOf, t, type SceneGenerationOrigin, type TaskEntity } from "@breatic/shared";
 import * as projectService from "@server/modules/project/project.service.js";
 import { publishSpaceTasksQuietly } from "@server/modules/task/publish-counts.js";
 import { tasksQueue } from "@server/modules/task/tasks-queue.js";

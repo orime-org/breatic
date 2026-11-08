@@ -57,9 +57,6 @@ export interface SceneTaskRow extends NodeTaskRow {
   origin: SceneGenerationOrigin | null;
 }
 
-/** Where a 3D Space's generation was started from: its own dialog, or an agent proposal. */
-export type { SceneGenerationOrigin };
-
 /**
  * A row as the list a user opens hands it out: the row plus what that task
  * put on the node.

@@ -269,7 +269,8 @@ export function ownControlValues(
  * What the model's own controls stand on, as the settings pill shows it: a
  * choice by its option's name, a range by its step's `value_labels` name or
  * else its number, a switch by its name
- * while it is on, a text box or a list by its name while it holds something,
+ * while it is on (and, given `offText`, a switch on by default by its name
+ * and `offText` while it is off), a text box or a list by its name while it holds something,
  * a camera pose by the names of its azimuth, elevation and distance.
  * @param model - The active model.
  * @param mode - The mode the panel is in.

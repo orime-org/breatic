@@ -111,21 +111,6 @@ export const SceneGenerateDialog = React.memo(function SceneGenerateDialog({ pro
     if (open) setVersion((value) => value + 1);
   }
   const close = React.useCallback((): void => onOpenChange(false), [onOpenChange]);
-  // A model list that failed, cannot load offline or serves no 3D model leaves
-  // nothing to build the dialog from; it says so and closes, as the Canvas
-  // generation panel does (generate-panel-frame.tsx).
-  const catalog = useQuery(modelCatalogQuery());
-  const catalogError = catalog.isError && catalog.data === undefined;
-  const catalogOffline = !catalogError && catalog.data === undefined && catalog.fetchStatus === 'paused';
-  const noModels = catalog.data !== undefined && catalog.data.three_d.length === 0;
-  React.useEffect(() => {
-    if (!open) return;
-    if (catalogError) toast.error(t('canvas.generatePanel.catalogUnavailable'), { id: 'scene-generate-catalog-unavailable' });
-    else if (catalogOffline) toast.warning(t('canvas.generatePanel.catalogOffline'), { id: 'scene-generate-catalog-offline' });
-    else if (noModels) toast.warning(t('canvas.generatePanel.catalogNoModels'), { id: 'scene-generate-catalog-no-models' });
-    else return;
-    onOpenChange(false);
-  }, [open, catalogError, catalogOffline, noModels, onOpenChange, t]);
   const description = fill?.source === 'agent' ? t('spaces.threeD.generateDialog.descriptionAgent')
     : fill?.source === 'retry' ? t('spaces.threeD.generateDialog.descriptionRetry') : t('spaces.threeD.generateDialog.descriptionBlank');
   return <Dialog open={open} onOpenChange={onOpenChange}>
@@ -164,6 +149,19 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
   const queryClient = useQueryClient();
   const catalog = useQuery(modelCatalogQuery());
   const entries = catalog.data?.three_d ?? NO_ENTRIES;
+  // A model list that failed, cannot load offline or serves no 3D model leaves
+  // nothing to build the form from; it says so and closes, as the Canvas
+  // generation panel does (generate-panel-frame.tsx).
+  const catalogError = catalog.isError && catalog.data === undefined;
+  const catalogOffline = !catalogError && catalog.data === undefined && catalog.fetchStatus === 'paused';
+  const noModels = catalog.data !== undefined && catalog.data.three_d.length === 0;
+  React.useEffect(() => {
+    if (catalogError) toast.error(t('canvas.generatePanel.catalogUnavailable'), { id: 'scene-generate-catalog-unavailable' });
+    else if (catalogOffline) toast.warning(t('canvas.generatePanel.catalogOffline'), { id: 'scene-generate-catalog-offline' });
+    else if (noModels) toast.warning(t('canvas.generatePanel.catalogNoModels'), { id: 'scene-generate-catalog-no-models' });
+    else return;
+    onClose();
+  }, [catalogError, catalogOffline, noModels, onClose, t]);
   const [mode, setMode] = React.useState<ThreeDGenerationMode>(fill?.mode ?? 't23d');
   const [prompt, setPrompt] = React.useState(fill?.prompt ?? '');
   const [params, setParams] = React.useState<Record<string, unknown>>(() => fill?.params ?? {});

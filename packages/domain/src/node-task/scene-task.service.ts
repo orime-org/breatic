@@ -13,11 +13,11 @@
  */
 
 import type { DbTx } from "@breatic/core";
-import type { TaskEntity, TaskFailureReason } from "@breatic/shared";
+import type { SceneGenerationOrigin, TaskEntity, TaskFailureReason } from "@breatic/shared";
 import { findLiveTasksByIds } from "@domain/task/task.repo.js";
 import * as repo from "@domain/node-task/node-task.repo.js";
 import { failureOutcome } from "@domain/node-task/failure-outcome.js";
-import type { NodeTaskRow, SceneGenerationOrigin, SceneTaskRow } from "@domain/node-task/node-task.repo.js";
+import type { NodeTaskRow, SceneTaskRow } from "@domain/node-task/node-task.repo.js";
 
 /** Where one settle left a Space-level row. */
 export interface SceneSettleResult {

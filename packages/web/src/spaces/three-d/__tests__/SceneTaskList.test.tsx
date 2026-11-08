@@ -399,6 +399,16 @@ describe('the 3D Space task list with generation rows (inner#1691)', () => {
     expect(await actions('mine-late')).toEqual(['Place in scene']);
   });
 
+  it('shows the whole prompt of a text run when the pointer rests on its cut label', async () => {
+    const prompt = `A brass desk lamp ${'with a long description '.repeat(15)}`.trim();
+    const label = prompt.slice(0, 256);
+    api.listSpaceTasks.mockResolvedValue(listed(generation({ id: 'long-text', prompt, label })));
+    renderList();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    await user.hover(within(await rowOf('long-text')).getByText(label));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(prompt);
+  });
+
   it('shows the prompt of a text run once, as its label', async () => {
     api.listSpaceTasks.mockResolvedValue(listed(generation({ id: 'text', prompt: 'A brass desk lamp', label: 'A brass desk lamp' })));
     renderList();

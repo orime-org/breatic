@@ -2,8 +2,9 @@
 # views to 3D (inner#1691). The 3D Space's generation dialog shows one Tripo
 # H3.1 and sends the single-image entry when only the front view is filled,
 # the multi-view entry otherwise; the agent sees both variants.
-# The settings and forced values all three share are written once on the
-# text entry and referenced from the other two through YAML anchors.
+# What all three share (settings, forced values, the price formula) is written
+# once on the text entry, and the image settings once on the single-image
+# entry; the other entries refer to them through YAML anchors.
 # Guidelines are the image, video and audio catalogs' (see their headers);
 # what only this catalog uses:
 #   model.forces         — values the model forces while a condition holds,
@@ -171,7 +172,7 @@ models:
         priority: 1
         pricing:
           base_price: 120000
-          formula: "{\"total_price\": base_price + (((texture or pbr) and generate_parts != true) ? (texture_quality = \"detailed\" ? 240000 : (texture_quality = \"extreme\" ? 360000 : 120000)) : 0) + (geometry_quality = \"detailed\" ? 240000 : 0) + (smart_low_poly ? 120000 : 0) + (generate_parts ? 240000 : 0)}"
+          formula: &tripo_formula "{\"total_price\": base_price + (((texture or pbr) and generate_parts != true) ? (texture_quality = \"detailed\" ? 240000 : (texture_quality = \"extreme\" ? 360000 : 120000)) : 0) + (geometry_quality = \"detailed\" ? 240000 : 0) + (smart_low_poly ? 120000 : 0) + (generate_parts ? 240000 : 0)}"
           discount_rate: 100
 
   - name: "tripo-h3.1-i23d"
@@ -202,14 +203,14 @@ models:
       export_uv: *tripo_export_uv
       model_seed: *tripo_model_seed
       texture_seed: *tripo_texture_seed
-      texture_alignment:
+      texture_alignment: &tripo_texture_alignment
         description: "What the texture lines up with"
         label: "Texture alignment"
         default: "original_image"
         values: ["original_image", "geometry"]
         value_labels: {"original_image": "Original image", "geometry": "Geometry"}
         fill: "panel"
-      orientation:
+      orientation: &tripo_orientation
         description: "Turn the model to face as the image does"
         label: "Orientation"
         default: "default"
@@ -217,7 +218,7 @@ models:
         value_labels: {"default": "Default", "align_image": "Align image"}
         fill: "panel"
         when: { flag_on: "texture" }
-      enable_image_autofix:
+      enable_image_autofix: &tripo_image_autofix
         description: "Correct the input image before generating"
         label: "Image autofix"
         default: false
@@ -230,7 +231,7 @@ models:
         priority: 1
         pricing:
           base_price: 240000
-          formula: "{\"total_price\": base_price + (((texture or pbr) and generate_parts != true) ? (texture_quality = \"detailed\" ? 240000 : (texture_quality = \"extreme\" ? 360000 : 120000)) : 0) + (geometry_quality = \"detailed\" ? 240000 : 0) + (smart_low_poly ? 120000 : 0) + (generate_parts ? 240000 : 0)}"
+          formula: *tripo_formula
           discount_rate: 100
 
   - name: "tripo-h3.1-multiview"
@@ -264,27 +265,9 @@ models:
       export_uv: *tripo_export_uv
       model_seed: *tripo_model_seed
       texture_seed: *tripo_texture_seed
-      texture_alignment:
-        description: "What the texture lines up with"
-        label: "Texture alignment"
-        default: "original_image"
-        values: ["original_image", "geometry"]
-        value_labels: {"original_image": "Original image", "geometry": "Geometry"}
-        fill: "panel"
-      orientation:
-        description: "Turn the model to face as the image does"
-        label: "Orientation"
-        default: "default"
-        values: ["default", "align_image"]
-        value_labels: {"default": "Default", "align_image": "Align image"}
-        fill: "panel"
-        when: { flag_on: "texture" }
-      enable_image_autofix:
-        description: "Correct the input image before generating"
-        label: "Image autofix"
-        default: false
-        values: [true, false]
-        fill: "panel"
+      texture_alignment: *tripo_texture_alignment
+      orientation: *tripo_orientation
+      enable_image_autofix: *tripo_image_autofix
     forces: *tripo_forces
     providers:
       - name: "wavespeed"
@@ -292,5 +275,5 @@ models:
         priority: 1
         pricing:
           base_price: 240000
-          formula: "{\"total_price\": base_price + (((texture or pbr) and generate_parts != true) ? (texture_quality = \"detailed\" ? 240000 : (texture_quality = \"extreme\" ? 360000 : 120000)) : 0) + (geometry_quality = \"detailed\" ? 240000 : 0) + (smart_low_poly ? 120000 : 0) + (generate_parts ? 240000 : 0)}"
+          formula: *tripo_formula
           discount_rate: 100

@@ -53,7 +53,7 @@ import {
   env,
   type Redis,
 } from "@breatic/core";
-import { ceilToCreditCent, extractPromptText, SCENE_OBJECT_NAME_MAX, SceneObjectValuesSchema } from "@breatic/shared";
+import { ceilToCreditCent, extractPromptText, SCENE_OBJECT_NAME_MAX, SceneObjectValuesSchema, t } from "@breatic/shared";
 import { estimateTaskCredits, resolveProjectImageInputs, sceneTaskService, taskService } from "@breatic/domain";
 import { seedDesignatedLot } from "@server/__tests__/integration/studio-credit-fixtures.js";
 import type { Hono } from "hono";
@@ -744,6 +744,10 @@ describe("the row's label", () => {
     expect(label.length).toBeLessThanOrEqual(SCENE_OBJECT_NAME_MAX);
     expect(SceneObjectValuesSchema.shape.name.safeParse(label).success).toBe(true);
     expect(label.startsWith("🐉")).toBe(true);
+
+    // A pair that would cross the limit is left out whole.
+    const edge = await admitted(s, textBody({ prompt: `${"a".repeat(SCENE_OBJECT_NAME_MAX - 1)}🐉 tail` }));
+    expect((await rowById(edge.row_id)).label).toBe("a".repeat(SCENE_OBJECT_NAME_MAX - 1));
   });
 
   it("cuts a long prompt to what a scene object's name holds, so the model can be placed", async () => {
@@ -1002,7 +1006,10 @@ describe("resolving views named by their address", () => {
 
     expect(await resolveProjectImageInputs(s.projectId, [front.url])).toEqual([expect.objectContaining({ assetId: front.assetId, url: front.url })]);
     for (const address of [foreign.url, unreferenced.url]) {
-      await expect(resolveProjectImageInputs(s.projectId, [front.url, address])).rejects.toMatchObject({ statusCode: 422 });
+      await expect(resolveProjectImageInputs(s.projectId, [front.url, address])).rejects.toMatchObject({
+        statusCode: 422,
+        message: t("server.three_d.view_not_found", { index: 2, slot: "left", input: address }),
+      });
     }
   });
 });

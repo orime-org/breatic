@@ -1395,6 +1395,8 @@ export function renderProductGuide(): string {
       `The keyboard icon at the bottom of the left rail opens ${quoted(t("spaces.threeD.controls"))}, which says ${quoted(t("spaces.threeD.helpBody"))}`,
     `The ${quoted(t("spaces.threeD.generate"))} dialog makes a 3D model; the 3D Space only generates 3D models, and pictures are generated on a Canvas. ` +
       "It opens in the middle of the screen over the 3D Space, with its title and a one-line description at its top. " +
+      `When the model list cannot be loaded, it closes at once and a message says why: ${quoted(t("canvas.generatePanel.catalogUnavailable"))}, or, when offline, ` +
+      `${quoted(t("canvas.generatePanel.catalogOffline"))} ` +
       `Opened from the rail it starts empty and says ${quoted(t("spaces.threeD.generateDialog.descriptionBlank"))} ` +
       `On top, under ${quoted(t("spaces.threeD.generateDialog.common"))}, are the model's settings both modes share: switches, option rows and number boxes. ` +
       "A setting another choice holds is locked; clicking it shows why in a short message, such as " +
@@ -1455,7 +1457,7 @@ export function renderProductGuide(): string {
       `A row holding a model cannot be removed. A Viewer sees the list with no button but ${quoted(t("spaces.threeD.taskList.locate"))}. ` +
       `When there are none it says ${quoted(t("spaces.threeD.taskList.empty"))} The project activity records each import whose file was uploaded, under the model's name; importing a model this studio already has adds no activity entry.`,
     `A 3D generation you propose appears in this chat as a card headed ${quoted(t("chat.sceneProposal.title"))}: your short reason, the mode (Text to 3D or Image to 3D, in English), ` +
-      `the model, the estimated credits, the prompt or the input pictures, the main settings (the switches that are on, and each choice after its setting's name), and ${quoted(t("chat.sceneProposal.open"))}. ` +
+      `the model, the estimated credits, the prompt or the input pictures, the main settings (the switches that are on, each switch that is on by default but turned off as its name followed by ${quoted(t("canvas.generatePanel.switchOff"))}, and each choice after its setting's name), and ${quoted(t("chat.sceneProposal.open"))}. ` +
       "The card belongs to no particular Space: pressing it opens the generation dialog in the middle of the screen of the 3D Space in front, filled with the proposal and saying " +
       `${quoted(t("spaces.threeD.generateDialog.descriptionAgent"))} The card itself generates nothing; the user checks the dialog and presses its round button. ` +
       `With no 3D Space in front it shows ${quoted(t("chat.sceneProposal.needScene"))} and opens nothing. ` +
