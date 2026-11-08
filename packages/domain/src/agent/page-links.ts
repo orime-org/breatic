@@ -10,6 +10,7 @@
  * panel shares. The server reads this module through its own entry,
  * `@breatic/domain/page-links`.
  */
+import { READ_PAGE_MAX_URL_CHARS } from "@breatic/shared";
 
 /**
  * Where a link may start: a scheme, or a host written without one.
@@ -50,12 +51,15 @@ const TRAILING = new Set(".,;:!?*_~");
  * Read one link from where it starts until a character ends it.
  * @param text - The text.
  * @param from - Where the link starts.
- * @returns The link as read, with Markdown escapes removed, and where reading stopped.
+ * @returns The link as read, with Markdown escapes removed, or null when it
+ *   ran past `READ_PAGE_MAX_URL_CHARS`; and where reading stopped.
  */
-function readLink(text: string, from: number): { link: string; end: number } {
+function readLink(text: string, from: number): { link: string | null; end: number } {
   let link = "";
   let at = from;
   while (at < text.length) {
+    // Longer than any page address may be: dropped, the rest left unread.
+    if (link.length > READ_PAGE_MAX_URL_CHARS) return { link: null, end: at };
     const char = text[at] as string;
     if (char === "\\") {
       const next = text[at + 1];
@@ -68,7 +72,19 @@ function readLink(text: string, from: number): { link: string; end: number } {
     link += char;
     at += 1;
   }
-  return { link, end: at };
+  return { link: link.length > READ_PAGE_MAX_URL_CHARS ? null : link, end: at };
+}
+
+/**
+ * Count how often a character appears in a string.
+ * @param text - The string.
+ * @param char - The character.
+ * @returns The count.
+ */
+function countOf(text: string, char: string): number {
+  let count = 0;
+  for (const c of text) if (c === char) count += 1;
+  return count;
 }
 
 /**
@@ -78,17 +94,19 @@ function readLink(text: string, from: number): { link: string; end: number } {
  * @returns The link.
  */
 function trimEnd(link: string): string {
-  let out = link;
-  for (;;) {
-    const last = out.at(-1);
-    if (last !== undefined && TRAILING.has(last)) {
-      out = out.slice(0, -1);
-    } else if (last === ")" && out.split(")").length > out.split("(").length) {
-      out = out.slice(0, -1);
-    } else {
-      return out;
+  const opens = countOf(link, "(");
+  let closes = countOf(link, ")");
+  let end = link.length;
+  for (; end > 0; end -= 1) {
+    const last = link[end - 1] as string;
+    if (TRAILING.has(last)) continue;
+    if (last === ")" && closes > opens) {
+      closes -= 1;
+      continue;
     }
+    break;
   }
+  return link.slice(0, end);
 }
 
 /**
@@ -97,6 +115,7 @@ function trimEnd(link: string): string {
  * A link holding a non-ASCII character is followed by the same link cut at
  * that character: a user who runs a link on into Chinese without a space
  * still has the plain link, and a real non-ASCII path keeps its full spelling.
+ * A link longer than `READ_PAGE_MAX_URL_CHARS` is left out.
  * @param text - The text.
  * @returns The links, each cleaned of the punctuation around it.
  * @throws {never} Never.
@@ -107,7 +126,7 @@ export function pageLinksIn(text: string): string[] {
   for (let found = start.exec(text); found !== null; found = start.exec(text)) {
     const opening = found[0];
     const hasScheme = /^https?:\/\//i.test(opening);
-    let link: string;
+    let link: string | null;
     let end: number;
     if (hasScheme || text[found.index + opening.length] === "/") {
       ({ link, end } = readLink(text, found.index));
@@ -115,6 +134,8 @@ export function pageLinksIn(text: string): string[] {
       link = opening;
       end = found.index + opening.length;
     }
+    start.lastIndex = Math.max(end, found.index + 1);
+    if (link === null) continue;
     link = trimEnd(link);
     if (!hasScheme || link.length > opening.length) {
       links.push(link);
@@ -122,7 +143,6 @@ export function pageLinksIn(text: string): string[] {
       const cut = nonAscii < 0 ? "" : trimEnd(link.slice(0, nonAscii));
       if (cut !== "" && (!hasScheme || cut.length > opening.length)) links.push(cut);
     }
-    start.lastIndex = Math.max(end, found.index + 1);
   }
   return links;
 }
