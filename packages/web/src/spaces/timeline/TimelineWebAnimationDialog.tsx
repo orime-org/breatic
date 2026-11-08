@@ -5,7 +5,7 @@ import * as React from 'react';
 import type { TimelineClientLimits } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
@@ -74,39 +74,41 @@ export function TimelineWebAnimationDialog({ spaceId, draft, retry, limits, onEd
         <DialogTitle>{t(retry ? 'timeline.webAnimation.dialog.retryTitle' : 'timeline.webAnimation.dialog.title')}</DialogTitle>
         <DialogDescription>{t('timeline.webAnimation.dialog.description')}</DialogDescription>
       </DialogHeader>
-      <form noValidate onSubmit={submit} className='flex flex-col gap-4'>
-        <div className='flex flex-col gap-1'>
-          <Label htmlFor={`${fieldId}-prompt`} className={LABEL}>{t('timeline.webAnimation.dialog.prompt')}</Label>
-          <Textarea id={`${fieldId}-prompt`} data-testid='web-animation-prompt' rows={4} autoComplete='off' maxLength={limits.promptMaxLength} className='resize-none'
-            placeholder={t('timeline.webAnimation.dialog.promptPlaceholder')} value={input.prompt} disabled={submitting} onChange={changePrompt} />
-          <span className='self-end text-xs tabular-nums text-muted-foreground'>{`${input.prompt.length} / ${limits.promptMaxLength}`}</span>
-        </div>
-        <div className='grid grid-cols-3 gap-3'>
-          <div className='flex min-w-0 flex-col gap-1'>
-            <Label htmlFor={`${fieldId}-engine`} className={LABEL}>{t('timeline.webAnimation.dialog.engine')}</Label>
-            <Select value={input.engine} onValueChange={changeEngine} disabled={submitting}>
-              <SelectTrigger id={`${fieldId}-engine`} data-testid='web-animation-engine' className='h-8 w-full'><SelectValue /></SelectTrigger>
-              <SelectContent>{Object.entries(WEB_ANIMATION_ENGINE_NAMES).map(([value, name]) => <SelectItem key={value} value={value}>{name}</SelectItem>)}</SelectContent>
-            </Select>
+      <form noValidate onSubmit={submit}>
+        <DialogBody className='flex flex-col gap-4'>
+          <div className='flex flex-col gap-1'>
+            <Label htmlFor={`${fieldId}-prompt`} className={LABEL}>{t('timeline.webAnimation.dialog.prompt')}</Label>
+            <Textarea id={`${fieldId}-prompt`} data-testid='web-animation-prompt' rows={4} autoComplete='off' maxLength={limits.promptMaxLength} className='resize-none'
+              placeholder={t('timeline.webAnimation.dialog.promptPlaceholder')} value={input.prompt} disabled={submitting} onChange={changePrompt} />
+            <span className='self-end text-xs tabular-nums text-muted-foreground'>{`${input.prompt.length} / ${limits.promptMaxLength}`}</span>
           </div>
-          <div className='flex min-w-0 flex-col gap-1'>
-            <Label htmlFor={`${fieldId}-aspect`} className={LABEL}>{t('timeline.webAnimation.dialog.aspect')}</Label>
-            <Select value={input.aspect} onValueChange={changeAspect} disabled={submitting}>
-              <SelectTrigger id={`${fieldId}-aspect`} data-testid='web-animation-aspect' className='h-8 w-full'><SelectValue /></SelectTrigger>
-              <SelectContent>{limits.aspects.map((aspect) => <SelectItem key={aspect} value={aspect}>{aspect}</SelectItem>)}</SelectContent>
-            </Select>
+          <div className='grid grid-cols-3 gap-3'>
+            <div className='flex min-w-0 flex-col gap-1'>
+              <Label htmlFor={`${fieldId}-engine`} className={LABEL}>{t('timeline.webAnimation.dialog.engine')}</Label>
+              <Select value={input.engine} onValueChange={changeEngine} disabled={submitting}>
+                <SelectTrigger id={`${fieldId}-engine`} data-testid='web-animation-engine' className='h-8 w-full'><SelectValue /></SelectTrigger>
+                <SelectContent>{Object.entries(WEB_ANIMATION_ENGINE_NAMES).map(([value, name]) => <SelectItem key={value} value={value}>{name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className='flex min-w-0 flex-col gap-1'>
+              <Label htmlFor={`${fieldId}-aspect`} className={LABEL}>{t('timeline.webAnimation.dialog.aspect')}</Label>
+              <Select value={input.aspect} onValueChange={changeAspect} disabled={submitting}>
+                <SelectTrigger id={`${fieldId}-aspect`} data-testid='web-animation-aspect' className='h-8 w-full'><SelectValue /></SelectTrigger>
+                <SelectContent>{limits.aspects.map((aspect) => <SelectItem key={aspect} value={aspect}>{aspect}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className='flex min-w-0 flex-col gap-1'>
+              <Label htmlFor={`${fieldId}-duration`} className={LABEL}>{t('timeline.webAnimation.dialog.duration')}</Label>
+              <Input id={`${fieldId}-duration`} data-testid='web-animation-duration' type='number' inputMode='numeric' autoComplete='off' min={min} max={max} step={1} className='h-8 w-full'
+                value={Number.isFinite(input.durationSeconds) ? input.durationSeconds : ''} disabled={submitting} onChange={changeDuration} />
+            </div>
           </div>
-          <div className='flex min-w-0 flex-col gap-1'>
-            <Label htmlFor={`${fieldId}-duration`} className={LABEL}>{t('timeline.webAnimation.dialog.duration')}</Label>
-            <Input id={`${fieldId}-duration`} data-testid='web-animation-duration' type='number' inputMode='numeric' autoComplete='off' min={min} max={max} step={1} className='h-8 w-full'
-              value={Number.isFinite(input.durationSeconds) ? input.durationSeconds : ''} disabled={submitting} onChange={changeDuration} />
+          <div className='flex items-center justify-between gap-3'>
+            <Label htmlFor={`${fieldId}-add`} className='text-sm'>{t('timeline.webAnimation.dialog.addAtPlayhead')}</Label>
+            <Switch id={`${fieldId}-add`} data-testid='web-animation-add-at-playhead' checked={input.addAtPlayhead} onCheckedChange={changeAdd} disabled={submitting} />
           </div>
-        </div>
-        <div className='flex items-center justify-between gap-3'>
-          <Label htmlFor={`${fieldId}-add`} className='text-sm'>{t('timeline.webAnimation.dialog.addAtPlayhead')}</Label>
-          <Switch id={`${fieldId}-add`} data-testid='web-animation-add-at-playhead' checked={input.addAtPlayhead} onCheckedChange={changeAdd} disabled={submitting} />
-        </div>
-        {error !== null && <p role='alert' className='text-sm text-status-error-foreground'>{error}</p>}
+          {error !== null && <p role='alert' className='text-sm text-status-error-foreground'>{error}</p>}
+        </DialogBody>
         <DialogFooter>
           <Button type='button' variant='outline' onClick={onClose}>{t('timeline.cancel')}</Button>
           <Button type='submit' data-testid='web-animation-execute' loading={submitting} disabled={!valid}>{t('timeline.webAnimation.dialog.execute')}</Button>
