@@ -10,7 +10,7 @@ import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { newId } from '@breatic/shared';
 import { lipsyncFailureReasonSchema, type LipsyncFailureReason, type VideoToolId } from '@breatic/shared/mini-tools';
-import { canvasApi, canvasLimitsQuery } from '@web/data/api/canvas';
+import { canvasApi, canvasLimitsQuery, type CanvasEraseLimits, type CanvasExpandLimits } from '@web/data/api/canvas';
 import { miniToolsApi } from '@web/data/api/mini-tools';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { readEdges, type CanvasNodeView } from '@web/data/yjs/canvas-space';
@@ -22,16 +22,11 @@ import { plannedRunRefusalText } from '@web/spaces/canvas/mini-tool/start-planne
 import type { LipSyncChoices } from '@web/spaces/canvas/mini-tool/video/VideoToolControls';
 import { runOnce } from '@web/stores/task-actions-in-flight';
 
-/** The erase model input's limits the panel checks (config `executions."video.erase".model`). */
-export interface EraseLimits { model: { min_seconds: number; max_seconds: number; max_grid_fps: number } }
-/** The expand limits the panel checks (config `executions."video.expand"`). */
-export interface ExpandLimits { max_duration_seconds: number; max_target_side: number }
-
 /** What the panel reads of its tool's models. */
 export interface VideoToolModels {
   lipSync?: LipSyncChoices;
-  erase?: EraseLimits;
-  expand?: ExpandLimits;
+  erase?: CanvasEraseLimits;
+  expand?: CanvasExpandLimits;
   lipSyncFailure: LipsyncFailureReason | null;
   onRetryFailed?: () => void;
   /** How long the priced inputs hold still before the panel asks for a quote (config `quote_debounce_ms`). */
@@ -79,21 +74,17 @@ export function useVideoToolModels(args: { projectId: string; spaceId: string; n
   const modelTool = toolId === 'video.lip-sync';
   const limits = useQuery({ ...canvasLimitsQuery(), enabled: modelTool || toolId === 'video.erase' || toolId === 'video.expand' || toolId === 'video.split' }).data;
   const catalog = useQuery({ ...modelCatalogQuery(), enabled: modelTool }).data;
-  const erase = React.useMemo((): EraseLimits | undefined => limits?.erase == null ? undefined
-    : { model: { min_seconds: limits.erase.minSeconds, max_seconds: limits.erase.maxSeconds, max_grid_fps: limits.erase.maxGridFps } }, [limits]);
-  const expand = React.useMemo((): ExpandLimits | undefined => limits?.expand == null ? undefined
-    : { max_duration_seconds: limits.expand.maxDurationSeconds, max_target_side: limits.expand.maxTargetSide }, [limits]);
+  const erase = limits?.erase ?? undefined;
+  const expand = limits?.expand ?? undefined;
   const lipSync = React.useMemo((): LipSyncChoices | undefined => {
     const config = limits?.lipSync;
     if (toolId !== 'video.lip-sync' || config == null || catalog === undefined) return undefined;
     return {
+      ...config,
       models: config.models.flatMap((model) => {
         const entry = catalog.video.find((candidate) => candidate.name === model.name);
-        return entry === undefined ? [] : [{ ...entry, min_duration_seconds: model.minDurationSeconds, max_duration_seconds: model.maxDurationSeconds }];
+        return entry === undefined ? [] : [{ ...entry, ...model }];
       }),
-      tracking: { min_duration_seconds: config.tracking.minDurationSeconds, max_duration_seconds: config.tracking.maxDurationSeconds },
-      maxPeople: config.maxPeople,
-      maxDialogues: config.maxDialogues,
     };
   }, [toolId, limits, catalog]);
   const outputs = React.useMemo(() => toolId !== 'video.lip-sync' ? [] : readEdges(getDoc(docName.canvasSpace(projectId, spaceId)))

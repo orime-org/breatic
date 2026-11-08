@@ -28,7 +28,8 @@ import { createVideoToolDraft, resetDialoguePeople } from '@web/spaces/canvas/mi
 import { VideoToolControls, type LipSyncChoices } from '@web/spaces/canvas/mini-tool/video/VideoToolControls';
 import type { VideoTimelineDecoderRenderer } from '@web/spaces/canvas/mini-tool/video/video-timeline-decoder';
 import { VideoTimelineDialog } from '@web/spaces/canvas/mini-tool/video/VideoTimelineDialog';
-import { useVideoToolModels, type EraseLimits, type ExpandLimits } from '@web/spaces/canvas/mini-tool/video/use-video-tool-models';
+import { useVideoToolModels } from '@web/spaces/canvas/mini-tool/video/use-video-tool-models';
+import type { CanvasEraseLimits, CanvasExpandLimits } from '@web/data/api/canvas';
 import { useTrackedBox } from '@web/spaces/canvas/mini-tool/video/use-tracked-box';
 import { usePlannedVideoQuote } from '@web/spaces/canvas/mini-tool/video/use-planned-video-quote';
 import { useTrackingCost } from '@web/spaces/canvas/mini-tool/video/use-tracking-cost';
@@ -111,9 +112,9 @@ export interface VideoToolPanelContainerProps {
   /** Retries that run's failed items. */
   onRetryFailed?: () => void;
   /** The erase model input's limits (config `executions."video.erase".model`). */
-  erase?: EraseLimits;
+  erase?: CanvasEraseLimits;
   /** The expand limits (config `executions."video.expand"`). */
-  expand?: ExpandLimits;
+  expand?: CanvasExpandLimits;
   /** The most outputs one run of this tool creates (config `executions[tool].max_outputs`). */
   maxOutputs?: number;
 }
@@ -129,7 +130,7 @@ export interface VideoToolPanelContainerProps {
  * @returns The reason, or undefined.
  * @throws {never} Never.
  */
-function eraseBlock(draft: VideoToolDraftById['video.erase'], table: VideoPresentationTable | null, erase: EraseLimits | undefined, transparent: boolean,
+function eraseBlock(draft: VideoToolDraftById['video.erase'], table: VideoPresentationTable | null, erase: CanvasEraseLimits | undefined, transparent: boolean,
   t: (key: string, params?: Record<string, string | number>) => string): string | undefined {
   if (transparent) return t('canvas.miniTool.videoUI.transparentSource');
   if (!anchorInTrackingRange(draft.params.range, draft.params.anchor)) return t('canvas.miniTool.videoUI.anchorOutsideRange');
@@ -138,8 +139,8 @@ function eraseBlock(draft: VideoToolDraftById['video.erase'], table: VideoPresen
   const grid = modelGrid(Array.from({ length: count }, (_unused, at) => {
     const frame = presentationFrameAt(table, first + at);
     return { start: frame.pts, end: frame.displayEnd };
-  }), erase.model.max_grid_fps);
-  const { min_seconds: min, max_seconds: max } = erase.model;
+  }), erase.maxGridFps);
+  const { minSeconds: min, maxSeconds: max } = erase;
   return count === 0 || !gridSecondsAllowed(grid, { minSeconds: min, maxSeconds: max }) ? t('canvas.miniTool.videoUI.eraseRange', { min, max }) : undefined;
 }
 
@@ -153,12 +154,12 @@ function eraseBlock(draft: VideoToolDraftById['video.erase'], table: VideoPresen
  * @returns The reason, or undefined.
  * @throws {never} Never.
  */
-function expandBlock(draft: VideoToolDraftById['video.expand'], expand: ExpandLimits | undefined, transparent: boolean,
+function expandBlock(draft: VideoToolDraftById['video.expand'], expand: CanvasExpandLimits | undefined, transparent: boolean,
   t: (key: string, params?: Record<string, string | number>) => string): string | undefined {
   if (transparent) return t('canvas.miniTool.videoUI.transparentSource');
   if (expand === undefined) return undefined;
-  if (draft.source.mediaInfo.duration > expand.max_duration_seconds) return t('canvas.miniTool.videoUI.expandTooLong', { max: expand.max_duration_seconds });
-  return videoExpandLayout(draft.params.frame, draft.source.mediaInfo, expand.max_target_side).overSide ? t('canvas.miniTool.videoUI.expandTooLarge', { max: expand.max_target_side }) : undefined;
+  if (draft.source.mediaInfo.duration > expand.maxDurationSeconds) return t('canvas.miniTool.videoUI.expandTooLong', { max: expand.maxDurationSeconds });
+  return videoExpandLayout(draft.params.frame, draft.source.mediaInfo, expand.maxTargetSide).overSide ? t('canvas.miniTool.videoUI.expandTooLarge', { max: expand.maxTargetSide }) : undefined;
 }
 
 /**
@@ -188,13 +189,13 @@ function lipSyncRangeBlock(draft: VideoToolDraftById['video.lip-sync'], table: V
     // An unmeasurable draft is refused by admission with its own reason.
     return undefined;
   }
-  if (timeline.duration < model.min_duration_seconds || timeline.duration > model.max_duration_seconds) {
-    return t('canvas.miniTool.videoUI.lipSyncDurationRange', { min: model.min_duration_seconds, max: model.max_duration_seconds, duration: timeline.duration });
+  if (timeline.duration < model.minDurationSeconds || timeline.duration > model.maxDurationSeconds) {
+    return t('canvas.miniTool.videoUI.lipSyncDurationRange', { min: model.minDurationSeconds, max: model.maxDurationSeconds, duration: timeline.duration });
   }
   const used = lipsyncUsedSourceRange(timeline, [{ time: draft.params.anchor.pts, windowEnd }]);
   const length = used.end - used.start;
-  if (length < lipSync.tracking.min_duration_seconds || length > lipSync.tracking.max_duration_seconds) {
-    return t('canvas.miniTool.videoUI.lipSyncTrackingRange', { min: lipSync.tracking.min_duration_seconds, max: lipSync.tracking.max_duration_seconds, length });
+  if (length < lipSync.tracking.minDurationSeconds || length > lipSync.tracking.maxDurationSeconds) {
+    return t('canvas.miniTool.videoUI.lipSyncTrackingRange', { min: lipSync.tracking.minDurationSeconds, max: lipSync.tracking.maxDurationSeconds, length });
   }
   return undefined;
 }

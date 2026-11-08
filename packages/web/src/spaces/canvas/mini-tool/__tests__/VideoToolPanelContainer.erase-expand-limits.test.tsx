@@ -4,9 +4,9 @@
 /**
  * inner#1306 execution design §10.2, §10.4, §10.5 and §10.8 panel rows (packages/web/AGENTS.md#disabled-controls): the erase
  * Run and "Track selection" are `aria-disabled` and a press explains why with a toast when the model input would last
- * outside `model.min_seconds`–`model.max_seconds` (shared `modelGrid` and `gridSecondsAllowed`), when the anchor lies
+ * outside `minSeconds`–`maxSeconds` (shared `modelGrid` and `gridSecondsAllowed`), when the anchor lies
  * outside the range, or when the source is transparent; the expand Run does the same when the source is longer than
- * `max_duration_seconds`, the target's long side passes `max_target_side` (shared `videoExpandLayout`), or the source is
+ * `maxDurationSeconds`, the target's long side passes `maxTargetSide` (shared `videoExpandLayout`), or the source is
  * transparent. The props `erase` and `expand` (config `executions."video.erase"` and `"video.expand"`) and
  * `presentation.transparent` are shapes this test chose, as the lip-sync range test chose `lipSync`.
  *
@@ -44,8 +44,8 @@ const sourceURL = 'https://assets.example.test/canonical.mp4';
 const mediaInfo = { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' };
 const source = { nodeId, canonicalURL: sourceURL, mediaInfo };
 const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 125, step: 4, duration: 4 }] };
-const ERASE = { model: { name: 'bria-video-eraser-mask', min_seconds: 1, max_seconds: 5, max_grid_fps: 30 } };
-const EXPAND = { max_duration_seconds: 180, max_target_side: 4096 };
+const ERASE = { minSeconds: 1, maxSeconds: 5, maxGridFps: 30 };
+const EXPAND = { maxDurationSeconds: 180, maxTargetSide: 4096 };
 
 /**
  * Mounts a panel over a committed draft.
@@ -102,7 +102,7 @@ describe('erase limits on Track selection (execution design §10.2, §10.4)', ()
     ['longer than 5 s on the model grid', { start: 0, end: 5 }],
   ] as const)('refuses a range %s and names the allowed length', (_case, range) => {
     // 5 s at 25 fps is 125 grid frames, exactly 5 s; the config's maximum below it refuses the same range.
-    mount('video.erase', { ...REGION, range, anchor: { frameIndex: 0, pts: 0 } }, range.end === 5 ? { erase: { model: { ...ERASE.model, max_seconds: 4.9 } } } : {});
+    mount('video.erase', { ...REGION, range, anchor: { frameIndex: 0, pts: 0 } }, range.end === 5 ? { erase: { ...ERASE, maxSeconds: 4.9 } } : {});
     const max = range.end === 5 ? 4.9 : 5;
     expectRefused(track(), t('canvas.miniTool.videoUI.eraseRange', { min: 1, max }));
   });
@@ -130,12 +130,12 @@ describe('expand limits on Run (execution design §10.5)', () => {
     expect(onRunVideo).toHaveBeenCalledOnce();
   });
 
-  it('refuses a source longer than max_duration_seconds', () => {
-    mount('video.expand', WIDER, { expand: { ...EXPAND, max_duration_seconds: 4 } });
+  it('refuses a source longer than maxDurationSeconds', () => {
+    mount('video.expand', WIDER, { expand: { ...EXPAND, maxDurationSeconds: 4 } });
     expectRefused(screen.getByTestId('mini-tool-run'), t('canvas.miniTool.videoUI.expandTooLong', { max: 4 }));
   });
 
-  it('refuses a target whose long side passes max_target_side', () => {
+  it('refuses a target whose long side passes maxTargetSide', () => {
     mount('video.expand', { frame: { x: -2, y: 0, width: 5, height: 1 }, ratio: 'free' });
     expectRefused(screen.getByTestId('mini-tool-run'), t('canvas.miniTool.videoUI.expandTooLarge', { max: 4096 }));
   });

@@ -58,9 +58,9 @@ export interface CanvasLimits {
   /** The lip-sync choices (config `executions.video.lip-sync`), or null where the deployment offers no lip-sync. */
   lipSync?: CanvasLipSyncLimits | null;
   /** The erase model input's seconds and grid rate (config `executions.video.erase.model`), or null where none is offered. */
-  erase?: { minSeconds: number; maxSeconds: number; maxGridFps: number } | null;
+  erase?: CanvasEraseLimits | null;
   /** The expand source and target limits (config `executions.video.expand`), or null where none is offered. */
-  expand?: { maxDurationSeconds: number; maxTargetSide: number } | null;
+  expand?: CanvasExpandLimits | null;
   /** The most outputs one run creates, per configured planned tool (config `executions[tool].max_outputs`). */
   maxOutputs?: Partial<Record<string, number>>;
 }
@@ -73,6 +73,11 @@ export interface CanvasLimits {
 export function canvasLimitsQuery(): { queryKey: readonly ['canvas', 'limits']; queryFn: () => Promise<CanvasLimits>; staleTime: number } {
   return { queryKey: ['canvas', 'limits'] as const, queryFn: () => canvasApi.fetchLimits(), staleTime: Infinity };
 }
+
+/** The erase model input's seconds and grid rate (config `executions.video.erase.model`). */
+export interface CanvasEraseLimits { minSeconds: number; maxSeconds: number; maxGridFps: number }
+/** The expand source and target limits (config `executions.video.expand`). */
+export interface CanvasExpandLimits { maxDurationSeconds: number; maxTargetSide: number }
 
 /** A duration range in seconds, both ends included. */
 export interface CanvasDurationRange { minDurationSeconds: number; maxDurationSeconds: number }

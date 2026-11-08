@@ -4,7 +4,7 @@
 /**
  * inner#1306 test plan §97 (canvas design §4 对口型行; packages/web/AGENTS.md#disabled-controls): Run is
  * `aria-disabled` and a click explains the allowed range with a toast when the result duration (shared `lipsyncTimeline`)
- * lies outside the selected model's `min_duration_seconds`/`max_duration_seconds`, or the source range the run uses
+ * lies outside the selected model's `minDurationSeconds`/`maxDurationSeconds`, or the source range the run uses
  * (shared `lipsyncUsedSourceRange`) lies outside the tracking model's range; the toast is `canvas.miniTool.videoUI.
  * lipSyncDurationRange` `{min, max, duration}` or `lipSyncTrackingRange` `{min, max, length}` (D18). The panel prop `lipSync` (models and tracking
  * read from config `executions.video.lip-sync`) is a shape this test chose; no design fixes how web reads that config.
@@ -50,7 +50,7 @@ const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 
 const presentation: VideoToolPresentation = { frameTable, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0 };
 const profile = { id: 'people', version: '1', weightsHash: null, params: {} };
 
-type Range = { min_duration_seconds: number; max_duration_seconds: number };
+type Range = { minDurationSeconds: number; maxDurationSeconds: number };
 /**
  * The lip-sync config the panel receives: one model and the tracking model, each with its duration range.
  * @param model - The model's range.
@@ -129,7 +129,7 @@ afterEach(() => { destroyDoc(docName.canvasSpace(projectId, spaceId)); canvasSes
 describe('lip-sync Run follows the model and tracking duration ranges (§97; canvas design §4 对口型)', () => {
   it('runs when the 3 s result and the [0, 3] source range fit both ranges', async () => {
     const onRunVideo = vi.fn().mockResolvedValue({ kind: 'done', result: {} });
-    const run = await mount(lipSyncConfig({ min_duration_seconds: 1, max_duration_seconds: 10 }, { min_duration_seconds: 0.5, max_duration_seconds: 10 }), onRunVideo);
+    const run = await mount(lipSyncConfig({ minDurationSeconds: 1, maxDurationSeconds: 10 }, { minDurationSeconds: 0.5, maxDurationSeconds: 10 }), onRunVideo);
     expect(run).not.toBeDisabled();
     expect(run).not.toHaveAttribute('aria-disabled', 'true');
     act(() => run.click());
@@ -138,19 +138,19 @@ describe('lip-sync Run follows the model and tracking duration ranges (§97; can
 
   it('refuses a 3 s result above the selected model maximum and names the model range', async () => {
     const onRunVideo = vi.fn().mockResolvedValue({ kind: 'done', result: {} });
-    const run = await mount(lipSyncConfig({ min_duration_seconds: 1.5, max_duration_seconds: 2.5 }, { min_duration_seconds: 0.5, max_duration_seconds: 10 }), onRunVideo);
+    const run = await mount(lipSyncConfig({ minDurationSeconds: 1.5, maxDurationSeconds: 2.5 }, { minDurationSeconds: 0.5, maxDurationSeconds: 10 }), onRunVideo);
     expectRefused(run, onRunVideo, t('canvas.miniTool.videoUI.lipSyncDurationRange', { min: 1.5, max: 2.5, duration: 3 }));
   });
 
   it('refuses a 3 s result below the selected model minimum and names the model range', async () => {
     const onRunVideo = vi.fn().mockResolvedValue({ kind: 'done', result: {} });
-    const run = await mount(lipSyncConfig({ min_duration_seconds: 3.5, max_duration_seconds: 9.5 }, { min_duration_seconds: 0.5, max_duration_seconds: 10 }), onRunVideo);
+    const run = await mount(lipSyncConfig({ minDurationSeconds: 3.5, maxDurationSeconds: 9.5 }, { minDurationSeconds: 0.5, maxDurationSeconds: 10 }), onRunVideo);
     expectRefused(run, onRunVideo, t('canvas.miniTool.videoUI.lipSyncDurationRange', { min: 3.5, max: 9.5, duration: 3 }));
   });
 
   it('refuses a [0, 3] source range longer than tracking accepts and names the tracking range', async () => {
     const onRunVideo = vi.fn().mockResolvedValue({ kind: 'done', result: {} });
-    const run = await mount(lipSyncConfig({ min_duration_seconds: 1, max_duration_seconds: 10 }, { min_duration_seconds: 0.75, max_duration_seconds: 2.25 }), onRunVideo);
+    const run = await mount(lipSyncConfig({ minDurationSeconds: 1, maxDurationSeconds: 10 }, { minDurationSeconds: 0.75, maxDurationSeconds: 2.25 }), onRunVideo);
     expectRefused(run, onRunVideo, t('canvas.miniTool.videoUI.lipSyncTrackingRange', { min: 0.75, max: 2.25, length: 3 }));
   });
 });

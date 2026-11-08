@@ -26,7 +26,7 @@ import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-
 import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 
 /** A duration range a lip-sync model accepts, both ends included (config `executions.video.lip-sync`). */
-export interface LipSyncDurationRange { min_duration_seconds: number; max_duration_seconds: number }
+export interface LipSyncDurationRange { minDurationSeconds: number; maxDurationSeconds: number }
 /** The configured lip-sync models in order, the first the default, and the tracking model's range. */
 export interface LipSyncChoices { models: (ModelEntry & LipSyncDurationRange)[]; tracking: LipSyncDurationRange; maxPeople?: number; maxDialogues?: number }
 

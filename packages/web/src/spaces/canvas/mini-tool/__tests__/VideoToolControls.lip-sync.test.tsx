@@ -46,10 +46,10 @@ const base = { toolId: 'video.lip-sync' as const, draft, analyses: [], frameTabl
  * @param displayName - The name shown.
  * @returns The model.
  */
-function model(name: string, displayName: string): ModelEntry & { min_duration_seconds: number; max_duration_seconds: number } {
-  return { name, display_name: displayName, modality: 'video', mode: 'talking_head', description: '', guide: '', tier: 'optional', generation_time: 600, takes_prompt: false, params: {}, providers: [], min_duration_seconds: 1, max_duration_seconds: 300 };
+function model(name: string, displayName: string): ModelEntry & { minDurationSeconds: number; maxDurationSeconds: number } {
+  return { name, display_name: displayName, modality: 'video', mode: 'talking_head', description: '', guide: '', tier: 'optional', generation_time: 600, takes_prompt: false, params: {}, providers: [], minDurationSeconds: 1, maxDurationSeconds: 300 };
 }
-const lipSync = { models: [model('sync-lipsync-3', 'Sync Lipsync 3'), model('ltx-2.3-lipsync', 'LTX 2.3 Lipsync')], tracking: { min_duration_seconds: 0.5, max_duration_seconds: 600 } };
+const lipSync = { models: [model('sync-lipsync-3', 'Sync Lipsync 3'), model('ltx-2.3-lipsync', 'LTX 2.3 Lipsync')], tracking: { minDurationSeconds: 0.5, maxDurationSeconds: 600 } };
 
 /**
  * Mounts the lip-sync controls with the proposed extra props.
