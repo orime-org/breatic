@@ -101,6 +101,10 @@ const RSS = `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><
   `<item><title>${FEED_ITEM}</title><link>https://example.com/lights</link></item></channel></rss>`;
 // Chromium downloads a text/csv response rather than showing it.
 const CSV = 'pier,tide_m\nnorth,2.4\nsouth,1.9\n';
+// Plan section 14: a latin1 CSV that names no charset ("Z\xfcrich,caf\xe9").
+const LATIN1_CSV = Buffer.from([0x5a, 0xfc, 0x72, 0x69, 0x63, 0x68, 0x2c, 0x63, 0x61, 0x66, 0xe9, 0x0a]);
+const LATIN1_TEXT = 'Z\u00fcrich,caf\u00e9\n';
+const SCRIPT = "export function tide(hour) {\n  return Math.sin(hour / 12) * 2.4;\n}\n";
 const JSON_BODY = '{"name":"harbour","tides":[1,2,3],"note":"# not a heading"}';
 const BIG_BYTES = 30 * 1024 * 1024;
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -111,6 +115,20 @@ const CHUNK = Buffer.alloc(1024 * 1024);
  * reading it whole would take 15 s: only a reader that stops at the declared
  * length answers quickly.
  */
+/**
+ * Send an HTML page that declares a length past the limit, slowly, so that
+ * only a reader that stops at the declared length answers quickly.
+ */
+async function sendBigPage(res) {
+  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-length': BIG_BYTES });
+  const chunk = Buffer.from(`<p>${'harbour '.repeat(127_000)}</p>`);
+  for (let sent = 0; sent + chunk.length <= BIG_BYTES && !res.destroyed; sent += chunk.length) {
+    res.write(chunk);
+    await setTimeout(500);
+  }
+  res.end();
+}
+
 async function sendBigDownload(res) {
   res.writeHead(200, {
     'content-type': 'application/octet-stream',
@@ -139,6 +157,14 @@ const origin = createServer((req, res) => {
   else if (req.url === '/pixel.png') res.writeHead(200, { 'content-length': PNG.length }).end(PNG);
   else if (req.url === '/utf8.txt') res.writeHead(200, { 'content-type': 'text/plain' }).end(Buffer.from(UTF8_TEXT, 'utf8'));
   else if (req.url === '/feed.rss') res.writeHead(200, { 'content-type': 'application/rss+xml' }).end(RSS);
+  else if (req.url === '/latin1.csv') res.writeHead(200, { 'content-type': 'text/csv' }).end(LATIN1_CSV);
+  else if (req.url === '/tide.js') res.writeHead(200, { 'content-type': 'application/javascript' }).end(SCRIPT);
+  // A failure answer the browser turns into a download: its status still says how the read ended.
+  else if (req.url === '/busy.csv') res.writeHead(503, { 'content-type': 'text/csv' }).end('busy,try later\n');
+  else if (req.url === '/forbidden.bin') {
+    res.writeHead(403, { 'content-type': 'application/octet-stream', 'content-disposition': 'attachment; filename="x.bin"' })
+      .end('no');
+  } else if (req.url === '/big.html') void sendBigPage(res);
   else if (req.url === '/tides.csv') res.writeHead(200, { 'content-type': 'text/csv; charset=utf-8' }).end(CSV);
   else if (req.url === '/gbk.txt') res.writeHead(200, { 'content-type': 'text/plain; charset=gbk' }).end(GBK_BYTES);
   else if (req.url === '/binary.pdf') {
@@ -284,10 +310,32 @@ try {
   const brokenBody = await broken.text();
   assert.ok(brokenBody.trim() !== '', 'malformed request: the 500 carries the error message');
 
+  // Plan section 14 rows 10 and 12: a latin1 CSV with no charset and a script are text.
+  const { body: kinds3 } = await read(['/latin1.csv', '/tide.js']);
+  const [latin1, script] = kinds3.pages;
+  assert.equal(latin1.status, 'ok', `latin1 csv: read, got ${latin1.status}`);
+  assert.equal(latin1.text, LATIN1_TEXT, `latin1 csv: decoded as windows-1252, got ${JSON.stringify(latin1.text)}`);
+  assert.equal(script.status, 'ok', `javascript: read, got ${script.status}`);
+  assert.equal(script.text, SCRIPT, `javascript: its source, got ${JSON.stringify(script.text)}`);
+
+  // Plan section 14 row 9: a failure answer that arrives as a download ends
+  // as its status says, without waiting for the page timeout.
+  const failedDownloads = await read(['/busy.csv', '/forbidden.bin'], { pageTimeoutMs: 20000 });
+  const [busyCsv, forbidden] = failedDownloads.body.pages;
+  assert.equal(busyCsv.status, 'busy', `503 csv download: busy, got ${busyCsv.status}`);
+  assert.equal(forbidden.status, 'refused', `403 attachment: refused, got ${forbidden.status}`);
+  assert.ok(failedDownloads.ms < 10000, `failed downloads: answered in ${failedDownloads.ms} ms, under half the page timeout`);
+
+  // Plan section 14 row 11: an HTML page that declares a length past the limit
+  // ends at its headers.
+  const bigPage = await read(['/big.html'], { maxBytes: MAX_BYTES });
+  assert.equal(bigPage.body.pages[0].status, 'too_large', `big html page: too_large, got ${bigPage.body.pages[0].status}`);
+  assert.ok(bigPage.ms < 5000, `big html page: answered in ${bigPage.ms} ms, not after reading it whole`);
+
   console.log('Web reader smoke passed: article to Markdown, redirect followed, two-page PDF read, 404 unreachable, ' +
     'CSP page, XML page, empty app shell, script-written page, plain text, GBK text, JSON, x-pdf download, ' +
     'PDF sent as text, PNG with no type, UTF-8 text with no charset, RSS feed, CSV download, oversized download, ' +
-    'busy page and the service\'s own 500.');
+    'busy page, the service\'s own 500, latin1 CSV, JavaScript, failure downloads and an oversized HTML page.');
   process.exit(0);
 } catch (error) {
   console.error(error);

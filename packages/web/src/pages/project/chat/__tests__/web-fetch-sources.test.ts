@@ -228,8 +228,8 @@ describe('one page reached by both tools', () => {
     const message = toChatMessage(
       reply([
         searched('s1', [{ url: Q, title: 'Q', publisher: 'Q', index: 2 }]),
-        fetched('f', [{ url: P, title: 'P', publisher: 'P', index: 3 }]),
-        searched('s2', [{ url: P, title: 'P', publisher: 'P', index: 1 }]),
+        fetched('f', [{ url: `${P}/`, title: 'P read', publisher: 'P', index: 3 }]),
+        searched('s2', [{ url: P, title: 'P from search', publisher: 'P', index: 1 }]),
       ]),
     );
 
@@ -237,6 +237,8 @@ describe('one page reached by both tools', () => {
       [P, [1, 3]],
       [Q, [2]],
     ]);
+    // The row is the source with the smallest number: its address and its title.
+    expect(message.sources?.[0]).toMatchObject({ url: P, title: 'P from search', indexes: [1, 3] });
   });
 
   it('keeps two different pages on one site as two rows', () => {

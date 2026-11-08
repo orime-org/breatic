@@ -84,6 +84,24 @@ describe("readAll", () => {
     expect(finished).toEqual([urls[2], urls[1], urls[0]]);
   });
 
+  // Plan §14 row 11: a renderer that crashed ran out of memory on the page,
+  // which is a page too large to read, not one that cannot be reached.
+  it.each(["page.goto: Page crashed", "Target crashed", "page.evaluate: Target crashed"])(
+    "records a page whose reader threw %j as too_large",
+    async (message) => {
+      const urls = ["https://a.example/", "https://huge.example/"];
+      const readOne = async (url: string): Promise<ReadPageResult> => {
+        if (url === "https://huge.example/") throw new Error(message);
+        return okPage(url);
+      };
+
+      const answer = readAll(urls, { concurrency: 2, deadlineAt: Date.now() + 600_000, readOne });
+      await vi.advanceTimersByTimeAsync(1);
+
+      await expect(answer).resolves.toEqual([okPage("https://a.example/"), { url: "https://huge.example/", status: "too_large" }]);
+    },
+  );
+
   it("records a page whose reader throws as unreachable and leaves the others alone", async () => {
     const urls = ["https://a.example/", "https://b.example/", "https://c.example/"];
     const readOne = async (url: string): Promise<ReadPageResult> => {

@@ -506,6 +506,38 @@ describe("a page the reader cut at its byte cap (plan §9 S)", () => {
 });
 
 describe("where a slice is cut (plan §13.2 row 9)", () => {
+  // Plan §14 row 5: the cut moves only across ASCII non-space characters, so
+  // a page of Chinese with no spaces is cut where its share ends.
+  it("cuts twenty pages of Chinese with no spaces exactly at their shares, within web_fetch_max_chars", async () => {
+    fetchConfig.web_fetch_max_chars = 100_000;
+    const urls = Array.from({ length: 20 }, (_, i) => `https://cjk${String(i)}.example/page`);
+    const text = "\u4e2d\u6587".repeat(6000);
+    expect(text).toHaveLength(12_000);
+
+    const answer = await fetchWith(
+      turn(),
+      { pages: urls.map((url) => ({ url })) },
+      reader(Object.fromEntries(urls.map((url) => [url, okPage(text)]))),
+    );
+
+    const share = Math.floor(100_000 / 20);
+    for (const page of answer.pages) {
+      expect(page).toMatchObject({ status: "ok", start: 0, end: share, next_start: share });
+      expect(page.text).toHaveLength(share);
+    }
+    expect(answer.pages.reduce((sum, page) => sum + (page.text?.length ?? 0), 0)).toBeLessThanOrEqual(100_000);
+  });
+
+  it("moves a cut inside an ASCII link only to the first character that is not ASCII", async () => {
+    const before = "\u4e2d".repeat(90);
+    const full = `${before}https://example.com/guide/install${"\u6587".repeat(200)}`;
+
+    const answer = await fetchWith(turn(), { pages: [{ url: A }] }, reader({ [A]: okPage(full) }));
+
+    const end = before.length + "https://example.com/guide/install".length;
+    expect(answer.pages[0]).toMatchObject({ start: 0, end, next_start: end });
+  });
+
   const LINK = "https://example.com/guide/install";
 
   it("moves a cut that falls inside a link to the link's end", async () => {
@@ -703,6 +735,22 @@ describe("citation numbers", () => {
 });
 
 describe("the source row", () => {
+  // Plan §14 row 4: the row links to the address that was read; the model
+  // still sees its own spelling in the page's url.
+  it.each([
+    ["a Markdown escape", "https://x.com/foo\\_bar"],
+    ["credentials, an upper-case host and a fragment", "https://u:secret@X.com/foo_bar#frag"],
+  ])("lists the spelling the conversation recorded, not the model's with %s", async (_label, asked) => {
+    const stored = "https://x.com/foo_bar";
+    const direct = await fetchWith(turnHolding(stored), { pages: [{ url: stored }] }, reader({ [stored]: okPage("Body.") }));
+
+    const answer = await fetchWith(turnHolding(stored), { pages: [{ url: asked }] }, reader({ [stored]: okPage("Body.") }));
+
+    expect(answer.pages[0]).toMatchObject({ url: asked, status: "ok" });
+    expect(answer.sources).toHaveLength(1);
+    expect(answer.sources[0]).toMatchObject({ url: stored, publisher: direct.sources[0]!.publisher });
+  });
+
   it("passes on a page's empty title as it is, the panel showing the address in its place", async () => {
     const answer = await fetchWith(turn(), { pages: [{ url: A }] }, reader({ [A]: okPage("Body.", { title: "" }) }));
 
@@ -925,7 +973,7 @@ describe("when the reader does not answer and the turn's cache holds part of the
   it.each([
     ["the Worker answering 502", (): Error => new UploadHttpError(502)],
     ["the server refusing to read", (): Error => new ReadPagesRefused("rate_limited")],
-  ])("returns the cached page's continuation and marks the page it had to read busy, on %s", async (_label, error) => {
+  ])("returns the cached page's continuation and marks the page it had to read as not read, on %s", async (_label, error) => {
     const tools = turn();
     const full = filler(250);
     const first = await fetchWith(tools, { pages: [{ url: A }] }, reader({ [A]: okPage(full) }));
@@ -939,7 +987,39 @@ describe("when the reader does not answer and the turn's cache holds part of the
 
     expect(failing.mock.calls[0]![0].urls).toEqual([B]);
     expect(answer.pages[0]).toMatchObject({ url: A, status: "ok", start: 100, text: full.slice(100, 200) });
-    expect(answer.pages[1]).toMatchObject({ url: B, status: "busy" });
+    expect(answer.pages[1]!.status).not.toBe("busy");
+  });
+
+  // Plan §14 rows 6 and 8: the page was never asked of the site, so it is not
+  // busy; the model is told whether reading it again now can help.
+  it("marks the page too_frequent when the server refused to read, telling the model not to read it again now", async () => {
+    const tools = turn();
+    await fetchWith(tools, { pages: [{ url: A }] }, reader({ [A]: okPage(filler(250)) }));
+    const failing = vi.fn<ReadPages>(async () => {
+      throw new ReadPagesRefused("rate_limited");
+    });
+
+    const answer = await fetchWith(tools, { pages: [{ url: A, start: 100 }, { url: B }] }, failing);
+
+    expect(answer.pages[1]).toMatchObject({ url: B, status: "too_frequent" });
+    const line = renderFetchForModel(answer).split("\n").find((text) => text.startsWith(`- ${B}:`)) ?? "";
+    expect(line).toContain("too_frequent");
+    expect(line).toMatch(/do not read it again/i);
+  });
+
+  it("marks the page not_read when the reader did not answer, telling the model reading it once more may work", async () => {
+    const tools = turn();
+    await fetchWith(tools, { pages: [{ url: A }] }, reader({ [A]: okPage(filler(250)) }));
+    const failing = vi.fn<ReadPages>(async () => {
+      throw new UploadHttpError(502);
+    });
+
+    const answer = await fetchWith(tools, { pages: [{ url: A, start: 100 }, { url: B }] }, failing);
+
+    expect(answer.pages[1]).toMatchObject({ url: B, status: "not_read" });
+    const line = renderFetchForModel(answer).split("\n").find((text) => text.startsWith(`- ${B}:`)) ?? "";
+    expect(line).toContain("not_read");
+    expect(line).toMatch(/once more/i);
   });
 
   it("still fails the whole call when every page it asks for needs the reader", async () => {

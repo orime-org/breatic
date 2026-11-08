@@ -47,6 +47,19 @@ describe("statusOfResponse", () => {
     },
   );
 
+  // Plan §14 row 12: scripts, YAML and line-delimited JSON are read as text.
+  it.each([
+    "application/javascript",
+    "application/x-javascript",
+    "application/ecmascript",
+    "application/yaml",
+    "application/x-yaml",
+    "application/x-ndjson",
+    "application/jsonl",
+  ])("reads on through a 200 of type %s", (contentType) => {
+    expect(statusOfResponse(200, contentType)).toBeNull();
+  });
+
   it("refuses an SVG image as unsupported_type, though its type ends in +xml", () => {
     expect(statusOfResponse(200, "image/svg+xml")).toBe("unsupported_type");
   });

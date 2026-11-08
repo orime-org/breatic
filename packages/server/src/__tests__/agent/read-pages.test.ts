@@ -115,6 +115,43 @@ describe("readPagesFor", () => {
   });
 });
 
+// Plan §14 rows 7 and 8: domain's web_fetch now answers a failed read with
+// pages marked not read, so this is the one place that sees why the read failed.
+describe("readPagesFor when the Worker's read fails", () => {
+  it("logs web_fetch_read_failed with the error and the user, then throws the same error", async () => {
+    const failure = new Error("Asset upload failed (HTTP 502)");
+    readPagesAtIngest.mockRejectedValue(failure);
+
+    const err = await refusalOf(readPagesFor({ userId: "u1" })(REQUEST, new AbortController().signal));
+
+    expect(err).toBe(failure);
+    expect(log.warn).toHaveBeenCalledTimes(1);
+    expect(log.warn).toHaveBeenCalledWith(expect.objectContaining({ err: failure, userId: "u1" }), "web_fetch_read_failed");
+  });
+
+  it("logs it when no signal was given", async () => {
+    readPagesAtIngest.mockRejectedValue(new Error("socket hang up"));
+
+    await refusalOf(readPagesFor({ userId: "u1" })(REQUEST));
+
+    expect(log.warn).toHaveBeenCalledWith(expect.objectContaining({ userId: "u1" }), "web_fetch_read_failed");
+  });
+
+  it("does not log a read the caller stopped, and still throws", async () => {
+    const stop = new AbortController();
+    const aborted = new DOMException("aborted", "AbortError");
+    readPagesAtIngest.mockImplementation(async () => {
+      stop.abort();
+      throw aborted;
+    });
+
+    const err = await refusalOf(readPagesFor({ userId: "u1" })(REQUEST, stop.signal));
+
+    expect(err).toBe(aborted);
+    expect(log.warn).not.toHaveBeenCalled();
+  });
+});
+
 describe("the web-fetch limit in config/rate-limits.yaml", () => {
   it("is ten calls per user per sixty seconds", async () => {
     const actual = await vi.importActual<typeof RateLimitsModule>("@server/config/rate-limits.js");

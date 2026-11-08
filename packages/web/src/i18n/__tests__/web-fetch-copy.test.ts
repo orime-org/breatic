@@ -11,8 +11,8 @@
  * exact branch; the checks below ask what each locale renders, not which
  * branch name it used.
  *
- * Whether the five new failure lines exist in every locale is already asked
- * by `tool-failure-line-parity.test.ts`, which reads them off `FAILURE_LINES`;
+ * Whether the failure lines exist in every locale is already asked by
+ * `tool-failure-line-parity.test.ts`, which reads them off `FAILURE_LINES`;
  * here they are only formatted.
  */
 
@@ -28,14 +28,14 @@ const READING = 'chat.tool.readingPages';
 /** The failed step's key. */
 const STEP = 'chat.tool.step.webFetch';
 
-/** The failure lines `web_fetch` adds, read off the table so they cannot drift. */
-const NEW_FAILURES = [
-  FAILURE_LINES.pageNeedsLogin,
-  FAILURE_LINES.pageRefused,
-  FAILURE_LINES.pageTooSlow,
-  FAILURE_LINES.pageEmpty,
-  FAILURE_LINES.pagesUnreadable,
-];
+/**
+ * The failure lines `web_fetch` adds: every line of the table whose name
+ * starts with `page`, `pagesUnreadable` among them, so a new one cannot be
+ * left out.
+ */
+const NEW_FAILURES: string[] = Object.entries(FAILURE_LINES)
+  .filter(([name]) => name.startsWith('page'))
+  .map(([, key]) => key);
 
 afterEach(() => {
   setLocale('en');
@@ -84,7 +84,11 @@ describe('the reading-pages line', () => {
 });
 
 describe('the rest of the web_fetch copy', () => {
-  it('renders in every locale, the step and the five failure lines included', () => {
+  it('covers every page failure line in the table', () => {
+    expect(NEW_FAILURES).toEqual(expect.arrayContaining([FAILURE_LINES.pagesUnreadable, FAILURE_LINES.pageUnreachable]));
+  });
+
+  it('renders in every locale, the step and every page failure line included', () => {
     expectEveryLocaleRenders([
       { key: READING, params: { host: 'www.example.com', count: 1 } },
       { key: READING, params: { host: '', count: 0 } },

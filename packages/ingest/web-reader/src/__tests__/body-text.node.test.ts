@@ -16,7 +16,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { recoverUtf8, textOfDownload } from "../body-text.js";
+import { isMediaType, isTextType, recoverUtf8, textOfDownload } from "../body-text.js";
 
 const CHINESE = "中文网页 café";
 
@@ -89,6 +89,83 @@ describe("textOfDownload", () => {
     "reads nothing from a download of type %s",
     (contentType) => {
       expect(textOfDownload(new TextEncoder().encode("bytes"), contentType)).toBeNull();
+    },
+  );
+});
+
+// Plan §14 row 10: a download that names no charset is read by its BOM, then
+// as strict UTF-8, then as windows-1252.
+describe("textOfDownload with no charset named", () => {
+  it("drops a UTF-8 byte order mark", () => {
+    const bytes = new Uint8Array([0xef, 0xbb, 0xbf, ...new TextEncoder().encode(CHINESE)]);
+
+    expect(textOfDownload(bytes, "text/csv")).toBe(CHINESE);
+  });
+
+  it("decodes UTF-16LE after its byte order mark", () => {
+    const units = [...CHINESE].flatMap((char) => {
+      const code = char.charCodeAt(0);
+      return [code & 0xff, code >> 8];
+    });
+
+    expect(textOfDownload(new Uint8Array([0xff, 0xfe, ...units]), "text/plain")).toBe(CHINESE);
+  });
+
+  it("decodes UTF-16BE after its byte order mark", () => {
+    const units = [...CHINESE].flatMap((char) => {
+      const code = char.charCodeAt(0);
+      return [code >> 8, code & 0xff];
+    });
+
+    expect(textOfDownload(new Uint8Array([0xfe, 0xff, ...units]), "text/plain")).toBe(CHINESE);
+  });
+
+  it("falls back to windows-1252 for bytes that are not UTF-8", () => {
+    // "Z\xfcrich,caf\xe9" in latin1.
+    const bytes = new Uint8Array([0x5a, 0xfc, 0x72, 0x69, 0x63, 0x68, 0x2c, 0x63, 0x61, 0x66, 0xe9]);
+
+    expect(textOfDownload(bytes, "text/csv")).toBe("Z\u00fcrich,caf\u00e9");
+  });
+
+  it("still reads UTF-8 as UTF-8", () => {
+    expect(textOfDownload(new TextEncoder().encode(CHINESE), "text/csv")).toBe(CHINESE);
+  });
+});
+
+// Plan §14 row 12: scripts, YAML and line-delimited JSON are text too.
+describe("isTextType", () => {
+  it.each([
+    "application/javascript",
+    "application/x-javascript",
+    "application/ecmascript",
+    "application/yaml",
+    "application/x-yaml",
+    "application/x-ndjson",
+    "application/jsonl",
+  ])("counts %s as text", (type) => {
+    expect(isTextType(type)).toBe(true);
+  });
+
+  it.each(["text/plain", "application/json", "application/rss+xml"])("still counts %s as text", (type) => {
+    expect(isTextType(type)).toBe(true);
+  });
+
+  it.each(["image/svg+xml", "application/zip", "application/octet-stream"])("does not count %s as text", (type) => {
+    expect(isTextType(type)).toBe(false);
+  });
+});
+
+// Plan §14 row 14: one test of what a media type is, for the server and the
+// classifier both.
+describe("isMediaType", () => {
+  it.each(["image/png", "image/svg+xml", "audio/mpeg", "video/mp4"])("counts %s as media", (type) => {
+    expect(isMediaType(type)).toBe(true);
+  });
+
+  it.each(["text/plain", "application/json", "application/pdf", "application/octet-stream", ""])(
+    "does not count %j as media",
+    (type) => {
+      expect(isMediaType(type)).toBe(false);
     },
   );
 });
