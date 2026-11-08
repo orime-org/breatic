@@ -455,7 +455,7 @@ auth.get("/me", requireAuth, async (c) => {
 /**
  * `POST /auth/logout` - invalidate the current session.
  *
- * Requires a valid Bearer token in the Authorization header.
+ * Requires a session cookie; ends that session and clears the cookie.
  * @param c - Hono context with authenticated user
  * @returns `200` with `{ message: "Logged out" }`
  */

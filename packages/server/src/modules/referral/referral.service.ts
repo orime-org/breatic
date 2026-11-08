@@ -31,7 +31,8 @@ export interface AccountReferral {
 /**
  * The first-period discount an account's next membership checkout carries.
  *
- * Read by the membership panel and by checkout, so both show the same answer.
+ * Read by checkout. The membership panel's `readAccountReferral` applies the
+ * same rule (`firstPeriodDiscountFor`), so both show the same answer.
  * @param userId - The account.
  * @param tx - The caller's transaction, if any.
  * @returns The bound code and the percent off, or null when there is no discount.
