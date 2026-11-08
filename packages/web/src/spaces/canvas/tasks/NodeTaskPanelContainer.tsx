@@ -15,7 +15,7 @@ import * as React from 'react';
 
 import type { NodeRef } from '@web/data/yjs/node-view';
 import { newId, type NodeTaskEntry } from '@breatic/shared';
-import { eraseFailureReasonSchema, expandFailureReasonSchema, lipsyncFailureReasonSchema, miniToolById, plannedFailureRetryable, type EraseFailureReason, type ExpandFailureReason } from '@breatic/shared/mini-tools';
+import { eraseFailureReasonSchema, expandFailureReasonSchema, lipsyncFailureReasonSchema, miniToolById, plannedFailureRetryable, type EraseFailureReason, type ExpandFailureReason, type MiniToolExecutionRetryRequest } from '@breatic/shared/mini-tools';
 
 import { canvasApi } from '@web/data/api/canvas';
 import { miniToolsApi } from '@web/data/api/mini-tools';
@@ -41,6 +41,9 @@ import {
   useTaskActionsInFlight,
   type TaskActionRequest,
 } from '@web/stores/task-actions-in-flight';
+
+/** The planned tools whose failed output retries from its task row; lip-sync, erase and expand retry from their failure block. */
+const ROW_RETRY_TOOLS = ['video.remove-bg', 'video.extract-frames', 'video.split'] as const;
 
 /** The media a refusal can name formats for. */
 const LISTED_MEDIA = ['image', 'video', 'audio'] as const;
@@ -192,15 +195,24 @@ function OpenNodeTaskPanel({
     const reason: EraseFailureReason | ExpandFailureReason | null = erase.success ? erase.data : expand.success ? expand.data : null;
     return reason === null ? [] : [[runId, reason] as const];
   })), [parentRunIds, runs]);
-  const retryFailed = React.useCallback((runId: string, tool: 'video.lip-sync' | 'video.erase' | 'video.expand' = 'video.lip-sync'): void => {
-    void runOnce(`${tool === 'video.lip-sync' ? 'lip-sync' : tool}-retry:${runId}`, {
+  const retryFailed = React.useCallback((runId: string, tool: MiniToolExecutionRetryRequest['tool'] = 'video.lip-sync', outputIndex = 0): Promise<unknown> =>
+    runOnce(`${tool === 'video.lip-sync' ? 'lip-sync' : tool}-retry:${runId}:${outputIndex}`, {
       scope: 'mini-tool',
-      prepare: () => ({ tool, project_id: projectId, space_id: spaceId, run_id: newId(), retry: { runId, outputIndexes: [0] } }),
+      prepare: () => ({ tool, project_id: projectId, space_id: spaceId, run_id: newId(), retry: { runId, outputIndexes: [outputIndex] } }),
       send: (key, body) => miniToolsApi.retryPlannedVideoRun(body, key),
       onDone: () => { void query.refetch(); return undefined; },
       onFailure: (error) => { toast.error(plannedRunRefusalText(error, t)); },
-    });
-  }, [projectId, spaceId, query, t]);
+    }), [projectId, spaceId, query, t]);
+  // Every other planned output retries from its own failed task row (frames-split §10.8 retry row): the node's output of
+  // the parent run, matched by node id, when it failed for a reason a retry can clear.
+  const plannedRetryOf = React.useCallback((taskId: string): { runId: string; tool: MiniToolExecutionRetryRequest['tool']; outputIndex: number } | null => {
+    const entry = entries.find((candidate) => candidate.id === taskId);
+    const runId = entry?.taskId;
+    const tool = ROW_RETRY_TOOLS.find((id) => id === entry?.label);
+    if (entry?.status !== 'failed' || runId == null || tool === undefined) return null;
+    const output = runs[parentRunIds.indexOf(runId)]?.data?.outputs.find((candidate) => candidate.nodeId === nodeId);
+    return output?.result?.status === 'failed' && plannedFailureRetryable(output.result.error) ? { runId, tool, outputIndex: output.outputIndex } : null;
+  }, [entries, runs, parentRunIds, nodeId]);
   const detailOf = React.useCallback((taskId: string): React.ReactNode => {
     const entry = entries.find((candidate) => candidate.id === taskId);
     const runId = entry?.taskId;
@@ -208,11 +220,11 @@ function OpenNodeTaskPanel({
     if (entry?.label === 'video.erase' || entry?.label === 'video.expand') {
       const tool = entry.label;
       const failure = modelFailures.get(runId);
-      return failure === undefined ? null : <ModelRunFailure reason={failure} disabled={readOnly} {...(plannedFailureRetryable(failure) ? { onRetry: () => retryFailed(runId, tool) } : {})} />;
+      return failure === undefined ? null : <ModelRunFailure reason={failure} disabled={readOnly} {...(plannedFailureRetryable(failure) ? { onRetry: () => { void retryFailed(runId, tool); } } : {})} />;
     }
     const reason = entry?.label === 'video.lip-sync' ? lipSyncFailures.get(runId) : undefined;
     return reason === undefined ? null
-      : <LipSyncFailure reason={reason} disabled={readOnly} {...(plannedFailureRetryable(reason) ? { onRetry: () => retryFailed(runId) } : {})} />;
+      : <LipSyncFailure reason={reason} disabled={readOnly} {...(plannedFailureRetryable(reason) ? { onRetry: () => { void retryFailed(runId); } } : {})} />;
   }, [entries, lipSyncFailures, modelFailures, readOnly, retryFailed]);
   // Only the running list reads the clock, and only while it has a row: the
   // three settled states show fixed instants.
@@ -223,9 +235,10 @@ function OpenNodeTaskPanel({
   );
   const now = useTickingClock(counting);
 
+  // A row offers Retry when this session holds its File, or when it is a planned output a retry can run again.
   const holdsFile = React.useCallback(
-    (taskId: string): boolean => hasRetryFile(projectId, spaceId, taskId),
-    [projectId, spaceId],
+    (taskId: string): boolean => hasRetryFile(projectId, spaceId, taskId) || plannedRetryOf(taskId) !== null,
+    [projectId, spaceId, plannedRetryOf],
   );
   // Read from a store, not this panel's state: a button still waits after the
   // panel is closed and opened again.
@@ -251,12 +264,13 @@ function OpenNodeTaskPanel({
   // re-send is a new task), so a second press would send the File twice.
   const retry = React.useCallback(
     (taskId: string): void => {
-      const work = onRetry(nodeId, taskId);
+      const planned = plannedRetryOf(taskId);
+      const work = planned === null ? onRetry(nodeId, taskId) : retryFailed(planned.runId, planned.tool, planned.outputIndex);
       if (work !== undefined) {
         trackTaskAction(taskActionKey(projectId, spaceId, taskId, 'retry'), work);
       }
     },
-    [onRetry, nodeId, projectId, spaceId],
+    [onRetry, nodeId, projectId, spaceId, plannedRetryOf, retryFailed],
   );
   // Finish and Clear are the same request (§7.4). The row leaves this list as
   // soon as the server takes it — the list is this reader's own fetch, not the

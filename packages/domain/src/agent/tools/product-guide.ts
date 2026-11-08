@@ -745,7 +745,8 @@ export function renderProductGuide(): string {
       "followed by the model's name; or a tool's own icon and name, with nothing after it. A done row offers " +
       `${quoted(t("canvas.task.action.finish"))}, which takes the row away (its result is already on the ` +
       `node); a failed one says why and offers ${quoted(t("canvas.task.action.retry"))} for an upload still at ` +
-      `hand, and ${quoted(t("canvas.task.action.clear"))}; an expired one offers ` +
+      `hand or for a ${quoted(t("canvas.miniTool.video.remove-bg.label"))}, ${quoted(t("canvas.miniTool.video.extract-frames.label"))} or ` +
+      `${quoted(t("canvas.miniTool.video.split.label"))} result that can run again, and ${quoted(t("canvas.task.action.clear"))}; an expired one offers ` +
       `${quoted(t("canvas.task.action.view"))} when a late result came, which opens the node's history at that ` +
       `result so you can restore it, and ${quoted(t("canvas.task.action.clear"))}.`,
     "",
