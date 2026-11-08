@@ -146,7 +146,9 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       if (anchor !== null && media !== null && clip !== null && source !== null && !awaitingSeek && Number.isFinite(media.currentTime)) {
         const fps = latest.current.document.settings.fps;
         const sourceIn = clip.sourceInFrame * source.timebase.den / source.timebase.num;
-        const frame = clip.startFrame + Math.floor((media.currentTime - sourceIn) * fps.num * clip.rate.den / (fps.den * clip.rate.num));
+        // An ended element shows its last picture while the clock runs on, so the clock holds the frame.
+        const frame = media.ended ? position.current
+          : clip.startFrame + Math.floor((media.currentTime - sourceIn) * fps.num * clip.rate.den / (fps.den * clip.rate.num));
         showFrame(Math.max(anchor.frame, clip.startFrame, Math.min(clip.startFrame + clip.durationFrames - 1, frame)));
       }
       anchor = null;
@@ -255,7 +257,9 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
             if (media.currentTime !== targetSeconds) media.currentTime = targetSeconds;
           }
           const fps = latest.current.document.settings.fps;
-          if (!media.seeking && media.readyState >= 2 && Math.abs(media.currentTime - targetSeconds) < fps.den / (2 * fps.num)) awaitingSeek = false;
+          // A target past the element's own end is reached at that end; the terminal hold covers the rest of the clip.
+          const reachable = Number.isFinite(media.duration) ? Math.min(targetSeconds, media.duration) : targetSeconds;
+          if (!media.seeking && media.readyState >= 2 && Math.abs(media.currentTime - reachable) < fps.den / (2 * fps.num)) awaitingSeek = false;
         } catch {
           fail();
           return;
