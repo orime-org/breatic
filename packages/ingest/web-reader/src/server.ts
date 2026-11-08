@@ -266,6 +266,6 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 createServer((req, res) => {
   handle(req, res).catch((err: unknown) => {
     console.error("web_reader_request_failed", err);
-    if (!res.headersSent) res.writeHead(500).end();
+    if (!res.headersSent) res.writeHead(500).end(err instanceof Error ? err.message : String(err));
   });
 }).listen(READER_SERVICE_PORT);
