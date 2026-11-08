@@ -3,13 +3,15 @@
 
 import * as React from 'react';
 import { ScrollArea } from '@web/components/ui/scroll-area';
-import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
+import { BODY_ROW_CLASS, BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 import {
   adoptDocumentEditor,
   type ShowableEditor,
 } from '@web/spaces/document/document-editor-cache';
 import { DocumentBlockControls } from '@web/spaces/document/DocumentBlockControls';
 import { DocumentMenuEntry } from '@web/spaces/document/DocumentMenuEntry';
+import { DocumentOutline } from '@web/spaces/document/DocumentOutline';
+import { BODY_ROW_VARS } from '@web/spaces/document/document-columns';
 import { SelectionBubbleBar } from '@web/spaces/document/SelectionBubbleBar';
 import {
   DOCUMENT_COMMENT_DRAFT_RANGE,
@@ -370,8 +372,11 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           strip stands, past its first column's (`BODY_GUTTER_START`). */}
       {/* One scroller over both columns, so the scrollbar sits at the far
           right of the Space rather than between the text and the panel, and a
-          wheel anywhere in here moves both sides together. */}
-      <div className='flex min-h-0 flex-1'>
+          wheel anywhere in here moves both sides together. The heading outline
+          stands left of it, outside the scroller, so it stays put while the
+          body scrolls (inner#1149). */}
+      <div className={`${BODY_ROW_CLASS} flex min-h-0 flex-1`} style={BODY_ROW_VARS}>
+        <DocumentOutline editor={handle.editor} viewport={viewport} readOnly={readOnly} commentsOpen={railOpen} />
         <ScrollArea
           viewportRef={setViewport}
           className={`${BODY_SCROLLER_CLASS} flex-1`}

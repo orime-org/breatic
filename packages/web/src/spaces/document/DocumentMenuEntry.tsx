@@ -151,7 +151,7 @@ export const DocumentMenuEntry = React.memo(
       // button plus the clearance, which is everything between the padding
       // box's right edge and the button's own right edge — so the button lands
       // in the gutter with the clearance on its left and the inset between it
-      // and the viewport edge (`index.css`).
+      // and the viewport edge (`BODY_ROW_VARS`, `document-columns.ts`).
       <div className='sticky top-5 z-10 mr-[calc((var(--doc-entry-size)+var(--doc-entry-clearance))*-1)] flex h-0 justify-end'>
         {/* `modal={false}`, same reason as the canvas's left floating menu: a
             modal menu puts `pointer-events: none` on the body, so the click

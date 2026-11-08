@@ -2087,6 +2087,11 @@
         "riskUploads": "uploads still in progress will be interrupted — you can switch to the Space they are in and check first.",
         "action": "Refresh page"
       },
+      "outline": {
+        "show": "Show outline",
+        "hide": "Hide outline",
+        "empty": "No headings yet"
+      },
       "docMenu": {
         "label": "Whole-document commands",
         "saveSnapshot": "Save snapshot",

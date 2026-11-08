@@ -1704,6 +1704,16 @@ export function renderProductGuide(): string {
       "unresolved. Other people in the document show as coloured carets " +
       "with their names. Content written by a newer version of the editor shows as a box marked " +
       `${quoted(t("spaces.document.unsupported.label"))} and is kept as it is.`,
+    "- The heading outline: an icon at the top left of the body, level with the three dots, opens and shuts " +
+      `it; hovering it says ${quoted(t("spaces.document.outline.show"))} or ${quoted(t("spaces.document.outline.hide"))}. ` +
+      "The outline lists the body's level 1–3 headings as a tree, with the same numbers the body shows; headings " +
+      "inside table cells and empty headings are left out. Clicking a heading scrolls the body to it, and for an " +
+      "editor the caret lands at the start of that heading. The arrow in front of a heading folds the headings " +
+      "under it. The heading being read is highlighted. When the document area is too narrow, the outline floats " +
+      "over the left of the body instead of taking its own column, and after a click on a heading it tucks away " +
+      "until the outline icon is clicked again. Whether the outline is shown is remembered for each account in " +
+      "this browser and applies to every document. With no headings yet the column says " +
+      `${quoted(t("spaces.document.outline.empty"))}.`,
     `- Comments: select text and press the speech bubble, or choose ` +
       `${quoted(t("spaces.document.commands.comment"))} on a line's handle menu (greyed on a line with no ` +
       `words). The ${quoted(t("spaces.document.comment.railTitle"))} panel opens beside the text, the words take ` +

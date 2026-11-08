@@ -399,7 +399,7 @@ test('the toolbar of a first block sits on the picture, never under it, centred,
   const [bar, media, scroller] = await Promise.all([
     toolbar.boundingBox(),
     img.boundingBox(),
-    page.locator('[data-testid="document-space"] [data-radix-scroll-area-viewport]').first().boundingBox(),
+    page.locator('[data-testid="document-space"] .doc-body-scroller [data-radix-scroll-area-viewport]').first().boundingBox(),
   ]);
   // The first block has no room above it inside the scroller, so the bar sits
   // on the picture along its top edge, all in view.

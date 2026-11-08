@@ -18,7 +18,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { render, renderHook, screen, waitFor } from '@testing-library/react';
+import { renderHook, screen, waitFor } from '@testing-library/react';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import userEvent from '@testing-library/user-event';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';

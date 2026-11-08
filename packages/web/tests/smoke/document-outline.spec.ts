@@ -1,0 +1,522 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+/**
+ * The heading outline beside the document body, end to end (inner#1149).
+ *
+ * What jsdom cannot show: where a jump really leaves each level of heading,
+ * the browser's smooth scroll and the highlight passing headings on the way,
+ * a jump aiming again when the body grows mid-scroll and ending when the
+ * user types, the highlight following a real scroll, the hover text of a heading cut
+ * short, the outline staying put while the body scrolls and scrolling on its
+ * own, the body width with the outline shut at two Space widths, and the
+ * outline floating over the body, above the block handles, in a narrow Space.
+ *
+ * Wants dev running:
+ *   pnpm --filter @breatic/web test:smoke
+ */
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
+
+import { openSmokeProject } from '../helpers/project';
+import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR, VISIBLE_SPACE } from '../helpers/space';
+
+let page: Page;
+
+const createdSpaceIds: string[] = [];
+
+test.beforeEach(async ({ browser }) => {
+  page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
+});
+
+test.afterEach(async () => {
+  while (createdSpaceIds.length > 0) {
+    await deleteSpace(page, createdSpaceIds.pop() as string);
+  }
+  await page?.close();
+});
+
+const OUTLINE = `${VISIBLE_SPACE} [data-testid="doc-outline"]`;
+const VIEWPORT = `${VISIBLE_SPACE} .doc-body-scroller [data-radix-scroll-area-viewport]`;
+const WORDS = 'Words that fill the line and make the document long enough to scroll through with the outline beside it. ';
+const LONG = 'A heading long enough that the outline column cuts it short and shows the rest on hover';
+
+/**
+ * Opens a fresh Document Space and pastes Markdown into it, as a user would.
+ * @param p - The page.
+ * @param markdown - The document.
+ */
+async function openWith(p: Page, markdown: string): Promise<void> {
+  await openSmokeProject(p);
+  createdSpaceIds.push(await createSpace(p, 'document', `outline-${Date.now()}`));
+  const editor = p.locator(EDITOR);
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  await editor.click();
+  await p.evaluate(({ selector, text }) => {
+    const transfer = new DataTransfer();
+    transfer.setData('text/plain', text);
+    document.querySelector(selector)!.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
+  }, { selector: EDITOR, text: markdown });
+  await expect(p.locator(`${OUTLINE} [data-testid="doc-outline-row"]`).first()).toBeVisible({ timeout: 10_000 });
+}
+
+/**
+ * A section: a heading and paragraphs under it.
+ * @param marks - `#`, `##` or `###`.
+ * @param title - The heading's words.
+ * @param paragraphs - How many paragraphs follow.
+ * @returns The Markdown.
+ */
+function section(marks: string, title: string, paragraphs = 6): string {
+  return `${marks} ${title}\n\n${Array.from({ length: paragraphs }, () => WORDS.repeat(3)).join('\n\n')}\n\n`;
+}
+
+/**
+ * A document with all three levels, a long heading and two short sections at
+ * the end. Enough follows "Two" for a jump to reach the landing; the end of the
+ * document stops a jump short for "Two one one" and the two short sections after it.
+ */
+const DOCUMENT =
+  section('#', 'One') + section('##', 'One one') + section('###', 'One one one') + section('##', LONG) +
+  section('#', 'Two') + section('##', 'Two one') + section('###', 'Two one one') +
+  section('##', 'Tail a', 1) + section('##', 'Tail b', 1);
+
+/**
+ * The outline row showing these words.
+ * @param p - The page.
+ * @param text - The heading's words.
+ * @returns The row's jump button.
+ */
+function row(p: Page, text: string): ReturnType<Page['locator']> {
+  return p.locator(`${OUTLINE} [data-testid="doc-outline-row"]`, { hasText: text }).first();
+}
+
+/**
+ * The words of the highlighted outline row.
+ * @param p - The page.
+ * @returns Its words, or null when none is highlighted.
+ */
+async function highlighted(p: Page): Promise<string | null> {
+  return p.evaluate((outline) => {
+    const item = [...document.querySelectorAll(`${outline} [data-outline-item]`)].find((i) => i.className.includes('bg-accent-strong'));
+    return item?.querySelector('[data-testid="doc-outline-row"]')?.textContent ?? null;
+  }, OUTLINE);
+}
+
+/**
+ * Follows a jump's smooth scroll frame by frame until the body has held still
+ * for five frames.
+ * @param p - The page.
+ * @returns The highlighted row, the colour of its words and the body's scrollTop in every frame.
+ */
+async function scrollSettled(p: Page): Promise<{ highlights: (string | null)[]; colours: (string | null)[]; tops: number[] }> {
+  return p.evaluate(({ outline, viewport }) => new Promise((resolve) => {
+    const vp = document.querySelector(viewport)!;
+    const highlights: (string | null)[] = [];
+    const colours: (string | null)[] = [];
+    const tops: number[] = [];
+    let still = 0;
+    const tick = (): void => {
+      const item = [...document.querySelectorAll(`${outline} [data-outline-item]`)].find((i) => i.className.includes('bg-accent-strong'));
+      const words = item?.querySelector('[data-testid="doc-outline-row"]') ?? null;
+      highlights.push(words?.textContent ?? null);
+      colours.push(words === null ? null : getComputedStyle(words).color);
+      still = tops.length > 0 && tops[tops.length - 1] === vp.scrollTop ? still + 1 : 0;
+      tops.push(vp.scrollTop);
+      if (still >= 5) resolve({ highlights, colours, tops });
+      else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }), { outline: OUTLINE, viewport: VIEWPORT });
+}
+
+/**
+ * Twelve frames into a jump, puts a 300px spacer at the top of the body's
+ * surface, outside the editable element ProseMirror keeps in step.
+ * @param p - The page.
+ * @returns Whether the body was still short of its end when it grew.
+ */
+async function growMidJump(p: Page): Promise<boolean> {
+  return p.evaluate((viewport) => new Promise<boolean>((resolve) => {
+    const vp = document.querySelector(viewport)!;
+    let n = 0;
+    const tick = (): void => {
+      n += 1;
+      if (n < 12) {
+        requestAnimationFrame(tick);
+        return;
+      }
+      const midFlight = vp.scrollTop < vp.scrollHeight - vp.clientHeight - 2;
+      const spacer = document.createElement('div');
+      spacer.style.height = '300px';
+      vp.querySelector('.doc-body-editor')!.prepend(spacer);
+      resolve(midFlight);
+    };
+    requestAnimationFrame(tick);
+  }), VIEWPORT);
+}
+
+/**
+ * How far below the top of the body a heading's own line sits.
+ * @param p - The page.
+ * @param text - The heading's words.
+ * @returns The distance in px.
+ */
+async function lineBelowTop(p: Page, text: string): Promise<number> {
+  return p.evaluate(({ editor, viewport, words }) => {
+    const line = [...document.querySelectorAll(`${editor} .bn-block-content[data-content-type="heading"]`)].find((h) => h.textContent === words)!;
+    return line.getBoundingClientRect().top - document.querySelector(viewport)!.getBoundingClientRect().top;
+  }, { editor: EDITOR, viewport: VIEWPORT, words: text });
+}
+
+/**
+ * The width of the body's text column.
+ * @param p - The page.
+ * @returns Its width in px.
+ */
+async function textWidth(p: Page): Promise<number> {
+  return p.evaluate(() => Math.round(document.querySelector('[data-space-outlet]:not([style*="display: none"]) [data-testid="document-editor-content"]')!.getBoundingClientRect().width));
+}
+
+/**
+ * The visible Space's width; the Agent column takes 320px and a 1px handle left of it.
+ * @param p - The page.
+ * @returns Its width in px.
+ */
+async function spaceWidth(p: Page): Promise<number> {
+  return p.evaluate((space) => Math.round(document.querySelector(space)!.getBoundingClientRect().width), VISIBLE_SPACE);
+}
+
+/**
+ * Whether any account in this browser has stored the outline as shut.
+ * @param p - The page.
+ * @returns True when one has.
+ */
+async function storedShut(p: Page): Promise<boolean> {
+  return p.evaluate(() => {
+    const record = JSON.parse(window.localStorage.getItem('breatic.userPreferences') ?? '{}') as Record<string, { documentOutlineVisible?: boolean }>;
+    return Object.values(record).some((entry) => entry.documentOutlineVisible === false);
+  });
+}
+
+/**
+ * The heading the reading line has reached, worked out from the page itself.
+ * @param p - The page.
+ * @returns Its words.
+ */
+async function headingAtReadingLine(p: Page): Promise<string | null> {
+  return p.evaluate(({ editor, viewport }) => {
+    const top = document.querySelector(viewport)!.getBoundingClientRect().top;
+    let current: string | null = null;
+    for (const h of document.querySelectorAll(`${editor} .bn-block-content[data-content-type="heading"]`)) {
+      if (h.getBoundingClientRect().top <= top + 24) current = h.textContent;
+    }
+    return current;
+  }, { editor: EDITOR, viewport: VIEWPORT });
+}
+
+test('a jump leaves each level of heading 16px under the top and the caret at its start', async () => {
+  await openWith(page, DOCUMENT);
+  for (const title of ['One one one', 'Two', 'One one']) {
+    await row(page, title).click();
+    await scrollSettled(page);
+    expect(Math.abs(await lineBelowTop(page, title) - 16)).toBeLessThanOrEqual(2);
+    expect(await highlighted(page)).toBe(title);
+  }
+  await page.keyboard.type('Z');
+  await expect(row(page, 'ZOne one')).toBeVisible();
+});
+
+test('a jump scrolls smoothly, the highlight passing the headings on the way and holding one the end stops short', async () => {
+  await openWith(page, DOCUMENT);
+  await page.evaluate((viewport) => document.querySelector(viewport)!.scrollTo({ top: 0, behavior: 'instant' }), VIEWPORT);
+  await expect.poll(() => highlighted(page)).toBe('One');
+
+  await row(page, 'Two one one').click();
+  const { highlights, colours, tops } = await scrollSettled(page);
+  expect(new Set(tops).size).toBeGreaterThan(2);
+  expect(highlights.some((h) => h !== null && h !== 'One' && h !== 'Two one one')).toBe(true);
+  // The highlighted row's words take the full foreground colour in the frame
+  // its fill arrives, however briefly the highlight rests there.
+  const foreground = await page.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--color-foreground)';
+    document.body.append(probe);
+    const value = getComputedStyle(probe).color;
+    probe.remove();
+    return value;
+  });
+  expect(colours.filter((c) => c !== null && c !== foreground)).toEqual([]);
+  // Too little follows "Two one one" for its landing: the body stops at its
+  // end, the heading lower down, and the highlight still settles on it.
+  const end = await page.evaluate((viewport) => {
+    const vp = document.querySelector(viewport)!;
+    return vp.scrollHeight - vp.clientHeight;
+  }, VIEWPORT);
+  expect(Math.abs(tops.at(-1)! - end)).toBeLessThanOrEqual(2);
+  expect(await lineBelowTop(page, 'Two one one')).toBeGreaterThan(16 + 2);
+  expect(highlights.at(-1)).toBe('Two one one');
+});
+
+test('a jump aims again when the body above grows mid-scroll, and still ends on the clicked heading', async () => {
+  await openWith(page, DOCUMENT);
+  await page.evaluate((viewport) => document.querySelector(viewport)!.scrollTo({ top: 0, behavior: 'instant' }), VIEWPORT);
+  await expect.poll(() => highlighted(page)).toBe('One');
+
+  await row(page, 'Tail b').click();
+  // As an image without a stored size does once it loads.
+  expect(await growMidJump(page)).toBe(true);
+  const { tops } = await scrollSettled(page);
+  const end = await page.evaluate((viewport) => {
+    const vp = document.querySelector(viewport)!;
+    return vp.scrollHeight - vp.clientHeight;
+  }, VIEWPORT);
+  expect(Math.abs(tops.at(-1)! - end)).toBeLessThanOrEqual(2);
+  expect(await highlighted(page)).toBe('Tail b');
+});
+
+test('a jump the user stops by typing ends there, and later growth leaves the body alone', async () => {
+  await openWith(page, DOCUMENT);
+  await page.evaluate((viewport) => document.querySelector(viewport)!.scrollTo({ top: 0, behavior: 'instant' }), VIEWPORT);
+  await expect.poll(() => highlighted(page)).toBe('One');
+
+  await row(page, 'Two one one').click();
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    let n = 0;
+    const tick = (): void => {
+      n += 1;
+      if (n < 6) requestAnimationFrame(tick);
+      else resolve();
+    };
+    requestAnimationFrame(tick);
+  }));
+  // The caret is still out of view: the editor scrolls it in at once,
+  // which stops the smooth scroll short of the landing.
+  await page.keyboard.type('x');
+  const stopped = (await scrollSettled(page)).tops.at(-1)!;
+  const end = await page.evaluate((viewport) => {
+    const vp = document.querySelector(viewport)!;
+    return vp.scrollHeight - vp.clientHeight;
+  }, VIEWPORT);
+  expect(stopped).toBeLessThan(end - 2);
+
+  await page.evaluate((surface) => {
+    const spacer = document.createElement('div');
+    spacer.style.height = '300px';
+    document.querySelector(surface)!.prepend(spacer);
+  }, `${VIEWPORT} .doc-body-editor`);
+  // Scroll anchoring keeps the view where it was; nothing scrolls further.
+  expect((await scrollSettled(page)).tops.at(-1)!).toBeLessThanOrEqual(stopped + 300 + 2);
+});
+
+test('a row reads from after its arrow column, indented by level, and only the one being read is medium weight', async () => {
+  await openWith(page, DOCUMENT);
+  await row(page, 'Two').click();
+  await scrollSettled(page);
+  const rows = await page.evaluate((outline) => [...document.querySelectorAll(`${outline} [data-testid="doc-outline-row"]`)].map((r) => {
+    const words = r.lastElementChild!.getBoundingClientRect();
+    const item = r.closest('[data-outline-item]')!.getBoundingClientRect();
+    return { text: r.textContent, gap: Math.round(words.left - item.left), weight: getComputedStyle(r).fontWeight };
+  }), OUTLINE);
+  const of = (text: string): (typeof rows)[number] => rows.find((r) => r.text === text)!;
+  expect(of('One').gap).toBe(24);
+  expect(of('One one').gap).toBe(24 + 12);
+  expect(of('One one one').gap).toBe(24 + 24);
+  expect(of('Two').weight).toBe('500');
+  expect(of('One').weight).toBe('400');
+});
+
+test('a whole row jumps, its indent included, and its arrow is a 24px target of its own', async () => {
+  await openWith(page, DOCUMENT);
+  await page.evaluate((viewport) => document.querySelector(viewport)!.scrollTo({ top: 0, behavior: 'instant' }), VIEWPORT);
+  const item = (await row(page, 'One one one').locator('xpath=ancestor::*[@data-outline-item][1]').boundingBox())!;
+  await page.mouse.click(item.x + 4, item.y + item.height / 2);
+  await scrollSettled(page);
+  expect(Math.abs(await lineBelowTop(page, 'One one one') - 16)).toBeLessThanOrEqual(2);
+  expect(await highlighted(page)).toBe('One one one');
+
+  const fold = page.locator(`${OUTLINE} [data-outline-item]`).first().getByTestId('doc-outline-fold');
+  const box = (await fold.boundingBox())!;
+  expect(box.width).toBeGreaterThanOrEqual(24);
+  expect(box.height).toBeGreaterThanOrEqual(24);
+  await page.mouse.click(box.x + 2, box.y + box.height / 2);
+  await expect.poll(() => page.evaluate((outline) => [...document.querySelectorAll(`${outline} [data-testid="doc-outline-row"]`)].map((r) => r.textContent), OUTLINE))
+    .toEqual(['One', 'Two', 'Two one', 'Two one one', 'Tail a', 'Tail b']);
+});
+
+test('rows draw the demo\'s states: small corners, the one being read darker, an arrow that darkens on hover', async () => {
+  await openWith(page, DOCUMENT);
+  await row(page, 'Two').click();
+  await scrollSettled(page);
+  const look = await page.evaluate((outline) => {
+    const token = (name: string): string => {
+      const probe = document.createElement('span');
+      probe.style.color = `var(${name})`;
+      document.body.append(probe);
+      const value = getComputedStyle(probe).color;
+      probe.remove();
+      return value;
+    };
+    const rowOf = (text: string): Element => [...document.querySelectorAll(`${outline} [data-testid="doc-outline-row"]`)].find((r) => r.textContent === text)!;
+    return {
+      radius: getComputedStyle(rowOf('Two').closest('[data-outline-item]')!).borderRadius,
+      other: getComputedStyle(rowOf('One')).color,
+      foreground: token('--color-foreground'),
+      secondary: token('--color-foreground-secondary'),
+    };
+  }, OUTLINE);
+  expect(look.radius).toBe('6px');
+  expect(look.other).toBe(look.secondary);
+  // Two filled rows side by side, the one being read and a hovered one, keep a
+  // gap between their fills, as every menu and list in the product does.
+  const gaps = await page.evaluate((outline) => {
+    const items = [...document.querySelectorAll(`${outline} [data-outline-item]`)].map((i) => i.getBoundingClientRect());
+    return items.slice(1).map((r, n) => Math.round(r.top - items[n]!.bottom));
+  }, OUTLINE);
+  for (const gap of gaps) expect(gap).toBe(2);
+  // The row being read has its words in the full foreground colour.
+  await expect.poll(() => row(page, 'Two').evaluate((el) => getComputedStyle(el).color)).toBe(look.foreground);
+
+  const fold = page.locator(`${OUTLINE} [data-outline-item]`).first().getByTestId('doc-outline-fold');
+  const before = await fold.evaluate((el) => getComputedStyle(el).color);
+  await fold.hover();
+  await expect.poll(() => fold.evaluate((el) => getComputedStyle(el).color)).toBe(look.foreground);
+  expect(before).not.toBe(look.foreground);
+});
+
+test('the empty outline spaces its two lines like the comment panel\'s empty state', async () => {
+  await openSmokeProject(page);
+  createdSpaceIds.push(await createSpace(page, 'document', `outline-${Date.now()}`));
+  await expect(page.locator(EDITOR)).toBeVisible({ timeout: 15_000 });
+  const empty = page.locator(`${VISIBLE_SPACE} [data-testid="doc-outline"] p`);
+  await expect(empty).toBeVisible();
+  const { lineHeight, fontSize, relaxed } = await empty.evaluate((el) => ({
+    lineHeight: parseFloat(getComputedStyle(el).lineHeight),
+    fontSize: parseFloat(getComputedStyle(el).fontSize),
+    relaxed: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--leading-relaxed')),
+  }));
+  expect(lineHeight / fontSize).toBeCloseTo(relaxed, 2);
+});
+
+test('the highlight follows the scroll, and a short last section keeps the one clicked', async () => {
+  await openWith(page, DOCUMENT);
+  await page.evaluate((viewport) => {
+    const vp = document.querySelector(viewport)!;
+    vp.scrollTo({ top: 0, behavior: 'instant' });
+  }, VIEWPORT);
+  await expect.poll(() => highlighted(page)).toBe('One');
+
+  await row(page, 'Tail a').click();
+  await scrollSettled(page);
+  expect(await highlighted(page)).toBe('Tail a');
+
+  await page.mouse.move(900, 500);
+  await page.mouse.wheel(0, -600);
+  await expect.poll(() => highlighted(page)).not.toBe('Tail a');
+
+  await page.evaluate((viewport) => {
+    const vp = document.querySelector(viewport)!;
+    vp.scrollTo({ top: vp.scrollHeight, behavior: 'instant' });
+  }, VIEWPORT);
+  await expect.poll(() => highlighted(page)).toBe('Tail b');
+});
+
+test('the highlight stays right when the comment panel opens and rewraps the text', async () => {
+  await openWith(page, DOCUMENT);
+  await page.evaluate((viewport) => document.querySelector(viewport)!.scrollTo({ top: 2600, behavior: 'instant' }), VIEWPORT);
+  await expect.poll(() => highlighted(page)).toBe(await headingAtReadingLine(page));
+  await page.locator(`${VISIBLE_SPACE} [data-testid="doc-doc-menu-trigger"]`).click();
+  await page.getByTestId('doc-doc-menu-comments').click();
+  await expect(page.getByTestId('doc-comment-rail')).toBeVisible();
+  const expected = await headingAtReadingLine(page);
+  await expect.poll(() => highlighted(page)).toBe(expected);
+});
+
+test('a heading cut short shows its whole text on hover', async () => {
+  await openWith(page, DOCUMENT);
+  await row(page, 'A heading long enough').hover();
+  await expect(page.getByRole('tooltip')).toHaveText(LONG);
+  // Moved over in steps, as a mouse does: the tooltip leaves once the pointer
+  // is clear of the way between its row and itself.
+  const two = (await row(page, 'Two').boundingBox())!;
+  await page.mouse.move(two.x + 20, two.y + two.height / 2, { steps: 8 });
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+});
+
+test('the outline stays put while the body scrolls and scrolls on its own when long', async () => {
+  const many = Array.from({ length: 40 }, (_, i) => section('##', `Section ${String(i + 1)}`, 1)).join('');
+  await openWith(page, many);
+  const list = page.locator(`${OUTLINE} [data-radix-scroll-area-viewport]`);
+  const before = (await page.locator(OUTLINE).boundingBox())!;
+  await page.evaluate((viewport) => document.querySelector(viewport)!.scrollTo({ top: 2000, behavior: 'instant' }), VIEWPORT);
+  expect((await page.locator(OUTLINE).boundingBox())!.y).toBe(before.y);
+  expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+
+  await page.evaluate((viewport) => {
+    const vp = document.querySelector(viewport)!;
+    vp.scrollTo({ top: vp.scrollHeight, behavior: 'instant' });
+  }, VIEWPORT);
+  await expect.poll(() => highlighted(page)).toBe('Section 40');
+  await expect(row(page, 'Section 40')).toBeInViewport();
+});
+
+test('shutting the outline keeps the text at 768px in a wide Space and widens it in a narrower one', async () => {
+  await openWith(page, DOCUMENT);
+  // The Agent column open at 320px: 1680 leaves the Space 1359px, past the 1136px that keeps 768.
+  expect(await spaceWidth(page)).toBe(1359);
+  const toggle = page.locator(`${VISIBLE_SPACE} [data-testid="doc-outline-toggle"]`);
+  expect(await textWidth(page)).toBe(768);
+  await toggle.click();
+  await expect(page.locator(`${OUTLINE}`)).toHaveCount(0);
+  expect(await textWidth(page)).toBe(768);
+  await toggle.click();
+
+  await page.setViewportSize({ width: 1280, height: 950 });
+  await expect.poll(() => textWidth(page)).toBeLessThan(768);
+  const open = await textWidth(page);
+  await toggle.click();
+  await expect.poll(() => textWidth(page)).toBeGreaterThan(open);
+});
+
+test('a narrow Space floats the outline over the body, above the block handles, and tucks it after a jump', async () => {
+  await openWith(page, DOCUMENT);
+  await page.setViewportSize({ width: 960, height: 950 });
+  // The Agent column open at 320px leaves the Space 639px: too narrow to tile.
+  await expect.poll(() => spaceWidth(page)).toBe(639);
+  const column = page.locator(`${VISIBLE_SPACE} [data-testid="doc-outline-column"]`);
+  await expect(column).toHaveAttribute('data-layout', 'floating');
+  // Floating, the text keeps the width it has with the outline shut.
+  const floatingWidth = await textWidth(page);
+  const toggle = page.locator(`${VISIBLE_SPACE} [data-testid="doc-outline-toggle"]`);
+  await toggle.click();
+  expect(await textWidth(page)).toBe(floatingWidth);
+  await toggle.click();
+
+  // Over the outline near the body's edge, where the body's block handles are drawn.
+  const target = row(page, 'Two');
+  const box = (await target.boundingBox())!;
+  const x = box.x + box.width - 20;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  expect(await page.evaluate(({ px, py }) => document.elementFromPoint(px, py)?.closest('[data-testid="doc-outline-row"]')?.textContent ?? null, { px: x, py: y })).toBe('Two');
+
+  await page.mouse.click(x, y);
+  await scrollSettled(page);
+  expect(Math.abs(await lineBelowTop(page, 'Two') - 16)).toBeLessThanOrEqual(2);
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(page.locator(OUTLINE)).toHaveCount(0);
+  const heading = await page.evaluate((editor) => {
+    const line = [...document.querySelectorAll(`${editor} .bn-block-content[data-content-type="heading"]`)].find((h) => h.textContent === 'Two')!;
+    const r = line.getBoundingClientRect();
+    return document.elementFromPoint(r.left + 4, r.top + r.height / 2)?.closest('[data-testid="doc-outline-column"]') === null;
+  }, EDITOR);
+  expect(heading).toBe(true);
+
+  await page.locator(`${VISIBLE_SPACE} [data-testid="doc-outline-toggle"]`).click();
+  await expect(page.locator(`${OUTLINE} [data-testid="doc-outline-row"]`).first()).toBeVisible();
+
+  await page.setViewportSize({ width: 1680, height: 950 });
+  await expect(column).toHaveAttribute('data-layout', 'tiled');
+  await expect(row(page, 'Two')).toBeVisible();
+  expect(await storedShut(page)).toBe(false);
+});
