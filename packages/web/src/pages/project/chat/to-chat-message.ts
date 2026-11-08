@@ -605,14 +605,17 @@ export function toChatMessage(
   // numbers, and the prose can carry either: one line answers to both, and
   // both numbers resolve to that line. Two spellings of one link are one page
   // (`pageLinkKey`). Rebuilt rather than pushed to as the loop goes, so no
-  // line is ever handed out before it knows every number it answers to.
+  // line is ever handed out before it knows every number it answers to. The
+  // first title stands, unless it is empty and a later source has one.
   const byUrl = new Map<string, ChatSource>();
   for (const [index, source] of found) {
     const key = pageLinkKey(source.url);
     const kept = byUrl.get(key);
     byUrl.set(
       key,
-      kept === undefined ? source : { ...kept, indexes: [...kept.indexes, index] },
+      kept === undefined
+        ? source
+        : { ...kept, title: kept.title || source.title, indexes: [...kept.indexes, index] },
     );
   }
   // By number rather than by when the page turned up: two searches in one

@@ -506,7 +506,7 @@ export function makeFetchTool(numbers: CitationNumbers, pageUrlFor: (url: string
 
       const sources = pages.flatMap((page, i): FetchSource[] =>
         isFirst(i) && page.status === "ok" && page.index !== undefined
-          ? [{ url: page.url, title: page.title || page.url, publisher: publisherOf(page.url), index: page.index }]
+          ? [{ url: page.url, title: page.title ?? "", publisher: publisherOf(page.url), index: page.index }]
           : [],
       );
       return { pages, sources };

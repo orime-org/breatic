@@ -80,7 +80,7 @@ export const SourceBox = React.memo(function SourceBox({
                 ))}
               </span>
               <span className='flex min-w-0 flex-col gap-0.5'>
-                <span className='truncate text-xs text-foreground'>{s.title}</span>
+                <span className='truncate text-xs text-foreground'>{s.title || s.url}</span>
                 <span className='truncate text-2xs text-muted-foreground'>{s.url}</span>
               </span>
             </a>
