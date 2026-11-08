@@ -201,9 +201,10 @@ for (const scheme of ['light', 'dark'] as const) {
     expect(geo.aiChevron).toBe('13×13');
     // #902 A5 / A6：demo 的 `.bubble-sep`（`2026-08-21-editor-command-surface.html`）
     // 是 1px 宽、16px 高、左右各 3px，颜色走 `--color-border`。
-    // 四条，五组之间各一条（demo 里条下面那句说明）：块类型 ｜ 对齐 ｜ 粗体 斜体 删除线
-    // 下划线 ｜ 链接 行内代码 颜色 评论 ｜ AI。
-    expect(geo.separators).toHaveLength(4);
+    // Five, one between each of the six groups: block type | alignment | bold
+    // italic strike underline | link inline-code colour | add to Agent, AI |
+    // comment (user 2026-11-08: comment alone at the far right).
+    expect(geo.separators).toHaveLength(5);
     for (const sep of geo.separators) {
       expect(sep.width).toBe(1);
       expect(sep.height).toBe(16);

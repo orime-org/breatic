@@ -481,6 +481,32 @@ for (const kind of ['image', 'video', 'audio'] as const) {
   });
 }
 
+test('a toolbar button shows its name on hover, whole on screen, over a first-block picture (#1184)', async () => {
+  await openFreshDocument(page);
+  await pickFromPlus(page, 'image', {
+    name: 'named.png',
+    mimeType: 'image/png',
+    buffer: await pngBytes(page, 400, 240),
+  });
+  const img = page.locator(`${IMAGE} img`);
+  await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  await expect.poll(async () => (await img.boundingBox())?.width).toBe(400);
+
+  await img.hover();
+  const download = page.locator(`${IMAGE} [data-testid="doc-media-download"]`);
+  await expect(download).toBeVisible();
+  await download.hover();
+
+  const tip = page.locator('[data-radix-popper-content-wrapper]').filter({ hasText: 'Download' });
+  await expect(tip).toBeVisible();
+  // Drawn over the page, so the body's scroller does not cut it off.
+  expect(await tip.evaluate((el) => el.closest('[data-radix-scroll-area-viewport]') === null)).toBe(true);
+  const box = (await tip.boundingBox())!;
+  const viewport = page.viewportSize()!;
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+});
+
 test('the toolbar sits above a picture with lines above it (A9)', async () => {
   await openFreshDocument(page);
   for (let line = 0; line < 4; line += 1) {
