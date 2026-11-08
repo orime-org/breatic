@@ -307,7 +307,8 @@ describe("picking up a running execution again", () => {
     const [stored] = (await read(fx.execution.id)).steps as [{ request: Record<string, unknown> }];
     const { jobId, containerClass, deadlineAt } = stored.request;
     const older = [{ kind: "container_job", jobId, containerClass, deadlineAt, request: stored.request }];
-    await sql`UPDATE timeline_executions SET steps = ${sql.json(older)} WHERE id = ${fx.execution.id}`;
+    // The step was read back from jsonb, so every value in it is JSON.
+    await sql`UPDATE timeline_executions SET steps = ${sql.json(older as Parameters<typeof sql.json>[0])} WHERE id = ${fx.execution.id}`;
     await pickUp(fx);
     const submits = ingest.calls.filter((call) => call.route === "submit");
     expect(ingest.calls.map((call) => [call.route, call.jobId])).toEqual([
