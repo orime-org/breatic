@@ -619,7 +619,8 @@ async function seekTo(file: string, frame: number, run: Run): Promise<number | n
  * @throws {never} Never.
  */
 function copyPicture(frame: Picture): Picture {
-  return { ...frame, y: frame.y.slice(), u: frame.u.slice(), v: frame.v.slice(), a: frame.a?.slice() ?? null };
+  // `new Uint8Array` copies; a Buffer's `slice` would share the bytes the encoder may still be writing.
+  return { ...frame, y: new Uint8Array(frame.y), u: new Uint8Array(frame.u), v: new Uint8Array(frame.v), a: frame.a === null ? null : new Uint8Array(frame.a) };
 }
 
 /**

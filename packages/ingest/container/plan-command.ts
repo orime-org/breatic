@@ -109,10 +109,14 @@ export function startPlanCommand(program: string, args: readonly string[], optio
   let stderr = Buffer.alloc(0);
   let failure: unknown;
   /**
-   * Kill this invocation's own process while it runs.
+   * Kill this invocation's own process while it runs and drop its unread output: a child closes only once its stdout ends,
+   * which a paused stream holding unread bytes never does.
    * @throws {never} Never.
    */
-  const stop = (): void => { if (child.pid !== undefined && child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); };
+  const stop = (): void => {
+    if (child.pid !== undefined && child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    child.stdout?.destroy();
+  };
   /**
    * Record the cancellation and stop the process.
    * @throws {never} Never.
