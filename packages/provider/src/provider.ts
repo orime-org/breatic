@@ -35,7 +35,7 @@ export interface ProviderOptions {
   keyOf: (envName: string) => string | undefined;
   /** Retries on one upstream before an LLM call moves on. */
   llmMaxRetries: number;
-  /** Applied to every text provider sends to an LLM. */
+  /** Applied to the question of an understand call and to every string and key of a decisions request; a prepared call's messages go to the upstream as the caller built them. */
   cleanText: (text: string) => string;
 }
 

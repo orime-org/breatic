@@ -174,9 +174,9 @@ export type Reject = z.infer<typeof rejectSchema>;
 export const vendorRejectSchema = rejectSchema.extend({ source: z.url() });
 
 /**
- * Why an upstream cannot take a run: one of our param values it does not take, one of its own limits, or a
- * check that could not be made on this run (one of its limits, or its price, failed to evaluate), with the
- * evaluator's message.
+ * Why an upstream cannot take a run: one of our param values it does not take, one of the model vendor's limits
+ * or its own that the run breaks, or a check that could not be made on this run (one of those limits, or its
+ * price, failed to evaluate), with the evaluator's message.
  */
 export type RejectedInput =
   | { param: string; value: unknown }

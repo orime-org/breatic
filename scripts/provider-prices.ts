@@ -34,18 +34,21 @@
  * `config/provider/llm.yaml`, OpenRouter's token prices for every model with a
  * direct price there: the cheapest standard-tier endpoint OpenRouter lists for
  * the model (its public endpoints list, no key) at the model's levels
- * (`openRouterLevels`), among its pinned providers when pinned, the one a
- * cheapest LLM call is served by, so such a call ranks OpenRouter beside the
- * direct upstream. Beside them it writes `openrouter_states_quantization`, the
+ * (`openRouterLevels`), among its pinned providers when pinned (the endpoints
+ * an understand call is held to; a prepared call is not pinned, so it costs
+ * that or less), otherwise the one a cheapest LLM call tries first, so such a
+ * call ranks OpenRouter beside the direct upstream. Beside them it writes `openrouter_states_quantization`, the
  * models one of whose endpoints states a level, priced or not, and stamps
  * `openrouter_prices_at` with the moment they were read; it names each
  * direct price whose off-peak holidays list no date in the current year (from 1 December, the next). Last it regenerates
  * `config/provider/upstream-field-names.json`: the upstream field names no
- * catalog param shares, which non-provider code must not spell.
+ * catalog param shares, the list a planned lint rule will keep out of
+ * non-provider code (nothing reads it yet).
  *
- * Every problem (a model the upstream no longer has, a price that does not
- * match) is listed at the end and makes the run exit non-zero; whatever could
- * be synced is written first.
+ * Every problem (a model the upstream no longer has, a 3D sample WaveSpeed
+ * prices differently from its formula, a changed price fact) is listed at the
+ * end and makes the run exit non-zero; whatever could be synced is written
+ * first. The WaveSpeed base-price and default-run differences are only printed.
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";

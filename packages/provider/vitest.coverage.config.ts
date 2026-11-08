@@ -8,7 +8,7 @@
  * understand exchange in understand/adapter.ts, which stamps the send moment an understand call is priced at and
  * builds its token buckets, the LLM switch, the price-table cost of every direct LLM call in llm.ts and the cost
  * lookup in provider.ts). Each of those files must be fully covered, and a failure
- * lists the file and its uncovered lines (AGENTS.md#critical-paths).
+ * lists the file and its uncovered lines (the root AGENTS.md#critical-paths; packages/provider/AGENTS.md#tests).
  */
 
 import { defineConfig } from "vitest/config";

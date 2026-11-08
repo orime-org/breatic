@@ -41,7 +41,7 @@ export interface UnderstandCall {
   provider?: VendorOptions;
   deadlineAt: number;
   signal: AbortSignal;
-  /** The size past which Gemini takes media through its Files API, in bytes. */
+  /** The size of the inline request (question and base64 media) past which Gemini takes media through its Files API, in bytes. */
   inlineMaxBytes: number;
   /** How often an uploaded file's state is asked about, in ms. */
   filePollMs: number;

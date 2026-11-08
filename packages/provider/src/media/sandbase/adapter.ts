@@ -9,7 +9,8 @@
  * read up to the caller's media limit. A run answered completed without outputs
  * is waited for up to the upstream's `empty_output_wait_ms`, its first such
  * answer kept in the step's handle. SandBase has no client key, so a send
- * whose answer was lost cannot be looked up (recovery `none`).
+ * whose answer was lost cannot be looked up: the runner's `recover` hands it
+ * back to be sent again and warns `potential_duplicate_cost`.
  */
 
 import { z } from "zod";

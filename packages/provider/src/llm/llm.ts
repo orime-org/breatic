@@ -194,8 +194,9 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     const at = Date.now();
     const entries = config.llm.prices[modelId];
     const direct = priceAt(entries, at);
-    // OpenRouter's prices read before the direct price in effect took effect (or at a moment the file does not state)
-    // are another moment's prices: unknown, so OpenRouter ranks last.
+    // While a dated direct price is in effect, OpenRouter's prices read before it took effect (or read at a moment the
+    // file does not state) are another moment's prices: unknown, so OpenRouter ranks last. Under a model's first price,
+    // or with no direct price, they are ranked.
     const changedAt = entries === undefined ? undefined : entryAt(entries, at).from;
     const readAt = config.llm.openrouter_prices_at === undefined ? -Infinity : Date.parse(config.llm.openrouter_prices_at);
     const stale = changedAt !== undefined && Date.parse(changedAt) > readAt;

@@ -7,8 +7,9 @@
  * nothing: every catalog and 3D model bound to WaveSpeed at weight 1 with the
  * upstream fields, value spellings, extra steps and pricing the catalog
  * declares today (where WaveSpeed's own schema departs from them, the
- * `WAVESPEED` table below), the upstreams from `config/models/<modality>/providers.yaml`
- * and the LLM routes from `packages/domain/src/agent/llm.ts`.
+ * `WAVESPEED` table below), WaveSpeed's upstream from `config/models/<modality>/providers.yaml`,
+ * and the LLM upstreams (their key names) and routes from `packages/domain/src/agent/llm.ts`,
+ * with each direct vendor's address from `SDK_BASE_URLS`.
  *
  * Run from the repository root with `pnpm exec tsx scripts/provider-config-migration.ts`.
  * It writes `config/provider/upstreams.yaml`, `config/provider/media/<modality>.yaml`,
@@ -76,7 +77,7 @@ const IGNORED = "WaveSpeed has no such field and ignores it, probed 2026-11-01";
 
 /**
  * Where WaveSpeed departs from the catalog, by model, from its schemas
- * (`/api/v3/models`) and submits probed on 2026-11-01 (inner#1775, inner#1872,
+ * (`/api/v3/models`) and probed submits (inner#1775, inner#1872,
  * inner#1873). `renames`: the catalog's field to the name WaveSpeed's schema
  * gives it (WaveSpeed takes both and echoes the schema's). `refuses`: the
  * catalog's values WaveSpeed rejects; the binding supports the others.

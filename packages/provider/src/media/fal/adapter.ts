@@ -7,8 +7,9 @@
  * given; the result is the model's own answer, its files under the binding's
  * `output_field`; what a request cost is its billing events on the platform
  * API (`billing_url`), which the key reads only with billing permission. fal
- * has no client key, so a send whose answer was lost cannot be looked up
- * (recovery `none`).
+ * has no client key, so a send whose answer was lost cannot be looked up:
+ * the runner's `recover` hands it back to be sent again and warns
+ * `potential_duplicate_cost`.
  */
 
 import { z } from "zod";
@@ -124,8 +125,8 @@ function wordsOf(detail: unknown): string {
 /**
  * Ask once about a request: its status, and its result once it completed.
  * A completed request that carries an error failed; a result fal refuses with
- * a 4xx is the model's own refusal and fails the run; a 429 or 5xx result is
- * thrown for the runner to ask again.
+ * any other 4xx is the model's own refusal and fails the run; a 408, 429 or
+ * 5xx result is thrown for the runner to ask again.
  * @param reach - The upstream.
  * @param _predictionId - The request id; the handle's addresses name it.
  * @param bounds - The deadline and signal.

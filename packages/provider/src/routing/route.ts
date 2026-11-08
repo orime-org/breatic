@@ -20,7 +20,7 @@ export interface Candidate {
    * lower bound (a source it bills by the length of has no known length), which ranks after every known price.
    */
   estimate?: { usd: number; atLeast: boolean };
-  /** Why the upstream cannot take this run (a param and value, one of its own limits, or a check that failed to evaluate); it is then skipped. */
+  /** Why the upstream cannot take this run (a param and value, one of the model vendor's limits or its own, or a check that failed to evaluate); it is then skipped. */
   unsupported?: RejectedInput;
 }
 
@@ -36,7 +36,7 @@ export interface RoutePlan {
  * @param model - Our model id.
  * @param route - The caller's mode.
  * @param candidates - Every upstream the model is bound to.
- * @returns The configured upstreams in try order, and the unconfigured ones as reasons.
+ * @returns The configured upstreams that can take the run, in try order, and the others as reasons (a missing key or an input they do not take).
  * @throws {NoUpstreamAvailable} When no upstream of the route is configured and able to take the run.
  * @throws {UpstreamRequestRejected} When the route names an upstream the model has no binding for.
  */

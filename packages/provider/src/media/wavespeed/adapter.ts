@@ -6,7 +6,8 @@
  * answer the outputs at once; a prediction is asked about at
  * `GET /predictions/{id}/result`; what it cost is a billing search. The
  * upstream has no client key, so a send whose answer was lost cannot be
- * looked up (recovery `none`).
+ * looked up: the runner's `recover` hands it back to be sent again and warns
+ * `potential_duplicate_cost`.
  */
 
 import { z } from "zod";
@@ -52,8 +53,8 @@ const submittedSchema = z.looseObject({
 });
 
 /**
- * A prediction's result answer, as far as it is read. Like today's poll, a part it cannot
- * read reads as absent: no readable status is still running, outputs that are not a list none.
+ * A prediction's result answer, as far as it is read: a part it cannot read reads as absent,
+ * so no readable status is still running and outputs that are not a list are none.
  */
 const resultSchema = z.looseObject({
   data: z.looseObject({
@@ -103,7 +104,7 @@ async function ask(reach: Reach, predictionId: string, bounds: RequestBounds): P
   const data = parsed.success ? parsed.data.data : undefined;
   if (data === undefined) return { state: "running" };
   if (data.status === "completed") return { state: "done", outputs: data.outputs ?? [] };
-  // As today's poll: the upstream's error as text whatever its type, "unknown" when it gave none.
+  // The upstream's error as text whatever its type, "unknown" when it gave none.
   if (data.status === "failed") return { state: "failed", error: data.error === undefined || data.error === null ? "unknown" : String(data.error) };
   return { state: "running" };
 }

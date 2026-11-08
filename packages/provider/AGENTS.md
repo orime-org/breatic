@@ -1,6 +1,6 @@
 # @breatic/provider
 
-The model provider layer: every model call (media generation, understanding, LLM chat, the decisions endpoint) goes through it, and it answers which upstream serves it, how our params become that upstream's fields, what a run is estimated to cost and what it actually cost. These rules apply when you change anything under `packages/provider/`, `config/provider/` or the `scripts/provider-*` generators.
+The model provider layer: every model call (media generation, understanding, LLM chat, the decisions endpoint) is to go through it once the application moves onto it (inner#1743), and it answers which upstream serves it, how our params become that upstream's fields, what a run is estimated to cost and what it actually cost. Until that move the application still calls upstreams itself. These rules apply when you change anything under `packages/provider/`, `config/provider/` or the `scripts/provider-*` generators.
 
 ### It stands alone
 
@@ -8,7 +8,7 @@ The model provider layer: every model call (media generation, understanding, LLM
 
 ### Its own HTTP module
 
-**Every outgoing request goes through `src/http/request.ts`: adapters call `send` and the readers beside it, and every AI SDK provider is built with its `aiSdkFetch` (`src/llm/vendors.ts`).** That file is the one place in the repository besides `@breatic/shared`'s transport allowed to call the platform `fetch` (the `breatic/no-naked-fetch` exemption in `eslint.config.ts`). A submit is sent with `replaySafe: false`; media polls, result and billing queries are replay-safe; every understand request, Gemini Files API steps included, is delivered once (`exchange`).
+**Every outgoing request goes through `src/http/request.ts`: adapters call `send` and the readers beside it, and every AI SDK provider is built with its `aiSdkFetch` (`src/llm/vendors.ts`).** That file is the one non-test file the `breatic/no-naked-fetch` exemption in `eslint.config.ts` names besides `@breatic/shared`'s transport directory (`packages/shared/src/http/`). A submit is sent with `replaySafe: false`; media polls, result and billing queries are replay-safe; every understand request, Gemini Files API steps included, is delivered once (`exchange`).
 
 ### Three entry points
 
@@ -28,7 +28,7 @@ The model provider layer: every model call (media generation, understanding, LLM
 
 ### Moving to the next upstream
 
-**Weight 0 is the model's official API where it has one (a model reached only through a reseller, such as the catch-all LLM route, has the reseller at 0), and smaller weights are tried first; a call moves on only when the upstream has no key configured, was never reached, answered 408, 429 or 5xx, said it has no such model, or said the balance is too low; an LLM call also moves on 409, and retries on the same upstream first (`llmMaxRetries`).** A 400 or 422, a request that left without an answer, a passed deadline, and anything after the upstream accepted a submit or sent its first content stay on that upstream. Each upstream's "no such model" and "balance too low" answers are matched in its own adapter, never across upstreams.
+**Weight 0 is reserved for the model's official API, and smaller weights are tried first; an LLM route only a reseller serves (the catch-all route) has that reseller at 0, while media models have no official adapter yet, so their resellers start at 1 and weight 0 stays empty; a call moves on only when the upstream has no key configured, was never reached, answered 408, 429 or 5xx, said it has no such model, or said the balance is too low; an LLM call also moves on 409, and retries on the same upstream first (`llmMaxRetries`).** Any other 400 or 422, a request that left without an answer, a passed deadline, and anything after the upstream accepted a submit or sent its first content stay on that upstream. Each upstream's "no such model" and "balance too low" answers are matched in its own adapter, never across upstreams.
 
 ### Every billed answer reaches the caller once
 
@@ -46,4 +46,4 @@ The model provider layer: every model call (media generation, understanding, LLM
 
 - **Upstreams are faked with the loopback server in `src/media/__tests__/fake-upstream.ts` (`hold`, `cut`, `reset`, `hang`) and the LLM fakes in `src/llm/__tests__/llm-harness.ts`; nothing in the test suites calls a real upstream.**
 - **`pnpm test:integration` runs both suites in one run under `vitest.coverage.config.ts`, which fails, naming each file and its uncovered lines, below 100% coverage of the files its `include` lists: the estimate and the formula evaluator, routing, the media runner and its adapters, and every reader of an actual cost.** A branch no input can reach (a fallback only the types need) carries `/* v8 ignore next -- @preserve */` under a comment saying why; anything an input can reach gets a test.
-- **`test/fixtures/upstream-*.json` are frozen answers of the code provider replaces, written by `scripts/provider-fixtures.ts`; `three-d-prices.json` and the `upstream-schemas/` and `upstream-prices/` snapshots are what the upstreams state, written by `pnpm provider:prices`; the `bodies/` samples are what the runner sends each reseller, written by `pnpm provider:reseller-bodies`; never edit any of them by hand.** `scripts/provider-config-migration.ts` writes `config/provider/` from the `config/models/` catalog the same way.
+- **`test/fixtures/upstream-*.json` are frozen answers of the code provider replaces, written by `scripts/provider-fixtures.ts`; `three-d-prices.json` and the `upstream-schemas/` and `upstream-prices/` snapshots are what the upstreams state, written by `pnpm provider:prices`; the `bodies/` samples are what the runner sends each reseller, written by `pnpm provider:reseller-bodies`; never edit any of them by hand.** `scripts/provider-config-migration.ts` regenerates only part of `config/provider/` and merges it into the files already there: each model's WaveSpeed binding (from the `config/models/` catalog), the WaveSpeed upstream, the LLM upstreams and routes (from `packages/domain/src/agent/llm.ts`), the direct LLM `prices` and `routing.yaml.template`; change the script, not the lines it writes. `pnpm provider:prices` writes fal's `base_price`, the 3D prices and the OpenRouter fields of `llm.yaml`. Reseller bindings and each model's `rejects` are written by hand.
