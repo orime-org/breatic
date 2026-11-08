@@ -9,7 +9,7 @@ import wipeRight from 'gl-transitions/transitions/wipeRight.glsl?raw';
 import { canonicalMiniToolValue, type VideoTimelinePlan, type VideoPlannedClip, type VideoToolInput } from '@breatic/shared/mini-tools';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
-import { expandFillStyle } from '@web/spaces/canvas/mini-tool/ExpandFrameOverlay';
+import { checkerboardStyle } from '@web/spaces/canvas/_shared/checkerboard';
 import { NativeTimelineDecoder } from '@web/spaces/canvas/mini-tool/video/NativeTimelineDecoder';
 import type { VideoTimelineDecoderBinding, VideoTimelineDecoderRenderer, VideoTimelinePresentedFrame } from '@web/spaces/canvas/mini-tool/video/video-timeline-decoder';
 import { VideoPresentationRecoveryError } from '@web/spaces/canvas/video-presentation/video-presentation-recovery';
@@ -365,7 +365,7 @@ export function VideoTimelinePreview(props: VideoTimelinePreviewProps): React.JS
       if (mounted.current) setRetrying(false);
     }
   }
-  return <div className='relative flex min-h-0 items-center justify-center overflow-hidden rounded-content-sm bg-canvas' style={expandFillStyle(1, { x: 0, y: 0 })} data-testid='video-timeline-preview'>
+  return <div className='relative flex min-h-0 items-center justify-center overflow-hidden rounded-content-sm bg-canvas' style={checkerboardStyle(1, { x: 0, y: 0 })} data-testid='video-timeline-preview'>
     <canvas ref={canvas} width={960} height={540} className='h-full w-full object-contain' />
     <div hidden>{(failure ? [] : sources).map(({ input, key }) => <React.Fragment key={`${epoch}:${key}`}>{props.renderDecoder === undefined ? <NativeTimelineDecoder input={input} onBinding={(binding, error) => bind(key, binding, error)} onPresentedFrame={(frame) => presented(key, frame)} /> : props.renderDecoder(input, (binding, error) => bind(key, binding, error), (frame) => presented(key, frame))}</React.Fragment>)}</div>
     {props.plan.clips.length === 0 ? <p className='absolute inset-0 grid place-content-center p-4 text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.timelineEmpty')}</p> : null}

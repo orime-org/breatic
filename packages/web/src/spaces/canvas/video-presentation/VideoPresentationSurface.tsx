@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 import { cn } from '@web/lib/utils';
+import { checkerboardStyle } from '@web/spaces/canvas/_shared/checkerboard';
 import { useMediaSurface } from '@web/spaces/canvas/video-presentation/use-media-surface';
 import type { PresentedMediaFrame, MediaSurfaceSnapshot, VideoPresentationSource } from '@web/spaces/canvas/video-presentation/types';
 
@@ -34,7 +35,9 @@ export function VideoPresentationSurface({ source, active, onBinding, onPresente
   const container = React.useRef<HTMLDivElement>(null);
   const { status, binding, error } = useMediaSurface({ host, container, source, active, onPresentedFrame });
   const snapshot = React.useMemo(() => ({ status, binding, error }), [status, binding, error]);
-  const style = React.useMemo(() => source ? { aspectRatio: `${source.presentation.display.width}/${source.presentation.display.height}` } : undefined, [source]);
+  // A transparent picture shows the canvas checkerboard through its alpha, as an expansion's painted area does.
+  const style = React.useMemo(() => source ? { aspectRatio: `${source.presentation.display.width}/${source.presentation.display.height}`,
+    ...(source.presentation.playback.kind === 'alpha-packed' ? checkerboardStyle(1, { x: 0, y: 0 }) : {}) } : undefined, [source]);
   React.useEffect(() => { onBinding(snapshot); }, [snapshot, onBinding]);
   React.useEffect(() => () => onBinding(DETACHED), [onBinding]);
   return (

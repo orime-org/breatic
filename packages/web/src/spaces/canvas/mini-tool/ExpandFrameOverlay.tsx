@@ -11,6 +11,7 @@ import type { CropHandle } from '@web/lib/crop-math';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { VIEWPORT_TOP_Z } from '@web/spaces/canvas/viewport-layers';
+import { checkerboardStyle } from '@web/spaces/canvas/_shared/checkerboard';
 import { VideoExpandSurface, type VideoExpansionSurface } from '@web/spaces/canvas/mini-tool/video/VideoExpandSurface';
 import { expandCapOf } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import { miniToolOpenOn } from '@web/stores/canvas-session';
@@ -46,30 +47,6 @@ export interface ExpandFrameOverlayProps {
   onVideoFrameCommit?: (nodeId: string, frame: ExpandFrame, ratio: ExpandRatio, revision: string) => void;
   /** The canvas's node menu, which a right-click on the frame opens for the host. */
   onNodeContextMenu: (event: React.MouseEvent, node: Node) => void;
-}
-
-/** One checker cell's side in screen pixels. */
-const CHECKER_PX = 6;
-
-/**
- * The fill of the area the model paints: a low-contrast checkerboard, the
- * convention Photoshop's Generative Expand shows for it, in either theme. The
- * cells are counted from the picture's own corner, so the frame and the cover
- * over the node's picture lay the same grid.
- * @param scale - Canvas pixels per screen pixel at the zoom.
- * @param from - Where the picture's corner is from the element's top-left, in canvas pixels.
- * @param from.x - Across.
- * @param from.y - Down.
- * @returns The element's background.
- * @throws {never} Never.
- */
-export function expandFillStyle(scale: number, from: { x: number; y: number }): React.CSSProperties {
-  const cell = CHECKER_PX * scale;
-  return {
-    backgroundImage: 'repeating-conic-gradient(var(--color-muted) 0 25%, var(--color-background) 0 50%)',
-    backgroundSize: `${cell * 2}px ${cell * 2}px`,
-    backgroundPosition: `${from.x}px ${from.y}px`,
-  };
 }
 
 /**
@@ -270,7 +247,7 @@ export function ExpandFrameOverlay({ onNodeContextMenu, videoSource, videoLiveSo
         borderWidth: scale,
         outlineWidth: scale,
         // The background starts inside the border.
-        ...(liveVideo ? { borderColor: 'transparent', outlineStyle: 'none' as const } : expandFillStyle(scale, { x: -frame.x * box.width - scale, y: -frame.y * box.height - scale })),
+        ...(liveVideo ? { borderColor: 'transparent', outlineStyle: 'none' as const } : checkerboardStyle(scale, { x: -frame.x * box.width - scale, y: -frame.y * box.height - scale })),
       }}
       onPointerMove={onMove}
       onPointerUp={onUp}
@@ -282,7 +259,7 @@ export function ExpandFrameOverlay({ onNodeContextMenu, videoSource, videoLiveSo
     >
       {liveVideo ? <>
         <div className='pointer-events-none absolute border-solid border-background outline outline-foreground' style={{ left: -scale, top: -scale, width: frame.width * box.width, height: frame.height * box.height, borderWidth: scale, outlineWidth: scale, zIndex: VIEWPORT_TOP_Z }} />
-        {bands.filter((band) => band.width > 0 && band.height > 0).map(({ side, ...band }) => <div key={side} data-testid={`video-expand-background-${side}`} className={`pointer-events-auto absolute ${grown && !exporting ? 'cursor-move' : ''}`} style={{ ...band, zIndex: node.internals.z - 1, ...expandFillStyle(scale, { x: sourceLeft - band.left, y: sourceTop - band.top }) }} onPointerDown={(event) => { if (grown) begin(event, { type: 'move', start: onCanvas(event) }); }} />)}
+        {bands.filter((band) => band.width > 0 && band.height > 0).map(({ side, ...band }) => <div key={side} data-testid={`video-expand-background-${side}`} className={`pointer-events-auto absolute ${grown && !exporting ? 'cursor-move' : ''}`} style={{ ...band, zIndex: node.internals.z - 1, ...checkerboardStyle(scale, { x: sourceLeft - band.left, y: sourceTop - band.top }) }} onPointerDown={(event) => { if (grown) begin(event, { type: 'move', start: onCanvas(event) }); }} />)}
       </> : null}
       {liveVideo ? null : spec?.id === 'video.expand' ? videoSource === undefined ? null : <VideoExpandSurface source={videoSource} style={{ left: -frame.x * box.width - scale, top: -frame.y * box.height - scale, width: box.width, height: box.height }} /> : view.src === null ? null : (
         <img
