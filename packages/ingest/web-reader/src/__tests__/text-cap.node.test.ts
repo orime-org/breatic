@@ -4,8 +4,10 @@
 /**
  * Plan §9 row S: a call's answer crosses Workers RPC from the reader object,
  * whose limit is 32 MiB, so the reader gives each page's text at most
- * `floor(24 MiB / urls.length)` UTF-8 bytes, cuts a longer text at a
- * character boundary and marks the page `truncated`.
+ * `floor(8 Mi / urls.length)` UTF-16 code units (the JavaScript string
+ * length, which is at most 16 MiB as UTF-16 and 24 MiB as UTF-8), cuts a
+ * longer text there, one unit earlier when the cut would split a surrogate
+ * pair, and marks the page `truncated`.
  */
 
 import fc from "fast-check";
@@ -15,16 +17,8 @@ import type { ReadPageResult } from "@breatic/shared";
 
 import { capPageText, perPageTextBytes } from "../text-cap.js";
 
-const MIB = 1024 * 1024;
-
-/**
- * How many UTF-8 bytes a string takes.
- * @param text - The string.
- * @returns Its length in bytes.
- */
-function bytesOf(text: string): number {
-  return new TextEncoder().encode(text).length;
-}
+/** The code units one call's pages carry together. */
+const CALL_UNITS = 8 * 1024 * 1024;
 
 /**
  * A page that read fine with the given text.
@@ -35,24 +29,36 @@ function okPage(text: string): ReadPageResult {
   return { url: "https://example.com/a", status: "ok", httpStatus: 200, finalUrl: "https://example.com/a", title: "A", kind: "html", text };
 }
 
-describe("perPageTextBytes", () => {
+/**
+ * Whether a cut before index `at` lands between a high and a low surrogate.
+ * @param text - The string.
+ * @param at - Where the cut falls.
+ * @returns True when it splits a surrogate pair.
+ */
+function splitsPairAt(text: string, at: number): boolean {
+  const high = text.charCodeAt(at - 1);
+  const low = text.charCodeAt(at);
+  return high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff;
+}
+
+describe("perPageTextBytes: each page's share, in code units", () => {
   it.each([
-    [1, 24 * MIB],
-    [2, 12 * MIB],
-    [3, 8 * MIB],
-    [6, 4 * MIB],
-    [20, Math.floor((24 * MIB) / 20)],
-  ])("gives each of %i pages floor(24 MiB / n) bytes", (urlCount, expected) => {
+    [1, 8_388_608],
+    [2, 4_194_304],
+    [3, Math.floor(CALL_UNITS / 3)],
+    [6, Math.floor(CALL_UNITS / 6)],
+    [20, Math.floor(CALL_UNITS / 20)],
+  ])("gives each of %i pages floor(8 Mi / n) code units", (urlCount, expected) => {
     expect(perPageTextBytes(urlCount)).toBe(expected);
   });
 
-  it("keeps every page's share within 24 MiB together", () => {
+  it("keeps every page's share within 8 Mi code units together", () => {
     fc.assert(
       fc.property(fc.integer({ min: 1, max: 20 }), (urlCount) => {
         const share = perPageTextBytes(urlCount);
         expect(Number.isInteger(share)).toBe(true);
-        expect(share * urlCount).toBeLessThanOrEqual(24 * MIB);
-        expect((share + 1) * urlCount).toBeGreaterThan(24 * MIB);
+        expect(share * urlCount).toBeLessThanOrEqual(CALL_UNITS);
+        expect((share + 1) * urlCount).toBeGreaterThan(CALL_UNITS);
       }),
     );
   });
@@ -62,7 +68,7 @@ describe("capPageText", () => {
   it("leaves a page within the cap untouched and unmarked", () => {
     const page = okPage("Hello 世界");
 
-    const capped = capPageText(page, bytesOf("Hello 世界"));
+    const capped = capPageText(page, "Hello 世界".length);
 
     expect(capped).toEqual(page);
     expect(capped).not.toHaveProperty("truncated");
@@ -74,17 +80,26 @@ describe("capPageText", () => {
     expect(capped).toEqual({ ...okPage("abcd"), truncated: true });
   });
 
-  it("never splits a three-byte character", () => {
-    // 中 and 文 are three bytes each; four bytes hold only the first.
-    expect(capPageText(okPage("中文"), 4)).toEqual({ ...okPage("中"), truncated: true });
-    expect(capPageText(okPage("中文"), 5)).toEqual({ ...okPage("中"), truncated: true });
-    expect(capPageText(okPage("中文"), 2)).toEqual({ ...okPage(""), truncated: true });
+  it("cuts a one-page call's text at 8 Mi code units, whatever its UTF-8 size", () => {
+    const text = "a".repeat(CALL_UNITS + 10);
+
+    const capped = capPageText(okPage(text), perPageTextBytes(1));
+
+    expect(capped.text?.length).toBe(CALL_UNITS);
+    expect(capped.truncated).toBe(true);
   });
 
-  it("never splits a surrogate pair", () => {
-    // 😀 is four UTF-8 bytes and two UTF-16 units.
-    expect(capPageText(okPage("a😀b"), 4)).toEqual({ ...okPage("a"), truncated: true });
-    expect(capPageText(okPage("a😀b"), 5)).toEqual({ ...okPage("a😀"), truncated: true });
+  it("counts a CJK character as one unit, so a text of them is cut to exactly the cap", () => {
+    const capped = capPageText(okPage("中".repeat(10)), 4);
+
+    expect(capped).toEqual({ ...okPage("中中中中"), truncated: true });
+  });
+
+  it("cuts one unit earlier when the cap falls inside a surrogate pair", () => {
+    // 😀 is two UTF-16 units; a cap of 2 lands between them.
+    expect(capPageText(okPage("a😀b"), 2)).toEqual({ ...okPage("a"), truncated: true });
+    expect(capPageText(okPage("a😀b"), 1)).toEqual({ ...okPage("a"), truncated: true });
+    expect(capPageText(okPage("a😀b"), 3)).toEqual({ ...okPage("a😀"), truncated: true });
   });
 
   it("leaves a page without text untouched", () => {
@@ -93,23 +108,20 @@ describe("capPageText", () => {
     expect(capPageText(page, 1)).toEqual(page);
   });
 
-  it("keeps the longest whole-character prefix within the cap, for any text", () => {
+  it("keeps the longest prefix within the cap that splits no surrogate pair, for any text", () => {
     fc.assert(
-      fc.property(fc.string({ unit: "binary", maxLength: 200 }), fc.integer({ min: 0, max: 400 }), (text, maxBytes) => {
-        const capped = capPageText(okPage(text), maxBytes);
+      fc.property(fc.string({ unit: "binary", maxLength: 200 }), fc.integer({ min: 0, max: 250 }), (text, maxUnits) => {
+        const capped = capPageText(okPage(text), maxUnits);
         const kept = capped.text ?? "";
 
         expect(text.startsWith(kept)).toBe(true);
-        expect(bytesOf(kept)).toBeLessThanOrEqual(maxBytes);
-        // Whole characters only: the prefix survives a UTF-8 round trip.
-        expect(new TextDecoder().decode(new TextEncoder().encode(kept))).toBe(kept);
-        if (bytesOf(text) <= maxBytes) {
+        expect(kept.length).toBeLessThanOrEqual(maxUnits);
+        if (text.length <= maxUnits) {
           expect(capped).toEqual(okPage(text));
         } else {
           expect(capped.truncated).toBe(true);
-          // Longest: the next whole character would not fit.
-          const next = String.fromCodePoint(text.codePointAt(kept.length) ?? 0);
-          expect(bytesOf(kept) + bytesOf(next)).toBeGreaterThan(maxBytes);
+          const splitsPair = maxUnits > 0 && splitsPairAt(text, maxUnits);
+          expect(kept.length).toBe(splitsPair ? maxUnits - 1 : maxUnits);
         }
       }),
     );

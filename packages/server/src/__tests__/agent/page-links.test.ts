@@ -162,7 +162,7 @@ describe("links from a user row's forModel", () => {
   it("allows a link the user typed in their message", () => {
     const links = makePageLinks();
     links.addRow(userRow(`${CLOCK}\n\nWhat does https://typed.example/post say?`));
-    expect(links.allows("https://typed.example/post")).toBe(true);
+    expect(links.urlFor("https://typed.example/post") !== undefined).toBe(true);
   });
 
   it("allows a link inside a text attachment", () => {
@@ -177,7 +177,7 @@ describe("links from a user row's forModel", () => {
 
     const links = makePageLinks();
     links.addRow(userRow(content));
-    expect(links.allows("https://attached.example/brief")).toBe(true);
+    expect(links.urlFor("https://attached.example/brief") !== undefined).toBe(true);
   });
 
   it("allows a link on its own line in the open document Space's body", () => {
@@ -193,7 +193,7 @@ describe("links from a user row's forModel", () => {
 
     const links = makePageLinks();
     links.addRow(userRow(content));
-    expect(links.allows("https://open-space.example/spec")).toBe(true);
+    expect(links.urlFor("https://open-space.example/spec") !== undefined).toBe(true);
   });
 
   it("allows a link in a user message sent as text and picture parts", () => {
@@ -204,7 +204,7 @@ describe("links from a user row's forModel", () => {
         { type: "file", data: "https://cdn.example/p.jpg", mediaType: "image/jpeg" },
       ]),
     );
-    expect(links.allows("https://parts.example/gallery")).toBe(true);
+    expect(links.urlFor("https://parts.example/gallery") !== undefined).toBe(true);
   });
 
   it("does not allow a link that is only in a reply row's text", () => {
@@ -215,7 +215,7 @@ describe("links from a user row's forModel", () => {
         [{ role: "assistant", content: "You could read https://model-prose.example/guess for more." }],
       ),
     );
-    expect(links.allows("https://model-prose.example/guess")).toBe(false);
+    expect(links.urlFor("https://model-prose.example/guess") !== undefined).toBe(false);
   });
 });
 
@@ -225,8 +225,8 @@ describe("links from the structured fields of a reply row's tool results", () =>
     const links = makePageLinks();
     links.addRow(replyRow([toolPart("web_search", { query: "cat food reviews" }, output, "Results")], sentPair("web_search", { query: "cat food reviews" }, { type: "text", value: "Results" })));
 
-    expect(links.allows("https://found-1.example/a")).toBe(true);
-    expect(links.allows("https://found-2.example/b")).toBe(true);
+    expect(links.urlFor("https://found-1.example/a") !== undefined).toBe(true);
+    expect(links.urlFor("https://found-2.example/b") !== undefined).toBe(true);
   });
 
   it("does not allow a link that is only in a web_search query", () => {
@@ -240,8 +240,8 @@ describe("links from the structured fields of a reply row's tool results", () =>
       ),
     );
 
-    expect(links.allows(query)).toBe(false);
-    expect(links.allows("https://found.example/a")).toBe(true);
+    expect(links.urlFor(query) !== undefined).toBe(false);
+    expect(links.urlFor("https://found.example/a") !== undefined).toBe(true);
   });
 
   it("allows the final address and the in-text links of a page web_fetch read, never the address of a page it failed to read", () => {
@@ -253,9 +253,9 @@ describe("links from the structured fields of a reply row's tool results", () =>
     const links = makePageLinks();
     links.addRow(replyRow([toolPart("web_fetch", input, output, "Pages")], sentPair("web_fetch", input, { type: "text", value: "Pages" })));
 
-    expect(links.allows("https://moved.example/post-final")).toBe(true);
-    expect(links.allows("https://cited.example/source")).toBe(true);
-    expect(links.allows("https://failed.example/missing")).toBe(false);
+    expect(links.urlFor("https://moved.example/post-final") !== undefined).toBe(true);
+    expect(links.urlFor("https://cited.example/source") !== undefined).toBe(true);
+    expect(links.urlFor("https://failed.example/missing") !== undefined).toBe(false);
   });
 
   it("allows a link in a Space read back through request_space_content, from the reply row's forModel tool result", () => {
@@ -282,7 +282,7 @@ describe("links from the structured fields of a reply row's tool results", () =>
     );
     expect(JSON.stringify(cardOutputOf({ spaces: shared }))).not.toContain("space-read.example");
 
-    expect(links.allows("https://space-read.example/ref")).toBe(true);
+    expect(links.urlFor("https://space-read.example/ref") !== undefined).toBe(true);
   });
 
   it("allows what the user wrote on a questionnaire's Other line, never a link that is only an option label the user picked", () => {
@@ -301,8 +301,8 @@ describe("links from the structured fields of a reply row's tool results", () =>
       ),
     );
 
-    expect(links.allows("https://user-other.example/page")).toBe(true);
-    expect(links.allows(optionLink)).toBe(false);
+    expect(links.urlFor("https://user-other.example/page") !== undefined).toBe(true);
+    expect(links.urlFor(optionLink) !== undefined).toBe(false);
   });
 
   it.each(["read_conversation", "search_conversations"])(
@@ -315,8 +315,8 @@ describe("links from the structured fields of a reply row's tool results", () =>
       const links = makePageLinks();
       links.addRow(replyRow([toolPart(toolName, { conversation_id: "c2" }, output, output.text)], sentPair(toolName, { conversation_id: "c2" }, { type: "text", value: output.text })));
 
-      expect(links.allows("https://other-chat-user.example/a")).toBe(true);
-      expect(links.allows("https://other-chat-model.example/b")).toBe(false);
+      expect(links.urlFor("https://other-chat-user.example/a") !== undefined).toBe(true);
+      expect(links.urlFor("https://other-chat-model.example/b") !== undefined).toBe(false);
     },
   );
 
@@ -325,7 +325,7 @@ describe("links from the structured fields of a reply row's tool results", () =>
     const links = makePageLinks();
     links.addRow(replyRow([toolPart("understand_media", { url: "https://media.example/clip.mp4" }, output, "A clip.")], sentPair("understand_media", { url: "https://media.example/clip.mp4" }, { type: "text", value: "A clip." })));
 
-    expect(links.allows("https://media.example/clip.mp4")).toBe(false);
+    expect(links.urlFor("https://media.example/clip.mp4") !== undefined).toBe(false);
   });
 });
 
@@ -333,14 +333,14 @@ describe("this turn's message and tool results", () => {
   it("allows a link in the message sent to the model this turn", () => {
     const links = makePageLinks();
     links.addUserMessage({ role: "user", content: `${CLOCK}\n\n## User message\n\nSummarise https://this-turn.example/news thanks` });
-    expect(links.allows("https://this-turn.example/news")).toBe(true);
+    expect(links.urlFor("https://this-turn.example/news") !== undefined).toBe(true);
   });
 
   it("allows the sources of this turn's web_search, never its query", () => {
     const links = makePageLinks();
     links.addToolResult("web_search", searchOutput("https://query.example/x", ["https://now-found.example/a"]));
-    expect(links.allows("https://now-found.example/a")).toBe(true);
-    expect(links.allows("https://query.example/x")).toBe(false);
+    expect(links.urlFor("https://now-found.example/a") !== undefined).toBe(true);
+    expect(links.urlFor("https://query.example/x") !== undefined).toBe(false);
   });
 
   it("allows the final address and links of a page this turn's web_fetch read, never a failed page", () => {
@@ -349,50 +349,50 @@ describe("this turn's message and tool results", () => {
       "web_fetch",
       fetchOutput({ url: "https://a.example/p", finalUrl: "https://b.example/p", links: ["https://c.example/q"] }, "https://d.example/gone"),
     );
-    expect(links.allows("https://b.example/p")).toBe(true);
-    expect(links.allows("https://c.example/q")).toBe(true);
-    expect(links.allows("https://d.example/gone")).toBe(false);
+    expect(links.urlFor("https://b.example/p") !== undefined).toBe(true);
+    expect(links.urlFor("https://c.example/q") !== undefined).toBe(true);
+    expect(links.urlFor("https://d.example/gone") !== undefined).toBe(false);
   });
 
   it.each(["read_conversation", "search_conversations"])("allows the userLinks of this turn's %s, never its text", (toolName) => {
     const links = makePageLinks();
     links.addToolResult(toolName, { text: "assistant: https://said-by-model.example/z", userLinks: ["https://said-by-user.example/y"] });
-    expect(links.allows("https://said-by-user.example/y")).toBe(true);
-    expect(links.allows("https://said-by-model.example/z")).toBe(false);
+    expect(links.urlFor("https://said-by-user.example/y") !== undefined).toBe(true);
+    expect(links.urlFor("https://said-by-model.example/z") !== undefined).toBe(false);
   });
 
   it("allows nothing from a tool it does not list", () => {
     const links = makePageLinks();
     links.addToolResult("save_image", { url: "https://saved.example/p.png", mimeType: "image/png", width: 1, height: 1 });
-    expect(links.allows("https://saved.example/p.png")).toBe(false);
+    expect(links.urlFor("https://saved.example/p.png") !== undefined).toBe(false);
   });
 
   it("allows nothing before anything is added", () => {
-    expect(makePageLinks().allows("https://anything.example/")).toBe(false);
+    expect(makePageLinks().urlFor("https://anything.example/") !== undefined).toBe(false);
   });
 });
 
-describe("how allows compares two spellings of one link", () => {
+describe("how urlFor compares two spellings of one link", () => {
   it("compares by the page key: scheme, host case, fragment, trailing slash and percent-encoding do not matter", () => {
     const links = makePageLinks();
     links.addUserMessage({ role: "user", content: "Read https://Docs.Example.com/guide/%E4%B8%AD%E6%96%87/ please" });
 
-    expect(links.allows("docs.example.com/guide/中文")).toBe(true);
-    expect(links.allows("http://docs.example.com/guide/中文#intro")).toBe(true);
-    expect(links.allows("https://docs.example.com/guide/%E4%B8%AD%E6%96%87")).toBe(true);
+    expect(links.urlFor("docs.example.com/guide/中文") !== undefined).toBe(true);
+    expect(links.urlFor("http://docs.example.com/guide/中文#intro") !== undefined).toBe(true);
+    expect(links.urlFor("https://docs.example.com/guide/%E4%B8%AD%E6%96%87") !== undefined).toBe(true);
   });
 
   it("allows a link the user wrote without a scheme when the model asks with one", () => {
     const links = makePageLinks();
     links.addUserMessage({ role: "user", content: "看看 example.org/news/today 这篇" });
-    expect(links.allows("https://example.org/news/today")).toBe(true);
+    expect(links.urlFor("https://example.org/news/today") !== undefined).toBe(true);
   });
 
   it("keeps the query string as part of the page", () => {
     const links = makePageLinks();
     links.addUserMessage({ role: "user", content: "Open https://shop.example/item?id=1 now" });
-    expect(links.allows("https://shop.example/item?id=1")).toBe(true);
-    expect(links.allows("https://shop.example/item?id=2")).toBe(false);
+    expect(links.urlFor("https://shop.example/item?id=1") !== undefined).toBe(true);
+    expect(links.urlFor("https://shop.example/item?id=2") !== undefined).toBe(false);
   });
 });
 
@@ -444,15 +444,6 @@ describe("urlFor: the spelling the conversation recorded (plan §9 A)", () => {
     expect(links.urlFor("https://shop.example/item?id=2")).toBeUndefined();
     expect(makePageLinks().urlFor("https://anything.example/")).toBeUndefined();
   });
-
-  it("agrees with allows", () => {
-    const links = makePageLinks();
-    links.addUserMessage({ role: "user", content: "Read https://a.example/x and b.example/y" });
-
-    for (const url of ["https://a.example/x", "http://B.example/y/", "https://c.example/z"]) {
-      expect(links.urlFor(url) !== undefined, url).toBe(links.allows(url));
-    }
-  });
 });
 
 describe("pageLinksForTurn", () => {
@@ -463,7 +454,7 @@ describe("pageLinksForTurn", () => {
 
     expect(getMessagesForLlm).toHaveBeenCalledTimes(1);
     expect(getMessagesForLlm).toHaveBeenCalledWith("c1", 0, 4);
-    expect(links.allows("https://folded-into-memory.example/a")).toBe(true);
+    expect(links.urlFor("https://folded-into-memory.example/a") !== undefined).toBe(true);
   });
 
   it("reads from the first turn when nothing has been folded", async () => {
@@ -485,16 +476,16 @@ describe("pageLinksForTurn", () => {
 
     const links = await pageLinksForTurn("c1", 6);
 
-    expect(links.allows("https://folded-into-memory.example/a")).toBe(true);
-    expect(links.allows("https://old-search.example/b")).toBe(true);
-    expect(links.allows("https://recent.example/c")).toBe(true);
-    expect(links.allows("https://never-said.example/d")).toBe(false);
+    expect(links.urlFor("https://folded-into-memory.example/a") !== undefined).toBe(true);
+    expect(links.urlFor("https://old-search.example/b") !== undefined).toBe(true);
+    expect(links.urlFor("https://recent.example/c") !== undefined).toBe(true);
+    expect(links.urlFor("https://never-said.example/d") !== undefined).toBe(false);
   });
 
   it("returns a set that this turn can still add to", async () => {
     const links = await pageLinksForTurn("c1", 2);
     links.addToolResult("web_search", searchOutput("q", ["https://later.example/x"]));
-    expect(links.allows("https://later.example/x")).toBe(true);
+    expect(links.urlFor("https://later.example/x") !== undefined).toBe(true);
   });
 });
 
@@ -613,11 +604,10 @@ describe("the invariant (fast-check)", () => {
           for (const placement of chosen) place(placement, link.written, control, links);
 
           for (const spelling of link.spellings) {
-            expect(links.allows(spelling)).toBe(false);
             expect(links.urlFor(spelling)).toBeUndefined();
           }
           // The same calls did make the user's side readable, so the set was not just empty.
-          expect(links.allows(control)).toBe(true);
+          expect(links.urlFor(control) !== undefined).toBe(true);
         },
       ),
       { numRuns: 200 },

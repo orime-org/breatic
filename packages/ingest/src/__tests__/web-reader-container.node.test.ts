@@ -33,6 +33,7 @@ const stand = vi.hoisted(() => {
     fetchMs: 0,
     start: (): Promise<void> => Promise.resolve(),
     answer: (): Promise<Response> => Promise.resolve(new Response(null, { status: 500 })),
+    destroy: (): Promise<void> => Promise.resolve(),
   };
   /** Every instance constructed, newest last. */
   const instances: Recorded[] = [];
@@ -138,7 +139,7 @@ const stand = vi.hoisted(() => {
      */
     destroy(): Promise<void> {
       this.recorded.events.push("destroy");
-      return Promise.resolve();
+      return behaviour.destroy();
     }
   }
 
@@ -184,10 +185,12 @@ beforeEach(() => {
   stand.behaviour.fetchMs = 1_000;
   stand.behaviour.start = (): Promise<void> => Promise.resolve();
   stand.behaviour.answer = (): Promise<Response> => Promise.resolve(Response.json({ pages: PAGES, cpuUsec: 4_200_000 }));
+  stand.behaviour.destroy = (): Promise<void> => Promise.resolve();
 });
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("WebReaderContainer.read on success", () => {
@@ -424,5 +427,35 @@ describe("WebReaderContainer's way out", () => {
     );
 
     expect(response.status).toBe(403);
+  });
+});
+
+// A destroy that failed leaves a container running until its own timeout:
+// on-call must be able to see it, so it is noted, never swallowed.
+describe("WebReaderContainer when the destroy fails", () => {
+  it("notes it as ingest_web_reader_destroy_failed after a read, and the read still answers", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    stand.behaviour.destroy = (): Promise<void> => Promise.reject(new Error("destroy refused"));
+    const { reader } = newReader();
+
+    await expect(reader.read(REQUEST)).resolves.toMatchObject({ pages: PAGES });
+
+    expect(logged).toHaveBeenCalledWith(
+      "ingest_web_reader_destroy_failed",
+      expect.objectContaining({ err: expect.stringContaining("destroy refused") as unknown }),
+    );
+  });
+
+  it("notes it when a stop destroys an idle instance, and the stop does not throw", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    stand.behaviour.destroy = (): Promise<void> => Promise.reject(new Error("destroy refused"));
+    const { reader } = newReader();
+
+    await expect(reader.stop()).resolves.toBeUndefined();
+
+    expect(logged).toHaveBeenCalledWith(
+      "ingest_web_reader_destroy_failed",
+      expect.objectContaining({ err: expect.stringContaining("destroy refused") as unknown }),
+    );
   });
 });

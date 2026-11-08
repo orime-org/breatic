@@ -12,7 +12,7 @@
  */
 
 import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { INGEST_FAILURE_HEADER } from "@breatic/shared";
 import type { ReadPagesAnswer, ReadPagesRequest } from "@breatic/shared";
 
@@ -145,6 +145,7 @@ function readerFailing(error: Error): StandInReader {
  * @param bindings - Overrides on the test env; a value of undefined removes it.
  * @param withSecret - Whether it carries our secret.
  * @param signal - The incoming request's signal, aborted when its caller goes.
+ * @param ctx - The execution context the Worker is handed.
  * @returns The response.
  */
 async function askToRead(
@@ -152,12 +153,12 @@ async function askToRead(
   bindings: Record<string, unknown>,
   withSecret = true,
   signal?: AbortSignal,
+  ctx: ExecutionContext = createExecutionContext(),
 ): Promise<Response> {
   const merged: Record<string, unknown> = { ...env, ...bindings };
   for (const [key, value] of Object.entries(bindings)) if (value === undefined) delete merged[key];
   const headers = new Headers({ "content-type": "application/json" });
   if (withSecret) headers.set("x-ingest-secret", env.INGEST_SHARED_SECRET);
-  const ctx = createExecutionContext();
   const response = await worker.fetch(
     new Request("https://ingest.example.com/read-pages", {
       method: "POST",
@@ -171,6 +172,43 @@ async function askToRead(
   await waitOnExecutionContext(ctx);
   return response;
 }
+
+/**
+ * A namespace whose every instance's `read` runs until `stop` is called on
+ * that instance; the stop ends the read, then itself rejects.
+ * @returns The namespace and what it was asked.
+ */
+function readerWhoseStopFails(): StandInReader {
+  const run: StandInReader = { namespace: null, names: [], asked: [], stopped: [] };
+  run.namespace = {
+    idFromName: (name: string): { name: string } => {
+      run.names.push(name);
+      return { name };
+    },
+    get: (id: { name: string }) => {
+      let end: (reason: Error) => void = () => undefined;
+      const reading = new Promise<ReadPagesAnswer>((_resolve, reject) => {
+        end = reject;
+      });
+      return {
+        read: (request: unknown): Promise<ReadPagesAnswer> => {
+          run.asked.push(request);
+          return reading;
+        },
+        stop: (): Promise<void> => {
+          run.stopped.push(id.name);
+          end(new Error("stopped"));
+          return Promise.reject(new Error("the stop call failed"));
+        },
+      };
+    },
+  };
+  return run;
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -252,6 +290,51 @@ describe("POST /read-pages when its caller goes (design §6.2)", () => {
     expect(reader.stopped).toEqual([reader.names[0]]);
   });
 
+  it("hands the stop to ctx.waitUntil, so the Worker stays alive until it is sent", async () => {
+    const reader = readerUntilStopped();
+    const caller = new AbortController();
+    const ctx = createExecutionContext();
+    const waitUntil = vi.spyOn(ctx, "waitUntil");
+
+    const answered = askToRead(REQUEST, { WEB_READER: reader.namespace }, true, caller.signal, ctx).then(
+      (response) => response.status,
+      () => "rejected",
+    );
+    await vi.waitFor(() => expect(reader.asked).toHaveLength(1));
+    const before = waitUntil.mock.calls.length;
+    caller.abort();
+    await vi.waitFor(() => expect(reader.stopped).toHaveLength(1));
+    await answered;
+
+    expect(waitUntil.mock.calls.length).toBeGreaterThan(before);
+    expect(waitUntil.mock.calls.at(-1)?.[0]).toBeInstanceOf(Promise);
+  });
+
+  it("notes a stop that failed as ingest_web_reader_stop_failed, leaving no unhandled rejection", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const reader = readerWhoseStopFails();
+    const caller = new AbortController();
+    const ctx = createExecutionContext();
+    const waitUntil = vi.spyOn(ctx, "waitUntil");
+
+    const answered = askToRead(REQUEST, { WEB_READER: reader.namespace }, true, caller.signal, ctx).then(
+      (response) => response.status,
+      () => "rejected",
+    );
+    await vi.waitFor(() => expect(reader.asked).toHaveLength(1));
+    caller.abort();
+    await answered;
+    // The stop's promise was handed to waitUntil and settles without rejecting.
+    const handed = waitUntil.mock.calls.map((call) => call[0]);
+    expect(handed.length).toBeGreaterThan(0);
+    await expect(Promise.all(handed)).resolves.toBeDefined();
+
+    expect(logged).toHaveBeenCalledWith(
+      "ingest_web_reader_stop_failed",
+      expect.objectContaining({ err: expect.stringContaining("the stop call failed") as unknown }),
+    );
+  });
+
   it("never stops the instance of a call that completes", async () => {
     const reader = readerAnswering(ANSWER);
 
@@ -268,12 +351,25 @@ describe("POST /read-pages when its caller goes (design §6.2)", () => {
 // and charge nothing for it. Workers RPC carries the error's message across.
 describe("POST /read-pages when the reader would not start", () => {
   it("answers 503 naming reader_not_started", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
     const reader = readerFailing(new Error("reader_not_started: no capacity"));
 
     const response = await askToRead(REQUEST, { WEB_READER: reader.namespace });
 
     expect(response.status).toBe(503);
     expect(response.headers.get(INGEST_FAILURE_HEADER)).toBe("reader_not_started");
+  });
+
+  it("notes the start failure as ingest_web_reader_start_failed, with its reason", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const reader = readerFailing(new Error("reader_not_started: no capacity"));
+
+    await askToRead(REQUEST, { WEB_READER: reader.namespace });
+
+    expect(logged).toHaveBeenCalledWith(
+      "ingest_web_reader_start_failed",
+      expect.objectContaining({ err: expect.stringContaining("no capacity") as unknown }),
+    );
   });
 
   it("does not name a failure after the start reader_not_started", async () => {

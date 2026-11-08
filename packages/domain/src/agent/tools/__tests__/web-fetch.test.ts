@@ -416,7 +416,8 @@ describe("one page asked twice in one call (plan §9 D)", () => {
     expect(readPages.mock.calls[0]![0].urls).toEqual([A]);
     // The one page keeps the whole budget: the repeat takes no share.
     expect(answer.pages[0]).toMatchObject({ status: "ok", start: 0, end: 100, index: 1, text: full.slice(0, 100) });
-    expect(answer.pages[1]).toMatchObject({ status: "ok", start: 0, end: 100, index: 1, text: full.slice(0, 100) });
+    // The repeat carries no text of its own: the model reads it once, under the first.
+    expect(answer.pages[1]!.text).toBeUndefined();
 
     // And the repeat took no number: the next page read is 2.
     const next = await fetchWith(tools, { pages: [{ url: A, start: 100 }] }, readPages);
@@ -431,11 +432,20 @@ describe("one page asked twice in one call (plan §9 D)", () => {
     );
 
     // Two pages share the budget, not three.
-    expect(answer.pages.map((p) => [p.start, p.end, p.index])).toEqual([
+    expect(answer.pages.slice(0, 2).map((p) => [p.start, p.end, p.index])).toEqual([
       [0, 50, 1],
       [0, 50, 2],
-      [0, 50, 1],
     ]);
+    expect(answer.pages[2]!.text).toBeUndefined();
+  });
+
+  it("hands the model the text once, the repeat being one line naming the first's source", async () => {
+    const body = "The one body of this page, written once.";
+    const answer = await fetchWith(turn(), { pages: [{ url: A }, { url: A }] }, reader({ [A]: okPage(body) }));
+
+    const rendered = renderFetchForModel(answer);
+    expect(rendered.split(body).length - 1).toBe(1);
+    expect(rendered).toContain("same page as source 1 above");
   });
 
   it("treats one page at two starts as two parts, each with its share and number", async () => {
@@ -639,6 +649,13 @@ describe("citation numbers", () => {
 });
 
 describe("the source row", () => {
+  it("titles a page whose title is empty with its address", async () => {
+    const answer = await fetchWith(turn(), { pages: [{ url: A }] }, reader({ [A]: okPage("Body.", { title: "" }) }));
+
+    expect(answer.sources).toHaveLength(1);
+    expect(answer.sources[0]).toMatchObject({ url: A, title: A, index: 1 });
+  });
+
   it("lists each page read under the address asked for, its title, publisher and number", async () => {
     const vogue = "https://www.vogue.co.uk/fashion";
     const answer = await fetchWith(
@@ -877,12 +894,17 @@ describe("what a call costs", () => {
     expect(spy.serviceCalls).toEqual([row(10)]);
   });
 
-  it.each([400, 401, 503])(
-    "records nothing when the Worker answered %d, so no container ran (plan §9 I)",
-    async (status) => {
+  it.each([
+    [400, null],
+    [401, null],
+    [404, null],
+    [503, "reader_not_started"],
+  ] as const)(
+    "records nothing when the Worker answered %d naming %s, so no container ran (plan §9 I)",
+    async (status, code) => {
       const spy = usageSpy();
       const readPages = vi.fn<ReadPages>(async () => {
-        throw new UploadHttpError(status);
+        throw new UploadHttpError(status, code);
       });
 
       const failure = await failureOf(fetchWith(turn(), { pages: [{ url: A }] }, readPages, { spy }));
@@ -892,12 +914,12 @@ describe("what a call costs", () => {
     },
   );
 
-  it("estimates from the time it took when the Worker answered 500, after a container may have run", async () => {
+  it.each([500, 503])("estimates from the time it took when the Worker answered %d naming nothing, after a container may have run", async (status) => {
     vi.useFakeTimers({ toFake: ["Date", "performance"] });
     vi.setSystemTime(1_800_000_000_000);
     const readPages = vi.fn<ReadPages>(async () => {
       vi.advanceTimersByTime(4_000);
-      throw new UploadHttpError(500);
+      throw new UploadHttpError(status);
     });
     const spy = usageSpy();
 

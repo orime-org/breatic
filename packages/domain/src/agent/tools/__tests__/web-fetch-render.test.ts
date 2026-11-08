@@ -105,15 +105,21 @@ describe("a page read", () => {
 });
 
 describe("a page the reader cut at its byte cap (plan §9 S)", () => {
-  it("says inside its block that the page was cut at the read limit", () => {
+  it("ends its last part with the end of what was read, never the end of the page, and no separate truncated line", () => {
     const rendered = renderFetchForModel({ pages: [readPage({ truncated: true, next_start: null })], sources: [] });
     const block = rendered.slice(rendered.indexOf('<source index="7">'), rendered.indexOf("<text>"));
 
-    expect(block).toMatch(/truncated/i);
+    expect(block).toContain("this is the end of what was read");
+    expect(block).not.toContain("this is the end of the page");
+    expect(block).not.toMatch(/truncated/i);
   });
 
-  it("says nothing of the kind for a page read whole", () => {
-    expect(renderFetchForModel({ pages: [readPage()], sources: [] })).not.toMatch(/truncated/i);
+  it("ends the last part of a page read whole with the end of the page", () => {
+    const rendered = renderFetchForModel({ pages: [readPage({ next_start: null })], sources: [] });
+
+    expect(rendered).toContain("this is the end of the page");
+    expect(rendered).not.toContain("this is the end of what was read");
+    expect(rendered).not.toMatch(/truncated/i);
   });
 });
 

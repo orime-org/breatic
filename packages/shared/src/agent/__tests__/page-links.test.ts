@@ -2,212 +2,20 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Reading links out of text, and the one key two spellings of a page share
- * (inner#1664 design §6.0 "link extraction and comparison").
+ * The one key two spellings of a page share (inner#1664 design §6.0 "link
+ * extraction and comparison"); reading links out of text is tested beside
+ * `pageLinksIn` in `@breatic/domain`.
  *
- * The server builds the set of links the Agent may read from these, and the
- * chat panel merges two sources naming one page by the key. A link the user
- * wrote that the extraction misses is a page the Agent refuses to read; two
- * spellings of one page that get different keys are two source rows for one
- * page. Chinese text appears here because the behaviour under test is how a
- * link ends inside Chinese prose.
+ * The chat panel merges two sources naming one page by the key, and the
+ * server compares a link the model asks for with the ones the conversation
+ * holds by it; two spellings of one page that get different keys are two
+ * source rows for one page. Chinese text appears here because the behaviour
+ * under test is how a Chinese path is keyed.
  */
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
 
-import { pageLinkKey, pageLinksIn } from "@shared/agent/page-links.js";
-
-describe("pageLinksIn: which links a piece of text holds", () => {
-  it("finds http and https links in the order they appear", () => {
-    expect(pageLinksIn("see https://example.com/a and then http://b.org/x for more")).toEqual([
-      "https://example.com/a",
-      "http://b.org/x",
-    ]);
-  });
-
-  it("finds a host written without a scheme, and returns it as written", () => {
-    expect(pageLinksIn("look at github.com/a/b please")).toEqual(["github.com/a/b"]);
-    expect(pageLinksIn("the site example.com has it")).toEqual(["example.com"]);
-  });
-
-  it("keeps the order of appearance across links with and without a scheme", () => {
-    expect(pageLinksIn("first example.com then https://a.org/x then docs.python.org/3/")).toEqual([
-      "example.com",
-      "https://a.org/x",
-      "docs.python.org/3/",
-    ]);
-  });
-
-  it("does not read the host of a full link a second time as a link without a scheme", () => {
-    expect(pageLinksIn("open https://github.com/a/b now")).toEqual(["https://github.com/a/b"]);
-  });
-
-  it("does not take a dotted word whose last label is not two or more letters for a host", () => {
-    expect(pageLinksIn("version 1.2 of file.c is 3.14 times a.b2 bigger")).toEqual([]);
-  });
-
-  it("answers no links for text that holds none", () => {
-    expect(pageLinksIn("no links in this sentence")).toEqual([]);
-    expect(pageLinksIn("")).toEqual([]);
-  });
-
-  it("ends a link at whitespace, including a newline, a tab and an ideographic space", () => {
-    expect(pageLinksIn("https://example.com/a\nnext")).toEqual(["https://example.com/a"]);
-    expect(pageLinksIn("https://example.com/a\tnext")).toEqual(["https://example.com/a"]);
-    expect(pageLinksIn("https://example.com/a　next")).toEqual(["https://example.com/a"]);
-  });
-
-  it.each(["，", "。", "、", "；", "：", "！", "？", "）", "》", "」", "』", "】"])(
-    "ends a link at the Chinese punctuation mark %s",
-    (mark) => {
-      expect(pageLinksIn(`链接https://example.com/p${mark}后面的文字`)).toEqual([
-        "https://example.com/p",
-      ]);
-      expect(pageLinksIn(`去 example.com/p${mark}后面的文字`)).toEqual(["example.com/p"]);
-    },
-  );
-
-  it.each(["\u201C", "\u201D", "\u2018", "\u2019", "\u2026"])(
-    "ends a link at the curly quote or ellipsis %s (plan §9 B)",
-    (mark) => {
-      expect(pageLinksIn(`链接https://example.com/p${mark}后面的文字`)).toEqual([
-        "https://example.com/p",
-      ]);
-      expect(pageLinksIn(`see example.com/p${mark}more`)).toEqual(["example.com/p"]);
-    },
-  );
-
-  it("reads a link out of curly quotes", () => {
-    expect(pageLinksIn("he said \u201Chttps://example.com/a\u201D twice")).toEqual(["https://example.com/a"]);
-    expect(pageLinksIn("\u2018example.com/a\u2019")).toEqual(["example.com/a"]);
-  });
-
-  it("also returns a link holding a non-ASCII character cut at that character, right after it (plan §9 B)", () => {
-    // A user who writes a link and runs on into Chinese without a space must
-    // still have the plain ASCII link in the set; the full spelling stays too,
-    // because a Chinese path is a real path.
-    expect(pageLinksIn("看https://example.com/a中文页面 then")).toEqual([
-      "https://example.com/a中文页面",
-      "https://example.com/a",
-    ]);
-    expect(pageLinksIn("看 example.com/news今天的")).toEqual(["example.com/news今天的", "example.com/news"]);
-  });
-
-  it("cleans the end of the cut spelling the same way", () => {
-    expect(pageLinksIn("see https://example.com/a.中文")).toEqual([
-      "https://example.com/a.中文",
-      "https://example.com/a",
-    ]);
-    const found = pageLinksIn("(see https://example.com/a)中文");
-    expect(found).toContain("https://example.com/a");
-    expect(found).not.toContain("https://example.com/a)");
-  });
-
-  it("returns a link with only ASCII characters once", () => {
-    expect(pageLinksIn("see https://example.com/a/b?q=1 now")).toEqual(["https://example.com/a/b?q=1"]);
-  });
-
-  it.each([".", ",", ";", ":", "!", "?"])(
-    "drops the English punctuation mark %s that ends a sentence after a link",
-    (mark) => {
-      expect(pageLinksIn(`Read https://example.com/a/b${mark} Then answer.`)).toEqual([
-        "https://example.com/a/b",
-      ]);
-      expect(pageLinksIn(`Read example.com/a/b${mark}`)).toEqual(["example.com/a/b"]);
-    },
-  );
-
-  it("drops several trailing English punctuation marks", () => {
-    expect(pageLinksIn("Is it https://example.com/a?!...")).toEqual(["https://example.com/a"]);
-  });
-
-  it("keeps a closing parenthesis that closes one opened inside the link", () => {
-    expect(pageLinksIn("see https://en.wikipedia.org/wiki/Foo_(bar) for it")).toEqual([
-      "https://en.wikipedia.org/wiki/Foo_(bar)",
-    ]);
-  });
-
-  it("drops a closing parenthesis that closes one opened before the link", () => {
-    expect(pageLinksIn("the docs (see https://example.com/a) say so")).toEqual([
-      "https://example.com/a",
-    ]);
-    expect(pageLinksIn("(https://en.wikipedia.org/wiki/Foo_(bar))")).toEqual([
-      "https://en.wikipedia.org/wiki/Foo_(bar)",
-    ]);
-    expect(pageLinksIn("(https://example.com/a).")).toEqual(["https://example.com/a"]);
-  });
-
-  it("reads the address of a Markdown link", () => {
-    expect(pageLinksIn("the [docs](https://example.com/docs) say so")).toEqual([
-      "https://example.com/docs",
-    ]);
-    expect(
-      pageLinksIn("[one](https://a.org/1) and [two](https://b.org/wiki/X_(y))"),
-    ).toEqual(["https://a.org/1", "https://b.org/wiki/X_(y)"]);
-  });
-
-  it("removes the backslashes Markdown escapes write inside a link", () => {
-    // turndown writes the parentheses and underscores of a link as \( \) \_.
-    expect(pageLinksIn("https://x.org/a\\(b\\) end")).toEqual(["https://x.org/a(b)"]);
-    expect(pageLinksIn("https://x.org/snake\\_case end")).toEqual(["https://x.org/snake_case"]);
-  });
-
-  it.each(['"', "<", ">", "`", "{", "}", "|", "^"])(
-    "ends a link at %s, which RFC 3986 never allows unencoded",
-    (mark) => {
-      expect(pageLinksIn(`see https://x.example/a${mark}rest of it`)).toEqual(["https://x.example/a"]);
-      expect(pageLinksIn(`see x.example/a${mark}rest of it`)).toEqual(["x.example/a"]);
-    },
-  );
-
-  it("reads a link out of quotes, angle brackets and JSON", () => {
-    expect(pageLinksIn('He wrote "https://x.example/a" here')).toEqual(["https://x.example/a"]);
-    expect(pageLinksIn("open <https://x.example/a> now")).toEqual(["https://x.example/a"]);
-    expect(pageLinksIn('<a href="https://x.example/a">A</a>')).toEqual(["https://x.example/a"]);
-    expect(pageLinksIn('{"url":"https://x.example/a","n":1}')).toEqual(["https://x.example/a"]);
-  });
-
-  it.each(["(", "_", "*", "#", "!", ".", "-"])(
-    "drops the backslash of the Markdown escape \\%s and keeps reading the link",
-    (mark) => {
-      expect(pageLinksIn(`https://x.org/a\\${mark}b end`)).toEqual([`https://x.org/a${mark}b`]);
-    },
-  );
-
-  it("drops the backslashes of escaped brackets and keeps reading the link", () => {
-    expect(pageLinksIn("https://x.org/a\\[b\\]c end")).toEqual(["https://x.org/a[b]c"]);
-    expect(pageLinksIn("https://x.org/a\\(b\\)c end")).toEqual(["https://x.org/a(b)c"]);
-  });
-
-  it.each([
-    ["a letter, as in a JSON \\n", "https://x.org/a\\nb", "https://x.org/a"],
-    ["a quote, as in a JSON \\\"", 'https://x.org/a\\"b', "https://x.org/a"],
-    ["a JSON \\t", "https://x.org/a\\tb", "https://x.org/a"],
-    ["a JSON \\u escape", "https://x.org/a\\u4e2db", "https://x.org/a"],
-    ["another backslash", "https://x.org/a\\\\b", "https://x.org/a"],
-    ["a space", "https://x.org/a\\ b", "https://x.org/a"],
-    ["a Chinese character", "https://x.org/a\\中文", "https://x.org/a"],
-    ["nothing, at the end of the text", "https://x.org/a\\", "https://x.org/a"],
-  ])("ends a link at a backslash followed by %s", (_label, text, link) => {
-    expect(pageLinksIn(text)).toEqual([link]);
-  });
-
-  it("reads a link out of a document body written as JSON, where a newline is a backslash and n", () => {
-    const body = JSON.stringify({ type: "paragraph", text: "See https://x.example/spec\nDeadline Friday" });
-    expect(body).toContain("spec\\nDeadline");
-
-    expect(pageLinksIn(body)).toEqual(["https://x.example/spec"]);
-  });
-
-  it("reads a link out of JSON text that quotes it or follows it with a tab", () => {
-    expect(pageLinksIn(JSON.stringify('He wrote "https://x.example/spec" here'))).toEqual([
-      "https://x.example/spec",
-    ]);
-    expect(pageLinksIn(JSON.stringify("https://x.example/spec\tnext"))).toEqual([
-      "https://x.example/spec",
-    ]);
-  });
-});
+import { pageLinkKey } from "@shared/agent/page-links.js";
 
 describe("pageLinkKey: the key two spellings of a page share", () => {
   it("lower-cases the host and drops the scheme, the fragment and a trailing slash", () => {
@@ -368,59 +176,6 @@ function spellingsOf(parts: LinkParts): string[] {
   return spellings;
 }
 
-/**
- * What `pageLinksIn` answers for one link alone: the link, then, when it holds
- * a non-ASCII character, the link cut at that character with its end cleaned
- * (plan §9 B).
- * @param link - The link.
- * @returns The links expected.
- */
-function expectedFor(link: string): string[] {
-  const at = link.search(/[\u0080-\u{10FFFF}]/u);
-  if (at < 0) return [link];
-  let cut = link.slice(0, at);
-  for (;;) {
-    const last = cut.at(-1);
-    if (last !== undefined && ".,;:!?*_~".includes(last)) cut = cut.slice(0, -1);
-    else if (last === ")" && cut.split(")").length > cut.split("(").length) cut = cut.slice(0, -1);
-    else break;
-  }
-  return [link, cut];
-}
-
-/** Words of text around a link, holding no link of their own. */
-const proseArb: fc.Arbitrary<string> = fc
-  .array(fc.oneof(charsOf("abcdefghijklmnopqrstuvwxyzABC", 1, 8), charsOf(CHINESE, 1, 6)), {
-    minLength: 0,
-    maxLength: 6,
-  })
-  .map((words) => words.join(" "));
-
-/** What may follow a link and end it. */
-const enderArb: fc.Arbitrary<string> = fc.constantFrom(
-  " ",
-  "\n",
-  "，",
-  "。",
-  "、",
-  "；",
-  "：",
-  "！",
-  "？",
-  "）",
-  "》",
-  "」",
-  "』",
-  "】",
-  "\u201D",
-  "\u2019",
-  "\u2026",
-  ". ",
-  ", ",
-  "! ",
-  "? ",
-);
-
 describe("pageLinkKey properties", () => {
   it("gives every spelling of one link the key of its plain https spelling", () => {
     fc.assert(
@@ -441,39 +196,6 @@ describe("pageLinkKey properties", () => {
         fc.pre(parts.segments.length > 0 || parts.query === "");
         const key = pageLinkKey(`https://${parts.host}${pathOf(parts, true)}${parts.query}#${parts.fragment}`);
         expect(pageLinkKey(key)).toBe(key);
-      }),
-      { numRuns: 300 },
-    );
-  });
-
-  it("reads a link out of surrounding Chinese and English text unchanged, with the key it has alone", () => {
-    fc.assert(
-      fc.property(
-        linkPartsArb,
-        fc.nat(),
-        proseArb,
-        enderArb,
-        proseArb,
-        (parts, pick, before, ender, after) => {
-          const spellings = spellingsOf(parts);
-          const link = spellings[pick % spellings.length] as string;
-          const text = `${before} ${link}${ender}${after}`;
-          const found = pageLinksIn(text);
-          expect(found, text).toEqual(expectedFor(link));
-          expect(pageLinkKey(found[0] as string)).toBe(pageLinkKey(link));
-        },
-      ),
-      { numRuns: 300 },
-    );
-  });
-
-  it("reads a link followed by a newline and words out of the same text written as JSON", () => {
-    fc.assert(
-      fc.property(linkPartsArb, fc.nat(), proseArb, proseArb, (parts, pick, before, after) => {
-        const spellings = spellingsOf(parts);
-        const link = spellings[pick % spellings.length] as string;
-        const text = JSON.stringify(`${before} ${link}\n${after}`);
-        expect(pageLinksIn(text), text).toEqual(expectedFor(link));
       }),
       { numRuns: 300 },
     );

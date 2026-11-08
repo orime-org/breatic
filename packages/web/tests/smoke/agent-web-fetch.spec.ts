@@ -38,7 +38,7 @@ interface ToolPart {
   type: string;
   state?: string;
   errorText?: string;
-  output?: { sources?: Array<{ url: string }>; pages?: Array<{ url: string; status: string; text?: string }> };
+  output?: { sources?: Array<{ url: string }>; pages?: Array<{ url: string; status: string; kind?: string; text?: string }> };
 }
 
 /** What one turn left on screen and in the conversation. */
@@ -168,18 +168,33 @@ function onHost(url: string, host: string): boolean {
   }
 }
 
-test('a pasted page is read and listed as a source @needs-model @needs-ingest @needs-internet', async ({ page }) => {
-  const turn = await askUntilRead(page, 'Read this page and tell me what it says: https://example.com/');
+const PASTED_PAGE = 'https://example.com/';
 
+test('a pasted page is read and listed as a source @needs-model @needs-ingest @needs-internet', async ({ page }) => {
+  const turn = await askUntilRead(page, `Read this page and tell me what it says: ${PASTED_PAGE}`);
+
+  // The call itself read the page: a reply the model wrote from what it
+  // already knew would pass the text check alone.
+  const read = turn.fetches.flatMap((part) => part.output?.pages ?? []).filter((p) => p.status === 'ok');
+  expect(read.length, JSON.stringify(turn.fetches)).toBeGreaterThan(0);
+  expect(read.some((p) => onHost(p.url, 'example.com')), JSON.stringify(turn.fetches)).toBe(true);
   expect(turn.reply).toMatch(/Example Domain|illustrative examples|documentation examples|without (prior )?(coordination|permission)/i);
-  expect(turn.sources.some((url) => onHost(url, 'example.com'))).toBe(true);
+  expect(turn.sources.map(pageOf)).toContain(pageOf(PASTED_PAGE));
 });
 
-test('a pasted PDF is read and its title given @needs-model @needs-ingest @needs-internet', async ({ page }) => {
-  const turn = await askUntilRead(page, 'Read this PDF and tell me its title: http://arxiv.org/pdf/1706.03762');
+const PASTED_PDF = 'http://arxiv.org/pdf/1706.03762';
 
+test('a pasted PDF is read and its title given @needs-model @needs-ingest @needs-internet', async ({ page }) => {
+  const turn = await askUntilRead(page, `Read this PDF and tell me its title: ${PASTED_PDF}`);
+
+  const read = turn.fetches.flatMap((part) => part.output?.pages ?? []).filter((p) => p.status === 'ok');
+  expect(read.length, JSON.stringify(turn.fetches)).toBeGreaterThan(0);
+  expect(
+    read.some((p) => onHost(p.url, 'arxiv.org') && p.kind === 'pdf'),
+    JSON.stringify(turn.fetches),
+  ).toBe(true);
   expect(turn.reply).toMatch(/Attention Is All You Need/i);
-  expect(turn.sources.some((url) => onHost(url, 'arxiv.org'))).toBe(true);
+  expect(turn.sources.map(pageOf)).toContain(pageOf(PASTED_PDF));
 });
 
 const REFUSING = 'https://www.zhihu.com/question/19550225';
@@ -218,8 +233,8 @@ test('a page found by search is read, and both are sources the reply cites @need
   expect(read.length).toBeGreaterThan(0);
   // The pages the read reached are lines in the box, beside the ones the
   // search found; a page both found and read is one line.
-  const hosts = turn.sources.map((url) => new URL(url).hostname);
-  for (const url of read) expect(hosts).toContain(new URL(url).hostname);
+  const rows = turn.sources.map(pageOf);
+  for (const url of read) expect(rows).toContain(pageOf(url));
   expect(turn.sources.length).toBeGreaterThan(1);
   expect(turn.chips).toBeGreaterThan(0);
   expect(turn.reply).toMatch(/\d{3}/);

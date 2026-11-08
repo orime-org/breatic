@@ -4,7 +4,8 @@
 // serves an article, a redirect to it, a two-page PDF, a missing page and the
 // pages of plan §9 rows T and W (a CSP page, an XML page, an empty app shell, a
 // page its script writes, a download past the size limit, a page that never
-// stops running), and the service in /app/server.mjs reads them with its own
+// stops running), a plain-text file, a JSON file and a PDF download sent with a
+// type other than application/pdf, and the service in /app/server.mjs reads them with its own
 // browser.
 //   docker run --rm --network none -v "$PWD/scripts/ingest-web-reader-smoke.mjs:/tmp/web-reader-smoke.mjs:ro" \
 //     --entrypoint node <image> /tmp/web-reader-smoke.mjs
@@ -74,6 +75,10 @@ const RENDERED = `<!doctype html><html><head><title>Rendered</title></head><body
 });</script></body></html>`;
 // Its parser never reaches the end of the head.
 const BUSY = '<!doctype html><html><head><title>Busy</title><script>for (;;) {}</script></head><body><p>Never shown</p></body></html>';
+// Markdown-looking text a plain-text file holds, which must come back unescaped.
+const PLAIN_LINES = ['# Install', '* run `pnpm i`', '/\\d+/'];
+const PLAIN = `${PLAIN_LINES.join('\n')}\n`;
+const JSON_BODY = '{"name":"harbour","tides":[1,2,3],"note":"# not a heading"}';
 const BIG_BYTES = 30 * 1024 * 1024;
 const MAX_BYTES = 20 * 1024 * 1024;
 const CHUNK = Buffer.alloc(1024 * 1024);
@@ -107,6 +112,15 @@ const origin = createServer((req, res) => {
   else if (req.url === '/rendered') res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(RENDERED);
   else if (req.url === '/busy') res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(BUSY);
   else if (req.url === '/big.bin') void sendBigDownload(res);
+  else if (req.url === '/readme.txt') res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end(PLAIN);
+  else if (req.url === '/data.json') res.writeHead(200, { 'content-type': 'application/json' }).end(JSON_BODY);
+  else if (req.url === '/download.pdf') {
+    res.writeHead(200, {
+      'content-type': 'application/x-pdf',
+      'content-length': PDF.length,
+      'content-disposition': 'attachment; filename="report.pdf"',
+    }).end(PDF);
+  }
   else res.writeHead(404, { 'content-type': 'text/html' }).end('<!doctype html><title>Not found</title><p>Not found</p>');
 });
 
@@ -180,6 +194,23 @@ try {
   assert.equal(rendered.status, 'ok', `rendered page: read, got ${rendered.status}`);
   assert.ok(rendered.text.replace(/\s+/g, ' ').includes(RENDERED_PARAGRAPH), 'rendered page: the text its script wrote');
 
+  // A document that is not HTML is read as its text, with no Markdown escapes;
+  // a download with a type other than application/pdf is still checked for
+  // the PDF signature rather than refused for its type.
+  const { body: files } = await read(['/readme.txt', '/data.json', '/download.pdf']);
+  const [plain, json, download] = files.pages;
+  assert.equal(plain.status, 'ok', `plain text: read, got ${plain.status}`);
+  for (const line of PLAIN_LINES) {
+    assert.ok(plain.text.split('\n').includes(line), `plain text: "${line}" kept as written, got ${JSON.stringify(plain.text)}`);
+  }
+  assert.equal(json.status, 'ok', `json: read, got ${json.status}`);
+  assert.equal(json.text.trim(), JSON_BODY, `json: the raw JSON, got ${JSON.stringify(json.text)}`);
+  assert.equal(download.status, 'ok', `x-pdf download: read, got ${download.status}`);
+  assert.equal(download.kind, 'pdf', `x-pdf download: a pdf, got ${download.kind}`);
+  assert.equal(download.pages, 2);
+  const downloadWords = download.text.replace(/\s+/g, ' ');
+  for (const line of PDF_PAGES) assert.ok(downloadWords.includes(line), `x-pdf download: "${line}" read`);
+
   // Plan §9 row K: a download whose declared length is past the limit ends
   // at its headers, long before the 15 s the whole file would take.
   const big = await read(['/big.bin'], { maxBytes: MAX_BYTES });
@@ -193,7 +224,8 @@ try {
   assert.ok(busy.ms < 6000, `busy page: answered in ${busy.ms} ms`);
 
   console.log('Web reader smoke passed: article to Markdown, redirect followed, two-page PDF read, 404 unreachable, ' +
-    'CSP page, XML page, empty app shell, script-written page, oversized download and busy page.');
+    'CSP page, XML page, empty app shell, script-written page, plain text, JSON, x-pdf download, oversized download ' +
+    'and busy page.');
   process.exit(0);
 } catch (error) {
   console.error(error);
