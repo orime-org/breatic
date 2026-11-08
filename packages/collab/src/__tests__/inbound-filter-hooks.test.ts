@@ -223,6 +223,7 @@ async function refuseThroughBeforeSync(socketId: string): Promise<void> {
     readOnly: false,
     context: { user: { id: "u1" } },
     sendStateless: vi.fn(),
+    close: vi.fn(),
     webSocket: { close: vi.fn(), send: vi.fn() },
     request: new Request("http://collab.test/?size_ack=1"),
   };
