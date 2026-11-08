@@ -70,6 +70,15 @@ const AT_ONCE = Number(process.env.EVAL_AT_ONCE ?? '6');
 const FOLLOW_UPS = 2;
 const LABELS = join(__dirname, 'agent-cocreation.labels.json');
 
+/** The zone a user writing each language would most likely report, as a browser does. */
+const TIME_ZONES: Readonly<Record<string, string>> = {
+  'zh-CN': 'Asia/Shanghai',
+  'zh-TW': 'Asia/Taipei',
+  ja: 'Asia/Tokyo',
+  ko: 'Asia/Seoul',
+  en: 'America/New_York',
+};
+
 /** The parts of a stored message this suite reads. */
 interface StoredPart {
   readonly type?: string;
@@ -78,7 +87,10 @@ interface StoredPart {
   readonly toolCallId?: string;
   readonly state?: string;
   readonly status?: string;
-  readonly input?: { questions?: { question?: string; options?: (string | { label?: string })[] }[] };
+  readonly input?: {
+    questions?: { question?: string; options?: (string | { label?: string })[] }[];
+    spaces?: { id?: string; blocks?: { from: number; to?: number }; node_ids?: string[] }[];
+  };
 }
 
 /**
@@ -177,7 +189,7 @@ async function runOnce(api: APIRequestContext, helper: APIRequestContext, studio
       await api.post('/api/v1/chat/conversations', { headers: { 'Idempotency-Key': randomUUID() }, data: { project_id: project.id } }),
       'create conversation',
     );
-    const base = { project_id: project.id, conversation_id: conversation.id, time_zone: 'Asia/Shanghai', ...extra, ...(model === undefined ? {} : { model }) };
+    const base = { project_id: project.id, conversation_id: conversation.id, time_zone: TIME_ZONES[scenario.lang] ?? 'UTC', ...extra, ...(model === undefined ? {} : { model }) };
     const chips = (scenario.chips ?? []).map((chip) => ({ id: chip.id, type: 'image', name: chip.name, data_snapshot: { url: chip.url } }));
     await send(api, scenario, { ...base, message: scenario.text, attached_chips: chips });
     const answered = new Map<string, string>();
@@ -202,9 +214,16 @@ async function runOnce(api: APIRequestContext, helper: APIRequestContext, studio
           ? { detail: { selected_total: 0, selected_attached: 0, selected_whole: 0, slim: false, texts_cut: 0, names_only: 0, edges_not_listed: 0, nodes_not_listed: 0, groups_not_listed: 0 } }
           : {};
         answered.set(pending.toolCallId ?? '', readable ? `shared the Space: ${content}` : 'shared the Space, which cannot be read');
+        // A part asked for comes back named, as the browser sends it.
+        const asked = pending.input?.spaces?.find((one) => one.id === space.id);
+        const part = asked?.blocks !== undefined
+          ? { part: { blocks: asked.blocks }, blocks_total: scenario.doc?.length ?? 0 }
+          : asked?.node_ids !== undefined
+            ? { part: { node_ids: asked.node_ids }, nodes_missing: asked.node_ids.length }
+            : {};
         const shared = readable
-          ? { id: space.id, name: space.name, kind: space.type, state: 'read', ...read, ...detail }
-          : { id: space.id, name: space.name, kind: space.type, state: 'unreadable' };
+          ? { id: space.id, name: space.name, kind: space.type, state: 'read', ...read, ...detail, ...part }
+          : { id: space.id, name: space.name, kind: space.type, state: 'unreadable', ...('part' in part ? { part: part.part } : {}) };
         await send(api, scenario, { ...base, message: '', shared_spaces: { toolCallId: pending.toolCallId, decision: 'shared', spaces: [shared] } });
       }
     }
