@@ -20,7 +20,7 @@ import { presentationCoveringFrame, presentationFrameAt, presentationFramesIn, t
 import type { LipSyncPickup } from "@worker/handlers/mini-tool/run-lip-sync.js";
 import {
   advanceChunks, advanceContainer, advanceGenerate, advanceRegistered, catalogModel, eachSubmitted, exactSeconds, expandFailureReason, modelStepCategory, providerModel, runLedger,
-  type ExpandWindowState, type ModelStepRun,
+  type ExpandWindowState, type ModelRunAt, type ModelRunPosition, type ModelStepRun,
 } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { audioOf, chunkInputId, segmentTarget, windowDuration, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
@@ -29,7 +29,6 @@ import { upstreamBody } from "@worker/providers/upstream-body.js";
 
 type Expand = Extract<AcceptedMiniToolExecution, { tool: "video.expand" }>;
 type WindowStep = ExpandFailureReason["windows"][number]["step"];
-type SharedStep = NonNullable<ExpandFailureReason["shared"]>["step"];
 
 /** The input ids the recipes bind their objects under, fixed so a rebuilt request is the same request. */
 const SOURCE = "00000000-0000-4000-8000-000000000001";
@@ -74,16 +73,18 @@ function minus(a: MiniToolPlanExact, b: MiniToolPlanExact): MiniToolPlanExact {
  * @param execution - The frozen run.
  * @param userId - The run's user.
  * @param deadlineAt - The task deadline.
+ * @param at - Where the walk stands, kept for the entry's reason when a step throws (§10.5).
  * @returns The output's result once it ended, and whether a step still runs.
  * @throws {Error} When persistence, grants, registration or IO fail.
  */
-export async function runMiniToolExpand(execution: unknown, userId: string, deadlineAt: number): Promise<LipSyncPickup> {
+export async function runMiniToolExpand(execution: unknown, userId: string, deadlineAt: number, at: ModelRunAt = { position: null }): Promise<LipSyncPickup> {
   const plan = execution as Expand;
   const pickup: LipSyncPickup = { results: new Map(), waiting: false };
   const run: ModelStepRun = { taskId: plan.taskId, projectId: plan.projectId, sourceKey: plan.sourceKey, container: plan.container,
     ...(plan.retry === undefined ? {} : { retry: { runId: plan.retry.runId } }), log: "expand" };
   const windows: ExpandWindowState[] = plan.windows.map((_window, windowIndex) => ({ windowIndex, state: "unsubmitted", failure: null }));
-  let current: { window: number; step: WindowStep } | { shared: SharedStep } = { window: 0, step: "window" };
+  const position: Extract<ModelRunPosition, { tool: "video.expand" }> = { tool: "video.expand", windows, current: { window: 0, step: "window" } };
+  at.position = position;
   /**
    * End the output with its reason.
    * @param shared - The failed step outside every window, or null.
@@ -108,7 +109,7 @@ export async function runMiniToolExpand(execution: unknown, userId: string, dead
       const frames = { start: first, end: first + Math.max(1, presentationFramesIn(table, { start: presentationFrameAt(table, first).pts, end: window.span.end }).count) };
       const grid = { fps: plan.modelFps, frameCount: plan.modelFps * window.duration };
       const layer: MiniToolPlanTarget = { ...encoded, width: plan.sourceRoi.width, height: plan.sourceRoi.height, displayRect: null, format: undefined };
-      current = { window: k, step: "window" };
+      position.current = { window: k, step: "window" };
       const [input, mask, condition] = await eachSubmitted([
         () => advanceContainer(run, { stepKey: keyOf(plan, `window:${k}`), contentType: "video/mp4", failed: () => ({ failed: "failed", step: "window" }),
           build: () => Promise.resolve({ recipe: { kind: "model_window", inputId: SOURCE, window: frames, timescale: table.timescale, entries: windowEntries(ledger, frames),
@@ -125,7 +126,7 @@ export async function runMiniToolExpand(execution: unknown, userId: string, dead
           return fail(null);
         }
       }
-      current = { window: k, step: "generate" };
+      position.current = { window: k, step: "generate" };
       windows[k]!.state = "submitted";
       const ended = await advanceGenerate(run, { endpoint: providerModel(plan.model), itemIndex: k, stepKey: keyOf(plan, `generate:${k}`), contentType: "video/mp4",
         category: (error) => modelStepCategory(error, undefined),
@@ -140,7 +141,7 @@ export async function runMiniToolExpand(execution: unknown, userId: string, dead
       windows[k]!.state = "done";
       results.push(ended.key);
     }
-    current = { shared: "composite" };
+    position.current = { shared: "composite" };
     const output: MiniToolPlanTarget & { format?: "mp4-h264" | "webm-vp9" } = { ...encoded, width: plan.layout.width, height: plan.layout.height,
       displayRect: { x: plan.layout.sourceX, y: plan.layout.sourceY, width: display.width, height: display.height } };
     const last = plan.windows.length - 1;
@@ -157,7 +158,7 @@ export async function runMiniToolExpand(execution: unknown, userId: string, dead
         inputs: [{ inputId: SOURCE, storageKey: plan.sourceKey }, ...shown.map((k) => ({ inputId: backgroundOf(k), storageKey: results[k]! }))] }) };
     }), deadlineAt);
     if (!("keys" in chunks)) return fail({ step: "composite", category: "failed" });
-    current = { shared: "stitch" };
+    position.current = { shared: "stitch" };
     const written = await advanceRegistered(run, { stepKey: keyOf(plan, "stitch"), namePrefix: "EXPAND", container: output.format === "webm-vp9" ? "webm" : "mp4",
       build: () => Promise.resolve({ recipe: { kind: "stitch", inputId: SOURCE, target: output, audio: audioOf(ledger),
         chunks: plan.composite.map((window, chunk) => ({ inputId: chunkInputId(chunk), duration: windowDuration(ledger, window) })) },
@@ -169,6 +170,7 @@ export async function runMiniToolExpand(execution: unknown, userId: string, dead
     if (error instanceof StillRunning) { pickup.waiting = true; return pickup; }
     // Only the ledger read throws this here; a provider's failure is caught where it is called.
     if (error instanceof UpstreamTaskFailed) {
+      const { current } = position;
       logger.error({ err: error, ctx: { taskId: plan.taskId, current } }, "mini_tool_expand_step_failed");
       if ("shared" in current) return fail({ step: current.shared, category: "failed" });
       windows[current.window]!.failure = { step: current.step, category: "failed" };

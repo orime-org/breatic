@@ -15,6 +15,7 @@ import { runMiniToolLipSync } from "@worker/handlers/mini-tool/run-lip-sync.js";
 import { runMiniToolTransitions } from "@worker/handlers/mini-tool/run-transitions.js";
 import { runMiniToolErase } from "@worker/handlers/mini-tool/run-erase.js";
 import { runMiniToolExpand } from "@worker/handlers/mini-tool/run-expand.js";
+import { modelRunFailure, type ModelRunAt } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { verdictStands } from "@worker/handlers/understand-failure.js";
 import { StillRunning } from "@worker/providers/still-running.js";
@@ -47,16 +48,18 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
     } else {
       const deadlineAt = await taskDeadline(taskId, task.createdAt);
       phase = "computation";
+      // Where a model run stands, so a throw still ends it with its tool's own reason (§9.4, §10.4, §10.5).
+      const at: ModelRunAt = { position: null };
       try {
         assertBeforeDeadline(deadlineAt);
         if (execution.tool !== "video.remove-bg") {
           // Lip-sync walks its steps per pickup like the frames runner (DD §7.2, §7.3); its one output ends registered or with
           // the one §9.4 reason as its error, which the terminal commit carries as the run's error.
           // Erase and expand walk theirs the same way and end with their own reason (execution design §10.4, §10.5).
-          const pickup = execution.tool === "video.lip-sync" ? await runMiniToolLipSync(execution, task.userId, deadlineAt)
+          const pickup = execution.tool === "video.lip-sync" ? await runMiniToolLipSync(execution, task.userId, deadlineAt, at)
             : execution.tool === "video.transitions" ? await runMiniToolTransitions(execution, task.userId, deadlineAt)
-              : execution.tool === "video.erase" ? await runMiniToolErase(execution, task.userId, deadlineAt)
-                : execution.tool === "video.expand" ? await runMiniToolExpand(execution, task.userId, deadlineAt) : await runMiniToolVideoTool(execution, task.userId, deadlineAt);
+              : execution.tool === "video.erase" ? await runMiniToolErase(execution, task.userId, deadlineAt, at)
+                : execution.tool === "video.expand" ? await runMiniToolExpand(execution, task.userId, deadlineAt, at) : await runMiniToolVideoTool(execution, task.userId, deadlineAt);
           const outputs = execution.outputs.map((output, index) => ({ ...output, result: pickup.results.get(output.outputIndex) ?? record.outputs[index]?.result ?? null, late: false }));
           // Each poll commits what finished non-terminally; the one terminal commit waits for every output (design §7.11, line 622).
           if (pickup.waiting || outputs.some((output) => output.result === null)) {
@@ -94,9 +97,12 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
         const error = thrown instanceof DeadlinePassed || failureOutcome(deadlineAt) === "expired" ? new DeadlinePassed() : thrown;
         if (!returned && !isTerminalAttempt(job) && !verdictStands(error)) throw error;
         logger.error({ err: thrown, ctx: { ...ctx, phase: error instanceof UpstreamTaskFailed ? "provider" : returned ? "registration" : phase } }, "mini_tool_execution_computation_failed");
-        const failure: NonNullable<MiniToolExecutionCompletion["error"]> = error instanceof DeadlinePassed ? { code: "expired" }
-          : error instanceof AppError || error instanceof UpstreamTaskFailed ? { code: "mini_tool_failed", message: error.message }
-            : { code: "internal" };
+        const tool = execution.tool;
+        const failure: NonNullable<MiniToolExecutionCompletion["error"]> = tool === "video.erase" || tool === "video.expand" || tool === "video.lip-sync"
+          ? { ...modelRunFailure(tool, at.position, error instanceof DeadlinePassed) }
+          : error instanceof DeadlinePassed ? { code: "expired" }
+            : error instanceof AppError || error instanceof UpstreamTaskFailed ? { code: "mini_tool_failed", message: error.message }
+              : { code: "internal" };
         // Only outputs not yet committed fail; a committed result is never rewritten (design line 622).
         completion = { planFingerprint: execution.planFingerprint, expectedVersion: record.resultVersion,
           outputs: execution.outputs.map((output, index) => {

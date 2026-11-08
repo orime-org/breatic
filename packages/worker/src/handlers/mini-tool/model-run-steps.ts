@@ -17,7 +17,8 @@ import {
   DeadlinePassed, HttpRetryError, miniToolPlanJobRequestSchema, readMiniToolPlanJobReport, type MiniToolPlanExact, type MiniToolPlanJobRequest,
   type MiniToolPlanRecipe, type MiniToolPlanTarget, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from "@breatic/shared";
-import type { ExpandFailureReason, MiniToolExecutionRegistered } from "@breatic/shared/mini-tools";
+import type { EraseFailureReason, ExpandFailureReason, LipsyncFailureReason, MiniToolExecutionRegistered } from "@breatic/shared/mini-tools";
+import { lipsyncFailureReason, type LipsyncPersonState, type LipsyncPersonStep } from "@worker/handlers/mini-tool/lipsync-steps.js";
 import { advanceMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { appendStep, stepWorkKey } from "@worker/handlers/mini-tool/prepare-model-input.js";
 import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
@@ -126,6 +127,54 @@ export function expandFailureReason(windows: readonly ExpandWindowState[], share
     if (window.failure !== null) return [{ windowIndex: window.windowIndex, step: window.failure.step, category: window.failure.category }];
     return window.state === "done" ? [] : [{ windowIndex: window.windowIndex, step: "generate", category: "stopped" }];
   }) };
+}
+
+/**
+ * Where a planned model run stands, kept by its runner as it walks, so a throw that ends the run still ends it with the
+ * tool's own reason (execution design §9.4, §10.4, §10.5). The expand windows and the lip-sync people are the runner's own
+ * progress, read when the run ends.
+ */
+export type ModelRunPosition =
+  | { tool: "video.erase"; step: Exclude<EraseFailureReason["step"], "expired"> }
+  | { tool: "video.expand"; windows: ExpandWindowState[];
+    current: { window: number; step: ExpandFailureReason["windows"][number]["step"] } | { shared: "composite" | "stitch" } }
+  | { tool: "video.lip-sync"; people: (LipsyncPersonState & { succeeded: boolean })[];
+    current: { personId: string; step: LipsyncPersonStep } | { shared: "prepare" | "composite" | "stitch" } };
+/** The holder a model runner writes its position into, null until its walk starts. */
+export interface ModelRunAt { position: ModelRunPosition | null }
+
+/**
+ * The reason a planned model run ends with when it throws past its budget or on its last attempt (execution design §9.4,
+ * §10.4, §10.5): an expiry is `expired` / `timeout`, the expand window then running keeping its step; any other throw is
+ * the step the run stood at with `failed`, the walk's first step when it never started.
+ * @param tool - The run's tool.
+ * @param position - Where its runner stood, or null.
+ * @param expired - Whether the run's budget ended.
+ * @returns The reason.
+ * @throws {never} Never.
+ */
+export function modelRunFailure(tool: ModelRunPosition["tool"], position: ModelRunPosition | null, expired: boolean): EraseFailureReason | ExpandFailureReason | LipsyncFailureReason {
+  const category = expired ? "timeout" : "failed";
+  const expiry = { step: "expired", category: "timeout" } as const;
+  if (tool === "video.erase") {
+    return { kind: "erase", step: expired ? "expired" : position?.tool === "video.erase" ? position.step : "prepare", category };
+  }
+  if (tool === "video.expand") {
+    const at = position?.tool === "video.expand" ? position : null;
+    if (at === null) return expired ? { kind: "expand", windows: [], shared: expiry } : { kind: "expand", windows: [{ windowIndex: 0, step: "window", category }], shared: null };
+    const windows = at.windows.map((window) => ({ ...window }));
+    const current = at.current;
+    if ("window" in current) windows[current.window]!.failure ??= { step: current.step, category };
+    return expandFailureReason(windows, expired ? expiry : "shared" in current ? { step: current.shared, category } : null);
+  }
+  const at = position?.tool === "video.lip-sync" ? position : null;
+  const people = (at?.people ?? []).map((person) => ({ ...person }));
+  if (expired) return lipsyncFailureReason(people, expiry);
+  const current = at?.current ?? { shared: "prepare" as const };
+  if ("shared" in current) return lipsyncFailureReason(people, { step: current.shared, category });
+  const person = people.find((candidate) => candidate.personId === current.personId)!;
+  person.failure ??= { step: current.step, category };
+  return lipsyncFailureReason(people, null);
 }
 
 /** The frozen facts every model run's steps read. */

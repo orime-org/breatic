@@ -18,7 +18,8 @@ import type { AcceptedMiniToolExecution, MiniToolStepJson } from "@breatic/domai
 import type { EraseFailureReason } from "@breatic/shared/mini-tools";
 import type { LipSyncPickup } from "@worker/handlers/mini-tool/run-lip-sync.js";
 import {
-  advanceChunks, advanceContainer, advanceGenerate, advanceRegistered, catalogModel, eraseContainerCategory, modelStepCategory, providerModel, runLedger, type ModelStepRun,
+  advanceChunks, advanceContainer, advanceGenerate, advanceRegistered, catalogModel, eraseContainerCategory, modelStepCategory, providerModel, runLedger, type ModelRunAt,
+  type ModelRunPosition, type ModelStepRun,
 } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { audioOf, chunkInputId, modelInputTarget, segmentTarget, windowDuration, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
@@ -52,15 +53,17 @@ function keyOf(plan: Erase, step: string): string {
  * @param execution - The frozen run.
  * @param userId - The run's user.
  * @param deadlineAt - The task deadline.
+ * @param at - Where the walk stands, kept for the entry's reason when a step throws (§10.4).
  * @returns The output's result once it ended, and whether a step still runs.
  * @throws {Error} When persistence, grants, registration or IO fail.
  */
-export async function runMiniToolErase(execution: unknown, userId: string, deadlineAt: number): Promise<LipSyncPickup> {
+export async function runMiniToolErase(execution: unknown, userId: string, deadlineAt: number, at: ModelRunAt = { position: null }): Promise<LipSyncPickup> {
   const plan = execution as Erase;
   const pickup: LipSyncPickup = { results: new Map(), waiting: false };
   const run: ModelStepRun = { taskId: plan.taskId, projectId: plan.projectId, sourceKey: plan.sourceKey, container: plan.container,
     ...(plan.retry === undefined ? {} : { retry: { runId: plan.retry.runId } }), log: "erase" };
-  let step: Step = "prepare";
+  const position: Extract<ModelRunPosition, { tool: "video.erase" }> = { tool: "video.erase", step: "prepare" };
+  at.position = position;
   /**
    * End the output with its reason.
    * @param failedStep - The step that failed.
@@ -81,12 +84,12 @@ export async function runMiniToolErase(execution: unknown, userId: string, deadl
       build: () => Promise.resolve({ recipe: { kind: "prepare_model_input", inputId: SOURCE, window: plan.range, timescale: table.timescale,
         entries: windowEntries(ledger, plan.range), target, audio: null, grid: plan.grid }, inputs: [{ inputId: SOURCE, storageKey: plan.sourceKey }] }) }, deadlineAt);
     if (!("key" in prepared)) return fail("prepare", prepared.failed as EraseFailureReason["category"]);
-    step = "mask";
+    position.step = "mask";
     const mask = await advanceContainer(run, { stepKey: keyOf(plan, "mask"), contentType: "video/mp4", failed: (reason) => ({ failed: eraseContainerCategory(reason) }),
       build: () => Promise.resolve({ recipe: { kind: "bria_mask", inputId: RLE, table, range, grid: plan.grid, target: { width: target.width, height: target.height } },
         inputs: [{ inputId: RLE, storageKey: plan.tracking.rleKey }] }) }, deadlineAt);
     if (!("key" in mask)) return fail("mask", mask.failed as EraseFailureReason["category"]);
-    step = "generate";
+    position.step = "generate";
     const storage = await getStorageAdapter();
     const result = await advanceGenerate(run, { endpoint: providerModel(plan.model), itemIndex: 0, stepKey: keyOf(plan, "generate"), contentType: "video/mp4",
       category: (error) => modelStepCategory(error, plan.asyncRejection),
@@ -94,7 +97,7 @@ export async function runMiniToolErase(execution: unknown, userId: string, deadl
       body: () => Promise.resolve(upstreamBody(catalogModel(plan.model), { video: storage.publicUrl(prepared.key), mask_video: storage.publicUrl(mask.key), copy_audio: false }, "") as Record<string, MiniToolStepJson>) },
     userId, deadlineAt);
     if (!("key" in result)) return fail("generate", result.failed as EraseFailureReason["category"]);
-    step = "composite";
+    position.step = "composite";
     const output = segmentTarget(ledger, plan.container.encode);
     const chunks = await advanceChunks(run, plan.composite.map((window, k) => ({ stepKey: keyOf(plan, `composite:${k}`), contentType: "video/mp4",
       failed: (reason) => ({ failed: eraseContainerCategory(reason) }),
@@ -102,7 +105,7 @@ export async function runMiniToolErase(execution: unknown, userId: string, deadl
         target: { ...output, format: undefined }, result: RESULT, rle: RLE, table, range, grid: plan.grid, matte: plan.matte, rleSize: { width: target.width, height: target.height } },
       inputs: [{ inputId: SOURCE, storageKey: plan.sourceKey }, { inputId: RESULT, storageKey: result.key }, { inputId: RLE, storageKey: plan.tracking.rleKey }] }) })), deadlineAt);
     if (!("keys" in chunks)) return fail("composite", chunks.failed as EraseFailureReason["category"]);
-    step = "stitch";
+    position.step = "stitch";
     const written = await advanceRegistered(run, { stepKey: keyOf(plan, "stitch"), namePrefix: "ERASE", container: output.format === "webm-vp9" ? "webm" : "mp4",
       build: () => Promise.resolve({ recipe: { kind: "stitch", inputId: SOURCE, target: output, audio: audioOf(ledger),
         chunks: plan.composite.map((window, chunk) => ({ inputId: chunkInputId(chunk), duration: windowDuration(ledger, window) })) },
@@ -114,8 +117,8 @@ export async function runMiniToolErase(execution: unknown, userId: string, deadl
     if (error instanceof StillRunning) { pickup.waiting = true; return pickup; }
     // Only the ledger read and the preparation throw this here; a provider's failure is caught where it is called.
     if (error instanceof UpstreamTaskFailed) {
-      logger.error({ err: error, ctx: { taskId: plan.taskId, step } }, "mini_tool_erase_step_failed");
-      return fail(step, "failed");
+      logger.error({ err: error, ctx: { taskId: plan.taskId, step: position.step } }, "mini_tool_erase_step_failed");
+      return fail(position.step, "failed");
     }
     throw error;
   }

@@ -106,4 +106,18 @@ describe("the lip-sync runner's one failure reason (§97 D17-7; execution design
       { personId: "person-b", detectionNumber: 3, step: "gen", category: "stopped" },
     ] } });
   });
+
+  // Execution design §9.4: a step that throws leaves the run where it stood, so the entry's terminal reason names that step.
+  it.each([
+    ["person-b's clip", (step: Step): boolean => step.kind === "clip" && step.personId === "person-b", { personId: "person-b", step: "clip" }],
+    ["a person's second tracking clip", (step: Step): boolean => (step.kind as string) === "track:rev" && step.personId === "person-a", { personId: "person-a", step: "track" }],
+    ["the stitch", (step: Step): boolean => step.kind === "stitch", { shared: "stitch" }],
+    ["a tracking clip's preparation", (step: Step): boolean => (step.kind as string) === "prepare:fwd", { shared: "prepare" }],
+  ] as const)("LR05 a throw at %s leaves the position at that step with every person's progress", async (_name, throws, current) => {
+    h.step.mockImplementation(async (_execution: unknown, step: Step) => { if (throws(step)) throw new Error("boom"); return { state: "done" }; });
+    const lipSync = (await import(/* @vite-ignore */ RUNNER) as { runMiniToolLipSync: (execution: unknown, userId: string, deadlineAt: number, at: { position: unknown }) => Promise<Pickup> }).runMiniToolLipSync;
+    const at: { position: unknown } = { position: null };
+    await expect(lipSync(structuredClone(EXECUTION), USER, DEADLINE, at)).rejects.toThrow("boom");
+    expect(at.position).toMatchObject({ tool: "video.lip-sync", current, people: [{ personId: "person-a", detectionNumber: 1 }, { personId: "person-b", detectionNumber: 3 }] });
+  });
 });

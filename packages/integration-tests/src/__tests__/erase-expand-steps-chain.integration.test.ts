@@ -44,7 +44,7 @@ vi.mock("@worker/providers/wavespeed.js", async (original) => ({ ...await origin
 vi.mock("@breatic/shared", async (original) => ({ ...await original<typeof sharedModule>(), fetchUrlToIngest: outside.fetchUrl, videoPresentationAtIngest: outside.ingest }));
 vi.mock("@breatic/core", async (original) => ({ ...await original<typeof core>(), getMiniToolsConfig: outside.config }));
 
-type Runner = (execution: unknown, userId: string, deadlineAt: number) => Promise<{ results: Map<number, Record<string, unknown>>; waiting: boolean }>;
+type Runner = (execution: unknown, userId: string, deadlineAt: number, at?: { position: unknown }) => Promise<{ results: Map<number, Record<string, unknown>>; waiting: boolean }>;
 /** A runner loaded by name. @param module - Its module. @param name - Its export. @returns It. */
 const runnerOf = async (module: string, name: string): Promise<Runner> => ((await import(/* @vite-ignore */ module)) as Record<string, Runner>)[name]!;
 
@@ -229,10 +229,11 @@ async function seedExpand(): Promise<Fixture> {
  * @param f - The fixture.
  * @param module - The runner's module.
  * @param name - The runner's export.
+ * @param at - The holder the runner keeps its position in.
  * @returns The frozen plan and the output's result.
- * @throws {Error} When admission refuses or the run never ends.
+ * @throws {Error} When admission refuses, a step throws or the run never ends.
  */
-async function admitAndDrive(f: Fixture, module: string, name: string): Promise<{ plan: Record<string, unknown>; result: Record<string, unknown> }> {
+async function admitAndDrive(f: Fixture, module: string, name: string, at: { position: unknown } = { position: null }): Promise<{ plan: Record<string, unknown>; result: Record<string, unknown> }> {
   const token = randomBytes(24).toString("hex"); tokens.push(token); await core.setSession(core.getRedis(), token, f.userId);
   const response = await app.request("/api/v1/mini-tools", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": randomUUID(), Cookie: `${core.sessionCookieName()}=${token}` }, body: JSON.stringify(f.body) });
   expect(response.status, await response.clone().text()).toBe(201);
@@ -242,7 +243,7 @@ async function admitAndDrive(f: Fixture, module: string, name: string): Promise<
   const run = await runnerOf(module, name);
   for (let pickup = 0; pickup < 60; pickup += 1) {
     try {
-      const answer = await run(execution, task.userId, deadlineAt);
+      const answer = await run(execution, task.userId, deadlineAt, at);
       const result = answer.results.get(0);
       if (result !== undefined) return { plan: execution as unknown as Record<string, unknown>, result };
     } catch (error) { if (!(error instanceof StillRunning)) throw error; }
@@ -426,5 +427,30 @@ describe("an erase or expand failure no retry can clear ends its retryability (�
     const { plan, result } = await admitAndDrive(f, "@worker/handlers/mini-tool/run-expand.js", "runMiniToolExpand");
     expect(result).toMatchObject({ status: "failed", error: { kind: "expand", windows: [{ windowIndex: 0, step: "generate", category: "model_rejected" }] } });
     expect(await finishThenRetry(f, plan, result)).toEqual({ before: ["execution", "prepared"], after: [], status: 422 });
+  });
+});
+
+// Execution design §9.4, §10.4, §10.5: a step that throws leaves the run where it stood, so the entry's terminal reason names
+// that step (the entry's mapping is run-execution-task's, covered in the worker's dispatch test).
+describe("a throwing step leaves the run's position at it (execution design §10.4, §10.5)", () => {
+  it("TP01 an erase whose Bria link fetch throws stands at generate", async () => {
+    outside.fetchUrl.mockRejectedValue(new Error("ingest fetch broke"));
+    const at: { position: unknown } = { position: null };
+    await expect(admitAndDrive(await seedErase(), "@worker/handlers/mini-tool/run-erase.js", "runMiniToolErase", at)).rejects.toThrow("ingest fetch broke");
+    expect(at.position).toEqual({ tool: "video.erase", step: "generate" });
+  });
+
+  it("TP02 an expand whose window 1 VACE link fetch throws stands at that window's generate, window 0 done", async () => {
+    for (const [tool, block] of Object.entries(executions(3))) Reflect.set(settings.executions, tool, block);
+    let fetched = 0;
+    outside.fetchUrl.mockImplementation(async () => {
+      fetched += 1;
+      if (fetched === 2) throw new Error("ingest fetch broke");
+      return { sha256: "8".repeat(64), sizeBytes: 4096, contentType: "video/mp4" };
+    });
+    const at: { position: unknown } = { position: null };
+    await expect(admitAndDrive(await seedExpand(), "@worker/handlers/mini-tool/run-expand.js", "runMiniToolExpand", at)).rejects.toThrow("ingest fetch broke");
+    expect(at.position).toMatchObject({ tool: "video.expand", current: { window: 1, step: "generate" },
+      windows: expect.arrayContaining([{ windowIndex: 0, state: "done", failure: null }, { windowIndex: 1, state: "submitted", failure: null }]) });
   });
 });

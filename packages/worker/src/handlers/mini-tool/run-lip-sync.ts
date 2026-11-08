@@ -11,6 +11,7 @@
 import type { MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
 import { lipsyncFailureReason, lipsyncStoppedLines, type LipsyncPersonState, type LipsyncSharedLine } from "@worker/handlers/mini-tool/lipsync-steps.js";
 import { runLipSyncStep, type LipSyncStepKind } from "@worker/handlers/mini-tool/lipsync-step-run.js";
+import type { ModelRunAt, ModelRunPosition } from "@worker/handlers/mini-tool/model-run-steps.js";
 
 /** The parts of a frozen lip-sync run the runner reads. */
 export interface LipSyncExecution { taskId: string; persons: readonly { personId: string; detectionNumber: number }[] }
@@ -25,14 +26,17 @@ const PERSON_STAGES: readonly (readonly LipSyncStepKind[])[] = [["track:fwd", "t
  * @param execution - The frozen run.
  * @param userId - The run's user.
  * @param deadlineAt - The task deadline.
+ * @param at - Where the walk stands, kept for the entry's reason when a step throws (§9.4).
  * @returns The output's result once it ended, and whether a step still runs.
  * @throws {Error} When a step throws, or the stitch ends without a registered output.
  */
-export async function runMiniToolLipSync(execution: LipSyncExecution, userId: string, deadlineAt: number): Promise<LipSyncPickup> {
+export async function runMiniToolLipSync(execution: LipSyncExecution, userId: string, deadlineAt: number, at: ModelRunAt = { position: null }): Promise<LipSyncPickup> {
   const pickup: LipSyncPickup = { results: new Map(), waiting: false };
   const people: (LipsyncPersonState & { succeeded: boolean })[] = execution.persons.map((p) => ({
     personId: p.personId, detectionNumber: p.detectionNumber, track: "unsubmitted", gen: "unsubmitted", failure: null, succeeded: false,
   }));
+  const position: Extract<ModelRunPosition, { tool: "video.lip-sync" }> = { tool: "video.lip-sync", people, current: { shared: "prepare" } };
+  at.position = position;
   /**
    * End the output with the §9.4 reason.
    * @param shared - The failed shared step, or null.
@@ -50,6 +54,7 @@ export async function runMiniToolLipSync(execution: LipSyncExecution, userId: st
    * @throws {Error} When the step throws.
    */
   const shared = async (kind: "prepare" | "prepare:fwd" | "prepare:rev" | "composite" | "stitch"): Promise<boolean> => {
+    position.current = { shared: kind.startsWith("prepare") ? "prepare" : kind as "composite" | "stitch" };
     const outcome = await runLipSyncStep(execution, { kind, personId: null }, userId, deadlineAt);
     if (outcome.state === "running") { pickup.waiting = true; return false; }
     if (outcome.state === "failed") { fail({ step: kind.startsWith("prepare") ? "prepare" : kind as "composite" | "stitch", category: outcome.category === "timeout" ? "timeout" : "failed" }); return false; }
@@ -71,6 +76,7 @@ export async function runMiniToolLipSync(execution: LipSyncExecution, userId: st
       if (person.failure !== null) continue;
       for (const kind of stage) {
         if (person.failure !== null) break;
+        position.current = { personId: person.personId, step: kind.startsWith("track") ? "track" : kind as "faces" | "clip" | "stem" | "gen" };
         const outcome = await runLipSyncStep(execution, { kind, personId: person.personId }, userId, deadlineAt);
         const paid = kind === "gen" ? "gen" : kind.startsWith("track") ? "track" : null;
         if (outcome.state === "running") {
