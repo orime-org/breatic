@@ -31,8 +31,6 @@ export interface PageLinks {
   addUserMessage(message: ModelMessage): void;
   /** Note the links one tool result of this turn holds. */
   addToolResult(toolName: string, output: unknown): void;
-  /** Whether a link is in the set. */
-  allows(url: string): boolean;
   /**
    * The spelling the set first recorded for a link's key, a bare host given
    * `https://`; undefined when the set does not hold it.
@@ -183,7 +181,6 @@ export function makePageLinks(): PageLinks {
         }
       }
     },
-    allows: (url: string): boolean => urlFor(url) !== undefined,
     urlFor,
   };
 }
