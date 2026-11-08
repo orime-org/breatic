@@ -4,8 +4,8 @@
 /**
  * inner#1306 execution design §10.3 code table and §10.8 copy rows: a failed tracking analysis shows one failure line chosen
  * by its stored `error.code` (`canvas.miniTool.videoUI.trackingFailure.<code>`), and a "Retry tracking" button
- * (`canvas.miniTool.videoUI.retryTracking`) only for the codes shared `trackedMaskRetryable` allows; pressing it starts a new
- * tracking run like "Track selection". §10.4: Bria takes no prompt, so the panel has no erase description box.
+ * (`canvas.miniTool.videoUI.retryTracking`) only for the codes shared `trackedMaskRetryable` allows; pressing it hands the
+ * failed record to `onRetryTracking`, which starts a new tracking run with its frozen input. §10.4: Bria takes no prompt, so the panel has no erase description box.
  */
 
 import * as React from 'react';
@@ -42,11 +42,12 @@ function failed(code: string): MiniToolAnalysisRecord {
  * Renders the erase controls over one failed tracking analysis.
  * @param code - The stored failure code.
  * @param onAnalyse - The tracking entry.
+ * @param onRetryTracking - The retry entry.
  * @returns Nothing.
  */
-function mount(code: string, onAnalyse = vi.fn()): void {
+function mount(code: string, onAnalyse = vi.fn(), onRetryTracking = vi.fn()): void {
   render(<VideoToolControls toolId='video.erase' draft={draft} analyses={[failed(code)]} frameTable={frameTable} presentedTime={0} disabled={false} pickingSlot={null}
-    inputNames={new Map()} onPick={vi.fn()} onAnalyse={onAnalyse} analysing={false} onEditTimeline={vi.fn()} onChange={vi.fn()} />);
+    inputNames={new Map()} onPick={vi.fn()} onAnalyse={onAnalyse} onRetryTracking={onRetryTracking} analysing={false} onEditTimeline={vi.fn()} onChange={vi.fn()} />);
 }
 
 describe('the erase tracking failure line (execution design §10.3)', () => {
@@ -57,13 +58,14 @@ describe('the erase tracking failure line (execution design §10.3)', () => {
     ['timeout', true],
     ['failed', true],
   ] as const)('shows the %s line, with Retry tracking only when it is retryable (%s)', (code, retryable) => {
-    const onAnalyse = vi.fn();
-    mount(code, onAnalyse);
+    const [onAnalyse, onRetryTracking] = [vi.fn(), vi.fn()];
+    mount(code, onAnalyse, onRetryTracking);
     expect(screen.getByText(t(`canvas.miniTool.videoUI.trackingFailure.${code}`))).toBeInTheDocument();
     const retry = screen.queryByRole('button', { name: t('canvas.miniTool.videoUI.retryTracking') });
     if (!retryable) { expect(retry).toBeNull(); return; }
     act(() => retry!.click());
-    expect(onAnalyse).toHaveBeenCalledExactlyOnceWith('tracked_mask');
+    expect(onRetryTracking).toHaveBeenCalledExactlyOnceWith(failed(code));
+    expect(onAnalyse).not.toHaveBeenCalled();
   });
 
   it('has no erase description box, only the tracking prompt', () => {

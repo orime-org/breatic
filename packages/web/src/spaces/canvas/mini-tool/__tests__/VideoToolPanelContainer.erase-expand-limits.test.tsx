@@ -28,12 +28,12 @@ vi.mock('@web/spaces/canvas/_shared/NodePanelMount', async (importOriginal) => (
 }));
 
 import { t } from '@breatic/shared';
-import { videoExpandLayout, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
+import { fingerprintMiniToolAnalysisInput, projectMiniToolAnalysisInput, videoExpandLayout, type MiniToolAnalysisRecord, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
 import { VideoToolPanelContainer, type VideoToolPresentation } from '../video/VideoToolPanelContainer';
 import { createVideoToolDraft } from '../video/video-tool-edit';
 import { CanvasContext } from '../../canvas-context';
 import { addNode, type CanvasNodeView } from '@web/data/yjs/canvas-space';
-import { commitVideoToolDraft, readVideoToolDraft } from '@web/data/yjs/video-tool-drafts';
+import { commitVideoToolAnalysisRef, commitVideoToolDraft, readVideoToolDraft } from '@web/data/yjs/video-tool-drafts';
 import { docName, getDoc, destroyDoc } from '@web/data/yjs/manager';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { TooltipProvider } from '@web/components/ui/tooltip';
@@ -126,6 +126,36 @@ describe('erase limits on Track selection (execution design §10.2, §10.4)', ()
     expect(toast.warning).not.toHaveBeenCalled();
     await vi.waitFor(() => expect(start).toHaveBeenCalledOnce());
     expect(start.mock.calls[0]?.[0]).toMatchObject({ kind: 'tracked_mask', params: { range: { start: 10, end: 14 }, anchor: { frameIndex: 300, pts: 12 } } });
+  });
+
+  // Execution design §10.3: a retry starts a new tracking run with the failed run's frozen input, wherever the user scrubbed.
+  it('retries a failed tracking with its frozen anchor, not the presented frame, and leaves the draft as it was', async () => {
+    const anchor = { frameIndex: 250, pts: 10 };
+    mount('video.erase', { ...REGION, range: { start: 10, end: 14 }, anchor }, { presentedTime: 12 });
+    const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+    const held = readVideoToolDraft(doc, nodeId, 'video.erase');
+    if (held.state !== 'supported') throw new Error('No draft');
+    const draft = held.draft as VideoToolDraftById['video.erase'];
+    const profile = { id: 'sam3-video-rle', version: '1', weightsHash: null, params: { default_prompt: 'object' } };
+    const analysisInput = projectMiniToolAnalysisInput({ kind: 'tracked_mask', source: draft.source, params: draft.params, profile });
+    if (analysisInput.kind !== 'tracked_mask') throw new Error('Not a tracking input');
+    const inputFingerprint = await fingerprintMiniToolAnalysisInput(analysisInput);
+    const failedRunId = '40000000-0000-4000-8000-000000000001';
+    const record = { schemaVersion: 1, draftId: draft.draftId, revision: draft.revision, analysisRunId: failedRunId, acceptedAt: '2026-11-07T00:00:00.000001Z',
+      binding: { assetId: '50000000-0000-4000-8000-000000000001', contentHash: 'a'.repeat(64), canonicalURL: sourceURL, kind: 'video', mediaInfo },
+      analysisInput, inputFingerprint, kind: 'tracked_mask', status: 'failed', result: null, error: { code: 'timeout', step: 'track' }, usage: [], artifactUnavailable: false } as MiniToolAnalysisRecord;
+    vi.spyOn(miniToolAnalysesApi, 'get').mockResolvedValue(record);
+    const start = vi.spyOn(miniToolAnalysesApi, 'start').mockReturnValue(new Promise(() => undefined));
+    act(() => commitVideoToolAnalysisRef(doc, nodeId, { version: 1, toolId: 'video.erase', kind: 'tracked_mask', draftId: draft.draftId, analysisRunId: failedRunId, inputFingerprint }));
+    const retry = await screen.findByRole('button', { name: t('canvas.miniTool.videoUI.retryTracking') });
+    act(() => retry.click());
+    await vi.waitFor(() => expect(start).toHaveBeenCalledOnce());
+    const body = start.mock.calls[0]?.[0];
+    expect(body).toMatchObject({ kind: 'tracked_mask', draftId: draft.draftId, params: { range: analysisInput.range, anchor, region: analysisInput.region, trackingPrompt: analysisInput.trackingPrompt },
+      presentationRef: { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } } });
+    expect(body?.analysisRunId).not.toBe(failedRunId);
+    const after = readVideoToolDraft(doc, nodeId, 'video.erase');
+    expect(after.state === 'supported' ? after.draft.revision : null).toBe(draft.revision);
   });
 
   it('refuses a transparent source', () => {
