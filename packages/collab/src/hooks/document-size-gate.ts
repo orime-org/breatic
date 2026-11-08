@@ -244,10 +244,8 @@ export function watchDocumentSize(document: Document): void {
       const structs = structsAfter === structsBefore ? null : [structsCoverage(structsBefore), structsCoverage(structsAfter)] as const;
       const ds = sameBytes(store.pendingDs, snapshot.ds) ? null : [dsCoverage(snapshot.ds), dsCoverage(store.pendingDs)] as const;
       if ((structs !== null && structs[1] > structs[0]) || (ds !== null && ds[1] > ds[0])) {
-        const sameStructs = structs === null ? structsCoverage(structsAfter) : 0;
-        const sameDs = ds === null ? dsCoverage(snapshot.ds) : 0;
-        const pendingBefore = { structs: structs?.[0] ?? sameStructs, ds: ds?.[0] ?? sameDs };
-        const pendingAfter = { structs: structs?.[1] ?? sameStructs, ds: ds?.[1] ?? sameDs };
+        const pendingBefore = { structs: structsCoverage(structsBefore), ds: dsCoverage(snapshot.ds) };
+        const pendingAfter = { structs: structsCoverage(structsAfter), ds: dsCoverage(store.pendingDs) };
         store.pendingStructs = snapshot.structs;
         store.pendingDs = snapshot.ds;
         if (document.hasConnection(connection)) {
