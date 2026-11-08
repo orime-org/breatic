@@ -461,8 +461,8 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(text()).toContain("Full quality is made from the take they picked, keeping it as it is, or straight away when they ask for it.");
   });
 
-  it("chooses a model that can do the step, names a model's limit as the model's, not Breatic's, and says what helps on the model they have", () => {
-    expect(text()).toContain("Choose for each step a model that can do what it asks.");
+  it("chooses a model that can do the step by its own description in the model list, names a model's limit as the model's, not Breatic's, and says what helps on the model they have", () => {
+    expect(text()).toContain("Choose for each step a model that can do what it asks; what a model is good at is what its own description in the model list says, whatever the web says.");
     expect(text()).toContain("name a model whose own description in the model list says it does this better; when none does, say so plainly. Either way, say what can help on the model they have (a shorter or simpler motion, another framing, a reference).");
     expect(text()).not.toContain("name a model that does it better");
   });
@@ -508,9 +508,9 @@ describe("what the prompt says per medium (breatic#1361)", () => {
     }
   });
 
-  it("asks in Pictures first who a character of theirs is and whether a design or art style of them exists", () => {
+  it("asks in Pictures first who a character of theirs is and whether a design of them or work to match exists, asking to see it, never which style", () => {
     const para = paragraphs().get("Pictures") ?? "";
-    expect(para.startsWith("Pictures. Ask: for a character of theirs, both who they are (age, gender, role; for a robot or a creature, its age feel and gender leaning) and whether a design of them or an art style already exists; their own pictures or sketches; the look of work the picture must sit beside; where it is used when that changes size or layout.")).toBe(true);
+    expect(para.startsWith("Pictures. Ask: for a character of theirs, both who they are (age, gender, role; for a robot or a creature, its age feel and gender leaning) and whether a design of them or work they must match already exists (ask whether there is some and to see it, never which style); their own pictures or sketches; the look of work the picture must sit beside; where it is used when that changes size or layout.")).toBe(true);
     expect(para).not.toContain("who a character of theirs is;");
   });
 

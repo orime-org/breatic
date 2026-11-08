@@ -10,6 +10,7 @@ import {
   answersMismatch,
   askUserAnswerSchema,
   askUserInputSchema,
+  askUserQuestionSchema,
   ASK_USER_OTHER_MAX_CHARS,
   readQuestionnaire,
   type AskUserQuestion,
@@ -110,6 +111,14 @@ describe("the questions the model sends", () => {
     const label = { header: "Q", question: "Which?", options: [{ label: "Yes" }, { label: "No" }] };
 
     expect(askUserInputSchema.safeParse({ questions: [label, label] }).success).toBe(true);
+  });
+});
+
+describe("what the model is told about a question", () => {
+  it("asks for one line with no number that says in a few words what the answer decides", () => {
+    expect(askUserQuestionSchema.shape.question.description).toBe(
+      "The question, in one line, with no number: the card numbers it. Say in it, in a few words, what the answer decides.",
+    );
   });
 });
 
