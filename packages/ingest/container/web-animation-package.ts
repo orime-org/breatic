@@ -11,8 +11,11 @@
 import { durationToFrames, type TimelineRate } from "@shared/timeline/time.js";
 import { WEB_ANIMATION_RUNTIME } from "@shared/timeline/web-animation-runtime.js";
 
-/** The only families a package may draw text with; Noto Sans KR carries the Hangul the SC faces lack. */
-export const WEB_ANIMATION_FONT_FAMILIES = ["Noto Sans SC", "Noto Serif SC", "Inter", "Noto Sans KR"] as const;
+/**
+ * The only families a package may draw text with; Noto Sans KR, JP and TC carry the Hangul, Japanese kanji and
+ * Traditional Chinese characters the SC faces lack.
+ */
+export const WEB_ANIMATION_FONT_FAMILIES = ["Noto Sans SC", "Noto Serif SC", "Inter", "Noto Sans KR", "Noto Sans JP", "Noto Sans TC"] as const;
 
 /** One family of the font set. */
 export type WebAnimationFontFamily = (typeof WEB_ANIMATION_FONT_FAMILIES)[number];

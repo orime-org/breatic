@@ -26,7 +26,7 @@ web_animation:
   # One model call's limit; a cancel or the deadline waits at most this long to drain it.
   call_timeout_ms: 300000
   max_package_bytes: 5000000
-  font_set_version: 2
+  font_set_version: 3
   preview_token_ttl_ms: 3600000
   player_load_timeout_ms: 15000
   sweep_interval_ms: 30000
