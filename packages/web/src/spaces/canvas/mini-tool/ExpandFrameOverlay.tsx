@@ -243,6 +243,7 @@ export function ExpandFrameOverlay({ onNodeContextMenu, videoSource, videoLiveSo
 
   const scale = handleScale(zoom);
   const grown = isExpanded(frame, sourceSize);
+  const target = spec?.id === 'video.expand' ? videoExpandLayout(frame, sourceSize, Infinity) : null;
   const sourceLeft = -frame.x * box.width - scale; const sourceTop = -frame.y * box.height - scale;
   const innerWidth = frame.width * box.width - 2 * scale; const innerHeight = frame.height * box.height - 2 * scale;
   const bands = [
@@ -301,7 +302,7 @@ export function ExpandFrameOverlay({ onNodeContextMenu, videoSource, videoLiveSo
           }}
         />
       )}
-      {spec?.id === 'video.expand' ? <span className='pointer-events-none absolute bottom-full left-0 mb-1 whitespace-nowrap rounded-chrome border border-border bg-popover px-1.5 py-0.5 text-xs tabular-nums text-foreground' style={{ scale: String(scale), transformOrigin: 'bottom left', zIndex: liveVideo ? VIEWPORT_TOP_Z : undefined }}>{videoExpandLayout(frame, sourceSize, Infinity).width} × {videoExpandLayout(frame, sourceSize, Infinity).height}</span> : null}
+      {target !== null ? <span className='pointer-events-none absolute bottom-full left-0 mb-1 whitespace-nowrap rounded-chrome border border-border bg-popover px-1.5 py-0.5 text-xs tabular-nums text-foreground' style={{ scale: String(scale), transformOrigin: 'bottom left', zIndex: liveVideo ? VIEWPORT_TOP_Z : undefined }}>{target.width} × {target.height}</span> : null}
       {CROP_HANDLES.map(({ id, className }) => (
         <div
           key={id}
