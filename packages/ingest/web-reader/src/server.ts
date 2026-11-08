@@ -72,10 +72,12 @@ function textPage(
  * Read a page that arrived as a download: a PDF, a text file, or a file of
  * another type, which is not read.
  *
- * The navigation's headers are judged before the file is waited for, so an
- * oversized file or a media file (`isMediaType`) is cancelled rather than
- * downloaded. Any other file is fetched: one that starts `%PDF-` is read as
- * a PDF whatever its type, and otherwise as text when its type is text.
+ * The navigation's type is judged before the file is waited for, so a media
+ * file (`isMediaType`) is cancelled rather than downloaded; one whose headers
+ * declare more than the limit never gets here, its page having ended at its
+ * headers. Any other file is fetched, and is too large when the file itself
+ * is past the limit: one that starts `%PDF-` is read as a PDF whatever its
+ * type, and otherwise as text when its type is text.
  * @param url - The page asked for.
  * @param download - The download.
  * @param head - The navigation's response, when one arrived.
@@ -90,11 +92,6 @@ async function readDownload(
 ): Promise<ReadPageResult> {
   const finalUrl = download.url();
   const headers = head?.headers() ?? {};
-  const length = Number(headers["content-length"]);
-  if (Number.isFinite(length) && length > maxBytes) {
-    await download.cancel().catch(() => undefined);
-    return { url, status: "too_large", finalUrl };
-  }
   if (isMediaType(mediaTypeOf(headers["content-type"] ?? ""))) {
     await download.cancel().catch(() => undefined);
     return { url, status: "unsupported_type", finalUrl };
