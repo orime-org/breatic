@@ -4,9 +4,11 @@
 /**
  * Space document size cap, round 7 (inner#1790 web spec 23.1 to 23.3,
  * design 5.1 and 5.6): on a provider that finished its handshake (`H7`),
- * the receipt follows the provider's own send window, every `doc:size` push
- * is acknowledged at once with its `seq`, and every collab socket carries
- * `size_ack=1`.
+ * the receipt waits out the provider's own send window, so one operation's
+ * writes leave as one Update ahead of it (round 8: the order itself comes
+ * from `SpaceProvider.sendStateless` flushing first, spec 24.1); every
+ * `doc:size` push is acknowledged at once with its `seq`, after any Update
+ * already written (W8-01); every collab socket carries `size_ack=1`.
  *
  * Transport: production `acquireDocProvider` on the real Hocuspocus provider
  * and socket; only the browser `WebSocket` is a scripted server

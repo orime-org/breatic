@@ -51,8 +51,8 @@ import {
   CANVAS, IMAGE_URL, LivePrompt, PID, SID, nodeOf, poolOf,
 } from '@web/data/yjs/__tests__/helpers/one-action-suite';
 import { P_FULL, P_NORMAL, P_OVER, P_WARNING } from '@web/data/yjs/__tests__/helpers/size-v2-fixtures';
-import { addEdge, addNode, getPromptFragment, _resetCanvasUndoCacheForTests } from '@web/data/yjs/canvas-space';
-import { acquireDocProvider, _resetCollabSocketForTests } from '@web/data/yjs/collab-socket';
+import { addEdge, addNode, getPromptFragment, removeEdge, _resetCanvasUndoCacheForTests } from '@web/data/yjs/canvas-space';
+import { acquireDocProvider, readDocProvider, _resetCollabSocketForTests } from '@web/data/yjs/collab-socket';
 import { clearAllDocSizes, readDocSize, setDocSize, startDocResync } from '@web/data/yjs/doc-size';
 import { getDoc, _resetForTests } from '@web/data/yjs/manager';
 import {
@@ -64,6 +64,7 @@ import { dispatchMachineEdit } from '@web/features/reference-mention/reference-m
 import { changeLocale } from '@web/i18n/locale-bootstrap';
 import { toast } from '@web/lib/toast';
 import type { PromptEditorHandle } from '@web/spaces/canvas/generate/PromptEditor';
+import { writeProposalPrompt } from '@web/spaces/canvas/generate/proposal-prompt';
 import { MENTION_LABEL_ATTR } from '@web/spaces/canvas/generate/reference-mention';
 
 const { expectHandshake, resetServer, settle } = h7;
@@ -107,10 +108,11 @@ async function mountPrompt(fragment: Y.XmlFragment): Promise<Pick<Bystander, 'ed
 /**
  * Opens the bystander: `e` (named `E`) referenced by `v`, a chip of `e` in
  * `v`'s prompt, all sent to the server; the Space normal.
+ * @param words - Land the prompt as `make @E look` (words on both sides of the chip) instead of inserting the chip alone.
  * @returns The bystander.
  * @throws {AssertionError} When a precondition does not hold.
  */
-async function openBystander(): Promise<Bystander> {
+async function openBystander(words = false): Promise<Bystander> {
   const doc = getDoc(CANVAS);
   await expectHandshake(CANVAS, doc, acquireDocProvider(CANVAS, doc) as never);
   addNode(PID, SID, nodeOf('e', 'image', { content: IMAGE_URL }));
@@ -118,10 +120,11 @@ async function openBystander(): Promise<Bystander> {
   addEdge(PID, SID, { id: 'e->v', source: 'e', target: 'v', createdAt: 1 });
   const fragment = getPromptFragment(PID, SID, 'v', 't2v');
   if (fragment === null) throw new Error('no prompt fragment');
+  if (words) writeProposalPrompt(fragment, [{ text: 'make ' }, { ref: 0 }, { text: ' look' }], () => ({ sourceNodeId: 'e', label: 'E', kind: 'image' }));
   const ref = React.createRef<PromptEditorHandle>();
   const view = render(<LivePrompt nodeId='v' fragment={fragment} editorRef={ref} />);
   await waitFor(() => { expect(ref.current).not.toBeNull(); });
-  act(() => { for (const row of poolOf('v')) ref.current!.insertReference(row); });
+  if (!words) act(() => { for (const row of poolOf('v')) ref.current!.insertReference(row); });
   server.push(CANVAS, P_NORMAL);
   await act(async () => { await settle(); });
   expect(chipLabels(editorIn(view.container).state.doc)).toEqual(['E']);
@@ -320,5 +323,140 @@ describe('23.4 a machine edit is refused without a toast', () => {
     expect(updates).toHaveLength(0);
     if (told === null) expectWarnings();
     else expectWarnings(told);
+  });
+});
+
+/** How the chip of `e` stops being in `v`'s pool. */
+type Invalidate = 'peer' | 'local';
+
+/**
+ * The edge `e -> v` goes: a peer deletes it, or this client cuts it.
+ * @param how - Who removes it.
+ * @throws {never} Never.
+ */
+function invalidate(how: Invalidate): void {
+  if (how === 'peer') server.peer(CANVAS, (peer) => { peer.getMap('edgesMap').delete('e->v'); });
+  else removeEdge(PID, SID, 'e->v');
+}
+
+/**
+ * Opens the bystander with `make @E look` over its ceiling, then the chip of
+ * `e` stops being in the pool. Removing the chip then cuts into the words
+ * around it, which over the ceiling is refused.
+ * @param how - Who removes the edge.
+ * @returns The bystander.
+ * @throws {AssertionError} When the chip is not held.
+ */
+async function overCeilingThenInvalidated(how: Invalidate): Promise<Bystander> {
+  const bystander = await openBystander(true);
+  server.push(CANVAS, P_OVER);
+  invalidate(how);
+  await settle();
+  expect(getDoc(CANVAS).getMap('edgesMap').has('e->v')).toBe(false);
+  return bystander;
+}
+
+/**
+ * How many chips the bystander's editor and fragment hold.
+ * @param bystander - The bystander.
+ * @returns The chips in ProseMirror and in Yjs.
+ * @throws {never} Never.
+ */
+function chips(bystander: Bystander): { pm: number; y: number } {
+  return {
+    pm: chipLabels(bystander.editor().state.doc).length,
+    y: bystander.fragment.toString().split(`<${REFERENCE_MENTION_NODE.toLowerCase()}`).length - 1,
+  };
+}
+
+/** A push still over the ceiling, with other bytes than `P_OVER`. */
+const P_OVER_MORE = { ...P_OVER, bytes: P_OVER.bytes + 4096 };
+
+describe('24.3 coming back from over the ceiling projects again', () => {
+  it.each(['peer', 'local'] as const)('W8-08 (%s removes the edge) over the ceiling the stale chip stays; P_FULL projects once, one pure deletion', async (how) => {
+    const bystander = await overCeilingThenInvalidated(how);
+    expect(chips(bystander)).toEqual({ pm: 1, y: 1 });
+    expect(toast.warning).not.toHaveBeenCalled();
+    const mark = server.mark();
+    server.push(CANVAS, P_FULL);
+    await settle();
+    expect(chips(bystander)).toEqual({ pm: 0, y: 0 });
+    const shapes = updateShapes(mark);
+    expect(shapes).toHaveLength(1);
+    expect(['D', 'R']).toContain(shapes[0]);
+    expect(inStep(bystander)).toBe(true);
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it('W8-09 over the ceiling, the chip stale, then P_WARNING: cleared with one update, no toast', async () => {
+    const bystander = await overCeilingThenInvalidated('peer');
+    const mark = server.mark();
+    server.push(CANVAS, P_WARNING);
+    await settle();
+    expect(chips(bystander)).toEqual({ pm: 0, y: 0 });
+    expect(updateShapes(mark)).toHaveLength(1);
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['P_FULL', P_FULL],
+    ['P_NORMAL', P_NORMAL],
+  ] as const)('W8-10 over the ceiling, the chip stale, refused and rebuilt; synced with %s last: cleared with one update', async (label, last) => {
+    const bystander = await overCeilingThenInvalidated('peer');
+    server.closeDocument(CANVAS, COLLAB_DOCUMENT_TOO_LARGE_REASON);
+    await settle();
+    expect(readDocSize(CANVAS).phase).toBe('resyncing');
+    bystander.unmount();
+    vi.mocked(toast.warning).mockClear();
+    const doc = getDoc(CANVAS);
+    await expectHandshake(CANVAS, doc, acquireDocProvider(CANVAS, doc) as never, { confirms: false });
+    server.push(CANVAS, last);
+    const fragment = getPromptFragment(PID, SID, 'v', 't2v');
+    if (fragment === null) throw new Error('no prompt fragment');
+    expect(fragment.toString().split(`<${REFERENCE_MENTION_NODE.toLowerCase()}`).length - 1).toBe(1);
+    const mark = server.mark();
+    const remounted = await mountPrompt(fragment);
+    await settle();
+    expect(chipLabels(remounted.editor().state.doc)).toEqual([]);
+    const shapes = updateShapes(mark);
+    expect(shapes).toHaveLength(1);
+    if (label === 'P_FULL') expect(['D', 'R']).toContain(shapes[0]);
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it('W8-11 over the ceiling, the chip stale, two more over-ceiling pushes with other bytes: no projection, nothing sent', async () => {
+    const bystander = await overCeilingThenInvalidated('peer');
+    const mark = server.mark();
+    server.push(CANVAS, P_OVER_MORE);
+    await settle();
+    server.push(CANVAS, { ...P_OVER_MORE, bytes: P_OVER_MORE.bytes + 4096 });
+    await settle();
+    expect(updateShapes(mark)).toEqual([]);
+    expect(chips(bystander)).toEqual({ pm: 1, y: 1 });
+  });
+});
+
+describe('24.5 an editor mounted while resyncing projects once the phase leaves it', () => {
+  it('W8-15 mounted in Z with a renamed source: the projection is refused silently; synced then P_WARNING: E2, one S update', async () => {
+    const bystander = await openBystander();
+    bystander.unmount();
+    setDocSize(CANVAS, { type: 'doc:size', seq: 1, ...P_NORMAL });
+    startDocResync(CANVAS);
+    peerRenames();
+    await settle();
+    vi.mocked(toast.warning).mockClear();
+    const mark = server.mark();
+    const mounted = await mountPrompt(bystander.fragment);
+    await settle();
+    expect(chipLabels(mounted.editor().state.doc)).toEqual(['E']);
+    expect(updateShapes(mark)).toEqual([]);
+    expect(toast.warning).not.toHaveBeenCalled();
+    act(() => { (readDocProvider(CANVAS) as unknown as { emit: (event: string, data: unknown) => void }).emit('synced', { state: true }); });
+    const pushed = server.mark();
+    server.push(CANVAS, P_WARNING);
+    await settle();
+    expect(chipLabels(mounted.editor().state.doc)).toEqual(['E2']);
+    expect(updateShapes(pushed)).toEqual(['S']);
+    expect(toast.warning).not.toHaveBeenCalled();
   });
 });

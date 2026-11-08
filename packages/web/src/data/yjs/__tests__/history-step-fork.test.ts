@@ -819,6 +819,77 @@ describe('HC-10 timeline: holding undo on a refused step', () => {
   });
 });
 
+/**
+ * A canvas document with an undo manager over `nodesMap`, empty stacks, and
+ * tracked steps written in warning, each its own stack entry.
+ * @param steps - The tracked writes, in order.
+ * @returns The board.
+ */
+function steppedBoard(steps: ReadonlyArray<(nodes: Y.Map<unknown>) => void>): Board {
+  const doc = getDoc(CANVAS);
+  const nodes = doc.getMap<unknown>('nodesMap');
+  const manager = new Y.UndoManager(nodes, { trackedOrigins: new Set([TRACKED]), captureTimeout: 0 });
+  enterSize(CANVAS, P_WARNING);
+  for (const step of steps) {
+    tracked(doc, () => { step(nodes); });
+    manager.stopCapturing();
+  }
+  return { doc, nodes, manager };
+}
+
+describe('24.4 a refused step does not decide the other direction', () => {
+  it('W8-12 undo refused (it would restore a), then redo right away: judged on its own top (remove), let through, one copy each', () => {
+    const b = steppedBoard([
+      (nodes) => { nodes.set('a', new Y.Map<unknown>([['name', 'a']])); },
+      (nodes) => { nodes.set('b', new Y.Map<unknown>([['name', 'b']])); },
+      (nodes) => { nodes.delete('a'); },
+      (nodes) => { nodes.delete('b'); },
+    ]);
+    b.manager.undo();
+    expect(b.nodes.has('b')).toBe(true);
+    enterSize(CANVAS, P_FULL);
+    vi.mocked(toast.warning).mockClear();
+    resetCopies();
+    const lengths = stacks(b.manager);
+    const written = localUpdate(b.doc, () => {
+      expect(gatedStep(CANVAS, b.manager, 'undo')).toEqual({ ok: false, reason: 'full' });
+    });
+
+    expect(written).toBeNull();
+    expect(b.nodes.has('a')).toBe(false);
+    expect(vi.mocked(toast.warning).mock.calls.map(([message]) => message)).toEqual([COPY_V2_EN.T_ADD]);
+    expect(stacks(b.manager)).toEqual(lengths);
+    expect(copiesOf(b.doc)).toBe(1);
+
+    expect(gatedStep(CANVAS, b.manager, 'redo')).toEqual({ ok: true });
+    expect(b.nodes.has('b')).toBe(false);
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(copiesOf(b.doc)).toBe(2);
+  });
+
+  it('W8-13 redo refused (it would add b back), then undo right away: judged on its own top (remove), let through', () => {
+    const b = steppedBoard([
+      (nodes) => { nodes.set('a', new Y.Map<unknown>([['name', 'a']])); },
+      (nodes) => { nodes.set('b', new Y.Map<unknown>([['name', 'b']])); },
+    ]);
+    b.manager.undo();
+    expect(b.nodes.has('b')).toBe(false);
+    enterSize(CANVAS, P_FULL);
+    vi.mocked(toast.warning).mockClear();
+    resetCopies();
+    const lengths = stacks(b.manager);
+
+    expect(gatedStep(CANVAS, b.manager, 'redo')).toEqual({ ok: false, reason: 'full' });
+    expect(vi.mocked(toast.warning).mock.calls.map(([message]) => message)).toEqual([COPY_V2_EN.T_ADD]);
+    expect(stacks(b.manager)).toEqual(lengths);
+
+    expect(gatedStep(CANVAS, b.manager, 'undo')).toEqual({ ok: true });
+    expect(b.nodes.has('a')).toBe(false);
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(copiesOf(b.doc)).toBe(2);
+  });
+});
+
 describe('ST-01 the module surface', () => {
   it('ST-01 history-step exports runHistoryStep; timeline-document no longer exports timelineSizeName', async () => {
     const m = await vi.importActual<typeof HistoryStepModule>('@web/data/yjs/history-step');
