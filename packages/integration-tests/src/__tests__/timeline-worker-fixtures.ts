@@ -14,7 +14,7 @@ import { join } from "node:path";
 import type { Job } from "bullmq";
 import * as Y from "yjs";
 import { expect, vi } from "vitest";
-import { env, getStorageAdapter, initLogger, timelineExecutionRepo } from "@breatic/core";
+import { env, getStorageAdapter, getTimelineConfig, initLogger, timelineExecutionRepo } from "@breatic/core";
 import type { createPgClient } from "@breatic/core";
 import { projectMetaDocName, spaceContentDocName, type TimelineExecution } from "@breatic/shared";
 import {
@@ -248,7 +248,8 @@ export function manifest(overrides: Partial<WebAnimationManifest> = {}): WebAnim
     viewport: { width: 1920, height: 1080 },
     fps: { num: 24, den: 1 },
     durationFrames: 96,
-    resources: [{ kind: "font-set", version: 1 }],
+    // The font set the yaml names, as the runner writes it.
+    resources: [{ kind: "font-set", version: getTimelineConfig().web_animation.font_set_version }],
     runtime: { id: "hyperframes", version: "0.8.186" },
     ...overrides,
   };
