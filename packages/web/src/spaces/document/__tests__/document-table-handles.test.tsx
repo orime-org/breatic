@@ -519,4 +519,34 @@ describe('copy, cut and paste from the handles (inner#1239)', () => {
     expect(text).toContain('a1');
     expect(text).not.toContain(orientation === 'row' ? 'a2' : 'b1');
   });
+
+  it('greys Add to Agent on a row with no words, as the table menu does, and hands nothing over', async () => {
+    attachToChat.mockClear();
+    const warning = vi.spyOn(toast, 'warning');
+    const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    editor.mount(root);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['', ''] }] })] as never);
+    side.editor = editor;
+    side.state = { show: true, block: editor.document[0], rowIndex: 1, colIndex: 0, cellPos: cellPosAt(editor, 1, 0) };
+    render(
+      <DocumentProjectProvider projectId='project-1'>
+        <DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />
+      </DocumentProjectProvider>,
+    );
+    fireEvent.click(screen.getByTestId('doc-table-row-handle'));
+
+    expect(screen.getByTestId('doc-table-row-addToAgent').getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByTestId('doc-table-row-copy').getAttribute('aria-disabled')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('doc-table-row-addToAgent'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(attachToChat).not.toHaveBeenCalled();
+    expect(warning).not.toHaveBeenCalled();
+    warning.mockRestore();
+  });
 });

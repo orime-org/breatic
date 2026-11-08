@@ -13,7 +13,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { CellSelection } from '@tiptap/pm/tables';
+import { CellSelection, mergeCells } from '@tiptap/pm/tables';
 
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
@@ -552,6 +552,86 @@ describe('pasting copied rows and columns as new ones', () => {
 
     expect(await pasting).toBe('gone');
     expect(grid(editor)).toEqual([['a1', 'b1'], ['a3', 'b3']]);
+  });
+});
+
+describe('a menu command whose clipboard wait outlasts a change to its table', () => {
+  /**
+   * Holds the next clipboard read until the returned call lets it go.
+   * @returns The release.
+   */
+  function holdRead(): () => void {
+    let release = (): void => undefined;
+    readGate = new Promise((resolve) => {
+      release = resolve;
+    });
+    return release;
+  }
+
+  /**
+   * Merges two cells, as a collaborator or the user may while a read waits.
+   * @param editor - The editor.
+   * @param from - The first cell's words.
+   * @param to - The last cell's words.
+   */
+  function merge(editor: Editor, from: string, to: string): void {
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cellOf(editor, from), cellOf(editor, to))));
+    mergeCells(view.state, view.dispatch);
+  }
+
+  it.each([
+    ['below', 'a1', 'b1', 'b2'],
+    ['right', 'b1', 'a2', 'b2'],
+  ] as const)('pastes nothing %s once a merged cell crosses the edge during the read, every cell kept', async (side, at, from, to) => {
+    const { editor } = open(SMALL);
+    readable = { 'text/html': '<table><tr><td>x</td><td>y</td></tr><tr><td>p</td><td>q</td></tr></table>', 'text/plain': '' };
+    const release = holdRead();
+
+    const pasting = pasteTableLines(editor as never, cellOf(editor, at), side);
+    merge(editor, from, to);
+    const merged = grid(editor);
+    release();
+
+    expect(await pasting).toBe('merged');
+    expect(grid(editor)).toEqual(merged);
+  });
+
+  it('judges no media of a paste whose row is gone by the time the read ends', async () => {
+    const onLeftOut = vi.fn();
+    const start = vi.fn();
+    const { editor } = open(SMALL, new Y.Doc(), { assetUrlPrefix: () => 'https://assets.test/', onLeftOut, start });
+    readable = { 'text/html': '<table><tr><td><img src="https://example.com/a.png"></td><td>y</td></tr></table>', 'text/plain': '' };
+    const release = holdRead();
+
+    const pasting = pasteTableLines(editor as never, cellOf(editor, 'a2'), 'below');
+    await cutTableLine(editor as never, cellOf(editor, 'a2'), 'row');
+    release();
+
+    expect(await pasting).toBe('gone');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(onLeftOut).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it('deletes nothing when the row it copied through the async clipboard has merged across its edge meanwhile', async () => {
+    const { editor } = open(SMALL);
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: vi.fn(() => false) });
+    vi.stubGlobal('ClipboardItem', class {
+      constructor(readonly items: Record<string, Blob>) {}
+    });
+    let release = (): void => undefined;
+    vi.mocked(navigator.clipboard.write).mockImplementationOnce(() => new Promise((resolve) => {
+      release = () => resolve();
+    }));
+
+    const cutting = cutTableLine(editor as never, cellOf(editor, 'a2'), 'row');
+    merge(editor, 'a2', 'a3');
+    const merged = grid(editor);
+    release();
+
+    expect(await cutting).toBe('merged');
+    expect(grid(editor)).toEqual(merged);
   });
 });
 
