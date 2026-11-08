@@ -450,4 +450,50 @@ describe("two-step sign-up with a referral code (inner#1868)", () => {
     expect(verified.referral).toBeNull();
     expect(await sourceOf(email)).toBeNull();
   });
+
+  /**
+   * Reads the code the account with this email is bound to.
+   * @param email - The account's email.
+   * @returns The code text, or null when unbound.
+   */
+  async function boundCodeOf(email: string): Promise<string | null> {
+    const [row] = await sql<{ code: string }[]>`select c.code from referral_bindings b
+      join users u on u.id = b.user_id join referral_codes c on c.id = b.referral_code_id where u.email = ${email}`;
+    return row?.code ?? null;
+  }
+
+  it("stores a code added when the sign-up is resubmitted", async () => {
+    const { code } = await activeCode();
+    const email = freshEmail();
+    const first = await startSignup({ ticket: null, email, password: "password1", locale: "en" });
+    const firstCode = lastCode();
+    await startSignup({ ticket: first.ticket, email, password: "password1", locale: "en", referral: { code, source: "signup_typed" } });
+    const verified = await verifySignupCode(first.ticket, firstCode);
+    expect(verified.referral).toBe("applied");
+    expect(await boundCodeOf(email)).toBe(code);
+  });
+
+  it("overwrites the code when the sign-up is resubmitted with another one", async () => {
+    const a = await activeCode();
+    const b = await activeCode();
+    const email = freshEmail();
+    const first = await startSignup({ ticket: null, email, password: "password1", locale: "en", referral: { code: a.code, source: "signup_link" } });
+    const firstCode = lastCode();
+    await startSignup({ ticket: first.ticket, email, password: "password1", locale: "en", referral: { code: b.code, source: "signup_typed" } });
+    const verified = await verifySignupCode(first.ticket, firstCode);
+    expect(verified.referral).toBe("applied");
+    expect(await boundCodeOf(email)).toBe(b.code);
+    expect(await sourceOf(email)).toBe("signup_typed");
+  });
+
+  it("refuses an invalid code on resubmission and keeps the code already stored", async () => {
+    const { code } = await activeCode();
+    const email = freshEmail();
+    const first = await startSignup({ ticket: null, email, password: "password1", locale: "en", referral: { code, source: "signup_link" } });
+    const firstCode = lastCode();
+    expect(await statusOf(startSignup({ ticket: first.ticket, email, password: "password1", locale: "en", referral: { code: "NOPE-NOPE", source: "signup_typed" } }))).toBe(422);
+    const verified = await verifySignupCode(first.ticket, firstCode);
+    expect(verified.referral).toBe("applied");
+    expect(await boundCodeOf(email)).toBe(code);
+  });
 });
