@@ -316,6 +316,9 @@ describe("what the guide says", () => {
     expect(doc).toMatch(
       /"Draft a shot list" turns the selection into a shot list: one table with a header row and a row per shot, its columns shot number, shot size, camera angle, camera movement, what is on screen, dialogue and sound, duration in seconds and notes/,
     );
+    expect(doc).toMatch(/to draft it from the whole text, press Cmd\+A twice first to select the whole body/);
+    expect(doc).toMatch(/The commands under "Rewrite the selection" keep the structure/);
+    expect(doc).not.toMatch(/The fixed commands keep the structure/);
     expect(doc).toMatch(/Not available yet: the AI command that illustrates a passage/);
     expect(doc).not.toMatch(/draft a shot list or illustrate/);
   });

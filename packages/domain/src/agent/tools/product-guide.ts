@@ -1537,11 +1537,13 @@ export function renderProductGuide(): string {
       "table from outside or across cells) and keeps the selection as it was; " +
       `${quoted(t("spaces.document.ai.replace"))} puts the result in place of the selection, the way pasting does: ` +
       "images and empty lines in it are replaced too, and words of a block left out of a selection inside that " +
-      "block stay. The fixed commands keep the structure (headings, lists, code blocks); expand may turn a " +
+      "block stay. The commands under " +
+      `${quoted(t("spaces.document.commands.aiRewriteGroup"))} keep the structure (headings, lists, code blocks); expand may turn a ` +
       `paragraph into several. ${quoted(t("spaces.document.commands.ai_storyboard"))} turns the selection into a ` +
       "shot list: one table with a header row and a row per shot, its columns shot number, shot size, camera " +
       "angle, camera movement, what is on screen, dialogue and sound, duration in seconds and notes, written in " +
-      "the selection's language; to draft it from the whole text, select the whole body with Cmd+A first. A custom instruction can change the structure, such as turning the words into a " +
+      "the selection's language; to draft it from the whole text, press Cmd+A twice first to select the whole " +
+      "body. A custom instruction can change the structure, such as turning the words into a " +
       "list or merging paragraphs into one. Either is one step Cmd+Z takes " +
       "back. If the selected words are deleted while the panel is open, " +
       `${quoted(t("spaces.document.ai.replace"))} is greyed and hovering it shows ` +
