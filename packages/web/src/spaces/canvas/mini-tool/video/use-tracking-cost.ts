@@ -53,7 +53,8 @@ export function useTrackingCost(facts: TrackingCostFacts): { estimate?: string; 
   const quote = useQuery({ queryKey: ['mini-tool-analysis-quote', key], queryFn: () => miniToolAnalysesApi.quote(body!), enabled: body !== null && tracking === undefined, retry: false });
   const used = tracking?.usage.flatMap((entry) => typeof entry.credits === 'number' ? [entry.credits] : []) ?? [];
   return {
-    ...(quote.data === undefined || body === null ? {} : { estimate: formatCreditAmount(quote.data.credits) }),
+    // A tracked selection shows no estimate; its use appears once its charge commits.
+    ...(quote.data === undefined || body === null || tracking !== undefined ? {} : { estimate: formatCreditAmount(quote.data.credits) }),
     ...(used.length === 0 ? {} : { actual: formatCreditAmount(used.reduce((sum, credits) => sum + credits, 0)) }),
   };
 }
